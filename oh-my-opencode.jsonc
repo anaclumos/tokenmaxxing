@@ -1,0 +1,126 @@
+// Sunghyun's Tokenmaxxing Guide
+// Date: See Git Commit Date
+
+// Goal
+// - Paying as little as possible
+// - Tokenmaxxing (At the end of the week, balancedly deplete all subscriptions)
+
+// Core Ideas
+// - For long-running main session use OpenAI GPT 5.4 1M
+// - For every other subagents prioritize Copilot Subscription
+
+// Recommendations:
+// - GPT 5.4 Pro
+// - GitHub Copilot Pro (the best bang for the buck)
+
+// Do not get:
+// - Claude Subscriptions
+//   - They ban for using OpenCode
+//   - plus they nerf model performance so often
+//   - If you ever want Claude 1M models, use Claude API selectively
+//     - Replace the "openai/gpt-5.4" parts below
+// - Z-AI Coding Plan
+//   - Z-AI models are good but the coding plan is expensive and slow
+
+{
+  "$schema": "https://raw.githubusercontent.com/code-yeongyu/oh-my-openagent/dev/assets/oh-my-opencode.schema.json",
+  "agents": {
+    "sisyphus": {
+      // Opus 4.6 for "I don't care Just make it happen" fixes
+      "model": "github-copilot/claude-opus-4.6",
+      "variant": "high"
+    },
+    "hephaestus": {
+      // Codex for surgical fixes
+      // I don't use this anyways
+      "model": "github-copilot/gpt-5.3-codex",
+      "variant": "medium"
+    },
+    "oracle": {
+      // GPT 5.4 for deep consultation
+      "model": "github-copilot/gpt-5.4",
+      "variant": "high"
+    },
+    "librarian": {
+      // Sonnet for fast retrieval
+      "model": "openai/gpt-5.3-codex-spark"
+    },
+    "explore": {
+      // Sonnet for fast retrieval
+      "model": "openai/gpt-5.3-codex-spark"
+    },
+    "multimodal-looker": {
+      // GPT 5.4 for multimodal capabilities.
+      // There are a lot of modes with multimodal capabilities though...
+      // I just put GPT here for no good reason
+      "model": "github-copilot/gpt-5.4",
+      "variant": "medium"
+    },
+    "prometheus": {
+      // Claude tends to have "big imaginations", which are good for planning
+      "model": "github-copilot/claude-opus-4.6",
+      "variant": "max"
+    },
+    "metis": {
+      // Self-review config. Matches Prometheus.
+      "model": "github-copilot/claude-opus-4.6",
+      "variant": "max"
+    },
+    "momus": {
+      // In-depth review. Thus be a different model than Promethues+Metis for cross-review.
+      "model": "github-copilot/gpt-5.4",
+      "variant": "xhigh"
+    },
+    "atlas": {
+      // The "Plan Executor". This will run very long! Thus official sub.
+      "model": "openai/gpt-5.4",
+      "variant": "medium"
+    },
+    "sisyphus-junior": {
+      // Subagents that Sisyphus and Atlas spawn.
+      // Claude likes to make imaginative/creative code changes
+      // For Atlas sessions, these get reviewed by Atlas anyways, so Opus 4.6 is fine
+      "model": "github-copilot/claude-opus-4.6"
+    }
+  },
+  "categories": {
+    "visual-engineering": {
+      // Everyone sucks at FE anyways
+      "model": "github-copilot/gemini-3.1-pro-preview",
+      "variant": "high"
+    },
+    "ultrabrain": {
+      // The best model possible.
+      // It doesn't run for an extended period of time, thus Copilot sub
+      "model": "github-copilot/gpt-5.4",
+      "variant": "xhigh"
+    },
+    "deep": {
+      // Surgical fixes
+      "model": "github-copilot/gpt-5.4",
+      "variant": "medium"
+    },
+    "artistry": {
+      // Same with VisEng, they all suck anyways
+      "model": "github-copilot/gemini-3.1-pro-preview",
+      "variant": "high"
+    },
+    "quick": {
+      // Spark is the fastest
+      "model": "openai/gpt-5.3-codex-spark"
+    },
+    "unspecified-low": {
+      // Fallback model for low difficulty works
+      "model": "github-copilot/claude-sonnet-4.6"
+    },
+    "unspecified-high": {
+      // Fallback model for low difficulty works
+      "model": "github-copilot/claude-opus-4.6",
+      "variant": "max"
+    },
+    "writing": {
+      // GPT writing sucks, at least Claude tries to sound like a human being
+      "model": "github-copilot/claude-opus-4.6"
+    }
+  }
+}
