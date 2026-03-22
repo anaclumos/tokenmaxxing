@@ -7,8 +7,9 @@
     "external_directory": "allow",
     "read": {
       "*": "allow",
-      "*.env": "allow",
-      "*.env.*": "allow"
+      "*.env": "deny",
+      "*.dev.vars": "deny",
+      "*.env.*": "deny"
     },
     "webfetch": "allow"
   },
