@@ -43,11 +43,11 @@
     },
     "librarian": {
       // Sonnet for fast retrieval
-      "model": "openai/gpt-5.3-codex-spark"
+      "model": "github-copilot/gpt-5.4"
     },
     "explore": {
       // Sonnet for fast retrieval
-      "model": "openai/gpt-5.3-codex-spark"
+      "model": "github-copilot/gpt-5.4"
     },
     "multimodal-looker": {
       // GPT 5.4 for multimodal capabilities.
