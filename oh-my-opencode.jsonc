@@ -42,12 +42,12 @@
       "variant": "high"
     },
     "librarian": {
-      // Sonnet for fast retrieval
-      "model": "github-copilot/gpt-5.4"
+      // Need to be quick
+      "model": "openai/gpt-5.3-codex-spark"
     },
     "explore": {
       // Sonnet for fast retrieval
-      "model": "github-copilot/gpt-5.4"
+      "model": "github-copilot/claude-sonnet-4.6"
     },
     "multimodal-looker": {
       // GPT 5.4 for multimodal capabilities.
