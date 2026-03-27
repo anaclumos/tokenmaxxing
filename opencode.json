@@ -13,9 +13,7 @@
     },
     "webfetch": "allow"
   },
-  "plugin": [
-    "oh-my-opencode@latest"
-  ],
+  "plugin": ["oh-my-opencode@latest"],
   "provider": {
     "openai": {
       "models": {
@@ -26,6 +24,6 @@
           }
         }
       }
-    },
+    }
   }
 }
