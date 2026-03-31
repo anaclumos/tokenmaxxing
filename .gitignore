@@ -28,3 +28,4 @@ npm-debug.log*
 # system files
 .DS_Store
 *.pem
+.vercel

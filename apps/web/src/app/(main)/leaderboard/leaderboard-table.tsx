@@ -42,7 +42,7 @@ export function LeaderboardTable({
     <div>
       <Tabs
         value={period}
-        onValueChange={(v) => router.push(`/leaderboard?period=${v}`)}
+        onValueChange={(v) => router.push(`/?period=${v}`)}
         className="mb-6"
       >
         <TabsList>
@@ -91,7 +91,7 @@ export function LeaderboardTable({
       {total > 50 && (
         <div className="mt-4 flex justify-center gap-2">
           {page > 1 && (
-            <Link href={`/leaderboard?period=${period}&page=${page - 1}`}>
+            <Link href={`/?period=${period}&page=${page - 1}`}>
               <Badge variant="outline">Previous</Badge>
             </Link>
           )}
@@ -99,7 +99,7 @@ export function LeaderboardTable({
             Page {page} of {Math.ceil(total / 50)}
           </span>
           {page * 50 < total && (
-            <Link href={`/leaderboard?period=${period}&page=${page + 1}`}>
+            <Link href={`/?period=${period}&page=${page + 1}`}>
               <Badge variant="outline">Next</Badge>
             </Link>
           )}

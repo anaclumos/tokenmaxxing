@@ -10,9 +10,6 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
           tokenmaxx.ing
         </Link>
         <div className="flex items-center gap-3">
-          <Link href="/leaderboard">
-            <Button variant="ghost" size="sm">Leaderboard</Button>
-          </Link>
           <Show when="signed-in">
             <Link href="/dashboard">
               <Button variant="ghost" size="sm">Dashboard</Button>
