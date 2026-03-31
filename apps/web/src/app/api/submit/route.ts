@@ -1,8 +1,10 @@
 import { eq } from "drizzle-orm";
+import { after } from "next/server";
 import type { NextRequest } from "next/server";
 import { SubmitPayload } from "@tokenmaxxing/shared/types";
-import { apiTokens, usageRecords, users } from "@tokenmaxxing/db/index";
+import { apiTokens, usageRecords } from "@tokenmaxxing/db/index";
 import { db } from "@/lib/db";
+import { recomputeAggregates } from "@/lib/aggregates";
 import { createHash } from "node:crypto";
 
 // Verify Bearer token, return userId
@@ -69,6 +71,11 @@ export async function POST(req: NextRequest) {
         throw e;
       }
     }
+  }
+
+  // Recompute aggregates after responding
+  if (inserted > 0) {
+    after(() => recomputeAggregates(db(), userId));
   }
 
   return Response.json({ inserted, skipped, total: parsed.data.records.length });
