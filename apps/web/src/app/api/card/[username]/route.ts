@@ -64,7 +64,7 @@ export async function GET(
 // --- SVG rendering ---
 
 const W = 480;
-const H = 195;
+const H = 165;
 const BG = "#0d1117";
 const FG = "#e6edf3";
 const MUTED = "#7d8590";
@@ -113,8 +113,8 @@ function renderHeatmap(activityMap: Map<string, number>): string {
   // Build 52 weeks x 7 days grid, ending today
   const today = new Date();
   const cells: string[] = [];
-  const cellSize = 8;
-  const gap = 2;
+  const cellSize = 7;
+  const gap = 1;
 
   for (let week = 0; week < 52; week++) {
     for (let day = 0; day < 7; day++) {
