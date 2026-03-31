@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Show, SignInButton, UserButton } from "@clerk/nextjs";
+import { Show, UserButton } from "@clerk/nextjs";
 import { Button } from "@tokenmaxxing/ui/components/button";
 import { Badge } from "@tokenmaxxing/ui/components/badge";
 
@@ -20,9 +20,9 @@ export default function Home() {
             <Button variant="ghost" size="sm">Leaderboard</Button>
           </Link>
           <Show when="signed-out">
-            <SignInButton>
+            <Link href="/sign-in">
               <Button size="sm">Sign in</Button>
-            </SignInButton>
+            </Link>
           </Show>
           <Show when="signed-in">
             <Link href="/dashboard">
@@ -45,9 +45,9 @@ export default function Home() {
 
         <div className="flex gap-3">
           <Show when="signed-out">
-            <SignInButton>
+            <Link href="/sign-in">
               <Button size="lg">Get started</Button>
-            </SignInButton>
+            </Link>
           </Show>
           <Show when="signed-in">
             <Link href="/dashboard">
