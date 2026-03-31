@@ -1,7 +1,6 @@
-import { sql, eq, gte, and, inArray } from "drizzle-orm";
+import { eq, gte, and, inArray, sum } from "drizzle-orm";
 import { dailyAggregates, rankings, users } from "@tokenmaxxing/db/index";
 import type { Db } from "@tokenmaxxing/db/index";
-import { totalTokensSql } from "@/lib/db";
 
 type Period = "daily" | "weekly" | "monthly" | "alltime";
 
@@ -42,11 +41,13 @@ export async function computeRankings(db: Db, leaderboardId: string, period: Per
   const userStats = await db
     .select({
       userId: dailyAggregates.userId,
-      totalTokens: sql<number>`SUM(${totalTokensSql})`.as("total_tokens"),
-      totalInput: sql<number>`SUM(${dailyAggregates.totalInput})`.as("total_input"),
-      totalOutput: sql<number>`SUM(${dailyAggregates.totalOutput})`.as("total_output"),
-      totalCost: sql<number>`SUM(${dailyAggregates.totalCost}::numeric)`.as("total_cost"),
-      sessionCount: sql<number>`SUM(${dailyAggregates.sessionCount})`.as("session_count"),
+      totalInput: sum(dailyAggregates.totalInput).mapWith(Number),
+      totalOutput: sum(dailyAggregates.totalOutput).mapWith(Number),
+      totalCacheRead: sum(dailyAggregates.totalCacheRead).mapWith(Number),
+      totalCacheWrite: sum(dailyAggregates.totalCacheWrite).mapWith(Number),
+      totalReasoning: sum(dailyAggregates.totalReasoning).mapWith(Number),
+      totalCost: sum(dailyAggregates.totalCost).mapWith(Number),
+      sessionCount: sum(dailyAggregates.sessionCount).mapWith(Number),
     })
     .from(dailyAggregates)
     .where(conditions.length > 0 ? and(...conditions) : undefined)
@@ -64,18 +65,21 @@ export async function computeRankings(db: Db, leaderboardId: string, period: Per
 
   // Score and sort
   const scored = userStats
-    .map((s) => ({
-      userId: s.userId,
-      totalTokens: s.totalTokens,
-      totalCost: s.totalCost,
-      score: compositeScore(
-        s.totalTokens,
-        s.totalInput,
-        s.totalOutput,
-        s.sessionCount,
-        userStreaks.get(s.userId) ?? 0,
-      ),
-    }))
+    .map((s) => {
+      const totalTokens = (s.totalInput ?? 0) + (s.totalOutput ?? 0) + (s.totalCacheRead ?? 0) + (s.totalCacheWrite ?? 0) + (s.totalReasoning ?? 0);
+      return {
+        userId: s.userId,
+        totalTokens,
+        totalCost: s.totalCost ?? 0,
+        score: compositeScore(
+          totalTokens,
+          s.totalInput ?? 0,
+          s.totalOutput ?? 0,
+          s.sessionCount ?? 0,
+          userStreaks.get(s.userId) ?? 0,
+        ),
+      };
+    })
     .sort((a, b) => b.score - a.score);
 
   // Replace rankings: delete old, batch insert new (2 queries instead of N upserts)

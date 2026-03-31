@@ -1,26 +1,28 @@
-import { eq, sql } from "drizzle-orm";
+import { eq, sql, sum, count } from "drizzle-orm";
 import { dailyAggregates, usageRecords, users } from "@tokenmaxxing/db/index";
 import type { Db } from "@tokenmaxxing/db/index";
 
 // Recompute daily aggregates for a user from their usage_records
 export async function recomputeAggregates(db: Db, userId: string) {
   // Group usage records by date
+  const dateExpr = sql<string>`DATE(${usageRecords.timestamp})`;
+
   const rows = await db
     .select({
-      date: sql<string>`DATE(${usageRecords.timestamp})`.as("date"),
-      totalInput: sql<number>`SUM(${usageRecords.inputTokens})`.as("total_input"),
-      totalOutput: sql<number>`SUM(${usageRecords.outputTokens})`.as("total_output"),
-      totalCacheRead: sql<number>`SUM(${usageRecords.cacheReadTokens})`.as("total_cache_read"),
-      totalCacheWrite: sql<number>`SUM(${usageRecords.cacheWriteTokens})`.as("total_cache_write"),
-      totalReasoning: sql<number>`SUM(${usageRecords.reasoningTokens})`.as("total_reasoning"),
-      totalCost: sql<number>`SUM(${usageRecords.costUsd}::numeric)`.as("total_cost"),
-      sessionCount: sql<number>`COUNT(*)`.as("session_count"),
+      date: dateExpr.as("date"),
+      totalInput: sum(usageRecords.inputTokens).mapWith(Number),
+      totalOutput: sum(usageRecords.outputTokens).mapWith(Number),
+      totalCacheRead: sum(usageRecords.cacheReadTokens).mapWith(Number),
+      totalCacheWrite: sum(usageRecords.cacheWriteTokens).mapWith(Number),
+      totalReasoning: sum(usageRecords.reasoningTokens).mapWith(Number),
+      totalCost: sum(usageRecords.costUsd).mapWith(Number),
+      sessionCount: count(),
       clientsUsed: sql<string[]>`ARRAY_AGG(DISTINCT ${usageRecords.client})`.as("clients_used"),
       modelsUsed: sql<string[]>`ARRAY_AGG(DISTINCT ${usageRecords.model})`.as("models_used"),
     })
     .from(usageRecords)
     .where(eq(usageRecords.userId, userId))
-    .groupBy(sql`DATE(${usageRecords.timestamp})`);
+    .groupBy(dateExpr);
 
   // Replace all aggregates: delete old, batch insert new (2 queries instead of N upserts)
   await db.delete(dailyAggregates).where(eq(dailyAggregates.userId, userId));
@@ -30,12 +32,12 @@ export async function recomputeAggregates(db: Db, userId: string) {
       rows.map((row) => ({
         userId,
         date: row.date,
-        totalInput: row.totalInput,
-        totalOutput: row.totalOutput,
-        totalCacheRead: row.totalCacheRead,
-        totalCacheWrite: row.totalCacheWrite,
-        totalReasoning: row.totalReasoning,
-        totalCost: String(row.totalCost),
+        totalInput: row.totalInput ?? 0,
+        totalOutput: row.totalOutput ?? 0,
+        totalCacheRead: row.totalCacheRead ?? 0,
+        totalCacheWrite: row.totalCacheWrite ?? 0,
+        totalReasoning: row.totalReasoning ?? 0,
+        totalCost: String(row.totalCost ?? 0),
         sessionCount: row.sessionCount,
         clientsUsed: row.clientsUsed,
         modelsUsed: row.modelsUsed,
@@ -47,8 +49,8 @@ export async function recomputeAggregates(db: Db, userId: string) {
   let totalTokens = 0;
   let totalCost = 0;
   for (const row of rows) {
-    totalTokens += row.totalInput + row.totalOutput + row.totalCacheRead + row.totalCacheWrite + row.totalReasoning;
-    totalCost += row.totalCost;
+    totalTokens += (row.totalInput ?? 0) + (row.totalOutput ?? 0) + (row.totalCacheRead ?? 0) + (row.totalCacheWrite ?? 0) + (row.totalReasoning ?? 0);
+    totalCost += row.totalCost ?? 0;
   }
 
   // Compute streak: consecutive days ending at most recent active day
