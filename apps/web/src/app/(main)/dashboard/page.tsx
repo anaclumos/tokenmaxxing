@@ -52,6 +52,17 @@ export default async function DashboardPage() {
     tokens: a.totalInput + a.totalOutput + a.totalCacheRead + a.totalCacheWrite + a.totalReasoning,
   }));
 
+  // Burn rate projection from last 7 days
+  const now = new Date();
+  const sevenDaysAgo = new Date(now.getTime() - 7 * 86_400_000).toISOString().slice(0, 10);
+  const fourteenDaysAgo = new Date(now.getTime() - 14 * 86_400_000).toISOString().slice(0, 10);
+  const recentCost = activityRows.filter((a) => a.date >= sevenDaysAgo).reduce((s, a) => s + Number(a.cost), 0);
+  const prevCost = activityRows.filter((a) => a.date >= fourteenDaysAgo && a.date < sevenDaysAgo).reduce((s, a) => s + Number(a.cost), 0);
+  const dailyRate = recentCost / 7;
+  const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+  const projectedMonthly = dailyRate * daysInMonth;
+  const trend = prevCost > 0 ? ((recentCost - prevCost) / prevCost) * 100 : 0;
+
   return (
     <main className="mx-auto w-full max-w-4xl px-6 py-8">
       <h1 className="mb-6 text-3xl font-bold tracking-tight">Dashboard</h1>
@@ -96,6 +107,24 @@ export default async function DashboardPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Burn rate projection */}
+      {recentCost > 0 && (
+        <Card className="mb-8">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm text-muted-foreground">Projected Monthly Spend</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-baseline gap-3">
+              <span className="text-2xl font-bold font-mono">${projectedMonthly.toFixed(2)}</span>
+              <span className={`text-sm font-mono ${trend > 0 ? "text-red-400" : trend < 0 ? "text-green-400" : "text-muted-foreground"}`}>
+                {trend > 0 ? "+" : ""}{trend.toFixed(0)}% vs prev 7d
+              </span>
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">Based on ${recentCost.toFixed(2)} spent in last 7 days</p>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Activity heatmap */}
       {activity.length > 0 && (
