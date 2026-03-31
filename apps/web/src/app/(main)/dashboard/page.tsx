@@ -1,5 +1,6 @@
 import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
+import Link from "next/link";
 import { eq, desc, sql } from "drizzle-orm";
 import { users, dailyAggregates, rankings } from "@tokenmaxxing/db/index";
 import { db } from "@/lib/db";
@@ -99,12 +100,15 @@ export default async function DashboardPage() {
         </Card>
       )}
 
-      {/* CLI install */}
+      {/* CLI setup */}
       <Card className="mb-8">
         <CardHeader>
           <CardTitle className="text-sm">Submit your usage</CardTitle>
         </CardHeader>
         <CardContent>
+          <p className="mb-3 text-sm text-muted-foreground">
+            <Link href="/settings" className="underline">Generate an API token</Link>, then run:
+          </p>
           <code className="block rounded bg-muted px-4 py-3 font-mono text-sm">
             bunx tokenmaxxing submit
           </code>

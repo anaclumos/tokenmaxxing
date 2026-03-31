@@ -36,7 +36,7 @@ export const login = defineCommand({
 
     const server = getServerUrl();
     console.log(`\nOpen this URL to generate an API token:\n`);
-    console.log(pc.bold(`  ${server}/dashboard\n`));
+    console.log(pc.bold(`  ${server}/settings\n`));
     console.log(`Then run: ${pc.cyan("tokenmaxxing login --token tmx_...")}\n`);
   },
 });
