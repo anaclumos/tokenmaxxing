@@ -1,0 +1,23 @@
+{
+  "name": "@tokenmaxxing/db",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./*": "./src/*.ts"
+  },
+  "scripts": {
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "bun run ./src/migrate.ts",
+    "db:studio": "drizzle-kit studio"
+  },
+  "dependencies": {
+    "@neondatabase/serverless": "^1",
+    "@tokenmaxxing/shared": "workspace:*",
+    "drizzle-orm": "^0.45",
+    "postgres": "^3"
+  },
+  "devDependencies": {
+    "drizzle-kit": "^0.31"
+  }
+}
