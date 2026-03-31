@@ -40,6 +40,8 @@ export default async function ProfilePage({ params }: { params: Promise<{ userna
       totalCacheWrite: dailyAggregates.totalCacheWrite,
       totalReasoning: dailyAggregates.totalReasoning,
       cost: dailyAggregates.totalCost,
+      modelsUsed: dailyAggregates.modelsUsed,
+      clientsUsed: dailyAggregates.clientsUsed,
     })
     .from(dailyAggregates)
     .where(eq(dailyAggregates.userId, user.id))
@@ -47,12 +49,16 @@ export default async function ProfilePage({ params }: { params: Promise<{ userna
 
   // Aggregate ALL-TIME totals for breakdown (matches user.totalTokens)
   const breakdown = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, reasoning: 0 };
+  const allModels = new Set<string>();
+  const allClients = new Set<string>();
   for (const a of activityRows) {
     breakdown.input += a.totalInput;
     breakdown.output += a.totalOutput;
     breakdown.cacheRead += a.totalCacheRead;
     breakdown.cacheWrite += a.totalCacheWrite;
     breakdown.reasoning += a.totalReasoning;
+    for (const m of a.modelsUsed) allModels.add(m);
+    for (const c of a.clientsUsed) allClients.add(c);
   }
   const breakdownTotal = breakdown.input + breakdown.output + breakdown.cacheRead + breakdown.cacheWrite + breakdown.reasoning;
 
@@ -123,6 +129,32 @@ export default async function ProfilePage({ params }: { params: Promise<{ userna
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* Models & Clients */}
+      {(allModels.size > 0 || allClients.size > 0) && (
+        <div className="mb-8 grid grid-cols-2 gap-6">
+          {allModels.size > 0 && (
+            <div>
+              <h2 className="mb-3 text-lg font-semibold">Models Used</h2>
+              <div className="flex flex-wrap gap-2">
+                {[...allModels].sort().map((m) => (
+                  <Badge key={m} variant="outline" className="font-mono text-xs">{m}</Badge>
+                ))}
+              </div>
+            </div>
+          )}
+          {allClients.size > 0 && (
+            <div>
+              <h2 className="mb-3 text-lg font-semibold">Clients Used</h2>
+              <div className="flex flex-wrap gap-2">
+                {[...allClients].sort().map((c) => (
+                  <Badge key={c} variant="outline" className="font-mono text-xs">{c}</Badge>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
