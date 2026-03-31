@@ -1,0 +1,19 @@
+{
+  "name": "tokenmaxxing",
+  "version": "0.1.0",
+  "description": "tokenmaxxing CLI",
+  "type": "module",
+  "bin": {
+    "tokenmaxxing": "./dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "bun build ./src/index.ts --outdir ./dist --target node",
+    "dev": "bun run ./src/index.ts"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  }
+}
