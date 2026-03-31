@@ -1,9 +1,11 @@
 import type { ClientParser } from "./types";
 import type { UsageRecord } from "@tokenmaxxing/shared/types";
 import { claudeCode } from "./claude-code";
+import { codex } from "./codex";
+import { geminiCli } from "./gemini-cli";
 
 // Register all parsers here. Add new parsers as they're implemented.
-const ALL_PARSERS: ClientParser[] = [claudeCode];
+const ALL_PARSERS: ClientParser[] = [claudeCode, codex, geminiCli];
 
 export async function discoverClients(): Promise<ClientParser[]> {
   const found: ClientParser[] = [];
