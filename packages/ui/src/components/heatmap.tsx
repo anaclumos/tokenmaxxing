@@ -1,5 +1,3 @@
-"use client";
-
 type DayData = { date: string; value: number };
 
 function getColor(value: number, max: number): string {
