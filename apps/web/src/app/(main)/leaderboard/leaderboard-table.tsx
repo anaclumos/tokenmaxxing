@@ -66,7 +66,7 @@ export function LeaderboardTable({
         </TableHeader>
         <TableBody>
           {entries.map((e) => (
-            <TableRow key={e.rank}>
+            <TableRow key={e.rank} className="cursor-pointer" onClick={() => router.push(`/u/${e.username}`)}>
               <TableCell className="font-mono text-muted-foreground">{e.rank}</TableCell>
               <TableCell>
                 <div className="flex items-center gap-2">
