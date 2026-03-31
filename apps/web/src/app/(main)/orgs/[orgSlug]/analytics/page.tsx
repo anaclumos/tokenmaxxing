@@ -26,7 +26,7 @@ const DAYS_OPTIONS = [
   { value: "7", label: "7 days" },
   { value: "30", label: "30 days" },
   { value: "90", label: "90 days" },
-  { value: "365", label: "All time" },
+  { value: "0", label: "All time" },
 ];
 
 export default async function OrgAnalyticsPage({
@@ -46,12 +46,13 @@ export default async function OrgAnalyticsPage({
     organizationId: orgId,
   });
 
-  const days = [7, 30, 90, 365].includes(Number(query.days))
+  const days = [7, 30, 90, 0].includes(Number(query.days))
     ? Number(query.days)
     : 30;
-  const since = new Date(Date.now() - days * 86_400_000)
-    .toISOString()
-    .slice(0, 10);
+  const since =
+    days > 0
+      ? new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 10)
+      : null;
 
   // Get org members
   const members = await client.organizations.getOrganizationMembershipList({
@@ -92,10 +93,12 @@ export default async function OrgAnalyticsPage({
           })
           .from(dailyAggregates)
           .where(
-            and(
-              inArray(dailyAggregates.userId, userIds),
-              gte(dailyAggregates.date, since)
-            )
+            since
+              ? and(
+                  inArray(dailyAggregates.userId, userIds),
+                  gte(dailyAggregates.date, since)
+                )
+              : inArray(dailyAggregates.userId, userIds)
           )
       : [];
 

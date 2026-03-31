@@ -20,12 +20,12 @@ export default async function HomePage({
   searchParams: Promise<{ period?: string; page?: string; sort?: string }>;
 }) {
   const params = await searchParams;
-  const period = (params.period ?? "alltime") as
-    | "daily"
-    | "weekly"
-    | "monthly"
-    | "alltime";
-  const page = Math.max(1, Number(params.page ?? 1));
+  const PERIODS = ["daily", "weekly", "monthly", "alltime"] as const;
+  type Period = (typeof PERIODS)[number];
+  const period: Period = PERIODS.includes(params.period as Period)
+    ? (params.period as Period)
+    : "alltime";
+  const page = Math.max(1, Number(params.page ?? 1) || 1);
   const sort: Sort = (["score", "tokens", "cost"] as const).includes(
     params.sort as Sort
   )

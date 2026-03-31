@@ -106,14 +106,13 @@ export async function computeRankings(
     })
     .toSorted((a, b) => b.score - a.score);
 
-  // Replace rankings: delete old, batch insert new (2 queries instead of N upserts)
+  // Replace rankings: delete ALL for this (leaderboard, period) to avoid stale snapshots
   await db
     .delete(rankings)
     .where(
       and(
         eq(rankings.leaderboardId, leaderboardId),
-        eq(rankings.period, period),
-        eq(rankings.periodStart, periodStart)
+        eq(rankings.period, period)
       )
     );
 

@@ -59,7 +59,6 @@ export default async function OrgLeaderboardPage({
       totalTokens: rankings.totalTokens,
       totalCost: rankings.totalCost,
       compositeScore: rankings.compositeScore,
-      streak: users.currentStreak,
     })
     .from(rankings)
     .innerJoin(users, eq(rankings.userId, users.id))
