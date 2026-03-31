@@ -43,6 +43,10 @@ async function loadPricing(): Promise<Map<string, ModelPricing>> {
   return pricingCache;
 }
 
+// Exported for the pricing command
+export { loadPricing, findPricing };
+export type { ModelPricing };
+
 // Try multiple name variations to find pricing
 function findPricing(pricing: Map<string, ModelPricing>, model: string): ModelPricing | null {
   // Direct match
