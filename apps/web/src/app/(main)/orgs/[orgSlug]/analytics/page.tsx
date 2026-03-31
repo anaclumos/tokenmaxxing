@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import { useOrganization } from "@clerk/nextjs";
 import { Card, CardContent, CardHeader, CardTitle } from "@tokenmaxxing/ui/components/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@tokenmaxxing/ui/components/table";
-import { Badge } from "@tokenmaxxing/ui/components/badge";
 import { Tabs, TabsList, TabsTrigger } from "@tokenmaxxing/ui/components/tabs";
 import { Skeleton } from "@tokenmaxxing/ui/components/skeleton";
 import { formatTokens } from "@tokenmaxxing/shared/types";
@@ -12,8 +11,6 @@ import { formatTokens } from "@tokenmaxxing/shared/types";
 type Analytics = {
   total: { tokens: number; cost: number };
   members: Array<{ username: string; tokens: number; cost: number; sessions: number }>;
-  models: Array<{ name: string; tokens: number; cost: number }>;
-  clients: Array<{ name: string; tokens: number; cost: number }>;
   days: number;
 };
 
@@ -87,35 +84,6 @@ export default function OrgAnalyticsPage() {
             </TableBody>
           </Table>
 
-          {/* Per-model + Per-client */}
-          <div className="mt-8 grid grid-cols-2 gap-6">
-            {data.models.length > 0 && (
-              <div>
-                <h2 className="mb-3 text-lg font-semibold">By Model</h2>
-                <div className="space-y-2">
-                  {data.models.map((m) => (
-                    <div key={m.name} className="flex items-center justify-between rounded border border-border px-3 py-2">
-                      <Badge variant="outline" className="font-mono text-xs">{m.name}</Badge>
-                      <span className="font-mono text-sm">${m.cost.toFixed(2)}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-            {data.clients.length > 0 && (
-              <div>
-                <h2 className="mb-3 text-lg font-semibold">By Client</h2>
-                <div className="space-y-2">
-                  {data.clients.map((c) => (
-                    <div key={c.name} className="flex items-center justify-between rounded border border-border px-3 py-2">
-                      <Badge variant="outline" className="font-mono text-xs">{c.name}</Badge>
-                      <span className="font-mono text-sm">${c.cost.toFixed(2)}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
         </>
       )}
     </main>
