@@ -1,7 +1,7 @@
 import { defineCommand } from "citty";
 import pc from "picocolors";
 import { formatTokens } from "@tokenmaxxing/shared/types";
-import { getApiToken, getServerUrl } from "./login";
+import { getApiToken, getServerUrl } from "../config";
 
 export const status = defineCommand({
   meta: { name: "status", description: "Show your rank and stats" },
