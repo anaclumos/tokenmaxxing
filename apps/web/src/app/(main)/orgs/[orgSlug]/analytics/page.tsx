@@ -19,6 +19,7 @@ import { gte, and, inArray } from "drizzle-orm";
 import { notFound, redirect } from "next/navigation";
 
 import { db } from "@/lib/db";
+import { parseAnalyticsDayRange } from "@/lib/search-params";
 
 import { FilterTabs } from "../../filter-tabs";
 
@@ -46,9 +47,7 @@ export default async function OrgAnalyticsPage({
     organizationId: orgId,
   });
 
-  const days = [7, 30, 90, 0].includes(Number(query.days))
-    ? Number(query.days)
-    : 30;
+  const days = parseAnalyticsDayRange(query.days);
   const since =
     days > 0
       ? new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 10)

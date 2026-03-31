@@ -18,6 +18,7 @@ import { eq, asc, and } from "drizzle-orm";
 import { notFound, redirect } from "next/navigation";
 
 import { db } from "@/lib/db";
+import { parseLeaderboardPeriod } from "@/lib/search-params";
 
 import { FilterTabs } from "../../filter-tabs";
 
@@ -45,11 +46,7 @@ export default async function OrgLeaderboardPage({
     organizationId: orgId,
   });
 
-  const period = (["daily", "weekly", "monthly", "alltime"] as const).includes(
-    query.period as "daily" | "weekly" | "monthly" | "alltime"
-  )
-    ? (query.period as "daily" | "weekly" | "monthly" | "alltime")
-    : "alltime";
+  const period = parseLeaderboardPeriod(query.period);
 
   const entries = await db()
     .select({
