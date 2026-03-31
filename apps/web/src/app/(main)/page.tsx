@@ -1,6 +1,7 @@
-import { eq, asc, desc, and, count } from "drizzle-orm";
+import { eq, asc, desc, and, count, sum } from "drizzle-orm";
 import { rankings, users } from "@tokenmaxxing/db/index";
 import { db } from "@/lib/db";
+import { formatTokens } from "@tokenmaxxing/shared/types";
 import { LeaderboardTable } from "./leaderboard/leaderboard-table";
 
 type Sort = "score" | "tokens" | "cost";
@@ -58,9 +59,22 @@ export default async function HomePage({
     .innerJoin(users, eq(rankings.userId, users.id))
     .where(where);
 
+  const [globalStats] = await db()
+    .select({
+      totalUsers: count(),
+      totalTokens: sum(users.totalTokens).mapWith(Number),
+      totalCost: sum(users.totalCost).mapWith(Number),
+    })
+    .from(users);
+
   return (
     <main className="mx-auto w-full max-w-4xl px-6 py-8">
       <h1 className="mb-6 text-3xl font-bold tracking-tight">Leaderboard</h1>
+      <div className="mb-6 flex gap-8 text-sm text-muted-foreground">
+        <span><span className="font-mono font-bold text-foreground">{globalStats.totalUsers}</span> users</span>
+        <span><span className="font-mono font-bold text-foreground">{formatTokens(globalStats.totalTokens ?? 0)}</span> tokens</span>
+        <span><span className="font-mono font-bold text-foreground">${(globalStats.totalCost ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}</span> spent</span>
+      </div>
       <LeaderboardTable entries={numbered} total={countRow?.count ?? 0} period={period} page={page} sort={sort} />
     </main>
   );
