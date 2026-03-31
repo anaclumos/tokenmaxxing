@@ -13,7 +13,6 @@
   },
   "dependencies": {
     "@neondatabase/serverless": "^1",
-    "@tokenmaxxing/shared": "workspace:*",
     "drizzle-orm": "^0.45"
   },
   "devDependencies": {
