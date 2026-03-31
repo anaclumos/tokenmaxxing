@@ -10,6 +10,8 @@
     "fix": "ultracite fix"
   },
   "dependencies": {
+    "@clerk/nextjs": "^7.0.7",
+    "@clerk/themes": "^2.4.57",
     "@tokenmaxxing/ui": "workspace:*",
     "next": "16.2.1",
     "react": "19.2.4",
