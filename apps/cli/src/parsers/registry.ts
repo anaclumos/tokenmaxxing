@@ -5,9 +5,19 @@ import { codex } from "./codex";
 import { geminiCli } from "./gemini-cli";
 import { opencode } from "./opencode";
 import { ampcode } from "./ampcode";
+import { cursor } from "./cursor";
+import { rooCode, kiloCode } from "./roo-code";
+import { openclaw } from "./openclaw";
+import { piAgent } from "./pi-agent";
+import { kimi } from "./kimi";
+import { qwenCli } from "./qwen-cli";
+import { factoryDroid } from "./factory-droid";
+import { mux } from "./mux";
 
-// Register all parsers here. Add new parsers as they're implemented.
-const ALL_PARSERS: ClientParser[] = [claudeCode, codex, geminiCli, opencode, ampcode];
+const ALL_PARSERS: ClientParser[] = [
+  claudeCode, codex, geminiCli, opencode, ampcode, cursor,
+  rooCode, kiloCode, openclaw, piAgent, kimi, qwenCli, factoryDroid, mux,
+];
 
 export async function discoverClients(): Promise<ClientParser[]> {
   const found: ClientParser[] = [];
