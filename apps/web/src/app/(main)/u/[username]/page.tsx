@@ -43,10 +43,9 @@ export default async function ProfilePage({ params }: { params: Promise<{ userna
     })
     .from(dailyAggregates)
     .where(eq(dailyAggregates.userId, user.id))
-    .orderBy(desc(dailyAggregates.date))
-    .limit(30);
+    .orderBy(desc(dailyAggregates.date));
 
-  // Aggregate totals for breakdown
+  // Aggregate ALL-TIME totals for breakdown (matches user.totalTokens)
   const breakdown = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, reasoning: 0 };
   for (const a of activityRows) {
     breakdown.input += a.totalInput;
@@ -57,7 +56,7 @@ export default async function ProfilePage({ params }: { params: Promise<{ userna
   }
   const breakdownTotal = breakdown.input + breakdown.output + breakdown.cacheRead + breakdown.cacheWrite + breakdown.reasoning;
 
-  const activity = activityRows.map((a) => ({
+  const activity = activityRows.slice(0, 30).map((a) => ({
     date: a.date,
     tokens: a.totalInput + a.totalOutput + a.totalCacheRead + a.totalCacheWrite + a.totalReasoning,
     cost: a.cost,
