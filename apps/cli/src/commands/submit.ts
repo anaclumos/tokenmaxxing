@@ -1,7 +1,7 @@
 import { defineCommand } from "citty";
 import pc from "picocolors";
 import type { SubmitResponse } from "@tokenmaxxing/shared/types";
-import { totalTokens } from "@tokenmaxxing/shared/types";
+import { totalTokens, formatTokens } from "@tokenmaxxing/shared/types";
 import { discoverClients, parseAll } from "../parsers/registry";
 import { calculateCost } from "../pricing";
 import { getApiToken, getServerUrl } from "./login";
@@ -35,17 +35,24 @@ export const submit = defineCommand({
       }
     }
 
-    console.log(pc.green(`Parsed ${records.length} sessions from ${filtered.length} client(s)`));
-
+    // Per-client summary
+    const byClient = new Map<string, { sessions: number; tokens: number; cost: number }>();
     let tokenSum = 0;
     let costSum = 0;
     for (const r of records) {
-      tokenSum += totalTokens(r.tokens);
+      const t = totalTokens(r.tokens);
+      tokenSum += t;
       costSum += r.costUsd;
+      const c = byClient.get(r.client) ?? { sessions: 0, tokens: 0, cost: 0 };
+      c.sessions++; c.tokens += t; c.cost += r.costUsd;
+      byClient.set(r.client, c);
     }
 
-    console.log(`  Tokens: ${pc.bold(tokenSum.toLocaleString())}`);
-    console.log(`  Cost:   ${pc.bold("$" + costSum.toFixed(2))}`);
+    console.log(pc.green(`Parsed ${records.length} sessions from ${filtered.length} client(s)\n`));
+    for (const [name, s] of [...byClient.entries()].sort((a, b) => b[1].tokens - a[1].tokens)) {
+      console.log(`  ${pc.cyan(name.padEnd(16))} ${formatTokens(s.tokens).padStart(8)} tokens  $${s.cost.toFixed(2).padStart(8)}  ${pc.dim(`${s.sessions} sessions`)}`);
+    }
+    console.log(`\n  ${pc.bold("Total")}           ${formatTokens(tokenSum).padStart(8)} tokens  $${costSum.toFixed(2).padStart(8)}`);
 
     if (args["dry-run"]) {
       console.log(pc.dim("\n--dry-run: skipping upload"));
