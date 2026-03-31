@@ -5,27 +5,13 @@ import type { UsageRecord } from "@tokenmaxxing/shared/types";
 import type { ClientParser } from "./types";
 import { sessionHash } from "./utils";
 
-// Cursor usage data is fetched from their API and cached locally by tokscale
-// We check the same cache location for compatibility
-const CACHE_DIR = join(homedir(), ".config", "tokenmaxxing", "cursor-cache");
-const CACHE_FILE = join(CACHE_DIR, "usage.csv");
-
-// Cursor also has a local SQLite DB but it doesn't contain token usage
-const CURSOR_DB = join(
-  homedir(),
-  process.platform === "darwin" ? "Library/Application Support" : ".config",
-  "Cursor",
-  "User",
-  "globalStorage",
-  "state.vscdb",
-);
+const CACHE_FILE = join(homedir(), ".config", "tokenmaxxing", "cursor-cache", "usage.csv");
 
 export const cursor: ClientParser = {
   client: "cursor",
 
   async detect() {
-    // Detect if Cursor is installed (even without cached usage data)
-    return existsSync(CURSOR_DB) || existsSync(CACHE_FILE);
+    return existsSync(CACHE_FILE);
   },
 
   async *parse(): AsyncGenerator<UsageRecord> {
