@@ -1,7 +1,7 @@
 import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { UserButton } from "@clerk/nextjs";
+import { UserButton, OrganizationSwitcher } from "@clerk/nextjs";
 import { eq, desc, sql } from "drizzle-orm";
 import { users, dailyAggregates, rankings } from "@tokenmaxxing/db/index";
 import { db } from "@/lib/db";
@@ -58,6 +58,7 @@ export default async function DashboardPage() {
           tokenmaxx.ing
         </Link>
         <div className="flex items-center gap-3">
+          <OrganizationSwitcher />
           <Link href="/leaderboard">
             <Button variant="ghost" size="sm">Leaderboard</Button>
           </Link>

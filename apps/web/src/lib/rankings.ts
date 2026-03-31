@@ -29,14 +29,14 @@ function compositeScore(totalTokens: number, inputTokens: number, outputTokens: 
   return (tokenScore * 0.4 + efficiency * 0.25 + sessionScore * 0.2 + streakScore * 0.15) * 1000;
 }
 
-export async function computeRankings(db: Db, leaderboardId: string, period: Period) {
+export async function computeRankings(db: Db, leaderboardId: string, period: Period, userIds?: string[]) {
   const startDate = periodStartDate(period);
   const periodStart = startDate?.toISOString().slice(0, 10) ?? "1970-01-01";
 
   // Aggregate per-user stats for the period
-  const dateFilter = startDate
-    ? gte(dailyAggregates.date, startDate.toISOString().slice(0, 10))
-    : sql`TRUE`;
+  const conditions = [];
+  if (startDate) conditions.push(gte(dailyAggregates.date, startDate.toISOString().slice(0, 10)));
+  if (userIds) conditions.push(sql`${dailyAggregates.userId} = ANY(${userIds})`);
 
   const userStats = await db
     .select({
@@ -48,7 +48,7 @@ export async function computeRankings(db: Db, leaderboardId: string, period: Per
       sessionCount: sql<number>`SUM(${dailyAggregates.sessionCount})`.as("session_count"),
     })
     .from(dailyAggregates)
-    .where(dateFilter)
+    .where(conditions.length > 0 ? and(...conditions) : sql`TRUE`)
     .groupBy(dailyAggregates.userId);
 
   // Get streaks for each user
@@ -105,9 +105,20 @@ export async function computeRankings(db: Db, leaderboardId: string, period: Per
   }
 }
 
-export async function computeAllRankings(db: Db) {
+export async function computeAllRankings(db: Db, orgs?: Array<{ orgId: string; userIds: string[] }>) {
   const periods: Period[] = ["daily", "weekly", "monthly", "alltime"];
+
+  // Global rankings (all users)
   for (const period of periods) {
     await computeRankings(db, "global", period);
+  }
+
+  // Org-scoped rankings
+  if (orgs) {
+    for (const org of orgs) {
+      for (const period of periods) {
+        await computeRankings(db, org.orgId, period, org.userIds);
+      }
+    }
   }
 }
