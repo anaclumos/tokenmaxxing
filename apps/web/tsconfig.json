@@ -21,6 +21,8 @@
     ],
     "paths": {
       "@/*": ["./src/*"],
+      "@tokenmaxxing/db/*": ["../../packages/db/src/*"],
+      "@tokenmaxxing/shared/*": ["../../packages/shared/src/*"],
       "@tokenmaxxing/ui/*": ["../../packages/ui/src/*"]
     }
   },
