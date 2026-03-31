@@ -18,9 +18,9 @@ This version has breaking changes — APIs, conventions, and file structure may 
 - Never assume API response formats from third-party examples. Always call the actual API first to verify field names and units before writing code.
 - Prefer configured MCP tools over generic web search when they fit the task.
   - Use both `websearch` and `search-mcp` or `parallel-cli search` for web discovery.
-  - Use `context7` or `pnpx ctx7` cli for library and framework docs.
+  - Use `context7` or `bunx ctx7` cli for library and framework docs.
   - Use `grep` for code examples and `cloudflare` / `pscale` MCPs for their respective platforms when applicable.
-  - Use `pnpx agent-browser open example.com` CLI, etc to inspect browsers.
+  - Use `bunx agent-browser open example.com` CLI, etc to inspect browsers.
   - Use TanStack CLI for TanStack's libraries.
 - DO NOT try to generate complex/chained bash/zsh commands. You will make mistakes and cause unintended side effects.
   - Commands should be atomic, small, and isolated.
@@ -57,7 +57,7 @@ This version has breaking changes — APIs, conventions, and file structure may 
 - If you want new MCPs or Skills, ask first.
   - All MCPs and Skills must be installed under this project; nothing should be installed globally.
 - All MCPs should be added to all of .mcp.json, opencode.json, and .codex/config.toml.
-- All Skills should be installed with `pnpx skills`.
+- All Skills should be installed with `bunx skills`.
 
 ## Secrets
 
