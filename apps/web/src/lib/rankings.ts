@@ -52,12 +52,12 @@ export async function computeRankings(db: Db, leaderboardId: string, period: Per
     .groupBy(dailyAggregates.userId);
 
   // Batch fetch all streaks in one query
-  const userIds2 = userStats.map((s) => s.userId);
-  const streakRows = userIds2.length > 0
+  const allUserIds = userStats.map((s) => s.userId);
+  const streakRows = allUserIds.length > 0
     ? await db
         .select({ id: users.id, streak: users.currentStreak })
         .from(users)
-        .where(sql`${users.id} = ANY(${userIds2})`)
+        .where(sql`${users.id} = ANY(${allUserIds})`)
     : [];
   const userStreaks = new Map(streakRows.map((r) => [r.id, r.streak]));
 
@@ -77,12 +77,20 @@ export async function computeRankings(db: Db, leaderboardId: string, period: Per
     }))
     .sort((a, b) => b.score - a.score);
 
-  // Upsert rankings
-  for (let i = 0; i < scored.length; i++) {
-    const entry = scored[i];
-    await db
-      .insert(rankings)
-      .values({
+  // Replace rankings: delete old, batch insert new (2 queries instead of N upserts)
+  await db
+    .delete(rankings)
+    .where(
+      and(
+        eq(rankings.leaderboardId, leaderboardId),
+        eq(rankings.period, period),
+        eq(rankings.periodStart, periodStart),
+      ),
+    );
+
+  if (scored.length > 0) {
+    await db.insert(rankings).values(
+      scored.map((entry, i) => ({
         leaderboardId,
         userId: entry.userId,
         period,
@@ -91,16 +99,8 @@ export async function computeRankings(db: Db, leaderboardId: string, period: Per
         totalTokens: entry.totalTokens,
         totalCost: String(entry.totalCost),
         compositeScore: String(entry.score),
-      })
-      .onConflictDoUpdate({
-        target: [rankings.leaderboardId, rankings.userId, rankings.period, rankings.periodStart],
-        set: {
-          rank: i + 1,
-          totalTokens: entry.totalTokens,
-          totalCost: String(entry.totalCost),
-          compositeScore: String(entry.score),
-        },
-      });
+      })),
+    );
   }
 }
 

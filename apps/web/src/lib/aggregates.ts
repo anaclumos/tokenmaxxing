@@ -1,4 +1,4 @@
-import { eq, sql, and } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { dailyAggregates, usageRecords, users } from "@tokenmaxxing/db/index";
 import type { Db } from "@tokenmaxxing/db/index";
 
@@ -22,11 +22,12 @@ export async function recomputeAggregates(db: Db, userId: string) {
     .where(eq(usageRecords.userId, userId))
     .groupBy(sql`DATE(${usageRecords.timestamp})`);
 
-  // Upsert each daily aggregate
-  for (const row of rows) {
-    await db
-      .insert(dailyAggregates)
-      .values({
+  // Replace all aggregates: delete old, batch insert new (2 queries instead of N upserts)
+  await db.delete(dailyAggregates).where(eq(dailyAggregates.userId, userId));
+
+  if (rows.length > 0) {
+    await db.insert(dailyAggregates).values(
+      rows.map((row) => ({
         userId,
         date: row.date,
         totalInput: row.totalInput,
@@ -38,64 +39,47 @@ export async function recomputeAggregates(db: Db, userId: string) {
         sessionCount: row.sessionCount,
         clientsUsed: row.clientsUsed,
         modelsUsed: row.modelsUsed,
-      })
-      .onConflictDoUpdate({
-        target: [dailyAggregates.userId, dailyAggregates.date],
-        set: {
-          totalInput: row.totalInput,
-          totalOutput: row.totalOutput,
-          totalCacheRead: row.totalCacheRead,
-          totalCacheWrite: row.totalCacheWrite,
-          totalReasoning: row.totalReasoning,
-          totalCost: String(row.totalCost),
-          sessionCount: row.sessionCount,
-          clientsUsed: row.clientsUsed,
-          modelsUsed: row.modelsUsed,
-        },
-      });
+      })),
+    );
   }
 
-  // Update denormalized totals on users table
-  const totals = await db
-    .select({
-      tokens: sql<number>`SUM(${usageRecords.inputTokens} + ${usageRecords.outputTokens} + ${usageRecords.cacheReadTokens} + ${usageRecords.cacheWriteTokens} + ${usageRecords.reasoningTokens})`.as("tokens"),
-      cost: sql<number>`SUM(${usageRecords.costUsd}::numeric)`.as("cost"),
+  // Compute totals from data we already have (no redundant query)
+  let totalTokens = 0;
+  let totalCost = 0;
+  for (const row of rows) {
+    totalTokens += row.totalInput + row.totalOutput + row.totalCacheRead + row.totalCacheWrite + row.totalReasoning;
+    totalCost += row.totalCost;
+  }
+
+  // Compute streak: consecutive days ending at most recent active day
+  const streakResult = await db.execute(sql`
+    WITH dates AS (
+      SELECT DISTINCT DATE(${usageRecords.timestamp}) as d
+      FROM ${usageRecords}
+      WHERE ${usageRecords.userId} = ${userId}
+    ),
+    recent AS (
+      SELECT MAX(d) as latest FROM dates WHERE d >= CURRENT_DATE - 1
+    ),
+    numbered AS (
+      SELECT d, d - (ROW_NUMBER() OVER (ORDER BY d))::int * INTERVAL '1 day' AS grp
+      FROM dates
+    )
+    SELECT COUNT(*) as streak
+    FROM numbered, recent
+    WHERE grp = (SELECT grp FROM numbered WHERE d = recent.latest)
+  `);
+
+  const streak = Number(streakResult.rows?.[0]?.streak ?? 0);
+
+  await db
+    .update(users)
+    .set({
+      totalTokens,
+      totalCost: String(totalCost),
+      currentStreak: streak,
+      longestStreak: sql`GREATEST(${users.longestStreak}, ${streak})`,
+      updatedAt: new Date(),
     })
-    .from(usageRecords)
-    .where(eq(usageRecords.userId, userId));
-
-  const t = totals[0];
-  if (t) {
-    // Compute streak: consecutive days ending at most recent active day (today or yesterday)
-    const streakResult = await db.execute(sql`
-      WITH dates AS (
-        SELECT DISTINCT DATE(${usageRecords.timestamp}) as d
-        FROM ${usageRecords}
-        WHERE ${usageRecords.userId} = ${userId}
-      ),
-      recent AS (
-        SELECT MAX(d) as latest FROM dates WHERE d >= CURRENT_DATE - 1
-      ),
-      numbered AS (
-        SELECT d, d - (ROW_NUMBER() OVER (ORDER BY d))::int * INTERVAL '1 day' AS grp
-        FROM dates
-      )
-      SELECT COUNT(*) as streak
-      FROM numbered, recent
-      WHERE grp = (SELECT grp FROM numbered WHERE d = recent.latest)
-    `);
-
-    const streak = Number(streakResult.rows?.[0]?.streak ?? 0);
-
-    await db
-      .update(users)
-      .set({
-        totalTokens: t.tokens ?? 0,
-        totalCost: String(t.cost ?? 0),
-        currentStreak: streak,
-        longestStreak: sql`GREATEST(${users.longestStreak}, ${streak})`,
-        updatedAt: new Date(),
-      })
-      .where(eq(users.id, userId));
-  }
+    .where(eq(users.id, userId));
 }
