@@ -1,13 +1,7 @@
 import { defineCommand } from "citty";
 import pc from "picocolors";
+import { formatTokens } from "@tokenmaxxing/shared/types";
 import { getApiToken, getServerUrl } from "./login";
-
-function formatTokens(n: number): string {
-  if (n >= 1e9) return `${(n / 1e9).toFixed(1)}B`;
-  if (n >= 1e6) return `${(n / 1e6).toFixed(1)}M`;
-  if (n >= 1e3) return `${(n / 1e3).toFixed(0)}K`;
-  return String(n);
-}
 
 export const status = defineCommand({
   meta: { name: "status", description: "Show your rank and stats" },

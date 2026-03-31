@@ -65,7 +65,7 @@ export default function Home() {
             <div className="mb-2 font-mono text-sm text-muted-foreground">01</div>
             <h3 className="mb-1 font-semibold">Install the CLI</h3>
             <p className="text-sm text-muted-foreground">
-              <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">npx tokenmaxxing submit</code>
+              <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">bunx tokenmaxxing submit</code>
             </p>
           </div>
           <div>

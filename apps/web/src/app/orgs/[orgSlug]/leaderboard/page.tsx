@@ -10,15 +10,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Avatar, AvatarFallback, AvatarImage } from "@tokenmaxxing/ui/components/avatar";
 import { Badge } from "@tokenmaxxing/ui/components/badge";
 import { Skeleton } from "@tokenmaxxing/ui/components/skeleton";
+import { formatTokens } from "@tokenmaxxing/shared/types";
 
 type Entry = { rank: number; username: string; avatarUrl: string | null; totalTokens: number; totalCost: string; compositeScore: string; streak: number };
-
-function formatTokens(n: number): string {
-  if (n >= 1e9) return `${(n / 1e9).toFixed(1)}B`;
-  if (n >= 1e6) return `${(n / 1e6).toFixed(1)}M`;
-  if (n >= 1e3) return `${(n / 1e3).toFixed(0)}K`;
-  return String(n);
-}
 
 export default function OrgLeaderboardPage() {
   const { organization } = useOrganization();

@@ -5,19 +5,13 @@ import { UserButton, OrganizationSwitcher } from "@clerk/nextjs";
 import { eq, desc, sql } from "drizzle-orm";
 import { users, dailyAggregates, rankings } from "@tokenmaxxing/db/index";
 import { db } from "@/lib/db";
+import { formatTokens } from "@tokenmaxxing/shared/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@tokenmaxxing/ui/components/card";
 import { Badge } from "@tokenmaxxing/ui/components/badge";
 import { Button } from "@tokenmaxxing/ui/components/button";
 import { ActivityHeatmap } from "@tokenmaxxing/ui/components/heatmap";
 
 export const metadata = { title: "Dashboard - tokenmaxx.ing" };
-
-function formatTokens(n: number): string {
-  if (n >= 1e9) return `${(n / 1e9).toFixed(1)}B`;
-  if (n >= 1e6) return `${(n / 1e6).toFixed(1)}M`;
-  if (n >= 1e3) return `${(n / 1e3).toFixed(0)}K`;
-  return String(n);
-}
 
 export default async function DashboardPage() {
   const { userId: clerkId } = await auth();
@@ -129,7 +123,7 @@ export default async function DashboardPage() {
           </CardHeader>
           <CardContent>
             <code className="block rounded bg-muted px-4 py-3 font-mono text-sm">
-              npx tokenmaxxing submit
+              bunx tokenmaxxing submit
             </code>
           </CardContent>
         </Card>

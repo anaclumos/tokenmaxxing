@@ -3,17 +3,11 @@ import Link from "next/link";
 import { eq, desc, sql } from "drizzle-orm";
 import { users, dailyAggregates, rankings } from "@tokenmaxxing/db/index";
 import { db } from "@/lib/db";
+import { formatTokens } from "@tokenmaxxing/shared/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@tokenmaxxing/ui/components/card";
 import { Badge } from "@tokenmaxxing/ui/components/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@tokenmaxxing/ui/components/avatar";
 import { Button } from "@tokenmaxxing/ui/components/button";
-
-function formatTokens(n: number): string {
-  if (n >= 1e9) return `${(n / 1e9).toFixed(1)}B`;
-  if (n >= 1e6) return `${(n / 1e6).toFixed(1)}M`;
-  if (n >= 1e3) return `${(n / 1e3).toFixed(0)}K`;
-  return String(n);
-}
 
 export async function generateMetadata({ params }: { params: Promise<{ username: string }> }) {
   const { username } = await params;
