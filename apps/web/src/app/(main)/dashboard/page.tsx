@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { eq, desc, and } from "drizzle-orm";
 import { users, dailyAggregates, rankings } from "@tokenmaxxing/db/index";
-import { db, totalTokensSql } from "@/lib/db";
+import { db } from "@/lib/db";
 import { formatTokens } from "@tokenmaxxing/shared/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@tokenmaxxing/ui/components/card";
 import { Badge } from "@tokenmaxxing/ui/components/badge";
@@ -31,10 +31,14 @@ export default async function DashboardPage() {
     )
     .limit(1);
 
-  const activity = await db()
+  const activityRows = await db()
     .select({
       date: dailyAggregates.date,
-      tokens: totalTokensSql.as("tokens"),
+      totalInput: dailyAggregates.totalInput,
+      totalOutput: dailyAggregates.totalOutput,
+      totalCacheRead: dailyAggregates.totalCacheRead,
+      totalCacheWrite: dailyAggregates.totalCacheWrite,
+      totalReasoning: dailyAggregates.totalReasoning,
       cost: dailyAggregates.totalCost,
       sessions: dailyAggregates.sessionCount,
     })
@@ -42,6 +46,11 @@ export default async function DashboardPage() {
     .where(eq(dailyAggregates.userId, user.id))
     .orderBy(desc(dailyAggregates.date))
     .limit(365);
+
+  const activity = activityRows.map((a) => ({
+    ...a,
+    tokens: a.totalInput + a.totalOutput + a.totalCacheRead + a.totalCacheWrite + a.totalReasoning,
+  }));
 
   return (
     <main className="mx-auto w-full max-w-4xl px-6 py-8">

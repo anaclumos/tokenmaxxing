@@ -1,6 +1,6 @@
 import { eq, desc, and } from "drizzle-orm";
 import { users, dailyAggregates, rankings } from "@tokenmaxxing/db/index";
-import { db, totalTokensSql } from "@/lib/db";
+import { db } from "@/lib/db";
 import { authenticateToken } from "@/lib/auth";
 
 export async function GET(req: Request) {
@@ -29,16 +29,26 @@ export async function GET(req: Request) {
     .limit(1);
 
   // Recent 30 days of activity
-  const activity = await db()
+  const activityRows = await db()
     .select({
       date: dailyAggregates.date,
-      tokens: totalTokensSql.as("tokens"),
+      totalInput: dailyAggregates.totalInput,
+      totalOutput: dailyAggregates.totalOutput,
+      totalCacheRead: dailyAggregates.totalCacheRead,
+      totalCacheWrite: dailyAggregates.totalCacheWrite,
+      totalReasoning: dailyAggregates.totalReasoning,
       cost: dailyAggregates.totalCost,
     })
     .from(dailyAggregates)
     .where(eq(dailyAggregates.userId, user.id))
     .orderBy(desc(dailyAggregates.date))
     .limit(30);
+
+  const activity = activityRows.map((a) => ({
+    date: a.date,
+    tokens: a.totalInput + a.totalOutput + a.totalCacheRead + a.totalCacheWrite + a.totalReasoning,
+    cost: a.cost,
+  }));
 
   return Response.json({
     user: {
