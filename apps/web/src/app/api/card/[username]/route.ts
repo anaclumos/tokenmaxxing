@@ -26,32 +26,33 @@ export async function GET(
     });
   }
 
-  const [globalRank] = await db()
-    .select({ rank: rankings.rank, compositeScore: rankings.compositeScore })
-    .from(rankings)
-    .where(
-      and(
-        eq(rankings.leaderboardId, "global"),
-        eq(rankings.userId, user.id),
-        eq(rankings.period, "alltime")
+  // Last 365 days of activity for heatmap + rank
+  const [[globalRank], activityRows] = await Promise.all([
+    db()
+      .select({ rank: rankings.rank, compositeScore: rankings.compositeScore })
+      .from(rankings)
+      .where(
+        and(
+          eq(rankings.leaderboardId, "global"),
+          eq(rankings.userId, user.id),
+          eq(rankings.period, "alltime")
+        )
       )
-    )
-    .limit(1);
-
-  // Last 365 days of activity for heatmap
-  const activityRows = await db()
-    .select({
-      date: dailyAggregates.date,
-      totalInput: dailyAggregates.totalInput,
-      totalOutput: dailyAggregates.totalOutput,
-      totalCacheRead: dailyAggregates.totalCacheRead,
-      totalCacheWrite: dailyAggregates.totalCacheWrite,
-      totalReasoning: dailyAggregates.totalReasoning,
-    })
-    .from(dailyAggregates)
-    .where(eq(dailyAggregates.userId, user.id))
-    .orderBy(desc(dailyAggregates.date))
-    .limit(365);
+      .limit(1),
+    db()
+      .select({
+        date: dailyAggregates.date,
+        totalInput: dailyAggregates.totalInput,
+        totalOutput: dailyAggregates.totalOutput,
+        totalCacheRead: dailyAggregates.totalCacheRead,
+        totalCacheWrite: dailyAggregates.totalCacheWrite,
+        totalReasoning: dailyAggregates.totalReasoning,
+      })
+      .from(dailyAggregates)
+      .where(eq(dailyAggregates.userId, user.id))
+      .orderBy(desc(dailyAggregates.date))
+      .limit(365),
+  ]);
 
   const activityMap = new Map<string, number>();
   for (const a of activityRows) {

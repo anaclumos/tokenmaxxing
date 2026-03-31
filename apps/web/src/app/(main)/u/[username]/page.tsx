@@ -45,33 +45,34 @@ export default async function ProfilePage({
 
   if (!user || user.privacyMode) notFound();
 
-  const [globalRank] = await db()
-    .select({ rank: rankings.rank, compositeScore: rankings.compositeScore })
-    .from(rankings)
-    .where(
-      and(
-        eq(rankings.leaderboardId, "global"),
-        eq(rankings.userId, user.id),
-        eq(rankings.period, "alltime")
+  const [[globalRank], activityRows] = await Promise.all([
+    db()
+      .select({ rank: rankings.rank, compositeScore: rankings.compositeScore })
+      .from(rankings)
+      .where(
+        and(
+          eq(rankings.leaderboardId, "global"),
+          eq(rankings.userId, user.id),
+          eq(rankings.period, "alltime")
+        )
       )
-    )
-    .limit(1);
-
-  const activityRows = await db()
-    .select({
-      date: dailyAggregates.date,
-      totalInput: dailyAggregates.totalInput,
-      totalOutput: dailyAggregates.totalOutput,
-      totalCacheRead: dailyAggregates.totalCacheRead,
-      totalCacheWrite: dailyAggregates.totalCacheWrite,
-      totalReasoning: dailyAggregates.totalReasoning,
-      cost: dailyAggregates.totalCost,
-      modelsUsed: dailyAggregates.modelsUsed,
-      clientsUsed: dailyAggregates.clientsUsed,
-    })
-    .from(dailyAggregates)
-    .where(eq(dailyAggregates.userId, user.id))
-    .orderBy(desc(dailyAggregates.date));
+      .limit(1),
+    db()
+      .select({
+        date: dailyAggregates.date,
+        totalInput: dailyAggregates.totalInput,
+        totalOutput: dailyAggregates.totalOutput,
+        totalCacheRead: dailyAggregates.totalCacheRead,
+        totalCacheWrite: dailyAggregates.totalCacheWrite,
+        totalReasoning: dailyAggregates.totalReasoning,
+        cost: dailyAggregates.totalCost,
+        modelsUsed: dailyAggregates.modelsUsed,
+        clientsUsed: dailyAggregates.clientsUsed,
+      })
+      .from(dailyAggregates)
+      .where(eq(dailyAggregates.userId, user.id))
+      .orderBy(desc(dailyAggregates.date)),
+  ]);
 
   // Aggregate ALL-TIME totals for breakdown (matches user.totalTokens)
   const breakdown = {

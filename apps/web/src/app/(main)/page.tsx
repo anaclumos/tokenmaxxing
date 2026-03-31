@@ -40,42 +40,42 @@ export default async function HomePage({
     eq(users.privacyMode, false)
   );
 
-  const entries = await db()
-    .select({
-      rank: rankings.rank,
-      username: users.username,
-      avatarUrl: users.avatarUrl,
-      totalTokens: rankings.totalTokens,
-      totalCost: rankings.totalCost,
-      compositeScore: rankings.compositeScore,
-      streak: users.currentStreak,
-    })
-    .from(rankings)
-    .innerJoin(users, eq(rankings.userId, users.id))
-    .where(where)
-    .orderBy(orderByColumn[sort])
-    .limit(limit)
-    .offset(offset);
+  const [entries, [countRow], [globalStats]] = await Promise.all([
+    db()
+      .select({
+        rank: rankings.rank,
+        username: users.username,
+        avatarUrl: users.avatarUrl,
+        totalTokens: rankings.totalTokens,
+        totalCost: rankings.totalCost,
+        compositeScore: rankings.compositeScore,
+        streak: users.currentStreak,
+      })
+      .from(rankings)
+      .innerJoin(users, eq(rankings.userId, users.id))
+      .where(where)
+      .orderBy(orderByColumn[sort])
+      .limit(limit)
+      .offset(offset),
+    db()
+      .select({ count: count() })
+      .from(rankings)
+      .innerJoin(users, eq(rankings.userId, users.id))
+      .where(where),
+    db()
+      .select({
+        totalUsers: count(),
+        totalTokens: sum(users.totalTokens).mapWith(Number),
+        totalCost: sum(users.totalCost).mapWith(Number),
+      })
+      .from(users),
+  ]);
 
   // When sorting by tokens/cost, use position as rank
   const numbered = entries.map((e, i) => ({
     ...e,
     rank: sort === "score" ? e.rank : offset + i + 1,
   }));
-
-  const [countRow] = await db()
-    .select({ count: count() })
-    .from(rankings)
-    .innerJoin(users, eq(rankings.userId, users.id))
-    .where(where);
-
-  const [globalStats] = await db()
-    .select({
-      totalUsers: count(),
-      totalTokens: sum(users.totalTokens).mapWith(Number),
-      totalCost: sum(users.totalCost).mapWith(Number),
-    })
-    .from(users);
 
   return (
     <main className="mx-auto w-full max-w-4xl px-6 py-8">
