@@ -1,10 +1,10 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { glob } from "node:fs/promises";
 import type { UsageRecord } from "@tokenmaxxing/shared/types";
 import type { ClientParser } from "./types";
-import { sessionHash } from "./utils";
+import { readJsonFile, sessionHash } from "./utils";
 
 const DB_PATH = join(homedir(), ".local", "share", "opencode", "opencode.db");
 const LEGACY_DIR = join(homedir(), ".local", "share", "opencode", "storage", "message");
@@ -61,12 +61,18 @@ export const opencode: ClientParser = {
 
     // Legacy JSON path
     for await (const file of glob(join(LEGACY_DIR, "**", "*.json"))) {
-      let msg: { role?: string; modelID?: string; cost?: number; tokens?: { input?: number; output?: number; reasoning?: number; cache?: { read?: number; write?: number } }; time?: { created?: string } };
-      try {
-        msg = JSON.parse(readFileSync(file, "utf-8"));
-      } catch {
-        continue;
-      }
+      const msg: {
+        role?: string;
+        modelID?: string;
+        cost?: number;
+        tokens?: {
+          input?: number;
+          output?: number;
+          reasoning?: number;
+          cache?: { read?: number; write?: number };
+        };
+        time?: { created?: string };
+      } = readJsonFile(file)
 
       if (msg.role !== "assistant" || !msg.tokens) continue;
 

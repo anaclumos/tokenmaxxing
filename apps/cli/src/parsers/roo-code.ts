@@ -1,10 +1,10 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { glob } from "node:fs/promises";
 import type { UsageRecord } from "@tokenmaxxing/shared/types";
 import type { ClientParser } from "./types";
-import { sessionHash } from "./utils";
+import { readJsonFile, sessionHash } from "./utils";
 
 // Roo Code stores tasks in VS Code's globalStorage
 function getVscodeGlobalStorage(extensionId: string): string {
@@ -28,8 +28,7 @@ function parseRooTasks(dir: string, client: "roo-code" | "kilocode") {
   return async function* (): AsyncGenerator<UsageRecord> {
     if (!existsSync(dir)) return;
     for await (const file of glob(join(dir, "*", "ui_messages.json"))) {
-      let messages: UiMessage[];
-      try { messages = JSON.parse(readFileSync(file, "utf-8")); } catch { continue; }
+      const messages: UiMessage[] = readJsonFile(file)
       if (!Array.isArray(messages)) continue;
 
       let totalIn = 0, totalOut = 0, totalCacheRead = 0, totalCacheWrite = 0;
@@ -37,8 +36,12 @@ function parseRooTasks(dir: string, client: "roo-code" | "kilocode") {
 
       for (const msg of messages) {
         if (msg.say !== "api_req_started" || !msg.text) continue;
-        let parsed: { tokensIn?: number; tokensOut?: number; cacheReads?: number; cacheWrites?: number };
-        try { parsed = JSON.parse(msg.text); } catch { continue; }
+        const parsed: {
+          tokensIn?: number;
+          tokensOut?: number;
+          cacheReads?: number;
+          cacheWrites?: number;
+        } = JSON.parse(msg.text);
         totalIn += parsed.tokensIn ?? 0;
         totalOut += parsed.tokensOut ?? 0;
         totalCacheRead += parsed.cacheReads ?? 0;
