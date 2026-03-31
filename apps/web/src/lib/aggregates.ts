@@ -66,20 +66,23 @@ export async function recomputeAggregates(db: Db, userId: string) {
 
   const t = totals[0];
   if (t) {
-    // Compute streak: count consecutive days ending today
+    // Compute streak: consecutive days ending at most recent active day (today or yesterday)
     const streakResult = await db.execute(sql`
       WITH dates AS (
         SELECT DISTINCT DATE(${usageRecords.timestamp}) as d
         FROM ${usageRecords}
         WHERE ${usageRecords.userId} = ${userId}
       ),
+      recent AS (
+        SELECT MAX(d) as latest FROM dates WHERE d >= CURRENT_DATE - 1
+      ),
       numbered AS (
         SELECT d, d - (ROW_NUMBER() OVER (ORDER BY d))::int * INTERVAL '1 day' AS grp
         FROM dates
       )
       SELECT COUNT(*) as streak
-      FROM numbered
-      WHERE grp = (SELECT grp FROM numbered WHERE d = CURRENT_DATE)
+      FROM numbered, recent
+      WHERE grp = (SELECT grp FROM numbered WHERE d = recent.latest)
     `);
 
     const streak = Number(streakResult.rows?.[0]?.streak ?? 0);

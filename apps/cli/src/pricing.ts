@@ -1,6 +1,6 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { mkdirSync } from "node:fs";
 
 const LITELLM_URL = "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json";
 const CACHE_DIR = join(homedir(), ".config", "tokenmaxxing");
@@ -19,12 +19,12 @@ let pricingCache: Map<string, ModelPricing> | null = null;
 async function loadPricing(): Promise<Map<string, ModelPricing>> {
   if (pricingCache) return pricingCache;
 
-  // Try disk cache
-  if (existsSync(CACHE_FILE)) {
-    const stat = Bun.file(CACHE_FILE);
-    const age = Date.now() - (await stat.lastModified);
+  // Try disk cache (Bun.file for consistent API)
+  const file = Bun.file(CACHE_FILE);
+  if (await file.exists()) {
+    const age = Date.now() - file.lastModified;
     if (age < CACHE_TTL_MS) {
-      const data = JSON.parse(readFileSync(CACHE_FILE, "utf-8"));
+      const data = await file.json();
       pricingCache = new Map(Object.entries(data));
       return pricingCache;
     }
@@ -38,7 +38,7 @@ async function loadPricing(): Promise<Map<string, ModelPricing>> {
 
   // Write to disk cache
   mkdirSync(CACHE_DIR, { recursive: true });
-  writeFileSync(CACHE_FILE, JSON.stringify(data));
+  await Bun.write(CACHE_FILE, JSON.stringify(data));
 
   return pricingCache;
 }

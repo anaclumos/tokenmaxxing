@@ -51,16 +51,15 @@ export async function computeRankings(db: Db, leaderboardId: string, period: Per
     .where(conditions.length > 0 ? and(...conditions) : sql`TRUE`)
     .groupBy(dailyAggregates.userId);
 
-  // Get streaks for each user
-  const userStreaks = new Map<string, number>();
-  for (const stat of userStats) {
-    const [row] = await db
-      .select({ streak: users.currentStreak })
-      .from(users)
-      .where(eq(users.id, stat.userId))
-      .limit(1);
-    userStreaks.set(stat.userId, row?.streak ?? 0);
-  }
+  // Batch fetch all streaks in one query
+  const userIds2 = userStats.map((s) => s.userId);
+  const streakRows = userIds2.length > 0
+    ? await db
+        .select({ id: users.id, streak: users.currentStreak })
+        .from(users)
+        .where(sql`${users.id} = ANY(${userIds2})`)
+    : [];
+  const userStreaks = new Map(streakRows.map((r) => [r.id, r.streak]));
 
   // Score and sort
   const scored = userStats

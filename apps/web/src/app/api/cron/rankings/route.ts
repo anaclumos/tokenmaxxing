@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
 import { clerkClient } from "@clerk/nextjs/server";
-import { eq } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import { users } from "@tokenmaxxing/db/index";
 import { db } from "@/lib/db";
 import { computeAllRankings } from "@/lib/rankings";
@@ -22,20 +22,19 @@ export async function GET(req: NextRequest) {
         limit: 500,
       });
 
-      // Map Clerk user IDs to our DB user IDs
-      const userIds: string[] = [];
-      for (const m of members.data) {
-        const clerkId = m.publicUserData?.userId;
-        if (!clerkId) continue;
-        const [row] = await db()
-          .select({ id: users.id })
-          .from(users)
-          .where(eq(users.clerkId, clerkId))
-          .limit(1);
-        if (row) userIds.push(row.id);
-      }
+      // Batch map Clerk user IDs to DB user IDs
+      const clerkIds = members.data
+        .map((m) => m.publicUserData?.userId)
+        .filter((id): id is string => Boolean(id));
 
-      return { orgId: org.id, userIds };
+      const rows = clerkIds.length > 0
+        ? await db()
+            .select({ id: users.id })
+            .from(users)
+            .where(sql`${users.clerkId} = ANY(${clerkIds})`)
+        : [];
+
+      return { orgId: org.id, userIds: rows.map((r) => r.id) };
     }),
   );
 
