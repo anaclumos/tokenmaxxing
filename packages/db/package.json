@@ -12,11 +12,10 @@
     "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
-    "@neondatabase/serverless": "^1",
-    "drizzle-orm": "^0.45"
+    "drizzle-orm": "^0.45",
+    "postgres": "^3"
   },
   "devDependencies": {
-    "drizzle-kit": "^0.31",
-    "postgres": "^3"
+    "drizzle-kit": "^0.31"
   }
 }
