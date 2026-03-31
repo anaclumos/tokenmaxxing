@@ -1,6 +1,12 @@
 import { auth } from "@clerk/nextjs/server";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@tokenmaxxing/ui/components/card";
 import { redirect } from "next/navigation";
-import { Card, CardContent, CardHeader, CardTitle } from "@tokenmaxxing/ui/components/card";
+
 import { TokenManager } from "./token-manager";
 
 export const metadata = { title: "Settings - tokenmaxx.ing" };
@@ -19,7 +25,8 @@ export default async function SettingsPage() {
         </CardHeader>
         <CardContent>
           <p className="mb-4 text-sm text-muted-foreground">
-            Generate tokens to authenticate the CLI. Tokens are shown once and stored as hashes.
+            Generate tokens to authenticate the CLI. Tokens are shown once and
+            stored as hashes.
           </p>
           <TokenManager />
         </CardContent>

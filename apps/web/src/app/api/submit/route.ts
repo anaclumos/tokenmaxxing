@@ -1,9 +1,10 @@
-import { after } from "next/server";
-import { SubmitPayload } from "@tokenmaxxing/shared/types";
 import { usageRecords } from "@tokenmaxxing/db/index";
-import { db } from "@/lib/db";
-import { authenticateToken } from "@/lib/auth";
+import { SubmitPayload } from "@tokenmaxxing/shared/types";
+import { after } from "next/server";
+
 import { recomputeAggregates } from "@/lib/aggregates";
+import { authenticateToken } from "@/lib/auth";
+import { db } from "@/lib/db";
 
 export async function POST(req: Request) {
   const userId = await authenticateToken(req);
@@ -14,7 +15,10 @@ export async function POST(req: Request) {
   const body = await req.json();
   const parsed = SubmitPayload.safeParse(body);
   if (!parsed.success) {
-    return Response.json({ error: "Invalid payload", details: parsed.error.issues }, { status: 400 });
+    return Response.json(
+      { error: "Invalid payload", details: parsed.error.issues },
+      { status: 400 }
+    );
   }
 
   const values = parsed.data.records.map((r) => ({
@@ -45,5 +49,9 @@ export async function POST(req: Request) {
     after(() => recomputeAggregates(db(), userId));
   }
 
-  return Response.json({ inserted, skipped: values.length - inserted, total: values.length });
+  return Response.json({
+    inserted,
+    skipped: values.length - inserted,
+    total: values.length,
+  });
 }

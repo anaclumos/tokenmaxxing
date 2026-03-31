@@ -1,9 +1,10 @@
-import type { Metadata } from "next";
 import { ClerkProvider } from "@clerk/nextjs";
 import { dark } from "@clerk/themes";
-import localFont from "next/font/local";
-import "@tokenmaxxing/ui/globals.css";
 import { cn } from "@tokenmaxxing/ui/lib/utils";
+import type { Metadata } from "next";
+
+import "@tokenmaxxing/ui/globals.css";
+import localFont from "next/font/local";
 
 const sunghyunSans = localFont({
   src: [
@@ -35,7 +36,11 @@ export default function RootLayout({
     <ClerkProvider appearance={{ baseTheme: dark }}>
       <html
         lang="en"
-        className={cn("dark h-full antialiased", sunghyunSans.variable, "font-sans")}
+        className={cn(
+          "dark h-full antialiased",
+          sunghyunSans.variable,
+          "font-sans"
+        )}
       >
         <body className="min-h-full flex flex-col">{children}</body>
       </html>

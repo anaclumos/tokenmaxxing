@@ -1,13 +1,16 @@
-import { auth } from "@clerk/nextjs/server";
-import { eq } from "drizzle-orm";
 import { randomBytes, createHash } from "node:crypto";
+
+import { auth } from "@clerk/nextjs/server";
 import { users, apiTokens } from "@tokenmaxxing/db/index";
+import { eq } from "drizzle-orm";
+
 import { db } from "@/lib/db";
 
 // Generate a new API token
 export async function POST() {
   const { userId: clerkId } = await auth();
-  if (!clerkId) return Response.json({ error: "Unauthorized" }, { status: 401 });
+  if (!clerkId)
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
 
   const [user] = await db()
     .select({ id: users.id })
@@ -37,7 +40,8 @@ export async function POST() {
 // List user's tokens (prefix only)
 export async function GET() {
   const { userId: clerkId } = await auth();
-  if (!clerkId) return Response.json({ error: "Unauthorized" }, { status: 401 });
+  if (!clerkId)
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
 
   const [user] = await db()
     .select({ id: users.id })
@@ -48,7 +52,13 @@ export async function GET() {
   if (!user) return Response.json({ error: "User not found" }, { status: 404 });
 
   const tokens = await db()
-    .select({ id: apiTokens.id, prefix: apiTokens.prefix, name: apiTokens.name, lastUsedAt: apiTokens.lastUsedAt, createdAt: apiTokens.createdAt })
+    .select({
+      id: apiTokens.id,
+      prefix: apiTokens.prefix,
+      name: apiTokens.name,
+      lastUsedAt: apiTokens.lastUsedAt,
+      createdAt: apiTokens.createdAt,
+    })
     .from(apiTokens)
     .where(eq(apiTokens.userId, user.id));
 

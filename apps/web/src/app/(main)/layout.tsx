@@ -1,12 +1,19 @@
-import Link from "next/link";
 import { Show, SignInButton, UserButton } from "@clerk/nextjs";
 import { Button } from "@tokenmaxxing/ui/components/button";
+import Link from "next/link";
 
-export default function MainLayout({ children }: { children: React.ReactNode }) {
+export default function MainLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   return (
     <div className="flex flex-1 flex-col">
       <header className="flex items-center justify-between border-b border-border px-6 py-4">
-        <Link href="/" className="text-lg font-semibold font-mono tracking-tight">
+        <Link
+          href="/"
+          className="text-lg font-semibold font-mono tracking-tight"
+        >
           tokenmaxx.ing
         </Link>
         <div className="flex items-center gap-3">
@@ -17,7 +24,9 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
           </Show>
           <Show when="signed-in">
             <Link href="/dashboard">
-              <Button variant="ghost" size="sm">Dashboard</Button>
+              <Button variant="ghost" size="sm">
+                Dashboard
+              </Button>
             </Link>
             <UserButton />
           </Show>

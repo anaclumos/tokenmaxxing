@@ -1,6 +1,8 @@
-import { eq } from "drizzle-orm";
 import { createHash } from "node:crypto";
+
 import { apiTokens } from "@tokenmaxxing/db/index";
+import { eq } from "drizzle-orm";
+
 import { db } from "@/lib/db";
 
 // Verify a Bearer API token, return userId or null

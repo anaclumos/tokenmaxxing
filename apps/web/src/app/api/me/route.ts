@@ -1,8 +1,9 @@
-import { eq, desc, and } from "drizzle-orm";
 import { users, dailyAggregates, rankings } from "@tokenmaxxing/db/index";
-import { db } from "@/lib/db";
-import { authenticateToken } from "@/lib/auth";
 import { sumAggregateTokens } from "@tokenmaxxing/shared/types";
+import { eq, desc, and } from "drizzle-orm";
+
+import { authenticateToken } from "@/lib/auth";
+import { db } from "@/lib/db";
 
 export async function GET(req: Request) {
   const userId = await authenticateToken(req);
@@ -22,10 +23,14 @@ export async function GET(req: Request) {
 
   // Get global rank
   const [globalRank] = await db()
-    .select({ rank: rankings.rank, totalTokens: rankings.totalTokens })
+    .select({ rank: rankings.rank })
     .from(rankings)
     .where(
-      and(eq(rankings.leaderboardId, "global"), eq(rankings.userId, user.id), eq(rankings.period, "alltime")),
+      and(
+        eq(rankings.leaderboardId, "global"),
+        eq(rankings.userId, user.id),
+        eq(rankings.period, "alltime")
+      )
     )
     .limit(1);
 

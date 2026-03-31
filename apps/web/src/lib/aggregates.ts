@@ -1,7 +1,7 @@
-import { eq } from "drizzle-orm";
 import { dailyAggregates, usageRecords, users } from "@tokenmaxxing/db/index";
 import type { Db } from "@tokenmaxxing/db/index";
 import { sumAggregateTokens } from "@tokenmaxxing/shared/types";
+import { eq } from "drizzle-orm";
 
 const ONE_DAY_MS = 86_400_000;
 
@@ -49,17 +49,20 @@ export async function recomputeAggregates(db: Db, userId: string) {
     .where(eq(usageRecords.userId, userId));
 
   // Group by date in TypeScript
-  const byDate = new Map<string, {
-    totalInput: number;
-    totalOutput: number;
-    totalCacheRead: number;
-    totalCacheWrite: number;
-    totalReasoning: number;
-    totalCost: number;
-    sessionCount: number;
-    clients: Set<string>;
-    models: Set<string>;
-  }>();
+  const byDate = new Map<
+    string,
+    {
+      totalInput: number;
+      totalOutput: number;
+      totalCacheRead: number;
+      totalCacheWrite: number;
+      totalReasoning: number;
+      totalCost: number;
+      sessionCount: number;
+      clients: Set<string>;
+      models: Set<string>;
+    }
+  >();
 
   for (const r of records) {
     const date = r.timestamp.toISOString().slice(0, 10);
@@ -106,7 +109,7 @@ export async function recomputeAggregates(db: Db, userId: string) {
         sessionCount: d.sessionCount,
         clientsUsed: [...d.clients],
         modelsUsed: [...d.models],
-      })),
+      }))
     );
   }
 

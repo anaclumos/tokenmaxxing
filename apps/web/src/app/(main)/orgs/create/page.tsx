@@ -1,6 +1,6 @@
+import { CreateOrganization } from "@clerk/nextjs";
 import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
-import { CreateOrganization } from "@clerk/nextjs";
 
 export const metadata = { title: "Create Organization - tokenmaxx.ing" };
 

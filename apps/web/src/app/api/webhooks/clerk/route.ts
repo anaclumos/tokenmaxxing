@@ -1,7 +1,8 @@
 import { verifyWebhook } from "@clerk/nextjs/webhooks";
+import { users } from "@tokenmaxxing/db/index";
 import { eq } from "drizzle-orm";
 import type { NextRequest } from "next/server";
-import { users } from "@tokenmaxxing/db/index";
+
 import { db } from "@/lib/db";
 
 export async function POST(req: NextRequest) {
@@ -22,7 +23,12 @@ export async function POST(req: NextRequest) {
       })
       .onConflictDoUpdate({
         target: users.clerkId,
-        set: { username: name, avatarUrl: image_url, email, updatedAt: new Date() },
+        set: {
+          username: name,
+          avatarUrl: image_url,
+          email,
+          updatedAt: new Date(),
+        },
       });
   }
 

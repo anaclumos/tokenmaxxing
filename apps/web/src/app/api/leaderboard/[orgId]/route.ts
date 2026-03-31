@@ -1,10 +1,14 @@
 import { auth, clerkClient } from "@clerk/nextjs/server";
+import { rankings, users } from "@tokenmaxxing/db/index";
 import { eq, asc, and, count } from "drizzle-orm";
 import type { NextRequest } from "next/server";
-import { rankings, users } from "@tokenmaxxing/db/index";
+
 import { db } from "@/lib/db";
 
-export async function GET(req: NextRequest, { params }: { params: Promise<{ orgId: string }> }) {
+export async function GET(
+  req: NextRequest,
+  { params }: { params: Promise<{ orgId: string }> }
+) {
   const { orgId } = await params;
   const { userId: clerkId } = await auth();
 
@@ -21,9 +25,16 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ orgI
   }
 
   const { searchParams } = new URL(req.url);
-  const period = (searchParams.get("period") ?? "alltime") as "daily" | "weekly" | "monthly" | "alltime";
+  const period = (searchParams.get("period") ?? "alltime") as
+    | "daily"
+    | "weekly"
+    | "monthly"
+    | "alltime";
   const page = Math.max(1, Number(searchParams.get("page") ?? 1));
-  const limit = Math.min(100, Math.max(1, Number(searchParams.get("limit") ?? 50)));
+  const limit = Math.min(
+    100,
+    Math.max(1, Number(searchParams.get("limit") ?? 50))
+  );
   const offset = (page - 1) * limit;
 
   const rows = await db()
@@ -38,12 +49,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ orgI
     })
     .from(rankings)
     .innerJoin(users, eq(rankings.userId, users.id))
-    .where(
-      and(
-        eq(rankings.leaderboardId, orgId),
-        eq(rankings.period, period),
-      ),
-    )
+    .where(and(eq(rankings.leaderboardId, orgId), eq(rankings.period, period)))
     .orderBy(asc(rankings.rank))
     .limit(limit)
     .offset(offset);
@@ -51,12 +57,13 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ orgI
   const [countRow] = await db()
     .select({ count: count() })
     .from(rankings)
-    .where(
-      and(
-        eq(rankings.leaderboardId, orgId),
-        eq(rankings.period, period),
-      ),
-    );
+    .where(and(eq(rankings.leaderboardId, orgId), eq(rankings.period, period)));
 
-  return Response.json({ entries: rows, total: countRow?.count ?? 0, page, period, orgId });
+  return Response.json({
+    entries: rows,
+    total: countRow?.count ?? 0,
+    page,
+    period,
+    orgId,
+  });
 }

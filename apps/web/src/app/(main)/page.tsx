@@ -1,7 +1,9 @@
-import { eq, asc, desc, and, count, sum } from "drizzle-orm";
 import { rankings, users } from "@tokenmaxxing/db/index";
-import { db } from "@/lib/db";
 import { formatTokens } from "@tokenmaxxing/shared/types";
+import { eq, asc, desc, and, count, sum } from "drizzle-orm";
+
+import { db } from "@/lib/db";
+
 import { LeaderboardTable } from "./leaderboard/leaderboard-table";
 
 type Sort = "score" | "tokens" | "cost";
@@ -18,16 +20,24 @@ export default async function HomePage({
   searchParams: Promise<{ period?: string; page?: string; sort?: string }>;
 }) {
   const params = await searchParams;
-  const period = (params.period ?? "alltime") as "daily" | "weekly" | "monthly" | "alltime";
+  const period = (params.period ?? "alltime") as
+    | "daily"
+    | "weekly"
+    | "monthly"
+    | "alltime";
   const page = Math.max(1, Number(params.page ?? 1));
-  const sort: Sort = (["score", "tokens", "cost"] as const).includes(params.sort as Sort) ? (params.sort as Sort) : "score";
+  const sort: Sort = (["score", "tokens", "cost"] as const).includes(
+    params.sort as Sort
+  )
+    ? (params.sort as Sort)
+    : "score";
   const limit = 50;
   const offset = (page - 1) * limit;
 
   const where = and(
     eq(rankings.leaderboardId, "global"),
     eq(rankings.period, period),
-    eq(users.privacyMode, false),
+    eq(users.privacyMode, false)
   );
 
   const entries = await db()
@@ -71,11 +81,35 @@ export default async function HomePage({
     <main className="mx-auto w-full max-w-4xl px-6 py-8">
       <h1 className="mb-6 text-3xl font-bold tracking-tight">Leaderboard</h1>
       <div className="mb-6 flex gap-8 text-sm text-muted-foreground">
-        <span><span className="font-mono font-bold text-foreground">{globalStats.totalUsers}</span> users</span>
-        <span><span className="font-mono font-bold text-foreground">{formatTokens(globalStats.totalTokens ?? 0)}</span> tokens</span>
-        <span><span className="font-mono font-bold text-foreground">${(globalStats.totalCost ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}</span> spent</span>
+        <span>
+          <span className="font-mono font-bold text-foreground">
+            {globalStats.totalUsers}
+          </span>{" "}
+          users
+        </span>
+        <span>
+          <span className="font-mono font-bold text-foreground">
+            {formatTokens(globalStats.totalTokens ?? 0)}
+          </span>{" "}
+          tokens
+        </span>
+        <span>
+          <span className="font-mono font-bold text-foreground">
+            $
+            {(globalStats.totalCost ?? 0).toLocaleString(undefined, {
+              maximumFractionDigits: 0,
+            })}
+          </span>{" "}
+          spent
+        </span>
       </div>
-      <LeaderboardTable entries={numbered} total={countRow?.count ?? 0} period={period} page={page} sort={sort} />
+      <LeaderboardTable
+        entries={numbered}
+        total={countRow?.count ?? 0}
+        period={period}
+        page={page}
+        sort={sort}
+      />
     </main>
   );
 }

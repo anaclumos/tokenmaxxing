@@ -1,7 +1,12 @@
 "use client";
 
-import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { formatTokens } from "@tokenmaxxing/shared/types";
+import {
+  Avatar,
+  AvatarFallback,
+  AvatarImage,
+} from "@tokenmaxxing/ui/components/avatar";
+import { Badge } from "@tokenmaxxing/ui/components/badge";
 import {
   Table,
   TableBody,
@@ -11,9 +16,8 @@ import {
   TableRow,
 } from "@tokenmaxxing/ui/components/table";
 import { Tabs, TabsList, TabsTrigger } from "@tokenmaxxing/ui/components/tabs";
-import { Avatar, AvatarFallback, AvatarImage } from "@tokenmaxxing/ui/components/avatar";
-import { Badge } from "@tokenmaxxing/ui/components/badge";
-import { formatTokens } from "@tokenmaxxing/shared/types";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 
 type Entry = {
   rank: number;
@@ -82,23 +86,41 @@ export function LeaderboardTable({
         </TableHeader>
         <TableBody>
           {entries.map((e) => (
-            <TableRow key={e.rank} className="cursor-pointer" onClick={() => router.push(`/u/${e.username}`)}>
-              <TableCell className="font-mono text-muted-foreground">{e.rank}</TableCell>
+            <TableRow
+              key={e.rank}
+              className="cursor-pointer"
+              onClick={() => router.push(`/u/${e.username}`)}
+            >
+              <TableCell className="font-mono text-muted-foreground">
+                {e.rank}
+              </TableCell>
               <TableCell>
                 <div className="flex items-center gap-2">
                   <Avatar className="h-6 w-6">
                     {e.avatarUrl && <AvatarImage src={e.avatarUrl} />}
-                    <AvatarFallback className="text-xs">{e.username[0]}</AvatarFallback>
+                    <AvatarFallback className="text-xs">
+                      {e.username[0]}
+                    </AvatarFallback>
                   </Avatar>
                   <span className="font-medium">{e.username}</span>
                 </div>
               </TableCell>
-              <TableCell className="text-right font-mono">{formatTokens(e.totalTokens)}</TableCell>
-              <TableCell className="text-right font-mono">${Number(e.totalCost).toFixed(2)}</TableCell>
-              <TableCell className="text-right">
-                {e.streak > 0 && <Badge variant="secondary" className="font-mono text-xs">{e.streak}d</Badge>}
+              <TableCell className="text-right font-mono">
+                {formatTokens(e.totalTokens)}
               </TableCell>
-              <TableCell className="text-right font-mono">{Number(e.compositeScore).toFixed(0)}</TableCell>
+              <TableCell className="text-right font-mono">
+                ${Number(e.totalCost).toFixed(2)}
+              </TableCell>
+              <TableCell className="text-right">
+                {e.streak > 0 && (
+                  <Badge variant="secondary" className="font-mono text-xs">
+                    {e.streak}d
+                  </Badge>
+                )}
+              </TableCell>
+              <TableCell className="text-right font-mono">
+                {Number(e.compositeScore).toFixed(0)}
+              </TableCell>
             </TableRow>
           ))}
         </TableBody>
