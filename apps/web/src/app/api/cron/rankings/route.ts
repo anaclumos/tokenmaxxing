@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
 import { clerkClient } from "@clerk/nextjs/server";
-import { sql } from "drizzle-orm";
+import { inArray } from "drizzle-orm";
 import { users } from "@tokenmaxxing/db/index";
 import { db } from "@/lib/db";
 import { computeAllRankings } from "@/lib/rankings";
@@ -31,7 +31,7 @@ export async function GET(req: NextRequest) {
         ? await db()
             .select({ id: users.id })
             .from(users)
-            .where(sql`${users.clerkId} = ANY(${clerkIds})`)
+            .where(inArray(users.clerkId, clerkIds))
         : [];
 
       return { orgId: org.id, userIds: rows.map((r) => r.id) };

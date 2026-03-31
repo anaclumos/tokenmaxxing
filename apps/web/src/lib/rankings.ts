@@ -1,6 +1,7 @@
-import { sql, eq, gte, and } from "drizzle-orm";
+import { sql, eq, gte, and, inArray } from "drizzle-orm";
 import { dailyAggregates, rankings, users } from "@tokenmaxxing/db/index";
 import type { Db } from "@tokenmaxxing/db/index";
+import { totalTokensSql } from "@/lib/db";
 
 type Period = "daily" | "weekly" | "monthly" | "alltime";
 
@@ -36,19 +37,19 @@ export async function computeRankings(db: Db, leaderboardId: string, period: Per
   // Aggregate per-user stats for the period
   const conditions = [];
   if (startDate) conditions.push(gte(dailyAggregates.date, startDate.toISOString().slice(0, 10)));
-  if (userIds) conditions.push(sql`${dailyAggregates.userId} = ANY(${userIds})`);
+  if (userIds) conditions.push(inArray(dailyAggregates.userId, userIds));
 
   const userStats = await db
     .select({
       userId: dailyAggregates.userId,
-      totalTokens: sql<number>`SUM(${dailyAggregates.totalInput} + ${dailyAggregates.totalOutput} + ${dailyAggregates.totalCacheRead} + ${dailyAggregates.totalCacheWrite} + ${dailyAggregates.totalReasoning})`.as("total_tokens"),
+      totalTokens: sql<number>`SUM(${totalTokensSql})`.as("total_tokens"),
       totalInput: sql<number>`SUM(${dailyAggregates.totalInput})`.as("total_input"),
       totalOutput: sql<number>`SUM(${dailyAggregates.totalOutput})`.as("total_output"),
       totalCost: sql<number>`SUM(${dailyAggregates.totalCost}::numeric)`.as("total_cost"),
       sessionCount: sql<number>`SUM(${dailyAggregates.sessionCount})`.as("session_count"),
     })
     .from(dailyAggregates)
-    .where(conditions.length > 0 ? and(...conditions) : sql`TRUE`)
+    .where(conditions.length > 0 ? and(...conditions) : undefined)
     .groupBy(dailyAggregates.userId);
 
   // Batch fetch all streaks in one query
@@ -57,7 +58,7 @@ export async function computeRankings(db: Db, leaderboardId: string, period: Per
     ? await db
         .select({ id: users.id, streak: users.currentStreak })
         .from(users)
-        .where(sql`${users.id} = ANY(${allUserIds})`)
+        .where(inArray(users.id, allUserIds))
     : [];
   const userStreaks = new Map(streakRows.map((r) => [r.id, r.streak]));
 

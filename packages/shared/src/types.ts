@@ -54,23 +54,6 @@ export const SubmitResponse = z.object({
 });
 export type SubmitResponse = z.infer<typeof SubmitResponse>;
 
-// Leaderboard periods
-export const LeaderboardPeriod = z.enum(["daily", "weekly", "monthly", "alltime"]);
-export type LeaderboardPeriod = z.infer<typeof LeaderboardPeriod>;
-
-// Leaderboard entry (what the API returns)
-export const LeaderboardEntry = z.object({
-  rank: z.number().int().positive(),
-  username: z.string(),
-  avatarUrl: z.string().nullable(),
-  totalTokens: z.number(),
-  totalCost: z.number(),
-  compositeScore: z.number(),
-  topClient: SupportedClient.nullable(),
-  streak: z.number().int().nonnegative(),
-});
-export type LeaderboardEntry = z.infer<typeof LeaderboardEntry>;
-
 // Utility: total tokens from a breakdown
 export function totalTokens(t: TokenBreakdown): number {
   return t.input + t.output + t.cacheRead + t.cacheWrite + t.reasoning;

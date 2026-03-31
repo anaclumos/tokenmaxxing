@@ -1,12 +1,12 @@
 import { auth, clerkClient } from "@clerk/nextjs/server";
-import { eq, asc, sql, and } from "drizzle-orm";
+import { eq, asc, and, count } from "drizzle-orm";
 import type { NextRequest } from "next/server";
 import { rankings, users } from "@tokenmaxxing/db/index";
 import { db } from "@/lib/db";
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ orgId: string }> }) {
   const { orgId } = await params;
-  const { userId: clerkId, orgId: activeOrgId } = await auth();
+  const { userId: clerkId } = await auth();
 
   if (!clerkId) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
@@ -21,7 +21,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ orgI
   }
 
   const { searchParams } = new URL(req.url);
-  const period = searchParams.get("period") ?? "alltime";
+  const period = (searchParams.get("period") ?? "alltime") as "daily" | "weekly" | "monthly" | "alltime";
   const page = Math.max(1, Number(searchParams.get("page") ?? 1));
   const limit = Math.min(100, Math.max(1, Number(searchParams.get("limit") ?? 50)));
   const offset = (page - 1) * limit;
@@ -41,7 +41,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ orgI
     .where(
       and(
         eq(rankings.leaderboardId, orgId),
-        sql`${rankings.period} = ${period}`,
+        eq(rankings.period, period),
       ),
     )
     .orderBy(asc(rankings.rank))
@@ -49,12 +49,12 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ orgI
     .offset(offset);
 
   const [countRow] = await db()
-    .select({ count: sql<number>`COUNT(*)`.as("count") })
+    .select({ count: count() })
     .from(rankings)
     .where(
       and(
         eq(rankings.leaderboardId, orgId),
-        sql`${rankings.period} = ${period}`,
+        eq(rankings.period, period),
       ),
     );
 

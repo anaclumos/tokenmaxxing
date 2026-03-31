@@ -1,9 +1,11 @@
-import { eq, asc, sql, and } from "drizzle-orm";
+import { eq, asc, and, count } from "drizzle-orm";
 import { rankings, users } from "@tokenmaxxing/db/index";
 import { db } from "@/lib/db";
 import { LeaderboardTable } from "./leaderboard-table";
 
 export const metadata = { title: "Leaderboard - tokenmaxx.ing" };
+
+type Period = "daily" | "weekly" | "monthly" | "alltime";
 
 export default async function LeaderboardPage({
   searchParams,
@@ -11,14 +13,14 @@ export default async function LeaderboardPage({
   searchParams: Promise<{ period?: string; page?: string }>;
 }) {
   const params = await searchParams;
-  const period = params.period ?? "alltime";
+  const period = (params.period ?? "alltime") as Period;
   const page = Math.max(1, Number(params.page ?? 1));
   const limit = 50;
   const offset = (page - 1) * limit;
 
   const where = and(
     eq(rankings.leaderboardId, "global"),
-    sql`${rankings.period} = ${period}`,
+    eq(rankings.period, period),
     eq(users.privacyMode, false),
   );
 
@@ -40,7 +42,7 @@ export default async function LeaderboardPage({
     .offset(offset);
 
   const [countRow] = await db()
-    .select({ count: sql<number>`COUNT(*)`.as("count") })
+    .select({ count: count() })
     .from(rankings)
     .innerJoin(users, eq(rankings.userId, users.id))
     .where(where);

@@ -1,9 +1,9 @@
 import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { eq, desc, sql } from "drizzle-orm";
+import { eq, desc, and } from "drizzle-orm";
 import { users, dailyAggregates, rankings } from "@tokenmaxxing/db/index";
-import { db } from "@/lib/db";
+import { db, totalTokensSql } from "@/lib/db";
 import { formatTokens } from "@tokenmaxxing/shared/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@tokenmaxxing/ui/components/card";
 import { Badge } from "@tokenmaxxing/ui/components/badge";
@@ -27,14 +27,14 @@ export default async function DashboardPage() {
     .select({ rank: rankings.rank })
     .from(rankings)
     .where(
-      sql`${rankings.leaderboardId} = 'global' AND ${rankings.userId} = ${user.id} AND ${rankings.period} = 'alltime'`,
+      and(eq(rankings.leaderboardId, "global"), eq(rankings.userId, user.id), eq(rankings.period, "alltime")),
     )
     .limit(1);
 
   const activity = await db()
     .select({
       date: dailyAggregates.date,
-      tokens: sql<number>`${dailyAggregates.totalInput} + ${dailyAggregates.totalOutput} + ${dailyAggregates.totalCacheRead} + ${dailyAggregates.totalCacheWrite} + ${dailyAggregates.totalReasoning}`.as("tokens"),
+      tokens: totalTokensSql.as("tokens"),
       cost: dailyAggregates.totalCost,
       sessions: dailyAggregates.sessionCount,
     })
