@@ -1,6 +1,5 @@
 import { sql } from "drizzle-orm";
-import { createDb } from "@tokenmaxxing/db/index";
-import { dailyAggregates } from "@tokenmaxxing/db/index";
+import { createDb, dailyAggregates } from "@tokenmaxxing/db/index";
 
 let _db: ReturnType<typeof createDb>;
 
