@@ -1,10 +1,10 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { glob } from "node:fs/promises";
 import type { UsageRecord } from "@tokenmaxxing/shared/types";
 import type { ClientParser } from "./types";
-import { sessionHash } from "./utils";
+import { readJsonFile, sessionHash } from "./utils";
 
 const GEMINI_DIR = join(homedir(), ".gemini", "tmp");
 
@@ -36,12 +36,7 @@ export const geminiCli: ClientParser = {
   async *parse(): AsyncGenerator<UsageRecord> {
     // Gemini stores session JSON files in nested directories
     for await (const file of glob(join(GEMINI_DIR, "**", "*.json"))) {
-      let session: GeminiSession;
-      try {
-        session = JSON.parse(readFileSync(file, "utf-8"));
-      } catch {
-        continue;
-      }
+      const session: GeminiSession = readJsonFile(file)
 
       if (!session.messages || !Array.isArray(session.messages)) continue;
 

@@ -1,10 +1,10 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { glob } from "node:fs/promises";
 import type { UsageRecord } from "@tokenmaxxing/shared/types";
 import type { ClientParser } from "./types";
-import { sessionHash } from "./utils";
+import { readJsonFile, sessionHash } from "./utils";
 
 const MUX_DIR = join(homedir(), ".mux", "sessions");
 
@@ -24,8 +24,7 @@ export const mux: ClientParser = {
   async detect() { return existsSync(MUX_DIR); },
   async *parse(): AsyncGenerator<UsageRecord> {
     for await (const file of glob(join(MUX_DIR, "*", "session-usage.json"))) {
-      let data: MuxUsage;
-      try { data = JSON.parse(readFileSync(file, "utf-8")); } catch { continue; }
+      const data: MuxUsage = readJsonFile(file)
       if (!data.byModel) continue;
       for (const [model, usage] of Object.entries(data.byModel)) {
         const input = usage.input?.tokens ?? 0;

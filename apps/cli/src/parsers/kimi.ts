@@ -1,10 +1,10 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { glob } from "node:fs/promises";
 import type { UsageRecord } from "@tokenmaxxing/shared/types";
 import type { ClientParser } from "./types";
-import { readJsonl, sessionHash } from "./utils";
+import { readJsonFile, readJsonl, sessionHash } from "./utils";
 
 const KIMI_DIR = join(homedir(), ".kimi", "sessions");
 const KIMI_CONFIG = join(homedir(), ".kimi", "config.json");
@@ -32,10 +32,10 @@ export const kimi: ClientParser = {
     // Read model from config
     let model = "unknown";
     if (existsSync(KIMI_CONFIG)) {
-      try {
-        const cfg = JSON.parse(readFileSync(KIMI_CONFIG, "utf-8"));
-        if (cfg.model) model = cfg.model;
-      } catch { /* */ }
+      const cfg: {
+        model?: string;
+      } = readJsonFile(KIMI_CONFIG)
+      if (cfg.model) model = cfg.model;
     }
 
     for await (const file of glob(join(KIMI_DIR, "**", "wire.jsonl"))) {
