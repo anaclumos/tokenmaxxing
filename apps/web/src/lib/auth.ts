@@ -19,8 +19,7 @@ export async function authenticateToken(req: Request): Promise<string | null> {
 
   if (!row) return null;
 
-  // Update last used timestamp (fire-and-forget)
-  db()
+  await db()
     .update(apiTokens)
     .set({ lastUsedAt: new Date() })
     .where(eq(apiTokens.tokenHash, hash));

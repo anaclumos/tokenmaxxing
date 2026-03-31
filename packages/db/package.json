@@ -14,10 +14,10 @@
   "dependencies": {
     "@neondatabase/serverless": "^1",
     "@tokenmaxxing/shared": "workspace:*",
-    "drizzle-orm": "^0.45",
-    "postgres": "^3"
+    "drizzle-orm": "^0.45"
   },
   "devDependencies": {
-    "drizzle-kit": "^0.31"
+    "drizzle-kit": "^0.31",
+    "postgres": "^3"
   }
 }
