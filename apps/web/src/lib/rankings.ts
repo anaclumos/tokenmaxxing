@@ -104,7 +104,7 @@ export async function computeRankings(
         ),
       };
     })
-    .sort((a, b) => b.score - a.score);
+    .toSorted((a, b) => b.score - a.score);
 
   // Replace rankings: delete old, batch insert new (2 queries instead of N upserts)
   await db

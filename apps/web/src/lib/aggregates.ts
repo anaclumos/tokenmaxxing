@@ -9,7 +9,7 @@ const ONE_DAY_MS = 86_400_000;
 function computeStreak(dates: string[]): number {
   if (dates.length === 0) return 0;
 
-  const sorted = [...new Set(dates)].sort().reverse(); // unique, newest first
+  const sorted = [...new Set(dates)].toSorted().toReversed(); // unique, newest first
   const latest = new Date(sorted[0]);
   const today = new Date();
   today.setHours(0, 0, 0, 0);

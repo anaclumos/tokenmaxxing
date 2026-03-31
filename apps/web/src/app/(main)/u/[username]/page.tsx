@@ -218,7 +218,7 @@ export default async function ProfilePage({
             <div>
               <h2 className="mb-3 text-lg font-semibold">Models Used</h2>
               <div className="flex flex-wrap gap-2">
-                {[...allModels].sort().map((m) => (
+                {[...allModels].toSorted().map((m) => (
                   <Badge
                     key={m}
                     variant="outline"
@@ -234,7 +234,7 @@ export default async function ProfilePage({
             <div>
               <h2 className="mb-3 text-lg font-semibold">Clients Used</h2>
               <div className="flex flex-wrap gap-2">
-                {[...allClients].sort().map((c) => (
+                {[...allClients].toSorted().map((c) => (
                   <Badge
                     key={c}
                     variant="outline"
