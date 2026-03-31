@@ -1,10 +1,10 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { existsSync, statSync } from "node:fs";
 import { glob } from "node:fs/promises";
 import type { UsageRecord } from "@tokenmaxxing/shared/types";
 import type { ClientParser } from "./types";
-import { sessionHash } from "./utils";
+import { readJsonFile, sessionHash } from "./utils";
 
 const FACTORY_DIR = join(homedir(), ".factory", "sessions");
 
@@ -24,8 +24,7 @@ export const factoryDroid: ClientParser = {
   async detect() { return existsSync(FACTORY_DIR); },
   async *parse(): AsyncGenerator<UsageRecord> {
     for await (const file of glob(join(FACTORY_DIR, "*.settings.json"))) {
-      let session: FactorySession;
-      try { session = JSON.parse(readFileSync(file, "utf-8")); } catch { continue; }
+      const session: FactorySession = readJsonFile(file)
       const t = session.tokenUsage;
       if (!t) continue;
       const input = t.inputTokens ?? 0;

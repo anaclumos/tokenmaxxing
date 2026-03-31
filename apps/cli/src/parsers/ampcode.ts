@@ -4,7 +4,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { glob } from "node:fs/promises";
 import type { UsageRecord } from "@tokenmaxxing/shared/types";
 import type { ClientParser } from "./types";
-import { sessionHash } from "./utils";
+import { readJsonFile, sessionHash } from "./utils";
 
 const AMP_DIR = join(homedir(), ".local", "share", "amp", "threads");
 
@@ -34,12 +34,7 @@ export const ampcode: ClientParser = {
 
   async *parse(): AsyncGenerator<UsageRecord> {
     for await (const file of glob(join(AMP_DIR, "T-*.json"))) {
-      let thread: AmpThread;
-      try {
-        thread = JSON.parse(readFileSync(file, "utf-8"));
-      } catch {
-        continue;
-      }
+      const thread: AmpThread = readJsonFile(file)
 
       const events = thread.usageLedger?.events;
       if (!events?.length) continue;
