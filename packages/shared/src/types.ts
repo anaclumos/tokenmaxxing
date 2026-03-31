@@ -34,7 +34,7 @@ export const UsageRecord = z.object({
   client: SupportedClient,
   model: z.string().min(1),
   sessionHash: z.string().length(64), // SHA-256 hex
-  timestamp: z.string().datetime(),
+  timestamp: z.iso.datetime(),
   tokens: TokenBreakdown,
   costUsd: z.number().nonnegative(),
 });

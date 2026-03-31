@@ -1,40 +1,12 @@
 #!/usr/bin/env node
+import { defineCommand, runMain } from "citty";
+import { submit } from "./commands/submit";
+import { login } from "./commands/login";
+import { status } from "./commands/status";
 
-const args = process.argv.slice(2);
-const command = args[0];
+const main = defineCommand({
+  meta: { name: "tokenmaxxing", version: "0.1.0", description: "Compete on token consumption" },
+  subCommands: { submit, login, status },
+});
 
-function printHelp() {
-  console.log(`
-  tokenmaxxing - CLI
-
-  Usage:
-    tokenmaxxing <command>
-
-  Commands:
-    help      Show this help message
-    version   Show version
-
-  Options:
-    --help, -h     Show help
-    --version, -v  Show version
-`);
-}
-
-function printVersion() {
-  console.log("tokenmaxxing v0.1.0");
-}
-
-switch (command) {
-  case "version":
-  case "--version":
-  case "-v":
-    printVersion();
-    break;
-  case "help":
-  case "--help":
-  case "-h":
-  case undefined:
-  default:
-    printHelp();
-    break;
-}
+runMain(main);
