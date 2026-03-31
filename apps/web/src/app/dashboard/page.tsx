@@ -8,7 +8,7 @@ import { db } from "@/lib/db";
 import { Card, CardContent, CardHeader, CardTitle } from "@tokenmaxxing/ui/components/card";
 import { Badge } from "@tokenmaxxing/ui/components/badge";
 import { Button } from "@tokenmaxxing/ui/components/button";
-import { Separator } from "@tokenmaxxing/ui/components/separator";
+import { ActivityHeatmap } from "@tokenmaxxing/ui/components/heatmap";
 
 export const metadata = { title: "Dashboard - tokenmaxx.ing" };
 
@@ -49,7 +49,7 @@ export default async function DashboardPage() {
     .from(dailyAggregates)
     .where(eq(dailyAggregates.userId, user.id))
     .orderBy(desc(dailyAggregates.date))
-    .limit(14);
+    .limit(365);
 
   return (
     <div className="flex flex-1 flex-col">
@@ -109,6 +109,18 @@ export default async function DashboardPage() {
             </CardContent>
           </Card>
         </div>
+
+        {/* Activity heatmap */}
+        {activity.length > 0 && (
+          <Card className="mb-8">
+            <CardHeader>
+              <CardTitle className="text-sm">Activity</CardTitle>
+            </CardHeader>
+            <CardContent className="overflow-x-auto">
+              <ActivityHeatmap data={activity.map((a) => ({ date: a.date, value: a.tokens }))} />
+            </CardContent>
+          </Card>
+        )}
 
         {/* CLI install */}
         <Card className="mb-8">
