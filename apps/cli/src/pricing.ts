@@ -16,7 +16,7 @@ type ModelPricing = {
 
 let pricingCache: Map<string, ModelPricing> | null = null;
 
-async function loadPricing(): Promise<Map<string, ModelPricing>> {
+export async function loadPricing(): Promise<Map<string, ModelPricing>> {
   if (pricingCache) return pricingCache;
 
   // Try disk cache (Bun.file for consistent API)
@@ -43,12 +43,7 @@ async function loadPricing(): Promise<Map<string, ModelPricing>> {
   return pricingCache;
 }
 
-// Exported for the pricing command
-export { loadPricing, findPricing };
-export type { ModelPricing };
-
-// Try multiple name variations to find pricing
-function findPricing(pricing: Map<string, ModelPricing>, model: string): ModelPricing | null {
+export function findPricing(pricing: Map<string, ModelPricing>, model: string): ModelPricing | null {
   // Direct match
   const direct = pricing.get(model);
   if (direct) return direct;

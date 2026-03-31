@@ -1,7 +1,6 @@
 import { defineCommand } from "citty";
 import pc from "picocolors";
 import { loadPricing, findPricing } from "../pricing";
-import type { ModelPricing } from "../pricing";
 
 function perMillion(costPerToken: number | undefined): string {
   if (!costPerToken) return pc.dim("--");
