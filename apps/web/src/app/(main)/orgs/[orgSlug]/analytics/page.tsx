@@ -127,7 +127,9 @@ export default async function OrgAnalyticsPage({
     byMember.set(r.userId, m);
   }
 
-  const sortedMembers = [...byMember.values()].toSorted((a, b) => b.cost - a.cost);
+  const sortedMembers = [...byMember.values()].toSorted(
+    (a, b) => b.cost - a.cost
+  );
 
   return (
     <main className="mx-auto w-full max-w-4xl px-6 py-8">
