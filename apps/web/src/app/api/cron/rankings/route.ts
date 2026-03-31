@@ -4,11 +4,12 @@ import { inArray } from "drizzle-orm";
 import type { NextRequest } from "next/server";
 
 import { db } from "@/lib/db";
+import { env } from "@/lib/env";
 import { computeAllRankings } from "@/lib/rankings";
 
 export async function GET(req: NextRequest) {
   const authHeader = req.headers.get("authorization");
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+  if (authHeader !== `Bearer ${env.CRON_SECRET}`) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
