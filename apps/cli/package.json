@@ -1,16 +1,20 @@
 {
   "name": "tokenmaxxing",
   "version": "0.1.0",
-  "description": "tokenmaxxing CLI",
+  "description": "Track and compete on AI coding agent token usage across 14+ platforms",
   "type": "module",
+  "license": "MIT",
+  "repository": { "type": "git", "url": "https://github.com/anaclumos/tokenmaxx.ing" },
+  "keywords": ["claude-code", "codex", "gemini", "token-usage", "leaderboard", "ai-coding"],
   "bin": {
     "tokenmaxxing": "./dist/index.js"
   },
   "files": [
     "dist"
   ],
+  "engines": { "bun": ">=1" },
   "scripts": {
-    "build": "bun build ./src/index.ts --outdir ./dist --target node",
+    "build": "bun build ./src/index.ts --outdir ./dist --target bun",
     "dev": "bun run ./src/index.ts"
   },
   "devDependencies": {

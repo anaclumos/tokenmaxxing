@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 import { defineCommand, runMain } from "citty";
 import { submit } from "./commands/submit";
 import { login } from "./commands/login";
