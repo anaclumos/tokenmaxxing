@@ -3,10 +3,13 @@ import { formatTokens } from "@tokenmaxxing/shared/types";
 import { eq, asc, desc, and, count, sum } from "drizzle-orm";
 
 import { db } from "@/lib/db";
+import {
+  parseLeaderboardPeriod,
+  parseLeaderboardSort,
+  parsePage,
+} from "@/lib/search-params";
 
 import { LeaderboardTable } from "./leaderboard/leaderboard-table";
-
-type Sort = "score" | "tokens" | "cost";
 
 const orderByColumn = {
   score: asc(rankings.rank),
@@ -20,17 +23,9 @@ export default async function HomePage({
   searchParams: Promise<{ period?: string; page?: string; sort?: string }>;
 }) {
   const params = await searchParams;
-  const PERIODS = ["daily", "weekly", "monthly", "alltime"] as const;
-  type Period = (typeof PERIODS)[number];
-  const period: Period = PERIODS.includes(params.period as Period)
-    ? (params.period as Period)
-    : "alltime";
-  const page = Math.max(1, Number(params.page ?? 1) || 1);
-  const sort: Sort = (["score", "tokens", "cost"] as const).includes(
-    params.sort as Sort
-  )
-    ? (params.sort as Sort)
-    : "score";
+  const period = parseLeaderboardPeriod(params.period);
+  const page = parsePage(params.page);
+  const sort = parseLeaderboardSort(params.sort);
   const limit = 50;
   const offset = (page - 1) * limit;
 
