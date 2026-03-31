@@ -17,39 +17,33 @@ export async function POST(req: Request) {
     return Response.json({ error: "Invalid payload", details: parsed.error.issues }, { status: 400 });
   }
 
-  let inserted = 0;
-  let skipped = 0;
+  const values = parsed.data.records.map((r) => ({
+    userId,
+    client: r.client,
+    model: r.model,
+    sessionHash: r.sessionHash,
+    timestamp: new Date(r.timestamp),
+    inputTokens: r.tokens.input,
+    outputTokens: r.tokens.output,
+    cacheReadTokens: r.tokens.cacheRead,
+    cacheWriteTokens: r.tokens.cacheWrite,
+    reasoningTokens: r.tokens.reasoning,
+    costUsd: r.costUsd.toFixed(6),
+  }));
 
-  for (const record of parsed.data.records) {
-    try {
-      await db().insert(usageRecords).values({
-        userId,
-        client: record.client,
-        model: record.model,
-        sessionHash: record.sessionHash,
-        timestamp: new Date(record.timestamp),
-        inputTokens: record.tokens.input,
-        outputTokens: record.tokens.output,
-        cacheReadTokens: record.tokens.cacheRead,
-        cacheWriteTokens: record.tokens.cacheWrite,
-        reasoningTokens: record.tokens.reasoning,
-        costUsd: record.costUsd.toFixed(6),
-      });
-      inserted++;
-    } catch (e: unknown) {
-      // Unique constraint violation = duplicate session hash
-      if (e instanceof Error && e.message.includes("unique")) {
-        skipped++;
-      } else {
-        throw e;
-      }
-    }
-  }
+  // Single INSERT ... ON CONFLICT DO NOTHING RETURNING id
+  // Duplicates (by sessionHash) are silently skipped; RETURNING gives us only inserted rows
+  const result = await db()
+    .insert(usageRecords)
+    .values(values)
+    .onConflictDoNothing({ target: usageRecords.sessionHash })
+    .returning({ id: usageRecords.id });
 
-  // Recompute aggregates after responding
+  const inserted = result.length;
+
   if (inserted > 0) {
     after(() => recomputeAggregates(db(), userId));
   }
 
-  return Response.json({ inserted, skipped, total: parsed.data.records.length });
+  return Response.json({ inserted, skipped: values.length - inserted, total: values.length });
 }
