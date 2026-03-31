@@ -1,7 +1,7 @@
 import { eq, desc, and } from "drizzle-orm";
 import { users, dailyAggregates, rankings } from "@tokenmaxxing/db/index";
 import { db } from "@/lib/db";
-import { formatTokens } from "@tokenmaxxing/shared/types";
+import { formatTokens, sumAggregateTokens } from "@tokenmaxxing/shared/types";
 
 export async function GET(
   _req: Request,
@@ -40,7 +40,7 @@ export async function GET(
 
   const activityMap = new Map<string, number>();
   for (const a of activityRows) {
-    activityMap.set(a.date, a.totalInput + a.totalOutput + a.totalCacheRead + a.totalCacheWrite + a.totalReasoning);
+    activityMap.set(a.date, sumAggregateTokens(a));
   }
 
   const svg = renderCard({

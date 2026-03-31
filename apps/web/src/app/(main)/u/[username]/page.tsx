@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import { eq, desc, and } from "drizzle-orm";
 import { users, dailyAggregates, rankings } from "@tokenmaxxing/db/index";
 import { db } from "@/lib/db";
-import { formatTokens } from "@tokenmaxxing/shared/types";
+import { formatTokens, totalTokens, sumAggregateTokens } from "@tokenmaxxing/shared/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@tokenmaxxing/ui/components/card";
 import { Badge } from "@tokenmaxxing/ui/components/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@tokenmaxxing/ui/components/avatar";
@@ -60,11 +60,11 @@ export default async function ProfilePage({ params }: { params: Promise<{ userna
     for (const m of a.modelsUsed) allModels.add(m);
     for (const c of a.clientsUsed) allClients.add(c);
   }
-  const breakdownTotal = breakdown.input + breakdown.output + breakdown.cacheRead + breakdown.cacheWrite + breakdown.reasoning;
+  const breakdownTotal = totalTokens(breakdown);
 
   const activity = activityRows.slice(0, 30).map((a) => ({
     date: a.date,
-    tokens: a.totalInput + a.totalOutput + a.totalCacheRead + a.totalCacheWrite + a.totalReasoning,
+    tokens: sumAggregateTokens(a),
     cost: a.cost,
   }));
 

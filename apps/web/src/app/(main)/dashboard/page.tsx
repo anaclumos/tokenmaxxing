@@ -4,7 +4,7 @@ import Link from "next/link";
 import { eq, desc, and } from "drizzle-orm";
 import { users, dailyAggregates, rankings } from "@tokenmaxxing/db/index";
 import { db } from "@/lib/db";
-import { formatTokens } from "@tokenmaxxing/shared/types";
+import { formatTokens, sumAggregateTokens } from "@tokenmaxxing/shared/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@tokenmaxxing/ui/components/card";
 import { Badge } from "@tokenmaxxing/ui/components/badge";
 import { ActivityHeatmap } from "@tokenmaxxing/ui/components/heatmap";
@@ -49,7 +49,7 @@ export default async function DashboardPage() {
 
   const activity = activityRows.map((a) => ({
     ...a,
-    tokens: a.totalInput + a.totalOutput + a.totalCacheRead + a.totalCacheWrite + a.totalReasoning,
+    tokens: sumAggregateTokens(a),
   }));
 
   // Burn rate projection from last 7 days

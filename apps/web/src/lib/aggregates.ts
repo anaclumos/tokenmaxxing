@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import { dailyAggregates, usageRecords, users } from "@tokenmaxxing/db/index";
 import type { Db } from "@tokenmaxxing/db/index";
+import { sumAggregateTokens } from "@tokenmaxxing/shared/types";
 
 const ONE_DAY_MS = 86_400_000;
 
@@ -113,7 +114,7 @@ export async function recomputeAggregates(db: Db, userId: string) {
   let totalTokens = 0;
   let totalCost = 0;
   for (const d of byDate.values()) {
-    totalTokens += d.totalInput + d.totalOutput + d.totalCacheRead + d.totalCacheWrite + d.totalReasoning;
+    totalTokens += sumAggregateTokens(d);
     totalCost += d.totalCost;
   }
 

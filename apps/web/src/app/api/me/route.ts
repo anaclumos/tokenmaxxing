@@ -2,6 +2,7 @@ import { eq, desc, and } from "drizzle-orm";
 import { users, dailyAggregates, rankings } from "@tokenmaxxing/db/index";
 import { db } from "@/lib/db";
 import { authenticateToken } from "@/lib/auth";
+import { sumAggregateTokens } from "@tokenmaxxing/shared/types";
 
 export async function GET(req: Request) {
   const userId = await authenticateToken(req);
@@ -46,7 +47,7 @@ export async function GET(req: Request) {
 
   const activity = activityRows.map((a) => ({
     date: a.date,
-    tokens: a.totalInput + a.totalOutput + a.totalCacheRead + a.totalCacheWrite + a.totalReasoning,
+    tokens: sumAggregateTokens(a),
     cost: a.cost,
   }));
 

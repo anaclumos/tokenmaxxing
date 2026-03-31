@@ -59,6 +59,17 @@ export function totalTokens(t: TokenBreakdown): number {
   return t.input + t.output + t.cacheRead + t.cacheWrite + t.reasoning;
 }
 
+// Utility: total tokens from daily aggregate fields (totalInput, totalOutput, etc.)
+export function sumAggregateTokens(a: {
+  totalInput: number | null;
+  totalOutput: number | null;
+  totalCacheRead: number | null;
+  totalCacheWrite: number | null;
+  totalReasoning: number | null;
+}): number {
+  return (a.totalInput ?? 0) + (a.totalOutput ?? 0) + (a.totalCacheRead ?? 0) + (a.totalCacheWrite ?? 0) + (a.totalReasoning ?? 0);
+}
+
 // Utility: human-readable token count (2.4B, 150M, 42K)
 export function formatTokens(n: number): string {
   if (n >= 1e9) return `${(n / 1e9).toFixed(1)}B`;

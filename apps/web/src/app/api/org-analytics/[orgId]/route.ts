@@ -3,6 +3,7 @@ import { eq, gte, and, inArray, sum, count } from "drizzle-orm";
 import type { NextRequest } from "next/server";
 import { users, dailyAggregates } from "@tokenmaxxing/db/index";
 import { db } from "@/lib/db";
+import { sumAggregateTokens } from "@tokenmaxxing/shared/types";
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ orgId: string }> }) {
   const { orgId } = await params;
@@ -57,7 +58,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ orgI
   let totalCost = 0;
 
   for (const r of rows) {
-    const tokens = r.totalInput + r.totalOutput + r.totalCacheRead + r.totalCacheWrite + r.totalReasoning;
+    const tokens = sumAggregateTokens(r);
     const cost = Number(r.totalCost);
     totalTokens += tokens;
     totalCost += cost;

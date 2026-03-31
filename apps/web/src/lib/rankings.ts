@@ -1,6 +1,7 @@
 import { eq, gte, and, inArray, sum } from "drizzle-orm";
 import { dailyAggregates, rankings, users } from "@tokenmaxxing/db/index";
 import type { Db } from "@tokenmaxxing/db/index";
+import { sumAggregateTokens } from "@tokenmaxxing/shared/types";
 
 type Period = "daily" | "weekly" | "monthly" | "alltime";
 
@@ -66,7 +67,7 @@ export async function computeRankings(db: Db, leaderboardId: string, period: Per
   // Score and sort
   const scored = userStats
     .map((s) => {
-      const totalTokens = (s.totalInput ?? 0) + (s.totalOutput ?? 0) + (s.totalCacheRead ?? 0) + (s.totalCacheWrite ?? 0) + (s.totalReasoning ?? 0);
+      const totalTokens = sumAggregateTokens(s);
       return {
         userId: s.userId,
         totalTokens,
