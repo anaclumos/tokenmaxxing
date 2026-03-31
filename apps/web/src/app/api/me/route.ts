@@ -1,18 +1,18 @@
-import { auth } from "@clerk/nextjs/server";
 import { eq, desc, sql } from "drizzle-orm";
 import { users, dailyAggregates, rankings } from "@tokenmaxxing/db/index";
 import { db } from "@/lib/db";
+import { authenticateToken } from "@/lib/auth";
 
-export async function GET() {
-  const { userId: clerkId } = await auth();
-  if (!clerkId) {
+export async function GET(req: Request) {
+  const userId = await authenticateToken(req);
+  if (!userId) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const [user] = await db()
     .select()
     .from(users)
-    .where(eq(users.clerkId, clerkId))
+    .where(eq(users.id, userId))
     .limit(1);
 
   if (!user) {
