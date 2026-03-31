@@ -5,6 +5,7 @@ import { SubmitPayload } from "@tokenmaxxing/shared/types";
 import { apiTokens, usageRecords } from "@tokenmaxxing/db/index";
 import { db } from "@/lib/db";
 import { recomputeAggregates } from "@/lib/aggregates";
+import { rateLimit } from "@/lib/rate-limit";
 import { createHash } from "node:crypto";
 
 // Verify Bearer token, return userId
@@ -36,6 +37,11 @@ export async function POST(req: NextRequest) {
   const userId = await authenticate(req);
   if (!userId) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const { ok } = rateLimit(`submit:${userId}`, 100, 60_000);
+  if (!ok) {
+    return Response.json({ error: "Rate limited" }, { status: 429, headers: { "Retry-After": "60" } });
   }
 
   const body = await req.json();
