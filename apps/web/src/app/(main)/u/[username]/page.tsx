@@ -46,6 +46,17 @@ export default async function ProfilePage({ params }: { params: Promise<{ userna
     .orderBy(desc(dailyAggregates.date))
     .limit(30);
 
+  // Aggregate totals for breakdown
+  const breakdown = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, reasoning: 0 };
+  for (const a of activityRows) {
+    breakdown.input += a.totalInput;
+    breakdown.output += a.totalOutput;
+    breakdown.cacheRead += a.totalCacheRead;
+    breakdown.cacheWrite += a.totalCacheWrite;
+    breakdown.reasoning += a.totalReasoning;
+  }
+  const breakdownTotal = breakdown.input + breakdown.output + breakdown.cacheRead + breakdown.cacheWrite + breakdown.reasoning;
+
   const activity = activityRows.map((a) => ({
     date: a.date,
     tokens: a.totalInput + a.totalOutput + a.totalCacheRead + a.totalCacheWrite + a.totalReasoning,
@@ -89,6 +100,32 @@ export default async function ProfilePage({ params }: { params: Promise<{ userna
           <CardContent><span className="text-xl font-bold font-mono">{globalRank ? Number(globalRank.compositeScore).toFixed(0) : "--"}</span></CardContent>
         </Card>
       </div>
+
+      {/* Token breakdown */}
+      {breakdownTotal > 0 && (
+        <div className="mb-8">
+          <h2 className="mb-4 text-lg font-semibold">Token Breakdown</h2>
+          <div className="space-y-3">
+            {([
+              ["Input", breakdown.input],
+              ["Output", breakdown.output],
+              ["Cache Read", breakdown.cacheRead],
+              ["Cache Write", breakdown.cacheWrite],
+              ["Reasoning", breakdown.reasoning],
+            ] as const).filter(([, v]) => v > 0).map(([label, value]) => (
+              <div key={label}>
+                <div className="mb-1 flex justify-between text-sm">
+                  <span className="text-muted-foreground">{label}</span>
+                  <span className="font-mono">{formatTokens(value)} <span className="text-muted-foreground">({((value / breakdownTotal) * 100).toFixed(1)}%)</span></span>
+                </div>
+                <div className="h-2 rounded-full bg-muted">
+                  <div className="h-2 rounded-full bg-foreground" style={{ width: `${(value / breakdownTotal) * 100}%` }} />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Recent activity */}
       <h2 className="mb-4 text-lg font-semibold">Recent Activity</h2>
