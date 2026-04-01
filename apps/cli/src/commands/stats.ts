@@ -40,6 +40,18 @@ export const stats = defineCommand({
       console.log(pc.dim(`  ... and ${summary.byModel.length - 15} more models`))
     }
 
+    if (summary.byProject.length > 0) {
+      console.log(`\n${pc.bold("By Project")}`);
+      for (const [name, stats] of summary.byProject.slice(0, 15)) {
+        console.log(
+          `  ${pc.cyan(name.padEnd(40))} ${formatTokens(stats.tokens).padStart(8)} tokens  $${stats.cost.toFixed(2).padStart(8)}  ${pc.dim(`${stats.sessions} sessions`)}`
+        )
+      }
+      if (summary.byProject.length > 15) {
+        console.log(pc.dim(`  ... and ${summary.byProject.length - 15} more projects`))
+      }
+    }
+
     console.log(`\n${pc.bold("Total")}`);
     console.log(`  Sessions: ${pc.bold(String(records.length))}`)
     console.log(`  Tokens:   ${pc.bold(formatTokens(summary.tokenTotal))}`)

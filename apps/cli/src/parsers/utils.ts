@@ -11,8 +11,11 @@ export async function* readJsonl<T = unknown>(path: string): AsyncGenerator<T> {
   for await (const line of rl) {
     const trimmed = line.trim();
     if (!trimmed) continue;
-    const parsed: T = JSON.parse(trimmed)
-    yield parsed
+    try {
+      yield JSON.parse(trimmed) as T
+    } catch {
+      // Skip malformed JSONL lines (truncated writes, corrupted files)
+    }
   }
 }
 

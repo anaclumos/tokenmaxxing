@@ -40,6 +40,8 @@ export function summarizeUsage({
   let tokenTotal = 0
   let costTotal = 0
 
+  const byProject = new Map<string, UsageSummaryRow>()
+
   for (const record of records) {
     const tokens = totalTokens(record.tokens)
     tokenTotal += tokens
@@ -56,11 +58,20 @@ export function summarizeUsage({
     model.tokens += tokens
     model.cost += record.costUsd
     byModel.set(record.model, model)
+
+    if (record.project) {
+      const proj = byProject.get(record.project) ?? { sessions: 0, tokens: 0, cost: 0 }
+      proj.sessions++
+      proj.tokens += tokens
+      proj.cost += record.costUsd
+      byProject.set(record.project, proj)
+    }
   }
 
   return {
     byClient: [...byClient.entries()].sort((a, b) => b[1].tokens - a[1].tokens),
     byModel: [...byModel.entries()].sort((a, b) => b[1].tokens - a[1].tokens),
+    byProject: [...byProject.entries()].sort((a, b) => b[1].cost - a[1].cost),
     tokenTotal,
     costTotal,
   }
