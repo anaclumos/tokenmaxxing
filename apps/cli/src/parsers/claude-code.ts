@@ -1,5 +1,5 @@
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import { existsSync } from "node:fs";
 import { glob } from "node:fs/promises";
 import type { UsageRecord } from "@tokenmaxxing/shared/types";
@@ -7,6 +7,18 @@ import type { ClientParser } from "./types";
 import { readJsonl, sessionHash } from "./utils";
 
 const CLAUDE_DIR = join(homedir(), ".claude", "projects");
+
+// Extract project name from Claude Code's encoded directory path
+// e.g. "-Users-sc-Developer-myproject" -> "myproject"
+function extractProject(filePath: string): string | undefined {
+  const rel = relative(CLAUDE_DIR, filePath);
+  const projectDir = rel.split("/")[0];
+  if (!projectDir) return undefined;
+  // The directory name is the absolute path with / replaced by -
+  // Take the last meaningful segment as the project name
+  const segments = projectDir.split("-").filter(Boolean);
+  return segments.at(-1);
+}
 
 // Claude Code JSONL entry shape (only fields we care about)
 interface ClaudeEntry {
@@ -44,10 +56,12 @@ export const claudeCode: ClientParser = {
         cacheRead: number;
         cacheWrite: number;
         cost: number;
+        project?: string;
       }
     >();
 
     for await (const file of glob(join(CLAUDE_DIR, "**", "*.jsonl"))) {
+      const project = extractProject(file);
       for await (const entry of readJsonl<ClaudeEntry>(file)) {
         if (entry.type !== "assistant" || !entry.message?.usage) continue;
 
@@ -72,6 +86,7 @@ export const claudeCode: ClientParser = {
             cacheRead: usage.cache_read_input_tokens ?? 0,
             cacheWrite: usage.cache_creation_input_tokens ?? 0,
             cost: entry.costUSD ?? 0,
+            project,
           });
         }
       }
@@ -91,6 +106,7 @@ export const claudeCode: ClientParser = {
           reasoning: 0,
         },
         costUsd: s.cost,
+        project: s.project,
       };
     }
   },

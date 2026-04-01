@@ -33,6 +33,7 @@ export async function POST(req: Request) {
     cacheWriteTokens: r.tokens.cacheWrite,
     reasoningTokens: r.tokens.reasoning,
     costUsd: r.costUsd.toFixed(6),
+    project: r.project ?? null,
   }));
 
   // Single INSERT ... ON CONFLICT DO NOTHING RETURNING id

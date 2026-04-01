@@ -56,6 +56,7 @@ export const usageRecords = pgTable(
     cacheWriteTokens: bigint("cache_write_tokens", { mode: "number" }).notNull(),
     reasoningTokens: bigint("reasoning_tokens", { mode: "number" }).notNull(),
     costUsd: decimal("cost_usd", { precision: 12, scale: 6 }).notNull(),
+    project: text("project"),
     submittedAt: timestamp("submitted_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [

@@ -37,6 +37,7 @@ export const UsageRecord = z.object({
   timestamp: z.iso.datetime(),
   tokens: TokenBreakdown,
   costUsd: z.number().nonnegative(),
+  project: z.string().min(1).optional(),
 });
 export type UsageRecord = z.infer<typeof UsageRecord>;
 
