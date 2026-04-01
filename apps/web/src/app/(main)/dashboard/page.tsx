@@ -98,12 +98,12 @@ export default async function DashboardPage({
   if (selectedClient) {
     const clientRows = await db()
       .select({
-        date: sql<string>`date(${usageRecords.timestamp})`,
+        date: sql<string>`${usageRecords.timestamp}::date`,
         tokens: sql<number>`sum(${usageRecords.inputTokens} + ${usageRecords.outputTokens} + ${usageRecords.cacheReadTokens} + ${usageRecords.cacheWriteTokens} + ${usageRecords.reasoningTokens})`.mapWith(Number),
       })
       .from(usageRecords)
       .where(and(eq(usageRecords.userId, user.id), eq(usageRecords.client, selectedClient)))
-      .groupBy(sql`date(${usageRecords.timestamp})`);
+      .groupBy(sql`${usageRecords.timestamp}::date`);
     clientActivity = clientRows;
   }
 
