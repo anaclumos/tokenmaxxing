@@ -4,7 +4,7 @@ import { existsSync } from "node:fs";
 import { glob } from "node:fs/promises";
 import type { UsageRecord } from "@tokenmaxxing/shared/types";
 import type { ClientParser } from "./types";
-import { readJsonFile, sessionHash } from "./utils";
+import { readJsonFile, sessionHash, projectFromCwd } from "./utils";
 
 const DB_PATH = join(homedir(), ".local", "share", "opencode", "opencode.db");
 const LEGACY_DIR = join(homedir(), ".local", "share", "opencode", "storage", "message");
@@ -23,10 +23,12 @@ export const opencode: ClientParser = {
       const db = new Database(DB_PATH, { readonly: true });
 
       const rows = db.query(`
-        SELECT id, time_created, data FROM message
-        WHERE json_extract(data, '$.role') = 'assistant'
-          AND json_extract(data, '$.tokens') IS NOT NULL
-      `).all() as Array<{ id: string; time_created: number; data: string }>;
+        SELECT m.id, m.time_created, m.data, s.directory
+        FROM message m
+        LEFT JOIN session s ON m.session_id = s.id
+        WHERE json_extract(m.data, '$.role') = 'assistant'
+          AND json_extract(m.data, '$.tokens') IS NOT NULL
+      `).all() as Array<{ id: string; time_created: number; data: string; directory: string | null }>;
 
       for (const row of rows) {
         const d = JSON.parse(row.data) as {
@@ -52,6 +54,7 @@ export const opencode: ClientParser = {
             reasoning: t.reasoning ?? 0,
           },
           costUsd: d.cost ?? 0,
+          project: row.directory ? projectFromCwd(row.directory) : undefined,
         };
       }
 
