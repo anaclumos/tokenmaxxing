@@ -1,5 +1,5 @@
 import { users, dailyAggregates, rankings } from "@tokenmaxxing/db/index";
-import { totalTokens, sumAggregateTokens } from "@tokenmaxxing/shared/types";
+import { sumAggregateTokens } from "@tokenmaxxing/shared/types";
 import { eq, desc, and } from "drizzle-orm";
 
 import { db } from "@/lib/db";
@@ -80,7 +80,6 @@ export async function GET(
     rank: globalRank?.rank ?? null,
     score: globalRank ? Number(globalRank.compositeScore) : null,
     tokens: breakdown,
-    totalTokensBreakdown: totalTokens(breakdown),
     cacheHitRate: cachePool > 0 ? Number(((breakdown.cacheRead / cachePool) * 100).toFixed(1)) : 0,
     models: [...allModels].toSorted(),
     clients: [...allClients].toSorted(),
