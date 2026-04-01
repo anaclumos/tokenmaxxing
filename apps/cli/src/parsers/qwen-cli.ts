@@ -7,6 +7,7 @@ import type { ClientParser } from "./types";
 import { readJsonl, sessionHash } from "./utils";
 
 const QWEN_DIR = join(homedir(), ".qwen", "projects");
+const CHATS_SEG = "/chats/";
 
 interface QwenEntry {
   type?: string;
@@ -25,8 +26,12 @@ export const qwenCli: ClientParser = {
   client: "qwen-cli",
   async detect() { return existsSync(QWEN_DIR); },
   async *parse(): AsyncGenerator<UsageRecord> {
-    const sessions = new Map<string, { model: string; ts: string; input: number; output: number; cached: number; thoughts: number }>();
+    const sessions = new Map<string, { model: string; ts: string; input: number; output: number; cached: number; thoughts: number; project?: string }>();
     for await (const file of glob(join(QWEN_DIR, "**", "chats", "*.jsonl"))) {
+      // Extract project from path: ~/.qwen/projects/<project>/chats/<file>.jsonl
+      const rel = file.slice(QWEN_DIR.length + 1);
+      const chatsIdx = rel.indexOf(CHATS_SEG);
+      const project = chatsIdx > 0 ? rel.slice(0, chatsIdx) : undefined;
       for await (const e of readJsonl<QwenEntry>(file)) {
         const u = e.usageMetadata;
         if (!u) continue;
@@ -41,13 +46,21 @@ export const qwenCli: ClientParser = {
           if (e.model) prev.model = e.model;
           if (e.timestamp) prev.ts = e.timestamp;
         } else {
-          sessions.set(sid, { model: e.model ?? "unknown", ts: e.timestamp ?? "", input, output, cached, thoughts });
+          sessions.set(sid, { model: e.model ?? "unknown", ts: e.timestamp ?? "", input, output, cached, thoughts, project });
         }
       }
     }
     for (const [sid, s] of sessions) {
       if (s.input + s.output === 0) continue;
-      yield { client: "qwen-cli", model: s.model, sessionHash: sessionHash("qwen-cli", sid), timestamp: s.ts || new Date().toISOString(), tokens: { input: s.input, output: s.output, cacheRead: s.cached, cacheWrite: 0, reasoning: s.thoughts }, costUsd: 0 };
+      yield {
+        client: "qwen-cli",
+        model: s.model,
+        sessionHash: sessionHash("qwen-cli", sid),
+        timestamp: s.ts || new Date().toISOString(),
+        tokens: { input: s.input, output: s.output, cacheRead: s.cached, cacheWrite: 0, reasoning: s.thoughts },
+        costUsd: 0,
+        project: s.project,
+      };
     }
   },
 };

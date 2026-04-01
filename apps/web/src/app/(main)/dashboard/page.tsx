@@ -9,7 +9,7 @@ import {
   CardTitle,
 } from "@tokenmaxxing/ui/components/card";
 import { ActivityHeatmap } from "@tokenmaxxing/ui/components/heatmap";
-import { eq, desc, and, sum, count } from "drizzle-orm";
+import { eq, desc, and, sum, count, isNotNull, sql } from "drizzle-orm";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
@@ -34,7 +34,7 @@ export default async function DashboardPage({
 
   if (!user) redirect("/sign-in");
 
-  const [[globalRank], activityRows, modelStats] = await Promise.all([
+  const [[globalRank], activityRows, modelStats, projectStats] = await Promise.all([
     db()
       .select({ rank: rankings.rank })
       .from(rankings)
@@ -69,6 +69,17 @@ export default async function DashboardPage({
       .from(usageRecords)
       .where(eq(usageRecords.userId, user.id))
       .groupBy(usageRecords.model)
+      .orderBy(desc(sum(usageRecords.costUsd))),
+    db()
+      .select({
+        project: usageRecords.project,
+        sessions: count(),
+        totalCost: sum(usageRecords.costUsd).mapWith(Number),
+        totalTokens: sql<number>`sum(${usageRecords.inputTokens} + ${usageRecords.outputTokens} + ${usageRecords.cacheReadTokens} + ${usageRecords.cacheWriteTokens} + ${usageRecords.reasoningTokens})`.mapWith(Number),
+      })
+      .from(usageRecords)
+      .where(and(eq(usageRecords.userId, user.id), isNotNull(usageRecords.project)))
+      .groupBy(usageRecords.project)
       .orderBy(desc(sum(usageRecords.costUsd))),
   ]);
 
@@ -303,6 +314,40 @@ export default async function DashboardPage({
                 Consider using lighter models for simple tasks.
               </p>
             )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Per-project cost breakdown */}
+      {projectStats.length > 0 && (
+        <Card className="mb-8">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm text-muted-foreground">
+              Top Projects by Cost
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {projectStats.slice(0, 8).map((p) => {
+                const pct = totalModelCost > 0 ? ((p.totalCost ?? 0) / totalModelCost) * 100 : 0;
+                return (
+                  <div key={p.project}>
+                    <div className="flex justify-between text-sm">
+                      <span className="font-mono truncate mr-4">{p.project}</span>
+                      <span className="font-mono text-muted-foreground shrink-0">
+                        ${(p.totalCost ?? 0).toFixed(2)} ({formatTokens(p.totalTokens ?? 0)})
+                      </span>
+                    </div>
+                    <div className="mt-1 h-1.5 rounded-full bg-muted">
+                      <div
+                        className="h-1.5 rounded-full bg-foreground"
+                        style={{ width: `${pct}%` }}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </CardContent>
         </Card>
       )}
