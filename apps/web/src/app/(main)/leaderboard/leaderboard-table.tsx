@@ -16,7 +16,6 @@ import {
   TableRow,
 } from "@tokenmaxxing/ui/components/table";
 import { Tabs, TabsList, TabsTrigger } from "@tokenmaxxing/ui/components/tabs";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 type Entry = {
@@ -35,20 +34,25 @@ export function LeaderboardTable({
   period,
   page,
   sort = "score",
+  filter,
 }: {
   entries: Entry[];
   total: number;
   period: string;
   page: number;
   sort?: string;
+  filter?: { client?: string; model?: string };
 }) {
   const router = useRouter();
 
   function nav(overrides: { period?: string; sort?: string; page?: number }) {
-    const p = overrides.period ?? period;
     const s = overrides.sort ?? sort;
     const pg = overrides.page ?? 1;
-    const params = new URLSearchParams({ period: p, sort: s });
+    const params = new URLSearchParams();
+    if (filter?.client) params.set("client", filter.client);
+    if (filter?.model) params.set("model", filter.model);
+    if (!filter) params.set("period", overrides.period ?? period);
+    params.set("sort", s);
     if (pg > 1) params.set("page", String(pg));
     router.push(`/?${params}`);
   }
@@ -56,17 +60,19 @@ export function LeaderboardTable({
   return (
     <div>
       <div className="mb-6 flex flex-wrap items-center gap-4">
-        <Tabs value={period} onValueChange={(v) => nav({ period: v })}>
-          <TabsList>
-            <TabsTrigger value="daily">Daily</TabsTrigger>
-            <TabsTrigger value="weekly">Weekly</TabsTrigger>
-            <TabsTrigger value="monthly">Monthly</TabsTrigger>
-            <TabsTrigger value="alltime">All Time</TabsTrigger>
-          </TabsList>
-        </Tabs>
+        {!filter && (
+          <Tabs value={period} onValueChange={(v) => nav({ period: v })}>
+            <TabsList>
+              <TabsTrigger value="daily">Daily</TabsTrigger>
+              <TabsTrigger value="weekly">Weekly</TabsTrigger>
+              <TabsTrigger value="monthly">Monthly</TabsTrigger>
+              <TabsTrigger value="alltime">All Time</TabsTrigger>
+            </TabsList>
+          </Tabs>
+        )}
         <Tabs value={sort} onValueChange={(v) => nav({ sort: v })}>
           <TabsList>
-            <TabsTrigger value="score">Score</TabsTrigger>
+            {!filter && <TabsTrigger value="score">Score</TabsTrigger>}
             <TabsTrigger value="tokens">Tokens</TabsTrigger>
             <TabsTrigger value="cost">Cost</TabsTrigger>
           </TabsList>
@@ -131,17 +137,13 @@ export function LeaderboardTable({
       {total > 50 && (
         <div className="mt-4 flex justify-center gap-2">
           {page > 1 && (
-            <Link href={`/?period=${period}&sort=${sort}&page=${page - 1}`}>
-              <Badge variant="outline">Previous</Badge>
-            </Link>
+            <Badge variant="outline" className="cursor-pointer" onClick={() => nav({ page: page - 1 })}>Previous</Badge>
           )}
           <span className="text-sm text-muted-foreground">
-            Page {page} of {Math.ceil(total / 50)}
+            Page {page}
           </span>
           {page * 50 < total && (
-            <Link href={`/?period=${period}&sort=${sort}&page=${page + 1}`}>
-              <Badge variant="outline">Next</Badge>
-            </Link>
+            <Badge variant="outline" className="cursor-pointer" onClick={() => nav({ page: page + 1 })}>Next</Badge>
           )}
         </div>
       )}
