@@ -8,16 +8,21 @@ import { readJsonl, sessionHash } from "./utils";
 
 const CLAUDE_DIR = join(homedir(), ".claude", "projects");
 
-// Extract project name from Claude Code's encoded directory path
-// e.g. "-Users-sc-Developer-myproject" -> "myproject"
+// Extract project name from Claude Code's encoded directory path.
+// Directory names encode the full path with / replaced by -, but hyphens
+// in directory names are also -, so we can't reliably decode. Instead,
+// strip the homedir prefix to get a recognizable project identifier.
+// e.g. "-Users-sc-Developer-tokenmaxx-ing" -> "Developer-tokenmaxx-ing"
 function extractProject(filePath: string): string | undefined {
   const rel = relative(CLAUDE_DIR, filePath);
   const projectDir = rel.split("/")[0];
   if (!projectDir) return undefined;
-  // The directory name is the absolute path with / replaced by -
-  // Take the last meaningful segment as the project name
-  const segments = projectDir.split("-").filter(Boolean);
-  return segments.at(-1);
+  // /Users/sc -> -Users-sc, then strip "-Users-sc-" prefix from "-Users-sc-Developer-myproject"
+  const homeEncoded = homedir().replaceAll("/", "-");
+  if (projectDir.startsWith(homeEncoded + "-")) {
+    return projectDir.slice(homeEncoded.length + 1);
+  }
+  return projectDir;
 }
 
 // Claude Code JSONL entry shape (only fields we care about)
