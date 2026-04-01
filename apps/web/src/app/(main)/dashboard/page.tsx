@@ -9,7 +9,7 @@ import {
   CardTitle,
 } from "@tokenmaxxing/ui/components/card";
 import { ActivityHeatmap } from "@tokenmaxxing/ui/components/heatmap";
-import { eq, desc, and, sum, count, isNotNull, sql } from "drizzle-orm";
+import { eq, desc, and, sum, count, isNotNull, sql, gte } from "drizzle-orm";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
@@ -20,7 +20,7 @@ export const metadata = { title: "Dashboard - tokenmaxx.ing" };
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ year?: string; client?: string }>;
+  searchParams: Promise<{ year?: string; client?: string; day?: string }>;
 }) {
   const params = await searchParams;
   const { userId: clerkId } = await auth();
@@ -105,6 +105,39 @@ export default async function DashboardPage({
       .where(and(eq(usageRecords.userId, user.id), eq(usageRecords.client, selectedClient)))
       .groupBy(sql`${usageRecords.timestamp}::date`);
     clientActivity = clientRows;
+  }
+
+  // Day detail breakdown
+  const selectedDay = params.day && /^\d{4}-\d{2}-\d{2}$/.test(params.day) ? params.day : undefined;
+  let dayDetail: { byClient: Array<{ client: string; tokens: number; cost: number; sessions: number }>; byModel: Array<{ model: string; tokens: number; cost: number; sessions: number }> } | null = null;
+  if (selectedDay) {
+    const dayStart = new Date(selectedDay);
+    const dayEnd = new Date(dayStart.getTime() + 86_400_000);
+    const [byClient, byModel] = await Promise.all([
+      db()
+        .select({
+          client: usageRecords.client,
+          tokens: sql<number>`sum(${usageRecords.inputTokens} + ${usageRecords.outputTokens} + ${usageRecords.cacheReadTokens} + ${usageRecords.cacheWriteTokens} + ${usageRecords.reasoningTokens})`.mapWith(Number),
+          cost: sum(usageRecords.costUsd).mapWith(Number),
+          sessions: count(),
+        })
+        .from(usageRecords)
+        .where(and(eq(usageRecords.userId, user.id), gte(usageRecords.timestamp, dayStart), sql`${usageRecords.timestamp} < ${dayEnd}`))
+        .groupBy(usageRecords.client)
+        .orderBy(desc(sum(usageRecords.costUsd))),
+      db()
+        .select({
+          model: usageRecords.model,
+          tokens: sql<number>`sum(${usageRecords.inputTokens} + ${usageRecords.outputTokens} + ${usageRecords.cacheReadTokens} + ${usageRecords.cacheWriteTokens} + ${usageRecords.reasoningTokens})`.mapWith(Number),
+          cost: sum(usageRecords.costUsd).mapWith(Number),
+          sessions: count(),
+        })
+        .from(usageRecords)
+        .where(and(eq(usageRecords.userId, user.id), gte(usageRecords.timestamp, dayStart), sql`${usageRecords.timestamp} < ${dayEnd}`))
+        .groupBy(usageRecords.model)
+        .orderBy(desc(sum(usageRecords.costUsd))),
+    ]);
+    dayDetail = { byClient, byModel };
   }
 
   // Year selector
@@ -427,8 +460,56 @@ export default async function DashboardPage({
             <ActivityHeatmap
               data={heatmapData.map((a) => ({ date: a.date, value: a.tokens }))}
               year={selectedYear}
+              selectedDate={selectedDay}
+              hrefBuilder={(date) => {
+                const p = new URLSearchParams();
+                if (selectedYear) p.set("year", String(selectedYear));
+                if (selectedClient) p.set("client", selectedClient);
+                p.set("day", date);
+                return `/dashboard?${p}`;
+              }}
             />
           </CardContent>
+          {dayDetail && selectedDay && (
+            <CardContent className="border-t pt-4">
+              <div className="mb-3 flex items-center justify-between">
+                <span className="font-mono text-sm font-bold">{selectedDay}</span>
+                <Link href={`/dashboard${selectedYear ? `?year=${selectedYear}` : ""}${selectedClient ? `${selectedYear ? "&" : "?"}client=${selectedClient}` : ""}`} className="text-xs text-muted-foreground hover:text-foreground">
+                  Dismiss
+                </Link>
+              </div>
+              {dayDetail.byClient.length > 0 && (
+                <div className="mb-3">
+                  <span className="text-xs text-muted-foreground">By Client</span>
+                  <div className="mt-1 space-y-1">
+                    {dayDetail.byClient.map((c) => (
+                      <div key={c.client} className="flex justify-between text-sm">
+                        <span className="font-mono">{c.client}</span>
+                        <span className="font-mono text-muted-foreground">
+                          {formatTokens(c.tokens)} / ${(c.cost ?? 0).toFixed(2)} / {c.sessions}s
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {dayDetail.byModel.length > 0 && (
+                <div>
+                  <span className="text-xs text-muted-foreground">By Model</span>
+                  <div className="mt-1 space-y-1">
+                    {dayDetail.byModel.map((m) => (
+                      <div key={m.model} className="flex justify-between text-sm">
+                        <span className="font-mono truncate mr-4">{m.model}</span>
+                        <span className="font-mono text-muted-foreground shrink-0">
+                          {formatTokens(m.tokens)} / ${(m.cost ?? 0).toFixed(2)} / {m.sessions}s
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          )}
         </Card>
       )}
 

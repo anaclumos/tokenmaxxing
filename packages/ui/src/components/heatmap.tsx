@@ -42,7 +42,12 @@ function buildGrid(year?: number) {
   return { cells, weeks };
 }
 
-export function ActivityHeatmap({ data, year }: { data: DayData[]; year?: number }) {
+export function ActivityHeatmap({ data, year, hrefBuilder, selectedDate }: {
+  data: DayData[];
+  year?: number;
+  hrefBuilder?: (date: string) => string;
+  selectedDate?: string;
+}) {
   const dataMap = new Map(data.map((d) => [d.date, d.value]));
   const max = Math.max(1, ...data.map((d) => d.value));
 
@@ -58,18 +63,26 @@ export function ActivityHeatmap({ data, year }: { data: DayData[]; year?: number
       {cells.map((c) => {
         const key = c.date.toISOString().slice(0, 10);
         const value = dataMap.get(key) ?? 0;
-        return (
+        const isSelected = key === selectedDate;
+        const cell = (
           <rect
-            key={key}
             x={c.col * (cellSize + gap)}
             y={c.row * (cellSize + gap)}
             width={cellSize}
             height={cellSize}
             rx={2}
             fill={getColor(value, max)}
+            stroke={isSelected ? "var(--foreground)" : "none"}
+            strokeWidth={isSelected ? 1.5 : 0}
           >
             <title>{`${key}: ${value.toLocaleString()} tokens`}</title>
           </rect>
+        );
+        if (!hrefBuilder) return <g key={key}>{cell}</g>;
+        return (
+          <a key={key} href={hrefBuilder(key)} style={{ cursor: "pointer" }}>
+            {cell}
+          </a>
         );
       })}
     </svg>
