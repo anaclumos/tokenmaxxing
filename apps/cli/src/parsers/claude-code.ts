@@ -1,18 +1,12 @@
 import { homedir } from "node:os";
-import { basename, join, relative } from "node:path";
+import { join } from "node:path";
 import { existsSync } from "node:fs";
 import { glob } from "node:fs/promises";
 import type { UsageRecord } from "@tokenmaxxing/shared/types";
 import type { ClientParser } from "./types";
-import { readJsonl, sessionHash } from "./utils";
+import { readJsonl, sessionHash, projectFromCwd } from "./utils";
 
 const CLAUDE_DIR = join(homedir(), ".claude", "projects");
-
-function projectFromCwd(cwd: string): string {
-  const home = homedir();
-  const rel = cwd.startsWith(home) ? relative(home, cwd) : cwd;
-  return basename(rel) || rel;
-}
 
 // Claude Code JSONL entry shape (only fields we care about)
 interface ClaudeEntry {

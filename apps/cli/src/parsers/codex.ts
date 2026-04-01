@@ -1,10 +1,10 @@
 import { homedir } from "node:os";
-import { basename, join, relative } from "node:path";
+import { join } from "node:path";
 import { existsSync } from "node:fs";
 import { glob } from "node:fs/promises";
 import type { UsageRecord } from "@tokenmaxxing/shared/types";
 import type { ClientParser } from "./types";
-import { readJsonl, sessionHash } from "./utils";
+import { readJsonl, sessionHash, projectFromCwd } from "./utils";
 
 const CODEX_DIRS = [
   join(homedir(), ".codex", "sessions"),
@@ -30,11 +30,6 @@ interface CodexEntry {
   };
 }
 
-function projectFromCwd(cwd: string): string {
-  const home = homedir();
-  const rel = cwd.startsWith(home) ? relative(home, cwd) : cwd;
-  return basename(rel) || rel;
-}
 
 export const codex: ClientParser = {
   client: "codex",
