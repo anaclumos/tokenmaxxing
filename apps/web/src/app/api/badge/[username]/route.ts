@@ -1,6 +1,6 @@
-import { users, rankings } from "@tokenmaxxing/db/index";
+import { users, rankings, dailyAggregates } from "@tokenmaxxing/db/index";
 import { formatTokens } from "@tokenmaxxing/shared/types";
-import { eq, and } from "drizzle-orm";
+import { eq, and, sum } from "drizzle-orm";
 
 import { db } from "@/lib/db";
 
@@ -10,7 +10,7 @@ export async function GET(
 ) {
   const { username } = await params;
   const { searchParams } = new URL(req.url);
-  const style = searchParams.get("style") ?? "tokens"; // tokens | cost | rank | streak
+  const style = searchParams.get("style") ?? "tokens"; // tokens | cost | rank | streak | cache
 
   const [user] = await db()
     .select({
@@ -60,6 +60,20 @@ export async function GET(
       .limit(1);
     message = rank ? `#${rank.rank}` : "unranked";
     color = rank ? "brightgreen" : "lightgrey";
+  } else if (style === "cache") {
+    const [agg] = await db()
+      .select({
+        totalInput: sum(dailyAggregates.totalInput).mapWith(Number),
+        totalCacheRead: sum(dailyAggregates.totalCacheRead).mapWith(Number),
+      })
+      .from(dailyAggregates)
+      .where(eq(dailyAggregates.userId, user.id));
+    const input = agg?.totalInput ?? 0;
+    const cacheRead = agg?.totalCacheRead ?? 0;
+    const pool = input + cacheRead;
+    const rate = pool > 0 ? (cacheRead / pool) * 100 : 0;
+    message = `${rate.toFixed(0)}% cache hit`;
+    color = rate >= 50 ? "brightgreen" : rate >= 25 ? "yellow" : "orange";
   } else {
     message = `${formatTokens(user.totalTokens)} tokens`;
     color = "brightgreen";
