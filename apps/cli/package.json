@@ -15,7 +15,8 @@
   "engines": { "bun": ">=1" },
   "scripts": {
     "build": "bun build ./src/index.ts --outdir ./dist --target bun",
-    "dev": "bun run ./src/index.ts"
+    "dev": "bun run ./src/index.ts",
+    "test": "bun test"
   },
   "devDependencies": {
     "@types/bun": "latest"

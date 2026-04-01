@@ -17,7 +17,12 @@ import { db } from "@/lib/db";
 
 export const metadata = { title: "Dashboard - tokenmaxx.ing" };
 
-export default async function DashboardPage() {
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ year?: string }>;
+}) {
+  const params = await searchParams;
   const { userId: clerkId } = await auth();
   if (!clerkId) redirect("/sign-in");
 
@@ -54,14 +59,20 @@ export default async function DashboardPage() {
       })
       .from(dailyAggregates)
       .where(eq(dailyAggregates.userId, user.id))
-      .orderBy(desc(dailyAggregates.date))
-      .limit(365),
+      .orderBy(desc(dailyAggregates.date)),
   ]);
 
   const activity = activityRows.map((a) => ({
     ...a,
     tokens: sumAggregateTokens(a),
   }));
+
+  // Year selector
+  const availableYears = [...new Set(activityRows.map((a) => Number(a.date.slice(0, 4))))].toSorted((a, b) => b - a);
+  const selectedYear = params.year ? Number(params.year) : undefined;
+  const heatmapData = selectedYear
+    ? activity.filter((a) => a.date.startsWith(String(selectedYear)))
+    : activity;
 
   // Single pass: accumulate cost and cache stats by time bucket
   const now = new Date();
@@ -238,11 +249,33 @@ export default async function DashboardPage() {
       {activity.length > 0 && (
         <Card className="mb-8">
           <CardHeader>
-            <CardTitle className="text-sm">Activity</CardTitle>
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm">Activity</CardTitle>
+              {availableYears.length > 1 && (
+                <div className="flex gap-1">
+                  <Link
+                    href="/dashboard"
+                    className={`rounded px-2 py-1 text-xs font-mono ${!selectedYear ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                  >
+                    Recent
+                  </Link>
+                  {availableYears.map((y) => (
+                    <Link
+                      key={y}
+                      href={`/dashboard?year=${y}`}
+                      className={`rounded px-2 py-1 text-xs font-mono ${selectedYear === y ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                    >
+                      {y}
+                    </Link>
+                  ))}
+                </div>
+              )}
+            </div>
           </CardHeader>
           <CardContent className="overflow-x-auto">
             <ActivityHeatmap
-              data={activity.map((a) => ({ date: a.date, value: a.tokens }))}
+              data={heatmapData.map((a) => ({ date: a.date, value: a.tokens }))}
+              year={selectedYear}
             />
           </CardContent>
         </Card>

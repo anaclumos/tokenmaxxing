@@ -18,6 +18,7 @@ import {
 } from "@tokenmaxxing/ui/components/card";
 import { ActivityHeatmap } from "@tokenmaxxing/ui/components/heatmap";
 import { eq, desc, and } from "drizzle-orm";
+import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { db } from "@/lib/db";
@@ -35,10 +36,12 @@ export async function generateMetadata({
 
 export default async function ProfilePage({
   params,
+  searchParams,
 }: {
   params: Promise<{ username: string }>;
+  searchParams: Promise<{ year?: string }>;
 }) {
-  const { username } = await params;
+  const [{ username }, query] = await Promise.all([params, searchParams]);
 
   const [user] = await db()
     .select()
@@ -74,8 +77,7 @@ export default async function ProfilePage({
       })
       .from(dailyAggregates)
       .where(eq(dailyAggregates.userId, user.id))
-      .orderBy(desc(dailyAggregates.date))
-      .limit(365),
+      .orderBy(desc(dailyAggregates.date)),
   ]);
 
   // Aggregate ALL-TIME totals for breakdown (matches user.totalTokens)
@@ -108,6 +110,13 @@ export default async function ProfilePage({
     tokens: sumAggregateTokens(a),
     cost: a.cost,
   }));
+
+  // Year selector
+  const availableYears = [...new Set(activityRows.map((a) => Number(a.date.slice(0, 4))))].toSorted((a, b) => b - a);
+  const selectedYear = query.year ? Number(query.year) : undefined;
+  const heatmapData = selectedYear
+    ? enriched.filter((a) => a.date.startsWith(String(selectedYear)))
+    : enriched;
 
   return (
     <main className="mx-auto w-full max-w-3xl px-6 py-8">
@@ -292,10 +301,32 @@ export default async function ProfilePage({
       {/* Activity heatmap */}
       {enriched.length > 0 && (
         <div className="mb-8">
-          <h2 className="mb-4 text-lg font-semibold">Activity</h2>
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="text-lg font-semibold">Activity</h2>
+            {availableYears.length > 1 && (
+              <div className="flex gap-1">
+                <Link
+                  href={`/u/${username}`}
+                  className={`rounded px-2 py-1 text-xs font-mono ${!selectedYear ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                >
+                  Recent
+                </Link>
+                {availableYears.map((y) => (
+                  <Link
+                    key={y}
+                    href={`/u/${username}?year=${y}`}
+                    className={`rounded px-2 py-1 text-xs font-mono ${selectedYear === y ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                  >
+                    {y}
+                  </Link>
+                ))}
+              </div>
+            )}
+          </div>
           <div className="overflow-x-auto">
             <ActivityHeatmap
-              data={enriched.map((a) => ({ date: a.date, value: a.tokens }))}
+              data={heatmapData.map((a) => ({ date: a.date, value: a.tokens }))}
+              year={selectedYear}
             />
           </div>
         </div>
