@@ -42,6 +42,14 @@ export const submit = defineCommand({
         `  ${pc.cyan(name.padEnd(16))} ${formatTokens(stats.tokens).padStart(8)} tokens  $${stats.cost.toFixed(2).padStart(8)}  ${pc.dim(`${stats.sessions} sessions`)}`
       )
     }
+    if (summary.byProject.length > 0) {
+      console.log(pc.dim(`\n  Top projects by cost:`))
+      for (const [name, stats] of summary.byProject.slice(0, 5)) {
+        console.log(
+          `  ${pc.dim(name.padEnd(40))} $${stats.cost.toFixed(2).padStart(8)}`
+        )
+      }
+    }
     console.log(
       `\n  ${pc.bold("Total")}           ${formatTokens(summary.tokenTotal).padStart(8)} tokens  $${summary.costTotal.toFixed(2).padStart(8)}`
     )
