@@ -22,6 +22,8 @@ import { notFound } from "next/navigation";
 
 import { db } from "@/lib/db";
 
+import { ShareButton } from "./share-button";
+
 export async function generateMetadata({
   params,
 }: {
@@ -124,6 +126,13 @@ export default async function ProfilePage({
               Rank #{globalRank.rank}
             </Badge>
           )}
+        </div>
+        <div className="ml-auto">
+          <ShareButton
+            username={user.username}
+            tokens={formatTokens(user.totalTokens)}
+            cost={Number(user.totalCost).toFixed(2)}
+          />
         </div>
       </div>
 
