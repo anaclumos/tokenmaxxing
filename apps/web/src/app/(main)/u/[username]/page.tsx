@@ -95,6 +95,10 @@ export default async function ProfilePage({
   }
   const breakdownTotal = totalTokens(breakdown);
 
+  // Cache efficiency
+  const cachePool = breakdown.input + breakdown.cacheRead;
+  const cacheHitRate = cachePool > 0 ? (breakdown.cacheRead / cachePool) * 100 : 0;
+
   const activity = activityRows.slice(0, 30).map((a) => ({
     date: a.date,
     tokens: sumAggregateTokens(a),
@@ -207,6 +211,31 @@ export default async function ProfilePage({
                   </div>
                 </div>
               ))}
+          </div>
+        </div>
+      )}
+
+      {/* Cache efficiency */}
+      {cachePool > 0 && (
+        <div className="mb-8">
+          <h2 className="mb-4 text-lg font-semibold">Cache Efficiency</h2>
+          <div className="flex items-baseline gap-3 mb-3">
+            <span className="text-2xl font-bold font-mono">
+              {cacheHitRate.toFixed(1)}%
+            </span>
+            <span className="text-sm text-muted-foreground">
+              of input tokens served from cache
+            </span>
+          </div>
+          <div className="h-2 rounded-full bg-muted">
+            <div
+              className="h-2 rounded-full bg-green-500"
+              style={{ width: `${Math.min(cacheHitRate, 100)}%` }}
+            />
+          </div>
+          <div className="mt-2 flex justify-between text-xs text-muted-foreground">
+            <span>{formatTokens(breakdown.cacheRead)} cache hits</span>
+            <span>{formatTokens(breakdown.input)} uncached input</span>
           </div>
         </div>
       )}

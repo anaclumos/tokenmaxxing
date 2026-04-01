@@ -86,6 +86,31 @@ export default async function DashboardPage() {
   const projectedMonthly = dailyRate * daysInMonth;
   const trend = prevCost > 0 ? ((recentCost - prevCost) / prevCost) * 100 : 0;
 
+  // Cache efficiency: cacheRead / (input + cacheRead)
+  const totalInput = activityRows.reduce((s, a) => s + a.totalInput, 0);
+  const totalCacheRead = activityRows.reduce((s, a) => s + a.totalCacheRead, 0);
+  const cachePool = totalInput + totalCacheRead;
+  const cacheHitRate = cachePool > 0 ? (totalCacheRead / cachePool) * 100 : 0;
+
+  const recentInput = activityRows
+    .filter((a) => a.date >= sevenDaysAgo)
+    .reduce((s, a) => s + a.totalInput, 0);
+  const recentCacheRead = activityRows
+    .filter((a) => a.date >= sevenDaysAgo)
+    .reduce((s, a) => s + a.totalCacheRead, 0);
+  const recentPool = recentInput + recentCacheRead;
+  const recentCacheRate = recentPool > 0 ? (recentCacheRead / recentPool) * 100 : 0;
+
+  const prevInput = activityRows
+    .filter((a) => a.date >= fourteenDaysAgo && a.date < sevenDaysAgo)
+    .reduce((s, a) => s + a.totalInput, 0);
+  const prevCacheRead = activityRows
+    .filter((a) => a.date >= fourteenDaysAgo && a.date < sevenDaysAgo)
+    .reduce((s, a) => s + a.totalCacheRead, 0);
+  const prevPool = prevInput + prevCacheRead;
+  const prevCacheRate = prevPool > 0 ? (prevCacheRead / prevPool) * 100 : 0;
+  const cacheTrend = prevPool > 0 ? recentCacheRate - prevCacheRate : 0;
+
   return (
     <main className="mx-auto w-full max-w-4xl px-6 py-8">
       <h1 className="mb-6 text-3xl font-bold tracking-tight">Dashboard</h1>
@@ -170,6 +195,47 @@ export default async function DashboardPage() {
             <p className="mt-1 text-xs text-muted-foreground">
               Based on ${recentCost.toFixed(2)} spent in last 7 days
             </p>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Cache efficiency */}
+      {cachePool > 0 && (
+        <Card className="mb-8">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm text-muted-foreground">
+              Cache Efficiency
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-baseline gap-3">
+              <span className="text-2xl font-bold font-mono">
+                {cacheHitRate.toFixed(1)}%
+              </span>
+              {prevPool > 0 && (
+                <span
+                  className={`text-sm font-mono ${cacheTrend > 0 ? "text-green-400" : cacheTrend < 0 ? "text-red-400" : "text-muted-foreground"}`}
+                >
+                  {cacheTrend > 0 ? "+" : ""}
+                  {cacheTrend.toFixed(1)}pp vs prev 7d
+                </span>
+              )}
+            </div>
+            <div className="mt-3 h-2 rounded-full bg-muted">
+              <div
+                className="h-2 rounded-full bg-green-500"
+                style={{ width: `${Math.min(cacheHitRate, 100)}%` }}
+              />
+            </div>
+            <div className="mt-2 flex justify-between text-xs text-muted-foreground">
+              <span>{formatTokens(totalCacheRead)} cache hits</span>
+              <span>{formatTokens(totalInput)} uncached input</span>
+            </div>
+            {recentPool > 0 && (
+              <p className="mt-1 text-xs text-muted-foreground">
+                Last 7 days: {recentCacheRate.toFixed(1)}% hit rate
+              </p>
+            )}
           </CardContent>
         </Card>
       )}
