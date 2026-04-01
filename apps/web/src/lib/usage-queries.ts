@@ -3,7 +3,7 @@ import { eq, and, gte, desc, sum, count, sql } from "drizzle-orm";
 
 import { db } from "@/lib/db";
 
-const TOKEN_SUM = sql<number>`sum(${usageRecords.inputTokens} + ${usageRecords.outputTokens} + ${usageRecords.cacheReadTokens} + ${usageRecords.cacheWriteTokens} + ${usageRecords.reasoningTokens})`;
+export const TOKEN_SUM = sql<number>`sum(${usageRecords.inputTokens} + ${usageRecords.outputTokens} + ${usageRecords.cacheReadTokens} + ${usageRecords.cacheWriteTokens} + ${usageRecords.reasoningTokens})`;
 
 export type BreakdownRow = { tokens: number; cost: number; sessions: number };
 

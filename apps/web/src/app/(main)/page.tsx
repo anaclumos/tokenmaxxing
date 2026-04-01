@@ -1,7 +1,6 @@
 import { rankings, users, usageRecords } from "@tokenmaxxing/db/index";
-import { formatTokens } from "@tokenmaxxing/shared/types";
-import { SupportedClient } from "@tokenmaxxing/shared/types";
-import { eq, asc, desc, and, count, sum, sql, countDistinct } from "drizzle-orm";
+import { formatTokens, SupportedClient } from "@tokenmaxxing/shared/types";
+import { eq, asc, desc, and, count, sum, countDistinct } from "drizzle-orm";
 import Link from "next/link";
 
 import { db } from "@/lib/db";
@@ -10,6 +9,7 @@ import {
   parseLeaderboardSort,
   parsePage,
 } from "@/lib/search-params";
+import { TOKEN_SUM } from "@/lib/usage-queries";
 
 import { LeaderboardTable } from "./leaderboard/leaderboard-table";
 
@@ -18,8 +18,6 @@ const orderByColumn = {
   tokens: desc(rankings.totalTokens),
   cost: desc(rankings.totalCost),
 } as const;
-
-const TOKEN_SUM = sql<number>`sum(${usageRecords.inputTokens} + ${usageRecords.outputTokens} + ${usageRecords.cacheReadTokens} + ${usageRecords.cacheWriteTokens} + ${usageRecords.reasoningTokens})`;
 
 export default async function HomePage({
   searchParams,

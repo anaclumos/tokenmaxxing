@@ -1,6 +1,6 @@
 import { rankings, users, usageRecords } from "@tokenmaxxing/db/index";
 import { SupportedClient } from "@tokenmaxxing/shared/types";
-import { eq, asc, desc, and, count, sum, sql } from "drizzle-orm";
+import { eq, asc, desc, and, count, sum } from "drizzle-orm";
 
 import { db } from "@/lib/db";
 import {
@@ -8,14 +8,13 @@ import {
   parseLeaderboardSort,
   parsePage,
 } from "@/lib/search-params";
+import { TOKEN_SUM } from "@/lib/usage-queries";
 
 const orderByColumn = {
   score: asc(rankings.rank),
   tokens: desc(rankings.totalTokens),
   cost: desc(rankings.totalCost),
 } as const;
-
-const TOKEN_SUM = sql<number>`sum(${usageRecords.inputTokens} + ${usageRecords.outputTokens} + ${usageRecords.cacheReadTokens} + ${usageRecords.cacheWriteTokens} + ${usageRecords.reasoningTokens})`;
 
 export async function GET(req: Request) {
   const url = new URL(req.url);
