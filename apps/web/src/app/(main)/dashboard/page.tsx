@@ -1,5 +1,5 @@
 import { auth } from "@clerk/nextjs/server";
-import { users, dailyAggregates, rankings } from "@tokenmaxxing/db/index";
+import { users, dailyAggregates, rankings, usageRecords } from "@tokenmaxxing/db/index";
 import { formatTokens, sumAggregateTokens } from "@tokenmaxxing/shared/types";
 import { Badge } from "@tokenmaxxing/ui/components/badge";
 import {
@@ -9,7 +9,7 @@ import {
   CardTitle,
 } from "@tokenmaxxing/ui/components/card";
 import { ActivityHeatmap } from "@tokenmaxxing/ui/components/heatmap";
-import { eq, desc, and } from "drizzle-orm";
+import { eq, desc, and, sum, count } from "drizzle-orm";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
@@ -34,7 +34,7 @@ export default async function DashboardPage({
 
   if (!user) redirect("/sign-in");
 
-  const [[globalRank], activityRows] = await Promise.all([
+  const [[globalRank], activityRows, modelStats] = await Promise.all([
     db()
       .select({ rank: rankings.rank })
       .from(rankings)
@@ -60,6 +60,16 @@ export default async function DashboardPage({
       .from(dailyAggregates)
       .where(eq(dailyAggregates.userId, user.id))
       .orderBy(desc(dailyAggregates.date)),
+    db()
+      .select({
+        model: usageRecords.model,
+        sessions: count(),
+        totalCost: sum(usageRecords.costUsd).mapWith(Number),
+      })
+      .from(usageRecords)
+      .where(eq(usageRecords.userId, user.id))
+      .groupBy(usageRecords.model)
+      .orderBy(desc(sum(usageRecords.costUsd))),
   ]);
 
   const activity = activityRows.map((a) => ({
@@ -106,6 +116,14 @@ export default async function DashboardPage({
   const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
   const projectedMonthly = dailyRate * daysInMonth;
   const trend = prevCost > 0 ? ((recentCost - prevCost) / prevCost) * 100 : 0;
+
+  // Model efficiency analysis
+  const totalModelCost = modelStats.reduce((s, m) => s + (m.totalCost ?? 0), 0);
+  const expensivePatterns = ["opus", "gpt-5", "o1-", "o3-"];
+  const expensiveCost = modelStats
+    .filter((m) => expensivePatterns.some((p) => m.model.toLowerCase().includes(p)))
+    .reduce((s, m) => s + (m.totalCost ?? 0), 0);
+  const expensiveRatio = totalModelCost > 0 ? (expensiveCost / totalModelCost) * 100 : 0;
 
   // Cache efficiency: cacheRead / (input + cacheRead)
   const cachePool = totalInput + totalCacheRead;
@@ -239,6 +257,46 @@ export default async function DashboardPage({
             {recentPool > 0 && (
               <p className="mt-1 text-xs text-muted-foreground">
                 Last 7 days: {recentCacheRate.toFixed(1)}% hit rate
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Model efficiency */}
+      {modelStats.length > 0 && (
+        <Card className="mb-8">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm text-muted-foreground">
+              Top Models by Cost
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {modelStats.slice(0, 5).map((m) => {
+                const pct = totalModelCost > 0 ? ((m.totalCost ?? 0) / totalModelCost) * 100 : 0;
+                return (
+                  <div key={m.model}>
+                    <div className="flex justify-between text-sm">
+                      <span className="font-mono truncate mr-4">{m.model}</span>
+                      <span className="font-mono text-muted-foreground shrink-0">
+                        ${(m.totalCost ?? 0).toFixed(2)} ({pct.toFixed(0)}%)
+                      </span>
+                    </div>
+                    <div className="mt-1 h-1.5 rounded-full bg-muted">
+                      <div
+                        className="h-1.5 rounded-full bg-foreground"
+                        style={{ width: `${pct}%` }}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            {expensiveRatio > 60 && (
+              <p className="mt-4 text-xs text-muted-foreground">
+                {expensiveRatio.toFixed(0)}% of your spend goes to frontier models.
+                Consider using lighter models for simple tasks.
               </p>
             )}
           </CardContent>
