@@ -119,9 +119,13 @@ export default async function DashboardPage({
 
   // Model efficiency analysis
   const totalModelCost = modelStats.reduce((s, m) => s + (m.totalCost ?? 0), 0);
-  const expensivePatterns = ["opus", "gpt-5", "o1-", "o3-"];
+  const isExpensiveModel = (name: string) => {
+    const lower = name.toLowerCase();
+    return lower.includes("opus") || lower.includes("gpt-5") ||
+      lower.startsWith("o1") || lower.startsWith("o3");
+  };
   const expensiveCost = modelStats
-    .filter((m) => expensivePatterns.some((p) => m.model.toLowerCase().includes(p)))
+    .filter((m) => isExpensiveModel(m.model))
     .reduce((s, m) => s + (m.totalCost ?? 0), 0);
   const expensiveRatio = totalModelCost > 0 ? (expensiveCost / totalModelCost) * 100 : 0;
 
