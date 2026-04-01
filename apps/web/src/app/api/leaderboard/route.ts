@@ -1,5 +1,6 @@
-import { rankings, users } from "@tokenmaxxing/db/index";
-import { eq, asc, desc, and, count, sum } from "drizzle-orm";
+import { rankings, users, usageRecords } from "@tokenmaxxing/db/index";
+import { SupportedClient } from "@tokenmaxxing/shared/types";
+import { eq, asc, desc, and, count, sum, sql } from "drizzle-orm";
 
 import { db } from "@/lib/db";
 import {
@@ -14,6 +15,8 @@ const orderByColumn = {
   cost: desc(rankings.totalCost),
 } as const;
 
+const TOKEN_SUM = sql<number>`sum(${usageRecords.inputTokens} + ${usageRecords.outputTokens} + ${usageRecords.cacheReadTokens} + ${usageRecords.cacheWriteTokens} + ${usageRecords.reasoningTokens})`;
+
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const period = parseLeaderboardPeriod(url.searchParams.get("period") ?? undefined);
@@ -22,13 +25,58 @@ export async function GET(req: Request) {
   const limit = 50;
   const offset = (page - 1) * limit;
 
+  const clientFilter = url.searchParams.get("client");
+  const modelFilter = url.searchParams.get("model");
+  const hasFilter = (clientFilter && SupportedClient.safeParse(clientFilter).success) || modelFilter;
+
+  if (hasFilter) {
+    const conditions = [eq(users.privacyMode, false)];
+    if (clientFilter && SupportedClient.safeParse(clientFilter).success) conditions.push(eq(usageRecords.client, clientFilter));
+    if (modelFilter) conditions.push(eq(usageRecords.model, modelFilter));
+
+    const entries = await db()
+      .select({
+        username: users.username,
+        totalTokens: TOKEN_SUM.mapWith(Number),
+        totalCost: sum(usageRecords.costUsd).mapWith(Number),
+        sessions: count(),
+        streak: users.currentStreak,
+      })
+      .from(usageRecords)
+      .innerJoin(users, eq(usageRecords.userId, users.id))
+      .where(and(...conditions))
+      .groupBy(users.id, users.username, users.currentStreak)
+      .orderBy(sort === "cost" ? desc(sum(usageRecords.costUsd)) : desc(TOKEN_SUM))
+      .limit(limit)
+      .offset(offset);
+
+    return Response.json({
+      filter: { client: clientFilter, model: modelFilter },
+      sort: sort === "score" ? "tokens" : sort,
+      page,
+      entries: entries.map((e, i) => ({
+        rank: offset + i + 1,
+        username: e.username,
+        totalTokens: e.totalTokens ?? 0,
+        totalCost: e.totalCost ?? 0,
+        sessions: e.sessions,
+        streak: e.streak,
+      })),
+    }, {
+      headers: {
+        "Cache-Control": "public, max-age=60, s-maxage=60",
+        "Access-Control-Allow-Origin": "*",
+      },
+    });
+  }
+
   const where = and(
     eq(rankings.leaderboardId, "global"),
     eq(rankings.period, period),
     eq(users.privacyMode, false)
   );
 
-  const [entries, [countRow], [globalStats]] = await Promise.all([
+  const [entries, [countRow]] = await Promise.all([
     db()
       .select({
         rank: rankings.rank,
@@ -49,23 +97,7 @@ export async function GET(req: Request) {
       .from(rankings)
       .innerJoin(users, eq(rankings.userId, users.id))
       .where(where),
-    db()
-      .select({
-        totalUsers: count(),
-        totalTokens: sum(users.totalTokens).mapWith(Number),
-        totalCost: sum(users.totalCost).mapWith(Number),
-      })
-      .from(users),
   ]);
-
-  const numbered = entries.map((e, i) => ({
-    rank: sort === "score" ? e.rank : offset + i + 1,
-    username: e.username,
-    totalTokens: e.totalTokens,
-    totalCost: Number(e.totalCost),
-    compositeScore: Number(e.compositeScore),
-    streak: e.streak,
-  }));
 
   return Response.json({
     period,
@@ -73,12 +105,14 @@ export async function GET(req: Request) {
     page,
     totalEntries: countRow?.count ?? 0,
     totalPages: Math.ceil((countRow?.count ?? 0) / limit),
-    global: {
-      totalUsers: globalStats.totalUsers,
-      totalTokens: globalStats.totalTokens ?? 0,
-      totalCost: globalStats.totalCost ?? 0,
-    },
-    entries: numbered,
+    entries: entries.map((e, i) => ({
+      rank: sort === "score" ? e.rank : offset + i + 1,
+      username: e.username,
+      totalTokens: e.totalTokens,
+      totalCost: Number(e.totalCost),
+      compositeScore: Number(e.compositeScore),
+      streak: e.streak,
+    })),
   }, {
     headers: {
       "Cache-Control": "public, max-age=60, s-maxage=60",

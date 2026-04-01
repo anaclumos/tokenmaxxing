@@ -12,11 +12,13 @@ const endpoints = [
     method: "GET",
     path: "/api/leaderboard",
     auth: false,
-    description: "Paginated global leaderboard with composite scores.",
+    description: "Paginated global leaderboard. Add client or model param for filtered rankings computed on-the-fly.",
     params: [
       { name: "period", values: "daily | weekly | monthly | alltime", default: "alltime" },
       { name: "sort", values: "score | tokens | cost", default: "score" },
       { name: "page", values: "number", default: "1" },
+      { name: "client", values: "claude-code | codex | cursor | ...", default: "none" },
+      { name: "model", values: "any model name", default: "none" },
     ],
   },
   {
