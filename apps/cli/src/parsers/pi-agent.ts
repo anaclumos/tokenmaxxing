@@ -43,7 +43,15 @@ export const piAgent: ClientParser = {
         if (e.timestamp) lastTs = e.timestamp;
       }
       if (input + output === 0) continue;
-      yield { client: "pi-agent", model, sessionHash: sessionHash("pi-agent", sid || file), timestamp: lastTs || new Date().toISOString(), tokens: { input, output, cacheRead, cacheWrite, reasoning: 0 }, costUsd: 0, project };
+      yield {
+        client: "pi-agent",
+        model,
+        sessionHash: sessionHash("pi-agent", sid || file),
+        timestamp: lastTs || new Date().toISOString(),
+        tokens: { input, output, cacheRead, cacheWrite, reasoning: 0 },
+        costUsd: 0,
+        project,
+      };
     }
   },
 };

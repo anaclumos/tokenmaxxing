@@ -30,7 +30,14 @@ export const mux: ClientParser = {
         const input = usage.input?.tokens ?? 0;
         const output = usage.output?.tokens ?? 0;
         if (input + output === 0) continue;
-        yield { client: "mux", model, sessionHash: sessionHash("mux", `${file}:${model}`), timestamp: data.lastRequest?.timestamp ?? new Date().toISOString(), tokens: { input, output, cacheRead: usage.cached?.tokens ?? 0, cacheWrite: usage.cacheCreate?.tokens ?? 0, reasoning: usage.reasoning?.tokens ?? 0 }, costUsd: 0 };
+        yield {
+          client: "mux",
+          model,
+          sessionHash: sessionHash("mux", `${file}:${model}`),
+          timestamp: data.lastRequest?.timestamp ?? new Date().toISOString(),
+          tokens: { input, output, cacheRead: usage.cached?.tokens ?? 0, cacheWrite: usage.cacheCreate?.tokens ?? 0, reasoning: usage.reasoning?.tokens ?? 0 },
+          costUsd: 0,
+        };
       }
     }
   },

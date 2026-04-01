@@ -30,7 +30,14 @@ export const factoryDroid: ClientParser = {
       const input = t.inputTokens ?? 0;
       const output = t.outputTokens ?? 0;
       if (input + output === 0) continue;
-      yield { client: "factory-droid", model: session.model ?? "unknown", sessionHash: sessionHash("factory-droid", file), timestamp: statSync(file).mtime.toISOString(), tokens: { input, output, cacheRead: t.cacheReadTokens ?? 0, cacheWrite: t.cacheCreationTokens ?? 0, reasoning: t.thinkingTokens ?? 0 }, costUsd: 0 };
+      yield {
+        client: "factory-droid",
+        model: session.model ?? "unknown",
+        sessionHash: sessionHash("factory-droid", file),
+        timestamp: statSync(file).mtime.toISOString(),
+        tokens: { input, output, cacheRead: t.cacheReadTokens ?? 0, cacheWrite: t.cacheCreationTokens ?? 0, reasoning: t.thinkingTokens ?? 0 },
+        costUsd: 0,
+      };
     }
   },
 };

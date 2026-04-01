@@ -51,7 +51,14 @@ export const kimi: ClientParser = {
         if (e.timestamp) lastTs = e.timestamp;
       }
       if (input + output === 0) continue;
-      yield { client: "kimi", model, sessionHash: sessionHash("kimi", file), timestamp: lastTs ? new Date(lastTs * 1000).toISOString() : new Date().toISOString(), tokens: { input, output, cacheRead, cacheWrite, reasoning: 0 }, costUsd: 0 };
+      yield {
+        client: "kimi",
+        model,
+        sessionHash: sessionHash("kimi", file),
+        timestamp: lastTs ? new Date(lastTs * 1000).toISOString() : new Date().toISOString(),
+        tokens: { input, output, cacheRead, cacheWrite, reasoning: 0 },
+        costUsd: 0,
+      };
     }
   },
 };

@@ -50,7 +50,14 @@ function parseRooTasks(dir: string, client: "roo-code" | "kilocode") {
       }
 
       if (totalIn + totalOut === 0) continue;
-      yield { client, model: "unknown", sessionHash: sessionHash(client, file), timestamp: lastTs ? new Date(lastTs).toISOString() : new Date().toISOString(), tokens: { input: totalIn, output: totalOut, cacheRead: totalCacheRead, cacheWrite: totalCacheWrite, reasoning: 0 }, costUsd: 0 };
+      yield {
+        client,
+        model: "unknown",
+        sessionHash: sessionHash(client, file),
+        timestamp: lastTs ? new Date(lastTs).toISOString() : new Date().toISOString(),
+        tokens: { input: totalIn, output: totalOut, cacheRead: totalCacheRead, cacheWrite: totalCacheWrite, reasoning: 0 },
+        costUsd: 0,
+      };
     }
   };
 }
