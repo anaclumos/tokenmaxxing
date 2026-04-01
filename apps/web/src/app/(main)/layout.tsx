@@ -17,6 +17,11 @@ export default function MainLayout({
           tokenmaxx.ing
         </Link>
         <div className="flex items-center gap-3">
+          <Link href="/docs">
+            <Button variant="ghost" size="sm">
+              API
+            </Button>
+          </Link>
           <Show when="signed-out">
             <SignInButton mode="modal">
               <Button size="sm">Sign in</Button>
