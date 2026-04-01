@@ -1,7 +1,6 @@
 import { defineCommand } from "citty"
 import pc from "picocolors"
-import type { SubmitResponse } from "@tokenmaxxing/shared/types"
-import { formatTokens } from "@tokenmaxxing/shared/types"
+import { SubmitResponse, formatTokens } from "@tokenmaxxing/shared/types"
 
 import { getApiToken, getServerUrl } from "../config"
 import { loadLocalUsage, summarizeUsage } from "../local-usage"
@@ -80,7 +79,7 @@ export const submit = defineCommand({
         return
       }
 
-      const data = (await res.json()) as SubmitResponse
+      const data = SubmitResponse.parse(await res.json())
       totalInserted += data.inserted
       totalSkipped += data.skipped
     }
