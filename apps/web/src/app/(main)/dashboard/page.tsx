@@ -63,50 +63,44 @@ export default async function DashboardPage() {
     tokens: sumAggregateTokens(a),
   }));
 
-  // Burn rate projection from last 7 days
+  // Single pass: accumulate cost and cache stats by time bucket
   const now = new Date();
-  const sevenDaysAgo = new Date(now.getTime() - 7 * 86_400_000)
-    .toISOString()
-    .slice(0, 10);
-  const fourteenDaysAgo = new Date(now.getTime() - 14 * 86_400_000)
-    .toISOString()
-    .slice(0, 10);
-  const recentCost = activityRows
-    .filter((a) => a.date >= sevenDaysAgo)
-    .reduce((s, a) => s + Number(a.cost), 0);
-  const prevCost = activityRows
-    .filter((a) => a.date >= fourteenDaysAgo && a.date < sevenDaysAgo)
-    .reduce((s, a) => s + Number(a.cost), 0);
+  const sevenDaysAgo = new Date(now.getTime() - 7 * 86_400_000).toISOString().slice(0, 10);
+  const fourteenDaysAgo = new Date(now.getTime() - 14 * 86_400_000).toISOString().slice(0, 10);
+
+  const acc = { cost: [0, 0], input: [0, 0, 0], cacheRead: [0, 0, 0] };
+  //           recent/prev       all/recent/prev
+
+  for (const a of activityRows) {
+    const cost = Number(a.cost);
+    if (a.date >= sevenDaysAgo) {
+      acc.cost[0] += cost;
+      acc.input[1] += a.totalInput;
+      acc.cacheRead[1] += a.totalCacheRead;
+    } else if (a.date >= fourteenDaysAgo) {
+      acc.cost[1] += cost;
+      acc.input[2] += a.totalInput;
+      acc.cacheRead[2] += a.totalCacheRead;
+    }
+    acc.input[0] += a.totalInput;
+    acc.cacheRead[0] += a.totalCacheRead;
+  }
+
+  const [recentCost, prevCost] = acc.cost;
+  const [totalInput, recentInput, prevInput] = acc.input;
+  const [totalCacheRead, recentCacheRead, prevCacheRead] = acc.cacheRead;
+
+  // Burn rate projection
   const dailyRate = recentCost / 7;
-  const daysInMonth = new Date(
-    now.getFullYear(),
-    now.getMonth() + 1,
-    0
-  ).getDate();
+  const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
   const projectedMonthly = dailyRate * daysInMonth;
   const trend = prevCost > 0 ? ((recentCost - prevCost) / prevCost) * 100 : 0;
 
   // Cache efficiency: cacheRead / (input + cacheRead)
-  const totalInput = activityRows.reduce((s, a) => s + a.totalInput, 0);
-  const totalCacheRead = activityRows.reduce((s, a) => s + a.totalCacheRead, 0);
   const cachePool = totalInput + totalCacheRead;
   const cacheHitRate = cachePool > 0 ? (totalCacheRead / cachePool) * 100 : 0;
-
-  const recentInput = activityRows
-    .filter((a) => a.date >= sevenDaysAgo)
-    .reduce((s, a) => s + a.totalInput, 0);
-  const recentCacheRead = activityRows
-    .filter((a) => a.date >= sevenDaysAgo)
-    .reduce((s, a) => s + a.totalCacheRead, 0);
   const recentPool = recentInput + recentCacheRead;
   const recentCacheRate = recentPool > 0 ? (recentCacheRead / recentPool) * 100 : 0;
-
-  const prevInput = activityRows
-    .filter((a) => a.date >= fourteenDaysAgo && a.date < sevenDaysAgo)
-    .reduce((s, a) => s + a.totalInput, 0);
-  const prevCacheRead = activityRows
-    .filter((a) => a.date >= fourteenDaysAgo && a.date < sevenDaysAgo)
-    .reduce((s, a) => s + a.totalCacheRead, 0);
   const prevPool = prevInput + prevCacheRead;
   const prevCacheRate = prevPool > 0 ? (prevCacheRead / prevPool) * 100 : 0;
   const cacheTrend = prevPool > 0 ? recentCacheRate - prevCacheRate : 0;
