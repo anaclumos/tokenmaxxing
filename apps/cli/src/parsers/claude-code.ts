@@ -1,5 +1,5 @@
 import { homedir } from "node:os";
-import { join, relative } from "node:path";
+import { basename, join, relative } from "node:path";
 import { existsSync } from "node:fs";
 import { glob } from "node:fs/promises";
 import type { UsageRecord } from "@tokenmaxxing/shared/types";
@@ -8,26 +8,16 @@ import { readJsonl, sessionHash } from "./utils";
 
 const CLAUDE_DIR = join(homedir(), ".claude", "projects");
 
-// Extract project name from Claude Code's encoded directory path.
-// Directory names encode the full path with / replaced by -, but hyphens
-// in directory names are also -, so we can't reliably decode. Instead,
-// strip the homedir prefix to get a recognizable project identifier.
-// e.g. "-Users-sc-Developer-tokenmaxx-ing" -> "Developer-tokenmaxx-ing"
-function extractProject(filePath: string): string | undefined {
-  const rel = relative(CLAUDE_DIR, filePath);
-  const projectDir = rel.split("/")[0];
-  if (!projectDir) return undefined;
-  // /Users/sc -> -Users-sc, then strip "-Users-sc-" prefix from "-Users-sc-Developer-myproject"
-  const homeEncoded = homedir().replaceAll("/", "-");
-  if (projectDir.startsWith(homeEncoded + "-")) {
-    return projectDir.slice(homeEncoded.length + 1);
-  }
-  return projectDir;
+function projectFromCwd(cwd: string): string {
+  const home = homedir();
+  const rel = cwd.startsWith(home) ? relative(home, cwd) : cwd;
+  return basename(rel) || rel;
 }
 
 // Claude Code JSONL entry shape (only fields we care about)
 interface ClaudeEntry {
   type?: string;
+  cwd?: string;
   sessionId?: string;
   timestamp?: string;
   message?: {
@@ -66,8 +56,11 @@ export const claudeCode: ClientParser = {
     >();
 
     for await (const file of glob(join(CLAUDE_DIR, "**", "*.jsonl"))) {
-      const project = extractProject(file);
+      let project: string | undefined;
       for await (const entry of readJsonl<ClaudeEntry>(file)) {
+        if (entry.cwd && !project) {
+          project = projectFromCwd(entry.cwd);
+        }
         if (entry.type !== "assistant" || !entry.message?.usage) continue;
 
         const sid = entry.sessionId ?? file;
@@ -82,6 +75,7 @@ export const claudeCode: ClientParser = {
           existing.cost += entry.costUSD ?? 0;
           if (entry.timestamp) existing.timestamp = entry.timestamp;
           if (entry.message.model) existing.model = entry.message.model;
+          if (!existing.project && project) existing.project = project;
         } else {
           sessions.set(sid, {
             model: entry.message.model ?? "unknown",

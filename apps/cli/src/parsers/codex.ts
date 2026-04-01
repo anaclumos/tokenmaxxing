@@ -1,5 +1,5 @@
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { basename, join, relative } from "node:path";
 import { existsSync } from "node:fs";
 import { glob } from "node:fs/promises";
 import type { UsageRecord } from "@tokenmaxxing/shared/types";
@@ -16,6 +16,7 @@ interface CodexEntry {
   type?: string;
   timestamp?: string;
   payload?: {
+    cwd?: string;
     model?: string;
     model_provider?: string;
     info?: {
@@ -29,6 +30,12 @@ interface CodexEntry {
   };
 }
 
+function projectFromCwd(cwd: string): string {
+  const home = homedir();
+  const rel = cwd.startsWith(home) ? relative(home, cwd) : cwd;
+  return basename(rel) || rel;
+}
+
 export const codex: ClientParser = {
   client: "codex",
 
@@ -40,7 +47,7 @@ export const codex: ClientParser = {
     for (const dir of CODEX_DIRS) {
       if (!existsSync(dir)) continue;
 
-      for await (const file of glob(join(dir, "*.jsonl"))) {
+      for await (const file of glob(join(dir, "**", "*.jsonl"))) {
         // Track cumulative totals per file to compute deltas
         let prevInput = 0;
         let prevOutput = 0;
@@ -52,9 +59,13 @@ export const codex: ClientParser = {
         let totalReasoning = 0;
         let model = "unknown";
         let lastTimestamp = "";
+        let project: string | undefined;
         const sid = file; // session ID = file path
 
         for await (const entry of readJsonl<CodexEntry>(file)) {
+          if (entry.type === "session_meta" && entry.payload?.cwd) {
+            project = projectFromCwd(entry.payload.cwd);
+          }
           const usage = entry.payload?.info?.total_token_usage;
           if (!usage) continue;
 
@@ -93,6 +104,7 @@ export const codex: ClientParser = {
             reasoning: totalReasoning,
           },
           costUsd: 0, // filled by pricing engine
+          project,
         };
       }
     }
