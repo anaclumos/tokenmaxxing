@@ -54,6 +54,20 @@ export const SubmitResponse = z.object({
 });
 export type SubmitResponse = z.infer<typeof SubmitResponse>;
 
+export const CliStatusResponse = z.object({
+  user: z.object({
+    username: z.string().min(1),
+    totalTokens: z.number().int().nonnegative(),
+    totalCost: z.coerce.number().nonnegative(),
+    streak: z.number().int().nonnegative(),
+    longestStreak: z.number().int().nonnegative(),
+  }),
+  ranks: z.object({
+    global: z.object({ rank: z.number().int().positive() }).nullable(),
+  }),
+});
+export type CliStatusResponse = z.infer<typeof CliStatusResponse>;
+
 // Utility: total tokens from a breakdown
 export function totalTokens(t: TokenBreakdown): number {
   return t.input + t.output + t.cacheRead + t.cacheWrite + t.reasoning;
