@@ -55,7 +55,7 @@ export function LeaderboardTable({
 
   return (
     <div>
-      <div className="mb-6 flex items-center gap-4">
+      <div className="mb-6 flex flex-wrap items-center gap-4">
         <Tabs value={period} onValueChange={(v) => nav({ period: v })}>
           <TabsList>
             <TabsTrigger value="daily">Daily</TabsTrigger>
@@ -73,15 +73,16 @@ export function LeaderboardTable({
         </Tabs>
       </div>
 
-      <Table>
+      <div className="overflow-x-auto">
+        <Table>
         <TableHeader>
           <TableRow>
             <TableHead className="w-16">#</TableHead>
             <TableHead>User</TableHead>
             <TableHead className="text-right">Tokens</TableHead>
             <TableHead className="text-right">Cost</TableHead>
-            <TableHead className="text-right">Streak</TableHead>
-            <TableHead className="text-right">Score</TableHead>
+            <TableHead className="hidden text-right sm:table-cell">Streak</TableHead>
+            <TableHead className="hidden text-right sm:table-cell">Score</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -111,20 +112,21 @@ export function LeaderboardTable({
               <TableCell className="text-right font-mono">
                 ${Number(e.totalCost).toFixed(2)}
               </TableCell>
-              <TableCell className="text-right">
+              <TableCell className="hidden text-right sm:table-cell">
                 {e.streak > 0 && (
                   <Badge variant="secondary" className="font-mono text-xs">
                     {e.streak}d
                   </Badge>
                 )}
               </TableCell>
-              <TableCell className="text-right font-mono">
+              <TableCell className="hidden text-right font-mono sm:table-cell">
                 {Number(e.compositeScore).toFixed(0)}
               </TableCell>
             </TableRow>
           ))}
         </TableBody>
-      </Table>
+        </Table>
+      </div>
 
       {total > 50 && (
         <div className="mt-4 flex justify-center gap-2">

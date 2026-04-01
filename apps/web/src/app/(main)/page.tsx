@@ -75,7 +75,7 @@ export default async function HomePage({
   return (
     <main className="mx-auto w-full max-w-4xl px-6 py-8">
       <h1 className="mb-6 text-3xl font-bold tracking-tight">Leaderboard</h1>
-      <div className="mb-6 flex gap-8 text-sm text-muted-foreground">
+      <div className="mb-6 flex flex-wrap gap-x-8 gap-y-2 text-sm text-muted-foreground">
         <span>
           <span className="font-mono font-bold text-foreground">
             {globalStats.totalUsers}

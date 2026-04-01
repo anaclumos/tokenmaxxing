@@ -121,7 +121,7 @@ export default async function DashboardPage({
       <h1 className="mb-6 text-3xl font-bold tracking-tight">Dashboard</h1>
 
       {/* Stats cards */}
-      <div className="mb-8 grid grid-cols-4 gap-4">
+      <div className="mb-8 grid grid-cols-2 gap-4 sm:grid-cols-4">
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm text-muted-foreground">
