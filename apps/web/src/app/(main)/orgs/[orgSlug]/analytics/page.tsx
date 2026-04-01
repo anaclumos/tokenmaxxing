@@ -1,5 +1,5 @@
 import { auth, clerkClient } from "@clerk/nextjs/server";
-import { users, dailyAggregates } from "@tokenmaxxing/db/index";
+import { users, dailyAggregates, usageRecords } from "@tokenmaxxing/db/index";
 import { formatTokens, sumAggregateTokens } from "@tokenmaxxing/shared/types";
 import {
   Card,
@@ -15,7 +15,7 @@ import {
   TableHeader,
   TableRow,
 } from "@tokenmaxxing/ui/components/table";
-import { gte, and, inArray } from "drizzle-orm";
+import { gte, and, inArray, sum, count, isNotNull, desc, sql } from "drizzle-orm";
 import { notFound, redirect } from "next/navigation";
 
 import { db } from "@/lib/db";
@@ -101,6 +101,33 @@ export default async function OrgAnalyticsPage({
           )
       : [];
 
+  // Per-project breakdown
+  const projectRows =
+    userIds.length > 0
+      ? await db()
+          .select({
+            project: usageRecords.project,
+            sessions: count(),
+            totalCost: sum(usageRecords.costUsd).mapWith(Number),
+            totalTokens: sql<number>`sum(${usageRecords.inputTokens} + ${usageRecords.outputTokens} + ${usageRecords.cacheReadTokens} + ${usageRecords.cacheWriteTokens} + ${usageRecords.reasoningTokens})`.mapWith(Number),
+          })
+          .from(usageRecords)
+          .where(
+            since
+              ? and(
+                  inArray(usageRecords.userId, userIds),
+                  isNotNull(usageRecords.project),
+                  gte(usageRecords.timestamp, new Date(since))
+                )
+              : and(
+                  inArray(usageRecords.userId, userIds),
+                  isNotNull(usageRecords.project)
+                )
+          )
+          .groupBy(usageRecords.project)
+          .orderBy(desc(sum(usageRecords.costUsd)))
+      : [];
+
   // Aggregate per member
   const userMap = new Map(dbUsers.map((u) => [u.id, u.username]));
   const byMember = new Map<
@@ -166,6 +193,38 @@ export default async function OrgAnalyticsPage({
           </CardContent>
         </Card>
       </div>
+
+      {projectRows.length > 0 && (
+        <>
+          <h2 className="mb-3 text-lg font-semibold">By Project</h2>
+          <Table className="mb-8">
+            <TableHeader>
+              <TableRow>
+                <TableHead>Project</TableHead>
+                <TableHead className="text-right">Tokens</TableHead>
+                <TableHead className="text-right">Cost</TableHead>
+                <TableHead className="text-right">Sessions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {projectRows.slice(0, 20).map((p) => (
+                <TableRow key={p.project}>
+                  <TableCell className="font-medium font-mono">{p.project}</TableCell>
+                  <TableCell className="text-right font-mono">
+                    {formatTokens(p.totalTokens ?? 0)}
+                  </TableCell>
+                  <TableCell className="text-right font-mono">
+                    ${(p.totalCost ?? 0).toFixed(2)}
+                  </TableCell>
+                  <TableCell className="text-right text-muted-foreground">
+                    {p.sessions}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </>
+      )}
 
       <h2 className="mb-3 text-lg font-semibold">By Member</h2>
       <Table>

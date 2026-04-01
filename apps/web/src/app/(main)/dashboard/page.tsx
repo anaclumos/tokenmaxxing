@@ -149,6 +149,8 @@ export default async function DashboardPage({
   const prevCacheRate = prevPool > 0 ? (prevCacheRead / prevPool) * 100 : 0;
   const cacheTrend = prevPool > 0 ? recentCacheRate - prevCacheRate : 0;
 
+  const totalProjectCost = projectStats.reduce((s, p) => s + (p.totalCost ?? 0), 0);
+
   return (
     <main className="mx-auto w-full max-w-4xl px-6 py-8">
       <h1 className="mb-6 text-3xl font-bold tracking-tight">Dashboard</h1>
@@ -329,7 +331,7 @@ export default async function DashboardPage({
           <CardContent>
             <div className="space-y-2">
               {projectStats.slice(0, 8).map((p) => {
-                const pct = totalModelCost > 0 ? ((p.totalCost ?? 0) / totalModelCost) * 100 : 0;
+                const pct = totalProjectCost > 0 ? ((p.totalCost ?? 0) / totalProjectCost) * 100 : 0;
                 return (
                   <div key={p.project}>
                     <div className="flex justify-between text-sm">
