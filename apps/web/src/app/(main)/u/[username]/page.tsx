@@ -1,4 +1,4 @@
-import { users, dailyAggregates, rankings } from "@tokenmaxxing/db/index";
+import { users, dailyAggregates, rankings, usageRecords } from "@tokenmaxxing/db/index";
 import {
   formatTokens,
   totalTokens,
@@ -17,7 +17,7 @@ import {
   CardTitle,
 } from "@tokenmaxxing/ui/components/card";
 import { ActivityHeatmap } from "@tokenmaxxing/ui/components/heatmap";
-import { eq, desc, and } from "drizzle-orm";
+import { eq, desc, and, sql } from "drizzle-orm";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
@@ -39,7 +39,7 @@ export default async function ProfilePage({
   searchParams,
 }: {
   params: Promise<{ username: string }>;
-  searchParams: Promise<{ year?: string }>;
+  searchParams: Promise<{ year?: string; client?: string }>;
 }) {
   const [{ username }, query] = await Promise.all([params, searchParams]);
 
@@ -111,12 +111,31 @@ export default async function ProfilePage({
     cost: a.cost,
   }));
 
+  // Client filter
+  const sortedClients = [...allClients].toSorted();
+  const selectedClient = query.client && allClients.has(query.client) ? query.client : undefined;
+
+  let clientActivity: Array<{ date: string; tokens: number }> | null = null;
+  if (selectedClient) {
+    const clientRows = await db()
+      .select({
+        date: sql<string>`date(${usageRecords.timestamp})`,
+        tokens: sql<number>`sum(${usageRecords.inputTokens} + ${usageRecords.outputTokens} + ${usageRecords.cacheReadTokens} + ${usageRecords.cacheWriteTokens} + ${usageRecords.reasoningTokens})`.mapWith(Number),
+      })
+      .from(usageRecords)
+      .where(and(eq(usageRecords.userId, user.id), eq(usageRecords.client, selectedClient)))
+      .groupBy(sql`date(${usageRecords.timestamp})`);
+    clientActivity = clientRows;
+  }
+
   // Year selector
   const availableYears = [...new Set(activityRows.map((a) => Number(a.date.slice(0, 4))))].toSorted((a, b) => b - a);
   const selectedYear = query.year ? Number(query.year) : undefined;
+
+  const baseHeatmap = clientActivity ?? enriched.map((a) => ({ date: a.date, tokens: a.tokens }));
   const heatmapData = selectedYear
-    ? enriched.filter((a) => a.date.startsWith(String(selectedYear)))
-    : enriched;
+    ? baseHeatmap.filter((a) => a.date.startsWith(String(selectedYear)))
+    : baseHeatmap;
 
   return (
     <main className="mx-auto w-full max-w-3xl px-6 py-8">
@@ -301,23 +320,44 @@ export default async function ProfilePage({
       {/* Activity heatmap */}
       {enriched.length > 0 && (
         <div className="mb-8">
-          <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-lg font-semibold">Activity</h2>
-            {availableYears.length > 1 && (
-              <div className="flex gap-1">
-                <Link
-                  href={`/u/${username}`}
-                  className={`rounded px-2 py-1 text-xs font-mono ${!selectedYear ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground"}`}
-                >
-                  Recent
-                </Link>
-                {availableYears.map((y) => (
+          <div className="mb-4 flex flex-col gap-3">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-semibold">Activity</h2>
+              {availableYears.length > 1 && (
+                <div className="flex gap-1">
                   <Link
-                    key={y}
-                    href={`/u/${username}?year=${y}`}
-                    className={`rounded px-2 py-1 text-xs font-mono ${selectedYear === y ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                    href={`/u/${username}${selectedClient ? `?client=${selectedClient}` : ""}`}
+                    className={`rounded px-2 py-1 text-xs font-mono ${!selectedYear ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground"}`}
                   >
-                    {y}
+                    Recent
+                  </Link>
+                  {availableYears.map((y) => (
+                    <Link
+                      key={y}
+                      href={`/u/${username}?year=${y}${selectedClient ? `&client=${selectedClient}` : ""}`}
+                      className={`rounded px-2 py-1 text-xs font-mono ${selectedYear === y ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                    >
+                      {y}
+                    </Link>
+                  ))}
+                </div>
+              )}
+            </div>
+            {sortedClients.length > 1 && (
+              <div className="flex flex-wrap gap-1">
+                <Link
+                  href={`/u/${username}${selectedYear ? `?year=${selectedYear}` : ""}`}
+                  className={`rounded px-2 py-1 text-xs font-mono ${!selectedClient ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                >
+                  All
+                </Link>
+                {sortedClients.map((c) => (
+                  <Link
+                    key={c}
+                    href={`/u/${username}?client=${c}${selectedYear ? `&year=${selectedYear}` : ""}`}
+                    className={`rounded px-2 py-1 text-xs font-mono ${selectedClient === c ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                  >
+                    {c}
                   </Link>
                 ))}
               </div>

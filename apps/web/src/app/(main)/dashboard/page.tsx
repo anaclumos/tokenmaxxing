@@ -20,7 +20,7 @@ export const metadata = { title: "Dashboard - tokenmaxx.ing" };
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ year?: string }>;
+  searchParams: Promise<{ year?: string; client?: string }>;
 }) {
   const params = await searchParams;
   const { userId: clerkId } = await auth();
@@ -56,6 +56,7 @@ export default async function DashboardPage({
         totalReasoning: dailyAggregates.totalReasoning,
         cost: dailyAggregates.totalCost,
         sessions: dailyAggregates.sessionCount,
+        clientsUsed: dailyAggregates.clientsUsed,
       })
       .from(dailyAggregates)
       .where(eq(dailyAggregates.userId, user.id))
@@ -88,12 +89,32 @@ export default async function DashboardPage({
     tokens: sumAggregateTokens(a),
   }));
 
+  // Client filter
+  const allClients = [...new Set(activityRows.flatMap((a) => a.clientsUsed))].toSorted();
+  const selectedClient = params.client && allClients.includes(params.client) ? params.client : undefined;
+
+  // When filtering by client, query usageRecords grouped by date
+  let clientActivity: Array<{ date: string; tokens: number }> | null = null;
+  if (selectedClient) {
+    const clientRows = await db()
+      .select({
+        date: sql<string>`date(${usageRecords.timestamp})`,
+        tokens: sql<number>`sum(${usageRecords.inputTokens} + ${usageRecords.outputTokens} + ${usageRecords.cacheReadTokens} + ${usageRecords.cacheWriteTokens} + ${usageRecords.reasoningTokens})`.mapWith(Number),
+      })
+      .from(usageRecords)
+      .where(and(eq(usageRecords.userId, user.id), eq(usageRecords.client, selectedClient)))
+      .groupBy(sql`date(${usageRecords.timestamp})`);
+    clientActivity = clientRows;
+  }
+
   // Year selector
   const availableYears = [...new Set(activityRows.map((a) => Number(a.date.slice(0, 4))))].toSorted((a, b) => b - a);
   const selectedYear = params.year ? Number(params.year) : undefined;
+
+  const baseHeatmap = clientActivity ?? activity.map((a) => ({ date: a.date, tokens: a.tokens }));
   const heatmapData = selectedYear
-    ? activity.filter((a) => a.date.startsWith(String(selectedYear)))
-    : activity;
+    ? baseHeatmap.filter((a) => a.date.startsWith(String(selectedYear)))
+    : baseHeatmap;
 
   // Single pass: accumulate cost and cache stats by time bucket
   const now = new Date();
@@ -358,23 +379,44 @@ export default async function DashboardPage({
       {activity.length > 0 && (
         <Card className="mb-8">
           <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-sm">Activity</CardTitle>
-              {availableYears.length > 1 && (
-                <div className="flex gap-1">
-                  <Link
-                    href="/dashboard"
-                    className={`rounded px-2 py-1 text-xs font-mono ${!selectedYear ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground"}`}
-                  >
-                    Recent
-                  </Link>
-                  {availableYears.map((y) => (
+            <div className="flex flex-col gap-3">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-sm">Activity</CardTitle>
+                {availableYears.length > 1 && (
+                  <div className="flex gap-1">
                     <Link
-                      key={y}
-                      href={`/dashboard?year=${y}`}
-                      className={`rounded px-2 py-1 text-xs font-mono ${selectedYear === y ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                      href={`/dashboard${selectedClient ? `?client=${selectedClient}` : ""}`}
+                      className={`rounded px-2 py-1 text-xs font-mono ${!selectedYear ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground"}`}
                     >
-                      {y}
+                      Recent
+                    </Link>
+                    {availableYears.map((y) => (
+                      <Link
+                        key={y}
+                        href={`/dashboard?year=${y}${selectedClient ? `&client=${selectedClient}` : ""}`}
+                        className={`rounded px-2 py-1 text-xs font-mono ${selectedYear === y ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                      >
+                        {y}
+                      </Link>
+                    ))}
+                  </div>
+                )}
+              </div>
+              {allClients.length > 1 && (
+                <div className="flex flex-wrap gap-1">
+                  <Link
+                    href={`/dashboard${selectedYear ? `?year=${selectedYear}` : ""}`}
+                    className={`rounded px-2 py-1 text-xs font-mono ${!selectedClient ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                  >
+                    All
+                  </Link>
+                  {allClients.map((c) => (
+                    <Link
+                      key={c}
+                      href={`/dashboard?client=${c}${selectedYear ? `&year=${selectedYear}` : ""}`}
+                      className={`rounded px-2 py-1 text-xs font-mono ${selectedClient === c ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                    >
+                      {c}
                     </Link>
                   ))}
                 </div>
