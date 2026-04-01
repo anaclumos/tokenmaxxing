@@ -16,6 +16,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@tokenmaxxing/ui/components/card";
+import { ActivityHeatmap } from "@tokenmaxxing/ui/components/heatmap";
 import { eq, desc, and } from "drizzle-orm";
 import { notFound } from "next/navigation";
 
@@ -71,7 +72,8 @@ export default async function ProfilePage({
       })
       .from(dailyAggregates)
       .where(eq(dailyAggregates.userId, user.id))
-      .orderBy(desc(dailyAggregates.date)),
+      .orderBy(desc(dailyAggregates.date))
+      .limit(365),
   ]);
 
   // Aggregate ALL-TIME totals for breakdown (matches user.totalTokens)
@@ -99,7 +101,7 @@ export default async function ProfilePage({
   const cachePool = breakdown.input + breakdown.cacheRead;
   const cacheHitRate = cachePool > 0 ? (breakdown.cacheRead / cachePool) * 100 : 0;
 
-  const activity = activityRows.slice(0, 30).map((a) => ({
+  const enriched = activityRows.map((a) => ({
     date: a.date,
     tokens: sumAggregateTokens(a),
     cost: a.cost,
@@ -278,13 +280,25 @@ export default async function ProfilePage({
         </div>
       )}
 
+      {/* Activity heatmap */}
+      {enriched.length > 0 && (
+        <div className="mb-8">
+          <h2 className="mb-4 text-lg font-semibold">Activity</h2>
+          <div className="overflow-x-auto">
+            <ActivityHeatmap
+              data={enriched.map((a) => ({ date: a.date, value: a.tokens }))}
+            />
+          </div>
+        </div>
+      )}
+
       {/* Recent activity */}
       <h2 className="mb-4 text-lg font-semibold">Recent Activity</h2>
-      {activity.length === 0 ? (
+      {enriched.length === 0 ? (
         <p className="text-muted-foreground">No activity yet.</p>
       ) : (
         <div className="space-y-2">
-          {activity.map((a) => (
+          {enriched.slice(0, 30).map((a) => (
             <div
               key={a.date}
               className="flex items-center justify-between rounded border border-border px-4 py-3"
