@@ -1,4 +1,4 @@
-import { users, dailyAggregates, rankings, usageRecords } from "@tokenmaxxing/db/index";
+import { users, dailyAggregates, rankings } from "@tokenmaxxing/db/index";
 import {
   formatTokens,
   totalTokens,
@@ -17,11 +17,12 @@ import {
   CardTitle,
 } from "@tokenmaxxing/ui/components/card";
 import { ActivityHeatmap } from "@tokenmaxxing/ui/components/heatmap";
-import { eq, desc, and, sql, gte, sum, count } from "drizzle-orm";
+import { eq, desc, and } from "drizzle-orm";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { db } from "@/lib/db";
+import { queryClientActivity, queryDayBreakdown } from "@/lib/usage-queries";
 
 import { ShareButton } from "./share-button";
 
@@ -115,51 +116,11 @@ export default async function ProfilePage({
   const sortedClients = [...allClients].toSorted();
   const selectedClient = query.client && allClients.has(query.client) ? query.client : undefined;
 
-  let clientActivity: Array<{ date: string; tokens: number }> | null = null;
-  if (selectedClient) {
-    const clientRows = await db()
-      .select({
-        date: sql<string>`${usageRecords.timestamp}::date`,
-        tokens: sql<number>`sum(${usageRecords.inputTokens} + ${usageRecords.outputTokens} + ${usageRecords.cacheReadTokens} + ${usageRecords.cacheWriteTokens} + ${usageRecords.reasoningTokens})`.mapWith(Number),
-      })
-      .from(usageRecords)
-      .where(and(eq(usageRecords.userId, user.id), eq(usageRecords.client, selectedClient)))
-      .groupBy(sql`${usageRecords.timestamp}::date`);
-    clientActivity = clientRows;
-  }
+  const clientActivity = selectedClient ? await queryClientActivity(user.id, selectedClient) : null;
 
   // Day detail breakdown
   const selectedDay = query.day && /^\d{4}-\d{2}-\d{2}$/.test(query.day) ? query.day : undefined;
-  let dayDetail: { byClient: Array<{ client: string; tokens: number; cost: number; sessions: number }>; byModel: Array<{ model: string; tokens: number; cost: number; sessions: number }> } | null = null;
-  if (selectedDay) {
-    const dayStart = new Date(selectedDay);
-    const dayEnd = new Date(dayStart.getTime() + 86_400_000);
-    const [byClient, byModel] = await Promise.all([
-      db()
-        .select({
-          client: usageRecords.client,
-          tokens: sql<number>`sum(${usageRecords.inputTokens} + ${usageRecords.outputTokens} + ${usageRecords.cacheReadTokens} + ${usageRecords.cacheWriteTokens} + ${usageRecords.reasoningTokens})`.mapWith(Number),
-          cost: sum(usageRecords.costUsd).mapWith(Number),
-          sessions: count(),
-        })
-        .from(usageRecords)
-        .where(and(eq(usageRecords.userId, user.id), gte(usageRecords.timestamp, dayStart), sql`${usageRecords.timestamp} < ${dayEnd}`))
-        .groupBy(usageRecords.client)
-        .orderBy(desc(sum(usageRecords.costUsd))),
-      db()
-        .select({
-          model: usageRecords.model,
-          tokens: sql<number>`sum(${usageRecords.inputTokens} + ${usageRecords.outputTokens} + ${usageRecords.cacheReadTokens} + ${usageRecords.cacheWriteTokens} + ${usageRecords.reasoningTokens})`.mapWith(Number),
-          cost: sum(usageRecords.costUsd).mapWith(Number),
-          sessions: count(),
-        })
-        .from(usageRecords)
-        .where(and(eq(usageRecords.userId, user.id), gte(usageRecords.timestamp, dayStart), sql`${usageRecords.timestamp} < ${dayEnd}`))
-        .groupBy(usageRecords.model)
-        .orderBy(desc(sum(usageRecords.costUsd))),
-    ]);
-    dayDetail = { byClient, byModel };
-  }
+  const dayDetail = selectedDay ? await queryDayBreakdown(user.id, selectedDay) : null;
 
   // Year selector
   const availableYears = [...new Set(activityRows.map((a) => Number(a.date.slice(0, 4))))].toSorted((a, b) => b - a);
