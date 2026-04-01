@@ -1,12 +1,28 @@
 type DayData = { date: string; value: number };
 
-function getColor(value: number, max: number): string {
+export const heatmapThemes = {
+  green:  { hue: 155, label: "Green" },
+  blue:   { hue: 230, label: "Blue" },
+  purple: { hue: 290, label: "Purple" },
+  orange: { hue: 30,  label: "Orange" },
+  mono:   { hue: 0,   label: "Mono" },
+} as const;
+
+export type HeatmapTheme = keyof typeof heatmapThemes;
+
+const LEVELS = [
+  { l: 0.40, c: 0.10 },
+  { l: 0.50, c: 0.13 },
+  { l: 0.60, c: 0.15 },
+  { l: 0.70, c: 0.17 },
+] as const;
+
+function getColor(value: number, max: number, hue: number, chroma: number): string {
   if (value === 0) return "var(--muted)";
   const ratio = value / max;
-  if (ratio < 0.25) return "oklch(0.45 0.1 165)";
-  if (ratio < 0.5) return "oklch(0.55 0.13 165)";
-  if (ratio < 0.75) return "oklch(0.65 0.15 165)";
-  return "oklch(0.75 0.17 165)";
+  const level = ratio < 0.25 ? 0 : ratio < 0.5 ? 1 : ratio < 0.75 ? 2 : 3;
+  const { l, c } = LEVELS[level];
+  return `oklch(${l} ${c * chroma} ${hue})`;
 }
 
 function buildGrid(year?: number) {
@@ -42,14 +58,17 @@ function buildGrid(year?: number) {
   return { cells, weeks };
 }
 
-export function ActivityHeatmap({ data, year, hrefBuilder, selectedDate }: {
+export function ActivityHeatmap({ data, year, hrefBuilder, selectedDate, theme = "green" }: {
   data: DayData[];
   year?: number;
   hrefBuilder?: (date: string) => string;
   selectedDate?: string;
+  theme?: HeatmapTheme;
 }) {
   const dataMap = new Map(data.map((d) => [d.date, d.value]));
   const max = Math.max(1, ...data.map((d) => d.value));
+  const { hue } = heatmapThemes[theme];
+  const chroma = theme === "mono" ? 0 : 1;
 
   const { cells, weeks } = buildGrid(year);
 
@@ -71,7 +90,7 @@ export function ActivityHeatmap({ data, year, hrefBuilder, selectedDate }: {
             width={cellSize}
             height={cellSize}
             rx={2}
-            fill={getColor(value, max)}
+            fill={getColor(value, max, hue, chroma)}
             stroke={isSelected ? "var(--foreground)" : "none"}
             strokeWidth={isSelected ? 1.5 : 0}
           >

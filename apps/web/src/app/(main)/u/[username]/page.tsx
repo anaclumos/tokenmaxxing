@@ -16,7 +16,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@tokenmaxxing/ui/components/card";
-import { ActivityHeatmap } from "@tokenmaxxing/ui/components/heatmap";
+import { ActivityHeatmap, heatmapThemes, type HeatmapTheme } from "@tokenmaxxing/ui/components/heatmap";
 import { eq, desc, and } from "drizzle-orm";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -40,7 +40,7 @@ export default async function ProfilePage({
   searchParams,
 }: {
   params: Promise<{ username: string }>;
-  searchParams: Promise<{ year?: string; client?: string; day?: string }>;
+  searchParams: Promise<{ year?: string; client?: string; day?: string; theme?: string }>;
 }) {
   const [{ username }, query] = await Promise.all([params, searchParams]);
 
@@ -122,7 +122,8 @@ export default async function ProfilePage({
   const selectedDay = query.day && /^\d{4}-\d{2}-\d{2}$/.test(query.day) ? query.day : undefined;
   const dayDetail = selectedDay ? await queryDayBreakdown(user.id, selectedDay) : null;
 
-  // Year selector
+  // Theme + Year selectors
+  const selectedTheme: HeatmapTheme = query.theme && query.theme in heatmapThemes ? query.theme as HeatmapTheme : "green";
   const availableYears = [...new Set(activityRows.map((a) => Number(a.date.slice(0, 4))))].toSorted((a, b) => b - a);
   const selectedYear = query.year ? Number(query.year) : undefined;
 
@@ -340,7 +341,7 @@ export default async function ProfilePage({
             {sortedClients.length > 1 && (
               <div className="flex flex-wrap gap-1">
                 <Link
-                  href={`/u/${username}${selectedYear ? `?year=${selectedYear}` : ""}`}
+                  href={`/u/${username}${selectedYear ? `?year=${selectedYear}` : ""}${selectedTheme !== "green" ? `${selectedYear ? "&" : "?"}theme=${selectedTheme}` : ""}`}
                   className={`rounded px-2 py-1 text-xs font-mono ${!selectedClient ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground"}`}
                 >
                   All
@@ -348,7 +349,7 @@ export default async function ProfilePage({
                 {sortedClients.map((c) => (
                   <Link
                     key={c}
-                    href={`/u/${username}?client=${c}${selectedYear ? `&year=${selectedYear}` : ""}`}
+                    href={`/u/${username}?client=${c}${selectedYear ? `&year=${selectedYear}` : ""}${selectedTheme !== "green" ? `&theme=${selectedTheme}` : ""}`}
                     className={`rounded px-2 py-1 text-xs font-mono ${selectedClient === c ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground"}`}
                   >
                     {c}
@@ -356,16 +357,29 @@ export default async function ProfilePage({
                 ))}
               </div>
             )}
+            <div className="flex gap-1">
+              {(Object.entries(heatmapThemes) as [HeatmapTheme, { label: string }][]).map(([key, { label }]) => (
+                <Link
+                  key={key}
+                  href={`/u/${username}?theme=${key}${selectedYear ? `&year=${selectedYear}` : ""}${selectedClient ? `&client=${selectedClient}` : ""}`}
+                  className={`rounded px-2 py-1 text-xs font-mono ${selectedTheme === key ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                >
+                  {label}
+                </Link>
+              ))}
+            </div>
           </div>
           <div className="overflow-x-auto">
             <ActivityHeatmap
               data={heatmapData.map((a) => ({ date: a.date, value: a.tokens }))}
               year={selectedYear}
               selectedDate={selectedDay}
+              theme={selectedTheme}
               hrefBuilder={(date) => {
                 const p = new URLSearchParams();
                 if (selectedYear) p.set("year", String(selectedYear));
                 if (selectedClient) p.set("client", selectedClient);
+                if (selectedTheme !== "green") p.set("theme", selectedTheme);
                 p.set("day", date);
                 return `/u/${username}?${p}`;
               }}

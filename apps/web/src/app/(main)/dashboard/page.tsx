@@ -8,7 +8,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@tokenmaxxing/ui/components/card";
-import { ActivityHeatmap } from "@tokenmaxxing/ui/components/heatmap";
+import { ActivityHeatmap, heatmapThemes, type HeatmapTheme } from "@tokenmaxxing/ui/components/heatmap";
 import { eq, desc, and, sum, count, isNotNull, sql } from "drizzle-orm";
 import Link from "next/link";
 import { redirect } from "next/navigation";
@@ -21,7 +21,7 @@ export const metadata = { title: "Dashboard - tokenmaxx.ing" };
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ year?: string; client?: string; day?: string }>;
+  searchParams: Promise<{ year?: string; client?: string; day?: string; theme?: string }>;
 }) {
   const params = await searchParams;
   const { userId: clerkId } = await auth();
@@ -101,7 +101,8 @@ export default async function DashboardPage({
   const selectedDay = params.day && /^\d{4}-\d{2}-\d{2}$/.test(params.day) ? params.day : undefined;
   const dayDetail = selectedDay ? await queryDayBreakdown(user.id, selectedDay) : null;
 
-  // Year selector
+  // Theme + Year selectors
+  const selectedTheme: HeatmapTheme = params.theme && params.theme in heatmapThemes ? params.theme as HeatmapTheme : "green";
   const availableYears = [...new Set(activityRows.map((a) => Number(a.date.slice(0, 4))))].toSorted((a, b) => b - a);
   const selectedYear = params.year ? Number(params.year) : undefined;
 
@@ -399,7 +400,7 @@ export default async function DashboardPage({
               {allClients.length > 1 && (
                 <div className="flex flex-wrap gap-1">
                   <Link
-                    href={`/dashboard${selectedYear ? `?year=${selectedYear}` : ""}`}
+                    href={`/dashboard${selectedYear ? `?year=${selectedYear}` : ""}${selectedTheme !== "green" ? `${selectedYear ? "&" : "?"}theme=${selectedTheme}` : ""}`}
                     className={`rounded px-2 py-1 text-xs font-mono ${!selectedClient ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground"}`}
                   >
                     All
@@ -407,7 +408,7 @@ export default async function DashboardPage({
                   {allClients.map((c) => (
                     <Link
                       key={c}
-                      href={`/dashboard?client=${c}${selectedYear ? `&year=${selectedYear}` : ""}`}
+                      href={`/dashboard?client=${c}${selectedYear ? `&year=${selectedYear}` : ""}${selectedTheme !== "green" ? `&theme=${selectedTheme}` : ""}`}
                       className={`rounded px-2 py-1 text-xs font-mono ${selectedClient === c ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground"}`}
                     >
                       {c}
@@ -415,6 +416,17 @@ export default async function DashboardPage({
                   ))}
                 </div>
               )}
+              <div className="flex gap-1">
+                {(Object.entries(heatmapThemes) as [HeatmapTheme, { label: string }][]).map(([key, { label }]) => (
+                  <Link
+                    key={key}
+                    href={`/dashboard?theme=${key}${selectedYear ? `&year=${selectedYear}` : ""}${selectedClient ? `&client=${selectedClient}` : ""}`}
+                    className={`rounded px-2 py-1 text-xs font-mono ${selectedTheme === key ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                  >
+                    {label}
+                  </Link>
+                ))}
+              </div>
             </div>
           </CardHeader>
           <CardContent className="overflow-x-auto">
@@ -422,10 +434,12 @@ export default async function DashboardPage({
               data={heatmapData.map((a) => ({ date: a.date, value: a.tokens }))}
               year={selectedYear}
               selectedDate={selectedDay}
+              theme={selectedTheme}
               hrefBuilder={(date) => {
                 const p = new URLSearchParams();
                 if (selectedYear) p.set("year", String(selectedYear));
                 if (selectedClient) p.set("client", selectedClient);
+                if (selectedTheme !== "green") p.set("theme", selectedTheme);
                 p.set("day", date);
                 return `/dashboard?${p}`;
               }}
