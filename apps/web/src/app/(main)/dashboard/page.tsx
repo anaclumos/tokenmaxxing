@@ -9,6 +9,7 @@ import {
   CardTitle,
 } from "@tokenmaxxing/ui/components/card";
 import { ActivityHeatmap, heatmapThemes, type HeatmapTheme } from "@tokenmaxxing/ui/components/heatmap";
+import { cn } from "@tokenmaxxing/ui/lib/utils";
 import { eq, desc, and, sum, count, isNotNull, sql } from "drizzle-orm";
 import Link from "next/link";
 import { redirect } from "next/navigation";
@@ -242,7 +243,7 @@ export default async function DashboardPage({
                 ${projectedMonthly.toFixed(2)}
               </span>
               <span
-                className={`text-sm font-mono ${trend > 0 ? "text-red-400" : trend < 0 ? "text-green-400" : "text-muted-foreground"}`}
+                className={cn("text-sm font-mono", trend > 0 ? "text-red-400" : trend < 0 ? "text-green-400" : "text-muted-foreground")}
               >
                 {trend > 0 ? "+" : ""}
                 {trend.toFixed(0)}% vs prev 7d
@@ -270,7 +271,7 @@ export default async function DashboardPage({
               </span>
               {prevPool > 0 && (
                 <span
-                  className={`text-sm font-mono ${cacheTrend > 0 ? "text-green-400" : cacheTrend < 0 ? "text-red-400" : "text-muted-foreground"}`}
+                  className={cn("text-sm font-mono", cacheTrend > 0 ? "text-green-400" : cacheTrend < 0 ? "text-red-400" : "text-muted-foreground")}
                 >
                   {cacheTrend > 0 ? "+" : ""}
                   {cacheTrend.toFixed(1)}pp vs prev 7d
@@ -381,7 +382,7 @@ export default async function DashboardPage({
                   <div className="flex gap-1">
                     <Link
                       href={`/dashboard${selectedClient ? `?client=${selectedClient}` : ""}`}
-                      className={`rounded px-2 py-1 text-xs font-mono ${!selectedYear ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                      className={cn("rounded px-2 py-1 text-xs font-mono", !selectedYear ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground")}
                     >
                       Recent
                     </Link>
@@ -389,7 +390,7 @@ export default async function DashboardPage({
                       <Link
                         key={y}
                         href={`/dashboard?year=${y}${selectedClient ? `&client=${selectedClient}` : ""}`}
-                        className={`rounded px-2 py-1 text-xs font-mono ${selectedYear === y ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                        className={cn("rounded px-2 py-1 text-xs font-mono", selectedYear === y ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground")}
                       >
                         {y}
                       </Link>
@@ -401,7 +402,7 @@ export default async function DashboardPage({
                 <div className="flex flex-wrap gap-1">
                   <Link
                     href={`/dashboard${selectedYear ? `?year=${selectedYear}` : ""}${selectedTheme !== "green" ? `${selectedYear ? "&" : "?"}theme=${selectedTheme}` : ""}`}
-                    className={`rounded px-2 py-1 text-xs font-mono ${!selectedClient ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                    className={cn("rounded px-2 py-1 text-xs font-mono", !selectedClient ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground")}
                   >
                     All
                   </Link>
@@ -409,7 +410,7 @@ export default async function DashboardPage({
                     <Link
                       key={c}
                       href={`/dashboard?client=${c}${selectedYear ? `&year=${selectedYear}` : ""}${selectedTheme !== "green" ? `&theme=${selectedTheme}` : ""}`}
-                      className={`rounded px-2 py-1 text-xs font-mono ${selectedClient === c ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                      className={cn("rounded px-2 py-1 text-xs font-mono", selectedClient === c ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground")}
                     >
                       {c}
                     </Link>
@@ -421,7 +422,7 @@ export default async function DashboardPage({
                   <Link
                     key={key}
                     href={`/dashboard?theme=${key}${selectedYear ? `&year=${selectedYear}` : ""}${selectedClient ? `&client=${selectedClient}` : ""}`}
-                    className={`rounded px-2 py-1 text-xs font-mono ${selectedTheme === key ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                    className={cn("rounded px-2 py-1 text-xs font-mono", selectedTheme === key ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground")}
                   >
                     {label}
                   </Link>

@@ -1,5 +1,6 @@
 import { rankings, users, usageRecords } from "@tokenmaxxing/db/index";
 import { formatTokens, SupportedClient } from "@tokenmaxxing/shared/types";
+import { cn } from "@tokenmaxxing/ui/lib/utils";
 import { eq, asc, desc, and, count, sum, countDistinct } from "drizzle-orm";
 import Link from "next/link";
 
@@ -161,7 +162,7 @@ export default async function HomePage({
       <div className="mb-4 flex flex-wrap gap-1">
         <Link
           href="/"
-          className={`rounded px-2 py-1 text-xs font-mono ${!hasFilter ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+          className={cn("rounded px-2 py-1 text-xs font-mono", !hasFilter ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground")}
         >
           All
         </Link>
@@ -169,7 +170,7 @@ export default async function HomePage({
           <Link
             key={c.client}
             href={`/?client=${c.client}`}
-            className={`rounded px-2 py-1 text-xs font-mono ${clientFilter === c.client ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+            className={cn("rounded px-2 py-1 text-xs font-mono", clientFilter === c.client ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground")}
           >
             {c.client}
           </Link>

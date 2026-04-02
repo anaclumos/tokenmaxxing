@@ -17,6 +17,7 @@ import {
   CardTitle,
 } from "@tokenmaxxing/ui/components/card";
 import { ActivityHeatmap, heatmapThemes, type HeatmapTheme } from "@tokenmaxxing/ui/components/heatmap";
+import { cn } from "@tokenmaxxing/ui/lib/utils";
 import { eq, desc, and } from "drizzle-orm";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -322,7 +323,7 @@ export default async function ProfilePage({
                 <div className="flex gap-1">
                   <Link
                     href={`/u/${username}${selectedClient ? `?client=${selectedClient}` : ""}`}
-                    className={`rounded px-2 py-1 text-xs font-mono ${!selectedYear ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                    className={cn("rounded px-2 py-1 text-xs font-mono", !selectedYear ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground")}
                   >
                     Recent
                   </Link>
@@ -330,7 +331,7 @@ export default async function ProfilePage({
                     <Link
                       key={y}
                       href={`/u/${username}?year=${y}${selectedClient ? `&client=${selectedClient}` : ""}`}
-                      className={`rounded px-2 py-1 text-xs font-mono ${selectedYear === y ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                      className={cn("rounded px-2 py-1 text-xs font-mono", selectedYear === y ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground")}
                     >
                       {y}
                     </Link>
@@ -342,7 +343,7 @@ export default async function ProfilePage({
               <div className="flex flex-wrap gap-1">
                 <Link
                   href={`/u/${username}${selectedYear ? `?year=${selectedYear}` : ""}${selectedTheme !== "green" ? `${selectedYear ? "&" : "?"}theme=${selectedTheme}` : ""}`}
-                  className={`rounded px-2 py-1 text-xs font-mono ${!selectedClient ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                  className={cn("rounded px-2 py-1 text-xs font-mono", !selectedClient ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground")}
                 >
                   All
                 </Link>
@@ -350,7 +351,7 @@ export default async function ProfilePage({
                   <Link
                     key={c}
                     href={`/u/${username}?client=${c}${selectedYear ? `&year=${selectedYear}` : ""}${selectedTheme !== "green" ? `&theme=${selectedTheme}` : ""}`}
-                    className={`rounded px-2 py-1 text-xs font-mono ${selectedClient === c ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                    className={cn("rounded px-2 py-1 text-xs font-mono", selectedClient === c ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground")}
                   >
                     {c}
                   </Link>
@@ -362,7 +363,7 @@ export default async function ProfilePage({
                 <Link
                   key={key}
                   href={`/u/${username}?theme=${key}${selectedYear ? `&year=${selectedYear}` : ""}${selectedClient ? `&client=${selectedClient}` : ""}`}
-                  className={`rounded px-2 py-1 text-xs font-mono ${selectedTheme === key ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                  className={cn("rounded px-2 py-1 text-xs font-mono", selectedTheme === key ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground")}
                 >
                   {label}
                 </Link>

@@ -1,0 +1,36 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - banner [ref=e3]:
+      - link "tokenmaxx.ing" [ref=e4] [cursor=pointer]:
+        - /url: /
+      - button "Sign in" [ref=e6]
+    - main [ref=e7]:
+      - heading "Leaderboard" [level=1] [ref=e8]
+      - generic [ref=e9]:
+        - generic [ref=e10]: 0 users
+        - generic [ref=e11]: 0 tokens
+        - generic [ref=e12]:
+          - generic [ref=e13]: $0
+          - text: spent
+      - generic [ref=e14]:
+        - generic [ref=e15]:
+          - tablist [ref=e17]:
+            - tab "Daily" [ref=e18]
+            - tab "Weekly" [ref=e19]
+            - tab "Monthly" [ref=e20]
+            - tab "All Time" [selected] [ref=e21]
+          - tablist [ref=e23]:
+            - tab "Score" [selected] [ref=e24]
+            - tab "Tokens" [ref=e25]
+            - tab "Cost" [ref=e26]
+        - table [ref=e28]:
+          - rowgroup [ref=e29]:
+            - row "# User Tokens Cost Streak Score" [ref=e30]:
+              - columnheader "#" [ref=e31]
+              - columnheader "User" [ref=e32]
+              - columnheader "Tokens" [ref=e33]
+              - columnheader "Cost" [ref=e34]
+              - columnheader "Streak" [ref=e35]
+              - columnheader "Score" [ref=e36]
+          - rowgroup
+  - alert [ref=e37]

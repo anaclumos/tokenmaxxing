@@ -1,5 +1,5 @@
 import { Show, SignInButton, UserButton } from "@clerk/nextjs";
-import { Button } from "@tokenmaxxing/ui/components/button";
+import { Button, buttonVariants } from "@tokenmaxxing/ui/components/button";
 import Link from "next/link";
 
 export default function MainLayout({
@@ -12,15 +12,13 @@ export default function MainLayout({
       <header className="flex items-center justify-between border-b border-border px-6 py-4">
         <Link
           href="/"
-          className="text-lg font-semibold font-mono tracking-tight"
+          className="text-lg font-semibold tracking-tight"
         >
           tokenmaxx.ing
         </Link>
         <div className="flex items-center gap-3">
-          <Link href="/docs">
-            <Button variant="ghost" size="sm">
-              API
-            </Button>
+          <Link href="/docs" className={buttonVariants({ variant: "ghost", size: "sm" })}>
+            API
           </Link>
           <Show when="signed-out">
             <SignInButton mode="modal">
@@ -28,10 +26,8 @@ export default function MainLayout({
             </SignInButton>
           </Show>
           <Show when="signed-in">
-            <Link href="/dashboard">
-              <Button variant="ghost" size="sm">
-                Dashboard
-              </Button>
+            <Link href="/dashboard" className={buttonVariants({ variant: "ghost", size: "sm" })}>
+              Dashboard
             </Link>
             <UserButton />
           </Show>

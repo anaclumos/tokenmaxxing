@@ -22,6 +22,17 @@ const sunghyunSans = localFont({
   display: "swap",
 });
 
+const iosevka = localFont({
+  src: [
+    { path: "../fonts/Iosevka-Regular.woff2", weight: "400" },
+    { path: "../fonts/Iosevka-Medium.woff2", weight: "500" },
+    { path: "../fonts/Iosevka-SemiBold.woff2", weight: "600" },
+    { path: "../fonts/Iosevka-Bold.woff2", weight: "700" },
+  ],
+  variable: "--font-iosevka",
+  display: "swap",
+});
+
 export const metadata: Metadata = {
   title: "tokenmaxx.ing",
   description: "Compete on token consumption across all AI coding agents",
@@ -39,6 +50,7 @@ export default function RootLayout({
         className={cn(
           "dark h-full antialiased",
           sunghyunSans.variable,
+          iosevka.variable,
           "font-sans"
         )}
       >
