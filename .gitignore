@@ -32,3 +32,4 @@ npm-debug.log*
 
 # agent loop state
 .sisyphus/
+.playwright-mcp/
