@@ -381,7 +381,7 @@ export default async function DashboardPage({
                 {availableYears.length > 1 && (
                   <div className="flex gap-1">
                     <Link
-                      href={`/dashboard${selectedClient ? `?client=${selectedClient}` : ""}`}
+                      href={`/app${selectedClient ? `?client=${selectedClient}` : ""}`}
                       className={cn("rounded px-2 py-1 text-xs font-mono", !selectedYear ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground")}
                     >
                       Recent
@@ -389,7 +389,7 @@ export default async function DashboardPage({
                     {availableYears.map((y) => (
                       <Link
                         key={y}
-                        href={`/dashboard?year=${y}${selectedClient ? `&client=${selectedClient}` : ""}`}
+                        href={`/app?year=${y}${selectedClient ? `&client=${selectedClient}` : ""}`}
                         className={cn("rounded px-2 py-1 text-xs font-mono", selectedYear === y ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground")}
                       >
                         {y}
@@ -401,7 +401,7 @@ export default async function DashboardPage({
               {allClients.length > 1 && (
                 <div className="flex flex-wrap gap-1">
                   <Link
-                    href={`/dashboard${selectedYear ? `?year=${selectedYear}` : ""}${selectedTheme !== "green" ? `${selectedYear ? "&" : "?"}theme=${selectedTheme}` : ""}`}
+                    href={`/app${selectedYear ? `?year=${selectedYear}` : ""}${selectedTheme !== "green" ? `${selectedYear ? "&" : "?"}theme=${selectedTheme}` : ""}`}
                     className={cn("rounded px-2 py-1 text-xs font-mono", !selectedClient ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground")}
                   >
                     All
@@ -409,7 +409,7 @@ export default async function DashboardPage({
                   {allClients.map((c) => (
                     <Link
                       key={c}
-                      href={`/dashboard?client=${c}${selectedYear ? `&year=${selectedYear}` : ""}${selectedTheme !== "green" ? `&theme=${selectedTheme}` : ""}`}
+                      href={`/app?client=${c}${selectedYear ? `&year=${selectedYear}` : ""}${selectedTheme !== "green" ? `&theme=${selectedTheme}` : ""}`}
                       className={cn("rounded px-2 py-1 text-xs font-mono", selectedClient === c ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground")}
                     >
                       {c}
@@ -421,7 +421,7 @@ export default async function DashboardPage({
                 {(Object.entries(heatmapThemes) as [HeatmapTheme, { label: string }][]).map(([key, { label }]) => (
                   <Link
                     key={key}
-                    href={`/dashboard?theme=${key}${selectedYear ? `&year=${selectedYear}` : ""}${selectedClient ? `&client=${selectedClient}` : ""}`}
+                    href={`/app?theme=${key}${selectedYear ? `&year=${selectedYear}` : ""}${selectedClient ? `&client=${selectedClient}` : ""}`}
                     className={cn("rounded px-2 py-1 text-xs font-mono", selectedTheme === key ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground")}
                   >
                     {label}
@@ -442,7 +442,7 @@ export default async function DashboardPage({
                 if (selectedClient) p.set("client", selectedClient);
                 if (selectedTheme !== "green") p.set("theme", selectedTheme);
                 p.set("day", date);
-                return `/dashboard?${p}`;
+                return `/app?${p}`;
               }}
             />
           </CardContent>
@@ -450,7 +450,7 @@ export default async function DashboardPage({
             <CardContent className="border-t pt-4">
               <div className="mb-3 flex items-center justify-between">
                 <span className="font-mono text-sm font-bold">{selectedDay}</span>
-                <Link href={`/dashboard${selectedYear ? `?year=${selectedYear}` : ""}${selectedClient ? `${selectedYear ? "&" : "?"}client=${selectedClient}` : ""}`} className="text-xs text-muted-foreground hover:text-foreground">
+                <Link href={`/app${selectedYear ? `?year=${selectedYear}` : ""}${selectedClient ? `${selectedYear ? "&" : "?"}client=${selectedClient}` : ""}`} className="text-xs text-muted-foreground hover:text-foreground">
                   Dismiss
                 </Link>
               </div>
@@ -496,7 +496,7 @@ export default async function DashboardPage({
         </CardHeader>
         <CardContent>
           <p className="mb-3 text-sm text-muted-foreground">
-            <Link href="/settings" className="underline">
+            <Link href="/app/settings" className="underline">
               Generate an API token
             </Link>
             , then run:

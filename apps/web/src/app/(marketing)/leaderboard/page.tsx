@@ -12,7 +12,7 @@ import {
 } from "@/lib/search-params";
 import { TOKEN_SUM } from "@/lib/usage-queries";
 
-import { LeaderboardTable } from "./leaderboard/leaderboard-table";
+import { LeaderboardTable } from "./leaderboard-table";
 
 const orderByColumn = {
   score: asc(rankings.rank),
@@ -161,7 +161,7 @@ export default async function HomePage({
       {/* Client filter */}
       <div className="mb-4 flex flex-wrap gap-1">
         <Link
-          href="/"
+          href="/leaderboard"
           className={cn("rounded px-2 py-1 text-xs font-mono", !hasFilter ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground")}
         >
           All
@@ -169,7 +169,7 @@ export default async function HomePage({
         {clientCounts.map((c) => (
           <Link
             key={c.client}
-            href={`/?client=${c.client}`}
+            href={`/leaderboard?client=${c.client}`}
             className={cn("rounded px-2 py-1 text-xs font-mono", clientFilter === c.client ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground")}
           >
             {c.client}

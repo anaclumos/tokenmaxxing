@@ -14,7 +14,7 @@ export default async function CreateOrgPage() {
       <p className="mb-8 max-w-md text-center text-muted-foreground">
         Organizations are private leaderboards. Invite your team and compete.
       </p>
-      <CreateOrganization afterCreateOrganizationUrl="/dashboard" />
+      <CreateOrganization afterCreateOrganizationUrl="/app" />
     </main>
   );
 }

@@ -54,7 +54,7 @@ export function LeaderboardTable({
     if (!filter) params.set("period", overrides.period ?? period);
     params.set("sort", s);
     if (pg > 1) params.set("page", String(pg));
-    router.push(`/?${params}`);
+    router.push(`/leaderboard?${params}`);
   }
 
   return (

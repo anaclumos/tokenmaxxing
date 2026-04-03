@@ -78,7 +78,7 @@ export default function DocsPage() {
       <p className="mb-8 text-muted-foreground">
         All public endpoints return JSON with CORS enabled. Authenticated endpoints require a{" "}
         <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-sm">Bearer</code> token from{" "}
-        <a href="/settings" className="underline">Settings</a>.
+        <a href="/app/settings" className="underline">Settings</a>.
       </p>
 
       <div className="space-y-6">
