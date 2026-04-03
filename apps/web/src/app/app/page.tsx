@@ -243,7 +243,7 @@ export default async function DashboardPage({
                 ${projectedMonthly.toFixed(2)}
               </span>
               <span
-                className={cn("text-sm font-mono", trend > 0 ? "text-red-400" : trend < 0 ? "text-green-400" : "text-muted-foreground")}
+                className={cn("text-sm font-mono", trend > 0 ? "text-red-600 dark:text-red-400" : trend < 0 ? "text-green-600 dark:text-green-400" : "text-muted-foreground")}
               >
                 {trend > 0 ? "+" : ""}
                 {trend.toFixed(0)}% vs prev 7d
@@ -271,7 +271,7 @@ export default async function DashboardPage({
               </span>
               {prevPool > 0 && (
                 <span
-                  className={cn("text-sm font-mono", cacheTrend > 0 ? "text-green-400" : cacheTrend < 0 ? "text-red-400" : "text-muted-foreground")}
+                  className={cn("text-sm font-mono", cacheTrend > 0 ? "text-green-600 dark:text-green-400" : cacheTrend < 0 ? "text-red-600 dark:text-red-400" : "text-muted-foreground")}
                 >
                   {cacheTrend > 0 ? "+" : ""}
                   {cacheTrend.toFixed(1)}pp vs prev 7d

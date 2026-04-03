@@ -86,7 +86,7 @@ export default function DocsPage() {
           <Card key={`${ep.method} ${ep.path}`}>
             <CardHeader className="pb-2">
               <CardTitle className="flex items-center gap-3 text-base">
-                <span className={cn("rounded px-2 py-0.5 font-mono text-xs", ep.method === "GET" ? "bg-green-500/15 text-green-400" : "bg-blue-500/15 text-blue-400")}>
+                <span className={cn("rounded px-2 py-0.5 font-mono text-xs", ep.method === "GET" ? "bg-green-500/15 text-green-700 dark:text-green-400" : "bg-blue-500/15 text-blue-700 dark:text-blue-400")}>
                   {ep.method}
                 </span>
                 <code className="font-mono">{ep.path}</code>

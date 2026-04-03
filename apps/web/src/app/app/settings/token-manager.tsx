@@ -38,11 +38,11 @@ export function TokenManager() {
   return (
     <div>
       {newToken && (
-        <div className="mb-4 rounded border border-green-800 bg-green-950 px-4 py-3">
-          <p className="mb-1 text-sm font-medium text-green-400">
+        <div className="mb-4 rounded border border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-950 px-4 py-3">
+          <p className="mb-1 text-sm font-medium text-green-700 dark:text-green-400">
             Token created. Copy it now - it won't be shown again.
           </p>
-          <code className="block break-all font-mono text-sm text-green-300">
+          <code className="block break-all font-mono text-sm text-green-600 dark:text-green-300">
             {newToken}
           </code>
           <p className="mt-2 text-xs text-muted-foreground">
