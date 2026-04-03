@@ -12,12 +12,23 @@
   "dependencies": {
     "@clerk/nextjs": "^7.0.7",
     "@clerk/themes": "^2.4.57",
+    "@radix-ui/react-dialog": "^1.1.15",
+    "@radix-ui/react-dropdown-menu": "^2.1.16",
+    "@radix-ui/react-navigation-menu": "^1.2.14",
+    "@radix-ui/react-visually-hidden": "^1.2.4",
+    "@remixicon/react": "^4.9.0",
     "@tokenmaxxing/db": "workspace:*",
     "@tokenmaxxing/ui": "workspace:*",
+    "clsx": "^2.1.1",
     "drizzle-orm": "^0.45.2",
+    "lucide-react": "^1.7.0",
+    "motion": "^12.38.0",
     "next": "16.2.1",
+    "next-themes": "^0.4.6",
     "react": "19.2.4",
     "react-dom": "19.2.4",
+    "recharts": "^3.8.1",
+    "tailwind-merge": "^3.5.0",
     "zod": "^4.3.6"
   },
   "devDependencies": {
