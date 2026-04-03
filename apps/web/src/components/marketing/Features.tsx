@@ -50,10 +50,10 @@ function RankMockup() {
             className={cn(
               "w-6 text-center text-sm font-bold",
               rank === 1
-                ? "text-amber-500"
+                ? "text-emerald-500"
                 : rank === 2
                   ? "text-gray-400"
-                  : "text-orange-700",
+                  : "text-emerald-700",
             )}
           >
             #{rank}
@@ -135,7 +135,7 @@ export default function Features() {
               >
                 {/* Text */}
                 <div className="flex flex-col gap-4">
-                  <span className="text-sm font-semibold uppercase tracking-wider text-orange-500">
+                  <span className="text-sm font-semibold uppercase tracking-wider text-emerald-500">
                     {feature.subtitle}
                   </span>
                   <h2 className="text-3xl font-bold tracking-tight text-gray-900 dark:text-gray-50">

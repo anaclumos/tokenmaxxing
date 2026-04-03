@@ -24,7 +24,7 @@ export default function Hero() {
               "text-gray-700 dark:text-gray-300",
             )}
           >
-            <span className="rounded-full bg-orange-500 px-2 py-0.5 text-xs font-semibold text-white">
+            <span className="rounded-full bg-emerald-500 px-2 py-0.5 text-xs font-semibold text-white">
               New
             </span>
             Now supporting Claude, Codex, Gemini, and more
@@ -51,8 +51,8 @@ export default function Hero() {
             href="/leaderboard"
             className={cn(
               "inline-flex items-center rounded-md px-5 py-3 text-sm font-semibold text-white",
-              "bg-linear-to-b from-orange-400 to-orange-500",
-              "border-b-2 border-orange-700",
+              "bg-linear-to-b from-emerald-400 to-emerald-500",
+              "border-b-2 border-emerald-700",
               "shadow-sm hover:shadow-md transition-shadow",
             )}
           >

@@ -28,8 +28,8 @@ export default function CallToAction() {
                   href="/sign-up"
                   className={cn(
                     "inline-flex items-center justify-center rounded-md px-4 py-2.5 text-sm font-semibold text-white",
-                    "bg-linear-to-b from-orange-400 to-orange-500",
-                    "border-b-2 border-orange-700",
+                    "bg-linear-to-b from-emerald-400 to-emerald-500",
+                    "border-b-2 border-emerald-700",
                     "shadow-sm hover:shadow-md transition-shadow",
                   )}
                 >

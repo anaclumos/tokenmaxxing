@@ -56,7 +56,16 @@ export default function MarketingNavbar() {
         <div className="hidden items-center gap-2 md:flex">
           <Show when="signed-out">
             <SignInButton mode="modal">
-              <Button size="sm">Sign in</Button>
+              <button
+                className={cn(
+                  "inline-flex items-center rounded-md px-4 py-2 text-sm font-semibold text-white",
+                  "bg-linear-to-b from-emerald-400 to-emerald-500",
+                  "border-b-2 border-emerald-700",
+                  "shadow-sm hover:shadow-md transition-shadow cursor-pointer",
+                )}
+              >
+                Sign in
+              </button>
             </SignInButton>
           </Show>
           <Show when="signed-in">
@@ -104,9 +113,16 @@ export default function MarketingNavbar() {
             <div className="mt-2 flex flex-col gap-1 border-t border-gray-200/50 pt-2 dark:border-gray-800/50">
               <Show when="signed-out">
                 <SignInButton mode="modal">
-                  <Button size="sm" className="w-full">
+                  <button
+                    className={cn(
+                      "inline-flex w-full items-center justify-center rounded-md px-4 py-2 text-sm font-semibold text-white",
+                      "bg-linear-to-b from-emerald-400 to-emerald-500",
+                      "border-b-2 border-emerald-700",
+                      "shadow-sm hover:shadow-md transition-shadow cursor-pointer",
+                    )}
+                  >
                     Sign in
-                  </Button>
+                  </button>
                 </SignInButton>
               </Show>
               <Show when="signed-in">
