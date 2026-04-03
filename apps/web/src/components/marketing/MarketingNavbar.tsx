@@ -1,7 +1,7 @@
 "use client"
 
 import { Show, SignInButton, UserButton } from "@clerk/nextjs"
-import { Button, buttonVariants } from "@tokenmaxxing/ui/components/button"
+import { buttonVariants } from "@tokenmaxxing/ui/components/button"
 import { cn } from "@tokenmaxxing/ui/lib/utils"
 import { RiCloseFill, RiMenuFill } from "@remixicon/react"
 import Link from "next/link"
