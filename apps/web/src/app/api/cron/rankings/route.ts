@@ -9,7 +9,7 @@ import { computeAllRankings } from "@/lib/rankings";
 
 export async function GET(req: NextRequest) {
   const authHeader = req.headers.get("authorization");
-  if (authHeader !== `Bearer ${env.CRON_SECRET}`) {
+  if (authHeader !== `Bearer ${env().CRON_SECRET}`) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
