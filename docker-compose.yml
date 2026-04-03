@@ -1,0 +1,14 @@
+services:
+  postgres:
+    image: postgres:17
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: tokenmaxxing
+      POSTGRES_PASSWORD: tokenmaxxing
+      POSTGRES_DB: tokenmaxxing
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+volumes:
+  pgdata:
