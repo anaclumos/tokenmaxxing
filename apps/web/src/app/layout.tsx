@@ -2,7 +2,7 @@ import { ClerkProvider } from "@clerk/nextjs";
 import { dark } from "@clerk/themes";
 import { cn } from "@tokenmaxxing/ui/lib/utils";
 import type { Metadata } from "next";
-import { ThemeProvider } from "next-themes";
+import { Providers } from "@/components/providers";
 
 import "@tokenmaxxing/ui/globals.css";
 import localFont from "next/font/local";
@@ -61,13 +61,7 @@ export default function RootLayout({
         suppressHydrationWarning
       >
         <body className="min-h-full flex flex-col">
-          <ThemeProvider
-            attribute="class"
-            defaultTheme="system"
-            disableTransitionOnChange
-          >
-            {children}
-          </ThemeProvider>
+          <Providers>{children}</Providers>
         </body>
       </html>
     </ClerkProvider>

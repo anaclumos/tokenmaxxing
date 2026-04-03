@@ -1,0 +1,86 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - banner [ref=e3]:
+      - generic [ref=e4]:
+        - link "tokenmaxx.ing" [ref=e5] [cursor=pointer]:
+          - /url: /
+        - navigation [ref=e6]:
+          - link "Leaderboard" [ref=e7] [cursor=pointer]:
+            - /url: /leaderboard
+          - link "Docs" [ref=e8] [cursor=pointer]:
+            - /url: /app/docs
+    - main [ref=e9]:
+      - heading "Leaderboard" [level=1] [ref=e10]
+      - generic [ref=e11]:
+        - generic [ref=e12]: 0 users
+        - generic [ref=e13]: 0 tokens
+        - generic [ref=e14]:
+          - generic [ref=e15]: $0
+          - text: spent
+      - link "All" [ref=e17] [cursor=pointer]:
+        - /url: /leaderboard
+      - generic [ref=e18]:
+        - generic [ref=e19]:
+          - tablist [ref=e21]:
+            - tab "Daily" [ref=e22]
+            - tab "Weekly" [ref=e23]
+            - tab "Monthly" [ref=e24]
+            - tab "All Time" [selected] [ref=e25]
+          - tablist [ref=e27]:
+            - tab "Score" [selected] [ref=e28]
+            - tab "Tokens" [ref=e29]
+            - tab "Cost" [ref=e30]
+        - table [ref=e33]:
+          - rowgroup [ref=e34]:
+            - row "# User Tokens Cost Streak Score" [ref=e35]:
+              - columnheader "#" [ref=e36]
+              - columnheader "User" [ref=e37]
+              - columnheader "Tokens" [ref=e38]
+              - columnheader "Cost" [ref=e39]
+              - columnheader "Streak" [ref=e40]
+              - columnheader "Score" [ref=e41]
+          - rowgroup
+    - contentinfo [ref=e42]:
+      - generic:
+        - img
+      - generic [ref=e43]:
+        - generic [ref=e44]:
+          - generic [ref=e45]:
+            - link "tokenmaxx.ing" [ref=e46] [cursor=pointer]:
+              - /url: /
+            - paragraph [ref=e47]: Compete on token consumption across all AI coding agents.
+            - generic [ref=e48]:
+              - link "GitHub" [ref=e49] [cursor=pointer]:
+                - /url: https://github.com/anthropics
+                - img [ref=e50]
+              - link "X / Twitter" [ref=e52] [cursor=pointer]:
+                - /url: "#"
+                - img [ref=e53]
+          - generic [ref=e56]:
+            - paragraph [ref=e57]: Product
+            - list [ref=e58]:
+              - listitem [ref=e59]:
+                - link "Leaderboard" [ref=e60] [cursor=pointer]:
+                  - /url: /leaderboard
+              - listitem [ref=e61]:
+                - link "Dashboard" [ref=e62] [cursor=pointer]:
+                  - /url: /app
+              - listitem [ref=e63]:
+                - link "CLI" [ref=e64] [cursor=pointer]:
+                  - /url: https://www.npmjs.com/package/tokenmaxxing
+              - listitem [ref=e65]:
+                - link "API" [ref=e66] [cursor=pointer]:
+                  - /url: /app/docs
+          - generic [ref=e67]:
+            - paragraph [ref=e68]: Developers
+            - list [ref=e69]:
+              - listitem [ref=e70]:
+                - link "Documentation" [ref=e71] [cursor=pointer]:
+                  - /url: /app/docs
+              - listitem [ref=e72]:
+                - link "GitHub" [ref=e73] [cursor=pointer]:
+                  - /url: https://github.com/anthropics/tokenmaxxing
+        - paragraph [ref=e75]: © 2026 tokenmaxx.ing. All rights reserved.
+  - button "Open Next.js Dev Tools" [ref=e81] [cursor=pointer]:
+    - img [ref=e82]
+  - alert [ref=e85]
