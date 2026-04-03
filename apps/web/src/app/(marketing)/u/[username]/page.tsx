@@ -134,7 +134,7 @@ export default async function ProfilePage({
     : baseHeatmap;
 
   return (
-    <main className="mx-auto w-full max-w-3xl px-6 py-8">
+    <main className="mx-auto w-full max-w-3xl px-6 pt-20 pb-8">
       {/* Profile header */}
       <div className="mb-8 flex items-center gap-4">
         <Avatar className="h-16 w-16">

@@ -2,6 +2,7 @@ import { ClerkProvider } from "@clerk/nextjs";
 import { dark } from "@clerk/themes";
 import { cn } from "@tokenmaxxing/ui/lib/utils";
 import type { Metadata } from "next";
+import MarketingNavbar from "@/components/marketing/MarketingNavbar";
 import { Providers } from "@/components/providers";
 
 import "@tokenmaxxing/ui/globals.css";
@@ -61,7 +62,10 @@ export default function RootLayout({
         suppressHydrationWarning
       >
         <body className="min-h-full flex flex-col">
-          <Providers>{children}</Providers>
+          <Providers>
+            <MarketingNavbar />
+            {children}
+          </Providers>
         </body>
       </html>
     </ClerkProvider>
