@@ -2,6 +2,7 @@ import { ClerkProvider } from "@clerk/nextjs";
 import { dark } from "@clerk/themes";
 import { cn } from "@tokenmaxxing/ui/lib/utils";
 import type { Metadata } from "next";
+import { ThemeProvider } from "next-themes";
 
 import "@tokenmaxxing/ui/globals.css";
 import localFont from "next/font/local";
@@ -44,17 +45,30 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <ClerkProvider appearance={{ baseTheme: dark }}>
+    <ClerkProvider
+      appearance={{
+        baseTheme: dark,
+      }}
+    >
       <html
         lang="en"
         className={cn(
-          "dark h-full antialiased",
+          "h-full antialiased",
           sunghyunSans.variable,
           iosevka.variable,
           "font-sans"
         )}
+        suppressHydrationWarning
       >
-        <body className="min-h-full flex flex-col">{children}</body>
+        <body className="min-h-full flex flex-col">
+          <ThemeProvider
+            attribute="class"
+            defaultTheme="system"
+            disableTransitionOnChange
+          >
+            {children}
+          </ThemeProvider>
+        </body>
       </html>
     </ClerkProvider>
   );
