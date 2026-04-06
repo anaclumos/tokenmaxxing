@@ -2,7 +2,7 @@
   "mcpServers": {
     "context7": {
       "type": "http",
-      "url": "https://mcp.context7.com/mcp"
+      "url": "https://mcp.context7.com/mcp/oauth"
     },
     "grep_app": {
       "type": "http",
@@ -12,7 +12,6 @@
       "type": "http",
       "url": "https://mcp.exa.ai/mcp"
     },
-
     "search-mcp": {
       "type": "http",
       "url": "https://search-mcp.parallel.ai/mcp"
