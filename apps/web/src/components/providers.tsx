@@ -1,6 +1,8 @@
 "use client";
 
-import { ThemeProvider } from "next-themes";
+import { ClerkProvider } from "@clerk/nextjs";
+import { dark } from "@clerk/themes";
+import { ThemeProvider, useTheme } from "next-themes";
 
 // next-themes renders an inline <script> to prevent theme flicker.
 // React 19 warns about script tags inside components.
@@ -17,6 +19,19 @@ if (typeof window !== "undefined" && process.env.NODE_ENV === "development") {
   };
 }
 
+function ClerkThemed({ children }: { children: React.ReactNode }) {
+  const { resolvedTheme } = useTheme();
+  return (
+    <ClerkProvider
+      appearance={{
+        baseTheme: resolvedTheme === "dark" ? dark : undefined,
+      }}
+    >
+      {children}
+    </ClerkProvider>
+  );
+}
+
 export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <ThemeProvider
@@ -24,7 +39,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
       defaultTheme="system"
       disableTransitionOnChange
     >
-      {children}
+      <ClerkThemed>{children}</ClerkThemed>
     </ThemeProvider>
   );
 }

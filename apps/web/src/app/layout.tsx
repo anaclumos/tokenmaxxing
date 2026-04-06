@@ -1,5 +1,3 @@
-import { ClerkProvider } from "@clerk/nextjs";
-import { dark } from "@clerk/themes";
 import { cn } from "@tokenmaxxing/ui/lib/utils";
 import type { Metadata } from "next";
 import MarketingNavbar from "@/components/marketing/MarketingNavbar";
@@ -46,28 +44,22 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <ClerkProvider
-      appearance={{
-        baseTheme: dark,
-      }}
+    <html
+      lang="en"
+      className={cn(
+        "h-full antialiased",
+        sunghyunSans.variable,
+        iosevka.variable,
+        "font-sans"
+      )}
+      suppressHydrationWarning
     >
-      <html
-        lang="en"
-        className={cn(
-          "h-full antialiased",
-          sunghyunSans.variable,
-          iosevka.variable,
-          "font-sans"
-        )}
-        suppressHydrationWarning
-      >
-        <body className="min-h-full flex flex-col">
-          <Providers>
-            <MarketingNavbar />
-            {children}
-          </Providers>
-        </body>
-      </html>
-    </ClerkProvider>
+      <body className="min-h-full flex flex-col">
+        <Providers>
+          <MarketingNavbar />
+          {children}
+        </Providers>
+      </body>
+    </html>
   );
 }

@@ -1,10 +1,12 @@
 "use client"
 import { useEffect, useRef } from "react"
+import { useTheme } from "next-themes"
 
 type Grid = { alive: boolean; opacity: number }[][]
 
 const GameOfLife = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  const { resolvedTheme } = useTheme()
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -13,10 +15,12 @@ const GameOfLife = () => {
     if (!ctx) return
 
     let animationFrameId: number
+    const isDark = resolvedTheme === "dark"
+    const dot = isDark ? "255,255,255" : "0,0,0"
     const cellSize = 6
     const cols = Math.floor(canvas.width / cellSize)
     const rows = Math.floor(canvas.height / cellSize)
-    const transitionSpeed = 0.2 // Controls fade speed
+    const transitionSpeed = 0.2
 
     let grid: Grid = Array(rows)
       .fill(null)
@@ -43,10 +47,8 @@ const GameOfLife = () => {
     }
 
     const draw = () => {
-      ctx.fillStyle = "#F9FAFB"
-      ctx.fillRect(0, 0, canvas.width, canvas.height)
+      ctx.clearRect(0, 0, canvas.width, canvas.height)
 
-      // Update opacities
       for (let i = 0; i < rows; i++) {
         for (let j = 0; j < cols; j++) {
           const cell = grid[i][j]
@@ -57,7 +59,7 @@ const GameOfLife = () => {
           }
 
           if (cell.opacity > 0) {
-            ctx.fillStyle = `rgba(0, 0, 0, ${cell.opacity})`
+            ctx.fillStyle = `rgba(${dot},${cell.opacity})`
             ctx.beginPath()
             ctx.arc(
               j * cellSize + cellSize / 2,
@@ -95,11 +97,11 @@ const GameOfLife = () => {
     return () => {
       cancelAnimationFrame(animationFrameId)
     }
-  }, [])
+  }, [resolvedTheme])
 
   return (
     <div className="mask pointer-events-none overflow-hidden select-none">
-      <canvas ref={canvasRef} width={1500} height={600} />
+      <canvas ref={canvasRef} width={1500} height={600} className="bg-background" />
     </div>
   )
 }

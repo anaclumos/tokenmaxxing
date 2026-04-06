@@ -7,6 +7,7 @@ import { RiCloseFill, RiMenuFill } from "@remixicon/react"
 import Link from "next/link"
 import { useState } from "react"
 
+import { ThemeToggle } from "@/components/app/ThemeToggle"
 import useScroll from "@/lib/useScroll"
 
 const navLinks = [
@@ -54,6 +55,7 @@ export default function MarketingNavbar() {
 
         {/* Desktop right side */}
         <div className="hidden items-center gap-2 md:flex">
+          <ThemeToggle />
           <Show when="signed-out">
             <SignInButton mode="modal">
               <button
@@ -82,15 +84,18 @@ export default function MarketingNavbar() {
           </Show>
         </div>
 
-        {/* Mobile hamburger */}
-        <button
-          type="button"
-          className="flex items-center justify-center rounded-lg p-2 text-gray-600 hover:bg-gray-200 dark:text-gray-400 dark:hover:bg-gray-800 md:hidden"
+        {/* Mobile right side */}
+        <div className="flex items-center gap-1 md:hidden">
+          <ThemeToggle />
+          <button
+            type="button"
+            className="flex items-center justify-center rounded-lg p-2 text-gray-600 hover:bg-gray-200 dark:text-gray-400 dark:hover:bg-gray-800"
           onClick={() => setMobileOpen((prev) => !prev)}
           aria-label={mobileOpen ? "Close menu" : "Open menu"}
         >
-          {mobileOpen ? <RiCloseFill className="size-5" /> : <RiMenuFill className="size-5" />}
-        </button>
+            {mobileOpen ? <RiCloseFill className="size-5" /> : <RiMenuFill className="size-5" />}
+          </button>
+        </div>
       </div>
 
       {/* Mobile menu */}
