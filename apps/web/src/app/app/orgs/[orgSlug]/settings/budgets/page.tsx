@@ -1,5 +1,5 @@
 import { auth, clerkClient } from "@clerk/nextjs/server";
-import { budgetAlerts, users } from "@tokenmaxxing/db/index";
+import { budgetAlerts, budgetAlertEvents, users } from "@tokenmaxxing/db/index";
 import { Card, CardContent, CardHeader, CardTitle } from "@tokenmaxxing/ui/components/card";
 import { buttonVariants } from "@tokenmaxxing/ui/components/button";
 import {
@@ -58,19 +58,35 @@ export default async function OrgBudgetSettingsPage({
           .from(users)
           .where(inArray(users.clerkId, clerkIds))
       : [];
-  const alerts = await db()
-    .select({
-      id: budgetAlerts.id,
-      userId: budgetAlerts.userId,
-      period: budgetAlerts.period,
-      thresholdUsd: budgetAlerts.thresholdUsd,
-      webhookUrl: budgetAlerts.webhookUrl,
-      emailNotify: budgetAlerts.emailNotify,
-      updatedAt: budgetAlerts.updatedAt,
-    })
-    .from(budgetAlerts)
-    .where(eq(budgetAlerts.orgId, orgId))
-    .orderBy(desc(budgetAlerts.updatedAt));
+  const [alerts, eventRows] = await Promise.all([
+    db()
+      .select({
+        id: budgetAlerts.id,
+        userId: budgetAlerts.userId,
+        period: budgetAlerts.period,
+        thresholdUsd: budgetAlerts.thresholdUsd,
+        webhookUrl: budgetAlerts.webhookUrl,
+        emailNotify: budgetAlerts.emailNotify,
+        updatedAt: budgetAlerts.updatedAt,
+      })
+      .from(budgetAlerts)
+      .where(eq(budgetAlerts.orgId, orgId))
+      .orderBy(desc(budgetAlerts.updatedAt)),
+    db()
+      .select({
+        id: budgetAlertEvents.id,
+        triggeredAt: budgetAlertEvents.triggeredAt,
+        actualCost: budgetAlertEvents.actualCost,
+        thresholdCost: budgetAlertEvents.thresholdCost,
+        period: budgetAlerts.period,
+        userId: budgetAlerts.userId,
+      })
+      .from(budgetAlertEvents)
+      .innerJoin(budgetAlerts, eq(budgetAlertEvents.alertId, budgetAlerts.id))
+      .where(eq(budgetAlerts.orgId, orgId))
+      .orderBy(desc(budgetAlertEvents.triggeredAt))
+      .limit(20),
+  ]);
 
   const memberMap = new Map(members.map((member) => [member.id, member.username]));
   const rows = alerts
@@ -85,6 +101,12 @@ export default async function OrgBudgetSettingsPage({
       if (a.username !== b.username) return a.username.localeCompare(b.username);
       return a.period.localeCompare(b.period);
     });
+  const events = eventRows.map((event) => ({
+    ...event,
+    actualCost: Number(event.actualCost),
+    thresholdCost: Number(event.thresholdCost),
+    username: event.userId ? (memberMap.get(event.userId) ?? "Unknown") : "Org-wide",
+  }));
 
   return (
     <main className="mx-auto w-full max-w-5xl px-6 py-8">
@@ -175,6 +197,46 @@ export default async function OrgBudgetSettingsPage({
             <p className="text-sm text-muted-foreground">
               No budget thresholds yet. Save one above to add an org-wide or per-member limit.
             </p>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card className="mt-6">
+        <CardHeader>
+          <CardTitle>Alert history</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {events.length > 0 ? (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Scope</TableHead>
+                  <TableHead>Period</TableHead>
+                  <TableHead className="text-right">Actual</TableHead>
+                  <TableHead className="text-right">Threshold</TableHead>
+                  <TableHead>Triggered</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {events.map((event) => (
+                  <TableRow key={event.id}>
+                    <TableCell className="font-medium">{event.username}</TableCell>
+                    <TableCell className="font-mono">{event.period}</TableCell>
+                    <TableCell className="text-right font-mono">
+                      ${event.actualCost.toFixed(2)}
+                    </TableCell>
+                    <TableCell className="text-right font-mono">
+                      ${event.thresholdCost.toFixed(2)}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {event.triggeredAt.toLocaleDateString()}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          ) : (
+            <p className="text-sm text-muted-foreground">No budget alerts have fired yet.</p>
           )}
         </CardContent>
       </Card>
