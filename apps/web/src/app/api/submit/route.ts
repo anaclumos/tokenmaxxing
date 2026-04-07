@@ -7,6 +7,7 @@ import { eq } from "drizzle-orm";
 
 import { recomputeAggregates } from "@/lib/aggregates";
 import { authenticateToken } from "@/lib/auth";
+import { createBudgetAlertEvents } from "@/lib/budget-alerts";
 import { db } from "@/lib/db";
 
 export async function POST(req: Request) {
@@ -71,7 +72,19 @@ export async function POST(req: Request) {
       : [];
 
   if (inserted > 0) {
-    after(() => recomputeAggregates(db(), userId));
+    after(() =>
+      Promise.all([
+        recomputeAggregates(db(), userId),
+        createBudgetAlertEvents({
+          database: db(),
+          insertedRecords: insertedValues.map((value) => ({
+            timestamp: value.timestamp,
+            costUsd: Number(value.costUsd),
+          })),
+          userId,
+        }),
+      ]),
+    );
   }
 
   return Response.json({
