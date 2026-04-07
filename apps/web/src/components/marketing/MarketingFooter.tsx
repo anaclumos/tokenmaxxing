@@ -1,4 +1,4 @@
-import { RiGithubFill, RiTwitterXFill } from "@remixicon/react";
+import { RiGithubFill } from "@remixicon/react";
 import { cn } from "@tokenmaxxing/ui/lib/utils";
 import Link from "next/link";
 
@@ -16,7 +16,7 @@ const footerSections = [
     title: "Developers",
     links: [
       { label: "Documentation", href: "/docs" },
-      { label: "GitHub", href: "https://github.com/anthropics/tokenmaxxing" },
+      { label: "GitHub", href: "https://github.com/anaclumos/tokenmaxxing" },
     ],
   },
 ];
@@ -24,13 +24,8 @@ const footerSections = [
 const socialLinks = [
   {
     label: "GitHub",
-    href: "https://github.com/anthropics",
+    href: "https://github.com/anaclumos/tokenmaxxing",
     icon: RiGithubFill,
-  },
-  {
-    label: "X / Twitter",
-    href: "#",
-    icon: RiTwitterXFill,
   },
 ];
 
@@ -119,12 +114,23 @@ export default function MarketingFooter() {
               <ul className="flex flex-col gap-2">
                 {section.links.map((link) => (
                   <li key={link.label}>
-                    <Link
-                      href={link.href}
-                      className="text-sm text-gray-600 transition-colors hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-50"
-                    >
-                      {link.label}
-                    </Link>
+                    {link.href.startsWith("http") ? (
+                      <a
+                        href={link.href}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-sm text-gray-600 transition-colors hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-50"
+                      >
+                        {link.label}
+                      </a>
+                    ) : (
+                      <Link
+                        href={link.href}
+                        className="text-sm text-gray-600 transition-colors hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-50"
+                      >
+                        {link.label}
+                      </Link>
+                    )}
                   </li>
                 ))}
               </ul>
