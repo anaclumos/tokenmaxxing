@@ -133,6 +133,15 @@ const endpoints = [
       { name: "days", values: "7 | 30 | 90 | 0", default: "30" },
     ],
   },
+  {
+    method: "POST",
+    path: "/api/orgs/[orgId]/budgets",
+    format: "JSON",
+    auth: true,
+    description:
+      "Create or replace an org-wide or per-member budget threshold. Requires the active Clerk org and org:admin role.",
+    params: [],
+  },
 ] as const;
 
 export function ApiDocs() {

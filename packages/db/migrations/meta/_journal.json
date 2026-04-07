@@ -22,6 +22,13 @@
       "when": 1775592869813,
       "tag": "0002_tired_zuras",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1775601661625,
+      "tag": "0003_misty_vulture",
+      "breakpoints": true
     }
   ]
 }

@@ -22,6 +22,8 @@ export const leaderboardPeriod = pgEnum("leaderboard_period", [
   "alltime",
 ]);
 
+export const budgetAlertPeriod = pgEnum("budget_alert_period", ["daily", "weekly", "monthly"]);
+
 // Users - synced from Clerk via webhook
 export const users = pgTable("users", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -132,6 +134,43 @@ export const apiTokens = pgTable(
   (t) => [index("api_tokens_user_id_idx").on(t.userId)],
 );
 
+export const budgetAlerts = pgTable(
+  "budget_alerts",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    orgId: varchar("org_id", { length: 255 }).notNull(),
+    userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }),
+    period: budgetAlertPeriod("period").notNull(),
+    thresholdUsd: decimal("threshold_usd", { precision: 12, scale: 6 }).notNull(),
+    webhookUrl: text("webhook_url"),
+    emailNotify: boolean("email_notify").notNull().default(false),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("budget_alerts_org_id_idx").on(t.orgId),
+    index("budget_alerts_user_id_idx").on(t.userId),
+    index("budget_alerts_org_period_idx").on(t.orgId, t.period),
+  ],
+);
+
+export const budgetAlertEvents = pgTable(
+  "budget_alert_events",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    alertId: uuid("alert_id")
+      .notNull()
+      .references(() => budgetAlerts.id, { onDelete: "cascade" }),
+    triggeredAt: timestamp("triggered_at", { withTimezone: true }).notNull().defaultNow(),
+    actualCost: decimal("actual_cost", { precision: 12, scale: 6 }).notNull(),
+    thresholdCost: decimal("threshold_cost", { precision: 12, scale: 6 }).notNull(),
+  },
+  (t) => [
+    index("budget_alert_events_alert_id_idx").on(t.alertId),
+    index("budget_alert_events_triggered_at_idx").on(t.triggeredAt),
+  ],
+);
+
 // Type exports
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
@@ -140,3 +179,5 @@ export type NewUsageRecord = typeof usageRecords.$inferInsert;
 export type DailyAggregate = typeof dailyAggregates.$inferSelect;
 export type Ranking = typeof rankings.$inferSelect;
 export type ApiToken = typeof apiTokens.$inferSelect;
+export type BudgetAlert = typeof budgetAlerts.$inferSelect;
+export type BudgetAlertEvent = typeof budgetAlertEvents.$inferSelect;
