@@ -1,6 +1,9 @@
 import { usageRecords } from "@tokenmaxxing/db/index";
 import { SubmitPayload } from "@tokenmaxxing/shared/types";
+import { getUnlockedBadges } from "@tokenmaxxing/shared/unlocked-badges";
 import { after } from "next/server";
+import { dailyAggregates } from "@tokenmaxxing/db/index";
+import { eq } from "drizzle-orm";
 
 import { recomputeAggregates } from "@/lib/aggregates";
 import { authenticateToken } from "@/lib/auth";
@@ -17,7 +20,7 @@ export async function POST(req: Request) {
   if (!parsed.success) {
     return Response.json(
       { error: "Invalid payload", details: parsed.error.issues },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
@@ -42,9 +45,30 @@ export async function POST(req: Request) {
     .insert(usageRecords)
     .values(values)
     .onConflictDoNothing({ target: usageRecords.sessionHash })
-    .returning({ id: usageRecords.id });
+    .returning({ id: usageRecords.id, sessionHash: usageRecords.sessionHash });
 
   const inserted = result.length;
+  const insertedSessionHashes = new Set(result.map((row) => row.sessionHash));
+  const insertedValues = values.filter((value) => insertedSessionHashes.has(value.sessionHash));
+  const unlockedBadges =
+    insertedValues.length > 0
+      ? getUnlockedBadges({
+          rows: await db()
+            .select({
+              date: dailyAggregates.date,
+              totalInput: dailyAggregates.totalInput,
+              totalOutput: dailyAggregates.totalOutput,
+              totalCacheRead: dailyAggregates.totalCacheRead,
+              totalCacheWrite: dailyAggregates.totalCacheWrite,
+              totalReasoning: dailyAggregates.totalReasoning,
+              clientsUsed: dailyAggregates.clientsUsed,
+              modelsUsed: dailyAggregates.modelsUsed,
+            })
+            .from(dailyAggregates)
+            .where(eq(dailyAggregates.userId, userId)),
+          records: insertedValues,
+        })
+      : [];
 
   if (inserted > 0) {
     after(() => recomputeAggregates(db(), userId));
@@ -54,5 +78,6 @@ export async function POST(req: Request) {
     inserted,
     skipped: values.length - inserted,
     total: values.length,
+    unlockedBadges,
   });
 }

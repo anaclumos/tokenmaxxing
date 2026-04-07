@@ -78,7 +78,7 @@ const endpoints = [
     format: "JSON",
     auth: true,
     description:
-      "Submit usage records in batches of up to 500. Duplicates are deduplicated by sessionHash.",
+      "Submit usage records in batches of up to 500. Duplicates are deduplicated by sessionHash and the response includes newly unlocked derived badges.",
     params: [],
   },
   {

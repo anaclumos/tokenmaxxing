@@ -1,4 +1,6 @@
-export type ProfileBadgeTone = "sky" | "violet" | "emerald" | "amber" | "rose";
+export const profileBadgeTones = ["sky", "violet", "emerald", "amber", "rose"] as const;
+
+export type ProfileBadgeTone = (typeof profileBadgeTones)[number];
 
 export type ProfileBadge = {
   id: string;

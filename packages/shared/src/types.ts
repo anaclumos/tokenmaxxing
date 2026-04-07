@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { profileBadgeTones } from "./badges";
 
 // All supported AI coding agents
 export const SupportedClient = z.enum([
@@ -52,6 +53,15 @@ export const SubmitResponse = z.object({
   inserted: z.number(),
   skipped: z.number(),
   total: z.number(),
+  unlockedBadges: z.array(
+    z.object({
+      id: z.string().min(1),
+      mark: z.string().min(1),
+      name: z.string().min(1),
+      description: z.string().min(1),
+      tone: z.enum(profileBadgeTones),
+    }),
+  ),
 });
 export type SubmitResponse = z.infer<typeof SubmitResponse>;
 
@@ -82,7 +92,13 @@ export function sumAggregateTokens(a: {
   totalCacheWrite: number | null;
   totalReasoning: number | null;
 }): number {
-  return (a.totalInput ?? 0) + (a.totalOutput ?? 0) + (a.totalCacheRead ?? 0) + (a.totalCacheWrite ?? 0) + (a.totalReasoning ?? 0);
+  return (
+    (a.totalInput ?? 0) +
+    (a.totalOutput ?? 0) +
+    (a.totalCacheRead ?? 0) +
+    (a.totalCacheWrite ?? 0) +
+    (a.totalReasoning ?? 0)
+  );
 }
 
 // Utility: human-readable token count (2.4B, 150M, 42K)
