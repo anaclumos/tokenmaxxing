@@ -1,12 +1,8 @@
 import { auth, clerkClient } from "@clerk/nextjs/server";
 import { users, dailyAggregates, usageRecords } from "@tokenmaxxing/db/index";
 import { formatTokens, sumAggregateTokens } from "@tokenmaxxing/shared/types";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@tokenmaxxing/ui/components/card";
+import { buttonVariants } from "@tokenmaxxing/ui/components/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@tokenmaxxing/ui/components/card";
 import {
   Table,
   TableBody,
@@ -16,6 +12,8 @@ import {
   TableRow,
 } from "@tokenmaxxing/ui/components/table";
 import { gte, and, inArray, sum, count, isNotNull, desc, sql } from "drizzle-orm";
+import { cn } from "@tokenmaxxing/ui/lib/utils";
+import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
 import { db } from "@/lib/db";
@@ -38,7 +36,7 @@ export default async function OrgAnalyticsPage({
   searchParams: Promise<{ days?: string }>;
 }) {
   const [{ orgSlug }, query] = await Promise.all([params, searchParams]);
-  const { userId: clerkId, orgId, orgSlug: activeSlug } = await auth();
+  const { userId: clerkId, orgId, orgSlug: activeSlug, has } = await auth();
   if (!clerkId) redirect("/sign-in");
   if (!orgId || activeSlug !== orgSlug) notFound();
 
@@ -49,9 +47,7 @@ export default async function OrgAnalyticsPage({
 
   const days = parseAnalyticsDayRange(query.days);
   const since =
-    days > 0
-      ? new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 10)
-      : null;
+    days > 0 ? new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 10) : null;
 
   // Get org members
   const members = await client.organizations.getOrganizationMembershipList({
@@ -93,11 +89,8 @@ export default async function OrgAnalyticsPage({
           .from(dailyAggregates)
           .where(
             since
-              ? and(
-                  inArray(dailyAggregates.userId, userIds),
-                  gte(dailyAggregates.date, since)
-                )
-              : inArray(dailyAggregates.userId, userIds)
+              ? and(inArray(dailyAggregates.userId, userIds), gte(dailyAggregates.date, since))
+              : inArray(dailyAggregates.userId, userIds),
           )
       : [];
 
@@ -109,7 +102,10 @@ export default async function OrgAnalyticsPage({
             project: usageRecords.project,
             sessions: count(),
             totalCost: sum(usageRecords.costUsd).mapWith(Number),
-            totalTokens: sql<number>`sum(${usageRecords.inputTokens} + ${usageRecords.outputTokens} + ${usageRecords.cacheReadTokens} + ${usageRecords.cacheWriteTokens} + ${usageRecords.reasoningTokens})`.mapWith(Number),
+            totalTokens:
+              sql<number>`sum(${usageRecords.inputTokens} + ${usageRecords.outputTokens} + ${usageRecords.cacheReadTokens} + ${usageRecords.cacheWriteTokens} + ${usageRecords.reasoningTokens})`.mapWith(
+                Number,
+              ),
           })
           .from(usageRecords)
           .where(
@@ -117,12 +113,9 @@ export default async function OrgAnalyticsPage({
               ? and(
                   inArray(usageRecords.userId, userIds),
                   isNotNull(usageRecords.project),
-                  gte(usageRecords.timestamp, new Date(since))
+                  gte(usageRecords.timestamp, new Date(since)),
                 )
-              : and(
-                  inArray(usageRecords.userId, userIds),
-                  isNotNull(usageRecords.project)
-                )
+              : and(inArray(usageRecords.userId, userIds), isNotNull(usageRecords.project)),
           )
           .groupBy(usageRecords.project)
           .orderBy(desc(sum(usageRecords.costUsd)))
@@ -156,40 +149,43 @@ export default async function OrgAnalyticsPage({
     byMember.set(r.userId, m);
   }
 
-  const sortedMembers = [...byMember.values()].toSorted(
-    (a, b) => b.cost - a.cost
-  );
+  const sortedMembers = [...byMember.values()].toSorted((a, b) => b.cost - a.cost);
 
   return (
     <main className="mx-auto w-full max-w-4xl px-6 py-8">
-      <h1 className="mb-2 text-3xl font-bold tracking-tight">{org.name}</h1>
-      <p className="mb-6 text-muted-foreground">Team analytics</p>
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="mb-2 text-3xl font-bold tracking-tight">{org.name}</h1>
+          <p className="text-muted-foreground">Team analytics</p>
+        </div>
+
+        {has({ role: "org:admin" }) && (
+          <Link
+            href={`/app/orgs/${orgSlug}/settings/budgets`}
+            className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
+          >
+            Budget thresholds
+          </Link>
+        )}
+      </div>
 
       <FilterTabs param="days" value={String(days)} options={DAYS_OPTIONS} />
 
       <div className="mb-8 grid grid-cols-2 gap-4">
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-muted-foreground">
-              Total Tokens
-            </CardTitle>
+            <CardTitle className="text-sm text-muted-foreground">Total Tokens</CardTitle>
           </CardHeader>
           <CardContent>
-            <span className="text-2xl font-bold font-mono">
-              {formatTokens(totalTokens)}
-            </span>
+            <span className="text-2xl font-bold font-mono">{formatTokens(totalTokens)}</span>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-muted-foreground">
-              Total Cost
-            </CardTitle>
+            <CardTitle className="text-sm text-muted-foreground">Total Cost</CardTitle>
           </CardHeader>
           <CardContent>
-            <span className="text-2xl font-bold font-mono">
-              ${totalCost.toFixed(2)}
-            </span>
+            <span className="text-2xl font-bold font-mono">${totalCost.toFixed(2)}</span>
           </CardContent>
         </Card>
       </div>
@@ -216,9 +212,7 @@ export default async function OrgAnalyticsPage({
                   <TableCell className="text-right font-mono">
                     ${(p.totalCost ?? 0).toFixed(2)}
                   </TableCell>
-                  <TableCell className="text-right text-muted-foreground">
-                    {p.sessions}
-                  </TableCell>
+                  <TableCell className="text-right text-muted-foreground">{p.sessions}</TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -240,15 +234,9 @@ export default async function OrgAnalyticsPage({
           {sortedMembers.map((m) => (
             <TableRow key={m.username}>
               <TableCell className="font-medium">{m.username}</TableCell>
-              <TableCell className="text-right font-mono">
-                {formatTokens(m.tokens)}
-              </TableCell>
-              <TableCell className="text-right font-mono">
-                ${m.cost.toFixed(2)}
-              </TableCell>
-              <TableCell className="text-right text-muted-foreground">
-                {m.sessions}
-              </TableCell>
+              <TableCell className="text-right font-mono">{formatTokens(m.tokens)}</TableCell>
+              <TableCell className="text-right font-mono">${m.cost.toFixed(2)}</TableCell>
+              <TableCell className="text-right text-muted-foreground">{m.sessions}</TableCell>
             </TableRow>
           ))}
         </TableBody>

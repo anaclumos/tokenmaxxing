@@ -1,11 +1,8 @@
 import { auth, clerkClient } from "@clerk/nextjs/server";
 import { rankings, users } from "@tokenmaxxing/db/index";
 import { formatTokens } from "@tokenmaxxing/shared/types";
-import {
-  Avatar,
-  AvatarFallback,
-  AvatarImage,
-} from "@tokenmaxxing/ui/components/avatar";
+import { buttonVariants } from "@tokenmaxxing/ui/components/button";
+import { Avatar, AvatarFallback, AvatarImage } from "@tokenmaxxing/ui/components/avatar";
 import {
   Table,
   TableBody,
@@ -15,6 +12,8 @@ import {
   TableRow,
 } from "@tokenmaxxing/ui/components/table";
 import { eq, asc, and } from "drizzle-orm";
+import { cn } from "@tokenmaxxing/ui/lib/utils";
+import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
 import { db } from "@/lib/db";
@@ -37,7 +36,7 @@ export default async function OrgLeaderboardPage({
   searchParams: Promise<{ period?: string }>;
 }) {
   const [{ orgSlug }, query] = await Promise.all([params, searchParams]);
-  const { userId: clerkId, orgId, orgSlug: activeSlug } = await auth();
+  const { userId: clerkId, orgId, orgSlug: activeSlug, has } = await auth();
   if (!clerkId) redirect("/sign-in");
   if (!orgId || activeSlug !== orgSlug) notFound();
 
@@ -64,8 +63,21 @@ export default async function OrgLeaderboardPage({
 
   return (
     <main className="mx-auto w-full max-w-4xl px-6 py-8">
-      <h1 className="mb-2 text-3xl font-bold tracking-tight">{org.name}</h1>
-      <p className="mb-6 text-muted-foreground">Org leaderboard</p>
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="mb-2 text-3xl font-bold tracking-tight">{org.name}</h1>
+          <p className="text-muted-foreground">Org leaderboard</p>
+        </div>
+
+        {has({ role: "org:admin" }) && (
+          <Link
+            href={`/app/orgs/${orgSlug}/settings/budgets`}
+            className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
+          >
+            Budget thresholds
+          </Link>
+        )}
+      </div>
 
       <FilterTabs param="period" value={period} options={PERIODS} />
 
@@ -82,23 +94,17 @@ export default async function OrgLeaderboardPage({
         <TableBody>
           {entries.map((e) => (
             <TableRow key={e.rank}>
-              <TableCell className="font-mono text-muted-foreground">
-                {e.rank}
-              </TableCell>
+              <TableCell className="font-mono text-muted-foreground">{e.rank}</TableCell>
               <TableCell>
                 <div className="flex items-center gap-2">
                   <Avatar className="h-6 w-6">
                     {e.avatarUrl && <AvatarImage src={e.avatarUrl} />}
-                    <AvatarFallback className="text-xs">
-                      {e.username[0]}
-                    </AvatarFallback>
+                    <AvatarFallback className="text-xs">{e.username[0]}</AvatarFallback>
                   </Avatar>
                   <span className="font-medium">{e.username}</span>
                 </div>
               </TableCell>
-              <TableCell className="text-right font-mono">
-                {formatTokens(e.totalTokens)}
-              </TableCell>
+              <TableCell className="text-right font-mono">{formatTokens(e.totalTokens)}</TableCell>
               <TableCell className="text-right font-mono">
                 ${Number(e.totalCost).toFixed(2)}
               </TableCell>
