@@ -1,16 +1,15 @@
 import { users, rankings, dailyAggregates } from "@tokenmaxxing/db/index";
+import { getFeaturedBadge } from "@tokenmaxxing/shared/badges";
+import { summarizeDailyAggregateRows } from "@tokenmaxxing/shared/daily-aggregate-summary";
 import { formatTokens } from "@tokenmaxxing/shared/types";
 import { eq, and, sum } from "drizzle-orm";
 
 import { db } from "@/lib/db";
 
-export async function GET(
-  req: Request,
-  { params }: { params: Promise<{ username: string }> }
-) {
+export async function GET(req: Request, { params }: { params: Promise<{ username: string }> }) {
   const { username } = await params;
   const { searchParams } = new URL(req.url);
-  const style = searchParams.get("style") ?? "tokens"; // tokens | cost | rank | streak | cache
+  const style = searchParams.get("style") ?? "tokens"; // tokens | cost | rank | streak | cache | achievement
 
   const [user] = await db()
     .select({
@@ -33,7 +32,7 @@ export async function GET(
         color: "lightgrey",
         isError: true,
       },
-      { headers: { "Cache-Control": "public, max-age=300" } }
+      { headers: { "Cache-Control": "public, max-age=300" } },
     );
   }
 
@@ -54,8 +53,8 @@ export async function GET(
         and(
           eq(rankings.leaderboardId, "global"),
           eq(rankings.userId, user.id),
-          eq(rankings.period, "alltime")
-        )
+          eq(rankings.period, "alltime"),
+        ),
       )
       .limit(1);
     message = rank ? `#${rank.rank}` : "unranked";
@@ -74,6 +73,33 @@ export async function GET(
     const rate = pool > 0 ? (cacheRead / pool) * 100 : 0;
     message = `${rate.toFixed(0)}% cache hit`;
     color = rate >= 50 ? "brightgreen" : rate >= 25 ? "yellow" : "orange";
+  } else if (style === "achievement") {
+    const detail = await db()
+      .select({
+        date: dailyAggregates.date,
+        totalInput: dailyAggregates.totalInput,
+        totalOutput: dailyAggregates.totalOutput,
+        totalCacheRead: dailyAggregates.totalCacheRead,
+        totalCacheWrite: dailyAggregates.totalCacheWrite,
+        totalReasoning: dailyAggregates.totalReasoning,
+        clientsUsed: dailyAggregates.clientsUsed,
+        modelsUsed: dailyAggregates.modelsUsed,
+      })
+      .from(dailyAggregates)
+      .where(eq(dailyAggregates.userId, user.id));
+    const summary = summarizeDailyAggregateRows({ rows: detail });
+    const featuredBadge = getFeaturedBadge({
+      context: {
+        totalTokens: user.totalTokens,
+        longestStreak: user.currentStreak,
+        clientCount: summary.clients.length,
+        modelCount: summary.models.length,
+        cacheHitRate: summary.cacheHitRate,
+        activeDays: summary.activeDays,
+      },
+    });
+    message = featuredBadge ? featuredBadge.name : "no badges";
+    color = featuredBadge ? "blueviolet" : "lightgrey";
   } else {
     message = `${formatTokens(user.totalTokens)} tokens`;
     color = "brightgreen";
@@ -81,6 +107,6 @@ export async function GET(
 
   return Response.json(
     { schemaVersion: 1, label: "tokenmaxx.ing", message, color },
-    { headers: { "Cache-Control": "public, max-age=1800, s-maxage=1800" } }
+    { headers: { "Cache-Control": "public, max-age=1800, s-maxage=1800" } },
   );
 }

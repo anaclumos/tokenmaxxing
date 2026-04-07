@@ -44,7 +44,7 @@ const endpoints = [
     params: [
       {
         name: "style",
-        values: "tokens | cost | rank | streak | cache",
+        values: "tokens | cost | rank | streak | cache | achievement",
         default: "tokens",
       },
     ],

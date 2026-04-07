@@ -97,3 +97,7 @@ export function getEarnedBadges({ context }: { context: BadgeContext }) {
       description,
     }));
 }
+
+export function getFeaturedBadge({ context }: { context: BadgeContext }) {
+  return getEarnedBadges({ context }).at(-1) ?? null;
+}
