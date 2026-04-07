@@ -2,7 +2,8 @@
 
 import { Badge } from "@tokenmaxxing/ui/components/badge";
 import { Button } from "@tokenmaxxing/ui/components/button";
-import { useState, useEffect } from "react";
+import ky from "ky";
+import { useEffect, useState } from "react";
 
 type Token = {
   id: string;
@@ -12,26 +13,28 @@ type Token = {
   createdAt: string;
 };
 
+type TokensResponse = { tokens: Token[] };
+type NewTokenResponse = { token: string };
+
+async function getTokens() {
+  return ky.get("/api/tokens").json<TokensResponse>();
+}
+
 export function TokenManager() {
   const [tokens, setTokens] = useState<Token[]>([]);
   const [newToken, setNewToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    fetch("/api/tokens")
-      .then((r) => r.json())
-      .then((d: { tokens: Token[] }) => setTokens(d.tokens));
+    void getTokens().then((data) => setTokens(data.tokens));
   }, []);
 
   async function generate() {
     setLoading(true);
-    const res = await fetch("/api/tokens", { method: "POST" });
-    const data = (await res.json()) as { token: string };
+    const data = await ky.post("/api/tokens").json<NewTokenResponse>();
     setNewToken(data.token);
-    // Refresh list
-    const listRes = await fetch("/api/tokens");
-    const listData = (await listRes.json()) as { tokens: Token[] };
-    setTokens(listData.tokens);
+    const tokensData = await getTokens();
+    setTokens(tokensData.tokens);
     setLoading(false);
   }
 

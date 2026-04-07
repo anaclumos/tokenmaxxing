@@ -1,6 +1,7 @@
 "use client";
 
 import { Button } from "@tokenmaxxing/ui/components/button";
+import ky from "ky";
 import { useState } from "react";
 
 export function PrivacyToggle({ initial }: { initial: boolean }) {
@@ -9,12 +10,10 @@ export function PrivacyToggle({ initial }: { initial: boolean }) {
 
   async function toggle() {
     setLoading(true);
-    const res = await fetch("/api/settings/privacy", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ privacyMode: !enabled }),
+    await ky.put("/api/settings/privacy", {
+      json: { privacyMode: !enabled },
     });
-    if (res.ok) setEnabled(!enabled);
+    setEnabled(!enabled);
     setLoading(false);
   }
 
