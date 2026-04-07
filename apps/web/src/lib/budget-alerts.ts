@@ -395,11 +395,11 @@ async function sendBudgetAlertEmails({
     emailEvents.map(async (event) => {
       const org = orgById.get(event.orgId);
       const user = event.userId ? userById.get(event.userId) : null;
-      const recipients = event.userId
-        ? user?.email
-          ? [user.email]
-          : []
-        : (orgAdminEmailsByOrg.get(event.orgId) ?? []);
+      const recipients = getBudgetAlertEmailRecipients({
+        event,
+        orgAdminEmailsByOrg,
+        userById,
+      });
 
       if (recipients.length === 0) return;
 
@@ -428,6 +428,23 @@ async function sendBudgetAlertEmails({
       }
     }),
   );
+}
+
+export function getBudgetAlertEmailRecipients({
+  event,
+  orgAdminEmailsByOrg,
+  userById,
+}: {
+  event: Pick<TriggeredBudgetAlertEvent, "orgId" | "userId">;
+  orgAdminEmailsByOrg: Map<string, string[]>;
+  userById: Map<string, { username: string; email: string | null }>;
+}) {
+  const recipients = new Set(orgAdminEmailsByOrg.get(event.orgId) ?? []);
+  if (event.userId) {
+    const email = userById.get(event.userId)?.email;
+    if (email) recipients.add(email);
+  }
+  return [...recipients];
 }
 
 export async function createBudgetAlertEvents({

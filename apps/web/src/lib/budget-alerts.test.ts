@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
 
-import { getTriggeredBudgetAlertEvents, groupBudgetAlertBuckets } from "./budget-alerts";
+import {
+  getBudgetAlertEmailRecipients,
+  getTriggeredBudgetAlertEvents,
+  groupBudgetAlertBuckets,
+} from "./budget-alerts";
 
 describe("groupBudgetAlertBuckets", () => {
   test("groups weekly records into Monday UTC buckets", () => {
@@ -72,5 +76,62 @@ describe("getTriggeredBudgetAlertEvents", () => {
         insertedBuckets,
       }),
     ).toEqual([]);
+  });
+});
+
+describe("getBudgetAlertEmailRecipients", () => {
+  test("includes org admins and the member for member-scoped alerts", () => {
+    expect(
+      getBudgetAlertEmailRecipients({
+        event: {
+          orgId: "org_1",
+          userId: "user_1",
+        },
+        orgAdminEmailsByOrg: new Map([["org_1", ["admin@example.com"]]]),
+        userById: new Map([
+          [
+            "user_1",
+            {
+              username: "alice",
+              email: "alice@example.com",
+            },
+          ],
+        ]),
+      }),
+    ).toEqual(["admin@example.com", "alice@example.com"]);
+  });
+
+  test("dedupes recipients when the member is also an admin", () => {
+    expect(
+      getBudgetAlertEmailRecipients({
+        event: {
+          orgId: "org_1",
+          userId: "user_1",
+        },
+        orgAdminEmailsByOrg: new Map([["org_1", ["alice@example.com"]]]),
+        userById: new Map([
+          [
+            "user_1",
+            {
+              username: "alice",
+              email: "alice@example.com",
+            },
+          ],
+        ]),
+      }),
+    ).toEqual(["alice@example.com"]);
+  });
+
+  test("uses org admins only for org-wide alerts", () => {
+    expect(
+      getBudgetAlertEmailRecipients({
+        event: {
+          orgId: "org_1",
+          userId: null,
+        },
+        orgAdminEmailsByOrg: new Map([["org_1", ["admin@example.com"]]]),
+        userById: new Map(),
+      }),
+    ).toEqual(["admin@example.com"]);
   });
 });
