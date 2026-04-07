@@ -10,6 +10,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ username
   const { username } = await params;
   const { searchParams } = new URL(req.url);
   const style = searchParams.get("style") ?? "tokens"; // tokens | cost | rank | streak | cache | achievement
+  const format = searchParams.get("format") ?? "name"; // name | mark
 
   const [user] = await db()
     .select({
@@ -98,7 +99,11 @@ export async function GET(req: Request, { params }: { params: Promise<{ username
         activeDays: summary.activeDays,
       },
     });
-    message = featuredBadge ? featuredBadge.name : "no badges";
+    message = featuredBadge
+      ? format === "mark"
+        ? featuredBadge.mark
+        : featuredBadge.name
+      : "no badges";
     color = featuredBadge ? "blueviolet" : "lightgrey";
   } else {
     message = `${formatTokens(user.totalTokens)} tokens`;

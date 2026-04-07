@@ -47,6 +47,11 @@ const endpoints = [
         values: "tokens | cost | rank | streak | cache | achievement",
         default: "tokens",
       },
+      {
+        name: "format",
+        values: "name | mark",
+        default: "name (achievement only)",
+      },
     ],
   },
   {
