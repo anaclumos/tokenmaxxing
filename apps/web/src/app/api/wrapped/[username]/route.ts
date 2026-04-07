@@ -10,7 +10,7 @@ import {
 import { getEarnedBadges } from "@tokenmaxxing/shared/badges";
 import { and, count, desc, eq, gte, lt } from "drizzle-orm";
 
-import { authenticateToken } from "@/lib/auth";
+import { canAccessPrivateUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { TOKEN_SUM } from "@/lib/usage-queries";
 
@@ -20,11 +20,11 @@ export async function GET(req: Request, { params }: { params: Promise<{ username
     value: new URL(req.url).searchParams.get("year") ?? undefined,
   });
   const { startDate, endDate, startTime, endTime } = getYearRange({ year });
-  const requesterId = await authenticateToken(req);
 
   const [user] = await db()
     .select({
       id: users.id,
+      clerkId: users.clerkId,
       username: users.username,
       privacyMode: users.privacyMode,
     })
@@ -32,7 +32,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ username
     .where(eq(users.username, username))
     .limit(1);
 
-  const isOwnerRequest = requesterId === user?.id;
+  const isOwnerRequest = user ? await canAccessPrivateUser({ req, user }) : false;
   if (!user || (user.privacyMode && !isOwnerRequest)) {
     const svg = renderWrappedUnavailableSvg({ username });
     return new Response(svg, {
