@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 
+import { auth } from "@clerk/nextjs/server";
 import { apiTokens } from "@tokenmaxxing/db/index";
 import { eq } from "drizzle-orm";
 
@@ -21,10 +22,19 @@ export async function authenticateToken(req: Request): Promise<string | null> {
 
   if (!row) return null;
 
-  await db()
-    .update(apiTokens)
-    .set({ lastUsedAt: new Date() })
-    .where(eq(apiTokens.tokenHash, hash));
+  await db().update(apiTokens).set({ lastUsedAt: new Date() }).where(eq(apiTokens.tokenHash, hash));
 
   return row.userId;
+}
+
+export async function canAccessPrivateUser({
+  req,
+  user,
+}: {
+  req: Request;
+  user: { id: string; clerkId: string };
+}) {
+  const [{ userId: clerkUserId }, apiUserId] = await Promise.all([auth(), authenticateToken(req)]);
+
+  return clerkUserId === user.clerkId || apiUserId === user.id;
 }

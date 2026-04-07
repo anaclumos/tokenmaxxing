@@ -4,13 +4,15 @@ import { summarizeDailyAggregateRows } from "@tokenmaxxing/shared/daily-aggregat
 import { sumAggregateTokens } from "@tokenmaxxing/shared/types";
 import { eq, desc, and } from "drizzle-orm";
 
+import { canAccessPrivateUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 
-export async function GET(_req: Request, { params }: { params: Promise<{ username: string }> }) {
+export async function GET(req: Request, { params }: { params: Promise<{ username: string }> }) {
   const { username } = await params;
 
   const [user] = await db()
     .select({
+      clerkId: users.clerkId,
       totalTokens: users.totalTokens,
       totalCost: users.totalCost,
       currentStreak: users.currentStreak,
@@ -22,7 +24,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ usernam
     .where(eq(users.username, username))
     .limit(1);
 
-  if (!user || user.privacyMode) {
+  const isOwner = user ? await canAccessPrivateUser({ req, user }) : false;
+  if (!user || (user.privacyMode && !isOwner)) {
     return Response.json({ error: "User not found" }, { status: 404 });
   }
 
@@ -91,8 +94,10 @@ export async function GET(_req: Request, { params }: { params: Promise<{ usernam
     },
     {
       headers: {
-        "Cache-Control": "public, max-age=300, s-maxage=300",
+        "Cache-Control":
+          user.privacyMode && isOwner ? "private, no-store" : "public, max-age=300, s-maxage=300",
         "Access-Control-Allow-Origin": "*",
+        Vary: "Authorization",
       },
     },
   );

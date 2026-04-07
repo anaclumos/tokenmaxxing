@@ -4,14 +4,16 @@ import { summarizeDailyAggregateRows } from "@tokenmaxxing/shared/daily-aggregat
 import { formatTokens } from "@tokenmaxxing/shared/types";
 import { eq, desc, and } from "drizzle-orm";
 
+import { canAccessPrivateUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 
-export async function GET(_req: Request, { params }: { params: Promise<{ username: string }> }) {
+export async function GET(req: Request, { params }: { params: Promise<{ username: string }> }) {
   const { username } = await params;
 
   const [user] = await db().select().from(users).where(eq(users.username, username)).limit(1);
 
-  if (!user || user.privacyMode) {
+  const isOwner = user ? await canAccessPrivateUser({ req, user }) : false;
+  if (!user || (user.privacyMode && !isOwner)) {
     return new Response(notFoundSvg(username), {
       status: 404,
       headers: {
@@ -76,7 +78,9 @@ export async function GET(_req: Request, { params }: { params: Promise<{ usernam
   return new Response(svg, {
     headers: {
       "Content-Type": "image/svg+xml",
-      "Cache-Control": "public, max-age=1800, s-maxage=1800",
+      "Cache-Control":
+        user.privacyMode && isOwner ? "private, no-store" : "public, max-age=1800, s-maxage=1800",
+      Vary: "Authorization",
     },
   });
 }

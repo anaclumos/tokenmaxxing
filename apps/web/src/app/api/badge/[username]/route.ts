@@ -4,6 +4,7 @@ import { summarizeDailyAggregateRows } from "@tokenmaxxing/shared/daily-aggregat
 import { formatTokens } from "@tokenmaxxing/shared/types";
 import { eq, and } from "drizzle-orm";
 
+import { canAccessPrivateUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 
 export async function GET(req: Request, { params }: { params: Promise<{ username: string }> }) {
@@ -15,6 +16,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ username
   const [user] = await db()
     .select({
       id: users.id,
+      clerkId: users.clerkId,
       totalTokens: users.totalTokens,
       totalCost: users.totalCost,
       currentStreak: users.currentStreak,
@@ -25,7 +27,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ username
     .where(eq(users.username, username))
     .limit(1);
 
-  if (!user || user.privacyMode) {
+  const isOwner = user ? await canAccessPrivateUser({ req, user }) : false;
+  if (!user || (user.privacyMode && !isOwner)) {
     return Response.json(
       {
         schemaVersion: 1,
@@ -103,6 +106,12 @@ export async function GET(req: Request, { params }: { params: Promise<{ username
 
   return Response.json(
     { schemaVersion: 1, label: "tokenmaxx.ing", message, color },
-    { headers: { "Cache-Control": "public, max-age=1800, s-maxage=1800" } },
+    {
+      headers: {
+        "Cache-Control":
+          user.privacyMode && isOwner ? "private, no-store" : "public, max-age=1800, s-maxage=1800",
+        Vary: "Authorization",
+      },
+    },
   );
 }
