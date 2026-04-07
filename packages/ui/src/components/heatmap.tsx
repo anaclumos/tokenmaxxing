@@ -5,6 +5,12 @@ export type HeatmapDatum = {
   sessions?: number;
 };
 
+export type HeatmapTooltipPayload = {
+  datum: HeatmapDatum;
+  clientX: number;
+  clientY: number;
+};
+
 type GridCell = { date: Date; col: number; row: number };
 type ThemeConfig = { label: string; hue: number; chroma: number };
 
@@ -240,6 +246,8 @@ export function ActivityHeatmap({
   selectedDate,
   theme = "green",
   view = "flat",
+  onDatumEnter,
+  onDatumLeave,
 }: {
   data: HeatmapDatum[];
   year?: number;
@@ -247,6 +255,8 @@ export function ActivityHeatmap({
   selectedDate?: string;
   theme?: HeatmapTheme;
   view?: HeatmapView;
+  onDatumEnter?: (payload: HeatmapTooltipPayload) => void;
+  onDatumLeave?: () => void;
 }) {
   const dataMap = new Map(data.map((entry) => [entry.date, entry]));
   const max = Math.max(1, ...data.map((entry) => entry.value));
@@ -267,25 +277,85 @@ export function ActivityHeatmap({
       {cells.map((cell) => {
         const key = cell.date.toISOString().slice(0, 10);
         const entry = dataMap.get(key) ?? { date: key, value: 0 };
+        const label = buildTooltip(entry);
         const selected = key === selectedDate;
         const content =
           view === "iso"
             ? renderIsoCell({ cell, data: entry, max, theme, selected })
             : renderFlatCell({ cell, data: entry, max, theme, selected });
 
+        const showTooltip = ({ clientX, clientY }: { clientX: number; clientY: number }) => {
+          onDatumEnter?.({
+            datum: entry,
+            clientX,
+            clientY,
+          });
+        };
+
         if (!hrefBuilder) {
           return (
-            <g key={key}>
-              <title>{buildTooltip(entry)}</title>
+            <g
+              key={key}
+              tabIndex={0}
+              aria-label={label}
+              onBlur={onDatumLeave}
+              onFocus={(event) => {
+                const rect = event.currentTarget.getBoundingClientRect();
+                showTooltip({
+                  clientX: rect.left + rect.width / 2,
+                  clientY: rect.top + rect.height / 2,
+                });
+              }}
+              onPointerEnter={(event) => {
+                showTooltip({
+                  clientX: event.clientX,
+                  clientY: event.clientY,
+                });
+              }}
+              onPointerLeave={onDatumLeave}
+              onPointerMove={(event) => {
+                showTooltip({
+                  clientX: event.clientX,
+                  clientY: event.clientY,
+                });
+              }}
+            >
+              <title>{label}</title>
               {content}
             </g>
           );
         }
 
         return (
-          <a key={key} href={hrefBuilder(key)} style={{ cursor: "pointer" }}>
+          <a
+            key={key}
+            href={hrefBuilder(key)}
+            style={{ cursor: "pointer" }}
+            aria-label={label}
+            onBlur={onDatumLeave}
+            onFocus={(event) => {
+              const rect = event.currentTarget.getBoundingClientRect();
+              showTooltip({
+                clientX: rect.left + rect.width / 2,
+                clientY: rect.top + rect.height / 2,
+              });
+            }}
+            onPointerEnter={(event) => {
+              showTooltip({
+                clientX: event.clientX,
+                clientY: event.clientY,
+              });
+            }}
+            onPointerLeave={onDatumLeave}
+            onPointerMove={(event) => {
+              showTooltip({
+                clientX: event.clientX,
+                clientY: event.clientY,
+              });
+            }}
+          >
             <g>
-              <title>{buildTooltip(entry)}</title>
+              <title>{label}</title>
               {content}
             </g>
           </a>
