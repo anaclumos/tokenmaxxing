@@ -1,4 +1,5 @@
 import { formatTokens } from "./types";
+import type { ProfileBadge } from "./badges";
 
 const WIDTH = 1200;
 const HEIGHT = 630;
@@ -15,6 +16,7 @@ export type WrappedSvgData = {
   topClients: string[];
   topModels: string[];
   activityMap: Map<string, number>;
+  badges?: ProfileBadge[];
 };
 
 export function parseWrappedYear({ value }: { value?: string }) {
@@ -121,11 +123,25 @@ function renderList({
     .join("");
 }
 
+function renderBadgeMarks({ badges }: { badges: ProfileBadge[] }) {
+  return badges
+    .slice(0, 4)
+    .map((badge, index) => {
+      const x = 80 + index * 112;
+      return `<g transform="translate(${x}, 578)">
+  <rect width="92" height="32" rx="16" fill="#142744" stroke="#2b7fff" stroke-width="1"/>
+  <text x="46" y="21" fill="#f7fbff" font-family="monospace" font-size="15" text-anchor="middle">${badge.mark}</text>
+</g>`;
+    })
+    .join("");
+}
+
 export function renderWrappedSvg({ data }: { data: WrappedSvgData }) {
   const lists = getWrappedLists({
     topClients: data.topClients,
     topModels: data.topModels,
   });
+  const badges = data.badges ?? [];
 
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${WIDTH}" height="${HEIGHT}" viewBox="0 0 ${WIDTH} ${HEIGHT}" fill="none">
   <defs>
@@ -155,6 +171,8 @@ export function renderWrappedSvg({ data }: { data: WrappedSvgData }) {
   <text x="80" y="468" fill="#e6edf7" font-family="monospace" font-size="26">${data.activeDays.toLocaleString()} active days</text>
   <text x="80" y="506" fill="#e6edf7" font-family="monospace" font-size="26">${data.longestStreak}d longest streak</text>
   ${data.rank ? `<text x="80" y="544" fill="#e6edf7" font-family="monospace" font-size="26">all-time rank #${data.rank}</text>` : ""}
+  ${badges.length > 0 ? `<text x="80" y="572" fill="#8ea3c7" font-family="monospace" font-size="18">badges</text>` : ""}
+  ${renderBadgeMarks({ badges })}
 
   <text x="650" y="114" fill="#8ea3c7" font-family="monospace" font-size="22">top clients</text>
   ${renderList({ items: lists.clients, x: 650, y: 152, fill: "#f7fbff" })}

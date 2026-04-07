@@ -1,6 +1,7 @@
 import { userInfo } from "node:os";
 import { extname, resolve } from "node:path";
 
+import { getEarnedBadges } from "@tokenmaxxing/shared/badges";
 import { computeLongestStreak, type WrappedSvgData } from "@tokenmaxxing/shared/wrapped";
 import { totalTokens, type UsageRecord } from "@tokenmaxxing/shared/types";
 
@@ -61,6 +62,13 @@ export function buildLocalWrappedData({
     modelTotals.set(record.model, (modelTotals.get(record.model) ?? 0) + tokenCount);
   }
 
+  const cacheReadTokens = yearRecords.reduce((sum, record) => sum + record.tokens.cacheRead, 0);
+  const inputTokens = yearRecords.reduce((sum, record) => sum + record.tokens.input, 0);
+  const cachePool = inputTokens + cacheReadTokens;
+  const longestStreak = computeLongestStreak({
+    dates: [...activityMap.keys()],
+  });
+
   return {
     username,
     year,
@@ -68,9 +76,7 @@ export function buildLocalWrappedData({
     totalCost,
     activeDays: activityMap.size,
     messages: yearRecords.length,
-    longestStreak: computeLongestStreak({
-      dates: [...activityMap.keys()],
-    }),
+    longestStreak,
     rank: null,
     topClients: [...clientTotals.entries()]
       .sort((a, b) => b[1] - a[1])
@@ -81,5 +87,15 @@ export function buildLocalWrappedData({
       .slice(0, 3)
       .map(([name]) => name),
     activityMap,
+    badges: getEarnedBadges({
+      context: {
+        totalTokens: totalTokenCount,
+        longestStreak,
+        clientCount: clientTotals.size,
+        modelCount: modelTotals.size,
+        cacheHitRate: cachePool > 0 ? (cacheReadTokens / cachePool) * 100 : 0,
+        activeDays: activityMap.size,
+      },
+    }),
   };
 }
