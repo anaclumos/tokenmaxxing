@@ -15,6 +15,13 @@
       "when": 1775017429110,
       "tag": "0001_volatile_roxanne_simpson",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1775592869813,
+      "tag": "0002_tired_zuras",
+      "breakpoints": true
     }
   ]
 }

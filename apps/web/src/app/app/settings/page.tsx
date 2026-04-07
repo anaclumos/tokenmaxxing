@@ -13,6 +13,7 @@ import { db } from "@/lib/db";
 
 import { PrivacyToggle } from "./privacy-toggle";
 import { TokenManager } from "./token-manager";
+import { WeeklyDigestToggle } from "./weekly-digest-toggle";
 
 export const metadata = { title: "Settings - tokenmaxx.ing" };
 
@@ -21,7 +22,10 @@ export default async function SettingsPage() {
   if (!clerkId) redirect("/sign-in");
 
   const [user] = await db()
-    .select({ privacyMode: users.privacyMode })
+    .select({
+      privacyMode: users.privacyMode,
+      weeklyDigestEnabled: users.weeklyDigestEnabled,
+    })
     .from(users)
     .where(eq(users.clerkId, clerkId))
     .limit(1);
@@ -38,6 +42,15 @@ export default async function SettingsPage() {
         </CardHeader>
         <CardContent>
           <PrivacyToggle initial={user.privacyMode} />
+        </CardContent>
+      </Card>
+
+      <Card className="mb-6">
+        <CardHeader>
+          <CardTitle>Weekly Digest</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <WeeklyDigestToggle initial={user.weeklyDigestEnabled} />
         </CardContent>
       </Card>
 

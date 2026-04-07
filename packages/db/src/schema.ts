@@ -34,6 +34,7 @@ export const users = pgTable("users", {
   currentStreak: integer("current_streak").notNull().default(0),
   longestStreak: integer("longest_streak").notNull().default(0),
   privacyMode: boolean("privacy_mode").notNull().default(false),
+  weeklyDigestEnabled: boolean("weekly_digest_enabled").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
