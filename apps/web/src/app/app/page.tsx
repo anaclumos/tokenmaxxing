@@ -1,5 +1,10 @@
 import { auth } from "@clerk/nextjs/server";
-import { users, dailyAggregates, rankings, usageRecords } from "@tokenmaxxing/db/index";
+import {
+  users,
+  dailyAggregates,
+  rankings,
+  usageRecords,
+} from "@tokenmaxxing/db/index";
 import { formatTokens, sumAggregateTokens } from "@tokenmaxxing/shared/types";
 import { Badge } from "@tokenmaxxing/ui/components/badge";
 import {
@@ -8,12 +13,16 @@ import {
   CardHeader,
   CardTitle,
 } from "@tokenmaxxing/ui/components/card";
-import { ActivityHeatmap, heatmapThemes, type HeatmapTheme } from "@tokenmaxxing/ui/components/heatmap";
+import {
+  parseHeatmapTheme,
+  parseHeatmapView,
+} from "@tokenmaxxing/ui/components/heatmap";
 import { cn } from "@tokenmaxxing/ui/lib/utils";
 import { eq, desc, and, sum, count, isNotNull, sql } from "drizzle-orm";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import { ActivityHeatmapPanel } from "@/components/app/activity-heatmap-panel";
 import { db } from "@/lib/db";
 import { queryClientActivity, queryDayBreakdown } from "@/lib/usage-queries";
 
@@ -22,7 +31,13 @@ export const metadata = { title: "Dashboard - tokenmaxx.ing" };
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ year?: string; client?: string; day?: string; theme?: string }>;
+  searchParams: Promise<{
+    year?: string;
+    client?: string;
+    day?: string;
+    theme?: string;
+    view?: string;
+  }>;
 }) {
   const params = await searchParams;
   const { userId: clerkId } = await auth();
@@ -36,55 +51,61 @@ export default async function DashboardPage({
 
   if (!user) redirect("/sign-in");
 
-  const [[globalRank], activityRows, modelStats, projectStats] = await Promise.all([
-    db()
-      .select({ rank: rankings.rank })
-      .from(rankings)
-      .where(
-        and(
-          eq(rankings.leaderboardId, "global"),
-          eq(rankings.userId, user.id),
-          eq(rankings.period, "alltime")
+  const [[globalRank], activityRows, modelStats, projectStats] =
+    await Promise.all([
+      db()
+        .select({ rank: rankings.rank })
+        .from(rankings)
+        .where(
+          and(
+            eq(rankings.leaderboardId, "global"),
+            eq(rankings.userId, user.id),
+            eq(rankings.period, "alltime")
+          )
         )
-      )
-      .limit(1),
-    db()
-      .select({
-        date: dailyAggregates.date,
-        totalInput: dailyAggregates.totalInput,
-        totalOutput: dailyAggregates.totalOutput,
-        totalCacheRead: dailyAggregates.totalCacheRead,
-        totalCacheWrite: dailyAggregates.totalCacheWrite,
-        totalReasoning: dailyAggregates.totalReasoning,
-        cost: dailyAggregates.totalCost,
-        sessions: dailyAggregates.sessionCount,
-        clientsUsed: dailyAggregates.clientsUsed,
-      })
-      .from(dailyAggregates)
-      .where(eq(dailyAggregates.userId, user.id))
-      .orderBy(desc(dailyAggregates.date)),
-    db()
-      .select({
-        model: usageRecords.model,
-        sessions: count(),
-        totalCost: sum(usageRecords.costUsd).mapWith(Number),
-      })
-      .from(usageRecords)
-      .where(eq(usageRecords.userId, user.id))
-      .groupBy(usageRecords.model)
-      .orderBy(desc(sum(usageRecords.costUsd))),
-    db()
-      .select({
-        project: usageRecords.project,
-        sessions: count(),
-        totalCost: sum(usageRecords.costUsd).mapWith(Number),
-        totalTokens: sql<number>`sum(${usageRecords.inputTokens} + ${usageRecords.outputTokens} + ${usageRecords.cacheReadTokens} + ${usageRecords.cacheWriteTokens} + ${usageRecords.reasoningTokens})`.mapWith(Number),
-      })
-      .from(usageRecords)
-      .where(and(eq(usageRecords.userId, user.id), isNotNull(usageRecords.project)))
-      .groupBy(usageRecords.project)
-      .orderBy(desc(sum(usageRecords.costUsd))),
-  ]);
+        .limit(1),
+      db()
+        .select({
+          date: dailyAggregates.date,
+          totalInput: dailyAggregates.totalInput,
+          totalOutput: dailyAggregates.totalOutput,
+          totalCacheRead: dailyAggregates.totalCacheRead,
+          totalCacheWrite: dailyAggregates.totalCacheWrite,
+          totalReasoning: dailyAggregates.totalReasoning,
+          cost: dailyAggregates.totalCost,
+          sessions: dailyAggregates.sessionCount,
+          clientsUsed: dailyAggregates.clientsUsed,
+        })
+        .from(dailyAggregates)
+        .where(eq(dailyAggregates.userId, user.id))
+        .orderBy(desc(dailyAggregates.date)),
+      db()
+        .select({
+          model: usageRecords.model,
+          sessions: count(),
+          totalCost: sum(usageRecords.costUsd).mapWith(Number),
+        })
+        .from(usageRecords)
+        .where(eq(usageRecords.userId, user.id))
+        .groupBy(usageRecords.model)
+        .orderBy(desc(sum(usageRecords.costUsd))),
+      db()
+        .select({
+          project: usageRecords.project,
+          sessions: count(),
+          totalCost: sum(usageRecords.costUsd).mapWith(Number),
+          totalTokens:
+            sql<number>`sum(${usageRecords.inputTokens} + ${usageRecords.outputTokens} + ${usageRecords.cacheReadTokens} + ${usageRecords.cacheWriteTokens} + ${usageRecords.reasoningTokens})`.mapWith(
+              Number
+            ),
+        })
+        .from(usageRecords)
+        .where(
+          and(eq(usageRecords.userId, user.id), isNotNull(usageRecords.project))
+        )
+        .groupBy(usageRecords.project)
+        .orderBy(desc(sum(usageRecords.costUsd))),
+    ]);
 
   const activity = activityRows.map((a) => ({
     ...a,
@@ -92,30 +113,65 @@ export default async function DashboardPage({
   }));
 
   // Client filter
-  const allClients = [...new Set(activityRows.flatMap((a) => a.clientsUsed))].toSorted();
-  const selectedClient = params.client && allClients.includes(params.client) ? params.client : undefined;
+  const allClients = [
+    ...new Set(activityRows.flatMap((a) => a.clientsUsed)),
+  ].toSorted();
+  const selectedClient =
+    params.client && allClients.includes(params.client)
+      ? params.client
+      : undefined;
 
   // When filtering by client, query usageRecords grouped by date
-  const clientActivity = selectedClient ? await queryClientActivity(user.id, selectedClient) : null;
+  const clientActivity = selectedClient
+    ? await queryClientActivity(user.id, selectedClient)
+    : null;
 
   // Day detail breakdown
-  const selectedDay = params.day && /^\d{4}-\d{2}-\d{2}$/.test(params.day) ? params.day : undefined;
-  const dayDetail = selectedDay ? await queryDayBreakdown(user.id, selectedDay) : null;
+  const selectedDay =
+    params.day && /^\d{4}-\d{2}-\d{2}$/.test(params.day)
+      ? params.day
+      : undefined;
+  const dayDetail = selectedDay
+    ? await queryDayBreakdown(user.id, selectedDay)
+    : null;
 
-  // Theme + Year selectors
-  const selectedTheme: HeatmapTheme = params.theme && params.theme in heatmapThemes ? params.theme as HeatmapTheme : "green";
-  const availableYears = [...new Set(activityRows.map((a) => Number(a.date.slice(0, 4))))].toSorted((a, b) => b - a);
-  const selectedYear = params.year ? Number(params.year) : undefined;
+  // Theme + View + Year selectors
+  const selectedTheme = parseHeatmapTheme(params.theme);
+  const selectedView = parseHeatmapView(params.view);
+  const availableYears = [
+    ...new Set(activityRows.map((a) => Number(a.date.slice(0, 4)))),
+  ].toSorted((a, b) => b - a);
+  const selectedYear = availableYears.find(
+    (year) => year === Number(params.year)
+  );
 
-  const baseHeatmap = clientActivity ?? activity.map((a) => ({ date: a.date, tokens: a.tokens }));
+  const baseHeatmap = clientActivity
+    ? clientActivity
+    : activity.map((entry) => ({
+        date: entry.date,
+        value: entry.tokens,
+        cost: Number(entry.cost),
+        sessions: entry.sessions,
+      }));
   const heatmapData = selectedYear
-    ? baseHeatmap.filter((a) => a.date.startsWith(String(selectedYear)))
+    ? baseHeatmap.filter((entry) => entry.date.startsWith(String(selectedYear)))
     : baseHeatmap;
+
+  const dismissParams = new URLSearchParams();
+  if (selectedYear) dismissParams.set("year", String(selectedYear));
+  if (selectedClient) dismissParams.set("client", selectedClient);
+  if (selectedTheme !== "green") dismissParams.set("theme", selectedTheme);
+  if (selectedView !== "flat") dismissParams.set("view", selectedView);
+  const dismissHref = dismissParams.size > 0 ? `/app?${dismissParams}` : "/app";
 
   // Single pass: accumulate cost and cache stats by time bucket
   const now = new Date();
-  const sevenDaysAgo = new Date(now.getTime() - 7 * 86_400_000).toISOString().slice(0, 10);
-  const fourteenDaysAgo = new Date(now.getTime() - 14 * 86_400_000).toISOString().slice(0, 10);
+  const sevenDaysAgo = new Date(now.getTime() - 7 * 86_400_000)
+    .toISOString()
+    .slice(0, 10);
+  const fourteenDaysAgo = new Date(now.getTime() - 14 * 86_400_000)
+    .toISOString()
+    .slice(0, 10);
 
   const acc = { cost: [0, 0], input: [0, 0, 0], cacheRead: [0, 0, 0] };
   //           recent/prev       all/recent/prev
@@ -141,7 +197,11 @@ export default async function DashboardPage({
 
   // Burn rate projection
   const dailyRate = recentCost / 7;
-  const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+  const daysInMonth = new Date(
+    now.getFullYear(),
+    now.getMonth() + 1,
+    0
+  ).getDate();
   const projectedMonthly = dailyRate * daysInMonth;
   const trend = prevCost > 0 ? ((recentCost - prevCost) / prevCost) * 100 : 0;
 
@@ -149,24 +209,33 @@ export default async function DashboardPage({
   const totalModelCost = modelStats.reduce((s, m) => s + (m.totalCost ?? 0), 0);
   const isExpensiveModel = (name: string) => {
     const lower = name.toLowerCase();
-    return lower.includes("opus") || lower.includes("gpt-5") ||
-      lower.startsWith("o1") || lower.startsWith("o3");
+    return (
+      lower.includes("opus") ||
+      lower.includes("gpt-5") ||
+      lower.startsWith("o1") ||
+      lower.startsWith("o3")
+    );
   };
   const expensiveCost = modelStats
     .filter((m) => isExpensiveModel(m.model))
     .reduce((s, m) => s + (m.totalCost ?? 0), 0);
-  const expensiveRatio = totalModelCost > 0 ? (expensiveCost / totalModelCost) * 100 : 0;
+  const expensiveRatio =
+    totalModelCost > 0 ? (expensiveCost / totalModelCost) * 100 : 0;
 
   // Cache efficiency: cacheRead / (input + cacheRead)
   const cachePool = totalInput + totalCacheRead;
   const cacheHitRate = cachePool > 0 ? (totalCacheRead / cachePool) * 100 : 0;
   const recentPool = recentInput + recentCacheRead;
-  const recentCacheRate = recentPool > 0 ? (recentCacheRead / recentPool) * 100 : 0;
+  const recentCacheRate =
+    recentPool > 0 ? (recentCacheRead / recentPool) * 100 : 0;
   const prevPool = prevInput + prevCacheRead;
   const prevCacheRate = prevPool > 0 ? (prevCacheRead / prevPool) * 100 : 0;
   const cacheTrend = prevPool > 0 ? recentCacheRate - prevCacheRate : 0;
 
-  const totalProjectCost = projectStats.reduce((s, p) => s + (p.totalCost ?? 0), 0);
+  const totalProjectCost = projectStats.reduce(
+    (s, p) => s + (p.totalCost ?? 0),
+    0
+  );
 
   return (
     <main className="mx-auto w-full max-w-4xl px-6 py-8">
@@ -243,7 +312,14 @@ export default async function DashboardPage({
                 ${projectedMonthly.toFixed(2)}
               </span>
               <span
-                className={cn("text-sm font-mono", trend > 0 ? "text-red-600 dark:text-red-400" : trend < 0 ? "text-green-600 dark:text-green-400" : "text-muted-foreground")}
+                className={cn(
+                  "text-sm font-mono",
+                  trend > 0
+                    ? "text-red-600 dark:text-red-400"
+                    : trend < 0
+                      ? "text-green-600 dark:text-green-400"
+                      : "text-muted-foreground"
+                )}
               >
                 {trend > 0 ? "+" : ""}
                 {trend.toFixed(0)}% vs prev 7d
@@ -271,7 +347,14 @@ export default async function DashboardPage({
               </span>
               {prevPool > 0 && (
                 <span
-                  className={cn("text-sm font-mono", cacheTrend > 0 ? "text-green-600 dark:text-green-400" : cacheTrend < 0 ? "text-red-600 dark:text-red-400" : "text-muted-foreground")}
+                  className={cn(
+                    "text-sm font-mono",
+                    cacheTrend > 0
+                      ? "text-green-600 dark:text-green-400"
+                      : cacheTrend < 0
+                        ? "text-red-600 dark:text-red-400"
+                        : "text-muted-foreground"
+                  )}
                 >
                   {cacheTrend > 0 ? "+" : ""}
                   {cacheTrend.toFixed(1)}pp vs prev 7d
@@ -308,7 +391,10 @@ export default async function DashboardPage({
           <CardContent>
             <div className="space-y-2">
               {modelStats.slice(0, 5).map((m) => {
-                const pct = totalModelCost > 0 ? ((m.totalCost ?? 0) / totalModelCost) * 100 : 0;
+                const pct =
+                  totalModelCost > 0
+                    ? ((m.totalCost ?? 0) / totalModelCost) * 100
+                    : 0;
                 return (
                   <div key={m.model}>
                     <div className="flex justify-between text-sm">
@@ -329,8 +415,8 @@ export default async function DashboardPage({
             </div>
             {expensiveRatio > 60 && (
               <p className="mt-4 text-xs text-muted-foreground">
-                {expensiveRatio.toFixed(0)}% of your spend goes to frontier models.
-                Consider using lighter models for simple tasks.
+                {expensiveRatio.toFixed(0)}% of your spend goes to frontier
+                models. Consider using lighter models for simple tasks.
               </p>
             )}
           </CardContent>
@@ -348,13 +434,19 @@ export default async function DashboardPage({
           <CardContent>
             <div className="space-y-2">
               {projectStats.slice(0, 8).map((p) => {
-                const pct = totalProjectCost > 0 ? ((p.totalCost ?? 0) / totalProjectCost) * 100 : 0;
+                const pct =
+                  totalProjectCost > 0
+                    ? ((p.totalCost ?? 0) / totalProjectCost) * 100
+                    : 0;
                 return (
                   <div key={p.project}>
                     <div className="flex justify-between text-sm">
-                      <span className="font-mono truncate mr-4">{p.project}</span>
+                      <span className="font-mono truncate mr-4">
+                        {p.project}
+                      </span>
                       <span className="font-mono text-muted-foreground shrink-0">
-                        ${(p.totalCost ?? 0).toFixed(2)} ({formatTokens(p.totalTokens ?? 0)})
+                        ${(p.totalCost ?? 0).toFixed(2)} (
+                        {formatTokens(p.totalTokens ?? 0)})
                       </span>
                     </div>
                     <div className="mt-1 h-1.5 rounded-full bg-muted">
@@ -375,94 +467,48 @@ export default async function DashboardPage({
       {activity.length > 0 && (
         <Card className="mb-8">
           <CardHeader>
-            <div className="flex flex-col gap-3">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-sm">Activity</CardTitle>
-                {availableYears.length > 1 && (
-                  <div className="flex gap-1">
-                    <Link
-                      href={`/app${selectedClient ? `?client=${selectedClient}` : ""}`}
-                      className={cn("rounded px-2 py-1 text-xs font-mono", !selectedYear ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground")}
-                    >
-                      Recent
-                    </Link>
-                    {availableYears.map((y) => (
-                      <Link
-                        key={y}
-                        href={`/app?year=${y}${selectedClient ? `&client=${selectedClient}` : ""}`}
-                        className={cn("rounded px-2 py-1 text-xs font-mono", selectedYear === y ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground")}
-                      >
-                        {y}
-                      </Link>
-                    ))}
-                  </div>
-                )}
-              </div>
-              {allClients.length > 1 && (
-                <div className="flex flex-wrap gap-1">
-                  <Link
-                    href={`/app${selectedYear ? `?year=${selectedYear}` : ""}${selectedTheme !== "green" ? `${selectedYear ? "&" : "?"}theme=${selectedTheme}` : ""}`}
-                    className={cn("rounded px-2 py-1 text-xs font-mono", !selectedClient ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground")}
-                  >
-                    All
-                  </Link>
-                  {allClients.map((c) => (
-                    <Link
-                      key={c}
-                      href={`/app?client=${c}${selectedYear ? `&year=${selectedYear}` : ""}${selectedTheme !== "green" ? `&theme=${selectedTheme}` : ""}`}
-                      className={cn("rounded px-2 py-1 text-xs font-mono", selectedClient === c ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground")}
-                    >
-                      {c}
-                    </Link>
-                  ))}
-                </div>
-              )}
-              <div className="flex gap-1">
-                {(Object.entries(heatmapThemes) as [HeatmapTheme, { label: string }][]).map(([key, { label }]) => (
-                  <Link
-                    key={key}
-                    href={`/app?theme=${key}${selectedYear ? `&year=${selectedYear}` : ""}${selectedClient ? `&client=${selectedClient}` : ""}`}
-                    className={cn("rounded px-2 py-1 text-xs font-mono", selectedTheme === key ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground")}
-                  >
-                    {label}
-                  </Link>
-                ))}
-              </div>
-            </div>
+            <CardTitle className="text-sm">Activity</CardTitle>
           </CardHeader>
-          <CardContent className="overflow-x-auto">
-            <ActivityHeatmap
-              data={heatmapData.map((a) => ({ date: a.date, value: a.tokens }))}
-              year={selectedYear}
+          <CardContent>
+            <ActivityHeatmapPanel
+              data={heatmapData}
+              years={availableYears}
+              selectedYear={selectedYear}
+              clients={allClients}
+              selectedClient={selectedClient}
               selectedDate={selectedDay}
-              theme={selectedTheme}
-              hrefBuilder={(date) => {
-                const p = new URLSearchParams();
-                if (selectedYear) p.set("year", String(selectedYear));
-                if (selectedClient) p.set("client", selectedClient);
-                if (selectedTheme !== "green") p.set("theme", selectedTheme);
-                p.set("day", date);
-                return `/app?${p}`;
-              }}
+              initialTheme={selectedTheme}
+              initialView={selectedView}
             />
           </CardContent>
           {dayDetail && selectedDay && (
             <CardContent className="border-t pt-4">
               <div className="mb-3 flex items-center justify-between">
-                <span className="font-mono text-sm font-bold">{selectedDay}</span>
-                <Link href={`/app${selectedYear ? `?year=${selectedYear}` : ""}${selectedClient ? `${selectedYear ? "&" : "?"}client=${selectedClient}` : ""}`} className="text-xs text-muted-foreground hover:text-foreground">
+                <span className="font-mono text-sm font-bold">
+                  {selectedDay}
+                </span>
+                <Link
+                  href={dismissHref}
+                  className="text-xs text-muted-foreground hover:text-foreground"
+                >
                   Dismiss
                 </Link>
               </div>
               {dayDetail.byClient.length > 0 && (
                 <div className="mb-3">
-                  <span className="text-xs text-muted-foreground">By Client</span>
+                  <span className="text-xs text-muted-foreground">
+                    By Client
+                  </span>
                   <div className="mt-1 space-y-1">
                     {dayDetail.byClient.map((c) => (
-                      <div key={c.client} className="flex justify-between text-sm">
+                      <div
+                        key={c.client}
+                        className="flex justify-between text-sm"
+                      >
                         <span className="font-mono">{c.client}</span>
                         <span className="font-mono text-muted-foreground">
-                          {formatTokens(c.tokens)} / ${(c.cost ?? 0).toFixed(2)} / {c.sessions}s
+                          {formatTokens(c.tokens)} / ${(c.cost ?? 0).toFixed(2)}{" "}
+                          / {c.sessions}s
                         </span>
                       </div>
                     ))}
@@ -471,13 +517,21 @@ export default async function DashboardPage({
               )}
               {dayDetail.byModel.length > 0 && (
                 <div>
-                  <span className="text-xs text-muted-foreground">By Model</span>
+                  <span className="text-xs text-muted-foreground">
+                    By Model
+                  </span>
                   <div className="mt-1 space-y-1">
                     {dayDetail.byModel.map((m) => (
-                      <div key={m.model} className="flex justify-between text-sm">
-                        <span className="font-mono truncate mr-4">{m.model}</span>
+                      <div
+                        key={m.model}
+                        className="flex justify-between text-sm"
+                      >
+                        <span className="font-mono truncate mr-4">
+                          {m.model}
+                        </span>
                         <span className="font-mono text-muted-foreground shrink-0">
-                          {formatTokens(m.tokens)} / ${(m.cost ?? 0).toFixed(2)} / {m.sessions}s
+                          {formatTokens(m.tokens)} / ${(m.cost ?? 0).toFixed(2)}{" "}
+                          / {m.sessions}s
                         </span>
                       </div>
                     ))}

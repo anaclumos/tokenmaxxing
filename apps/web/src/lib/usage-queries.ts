@@ -11,17 +11,25 @@ export async function queryClientActivity(userId: string, client: string) {
   return db()
     .select({
       date: sql<string>`${usageRecords.timestamp}::date`,
-      tokens: TOKEN_SUM.mapWith(Number),
+      value: TOKEN_SUM.mapWith(Number),
+      cost: sum(usageRecords.costUsd).mapWith(Number),
+      sessions: count(),
     })
     .from(usageRecords)
-    .where(and(eq(usageRecords.userId, userId), eq(usageRecords.client, client)))
+    .where(
+      and(eq(usageRecords.userId, userId), eq(usageRecords.client, client))
+    )
     .groupBy(sql`${usageRecords.timestamp}::date`);
 }
 
 export async function queryDayBreakdown(userId: string, day: string) {
   const dayStart = new Date(day);
   const dayEnd = new Date(dayStart.getTime() + 86_400_000);
-  const where = and(eq(usageRecords.userId, userId), gte(usageRecords.timestamp, dayStart), sql`${usageRecords.timestamp} < ${dayEnd}`);
+  const where = and(
+    eq(usageRecords.userId, userId),
+    gte(usageRecords.timestamp, dayStart),
+    sql`${usageRecords.timestamp} < ${dayEnd}`
+  );
 
   const [byClient, byModel] = await Promise.all([
     db()

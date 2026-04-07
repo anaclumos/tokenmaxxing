@@ -16,12 +16,15 @@ import {
   CardHeader,
   CardTitle,
 } from "@tokenmaxxing/ui/components/card";
-import { ActivityHeatmap, heatmapThemes, type HeatmapTheme } from "@tokenmaxxing/ui/components/heatmap";
-import { cn } from "@tokenmaxxing/ui/lib/utils";
+import {
+  parseHeatmapTheme,
+  parseHeatmapView,
+} from "@tokenmaxxing/ui/components/heatmap";
 import { eq, desc, and } from "drizzle-orm";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { ActivityHeatmapPanel } from "@/components/app/activity-heatmap-panel";
 import { db } from "@/lib/db";
 import { queryClientActivity, queryDayBreakdown } from "@/lib/usage-queries";
 
@@ -41,7 +44,13 @@ export default async function ProfilePage({
   searchParams,
 }: {
   params: Promise<{ username: string }>;
-  searchParams: Promise<{ year?: string; client?: string; day?: string; theme?: string }>;
+  searchParams: Promise<{
+    year?: string;
+    client?: string;
+    day?: string;
+    theme?: string;
+    view?: string;
+  }>;
 }) {
   const [{ username }, query] = await Promise.all([params, searchParams]);
 
@@ -74,6 +83,7 @@ export default async function ProfilePage({
         totalCacheWrite: dailyAggregates.totalCacheWrite,
         totalReasoning: dailyAggregates.totalReasoning,
         cost: dailyAggregates.totalCost,
+        sessions: dailyAggregates.sessionCount,
         modelsUsed: dailyAggregates.modelsUsed,
         clientsUsed: dailyAggregates.clientsUsed,
       })
@@ -105,33 +115,56 @@ export default async function ProfilePage({
 
   // Cache efficiency
   const cachePool = breakdown.input + breakdown.cacheRead;
-  const cacheHitRate = cachePool > 0 ? (breakdown.cacheRead / cachePool) * 100 : 0;
+  const cacheHitRate =
+    cachePool > 0 ? (breakdown.cacheRead / cachePool) * 100 : 0;
 
   const enriched = activityRows.map((a) => ({
     date: a.date,
-    tokens: sumAggregateTokens(a),
-    cost: a.cost,
+    value: sumAggregateTokens(a),
+    cost: Number(a.cost),
+    sessions: a.sessions,
   }));
 
   // Client filter
   const sortedClients = [...allClients].toSorted();
-  const selectedClient = query.client && allClients.has(query.client) ? query.client : undefined;
+  const selectedClient =
+    query.client && allClients.has(query.client) ? query.client : undefined;
 
-  const clientActivity = selectedClient ? await queryClientActivity(user.id, selectedClient) : null;
+  const clientActivity = selectedClient
+    ? await queryClientActivity(user.id, selectedClient)
+    : null;
 
   // Day detail breakdown
-  const selectedDay = query.day && /^\d{4}-\d{2}-\d{2}$/.test(query.day) ? query.day : undefined;
-  const dayDetail = selectedDay ? await queryDayBreakdown(user.id, selectedDay) : null;
+  const selectedDay =
+    query.day && /^\d{4}-\d{2}-\d{2}$/.test(query.day) ? query.day : undefined;
+  const dayDetail = selectedDay
+    ? await queryDayBreakdown(user.id, selectedDay)
+    : null;
 
-  // Theme + Year selectors
-  const selectedTheme: HeatmapTheme = query.theme && query.theme in heatmapThemes ? query.theme as HeatmapTheme : "green";
-  const availableYears = [...new Set(activityRows.map((a) => Number(a.date.slice(0, 4))))].toSorted((a, b) => b - a);
-  const selectedYear = query.year ? Number(query.year) : undefined;
+  // Theme + View + Year selectors
+  const selectedTheme = parseHeatmapTheme(query.theme);
+  const selectedView = parseHeatmapView(query.view);
+  const availableYears = [
+    ...new Set(activityRows.map((a) => Number(a.date.slice(0, 4)))),
+  ].toSorted((a, b) => b - a);
+  const selectedYear = availableYears.find(
+    (year) => year === Number(query.year)
+  );
 
-  const baseHeatmap = clientActivity ?? enriched.map((a) => ({ date: a.date, tokens: a.tokens }));
+  const baseHeatmap = clientActivity ? clientActivity : enriched;
   const heatmapData = selectedYear
-    ? baseHeatmap.filter((a) => a.date.startsWith(String(selectedYear)))
+    ? baseHeatmap.filter((entry) => entry.date.startsWith(String(selectedYear)))
     : baseHeatmap;
+
+  const dismissParams = new URLSearchParams();
+  if (selectedYear) dismissParams.set("year", String(selectedYear));
+  if (selectedClient) dismissParams.set("client", selectedClient);
+  if (selectedTheme !== "green") dismissParams.set("theme", selectedTheme);
+  if (selectedView !== "flat") dismissParams.set("view", selectedView);
+  const dismissQuery = dismissParams.toString();
+  const dismissHref = dismissQuery
+    ? `/u/${username}?${dismissQuery}`
+    : `/u/${username}`;
 
   return (
     <main className="mx-auto w-full max-w-3xl px-6 pt-20 pb-8">
@@ -316,93 +349,47 @@ export default async function ProfilePage({
       {/* Activity heatmap */}
       {enriched.length > 0 && (
         <div className="mb-8">
-          <div className="mb-4 flex flex-col gap-3">
-            <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold">Activity</h2>
-              {availableYears.length > 1 && (
-                <div className="flex gap-1">
-                  <Link
-                    href={`/u/${username}${selectedClient ? `?client=${selectedClient}` : ""}`}
-                    className={cn("rounded px-2 py-1 text-xs font-mono", !selectedYear ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground")}
-                  >
-                    Recent
-                  </Link>
-                  {availableYears.map((y) => (
-                    <Link
-                      key={y}
-                      href={`/u/${username}?year=${y}${selectedClient ? `&client=${selectedClient}` : ""}`}
-                      className={cn("rounded px-2 py-1 text-xs font-mono", selectedYear === y ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground")}
-                    >
-                      {y}
-                    </Link>
-                  ))}
-                </div>
-              )}
-            </div>
-            {sortedClients.length > 1 && (
-              <div className="flex flex-wrap gap-1">
-                <Link
-                  href={`/u/${username}${selectedYear ? `?year=${selectedYear}` : ""}${selectedTheme !== "green" ? `${selectedYear ? "&" : "?"}theme=${selectedTheme}` : ""}`}
-                  className={cn("rounded px-2 py-1 text-xs font-mono", !selectedClient ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground")}
-                >
-                  All
-                </Link>
-                {sortedClients.map((c) => (
-                  <Link
-                    key={c}
-                    href={`/u/${username}?client=${c}${selectedYear ? `&year=${selectedYear}` : ""}${selectedTheme !== "green" ? `&theme=${selectedTheme}` : ""}`}
-                    className={cn("rounded px-2 py-1 text-xs font-mono", selectedClient === c ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground")}
-                  >
-                    {c}
-                  </Link>
-                ))}
-              </div>
-            )}
-            <div className="flex gap-1">
-              {(Object.entries(heatmapThemes) as [HeatmapTheme, { label: string }][]).map(([key, { label }]) => (
-                <Link
-                  key={key}
-                  href={`/u/${username}?theme=${key}${selectedYear ? `&year=${selectedYear}` : ""}${selectedClient ? `&client=${selectedClient}` : ""}`}
-                  className={cn("rounded px-2 py-1 text-xs font-mono", selectedTheme === key ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground")}
-                >
-                  {label}
-                </Link>
-              ))}
-            </div>
+          <div className="mb-4">
+            <h2 className="text-lg font-semibold">Activity</h2>
           </div>
-          <div className="overflow-x-auto">
-            <ActivityHeatmap
-              data={heatmapData.map((a) => ({ date: a.date, value: a.tokens }))}
-              year={selectedYear}
-              selectedDate={selectedDay}
-              theme={selectedTheme}
-              hrefBuilder={(date) => {
-                const p = new URLSearchParams();
-                if (selectedYear) p.set("year", String(selectedYear));
-                if (selectedClient) p.set("client", selectedClient);
-                if (selectedTheme !== "green") p.set("theme", selectedTheme);
-                p.set("day", date);
-                return `/u/${username}?${p}`;
-              }}
-            />
-          </div>
+          <ActivityHeatmapPanel
+            data={heatmapData}
+            years={availableYears}
+            selectedYear={selectedYear}
+            clients={sortedClients}
+            selectedClient={selectedClient}
+            selectedDate={selectedDay}
+            initialTheme={selectedTheme}
+            initialView={selectedView}
+          />
           {dayDetail && selectedDay && (
             <div className="mt-4 rounded border border-border p-4">
               <div className="mb-3 flex items-center justify-between">
-                <span className="font-mono text-sm font-bold">{selectedDay}</span>
-                <Link href={`/u/${username}${selectedYear ? `?year=${selectedYear}` : ""}${selectedClient ? `${selectedYear ? "&" : "?"}client=${selectedClient}` : ""}`} className="text-xs text-muted-foreground hover:text-foreground">
+                <span className="font-mono text-sm font-bold">
+                  {selectedDay}
+                </span>
+                <Link
+                  href={dismissHref}
+                  className="text-xs text-muted-foreground hover:text-foreground"
+                >
                   Dismiss
                 </Link>
               </div>
               {dayDetail.byClient.length > 0 && (
                 <div className="mb-3">
-                  <span className="text-xs text-muted-foreground">By Client</span>
+                  <span className="text-xs text-muted-foreground">
+                    By Client
+                  </span>
                   <div className="mt-1 space-y-1">
                     {dayDetail.byClient.map((c) => (
-                      <div key={c.client} className="flex justify-between text-sm">
+                      <div
+                        key={c.client}
+                        className="flex justify-between text-sm"
+                      >
                         <span className="font-mono">{c.client}</span>
                         <span className="font-mono text-muted-foreground">
-                          {formatTokens(c.tokens)} / ${(c.cost ?? 0).toFixed(2)} / {c.sessions}s
+                          {formatTokens(c.tokens)} / ${(c.cost ?? 0).toFixed(2)}{" "}
+                          / {c.sessions}s
                         </span>
                       </div>
                     ))}
@@ -411,13 +398,21 @@ export default async function ProfilePage({
               )}
               {dayDetail.byModel.length > 0 && (
                 <div>
-                  <span className="text-xs text-muted-foreground">By Model</span>
+                  <span className="text-xs text-muted-foreground">
+                    By Model
+                  </span>
                   <div className="mt-1 space-y-1">
                     {dayDetail.byModel.map((m) => (
-                      <div key={m.model} className="flex justify-between text-sm">
-                        <span className="font-mono truncate mr-4">{m.model}</span>
+                      <div
+                        key={m.model}
+                        className="flex justify-between text-sm"
+                      >
+                        <span className="font-mono truncate mr-4">
+                          {m.model}
+                        </span>
                         <span className="font-mono text-muted-foreground shrink-0">
-                          {formatTokens(m.tokens)} / ${(m.cost ?? 0).toFixed(2)} / {m.sessions}s
+                          {formatTokens(m.tokens)} / ${(m.cost ?? 0).toFixed(2)}{" "}
+                          / {m.sessions}s
                         </span>
                       </div>
                     ))}
@@ -445,10 +440,10 @@ export default async function ProfilePage({
               </span>
               <div className="flex items-center gap-4">
                 <Badge variant="secondary" className="font-mono text-xs">
-                  {formatTokens(a.tokens)} tokens
+                  {formatTokens(a.value)} tokens
                 </Badge>
                 <Badge variant="secondary" className="font-mono text-xs">
-                  ${Number(a.cost).toFixed(2)}
+                  ${a.cost.toFixed(2)}
                 </Badge>
               </div>
             </div>
