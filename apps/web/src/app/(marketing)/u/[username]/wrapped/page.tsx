@@ -15,9 +15,7 @@ const SITE_URL = "https://tokenmaxx.ing";
 
 function parseWrappedYear({ year }: { year?: string }) {
   const requestedYear = Number(year);
-  return Number.isInteger(requestedYear)
-    ? requestedYear
-    : new Date().getFullYear();
+  return Number.isInteger(requestedYear) ? requestedYear : new Date().getFullYear();
 }
 
 function getWrappedImageUrl({
@@ -102,9 +100,7 @@ export default async function WrappedPage({
   ].toSorted((a, b) => b - a);
   const currentYear = new Date().getFullYear();
   const selectedYear =
-    availableYears.find(
-      (year) => year === parseWrappedYear({ year: query.year })
-    ) ??
+    availableYears.find((year) => year === parseWrappedYear({ year: query.year })) ??
     availableYears[0] ??
     currentYear;
   const years = availableYears.length > 0 ? availableYears : [currentYear];
@@ -129,8 +125,7 @@ export default async function WrappedPage({
                 {user.username}'s Wrapped
               </h1>
               <p className="max-w-2xl text-base text-muted-foreground sm:text-lg">
-                A shareable year-in-review card built from tokenmaxx.ing usage
-                history.
+                A shareable year-in-review card built from tokenmaxx.ing usage history.
               </p>
             </div>
           </div>
@@ -142,7 +137,7 @@ export default async function WrappedPage({
                 href={`/u/${user.username}/wrapped?year=${year}`}
                 className={cn(
                   buttonVariants({ variant: "outline", size: "sm" }),
-                  selectedYear === year && "bg-background text-foreground"
+                  selectedYear === year && "bg-background text-foreground",
                 )}
               >
                 {year}
@@ -165,12 +160,9 @@ export default async function WrappedPage({
 
           <aside className="flex flex-col gap-4 rounded-3xl border border-border bg-white p-6 shadow-sm dark:bg-slate-950">
             <div className="space-y-2">
-              <p className="font-mono text-sm text-muted-foreground">
-                wrapped/{selectedYear}
-              </p>
+              <p className="font-mono text-sm text-muted-foreground">wrapped/{selectedYear}</p>
               <p className="text-sm text-muted-foreground">
-                Open the raw SVG, use it in social previews, or jump back to the
-                profile.
+                Open the raw SVG, use it in social previews, or jump back to the profile.
               </p>
             </div>
 
@@ -182,18 +174,14 @@ export default async function WrappedPage({
               <Link
                 href={wrappedImageUrl}
                 prefetch={false}
-                className={cn(
-                  buttonVariants({ variant: "default", size: "sm" })
-                )}
+                className={cn(buttonVariants({ variant: "default", size: "sm" }))}
               >
                 Open SVG
               </Link>
               <a
                 href={wrappedImageUrl}
                 download={`${user.username}-wrapped-${selectedYear}.svg`}
-                className={cn(
-                  buttonVariants({ variant: "outline", size: "sm" })
-                )}
+                className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
               >
                 Download SVG
               </a>

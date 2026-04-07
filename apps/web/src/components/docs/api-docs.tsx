@@ -140,7 +140,7 @@ export function ApiDocs() {
         <Link href="/app/settings" className="underline">
           Settings
         </Link>
-        , while browser settings endpoints use your Clerk session. .
+        , while browser settings endpoints use your Clerk session.
       </p>
 
       <div className="space-y-6">

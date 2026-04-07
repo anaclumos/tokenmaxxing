@@ -1,20 +1,14 @@
 import { users, dailyAggregates, rankings } from "@tokenmaxxing/db/index";
 import { formatTokens, sumAggregateTokens } from "@tokenmaxxing/shared/types";
+import { getEarnedBadges } from "@tokenmaxxing/shared/badges";
 import { eq, desc, and } from "drizzle-orm";
 
 import { db } from "@/lib/db";
 
-export async function GET(
-  _req: Request,
-  { params }: { params: Promise<{ username: string }> }
-) {
+export async function GET(_req: Request, { params }: { params: Promise<{ username: string }> }) {
   const { username } = await params;
 
-  const [user] = await db()
-    .select()
-    .from(users)
-    .where(eq(users.username, username))
-    .limit(1);
+  const [user] = await db().select().from(users).where(eq(users.username, username)).limit(1);
 
   if (!user || user.privacyMode) {
     return new Response(notFoundSvg(username), {
@@ -35,8 +29,8 @@ export async function GET(
         and(
           eq(rankings.leaderboardId, "global"),
           eq(rankings.userId, user.id),
-          eq(rankings.period, "alltime")
-        )
+          eq(rankings.period, "alltime"),
+        ),
       )
       .limit(1),
     db()
@@ -47,6 +41,8 @@ export async function GET(
         totalCacheRead: dailyAggregates.totalCacheRead,
         totalCacheWrite: dailyAggregates.totalCacheWrite,
         totalReasoning: dailyAggregates.totalReasoning,
+        modelsUsed: dailyAggregates.modelsUsed,
+        clientsUsed: dailyAggregates.clientsUsed,
       })
       .from(dailyAggregates)
       .where(eq(dailyAggregates.userId, user.id))
@@ -55,9 +51,19 @@ export async function GET(
   ]);
 
   const activityMap = new Map<string, number>();
+  const allModels = new Set<string>();
+  const allClients = new Set<string>();
+  let totalInput = 0;
+  let totalCacheRead = 0;
+
   for (const a of activityRows) {
     activityMap.set(a.date, sumAggregateTokens(a));
+    totalInput += a.totalInput;
+    totalCacheRead += a.totalCacheRead;
+    for (const model of a.modelsUsed ?? []) allModels.add(model);
+    for (const client of a.clientsUsed ?? []) allClients.add(client);
   }
+  const cachePool = totalInput + totalCacheRead;
 
   const svg = renderCard({
     username: user.username,
@@ -67,6 +73,16 @@ export async function GET(
     totalCost: Number(user.totalCost),
     streak: user.currentStreak,
     activityMap,
+    badges: getEarnedBadges({
+      context: {
+        totalTokens: user.totalTokens,
+        longestStreak: user.longestStreak,
+        clientCount: allClients.size,
+        modelCount: allModels.size,
+        cacheHitRate: cachePool > 0 ? (totalCacheRead / cachePool) * 100 : 0,
+        activeDays: activityRows.length,
+      },
+    }),
   });
 
   return new Response(svg, {
@@ -80,7 +96,7 @@ export async function GET(
 // --- SVG rendering ---
 
 const W = 480;
-const H = 165;
+const H = 195;
 const BG = "#0d1117";
 const FG = "#e6edf3";
 const MUTED = "#7d8590";
@@ -95,8 +111,10 @@ function renderCard(data: {
   totalCost: number;
   streak: number;
   activityMap: Map<string, number>;
+  badges: Array<{ mark: string }>;
 }): string {
   const heatmap = renderHeatmap(data.activityMap);
+  const badgeStrip = renderBadgeStrip(data.badges);
 
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" fill="none">
   <rect width="${W}" height="${H}" rx="6" fill="${BG}" stroke="#30363d" stroke-width="1"/>
@@ -113,12 +131,26 @@ function renderCard(data: {
   <text x="160" y="80" fill="${FG}" font-family="monospace" font-size="12">$${data.totalCost.toFixed(2)}</text>
   <text x="280" y="80" fill="${FG}" font-family="monospace" font-size="12">${data.streak}d streak</text>
   ${data.score ? `<text x="380" y="80" fill="${MUTED}" font-family="monospace" font-size="12">score ${Math.round(data.score)}</text>` : ""}
+  ${badgeStrip}
 
   <!-- Heatmap -->
-  <g transform="translate(20, 95)">
+  <g transform="translate(20, 125)">
     ${heatmap}
   </g>
 </svg>`;
+}
+
+function renderBadgeStrip(badges: Array<{ mark: string }>) {
+  return badges
+    .slice(0, 3)
+    .map((badge, index) => {
+      const x = 20 + index * 82;
+      return `<g transform="translate(${x}, 92)">
+  <rect width="70" height="20" rx="10" fill="#142744" stroke="${ACCENT}" stroke-width="1"/>
+  <text x="35" y="14" fill="${FG}" font-family="monospace" font-size="10" text-anchor="middle">${esc(badge.mark)}</text>
+</g>`;
+    })
+    .join("\n  ");
 }
 
 function renderHeatmap(activityMap: Map<string, number>): string {
@@ -146,7 +178,7 @@ function renderHeatmap(activityMap: Map<string, number>): string {
       const x = week * (cellSize + gap);
       const y = day * (cellSize + gap);
       cells.push(
-        `<rect x="${x}" y="${y}" width="${cellSize}" height="${cellSize}" rx="1.5" fill="${color}"/>`
+        `<rect x="${x}" y="${y}" width="${cellSize}" height="${cellSize}" rx="1.5" fill="${color}"/>`,
       );
     }
   }

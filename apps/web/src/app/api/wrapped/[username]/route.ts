@@ -34,7 +34,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ username
 
   const isOwnerRequest = requesterId === user?.id;
   if (!user || (user.privacyMode && !isOwnerRequest)) {
-    return new Response(renderWrappedUnavailableSvg({ username }), {
+    const svg = renderWrappedUnavailableSvg({ username });
+    return new Response(svg, {
       status: 404,
       headers: {
         "Content-Type": "image/svg+xml",
