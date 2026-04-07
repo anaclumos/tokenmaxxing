@@ -13,19 +13,80 @@ const Body = z.object({
   emailNotify: z.boolean().default(false),
 });
 
-export async function POST(req: Request, { params }: { params: Promise<{ orgId: string }> }) {
+async function getOrgAdminContext({ params }: { params: Promise<{ orgId: string }> }) {
   const [{ isAuthenticated, orgId, has }, { orgId: routeOrgId }] = await Promise.all([
     auth(),
     params,
   ]);
 
   if (!isAuthenticated || !orgId) {
-    return Response.json({ error: "Unauthorized" }, { status: 401 });
+    return { error: Response.json({ error: "Unauthorized" }, { status: 401 }) };
   }
 
   if (orgId !== routeOrgId || !has({ role: "org:admin" })) {
-    return Response.json({ error: "Forbidden" }, { status: 403 });
+    return { error: Response.json({ error: "Forbidden" }, { status: 403 }) };
   }
+
+  const client = await clerkClient();
+  const memberships = await client.organizations.getOrganizationMembershipList({
+    organizationId: routeOrgId,
+    limit: 500,
+  });
+  const clerkIds = memberships.data
+    .map((member) => member.publicUserData?.userId)
+    .filter((id): id is string => Boolean(id));
+  const members =
+    clerkIds.length > 0
+      ? await db()
+          .select({
+            id: users.id,
+            username: users.username,
+            clerkId: users.clerkId,
+          })
+          .from(users)
+          .where(inArray(users.clerkId, clerkIds))
+      : [];
+
+  return {
+    error: null,
+    members,
+    routeOrgId,
+  };
+}
+
+export async function GET(_: Request, { params }: { params: Promise<{ orgId: string }> }) {
+  const context = await getOrgAdminContext({ params });
+  if (context.error) return context.error;
+
+  const alerts = await db()
+    .select({
+      id: budgetAlerts.id,
+      orgId: budgetAlerts.orgId,
+      userId: budgetAlerts.userId,
+      period: budgetAlerts.period,
+      thresholdUsd: budgetAlerts.thresholdUsd,
+      webhookUrl: budgetAlerts.webhookUrl,
+      emailNotify: budgetAlerts.emailNotify,
+      createdAt: budgetAlerts.createdAt,
+      updatedAt: budgetAlerts.updatedAt,
+    })
+    .from(budgetAlerts)
+    .where(eq(budgetAlerts.orgId, context.routeOrgId));
+
+  const memberMap = new Map(context.members.map((member) => [member.id, member.username]));
+
+  return Response.json({
+    alerts: alerts.map((alert) => ({
+      ...alert,
+      thresholdUsd: Number(alert.thresholdUsd),
+      username: alert.userId ? (memberMap.get(alert.userId) ?? null) : null,
+    })),
+  });
+}
+
+export async function POST(req: Request, { params }: { params: Promise<{ orgId: string }> }) {
+  const context = await getOrgAdminContext({ params });
+  if (context.error) return context.error;
 
   const parsed = Body.safeParse(await req.json());
   if (!parsed.success) {
@@ -35,23 +96,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ orgId: 
   const targetUserId = parsed.data.userId ?? null;
 
   if (targetUserId) {
-    const client = await clerkClient();
-    const members = await client.organizations.getOrganizationMembershipList({
-      organizationId: routeOrgId,
-      limit: 500,
-    });
-    const clerkIds = members.data
-      .map((member) => member.publicUserData?.userId)
-      .filter((id): id is string => Boolean(id));
-
-    const [member] =
-      clerkIds.length > 0
-        ? await db()
-            .select({ id: users.id })
-            .from(users)
-            .where(and(eq(users.id, targetUserId), inArray(users.clerkId, clerkIds)))
-            .limit(1)
-        : [];
+    const member = context.members.find((candidate) => candidate.id === targetUserId);
 
     if (!member) {
       return Response.json({ error: "User is not in org" }, { status: 400 });
@@ -63,7 +108,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ orgId: 
       .delete(budgetAlerts)
       .where(
         and(
-          eq(budgetAlerts.orgId, routeOrgId),
+          eq(budgetAlerts.orgId, context.routeOrgId),
           eq(budgetAlerts.period, parsed.data.period),
           eq(budgetAlerts.userId, targetUserId),
         ),
@@ -73,7 +118,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ orgId: 
       .delete(budgetAlerts)
       .where(
         and(
-          eq(budgetAlerts.orgId, routeOrgId),
+          eq(budgetAlerts.orgId, context.routeOrgId),
           eq(budgetAlerts.period, parsed.data.period),
           isNull(budgetAlerts.userId),
         ),
@@ -83,7 +128,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ orgId: 
   const [alert] = await db()
     .insert(budgetAlerts)
     .values({
-      orgId: routeOrgId,
+      orgId: context.routeOrgId,
       userId: targetUserId,
       period: parsed.data.period,
       thresholdUsd: parsed.data.thresholdUsd.toFixed(6),
@@ -106,6 +151,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ orgId: 
       alert: {
         ...alert,
         thresholdUsd: Number(alert.thresholdUsd),
+        username: targetUserId
+          ? (context.members.find((member) => member.id === targetUserId)?.username ?? null)
+          : null,
       },
     },
     { status: 201 },

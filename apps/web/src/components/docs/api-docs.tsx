@@ -142,6 +142,15 @@ const endpoints = [
       "Create or replace an org-wide or per-member budget threshold. Requires the active Clerk org and org:admin role.",
     params: [],
   },
+  {
+    method: "GET",
+    path: "/api/orgs/[orgId]/budgets",
+    format: "JSON",
+    auth: true,
+    description:
+      "List current org-wide and per-member budget thresholds for the active org admin, including usernames for member-targeted alerts.",
+    params: [],
+  },
 ] as const;
 
 export function ApiDocs() {
