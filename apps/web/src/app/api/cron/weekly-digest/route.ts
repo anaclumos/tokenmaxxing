@@ -1,12 +1,14 @@
 import { dailyAggregates, usageRecords, users } from "@tokenmaxxing/db/index";
 import { summarizeDailyAggregateRows } from "@tokenmaxxing/shared/daily-aggregate-summary";
-import { and, count, desc, eq, gte, isNotNull, lt } from "drizzle-orm";
+import { and, count, desc, eq, gte, isNotNull, lt, sum } from "drizzle-orm";
 import { Resend } from "resend";
 
 import { WeeklyDigestEmail } from "@/components/emails/weekly-digest-email";
 import { db } from "@/lib/db";
 import { cronEnv, weeklyDigestEnv } from "@/lib/env";
+import { computeCompositeScore } from "@/lib/rankings";
 import {
+  formatWeeklyDigestRankChange,
   formatWeekOverWeekChange,
   getWeeklyDigestUnsubscribeUrl,
   getWeeklyDigestWindows,
@@ -18,15 +20,19 @@ export const maxDuration = 300;
 const RESEND_BATCH_SIZE = 100;
 
 async function buildWeeklyDigestMessage({
+  currentRanks,
   currentWindow,
   origin,
+  previousRanks,
   previousWindow,
   resendFrom,
   secret,
   user,
 }: {
+  currentRanks: Map<string, number>;
   currentWindow: ReturnType<typeof getWeeklyDigestWindows>["current"];
   origin: string;
+  previousRanks: Map<string, number>;
   previousWindow: ReturnType<typeof getWeeklyDigestWindows>["previous"];
   resendFrom: string;
   secret: string;
@@ -133,6 +139,10 @@ async function buildWeeklyDigestMessage({
         previous: previousSessions,
       }),
       currentStreak: user.currentStreak,
+      rankChange: formatWeeklyDigestRankChange({
+        currentRank: currentRanks.get(user.id) ?? null,
+        previousRank: previousRanks.get(user.id) ?? null,
+      }),
       topModels: topModelRows.map((row) => row.label),
       topClients: topClientRows.map((row) => row.label),
       dashboardUrl: new URL("/app", origin).toString(),
@@ -143,6 +153,50 @@ async function buildWeeklyDigestMessage({
       }),
     }),
   };
+}
+
+async function getLeaderboardRanks({ endDate, startDate }: { endDate: string; startDate: string }) {
+  const rows = await db()
+    .select({
+      userId: dailyAggregates.userId,
+      totalInput: sum(dailyAggregates.totalInput).mapWith(Number),
+      totalOutput: sum(dailyAggregates.totalOutput).mapWith(Number),
+      totalCacheRead: sum(dailyAggregates.totalCacheRead).mapWith(Number),
+      totalCacheWrite: sum(dailyAggregates.totalCacheWrite).mapWith(Number),
+      totalReasoning: sum(dailyAggregates.totalReasoning).mapWith(Number),
+      sessionCount: sum(dailyAggregates.sessionCount).mapWith(Number),
+      streak: users.currentStreak,
+    })
+    .from(dailyAggregates)
+    .innerJoin(users, eq(dailyAggregates.userId, users.id))
+    .where(
+      and(
+        eq(users.privacyMode, false),
+        gte(dailyAggregates.date, startDate),
+        lt(dailyAggregates.date, endDate),
+      ),
+    )
+    .groupBy(dailyAggregates.userId, users.currentStreak);
+
+  return new Map(
+    rows
+      .map((row) => ({
+        userId: row.userId,
+        score: computeCompositeScore(
+          row.totalInput +
+            row.totalOutput +
+            row.totalCacheRead +
+            row.totalCacheWrite +
+            row.totalReasoning,
+          row.totalInput,
+          row.totalOutput,
+          row.sessionCount,
+          row.streak,
+        ),
+      }))
+      .toSorted((a, b) => b.score - a.score)
+      .map((entry, index) => [entry.userId, index + 1]),
+  );
 }
 
 export async function GET(req: Request) {
@@ -169,14 +223,26 @@ export async function GET(req: Request) {
   );
 
   const { current, previous } = getWeeklyDigestWindows({});
+  const [currentRanks, previousRanks] = await Promise.all([
+    getLeaderboardRanks({
+      startDate: current.startDate,
+      endDate: current.endDate,
+    }),
+    getLeaderboardRanks({
+      startDate: previous.startDate,
+      endDate: previous.endDate,
+    }),
+  ]);
   const origin = new URL(req.url).origin;
   const resend = new Resend(env.RESEND_API_KEY);
   const messages = (
     await Promise.all(
       recipients.map((user) =>
         buildWeeklyDigestMessage({
+          currentRanks,
           currentWindow: current,
           origin,
+          previousRanks,
           previousWindow: previous,
           resendFrom: env.RESEND_FROM,
           secret: env.CRON_SECRET,

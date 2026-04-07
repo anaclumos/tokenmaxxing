@@ -10,6 +10,7 @@ type WeeklyDigestEmailProps = {
   costChange: string;
   sessionChange: string;
   currentStreak: number;
+  rankChange: string | null;
   topModels: string[];
   topClients: string[];
   dashboardUrl: string;
@@ -69,6 +70,7 @@ export function WeeklyDigestEmail({
   costChange,
   sessionChange,
   currentStreak,
+  rankChange,
   topModels,
   topClients,
   dashboardUrl,
@@ -119,6 +121,13 @@ export function WeeklyDigestEmail({
               <p style={metricLabelStyle}>Current streak</p>
               <p style={{ margin: "0", color: "#d7e9ff", fontSize: "16px" }}>{streakLabel}</p>
             </div>
+
+            {rankChange && (
+              <div style={{ marginBottom: "24px" }}>
+                <p style={metricLabelStyle}>Leaderboard</p>
+                <p style={{ margin: "0", color: "#d7e9ff", fontSize: "16px" }}>{rankChange}</p>
+              </div>
+            )}
 
             <div style={{ marginBottom: "24px" }}>
               <p style={metricLabelStyle}>Top models</p>

@@ -80,6 +80,29 @@ export function formatWeekOverWeekChange({
   return `${delta > 0 ? "+" : ""}${delta.toFixed(precision)}% vs previous week`;
 }
 
+export function formatWeeklyDigestRankChange({
+  currentRank,
+  previousRank,
+}: {
+  currentRank: number | null;
+  previousRank: number | null;
+}) {
+  if (currentRank === null && previousRank === null) return null;
+  if (currentRank !== null && previousRank === null) {
+    return `new on the public leaderboard at #${currentRank}`;
+  }
+  if (currentRank === null && previousRank !== null) {
+    return `off the public leaderboard from #${previousRank}`;
+  }
+  if (currentRank === previousRank) {
+    return `holding at #${currentRank}`;
+  }
+  if (currentRank! < previousRank!) {
+    return `up ${previousRank! - currentRank!} to #${currentRank}`;
+  }
+  return `down ${currentRank! - previousRank!} to #${currentRank}`;
+}
+
 export function getWeeklyDigestUnsubscribeToken({
   secret,
   userId,

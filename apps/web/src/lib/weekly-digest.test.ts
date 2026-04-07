@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import {
+  formatWeeklyDigestRankChange,
   formatWeekOverWeekChange,
   getWeeklyDigestUnsubscribeToken,
   getWeeklyDigestUnsubscribeUrl,
@@ -35,6 +36,34 @@ describe("formatWeekOverWeekChange", () => {
 
   test("handles flat weeks", () => {
     expect(formatWeekOverWeekChange({ current: 0, previous: 0 })).toBe("flat vs previous week");
+  });
+});
+
+describe("formatWeeklyDigestRankChange", () => {
+  test("handles newly ranked users", () => {
+    expect(formatWeeklyDigestRankChange({ currentRank: 8, previousRank: null })).toBe(
+      "new on the public leaderboard at #8",
+    );
+  });
+
+  test("handles users that moved up", () => {
+    expect(formatWeeklyDigestRankChange({ currentRank: 5, previousRank: 9 })).toBe("up 4 to #5");
+  });
+
+  test("handles users that moved down", () => {
+    expect(formatWeeklyDigestRankChange({ currentRank: 11, previousRank: 7 })).toBe(
+      "down 4 to #11",
+    );
+  });
+
+  test("handles steady ranks", () => {
+    expect(formatWeeklyDigestRankChange({ currentRank: 3, previousRank: 3 })).toBe("holding at #3");
+  });
+
+  test("handles users who fell off the leaderboard", () => {
+    expect(formatWeeklyDigestRankChange({ currentRank: null, previousRank: 4 })).toBe(
+      "off the public leaderboard from #4",
+    );
   });
 });
 
