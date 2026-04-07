@@ -7,8 +7,6 @@ import {
 import { cn } from "@tokenmaxxing/ui/lib/utils";
 import Link from "next/link";
 
-export const metadata = { title: "API Docs - tokenmaxx.ing" };
-
 const endpoints = [
   {
     method: "GET",
@@ -96,7 +94,7 @@ const endpoints = [
   },
 ] as const;
 
-export default function DocsPage() {
+export function ApiDocs() {
   return (
     <main className="mx-auto w-full max-w-4xl px-6 py-8">
       <h1 className="mb-2 text-3xl font-bold tracking-tight">API</h1>
@@ -114,22 +112,22 @@ export default function DocsPage() {
       </p>
 
       <div className="space-y-6">
-        {endpoints.map((ep) => (
-          <Card key={`${ep.method} ${ep.path}`}>
+        {endpoints.map((endpoint) => (
+          <Card key={`${endpoint.method} ${endpoint.path}`}>
             <CardHeader className="pb-2">
               <CardTitle className="flex items-center gap-3 text-base">
                 <span
                   className={cn(
                     "rounded px-2 py-0.5 font-mono text-xs",
-                    ep.method === "GET"
+                    endpoint.method === "GET"
                       ? "bg-green-500/15 text-green-700 dark:text-green-400"
                       : "bg-blue-500/15 text-blue-700 dark:text-blue-400"
                   )}
                 >
-                  {ep.method}
+                  {endpoint.method}
                 </span>
-                <code className="font-mono">{ep.path}</code>
-                {ep.auth && (
+                <code className="font-mono">{endpoint.path}</code>
+                {endpoint.auth && (
                   <span className="rounded bg-muted px-2 py-0.5 text-xs text-muted-foreground">
                     auth
                   </span>
@@ -138,20 +136,20 @@ export default function DocsPage() {
             </CardHeader>
             <CardContent>
               <p className="mb-3 text-sm text-muted-foreground">
-                {ep.description}
+                {endpoint.description}
               </p>
-              {ep.params.length > 0 && (
+              {endpoint.params.length > 0 && (
                 <div className="space-y-1">
-                  {ep.params.map((p) => (
-                    <div key={p.name} className="flex gap-4 text-sm">
+                  {endpoint.params.map((param) => (
+                    <div key={param.name} className="flex gap-4 text-sm">
                       <code className="font-mono text-foreground">
-                        {p.name}
+                        {param.name}
                       </code>
                       <span className="font-mono text-muted-foreground">
-                        {p.values}
+                        {param.values}
                       </span>
                       <span className="text-xs text-muted-foreground">
-                        default: {p.default}
+                        default: {param.default}
                       </span>
                     </div>
                   ))}

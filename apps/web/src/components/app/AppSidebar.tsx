@@ -1,6 +1,11 @@
-"use client"
+"use client";
 
-import { UserButton } from "@clerk/nextjs"
+import { UserButton } from "@clerk/nextjs";
+import { BarChart3, BookText, House, Settings, Trophy } from "lucide-react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import type { ComponentProps } from "react";
+
 import {
   Sidebar,
   SidebarContent,
@@ -11,22 +16,18 @@ import {
   SidebarLink,
   SidebarMenu,
   SidebarMenuItem,
-} from "@/components/app/Sidebar"
-import { ThemeToggle } from "@/components/app/ThemeToggle"
-import { BarChart3, BookText, House, Settings, Trophy } from "lucide-react"
-import Link from "next/link"
-import { usePathname } from "next/navigation"
-import type { ComponentProps } from "react"
+} from "@/components/app/Sidebar";
+import { ThemeToggle } from "@/components/app/ThemeToggle";
 
 export function AppSidebar(props: ComponentProps<typeof Sidebar>) {
-  const pathname = usePathname()
+  const pathname = usePathname();
 
   const navigation = [
     { name: "Dashboard", href: "/app", icon: House },
     { name: "Leaderboard", href: "/leaderboard", icon: Trophy },
     { name: "Settings", href: "/app/settings", icon: Settings },
-    { name: "Docs", href: "/app/docs", icon: BookText },
-  ]
+    { name: "Docs", href: "/docs", icon: BookText },
+  ];
 
   return (
     <Sidebar {...props} className="bg-gray-50 dark:bg-gray-950">
@@ -48,7 +49,10 @@ export function AppSidebar(props: ComponentProps<typeof Sidebar>) {
                 <SidebarMenuItem key={item.name}>
                   <SidebarLink
                     href={item.href}
-                    isActive={pathname === item.href || (item.href !== "/app" && pathname.startsWith(item.href))}
+                    isActive={
+                      pathname === item.href ||
+                      (item.href !== "/app" && pathname.startsWith(item.href))
+                    }
                     icon={item.icon}
                   >
                     {item.name}
@@ -67,5 +71,5 @@ export function AppSidebar(props: ComponentProps<typeof Sidebar>) {
         </div>
       </SidebarFooter>
     </Sidebar>
-  )
+  );
 }

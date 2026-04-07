@@ -1,23 +1,23 @@
-"use client"
+"use client";
 
-import { Show, SignInButton, UserButton } from "@clerk/nextjs"
-import { buttonVariants } from "@tokenmaxxing/ui/components/button"
-import { cn } from "@tokenmaxxing/ui/lib/utils"
-import { RiCloseFill, RiMenuFill } from "@remixicon/react"
-import Link from "next/link"
-import { useState } from "react"
+import { Show, SignInButton, UserButton } from "@clerk/nextjs";
+import { RiCloseFill, RiMenuFill } from "@remixicon/react";
+import { buttonVariants } from "@tokenmaxxing/ui/components/button";
+import { cn } from "@tokenmaxxing/ui/lib/utils";
+import Link from "next/link";
+import { useState } from "react";
 
-import { ThemeToggle } from "@/components/app/ThemeToggle"
-import useScroll from "@/lib/useScroll"
+import { ThemeToggle } from "@/components/app/ThemeToggle";
+import useScroll from "@/lib/useScroll";
 
 const navLinks = [
   { label: "Leaderboard", href: "/leaderboard" },
-  { label: "Docs", href: "/app/docs" },
-]
+  { label: "Docs", href: "/docs" },
+];
 
 export default function MarketingNavbar() {
-  const scrolled = useScroll(15)
-  const [mobileOpen, setMobileOpen] = useState(false)
+  const scrolled = useScroll(15);
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   return (
     <header
@@ -25,7 +25,7 @@ export default function MarketingNavbar() {
         "fixed top-0 right-0 left-0 z-50 transition-all duration-300",
         scrolled
           ? "border-b border-gray-200/50 bg-white/80 backdrop-blur-md dark:border-gray-800/50 dark:bg-gray-950/80"
-          : "border-b border-transparent bg-transparent",
+          : "border-b border-transparent bg-transparent"
       )}
     >
       <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
@@ -45,7 +45,7 @@ export default function MarketingNavbar() {
               href={link.href}
               className={cn(
                 buttonVariants({ variant: "ghost", size: "sm" }),
-                "text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-50",
+                "text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-50"
               )}
             >
               {link.label}
@@ -63,7 +63,7 @@ export default function MarketingNavbar() {
                   "inline-flex items-center rounded-md px-4 py-2 text-sm font-semibold text-white",
                   "bg-linear-to-b from-emerald-400 to-emerald-500",
                   "border-b-2 border-emerald-700",
-                  "shadow-sm hover:shadow-md transition-shadow cursor-pointer",
+                  "shadow-sm hover:shadow-md transition-shadow cursor-pointer"
                 )}
               >
                 Sign in
@@ -75,7 +75,7 @@ export default function MarketingNavbar() {
               href="/app"
               className={cn(
                 buttonVariants({ variant: "ghost", size: "sm" }),
-                "text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-50",
+                "text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-50"
               )}
             >
               Dashboard
@@ -90,10 +90,14 @@ export default function MarketingNavbar() {
           <button
             type="button"
             className="flex items-center justify-center rounded-lg p-2 text-gray-600 hover:bg-gray-200 dark:text-gray-400 dark:hover:bg-gray-800"
-          onClick={() => setMobileOpen((prev) => !prev)}
-          aria-label={mobileOpen ? "Close menu" : "Open menu"}
-        >
-            {mobileOpen ? <RiCloseFill className="size-5" /> : <RiMenuFill className="size-5" />}
+            onClick={() => setMobileOpen((prev) => !prev)}
+            aria-label={mobileOpen ? "Close menu" : "Open menu"}
+          >
+            {mobileOpen ? (
+              <RiCloseFill className="size-5" />
+            ) : (
+              <RiMenuFill className="size-5" />
+            )}
           </button>
         </div>
       </div>
@@ -108,7 +112,7 @@ export default function MarketingNavbar() {
                 href={link.href}
                 className={cn(
                   buttonVariants({ variant: "ghost", size: "sm" }),
-                  "justify-start text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-50",
+                  "justify-start text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-50"
                 )}
                 onClick={() => setMobileOpen(false)}
               >
@@ -123,7 +127,7 @@ export default function MarketingNavbar() {
                       "inline-flex w-full items-center justify-center rounded-md px-4 py-2 text-sm font-semibold text-white",
                       "bg-linear-to-b from-emerald-400 to-emerald-500",
                       "border-b-2 border-emerald-700",
-                      "shadow-sm hover:shadow-md transition-shadow cursor-pointer",
+                      "shadow-sm hover:shadow-md transition-shadow cursor-pointer"
                     )}
                   >
                     Sign in
@@ -135,7 +139,7 @@ export default function MarketingNavbar() {
                   href="/app"
                   className={cn(
                     buttonVariants({ variant: "ghost", size: "sm" }),
-                    "justify-start text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-50",
+                    "justify-start text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-50"
                   )}
                   onClick={() => setMobileOpen(false)}
                 >
@@ -150,5 +154,5 @@ export default function MarketingNavbar() {
         </div>
       )}
     </header>
-  )
+  );
 }

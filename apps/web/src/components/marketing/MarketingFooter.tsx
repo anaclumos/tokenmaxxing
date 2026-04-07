@@ -1,6 +1,6 @@
-import { cn } from "@tokenmaxxing/ui/lib/utils"
-import { RiGithubFill, RiTwitterXFill } from "@remixicon/react"
-import Link from "next/link"
+import { RiGithubFill, RiTwitterXFill } from "@remixicon/react";
+import { cn } from "@tokenmaxxing/ui/lib/utils";
+import Link from "next/link";
 
 const footerSections = [
   {
@@ -9,17 +9,17 @@ const footerSections = [
       { label: "Leaderboard", href: "/leaderboard" },
       { label: "Dashboard", href: "/app" },
       { label: "CLI", href: "https://www.npmjs.com/package/tokenmaxxing" },
-      { label: "API", href: "/app/docs" },
+      { label: "API", href: "/docs" },
     ],
   },
   {
     title: "Developers",
     links: [
-      { label: "Documentation", href: "/app/docs" },
+      { label: "Documentation", href: "/docs" },
       { label: "GitHub", href: "https://github.com/anthropics/tokenmaxxing" },
     ],
   },
-]
+];
 
 const socialLinks = [
   {
@@ -32,10 +32,10 @@ const socialLinks = [
     href: "#",
     icon: RiTwitterXFill,
   },
-]
+];
 
 export default function MarketingFooter() {
-  const year = new Date().getFullYear()
+  const year = new Date().getFullYear();
 
   return (
     <footer className="relative border-t border-gray-300 dark:border-gray-700">
@@ -98,7 +98,7 @@ export default function MarketingFooter() {
                     "flex size-8 items-center justify-center rounded-lg",
                     "text-gray-600 hover:bg-gray-200 hover:text-gray-900",
                     "dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-50",
-                    "transition-colors",
+                    "transition-colors"
                   )}
                 >
                   <social.icon className="size-4" />
@@ -140,5 +140,5 @@ export default function MarketingFooter() {
         </div>
       </div>
     </footer>
-  )
+  );
 }
