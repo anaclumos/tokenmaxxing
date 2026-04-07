@@ -151,6 +151,15 @@ const endpoints = [
       "List current org-wide and per-member budget thresholds for the active org admin, including usernames for member-targeted alerts.",
     params: [],
   },
+  {
+    method: "DELETE",
+    path: "/api/orgs/[orgId]/budgets/[budgetId]",
+    format: "JSON",
+    auth: true,
+    description:
+      "Delete an existing org budget threshold. Requires the active Clerk org and org:admin role.",
+    params: [],
+  },
 ] as const;
 
 export function ApiDocs() {

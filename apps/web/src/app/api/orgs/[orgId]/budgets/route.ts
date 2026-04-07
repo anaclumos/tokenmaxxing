@@ -1,9 +1,10 @@
-import { auth, clerkClient } from "@clerk/nextjs/server";
-import { budgetAlerts, users } from "@tokenmaxxing/db/index";
-import { and, eq, inArray, isNull } from "drizzle-orm";
+import { budgetAlerts } from "@tokenmaxxing/db/index";
+import { and, eq, isNull } from "drizzle-orm";
 import { z } from "zod";
 
 import { db } from "@/lib/db";
+
+import { getOrgAdminContext } from "./context";
 
 const Body = z.object({
   period: z.enum(["daily", "weekly", "monthly"]),
@@ -13,49 +14,9 @@ const Body = z.object({
   emailNotify: z.boolean().default(false),
 });
 
-async function getOrgAdminContext({ params }: { params: Promise<{ orgId: string }> }) {
-  const [{ isAuthenticated, orgId, has }, { orgId: routeOrgId }] = await Promise.all([
-    auth(),
-    params,
-  ]);
-
-  if (!isAuthenticated || !orgId) {
-    return { error: Response.json({ error: "Unauthorized" }, { status: 401 }) };
-  }
-
-  if (orgId !== routeOrgId || !has({ role: "org:admin" })) {
-    return { error: Response.json({ error: "Forbidden" }, { status: 403 }) };
-  }
-
-  const client = await clerkClient();
-  const memberships = await client.organizations.getOrganizationMembershipList({
-    organizationId: routeOrgId,
-    limit: 500,
-  });
-  const clerkIds = memberships.data
-    .map((member) => member.publicUserData?.userId)
-    .filter((id): id is string => Boolean(id));
-  const members =
-    clerkIds.length > 0
-      ? await db()
-          .select({
-            id: users.id,
-            username: users.username,
-            clerkId: users.clerkId,
-          })
-          .from(users)
-          .where(inArray(users.clerkId, clerkIds))
-      : [];
-
-  return {
-    error: null,
-    members,
-    routeOrgId,
-  };
-}
-
 export async function GET(_: Request, { params }: { params: Promise<{ orgId: string }> }) {
-  const context = await getOrgAdminContext({ params });
+  const { orgId: routeOrgId } = await params;
+  const context = await getOrgAdminContext({ routeOrgId });
   if (context.error) return context.error;
 
   const alerts = await db()
@@ -85,7 +46,8 @@ export async function GET(_: Request, { params }: { params: Promise<{ orgId: str
 }
 
 export async function POST(req: Request, { params }: { params: Promise<{ orgId: string }> }) {
-  const context = await getOrgAdminContext({ params });
+  const { orgId: routeOrgId } = await params;
+  const context = await getOrgAdminContext({ routeOrgId });
   if (context.error) return context.error;
 
   const parsed = Body.safeParse(await req.json());

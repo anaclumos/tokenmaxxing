@@ -17,6 +17,7 @@ import { notFound, redirect } from "next/navigation";
 
 import { db } from "@/lib/db";
 
+import { BudgetThresholdDeleteButton } from "./budget-threshold-delete-button";
 import { BudgetThresholdForm } from "./budget-threshold-form";
 
 export const metadata = { title: "Budget Thresholds - tokenmaxx.ing" };
@@ -140,6 +141,7 @@ export default async function OrgBudgetSettingsPage({
                   <TableHead className="text-right">Threshold</TableHead>
                   <TableHead>Delivery</TableHead>
                   <TableHead>Updated</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -161,6 +163,9 @@ export default async function OrgBudgetSettingsPage({
                     </TableCell>
                     <TableCell className="text-muted-foreground">
                       {row.updatedAt.toLocaleDateString()}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <BudgetThresholdDeleteButton budgetId={row.id} orgId={orgId} />
                     </TableCell>
                   </TableRow>
                 ))}
