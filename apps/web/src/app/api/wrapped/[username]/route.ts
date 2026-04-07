@@ -7,6 +7,7 @@ import {
 import { formatTokens, sumAggregateTokens } from "@tokenmaxxing/shared/types";
 import { and, count, desc, eq, gte, lt } from "drizzle-orm";
 
+import { authenticateToken } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { TOKEN_SUM } from "@/lib/usage-queries";
 
@@ -217,6 +218,7 @@ export async function GET(
   const { username } = await params;
   const year = parseWrappedYear({ req });
   const { startDate, endDate, startTime, endTime } = getYearRange({ year });
+  const requesterId = await authenticateToken(req);
 
   const [user] = await db()
     .select({
@@ -228,7 +230,8 @@ export async function GET(
     .where(eq(users.username, username))
     .limit(1);
 
-  if (!user || user.privacyMode) {
+  const isOwnerRequest = requesterId === user?.id;
+  if (!user || (user.privacyMode && !isOwnerRequest)) {
     return new Response(notFoundSvg({ username }), {
       status: 404,
       headers: {
@@ -337,7 +340,11 @@ export async function GET(
   return new Response(svg, {
     headers: {
       "Content-Type": "image/svg+xml",
-      "Cache-Control": "public, max-age=1800, s-maxage=1800",
+      "Cache-Control":
+        user.privacyMode && isOwnerRequest
+          ? "private, no-store"
+          : "public, max-age=1800, s-maxage=1800",
+      Vary: "Authorization",
     },
   });
 }
