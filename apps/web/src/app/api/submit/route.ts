@@ -7,7 +7,7 @@ import { eq } from "drizzle-orm";
 
 import { recomputeAggregates } from "@/lib/aggregates";
 import { authenticateToken } from "@/lib/auth";
-import { createBudgetAlertEvents } from "@/lib/budget-alerts";
+import { createBudgetAlertEvents, sendBudgetAlertNotifications } from "@/lib/budget-alerts";
 import { db } from "@/lib/db";
 
 export async function POST(req: Request) {
@@ -82,7 +82,7 @@ export async function POST(req: Request) {
             costUsd: Number(value.costUsd),
           })),
           userId,
-        }),
+        }).then((events) => sendBudgetAlertNotifications({ database: db(), events })),
       ]),
     );
   }

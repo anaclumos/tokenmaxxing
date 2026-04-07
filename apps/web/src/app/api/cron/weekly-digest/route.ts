@@ -5,7 +5,7 @@ import { Resend } from "resend";
 
 import { WeeklyDigestEmail } from "@/components/emails/weekly-digest-email";
 import { db } from "@/lib/db";
-import { cronEnv, weeklyDigestEnv } from "@/lib/env";
+import { cronEnv, resendEnv } from "@/lib/env";
 import { computeCompositeScore } from "@/lib/rankings";
 import {
   formatWeeklyDigestRankChange,
@@ -205,7 +205,7 @@ export async function GET(req: Request) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const env = weeklyDigestEnv();
+  const resend = resendEnv();
   const recipients = (
     await db()
       .select({
@@ -234,7 +234,7 @@ export async function GET(req: Request) {
     }),
   ]);
   const origin = new URL(req.url).origin;
-  const resend = new Resend(env.RESEND_API_KEY);
+  const client = new Resend(resend.RESEND_API_KEY);
   const messages = (
     await Promise.all(
       recipients.map((user) =>
@@ -244,8 +244,8 @@ export async function GET(req: Request) {
           origin,
           previousRanks,
           previousWindow: previous,
-          resendFrom: env.RESEND_FROM,
-          secret: env.CRON_SECRET,
+          resendFrom: resend.RESEND_FROM,
+          secret: cronEnv().CRON_SECRET,
           user,
         }),
       ),
@@ -257,7 +257,7 @@ export async function GET(req: Request) {
   );
 
   for (let index = 0; index < messages.length; index += RESEND_BATCH_SIZE) {
-    const { error } = await resend.batch.send(messages.slice(index, index + RESEND_BATCH_SIZE));
+    const { error } = await client.batch.send(messages.slice(index, index + RESEND_BATCH_SIZE));
     if (error) {
       return Response.json({ error: error.message }, { status: 500 });
     }
