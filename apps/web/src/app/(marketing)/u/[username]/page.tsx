@@ -1,4 +1,5 @@
 import { users, dailyAggregates, rankings } from "@tokenmaxxing/db/index";
+import { summarizeDailyAggregateRows } from "@tokenmaxxing/shared/daily-aggregate-summary";
 import { formatTokens, totalTokens, sumAggregateTokens } from "@tokenmaxxing/shared/types";
 import { getEarnedBadges } from "@tokenmaxxing/shared/badges";
 import { Avatar, AvatarFallback, AvatarImage } from "@tokenmaxxing/ui/components/avatar";
@@ -71,38 +72,21 @@ export default async function ProfilePage({
       .orderBy(desc(dailyAggregates.date)),
   ]);
 
-  // Aggregate ALL-TIME totals for breakdown (matches user.totalTokens)
-  const breakdown = {
-    input: 0,
-    output: 0,
-    cacheRead: 0,
-    cacheWrite: 0,
-    reasoning: 0,
-  };
-  const allModels = new Set<string>();
-  const allClients = new Set<string>();
-  for (const a of activityRows) {
-    breakdown.input += a.totalInput;
-    breakdown.output += a.totalOutput;
-    breakdown.cacheRead += a.totalCacheRead;
-    breakdown.cacheWrite += a.totalCacheWrite;
-    breakdown.reasoning += a.totalReasoning;
-    for (const m of a.modelsUsed) allModels.add(m);
-    for (const c of a.clientsUsed) allClients.add(c);
-  }
-  const breakdownTotal = totalTokens(breakdown);
-
-  // Cache efficiency
-  const cachePool = breakdown.input + breakdown.cacheRead;
-  const cacheHitRate = cachePool > 0 ? (breakdown.cacheRead / cachePool) * 100 : 0;
+  const summary = summarizeDailyAggregateRows({ rows: activityRows });
+  const breakdown = summary.breakdown;
+  const breakdownTotal = summary.totalTokens;
+  const allModels = summary.models;
+  const allClients = summary.clients;
+  const cachePool = summary.cachePool;
+  const cacheHitRate = summary.cacheHitRate;
   const earnedBadges = getEarnedBadges({
     context: {
       totalTokens: user.totalTokens,
       longestStreak: user.longestStreak,
-      clientCount: allClients.size,
-      modelCount: allModels.size,
+      clientCount: allClients.length,
+      modelCount: allModels.length,
       cacheHitRate,
-      activeDays: activityRows.length,
+      activeDays: summary.activeDays,
     },
   });
 
@@ -114,8 +98,9 @@ export default async function ProfilePage({
   }));
 
   // Client filter
-  const sortedClients = [...allClients].toSorted();
-  const selectedClient = query.client && allClients.has(query.client) ? query.client : undefined;
+  const sortedClients = allClients;
+  const selectedClient =
+    query.client && allClients.includes(query.client) ? query.client : undefined;
 
   const clientActivity = selectedClient ? await queryClientActivity(user.id, selectedClient) : null;
 
@@ -296,13 +281,13 @@ export default async function ProfilePage({
       )}
 
       {/* Models & Clients */}
-      {(allModels.size > 0 || allClients.size > 0) && (
+      {(allModels.length > 0 || allClients.length > 0) && (
         <div className="mb-8 grid grid-cols-2 gap-6">
-          {allModels.size > 0 && (
+          {allModels.length > 0 && (
             <div>
               <h2 className="mb-3 text-lg font-semibold">Models Used</h2>
               <div className="flex flex-wrap gap-2">
-                {[...allModels].toSorted().map((m) => (
+                {allModels.map((m) => (
                   <Badge key={m} variant="outline" className="font-mono text-xs">
                     {m}
                   </Badge>
@@ -310,11 +295,11 @@ export default async function ProfilePage({
               </div>
             </div>
           )}
-          {allClients.size > 0 && (
+          {allClients.length > 0 && (
             <div>
               <h2 className="mb-3 text-lg font-semibold">Clients Used</h2>
               <div className="flex flex-wrap gap-2">
-                {[...allClients].toSorted().map((c) => (
+                {allClients.map((c) => (
                   <Badge key={c} variant="outline" className="font-mono text-xs">
                     {c}
                   </Badge>

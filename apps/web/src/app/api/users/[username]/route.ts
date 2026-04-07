@@ -1,5 +1,6 @@
 import { users, dailyAggregates, rankings } from "@tokenmaxxing/db/index";
 import { getEarnedBadges } from "@tokenmaxxing/shared/badges";
+import { summarizeDailyAggregateRows } from "@tokenmaxxing/shared/daily-aggregate-summary";
 import { sumAggregateTokens } from "@tokenmaxxing/shared/types";
 import { eq, desc, and } from "drizzle-orm";
 
@@ -54,30 +55,17 @@ export async function GET(_req: Request, { params }: { params: Promise<{ usernam
       .orderBy(desc(dailyAggregates.date)),
   ]);
 
-  const breakdown = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, reasoning: 0 };
-  const allModels = new Set<string>();
-  const allClients = new Set<string>();
-  for (const a of activityRows) {
-    breakdown.input += a.totalInput;
-    breakdown.output += a.totalOutput;
-    breakdown.cacheRead += a.totalCacheRead;
-    breakdown.cacheWrite += a.totalCacheWrite;
-    breakdown.reasoning += a.totalReasoning;
-    for (const m of a.modelsUsed) allModels.add(m);
-    for (const c of a.clientsUsed) allClients.add(c);
-  }
-
-  const cachePool = breakdown.input + breakdown.cacheRead;
-  const cacheHitRate =
-    cachePool > 0 ? Number(((breakdown.cacheRead / cachePool) * 100).toFixed(1)) : 0;
+  const summary = summarizeDailyAggregateRows({ rows: activityRows });
+  const breakdown = summary.breakdown;
+  const cacheHitRate = Number(summary.cacheHitRate.toFixed(1));
   const badges = getEarnedBadges({
     context: {
       totalTokens: user.totalTokens,
       longestStreak: user.longestStreak,
-      clientCount: allClients.size,
-      modelCount: allModels.size,
+      clientCount: summary.clients.length,
+      modelCount: summary.models.length,
       cacheHitRate,
-      activeDays: activityRows.length,
+      activeDays: summary.activeDays,
     },
   });
 
@@ -92,12 +80,12 @@ export async function GET(_req: Request, { params }: { params: Promise<{ usernam
       score: globalRank ? Number(globalRank.compositeScore) : null,
       tokens: breakdown,
       cacheHitRate,
-      models: [...allModels].toSorted(),
-      clients: [...allClients].toSorted(),
+      models: summary.models,
+      clients: summary.clients,
       badges,
       activity: activityRows.map((a) => ({
         date: a.date,
-        tokens: sumAggregateTokens(a),
+        tokens: summary.activityMap.get(a.date) ?? sumAggregateTokens(a),
         cost: Number(a.cost),
       })),
     },

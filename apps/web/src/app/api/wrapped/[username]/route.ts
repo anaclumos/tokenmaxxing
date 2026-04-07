@@ -1,5 +1,5 @@
 import { dailyAggregates, rankings, usageRecords, users } from "@tokenmaxxing/db/index";
-import { sumAggregateTokens } from "@tokenmaxxing/shared/types";
+import { summarizeDailyAggregateRows } from "@tokenmaxxing/shared/daily-aggregate-summary";
 import {
   computeLongestStreak,
   getYearRange,
@@ -66,6 +66,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ username
         totalReasoning: dailyAggregates.totalReasoning,
         totalCost: dailyAggregates.totalCost,
         sessionCount: dailyAggregates.sessionCount,
+        modelsUsed: dailyAggregates.modelsUsed,
+        clientsUsed: dailyAggregates.clientsUsed,
       })
       .from(dailyAggregates)
       .where(
@@ -110,49 +112,40 @@ export async function GET(req: Request, { params }: { params: Promise<{ username
       .limit(3),
   ]);
 
-  const activityMap = new Map<string, number>();
-  let totalTokens = 0;
+  const summary = summarizeDailyAggregateRows({ rows: activityRows });
   let totalCost = 0;
   let messages = 0;
-  let totalInput = 0;
-  let totalCacheRead = 0;
 
   for (const activity of activityRows) {
-    const dayTokens = sumAggregateTokens(activity);
-    activityMap.set(activity.date, dayTokens);
-    totalTokens += dayTokens;
     totalCost += Number(activity.totalCost);
     messages += activity.sessionCount;
-    totalInput += activity.totalInput;
-    totalCacheRead += activity.totalCacheRead;
   }
 
   const longestStreak = computeLongestStreak({
     dates: activityRows.map((activity) => activity.date),
   });
-  const cachePool = totalInput + totalCacheRead;
 
   const svg = renderWrappedSvg({
     data: {
       username: user.username,
       year,
-      totalTokens,
+      totalTokens: summary.totalTokens,
       totalCost,
-      activeDays: activityRows.length,
+      activeDays: summary.activeDays,
       messages,
       longestStreak,
       rank: globalRank?.rank ?? null,
       topClients: topClientRows.map((row) => row.label),
       topModels: topModelRows.map((row) => row.label),
-      activityMap,
+      activityMap: summary.activityMap,
       badges: getEarnedBadges({
         context: {
-          totalTokens,
+          totalTokens: summary.totalTokens,
           longestStreak,
-          clientCount: topClientRows.length,
-          modelCount: topModelRows.length,
-          cacheHitRate: cachePool > 0 ? (totalCacheRead / cachePool) * 100 : 0,
-          activeDays: activityRows.length,
+          clientCount: summary.clients.length,
+          modelCount: summary.models.length,
+          cacheHitRate: summary.cacheHitRate,
+          activeDays: summary.activeDays,
         },
       }),
     },

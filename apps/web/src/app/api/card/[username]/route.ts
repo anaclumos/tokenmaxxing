@@ -1,6 +1,7 @@
 import { users, dailyAggregates, rankings } from "@tokenmaxxing/db/index";
-import { formatTokens, sumAggregateTokens } from "@tokenmaxxing/shared/types";
 import { getEarnedBadges } from "@tokenmaxxing/shared/badges";
+import { summarizeDailyAggregateRows } from "@tokenmaxxing/shared/daily-aggregate-summary";
+import { formatTokens } from "@tokenmaxxing/shared/types";
 import { eq, desc, and } from "drizzle-orm";
 
 import { db } from "@/lib/db";
@@ -50,20 +51,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ usernam
       .limit(365),
   ]);
 
-  const activityMap = new Map<string, number>();
-  const allModels = new Set<string>();
-  const allClients = new Set<string>();
-  let totalInput = 0;
-  let totalCacheRead = 0;
-
-  for (const a of activityRows) {
-    activityMap.set(a.date, sumAggregateTokens(a));
-    totalInput += a.totalInput;
-    totalCacheRead += a.totalCacheRead;
-    for (const model of a.modelsUsed ?? []) allModels.add(model);
-    for (const client of a.clientsUsed ?? []) allClients.add(client);
-  }
-  const cachePool = totalInput + totalCacheRead;
+  const summary = summarizeDailyAggregateRows({ rows: activityRows });
 
   const svg = renderCard({
     username: user.username,
@@ -72,15 +60,15 @@ export async function GET(_req: Request, { params }: { params: Promise<{ usernam
     totalTokens: user.totalTokens,
     totalCost: Number(user.totalCost),
     streak: user.currentStreak,
-    activityMap,
+    activityMap: summary.activityMap,
     badges: getEarnedBadges({
       context: {
         totalTokens: user.totalTokens,
         longestStreak: user.longestStreak,
-        clientCount: allClients.size,
-        modelCount: allModels.size,
-        cacheHitRate: cachePool > 0 ? (totalCacheRead / cachePool) * 100 : 0,
-        activeDays: activityRows.length,
+        clientCount: summary.clients.length,
+        modelCount: summary.models.length,
+        cacheHitRate: summary.cacheHitRate,
+        activeDays: summary.activeDays,
       },
     }),
   });
