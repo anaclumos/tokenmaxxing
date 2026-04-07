@@ -18,6 +18,7 @@ import { db } from "@/lib/db";
 import { queryClientActivity, queryDayBreakdown } from "@/lib/usage-queries";
 
 import { ShareButton } from "./share-button";
+import { getProfileUser } from "./profile-user";
 
 const badgeToneClasses = {
   sky: {
@@ -44,7 +45,13 @@ const badgeToneClasses = {
 
 export async function generateMetadata({ params }: { params: Promise<{ username: string }> }) {
   const { username } = await params;
-  return { title: `${username} - tokenmaxx.ing` };
+  const [{ userId: clerkId }, user] = await Promise.all([auth(), getProfileUser({ username })]);
+
+  if (!user || (user.privacyMode && user.clerkId !== clerkId)) {
+    return { title: "Profile - tokenmaxx.ing" };
+  }
+
+  return { title: `${user.username} - tokenmaxx.ing` };
 }
 
 export default async function ProfilePage({

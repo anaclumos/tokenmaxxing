@@ -11,6 +11,7 @@ import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
 
 import { ShareButton } from "../share-button";
+import { getProfileUser } from "../profile-user";
 
 const SITE_URL = "https://tokenmaxx.ing";
 
@@ -36,20 +37,29 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const [{ username }, query] = await Promise.all([params, searchParams]);
   const year = parseWrappedYear({ year: query.year });
-  const image = getWrappedImageHref({ username, year });
+  const [{ userId: clerkId }, user] = await Promise.all([auth(), getProfileUser({ username })]);
+
+  if (!user || (user.privacyMode && user.clerkId !== clerkId)) {
+    return {
+      title: "Wrapped - tokenmaxx.ing",
+      description: "Year in review on tokenmaxx.ing",
+    };
+  }
+
+  const image = getWrappedImageHref({ username: user.username, year });
 
   return {
-    title: `${username}'s Wrapped ${year} - tokenmaxx.ing`,
-    description: `${username}'s year in review on tokenmaxx.ing`,
+    title: `${user.username}'s Wrapped ${year} - tokenmaxx.ing`,
+    description: `${user.username}'s year in review on tokenmaxx.ing`,
     openGraph: {
-      title: `${username}'s Wrapped ${year}`,
-      description: `${username}'s year in review on tokenmaxx.ing`,
+      title: `${user.username}'s Wrapped ${year}`,
+      description: `${user.username}'s year in review on tokenmaxx.ing`,
       images: [image],
     },
     twitter: {
       card: "summary_large_image",
-      title: `${username}'s Wrapped ${year}`,
-      description: `${username}'s year in review on tokenmaxx.ing`,
+      title: `${user.username}'s Wrapped ${year}`,
+      description: `${user.username}'s year in review on tokenmaxx.ing`,
       images: [image],
     },
   };
