@@ -1,13 +1,11 @@
 import { users, dailyAggregates, rankings } from "@tokenmaxxing/db/index";
+import { getEarnedBadges } from "@tokenmaxxing/shared/badges";
 import { sumAggregateTokens } from "@tokenmaxxing/shared/types";
 import { eq, desc, and } from "drizzle-orm";
 
 import { db } from "@/lib/db";
 
-export async function GET(
-  _req: Request,
-  { params }: { params: Promise<{ username: string }> }
-) {
+export async function GET(_req: Request, { params }: { params: Promise<{ username: string }> }) {
   const { username } = await params;
 
   const [user] = await db()
@@ -35,8 +33,8 @@ export async function GET(
         and(
           eq(rankings.leaderboardId, "global"),
           eq(rankings.userId, user.id),
-          eq(rankings.period, "alltime")
-        )
+          eq(rankings.period, "alltime"),
+        ),
       )
       .limit(1),
     db()
@@ -70,28 +68,44 @@ export async function GET(
   }
 
   const cachePool = breakdown.input + breakdown.cacheRead;
-
-  return Response.json({
-    username,
-    totalTokens: user.totalTokens,
-    totalCost: Number(user.totalCost),
-    streak: user.currentStreak,
-    longestStreak: user.longestStreak,
-    rank: globalRank?.rank ?? null,
-    score: globalRank ? Number(globalRank.compositeScore) : null,
-    tokens: breakdown,
-    cacheHitRate: cachePool > 0 ? Number(((breakdown.cacheRead / cachePool) * 100).toFixed(1)) : 0,
-    models: [...allModels].toSorted(),
-    clients: [...allClients].toSorted(),
-    activity: activityRows.map((a) => ({
-      date: a.date,
-      tokens: sumAggregateTokens(a),
-      cost: Number(a.cost),
-    })),
-  }, {
-    headers: {
-      "Cache-Control": "public, max-age=300, s-maxage=300",
-      "Access-Control-Allow-Origin": "*",
+  const cacheHitRate =
+    cachePool > 0 ? Number(((breakdown.cacheRead / cachePool) * 100).toFixed(1)) : 0;
+  const badges = getEarnedBadges({
+    context: {
+      totalTokens: user.totalTokens,
+      longestStreak: user.longestStreak,
+      clientCount: allClients.size,
+      modelCount: allModels.size,
+      cacheHitRate,
+      activeDays: activityRows.length,
     },
   });
+
+  return Response.json(
+    {
+      username,
+      totalTokens: user.totalTokens,
+      totalCost: Number(user.totalCost),
+      streak: user.currentStreak,
+      longestStreak: user.longestStreak,
+      rank: globalRank?.rank ?? null,
+      score: globalRank ? Number(globalRank.compositeScore) : null,
+      tokens: breakdown,
+      cacheHitRate,
+      models: [...allModels].toSorted(),
+      clients: [...allClients].toSorted(),
+      badges,
+      activity: activityRows.map((a) => ({
+        date: a.date,
+        tokens: sumAggregateTokens(a),
+        cost: Number(a.cost),
+      })),
+    },
+    {
+      headers: {
+        "Cache-Control": "public, max-age=300, s-maxage=300",
+        "Access-Control-Allow-Origin": "*",
+      },
+    },
+  );
 }

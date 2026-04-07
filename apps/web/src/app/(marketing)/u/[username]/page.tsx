@@ -1,26 +1,11 @@
 import { users, dailyAggregates, rankings } from "@tokenmaxxing/db/index";
-import {
-  formatTokens,
-  totalTokens,
-  sumAggregateTokens,
-} from "@tokenmaxxing/shared/types";
-import {
-  Avatar,
-  AvatarFallback,
-  AvatarImage,
-} from "@tokenmaxxing/ui/components/avatar";
+import { formatTokens, totalTokens, sumAggregateTokens } from "@tokenmaxxing/shared/types";
+import { getEarnedBadges } from "@tokenmaxxing/shared/badges";
+import { Avatar, AvatarFallback, AvatarImage } from "@tokenmaxxing/ui/components/avatar";
 import { Badge } from "@tokenmaxxing/ui/components/badge";
 import { buttonVariants } from "@tokenmaxxing/ui/components/button";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@tokenmaxxing/ui/components/card";
-import {
-  parseHeatmapTheme,
-  parseHeatmapView,
-} from "@tokenmaxxing/ui/components/heatmap";
+import { Card, CardContent, CardHeader, CardTitle } from "@tokenmaxxing/ui/components/card";
+import { parseHeatmapTheme, parseHeatmapView } from "@tokenmaxxing/ui/components/heatmap";
 import { cn } from "@tokenmaxxing/ui/lib/utils";
 import { eq, desc, and } from "drizzle-orm";
 import Link from "next/link";
@@ -32,11 +17,7 @@ import { queryClientActivity, queryDayBreakdown } from "@/lib/usage-queries";
 
 import { ShareButton } from "./share-button";
 
-export async function generateMetadata({
-  params,
-}: {
-  params: Promise<{ username: string }>;
-}) {
+export async function generateMetadata({ params }: { params: Promise<{ username: string }> }) {
   const { username } = await params;
   return { title: `${username} - tokenmaxx.ing` };
 }
@@ -56,11 +37,7 @@ export default async function ProfilePage({
 }) {
   const [{ username }, query] = await Promise.all([params, searchParams]);
 
-  const [user] = await db()
-    .select()
-    .from(users)
-    .where(eq(users.username, username))
-    .limit(1);
+  const [user] = await db().select().from(users).where(eq(users.username, username)).limit(1);
 
   if (!user || user.privacyMode) notFound();
 
@@ -72,8 +49,8 @@ export default async function ProfilePage({
         and(
           eq(rankings.leaderboardId, "global"),
           eq(rankings.userId, user.id),
-          eq(rankings.period, "alltime")
-        )
+          eq(rankings.period, "alltime"),
+        ),
       )
       .limit(1),
     db()
@@ -117,8 +94,17 @@ export default async function ProfilePage({
 
   // Cache efficiency
   const cachePool = breakdown.input + breakdown.cacheRead;
-  const cacheHitRate =
-    cachePool > 0 ? (breakdown.cacheRead / cachePool) * 100 : 0;
+  const cacheHitRate = cachePool > 0 ? (breakdown.cacheRead / cachePool) * 100 : 0;
+  const earnedBadges = getEarnedBadges({
+    context: {
+      totalTokens: user.totalTokens,
+      longestStreak: user.longestStreak,
+      clientCount: allClients.size,
+      modelCount: allModels.size,
+      cacheHitRate,
+      activeDays: activityRows.length,
+    },
+  });
 
   const enriched = activityRows.map((a) => ({
     date: a.date,
@@ -129,29 +115,21 @@ export default async function ProfilePage({
 
   // Client filter
   const sortedClients = [...allClients].toSorted();
-  const selectedClient =
-    query.client && allClients.has(query.client) ? query.client : undefined;
+  const selectedClient = query.client && allClients.has(query.client) ? query.client : undefined;
 
-  const clientActivity = selectedClient
-    ? await queryClientActivity(user.id, selectedClient)
-    : null;
+  const clientActivity = selectedClient ? await queryClientActivity(user.id, selectedClient) : null;
 
   // Day detail breakdown
-  const selectedDay =
-    query.day && /^\d{4}-\d{2}-\d{2}$/.test(query.day) ? query.day : undefined;
-  const dayDetail = selectedDay
-    ? await queryDayBreakdown(user.id, selectedDay)
-    : null;
+  const selectedDay = query.day && /^\d{4}-\d{2}-\d{2}$/.test(query.day) ? query.day : undefined;
+  const dayDetail = selectedDay ? await queryDayBreakdown(user.id, selectedDay) : null;
 
   // Theme + View + Year selectors
   const selectedTheme = parseHeatmapTheme(query.theme);
   const selectedView = parseHeatmapView(query.view);
-  const availableYears = [
-    ...new Set(activityRows.map((a) => Number(a.date.slice(0, 4)))),
-  ].toSorted((a, b) => b - a);
-  const selectedYear = availableYears.find(
-    (year) => year === Number(query.year)
+  const availableYears = [...new Set(activityRows.map((a) => Number(a.date.slice(0, 4))))].toSorted(
+    (a, b) => b - a,
   );
+  const selectedYear = availableYears.find((year) => year === Number(query.year));
 
   const baseHeatmap = clientActivity ? clientActivity : enriched;
   const heatmapData = selectedYear
@@ -164,9 +142,7 @@ export default async function ProfilePage({
   if (selectedTheme !== "green") dismissParams.set("theme", selectedTheme);
   if (selectedView !== "flat") dismissParams.set("view", selectedView);
   const dismissQuery = dismissParams.toString();
-  const dismissHref = dismissQuery
-    ? `/u/${username}?${dismissQuery}`
-    : `/u/${username}`;
+  const dismissHref = dismissQuery ? `/u/${username}?${dismissQuery}` : `/u/${username}`;
 
   return (
     <main className="mx-auto w-full max-w-3xl px-6 pt-20 pb-8">
@@ -174,9 +150,7 @@ export default async function ProfilePage({
       <div className="mb-8 flex items-center gap-4">
         <Avatar className="h-16 w-16">
           {user.avatarUrl && <AvatarImage src={user.avatarUrl} />}
-          <AvatarFallback className="text-xl">
-            {user.username[0]}
-          </AvatarFallback>
+          <AvatarFallback className="text-xl">{user.username[0]}</AvatarFallback>
         </Avatar>
         <div>
           <h1 className="text-2xl font-bold">{user.username}</h1>
@@ -204,21 +178,15 @@ export default async function ProfilePage({
       <div className="mb-8 grid grid-cols-2 gap-4 sm:grid-cols-4">
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-muted-foreground">
-              Tokens
-            </CardTitle>
+            <CardTitle className="text-sm text-muted-foreground">Tokens</CardTitle>
           </CardHeader>
           <CardContent>
-            <span className="text-xl font-bold font-mono">
-              {formatTokens(user.totalTokens)}
-            </span>
+            <span className="text-xl font-bold font-mono">{formatTokens(user.totalTokens)}</span>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-muted-foreground">
-              Cost
-            </CardTitle>
+            <CardTitle className="text-sm text-muted-foreground">Cost</CardTitle>
           </CardHeader>
           <CardContent>
             <span className="text-xl font-bold font-mono">
@@ -228,21 +196,15 @@ export default async function ProfilePage({
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-muted-foreground">
-              Streak
-            </CardTitle>
+            <CardTitle className="text-sm text-muted-foreground">Streak</CardTitle>
           </CardHeader>
           <CardContent>
-            <span className="text-xl font-bold font-mono">
-              {user.currentStreak}d
-            </span>
+            <span className="text-xl font-bold font-mono">{user.currentStreak}d</span>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-muted-foreground">
-              Score
-            </CardTitle>
+            <CardTitle className="text-sm text-muted-foreground">Score</CardTitle>
           </CardHeader>
           <CardContent>
             <span className="text-xl font-bold font-mono">
@@ -251,6 +213,28 @@ export default async function ProfilePage({
           </CardContent>
         </Card>
       </div>
+
+      {earnedBadges.length > 0 && (
+        <div className="mb-8">
+          <h2 className="mb-4 text-lg font-semibold">Achievements</h2>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {earnedBadges.map((badge) => (
+              <div
+                key={badge.id}
+                className="flex items-start gap-3 rounded-2xl border border-border bg-background px-4 py-3"
+              >
+                <Badge variant="secondary" className="mt-0.5 font-mono text-[11px]">
+                  {badge.mark}
+                </Badge>
+                <div>
+                  <p className="text-sm font-medium">{badge.name}</p>
+                  <p className="text-xs text-muted-foreground">{badge.description}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Token breakdown */}
       {breakdownTotal > 0 && (
@@ -295,12 +279,8 @@ export default async function ProfilePage({
         <div className="mb-8">
           <h2 className="mb-4 text-lg font-semibold">Cache Efficiency</h2>
           <div className="flex items-baseline gap-3 mb-3">
-            <span className="text-2xl font-bold font-mono">
-              {cacheHitRate.toFixed(1)}%
-            </span>
-            <span className="text-sm text-muted-foreground">
-              of input tokens served from cache
-            </span>
+            <span className="text-2xl font-bold font-mono">{cacheHitRate.toFixed(1)}%</span>
+            <span className="text-sm text-muted-foreground">of input tokens served from cache</span>
           </div>
           <div className="h-2 rounded-full bg-muted">
             <div
@@ -323,11 +303,7 @@ export default async function ProfilePage({
               <h2 className="mb-3 text-lg font-semibold">Models Used</h2>
               <div className="flex flex-wrap gap-2">
                 {[...allModels].toSorted().map((m) => (
-                  <Badge
-                    key={m}
-                    variant="outline"
-                    className="font-mono text-xs"
-                  >
+                  <Badge key={m} variant="outline" className="font-mono text-xs">
                     {m}
                   </Badge>
                 ))}
@@ -339,11 +315,7 @@ export default async function ProfilePage({
               <h2 className="mb-3 text-lg font-semibold">Clients Used</h2>
               <div className="flex flex-wrap gap-2">
                 {[...allClients].toSorted().map((c) => (
-                  <Badge
-                    key={c}
-                    variant="outline"
-                    className="font-mono text-xs"
-                  >
+                  <Badge key={c} variant="outline" className="font-mono text-xs">
                     {c}
                   </Badge>
                 ))}
@@ -372,9 +344,7 @@ export default async function ProfilePage({
           {dayDetail && selectedDay && (
             <div className="mt-4 rounded border border-border p-4">
               <div className="mb-3 flex items-center justify-between">
-                <span className="font-mono text-sm font-bold">
-                  {selectedDay}
-                </span>
+                <span className="font-mono text-sm font-bold">{selectedDay}</span>
                 <Link
                   href={dismissHref}
                   className="text-xs text-muted-foreground hover:text-foreground"
@@ -384,19 +354,13 @@ export default async function ProfilePage({
               </div>
               {dayDetail.byClient.length > 0 && (
                 <div className="mb-3">
-                  <span className="text-xs text-muted-foreground">
-                    By Client
-                  </span>
+                  <span className="text-xs text-muted-foreground">By Client</span>
                   <div className="mt-1 space-y-1">
                     {dayDetail.byClient.map((c) => (
-                      <div
-                        key={c.client}
-                        className="flex justify-between text-sm"
-                      >
+                      <div key={c.client} className="flex justify-between text-sm">
                         <span className="font-mono">{c.client}</span>
                         <span className="font-mono text-muted-foreground">
-                          {formatTokens(c.tokens)} / ${(c.cost ?? 0).toFixed(2)}{" "}
-                          / {c.sessions}s
+                          {formatTokens(c.tokens)} / ${(c.cost ?? 0).toFixed(2)} / {c.sessions}s
                         </span>
                       </div>
                     ))}
@@ -405,21 +369,13 @@ export default async function ProfilePage({
               )}
               {dayDetail.byModel.length > 0 && (
                 <div>
-                  <span className="text-xs text-muted-foreground">
-                    By Model
-                  </span>
+                  <span className="text-xs text-muted-foreground">By Model</span>
                   <div className="mt-1 space-y-1">
                     {dayDetail.byModel.map((m) => (
-                      <div
-                        key={m.model}
-                        className="flex justify-between text-sm"
-                      >
-                        <span className="font-mono truncate mr-4">
-                          {m.model}
-                        </span>
+                      <div key={m.model} className="flex justify-between text-sm">
+                        <span className="font-mono truncate mr-4">{m.model}</span>
                         <span className="font-mono text-muted-foreground shrink-0">
-                          {formatTokens(m.tokens)} / ${(m.cost ?? 0).toFixed(2)}{" "}
-                          / {m.sessions}s
+                          {formatTokens(m.tokens)} / ${(m.cost ?? 0).toFixed(2)} / {m.sessions}s
                         </span>
                       </div>
                     ))}
@@ -442,9 +398,7 @@ export default async function ProfilePage({
               key={a.date}
               className="flex items-center justify-between rounded border border-border px-4 py-3"
             >
-              <span className="font-mono text-sm text-muted-foreground">
-                {a.date}
-              </span>
+              <span className="font-mono text-sm text-muted-foreground">{a.date}</span>
               <div className="flex items-center gap-4">
                 <Badge variant="secondary" className="font-mono text-xs">
                   {formatTokens(a.value)} tokens
