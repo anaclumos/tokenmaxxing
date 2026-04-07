@@ -41,7 +41,9 @@ describe("getEarnedBadges", () => {
       "billion-club",
     ]);
     expect(badges[0]?.tone).toBe("sky");
+    expect(badges[0]?.icon).toBe("upload");
     expect(badges.at(-1)?.tone).toBe("amber");
+    expect(badges.at(-1)?.icon).toBe("medal");
   });
 
   test("returns the most advanced earned badge as the featured badge", () => {
@@ -58,6 +60,7 @@ describe("getEarnedBadges", () => {
 
     expect(badge?.id).toBe("ten-billion-club");
     expect(badge?.mark).toBe("10B");
+    expect(badge?.icon).toBe("crown");
   });
 
   test("returns the featured badge name or mark deterministically", () => {

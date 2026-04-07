@@ -3,6 +3,18 @@ import { users, dailyAggregates, rankings } from "@tokenmaxxing/db/index";
 import { summarizeDailyAggregateRows } from "@tokenmaxxing/shared/daily-aggregate-summary";
 import { formatTokens, totalTokens, sumAggregateTokens } from "@tokenmaxxing/shared/types";
 import { getEarnedBadges } from "@tokenmaxxing/shared/badges";
+import {
+  Bot,
+  Calendar,
+  CalendarDays,
+  Crown,
+  Flame,
+  Medal,
+  Rocket,
+  Upload,
+  Users,
+  Zap,
+} from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@tokenmaxxing/ui/components/avatar";
 import { Badge } from "@tokenmaxxing/ui/components/badge";
 import { buttonVariants } from "@tokenmaxxing/ui/components/button";
@@ -41,6 +53,19 @@ const badgeToneClasses = {
     chip: "border-rose-500/20 bg-rose-500/10 text-rose-700 dark:text-rose-300",
     icon: "border-rose-500/20 bg-rose-500/10 text-rose-700 dark:text-rose-300",
   },
+} as const;
+
+const badgeIcons = {
+  upload: Upload,
+  "calendar-days": CalendarDays,
+  calendar: Calendar,
+  flame: Flame,
+  rocket: Rocket,
+  users: Users,
+  bot: Bot,
+  zap: Zap,
+  medal: Medal,
+  crown: Crown,
 } as const;
 
 export async function generateMetadata({ params }: { params: Promise<{ username: string }> }) {
@@ -241,14 +266,20 @@ export default async function ProfilePage({
                 key={badge.id}
                 className="flex items-start gap-3 rounded-2xl border border-border bg-background px-4 py-3"
               >
-                <div
-                  className={cn(
-                    "flex size-10 shrink-0 items-center justify-center rounded-2xl border font-mono text-[11px]",
-                    badgeToneClasses[badge.tone].icon,
-                  )}
-                >
-                  {badge.mark}
-                </div>
+                {(() => {
+                  const Icon = badgeIcons[badge.icon];
+
+                  return (
+                    <div
+                      className={cn(
+                        "flex size-10 shrink-0 items-center justify-center rounded-2xl border",
+                        badgeToneClasses[badge.tone].icon,
+                      )}
+                    >
+                      <Icon className="size-4" strokeWidth={2} />
+                    </div>
+                  );
+                })()}
                 <div>
                   <div className="flex items-center gap-2">
                     <p className="text-sm font-medium">{badge.name}</p>

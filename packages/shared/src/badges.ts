@@ -1,12 +1,26 @@
 export const profileBadgeTones = ["sky", "violet", "emerald", "amber", "rose"] as const;
+export const profileBadgeIcons = [
+  "upload",
+  "calendar-days",
+  "calendar",
+  "flame",
+  "rocket",
+  "users",
+  "bot",
+  "zap",
+  "medal",
+  "crown",
+] as const;
 
 export type ProfileBadgeTone = (typeof profileBadgeTones)[number];
+export type ProfileBadgeIcon = (typeof profileBadgeIcons)[number];
 
 export type ProfileBadge = {
   id: string;
   mark: string;
   name: string;
   description: string;
+  icon: ProfileBadgeIcon;
   tone: ProfileBadgeTone;
 };
 
@@ -27,6 +41,7 @@ const badgeDefinitions = [
     mark: "FS",
     name: "First Submit",
     description: "Uploaded your first usage record.",
+    icon: "upload",
     tone: "sky",
     qualifies: ({ totalTokens }: BadgeContext) => totalTokens > 0,
   },
@@ -35,6 +50,7 @@ const badgeDefinitions = [
     mark: "7D",
     name: "Power Week",
     description: "Stayed active for at least 7 days.",
+    icon: "calendar-days",
     tone: "emerald",
     qualifies: ({ activeDays }: BadgeContext) => activeDays >= 7,
   },
@@ -43,6 +59,7 @@ const badgeDefinitions = [
     mark: "30D",
     name: "Marathon Month",
     description: "Stayed active for at least 30 days.",
+    icon: "calendar",
     tone: "amber",
     qualifies: ({ activeDays }: BadgeContext) => activeDays >= 30,
   },
@@ -51,6 +68,7 @@ const badgeDefinitions = [
     mark: "S7",
     name: "Streak 7",
     description: "Reached a 7-day streak.",
+    icon: "flame",
     tone: "sky",
     qualifies: ({ longestStreak }: BadgeContext) => longestStreak >= 7,
   },
@@ -59,6 +77,7 @@ const badgeDefinitions = [
     mark: "S30",
     name: "Streak 30",
     description: "Reached a 30-day streak.",
+    icon: "rocket",
     tone: "violet",
     qualifies: ({ longestStreak }: BadgeContext) => longestStreak >= 30,
   },
@@ -67,6 +86,7 @@ const badgeDefinitions = [
     mark: "3+",
     name: "Multi-Client",
     description: "Used at least 3 coding clients.",
+    icon: "users",
     tone: "emerald",
     qualifies: ({ clientCount }: BadgeContext) => clientCount >= 3,
   },
@@ -75,6 +95,7 @@ const badgeDefinitions = [
     mark: "10M",
     name: "Model Explorer",
     description: "Used at least 10 different models.",
+    icon: "bot",
     tone: "violet",
     qualifies: ({ modelCount }: BadgeContext) => modelCount >= 10,
   },
@@ -83,6 +104,7 @@ const badgeDefinitions = [
     mark: "50%",
     name: "Efficient",
     description: "Maintained a 50%+ cache hit rate.",
+    icon: "zap",
     tone: "emerald",
     qualifies: ({ cacheHitRate }: BadgeContext) => cacheHitRate >= 50,
   },
@@ -91,6 +113,7 @@ const badgeDefinitions = [
     mark: "1B",
     name: "1B Club",
     description: "Surpassed 1 billion total tokens.",
+    icon: "medal",
     tone: "amber",
     qualifies: ({ totalTokens }: BadgeContext) => totalTokens >= 1_000_000_000,
   },
@@ -99,6 +122,7 @@ const badgeDefinitions = [
     mark: "10B",
     name: "10B Club",
     description: "Surpassed 10 billion total tokens.",
+    icon: "crown",
     tone: "rose",
     qualifies: ({ totalTokens }: BadgeContext) => totalTokens >= 10_000_000_000,
   },
@@ -107,11 +131,12 @@ const badgeDefinitions = [
 export function getEarnedBadges({ context }: { context: BadgeContext }) {
   return badgeDefinitions
     .filter((badge) => badge.qualifies(context))
-    .map(({ id, mark, name, description, tone }) => ({
+    .map(({ id, mark, name, description, icon, tone }) => ({
       id,
       mark,
       name,
       description,
+      icon,
       tone,
     }));
 }
