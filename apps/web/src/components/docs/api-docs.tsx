@@ -118,7 +118,8 @@ const endpoints = [
     path: "/api/settings/weekly-digest",
     format: "JSON",
     auth: true,
-    description: "Update the signed-in user's weekly digest opt-in setting.",
+    description:
+      "Update the signed-in user's Monday weekly digest opt-in setting. Sent emails include a signed unsubscribe link.",
     params: [],
   },
   {
