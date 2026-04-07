@@ -5,11 +5,21 @@ const EnvSchema = z.object({
   CRON_SECRET: z.string(),
 });
 
-type Env = z.infer<typeof EnvSchema>;
+const DatabaseEnvSchema = EnvSchema.pick({ DATABASE_URL: true });
+const CronEnvSchema = EnvSchema.pick({ CRON_SECRET: true });
 
-let _env: Env;
+type DatabaseEnv = z.infer<typeof DatabaseEnvSchema>;
+type CronEnv = z.infer<typeof CronEnvSchema>;
 
-export function env(): Env {
-  _env ??= EnvSchema.parse(process.env);
-  return _env;
+let _databaseEnv: DatabaseEnv;
+let _cronEnv: CronEnv;
+
+export function databaseEnv(): DatabaseEnv {
+  _databaseEnv ??= DatabaseEnvSchema.parse(process.env);
+  return _databaseEnv;
+}
+
+export function cronEnv(): CronEnv {
+  _cronEnv ??= CronEnvSchema.parse(process.env);
+  return _cronEnv;
 }
