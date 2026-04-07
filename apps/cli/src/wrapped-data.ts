@@ -1,5 +1,5 @@
 import { userInfo } from "node:os";
-import { resolve } from "node:path";
+import { extname, resolve } from "node:path";
 
 import { computeLongestStreak, type WrappedSvgData } from "@tokenmaxxing/shared/wrapped";
 import { totalTokens, type UsageRecord } from "@tokenmaxxing/shared/types";
@@ -13,7 +13,16 @@ export function getWrappedOutputPath({
   username: string;
   year: number;
 }) {
-  return resolve(output ?? `${username}-wrapped-${year}.svg`);
+  return resolve(output ?? `${username}-wrapped-${year}.png`);
+}
+
+export function getWrappedOutputFormat({ outputPath }: { outputPath: string }) {
+  const extension = extname(outputPath).toLowerCase();
+
+  if (extension === ".svg") return "svg";
+  if (extension === ".png") return "png";
+
+  throw new Error(`Unsupported wrapped output format: ${extension || "(none)"}`);
 }
 
 export function getWrappedUsername() {

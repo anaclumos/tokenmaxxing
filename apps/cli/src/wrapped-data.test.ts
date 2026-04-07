@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
 
-import { buildLocalWrappedData } from "./wrapped-data";
+import {
+  buildLocalWrappedData,
+  getWrappedOutputFormat,
+  getWrappedOutputPath,
+} from "./wrapped-data";
 
 const records = [
   {
@@ -92,5 +96,37 @@ describe("buildLocalWrappedData", () => {
     expect(data?.activityMap.get("2025-01-01")).toBe(125);
     expect(data?.activityMap.get("2025-01-02")).toBe(80);
     expect(data?.activityMap.get("2025-01-04")).toBe(120);
+  });
+});
+
+describe("wrapped output helpers", () => {
+  test("defaults wrapped output to png", () => {
+    expect(
+      getWrappedOutputPath({
+        username: "sc",
+        year: 2025,
+      }).endsWith("sc-wrapped-2025.png"),
+    ).toBe(true);
+  });
+
+  test("detects svg and png output formats", () => {
+    expect(
+      getWrappedOutputFormat({
+        outputPath: "/tmp/sc-wrapped-2025.svg",
+      }),
+    ).toBe("svg");
+    expect(
+      getWrappedOutputFormat({
+        outputPath: "/tmp/sc-wrapped-2025.png",
+      }),
+    ).toBe("png");
+  });
+
+  test("rejects unsupported wrapped output formats", () => {
+    expect(() =>
+      getWrappedOutputFormat({
+        outputPath: "/tmp/sc-wrapped-2025.jpg",
+      }),
+    ).toThrow();
   });
 });

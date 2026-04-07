@@ -1,18 +1,24 @@
+import { Resvg } from "@resvg/resvg-js";
 import { parseWrappedYear, renderWrappedSvg } from "@tokenmaxxing/shared/wrapped";
 import { defineCommand } from "citty";
 import pc from "picocolors";
 
 import { loadLocalUsage } from "../local-usage";
-import { buildLocalWrappedData, getWrappedOutputPath, getWrappedUsername } from "../wrapped-data";
+import {
+  buildLocalWrappedData,
+  getWrappedOutputFormat,
+  getWrappedOutputPath,
+  getWrappedUsername,
+} from "../wrapped-data";
 
 export const wrapped = defineCommand({
   meta: {
     name: "wrapped",
-    description: "Generate a local year-in-review SVG",
+    description: "Generate a local year-in-review PNG or SVG",
   },
   args: {
     year: { type: "string", description: "Wrapped year (default: current year)" },
-    output: { type: "string", description: "Output SVG path" },
+    output: { type: "string", description: "Output .png or .svg path" },
   },
   async run({ args }) {
     const { clients, records } = await loadLocalUsage({});
@@ -38,9 +44,17 @@ export const wrapped = defineCommand({
       username,
       year,
     });
+    const outputFormat = getWrappedOutputFormat({ outputPath });
+    const svg = renderWrappedSvg({ data });
 
-    await Bun.write(outputPath, renderWrappedSvg({ data }));
+    if (outputFormat === "svg") {
+      await Bun.write(outputPath, svg);
+      console.log(pc.green(`Wrapped SVG saved to ${outputPath}`));
+      return;
+    }
 
-    console.log(pc.green(`Wrapped SVG saved to ${outputPath}`));
+    const png = new Resvg(svg).render().asPng();
+    await Bun.write(outputPath, png);
+    console.log(pc.green(`Wrapped PNG saved to ${outputPath}`));
   },
 });
