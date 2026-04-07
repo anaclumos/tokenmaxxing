@@ -1,22 +1,9 @@
 import { auth } from "@clerk/nextjs/server";
-import {
-  users,
-  dailyAggregates,
-  rankings,
-  usageRecords,
-} from "@tokenmaxxing/db/index";
+import { users, dailyAggregates, rankings, usageRecords } from "@tokenmaxxing/db/index";
 import { formatTokens, sumAggregateTokens } from "@tokenmaxxing/shared/types";
 import { Badge } from "@tokenmaxxing/ui/components/badge";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@tokenmaxxing/ui/components/card";
-import {
-  parseHeatmapTheme,
-  parseHeatmapView,
-} from "@tokenmaxxing/ui/components/heatmap";
+import { Card, CardContent, CardHeader, CardTitle } from "@tokenmaxxing/ui/components/card";
+import { parseHeatmapTheme, parseHeatmapView } from "@tokenmaxxing/ui/components/heatmap";
 import { cn } from "@tokenmaxxing/ui/lib/utils";
 import { eq, desc, and, sum, count, isNotNull, sql } from "drizzle-orm";
 import Link from "next/link";
@@ -24,6 +11,7 @@ import { redirect } from "next/navigation";
 
 import { ActivityHeatmapPanel } from "@/components/app/activity-heatmap-panel";
 import { db } from "@/lib/db";
+import { getCurrentDbUser } from "@/lib/current-user";
 import { queryClientActivity, queryDayBreakdown } from "@/lib/usage-queries";
 
 export const metadata = { title: "Dashboard - tokenmaxx.ing" };
@@ -40,72 +28,62 @@ export default async function DashboardPage({
   }>;
 }) {
   const params = await searchParams;
-  const { userId: clerkId } = await auth();
-  if (!clerkId) redirect("/sign-in");
-
-  const [user] = await db()
-    .select()
-    .from(users)
-    .where(eq(users.clerkId, clerkId))
-    .limit(1);
+  const { user } = await getCurrentDbUser();
 
   if (!user) redirect("/sign-in");
 
-  const [[globalRank], activityRows, modelStats, projectStats] =
-    await Promise.all([
-      db()
-        .select({ rank: rankings.rank })
-        .from(rankings)
-        .where(
-          and(
-            eq(rankings.leaderboardId, "global"),
-            eq(rankings.userId, user.id),
-            eq(rankings.period, "alltime")
-          )
-        )
-        .limit(1),
-      db()
-        .select({
-          date: dailyAggregates.date,
-          totalInput: dailyAggregates.totalInput,
-          totalOutput: dailyAggregates.totalOutput,
-          totalCacheRead: dailyAggregates.totalCacheRead,
-          totalCacheWrite: dailyAggregates.totalCacheWrite,
-          totalReasoning: dailyAggregates.totalReasoning,
-          cost: dailyAggregates.totalCost,
-          sessions: dailyAggregates.sessionCount,
-          clientsUsed: dailyAggregates.clientsUsed,
-        })
-        .from(dailyAggregates)
-        .where(eq(dailyAggregates.userId, user.id))
-        .orderBy(desc(dailyAggregates.date)),
-      db()
-        .select({
-          model: usageRecords.model,
-          sessions: count(),
-          totalCost: sum(usageRecords.costUsd).mapWith(Number),
-        })
-        .from(usageRecords)
-        .where(eq(usageRecords.userId, user.id))
-        .groupBy(usageRecords.model)
-        .orderBy(desc(sum(usageRecords.costUsd))),
-      db()
-        .select({
-          project: usageRecords.project,
-          sessions: count(),
-          totalCost: sum(usageRecords.costUsd).mapWith(Number),
-          totalTokens:
-            sql<number>`sum(${usageRecords.inputTokens} + ${usageRecords.outputTokens} + ${usageRecords.cacheReadTokens} + ${usageRecords.cacheWriteTokens} + ${usageRecords.reasoningTokens})`.mapWith(
-              Number
-            ),
-        })
-        .from(usageRecords)
-        .where(
-          and(eq(usageRecords.userId, user.id), isNotNull(usageRecords.project))
-        )
-        .groupBy(usageRecords.project)
-        .orderBy(desc(sum(usageRecords.costUsd))),
-    ]);
+  const [[globalRank], activityRows, modelStats, projectStats] = await Promise.all([
+    db()
+      .select({ rank: rankings.rank })
+      .from(rankings)
+      .where(
+        and(
+          eq(rankings.leaderboardId, "global"),
+          eq(rankings.userId, user.id),
+          eq(rankings.period, "alltime"),
+        ),
+      )
+      .limit(1),
+    db()
+      .select({
+        date: dailyAggregates.date,
+        totalInput: dailyAggregates.totalInput,
+        totalOutput: dailyAggregates.totalOutput,
+        totalCacheRead: dailyAggregates.totalCacheRead,
+        totalCacheWrite: dailyAggregates.totalCacheWrite,
+        totalReasoning: dailyAggregates.totalReasoning,
+        cost: dailyAggregates.totalCost,
+        sessions: dailyAggregates.sessionCount,
+        clientsUsed: dailyAggregates.clientsUsed,
+      })
+      .from(dailyAggregates)
+      .where(eq(dailyAggregates.userId, user.id))
+      .orderBy(desc(dailyAggregates.date)),
+    db()
+      .select({
+        model: usageRecords.model,
+        sessions: count(),
+        totalCost: sum(usageRecords.costUsd).mapWith(Number),
+      })
+      .from(usageRecords)
+      .where(eq(usageRecords.userId, user.id))
+      .groupBy(usageRecords.model)
+      .orderBy(desc(sum(usageRecords.costUsd))),
+    db()
+      .select({
+        project: usageRecords.project,
+        sessions: count(),
+        totalCost: sum(usageRecords.costUsd).mapWith(Number),
+        totalTokens:
+          sql<number>`sum(${usageRecords.inputTokens} + ${usageRecords.outputTokens} + ${usageRecords.cacheReadTokens} + ${usageRecords.cacheWriteTokens} + ${usageRecords.reasoningTokens})`.mapWith(
+            Number,
+          ),
+      })
+      .from(usageRecords)
+      .where(and(eq(usageRecords.userId, user.id), isNotNull(usageRecords.project)))
+      .groupBy(usageRecords.project)
+      .orderBy(desc(sum(usageRecords.costUsd))),
+  ]);
 
   const activity = activityRows.map((a) => ({
     ...a,
@@ -113,37 +91,24 @@ export default async function DashboardPage({
   }));
 
   // Client filter
-  const allClients = [
-    ...new Set(activityRows.flatMap((a) => a.clientsUsed)),
-  ].toSorted();
+  const allClients = [...new Set(activityRows.flatMap((a) => a.clientsUsed))].toSorted();
   const selectedClient =
-    params.client && allClients.includes(params.client)
-      ? params.client
-      : undefined;
+    params.client && allClients.includes(params.client) ? params.client : undefined;
 
   // When filtering by client, query usageRecords grouped by date
-  const clientActivity = selectedClient
-    ? await queryClientActivity(user.id, selectedClient)
-    : null;
+  const clientActivity = selectedClient ? await queryClientActivity(user.id, selectedClient) : null;
 
   // Day detail breakdown
-  const selectedDay =
-    params.day && /^\d{4}-\d{2}-\d{2}$/.test(params.day)
-      ? params.day
-      : undefined;
-  const dayDetail = selectedDay
-    ? await queryDayBreakdown(user.id, selectedDay)
-    : null;
+  const selectedDay = params.day && /^\d{4}-\d{2}-\d{2}$/.test(params.day) ? params.day : undefined;
+  const dayDetail = selectedDay ? await queryDayBreakdown(user.id, selectedDay) : null;
 
   // Theme + View + Year selectors
   const selectedTheme = parseHeatmapTheme(params.theme);
   const selectedView = parseHeatmapView(params.view);
-  const availableYears = [
-    ...new Set(activityRows.map((a) => Number(a.date.slice(0, 4)))),
-  ].toSorted((a, b) => b - a);
-  const selectedYear = availableYears.find(
-    (year) => year === Number(params.year)
+  const availableYears = [...new Set(activityRows.map((a) => Number(a.date.slice(0, 4))))].toSorted(
+    (a, b) => b - a,
   );
+  const selectedYear = availableYears.find((year) => year === Number(params.year));
 
   const baseHeatmap = clientActivity
     ? clientActivity
@@ -166,12 +131,8 @@ export default async function DashboardPage({
 
   // Single pass: accumulate cost and cache stats by time bucket
   const now = new Date();
-  const sevenDaysAgo = new Date(now.getTime() - 7 * 86_400_000)
-    .toISOString()
-    .slice(0, 10);
-  const fourteenDaysAgo = new Date(now.getTime() - 14 * 86_400_000)
-    .toISOString()
-    .slice(0, 10);
+  const sevenDaysAgo = new Date(now.getTime() - 7 * 86_400_000).toISOString().slice(0, 10);
+  const fourteenDaysAgo = new Date(now.getTime() - 14 * 86_400_000).toISOString().slice(0, 10);
 
   const acc = { cost: [0, 0], input: [0, 0, 0], cacheRead: [0, 0, 0] };
   //           recent/prev       all/recent/prev
@@ -197,11 +158,7 @@ export default async function DashboardPage({
 
   // Burn rate projection
   const dailyRate = recentCost / 7;
-  const daysInMonth = new Date(
-    now.getFullYear(),
-    now.getMonth() + 1,
-    0
-  ).getDate();
+  const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
   const projectedMonthly = dailyRate * daysInMonth;
   const trend = prevCost > 0 ? ((recentCost - prevCost) / prevCost) * 100 : 0;
 
@@ -219,23 +176,18 @@ export default async function DashboardPage({
   const expensiveCost = modelStats
     .filter((m) => isExpensiveModel(m.model))
     .reduce((s, m) => s + (m.totalCost ?? 0), 0);
-  const expensiveRatio =
-    totalModelCost > 0 ? (expensiveCost / totalModelCost) * 100 : 0;
+  const expensiveRatio = totalModelCost > 0 ? (expensiveCost / totalModelCost) * 100 : 0;
 
   // Cache efficiency: cacheRead / (input + cacheRead)
   const cachePool = totalInput + totalCacheRead;
   const cacheHitRate = cachePool > 0 ? (totalCacheRead / cachePool) * 100 : 0;
   const recentPool = recentInput + recentCacheRead;
-  const recentCacheRate =
-    recentPool > 0 ? (recentCacheRead / recentPool) * 100 : 0;
+  const recentCacheRate = recentPool > 0 ? (recentCacheRead / recentPool) * 100 : 0;
   const prevPool = prevInput + prevCacheRead;
   const prevCacheRate = prevPool > 0 ? (prevCacheRead / prevPool) * 100 : 0;
   const cacheTrend = prevPool > 0 ? recentCacheRate - prevCacheRate : 0;
 
-  const totalProjectCost = projectStats.reduce(
-    (s, p) => s + (p.totalCost ?? 0),
-    0
-  );
+  const totalProjectCost = projectStats.reduce((s, p) => s + (p.totalCost ?? 0), 0);
 
   return (
     <main className="mx-auto w-full max-w-4xl px-6 py-8">
@@ -245,21 +197,15 @@ export default async function DashboardPage({
       <div className="mb-8 grid grid-cols-2 gap-4 sm:grid-cols-4">
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-muted-foreground">
-              Total Tokens
-            </CardTitle>
+            <CardTitle className="text-sm text-muted-foreground">Total Tokens</CardTitle>
           </CardHeader>
           <CardContent>
-            <span className="text-2xl font-bold font-mono">
-              {formatTokens(user.totalTokens)}
-            </span>
+            <span className="text-2xl font-bold font-mono">{formatTokens(user.totalTokens)}</span>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-muted-foreground">
-              Total Cost
-            </CardTitle>
+            <CardTitle className="text-sm text-muted-foreground">Total Cost</CardTitle>
           </CardHeader>
           <CardContent>
             <span className="text-2xl font-bold font-mono">
@@ -269,9 +215,7 @@ export default async function DashboardPage({
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-muted-foreground">
-              Global Rank
-            </CardTitle>
+            <CardTitle className="text-sm text-muted-foreground">Global Rank</CardTitle>
           </CardHeader>
           <CardContent>
             <span className="text-2xl font-bold font-mono">
@@ -281,14 +225,10 @@ export default async function DashboardPage({
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-muted-foreground">
-              Streak
-            </CardTitle>
+            <CardTitle className="text-sm text-muted-foreground">Streak</CardTitle>
           </CardHeader>
           <CardContent>
-            <span className="text-2xl font-bold font-mono">
-              {user.currentStreak}d
-            </span>
+            <span className="text-2xl font-bold font-mono">{user.currentStreak}d</span>
             {user.longestStreak > user.currentStreak && (
               <span className="ml-2 text-xs text-muted-foreground">
                 best: {user.longestStreak}d
@@ -302,15 +242,11 @@ export default async function DashboardPage({
       {recentCost > 0 && (
         <Card className="mb-8">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-muted-foreground">
-              Projected Monthly Spend
-            </CardTitle>
+            <CardTitle className="text-sm text-muted-foreground">Projected Monthly Spend</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="flex items-baseline gap-3">
-              <span className="text-2xl font-bold font-mono">
-                ${projectedMonthly.toFixed(2)}
-              </span>
+              <span className="text-2xl font-bold font-mono">${projectedMonthly.toFixed(2)}</span>
               <span
                 className={cn(
                   "text-sm font-mono",
@@ -318,7 +254,7 @@ export default async function DashboardPage({
                     ? "text-red-600 dark:text-red-400"
                     : trend < 0
                       ? "text-green-600 dark:text-green-400"
-                      : "text-muted-foreground"
+                      : "text-muted-foreground",
                 )}
               >
                 {trend > 0 ? "+" : ""}
@@ -336,15 +272,11 @@ export default async function DashboardPage({
       {cachePool > 0 && (
         <Card className="mb-8">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-muted-foreground">
-              Cache Efficiency
-            </CardTitle>
+            <CardTitle className="text-sm text-muted-foreground">Cache Efficiency</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="flex items-baseline gap-3">
-              <span className="text-2xl font-bold font-mono">
-                {cacheHitRate.toFixed(1)}%
-              </span>
+              <span className="text-2xl font-bold font-mono">{cacheHitRate.toFixed(1)}%</span>
               {prevPool > 0 && (
                 <span
                   className={cn(
@@ -353,7 +285,7 @@ export default async function DashboardPage({
                       ? "text-green-600 dark:text-green-400"
                       : cacheTrend < 0
                         ? "text-red-600 dark:text-red-400"
-                        : "text-muted-foreground"
+                        : "text-muted-foreground",
                   )}
                 >
                   {cacheTrend > 0 ? "+" : ""}
@@ -384,17 +316,12 @@ export default async function DashboardPage({
       {modelStats.length > 0 && (
         <Card className="mb-8">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-muted-foreground">
-              Top Models by Cost
-            </CardTitle>
+            <CardTitle className="text-sm text-muted-foreground">Top Models by Cost</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-2">
               {modelStats.slice(0, 5).map((m) => {
-                const pct =
-                  totalModelCost > 0
-                    ? ((m.totalCost ?? 0) / totalModelCost) * 100
-                    : 0;
+                const pct = totalModelCost > 0 ? ((m.totalCost ?? 0) / totalModelCost) * 100 : 0;
                 return (
                   <div key={m.model}>
                     <div className="flex justify-between text-sm">
@@ -415,8 +342,8 @@ export default async function DashboardPage({
             </div>
             {expensiveRatio > 60 && (
               <p className="mt-4 text-xs text-muted-foreground">
-                {expensiveRatio.toFixed(0)}% of your spend goes to frontier
-                models. Consider using lighter models for simple tasks.
+                {expensiveRatio.toFixed(0)}% of your spend goes to frontier models. Consider using
+                lighter models for simple tasks.
               </p>
             )}
           </CardContent>
@@ -427,26 +354,19 @@ export default async function DashboardPage({
       {projectStats.length > 0 && (
         <Card className="mb-8">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-muted-foreground">
-              Top Projects by Cost
-            </CardTitle>
+            <CardTitle className="text-sm text-muted-foreground">Top Projects by Cost</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-2">
               {projectStats.slice(0, 8).map((p) => {
                 const pct =
-                  totalProjectCost > 0
-                    ? ((p.totalCost ?? 0) / totalProjectCost) * 100
-                    : 0;
+                  totalProjectCost > 0 ? ((p.totalCost ?? 0) / totalProjectCost) * 100 : 0;
                 return (
                   <div key={p.project}>
                     <div className="flex justify-between text-sm">
-                      <span className="font-mono truncate mr-4">
-                        {p.project}
-                      </span>
+                      <span className="font-mono truncate mr-4">{p.project}</span>
                       <span className="font-mono text-muted-foreground shrink-0">
-                        ${(p.totalCost ?? 0).toFixed(2)} (
-                        {formatTokens(p.totalTokens ?? 0)})
+                        ${(p.totalCost ?? 0).toFixed(2)} ({formatTokens(p.totalTokens ?? 0)})
                       </span>
                     </div>
                     <div className="mt-1 h-1.5 rounded-full bg-muted">
@@ -484,9 +404,7 @@ export default async function DashboardPage({
           {dayDetail && selectedDay && (
             <CardContent className="border-t pt-4">
               <div className="mb-3 flex items-center justify-between">
-                <span className="font-mono text-sm font-bold">
-                  {selectedDay}
-                </span>
+                <span className="font-mono text-sm font-bold">{selectedDay}</span>
                 <Link
                   href={dismissHref}
                   className="text-xs text-muted-foreground hover:text-foreground"
@@ -496,19 +414,13 @@ export default async function DashboardPage({
               </div>
               {dayDetail.byClient.length > 0 && (
                 <div className="mb-3">
-                  <span className="text-xs text-muted-foreground">
-                    By Client
-                  </span>
+                  <span className="text-xs text-muted-foreground">By Client</span>
                   <div className="mt-1 space-y-1">
                     {dayDetail.byClient.map((c) => (
-                      <div
-                        key={c.client}
-                        className="flex justify-between text-sm"
-                      >
+                      <div key={c.client} className="flex justify-between text-sm">
                         <span className="font-mono">{c.client}</span>
                         <span className="font-mono text-muted-foreground">
-                          {formatTokens(c.tokens)} / ${(c.cost ?? 0).toFixed(2)}{" "}
-                          / {c.sessions}s
+                          {formatTokens(c.tokens)} / ${(c.cost ?? 0).toFixed(2)} / {c.sessions}s
                         </span>
                       </div>
                     ))}
@@ -517,21 +429,13 @@ export default async function DashboardPage({
               )}
               {dayDetail.byModel.length > 0 && (
                 <div>
-                  <span className="text-xs text-muted-foreground">
-                    By Model
-                  </span>
+                  <span className="text-xs text-muted-foreground">By Model</span>
                   <div className="mt-1 space-y-1">
                     {dayDetail.byModel.map((m) => (
-                      <div
-                        key={m.model}
-                        className="flex justify-between text-sm"
-                      >
-                        <span className="font-mono truncate mr-4">
-                          {m.model}
-                        </span>
+                      <div key={m.model} className="flex justify-between text-sm">
+                        <span className="font-mono truncate mr-4">{m.model}</span>
                         <span className="font-mono text-muted-foreground shrink-0">
-                          {formatTokens(m.tokens)} / ${(m.cost ?? 0).toFixed(2)}{" "}
-                          / {m.sessions}s
+                          {formatTokens(m.tokens)} / ${(m.cost ?? 0).toFixed(2)} / {m.sessions}s
                         </span>
                       </div>
                     ))}
@@ -574,9 +478,7 @@ export default async function DashboardPage({
               key={a.date}
               className="flex items-center justify-between rounded border border-border px-4 py-3"
             >
-              <span className="font-mono text-sm text-muted-foreground">
-                {a.date}
-              </span>
+              <span className="font-mono text-sm text-muted-foreground">{a.date}</span>
               <div className="flex items-center gap-4">
                 <Badge variant="secondary" className="font-mono text-xs">
                   {formatTokens(a.tokens)} tokens
@@ -584,9 +486,7 @@ export default async function DashboardPage({
                 <Badge variant="secondary" className="font-mono text-xs">
                   ${Number(a.cost).toFixed(2)}
                 </Badge>
-                <span className="text-xs text-muted-foreground">
-                  {a.sessions} sessions
-                </span>
+                <span className="text-xs text-muted-foreground">{a.sessions} sessions</span>
               </div>
             </div>
           ))}

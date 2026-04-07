@@ -1,22 +1,15 @@
 import { randomBytes, createHash } from "node:crypto";
 
-import { auth } from "@clerk/nextjs/server";
-import { users, apiTokens } from "@tokenmaxxing/db/index";
+import { apiTokens } from "@tokenmaxxing/db/index";
 import { eq } from "drizzle-orm";
 
 import { db } from "@/lib/db";
+import { getCurrentDbUser } from "@/lib/current-user";
 
 // Generate a new API token
 export async function POST() {
-  const { userId: clerkId } = await auth();
-  if (!clerkId)
-    return Response.json({ error: "Unauthorized" }, { status: 401 });
-
-  const [user] = await db()
-    .select({ id: users.id })
-    .from(users)
-    .where(eq(users.clerkId, clerkId))
-    .limit(1);
+  const { clerkId, user } = await getCurrentDbUser();
+  if (!clerkId) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
   if (!user) return Response.json({ error: "User not found" }, { status: 404 });
 
@@ -39,15 +32,8 @@ export async function POST() {
 
 // List user's tokens (prefix only)
 export async function GET() {
-  const { userId: clerkId } = await auth();
-  if (!clerkId)
-    return Response.json({ error: "Unauthorized" }, { status: 401 });
-
-  const [user] = await db()
-    .select({ id: users.id })
-    .from(users)
-    .where(eq(users.clerkId, clerkId))
-    .limit(1);
+  const { clerkId, user } = await getCurrentDbUser();
+  if (!clerkId) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
   if (!user) return Response.json({ error: "User not found" }, { status: 404 });
 

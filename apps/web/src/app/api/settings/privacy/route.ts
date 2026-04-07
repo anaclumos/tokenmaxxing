@@ -1,14 +1,14 @@
-import { auth } from "@clerk/nextjs/server";
 import { users } from "@tokenmaxxing/db/index";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
 
 import { db } from "@/lib/db";
+import { getCurrentDbUser } from "@/lib/current-user";
 
 const Body = z.object({ privacyMode: z.boolean() });
 
 export async function PUT(req: Request) {
-  const { userId: clerkId } = await auth();
+  const { clerkId } = await getCurrentDbUser();
   if (!clerkId) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }

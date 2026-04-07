@@ -1,15 +1,7 @@
-import { auth } from "@clerk/nextjs/server";
-import { users } from "@tokenmaxxing/db/index";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@tokenmaxxing/ui/components/card";
-import { eq } from "drizzle-orm";
+import { Card, CardContent, CardHeader, CardTitle } from "@tokenmaxxing/ui/components/card";
 import { redirect } from "next/navigation";
 
-import { db } from "@/lib/db";
+import { getCurrentDbUser } from "@/lib/current-user";
 
 import { PrivacyToggle } from "./privacy-toggle";
 import { TokenManager } from "./token-manager";
@@ -18,17 +10,7 @@ import { WeeklyDigestToggle } from "./weekly-digest-toggle";
 export const metadata = { title: "Settings - tokenmaxx.ing" };
 
 export default async function SettingsPage() {
-  const { userId: clerkId } = await auth();
-  if (!clerkId) redirect("/sign-in");
-
-  const [user] = await db()
-    .select({
-      privacyMode: users.privacyMode,
-      weeklyDigestEnabled: users.weeklyDigestEnabled,
-    })
-    .from(users)
-    .where(eq(users.clerkId, clerkId))
-    .limit(1);
+  const { user } = await getCurrentDbUser();
 
   if (!user) redirect("/sign-in");
 
@@ -60,8 +42,7 @@ export default async function SettingsPage() {
         </CardHeader>
         <CardContent>
           <p className="mb-4 text-sm text-muted-foreground">
-            Generate tokens to authenticate the CLI. Tokens are shown once and
-            stored as hashes.
+            Generate tokens to authenticate the CLI. Tokens are shown once and stored as hashes.
           </p>
           <TokenManager />
         </CardContent>
