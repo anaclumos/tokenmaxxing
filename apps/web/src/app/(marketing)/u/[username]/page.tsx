@@ -194,9 +194,8 @@ export default async function ProfilePage({
             Wrapped
           </Link>
           <ShareButton
-            username={user.username}
-            tokens={formatTokens(user.totalTokens)}
-            cost={Number(user.totalCost).toFixed(2)}
+            path={`/u/${user.username}`}
+            text={`${user.username}'s tokenmaxx.ing stats: ${formatTokens(user.totalTokens)} tokens, $${Number(user.totalCost).toFixed(2)} spent`}
           />
         </div>
       </div>

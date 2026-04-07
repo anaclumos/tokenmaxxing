@@ -9,6 +9,8 @@ import { notFound } from "next/navigation";
 
 import { db } from "@/lib/db";
 
+import { ShareButton } from "../share-button";
+
 const SITE_URL = "https://tokenmaxx.ing";
 
 function parseWrappedYear({ year }: { year?: string }) {
@@ -173,6 +175,10 @@ export default async function WrappedPage({
             </div>
 
             <div className="flex flex-col gap-2">
+              <ShareButton
+                path={`/u/${user.username}/wrapped?year=${selectedYear}`}
+                text={`${user.username}'s Wrapped ${selectedYear} on tokenmaxx.ing`}
+              />
               <Link
                 href={wrappedImageUrl}
                 prefetch={false}

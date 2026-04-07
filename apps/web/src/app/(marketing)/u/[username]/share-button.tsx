@@ -3,16 +3,11 @@
 import { Button } from "@tokenmaxxing/ui/components/button";
 import { useState } from "react";
 
-export function ShareButton({ username, tokens, cost }: {
-  username: string;
-  tokens: string;
-  cost: string;
-}) {
+export function ShareButton({ path, text }: { path: string; text: string }) {
   const [copied, setCopied] = useState(false);
 
   async function share() {
-    const url = `${window.location.origin}/u/${username}`;
-    const text = `${username}'s tokenmaxx.ing stats: ${tokens} tokens, $${cost} spent`;
+    const url = new URL(path, window.location.origin).toString();
 
     if (navigator.share) {
       await navigator.share({ url, text });
