@@ -7,6 +7,8 @@ import { db } from "@/lib/db";
 import { cronEnv } from "@/lib/env";
 import { computeAllRankings } from "@/lib/rankings";
 
+export const maxDuration = 300;
+
 export async function GET(req: NextRequest) {
   const authHeader = req.headers.get("authorization");
   if (authHeader !== `Bearer ${cronEnv().CRON_SECRET}`) {
@@ -33,14 +35,11 @@ export async function GET(req: NextRequest) {
 
       const rows =
         clerkIds.length > 0
-          ? await db()
-              .select({ id: users.id })
-              .from(users)
-              .where(inArray(users.clerkId, clerkIds))
+          ? await db().select({ id: users.id }).from(users).where(inArray(users.clerkId, clerkIds))
           : [];
 
       return { orgId: org.id, userIds: rows.map((r) => r.id) };
-    })
+    }),
   );
 
   await computeAllRankings(db(), orgs);

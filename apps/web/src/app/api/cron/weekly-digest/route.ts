@@ -13,6 +13,8 @@ import {
 } from "@/lib/weekly-digest";
 import { TOKEN_SUM } from "@/lib/usage-queries";
 
+export const maxDuration = 300;
+
 const RESEND_BATCH_SIZE = 100;
 
 async function buildWeeklyDigestMessage({
