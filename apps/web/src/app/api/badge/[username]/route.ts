@@ -1,8 +1,8 @@
 import { users, rankings, dailyAggregates } from "@tokenmaxxing/db/index";
-import { getFeaturedBadge } from "@tokenmaxxing/shared/badges";
+import { getFeaturedBadgeValue } from "@tokenmaxxing/shared/badges";
 import { summarizeDailyAggregateRows } from "@tokenmaxxing/shared/daily-aggregate-summary";
 import { formatTokens } from "@tokenmaxxing/shared/types";
-import { eq, and, sum } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 
 import { db } from "@/lib/db";
 
@@ -18,6 +18,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ username
       totalTokens: users.totalTokens,
       totalCost: users.totalCost,
       currentStreak: users.currentStreak,
+      longestStreak: users.longestStreak,
       privacyMode: users.privacyMode,
     })
     .from(users)
@@ -39,6 +40,23 @@ export async function GET(req: Request, { params }: { params: Promise<{ username
 
   let message: string;
   let color: string;
+  const needsSummary = style === "cache" || style === "achievement";
+  const detail = needsSummary
+    ? await db()
+        .select({
+          date: dailyAggregates.date,
+          totalInput: dailyAggregates.totalInput,
+          totalOutput: dailyAggregates.totalOutput,
+          totalCacheRead: dailyAggregates.totalCacheRead,
+          totalCacheWrite: dailyAggregates.totalCacheWrite,
+          totalReasoning: dailyAggregates.totalReasoning,
+          clientsUsed: dailyAggregates.clientsUsed,
+          modelsUsed: dailyAggregates.modelsUsed,
+        })
+        .from(dailyAggregates)
+        .where(eq(dailyAggregates.userId, user.id))
+    : [];
+  const summary = summarizeDailyAggregateRows({ rows: detail });
 
   if (style === "cost") {
     message = `$${Number(user.totalCost).toFixed(2)}`;
@@ -61,50 +79,23 @@ export async function GET(req: Request, { params }: { params: Promise<{ username
     message = rank ? `#${rank.rank}` : "unranked";
     color = rank ? "brightgreen" : "lightgrey";
   } else if (style === "cache") {
-    const [agg] = await db()
-      .select({
-        totalInput: sum(dailyAggregates.totalInput).mapWith(Number),
-        totalCacheRead: sum(dailyAggregates.totalCacheRead).mapWith(Number),
-      })
-      .from(dailyAggregates)
-      .where(eq(dailyAggregates.userId, user.id));
-    const input = agg?.totalInput ?? 0;
-    const cacheRead = agg?.totalCacheRead ?? 0;
-    const pool = input + cacheRead;
-    const rate = pool > 0 ? (cacheRead / pool) * 100 : 0;
-    message = `${rate.toFixed(0)}% cache hit`;
-    color = rate >= 50 ? "brightgreen" : rate >= 25 ? "yellow" : "orange";
+    message = `${summary.cacheHitRate.toFixed(0)}% cache hit`;
+    color =
+      summary.cacheHitRate >= 50 ? "brightgreen" : summary.cacheHitRate >= 25 ? "yellow" : "orange";
   } else if (style === "achievement") {
-    const detail = await db()
-      .select({
-        date: dailyAggregates.date,
-        totalInput: dailyAggregates.totalInput,
-        totalOutput: dailyAggregates.totalOutput,
-        totalCacheRead: dailyAggregates.totalCacheRead,
-        totalCacheWrite: dailyAggregates.totalCacheWrite,
-        totalReasoning: dailyAggregates.totalReasoning,
-        clientsUsed: dailyAggregates.clientsUsed,
-        modelsUsed: dailyAggregates.modelsUsed,
-      })
-      .from(dailyAggregates)
-      .where(eq(dailyAggregates.userId, user.id));
-    const summary = summarizeDailyAggregateRows({ rows: detail });
-    const featuredBadge = getFeaturedBadge({
-      context: {
-        totalTokens: user.totalTokens,
-        longestStreak: user.currentStreak,
-        clientCount: summary.clients.length,
-        modelCount: summary.models.length,
-        cacheHitRate: summary.cacheHitRate,
-        activeDays: summary.activeDays,
-      },
-    });
-    message = featuredBadge
-      ? format === "mark"
-        ? featuredBadge.mark
-        : featuredBadge.name
-      : "no badges";
-    color = featuredBadge ? "blueviolet" : "lightgrey";
+    message =
+      getFeaturedBadgeValue({
+        context: {
+          totalTokens: user.totalTokens,
+          longestStreak: user.longestStreak,
+          clientCount: summary.clients.length,
+          modelCount: summary.models.length,
+          cacheHitRate: summary.cacheHitRate,
+          activeDays: summary.activeDays,
+        },
+        format: format === "mark" ? "mark" : "name",
+      }) ?? "no badges";
+    color = message === "no badges" ? "lightgrey" : "blueviolet";
   } else {
     message = `${formatTokens(user.totalTokens)} tokens`;
     color = "brightgreen";

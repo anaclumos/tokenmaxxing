@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { getEarnedBadges, getFeaturedBadge } from "./badges";
+import { getEarnedBadges, getFeaturedBadge, getFeaturedBadgeValue } from "./badges";
 
 describe("getEarnedBadges", () => {
   test("returns no badges for an empty profile", () => {
@@ -56,5 +56,19 @@ describe("getEarnedBadges", () => {
 
     expect(badge?.id).toBe("ten-billion-club");
     expect(badge?.mark).toBe("10B");
+  });
+
+  test("returns the featured badge name or mark deterministically", () => {
+    const context = {
+      totalTokens: 1_250_000_000,
+      longestStreak: 14,
+      clientCount: 4,
+      modelCount: 12,
+      cacheHitRate: 58.2,
+      activeDays: 31,
+    };
+
+    expect(getFeaturedBadgeValue({ context, format: "name" })).toBe("1B Club");
+    expect(getFeaturedBadgeValue({ context, format: "mark" })).toBe("1B");
   });
 });

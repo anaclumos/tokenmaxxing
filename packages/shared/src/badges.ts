@@ -5,6 +5,8 @@ export type ProfileBadge = {
   description: string;
 };
 
+type FeaturedBadgeFormat = "name" | "mark";
+
 type BadgeContext = {
   totalTokens: number;
   longestStreak: number;
@@ -100,4 +102,16 @@ export function getEarnedBadges({ context }: { context: BadgeContext }) {
 
 export function getFeaturedBadge({ context }: { context: BadgeContext }) {
   return getEarnedBadges({ context }).at(-1) ?? null;
+}
+
+export function getFeaturedBadgeValue({
+  context,
+  format,
+}: {
+  context: BadgeContext;
+  format: FeaturedBadgeFormat;
+}) {
+  const badge = getFeaturedBadge({ context });
+  if (!badge) return null;
+  return format === "mark" ? badge.mark : badge.name;
 }
