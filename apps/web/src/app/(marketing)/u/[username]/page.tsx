@@ -10,6 +10,7 @@ import {
   AvatarImage,
 } from "@tokenmaxxing/ui/components/avatar";
 import { Badge } from "@tokenmaxxing/ui/components/badge";
+import { buttonVariants } from "@tokenmaxxing/ui/components/button";
 import {
   Card,
   CardContent,
@@ -20,6 +21,7 @@ import {
   parseHeatmapTheme,
   parseHeatmapView,
 } from "@tokenmaxxing/ui/components/heatmap";
+import { cn } from "@tokenmaxxing/ui/lib/utils";
 import { eq, desc, and } from "drizzle-orm";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -184,7 +186,13 @@ export default async function ProfilePage({
             </Badge>
           )}
         </div>
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-2">
+          <Link
+            href={`/u/${user.username}/wrapped`}
+            className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
+          >
+            Wrapped
+          </Link>
           <ShareButton
             username={user.username}
             tokens={formatTokens(user.totalTokens)}
