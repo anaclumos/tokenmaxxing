@@ -99,7 +99,7 @@ function renderCard(data: {
   totalCost: number;
   streak: number;
   activityMap: Map<string, number>;
-  badges: Array<{ mark: string }>;
+  badges: Array<{ mark: string; tone: string }>;
 }): string {
   const heatmap = renderHeatmap(data.activityMap);
   const badgeStrip = renderBadgeStrip(data.badges);
@@ -128,14 +128,23 @@ function renderCard(data: {
 </svg>`;
 }
 
-function renderBadgeStrip(badges: Array<{ mark: string }>) {
+function renderBadgeStrip(badges: Array<{ mark: string; tone: string }>) {
+  const toneColors = {
+    sky: { fill: "#132645", stroke: "#4a9eff", text: "#d7e9ff" },
+    violet: { fill: "#23163f", stroke: "#9b6dff", text: "#eadfff" },
+    emerald: { fill: "#102d28", stroke: "#2fc68d", text: "#d8fff2" },
+    amber: { fill: "#34230e", stroke: "#f4b14b", text: "#fff0d6" },
+    rose: { fill: "#3a1624", stroke: "#f06292", text: "#ffe0ea" },
+  } as const;
+
   return badges
     .slice(0, 3)
     .map((badge, index) => {
       const x = 20 + index * 82;
+      const tone = toneColors[badge.tone as keyof typeof toneColors] ?? toneColors.sky;
       return `<g transform="translate(${x}, 92)">
-  <rect width="70" height="20" rx="10" fill="#142744" stroke="${ACCENT}" stroke-width="1"/>
-  <text x="35" y="14" fill="${FG}" font-family="monospace" font-size="10" text-anchor="middle">${esc(badge.mark)}</text>
+  <rect width="70" height="20" rx="10" fill="${tone.fill}" stroke="${tone.stroke}" stroke-width="1"/>
+  <text x="35" y="14" fill="${tone.text}" font-family="monospace" font-size="10" text-anchor="middle">${esc(badge.mark)}</text>
 </g>`;
     })
     .join("\n  ");

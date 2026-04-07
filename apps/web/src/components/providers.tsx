@@ -3,27 +3,36 @@
 import { ClerkProvider } from "@clerk/nextjs";
 import { dark } from "@clerk/themes";
 import { ThemeProvider, useTheme } from "next-themes";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 
-function SuppressThemeScriptWarning() {
-  useEffect(() => {
-    if (process.env.NODE_ENV !== "development") return;
+let originalConsoleError: typeof console.error | null = null;
+let suppressionCount = 0;
 
-    const original = console.error;
+function acquireThemeScriptWarningSuppression() {
+  if (process.env.NODE_ENV !== "development") return;
+  if (originalConsoleError === null) {
+    originalConsoleError = console.error;
     console.error = (...args: unknown[]) => {
       if (typeof args[0] === "string" && args[0].includes("Encountered a script tag")) {
         return;
       }
 
-      original.apply(console, args);
+      originalConsoleError?.apply(console, args);
     };
+  }
 
-    return () => {
-      console.error = original;
-    };
-  }, []);
+  suppressionCount += 1;
+}
 
-  return null;
+function releaseThemeScriptWarningSuppression() {
+  if (process.env.NODE_ENV !== "development") return;
+  suppressionCount -= 1;
+
+  if (suppressionCount <= 0 && originalConsoleError) {
+    console.error = originalConsoleError;
+    originalConsoleError = null;
+    suppressionCount = 0;
+  }
 }
 
 function ClerkThemed({ children }: { children: React.ReactNode }) {
@@ -40,9 +49,24 @@ function ClerkThemed({ children }: { children: React.ReactNode }) {
 }
 
 export function Providers({ children }: { children: React.ReactNode }) {
+  const patched = useRef(false);
+
+  if (!patched.current) {
+    acquireThemeScriptWarningSuppression();
+    patched.current = true;
+  }
+
+  useEffect(() => {
+    return () => {
+      if (patched.current) {
+        releaseThemeScriptWarningSuppression();
+        patched.current = false;
+      }
+    };
+  }, []);
+
   return (
     <ThemeProvider attribute="class" defaultTheme="system" disableTransitionOnChange>
-      <SuppressThemeScriptWarning />
       <ClerkThemed>{children}</ClerkThemed>
     </ThemeProvider>
   );

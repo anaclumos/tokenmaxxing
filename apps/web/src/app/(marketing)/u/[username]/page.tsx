@@ -19,6 +19,29 @@ import { queryClientActivity, queryDayBreakdown } from "@/lib/usage-queries";
 
 import { ShareButton } from "./share-button";
 
+const badgeToneClasses = {
+  sky: {
+    chip: "border-sky-500/20 bg-sky-500/10 text-sky-700 dark:text-sky-300",
+    icon: "border-sky-500/20 bg-sky-500/10 text-sky-700 dark:text-sky-300",
+  },
+  violet: {
+    chip: "border-violet-500/20 bg-violet-500/10 text-violet-700 dark:text-violet-300",
+    icon: "border-violet-500/20 bg-violet-500/10 text-violet-700 dark:text-violet-300",
+  },
+  emerald: {
+    chip: "border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
+    icon: "border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
+  },
+  amber: {
+    chip: "border-amber-500/20 bg-amber-500/10 text-amber-700 dark:text-amber-300",
+    icon: "border-amber-500/20 bg-amber-500/10 text-amber-700 dark:text-amber-300",
+  },
+  rose: {
+    chip: "border-rose-500/20 bg-rose-500/10 text-rose-700 dark:text-rose-300",
+    icon: "border-rose-500/20 bg-rose-500/10 text-rose-700 dark:text-rose-300",
+  },
+} as const;
+
 export async function generateMetadata({ params }: { params: Promise<{ username: string }> }) {
   const { username } = await params;
   return { title: `${username} - tokenmaxx.ing` };
@@ -211,11 +234,26 @@ export default async function ProfilePage({
                 key={badge.id}
                 className="flex items-start gap-3 rounded-2xl border border-border bg-background px-4 py-3"
               >
-                <Badge variant="secondary" className="mt-0.5 font-mono text-[11px]">
+                <div
+                  className={cn(
+                    "flex size-10 shrink-0 items-center justify-center rounded-2xl border font-mono text-[11px]",
+                    badgeToneClasses[badge.tone].icon,
+                  )}
+                >
                   {badge.mark}
-                </Badge>
+                </div>
                 <div>
-                  <p className="text-sm font-medium">{badge.name}</p>
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-medium">{badge.name}</p>
+                    <span
+                      className={cn(
+                        "inline-flex rounded-full border px-2 py-0.5 font-mono text-[10px]",
+                        badgeToneClasses[badge.tone].chip,
+                      )}
+                    >
+                      {badge.mark}
+                    </span>
+                  </div>
                   <p className="text-xs text-muted-foreground">{badge.description}</p>
                 </div>
               </div>

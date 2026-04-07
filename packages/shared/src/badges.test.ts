@@ -40,6 +40,8 @@ describe("getEarnedBadges", () => {
       "efficient",
       "billion-club",
     ]);
+    expect(badges[0]?.tone).toBe("sky");
+    expect(badges.at(-1)?.tone).toBe("amber");
   });
 
   test("returns the most advanced earned badge as the featured badge", () => {
