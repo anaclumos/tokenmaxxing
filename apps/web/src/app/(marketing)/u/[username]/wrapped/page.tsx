@@ -1,3 +1,4 @@
+import { auth } from "@clerk/nextjs/server";
 import { users, dailyAggregates } from "@tokenmaxxing/db/index";
 import { buttonVariants } from "@tokenmaxxing/ui/components/button";
 import { cn } from "@tokenmaxxing/ui/lib/utils";
@@ -18,23 +19,11 @@ function parseWrappedYear({ year }: { year?: string }) {
   return Number.isInteger(requestedYear) ? requestedYear : new Date().getFullYear();
 }
 
-function getWrappedImageUrl({
-  username,
-  year,
-}: {
-  username: string;
-  year: number;
-}) {
+function getWrappedImageUrl({ username, year }: { username: string; year: number }) {
   return `/api/wrapped/${username}?year=${year}`;
 }
 
-function getWrappedImageHref({
-  username,
-  year,
-}: {
-  username: string;
-  year: number;
-}) {
+function getWrappedImageHref({ username, year }: { username: string; year: number }) {
   return `${SITE_URL}${getWrappedImageUrl({ username, year })}`;
 }
 
@@ -74,10 +63,12 @@ export default async function WrappedPage({
   searchParams: Promise<{ year?: string }>;
 }) {
   const [{ username }, query] = await Promise.all([params, searchParams]);
+  const { userId: clerkId } = await auth();
 
   const [user, activityRows] = await Promise.all([
     db()
       .select({
+        clerkId: users.clerkId,
         username: users.username,
         privacyMode: users.privacyMode,
       })
@@ -93,7 +84,8 @@ export default async function WrappedPage({
       .orderBy(desc(dailyAggregates.date)),
   ]);
 
-  if (!user || user.privacyMode) notFound();
+  const isOwner = user?.clerkId === clerkId;
+  if (!user || (user.privacyMode && !isOwner)) notFound();
 
   const availableYears = [
     ...new Set(activityRows.map((row) => Number(row.date.slice(0, 4)))),

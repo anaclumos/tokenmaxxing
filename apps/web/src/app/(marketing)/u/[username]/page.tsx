@@ -1,3 +1,4 @@
+import { auth } from "@clerk/nextjs/server";
 import { users, dailyAggregates, rankings } from "@tokenmaxxing/db/index";
 import { summarizeDailyAggregateRows } from "@tokenmaxxing/shared/daily-aggregate-summary";
 import { formatTokens, totalTokens, sumAggregateTokens } from "@tokenmaxxing/shared/types";
@@ -37,10 +38,12 @@ export default async function ProfilePage({
   }>;
 }) {
   const [{ username }, query] = await Promise.all([params, searchParams]);
+  const { userId: clerkId } = await auth();
 
   const [user] = await db().select().from(users).where(eq(users.username, username)).limit(1);
 
-  if (!user || user.privacyMode) notFound();
+  const isOwner = user?.clerkId === clerkId;
+  if (!user || (user.privacyMode && !isOwner)) notFound();
 
   const [[globalRank], activityRows] = await Promise.all([
     db()
