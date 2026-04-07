@@ -1,5 +1,9 @@
 import { users, dailyAggregates, rankings } from "@tokenmaxxing/db/index";
-import { getEarnedBadges } from "@tokenmaxxing/shared/badges";
+import {
+  getEarnedBadges,
+  renderProfileBadgeIconSvg,
+  type ProfileBadgeIcon,
+} from "@tokenmaxxing/shared/badges";
 import { summarizeDailyAggregateRows } from "@tokenmaxxing/shared/daily-aggregate-summary";
 import { formatTokens } from "@tokenmaxxing/shared/types";
 import { eq, desc, and } from "drizzle-orm";
@@ -103,7 +107,7 @@ function renderCard(data: {
   totalCost: number;
   streak: number;
   activityMap: Map<string, number>;
-  badges: Array<{ mark: string; tone: string }>;
+  badges: Array<{ icon: ProfileBadgeIcon; mark: string; tone: string }>;
 }): string {
   const heatmap = renderHeatmap(data.activityMap);
   const badgeStrip = renderBadgeStrip(data.badges);
@@ -132,7 +136,7 @@ function renderCard(data: {
 </svg>`;
 }
 
-function renderBadgeStrip(badges: Array<{ mark: string; tone: string }>) {
+function renderBadgeStrip(badges: Array<{ icon: ProfileBadgeIcon; mark: string; tone: string }>) {
   const toneColors = {
     sky: { fill: "#132645", stroke: "#4a9eff", text: "#d7e9ff" },
     violet: { fill: "#23163f", stroke: "#9b6dff", text: "#eadfff" },
@@ -148,7 +152,8 @@ function renderBadgeStrip(badges: Array<{ mark: string; tone: string }>) {
       const tone = toneColors[badge.tone as keyof typeof toneColors] ?? toneColors.sky;
       return `<g transform="translate(${x}, 92)">
   <rect width="70" height="20" rx="10" fill="${tone.fill}" stroke="${tone.stroke}" stroke-width="1"/>
-  <text x="35" y="14" fill="${tone.text}" font-family="monospace" font-size="10" text-anchor="middle">${esc(badge.mark)}</text>
+  ${renderProfileBadgeIconSvg({ icon: badge.icon, size: 10, stroke: tone.text, x: 7, y: 5 })}
+  <text x="43" y="14" fill="${tone.text}" font-family="monospace" font-size="10" text-anchor="middle">${esc(badge.mark)}</text>
 </g>`;
     })
     .join("\n  ");

@@ -1,5 +1,5 @@
 import { formatTokens } from "./types";
-import type { ProfileBadge } from "./badges";
+import { renderProfileBadgeIconSvg, type ProfileBadge } from "./badges";
 
 const WIDTH = 1200;
 const HEIGHT = 630;
@@ -139,7 +139,8 @@ function renderBadgeMarks({ badges }: { badges: ProfileBadge[] }) {
       const tone = toneColors[badge.tone];
       return `<g transform="translate(${x}, 578)">
   <rect width="92" height="32" rx="16" fill="${tone.fill}" stroke="${tone.stroke}" stroke-width="1"/>
-  <text x="46" y="21" fill="${tone.text}" font-family="monospace" font-size="15" text-anchor="middle">${badge.mark}</text>
+  ${renderProfileBadgeIconSvg({ icon: badge.icon, size: 14, stroke: tone.text, x: 10, y: 9 })}
+  <text x="54" y="21" fill="${tone.text}" font-family="monospace" font-size="15" text-anchor="middle">${badge.mark}</text>
 </g>`;
     })
     .join("");

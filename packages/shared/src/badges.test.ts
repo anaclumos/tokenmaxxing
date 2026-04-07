@@ -1,6 +1,11 @@
 import { describe, expect, test } from "bun:test";
 
-import { getEarnedBadges, getFeaturedBadge, getFeaturedBadgeValue } from "./badges";
+import {
+  getEarnedBadges,
+  getFeaturedBadge,
+  getFeaturedBadgeValue,
+  renderProfileBadgeIconSvg,
+} from "./badges";
 
 describe("getEarnedBadges", () => {
   test("returns no badges for an empty profile", () => {
@@ -75,5 +80,22 @@ describe("getEarnedBadges", () => {
 
     expect(getFeaturedBadgeValue({ context, format: "name" })).toBe("1B Club");
     expect(getFeaturedBadgeValue({ context, format: "mark" })).toBe("1B");
+  });
+
+  test("renders badge icon svg markup", () => {
+    expect(
+      renderProfileBadgeIconSvg({
+        icon: "upload",
+        size: 12,
+        stroke: "#fff",
+      }),
+    ).toContain('viewBox="0 0 24 24"');
+    expect(
+      renderProfileBadgeIconSvg({
+        icon: "upload",
+        size: 12,
+        stroke: "#fff",
+      }),
+    ).toContain('d="M12 3v12"');
   });
 });
