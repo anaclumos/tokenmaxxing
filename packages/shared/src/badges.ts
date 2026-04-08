@@ -24,6 +24,21 @@ export type ProfileBadge = {
   tone: ProfileBadgeTone;
 };
 
+export const profileBadgeToneSvgColors = {
+  sky: { fill: "#132645", stroke: "#4a9eff", text: "#d7e9ff" },
+  violet: { fill: "#23163f", stroke: "#9b6dff", text: "#eadfff" },
+  emerald: { fill: "#102d28", stroke: "#2fc68d", text: "#d8fff2" },
+  amber: { fill: "#34230e", stroke: "#f4b14b", text: "#fff0d6" },
+  rose: { fill: "#3a1624", stroke: "#f06292", text: "#ffe0ea" },
+} as const satisfies Record<
+  ProfileBadgeTone,
+  {
+    fill: string;
+    stroke: string;
+    text: string;
+  }
+>;
+
 const profileBadgeIconNodes = {
   upload: [
     ["path", { d: "M12 3v12" }],
@@ -277,4 +292,34 @@ export function renderProfileBadgeIconSvg({
     .join("");
 
   return `<svg x="${x}" y="${y}" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="${stroke}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${nodes}</svg>`;
+}
+
+export function renderProfileBadgePillSvg({
+  badge,
+  width,
+  height,
+  iconSize,
+  iconX,
+  iconY,
+  radius,
+  textSize,
+  textX,
+  textY,
+}: {
+  badge: Pick<ProfileBadge, "icon" | "mark" | "tone">;
+  width: number;
+  height: number;
+  iconSize: number;
+  iconX: number;
+  iconY: number;
+  radius: number;
+  textSize: number;
+  textX: number;
+  textY: number;
+}) {
+  const tone = profileBadgeToneSvgColors[badge.tone];
+
+  return `<rect width="${width}" height="${height}" rx="${radius}" fill="${tone.fill}" stroke="${tone.stroke}" stroke-width="1"/>
+${renderProfileBadgeIconSvg({ icon: badge.icon, size: iconSize, stroke: tone.text, x: iconX, y: iconY })}
+<text x="${textX}" y="${textY}" fill="${tone.text}" font-family="monospace" font-size="${textSize}" text-anchor="middle">${badge.mark}</text>`;
 }

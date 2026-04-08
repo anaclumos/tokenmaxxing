@@ -1,5 +1,5 @@
 import { formatTokens } from "./types";
-import { renderProfileBadgeIconSvg, type ProfileBadge } from "./badges";
+import { renderProfileBadgePillSvg, type ProfileBadge } from "./badges";
 
 const WIDTH = 1200;
 const HEIGHT = 630;
@@ -124,23 +124,23 @@ function renderList({
 }
 
 function renderBadgeMarks({ badges }: { badges: ProfileBadge[] }) {
-  const toneColors = {
-    sky: { fill: "#132645", stroke: "#4a9eff", text: "#d7e9ff" },
-    violet: { fill: "#23163f", stroke: "#9b6dff", text: "#eadfff" },
-    emerald: { fill: "#102d28", stroke: "#2fc68d", text: "#d8fff2" },
-    amber: { fill: "#34230e", stroke: "#f4b14b", text: "#fff0d6" },
-    rose: { fill: "#3a1624", stroke: "#f06292", text: "#ffe0ea" },
-  } as const;
-
   return badges
     .slice(0, 4)
     .map((badge, index) => {
       const x = 80 + index * 112;
-      const tone = toneColors[badge.tone];
       return `<g transform="translate(${x}, 578)">
-  <rect width="92" height="32" rx="16" fill="${tone.fill}" stroke="${tone.stroke}" stroke-width="1"/>
-  ${renderProfileBadgeIconSvg({ icon: badge.icon, size: 14, stroke: tone.text, x: 10, y: 9 })}
-  <text x="54" y="21" fill="${tone.text}" font-family="monospace" font-size="15" text-anchor="middle">${badge.mark}</text>
+  ${renderProfileBadgePillSvg({
+    badge,
+    width: 92,
+    height: 32,
+    iconSize: 14,
+    iconX: 10,
+    iconY: 9,
+    radius: 16,
+    textSize: 15,
+    textX: 54,
+    textY: 21,
+  })}
 </g>`;
     })
     .join("");

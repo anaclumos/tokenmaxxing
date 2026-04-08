@@ -5,6 +5,7 @@ import {
   getFeaturedBadge,
   getFeaturedBadgeValue,
   renderProfileBadgeIconSvg,
+  renderProfileBadgePillSvg,
 } from "./badges";
 
 describe("getEarnedBadges", () => {
@@ -97,5 +98,44 @@ describe("getEarnedBadges", () => {
         stroke: "#fff",
       }),
     ).toContain('d="M12 3v12"');
+  });
+
+  test("renders badge pill svg markup", () => {
+    expect(
+      renderProfileBadgePillSvg({
+        badge: {
+          icon: "upload",
+          mark: "FS",
+          tone: "sky",
+        },
+        width: 70,
+        height: 20,
+        iconSize: 10,
+        iconX: 7,
+        iconY: 5,
+        radius: 10,
+        textSize: 10,
+        textX: 43,
+        textY: 14,
+      }),
+    ).toContain('fill="#132645"');
+    expect(
+      renderProfileBadgePillSvg({
+        badge: {
+          icon: "upload",
+          mark: "FS",
+          tone: "sky",
+        },
+        width: 70,
+        height: 20,
+        iconSize: 10,
+        iconX: 7,
+        iconY: 5,
+        radius: 10,
+        textSize: 10,
+        textX: 43,
+        textY: 14,
+      }),
+    ).toContain(">FS</text>");
   });
 });
