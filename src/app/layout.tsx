@@ -1,0 +1,40 @@
+import type { Metadata } from "next";
+import { Inter, Geist_Mono } from "next/font/google";
+import { Providers } from "@/components/providers";
+import "./globals.css";
+
+const inter = Inter({
+  subsets: ["latin"],
+  variable: "--font-sans",
+});
+
+const geistMono = Geist_Mono({
+  variable: "--font-geist-mono",
+  subsets: ["latin"],
+});
+
+export const metadata: Metadata = {
+  title: "Tokenmaxxing",
+  description: "Run your business with AI agents",
+};
+
+export default function RootLayout({
+  children,
+}: Readonly<{
+  children: React.ReactNode;
+}>) {
+  return (
+    <html
+      lang="en"
+      className={`${inter.variable} ${geistMono.variable} dark h-full antialiased`}
+    >
+      <body className="min-h-full flex flex-col bg-background text-foreground">
+        <Providers>
+          <div className="isolate flex min-h-full flex-col flex-1">
+            {children}
+          </div>
+        </Providers>
+      </body>
+    </html>
+  );
+}
