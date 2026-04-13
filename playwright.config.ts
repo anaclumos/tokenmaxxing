@@ -34,6 +34,4 @@ export default defineConfig({
         "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=",
     },
   },
-  globalSetup: "./tests/global-setup.ts",
-  globalTeardown: "./tests/global-teardown.ts",
 });

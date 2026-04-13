@@ -24,5 +24,3 @@ export function getDb(): Db {
 
   return db;
 }
-
-export const getPoolDb = getDb;
