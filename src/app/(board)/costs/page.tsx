@@ -1,9 +1,35 @@
+import { eq, sql } from "drizzle-orm";
 import { requireOrg } from "@/lib/auth";
-import { getCostsData } from "@/lib/board/data";
+import { getDb } from "@/lib/db";
+import { costEvents } from "@/lib/db/schema";
 
 export default async function CostsPage() {
   const { orgId } = await requireOrg();
-  const data = await getCostsData(orgId);
+  const db = getDb();
+  const [events, summary] = await Promise.all([
+    db.query.costEvents.findMany({
+      where: eq(costEvents.orgId, orgId),
+      orderBy: (table, { desc }) => [desc(table.createdAt)],
+      limit: 500,
+    }),
+    db
+      .select({
+        totalCost: sql<string>`COALESCE(SUM(estimated_cost), 0)`,
+        totalInputTokens: sql<number>`COALESCE(SUM(input_tokens), 0)`,
+        totalOutputTokens: sql<number>`COALESCE(SUM(output_tokens), 0)`,
+      })
+      .from(costEvents)
+      .where(eq(costEvents.orgId, orgId)),
+  ]);
+
+  const data = {
+    events,
+    summary: {
+      totalCost: Number(summary[0]?.totalCost ?? 0),
+      totalInputTokens: Number(summary[0]?.totalInputTokens ?? 0),
+      totalOutputTokens: Number(summary[0]?.totalOutputTokens ?? 0),
+    },
+  };
 
   return (
     <div className="space-y-8">

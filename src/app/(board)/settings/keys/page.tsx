@@ -1,14 +1,16 @@
+import { eq } from "drizzle-orm";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { SubmitButton } from "@/components/submit-button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { requireOrg } from "@/lib/auth";
+import { getDb } from "@/lib/db";
+import { providerKeys } from "@/lib/db/schema";
 import {
   removeProviderKeyAction,
   saveProviderKeyAction,
 } from "@/lib/board/actions";
-import { listProviderKeyStatus } from "@/lib/board/data";
 
 const PROVIDERS = [
   { id: "openai", name: "OpenAI", placeholder: "sk-..." },
@@ -26,7 +28,20 @@ type KeysPageProps = {
 
 export default async function KeysPage({ searchParams }: KeysPageProps) {
   const [{ orgId }, flash] = await Promise.all([requireOrg(), searchParams]);
-  const keys = await listProviderKeyStatus(orgId);
+  const db = getDb();
+  const rows = await db.query.providerKeys.findMany({
+    columns: {
+      provider: true,
+      validatedAt: true,
+      createdAt: true,
+    },
+    where: eq(providerKeys.orgId, orgId),
+    orderBy: (table, { asc }) => [asc(table.provider)],
+  });
+  const keys = rows.map((row) => ({
+    ...row,
+    maskedKey: "••••••••",
+  }));
   const providerName =
     PROVIDERS.find((provider) => provider.id === flash.provider)?.name ??
     flash.provider;

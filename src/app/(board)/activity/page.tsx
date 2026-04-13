@@ -1,10 +1,17 @@
 import { Badge } from "@/components/ui/badge";
+import { eq } from "drizzle-orm";
 import { requireOrg } from "@/lib/auth";
-import { listActivityEntries } from "@/lib/board/data";
+import { getDb } from "@/lib/db";
+import { activityLog } from "@/lib/db/schema";
 
 export default async function ActivityPage() {
   const { orgId } = await requireOrg();
-  const entries = await listActivityEntries(orgId);
+  const db = getDb();
+  const entries = await db.query.activityLog.findMany({
+    where: eq(activityLog.orgId, orgId),
+    orderBy: (table, { desc }) => [desc(table.createdAt)],
+    limit: 100,
+  });
 
   return (
     <div className="space-y-6">

@@ -1,14 +1,10 @@
+import { and, eq, sql } from "drizzle-orm";
 import { notFound } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { requireOrg } from "@/lib/auth";
-import {
-  getAgent,
-  getAgentCostSummary,
-  listAgentRecentActivity,
-  listAgentRecentCosts,
-  listAgentRoutines,
-} from "@/lib/board/data";
+import { getDb } from "@/lib/db";
+import { activityLog, agents, costEvents, routines as routinesTable } from "@/lib/db/schema";
 
 type AgentDetailPageProps = {
   params: Promise<{ agentId: string }>;
@@ -18,18 +14,60 @@ export default async function AgentDetailPage({
   params,
 }: AgentDetailPageProps) {
   const [{ orgId }, { agentId }] = await Promise.all([requireOrg(), params]);
-  const [agent, routines, costSummary, recentCosts, recentActivity] =
+  const db = getDb();
+  const [agent, routineRows, costSummary, recentCosts, recentActivity] =
     await Promise.all([
-      getAgent(orgId, agentId),
-      listAgentRoutines(orgId, agentId),
-      getAgentCostSummary(orgId, agentId),
-      listAgentRecentCosts(orgId, agentId),
-      listAgentRecentActivity(orgId, agentId),
+      db.query.agents.findFirst({
+        where: and(eq(agents.orgId, orgId), eq(agents.id, agentId)),
+      }),
+      db.query.routines.findMany({
+        where: and(eq(routinesTable.orgId, orgId), eq(routinesTable.agentId, agentId)),
+        with: {
+          triggers: {
+            columns: {
+              cronExpression: true,
+            },
+          },
+        },
+        orderBy: (table, { desc }) => [desc(table.createdAt)],
+      }),
+      db
+        .select({
+          totalCost: sql<string>`COALESCE(SUM(estimated_cost), 0)`,
+          totalInputTokens: sql<number>`COALESCE(SUM(input_tokens), 0)`,
+          totalOutputTokens: sql<number>`COALESCE(SUM(output_tokens), 0)`,
+        })
+        .from(costEvents)
+        .where(and(eq(costEvents.orgId, orgId), eq(costEvents.agentId, agentId))),
+      db.query.costEvents.findMany({
+        where: and(eq(costEvents.orgId, orgId), eq(costEvents.agentId, agentId)),
+        orderBy: (table, { desc }) => [desc(table.createdAt)],
+        limit: 5,
+      }),
+      db.query.activityLog.findMany({
+        where: and(
+          eq(activityLog.orgId, orgId),
+          eq(activityLog.resourceType, "agent"),
+          eq(activityLog.resourceId, agentId),
+        ),
+        orderBy: (table, { desc }) => [desc(table.createdAt)],
+        limit: 5,
+      }),
     ]);
 
   if (!agent) {
     notFound();
   }
+
+  const routineList = routineRows.map((routine) => ({
+    ...routine,
+    schedule: routine.triggers[0]?.cronExpression ?? null,
+  }));
+  const summary = {
+    totalCost: Number(costSummary[0]?.totalCost ?? 0),
+    totalInputTokens: Number(costSummary[0]?.totalInputTokens ?? 0),
+    totalOutputTokens: Number(costSummary[0]?.totalOutputTokens ?? 0),
+  };
 
   return (
     <div className="space-y-6">
@@ -82,14 +120,14 @@ export default async function AgentDetailPage({
           </div>
 
           <div>
-            <h3 className="text-sm font-medium">Assigned Routines ({routines.length})</h3>
-            {routines.length === 0 ? (
+            <h3 className="text-sm font-medium">Assigned Routines ({routineList.length})</h3>
+            {routineList.length === 0 ? (
               <p className="mt-3 text-sm text-muted-foreground text-pretty">
                 No routines are assigned to this agent.
               </p>
             ) : (
               <div className="mt-3 space-y-px rounded-lg border border-border/50 overflow-hidden">
-                {routines.map((routine) => (
+                {routineList.map((routine) => (
                   <div
                     key={routine.id}
                     className="flex items-center justify-between gap-4 p-3"
@@ -168,20 +206,20 @@ export default async function AgentDetailPage({
               <Separator />
               <div className="flex justify-between">
                 <dt className="text-muted-foreground">Routines</dt>
-                <dd className="font-mono tabular-nums">{routines.length}</dd>
+                <dd className="font-mono tabular-nums">{routineList.length}</dd>
               </div>
               <Separator />
               <div className="flex justify-between">
                 <dt className="text-muted-foreground">Total Spend</dt>
                 <dd className="font-mono tabular-nums">
-                  ${costSummary.totalCost.toFixed(2)}
+                  ${summary.totalCost.toFixed(2)}
                 </dd>
               </div>
               <Separator />
               <div className="flex justify-between">
                 <dt className="text-muted-foreground">Tokens</dt>
                 <dd className="font-mono text-xs tabular-nums">
-                  {costSummary.totalInputTokens.toLocaleString()} / {costSummary.totalOutputTokens.toLocaleString()}
+                  {summary.totalInputTokens.toLocaleString()} / {summary.totalOutputTokens.toLocaleString()}
                 </dd>
               </div>
               <Separator />

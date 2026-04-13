@@ -1,9 +1,11 @@
 import Link from "next/link";
+import { eq } from "drizzle-orm";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { NewAgentDialog } from "@/app/(board)/_components/new-agent-dialog";
 import { requireOrg } from "@/lib/auth";
-import { listAgents } from "@/lib/board/data";
+import { getDb } from "@/lib/db";
+import { agents } from "@/lib/db/schema";
 
 type AgentsPageProps = {
   searchParams: Promise<{
@@ -16,7 +18,11 @@ export default async function AgentsPage({
   searchParams,
 }: AgentsPageProps) {
   const [{ orgId }, flash] = await Promise.all([requireOrg(), searchParams]);
-  const agents = await listAgents(orgId);
+  const db = getDb();
+  const rows = await db.query.agents.findMany({
+    where: eq(agents.orgId, orgId),
+    orderBy: (table, { asc }) => [asc(table.createdAt)],
+  });
 
   return (
     <div className="space-y-6">
@@ -43,7 +49,7 @@ export default async function AgentsPage({
         </Alert>
       )}
 
-      {agents.length === 0 ? (
+      {rows.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16">
           <p className="text-sm text-muted-foreground text-pretty">
             No agents yet. Create your first agent to start building your team.
@@ -51,7 +57,7 @@ export default async function AgentsPage({
         </div>
       ) : (
         <div className="space-y-px rounded-lg border border-border/50 overflow-hidden">
-          {agents.map((agent) => (
+          {rows.map((agent) => (
             <Link
               key={agent.id}
               href={`/agents/${agent.id}`}

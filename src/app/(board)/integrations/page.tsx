@@ -1,17 +1,33 @@
+import { eq } from "drizzle-orm";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { requireOrg } from "@/lib/auth";
-import {
-  listMcpCatalogEntries,
-  listOrgMcpInstallations,
-} from "@/lib/board/data";
+import { getDb } from "@/lib/db";
+import { orgMcpInstallations } from "@/lib/db/schema";
 
 export default async function IntegrationsPage() {
   const { orgId } = await requireOrg();
+  const db = getDb();
   const [catalog, installed] = await Promise.all([
-    listMcpCatalogEntries(),
-    listOrgMcpInstallations(orgId),
+    db.query.mcpCatalogEntries.findMany({
+      orderBy: (table, { asc }) => [asc(table.name)],
+    }),
+    db.query.orgMcpInstallations.findMany({
+      where: eq(orgMcpInstallations.orgId, orgId),
+      with: {
+        catalogEntry: {
+          columns: {
+            id: true,
+            name: true,
+            authType: true,
+            docsUrl: true,
+            serverUrl: true,
+          },
+        },
+      },
+      orderBy: (table, { desc }) => [desc(table.activatedAt)],
+    }),
   ]);
 
   return (

@@ -1,10 +1,39 @@
 import { Card, CardContent } from "@/components/ui/card";
+import { and, eq, sql } from "drizzle-orm";
 import { requireOrg } from "@/lib/auth";
-import { getDashboardData } from "@/lib/board/data";
+import { getDb } from "@/lib/db";
+import { activityLog, agents, costEvents, heartbeatRuns } from "@/lib/db/schema";
 
 export default async function DashboardPage() {
   const { orgId } = await requireOrg();
-  const data = await getDashboardData(orgId);
+  const db = getDb();
+
+  const [agentCount, runCount, spend, recentActivity] = await Promise.all([
+    db
+      .select({ count: sql<number>`COUNT(*)` })
+      .from(agents)
+      .where(and(eq(agents.orgId, orgId), eq(agents.status, "active"))),
+    db
+      .select({ count: sql<number>`COUNT(*)` })
+      .from(heartbeatRuns)
+      .where(eq(heartbeatRuns.orgId, orgId)),
+    db
+      .select({ total: sql<string>`COALESCE(SUM(estimated_cost), 0)` })
+      .from(costEvents)
+      .where(eq(costEvents.orgId, orgId)),
+    db.query.activityLog.findMany({
+      where: eq(activityLog.orgId, orgId),
+      orderBy: (table, { desc }) => [desc(table.createdAt)],
+      limit: 10,
+    }),
+  ]);
+
+  const data = {
+    activeAgents: Number(agentCount[0]?.count ?? 0),
+    totalRuns: Number(runCount[0]?.count ?? 0),
+    monthlySpend: Number(spend[0]?.total ?? 0),
+    recentActivity,
+  };
 
   return (
     <div className="space-y-8">

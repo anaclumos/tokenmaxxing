@@ -1,6 +1,8 @@
 import { Badge } from "@/components/ui/badge";
+import { eq } from "drizzle-orm";
 import { requireOrg } from "@/lib/auth";
-import { listAgents } from "@/lib/board/data";
+import { getDb } from "@/lib/db";
+import { agents } from "@/lib/db/schema";
 
 type Agent = {
   id: string;
@@ -67,8 +69,12 @@ function AgentNode({ node, depth }: { node: TreeNode; depth: number }) {
 
 export default async function OrgChartPage() {
   const { orgId } = await requireOrg();
-  const agents = await listAgents(orgId);
-  const tree = buildTree(agents);
+  const db = getDb();
+  const rows = await db.query.agents.findMany({
+    where: eq(agents.orgId, orgId),
+    orderBy: (table, { asc }) => [asc(table.createdAt)],
+  });
+  const tree = buildTree(rows);
 
   return (
     <div className="space-y-6">
@@ -81,7 +87,7 @@ export default async function OrgChartPage() {
         </p>
       </div>
 
-      {agents.length === 0 ? (
+      {rows.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16">
           <p className="text-sm text-muted-foreground text-pretty">
             Create agents with reporting lines to see the org chart.
