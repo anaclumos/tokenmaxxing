@@ -24,8 +24,6 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar";
 
-const BYPASS = process.env.NEXT_PUBLIC_BYPASS_AUTH === "true";
-
 const navItems = [
   { label: "Dashboard", href: "/dashboard" },
   { label: "Agents", href: "/agents" },
@@ -47,15 +45,21 @@ function isActive(pathname: string, href: string) {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
-export function BoardShell({ children }: { children: React.ReactNode }) {
+export function BoardShell({
+  bypass,
+  children,
+}: {
+  bypass: boolean;
+  children: React.ReactNode;
+}) {
   const pathname = usePathname();
   const currentLabel =
     navItems.find((item) => isActive(pathname, item.href))?.label ??
     configItems.find((item) => isActive(pathname, item.href))?.label ??
     "Tokenmaxxing";
 
-  const OrgSwitcher = BYPASS ? MockOrgSwitcher : OrganizationSwitcher;
-  const AccountButton = BYPASS ? MockUserButton : UserButton;
+  const OrgSwitcher = bypass ? MockOrgSwitcher : OrganizationSwitcher;
+  const AccountButton = bypass ? MockUserButton : UserButton;
 
   return (
     <SidebarProvider>

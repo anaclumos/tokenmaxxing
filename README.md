@@ -191,7 +191,7 @@ Middleware protects all routes. Clerk `auth()` provides `userId`, `orgId`, `orgR
 
 ### Local development (Bypass mode)
 
-When `BYPASS_AUTH=true` and `NEXT_PUBLIC_BYPASS_AUTH=true`:
+When `BYPASS_AUTH=true`:
 
 - Middleware passes all requests through (no Clerk check)
 - `auth()` returns `{ userId: "user_test", orgId: "org_test", orgRole: "org:admin" }`
@@ -423,7 +423,6 @@ vercel.json                         # Cron schedules
 | `BLOB_READ_WRITE_TOKEN` | Production | Vercel Blob token |
 | `CRON_SECRET` | Production | Bearer token for cron endpoints |
 | `BYPASS_AUTH` | Dev/Test | Skip Clerk auth, mock session |
-| `NEXT_PUBLIC_BYPASS_AUTH` | Dev/Test | Skip Clerk UI components |
 
 ---
 

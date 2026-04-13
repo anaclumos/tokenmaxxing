@@ -9,9 +9,9 @@ export default function BoardLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const content = BYPASS ? <BoardShell>{children}</BoardShell> : (
+  const content = BYPASS ? <BoardShell bypass>{children}</BoardShell> : (
     <ClerkProvider dynamic>
-      <BoardShell>{children}</BoardShell>
+      <BoardShell bypass={false}>{children}</BoardShell>
     </ClerkProvider>
   );
 

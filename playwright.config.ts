@@ -25,7 +25,6 @@ export default defineConfig({
     timeout: 120_000,
     env: {
       BYPASS_AUTH: "true",
-      NEXT_PUBLIC_BYPASS_AUTH: "true",
       DATABASE_URL:
         process.env.DATABASE_URL ??
         "postgres://tokenmaxxing:tokenmaxxing@localhost:5432/tokenmaxxing",
