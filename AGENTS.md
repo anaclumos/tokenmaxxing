@@ -74,3 +74,7 @@ Mistakes can happen. So,
     - Use a CLI or tooling layer that reads the value on your behalf.
 
 Remember: you are trusted here. The goal is not perfection, but honesty, clear thinking, and steady improvement. If something feels off, say so. If something breaks, we will fix it together.
+
+## Lessons Learned
+
+- When asked to find or delete something in the repo, search thoroughly from the start. Use `tree -a -I 'node_modules|.git'` or broad glob patterns to catch all hidden directories (`.agents/`, `.crush/`, `.factory/`, `.claude/`, etc.) in one pass. Do not narrowly check one location at a time.
