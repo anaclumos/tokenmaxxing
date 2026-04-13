@@ -44,3 +44,9 @@ next-env.d.ts
 
 # drizzle
 drizzle/
+
+# playwright
+test-results/
+playwright-report/
+tests/screenshots/
+blob-report/

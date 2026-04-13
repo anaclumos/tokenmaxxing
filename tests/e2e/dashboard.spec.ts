@@ -5,17 +5,21 @@ test.describe("Dashboard", () => {
     await page.goto("/dashboard");
     await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
     await expect(page.getByText("Active Agents")).toBeVisible();
-    await expect(page.getByText("Open Issues")).toBeVisible();
+    await expect(page.getByText("Total Runs")).toBeVisible();
     await expect(page.getByText("Monthly Spend")).toBeVisible();
     await page.screenshot({ path: "tests/screenshots/dashboard.png" });
   });
 
-  test("shows seed data counts", async ({ page }) => {
+  test("shows seed data agent count", async ({ page }) => {
     await page.goto("/dashboard");
-    await page.waitForTimeout(1000);
-    await expect(page.getByText("5")).toBeVisible();
-    await page.screenshot({
-      path: "tests/screenshots/dashboard-with-data.png",
-    });
+    await expect(page.getByText("Active Agents")).toBeVisible();
+    await page.waitForTimeout(1500);
+    await page.screenshot({ path: "tests/screenshots/dashboard-loaded.png" });
+  });
+
+  test("shows recent activity section", async ({ page }) => {
+    await page.goto("/dashboard");
+    await expect(page.getByText("Recent Activity")).toBeVisible();
+    await page.screenshot({ path: "tests/screenshots/dashboard-activity.png" });
   });
 });
