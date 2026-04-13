@@ -2,6 +2,7 @@
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useOrgId } from "@/hooks/use-org-id";
 import { useCallback, useEffect, useState } from "react";
@@ -83,27 +84,26 @@ export default function IntegrationsPage() {
         </TabsList>
 
         <TabsContent value="catalog" className="mt-6">
-          <div className="grid gap-px overflow-hidden rounded-lg border border-border/50 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {displayCatalog.map((entry) => (
-              <div
-                key={entry.name}
-                className="flex flex-col justify-between gap-4 border-b border-r border-border/50 p-5 last:border-b-0 sm:[&:nth-child(2n)]:border-r-0 lg:[&:nth-child(2n)]:border-r lg:[&:nth-child(3n)]:border-r-0"
-              >
-                <div>
-                  <div className="flex items-center gap-2">
-                    <p className="text-sm font-medium">{entry.name}</p>
-                    <Badge variant="outline" className="text-xs">
-                      {entry.category}
-                    </Badge>
+              <Card key={entry.name} size="sm">
+                <CardContent className="flex flex-col justify-between gap-4">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-medium">{entry.name}</p>
+                      <Badge variant="outline" className="text-xs">
+                        {entry.category}
+                      </Badge>
+                    </div>
+                    <p className="mt-1 text-sm text-muted-foreground text-pretty">
+                      {entry.description}
+                    </p>
                   </div>
-                  <p className="mt-1 text-sm text-muted-foreground text-pretty">
-                    {entry.description}
-                  </p>
-                </div>
-                <Button variant="outline" size="sm" className="w-fit">
-                  Connect
-                </Button>
-              </div>
+                  <Button variant="outline" size="sm" className="w-fit">
+                    Connect
+                  </Button>
+                </CardContent>
+              </Card>
             ))}
           </div>
         </TabsContent>
@@ -114,29 +114,28 @@ export default function IntegrationsPage() {
               No integrations installed yet.
             </p>
           ) : (
-            <div className="space-y-px rounded-lg border border-border/50 overflow-hidden">
+            <div className="space-y-2">
               {installed.map((inst) => (
-                <div
-                  key={inst.id}
-                  className="flex items-center justify-between gap-4 p-4"
-                >
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium truncate">
-                      {inst.customName ?? inst.catalogEntryId?.slice(0, 8) ?? "Custom"}
-                    </p>
-                    {inst.customUrl && (
-                      <p className="mt-0.5 text-xs text-muted-foreground font-mono truncate">
-                        {inst.customUrl}
+                <Card key={inst.id} size="sm">
+                  <CardContent className="flex items-center justify-between gap-4">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium truncate">
+                        {inst.customName ?? inst.catalogEntryId?.slice(0, 8) ?? "Custom"}
                       </p>
-                    )}
-                  </div>
-                  <Badge
-                    variant={inst.status === "active" ? "secondary" : "outline"}
-                    className="text-xs shrink-0"
-                  >
-                    {inst.status}
-                  </Badge>
-                </div>
+                      {inst.customUrl && (
+                        <p className="mt-0.5 text-xs text-muted-foreground font-mono truncate">
+                          {inst.customUrl}
+                        </p>
+                      )}
+                    </div>
+                    <Badge
+                      variant={inst.status === "active" ? "secondary" : "outline"}
+                      className="text-xs shrink-0"
+                    >
+                      {inst.status}
+                    </Badge>
+                  </CardContent>
+                </Card>
               ))}
             </div>
           )}

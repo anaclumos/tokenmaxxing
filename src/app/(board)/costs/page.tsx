@@ -1,6 +1,7 @@
 "use client";
 
 import { useOrgId } from "@/hooks/use-org-id";
+import { Card, CardContent } from "@/components/ui/card";
 import { useCallback, useEffect, useState } from "react";
 
 type CostEvent = {
@@ -52,9 +53,9 @@ export default function CostsPage() {
         </p>
       </div>
 
-      <div className="@container">
-        <dl className="grid grid-cols-1 @lg:grid-cols-3">
-          <div className="border-b border-border/50 pb-5 @lg:border-b-0 @lg:border-r @lg:pr-5">
+      <div className="grid gap-4 grid-cols-1 sm:grid-cols-3">
+        <Card size="sm">
+          <CardContent>
             <dt className="truncate text-sm text-muted-foreground">
               Total Spend
             </dt>
@@ -62,9 +63,11 @@ export default function CostsPage() {
               ${totalCost.toFixed(2)}
             </dd>
             <p className="mt-0.5 text-xs text-muted-foreground">this month</p>
-          </div>
+          </CardContent>
+        </Card>
 
-          <div className="border-b border-border/50 py-5 @lg:border-b-0 @lg:border-r @lg:px-5">
+        <Card size="sm">
+          <CardContent>
             <dt className="truncate text-sm text-muted-foreground">
               Input Tokens
             </dt>
@@ -72,9 +75,11 @@ export default function CostsPage() {
               {totalInput.toLocaleString()}
             </dd>
             <p className="mt-0.5 text-xs text-muted-foreground">this month</p>
-          </div>
+          </CardContent>
+        </Card>
 
-          <div className="pt-5 @lg:pl-5">
+        <Card size="sm">
+          <CardContent>
             <dt className="truncate text-sm text-muted-foreground">
               Output Tokens
             </dt>
@@ -82,8 +87,8 @@ export default function CostsPage() {
               {totalOutput.toLocaleString()}
             </dd>
             <p className="mt-0.5 text-xs text-muted-foreground">this month</p>
-          </div>
-        </dl>
+          </CardContent>
+        </Card>
       </div>
 
       <div>
@@ -93,32 +98,29 @@ export default function CostsPage() {
             No cost data yet. Costs appear after agents run.
           </p>
         ) : (
-          <div className="mt-3 space-y-px rounded-lg border border-border/50 overflow-hidden">
+          <div className="mt-3 space-y-2">
             {data.events.map((event) => (
-              <div
-                key={event.id}
-                className="flex items-center justify-between gap-4 p-3 text-sm"
-              >
-                <div className="flex items-center gap-3 min-w-0">
-                  <span className="font-mono text-xs text-muted-foreground shrink-0">
-                    {event.provider}/{event.model}
-                  </span>
-                  <span className="text-xs text-muted-foreground truncate">
-                    {event.agentId.slice(0, 8)}
-                  </span>
-                </div>
-                <div className="flex items-center gap-4 shrink-0">
-                  <span className="text-xs text-muted-foreground tabular-nums font-mono">
-                    {event.inputTokens.toLocaleString()} in / {event.outputTokens.toLocaleString()} out
-                  </span>
-                  <span className="text-sm font-medium font-mono tabular-nums">
-                    ${Number(event.estimatedCost).toFixed(4)}
-                  </span>
-                  <time className="text-xs text-muted-foreground tabular-nums">
-                    {new Date(event.createdAt).toLocaleDateString()}
-                  </time>
-                </div>
-              </div>
+              <Card key={event.id} size="sm">
+                <CardContent className="flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <span className="font-mono text-xs text-muted-foreground shrink-0">
+                      {event.provider}/{event.model}
+                    </span>
+                    <span className="text-xs text-muted-foreground truncate">
+                      {event.agentId.slice(0, 8)}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-4 shrink-0">
+                    <span className="text-xs text-muted-foreground tabular-nums font-mono">
+                      {event.inputTokens.toLocaleString()} in /{" "}
+                      {event.outputTokens.toLocaleString()} out
+                    </span>
+                    <span className="text-sm font-medium font-mono tabular-nums">
+                      ${Number(event.estimatedCost).toFixed(4)}
+                    </span>
+                  </div>
+                </CardContent>
+              </Card>
             ))}
           </div>
         )}

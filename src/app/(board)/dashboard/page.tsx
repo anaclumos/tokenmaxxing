@@ -1,6 +1,7 @@
 "use client";
 
 import { useOrgId } from "@/hooks/use-org-id";
+import { Card, CardContent } from "@/components/ui/card";
 import { useCallback, useEffect, useState } from "react";
 
 type DashboardData = {
@@ -43,35 +44,39 @@ export default function DashboardPage() {
         </p>
       </div>
 
-      <div className="@container">
-        <dl className="grid grid-cols-1 @lg:grid-cols-3">
-          <div className="border-b border-border/50 pb-5 @lg:border-b-0 @lg:border-r @lg:pr-5">
+      <div className="grid gap-4 grid-cols-1 sm:grid-cols-3">
+        <Card size="sm">
+          <CardContent>
             <dt className="truncate text-sm text-muted-foreground">
               Active Agents
             </dt>
             <dd className="mt-1 text-2xl font-semibold tabular-nums">
               {data?.activeAgents ?? 0}
             </dd>
-          </div>
+          </CardContent>
+        </Card>
 
-          <div className="border-b border-border/50 py-5 @lg:border-b-0 @lg:border-r @lg:px-5">
+        <Card size="sm">
+          <CardContent>
             <dt className="truncate text-sm text-muted-foreground">
               Total Runs
             </dt>
             <dd className="mt-1 text-2xl font-semibold tabular-nums">
               {data?.totalRuns ?? 0}
             </dd>
-          </div>
+          </CardContent>
+        </Card>
 
-          <div className="pt-5 @lg:pl-5">
+        <Card size="sm">
+          <CardContent>
             <dt className="truncate text-sm text-muted-foreground">
               Monthly Spend
             </dt>
             <dd className="mt-1 text-2xl font-semibold tabular-nums font-mono">
               ${(data?.monthlySpend ?? 0).toFixed(2)}
             </dd>
-          </div>
-        </dl>
+          </CardContent>
+        </Card>
       </div>
 
       <div>
@@ -81,22 +86,21 @@ export default function DashboardPage() {
             No activity yet. Create your first agent to get started.
           </p>
         ) : (
-          <div className="mt-3 space-y-px rounded-lg border border-border/50 overflow-hidden">
+          <div className="mt-3 space-y-2">
             {data.recentActivity.map((entry) => (
-              <div
-                key={entry.id}
-                className="flex items-center justify-between gap-4 p-3 text-sm"
-              >
-                <div className="flex items-center gap-2 min-w-0">
-                  <span className="font-medium shrink-0">{entry.action}</span>
-                  <span className="text-muted-foreground truncate">
-                    {entry.resourceType}/{entry.resourceId.slice(0, 8)}
-                  </span>
-                </div>
-                <time className="text-xs text-muted-foreground tabular-nums shrink-0">
-                  {new Date(entry.createdAt).toLocaleDateString()}
-                </time>
-              </div>
+              <Card key={entry.id} size="sm">
+                <CardContent className="flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="font-medium shrink-0">{entry.action}</span>
+                    <span className="text-muted-foreground truncate">
+                      {entry.resourceType}/{entry.resourceId.slice(0, 8)}
+                    </span>
+                  </div>
+                  <time className="text-xs text-muted-foreground tabular-nums shrink-0">
+                    {new Date(entry.createdAt).toLocaleDateString()}
+                  </time>
+                </CardContent>
+              </Card>
             ))}
           </div>
         )}

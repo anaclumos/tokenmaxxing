@@ -3,6 +3,7 @@ import { Inter, Geist_Mono } from "next/font/google";
 import { Analytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { Providers } from "@/components/providers";
+import { SquircleNoScript } from "@squircle-js/react";
 import "./globals.css";
 
 const inter = Inter({
@@ -36,6 +37,7 @@ export default function RootLayout({
             {children}
           </div>
         </Providers>
+        <SquircleNoScript />
         <Analytics />
         <SpeedInsights />
       </body>
