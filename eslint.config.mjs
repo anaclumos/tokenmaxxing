@@ -12,6 +12,11 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    "drizzle.config.ts",
+    "next.config.ts",
+    "playwright.config.ts",
+    "postcss.config.mjs",
+    "eslint.config.mjs",
   ]),
 ]);
 

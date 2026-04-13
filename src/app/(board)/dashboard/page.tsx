@@ -1,37 +1,10 @@
-"use client";
-
-import { useOrgId } from "@/hooks/use-org-id";
 import { Card, CardContent } from "@/components/ui/card";
-import { useCallback, useEffect, useState } from "react";
+import { requireOrg } from "@/lib/auth";
+import { getDashboardData } from "@/lib/board/data";
 
-type DashboardData = {
-  activeAgents: number;
-  totalRuns: number;
-  monthlySpend: number;
-  recentActivity: {
-    id: string;
-    action: string;
-    actorType: string;
-    actorId: string;
-    resourceType: string;
-    resourceId: string;
-    createdAt: string;
-  }[];
-};
-
-export default function DashboardPage() {
-  const orgId = useOrgId();
-  const [data, setData] = useState<DashboardData | null>(null);
-
-  const fetchDashboard = useCallback(async () => {
-    if (!orgId) return;
-    const res = await fetch(`/api/orgs/${orgId}/dashboard`);
-    if (res.ok) setData(await res.json());
-  }, [orgId]);
-
-  useEffect(() => {
-    fetchDashboard();
-  }, [fetchDashboard]);
+export default async function DashboardPage() {
+  const { orgId } = await requireOrg();
+  const data = await getDashboardData(orgId);
 
   return (
     <div className="space-y-8">
@@ -51,7 +24,7 @@ export default function DashboardPage() {
               Active Agents
             </dt>
             <dd className="mt-1 text-2xl font-semibold tabular-nums">
-              {data?.activeAgents ?? 0}
+              {data.activeAgents}
             </dd>
           </CardContent>
         </Card>
@@ -62,7 +35,7 @@ export default function DashboardPage() {
               Total Runs
             </dt>
             <dd className="mt-1 text-2xl font-semibold tabular-nums">
-              {data?.totalRuns ?? 0}
+              {data.totalRuns}
             </dd>
           </CardContent>
         </Card>
@@ -73,7 +46,7 @@ export default function DashboardPage() {
               Monthly Spend
             </dt>
             <dd className="mt-1 text-2xl font-semibold tabular-nums font-mono">
-              ${(data?.monthlySpend ?? 0).toFixed(2)}
+              ${data.monthlySpend.toFixed(2)}
             </dd>
           </CardContent>
         </Card>
@@ -81,7 +54,7 @@ export default function DashboardPage() {
 
       <div>
         <h3 className="text-sm font-medium">Recent Activity</h3>
-        {!data?.recentActivity.length ? (
+        {data.recentActivity.length === 0 ? (
           <p className="mt-3 text-sm text-muted-foreground text-pretty">
             No activity yet. Create your first agent to get started.
           </p>

@@ -1,64 +1,53 @@
 import { validateOrgAccess } from "@/lib/auth";
-import { getDb } from "@/lib/db";
-import { agents } from "@/lib/db/schema";
-import { eq, and, desc } from "drizzle-orm";
-import { z, ZodError } from "zod";
+import { createAgent } from "@/lib/board/mutations";
+import { listAgents } from "@/lib/board/data";
+import { ZodError, z } from "zod";
 
 const createAgentSchema = z.object({
-  name: z.string().min(1),
-  shortname: z.string().min(1),
-  model: z.string().min(1),
-  provider: z.string().min(1),
-  role: z.string().min(1),
-  title: z.string().min(1),
-  systemPrompt: z.string().optional(),
-  reportsTo: z.string().uuid().optional(),
-  heartbeatCron: z.string().optional(),
+  name: z.string().trim().min(1),
+  shortname: z.string().trim().min(1),
+  model: z.string().trim().min(1),
+  provider: z.string().trim().min(1),
+  role: z.string().trim().min(1),
+  title: z.string().trim().min(1),
+  systemPrompt: z.string().trim().optional(),
   monthlyBudgetCents: z.number().int().nonnegative().optional(),
 });
 
 export async function GET(
-  req: Request,
+  request: Request,
   { params }: { params: Promise<{ orgId: string }> },
 ) {
   const { orgId } = await params;
   await validateOrgAccess(orgId);
-  const db = getDb();
 
-  const url = new URL(req.url);
-  const status = url.searchParams.get("status");
+  const status =
+    new URL(request.url).searchParams.get("status") ?? undefined;
 
-  const conditions = [eq(agents.orgId, orgId)];
-  if (status) conditions.push(eq(agents.status, status));
-
-  const rows = await db
-    .select()
-    .from(agents)
-    .where(and(...conditions))
-    .orderBy(desc(agents.createdAt));
-
-  return Response.json(rows);
+  return Response.json(await listAgents(orgId, { status }));
 }
 
 export async function POST(
-  req: Request,
+  request: Request,
   { params }: { params: Promise<{ orgId: string }> },
 ) {
   const { orgId } = await params;
-  await validateOrgAccess(orgId);
-  const db = getDb();
+  const session = await validateOrgAccess(orgId);
 
   try {
-    const body = createAgentSchema.parse(await req.json());
-    const [agent] = await db
-      .insert(agents)
-      .values({ ...body, orgId })
-      .returning();
+    const body = createAgentSchema.parse(await request.json());
+    const agent = await createAgent({
+      ...body,
+      orgId,
+      actorId: session.userId,
+    });
+
     return Response.json(agent, { status: 201 });
-  } catch (e) {
-    if (e instanceof ZodError) {
-      return Response.json({ error: e.issues }, { status: 400 });
+  } catch (error) {
+    if (error instanceof ZodError) {
+      return Response.json({ error: error.issues }, { status: 400 });
     }
-    throw e;
+
+    throw error;
   }
 }

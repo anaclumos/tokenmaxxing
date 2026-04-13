@@ -19,11 +19,10 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command:
-      "BYPASS_AUTH=true NEXT_PUBLIC_BYPASS_AUTH=true bun run dev",
+    command: "bun run tests/start-web-server.ts",
     url: "http://localhost:3000",
-    reuseExistingServer: !process.env.CI,
-    timeout: 30_000,
+    reuseExistingServer: false,
+    timeout: 120_000,
     env: {
       BYPASS_AUTH: "true",
       NEXT_PUBLIC_BYPASS_AUTH: "true",
@@ -32,7 +31,7 @@ export default defineConfig({
         "postgres://tokenmaxxing:tokenmaxxing@localhost:5432/tokenmaxxing",
       ENCRYPTION_KEY:
         process.env.ENCRYPTION_KEY ??
-        "dGVzdGtleXRlc3RrZXl0ZXN0a2V5dGVzdGtleXM=",
+        "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=",
     },
   },
   globalSetup: "./tests/global-setup.ts",

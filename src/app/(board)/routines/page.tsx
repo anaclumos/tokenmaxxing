@@ -1,70 +1,24 @@
-"use client";
-
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { useOrgId } from "@/hooks/use-org-id";
-import { useCallback, useEffect, useState } from "react";
+import { NewRoutineDialog } from "@/app/(board)/_components/new-routine-dialog";
+import { requireOrg } from "@/lib/auth";
+import { listAgents, listRoutines } from "@/lib/board/data";
 
-type Routine = {
-  id: string;
-  name: string;
-  description: string | null;
-  agentId: string;
-  status: string;
-  createdAt: string;
+type RoutinesPageProps = {
+  searchParams: Promise<{
+    error?: string;
+    status?: string;
+  }>;
 };
 
-export default function RoutinesPage() {
-  const orgId = useOrgId();
-  const [routines, setRoutines] = useState<Routine[]>([]);
-  const [open, setOpen] = useState(false);
-  const [creating, setCreating] = useState(false);
-
-  const fetchRoutines = useCallback(async () => {
-    if (!orgId) return;
-    const res = await fetch(`/api/orgs/${orgId}/routines`);
-    if (res.ok) setRoutines(await res.json());
-  }, [orgId]);
-
-  useEffect(() => {
-    fetchRoutines();
-  }, [fetchRoutines]);
-
-  const handleCreate = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    if (!orgId) return;
-    setCreating(true);
-    const formData = Object.fromEntries(new FormData(e.currentTarget));
-
-    const res = await fetch(`/api/orgs/${orgId}/routines`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name: formData.name,
-        description: formData.description || undefined,
-        agentId: formData.agentId,
-        triggers: formData.cron
-          ? [{ cronExpression: formData.cron as string }]
-          : undefined,
-      }),
-    });
-
-    if (res.ok) {
-      setOpen(false);
-      await fetchRoutines();
-    }
-    setCreating(false);
-  };
+export default async function RoutinesPage({
+  searchParams,
+}: RoutinesPageProps) {
+  const [{ orgId }, flash] = await Promise.all([requireOrg(), searchParams]);
+  const [routines, agents] = await Promise.all([
+    listRoutines(orgId),
+    listAgents(orgId),
+  ]);
 
   return (
     <div className="space-y-6">
@@ -77,70 +31,21 @@ export default function RoutinesPage() {
             Scheduled agent work on a cron schedule.
           </p>
         </div>
-        <Dialog open={open} onOpenChange={setOpen}>
-          <DialogTrigger asChild>
-            <Button>New Routine</Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Create Routine</DialogTitle>
-            </DialogHeader>
-            <form onSubmit={handleCreate} className="space-y-4">
-              <div className="space-y-1.5">
-                <Label htmlFor="name">Name</Label>
-                <Input
-                  id="name"
-                  name="name"
-                  placeholder="Daily standup report"
-                  required
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <Label htmlFor="description">Description</Label>
-                <Textarea
-                  id="description"
-                  name="description"
-                  placeholder="What this routine does..."
-                  rows={2}
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <Label htmlFor="agentId">Agent ID</Label>
-                <Input
-                  id="agentId"
-                  name="agentId"
-                  placeholder="UUID of the agent"
-                  required
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <Label htmlFor="cron">Cron Expression</Label>
-                <Input
-                  id="cron"
-                  name="cron"
-                  placeholder="0 9 * * 1-5"
-                />
-              </div>
-
-              <div className="flex justify-end gap-2 pt-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setOpen(false)}
-                >
-                  Cancel
-                </Button>
-                <Button type="submit" disabled={creating}>
-                  {creating ? "Creating..." : "Create Routine"}
-                </Button>
-              </div>
-            </form>
-          </DialogContent>
-        </Dialog>
+        <NewRoutineDialog
+          agents={agents.map((agent) => ({ id: agent.id, title: agent.title }))}
+        />
       </div>
+
+      {flash.status === "created" && (
+        <Alert>
+          <AlertDescription>Routine created.</AlertDescription>
+        </Alert>
+      )}
+      {flash.error && (
+        <Alert variant="destructive">
+          <AlertDescription>{flash.error}</AlertDescription>
+        </Alert>
+      )}
 
       {routines.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16">
@@ -164,9 +69,14 @@ export default function RoutinesPage() {
                 )}
               </div>
               <div className="flex items-center gap-3 shrink-0">
-                <span className="text-xs text-muted-foreground font-mono">
-                  {routine.agentId.slice(0, 8)}
+                <span className="text-xs text-muted-foreground">
+                  {routine.agent.title}
                 </span>
+                {routine.schedule && (
+                  <span className="text-xs text-muted-foreground font-mono">
+                    {routine.schedule}
+                  </span>
+                )}
                 <Badge
                   variant={routine.status === "active" ? "secondary" : "outline"}
                   className="text-xs"

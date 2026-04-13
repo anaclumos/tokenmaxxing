@@ -1,33 +1,10 @@
-"use client";
-
 import { Badge } from "@/components/ui/badge";
-import { useOrgId } from "@/hooks/use-org-id";
-import { useCallback, useEffect, useState } from "react";
+import { requireOrg } from "@/lib/auth";
+import { listActivityEntries } from "@/lib/board/data";
 
-type ActivityEntry = {
-  id: string;
-  actorType: string;
-  actorId: string;
-  action: string;
-  resourceType: string;
-  resourceId: string;
-  metadata: Record<string, unknown> | null;
-  createdAt: string;
-};
-
-export default function ActivityPage() {
-  const orgId = useOrgId();
-  const [entries, setEntries] = useState<ActivityEntry[]>([]);
-
-  const fetchActivity = useCallback(async () => {
-    if (!orgId) return;
-    const res = await fetch(`/api/orgs/${orgId}/activity`);
-    if (res.ok) setEntries(await res.json());
-  }, [orgId]);
-
-  useEffect(() => {
-    fetchActivity();
-  }, [fetchActivity]);
+export default async function ActivityPage() {
+  const { orgId } = await requireOrg();
+  const entries = await listActivityEntries(orgId);
 
   return (
     <div className="space-y-6">

@@ -1,12 +1,14 @@
-"use client";
-
-import { Button } from "@/components/ui/button";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { SubmitButton } from "@/components/submit-button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { useState, useEffect, useCallback } from "react";
-import { useOrgId } from "@/hooks/use-org-id";
+import { requireOrg } from "@/lib/auth";
+import {
+  removeProviderKeyAction,
+  saveProviderKeyAction,
+} from "@/lib/board/actions";
+import { listProviderKeyStatus } from "@/lib/board/data";
 
 const PROVIDERS = [
   { id: "openai", name: "OpenAI", placeholder: "sk-..." },
@@ -14,77 +16,29 @@ const PROVIDERS = [
   { id: "google", name: "Google AI", placeholder: "AIza..." },
 ] as const;
 
-type ProviderKey = {
-  provider: string;
-  maskedKey: string;
-  validatedAt: string | null;
+type KeysPageProps = {
+  searchParams: Promise<{
+    error?: string;
+    provider?: string;
+    status?: string;
+  }>;
 };
 
-export default function KeysPage() {
-  const orgId = useOrgId();
-  const [saving, setSaving] = useState<string | null>(null);
-  const [keys, setKeys] = useState<ProviderKey[]>([]);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
-
-  const fetchKeys = useCallback(async () => {
-    if (!orgId) return;
-    const res = await fetch(`/api/orgs/${orgId}/settings/keys`);
-    if (res.ok) setKeys(await res.json());
-  }, [orgId]);
-
-  useEffect(() => {
-    fetchKeys();
-  }, [fetchKeys]);
-
-  const handleSave = async (providerId: string, form: HTMLFormElement) => {
-    if (!orgId) return;
-    const input = form.querySelector("input") as HTMLInputElement;
-    if (!input.value.trim()) return;
-
-    setSaving(providerId);
-    setError(null);
-    setSuccess(null);
-
-    const res = await fetch(`/api/orgs/${orgId}/settings/keys`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ provider: providerId, apiKey: input.value }),
-    });
-
-    if (res.ok) {
-      setSuccess(`${providerId} key saved.`);
-      input.value = "";
-      await fetchKeys();
-    } else {
-      const data = await res.json().catch(() => null);
-      setError(data?.error ?? "Failed to save key.");
-    }
-
-    setSaving(null);
-  };
-
-  const handleDelete = async (providerId: string) => {
-    if (!orgId) return;
-    setError(null);
-    setSuccess(null);
-
-    const res = await fetch(`/api/orgs/${orgId}/settings/keys`, {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ provider: providerId }),
-    });
-
-    if (res.ok) {
-      setSuccess(`${providerId} key removed.`);
-      await fetchKeys();
-    } else {
-      setError("Failed to remove key.");
-    }
-  };
+export default async function KeysPage({ searchParams }: KeysPageProps) {
+  const [{ orgId }, flash] = await Promise.all([requireOrg(), searchParams]);
+  const keys = await listProviderKeyStatus(orgId);
+  const providerName =
+    PROVIDERS.find((provider) => provider.id === flash.provider)?.name ??
+    flash.provider;
+  const successMessage =
+    flash.status === "saved"
+      ? `${providerName} key saved.`
+      : flash.status === "removed"
+        ? `${providerName} key removed.`
+        : null;
 
   const getKeyStatus = (providerId: string) =>
-    keys.find((k) => k.provider === providerId);
+    keys.find((key) => key.provider === providerId);
 
   return (
     <div className="space-y-8">
@@ -98,14 +52,14 @@ export default function KeysPage() {
         </p>
       </div>
 
-      {error && (
+      {flash.error && (
         <Alert variant="destructive">
-          <AlertDescription>{error}</AlertDescription>
+          <AlertDescription>{flash.error}</AlertDescription>
         </Alert>
       )}
-      {success && (
+      {successMessage && (
         <Alert>
-          <AlertDescription>{success}</AlertDescription>
+          <AlertDescription>{successMessage}</AlertDescription>
         </Alert>
       )}
 
@@ -135,28 +89,26 @@ export default function KeysPage() {
                   <code className="font-mono text-muted-foreground">
                     {existing.maskedKey}
                   </code>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="text-destructive"
-                    onClick={() => handleDelete(provider.id)}
-                  >
-                    Remove
-                  </Button>
+                  <form action={removeProviderKeyAction}>
+                    <input type="hidden" name="provider" value={provider.id} />
+                    <SubmitButton
+                      className="text-destructive"
+                      pendingText="Removing..."
+                      size="sm"
+                      type="submit"
+                      variant="ghost"
+                    >
+                      Remove
+                    </SubmitButton>
+                  </form>
                 </div>
               )}
 
-              <form
-                className="flex gap-2"
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  handleSave(provider.id, e.currentTarget);
-                }}
-              >
+              <form action={saveProviderKeyAction} className="flex gap-2">
+                <input type="hidden" name="provider" value={provider.id} />
                 <Input
                   id={provider.id}
-                  name={provider.id}
+                  name="apiKey"
                   type="password"
                   placeholder={
                     existing
@@ -166,13 +118,13 @@ export default function KeysPage() {
                   className="flex-1"
                   aria-label={`${provider.name} API key`}
                 />
-                <Button
+                <SubmitButton
+                  pendingText="Saving..."
                   type="submit"
                   variant="outline"
-                  disabled={saving === provider.id}
                 >
-                  {saving === provider.id ? "Saving..." : "Save"}
-                </Button>
+                  Save
+                </SubmitButton>
               </form>
             </div>
           );

@@ -1,73 +1,59 @@
 import { validateOrgAccess } from "@/lib/auth";
-import { getDb } from "@/lib/db";
-import { routines, routineTriggers } from "@/lib/db/schema";
-import { eq, and, desc } from "drizzle-orm";
-import { z, ZodError } from "zod";
+import { listRoutines } from "@/lib/board/data";
+import { createRoutine } from "@/lib/board/mutations";
+import { ZodError, z } from "zod";
 
 const createRoutineSchema = z.object({
-  name: z.string().min(1),
-  description: z.string().optional(),
+  name: z.string().trim().min(1),
+  description: z.string().trim().optional(),
   agentId: z.string().uuid(),
   triggers: z
     .array(
       z.object({
-        cronExpression: z.string().min(1),
-        variables: z.record(z.string(), z.unknown()).optional(),
+        cronExpression: z.string().trim().min(1),
       }),
     )
     .optional(),
 });
 
 export async function GET(
-  req: Request,
+  _request: Request,
   { params }: { params: Promise<{ orgId: string }> },
 ) {
   const { orgId } = await params;
   await validateOrgAccess(orgId);
-  const db = getDb();
 
-  const rows = await db
-    .select()
-    .from(routines)
-    .where(eq(routines.orgId, orgId))
-    .orderBy(desc(routines.createdAt));
-
-  return Response.json(rows);
+  return Response.json(await listRoutines(orgId));
 }
 
 export async function POST(
-  req: Request,
+  request: Request,
   { params }: { params: Promise<{ orgId: string }> },
 ) {
   const { orgId } = await params;
-  await validateOrgAccess(orgId);
-  const db = getDb();
+  const session = await validateOrgAccess(orgId);
 
   try {
-    const body = createRoutineSchema.parse(await req.json());
-    const { triggers, ...routineData } = body;
-
-    const [routine] = await db
-      .insert(routines)
-      .values({ ...routineData, orgId })
-      .returning();
-
-    if (triggers?.length) {
-      await db.insert(routineTriggers).values(
-        triggers.map((t) => ({
-          orgId,
-          routineId: routine.id,
-          cronExpression: t.cronExpression,
-          variables: t.variables ?? null,
-        })),
-      );
-    }
+    const body = createRoutineSchema.parse(await request.json());
+    const routine = await createRoutine({
+      orgId,
+      actorId: session.userId,
+      name: body.name,
+      description: body.description,
+      agentId: body.agentId,
+      cronExpression: body.triggers?.[0]?.cronExpression,
+    });
 
     return Response.json(routine, { status: 201 });
-  } catch (e) {
-    if (e instanceof ZodError) {
-      return Response.json({ error: e.issues }, { status: 400 });
+  } catch (error) {
+    if (error instanceof ZodError) {
+      return Response.json({ error: error.issues }, { status: 400 });
     }
-    throw e;
+
+    if (error instanceof Error && error.message === "Agent not found") {
+      return Response.json({ error: "Agent not found" }, { status: 400 });
+    }
+
+    throw error;
   }
 }

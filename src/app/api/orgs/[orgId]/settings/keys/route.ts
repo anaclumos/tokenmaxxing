@@ -1,79 +1,66 @@
 import { validateOrgAccess } from "@/lib/auth";
-import { getDb } from "@/lib/db";
-import { providerKeys } from "@/lib/db/schema";
-import { eq } from "drizzle-orm";
-import { z, ZodError } from "zod";
-import { storeProviderKey, deleteProviderKey } from "@/lib/services/keys";
+import { listProviderKeyStatus } from "@/lib/board/data";
+import {
+  deleteProviderKey,
+  storeProviderKey,
+} from "@/lib/services/keys";
+import { ZodError, z } from "zod";
 
-const storeKeySchema = z.object({
-  provider: z.string().min(1),
-  apiKey: z.string().min(1),
+const saveKeySchema = z.object({
+  provider: z.string().trim().min(1),
+  apiKey: z.string().trim().min(1),
 });
 
 const deleteKeySchema = z.object({
-  provider: z.string().min(1),
+  provider: z.string().trim().min(1),
 });
 
 export async function GET(
-  _req: Request,
+  _request: Request,
   { params }: { params: Promise<{ orgId: string }> },
 ) {
   const { orgId } = await params;
   await validateOrgAccess(orgId);
-  const db = getDb();
 
-  const rows = await db
-    .select({
-      id: providerKeys.id,
-      provider: providerKeys.provider,
-      validatedAt: providerKeys.validatedAt,
-      createdAt: providerKeys.createdAt,
-    })
-    .from(providerKeys)
-    .where(eq(providerKeys.orgId, orgId));
-
-  const masked = rows.map((row) => ({
-    ...row,
-    maskedKey: "••••••••",
-  }));
-
-  return Response.json(masked);
+  return Response.json(await listProviderKeyStatus(orgId));
 }
 
 export async function POST(
-  req: Request,
+  request: Request,
   { params }: { params: Promise<{ orgId: string }> },
 ) {
   const { orgId } = await params;
   const session = await validateOrgAccess(orgId);
 
   try {
-    const body = storeKeySchema.parse(await req.json());
+    const body = saveKeySchema.parse(await request.json());
     await storeProviderKey(orgId, body.provider, body.apiKey, session.userId);
     return Response.json({ provider: body.provider }, { status: 201 });
-  } catch (e) {
-    if (e instanceof ZodError) {
-      return Response.json({ error: e.issues }, { status: 400 });
+  } catch (error) {
+    if (error instanceof ZodError) {
+      return Response.json({ error: error.issues }, { status: 400 });
     }
-    throw e;
+
+    throw error;
   }
 }
 
 export async function DELETE(
-  req: Request,
+  request: Request,
   { params }: { params: Promise<{ orgId: string }> },
 ) {
   const { orgId } = await params;
   await validateOrgAccess(orgId);
 
   try {
-    const body = deleteKeySchema.parse(await req.json());
+    const body = deleteKeySchema.parse(await request.json());
     await deleteProviderKey(orgId, body.provider);
     return Response.json({ deleted: true });
-  } catch (e) {
-    if (e instanceof ZodError) {
-      return Response.json({ error: e.issues }, { status: 400 });
+  } catch (error) {
+    if (error instanceof ZodError) {
+      return Response.json({ error: error.issues }, { status: 400 });
     }
-    throw e;
+
+    throw error;
   }
 }

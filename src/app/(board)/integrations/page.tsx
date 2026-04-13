@@ -1,68 +1,18 @@
-"use client";
-
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useOrgId } from "@/hooks/use-org-id";
-import { useCallback, useEffect, useState } from "react";
+import { requireOrg } from "@/lib/auth";
+import {
+  listMcpCatalogEntries,
+  listOrgMcpInstallations,
+} from "@/lib/board/data";
 
-const CATALOG_PREVIEW = [
-  { name: "GitHub", description: "Repositories, issues, PRs", category: "Development" },
-  { name: "Linear", description: "Issue tracking and project management", category: "Development" },
-  { name: "Slack", description: "Messaging and notifications", category: "Communication" },
-  { name: "Notion", description: "Documentation and wikis", category: "Knowledge" },
-  { name: "Sentry", description: "Error tracking and monitoring", category: "Development" },
-  { name: "Vercel", description: "Deployments and logs", category: "Infrastructure" },
-];
-
-type CatalogEntry = {
-  id: string;
-  name: string;
-  slug: string;
-  description: string;
-  iconUrl: string | null;
-  authType: string;
-  serverUrl: string;
-  docsUrl: string | null;
-  createdAt: string;
-};
-
-type Installation = {
-  id: string;
-  orgId: string;
-  catalogEntryId: string | null;
-  customUrl: string | null;
-  customName: string | null;
-  status: string;
-  activatedBy: string;
-  activatedAt: string;
-};
-
-export default function IntegrationsPage() {
-  const orgId = useOrgId();
-  const [catalog, setCatalog] = useState<CatalogEntry[]>([]);
-  const [installed, setInstalled] = useState<Installation[]>([]);
-
-  const fetchCatalog = useCallback(async () => {
-    const res = await fetch("/api/mcp/catalog");
-    if (res.ok) setCatalog(await res.json());
-  }, []);
-
-  const fetchInstalled = useCallback(async () => {
-    if (!orgId) return;
-    const res = await fetch(`/api/orgs/${orgId}/mcp`);
-    if (res.ok) setInstalled(await res.json());
-  }, [orgId]);
-
-  useEffect(() => {
-    fetchCatalog();
-    fetchInstalled();
-  }, [fetchCatalog, fetchInstalled]);
-
-  const displayCatalog = catalog.length > 0
-    ? catalog.map((e) => ({ name: e.name, description: e.description, category: e.authType }))
-    : CATALOG_PREVIEW;
+export default async function IntegrationsPage() {
+  const { orgId } = await requireOrg();
+  const [catalog, installed] = await Promise.all([
+    listMcpCatalogEntries(),
+    listOrgMcpInstallations(orgId),
+  ]);
 
   return (
     <div className="space-y-6">
@@ -78,30 +28,38 @@ export default function IntegrationsPage() {
       <Tabs defaultValue="catalog">
         <TabsList>
           <TabsTrigger value="catalog">Catalog</TabsTrigger>
-          <TabsTrigger value="installed">
-            Installed ({installed.length})
-          </TabsTrigger>
+          <TabsTrigger value="installed">Installed ({installed.length})</TabsTrigger>
         </TabsList>
 
         <TabsContent value="catalog" className="mt-6">
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {displayCatalog.map((entry) => (
-              <Card key={entry.name} size="sm">
+            {catalog.map((entry) => (
+              <Card key={entry.id} size="sm">
                 <CardContent className="flex flex-col justify-between gap-4">
                   <div>
                     <div className="flex items-center gap-2">
                       <p className="text-sm font-medium">{entry.name}</p>
                       <Badge variant="outline" className="text-xs">
-                        {entry.category}
+                        {entry.authType.replace("_", " ")}
                       </Badge>
                     </div>
                     <p className="mt-1 text-sm text-muted-foreground text-pretty">
                       {entry.description}
                     </p>
                   </div>
-                  <Button variant="outline" size="sm" className="w-fit">
-                    Connect
-                  </Button>
+                  <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+                    <span className="font-mono">{entry.serverUrl}</span>
+                    {entry.docsUrl && (
+                      <a
+                        href={entry.docsUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="underline underline-offset-3 hover:text-foreground"
+                      >
+                        Docs
+                      </a>
+                    )}
+                  </div>
                 </CardContent>
               </Card>
             ))}
@@ -120,12 +78,22 @@ export default function IntegrationsPage() {
                   <CardContent className="flex items-center justify-between gap-4">
                     <div className="min-w-0">
                       <p className="text-sm font-medium truncate">
-                        {inst.customName ?? inst.catalogEntryId?.slice(0, 8) ?? "Custom"}
+                        {inst.customName ??
+                          inst.catalogEntry?.name ??
+                          "Custom server"}
                       </p>
-                      {inst.customUrl && (
-                        <p className="mt-0.5 text-xs text-muted-foreground font-mono truncate">
-                          {inst.customUrl}
-                        </p>
+                      <p className="mt-0.5 text-xs text-muted-foreground font-mono truncate">
+                        {inst.customUrl ?? inst.catalogEntry?.serverUrl}
+                      </p>
+                      {inst.catalogEntry?.docsUrl && (
+                        <a
+                          href={inst.catalogEntry.docsUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="mt-1 inline-block text-xs text-muted-foreground underline underline-offset-3 hover:text-foreground"
+                        >
+                          Documentation
+                        </a>
                       )}
                     </div>
                     <Badge

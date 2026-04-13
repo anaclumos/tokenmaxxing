@@ -10,5 +10,5 @@ function MockProviders({ children }: { children: React.ReactNode }) {
 
 export function Providers({ children }: { children: React.ReactNode }) {
   if (BYPASS) return <MockProviders>{children}</MockProviders>;
-  return <ClerkProvider>{children}</ClerkProvider>;
+  return <ClerkProvider dynamic>{children}</ClerkProvider>;
 }

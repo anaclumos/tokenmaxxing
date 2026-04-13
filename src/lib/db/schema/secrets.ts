@@ -5,7 +5,6 @@ import {
   text,
   timestamp,
   uniqueIndex,
-  uuid,
 } from "drizzle-orm/pg-core";
 import { pk } from "./helpers";
 

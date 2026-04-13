@@ -1,45 +1,37 @@
-import { validateOrgAccess, requireOrgAdmin } from "@/lib/auth";
-import { getDb } from "@/lib/db";
-import { orgMcpInstallations, mcpCatalogEntries } from "@/lib/db/schema";
-import { eq, and, desc } from "drizzle-orm";
-import { z, ZodError } from "zod";
+import { requireOrgAdmin, validateOrgAccess } from "@/lib/auth";
+import { listOrgMcpInstallations } from "@/lib/board/data";
+import { installMcpServer } from "@/lib/board/mutations";
+import { ZodError, z } from "zod";
 
-const installSchema = z.object({
+const installMcpSchema = z.object({
   catalogEntryId: z.string().uuid().optional(),
   customUrl: z.string().url().optional(),
-  customName: z.string().optional(),
+  customName: z.string().trim().optional(),
 });
 
 export async function GET(
-  req: Request,
+  _request: Request,
   { params }: { params: Promise<{ orgId: string }> },
 ) {
   const { orgId } = await params;
   await validateOrgAccess(orgId);
-  const db = getDb();
 
-  const rows = await db
-    .select()
-    .from(orgMcpInstallations)
-    .where(eq(orgMcpInstallations.orgId, orgId))
-    .orderBy(desc(orgMcpInstallations.activatedAt));
-
-  return Response.json(rows);
+  return Response.json(await listOrgMcpInstallations(orgId));
 }
 
 export async function POST(
-  req: Request,
+  request: Request,
   { params }: { params: Promise<{ orgId: string }> },
 ) {
   const { orgId } = await params;
   const session = await requireOrgAdmin();
+
   if (session.orgId !== orgId) {
     return Response.json({ error: "Forbidden" }, { status: 403 });
   }
-  const db = getDb();
 
   try {
-    const body = installSchema.parse(await req.json());
+    const body = installMcpSchema.parse(await request.json());
     if (!body.catalogEntryId && !body.customUrl) {
       return Response.json(
         { error: "Either catalogEntryId or customUrl is required" },
@@ -47,24 +39,20 @@ export async function POST(
       );
     }
 
-    const [installation] = await db
-      .insert(orgMcpInstallations)
-      .values({
-        orgId,
-        catalogEntryId: body.catalogEntryId ?? null,
-        customUrl: body.customUrl ?? null,
-        customName: body.customName ?? null,
-        status: "active",
-        activatedBy: session.userId,
-        activatedAt: new Date(),
-      })
-      .returning();
+    const installation = await installMcpServer({
+      orgId,
+      actorId: session.userId,
+      catalogEntryId: body.catalogEntryId,
+      customUrl: body.customUrl,
+      customName: body.customName,
+    });
 
     return Response.json(installation, { status: 201 });
-  } catch (e) {
-    if (e instanceof ZodError) {
-      return Response.json({ error: e.issues }, { status: 400 });
+  } catch (error) {
+    if (error instanceof ZodError) {
+      return Response.json({ error: error.issues }, { status: 400 });
     }
-    throw e;
+
+    throw error;
   }
 }

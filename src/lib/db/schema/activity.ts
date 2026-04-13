@@ -4,7 +4,6 @@ import {
   pgTable,
   text,
   timestamp,
-  uuid,
 } from "drizzle-orm/pg-core";
 import { pk } from "./helpers";
 

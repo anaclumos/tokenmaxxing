@@ -1,26 +1,28 @@
-import { neon, Pool } from "@neondatabase/serverless";
-import { drizzle as drizzleHttp } from "drizzle-orm/neon-http";
-import { drizzle as drizzlePool } from "drizzle-orm/neon-serverless";
+import { Pool } from "pg";
+import { drizzle } from "drizzle-orm/node-postgres";
 import * as schema from "./schema";
 
-type HttpDb = ReturnType<typeof drizzleHttp<typeof schema>>;
-type PoolDb = ReturnType<typeof drizzlePool<typeof schema>>;
+type Db = ReturnType<typeof drizzle<typeof schema>>;
 
-let httpDb: HttpDb | null = null;
-let poolDb: PoolDb | null = null;
+let pool: Pool | null = null;
+let db: Db | null = null;
 
-export function getDb(): HttpDb {
-  if (!httpDb) {
-    const sql = neon(process.env.DATABASE_URL!);
-    httpDb = drizzleHttp(sql, { schema });
+function getPool() {
+  if (!pool) {
+    pool = new Pool({
+      connectionString: process.env.DATABASE_URL,
+    });
   }
-  return httpDb;
+
+  return pool;
 }
 
-export function getPoolDb(): PoolDb {
-  if (!poolDb) {
-    const pool = new Pool({ connectionString: process.env.DATABASE_URL! });
-    poolDb = drizzlePool(pool, { schema });
+export function getDb(): Db {
+  if (!db) {
+    db = drizzle(getPool(), { schema });
   }
-  return poolDb;
+
+  return db;
 }
+
+export const getPoolDb = getDb;

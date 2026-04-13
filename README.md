@@ -25,7 +25,7 @@ Sign up (Clerk org) -> Add API keys -> Create agents -> Agents run on our infra
 | Framework | Next.js 16 (App Router, React 19) |
 | Styling | Tailwind CSS v4, shadcn/ui (radix-luma preset) |
 | Auth | Clerk (org-only, multi-user) |
-| Database | Neon Postgres 18 (Drizzle ORM) |
+| Database | Postgres-compatible database (Neon in production, Docker Postgres locally) |
 | AI | Vercel AI SDK v6 (BYOK provider factory) |
 | Cache / Realtime | Upstash Redis (pub/sub, rate limiting) |
 | File storage | Vercel Blob |
@@ -47,12 +47,13 @@ Browser
   v
 Next.js App Router (Vercel)
   |
-  +-- Pages (React Server + Client Components)
+  +-- Pages (Server Components by default, small Client islands)
   |     Dashboard, Agents, Org Chart, Routines, Costs, Activity
   |     Settings (API Keys, Members, Budgets), Integrations (MCP)
   |
   +-- API Routes (/api/orgs/[orgId]/...)
-  |     All org-scoped, Clerk auth-derived org checks
+  |     Explicit HTTP surface for external/API consumers
+  |     Pages read data directly from the server layer instead of refetching these routes
   |
   +-- Agent Runtime
   |     AI SDK v6 -> BYOK Provider Factory -> Customer LLM APIs
@@ -64,7 +65,7 @@ Next.js App Router (Vercel)
   |     Reaper (10min) reclaims stale claimed runs
   |
   +-- Data Layer
-        Neon Postgres (HTTP for CRUD, Pool for workflows)
+        Postgres via `pg`
         Drizzle ORM, 17 tables, UUIDv7 primary keys
 ```
 
@@ -143,9 +144,9 @@ Costs are computed using a model pricing lookup table maintained in `src/lib/ai/
 | `agent_mcp_credential_overrides` | Per-agent credential overrides |
 
 Connection strategy:
-- **Neon HTTP driver** (`neon()`) for simple CRUD in route handlers
-- **Neon Pool** (`Pool`) for workflow steps with multiple sequential queries
-- **Lazy initialization** for both (never at module scope)
+- **Single `pg` pool** for app routes, pages, workflows, and local tooling
+- **Drizzle node-postgres driver** for all queries
+- **Lazy initialization** so connections are only created when needed
 
 ---
 

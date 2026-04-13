@@ -1,8 +1,6 @@
-"use client";
-
 import { Badge } from "@/components/ui/badge";
-import { useOrgId } from "@/hooks/use-org-id";
-import { useCallback, useEffect, useState } from "react";
+import { requireOrg } from "@/lib/auth";
+import { listAgents } from "@/lib/board/data";
 
 type Agent = {
   id: string;
@@ -29,6 +27,7 @@ function buildTree(agents: Agent[]): TreeNode[] {
       roots.push(node);
     }
   }
+
   return roots;
 }
 
@@ -66,20 +65,9 @@ function AgentNode({ node, depth }: { node: TreeNode; depth: number }) {
   );
 }
 
-export default function OrgChartPage() {
-  const orgId = useOrgId();
-  const [agents, setAgents] = useState<Agent[]>([]);
-
-  const fetchAgents = useCallback(async () => {
-    if (!orgId) return;
-    const res = await fetch(`/api/orgs/${orgId}/agents`);
-    if (res.ok) setAgents(await res.json());
-  }, [orgId]);
-
-  useEffect(() => {
-    fetchAgents();
-  }, [fetchAgents]);
-
+export default async function OrgChartPage() {
+  const { orgId } = await requireOrg();
+  const agents = await listAgents(orgId);
   const tree = buildTree(agents);
 
   return (

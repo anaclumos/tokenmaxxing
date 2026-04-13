@@ -1,4 +1,7 @@
 import { OrganizationProfile } from "@clerk/nextjs";
+import { MockOrgProfile } from "@/components/clerk-stubs";
+
+const BYPASS = process.env.NEXT_PUBLIC_BYPASS_AUTH === "true";
 
 export default function MembersPage() {
   return (
@@ -12,14 +15,18 @@ export default function MembersPage() {
         </p>
       </div>
 
-      <OrganizationProfile
-        appearance={{
-          elements: {
-            rootBox: "w-full",
-            cardBox: "w-full shadow-none",
-          },
-        }}
-      />
+      {BYPASS ? (
+        <MockOrgProfile />
+      ) : (
+        <OrganizationProfile
+          appearance={{
+            elements: {
+              rootBox: "w-full",
+              cardBox: "w-full shadow-none",
+            },
+          }}
+        />
+      )}
     </div>
   );
 }
