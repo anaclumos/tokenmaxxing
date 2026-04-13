@@ -174,7 +174,6 @@ The app UI uses Server Components and Server Actions directly. Route Handlers ar
 | `/costs` | Token spend by agent/model, cost event history |
 | `/activity` | Audit log timeline |
 | `/integrations` | MCP marketplace (catalog, installed, custom) |
-| `/integrations/[id]` | Single MCP installation config |
 | `/settings` | General org settings |
 | `/settings/keys` | BYOK API key management |
 | `/settings/members` | Clerk org member management |
