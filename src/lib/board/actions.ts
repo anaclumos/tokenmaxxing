@@ -1,13 +1,15 @@
 "use server";
 
+import { and, eq } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { ZodError, z } from "zod";
 import { requireOrg } from "@/lib/auth";
+import { getDb } from "@/lib/db";
+import { activityLog, agents, routineTriggers, routines } from "@/lib/db/schema";
 import {
   deleteProviderKey,
   storeProviderKey,
 } from "@/lib/services/keys";
-import { createAgent, createRoutine } from "@/lib/board/mutations";
 
 const providerSchema = z.enum(["anthropic", "google", "openai"]);
 
@@ -78,10 +80,24 @@ function parseFormData<T>(
 export async function createAgentAction(formData: FormData) {
   const session = await requireOrg();
   const values = parseFormData(createAgentSchema, formData, "/agents");
-  await createAgent({
-    ...values,
+  const db = getDb();
+
+  const [agent] = await db
+    .insert(agents)
+    .values({
+      ...values,
+      orgId: session.orgId,
+    })
+    .returning();
+
+  await db.insert(activityLog).values({
     orgId: session.orgId,
+    actorType: "board",
     actorId: session.userId,
+    action: "agent.created",
+    resourceType: "agent",
+    resourceId: agent.id,
+    metadata: { name: agent.name },
   });
 
   redirect("/agents?status=created");
@@ -90,23 +106,45 @@ export async function createAgentAction(formData: FormData) {
 export async function createRoutineAction(formData: FormData) {
   const session = await requireOrg();
   const values = parseFormData(createRoutineSchema, formData, "/routines");
+  const db = getDb();
 
-  try {
-    await createRoutine({
+  const agent = await db.query.agents.findFirst({
+    columns: { id: true },
+    where: and(eq(agents.orgId, session.orgId), eq(agents.id, values.agentId)),
+  });
+
+  if (!agent) {
+    redirect("/routines?error=Select%20a%20valid%20agent");
+  }
+
+  const [routine] = await db
+    .insert(routines)
+    .values({
       orgId: session.orgId,
-      actorId: session.userId,
       name: values.name,
       description: values.description,
       agentId: values.agentId,
-      cronExpression: values.cron,
-    });
-  } catch (error) {
-    if (error instanceof Error && error.message === "Agent not found") {
-      redirect("/routines?error=Select%20a%20valid%20agent");
-    }
+    })
+    .returning();
 
-    throw error;
+  if (values.cron) {
+    await db.insert(routineTriggers).values({
+      orgId: session.orgId,
+      routineId: routine.id,
+      cronExpression: values.cron,
+      variables: null,
+    });
   }
+
+  await db.insert(activityLog).values({
+    orgId: session.orgId,
+    actorType: "board",
+    actorId: session.userId,
+    action: "routine.created",
+    resourceType: "routine",
+    resourceId: routine.id,
+    metadata: { name: routine.name },
+  });
 
   redirect("/routines?status=created");
 }
