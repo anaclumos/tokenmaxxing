@@ -1,7 +1,7 @@
 import { validateOrgAccess } from "@/lib/auth";
 import { getDb } from "@/lib/db";
-import { agents, issues, approvals, costEvents, activityLog } from "@/lib/db/schema";
-import { eq, and, sql, desc, notInArray } from "drizzle-orm";
+import { agents, costEvents, activityLog, heartbeatRuns } from "@/lib/db/schema";
+import { eq, and, sql, desc } from "drizzle-orm";
 
 export async function GET(
   _req: Request,
@@ -16,20 +16,10 @@ export async function GET(
     .from(agents)
     .where(and(eq(agents.orgId, orgId), eq(agents.status, "active")));
 
-  const [issueCount] = await db
+  const [runCount] = await db
     .select({ count: sql<number>`COUNT(*)` })
-    .from(issues)
-    .where(
-      and(
-        eq(issues.orgId, orgId),
-        notInArray(issues.status, ["done", "cancelled"]),
-      ),
-    );
-
-  const [approvalCount] = await db
-    .select({ count: sql<number>`COUNT(*)` })
-    .from(approvals)
-    .where(and(eq(approvals.orgId, orgId), eq(approvals.status, "pending")));
+    .from(heartbeatRuns)
+    .where(eq(heartbeatRuns.orgId, orgId));
 
   const [spend] = await db
     .select({ total: sql<string>`COALESCE(SUM(estimated_cost), 0)` })
@@ -45,8 +35,7 @@ export async function GET(
 
   return Response.json({
     activeAgents: Number(agentCount.count),
-    openIssues: Number(issueCount.count),
-    pendingApprovals: Number(approvalCount.count),
+    totalRuns: Number(runCount.count),
     monthlySpend: Number(spend.total),
     recentActivity,
   });

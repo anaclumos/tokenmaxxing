@@ -1,6 +1,5 @@
-import { generateText, stepCountIs, type ModelMessage } from "ai";
+import { generateText, stepCountIs, type ModelMessage, type ToolSet } from "ai";
 import { createProviderForOrg } from "./provider-factory";
-import { getBuiltinTools } from "./tools/builtin-tools";
 import { getDb } from "@/lib/db";
 import { agents } from "@/lib/db/schema";
 import { eq, and } from "drizzle-orm";
@@ -14,8 +13,8 @@ import {
 interface RunContext {
   orgId: string;
   agentId: string;
-  issueId?: string;
   messages: ModelMessage[];
+  tools?: ToolSet;
   maxSteps?: number;
 }
 
@@ -54,13 +53,11 @@ export async function runAgent(ctx: RunContext): Promise<RunResult> {
   });
 
   try {
-    const tools = getBuiltinTools(ctx.orgId, ctx.agentId);
-
     const result = await generateText({
       model: providerInstance(agent.model),
       system: agent.systemPrompt ?? undefined,
       messages: ctx.messages,
-      tools,
+      tools: ctx.tools,
       stopWhen: stepCountIs(ctx.maxSteps ?? 10),
     });
 

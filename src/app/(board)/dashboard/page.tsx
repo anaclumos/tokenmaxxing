@@ -5,8 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 
 type DashboardData = {
   activeAgents: number;
-  openIssues: number;
-  pendingApprovals: number;
+  totalRuns: number;
   monthlySpend: number;
   recentActivity: {
     id: string;
@@ -40,13 +39,13 @@ export default function DashboardPage() {
           Dashboard
         </h2>
         <p className="mt-1 text-sm text-muted-foreground text-pretty">
-          Overview of your AI-powered company.
+          Runtime overview for your AI agent team.
         </p>
       </div>
 
       <div className="@container">
-        <dl className="grid grid-cols-1 @lg:grid-cols-2 @3xl:grid-cols-4">
-          <div className="border-b border-border/50 pb-5 @lg:border-b-0 @lg:border-r @lg:pr-5 @3xl:border-r @3xl:pr-5">
+        <dl className="grid grid-cols-1 @lg:grid-cols-3">
+          <div className="border-b border-border/50 pb-5 @lg:border-b-0 @lg:border-r @lg:pr-5">
             <dt className="truncate text-sm text-muted-foreground">
               Active Agents
             </dt>
@@ -55,25 +54,16 @@ export default function DashboardPage() {
             </dd>
           </div>
 
-          <div className="border-b border-border/50 py-5 @lg:border-b-0 @lg:pl-5 @3xl:border-r @3xl:pr-5">
+          <div className="border-b border-border/50 py-5 @lg:border-b-0 @lg:border-r @lg:px-5">
             <dt className="truncate text-sm text-muted-foreground">
-              Open Issues
+              Total Runs
             </dt>
             <dd className="mt-1 text-2xl font-semibold tabular-nums">
-              {data?.openIssues ?? 0}
+              {data?.totalRuns ?? 0}
             </dd>
           </div>
 
-          <div className="border-b border-border/50 py-5 @lg:border-b-0 @lg:border-r @lg:pr-5 @3xl:pl-5 @3xl:pr-5">
-            <dt className="truncate text-sm text-muted-foreground">
-              Pending Approvals
-            </dt>
-            <dd className="mt-1 text-2xl font-semibold tabular-nums">
-              {data?.pendingApprovals ?? 0}
-            </dd>
-          </div>
-
-          <div className="pt-5 @lg:pl-5 @3xl:pl-5">
+          <div className="pt-5 @lg:pl-5">
             <dt className="truncate text-sm text-muted-foreground">
               Monthly Spend
             </dt>

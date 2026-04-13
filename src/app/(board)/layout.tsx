@@ -44,24 +44,18 @@ const ClerkUserButton = BYPASS
 const navItems = [
   { label: "Dashboard", href: "/dashboard" },
   { label: "Agents", href: "/agents" },
-  { label: "Issues", href: "/issues" },
-  { label: "Goals", href: "/goals" },
-  { label: "Projects", href: "/projects" },
-  { label: "Routines", href: "/routines" },
-  { label: "Approvals", href: "/approvals" },
-  { label: "Costs", href: "/costs" },
   { label: "Org Chart", href: "/org-chart" },
+  { label: "Routines", href: "/routines" },
+  { label: "Costs", href: "/costs" },
   { label: "Activity", href: "/activity" },
 ];
 
 const configItems = [
-  { label: "Settings", href: "/settings" },
   { label: "API Keys", href: "/settings/keys" },
   { label: "Members", href: "/settings/members" },
   { label: "Budgets", href: "/settings/budgets" },
   { label: "Integrations", href: "/integrations" },
-  { label: "Skills", href: "/skills" },
-  { label: "Plugins", href: "/plugins" },
+  { label: "Settings", href: "/settings" },
 ];
 
 export default function BoardLayout({

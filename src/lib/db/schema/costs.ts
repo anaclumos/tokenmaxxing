@@ -10,7 +10,6 @@ import {
 import { pk } from "./helpers";
 import { relations } from "drizzle-orm";
 import { agents } from "./agents";
-import { issues } from "./issues";
 
 export const costEvents = pgTable(
   "cost_events",
@@ -18,7 +17,7 @@ export const costEvents = pgTable(
     id: pk(),
     orgId: text("org_id").notNull(),
     agentId: uuid("agent_id").notNull(),
-    issueId: uuid("issue_id"),
+    externalIssueId: text("external_issue_id"),
     provider: text("provider").notNull(),
     model: text("model").notNull(),
     inputTokens: integer("input_tokens").notNull(),
@@ -28,7 +27,7 @@ export const costEvents = pgTable(
       .notNull()
       .defaultNow(),
   },
-  (t) => [index("cost_events_org_id_idx").on(t.orgId)]
+  (t) => [index("cost_events_org_id_idx").on(t.orgId)],
 );
 
 export const budgetReservations = pgTable(
@@ -45,17 +44,13 @@ export const budgetReservations = pgTable(
       .notNull()
       .defaultNow(),
   },
-  (t) => [index("budget_reservations_org_id_idx").on(t.orgId)]
+  (t) => [index("budget_reservations_org_id_idx").on(t.orgId)],
 );
 
 export const costEventsRelations = relations(costEvents, ({ one }) => ({
   agent: one(agents, {
     fields: [costEvents.agentId],
     references: [agents.id],
-  }),
-  issue: one(issues, {
-    fields: [costEvents.issueId],
-    references: [issues.id],
   }),
 }));
 
@@ -66,5 +61,5 @@ export const budgetReservationsRelations = relations(
       fields: [budgetReservations.agentId],
       references: [agents.id],
     }),
-  })
+  }),
 );

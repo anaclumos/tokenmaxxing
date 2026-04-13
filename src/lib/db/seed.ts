@@ -13,38 +13,6 @@ const AGENT_IDS = {
   designer: "00000000-0000-7000-0000-000000000005",
 };
 
-const GOAL_IDS = {
-  mission: "00000000-0000-7000-0000-000000000010",
-  mvp: "00000000-0000-7000-0000-000000000011",
-  hiring: "00000000-0000-7000-0000-000000000012",
-};
-
-const PROJECT_IDS = {
-  mainApp: "00000000-0000-7000-0000-000000000020",
-  docsSite: "00000000-0000-7000-0000-000000000021",
-};
-
-const ISSUE_IDS = {
-  cicd: "00000000-0000-7000-0000-000000000030",
-  onboarding: "00000000-0000-7000-0000-000000000031",
-  auth: "00000000-0000-7000-0000-000000000032",
-  landing: "00000000-0000-7000-0000-000000000033",
-  apiDocs: "00000000-0000-7000-0000-000000000034",
-  darkMode: "00000000-0000-7000-0000-000000000035",
-  monitoring: "00000000-0000-7000-0000-000000000036",
-  componentLib: "00000000-0000-7000-0000-000000000037",
-  dbOptimize: "00000000-0000-7000-0000-000000000038",
-  mobileLayout: "00000000-0000-7000-0000-000000000039",
-};
-
-const COMMENT_IDS = {
-  c1: "00000000-0000-7000-0000-000000000040",
-  c2: "00000000-0000-7000-0000-000000000041",
-  c3: "00000000-0000-7000-0000-000000000042",
-  c4: "00000000-0000-7000-0000-000000000043",
-  c5: "00000000-0000-7000-0000-000000000044",
-};
-
 const COST_EVENT_IDS = {
   ce1: "00000000-0000-7000-0000-000000000050",
   ce2: "00000000-0000-7000-0000-000000000051",
@@ -85,10 +53,6 @@ const TABLES_IN_TRUNCATE_ORDER = [
   "secret_access_log",
   "org_deks",
   "provider_keys",
-  "plugin_state",
-  "plugin_config",
-  "plugins",
-  "company_skills",
   "heartbeat_runs",
   "due_runs",
   "routine_runs",
@@ -97,12 +61,6 @@ const TABLES_IN_TRUNCATE_ORDER = [
   "budget_reservations",
   "cost_events",
   "activity_log",
-  "approvals",
-  "issue_comments",
-  "issues",
-  "project_goals",
-  "projects",
-  "goals",
   "agents",
 ];
 
@@ -184,207 +142,12 @@ async function seed() {
     },
   ]);
 
-  console.log("Inserting goals...");
-  await db.insert(schema.goals).values([
-    {
-      id: GOAL_IDS.mission,
-      orgId: ORG_ID,
-      title: "Build the #1 AI note-taking app",
-      description: "Company mission to build the best AI-powered note-taking application",
-      status: "active",
-      parentId: null,
-    },
-    {
-      id: GOAL_IDS.mvp,
-      orgId: ORG_ID,
-      title: "Launch MVP by Q2 2026",
-      description: "Ship the minimum viable product before end of Q2 2026",
-      status: "active",
-      parentId: GOAL_IDS.mission,
-    },
-    {
-      id: GOAL_IDS.hiring,
-      orgId: ORG_ID,
-      title: "Hire 3 more AI agents",
-      description: "Expand the team with 3 additional AI agents",
-      status: "active",
-      parentId: GOAL_IDS.mission,
-    },
-  ]);
-
-  console.log("Inserting projects...");
-  await db.insert(schema.projects).values([
-    {
-      id: PROJECT_IDS.mainApp,
-      orgId: ORG_ID,
-      name: "main-app",
-      description: "The core note-taking application",
-      repoUrl: "https://github.com/example/notes-app",
-    },
-    {
-      id: PROJECT_IDS.docsSite,
-      orgId: ORG_ID,
-      name: "docs-site",
-      description: "Public documentation site",
-      repoUrl: "https://github.com/example/docs",
-    },
-  ]);
-
-  console.log("Inserting issues...");
-  await db.insert(schema.issues).values([
-    {
-      id: ISSUE_IDS.cicd,
-      orgId: ORG_ID,
-      title: "Set up CI/CD pipeline",
-      description: "Configure GitHub Actions for automated testing and deployment",
-      status: "in_progress",
-      priority: "high",
-      assigneeId: AGENT_IDS.backend,
-      projectId: PROJECT_IDS.mainApp,
-    },
-    {
-      id: ISSUE_IDS.onboarding,
-      orgId: ORG_ID,
-      title: "Design onboarding flow",
-      description: "Create a user-friendly onboarding experience for new users",
-      status: "todo",
-      priority: "high",
-      assigneeId: AGENT_IDS.designer,
-      projectId: PROJECT_IDS.mainApp,
-    },
-    {
-      id: ISSUE_IDS.auth,
-      orgId: ORG_ID,
-      title: "Build authentication system",
-      description: "Implement OAuth and email/password authentication",
-      status: "done",
-      priority: "high",
-      assigneeId: AGENT_IDS.backend,
-      projectId: PROJECT_IDS.mainApp,
-    },
-    {
-      id: ISSUE_IDS.landing,
-      orgId: ORG_ID,
-      title: "Create landing page",
-      description: "Build a compelling landing page with feature highlights",
-      status: "in_progress",
-      priority: "medium",
-      assigneeId: AGENT_IDS.frontend,
-      projectId: PROJECT_IDS.docsSite,
-    },
-    {
-      id: ISSUE_IDS.apiDocs,
-      orgId: ORG_ID,
-      title: "Write API documentation",
-      description: "Document all REST API endpoints",
-      status: "backlog",
-      priority: "low",
-      assigneeId: null,
-      projectId: PROJECT_IDS.docsSite,
-    },
-    {
-      id: ISSUE_IDS.darkMode,
-      orgId: ORG_ID,
-      title: "Implement dark mode",
-      description: "Add dark mode toggle and theme switching",
-      status: "todo",
-      priority: "medium",
-      assigneeId: AGENT_IDS.frontend,
-      projectId: PROJECT_IDS.mainApp,
-    },
-    {
-      id: ISSUE_IDS.monitoring,
-      orgId: ORG_ID,
-      title: "Set up monitoring",
-      description: "Configure error tracking and performance monitoring",
-      status: "backlog",
-      priority: "medium",
-      assigneeId: AGENT_IDS.backend,
-      projectId: PROJECT_IDS.mainApp,
-    },
-    {
-      id: ISSUE_IDS.componentLib,
-      orgId: ORG_ID,
-      title: "Design component library",
-      description: "Create a reusable component library with design tokens",
-      status: "in_review",
-      priority: "high",
-      assigneeId: AGENT_IDS.designer,
-      projectId: PROJECT_IDS.mainApp,
-    },
-    {
-      id: ISSUE_IDS.dbOptimize,
-      orgId: ORG_ID,
-      title: "Optimize database queries",
-      description: "Profile and optimize slow database queries",
-      status: "todo",
-      priority: "low",
-      assigneeId: AGENT_IDS.backend,
-      projectId: PROJECT_IDS.mainApp,
-    },
-    {
-      id: ISSUE_IDS.mobileLayout,
-      orgId: ORG_ID,
-      title: "Build mobile responsive layout",
-      description: "Ensure all pages work well on mobile devices",
-      status: "backlog",
-      priority: "medium",
-      assigneeId: AGENT_IDS.frontend,
-      projectId: PROJECT_IDS.mainApp,
-    },
-  ]);
-
-  console.log("Inserting issue comments...");
-  await db.insert(schema.issueComments).values([
-    {
-      id: COMMENT_IDS.c1,
-      orgId: ORG_ID,
-      issueId: ISSUE_IDS.cicd,
-      authorType: "agent",
-      authorId: AGENT_IDS.backend,
-      body: "I've set up the basic GitHub Actions workflow. Working on the deployment stage now.",
-    },
-    {
-      id: COMMENT_IDS.c2,
-      orgId: ORG_ID,
-      issueId: ISSUE_IDS.cicd,
-      authorType: "board",
-      authorId: "user_test",
-      body: "Make sure to include caching for node_modules to speed up builds.",
-    },
-    {
-      id: COMMENT_IDS.c3,
-      orgId: ORG_ID,
-      issueId: ISSUE_IDS.auth,
-      authorType: "agent",
-      authorId: AGENT_IDS.backend,
-      body: "Authentication system is complete. OAuth with Google and GitHub is working.",
-    },
-    {
-      id: COMMENT_IDS.c4,
-      orgId: ORG_ID,
-      issueId: ISSUE_IDS.onboarding,
-      authorType: "agent",
-      authorId: AGENT_IDS.designer,
-      body: "Initial wireframes are ready for review. Proposing a 3-step onboarding flow.",
-    },
-    {
-      id: COMMENT_IDS.c5,
-      orgId: ORG_ID,
-      issueId: ISSUE_IDS.landing,
-      authorType: "board",
-      authorId: "user_test",
-      body: "Let's prioritize the hero section and pricing table first.",
-    },
-  ]);
-
   console.log("Inserting cost events...");
   await db.insert(schema.costEvents).values([
     {
       id: COST_EVENT_IDS.ce1,
       orgId: ORG_ID,
       agentId: AGENT_IDS.ceo,
-      issueId: null,
       provider: "openai",
       model: "gpt-5.4",
       inputTokens: 12500,
@@ -395,7 +158,6 @@ async function seed() {
       id: COST_EVENT_IDS.ce2,
       orgId: ORG_ID,
       agentId: AGENT_IDS.backend,
-      issueId: ISSUE_IDS.auth,
       provider: "openai",
       model: "gpt-5.4",
       inputTokens: 45000,
@@ -406,7 +168,6 @@ async function seed() {
       id: COST_EVENT_IDS.ce3,
       orgId: ORG_ID,
       agentId: AGENT_IDS.frontend,
-      issueId: ISSUE_IDS.landing,
       provider: "anthropic",
       model: "claude-sonnet-4.6",
       inputTokens: 28000,
@@ -417,7 +178,6 @@ async function seed() {
       id: COST_EVENT_IDS.ce4,
       orgId: ORG_ID,
       agentId: AGENT_IDS.designer,
-      issueId: ISSUE_IDS.componentLib,
       provider: "google",
       model: "gemini-2.5-flash",
       inputTokens: 15000,
@@ -428,7 +188,6 @@ async function seed() {
       id: COST_EVENT_IDS.ce5,
       orgId: ORG_ID,
       agentId: AGENT_IDS.cto,
-      issueId: null,
       provider: "anthropic",
       model: "claude-sonnet-4.6",
       inputTokens: 32000,
@@ -462,32 +221,32 @@ async function seed() {
     {
       id: ACTIVITY_IDS.a3,
       orgId: ORG_ID,
-      actorType: "agent",
-      actorId: AGENT_IDS.backend,
-      action: "issue.created",
-      resourceType: "issue",
-      resourceId: ISSUE_IDS.cicd,
-      metadata: { title: "Set up CI/CD pipeline" },
+      actorType: "board",
+      actorId: "user_test",
+      action: "agent.created",
+      resourceType: "agent",
+      resourceId: AGENT_IDS.frontend,
+      metadata: { name: "Frontend Engineer" },
     },
     {
       id: ACTIVITY_IDS.a4,
       orgId: ORG_ID,
-      actorType: "agent",
-      actorId: AGENT_IDS.backend,
-      action: "issue.updated",
-      resourceType: "issue",
-      resourceId: ISSUE_IDS.auth,
-      metadata: { field: "status", from: "in_progress", to: "done" },
+      actorType: "board",
+      actorId: "user_test",
+      action: "agent.created",
+      resourceType: "agent",
+      resourceId: AGENT_IDS.backend,
+      metadata: { name: "Backend Engineer" },
     },
     {
       id: ACTIVITY_IDS.a5,
       orgId: ORG_ID,
       actorType: "board",
       actorId: "user_test",
-      action: "issue.created",
-      resourceType: "issue",
-      resourceId: ISSUE_IDS.onboarding,
-      metadata: { title: "Design onboarding flow" },
+      action: "agent.created",
+      resourceType: "agent",
+      resourceId: AGENT_IDS.designer,
+      metadata: { name: "Designer" },
     },
   ]);
 
@@ -497,7 +256,7 @@ async function seed() {
       id: ROUTINE_IDS.standup,
       orgId: ORG_ID,
       name: "Daily standup review",
-      description: "Review all in-progress issues and report blockers",
+      description: "Review all in-progress work and report blockers",
       agentId: AGENT_IDS.cto,
       status: "active",
     },
@@ -505,7 +264,7 @@ async function seed() {
       id: ROUTINE_IDS.weekly,
       orgId: ORG_ID,
       name: "Weekly progress report",
-      description: "Compile weekly progress across all projects and agents",
+      description: "Compile weekly progress across all agents",
       agentId: AGENT_IDS.ceo,
       status: "active",
     },
