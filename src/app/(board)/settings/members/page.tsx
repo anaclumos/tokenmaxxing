@@ -1,7 +1,7 @@
 import { OrganizationProfile } from "@clerk/nextjs";
 import { MockOrgProfile } from "@/components/clerk-stubs";
 
-const BYPASS = process.env.NEXT_PUBLIC_BYPASS_AUTH === "true";
+const BYPASS = process.env.BYPASS_AUTH === "true";
 
 export default function MembersPage() {
   return (

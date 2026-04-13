@@ -1,12 +1,20 @@
+import { ClerkProvider } from "@clerk/nextjs";
 import { Suspense } from "react";
-import { Providers } from "@/components/providers";
 import { BoardShell } from "@/components/board-shell";
+
+const BYPASS = process.env.BYPASS_AUTH === "true";
 
 export default function BoardLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const content = BYPASS ? <BoardShell>{children}</BoardShell> : (
+    <ClerkProvider dynamic>
+      <BoardShell>{children}</BoardShell>
+    </ClerkProvider>
+  );
+
   return (
     <Suspense
       fallback={
@@ -15,9 +23,7 @@ export default function BoardLayout({
         </div>
       }
     >
-      <Providers>
-        <BoardShell>{children}</BoardShell>
-      </Providers>
+      {content}
     </Suspense>
   );
 }
