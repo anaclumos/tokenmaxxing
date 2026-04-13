@@ -51,9 +51,9 @@ Next.js App Router (Vercel)
   |     Dashboard, Agents, Org Chart, Routines, Costs, Activity
   |     Settings (API Keys, Members, Budgets), Integrations (MCP)
   |
-  +-- API Routes (/api/orgs/[orgId]/...)
-  |     Explicit HTTP surface for external/API consumers
-  |     Pages read data directly from the server layer instead of refetching these routes
+  +-- HTTP Endpoints
+  |     Cron and SSE only
+  |     Pages read data directly from the server layer
   |
   +-- Agent Runtime
   |     AI SDK v6 -> BYOK Provider Factory -> Customer LLM APIs
@@ -150,22 +150,12 @@ Connection strategy:
 
 ---
 
-## API routes
+## HTTP endpoints
 
-All routes are org-scoped. The server derives the allowed org from Clerk auth (`auth().orgId`), never from the URL path parameter alone. Path `[orgId]` is validated against the session's org membership on every request.
+The app UI uses Server Components and Server Actions directly. Route Handlers are kept only where an actual HTTP surface is required.
 
 | Method | Path | Purpose |
 |---|---|---|
-| GET/POST | `/api/orgs/[orgId]/agents` | List/create agents |
-| GET/PATCH/DELETE | `/api/orgs/[orgId]/agents/[agentId]` | Get/update/archive agent |
-| GET | `/api/orgs/[orgId]/dashboard` | Aggregate counts (agents, runs, spend) |
-| GET | `/api/orgs/[orgId]/costs` | Cost events + summary |
-| GET | `/api/orgs/[orgId]/activity` | Activity log timeline |
-| GET/POST | `/api/orgs/[orgId]/routines` | List/create routines |
-| GET/POST | `/api/orgs/[orgId]/settings/keys` | List/store BYOK keys |
-| DELETE | `/api/orgs/[orgId]/settings/keys` | Remove a provider key |
-| GET/POST | `/api/orgs/[orgId]/mcp` | List/activate MCP installations |
-| GET | `/api/mcp/catalog` | Browse curated MCP catalog |
 | GET | `/api/events/[orgId]` | SSE stream (realtime updates) |
 | GET | `/api/cron/tick` | Scheduler tick (claims due runs) |
 | GET | `/api/cron/reaper` | Reclaims stale claimed runs |

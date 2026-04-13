@@ -2,12 +2,7 @@ import "server-only";
 
 import { and, eq } from "drizzle-orm";
 import { getDb } from "@/lib/db";
-import {
-  agents,
-  orgMcpInstallations,
-  routineTriggers,
-  routines,
-} from "@/lib/db/schema";
+import { agents, routineTriggers, routines } from "@/lib/db/schema";
 import { logActivity } from "@/lib/services/activity";
 
 type CreateAgentInput = {
@@ -23,20 +18,6 @@ type CreateAgentInput = {
   monthlyBudgetCents?: number;
 };
 
-type UpdateAgentInput = Partial<{
-  name: string;
-  shortname: string;
-  provider: string;
-  model: string;
-  role: string;
-  title: string;
-  systemPrompt: string | null;
-  reportsTo: string | null;
-  heartbeatCron: string | null;
-  monthlyBudgetCents: number | null;
-  status: string;
-}>;
-
 type CreateRoutineInput = {
   orgId: string;
   actorId: string;
@@ -44,14 +25,6 @@ type CreateRoutineInput = {
   agentId: string;
   description?: string;
   cronExpression?: string;
-};
-
-type InstallMcpInput = {
-  orgId: string;
-  actorId: string;
-  catalogEntryId?: string;
-  customUrl?: string;
-  customName?: string;
 };
 
 export async function createAgent(input: CreateAgentInput) {
@@ -83,26 +56,6 @@ export async function createAgent(input: CreateAgentInput) {
   });
 
   return agent;
-}
-
-export async function updateAgent(
-  orgId: string,
-  agentId: string,
-  values: UpdateAgentInput,
-) {
-  const db = getDb();
-
-  const [agent] = await db
-    .update(agents)
-    .set({ ...values, updatedAt: new Date() })
-    .where(and(eq(agents.orgId, orgId), eq(agents.id, agentId)))
-    .returning();
-
-  return agent ?? null;
-}
-
-export async function archiveAgent(orgId: string, agentId: string) {
-  return updateAgent(orgId, agentId, { status: "archived" });
 }
 
 export async function createRoutine(input: CreateRoutineInput) {
@@ -146,23 +99,4 @@ export async function createRoutine(input: CreateRoutineInput) {
   });
 
   return routine;
-}
-
-export async function installMcpServer(input: InstallMcpInput) {
-  const db = getDb();
-
-  const [installation] = await db
-    .insert(orgMcpInstallations)
-    .values({
-      orgId: input.orgId,
-      catalogEntryId: input.catalogEntryId ?? null,
-      customUrl: input.customUrl ?? null,
-      customName: input.customName ?? null,
-      status: "active",
-      activatedBy: input.actorId,
-      activatedAt: new Date(),
-    })
-    .returning();
-
-  return installation;
 }

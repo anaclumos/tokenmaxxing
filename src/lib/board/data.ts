@@ -46,54 +46,23 @@ export async function getDashboardData(orgId: string) {
 
 export async function listActivityEntries(
   orgId: string,
-  filters?: {
-    actorType?: string;
-    resourceType?: string;
-  },
 ) {
   const db = getDb();
-  const conditions = [eq(activityLog.orgId, orgId)];
-
-  if (filters?.actorType) {
-    conditions.push(eq(activityLog.actorType, filters.actorType));
-  }
-
-  if (filters?.resourceType) {
-    conditions.push(eq(activityLog.resourceType, filters.resourceType));
-  }
 
   return db.query.activityLog.findMany({
-    where: and(...conditions),
+    where: eq(activityLog.orgId, orgId),
     orderBy: [desc(activityLog.createdAt)],
     limit: 100,
   });
 }
 export async function getCostsData(
   orgId: string,
-  filters?: {
-    agentId?: string;
-    from?: string;
-    to?: string;
-  },
 ) {
   const db = getDb();
-  const conditions = [eq(costEvents.orgId, orgId)];
-
-  if (filters?.agentId) {
-    conditions.push(eq(costEvents.agentId, filters.agentId));
-  }
-
-  if (filters?.from) {
-    conditions.push(sql`${costEvents.createdAt} >= ${new Date(filters.from)}`);
-  }
-
-  if (filters?.to) {
-    conditions.push(sql`${costEvents.createdAt} <= ${new Date(filters.to)}`);
-  }
 
   const [events, summary] = await Promise.all([
     db.query.costEvents.findMany({
-      where: and(...conditions),
+      where: eq(costEvents.orgId, orgId),
       orderBy: [desc(costEvents.createdAt)],
       limit: 500,
     }),
@@ -104,7 +73,7 @@ export async function getCostsData(
         totalOutputTokens: sql<number>`COALESCE(SUM(output_tokens), 0)`,
       })
       .from(costEvents)
-      .where(and(...conditions)),
+      .where(eq(costEvents.orgId, orgId)),
   ]);
 
   return {
@@ -119,19 +88,11 @@ export async function getCostsData(
 
 export async function listAgents(
   orgId: string,
-  filters?: {
-    status?: string;
-  },
 ) {
   const db = getDb();
-  const conditions = [eq(agents.orgId, orgId)];
-
-  if (filters?.status) {
-    conditions.push(eq(agents.status, filters.status));
-  }
 
   return db.query.agents.findMany({
-    where: and(...conditions),
+    where: eq(agents.orgId, orgId),
     orderBy: [asc(agents.createdAt)],
   });
 }
