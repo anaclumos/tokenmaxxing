@@ -1,11 +1,11 @@
 "use client";
 
-import { useState } from "react";
 import { createRoutineAction } from "@/lib/board/actions";
 import { SubmitButton } from "@/components/submit-button";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogDescription,
   DialogHeader,
@@ -24,10 +24,8 @@ type NewRoutineDialogProps = {
 };
 
 export function NewRoutineDialog({ agents }: NewRoutineDialogProps) {
-  const [open, setOpen] = useState(false);
-
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog>
       <DialogTrigger asChild>
         <Button>New Routine</Button>
       </DialogTrigger>
@@ -86,13 +84,11 @@ export function NewRoutineDialog({ agents }: NewRoutineDialogProps) {
           </div>
 
           <div className="flex justify-end gap-2 pt-2">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setOpen(false)}
-            >
-              Cancel
-            </Button>
+            <DialogClose asChild>
+              <Button type="button" variant="outline">
+                Cancel
+              </Button>
+            </DialogClose>
             <SubmitButton pendingText="Creating...">
               Create Routine
             </SubmitButton>
