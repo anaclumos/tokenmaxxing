@@ -2,7 +2,7 @@
 
 **Automatic Claude Code account switching.** Run `claude` exactly as you always do; when the active account crosses its usage limit, tokenmaxxing swaps to a fresh account and - at the next safe turn boundary - restarts your session *resumed on it*, automatically. Works across many concurrent sessions.
 
-> **Scope:** Claude Code only, macOS (Apple Silicon) and Linux (x64/arm64). It pools **subscription** accounts (Pro/Max), not API keys.
+> **Scope:** Claude Code only, macOS and Linux. It pools **subscription** accounts (Pro/Max), not API keys.
 
 ```
 $ claude
@@ -20,10 +20,8 @@ A running `claude` holds its OAuth token in memory and a 429 does **not** make i
 Requires [Bun](https://bun.sh) and Claude Code, on macOS or Linux.
 
 ```sh
-git clone https://github.com/anaclumos/tokenmaxxing && cd tokenmaxxing
-bun install
-bun run build            # → dist/tokenmaxxing (single binary)
-./dist/tokenmaxxing init
+bun add -g tokenmaxxing
+tokenmaxxing init
 ```
 
 `init` imports the account you're already on, installs the `claude` supervisor + three `settings.json` entries (a statusLine shim, a Stop hook, a SessionStart hook), and adds the supervisor's bin dir to PATH in your shell rc (idempotent; it must sit ahead of the real `claude` to intercept it). Restart your shell, then add more accounts and go:
@@ -83,7 +81,7 @@ State lives entirely in `~/.config/tokenmaxxing/`. Per-account credentials follo
 
 ## How it's built
 
-TypeScript on Bun, compiled to a single binary with `bun build --compile`. [Zod](https://zod.dev) validates every external-boundary payload (credential blobs, hook/statusLine stdin, OAuth responses, config), [es-toolkit](https://es-toolkit.dev) for utilities. The supervisor is process/terminal-only - it never proxies API traffic or touches tokens in flight. Cross-process coordination uses `flock(2)` via `bun:ffi` (macOS has no `flock(1)`; one codepath serves both platforms). Credential I/O goes through one platform-selected store: `security(1)` generic-passwords on macOS, atomic 0600 file writes on Linux.
+TypeScript on Bun: one multi-call entry (`src/main.ts`) serves the CLI, the `claude` supervisor, and the hook/statusLine shims, and runs directly under bun. [Zod](https://zod.dev) validates every external-boundary payload (credential blobs, hook/statusLine stdin, OAuth responses, config), [es-toolkit](https://es-toolkit.dev) for utilities. The supervisor is process/terminal-only - it never proxies API traffic or touches tokens in flight. Cross-process coordination uses `flock(2)` via `bun:ffi` (macOS has no `flock(1)`; one codepath serves both platforms). Credential I/O goes through one platform-selected store: `security(1)` generic-passwords on macOS, atomic 0600 file writes on Linux.
 
 ## License
 

@@ -2,7 +2,7 @@
 // The wrapper is a 2-line `exec … __supervise "$@"` shim so dispatch never
 // depends on argv0 semantics.
 
-import { appendFileSync, chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, realpathSync, rmSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { z } from "zod";
 import { HOME, paths } from "./paths.ts";
@@ -10,18 +10,10 @@ import { writeFileAtomic } from "./atomic.ts";
 import { installedBin, installSettings, uninstallSettings } from "./settings.ts";
 import { resolveRealClaude } from "./claudebin.ts";
 
-/** The compiled single-file exe to install, or null when running via `bun run`. */
-export function selfBinary(): string | null {
-  const exe = process.execPath;
-  if (exe && !/(?:^|\/)bun(?:-\w+)?$/.test(exe)) return exe; // not `bun run` dev mode
-  return null;
-}
-
 const InstallOutcomeSchema = z.object({
   claudeWrapper: z.string(),
   installedBin: z.string(),
   priorStatusLine: z.string().nullable(),
-  devMode: z.boolean(),
   pathAhead: z.boolean(),
 });
 export type InstallOutcome = z.infer<typeof InstallOutcomeSchema>;
@@ -43,33 +35,11 @@ export function isBinDirAhead(): boolean {
 export function installSupervisor(): InstallOutcome {
   mkdirSync(paths.binDir, { recursive: true });
   const target = installedBin(); // binDir/tokenmaxxing
-  const self = selfBinary();
-  const devMode = !self;
-
-  if (self) {
-    // Skip the copy when we ARE the installed binary (re-running `init` from the
-    // installed path) - copying a file onto itself truncates it to nothing.
-    const sameFile = existsSync(target) && realpathSync(self) === realpathSync(target);
-    if (!sameFile) {
-      copyFileSync(self, target);
-      chmodSync(target, 0o755);
-      // macOS AMFI SIGKILLs a copied ad-hoc-signed Mach-O (the copy picks up a
-      // com.apple.provenance xattr and the signature no longer validates). Clear
-      // the xattr and ad-hoc re-sign the copy so it runs. Fail loud if signing
-      // fails, otherwise we would install a binary macOS immediately kills.
-      if (process.platform === "darwin") {
-        Bun.spawnSync(["xattr", "-c", target], { stdout: "ignore", stderr: "ignore" });
-        const signed = Bun.spawnSync(["codesign", "--force", "--sign", "-", target], { stdout: "ignore", stderr: "pipe" });
-        if (signed.exitCode !== 0) {
-          throw new Error(`codesign failed for ${target}: ${signed.stderr?.toString().trim()} (macOS would kill the unsigned copy)`);
-        }
-      }
-    }
-  } else {
-    // dev: run the repo entry through bun
-    const repoMain = `${process.cwd()}/src/main.ts`;
-    writeFileAtomic(target, `#!/bin/sh\nexec ${JSON.stringify(process.execPath)} run ${JSON.stringify(repoMain)} "$@"\n`, 0o755);
-  }
+  // Resolve the entry through the global-bin symlink (bun add -g links
+  // ~/.bun/bin/tokenmaxxing → the package's src/main.ts) so the shim points
+  // into the installed package tree, where its imports resolve.
+  const entry = realpathSync(Bun.main);
+  writeFileAtomic(target, `#!/bin/sh\nexec ${JSON.stringify(process.execPath)} run ${JSON.stringify(entry)} "$@"\n`, 0o755);
 
   // the on-PATH `claude` wrapper
   writeFileAtomic(paths.supervisorLink, `#!/bin/sh\nexec ${JSON.stringify(target)} __supervise "$@"\n`, 0o755);
@@ -81,7 +51,6 @@ export function installSupervisor(): InstallOutcome {
     claudeWrapper: paths.supervisorLink,
     installedBin: target,
     priorStatusLine,
-    devMode,
     pathAhead: isBinDirAhead(),
   };
 }

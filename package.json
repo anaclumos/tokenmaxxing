@@ -1,7 +1,7 @@
 {
   "name": "tokenmaxxing",
-  "version": "0.2.0",
-  "description": "Automatic Claude Code account switching — pool multiple accounts and hot-swap when quota fills, resuming your session on the fresh account.",
+  "version": "0.2.1",
+  "description": "Automatic Claude Code account switching: pool multiple accounts and hot-swap when quota fills, resuming your session on the fresh account.",
   "type": "module",
   "license": "MIT",
   "author": "anaclumos",
@@ -11,10 +11,10 @@
     "url": "git+https://github.com/anaclumos/tokenmaxxing.git"
   },
   "bin": {
-    "tokenmaxxing": "./dist/tokenmaxxing"
+    "tokenmaxxing": "./src/main.ts"
   },
   "files": [
-    "dist/tokenmaxxing",
+    "src",
     "README.md",
     "DESIGN.md"
   ],
@@ -22,16 +22,11 @@
     "bun": ">=1.1.0"
   },
   "os": ["darwin", "linux"],
-  "cpu": ["arm64", "x64"],
   "scripts": {
     "dev": "bun run src/main.ts",
-    "build": "bun build --compile --minify --sourcemap src/main.ts --outfile dist/tokenmaxxing",
-    "build:dev": "bun build --compile src/main.ts --outfile dist/tokenmaxxing",
-    "build:linux-x64": "bun build --compile --minify --sourcemap --target=bun-linux-x64 src/main.ts --outfile dist/tokenmaxxing-linux-x64",
-    "build:linux-arm64": "bun build --compile --minify --sourcemap --target=bun-linux-arm64 src/main.ts --outfile dist/tokenmaxxing-linux-arm64",
     "test": "bun test",
     "typecheck": "tsc --noEmit",
-    "prepublishOnly": "bun run typecheck && bun run test && bun run build"
+    "prepublishOnly": "bun run typecheck && bun run test"
   },
   "devDependencies": {
     "@types/bun": "latest",

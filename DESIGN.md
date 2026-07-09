@@ -106,13 +106,13 @@ Trigger at `five_hour >= 95%` OR `seven_day >= 95%`, per org. "Exhausted" is a *
 ---
 
 ## 8. Stack
-TypeScript on Bun, `bun build --compile` → the `claude` supervisor, the statusLine shim, and the hook as fast-starting single binaries (the Stop path runs every turn, so start-up latency matters). npm name `tokenmaxxing` owned. The supervisor needs a real PTY layer (spawn claude on a pty, forward resize/signals, restore mode between runs).
+TypeScript on Bun, shipped as source: one multi-call entry (`src/main.ts`, `#!/usr/bin/env bun`) serves the CLI, the `claude` supervisor, the statusLine shim, and the hooks; `init` installs a 2-line shim that `exec`s bun on the installed package's entry (the Stop path runs every turn; bun's start-up stays low-millisecond). Published to npm as `tokenmaxxing` (source, platform-independent - a compiled binary was tried and shipped one architecture's Mach-O to every platform). The supervisor needs a real PTY layer (spawn claude on a pty, forward resize/signals, restore mode between runs).
 
 ---
 
 ## 9. What the acceptance gate showed (2026-07-09)
 
-Unit suite: **32 pass**. Hermetic swap+concurrency+model-aware E2E: **all pass**. CLI init/doctor/uninstall through the compiled binary: **pass**.
+Unit suite: **32 pass**. Hermetic swap+concurrency+model-aware E2E: **all pass**. CLI init/doctor/uninstall: **pass** (re-verified init/doctor 2026-07-09 through the npm-installed bun shim on linux-arm64 after the switch to source packaging; full suite 47 pass / 0 fail there).
 
 1. **Transcript continuity across a process boundary - ✅ proven on real claude/real account.** `claude --session-id X -p …` committed a clean 12-line transcript; `claude --resume X -p …` recalled the earlier turn's codeword. The supervisor's kill→restore-termios→respawn→`--resume` loop is proven with a mock claude. The one step not run live is the abrupt SIGTERM of an *idle interactive* real claude (structurally safe - the transcript is fully committed+fsynced before idle and nothing writes while idle).
 2. **Terminal restoration - ✅ mechanism proven.** The supervisor saves `stty -g` and restores it between kill and respawn; the path executes in the mock-supervisor run. Visual raw-mode/​resize confirmation wants a live interactive terminal.
