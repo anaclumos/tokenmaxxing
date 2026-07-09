@@ -1,0 +1,144 @@
+// Live-sample a PARKED account's `/usage` without disturbing the live login.
+// `/usage` is free (0 tokens), so `status` can show every account's real usage.
+// We install the account's parked credential into a throwaway CLAUDE_CONFIG_DIR
+// (the isolated credential claude reads for that dir), run `claude -p /usage`
+// against it, then tear the item down.
+//
+// Contamination guards (the incident that motivated these):
+//   1. probeUsage scrubs every ambient credential-override env var, so an
+//      inherited CLAUDE_CODE_OAUTH_TOKEN can't hijack the isolated probe.
+//   2. before trusting a backup we verify (roles endpoint) that its token really
+//      belongs to this account - a mislabeled backup (drifted harvest) surfaces
+//      as an explicit error, never as another account's bars.
+//
+// Refresh tokens rotate single-use, so the one hazard is a rotation we fail to
+// capture. Two guards: refresh an expiring token OURSELVES up front, and
+// capture-before-delete the isolated item in case claude rotated it anyway.
+//
+// The caller MUST hold the tokenmaxxing flock so a parked refresh cannot collide
+// with an in-flight performSwap refreshing the same account.
+
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { z } from "zod";
+import { readItem, writeItem, deleteItem, liveTarget, parkedTarget, isolatedTarget, claudeAiOauthOnly, mergeIntoLive } from "./credstore.ts";
+import { credItemFor, paths } from "./paths.ts";
+import { withClaudeRefreshLock } from "./claudelock.ts";
+import { refreshCredential, isAccessTokenExpiring, fetchTokenOrg, InvalidGrantError } from "./oauth.ts";
+import { FullUsageSchema, probeUsage } from "./usage.ts";
+import { CredentialBlobSchema, type Account, type OAuthCreds, type RolesResponse } from "./types.ts";
+
+/** Result of a live sample: the fresh usage, or why it could not be taken. */
+export const SampleOutcomeSchema = z.discriminatedUnion("ok", [
+  z.object({ ok: z.literal(true), usage: FullUsageSchema }),
+  z.object({ ok: z.literal(false), reason: z.string() }),
+]);
+export type SampleOutcome = z.infer<typeof SampleOutcomeSchema>;
+
+/** Verify `creds` belongs to `account`; null on match, else the mismatch reason. */
+async function identityMismatch(creds: OAuthCreds, account: Account): Promise<string | null> {
+  let org: RolesResponse;
+  try {
+    org = await fetchTokenOrg(creds.accessToken);
+  } catch (e) {
+    return `credential identity check failed: ${String((e as Error).message ?? e)}`;
+  }
+  if (org.organization_uuid === account.organizationUuid) return null;
+  return `credential actually belongs to ${org.organization_name} (org ${org.organization_uuid.slice(0, 8)})`;
+}
+
+/**
+ * Live-sample `account`'s `/usage` in isolation. On a dead refresh token or a
+ * mislabeled credential it sets `account.needsReauth` in place (the caller
+ * persists accounts.json). Mutates only the passed object and keychain items.
+ */
+export async function probeParkedUsage(account: Account): Promise<SampleOutcome> {
+  const backup = parkedTarget(account.keychainItem);
+  const parkedRaw = await readItem(backup);
+  if (!parkedRaw) return { ok: false, reason: "no parked credential - re-add with `tokenmaxxing add`" };
+
+  let creds: OAuthCreds;
+  try {
+    creds = CredentialBlobSchema.parse(JSON.parse(parkedRaw)).claudeAiOauth;
+  } catch (e) {
+    return { ok: false, reason: `parked credential unreadable (${String((e as Error).message ?? e).slice(0, 80)}) - re-add with \`tokenmaxxing add\`` };
+  }
+
+  // Hand claude a token with comfortable headroom so it won't run its own refresh
+  // (which claude does within 120s of expiry). Refresh + persist ourselves first.
+  if (isAccessTokenExpiring(creds, 300_000)) {
+    try {
+      creds = await refreshCredential(creds);
+      await writeItem(backup, JSON.stringify({ claudeAiOauth: creds }));
+    } catch (e) {
+      if (e instanceof InvalidGrantError) {
+        account.needsReauth = true;
+        return { ok: false, reason: "refresh token dead - re-auth with `tokenmaxxing add`" };
+      }
+      return { ok: false, reason: `token refresh failed: ${String((e as Error).message ?? e)}` };
+    }
+  }
+
+  const mismatch = await identityMismatch(creds, account);
+  if (mismatch) {
+    account.needsReauth = true;
+    return { ok: false, reason: `${mismatch} - this account's own credential is gone; re-auth with \`tokenmaxxing add\`` };
+  }
+
+  const dir = join(paths.sampleDir, credItemFor(account.accountUuid));
+  rmSync(dir, { recursive: true, force: true });
+  mkdirSync(dir, { recursive: true });
+  const isoTarget = isolatedTarget(dir);
+  const installed = JSON.stringify({ claudeAiOauth: creds });
+
+  try {
+    await writeItem(isoTarget, installed);
+    writeFileSync(join(dir, ".claude.json"), JSON.stringify({ oauthAccount: account.oauthAccount, hasCompletedOnboarding: true }));
+    const usage = await probeUsage(dir);
+    return usage ? { ok: true, usage } : { ok: false, reason: "`/usage` returned no limit data (see log)" };
+  } finally {
+    // capture-before-delete: never discard a rotation claude may have performed.
+    const afterIso = await readItem(isoTarget);
+    if (afterIso && afterIso !== installed) await writeItem(backup, claudeAiOauthOnly(afterIso));
+    await deleteItem(isoTarget);
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+/**
+ * Live-sample the ACTIVE account off the live login, verifying the live
+ * credential belongs to it. `/usage` with no CLAUDE_CONFIG_DIR meters the live
+ * keychain item. A drifted active label surfaces as an error, not another
+ * account's bars.
+ */
+export async function probeActiveUsage(account: Account): Promise<SampleOutcome> {
+  const liveRaw = await readItem(liveTarget());
+  if (!liveRaw) return { ok: false, reason: "no live credential - run `claude` and `/login`" };
+  let creds: OAuthCreds;
+  try {
+    creds = CredentialBlobSchema.parse(JSON.parse(liveRaw)).claudeAiOauth;
+  } catch (e) {
+    return { ok: false, reason: `live credential blob unreadable (${String((e as Error).message ?? e).slice(0, 80)})` };
+  }
+
+  // A running claude keeps the live token fresh; after long idle it may not have.
+  if (isAccessTokenExpiring(creds, 300_000)) {
+    try {
+      await withClaudeRefreshLock(async () => {
+        const raw2 = (await readItem(liveTarget())) ?? liveRaw;
+        const current = CredentialBlobSchema.parse(JSON.parse(raw2)).claudeAiOauth;
+        creds = isAccessTokenExpiring(current, 300_000) ? await refreshCredential(current) : current;
+        if (creds !== current) await writeItem(liveTarget(), mergeIntoLive(raw2, creds));
+      });
+    } catch (e) {
+      if (e instanceof InvalidGrantError) return { ok: false, reason: "live refresh token dead - run `claude` and `/login`" };
+      return { ok: false, reason: `token refresh failed: ${String((e as Error).message ?? e)}` };
+    }
+  }
+
+  const mismatch = await identityMismatch(creds, account);
+  if (mismatch) return { ok: false, reason: `live ${mismatch} - active label drifted; run \`tokenmaxxing switch\`` };
+
+  const usage = await probeUsage();
+  return usage ? { ok: true, usage } : { ok: false, reason: "`/usage` returned no limit data (see log)" };
+}

@@ -1,0 +1,27 @@
+// Persist the flags a managed session was launched with, so any later relaunch
+// of that session id (a fresh supervisor invocation, or the depleted-pool
+// recovery in #20) re-applies them instead of dropping --dangerously-skip-
+// permissions / --model / etc.
+
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import { z } from "zod";
+import { paths } from "./paths.ts";
+import { writeFileAtomic } from "./atomic.ts";
+
+const SessionSchema = z.object({ flags: z.array(z.string()), cwd: z.string() });
+
+function sessionFile(sid: string): string {
+  return join(paths.home, "sessions", `${sid}.json`);
+}
+
+export function saveSessionFlags(sid: string, flags: string[], cwd: string): void {
+  mkdirSync(join(paths.home, "sessions"), { recursive: true });
+  writeFileAtomic(sessionFile(sid), JSON.stringify({ flags, cwd }));
+}
+
+export function loadSessionFlags(sid: string): string[] | null {
+  const f = sessionFile(sid);
+  if (!existsSync(f)) return null;
+  return SessionSchema.parse(JSON.parse(readFileSync(f, "utf8"))).flags;
+}
