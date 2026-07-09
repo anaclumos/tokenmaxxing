@@ -1,0 +1,145 @@
+bun.lock
+  s_19c21a5ae88b47::t_433a65ee618f56 1-35
+package.json
+  s_19c21a5ae88b47::t_6c8234f4ac450f 1-45
+src/cli/add.ts
+  s_19c21a5ae88b47::t_41bc00e67aad81 1-129
+src/cli/ls.ts
+  s_0fb53461f30dc8::t_33339e8004d9e0 1-24
+src/cli/rename.ts
+  s_0fb53461f30dc8::t_4b4efc744936d0 1-33
+src/cli/rm.ts
+  s_19c21a5ae88b47::t_a014271b595949 1-28
+src/cli/switch.ts
+  s_0fb53461f30dc8::t_82e67e8d777c42 1-61
+src/entries/statusline.ts
+  s_0fb53461f30dc8::t_e327e29b94d517 1-52
+src/lib/claudelock.ts
+  s_0fb53461f30dc8::t_61204fad0f42f5 1-54
+src/lib/keychain.ts
+  s_19c21a5ae88b47::t_9935bb4ae48820 1-84
+src/lib/lock.ts
+  s_19c21a5ae88b47::t_3ad40238cd678a 1-78
+src/lib/log.ts
+  s_0fb53461f30dc8::t_e540c627ae7442 1-28
+src/lib/sample.ts
+  s_19c21a5ae88b47::t_c75bf102e4dde5 1-144
+src/lib/settings.ts
+  s_0fb53461f30dc8::t_557df56de77150 1-141
+src/lib/swap.ts
+  s_19c21a5ae88b47::t_4f52d05536be81 1-143
+test/claudejson.test.ts
+  s_0fb53461f30dc8::t_94614f91a5235a 1-49
+test/keychain.test.ts
+  s_19c21a5ae88b47::t_f1f3175f4d16f9 1-45
+test/state.test.ts
+  s_0fb53461f30dc8::t_41dd617b46c14d 1-60
+.gitignore
+  s_0fb53461f30dc8::t_d440cec35bf058 1-10
+AGENTS.md
+  s_0fb53461f30dc8::t_c5d0662a771279 1-49
+CLAUDE.md
+  s_0fb53461f30dc8::t_47edd6b8fbfece 1
+DESIGN.md
+  s_19c21a5ae88b47::t_e6115e5fa320ac 1-125
+README.md
+  s_19c21a5ae88b47::t_f1e7f6e4dc28d9 1-90
+bunfig.toml
+  s_0fb53461f30dc8::t_978f8a623efb8b 1-2
+src/cli/doctor.ts
+  s_19c21a5ae88b47::t_9be20be2bbbfc4 1-80
+src/cli/init.ts
+  s_19c21a5ae88b47::t_4f213ed6509065 1-124
+src/cli/render.ts
+  s_0fb53461f30dc8::t_818e894b368dd3 1-36
+src/cli/status.ts
+  s_0fb53461f30dc8::t_079d75c3d7d0d6 1-99
+src/entries/sessionstart.ts
+  s_0fb53461f30dc8::t_e759ddf1000eb5 1-39
+src/entries/stophook.ts
+  s_0fb53461f30dc8::t_3d14cd5c307f19 1-48
+src/entries/supervisor.ts
+  s_0fb53461f30dc8::t_2e1f28279e14c9 1-202
+src/lib/atomic.ts
+  s_0fb53461f30dc8::t_5f746530b90841 1-24
+src/lib/claudebin.ts
+  s_19c21a5ae88b47::t_616bfd936dcf87 1-21
+src/lib/claudejson.ts
+  s_0fb53461f30dc8::t_28615a0ab3f806 1-40
+src/lib/credstore.ts
+  s_19c21a5ae88b47::t_aced621b0c1816 1-97
+src/lib/decide.ts
+  s_0fb53461f30dc8::t_8af361f55a686c 1-149
+src/lib/http.ts
+  s_0fb53461f30dc8::t_f3f589d105fa16 1-19
+src/lib/install.ts
+  s_19c21a5ae88b47::t_71679abb1f07de 1-118
+src/lib/oauth.ts
+  s_0fb53461f30dc8::t_efe871c27bf9eb 1-117
+src/lib/paths.ts
+  s_19c21a5ae88b47::t_ef11f608ffcdfd 1-90
+src/lib/picker.ts
+  s_0fb53461f30dc8::t_ae21c9d0eb3486 1-63
+src/lib/sessions.ts
+  s_0fb53461f30dc8::t_5f3d3b03be41a3 1-27
+src/lib/state.ts
+  s_19c21a5ae88b47::t_0c2845eb69f531 1-125
+src/lib/tty.ts
+  s_0fb53461f30dc8::t_37567a71fbc9ab 1-14
+src/lib/types.ts
+  s_0fb53461f30dc8::t_1c4f28903dd11a 1-152
+src/lib/usage.ts
+  s_0fb53461f30dc8::t_a0fb54a21e5b58 1-216
+src/main.ts
+  s_19c21a5ae88b47::t_e45870f5cfe487 1-82
+test/credstore.test.ts
+  s_19c21a5ae88b47::t_9f74f33ad4b3b4 1-101
+test/e2e/swap-concurrency.ts
+  s_19c21a5ae88b47::t_82fa795fa02737 1-192
+test/installrc.test.ts
+  s_19c21a5ae88b47::t_34a6baa2ff11d0 1-48
+test/oauth.test.ts
+  s_0fb53461f30dc8::t_4432ee13e31f65 1-80
+test/pure.test.ts
+  s_0fb53461f30dc8::t_875d29c0f6f77d 1-124
+test/sessions.test.ts
+  s_0fb53461f30dc8::t_667ef4789ad3e9 1-14
+test/settings.test.ts
+  s_0fb53461f30dc8::t_3064c4b59fe2d6 1-71
+test/setup.ts
+  s_19c21a5ae88b47::t_de740cb0e8b84c 1-22
+tsconfig.json
+  s_c81337ab8da06d::t_e488858e929917 1-19
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "304baf70e99ed11ed9c8c621d6c4a03e95761776",
+  "prompts": {},
+  "sessions": {
+    "s_0fb53461f30dc8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9acf6a1d-7447-45c7-979e-74076947f60c",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    },
+    "s_19c21a5ae88b47": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3a3a1991-ddf5-4bb8-9cee-1c437b53517a",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    },
+    "s_c81337ab8da06d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a401abfb83613ed1e",
+        "model": "unknown"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    }
+  }
+}
