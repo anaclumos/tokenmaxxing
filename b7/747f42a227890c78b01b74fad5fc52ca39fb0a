@@ -1,0 +1,36 @@
+src/lib/install.ts
+  s_d1fce094dfa3bb::t_088de4a9999a19 38-42
+  s_d1fce094dfa3bb::t_58c46df767e589 5
+README.md
+  s_d1fce094dfa3bb::t_22fc41d3ad13aa 23-24
+  s_d1fce094dfa3bb::t_df42312a6b1fd9 84
+  s_d1fce094dfa3bb::t_616a2aa81bebe8 5
+DESIGN.md
+  s_d1fce094dfa3bb::t_0f738960b0981e 109
+  s_d1fce094dfa3bb::t_82082ed879eaac 115
+AGENTS.md
+  s_d1fce094dfa3bb::t_bf99dd9a15e3f2 50
+.github/workflows/ci.yml
+  s_d1fce094dfa3bb::t_f6b49e571441e8 1-28,30-48
+  s_d1fce094dfa3bb::t_9ee2293bb5fd61 29
+package.json
+  s_d1fce094dfa3bb::t_10dc2f6650c345 3
+  s_d1fce094dfa3bb::t_e6335740c745e3 4
+  s_d1fce094dfa3bb::t_052b359e5c58c4 14,17,29
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "b7747f42a227890c78b01b74fad5fc52ca39fb0a",
+  "prompts": {},
+  "sessions": {
+    "s_d1fce094dfa3bb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "42b91408-c911-48da-998e-7948a780d5fa",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    }
+  }
+}
