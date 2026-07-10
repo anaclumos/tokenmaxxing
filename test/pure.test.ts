@@ -135,10 +135,47 @@ describe("usage parsing", () => {
     expect(f.session.usedPercentage).toBe(5);
     expect(f.session.resetsAt).toBe(null);
   });
+  test("parseUsageTextFull parses the comma day-time glue (real 2.1.206 Linux output)", () => {
+    const now = Date.parse("2026-07-10T13:00:00+09:00"); // Asia/Seoul reference
+    const text = [
+      "You are currently using your subscription to power your Claude Code usage",
+      "",
+      "Current session: 33% used · resets Jul 10, 3:30pm (Asia/Seoul)",
+      "Current week (all models): 7% used · resets Jul 12, 10pm (Asia/Seoul)",
+      "Current week (Fable): 0% used · resets Jul 12, 10pm (Asia/Seoul)",
+    ].join("\n");
+    const f = parseUsageTextFull(text, now)!;
+    expect(f.session.usedPercentage).toBe(33);
+    expect(f.session.resetsAt).toBe(Date.parse("2026-07-10T15:30:00+09:00"));
+    expect(f.weekAll.usedPercentage).toBe(7);
+    expect(f.weekAll.resetsAt).toBe(Date.parse("2026-07-12T22:00:00+09:00"));
+    expect(f.perModel["Fable"]?.usedPercentage).toBe(0);
+    expect(f.perModel["Fable"]?.resetsAt).toBe(Date.parse("2026-07-12T22:00:00+09:00"));
+  });
   test("parseResetClock infers the nearest year and honors the tz", () => {
     const now = Date.parse("2026-12-31T12:00:00+09:00");
     // "Jan 1" with no year should resolve to 2027, not 2026 (nearest to now).
     expect(parseResetClock("Jan 1 at 9am (Asia/Seoul)", now)).toBe(Date.parse("2027-01-01T09:00:00+09:00"));
     expect(parseResetClock("nonsense", now)).toBe(null);
+  });
+  test("parseResetClock accepts exactly the observed day-time glues", () => {
+    const now = Date.parse("2026-07-10T13:00:00+09:00");
+    const expected = Date.parse("2026-07-10T15:30:00+09:00");
+    expect(parseResetClock("Jul 10 at 3:30pm (Asia/Seoul)", now)).toBe(expected);
+    expect(parseResetClock("Jul 10, 3:30pm (Asia/Seoul)", now)).toBe(expected);
+    // An unobserved glue stays unparsed so format drift trips the drift log
+    // instead of guessing an instant.
+    expect(parseResetClock("Jul 10 3:30pm (Asia/Seoul)", now)).toBe(null);
+  });
+  test("parseUsageTextFull never lets a dateless clock steal the next entry's clock", () => {
+    const now = Date.parse("2026-07-10T13:00:00+09:00");
+    const f = parseUsageTextFull(
+      "Current session: 14% used · resets Jul 8. Current week (all models): 63% used · resets Jul 12, 10pm (Asia/Seoul)",
+      now,
+    )!;
+    expect(f.session.usedPercentage).toBe(14);
+    expect(f.session.resetsAt).toBe(null);
+    expect(f.weekAll.usedPercentage).toBe(63);
+    expect(f.weekAll.resetsAt).toBe(Date.parse("2026-07-12T22:00:00+09:00"));
   });
 });

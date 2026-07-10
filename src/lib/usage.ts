@@ -86,12 +86,16 @@ function zonedWallToEpoch(y: number, mon: number, day: number, hour: number, min
 
 /**
  * Parse a `/usage` reset clock like `Jul 11 at 12pm (Asia/Seoul)` or
- * `Jul 9 at 11:20pm (Asia/Seoul)` to epoch ms. The text carries no year, so we
- * pick the year whose resulting instant is nearest `now` (resets are always days
- * away, so the correct year wins by ~360 days). Returns null if unparseable.
+ * `Jul 10, 3:30pm (Asia/Seoul)` to epoch ms. The day-time glue is not stable
+ * across claude installs (observed on 2.1.206: ` at ` on macOS, `, ` on Linux);
+ * exactly those two glues are accepted, same-line only, so a third drift shows
+ * up as an unparsed clock (and the usage.reset_clock_unparsed log) instead of a
+ * guessed instant. The text carries no year, so we pick the year whose resulting
+ * instant is nearest `now` (resets are always days away, so the correct year
+ * wins by ~360 days). Returns null if unparseable.
  */
 export function parseResetClock(clock: string, now = Date.now()): number | null {
-  const m = clock.match(/\b([A-Za-z]{3,9})\s+(\d{1,2})\s+at\s+(\d{1,2})(?::(\d{2}))?\s*([ap])m\s*\(([^)]+)\)/i);
+  const m = clock.match(/\b([A-Za-z]{3,9})\s+(\d{1,2})(?:[^\S\n]+at[^\S\n]+|,[^\S\n]*)(\d{1,2})(?::(\d{2}))?\s*([ap])m\s*\(([^)]+)\)/i);
   if (!m) return null;
   const mon = MONTHS[m[1]!.slice(0, 3).toLowerCase()];
   if (mon === undefined) return null;
@@ -123,11 +127,15 @@ export function parseResetClock(clock: string, now = Date.now()): number | null 
  */
 export function parseUsageTextFull(text: string, now = Date.now()): FullUsage | null {
   if (!text) return null;
-  // The reset clock is required in full (month day at h[:mm]am/pm (tz)) inside its
-  // optional group, so the lazy bridge is forced to find it when present yet the
-  // group cleanly skips a line that has no clock - and it never swallows a
-  // following "Current …" entry on a single line.
-  const re = /current (session|week \(([^)]+)\)):\s*(\d+)\s*%(?:[^\n]*?\bresets\s+([A-Z][a-z]{2,8}\s+\d{1,2}\s+at\s+\d{1,2}(?::\d{2})?\s*[ap]m\s*\([^)]+\)))?/gi;
+  // The reset clock is required in full (month day[, | at ]h[:mm]am/pm (tz))
+  // inside its optional group, so the lazy bridge is forced to find it when
+  // present yet the group cleanly skips a line that has no clock. The bridge
+  // refuses to cross another "Current" so a dateless clock ("resets Jul 8.")
+  // can never steal the NEXT entry's clock or swallow that entry. The day-time
+  // glue is not stable across installs (observed on 2.1.206: ` at ` on macOS,
+  // `, ` on Linux); exactly those two are accepted, same-line only, so a third
+  // drift surfaces in the usage.reset_clock_unparsed log instead of misparsing.
+  const re = /current (session|week \(([^)]+)\)):\s*(\d+)\s*%(?:(?:(?!current)[^\n])*?\bresets\s+([A-Z][a-z]{2,8}\s+\d{1,2}(?:[^\S\n]+at[^\S\n]+|,[^\S\n]*)\d{1,2}(?::\d{2})?\s*[ap]m\s*\([^)]+\)))?/gi;
   let session: UsageWindow | null = null;
   let weekAll: UsageWindow | null = null;
   const perModel: Record<string, UsageWindow> = {};
@@ -190,8 +198,18 @@ async function probeUsageOnce(env: Record<string, string>, now: number): Promise
   }
 
   const j = z.object({ result: z.string() }).safeParse((() => { try { return JSON.parse(out); } catch { return null; } })());
-  const full = parseUsageTextFull(j.success ? j.data.result : out, now);
-  if (!full) log("usage.probe_unparsed", { sample: out.trim().slice(0, 120) });
+  const text = j.success ? j.data.result : out;
+  const full = parseUsageTextFull(text, now);
+  if (!full) {
+    log("usage.probe_unparsed", { sample: text.trim().slice(0, 200) });
+  } else {
+    const clockLine = text.split("\n").find((l) => /^current /i.test(l) && /\bresets\b/i.test(l));
+    if (clockLine && [full.session, full.weekAll, ...Object.values(full.perModel)].every((w) => w.resetsAt === null)) {
+      // Percentages parsed but every reset clock was dropped: the clock format
+      // drifted again. Log the line so the next drift is visible in the log.
+      log("usage.reset_clock_unparsed", { sample: clockLine.slice(0, 120) });
+    }
+  }
   return full;
 }
 
