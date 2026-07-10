@@ -1,7 +1,10 @@
 // Choose the best account to switch TO when the active one crosses threshold.
 // Policy: exclude the current account and any that need reauth or are still
 // rate-limited (usage >= threshold and not yet past resets_at). Among the rest,
-// prefer lowest 7-day usage; tiebreak on soonest resets_at.
+// prefer the account whose weekly window expires soonest: weekly limits reset
+// at a fixed per-account time and unused allowance is forfeited at reset, so
+// quota nearest its reset is use-it-or-lose-it and should be drained first.
+// Tiebreak on lowest 7-day usage, then soonest 5h reset.
 
 import { minBy, sortBy } from "es-toolkit";
 import { z } from "zod";
@@ -23,6 +26,18 @@ export function isExhausted(a: Account, ctx: PickCtx): boolean {
   return blocked(u.fiveHour) || blocked(u.sevenDay);
 }
 
+const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+
+/** Epoch ms when the account's weekly quota is next forfeited. The weekly reset
+ *  is a fixed per-account anchor, so a stale (past) resetsAt extrapolates
+ *  forward in 7-day steps; an account with no sampled reset sorts last. */
+export function weeklyExpiry(a: Account, now: number): number {
+  const r = a.lastUsage?.sevenDay.resetsAt;
+  if (r == null) return Number.POSITIVE_INFINITY;
+  if (r > now) return r;
+  return r + (Math.floor((now - r) / WEEK_MS) + 1) * WEEK_MS;
+}
+
 export function pickBest(accounts: Account[], ctx: PickCtx): Account | null {
   const candidates = accounts.filter(
     (a) =>
@@ -32,8 +47,9 @@ export function pickBest(accounts: Account[], ctx: PickCtx): Account | null {
   );
   if (candidates.length === 0) return null;
 
-  // lowest 7-day usage first; tiebreak on soonest 5h reset.
+  // soonest weekly expiry first; tiebreak lowest 7-day usage, then soonest 5h reset.
   return sortBy(candidates, [
+    (a) => weeklyExpiry(a, ctx.now),
     (a) => a.lastUsage?.sevenDay.usedPercentage ?? 0,
     (a) => a.lastUsage?.fiveHour.resetsAt ?? Number.POSITIVE_INFINITY,
   ])[0]!;

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { analyzeArgs, stripSessionFlags } from "../src/entries/supervisor.ts";
-import { pickBest, isExhausted } from "../src/lib/picker.ts";
+import { pickBest, isExhausted, weeklyExpiry } from "../src/lib/picker.ts";
 import { normalizeResetsAt, parseStatusLineStdin, parseStatusLineModel, parseUsageText, parseUsageTextFull, parseResetClock } from "../src/lib/usage.ts";
 import type { Account } from "../src/lib/types.ts";
 
@@ -48,13 +48,33 @@ function acct(over: Partial<Account>): Account {
 
 describe("account picker", () => {
   const now = 1_000_000;
-  test("prefers lowest 7-day usage, excludes current + reauth + exhausted", () => {
-    const a = acct({ accountUuid: "A", lastUsage: { fiveHour: { usedPercentage: 10, resetsAt: null }, sevenDay: { usedPercentage: 50, resetsAt: null } } });
-    const b = acct({ accountUuid: "B", lastUsage: { fiveHour: { usedPercentage: 10, resetsAt: null }, sevenDay: { usedPercentage: 20, resetsAt: null } } });
+  const WEEK = 7 * 24 * 60 * 60 * 1000;
+  test("prefers soonest weekly expiry over most remaining, excludes current + reauth", () => {
+    const soon = acct({ accountUuid: "A", lastUsage: { fiveHour: { usedPercentage: 10, resetsAt: null }, sevenDay: { usedPercentage: 80, resetsAt: now + 3_600_000 } } });
+    const full = acct({ accountUuid: "B", lastUsage: { fiveHour: { usedPercentage: 10, resetsAt: null }, sevenDay: { usedPercentage: 20, resetsAt: now + 5 * 86_400_000 } } });
     const cur = acct({ accountUuid: "CUR" });
     const dead = acct({ accountUuid: "D", needsReauth: true });
-    const best = pickBest([a, b, cur, dead], { now, threshold: 95, currentAccountUuid: "CUR" });
-    expect(best?.accountUuid).toBe("B");
+    const best = pickBest([soon, full, cur, dead], { now, threshold: 95, currentAccountUuid: "CUR" });
+    expect(best?.accountUuid).toBe("A");
+  });
+  test("tiebreaks equal expiry on lowest 7-day usage", () => {
+    const a = acct({ accountUuid: "A", lastUsage: { fiveHour: { usedPercentage: 10, resetsAt: null }, sevenDay: { usedPercentage: 50, resetsAt: null } } });
+    const b = acct({ accountUuid: "B", lastUsage: { fiveHour: { usedPercentage: 10, resetsAt: null }, sevenDay: { usedPercentage: 20, resetsAt: null } } });
+    expect(pickBest([a, b], { now, threshold: 95, currentAccountUuid: null })?.accountUuid).toBe("B");
+  });
+  test("weeklyExpiry: future passes through, stale past extrapolates by weeks, unknown is Infinity", () => {
+    const future = acct({ lastUsage: { fiveHour: { usedPercentage: 0, resetsAt: null }, sevenDay: { usedPercentage: 0, resetsAt: now + 5_000 } } });
+    const stale = acct({ lastUsage: { fiveHour: { usedPercentage: 0, resetsAt: null }, sevenDay: { usedPercentage: 0, resetsAt: now - 10_000 } } });
+    const veryStale = acct({ lastUsage: { fiveHour: { usedPercentage: 0, resetsAt: null }, sevenDay: { usedPercentage: 0, resetsAt: now - WEEK - 10_000 } } });
+    expect(weeklyExpiry(future, now)).toBe(now + 5_000);
+    expect(weeklyExpiry(stale, now)).toBe(now - 10_000 + WEEK);
+    expect(weeklyExpiry(veryStale, now)).toBe(now - 10_000 + WEEK);
+    expect(weeklyExpiry(acct({}), now)).toBe(Number.POSITIVE_INFINITY);
+  });
+  test("just-reset (stale past) account ranks after one with a known upcoming expiry", () => {
+    const justReset = acct({ accountUuid: "R", lastUsage: { fiveHour: { usedPercentage: 10, resetsAt: null }, sevenDay: { usedPercentage: 90, resetsAt: now - 10_000 } } });
+    const expiring = acct({ accountUuid: "E", lastUsage: { fiveHour: { usedPercentage: 10, resetsAt: null }, sevenDay: { usedPercentage: 30, resetsAt: now + 2 * 86_400_000 } } });
+    expect(pickBest([justReset, expiring], { now, threshold: 95, currentAccountUuid: null })?.accountUuid).toBe("E");
   });
   test("exhausted-until-reset excluded; available-after-reset included", () => {
     const blocked = acct({ accountUuid: "X", lastUsage: { fiveHour: { usedPercentage: 99, resetsAt: now + 10_000 }, sevenDay: { usedPercentage: 10, resetsAt: null } } });
