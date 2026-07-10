@@ -1,0 +1,28 @@
+test/pure.test.ts
+  s_e28afe50b249da::t_49a3173fa101cf 138-154
+  s_e28afe50b249da::t_fee2ff3a08626a 162-165,180
+  s_e28afe50b249da::t_7d8fb57d43cd21 161,166-179
+src/lib/usage.ts
+  s_e28afe50b249da::t_cb278377fca720 90-95,98
+  s_e28afe50b249da::t_7de9ecda8b3071 201-204,212
+  s_e28afe50b249da::t_a67749e24d99ad 205-211
+  s_e28afe50b249da::t_d99dc686671c96 130-131
+  s_e28afe50b249da::t_6db1725ef83d8c 89
+  s_e28afe50b249da::t_1d2f42d04c8f9f 132-138
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "f6bb8aadb69c79dfd75a2069f46c8eb6bebd1705",
+  "prompts": {},
+  "sessions": {
+    "s_e28afe50b249da": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8d549fdf-ad89-4d23-bbad-bf4a754acc71",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    }
+  }
+}
