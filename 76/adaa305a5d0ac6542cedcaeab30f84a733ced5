@@ -1,0 +1,25 @@
+DESIGN.md
+  s_fda2713283f531::t_76f09df26a34aa 51
+src/lib/picker.ts
+  s_fda2713283f531::t_285d1845466ed6 4-7
+  s_fda2713283f531::t_c7b02e6635281f 29-40,50,52
+test/pure.test.ts
+  s_fda2713283f531::t_a4a822feaa0de4 51-54,57-77
+  s_fda2713283f531::t_6c3d69fca4465b 3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "76adaa305a5d0ac6542cedcaeab30f84a733ced5",
+  "prompts": {},
+  "sessions": {
+    "s_fda2713283f531": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a38f9f51-76b7-477d-a532-e8230fc89d12",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    }
+  }
+}
