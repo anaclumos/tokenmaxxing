@@ -1,0 +1,92 @@
+src/lib/decide.ts
+  s_246dd70c9802f0::t_37905b3388b0f1 102
+  s_246dd70c9802f0::t_2f9153f390a015 25
+  s_246dd70c9802f0::t_0673229164b4c5 49-55
+  s_246dd70c9802f0::t_414cc7fe8c0198 92-94
+  s_246dd70c9802f0::t_d8b6e5d9f8f997 69-70
+  s_246dd70c9802f0::t_9325acb95a101c 61-68,71-85
+  s_246dd70c9802f0::t_35d31f2bcc49c2 111-116
+  s_246dd70c9802f0::t_80a9240ab94406 14,18
+src/cli/rm.ts
+  s_246dd70c9802f0::t_67e86ec6a5be2a 4-5,15-32
+package.json
+  s_246dd70c9802f0::t_daec4eff2dda25 3
+src/lib/state.ts
+  s_246dd70c9802f0::t_6e018fb25b2573 104-110
+  s_246dd70c9802f0::t_7e2e2bcfa6344d 11
+  s_246dd70c9802f0::t_91c1622334c87f 111-126
+  s_246dd70c9802f0::t_d12406398c7910 3
+src/cli/rename.ts
+  s_246dd70c9802f0::t_8001fa8fd1ff90 19,24-37
+  s_246dd70c9802f0::t_48ece08697b6a1 3-4
+src/lib/paths.ts
+  s_246dd70c9802f0::t_201063e4a43770 24
+  s_246dd70c9802f0::t_16900fa6326182 44-47
+src/cli/init.ts
+  s_246dd70c9802f0::t_b9c9954a12f62a 28,30-32
+  s_246dd70c9802f0::t_0270d82a74bdea 29
+  s_246dd70c9802f0::t_8449543aebb04c 9
+  s_246dd70c9802f0::t_4347f01fb0f260 49
+  s_246dd70c9802f0::t_1c6b10c7304608 122
+src/cli/doctor.ts
+  s_246dd70c9802f0::t_162a7796002be1 37
+  s_246dd70c9802f0::t_c112c750dd6712 6
+test/pure.test.ts
+  s_246dd70c9802f0::t_1bf91b1c5ac2ed 183-184
+  s_246dd70c9802f0::t_d8ece6f135194f 5,185-196
+  s_246dd70c9802f0::t_57afe7d8826dcb 197
+src/lib/usage.ts
+  s_246dd70c9802f0::t_5d96bba2cfd05c 221,228,237-242
+  s_246dd70c9802f0::t_93b77aa6f0e389 216-220
+src/lib/install.ts
+  s_246dd70c9802f0::t_61ec6b387b85c8 70,73-76,79-80,82-86,89-92,102,105,111-115,118-119,121,127,132,146,148-149,152,163-164,167,174-175,180-181
+  s_246dd70c9802f0::t_070167766a463f 19
+  s_246dd70c9802f0::t_ef7f40a2cd5af3 7
+  s_246dd70c9802f0::t_5f2b6e23df6c0f 211
+  s_246dd70c9802f0::t_d0a0ab92df5312 57
+  s_246dd70c9802f0::t_13f4643c993c61 61-69,71-72,77-78,81,87-88,93-101,103-104,106-110,116-117,120,122-126,128-131,133-145,147,150-151,153-162,165-166,168-173,176-179,182-183
+  s_246dd70c9802f0::t_e52c506ef25902 184
+src/cli/check.ts
+  s_246dd70c9802f0::t_8f951a49dfc273 1-7,9-11,21-29
+  s_246dd70c9802f0::t_bb8ac9ee528ec6 8,12-20
+src/lib/types.ts
+  s_246dd70c9802f0::t_0d8eb9506823ca 97-101
+src/lib/swap.ts
+  s_246dd70c9802f0::t_e1e8b80bf6b4e4 116
+  s_246dd70c9802f0::t_0de699e65a43de 113-115
+  s_246dd70c9802f0::t_b2eaf0cf57569f 15
+src/main.ts
+  s_246dd70c9802f0::t_c81254ea26efbf 28
+  s_246dd70c9802f0::t_783a2f33d6a0fe 61
+  s_246dd70c9802f0::t_b4716e6ce2d60a 19
+src/entries/statusline.ts
+  s_246dd70c9802f0::t_0d4caf1b1bc6f1 30
+  s_246dd70c9802f0::t_deac585829d9fd 8
+  s_246dd70c9802f0::t_6f1e5d6d1934e5 12-15
+  s_246dd70c9802f0::t_0925c994ac7fff 31
+  s_246dd70c9802f0::t_f8a9d617497b26 16
+src/entries/supervisor.ts
+  s_246dd70c9802f0::t_8840c42864c438 200-202
+src/cli/status.ts
+  s_246dd70c9802f0::t_74a51c3104373f 19,28-30,33-38
+  s_246dd70c9802f0::t_c5b9541319126b 62-64
+src/cli/add.ts
+  s_246dd70c9802f0::t_d8ece6f135194f 14
+  s_246dd70c9802f0::t_32929207d4f531 105-126,132
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "a997c6a368c0ddcaf4b227b8ec442e00e59eec4c",
+  "prompts": {},
+  "sessions": {
+    "s_246dd70c9802f0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "10d001fa-7386-4c6d-a118-7e378a795dcc",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    }
+  }
+}
