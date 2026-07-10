@@ -1,0 +1,19 @@
+AGENTS.md
+  s_246dd70c9802f0::t_0735f564db933b 50-51
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "0e68746b5bf2c99a36b277ab34df78463eff27e7",
+  "prompts": {},
+  "sessions": {
+    "s_246dd70c9802f0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "10d001fa-7386-4c6d-a118-7e378a795dcc",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    }
+  }
+}
