@@ -39,7 +39,7 @@ const server = Bun.serve({
   async fetch(req) {
     const url = new URL(req.url);
     if (url.pathname === "/roles") {
-      // every test token embeds its account tag: A-access / FRESH-A-rt / ROT-B-rt …
+      // every test token embeds its account tag: A-access / FRESH-A-rt / ROT-B-rt ...
       const token = req.headers.get("authorization")?.replace(/^Bearer /, "") ?? "";
       const tag = token.match(/(?:^|-)([AB])-/)?.[1];
       if (!tag) return new Response("unknown test token", { status: 401 });

@@ -122,8 +122,8 @@ export function parseResetClock(clock: string, now = Date.now()): number | null 
 /**
  * Parse `claude -p '/usage'` .result text into all three limit kinds:
  *   Current session: N% used · resets <clock>      → session (5h)
- *   Current week (all models): N% used · resets …   → weekAll (7d aggregate)
- *   Current week (<Model>): N% used · resets …      → perModel[<Model>]
+ *   Current week (all models): N% used · resets ...   → weekAll (7d aggregate)
+ *   Current week (<Model>): N% used · resets ...      → perModel[<Model>]
  */
 export function parseUsageTextFull(text: string, now = Date.now()): FullUsage | null {
   if (!text) return null;

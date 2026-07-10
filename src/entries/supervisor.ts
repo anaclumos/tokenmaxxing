@@ -106,7 +106,7 @@ async function countdownWait(acct: string, until: number): Promise<void> {
     await Bun.sleep(1000);
   }
   process.removeListener("SIGINT", onInt);
-  process.stdout.write(`\n\x1b[36m↻ resuming on ${acct}…\x1b[0m\n`);
+  process.stdout.write(`\n\x1b[36m↻ resuming on ${acct}...\x1b[0m\n`);
 }
 
 /** Entry point: `claude ...args`. */
@@ -193,7 +193,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
       rmSync(marker, { force: true });
       respawns++;
       if (m.waitUntil && m.waitUntil > Date.now()) await countdownWait(m.account, m.waitUntil);
-      else process.stdout.write(`\n\x1b[36m↻ tokenmaxxing: switched to ${m.account} - resuming…\x1b[0m\n`);
+      else process.stdout.write(`\n\x1b[36m↻ tokenmaxxing: switched to ${m.account} - resuming...\x1b[0m\n`);
       launchArgs = ["--resume", sid, ...base];
       continue;
     }

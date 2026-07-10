@@ -11,7 +11,7 @@ export function redact(s: string): string {
   return s
     // JWT-ish / long opaque tokens
     .replace(/\b(sk-ant-[A-Za-z0-9._-]{6,})/g, "sk-ant-***")
-    .replace(/\b([A-Za-z0-9_-]{40,})\b/g, (m) => `${m.slice(0, 4)}…(${m.length})`);
+    .replace(/\b([A-Za-z0-9_-]{40,})\b/g, (m) => `${m.slice(0, 4)}...(${m.length})`);
 }
 
 export function log(event: string, fields: Record<string, unknown> = {}): void {

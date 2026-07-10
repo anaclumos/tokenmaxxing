@@ -1,7 +1,7 @@
 // macOS login-keychain generic-password I/O, ps-safe. The darwin backend of
 // credstore.ts - construct targets there, not here.
 //   READ  : `security find-generic-password -w`  → secret only ever in stdout.
-//   WRITE : pipe an `add-generic-password -U … -w <secret>` line into `security -i`
+//   WRITE : pipe an `add-generic-password -U ... -w <secret>` line into `security -i`
 //           over STDIN - the secret never appears in any process's argv (verified).
 // The service/account are non-secret and may sit in argv.
 

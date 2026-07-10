@@ -1,5 +1,5 @@
 // Install/uninstall the on-PATH `claude` supervisor wrapper + settings entries.
-// The wrapper is a 2-line `exec … __supervise "$@"` shim so dispatch never
+// The wrapper is a 2-line `exec ... __supervise "$@"` shim so dispatch never
 // depends on argv0 semantics.
 
 import { appendFileSync, existsSync, mkdirSync, readFileSync, realpathSync, rmSync } from "node:fs";

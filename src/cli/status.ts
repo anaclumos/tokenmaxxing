@@ -28,7 +28,7 @@ export async function cmdStatus(): Promise<number> {
   // Load, sample, and save entirely under the flock: parked refreshes must not
   // collide with an in-flight swap, and a save of an index loaded before a
   // concurrent swap would clobber the swap's activeAccountUuid.
-  console.error(c.dim("sampling live usage…"));
+  console.error(c.dim("sampling live usage..."));
   const outcomes = new Map<string, SampleOutcome>();
   await withLock(paths.lockFile, async () => {
     idx = loadAccounts();

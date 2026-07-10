@@ -4,7 +4,7 @@ Automatic Claude Code account switching. You run `claude` exactly as always; whe
 
 > Scope: **Claude Code only, macOS first.** Codex and other CLIs deferred (see `.memory/cc-codex-auth-mechanics.md`).
 >
-> Status: **implemented** (v0.1.0, 2026-07-09). TypeScript on Bun → single binary; Zod validates every external-boundary payload, JSON config, es-toolkit for utilities, `flock(2)` via `bun:ffi`. All load-bearing external facts were adversarially verified against the `2.1.204` binary + docs (OAuth token endpoint is `platform.claude.com/v1/oauth/token`, client_id `9d1c250a-…`, JSON body). What the acceptance gate actually shows is in §9.
+> Status: **implemented** (v0.1.0, 2026-07-09). TypeScript on Bun → single binary; Zod validates every external-boundary payload, JSON config, es-toolkit for utilities, `flock(2)` via `bun:ffi`. All load-bearing external facts were adversarially verified against the `2.1.204` binary + docs (OAuth token endpoint is `platform.claude.com/v1/oauth/token`, client_id `9d1c250a-...`, JSON body). What the acceptance gate actually shows is in §9.
 
 ---
 
@@ -57,7 +57,7 @@ The supervisor's `claude` call returns; it sees `respawn/<sid>`, deletes it, res
 ### 3.4 Swap sequence (under the lock)
 1. **Harvest the live credential into its TRUE owner's backup** - read the current `Claude Code-credentials` blob and resolve which account it actually belongs to via the roles endpoint (`GET /api/oauth/claude_cli/roles`), NOT the `accounts.json` active label. The label drifts from the live blob (a kill mid-swap, a manual `/login`), and harvesting by label once overwrote another account's backup and destroyed its only credential. Mandatory anyway: Claude rotates the refresh token in place, so older backups are dead. Refuse the swap if the live credential belongs to no pooled account.
 2. **Refresh B** - OAuth refresh-grant with B's parked refresh token → fresh access token; persist the rotated refresh token. On `invalid_grant`, mark B `needs_reauth`, notify, try the next account.
-3. **Install B** - `security add-generic-password -U … 'Claude Code-credentials' …` with B's fresh (non-expired) `claudeAiOauth` JSON.
+3. **Install B** - `security add-generic-password -U ... 'Claude Code-credentials' ...` with B's fresh (non-expired) `claudeAiOauth` JSON.
 4. **Swap identity + mark B active** - atomically rewrite only the `oauthAccount` object in `~/.claude.json` (temp+rename) to B's, and write `activeAccountUuid = B` in the SAME critical section, so a crash can't leave the installed credential and the active label pointing at different accounts.
 5. Do steps 1, 3, 4 inside Claude's own `~/.claude.lock` so the writes can't collide with a token refresh.
 
@@ -114,7 +114,7 @@ TypeScript on Bun, shipped as source: one multi-call entry (`src/main.ts`, `#!/u
 
 Unit suite: **32 pass**. Hermetic swap+concurrency+model-aware E2E: **all pass**. CLI init/doctor/uninstall: **pass** (re-verified init/doctor 2026-07-09 through the npm-installed bun shim on linux-arm64 after the switch to source packaging; full suite 47 pass / 0 fail there).
 
-1. **Transcript continuity across a process boundary - ✅ proven on real claude/real account.** `claude --session-id X -p …` committed a clean 12-line transcript; `claude --resume X -p …` recalled the earlier turn's codeword. The supervisor's kill→restore-termios→respawn→`--resume` loop is proven with a mock claude. The one step not run live is the abrupt SIGTERM of an *idle interactive* real claude (structurally safe - the transcript is fully committed+fsynced before idle and nothing writes while idle).
+1. **Transcript continuity across a process boundary - ✅ proven on real claude/real account.** `claude --session-id X -p ...` committed a clean 12-line transcript; `claude --resume X -p ...` recalled the earlier turn's codeword. The supervisor's kill→restore-termios→respawn→`--resume` loop is proven with a mock claude. The one step not run live is the abrupt SIGTERM of an *idle interactive* real claude (structurally safe - the transcript is fully committed+fsynced before idle and nothing writes while idle).
 2. **Terminal restoration - ✅ mechanism proven.** The supervisor saves `stty -g` and restores it between kill and respawn; the path executes in the mock-supervisor run. Visual raw-mode/​resize confirmation wants a live interactive terminal.
 3. **SessionStart swap - ✅ swap logic proven; ⚠️ "adopted by first turn" needs a 2nd real account.** The hook's decision+swap path is covered by the E2E; the claude-internal timing (SessionStart before first `getToken`) needs a second subscription to observe end-to-end.
 4. **Keychain writes from a headless hook - ✅ proven.** The swap E2E's 4 concurrent subprocesses each wrote the live item via `security -i` (secret on stdin, never argv) with no prompt/hang; `init` parked backups headlessly too. (Residual: the live `Claude Code-credentials` ACL for the *fresh resumed claude* is mitigated by onboarding touching `security` interactively.)

@@ -94,7 +94,7 @@ export async function cmdAdd(): Promise<number> {
   }
 
   // Sample usage now (#16) so the account isn't "not sampled yet" in status/ls.
-  console.log(c.dim("sampling usage…"));
+  console.log(c.dim("sampling usage..."));
   const sampled = await probeUsage(onboardDir);
   if (!sampled) console.log(c.yellow("could not sample usage now - it will fill in on first use."));
 
