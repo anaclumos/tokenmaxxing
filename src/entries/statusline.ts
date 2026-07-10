@@ -5,9 +5,14 @@
 
 import { readOAuthAccount } from "../lib/claudejson.ts";
 import { readPriorStatusLine } from "../lib/settings.ts";
-import { writeUsage } from "../lib/state.ts";
+import { loadLastSwapAt, writeUsage } from "../lib/state.ts";
 import { parseStatusLineStdin, parseStatusLineModel } from "../lib/usage.ts";
 import type { UsageState } from "../lib/types.ts";
+
+/** A session that hasn't adopted a fresh swap yet (<=30s keychain cache) pushes
+ *  the OLD account's windows while ~/.claude.json already names the NEW org.
+ *  Suppress the tee for this long after a swap so that mislabel never lands. */
+const ADOPTION_GRACE_MS = 45_000;
 
 async function readStdin(): Promise<string> {
   const chunks: Uint8Array[] = [];
@@ -22,7 +27,8 @@ export async function runStatusline(): Promise<number> {
   try {
     const obj = JSON.parse(raw);
     const windows = parseStatusLineStdin(obj);
-    if (windows) {
+    const lastSwapAt = loadLastSwapAt();
+    if (windows && (lastSwapAt == null || Date.now() - lastSwapAt >= ADOPTION_GRACE_MS)) {
       const org = readOAuthAccount()?.organizationUuid ?? null;
       const state: UsageState = { ...windows, org, ts: Date.now(), model: parseStatusLineModel(obj) };
       writeUsage(state);

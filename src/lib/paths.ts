@@ -21,6 +21,7 @@ export const paths = {
   accountsJson: join(TM_HOME, "accounts.json"),
   usageJson: join(TM_HOME, "usage.json"),
   modelUsageJson: join(TM_HOME, "model-usage.json"),
+  lastSwapJson: join(TM_HOME, "lastswap.json"),
   respawnDir: join(TM_HOME, "respawn"),
   binDir: join(TM_HOME, "bin"),
   supervisorLink: join(TM_HOME, "bin", "claude"),
@@ -40,6 +41,10 @@ export const paths = {
   ),
   /** ~/.claude - for the credential-refresh lock and projects/ transcripts. */
   claudeDir: env("CLAUDE_CONFIG_DIR", join(HOME, ".claude")),
+
+  /** where the periodic-check timer units live (launchd / systemd user). */
+  launchdAgentsDir: env("TOKENMAXXING_LAUNCHD_DIR", join(HOME, "Library", "LaunchAgents")),
+  systemdUserDir: env("TOKENMAXXING_SYSTEMD_USER_DIR", join(HOME, ".config", "systemd", "user")),
 } as const;
 
 /** Claude's own credential-refresh lock (verified path filled from facts). */

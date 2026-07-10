@@ -16,10 +16,8 @@ import type { FullUsage } from "../lib/usage.ts";
 import type { UsageWindow } from "../lib/types.ts";
 
 export async function cmdStatus(): Promise<number> {
-  const idx = loadAccounts();
+  let idx = loadAccounts();
   const cfg = loadConfig();
-  const live = loadUsage();
-  const modelUsage = loadModelUsage();
   const now = Date.now();
 
   if (idx.accounts.length === 0) {
@@ -27,13 +25,17 @@ export async function cmdStatus(): Promise<number> {
     return 0;
   }
 
-  const activeOrg = readOAuthAccount()?.organizationUuid ?? null;
-
-  // Sample under the flock so parked refreshes can't collide with an in-flight swap.
+  // Load, sample, and save entirely under the flock: parked refreshes must not
+  // collide with an in-flight swap, and a save of an index loaded before a
+  // concurrent swap would clobber the swap's activeAccountUuid.
   console.error(c.dim("sampling live usage…"));
   const outcomes = new Map<string, SampleOutcome>();
-  await withLock(paths.lockFile, () =>
-    Promise.all(
+  await withLock(paths.lockFile, async () => {
+    idx = loadAccounts();
+    const live = loadUsage();
+    const modelUsage = loadModelUsage();
+    const activeOrg = readOAuthAccount()?.organizationUuid ?? null;
+    await Promise.all(
       idx.accounts.map(async (a) => {
         const isActive = a.accountUuid === idx.activeAccountUuid && activeOrg === a.organizationUuid;
         // Active account: prefer the free statusLine push (usage.json) so we never
@@ -57,9 +59,9 @@ export async function cmdStatus(): Promise<number> {
         a.lastUsage = { fiveHour: outcome.usage.session, sevenDay: outcome.usage.weekAll };
         if (Object.keys(outcome.usage.perModel).length > 0) a.lastPerModel = outcome.usage.perModel;
       }),
-    ),
-  );
-  saveAccounts(idx);
+    );
+    saveAccounts(idx);
+  });
 
   console.log(c.dim(`threshold ${cfg.threshold}%  ·  ${idx.accounts.length} account(s)`));
   console.log();

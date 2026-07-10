@@ -1,6 +1,6 @@
 // Config + accounts index + usage snapshot persistence. All writes atomic.
 
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, rmSync } from "node:fs";
 import { isEqual } from "es-toolkit";
 import { z } from "zod";
 import { paths, realClaudeBinFromEnv } from "./paths.ts";
@@ -8,6 +8,7 @@ import { writeFileAtomic } from "./atomic.ts";
 import {
   AccountsIndexSchema,
   ConfigSchema,
+  LastSwapSchema,
   ModelUsageStateSchema,
   UsageStateSchema,
   type AccountsIndex,
@@ -98,6 +99,29 @@ export function loadUsage(): UsageState | null {
   } catch {
     return null;
   }
+}
+
+/** Drop the statusLine-fed snapshots after a swap: their windows belong to the
+ *  pre-swap account and would otherwise be read under the new active org. */
+export function clearUsageSnapshots(): void {
+  rmSync(paths.usageJson, { force: true });
+  rmSync(paths.modelUsageJson, { force: true });
+}
+
+// ---- lastswap.json (epoch ms of the last swap; absent = never swapped) ----
+
+export function loadLastSwapAt(): number | null {
+  if (!existsSync(paths.lastSwapJson)) return null;
+  try {
+    const parsed = LastSwapSchema.safeParse(JSON.parse(readFileSync(paths.lastSwapJson, "utf8")));
+    return parsed.success ? parsed.data.ts : null;
+  } catch {
+    return null;
+  }
+}
+
+export function saveLastSwapAt(ts: number): void {
+  writeFileAtomic(paths.lastSwapJson, JSON.stringify(LastSwapSchema.parse({ ts })));
 }
 
 /** Write-on-change: skip the write (and its fsync) when only `ts` would differ. */

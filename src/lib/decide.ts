@@ -11,17 +11,18 @@
 // the OLD account, so org != activeOrg → we correctly do nothing until fresh usage
 // for the new account arrives.
 
+import { maxBy } from "es-toolkit";
 import { z } from "zod";
 import { withLock } from "./lock.ts";
 import { paths } from "./paths.ts";
-import { loadAccounts, loadConfig, loadUsage, loadModelUsage, saveAccounts, saveModelUsage } from "./state.ts";
+import { loadAccounts, loadConfig, loadUsage, loadModelUsage, saveAccounts, saveModelUsage, writeUsage } from "./state.ts";
 import { readOAuthAccount } from "./claudejson.ts";
 import { chooseAndSwap, performSwap } from "./swap.ts";
 import { pickEarliestReset, usableAt } from "./picker.ts";
 import { InvalidGrantError } from "./oauth.ts";
 import { probeUsage } from "./usage.ts";
 import { log } from "./log.ts";
-import { AccountSchema, type Account, type Config, type ModelUsageState, type UsageState, type UsageWindow } from "./types.ts";
+import { AccountSchema, type Account, type Config, type ModelInfo, type ModelUsageState, type UsageState, type UsageWindow } from "./types.ts";
 
 const SwapDecisionSchema = z.object({
   swapped: z.boolean(),
@@ -45,25 +46,52 @@ async function ensurePerModel(cfg: Config, org: string | null): Promise<ModelUsa
   const fresh = cached && cached.org === org && Date.now() - cached.ts < cfg.policy.usagePollTtlMs;
   if (fresh) return cached;
   const full = await probeUsage();
-  if (!full) return cached; // keep stale on poll failure
+  if (!full) {
+    // Probing the live token fail-silently while it's busy is expected; stamp the
+    // cache so the next probe waits out the TTL instead of every turn re-paying
+    // the full backoff (the 2026-07-10 post-swap probe storm).
+    saveModelUsage({ perModel: cached?.org === org ? cached.perModel : {}, org, ts: Date.now() });
+    return cached;
+  }
   const state: ModelUsageState = { perModel: full.perModel, org, ts: Date.now() };
   saveModelUsage(state);
   return state;
 }
 
-function capForModel(mu: ModelUsageState | null, display: string): UsageWindow | undefined {
-  if (!mu) return undefined;
-  const key = Object.keys(mu.perModel).find((k) => k.toLowerCase() === display.toLowerCase());
-  return key ? mu.perModel[key] : undefined;
+/** Lowercased word tokens of a model id or display string: "claude-opus-4-8" /
+ *  "Opus 4.8" -> ["claude","opus","4","8"] / ["opus","4","8"]. Model naming
+ *  drifts per release ("Fable" became "Fable 5" in 2.1.206, and id grammar has
+ *  historically flipped between family-first and version-first), so gates match
+ *  a family token anywhere instead of an exact string - an exact-string gate
+ *  silently disabled the per-model check in the 2026-07-09/10 incidents. */
+export function familyTokens(s: string): string[] {
+  return s.trim().toLowerCase().split(/[\s.-]+/).filter((t) => t.length > 0);
+}
+
+/** The switchModels family the active model belongs to, from its id OR display
+ *  tokens; null when the model is not capacity-constrained. */
+export function matchedFamily(model: ModelInfo | null, families: string[]): string | null {
+  if (!model) return null;
+  const tokens = new Set([...familyTokens(model.id), ...familyTokens(model.display)]);
+  return families.find((f) => tokens.has(f)) ?? null;
+}
+
+/** The family's weekly cap among the `/usage` rows; when several rows match the
+ *  family, the most-used one wins (switching early beats metering a depleted cap). */
+function capForFamily(mu: ModelUsageState, family: string): UsageWindow | undefined {
+  const rows = Object.entries(mu.perModel)
+    .filter(([k]) => familyTokens(k).includes(family))
+    .map(([, w]) => w);
+  return maxBy(rows, (w) => w.usedPercentage);
 }
 
 /** True if the active account is over the floor on ANY applicable limit. */
 function isOver(u: UsageState | null, mu: ModelUsageState | null, org: string | null, cfg: Config, floor: number): boolean {
   if (!u || !org || u.org !== org) return false;
   if (u.fiveHour.usedPercentage >= floor || u.sevenDay.usedPercentage >= floor) return true;
-  const display = u.model?.display;
-  if (display && cfg.policy.switchModels.includes(display.toLowerCase()) && mu && mu.org === org) {
-    const cap = capForModel(mu, display);
+  const family = matchedFamily(u.model, cfg.policy.switchModels);
+  if (family && mu && mu.org === org) {
+    const cap = capForFamily(mu, family);
     if (cap && cap.usedPercentage >= floor) return true;
   }
   return false;
@@ -71,8 +99,7 @@ function isOver(u: UsageState | null, mu: ModelUsageState | null, org: string | 
 
 /** Does the active model warrant a per-model `/usage` poll? */
 function needsPerModel(u: UsageState | null, cfg: Config): boolean {
-  const display = u?.model?.display;
-  return !!display && cfg.policy.switchModels.includes(display.toLowerCase());
+  return matchedFamily(u?.model ?? null, cfg.policy.switchModels) !== null;
 }
 
 export async function evaluateAndMaybeSwap(now = Date.now()): Promise<SwapDecision> {
@@ -81,7 +108,12 @@ export async function evaluateAndMaybeSwap(now = Date.now()): Promise<SwapDecisi
   const activeOrg = readOAuthAccount()?.organizationUuid ?? null;
 
   let usage = loadUsage();
-  if (!usage && activeOrg) usage = await probeAggregate(activeOrg);
+  if (!usage && activeOrg) {
+    usage = await probeAggregate(activeOrg);
+    // Persist: post-swap the snapshots are cleared and the statusLine tee is in
+    // its grace window, so without this every turn boundary would re-probe.
+    if (usage) writeUsage(usage);
+  }
 
   // per-model poll (TTL-cached) only when on a capacity-constrained model
   const mu = needsPerModel(usage, cfg) ? await ensurePerModel(cfg, activeOrg) : null;

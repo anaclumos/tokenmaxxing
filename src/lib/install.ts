@@ -4,6 +4,7 @@
 
 import { appendFileSync, existsSync, mkdirSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
+import { escape } from "es-toolkit";
 import { z } from "zod";
 import { HOME, paths } from "./paths.ts";
 import { writeFileAtomic } from "./atomic.ts";
@@ -15,6 +16,7 @@ const InstallOutcomeSchema = z.object({
   installedBin: z.string(),
   priorStatusLine: z.string().nullable(),
   pathAhead: z.boolean(),
+  timerLoaded: z.boolean(),
 });
 export type InstallOutcome = z.infer<typeof InstallOutcomeSchema>;
 
@@ -52,7 +54,132 @@ export function installSupervisor(): InstallOutcome {
     installedBin: target,
     priorStatusLine,
     pathAhead: isBinDirAhead(),
+    timerLoaded: installCheckTimer(),
   };
+}
+
+// ---- periodic `check` timer ------------------------------------------------
+// The hooks evaluate only at turn boundaries; one long agentic turn can burn a
+// window from healthy to depleted with zero boundaries (2026-07-10 incident).
+// A timer closes that gap: launchd on macOS, a systemd user timer on Linux.
+
+const CHECK_INTERVAL_S = 180;
+const LAUNCHD_LABEL = "com.tokenmaxxing.check";
+
+function launchdPlist(): string {
+  return join(paths.launchdAgentsDir, `${LAUNCHD_LABEL}.plist`);
+}
+
+/** `gui/<uid>` launchd domain, or null when the platform has no getuid. */
+function launchdDomain(): string | null {
+  const uid = process.getuid?.();
+  return uid == null ? null : `gui/${uid}`;
+}
+
+/** launchctl/systemctl may be absent (spawnSync throws ENOENT) or hang on a
+ *  dead session bus (ssh without lingering) - degrade, never crash or block. */
+function run(cmd: string[]): boolean {
+  try {
+    return Bun.spawnSync(cmd, { stdout: "ignore", stderr: "ignore", timeout: 10_000 }).exitCode === 0;
+  } catch {
+    return false;
+  }
+}
+
+/** Install + activate the periodic check job. False means the unit files are in
+ *  place but activation failed (e.g. systemd user session absent over ssh) -
+ *  the caller prints the manual activation step. */
+export function installCheckTimer(): boolean {
+  if (process.platform === "darwin") {
+    const plist = launchdPlist();
+    writeFileAtomic(
+      plist,
+      `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>${LAUNCHD_LABEL}</string>
+  <key>ProgramArguments</key><array><string>${escape(installedBin())}</string><string>check</string></array>
+  <key>StartInterval</key><integer>${CHECK_INTERVAL_S}</integer>
+  <key>StandardOutPath</key><string>/dev/null</string>
+  <key>StandardErrorPath</key><string>${escape(join(paths.home, "check.stderr.log"))}</string>
+</dict>
+</plist>
+`,
+      0o644,
+    );
+    const domain = launchdDomain();
+    if (domain == null) return false;
+    run(["launchctl", "bootout", `${domain}/${LAUNCHD_LABEL}`]); // reload a changed plist
+    // bootstrap can lose a benign race with an in-flight bootout; loaded is loaded.
+    return run(["launchctl", "bootstrap", domain, plist]) || checkTimerHealthy();
+  }
+
+  // systemd: quote the path and escape `%` (unit-file specifier character).
+  const exec = `"${installedBin().replaceAll("%", "%%")}" check`;
+  writeFileAtomic(
+    join(paths.systemdUserDir, "tokenmaxxing-check.service"),
+    `[Unit]
+Description=tokenmaxxing account-switch check
+
+[Service]
+Type=oneshot
+ExecStart=${exec}
+`,
+    0o644,
+  );
+  writeFileAtomic(
+    join(paths.systemdUserDir, "tokenmaxxing-check.timer"),
+    `[Unit]
+Description=tokenmaxxing periodic account-switch check
+
+[Timer]
+OnBootSec=60
+OnUnitActiveSec=${CHECK_INTERVAL_S}
+AccuracySec=30
+
+[Install]
+WantedBy=timers.target
+`,
+    0o644,
+  );
+  return (
+    run(["systemctl", "--user", "daemon-reload"]) &&
+    run(["systemctl", "--user", "enable", "--now", "tokenmaxxing-check.timer"])
+  );
+}
+
+/** The manual activation command for an unloaded timer, per platform. */
+export function timerActivationHint(): string {
+  if (process.platform === "darwin") {
+    return `launchctl bootstrap gui/$(id -u) ${launchdPlist()}`;
+  }
+  return "systemctl --user daemon-reload && systemctl --user enable --now tokenmaxxing-check.timer";
+}
+
+/** True when the timer unit exists AND the service manager reports it loaded. */
+export function checkTimerHealthy(): boolean {
+  if (process.platform === "darwin") {
+    const domain = launchdDomain();
+    return existsSync(launchdPlist()) && domain != null && run(["launchctl", "print", `${domain}/${LAUNCHD_LABEL}`]);
+  }
+  return (
+    existsSync(join(paths.systemdUserDir, "tokenmaxxing-check.timer")) &&
+    run(["systemctl", "--user", "is-active", "--quiet", "tokenmaxxing-check.timer"])
+  );
+}
+
+export function uninstallCheckTimer(): void {
+  if (process.platform === "darwin") {
+    const domain = launchdDomain();
+    if (domain != null) run(["launchctl", "bootout", `${domain}/${LAUNCHD_LABEL}`]);
+    rmSync(launchdPlist(), { force: true });
+    return;
+  }
+  run(["systemctl", "--user", "disable", "--now", "tokenmaxxing-check.timer"]);
+  rmSync(join(paths.systemdUserDir, "tokenmaxxing-check.timer"), { force: true });
+  rmSync(join(paths.systemdUserDir, "tokenmaxxing-check.service"), { force: true });
+  run(["systemctl", "--user", "daemon-reload"]);
 }
 
 /** The rc file of the user's login shell, or null when the shell is unknown.
@@ -81,6 +208,7 @@ export function ensurePathInRc(rc: string): "added" | "present" {
 
 export function uninstallSupervisor(): void {
   uninstallSettings();
+  uninstallCheckTimer();
   for (const f of [paths.supervisorLink, join(paths.binDir, "xx"), installedBin()]) {
     if (existsSync(f)) rmSync(f, { force: true });
   }

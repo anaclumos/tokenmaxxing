@@ -3,7 +3,7 @@
 
 import { existsSync } from "node:fs";
 import { checkSettings, installedBin } from "../lib/settings.ts";
-import { isBinDirAhead } from "../lib/install.ts";
+import { checkTimerHealthy, isBinDirAhead, timerActivationHint } from "../lib/install.ts";
 import { paths } from "../lib/paths.ts";
 import { loadAccounts, loadConfig } from "../lib/state.ts";
 import { readItem, liveTarget, parkedTarget } from "../lib/credstore.ts";
@@ -34,6 +34,7 @@ export async function cmdDoctor(): Promise<number> {
   check(s.statusLineOk, "statusLine shim installed in settings.json", "run `tokenmaxxing init`");
   check(s.stopOk, "Stop hook installed in settings.json", "run `tokenmaxxing init`");
   check(s.sessionStartOk, "SessionStart hook installed in settings.json", "run `tokenmaxxing init`");
+  check(checkTimerHealthy(), "periodic check timer active", timerActivationHint());
 
   const idx = loadAccounts();
   check(idx.accounts.length > 0, "at least one account in the pool", "run `tokenmaxxing init`");

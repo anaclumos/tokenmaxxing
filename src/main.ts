@@ -16,6 +16,7 @@ import { cmdDoctor } from "./cli/doctor.ts";
 import { cmdRm } from "./cli/rm.ts";
 import { cmdRename } from "./cli/rename.ts";
 import { cmdSwitch } from "./cli/switch.ts";
+import { cmdCheck } from "./cli/check.ts";
 import { uninstallSupervisor } from "./lib/install.ts";
 import { c } from "./cli/render.ts";
 
@@ -24,6 +25,7 @@ function printHelp(): void {
 
   ${c.cyan("tokenmaxxing")}            show the pool with usage bars (alias of ${c.cyan("status")})
   ${c.cyan("tokenmaxxing switch")} [sel]  switch now to the best (or a specific) account
+  ${c.cyan("tokenmaxxing check")}      evaluate once, switch if over threshold (run by the periodic timer)
   ${c.cyan("tokenmaxxing init")}       import the current account + install supervisor & hooks
   ${c.cyan("tokenmaxxing add")}        register an additional account (isolated login)
   ${c.cyan("tokenmaxxing ls")}         list pooled accounts
@@ -56,6 +58,7 @@ async function main(): Promise<number> {
     case "__session-start": return runSessionStart();
     case undefined: return cmdStatus(); // bare `tokenmaxxing` / `xx` → status
     case "switch": return cmdSwitch(args[1]);
+    case "check": return cmdCheck();
     case "init": return cmdInit();
     case "add": return cmdAdd();
     case "ls": return cmdLs();

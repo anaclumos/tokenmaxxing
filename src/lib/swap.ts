@@ -12,7 +12,7 @@
 //     mark B active (inside the lock: a crash before this write leaves a stale
 //     active label, which is exactly what once made a harvest destroy a backup)
 
-import { loadAccounts, saveAccounts } from "./state.ts";
+import { clearUsageSnapshots, loadAccounts, saveAccounts, saveLastSwapAt } from "./state.ts";
 import { readItem, writeItem, liveTarget, parkedTarget, claudeAiOauthOnly, mergeIntoLive } from "./credstore.ts";
 import { refreshCredential, isAccessTokenExpiring, fetchTokenOrg, InvalidGrantError } from "./oauth.ts";
 import { swapOAuthAccount } from "./claudejson.ts";
@@ -110,6 +110,10 @@ export async function performSwap(target: Account): Promise<void> {
     const t2 = idx.accounts.find((a) => a.accountUuid === target.accountUuid);
     if (t2) { t2.needsReauth = false; }
     saveAccounts(idx);
+    // the snapshots on disk still describe the pre-swap account; under the new
+    // org label they'd trigger a bogus switch off the account just installed.
+    clearUsageSnapshots();
+    saveLastSwapAt(Date.now());
   });
   log("swap.done", { account: target.accountUuid.slice(0, 8), email: target.email });
 }

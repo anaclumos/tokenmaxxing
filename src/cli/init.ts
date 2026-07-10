@@ -6,7 +6,7 @@ import { isApiKeyMode, readOAuthAccount } from "../lib/claudejson.ts";
 import { readItem, writeItem, liveTarget, parkedTarget, mergeIntoLive } from "../lib/credstore.ts";
 import { refreshCredential, isAccessTokenExpiring, fetchTokenOrg } from "../lib/oauth.ts";
 import { loadAccounts, saveAccounts, loadConfig, saveConfig } from "../lib/state.ts";
-import { installSupervisor, shellRcPath, ensurePathInRc } from "../lib/install.ts";
+import { installSupervisor, shellRcPath, ensurePathInRc, timerActivationHint, type InstallOutcome } from "../lib/install.ts";
 import { resolveRealClaude } from "../lib/claudebin.ts";
 import { credItemFor, paths } from "../lib/paths.ts";
 import { CredentialBlobSchema, type Account } from "../lib/types.ts";
@@ -25,6 +25,11 @@ function ensurePathAhead(): void {
   else console.log(c.yellow(`⚠ PATH line already in ${rc} - restart your shell to pick it up`));
 }
 
+function reportTimer(out: InstallOutcome): void {
+  if (out.timerLoaded) console.log(`${c.green("✓")} periodic check timer active (every 3m)`);
+  else console.log(c.yellow(`⚠ check timer written but not activated - run: ${timerActivationHint()}`));
+}
+
 export async function cmdInit(): Promise<number> {
   mkdirSync(paths.home, { recursive: true });
 
@@ -41,6 +46,7 @@ export async function cmdInit(): Promise<number> {
     saveConfig(cfg);
     const active = existingIdx.accounts.find((a) => a.accountUuid === existingIdx.activeAccountUuid);
     console.log(`${c.green("✓")} re-installed supervisor + hooks (pool already has ${existingIdx.accounts.length} account${existingIdx.accounts.length === 1 ? "" : "s"} - not re-importing)`);
+    reportTimer(out);
     if (!out.pathAhead) ensurePathAhead();
     console.log(`  active: ${c.bold(active?.label ?? "unknown")} · run ${c.cyan("tokenmaxxing add")} for more, ${c.cyan("tokenmaxxing status")} to check`);
     return 0;
@@ -113,6 +119,7 @@ export async function cmdInit(): Promise<number> {
 
   console.log(`${c.green("✓")} imported current account → ${c.bold(account.email)} (${account.subscriptionType ?? "?"})`);
   console.log(`${c.green("✓")} installed ${c.bold("claude")} supervisor + statusLine/Stop/SessionStart hooks`);
+  reportTimer(out);
   if (out.priorStatusLine) console.log(`${c.green("✓")} wrapped your existing statusLine (preserved)`);
   if (!out.pathAhead) {
     console.log();

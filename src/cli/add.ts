@@ -11,6 +11,7 @@ import { readItem, writeItem, deleteItem, parkedTarget, isolatedTarget, claudeAi
 import { resolveRealClaude } from "../lib/claudebin.ts";
 import { probeUsage } from "../lib/usage.ts";
 import { saveTermios, restoreTermios } from "../lib/tty.ts";
+import { withLock } from "../lib/lock.ts";
 import { loadAccounts, saveAccounts } from "../lib/state.ts";
 import { credItemFor, paths } from "../lib/paths.ts";
 import { CredentialBlobSchema, OAuthAccountSchema, type Account } from "../lib/types.ts";
@@ -101,29 +102,33 @@ export async function cmdAdd(): Promise<number> {
   const keychainItem = credItemFor(uuid);
   await writeItem(parkedTarget(keychainItem), claudeAiOauthOnly(blobRaw)); // park a small backup
 
-  const idx = loadAccounts();
-  const existing = idx.accounts.find((a) => a.accountUuid === uuid);
-  const account: Account = {
-    accountUuid: uuid,
-    email: oauthAccount.emailAddress,
-    organizationUuid: oauthAccount.organizationUuid,
-    label: existing?.label ?? oauthAccount.emailAddress,
-    keychainItem,
-    oauthAccount,
-    addedAt: existing?.addedAt ?? new Date().toISOString(),
-    subscriptionType: blob.claudeAiOauth.subscriptionType,
-    needsReauth: false,
-    lastUsage: sampled ? { fiveHour: sampled.session, sevenDay: sampled.weekAll } : existing?.lastUsage,
-    lastPerModel: sampled && Object.keys(sampled.perModel).length > 0 ? sampled.perModel : existing?.lastPerModel,
-  };
-  if (existing) Object.assign(existing, account);
-  else idx.accounts.push(account);
-  saveAccounts(idx);
+  // under the flock: a concurrent swap's index write must not be clobbered.
+  const { account, poolSize } = await withLock(paths.lockFile, async () => {
+    const idx = loadAccounts();
+    const existing = idx.accounts.find((a) => a.accountUuid === uuid);
+    const fresh: Account = {
+      accountUuid: uuid,
+      email: oauthAccount.emailAddress,
+      organizationUuid: oauthAccount.organizationUuid,
+      label: existing?.label ?? oauthAccount.emailAddress,
+      keychainItem,
+      oauthAccount,
+      addedAt: existing?.addedAt ?? new Date().toISOString(),
+      subscriptionType: blob.claudeAiOauth.subscriptionType,
+      needsReauth: false,
+      lastUsage: sampled ? { fiveHour: sampled.session, sevenDay: sampled.weekAll } : existing?.lastUsage,
+      lastPerModel: sampled && Object.keys(sampled.perModel).length > 0 ? sampled.perModel : existing?.lastPerModel,
+    };
+    if (existing) Object.assign(existing, fresh);
+    else idx.accounts.push(fresh);
+    saveAccounts(idx);
+    return { account: fresh, poolSize: idx.accounts.length };
+  });
 
   await cleanup();
 
   console.log();
   const usageNote = sampled ? ` · session ${sampled.session.usedPercentage}% / week ${sampled.weekAll.usedPercentage}%` : "";
-  console.log(`${c.green("✓")} added ${c.bold(account.email)} (${account.subscriptionType ?? "?"})${usageNote} → pool now has ${idx.accounts.length} account(s)`);
+  console.log(`${c.green("✓")} added ${c.bold(account.email)} (${account.subscriptionType ?? "?"})${usageNote} → pool now has ${poolSize} account(s)`);
   return 0;
 }

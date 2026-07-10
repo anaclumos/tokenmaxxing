@@ -213,13 +213,19 @@ async function probeUsageOnce(env: Record<string, string>, now: number): Promise
   return full;
 }
 
+/** Escalating retry delays for the empty-footer case (usage endpoint throttled
+ *  or the sampled token busy). Capped at ~7s of sleep: probeUsage runs inside
+ *  Stop/SessionStart hooks and under the status flock, and the periodic `check`
+ *  timer re-runs every 3 minutes anyway, owning the long-tail retry. */
+const PROBE_RETRY_DELAYS_MS = [2000, 5000];
+
 /**
  * Run `claude -p '/usage'` (free, 0 tokens) and parse all three limit kinds.
  * Pass `configDir` to sample a specific account (its CLAUDE_CONFIG_DIR); omit to
  * sample the live account. All ambient credential overrides are scrubbed so the
  * probe meters exactly the OAuth credential in the (possibly namespaced)
  * keychain item. The empty-footer case (claude's own usage call throttled) is
- * transient, so retry it a couple of times. Returns null if it never yields data.
+ * transient, so retry with backoff. Returns null if it never yields data.
  */
 export async function probeUsage(configDir?: string, now = Date.now()): Promise<FullUsage | null> {
   const env: Record<string, string> = { ...process.env, TOKENMAXXING_PROBE: "1" };
@@ -228,7 +234,11 @@ export async function probeUsage(configDir?: string, now = Date.now()): Promise<
 
   for (let attempt = 0; ; attempt++) {
     const full = await probeUsageOnce(env, now);
-    if (full || attempt >= 2) return full;
-    await delay(1500);
+    if (full) return full;
+    if (attempt >= PROBE_RETRY_DELAYS_MS.length) {
+      log("usage.probe_gave_up", { attempts: attempt + 1 });
+      return null;
+    }
+    await delay(PROBE_RETRY_DELAYS_MS[attempt]!);
   }
 }

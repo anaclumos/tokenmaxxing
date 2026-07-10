@@ -94,6 +94,11 @@ export const AccountsIndexSchema = z.object({
   activeAccountUuid: z.string().nullable(),
   accounts: z.array(AccountSchema).default([]),
 });
+
+/** lastswap.json - epoch ms of the last credential swap. Its own tiny file (not
+ *  accounts.json) so the statusLine shim reads a few bytes per tick and no other
+ *  index writer can clobber it. Absent = no swap has ever run. */
+export const LastSwapSchema = z.object({ ts: z.number() });
 export type AccountsIndex = z.infer<typeof AccountsIndexSchema>;
 
 export const ConfigSchema = z.object({

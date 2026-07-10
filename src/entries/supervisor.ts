@@ -197,6 +197,9 @@ export async function runSupervisor(argv: string[]): Promise<number> {
       launchArgs = ["--resume", sid, ...base];
       continue;
     }
+    // No marker: claude exited on its own (quit, crash, resume refused). Log it -
+    // "the process just exited" is undiagnosable without the code/signal.
+    log("supervisor.exit", { sid, respawns, code: child.exitCode, signal: child.signalCode });
     return child.exitCode ?? (child.signalCode ? 1 : 0);
   }
 }
