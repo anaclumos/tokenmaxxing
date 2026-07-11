@@ -20,9 +20,9 @@ import { readOAuthAccount } from "./claudejson.ts";
 import { chooseAndSwap, performSwap } from "./swap.ts";
 import { pickEarliestReset, usableAt } from "./picker.ts";
 import { InvalidGrantError } from "./oauth.ts";
-import { probeUsage } from "./usage.ts";
+import { familyTokens, matchedFamily, probeUsage } from "./usage.ts";
 import { log } from "./log.ts";
-import { AccountSchema, type Account, type Config, type ModelInfo, type ModelUsageState, type UsageState, type UsageWindow } from "./types.ts";
+import { AccountSchema, type Account, type Config, type ModelUsageState, type UsageState, type UsageWindow } from "./types.ts";
 
 const SwapDecisionSchema = z.object({
   swapped: z.boolean(),
@@ -56,24 +56,6 @@ async function ensurePerModel(cfg: Config, org: string | null): Promise<ModelUsa
   const state: ModelUsageState = { perModel: full.perModel, org, ts: Date.now() };
   saveModelUsage(state);
   return state;
-}
-
-/** Lowercased word tokens of a model id or display string: "claude-opus-4-8" /
- *  "Opus 4.8" -> ["claude","opus","4","8"] / ["opus","4","8"]. Model naming
- *  drifts per release ("Fable" became "Fable 5" in 2.1.206, and id grammar has
- *  historically flipped between family-first and version-first), so gates match
- *  a family token anywhere instead of an exact string - an exact-string gate
- *  silently disabled the per-model check in the 2026-07-09/10 incidents. */
-export function familyTokens(s: string): string[] {
-  return s.trim().toLowerCase().split(/[\s.-]+/).filter((t) => t.length > 0);
-}
-
-/** The switchModels family the active model belongs to, from its id OR display
- *  tokens; null when the model is not capacity-constrained. */
-export function matchedFamily(model: ModelInfo | null, families: string[]): string | null {
-  if (!model) return null;
-  const tokens = new Set([...familyTokens(model.id), ...familyTokens(model.display)]);
-  return families.find((f) => tokens.has(f)) ?? null;
 }
 
 /** The family's weekly cap among the `/usage` rows; when several rows match the

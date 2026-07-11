@@ -2,16 +2,21 @@
 
 import { clamp } from "es-toolkit";
 
-const useColor = !process.env.NO_COLOR && process.stdout.isTTY;
+/** ANSI painters, no-ops when disabled. The statusLine renders through a pipe
+ *  (never a TTY), so it needs its own enable gate; the CLI gates on stdout. */
+export function makeColors(enabled: boolean) {
+  const paint = (code: string) => (s: string) => (enabled ? `\x1b[${code}m${s}\x1b[0m` : s);
+  return {
+    dim: paint("2"),
+    bold: paint("1"),
+    green: paint("32"),
+    yellow: paint("33"),
+    red: paint("31"),
+    cyan: paint("36"),
+  };
+}
 
-export const c = {
-  dim: (s: string) => (useColor ? `\x1b[2m${s}\x1b[0m` : s),
-  bold: (s: string) => (useColor ? `\x1b[1m${s}\x1b[0m` : s),
-  green: (s: string) => (useColor ? `\x1b[32m${s}\x1b[0m` : s),
-  yellow: (s: string) => (useColor ? `\x1b[33m${s}\x1b[0m` : s),
-  red: (s: string) => (useColor ? `\x1b[31m${s}\x1b[0m` : s),
-  cyan: (s: string) => (useColor ? `\x1b[36m${s}\x1b[0m` : s),
-};
+export const c = makeColors(!process.env.NO_COLOR && !!process.stdout.isTTY);
 
 /** A fixed-width usage bar, colored by fill. */
 export function bar(pct: number, width = 16): string {
@@ -33,4 +38,21 @@ export function fmtReset(epochMs: number | null | undefined, now = Date.now()): 
   if (h > 24) return `resets in ${Math.floor(h / 24)}d${h % 24}h`;
   if (h > 0) return `resets in ${h}h${m}m`;
   return `resets in ${m}m`;
+}
+
+/** Compact time-until-reset for the statusLine: the largest unit only ("6d",
+ *  "2h", "45m"), floored to "1m" so a live window never reads as zero, and ""
+ *  once the reset has passed (the window is simply empty again). Non-empty
+ *  output always ends in a unit letter, so the digit-leading used-percent glued
+ *  after it stays parseable. */
+export function fmtResetShort(epochMs: number | null | undefined, now = Date.now()): string {
+  if (epochMs == null) return "";
+  const dsec = Math.round((epochMs - now) / 1000);
+  if (dsec <= 0) return "";
+  const d = Math.floor(dsec / 86400);
+  const h = Math.floor((dsec % 86400) / 3600);
+  const m = Math.floor((dsec % 3600) / 60);
+  if (d > 0) return `${d}d`;
+  if (h > 0) return `${h}h`;
+  return `${Math.max(m, 1)}m`;
 }

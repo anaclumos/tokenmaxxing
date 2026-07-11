@@ -24,7 +24,7 @@ bun add -g tokenmaxxing
 tokenmaxxing init
 ```
 
-`init` imports the account you're already on, installs the `claude` supervisor + three `settings.json` entries (a statusLine shim, a Stop hook, a SessionStart hook), and adds the supervisor's bin dir to PATH in your shell rc (idempotent; it must sit ahead of the real `claude` to intercept it). Restart your shell, then add more accounts and go:
+`init` imports the account you're already on, installs the `claude` supervisor + three `settings.json` entries (the tokenmaxxing statusLine, a Stop hook, a SessionStart hook), and adds the supervisor's bin dir to PATH in your shell rc (idempotent; it must sit ahead of the real `claude` to intercept it). Restart your shell, then add more accounts and go:
 
 ```sh
 tokenmaxxing add        # logs one in, in isolation, and pools it
@@ -47,7 +47,7 @@ claude                  # use claude as always
 
 Switching triggers at **95%** (configurable) on any of:
 
-- **Session** (5-hour) or **week (all models)** - the aggregate windows, fed free/push-based by a statusLine shim.
+- **Session** (5-hour) or **week (all models)** - the aggregate windows, fed free/push-based by the statusLine.
 - **Per-model weekly cap** - the capable models (Fable, Opus) have their own tighter weekly limit that binds *before* the aggregate. tokenmaxxing reads it from `claude -p '/usage'` (free, 0 tokens, TTL-cached) whenever the active model is one of `policy.switchModels`, so a Fable session switches on the Fable cap while a Sonnet session rides the aggregate.
 
 The 5% headroom is deliberate: it's the budget to reach a clean turn boundary and respawn before the wall.

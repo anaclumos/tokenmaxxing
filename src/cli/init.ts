@@ -120,7 +120,6 @@ export async function cmdInit(): Promise<number> {
   console.log(`${c.green("✓")} imported current account → ${c.bold(account.email)} (${account.subscriptionType ?? "?"})`);
   console.log(`${c.green("✓")} installed ${c.bold("claude")} supervisor + statusLine/Stop/SessionStart hooks`);
   reportTimer(out);
-  if (out.priorStatusLine) console.log(`${c.green("✓")} wrapped your existing statusLine (preserved)`);
   if (!out.pathAhead) {
     console.log();
     ensurePathAhead();

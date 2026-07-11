@@ -1,9 +1,8 @@
 import { beforeEach, describe, expect, test } from "bun:test";
-import { readFileSync, writeFileSync, existsSync, rmSync } from "node:fs";
-import { installSettings, uninstallSettings, checkSettings, readPriorStatusLine } from "../src/lib/settings.ts";
+import { readFileSync, writeFileSync } from "node:fs";
+import { installSettings, uninstallSettings, checkSettings } from "../src/lib/settings.ts";
 
 const settingsPath = process.env.TOKENMAXXING_CLAUDE_SETTINGS!;
-const priorFile = process.env.TOKENMAXXING_HOME! + "/prior-statusline.json";
 
 const seed = () => ({
   model: "claude-fable-5",
@@ -16,7 +15,6 @@ const seed = () => ({
 
 beforeEach(() => {
   writeFileSync(settingsPath, JSON.stringify(seed(), null, 2));
-  if (existsSync(priorFile)) rmSync(priorFile);
 });
 
 function read() {
@@ -24,10 +22,8 @@ function read() {
 }
 
 describe("settings merge", () => {
-  test("wraps prior statusLine and preserves it", () => {
-    const r = installSettings();
-    expect(r.priorStatusLine).toBe("my-existing-statusline --fancy");
-    expect(readPriorStatusLine()).toBe("my-existing-statusline --fancy");
+  test("takes the statusLine slot, replacing any other command", () => {
+    installSettings();
     expect(read().statusLine.command).toContain("__statusline");
   });
 
@@ -58,14 +54,19 @@ describe("settings merge", () => {
     expect(c.sessionStartOk).toBe(true);
   });
 
-  test("uninstall restores prior statusLine and removes our hooks", () => {
+  test("uninstall removes our statusLine and hooks, keeps foreign entries", () => {
     installSettings();
     uninstallSettings();
     const s = read();
-    expect(s.statusLine.command).toBe("my-existing-statusline --fancy");
+    expect(s.statusLine).toBeUndefined();
     const stopCmds = s.hooks.Stop.flatMap((g: any) => g.hooks.map((h: any) => h.command));
     expect(stopCmds).toContain("/orca/hook.sh");
     expect(stopCmds.some((c: string) => c.includes("__stop-hook"))).toBe(false);
     expect(checkSettings().stopOk).toBe(false);
+  });
+
+  test("uninstall leaves a foreign statusLine alone", () => {
+    uninstallSettings(); // never installed: seed statusLine is not ours
+    expect(read().statusLine.command).toBe("my-existing-statusline --fancy");
   });
 });

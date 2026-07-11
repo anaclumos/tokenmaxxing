@@ -1,6 +1,7 @@
 // Idempotent merge of tokenmaxxing's three entries into the user-owned
-// ~/.claude/settings.json: a statusLine shim, a Stop hook, a SessionStart hook.
-// We APPEND to existing hook arrays and WRAP the existing statusLine - never clobber.
+// ~/.claude/settings.json: our statusLine, a Stop hook, a SessionStart hook.
+// Hooks APPEND to existing arrays; the statusLine slot is ours outright -
+// tokenmaxxing renders it natively, so any other statusLine command is replaced.
 
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -22,8 +23,6 @@ const SettingsSchema = z.looseObject({
 });
 type Settings = z.infer<typeof SettingsSchema>;
 type HookGroup = z.infer<typeof HookGroupSchema>;
-
-const PRIOR_STATUSLINE_FILE = join(paths.home, "prior-statusline.json");
 
 const SUBCMD = {
   statusline: "__statusline",
@@ -71,55 +70,25 @@ function removeHook(s: Settings, event: string, sub: string): void {
   if (s.hooks![event]!.length === 0) delete s.hooks![event];
 }
 
-const InstallResultSchema = z.object({ priorStatusLine: z.string().nullable() });
-export type InstallResult = z.infer<typeof InstallResultSchema>;
-
-/**
- * Install the three entries. Returns the prior statusLine command that was
- * wrapped (stored to disk so the shim can chain to it and uninstall can restore).
- */
-export function installSettings(): InstallResult {
+/** Install the three entries: take the statusLine slot, append our hooks. */
+export function installSettings(): void {
   const s = readSettings();
-
-  // ---- statusLine: capture prior (unless it's already ours), then wrap.
-  let prior: string | null;
-  if (s.statusLine && !isOurCommand(s.statusLine.command)) {
-    prior = s.statusLine.command;
-    writeFileAtomic(PRIOR_STATUSLINE_FILE, JSON.stringify({ command: prior }) + "\n", 0o644);
-  } else {
-    prior = readPriorStatusLine();
-  }
   s.statusLine = {
     type: "command",
     command: `${JSON.stringify(installedBin())} ${SUBCMD.statusline}`,
   };
-
-  // ---- hooks: append ours if absent.
   appendHook(s, "Stop", SUBCMD.stop);
   appendHook(s, "SessionStart", SUBCMD.sessionStart);
-
   writeSettings(s);
-  return { priorStatusLine: prior };
 }
 
-/** Remove our three entries and restore the prior statusLine if we have it. */
+/** Remove our three entries. The statusLine slot is deleted only if it is ours. */
 export function uninstallSettings(): void {
   const s = readSettings();
   removeHook(s, "Stop", SUBCMD.stop);
   removeHook(s, "SessionStart", SUBCMD.sessionStart);
-  if (s.statusLine && isOurCommand(s.statusLine.command)) {
-    const prior = readPriorStatusLine();
-    if (prior) s.statusLine = { type: "command", command: prior };
-    else delete s.statusLine;
-  }
+  if (s.statusLine && isOurCommand(s.statusLine.command)) delete s.statusLine;
   writeSettings(s);
-}
-
-const PriorStatusLineSchema = z.object({ command: z.string() });
-
-export function readPriorStatusLine(): string | null {
-  if (!existsSync(PRIOR_STATUSLINE_FILE)) return null;
-  return PriorStatusLineSchema.parse(JSON.parse(readFileSync(PRIOR_STATUSLINE_FILE, "utf8"))).command;
 }
 
 const SettingsCheckSchema = z.object({

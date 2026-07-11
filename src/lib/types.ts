@@ -137,6 +137,32 @@ export const RateLimitsStdinSchema = z.looseObject({
   organizationUuid: z.string().optional(),
 });
 
+/** The statusLine stdin fields the native renderer consumes, on top of the
+ *  rate-limit tee's needs. Loose + optional throughout: fields are null before
+ *  the first API response and claude adds new ones freely. Each sub-object also
+ *  `.catch(undefined)`es so a field that drifts to a wrong shape degrades to
+ *  absent instead of failing the whole parse and erasing the info block. */
+export const StatusLineStdinSchema = RateLimitsStdinSchema.extend({
+  workspace: z
+    .looseObject({
+      current_dir: z.string().nullable().optional(),
+      project_dir: z.string().nullable().optional(),
+    })
+    .nullable()
+    .optional()
+    .catch(undefined),
+  context_window: z.looseObject({ used_percentage: z.number().nullable().optional() }).nullable().optional().catch(undefined),
+  cost: z
+    .looseObject({
+      total_lines_added: z.number().nullable().optional(),
+      total_lines_removed: z.number().nullable().optional(),
+    })
+    .nullable()
+    .optional()
+    .catch(undefined),
+  effort: z.looseObject({ level: z.string().optional() }).nullable().optional().catch(undefined),
+});
+
 /** Success body of the OAuth refresh grant. */
 export const RefreshResponseSchema = z.looseObject({
   access_token: z.string(),

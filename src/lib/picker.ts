@@ -38,6 +38,15 @@ export function weeklyExpiry(a: Account, now: number): number {
   return r + (Math.floor((now - r) / WEEK_MS) + 1) * WEEK_MS;
 }
 
+/** The switch preference: soonest weekly expiry first; tiebreak lowest 7-day
+ *  usage, then soonest 5h reset. Shared with the statusLine pool ordering so
+ *  the display order IS the swap order. */
+export const swapPreference = (now: number) => [
+  (a: Account) => weeklyExpiry(a, now),
+  (a: Account) => a.lastUsage?.sevenDay.usedPercentage ?? 0,
+  (a: Account) => a.lastUsage?.fiveHour.resetsAt ?? Number.POSITIVE_INFINITY,
+];
+
 export function pickBest(accounts: Account[], ctx: PickCtx): Account | null {
   const candidates = accounts.filter(
     (a) =>
@@ -46,13 +55,7 @@ export function pickBest(accounts: Account[], ctx: PickCtx): Account | null {
       !isExhausted(a, ctx),
   );
   if (candidates.length === 0) return null;
-
-  // soonest weekly expiry first; tiebreak lowest 7-day usage, then soonest 5h reset.
-  return sortBy(candidates, [
-    (a) => weeklyExpiry(a, ctx.now),
-    (a) => a.lastUsage?.sevenDay.usedPercentage ?? 0,
-    (a) => a.lastUsage?.fiveHour.resetsAt ?? Number.POSITIVE_INFINITY,
-  ])[0]!;
+  return sortBy(candidates, swapPreference(ctx.now))[0]!;
 }
 
 /** When an account becomes usable again: the latest reset among its over-threshold

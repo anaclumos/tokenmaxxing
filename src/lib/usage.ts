@@ -49,6 +49,24 @@ export function parseStatusLineModel(obj: unknown): ModelInfo | null {
   return { id: m?.id ?? m?.display_name ?? "", display: m?.display_name ?? m?.id ?? "" };
 }
 
+/** Lowercased word tokens of a model id or display string: "claude-opus-4-8" /
+ *  "Opus 4.8" -> ["claude","opus","4","8"] / ["opus","4","8"]. Model naming
+ *  drifts per release ("Fable" became "Fable 5" in 2.1.206, and id grammar has
+ *  historically flipped between family-first and version-first), so gates match
+ *  a family token anywhere instead of an exact string - an exact-string gate
+ *  silently disabled the per-model check in the 2026-07-09/10 incidents. */
+export function familyTokens(s: string): string[] {
+  return s.trim().toLowerCase().split(/[\s.-]+/).filter((t) => t.length > 0);
+}
+
+/** The switchModels family the active model belongs to, from its id OR display
+ *  tokens; null when the model is not capacity-constrained. */
+export function matchedFamily(model: ModelInfo | null, families: string[]): string | null {
+  if (!model) return null;
+  const tokens = new Set([...familyTokens(model.id), ...familyTokens(model.display)]);
+  return families.find((f) => tokens.has(f)) ?? null;
+}
+
 export const FullUsageSchema = z.object({
   session: UsageWindowSchema,
   weekAll: UsageWindowSchema,

@@ -14,7 +14,6 @@ import { resolveRealClaude } from "./claudebin.ts";
 const InstallOutcomeSchema = z.object({
   claudeWrapper: z.string(),
   installedBin: z.string(),
-  priorStatusLine: z.string().nullable(),
   pathAhead: z.boolean(),
   timerLoaded: z.boolean(),
 });
@@ -48,11 +47,10 @@ export function installSupervisor(): InstallOutcome {
   // the `xx` short alias → tokenmaxxing
   writeFileAtomic(join(paths.binDir, "xx"), `#!/bin/sh\nexec ${JSON.stringify(target)} "$@"\n`, 0o755);
 
-  const { priorStatusLine } = installSettings();
+  installSettings();
   return {
     claudeWrapper: paths.supervisorLink,
     installedBin: target,
-    priorStatusLine,
     pathAhead: isBinDirAhead(),
     timerLoaded: installCheckTimer(),
   };
