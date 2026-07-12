@@ -62,6 +62,18 @@ describe("cmdSwitch idempotence", () => {
     expect(loadAccounts().activeAccountUuid).toBe("cur");
   });
 
+  test("no-ops when the sooner-expiring rival's Fable cap is burnt (default switchModels)", async () => {
+    const now = Date.now();
+    const cur = acct("cur", { fiveHour: { usedPercentage: 10, resetsAt: now + H }, sevenDay: { usedPercentage: 40, resetsAt: now + 5 * D } });
+    const rival = {
+      ...acct("other", { fiveHour: { usedPercentage: 10, resetsAt: now + H }, sevenDay: { usedPercentage: 20, resetsAt: now + D } }),
+      lastPerModel: { Fable: { usedPercentage: 97, resetsAt: now + D } },
+    };
+    saveAccounts({ version: 1, activeAccountUuid: "cur", accounts: [cur, rival] });
+    expect(await cmdSwitch()).toBe(0);
+    expect(loadAccounts().activeAccountUuid).toBe("cur");
+  });
+
   test("stays put (exit 0) when current is at limit and the only rival needs re-auth", async () => {
     const now = Date.now();
     const cur = acct("cur", { fiveHour: { usedPercentage: 99, resetsAt: now + H }, sevenDay: { usedPercentage: 40, resetsAt: now + 6 * D } });

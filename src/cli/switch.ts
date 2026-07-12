@@ -58,7 +58,8 @@ export async function cmdSwitch(selector?: string): Promise<number> {
     }
 
     // auto: greedy over everyone, current included - a no-op when current wins.
-    const everyone: PickCtx = { now, threshold: cfg.threshold, currentAccountUuid: null };
+    // No session context here, so every configured per-model family gates.
+    const everyone: PickCtx = { now, threshold: cfg.threshold, currentAccountUuid: null, switchFamilies: cfg.policy.switchModels };
     const active = idx.accounts.find((a) => a.accountUuid === idx.activeAccountUuid) ?? null;
     const best = pickBest(idx.accounts, everyone);
     const currentWins =
@@ -72,7 +73,7 @@ export async function cmdSwitch(selector?: string): Promise<number> {
       return 0;
     }
     if (best) {
-      const landed = await chooseAndSwap({ now, threshold: cfg.threshold });
+      const landed = await chooseAndSwap({ now, threshold: cfg.threshold, switchFamilies: cfg.policy.switchModels });
       if (landed) {
         console.log(`${c.green("↻")} switched to ${c.bold(landed.label)}`);
         return 0;
@@ -84,7 +85,16 @@ export async function cmdSwitch(selector?: string): Promise<number> {
     // hence the reload). Stay on / switch to whichever recovers soonest.
     const fresh = loadAccounts();
     const earliest = pickEarliestReset(fresh.accounts, everyone);
-    if (!earliest) { console.error(c.yellow("no switchable account (all need re-auth?)")); return 1; }
+    if (!earliest) {
+      // Either every account needs re-auth, or every account is blocked with no
+      // recoverable bound (unparsed reset clocks AND no sample time - see log).
+      const reauth = fresh.accounts.filter((a) => a.needsReauth).map((a) => a.label);
+      if (reauth.length > 0) { console.error(c.yellow(`no switchable account - re-auth needed: ${reauth.join(", ")}`)); return 1; }
+      // never freeze a label drift behind a no-op (see header).
+      if (drifted && active) return swapTo(active);
+      console.log(c.yellow("all accounts at their limit with unknown reset times (unparsed reset clocks? see tokenmaxxing.log) - staying put"));
+      return 0;
+    }
     const reauth = fresh.accounts.filter((a) => a.needsReauth).map((a) => a.label);
     const reauthNote = reauth.length ? ` - re-auth needed: ${reauth.join(", ")}` : "";
     if (earliest.account.accountUuid === fresh.activeAccountUuid && !drifted) {

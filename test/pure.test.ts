@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { analyzeArgs, stripSessionFlags } from "../src/entries/supervisor.ts";
-import { pickBest, isExhausted, nextWeeklyReset, weeklyExpiry } from "../src/lib/picker.ts";
-import { familyTokens, matchedFamily, normalizeResetsAt, parseStatusLineStdin, parseStatusLineModel, parseUsageText, parseUsageTextFull, parseResetClock } from "../src/lib/usage.ts";
+import { pickBest, isExhausted, nextWeeklyReset, pickEarliestReset, usableAt, weeklyExpiry } from "../src/lib/picker.ts";
+import { familyTokens, gatedFamilies, matchedFamily, normalizeResetsAt, parseStatusLineStdin, parseStatusLineModel, parseUsageText, parseUsageTextFull, parseResetClock } from "../src/lib/usage.ts";
 import { fmtAgo } from "../src/cli/render.ts";
 import type { Account } from "../src/lib/types.ts";
 
@@ -55,13 +55,13 @@ describe("account picker", () => {
     const full = acct({ accountUuid: "B", lastUsage: { fiveHour: { usedPercentage: 10, resetsAt: null }, sevenDay: { usedPercentage: 20, resetsAt: now + 5 * 86_400_000 } } });
     const cur = acct({ accountUuid: "CUR" });
     const dead = acct({ accountUuid: "D", needsReauth: true });
-    const best = pickBest([soon, full, cur, dead], { now, threshold: 95, currentAccountUuid: "CUR" });
+    const best = pickBest([soon, full, cur, dead], { now, threshold: 95, currentAccountUuid: "CUR", switchFamilies: [] });
     expect(best?.accountUuid).toBe("A");
   });
   test("tiebreaks equal expiry on lowest 7-day usage", () => {
     const a = acct({ accountUuid: "A", lastUsage: { fiveHour: { usedPercentage: 10, resetsAt: null }, sevenDay: { usedPercentage: 50, resetsAt: null } } });
     const b = acct({ accountUuid: "B", lastUsage: { fiveHour: { usedPercentage: 10, resetsAt: null }, sevenDay: { usedPercentage: 20, resetsAt: null } } });
-    expect(pickBest([a, b], { now, threshold: 95, currentAccountUuid: null })?.accountUuid).toBe("B");
+    expect(pickBest([a, b], { now, threshold: 95, currentAccountUuid: null, switchFamilies: [] })?.accountUuid).toBe("B");
   });
   test("weeklyExpiry: future passes through, stale past extrapolates by weeks, unknown is Infinity", () => {
     const future = acct({ lastUsage: { fiveHour: { usedPercentage: 0, resetsAt: null }, sevenDay: { usedPercentage: 0, resetsAt: now + 5_000 } } });
@@ -75,17 +75,17 @@ describe("account picker", () => {
   test("just-reset (stale past) account ranks after one with a known upcoming expiry", () => {
     const justReset = acct({ accountUuid: "R", lastUsage: { fiveHour: { usedPercentage: 10, resetsAt: null }, sevenDay: { usedPercentage: 90, resetsAt: now - 10_000 } } });
     const expiring = acct({ accountUuid: "E", lastUsage: { fiveHour: { usedPercentage: 10, resetsAt: null }, sevenDay: { usedPercentage: 30, resetsAt: now + 2 * 86_400_000 } } });
-    expect(pickBest([justReset, expiring], { now, threshold: 95, currentAccountUuid: null })?.accountUuid).toBe("E");
+    expect(pickBest([justReset, expiring], { now, threshold: 95, currentAccountUuid: null, switchFamilies: [] })?.accountUuid).toBe("E");
   });
   test("exhausted-until-reset excluded; available-after-reset included", () => {
     const blocked = acct({ accountUuid: "X", lastUsage: { fiveHour: { usedPercentage: 99, resetsAt: now + 10_000 }, sevenDay: { usedPercentage: 10, resetsAt: null } } });
     const reset = acct({ accountUuid: "Y", lastUsage: { fiveHour: { usedPercentage: 99, resetsAt: now - 10_000 }, sevenDay: { usedPercentage: 10, resetsAt: null } } });
-    expect(isExhausted(blocked, { now, threshold: 95, currentAccountUuid: null })).toBe(true);
-    expect(isExhausted(reset, { now, threshold: 95, currentAccountUuid: null })).toBe(false);
-    expect(pickBest([blocked, reset], { now, threshold: 95, currentAccountUuid: null })?.accountUuid).toBe("Y");
+    expect(isExhausted(blocked, { now, threshold: 95, currentAccountUuid: null, switchFamilies: [] })).toBe(true);
+    expect(isExhausted(reset, { now, threshold: 95, currentAccountUuid: null, switchFamilies: [] })).toBe(false);
+    expect(pickBest([blocked, reset], { now, threshold: 95, currentAccountUuid: null, switchFamilies: [] })?.accountUuid).toBe("Y");
   });
   test("no candidate returns null", () => {
-    expect(pickBest([], { now, threshold: 95, currentAccountUuid: null })).toBe(null);
+    expect(pickBest([], { now, threshold: 95, currentAccountUuid: null, switchFamilies: [] })).toBe(null);
   });
   test("nextWeeklyReset: future/null pass through, past extrapolates forward in 7-day steps", () => {
     expect(nextWeeklyReset(null, now)).toBe(null);
@@ -96,13 +96,86 @@ describe("account picker", () => {
   test("null currentAccountUuid ranks every account, including the active one", () => {
     const cur = acct({ accountUuid: "CUR", lastUsage: { fiveHour: { usedPercentage: 10, resetsAt: null }, sevenDay: { usedPercentage: 60, resetsAt: now + 86_400_000 } } });
     const other = acct({ accountUuid: "O", lastUsage: { fiveHour: { usedPercentage: 10, resetsAt: null }, sevenDay: { usedPercentage: 10, resetsAt: now + 4 * 86_400_000 } } });
-    expect(pickBest([cur, other], { now, threshold: 95, currentAccountUuid: null })?.accountUuid).toBe("CUR");
-    expect(pickBest([cur, other], { now, threshold: 95, currentAccountUuid: "CUR" })?.accountUuid).toBe("O");
+    expect(pickBest([cur, other], { now, threshold: 95, currentAccountUuid: null, switchFamilies: [] })?.accountUuid).toBe("CUR");
+    expect(pickBest([cur, other], { now, threshold: 95, currentAccountUuid: "CUR", switchFamilies: [] })?.accountUuid).toBe("O");
   });
   test("a session window over threshold disqualifies even the soonest weekly expiry", () => {
     const busy = acct({ accountUuid: "S", lastUsage: { fiveHour: { usedPercentage: 96, resetsAt: now + 3_600_000 }, sevenDay: { usedPercentage: 10, resetsAt: now + 86_400_000 } } });
     const idle = acct({ accountUuid: "I", lastUsage: { fiveHour: { usedPercentage: 10, resetsAt: null }, sevenDay: { usedPercentage: 10, resetsAt: now + 3 * 86_400_000 } } });
-    expect(pickBest([busy, idle], { now, threshold: 95, currentAccountUuid: null })?.accountUuid).toBe("I");
+    expect(pickBest([busy, idle], { now, threshold: 95, currentAccountUuid: null, switchFamilies: [] })?.accountUuid).toBe("I");
+  });
+  test("a burnt gated per-model cap exhausts; other families and passed resets do not", () => {
+    const fableBurnt = acct({
+      accountUuid: "F",
+      lastUsage: { fiveHour: { usedPercentage: 10, resetsAt: null }, sevenDay: { usedPercentage: 40, resetsAt: now + 86_400_000 } },
+      lastPerModel: { Fable: { usedPercentage: 96, resetsAt: now + 2 * 86_400_000 } },
+    });
+    expect(isExhausted(fableBurnt, { now, threshold: 95, currentAccountUuid: null, switchFamilies: ["fable"] })).toBe(true);
+    expect(isExhausted(fableBurnt, { now, threshold: 95, currentAccountUuid: null, switchFamilies: [] })).toBe(false);
+    expect(isExhausted(fableBurnt, { now, threshold: 95, currentAccountUuid: null, switchFamilies: ["sonnet"] })).toBe(false);
+    const resetSince = acct({
+      accountUuid: "R",
+      lastUsage: { fiveHour: { usedPercentage: 10, resetsAt: null }, sevenDay: { usedPercentage: 40, resetsAt: now + 86_400_000 } },
+      lastPerModel: { Fable: { usedPercentage: 96, resetsAt: now - 10_000 } },
+    });
+    expect(isExhausted(resetSince, { now, threshold: 95, currentAccountUuid: null, switchFamilies: ["fable"] })).toBe(false);
+  });
+  test("pickBest skips a fable-burnt candidate only when the fable family gates", () => {
+    const soonButBurnt = acct({
+      accountUuid: "B",
+      lastUsage: { fiveHour: { usedPercentage: 10, resetsAt: null }, sevenDay: { usedPercentage: 50, resetsAt: now + 86_400_000 } },
+      lastPerModel: { "Fable 5": { usedPercentage: 97, resetsAt: now + 86_400_000 } },
+    });
+    const laterButClean = acct({
+      accountUuid: "C",
+      lastUsage: { fiveHour: { usedPercentage: 10, resetsAt: null }, sevenDay: { usedPercentage: 20, resetsAt: now + 4 * 86_400_000 } },
+      lastPerModel: { "Fable 5": { usedPercentage: 10, resetsAt: now + 4 * 86_400_000 } },
+    });
+    expect(pickBest([soonButBurnt, laterButClean], { now, threshold: 95, currentAccountUuid: null, switchFamilies: ["fable"] })?.accountUuid).toBe("C");
+    expect(pickBest([soonButBurnt, laterButClean], { now, threshold: 95, currentAccountUuid: null, switchFamilies: [] })?.accountUuid).toBe("B");
+  });
+  test("usableAt waits for a burnt gated cap's reset", () => {
+    const a = acct({
+      lastUsage: { fiveHour: { usedPercentage: 10, resetsAt: null }, sevenDay: { usedPercentage: 10, resetsAt: now + 86_400_000 } },
+      lastPerModel: { Fable: { usedPercentage: 96, resetsAt: now + 3 * 86_400_000 } },
+    });
+    expect(usableAt(a, { now, threshold: 95, currentAccountUuid: null, switchFamilies: ["fable"] })).toBe(now + 3 * 86_400_000);
+    expect(usableAt(a, { now, threshold: 95, currentAccountUuid: null, switchFamilies: [] })).toBe(now);
+  });
+  test("a blocked window with no reset and no sample time is never a wait target (Infinity, skipped)", () => {
+    // isExhausted holds such an account blocked; claiming availableAt=now would
+    // swap onto it with waitUntil=now and churn kill/respawn.
+    const unknowable = acct({
+      accountUuid: "U",
+      lastUsage: { fiveHour: { usedPercentage: 10, resetsAt: null }, sevenDay: { usedPercentage: 10, resetsAt: now + 86_400_000 } },
+      lastPerModel: { Fable: { usedPercentage: 97, resetsAt: null } },
+    });
+    const knowable = acct({
+      accountUuid: "K",
+      lastUsage: { fiveHour: { usedPercentage: 99, resetsAt: now + 2 * 3_600_000 }, sevenDay: { usedPercentage: 10, resetsAt: null } },
+    });
+    const ctx = { now, threshold: 95, currentAccountUuid: null, switchFamilies: ["fable"] };
+    expect(usableAt(unknowable, ctx)).toBe(Number.POSITIVE_INFINITY);
+    expect(pickEarliestReset([unknowable, knowable], ctx)?.account.accountUuid).toBe("K");
+    expect(pickEarliestReset([unknowable], ctx)).toBe(null);
+  });
+  test("an unknown-reset block self-bounds by the window duration past its sample time", () => {
+    const H = 3_600_000;
+    const ctx = { now, threshold: 95, currentAccountUuid: null, switchFamilies: ["fable"] };
+    const win = { fiveHour: { usedPercentage: 99, resetsAt: null }, sevenDay: { usedPercentage: 10, resetsAt: null } };
+    // 5h window sampled 6h ago has certainly reset - the bench self-heals.
+    expect(isExhausted(acct({ lastUsage: win, lastUsageAt: now - 6 * H }), ctx)).toBe(false);
+    // sampled 1h ago: blocked, recovering at sample + 5h.
+    const recent = acct({ lastUsage: win, lastUsageAt: now - H });
+    expect(isExhausted(recent, ctx)).toBe(true);
+    expect(usableAt(recent, ctx)).toBe(now - H + 5 * H);
+    // per-model caps bound by the weekly duration.
+    const fableNull = acct({
+      lastUsage: { fiveHour: { usedPercentage: 5, resetsAt: null }, sevenDay: { usedPercentage: 10, resetsAt: null } },
+      lastPerModel: { Fable: { usedPercentage: 97, resetsAt: null } },
+      lastUsageAt: now - 8 * 24 * H,
+    });
+    expect(isExhausted(fableNull, ctx)).toBe(false);
   });
 });
 
@@ -223,5 +296,10 @@ describe("model family gate", () => {
     expect(familyTokens("claude-opus-4-8")).toEqual(["claude", "opus", "4", "8"]);
     expect(familyTokens("Opus 4.8")).toEqual(["opus", "4", "8"]);
     expect(familyTokens("Fable 5")).toEqual(["fable", "5"]);
+  });
+  test("gatedFamilies: known model gates its family, unknown model gates every configured family", () => {
+    expect(gatedFamilies({ id: "claude-fable-5", display: "Fable 5" }, ["fable", "opus"])).toEqual(["fable"]);
+    expect(gatedFamilies({ id: "claude-3-5-sonnet-20241022", display: "Sonnet" }, ["fable", "opus"])).toEqual([]);
+    expect(gatedFamilies(null, ["fable", "opus"])).toEqual(["fable", "opus"]);
   });
 });

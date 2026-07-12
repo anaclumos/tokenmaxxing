@@ -1,8 +1,8 @@
 // SessionStart hook. A launch/resume backstop: if the active account is already
 // over threshold with FRESH usage (e.g. a prior session left it exhausted), swap
 // the credential before this session's first turn so it starts on a good account.
-// Right after a respawn, usage.json is stale for the new org, so the org guard in
-// evaluateAndMaybeSwap makes this correctly no-op.
+// Right after a respawn, the post-swap cooldown in evaluateAndMaybeSwap makes
+// this correctly no-op.
 
 import { z } from "zod";
 import { evaluateAndMaybeSwap } from "../lib/decide.ts";

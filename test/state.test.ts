@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { loadAccounts, saveAccounts, loadConfig, saveConfig, loadUsage, writeUsage } from "../src/lib/state.ts";
+import { loadAccounts, saveAccounts, loadConfig, saveConfig, loadUsage, usageTeeAt, writeUsage } from "../src/lib/state.ts";
 import type { Account, UsageState } from "../src/lib/types.ts";
 
 function acct(): Account {
@@ -56,5 +56,14 @@ describe("usage write-on-change", () => {
     expect(writeUsage(mk(50, 999))).toBe(false); // only ts changed → skipped
     expect(writeUsage(mk(96, 1000))).toBe(true); // value changed → written
     expect(loadUsage()?.fiveHour.usedPercentage).toBe(96);
+  });
+  test("a suppressed write still bumps the liveness heartbeat (mtime)", () => {
+    const t0 = Date.now();
+    expect(writeUsage(mk(70, t0 - 60_000))).toBe(true);
+    expect(writeUsage(mk(70, t0))).toBe(false); // suppressed, figures unchanged
+    const teeAt = usageTeeAt();
+    expect(teeAt).not.toBeNull();
+    // mtime tracks the suppressed write's ts, not the original write time.
+    expect(Math.abs((teeAt ?? 0) - t0)).toBeLessThan(1_000);
   });
 });

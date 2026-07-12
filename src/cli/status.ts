@@ -92,7 +92,7 @@ export async function cmdStatus(): Promise<number> {
     const badges: string[] = [];
     if (active) badges.push(c.green("active"));
     if (a.needsReauth) badges.push(c.red("needs-reauth"));
-    if (isExhausted(a, { now, threshold: cfg.threshold, currentAccountUuid: idx.activeAccountUuid }))
+    if (isExhausted(a, { now, threshold: cfg.threshold, currentAccountUuid: idx.activeAccountUuid, switchFamilies: cfg.policy.switchModels }))
       badges.push(c.yellow("exhausted"));
 
     console.log(`${marker} ${c.bold(a.label || a.email)} ${badges.join(" ")}`);

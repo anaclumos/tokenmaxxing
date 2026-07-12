@@ -107,6 +107,42 @@ describe("renderStatusline", () => {
     expect(out).toStartWith("tm-fix-auth Fable 5 (high) ctx 42");
   });
 
+  test("a fable-burnt parked account sorts last under a fable session, by expiry under sonnet", () => {
+    const accounts: AccountsIndex = {
+      version: 1,
+      activeAccountUuid: "uuid-act",
+      accounts: [
+        acct({ accountUuid: "uuid-act", label: "act" }),
+        acct({
+          accountUuid: "uuid-burnt",
+          label: "burnt",
+          lastUsage: {
+            fiveHour: { usedPercentage: 5, resetsAt: NOW + H },
+            sevenDay: { usedPercentage: 30, resetsAt: NOW + 24 * H },
+          },
+          lastPerModel: { Fable: { usedPercentage: 97, resetsAt: NOW + 24 * H } },
+        }),
+        acct({
+          accountUuid: "uuid-clean",
+          label: "clean",
+          lastUsage: {
+            fiveHour: { usedPercentage: 5, resetsAt: NOW + H },
+            sevenDay: { usedPercentage: 40, resetsAt: NOW + 72 * H },
+          },
+          lastPerModel: { Fable: { usedPercentage: 10, resetsAt: NOW + 72 * H } },
+        }),
+      ],
+    };
+    // Fable session: the burnt account is no swap target, so it sorts last
+    // despite its sooner weekly expiry (its F97 also surfaces as the binding cap).
+    const underFable = renderStatusline(fullStdin, ctx({ accounts }));
+    expect(underFable).toBe("Fable 5 (high) ctx 42 +156/-23  ◆ F? 2h5 1d38  ◇ 3d40  ◇ F97 1d30");
+    // Sonnet session: the fable cap gates nothing, order is soonest expiry first.
+    const sonnetStdin = { ...fullStdin, model: { id: "claude-sonnet-5", display_name: "Sonnet 5" } };
+    const underSonnet = renderStatusline(sonnetStdin, ctx({ accounts }));
+    expect(underSonnet).toBe("Sonnet 5 (high) ctx 42 +156/-23  ◆ 2h5 1d38  ◇ F97 1d30  ◇ 3d40");
+  });
+
   test("parked accounts render in swap-preference order, exhausted last", () => {
     const accounts: AccountsIndex = {
       version: 1,

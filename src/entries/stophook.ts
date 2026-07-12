@@ -30,7 +30,10 @@ export async function runStopHook(): Promise<number> {
     (parsed.success ? parsed.data.session_id : undefined) ?? process.env.TOKENMAXXING_SESSION_ID;
 
   try {
-    const decision = await evaluateAndMaybeSwap();
+    // Anticipatory depleted swaps are only sane when the respawn marker below
+    // will actually pause the session until the reset.
+    const canPause = process.env.TOKENMAXXING_SUPERVISED === "1" && sessionId != null;
+    const decision = await evaluateAndMaybeSwap(Date.now(), canPause);
     // Respawn on a swap, or on a depleted-pool wait (relaunch after the reset).
     if (decision.account && (decision.swapped || decision.waitUntil !== undefined)) {
       log(decision.swapped ? "stop.swapped" : "stop.wait", { account: decision.account.accountUuid.slice(0, 8), waitUntil: decision.waitUntil });

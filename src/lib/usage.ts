@@ -67,6 +67,19 @@ export function matchedFamily(model: ModelInfo | null, families: string[]): stri
   return families.find((f) => tokens.has(f)) ?? null;
 }
 
+/** Families whose per-model weekly cap gates a switch, given the active model:
+ *  the model's own family when it is capacity-constrained, none when it is a
+ *  known-unconstrained model, and EVERY configured family when the model is
+ *  unknown. The unknown case matters on headless boxes: a swap clears the
+ *  snapshots and only an actively-rendering statusLine restores the model, so
+ *  the periodic check ran model-blind for hours while the active account sat at
+ *  its Fable cap (the 2026-07-12 stella incident). */
+export function gatedFamilies(model: ModelInfo | null, families: string[]): string[] {
+  if (!model) return families;
+  const family = matchedFamily(model, families);
+  return family ? [family] : [];
+}
+
 export const FullUsageSchema = z.object({
   session: UsageWindowSchema,
   weekAll: UsageWindowSchema,

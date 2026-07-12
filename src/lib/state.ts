@@ -1,6 +1,6 @@
 // Config + accounts index + usage snapshot persistence. All writes atomic.
 
-import { existsSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, readFileSync, rmSync, statSync, utimesSync } from "node:fs";
 import { isEqual } from "es-toolkit";
 import { z } from "zod";
 import { paths, realClaudeBinFromEnv } from "./paths.ts";
@@ -131,12 +131,35 @@ export function saveLastSwapAt(ts: number): void {
 const USAGE_TS_REFRESH_MS = 10 * 60_000;
 
 /** Write-on-change: skip the write (and its fsync) when only `ts` would differ,
- *  unless the stored `ts` has aged past the refresh window. */
+ *  unless the stored `ts` has aged past the refresh window. A suppressed write
+ *  still bumps the file's mtime (metadata only, no fsync): mtime is the feed's
+ *  liveness heartbeat, and without the bump an alive tee re-proving unchanged
+ *  figures reads as a dead feed and the decision path goes model-blind. */
 export function writeUsage(next: UsageState): boolean {
   const prev = loadUsage();
-  if (prev && isEqual({ ...prev, ts: 0 }, { ...next, ts: 0 }) && next.ts - prev.ts < USAGE_TS_REFRESH_MS) return false;
+  if (prev && isEqual({ ...prev, ts: 0 }, { ...next, ts: 0 }) && next.ts - prev.ts < USAGE_TS_REFRESH_MS) {
+    try {
+      utimesSync(paths.usageJson, new Date(next.ts), new Date(next.ts));
+    } catch (e) {
+      // The file vanished mid-race: a concurrent swap just invalidated these
+      // figures. Suppressing stays correct; a write would resurrect them.
+      if ((e as { code?: string }).code !== "ENOENT") throw e;
+    }
+    return false;
+  }
   writeFileAtomic(paths.usageJson, JSON.stringify(next));
   return true;
+}
+
+/** When the usage feed last proved itself alive (usage.json mtime), null if the
+ *  snapshot is absent. Fresher than the embedded `ts`, which write-on-change
+ *  deliberately lets age while figures hold still. */
+export function usageTeeAt(): number | null {
+  try {
+    return statSync(paths.usageJson).mtimeMs;
+  } catch {
+    return null;
+  }
 }
 
 // ---- model-usage.json (per-model caps from `/usage`, TTL-cached) ----------

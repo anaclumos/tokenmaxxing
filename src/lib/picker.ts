@@ -9,26 +9,57 @@
 
 import { minBy, sortBy } from "es-toolkit";
 import { z } from "zod";
-import { AccountSchema, type Account } from "./types.ts";
+import { familyTokens } from "./usage.ts";
+import { AccountSchema, type Account, type UsageWindow } from "./types.ts";
 
 const PickCtxSchema = z.object({
   now: z.number(),
   threshold: z.number(),
   /** account to exclude (hooks switch AWAY from it); null ranks everyone. */
   currentAccountUuid: z.string().nullable(),
+  /** families whose per-model weekly cap counts toward exhaustion (from
+   *  gatedFamilies): a candidate with a burnt gated cap is no switch target -
+   *  landing on it would re-trigger the same gate and ping-pong the pool. */
+  switchFamilies: z.array(z.string()),
 });
 export type PickCtx = z.infer<typeof PickCtxSchema>;
 
-/** An account is "exhausted" if a window is >= threshold and hasn't reset yet. */
-export function isExhausted(a: Account, ctx: PickCtx): boolean {
-  const u = a.lastUsage;
-  if (!u) return false;
-  const blocked = (w: { usedPercentage: number; resetsAt: number | null }) =>
-    w.usedPercentage >= ctx.threshold && (w.resetsAt == null || w.resetsAt > ctx.now);
-  return blocked(u.fiveHour) || blocked(u.sevenDay);
+/** The account's cached per-model windows that belong to a gated family. */
+function gatedPerModelWindows(a: Account, families: string[]): UsageWindow[] {
+  return Object.entries(a.lastPerModel ?? {})
+    .filter(([model]) => families.some((f) => familyTokens(model).includes(f)))
+    .map(([, w]) => w);
 }
 
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+const FIVE_HOURS_MS = 5 * 60 * 60 * 1000;
+
+/** Epoch until which `w` blocks the account; anything <= now means it does not
+ *  block. A window with no known reset (unparsed clock) is still bounded by
+ *  its own duration past the sample time - a 5h window sampled 6h ago has
+ *  certainly reset - so a benched account always recovers by itself. With no
+ *  sample time either, it blocks indefinitely: guessing "usable now" would
+ *  swap onto it with waitUntil=now and churn kill/respawn. */
+function blockedUntil(w: UsageWindow, windowMs: number, sampledAt: number | undefined, ctx: PickCtx): number {
+  if (w.usedPercentage < ctx.threshold) return 0;
+  if (w.resetsAt != null) return w.resetsAt;
+  return sampledAt != null ? sampledAt + windowMs : Number.POSITIVE_INFINITY;
+}
+
+/** When each of the account's windows stops blocking: the two aggregates plus
+ *  the gated per-model caps. */
+function blockingUntil(a: Account, ctx: PickCtx): number[] {
+  const u = a.lastUsage;
+  return [
+    ...(u ? [blockedUntil(u.fiveHour, FIVE_HOURS_MS, a.lastUsageAt, ctx), blockedUntil(u.sevenDay, WEEK_MS, a.lastUsageAt, ctx)] : []),
+    ...gatedPerModelWindows(a, ctx.switchFamilies).map((w) => blockedUntil(w, WEEK_MS, a.lastUsageAt, ctx)),
+  ];
+}
+
+/** An account is "exhausted" if a window is >= threshold and hasn't reset yet. */
+export function isExhausted(a: Account, ctx: PickCtx): boolean {
+  return blockingUntil(a, ctx).some((t) => t > ctx.now);
+}
 
 /** Next occurrence of a weekly reset. The weekly reset is a fixed per-account
  *  anchor, so a cached (past) resetsAt extrapolates forward in 7-day steps -
@@ -59,25 +90,24 @@ export function pickBest(accounts: Account[], ctx: PickCtx): Account | null {
   return sortBy(usable, swapPreference(ctx.now))[0] ?? null;
 }
 
-/** When an account becomes usable again: the latest reset among its over-threshold
- *  windows (all must reset), or `now` if nothing is over. */
-export function usableAt(a: Account, threshold: number, now: number): number {
-  const u = a.lastUsage;
-  if (!u) return now;
-  const blocking = [u.fiveHour, u.sevenDay]
-    .filter((w) => w.usedPercentage >= threshold && w.resetsAt != null)
-    .map((w) => w.resetsAt as number);
-  return blocking.length ? Math.max(...blocking) : now;
+/** When an account becomes usable again: the latest blocking bound among its
+ *  windows (all must clear), or `now` if nothing blocks. Consistent with
+ *  isExhausted by construction (same blockingUntil). */
+export function usableAt(a: Account, ctx: PickCtx): number {
+  const blocking = blockingUntil(a, ctx).filter((t) => t > ctx.now);
+  return blocking.length ? Math.max(...blocking) : ctx.now;
 }
 
 const EarliestResetSchema = z.object({ account: AccountSchema, availableAt: z.number() });
 export type EarliestReset = z.infer<typeof EarliestResetSchema>;
 
 /** For the all-depleted case: the account (not current, not reauth) that becomes
- *  usable soonest. */
+ *  usable soonest. Accounts blocked with no known reset are unknowable, never
+ *  a wait target. */
 export function pickEarliestReset(accounts: Account[], ctx: PickCtx): EarliestReset | null {
   const mapped = accounts
     .filter((a) => a.accountUuid !== ctx.currentAccountUuid && !a.needsReauth)
-    .map((a) => ({ account: a, availableAt: usableAt(a, ctx.threshold, ctx.now) }));
+    .map((a) => ({ account: a, availableAt: usableAt(a, ctx) }))
+    .filter((x) => Number.isFinite(x.availableAt));
   return minBy(mapped, (x) => x.availableAt) ?? null;
 }

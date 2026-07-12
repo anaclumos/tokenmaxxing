@@ -17,7 +17,7 @@ import { sortBy } from "es-toolkit";
 import { z } from "zod";
 import { readOAuthAccount } from "../lib/claudejson.ts";
 import { loadAccounts, loadConfig, loadLastSwapAt, loadModelUsage, writeUsage } from "../lib/state.ts";
-import { familyTokens, matchedFamily, parseStatusLineStdin, parseStatusLineModel } from "../lib/usage.ts";
+import { familyTokens, gatedFamilies, matchedFamily, parseStatusLineStdin, parseStatusLineModel } from "../lib/usage.ts";
 import { isExhausted, swapPreference, weeklyExpiry } from "../lib/picker.ts";
 import { worktreeName } from "../lib/worktree.ts";
 import { fmtResetShort, makeColors } from "../cli/render.ts";
@@ -105,7 +105,12 @@ export function renderStatusline(stdinObj: unknown, ctx: RenderCtx): string {
         : "";
 
   // ---- parked accounts, in swap order: the first usable ◇ is the next target
-  const pickCtx = { now: ctx.now, threshold: ctx.threshold, currentAccountUuid: ctx.accounts.activeAccountUuid };
+  const pickCtx = {
+    now: ctx.now,
+    threshold: ctx.threshold,
+    currentAccountUuid: ctx.accounts.activeAccountUuid,
+    switchFamilies: gatedFamilies(parseStatusLineModel(stdinObj), ctx.switchModels),
+  };
   const parked = sortBy(
     ctx.accounts.accounts.filter((a) => a.accountUuid !== ctx.accounts.activeAccountUuid),
     [(a) => (a.needsReauth || isExhausted(a, pickCtx) ? 1 : 0), ...swapPreference(ctx.now)],
