@@ -1,0 +1,62 @@
+test/pure.test.ts
+  s_dbde73105c072d::t_d69e978367864c 90-106
+  s_dbde73105c072d::t_17bf43c8905b02 3
+  s_dbde73105c072d::t_8d58593f8df490 5
+  s_dbde73105c072d::t_14875e80e51646 201-213
+src/lib/state.ts
+  s_dbde73105c072d::t_e783731504e17a 129-134,137
+  s_dbde73105c072d::t_67074b83231d2d 25-27
+src/lib/picker.ts
+  s_dbde73105c072d::t_8a8fb25ae79c97 1-8,17
+  s_dbde73105c072d::t_b5369402a6d20a 33-42,44,47-49,56-57,59
+src/lib/usage.ts
+  s_dbde73105c072d::t_98c9d40e032e06 198-202,211-221
+test/e2e/swap-concurrency.ts
+  s_dbde73105c072d::t_92d7bb53ac6896 79-82
+src/lib/claudebin.ts
+  s_dbde73105c072d::t_6a486a0ec97202 10-17
+src/cli/add.ts
+  s_dbde73105c072d::t_fe8e3ffaf1026d 121
+src/lib/types.ts
+  s_dbde73105c072d::t_6d0542de46241b 87-90
+src/lib/decide.ts
+  s_dbde73105c072d::t_d1c6431f808a0c 119
+test/switch.test.ts
+  s_dbde73105c072d::t_71d808df0188f9 65,67
+  s_dbde73105c072d::t_6c148784382f10 2-4,6-7,15,25,29-36,38-39,45-51,60-64,66,68
+  s_dbde73105c072d::t_1ddcb014660671 1,5,8-14,16-24,26-28,37,40-44,52-59,69-73
+DESIGN.md
+  s_dbde73105c072d::t_6ffb6aca86fafc 81
+src/cli/switch.ts
+  s_dbde73105c072d::t_d096176874fd78 1-3,60-61,63,74-80,85-86,97-98
+  s_dbde73105c072d::t_89ec62ca9f865c 4-14,19,21,25,38-39,41,50-57,62,64-71,82-84,88-96,99-101,103
+src/cli/status.ts
+  s_dbde73105c072d::t_0d63b8d63ebdd3 61-63
+  s_dbde73105c072d::t_b2a345bff02b96 72-80
+  s_dbde73105c072d::t_513487329e9d42 100-101,103,105-106
+  s_dbde73105c072d::t_fbcb7f13b556b3 13-14
+src/cli/render.ts
+  s_dbde73105c072d::t_1119a1a8bbf2ac 43-55
+src/main.ts
+  s_dbde73105c072d::t_d7786e2981b52c 27
+README.md
+  s_dbde73105c072d::t_79bfd957a37cb1 55-56
+  s_dbde73105c072d::t_3ff656e2165464 51
+  s_dbde73105c072d::t_b4f76b09a10e24 66
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.12",
+  "base_commit_sha": "72f8c8af9b6228335ffd588c1ab86a7b4a191185",
+  "prompts": {},
+  "sessions": {
+    "s_dbde73105c072d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bc651c69-2ec5-402c-a272-c517bb0f09b4",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    }
+  }
+}
