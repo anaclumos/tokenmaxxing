@@ -1,0 +1,96 @@
+src/lib/state.ts
+  s_ee50bd8da49b28::t_d2da45f2eb2146 141-147
+  s_ee50bd8da49b28::t_bcf256e7bc60d3 3
+  s_ee50bd8da49b28::t_0faa5e2c2ceed3 134-137,140,148-149,154-162
+  s_2bcfd853fda067::t_63d073ac813271 163-164
+package.json
+  s_ee50bd8da49b28::t_9b1e6162b50d78 3
+src/entries/sessionstart.ts
+  s_ee50bd8da49b28::t_7d555ebb436fba 4-5
+src/lib/picker.ts
+  s_ee50bd8da49b28::t_88498a48bd851b 35-51,53-56,61
+  s_ee50bd8da49b28::t_893d36420d2af1 93-95,97-98
+  s_ee50bd8da49b28::t_83480296c6432b 12-13,20-23,27-31,52,57-58,62
+  s_ee50bd8da49b28::t_04d6998f7e183a 96
+  s_ee50bd8da49b28::t_afe8ae609257c3 105-106,110-111
+  s_ee50bd8da49b28::t_d4ce4c04a0652f 59-60
+test/pure.test.ts
+  s_ee50bd8da49b28::t_4ec29c6141e716 107-144
+  s_ee50bd8da49b28::t_16e0ed75a43e24 4
+  s_ee50bd8da49b28::t_a0e5c1005ac8da 146-160
+  s_ee50bd8da49b28::t_30399701a358cd 3
+  s_ee50bd8da49b28::t_9f95bc06003063 58,64,78,83-85,88,99-100,105
+  s_ee50bd8da49b28::t_4f6f15fe0635c1 145,161-178
+  s_ee50bd8da49b28::t_266413fc0170e5 106,300-304
+test/statusline.test.ts
+  s_ee50bd8da49b28::t_c8e3ba77ad88cc 110-145
+test/state.test.ts
+  s_ee50bd8da49b28::t_77b8184afaea71 2
+  s_ee50bd8da49b28::t_5175470e34f68d 60-68
+src/cli/switch.ts
+  s_ee50bd8da49b28::t_5fed2803f0cd91 61-62
+  s_ee50bd8da49b28::t_35744e19906bd6 76
+  s_ee50bd8da49b28::t_d34ea2d313733a 89-90,93-94
+  s_ee50bd8da49b28::t_558849da63a649 88,91-92,95-97
+src/lib/decide.ts
+  s_ee50bd8da49b28::t_722600584a7b2a 10-11
+  s_ee50bd8da49b28::t_10a61dd90f9212 23
+  s_ee50bd8da49b28::t_33222c5dd6a751 81-89,106,126
+  s_ee50bd8da49b28::t_f04481e6ff3472 194
+  s_ee50bd8da49b28::t_8b50c12dcd7343 188,192-193,195,201,203
+  s_ee50bd8da49b28::t_8d84cde66dfbbc 41-44,48-50,54,60,63-64,70,73-80,90-105,107-108,129-132
+  s_ee50bd8da49b28::t_15044b8d85f365 142-151
+  s_ee50bd8da49b28::t_93313bf930b9dd 58,61-62,65,72
+  s_ee50bd8da49b28::t_963a4f11ecfa54 164
+  s_ee50bd8da49b28::t_9235766a414306 181-183
+  s_ee50bd8da49b28::t_850bc1d992a2b5 1-3,6-9,12-13
+  s_ee50bd8da49b28::t_7752c030546db9 135-141,152-156,161
+  s_ee50bd8da49b28::t_7c678826ba7a8d 28
+  s_ee50bd8da49b28::t_d1058b01ffd14b 218-221
+  s_ee50bd8da49b28::t_c33224424857b2 30
+  s_ee50bd8da49b28::t_64604876ae7824 109-125,127-128
+src/cli/status.ts
+  s_ee50bd8da49b28::t_a3dd602cfe4127 95
+test/switch.test.ts
+  s_ee50bd8da49b28::t_088dea4c571f0d 65-76
+src/entries/stophook.ts
+  s_ee50bd8da49b28::t_71d875127ce96b 33-36
+test/decide.test.ts
+  s_ee50bd8da49b28::t_25406f4166645d 11
+  s_ee50bd8da49b28::t_fb05469808451b 79-81,88,93-96
+  s_ee50bd8da49b28::t_7990183973c148 1-9,17,46-59,66,68,72-78,82-87,89-92,99,107,129-138,140-143,156-171,174-180,182-183,205-224
+  s_ee50bd8da49b28::t_22184b351af9d4 184-201,203-204
+  s_ee50bd8da49b28::t_c9bf5d524d7796 139,144-155
+  s_ee50bd8da49b28::t_4c9457bcd29e55 202
+  s_ee50bd8da49b28::t_9f715d5279617d 10,12-16,18-45,60-65,67,69-71,97-98,100-106,108-128,172-173,181,225-226
+src/entries/statusline.ts
+  s_ee50bd8da49b28::t_55e940065f15fa 20
+  s_ee50bd8da49b28::t_89867d26657ffe 108-111,113
+  s_ee50bd8da49b28::t_72764026c5bbba 112
+src/lib/usage.ts
+  s_ee50bd8da49b28::t_e268bc30840a94 70-82
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.12",
+  "base_commit_sha": "ff10485a18c6c4f6faa7dbd70755bdde2488f54c",
+  "prompts": {},
+  "sessions": {
+    "s_2bcfd853fda067": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2f4e2591-af94-4ea0-8c66-7d1987171620",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    },
+    "s_ee50bd8da49b28": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c672f012-7623-47d2-bba2-86ec6b7ae14e",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    }
+  }
+}
