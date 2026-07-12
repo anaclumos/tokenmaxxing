@@ -116,6 +116,7 @@ export async function evaluateAndMaybeSwap(now = Date.now()): Promise<SwapDecisi
       const active = idx.accounts.find((a) => a.accountUuid === idx.activeAccountUuid);
       if (active) {
         active.lastUsage = { fiveHour: u2.fiveHour, sevenDay: u2.sevenDay };
+        active.lastUsageAt = u2.ts;
         // Snapshot per-model caps too, so they still show after we switch away.
         if (mu2 && mu2.org === org2) active.lastPerModel = mu2.perModel;
         saveAccounts(idx);

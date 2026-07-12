@@ -24,7 +24,7 @@ function printHelp(): void {
   console.log(`${c.bold("tokenmaxxing")} - automatic Claude Code account switching
 
   ${c.cyan("tokenmaxxing")}            show the pool with usage bars (alias of ${c.cyan("status")})
-  ${c.cyan("tokenmaxxing switch")} [sel]  switch now to the best (or a specific) account
+  ${c.cyan("tokenmaxxing switch")} [sel]  switch to the best (or a specific) account; no-op when already on it
   ${c.cyan("tokenmaxxing check")}      evaluate once, switch if over threshold (run by the periodic timer)
   ${c.cyan("tokenmaxxing init")}       import the current account + install supervisor & hooks
   ${c.cyan("tokenmaxxing add")}        register an additional account (isolated login)

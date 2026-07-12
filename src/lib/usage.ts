@@ -195,6 +195,11 @@ const CRED_ENV_OVERRIDES = [
 /** One `claude -p '/usage'` invocation → parsed usage, or null if it produced no
  *  limit lines (claude prints only a local-stats footer when its own usage fetch
  *  errors/throttles) or failed to run. */
+/** A probe child that wedges (auth prompt, dead endpoint) must never block the
+ *  Stop/SessionStart hooks or the status flock forever; a healthy `/usage`
+ *  answers in seconds. */
+const PROBE_KILL_MS = 60_000;
+
 async function probeUsageOnce(env: Record<string, string>, now: number): Promise<FullUsage | null> {
   let out: string;
   try {
@@ -203,12 +208,17 @@ async function probeUsageOnce(env: Record<string, string>, now: number): Promise
       stdout: "pipe",
       stderr: "pipe",
     });
-    out = await new Response(p.stdout).text();
-    const errText = await new Response(p.stderr).text();
-    await p.exited;
-    if (p.exitCode !== 0) {
-      log("usage.probe_failed", { exit: p.exitCode ?? "signal", stderr: errText.trim().slice(0, 200) });
-      return null;
+    const killer = setTimeout(() => p.kill(), PROBE_KILL_MS);
+    try {
+      out = await new Response(p.stdout).text();
+      const errText = await new Response(p.stderr).text();
+      await p.exited;
+      if (p.exitCode !== 0) {
+        log("usage.probe_failed", { exit: p.exitCode ?? "signal", stderr: errText.trim().slice(0, 200) });
+        return null;
+      }
+    } finally {
+      clearTimeout(killer);
     }
   } catch (e) {
     log("usage.probe_failed", { err: String((e as Error).message ?? e) });

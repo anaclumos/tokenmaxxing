@@ -22,7 +22,9 @@ import {
 const DEFAULT_CONFIG: Config = {
   threshold: 95,
   claudeBin: "",
-  policy: { projectionMargin: 0, switchModels: ["fable", "opus"], usagePollTtlMs: 90_000, maxWaitMs: 3_600_000 },
+  // per-model weekly caps exist only for Sonnet and Fable (no Opus-only quota,
+  // per the user 2026-07-12), and only Fable's is worth switching on.
+  policy: { projectionMargin: 0, switchModels: ["fable"], usagePollTtlMs: 90_000, maxWaitMs: 3_600_000 },
 };
 
 /** On-disk shape (all optional); validated via Zod, merged over defaults. */
@@ -124,10 +126,15 @@ export function saveLastSwapAt(ts: number): void {
   writeFileAtomic(paths.lastSwapJson, JSON.stringify(LastSwapSchema.parse({ ts })));
 }
 
-/** Write-on-change: skip the write (and its fsync) when only `ts` would differ. */
+/** An alive feed re-proving unchanged figures still refreshes `ts` this often,
+ *  so cache-age displays stay honest without a write+fsync per tick. */
+const USAGE_TS_REFRESH_MS = 10 * 60_000;
+
+/** Write-on-change: skip the write (and its fsync) when only `ts` would differ,
+ *  unless the stored `ts` has aged past the refresh window. */
 export function writeUsage(next: UsageState): boolean {
   const prev = loadUsage();
-  if (prev && isEqual({ ...prev, ts: 0 }, { ...next, ts: 0 })) return false;
+  if (prev && isEqual({ ...prev, ts: 0 }, { ...next, ts: 0 }) && next.ts - prev.ts < USAGE_TS_REFRESH_MS) return false;
   writeFileAtomic(paths.usageJson, JSON.stringify(next));
   return true;
 }

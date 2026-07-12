@@ -84,6 +84,10 @@ export const AccountSchema = z.object({
   addedAt: z.string(),
   lastUsage: UsageWindowsSchema.optional(),
   lastPerModel: z.record(z.string(), UsageWindowSchema).optional(),
+  /** epoch ms of the sample behind lastUsage/lastPerModel. Their resetsAt
+   *  values are absolute epochs (UTC-anchored), so even an old snapshot still
+   *  resolves to correct resets - display it as a dated cache, never discard. */
+  lastUsageAt: z.number().optional(),
   needsReauth: z.boolean().optional(),
   subscriptionType: z.string().optional(),
 });

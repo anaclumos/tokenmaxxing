@@ -78,7 +78,7 @@ Each terminal ran the supervisor, so each has its own child `claude`, its own `-
 ## 5. Rotation policy
 Trigger at `five_hour >= 95%` OR `seven_day >= 95%`, per org. "Exhausted" is a **timestamped state** (`resets_at`), not a flag - an account is a candidate again after it resets. Optional projected threshold (`95 − EMA(per-turn Δ%)`) so a single large turn can't blow past 100% before the next Stop hook.
 
-**Model-aware trigger.** Claude subscriptions also enforce a **per-model weekly cap** - the capable models (Fable, Opus) have a tighter weekly limit that binds *before* the aggregate (e.g. 80% week-Fable at only 50% week-all-models). This cap isn't in statusLine stdin, so when the active model is in `policy.switchModels` we read it from `claude -p '/usage'` (free, 0 tokens, TTL-cached) and add `week(<activeModel>) >= threshold` to the trigger. A Fable session switches on the Fable cap; a Sonnet session rides the aggregate.
+**Model-aware trigger.** Claude subscriptions also enforce **per-model weekly caps** - currently only for Sonnet and Fable (there is no Opus-only quota), and Fable's tighter limit binds *before* the aggregate (e.g. 80% week-Fable at only 50% week-all-models). This cap isn't in statusLine stdin, so when the active model is in `policy.switchModels` we read it from `claude -p '/usage'` (free, 0 tokens, TTL-cached) and add `week(<activeModel>) >= threshold` to the trigger. A Fable session switches on the Fable cap; a Sonnet session rides the aggregate.
 
 ---
 

@@ -1,16 +1,28 @@
-// `tokenmaxxing switch [selector]` (also the bare `tokenmaxxing` / `xx`).
-// No selector → auto-pick the best available account. With a selector → switch to
-// that one. Manual/recovery tool: no threshold gate, runs under the flock. When
-// everything is depleted it still switches to the soonest-resetting account.
+// `tokenmaxxing switch [selector]`.
+// No selector → greedy: rank EVERY account (current included) by soonest weekly
+// expiry among those with session/week under threshold, off the cached windows.
+// When the current account already wins (or ties - swapping between equals buys
+// nothing), do nothing: the command is idempotent, so running it periodically
+// converges on the right account. With a selector → switch to that one. Runs
+// under the flock. When everything is depleted it stays on / switches to
+// whichever account recovers soonest.
+//
+// The active LABEL can drift from the live login (manual /login is the
+// surviving drift source). A no-op would freeze that drift forever, so when
+// ~/.claude.json names a different account than accounts.json we swap for real
+// instead of trusting the label - performSwap resolves the live credential's
+// true owner, harvesting the drifted login correctly.
 
 import { withLock } from "../lib/lock.ts";
 import { paths } from "../lib/paths.ts";
 import { loadAccounts, loadConfig } from "../lib/state.ts";
+import { readOAuthAccount } from "../lib/claudejson.ts";
 import { performSwap, chooseAndSwap } from "../lib/swap.ts";
-import { pickEarliestReset } from "../lib/picker.ts";
+import { isExhausted, pickBest, pickEarliestReset, swapPreference, weeklyExpiry, type PickCtx } from "../lib/picker.ts";
 import { InvalidGrantError } from "../lib/oauth.ts";
 import { findAccount } from "./rename.ts";
 import { c, fmtReset } from "./render.ts";
+import type { Account } from "../lib/types.ts";
 
 export async function cmdSwitch(selector?: string): Promise<number> {
   const idx0 = loadAccounts();
@@ -23,12 +35,10 @@ export async function cmdSwitch(selector?: string): Promise<number> {
 
   return withLock(paths.lockFile, async () => {
     const idx = loadAccounts();
+    const claimed = readOAuthAccount()?.accountUuid ?? null;
+    const drifted = claimed != null && claimed !== idx.activeAccountUuid;
 
-    if (selector) {
-      const target = findAccount(idx.accounts, selector);
-      if (!target) { console.error(c.red(`no account matches "${selector}"`)); return 1; }
-      if (target.accountUuid === idx.activeAccountUuid) { console.log(`already on ${c.bold(target.label)}`); return 0; }
-      if (target.needsReauth) { console.error(c.red(`${target.label} needs re-auth - \`tokenmaxxing add\``)); return 1; }
+    const swapTo = async (target: Account): Promise<number> => {
       try {
         await performSwap(target);
       } catch (e) {
@@ -37,25 +47,59 @@ export async function cmdSwitch(selector?: string): Promise<number> {
       }
       console.log(`${c.green("↻")} switched to ${c.bold(target.label)}`);
       return 0;
+    };
+
+    if (selector) {
+      const target = findAccount(idx.accounts, selector);
+      if (!target) { console.error(c.red(`no account matches "${selector}"`)); return 1; }
+      if (target.accountUuid === idx.activeAccountUuid && !drifted) { console.log(`already on ${c.bold(target.label)}`); return 0; }
+      if (target.needsReauth) { console.error(c.red(`${target.label} needs re-auth - \`tokenmaxxing add\``)); return 1; }
+      return swapTo(target);
     }
 
-    // auto: best account under threshold
-    const landed = await chooseAndSwap({ now, threshold: cfg.threshold });
-    if (landed) {
-      console.log(`${c.green("↻")} switched to ${c.bold(landed.label)}`);
+    // auto: greedy over everyone, current included - a no-op when current wins.
+    const everyone: PickCtx = { now, threshold: cfg.threshold, currentAccountUuid: null };
+    const active = idx.accounts.find((a) => a.accountUuid === idx.activeAccountUuid) ?? null;
+    const best = pickBest(idx.accounts, everyone);
+    const currentWins =
+      best != null && active != null && !active.needsReauth && !isExhausted(active, everyone) &&
+      (best.accountUuid === active.accountUuid || swapPreference(now).every((k) => k(active) === k(best)));
+    if (currentWins) {
+      if (drifted) return swapTo(active);
+      const expiry = weeklyExpiry(active, now);
+      const why = Number.isFinite(expiry) ? ` (weekly ${fmtReset(expiry, now)})` : "";
+      console.log(`already on the best account: ${c.bold(active.label)}${why}`);
       return 0;
     }
-
-    // everything is depleted → switch to whichever recovers soonest
-    const earliest = pickEarliestReset(idx.accounts, { now, threshold: cfg.threshold, currentAccountUuid: idx.activeAccountUuid });
-    if (!earliest) { console.error(c.yellow("no switchable account (all need re-auth?)")); return 1; }
-    try {
-      await performSwap(earliest.account);
-    } catch (e) {
-      if (e instanceof InvalidGrantError) { console.error(c.red(`${earliest.account.label}'s refresh token is dead`)); return 1; }
-      throw e;
+    if (best) {
+      const landed = await chooseAndSwap({ now, threshold: cfg.threshold });
+      if (landed) {
+        console.log(`${c.green("↻")} switched to ${c.bold(landed.label)}`);
+        return 0;
+      }
     }
-    console.log(`${c.yellow("↻")} all accounts at limit - switched to ${c.bold(earliest.account.label)} (${fmtReset(earliest.availableAt, now)})`);
-    return 0;
+
+    // No usable target swapped in: everything is depleted, or the remaining
+    // candidates' refresh tokens just died (chooseAndSwap marks needs-reauth,
+    // hence the reload). Stay on / switch to whichever recovers soonest.
+    const fresh = loadAccounts();
+    const earliest = pickEarliestReset(fresh.accounts, everyone);
+    if (!earliest) { console.error(c.yellow("no switchable account (all need re-auth?)")); return 1; }
+    const reauth = fresh.accounts.filter((a) => a.needsReauth).map((a) => a.label);
+    const reauthNote = reauth.length ? ` - re-auth needed: ${reauth.join(", ")}` : "";
+    if (earliest.account.accountUuid === fresh.activeAccountUuid && !drifted) {
+      // availableAt in the past means the current account is fine and the
+      // others are simply unusable - do not claim a limit that is not there.
+      const msg = earliest.availableAt <= now
+        ? `staying on ${c.bold(earliest.account.label)} - no usable switch target${reauthNote}`
+        : `all accounts at limit - staying on ${c.bold(earliest.account.label)} (${fmtReset(earliest.availableAt, now)})${reauthNote}`;
+      console.log(c.yellow(msg));
+      return 0;
+    }
+    const code = await swapTo(earliest.account);
+    if (code === 0 && earliest.availableAt > now) {
+      console.log(c.yellow(`all accounts at limit - ${c.bold(earliest.account.label)} recovers soonest (${fmtReset(earliest.availableAt, now)})${reauthNote}`));
+    }
+    return code;
   });
 }

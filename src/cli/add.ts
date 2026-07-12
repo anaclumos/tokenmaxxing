@@ -118,6 +118,7 @@ export async function cmdAdd(): Promise<number> {
       needsReauth: false,
       lastUsage: sampled ? { fiveHour: sampled.session, sevenDay: sampled.weekAll } : existing?.lastUsage,
       lastPerModel: sampled && Object.keys(sampled.perModel).length > 0 ? sampled.perModel : existing?.lastPerModel,
+      lastUsageAt: sampled ? Date.now() : existing?.lastUsageAt,
     };
     if (existing) Object.assign(existing, fresh);
     else idx.accounts.push(fresh);

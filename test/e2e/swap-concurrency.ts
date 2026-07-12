@@ -76,7 +76,10 @@ const check = (cond: boolean, label: string) => {
 };
 
 async function seed() {
-  saveConfig({ threshold: 95, claudeBin: "/bin/true", policy: { projectionMargin: 0, switchModels: ["fable", "opus"], usagePollTtlMs: 90_000, maxWaitMs: 3_600_000 } });
+  // /usr/bin/true, not /bin/true: macOS has no /bin/true, and a missing
+  // claudeBin makes resolveRealClaude fail (it must never PATH-scan its way
+  // to the installed tokenmaxxing wrapper and recurse).
+  saveConfig({ threshold: 95, claudeBin: "/usr/bin/true", policy: { projectionMargin: 0, switchModels: ["fable", "opus"], usagePollTtlMs: 90_000, maxWaitMs: 3_600_000 } });
   await writeItem(parkedTarget(CRED_A), blob("A"));
   await writeItem(parkedTarget(CRED_B), blob("B"));
   await writeItem(liveTarget(), blob("A")); // A is live

@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { analyzeArgs, stripSessionFlags } from "../src/entries/supervisor.ts";
-import { pickBest, isExhausted, weeklyExpiry } from "../src/lib/picker.ts";
+import { pickBest, isExhausted, nextWeeklyReset, weeklyExpiry } from "../src/lib/picker.ts";
 import { familyTokens, matchedFamily, normalizeResetsAt, parseStatusLineStdin, parseStatusLineModel, parseUsageText, parseUsageTextFull, parseResetClock } from "../src/lib/usage.ts";
+import { fmtAgo } from "../src/cli/render.ts";
 import type { Account } from "../src/lib/types.ts";
 
 const UUID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e";
@@ -85,6 +86,23 @@ describe("account picker", () => {
   });
   test("no candidate returns null", () => {
     expect(pickBest([], { now, threshold: 95, currentAccountUuid: null })).toBe(null);
+  });
+  test("nextWeeklyReset: future/null pass through, past extrapolates forward in 7-day steps", () => {
+    expect(nextWeeklyReset(null, now)).toBe(null);
+    expect(nextWeeklyReset(now + 5_000, now)).toBe(now + 5_000);
+    expect(nextWeeklyReset(now - 10_000, now)).toBe(now - 10_000 + WEEK);
+    expect(nextWeeklyReset(now - WEEK - 10_000, now)).toBe(now - 10_000 + WEEK);
+  });
+  test("null currentAccountUuid ranks every account, including the active one", () => {
+    const cur = acct({ accountUuid: "CUR", lastUsage: { fiveHour: { usedPercentage: 10, resetsAt: null }, sevenDay: { usedPercentage: 60, resetsAt: now + 86_400_000 } } });
+    const other = acct({ accountUuid: "O", lastUsage: { fiveHour: { usedPercentage: 10, resetsAt: null }, sevenDay: { usedPercentage: 10, resetsAt: now + 4 * 86_400_000 } } });
+    expect(pickBest([cur, other], { now, threshold: 95, currentAccountUuid: null })?.accountUuid).toBe("CUR");
+    expect(pickBest([cur, other], { now, threshold: 95, currentAccountUuid: "CUR" })?.accountUuid).toBe("O");
+  });
+  test("a session window over threshold disqualifies even the soonest weekly expiry", () => {
+    const busy = acct({ accountUuid: "S", lastUsage: { fiveHour: { usedPercentage: 96, resetsAt: now + 3_600_000 }, sevenDay: { usedPercentage: 10, resetsAt: now + 86_400_000 } } });
+    const idle = acct({ accountUuid: "I", lastUsage: { fiveHour: { usedPercentage: 10, resetsAt: null }, sevenDay: { usedPercentage: 10, resetsAt: now + 3 * 86_400_000 } } });
+    expect(pickBest([busy, idle], { now, threshold: 95, currentAccountUuid: null })?.accountUuid).toBe("I");
   });
 });
 
@@ -177,6 +195,19 @@ describe("usage parsing", () => {
     expect(f.session.resetsAt).toBe(null);
     expect(f.weekAll.usedPercentage).toBe(63);
     expect(f.weekAll.resetsAt).toBe(Date.parse("2026-07-12T22:00:00+09:00"));
+  });
+});
+
+describe("fmtAgo", () => {
+  const now = 1_000_000_000;
+  test("largest unit only, floored to just now", () => {
+    expect(fmtAgo(now - 30_000, now)).toBe("just now");
+    expect(fmtAgo(now - 60_000, now)).toBe("1m ago");
+    expect(fmtAgo(now - 3 * 3_600_000, now)).toBe("3h ago");
+    expect(fmtAgo(now - 86_400_000, now)).toBe("1d ago");
+  });
+  test("a future (skewed) timestamp clamps to just now", () => {
+    expect(fmtAgo(now + 60_000, now)).toBe("just now");
   });
 });
 

@@ -1,10 +1,11 @@
-// Choose the best account to switch TO when the active one crosses threshold.
-// Policy: exclude the current account and any that need reauth or are still
-// rate-limited (usage >= threshold and not yet past resets_at). Among the rest,
-// prefer the account whose weekly window expires soonest: weekly limits reset
-// at a fixed per-account time and unused allowance is forfeited at reset, so
-// quota nearest its reset is use-it-or-lose-it and should be drained first.
-// Tiebreak on lowest 7-day usage, then soonest 5h reset.
+// Choose the account to switch TO. Greedy policy: among usable accounts (no
+// reauth, no window >= threshold that hasn't reset yet), take the one whose
+// weekly window expires soonest - weekly limits reset at a fixed per-account
+// time and unused allowance is forfeited at reset, so quota nearest its reset
+// is use-it-or-lose-it and should be drained first. Runs entirely off each
+// account's cached windows (absolute UTC epochs, so a stale snapshot still
+// resolves to the correct upcoming reset), which makes the pick deterministic
+// and idempotent: re-running lands on the same account.
 
 import { minBy, sortBy } from "es-toolkit";
 import { z } from "zod";
@@ -13,6 +14,7 @@ import { AccountSchema, type Account } from "./types.ts";
 const PickCtxSchema = z.object({
   now: z.number(),
   threshold: z.number(),
+  /** account to exclude (hooks switch AWAY from it); null ranks everyone. */
   currentAccountUuid: z.string().nullable(),
 });
 export type PickCtx = z.infer<typeof PickCtxSchema>;
@@ -28,34 +30,33 @@ export function isExhausted(a: Account, ctx: PickCtx): boolean {
 
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 
-/** Epoch ms when the account's weekly quota is next forfeited. The weekly reset
- *  is a fixed per-account anchor, so a stale (past) resetsAt extrapolates
- *  forward in 7-day steps; an account with no sampled reset sorts last. */
-export function weeklyExpiry(a: Account, now: number): number {
-  const r = a.lastUsage?.sevenDay.resetsAt;
-  if (r == null) return Number.POSITIVE_INFINITY;
-  if (r > now) return r;
-  return r + (Math.floor((now - r) / WEEK_MS) + 1) * WEEK_MS;
+/** Next occurrence of a weekly reset. The weekly reset is a fixed per-account
+ *  anchor, so a cached (past) resetsAt extrapolates forward in 7-day steps -
+ *  an old snapshot still yields the correct upcoming reset. */
+export function nextWeeklyReset(resetsAt: number | null, now: number): number | null {
+  if (resetsAt == null || resetsAt > now) return resetsAt;
+  return resetsAt + (Math.floor((now - resetsAt) / WEEK_MS) + 1) * WEEK_MS;
 }
 
-/** The switch preference: soonest weekly expiry first; tiebreak lowest 7-day
- *  usage, then soonest 5h reset. Shared with the statusLine pool ordering so
- *  the display order IS the swap order. */
+/** Epoch ms when the account's weekly quota is next forfeited; an account with
+ *  no sampled reset sorts last. */
+export function weeklyExpiry(a: Account, now: number): number {
+  return nextWeeklyReset(a.lastUsage?.sevenDay.resetsAt ?? null, now) ?? Number.POSITIVE_INFINITY;
+}
+
+/** The switch preference: soonest weekly expiry first, tiebreak lowest 7-day
+ *  usage. Shared with the statusLine pool ordering so the display order IS the
+ *  swap order. */
 export const swapPreference = (now: number) => [
   (a: Account) => weeklyExpiry(a, now),
   (a: Account) => a.lastUsage?.sevenDay.usedPercentage ?? 0,
-  (a: Account) => a.lastUsage?.fiveHour.resetsAt ?? Number.POSITIVE_INFINITY,
 ];
 
 export function pickBest(accounts: Account[], ctx: PickCtx): Account | null {
-  const candidates = accounts.filter(
-    (a) =>
-      a.accountUuid !== ctx.currentAccountUuid &&
-      !a.needsReauth &&
-      !isExhausted(a, ctx),
+  const usable = accounts.filter(
+    (a) => a.accountUuid !== ctx.currentAccountUuid && !a.needsReauth && !isExhausted(a, ctx),
   );
-  if (candidates.length === 0) return null;
-  return sortBy(candidates, swapPreference(ctx.now))[0]!;
+  return sortBy(usable, swapPreference(ctx.now))[0] ?? null;
 }
 
 /** When an account becomes usable again: the latest reset among its over-threshold

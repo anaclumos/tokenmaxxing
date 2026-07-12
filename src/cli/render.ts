@@ -40,6 +40,19 @@ export function fmtReset(epochMs: number | null | undefined, now = Date.now()): 
   return `resets in ${m}m`;
 }
 
+/** Age of a cached sample, largest unit only: "just now", "3m ago", "2h ago",
+ *  "5d ago". */
+export function fmtAgo(epochMs: number, now = Date.now()): string {
+  const dsec = Math.max(0, Math.round((now - epochMs) / 1000));
+  if (dsec < 60) return "just now";
+  const d = Math.floor(dsec / 86400);
+  const h = Math.floor((dsec % 86400) / 3600);
+  const m = Math.floor((dsec % 3600) / 60);
+  if (d > 0) return `${d}d ago`;
+  if (h > 0) return `${h}h ago`;
+  return `${m}m ago`;
+}
+
 /** Compact time-until-reset for the statusLine: the largest unit only ("6d",
  *  "2h", "45m"), floored to "1m" so a live window never reads as zero, and ""
  *  once the reset has passed (the window is simply empty again). Non-empty

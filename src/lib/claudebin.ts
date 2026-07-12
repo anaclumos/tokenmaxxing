@@ -7,9 +7,14 @@ import { loadConfig } from "./state.ts";
 
 export function resolveRealClaude(): string {
   const cfg = loadConfig();
-  if (cfg.claudeBin && existsSync(cfg.claudeBin)) return cfg.claudeBin;
-  if (process.env.TOKENMAXXING_CLAUDE_BIN && existsSync(process.env.TOKENMAXXING_CLAUDE_BIN))
-    return process.env.TOKENMAXXING_CLAUDE_BIN;
+  if (cfg.claudeBin) {
+    if (existsSync(cfg.claudeBin)) return cfg.claudeBin;
+    // A configured-but-vanished binary must not silently degrade to the PATH
+    // scan: under a relocated TOKENMAXXING_HOME the scan's binDir guard misses
+    // the installed wrapper, which then recurses through the supervisor
+    // (observed 2026-07-12 as a forever-hung `/usage` probe).
+    throw new Error(`configured claudeBin does not exist: ${cfg.claudeBin} - fix config.json`);
+  }
   for (const d of (process.env.PATH ?? "").split(":")) {
     if (!d || d === paths.binDir) continue;
     const cand = join(d, "claude");
