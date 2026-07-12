@@ -1,0 +1,74 @@
+src/entries/supervisor.ts
+  s_5fb03bae7200e6::t_cfc91123e5fca5 14
+  s_5fb03bae7200e6::t_99af54b7f16688 114-124,136,140
+  s_5fb03bae7200e6::t_c20a27d8115000 189
+  s_5fb03bae7200e6::t_eccc257a93d66d 125-133
+test/probe-hang.test.ts
+  s_5fb03bae7200e6::t_c8a62b4bcad479 1-7,9-14,16-17,24-33,35-49
+  s_5fb03bae7200e6::t_57b8974e0c8a38 15,18-23
+  s_5fb03bae7200e6::t_bfc1a4b6a8834e 8
+  s_5fb03bae7200e6::t_6ba24474a9a327 34
+test/claudebin.test.ts
+  s_5fb03bae7200e6::t_3de59ce1ab6e2c 1-5,8-9,11-13,15-37,39-96,105-118
+  s_5fb03bae7200e6::t_02cbf8c1d9a89a 10
+  s_5fb03bae7200e6::t_07950686efbac2 6-7,14
+  s_5fb03bae7200e6::t_05d7de2ca3ea55 97-104
+  s_5fb03bae7200e6::t_8afda9179bd58e 119,136-166
+  s_5fb03bae7200e6::t_b168343d9e3560 120-135
+  s_5fb03bae7200e6::t_5999eb459908fb 38
+src/lib/install.ts
+  s_5fb03bae7200e6::t_c26080e3ba8590 207-242
+src/cli/init.ts
+  s_5fb03bae7200e6::t_2c03649b4b1391 117
+  s_5fb03bae7200e6::t_d4f36c206a2789 43-45,47
+  s_5fb03bae7200e6::t_941816e8cca8e3 10
+package.json
+  s_5fb03bae7200e6::t_25f9aea87b6060 3
+  s_5fb03bae7200e6::t_b03cdf8fcbb8cf 22
+src/lib/usage.ts
+  s_5fb03bae7200e6::t_313733b42a4e3b 9
+  s_5fb03bae7200e6::t_dc7a60327def45 289-293
+  s_5fb03bae7200e6::t_476f0c2143fd95 226-228
+  s_5fb03bae7200e6::t_1877f223db8da6 215-216,230-243,249
+src/cli/doctor.ts
+  s_5fb03bae7200e6::t_2d2b7e24029c25 86-95
+  s_5fb03bae7200e6::t_300708d903fe34 4,7
+  s_5fb03bae7200e6::t_4625607757238a 5
+  s_5fb03bae7200e6::t_543083bdb5003a 78-84
+  s_5fb03bae7200e6::t_95b8fad88b7085 85
+src/lib/claudebin.ts
+  s_5fb03bae7200e6::t_e6d5b865006bbf 138,140-145,147
+  s_5fb03bae7200e6::t_a4904199b4bcad 5
+  s_5fb03bae7200e6::t_f981f74fad976a 71-77,82-88,91-96
+  s_5fb03bae7200e6::t_1d3422b9b2fdba 152-153,159,162
+  s_5fb03bae7200e6::t_0cee33598f9db3 4,11-26,52-70,78-81,89-90,97,106-115,117-130,135-137,146,148-151,154-158,160-161,163-165,167
+  s_5fb03bae7200e6::t_df4da6464dda4b 27-51
+  s_5fb03bae7200e6::t_436ee3e12b12d5 131-134
+  s_5fb03bae7200e6::t_1973045c0fd0a4 3,6,9
+  s_5fb03bae7200e6::t_046a5908cd8cd9 139
+  s_5fb03bae7200e6::t_2eca2e142a8f8e 10
+test/supervisor-loop.test.ts
+  s_5fb03bae7200e6::t_0b362cc52a9efb 14
+  s_5fb03bae7200e6::t_cc17342b98d6dc 79-80,82,88-102
+  s_5fb03bae7200e6::t_4982b360f39558 27-74
+  s_5fb03bae7200e6::t_d567b7535b3589 1-13,15-26,75-78,81,83-87,103
+test/installrc.test.ts
+  s_5fb03bae7200e6::t_3a8d99d09ac236 4
+  s_5fb03bae7200e6::t_be70d9eb09c47d 49-76
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.12",
+  "base_commit_sha": "a6f6e319e171baeb05dbf418586e1e51c0849259",
+  "prompts": {},
+  "sessions": {
+    "s_5fb03bae7200e6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1b57944e-de3a-46f0-b053-b9e19e890f86",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    }
+  }
+}
