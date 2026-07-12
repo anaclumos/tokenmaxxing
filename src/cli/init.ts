@@ -7,7 +7,7 @@ import { readItem, writeItem, liveTarget, parkedTarget, mergeIntoLive } from "..
 import { refreshCredential, isAccessTokenExpiring, fetchTokenOrg } from "../lib/oauth.ts";
 import { loadAccounts, saveAccounts, loadConfig, saveConfig } from "../lib/state.ts";
 import { installSupervisor, shellRcPath, ensurePathInRc, timerActivationHint, type InstallOutcome } from "../lib/install.ts";
-import { resolveRealClaude } from "../lib/claudebin.ts";
+import { resolveVerifiedClaude } from "../lib/claudebin.ts";
 import { credItemFor, paths } from "../lib/paths.ts";
 import { CredentialBlobSchema, type Account } from "../lib/types.ts";
 import { c } from "./render.ts";
@@ -40,9 +40,11 @@ export async function cmdInit(): Promise<number> {
   if (existingIdx.accounts.length > 0) {
     const out = installSupervisor();
     // repair the claudeBin pin too - hooks run with claude's PATH and must
-    // never have to guess which binary is the real claude.
+    // never have to guess which binary is the real claude. Verified pinning:
+    // a pin that fails --version (or loops back into the wrapper) is replaced
+    // by a fresh PATH scan instead of being re-saved.
     const cfg = loadConfig();
-    cfg.claudeBin = resolveRealClaude();
+    cfg.claudeBin = resolveVerifiedClaude();
     saveConfig(cfg);
     const active = existingIdx.accounts.find((a) => a.accountUuid === existingIdx.activeAccountUuid);
     console.log(`${c.green("✓")} re-installed supervisor + hooks (pool already has ${existingIdx.accounts.length} account${existingIdx.accounts.length === 1 ? "" : "s"} - not re-importing)`);
@@ -112,7 +114,7 @@ export async function cmdInit(): Promise<number> {
   saveAccounts(idx);
 
   const cfg = loadConfig();
-  cfg.claudeBin = resolveRealClaude();
+  cfg.claudeBin = resolveVerifiedClaude();
   saveConfig(cfg);
 
   const out = installSupervisor();

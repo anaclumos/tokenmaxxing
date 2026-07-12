@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { ensurePathInRc, shellRcPath } from "../src/lib/install.ts";
+import { ensurePathInRc, findClaudeShadowers, shellRcPath } from "../src/lib/install.ts";
 import { paths } from "../src/lib/paths.ts";
 
 const base = (globalThis as { __TM_TEST_BASE__?: string }).__TM_TEST_BASE__!;
@@ -44,5 +44,33 @@ describe("shell rc PATH line", () => {
     const lines = readFileSync(rc, "utf8").split("\n");
     expect(lines[0]).toBe("alias ll='ls -la'");
     expect(lines[1]).toContain("# tokenmaxxing PATH");
+  });
+});
+
+describe("findClaudeShadowers", () => {
+  test("flags a claude alias and a claude function as shadowing", () => {
+    const found = findClaudeShadowers(`alias claude="/opt/other/claude"\nclaude() { command claude "$@"; }\n`);
+    expect(found.map((s) => s.kind)).toEqual(["shadow", "shadow"]);
+  });
+
+  test("flags cc-style aliases that hardcode an absolute claude path as bypasses", () => {
+    const found = findClaudeShadowers(`alias cco="/Users/x/.local/bin/claude --dangerously-skip-permissions"\n`);
+    expect(found).toHaveLength(1);
+    expect(found[0]!.kind).toBe("bypass");
+    expect(found[0]!.name).toBe("cco");
+  });
+
+  test("plain-claude alias bodies are supervised via PATH and not flagged", () => {
+    expect(findClaudeShadowers(`alias cc="claude"\nalias cco="claude --dangerously-skip-permissions"\n`)).toHaveLength(0);
+  });
+
+  test("lines referencing the wrapper itself, comments, and unrelated aliases are skipped", () => {
+    const rc = [
+      `# alias claude="/old/claude"`,
+      `alias claude="${paths.supervisorLink}"`,
+      `alias ll='ls -la'`,
+      `alias cloud="/usr/bin/cloudctl"`,
+    ].join("\n");
+    expect(findClaudeShadowers(rc)).toHaveLength(0);
   });
 });

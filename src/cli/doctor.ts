@@ -1,9 +1,10 @@
 // `tokenmaxxing doctor` - verify the supervisor + three settings entries survived
 // and the pool is healthy.
 
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
+import { verifyRealClaude } from "../lib/claudebin.ts";
 import { checkSettings, installedBin } from "../lib/settings.ts";
-import { checkTimerHealthy, isBinDirAhead, timerActivationHint } from "../lib/install.ts";
+import { checkTimerHealthy, findClaudeShadowers, isBinDirAhead, shellRcPath, timerActivationHint } from "../lib/install.ts";
 import { paths } from "../lib/paths.ts";
 import { loadAccounts, loadConfig } from "../lib/state.ts";
 import { readItem, liveTarget, parkedTarget } from "../lib/credstore.ts";
@@ -74,6 +75,24 @@ export async function cmdDoctor(): Promise<number> {
 
   const cfg = loadConfig();
   check(!!cfg.claudeBin && existsSync(cfg.claudeBin), "real claude binary resolved", "set claudeBin in config.json");
+  if (cfg.claudeBin && existsSync(cfg.claudeBin)) {
+    // Behavioral: the pin must answer --version without re-entering the wrapper.
+    // Catches a poisoned pin (a shim that resolves `claude` back to us) that
+    // existence checks cannot - the 2026-07-12 recursive-spawn incident.
+    const fail = verifyRealClaude(cfg.claudeBin);
+    check(fail === null, "claudeBin launches the real claude", fail ?? undefined);
+  }
+
+  // Warnings only: an interactive alias/function can shadow or bypass the
+  // wrapper in ways PATH checks cannot see (`alias claude=...`, or a `cc`-style
+  // alias hardcoding an absolute path to the real binary).
+  const rc = shellRcPath();
+  if (rc && existsSync(rc)) {
+    for (const s of findClaudeShadowers(readFileSync(rc, "utf8"))) {
+      if (s.kind === "shadow") console.log(c.yellow(`⚠ ${rc}: \`${s.line}\` shadows the supervised claude wrapper - launches through it skip tokenmaxxing`));
+      else console.log(c.yellow(`⚠ ${rc}: alias \`${s.name}\` hardcodes a claude path and bypasses the supervisor - use plain \`claude\` in its body instead`));
+    }
+  }
 
   console.log();
   console.log(ok ? c.green("all good ✓") : c.yellow("issues found - see above"));

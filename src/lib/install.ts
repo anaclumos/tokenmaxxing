@@ -204,6 +204,42 @@ export function ensurePathInRc(rc: string): "added" | "present" {
   return "added";
 }
 
+const ShellShadowerSchema = z.object({
+  /** shadow: a `claude` alias/function hides the wrapper entirely.
+   *  bypass: another alias (e.g. `cc`, `cco`) hardcodes an absolute path to a
+   *  claude binary, so launches through it skip supervision. */
+  kind: z.enum(["shadow", "bypass"]),
+  name: z.string(),
+  line: z.string(),
+});
+export type ShellShadower = z.infer<typeof ShellShadowerSchema>;
+
+/** Scan shell-rc text for aliases/functions that shadow `claude` or hardcode a
+ *  path to a claude binary. Aliases whose body starts with plain `claude` are
+ *  fine (they expand through PATH into the wrapper); an absolute path is not.
+ *  Lines referencing the wrapper itself are deliberate and skipped. */
+export function findClaudeShadowers(rcText: string): ShellShadower[] {
+  const out: ShellShadower[] = [];
+  const absClaude = /(?:^|[\s"'=])(\/[^\s"']*\/claude)(?:[\s"']|$)/;
+  for (const rawLine of rcText.split("\n")) {
+    const line = rawLine.trim();
+    if (line.startsWith("#") || line.includes(paths.supervisorLink)) continue;
+    const alias = line.match(/^alias\s+([A-Za-z0-9_-]+)=(.*)$/);
+    if (alias) {
+      if (alias[1] === "claude") {
+        out.push(ShellShadowerSchema.parse({ kind: "shadow", name: "claude", line }));
+      } else if (absClaude.test(alias[2]!)) {
+        out.push(ShellShadowerSchema.parse({ kind: "bypass", name: alias[1]!, line }));
+      }
+      continue;
+    }
+    if (/^(?:function\s+)?claude\s*\(\)/.test(line)) {
+      out.push(ShellShadowerSchema.parse({ kind: "shadow", name: "claude", line }));
+    }
+  }
+  return out;
+}
+
 export function uninstallSupervisor(): void {
   uninstallSettings();
   uninstallCheckTimer();

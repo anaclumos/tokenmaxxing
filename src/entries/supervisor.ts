@@ -11,7 +11,7 @@ import { join } from "node:path";
 import { maxBy } from "es-toolkit";
 import { z } from "zod";
 import { paths } from "../lib/paths.ts";
-import { resolveRealClaude } from "../lib/claudebin.ts";
+import { LOOP_DIAGNOSIS, MAX_WRAP_DEPTH, WRAP_DEPTH_ENV, WRAP_RATE_MAX, WRAP_RATE_WINDOW_MS, resolveRealClaude, wrapDepth, wrapperEntryRateTripped } from "../lib/claudebin.ts";
 import { saveTermios, restoreTermios } from "../lib/tty.ts";
 import { loadSessionFlags, saveSessionFlags } from "../lib/sessions.ts";
 import { RespawnMarkerSchema } from "../lib/types.ts";
@@ -111,12 +111,33 @@ async function countdownWait(acct: string, until: number): Promise<void> {
 
 /** Entry point: `claude ...args`. */
 export async function runSupervisor(argv: string[]): Promise<number> {
+  // Depth cap: every spawn below tags its child, so a claudeBin that leads back
+  // here (pinned shim re-execing `claude` from PATH) dies at a handful of
+  // processes instead of fork-bombing the machine (2026-07-12 incident).
+  const depth = wrapDepth();
+  if (depth >= MAX_WRAP_DEPTH) {
+    console.error(
+      `tokenmaxxing: ${LOOP_DIAGNOSIS} (depth ${depth}) - claudeBin in ${paths.configJson} does not launch the real Claude binary. Fix claudeBin, then run \`tokenmaxxing doctor\`.`,
+    );
+    log("supervisor.loop_abort", { depth });
+    return 1;
+  }
+  // Rate backstop: an env-sanitizing shim in the loop strips the sentinel, but
+  // it cannot erase the on-disk entry counter.
+  if (wrapperEntryRateTripped(Date.now())) {
+    console.error(
+      `tokenmaxxing: ${LOOP_DIAGNOSIS} (over ${WRAP_RATE_MAX} wrapper entries in ${WRAP_RATE_WINDOW_MS / 1000}s) - claudeBin in ${paths.configJson} does not launch the real Claude binary. Fix claudeBin, then run \`tokenmaxxing doctor\`.`,
+    );
+    log("supervisor.rate_abort", { max: WRAP_RATE_MAX });
+    return 1;
+  }
   const real = resolveRealClaude();
   const info = analyzeArgs(argv);
+  const childEnv = { ...process.env, [WRAP_DEPTH_ENV]: String(depth + 1) };
 
   // Pass-through: no session management, no respawn - exact stock behavior.
   if (!info.manage) {
-    const p = Bun.spawn([real, ...argv], { stdin: "inherit", stdout: "inherit", stderr: "inherit" });
+    const p = Bun.spawn([real, ...argv], { stdin: "inherit", stdout: "inherit", stderr: "inherit", env: childEnv });
     await p.exited;
     return p.exitCode ?? (p.signalCode ? 1 : 0);
   }
@@ -165,7 +186,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
       stdin: "inherit",
       stdout: "inherit",
       stderr: "inherit",
-      env: { ...process.env, TOKENMAXXING_SUPERVISED: "1", TOKENMAXXING_SESSION_ID: sid },
+      env: { ...childEnv, TOKENMAXXING_SUPERVISED: "1", TOKENMAXXING_SESSION_ID: sid },
     });
 
     // Race the child's own exit against the appearance of a respawn marker.

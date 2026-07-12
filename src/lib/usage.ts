@@ -6,7 +6,7 @@
 
 import { delay } from "es-toolkit";
 import { z } from "zod";
-import { resolveRealClaude } from "./claudebin.ts";
+import { MAX_WRAP_DEPTH, WRAP_DEPTH_ENV, resolveRealClaude } from "./claudebin.ts";
 import { log } from "./log.ts";
 import { RateLimitsStdinSchema, UsageWindowSchema, type ModelInfo, type UsageWindow, type UsageWindows } from "./types.ts";
 
@@ -212,6 +212,8 @@ const CRED_ENV_OVERRIDES = [
  *  Stop/SessionStart hooks or the status flock forever; a healthy `/usage`
  *  answers in seconds. */
 const PROBE_KILL_MS = 60_000;
+/** How long after the child's death to keep waiting for pipe EOF. */
+const PIPE_GRACE_MS = 2_000;
 
 async function probeUsageOnce(env: Record<string, string>, now: number): Promise<FullUsage | null> {
   let out: string;
@@ -221,15 +223,30 @@ async function probeUsageOnce(env: Record<string, string>, now: number): Promise
       stdout: "pipe",
       stderr: "pipe",
     });
-    const killer = setTimeout(() => p.kill(), PROBE_KILL_MS);
+    // SIGKILL: claude traps SIGTERM, and a wedged probe child that survives the
+    // kill would keep p.exited pending and re-wedge the read race below.
+    const killer = setTimeout(() => p.kill("SIGKILL"), PROBE_KILL_MS);
     try {
-      out = await new Response(p.stdout).text();
-      const errText = await new Response(p.stderr).text();
+      // Descendants inherit the output pipes, so EOF can lag the child's death
+      // or never arrive at all - a leaked grandchild holding the pipe wedged
+      // the 2026-07-12 probes forever, defeating the kill guard above. Bound
+      // the reads by child-exit + grace instead of awaiting EOF unconditionally.
+      const reads = Promise.all([new Response(p.stdout).text(), new Response(p.stderr).text()]);
+      const settled = await Promise.race([
+        reads,
+        p.exited.then(() => delay(PIPE_GRACE_MS)).then(() => null),
+      ]);
+      if (settled === null) {
+        log("usage.probe_failed", { err: "output pipes still open after child exit (leaked descendant)" });
+        return null;
+      }
+      const [text, errText] = settled;
       await p.exited;
       if (p.exitCode !== 0) {
         log("usage.probe_failed", { exit: p.exitCode ?? "signal", stderr: errText.trim().slice(0, 200) });
         return null;
       }
+      out = text;
     } finally {
       clearTimeout(killer);
     }
@@ -269,7 +286,11 @@ const PROBE_RETRY_DELAYS_MS = [2000, 5000];
  * transient, so retry with backoff. Returns null if it never yields data.
  */
 export async function probeUsage(configDir?: string, now = Date.now()): Promise<FullUsage | null> {
-  const env: Record<string, string> = { ...process.env, TOKENMAXXING_PROBE: "1" };
+  // The probe spawns the real claude DIRECTLY - it never legitimately passes
+  // through the wrapper again. Preset the depth to the cap so a poisoned pin
+  // that leads back to the wrapper aborts on its first entry (the 2026-07-12
+  // ~1800-process recursion started as exactly this probe).
+  const env: Record<string, string> = { ...process.env, TOKENMAXXING_PROBE: "1", [WRAP_DEPTH_ENV]: String(MAX_WRAP_DEPTH) };
   for (const k of CRED_ENV_OVERRIDES) delete env[k];
   if (configDir) env.CLAUDE_CONFIG_DIR = configDir;
 
