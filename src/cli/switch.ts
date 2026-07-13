@@ -1,6 +1,7 @@
 // `tokenmaxxing switch [selector]`.
-// No selector → greedy: rank EVERY account (current included) by soonest weekly
-// expiry among those with session/week under threshold, off the cached windows.
+// No selector → greedy: rank EVERY account (current included) by pace pressure
+// (furthest behind its own weekly pace first, see picker.ts) among those with
+// session/week under threshold, off the cached windows.
 // When the current account already wins (or ties - swapping between equals buys
 // nothing), do nothing: the command is idempotent, so running it periodically
 // converges on the right account. With a selector → switch to that one. Runs

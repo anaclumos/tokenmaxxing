@@ -1,11 +1,14 @@
 // Choose the account to switch TO. Greedy policy: among usable accounts (no
-// reauth, no window >= threshold that hasn't reset yet), take the one whose
-// weekly window expires soonest - weekly limits reset at a fixed per-account
-// time and unused allowance is forfeited at reset, so quota nearest its reset
-// is use-it-or-lose-it and should be drained first. Runs entirely off each
-// account's cached windows (absolute UTC epochs, so a stale snapshot still
-// resolves to the correct upcoming reset), which makes the pick deterministic
-// and idempotent: re-running lands on the same account.
+// reauth, no window >= threshold that hasn't reset yet), take the one furthest
+// behind its own weekly pace - highest pacePressure, the burn rate its
+// remaining weekly quota demands to be consumed at before the fixed
+// per-account reset forfeits it (weekly allowance is use-it-or-lose-it).
+// This refines the older soonest-expiry policy in both directions: equal
+// remaining reduces to soonest expiry first, equal expiry to most remaining
+// first. Runs entirely off each account's cached windows (absolute UTC
+// epochs, so a stale snapshot still resolves to the correct upcoming reset),
+// which makes the pick deterministic and idempotent: re-running lands on the
+// same account.
 
 import { minBy, sortBy } from "es-toolkit";
 import { z } from "zod";
@@ -75,10 +78,28 @@ export function weeklyExpiry(a: Account, now: number): number {
   return nextWeeklyReset(a.lastUsage?.sevenDay.resetsAt ?? null, now) ?? Number.POSITIVE_INFINITY;
 }
 
-/** The switch preference: soonest weekly expiry first, tiebreak lowest 7-day
- *  usage. Shared with the statusLine pool ordering so the display order IS the
+/** How far behind its own weekly pace the account is, measured forward: the
+ *  burn rate (percent per ms) its remaining weekly quota must be consumed at
+ *  to beat the reset that forfeits it. A backward-looking used/expected ratio
+ *  blows up right after a reset (expected ~0) and ignores how much quota is
+ *  at risk; the required forward rate has neither problem. A window past its
+ *  cached reset counts as empty (the account is fresh again); an account with
+ *  no sampled reset anchor has nothing to forfeit on any known clock and
+ *  ranks last (0). */
+export function pacePressure(a: Account, now: number): number {
+  const cached = a.lastUsage?.sevenDay;
+  const reset = nextWeeklyReset(cached?.resetsAt ?? null, now);
+  if (cached == null || reset == null) return 0;
+  const used = cached.resetsAt != null && cached.resetsAt <= now ? 0 : cached.usedPercentage;
+  return Math.max(0, 100 - used) / Math.max(1, reset - now);
+}
+
+/** The switch preference: furthest behind its own weekly pace first (highest
+ *  pacePressure), tiebreak soonest weekly expiry then lowest 7-day usage.
+ *  Shared with the statusLine pool ordering so the display order IS the
  *  swap order. */
 export const swapPreference = (now: number) => [
+  (a: Account) => -pacePressure(a, now),
   (a: Account) => weeklyExpiry(a, now),
   (a: Account) => a.lastUsage?.sevenDay.usedPercentage ?? 0,
 ];

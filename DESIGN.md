@@ -48,7 +48,7 @@ The Stop hook's stdin has no usage data, but the **statusLine does** (`rate_limi
 
 ### 3.2 Detect + swap + signal (Stop hook, per turn)
 1. Read `usage.json`; `exit 0` fast if both windows `< 95%` (metered per `organizationUuid`).
-2. Else take a `flock` on `~/.config/tokenmaxxing/lock`, re-check under it (parallel sessions race - first winner already swapped), pick the best parked account (not rate-limited, soonest-expiring weekly window first since unused allowance is forfeited at the fixed per-account reset, lowest 7-day usage tiebreak), and **swap the credential** (§3.4).
+2. Else take a `flock` on `~/.config/tokenmaxxing/lock`, re-check under it (parallel sessions race - first winner already swapped), pick the best parked account (not rate-limited, furthest behind its own weekly pace first: highest remaining% / time-to-weekly-reset, since unused allowance is forfeited at the fixed per-account reset; tiebreak soonest expiry then lowest 7-day usage), and **swap the credential** (§3.4).
 3. Write `respawn/<session_id>` (atomic temp+rename) and `SIGTERM` the parent `claude` (`kill -TERM $PPID`). The turn is already committed, so this is a clean stop.
 
 ### 3.3 Respawn (supervisor)

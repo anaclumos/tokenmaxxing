@@ -107,7 +107,7 @@ describe("renderStatusline", () => {
     expect(out).toStartWith("tm-fix-auth Fable 5 (high) ctx 42");
   });
 
-  test("a fable-burnt parked account sorts last under a fable session, by expiry under sonnet", () => {
+  test("a fable-burnt parked account sorts last under a fable session, by pace pressure under sonnet", () => {
     const accounts: AccountsIndex = {
       version: 1,
       activeAccountUuid: "uuid-act",
@@ -134,10 +134,11 @@ describe("renderStatusline", () => {
       ],
     };
     // Fable session: the burnt account is no swap target, so it sorts last
-    // despite its sooner weekly expiry (its F97 also surfaces as the binding cap).
+    // despite its higher pace pressure (its F97 also surfaces as the binding cap).
     const underFable = renderStatusline(fullStdin, ctx({ accounts }));
     expect(underFable).toBe("Fable 5 (high) ctx 42 +156/-23  ◆ F? 2h5 1d38  ◇ 3d40  ◇ F97 1d30");
-    // Sonnet session: the fable cap gates nothing, order is soonest expiry first.
+    // Sonnet session: the fable cap gates nothing; burnt must burn 70 in 1d,
+    // clean only 60 in 3d, so burnt leads on pressure.
     const sonnetStdin = { ...fullStdin, model: { id: "claude-sonnet-5", display_name: "Sonnet 5" } };
     const underSonnet = renderStatusline(sonnetStdin, ctx({ accounts }));
     expect(underSonnet).toBe("Sonnet 5 (high) ctx 42 +156/-23  ◆ 2h5 1d38  ◇ F97 1d30  ◇ 3d40");
@@ -200,7 +201,9 @@ describe("renderStatusline", () => {
         acct({ accountUuid: "uuid-fresh2" }),
       ],
     };
-    expect(renderStatusline(null, ctx({ accounts }))).toBe("◇ 2d40  ◇ 2 full  ◇ 2 ?");
+    // untouched-but-anchored accounts are furthest behind pace (100 left in
+    // ~4d beats 60 left in ~3d), so they lead; never-sampled (no anchor) last.
+    expect(renderStatusline(null, ctx({ accounts }))).toBe("◇ 2 full  ◇ 2d40  ◇ 2 ?");
   });
 
   test("a lone untouched parked account still renders plain full", () => {
