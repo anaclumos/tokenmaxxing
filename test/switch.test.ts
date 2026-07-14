@@ -67,7 +67,7 @@ describe("cmdSwitch idempotence", () => {
     const cur = acct("cur", { fiveHour: { usedPercentage: 10, resetsAt: now + H }, sevenDay: { usedPercentage: 40, resetsAt: now + 5 * D } });
     const rival = {
       ...acct("other", { fiveHour: { usedPercentage: 10, resetsAt: now + H }, sevenDay: { usedPercentage: 20, resetsAt: now + D } }),
-      lastPerModel: { Fable: { usedPercentage: 97, resetsAt: now + D } },
+      lastPerModel: { Fable: { usedPercentage: 99, resetsAt: now + D } },
     };
     saveAccounts({ version: 1, activeAccountUuid: "cur", accounts: [cur, rival] });
     expect(await cmdSwitch()).toBe(0);

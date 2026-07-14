@@ -45,12 +45,12 @@ claude                  # use claude as always
 
 ## How switching decides
 
-Switching triggers at **95%** (configurable) on any of:
+Switching triggers at **98%** (configurable) on any of:
 
 - **Session** (5-hour) or **week (all models)** - the aggregate windows, fed free/push-based by the statusLine.
 - **Per-model weekly cap** - the most capable model (Fable) has its own tighter weekly limit that binds *before* the aggregate (per-model caps currently exist only for Sonnet and Fable, and Sonnet's is generous). tokenmaxxing reads it from `claude -p '/usage'` (free, 0 tokens, TTL-cached) whenever the active model is one of `policy.switchModels`, so a Fable session switches on the Fable cap while a Sonnet session rides the aggregate.
 
-The 5% headroom is deliberate: it's the budget to reach a clean turn boundary and respawn before the wall.
+The 2% headroom is deliberate: it's the budget to reach a clean turn boundary and respawn before the wall.
 
 The **target** is chosen greedily off each account's cached windows: the usable account (session and week under threshold, or past their reset) whose weekly window **expires soonest** - unused weekly allowance is forfeited at the fixed per-account reset. Cached resets are absolute UTC epochs, so a stale snapshot still resolves correctly: a weekly reset that has passed extrapolates forward in 7-day steps, and a session window past its reset counts as empty. `tokenmaxxing switch` ranks the current account too and does nothing when it already wins, so it is idempotent - running it periodically converges on the right account.
 
@@ -60,7 +60,7 @@ The **target** is chosen greedily off each account's cached windows: the usable 
 
 ```json
 {
-  "threshold": 95,
+  "threshold": 98,
   "policy": {
     "projectionMargin": 0,
     "switchModels": ["fable"],

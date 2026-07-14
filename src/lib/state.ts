@@ -20,7 +20,7 @@ import {
 // ---- config.json (minimal, fixed schema) ---------------------------------
 
 const DEFAULT_CONFIG: Config = {
-  threshold: 95,
+  threshold: 98,
   claudeBin: "",
   // per-model weekly caps exist only for Sonnet and Fable (no Opus-only quota,
   // per the user 2026-07-12), and only Fable's is worth switching on.

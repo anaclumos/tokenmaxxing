@@ -3,7 +3,7 @@
 // npm `proper-lockfile` (mkdir-based) at <claudeDir>/.oauth_refresh.lock - the
 // lock is the DIRECTORY itself. We mkdir it; on contention we wait briefly, then
 // proceed anyway (our own flock already serializes tokenmaxxing swaps, and claude
-// only refreshes near token expiry / on 401, rarely at the 95% usage trigger).
+// only refreshes near token expiry / on 401, rarely at the 98% usage trigger).
 
 import { mkdirSync, rmdirSync, statSync } from "node:fs";
 import { join } from "node:path";
