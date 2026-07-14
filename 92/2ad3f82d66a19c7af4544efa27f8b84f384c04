@@ -1,0 +1,38 @@
+src/lib/state.ts
+  s_3b358f2a72854c::t_108dfa530e1ece 23
+src/lib/claudelock.ts
+  s_3b358f2a72854c::t_065880d74ac45c 6
+README.md
+  s_3b358f2a72854c::t_ce6c050ae2edad 53
+  s_3b358f2a72854c::t_8379d3886f6dd4 63
+  s_3b358f2a72854c::t_a2a32bdf6616a2 48
+DESIGN.md
+  s_3b358f2a72854c::t_04ceedc32b21fb 15
+  s_3b358f2a72854c::t_7ecc57f33c7249 79
+  s_3b358f2a72854c::t_956bf701fbc281 88
+  s_3b358f2a72854c::t_5dd3e3b1bc6b02 50
+  s_3b358f2a72854c::t_de1e137387e685 98
+  s_3b358f2a72854c::t_ba4367bae266fd 3
+  s_3b358f2a72854c::t_b7983e7d5178cd 65
+AGENTS.md
+  s_3b358f2a72854c::t_d32a1ca17b8f06 52
+  s_3b358f2a72854c::t_3d0bd869c88987 104
+test/switch.test.ts
+  s_3b358f2a72854c::t_01559703fef34e 70
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.13",
+  "base_commit_sha": "922ad3f82d66a19c7af4544efa27f8b84f384c04",
+  "prompts": {},
+  "sessions": {
+    "s_3b358f2a72854c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5afa236e-620f-4108-af99-944743487df6",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    }
+  }
+}
