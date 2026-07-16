@@ -1,0 +1,19 @@
+package.json
+  s_1eb3b42f595d2e::t_c3ce80bd1ee51c 3,24-27
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "7c2fd0827e4d0bb40c8376737b50527c9a8374fe",
+  "prompts": {},
+  "sessions": {
+    "s_1eb3b42f595d2e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9fd60d4b-79f0-43ac-96cf-09949e7bb408",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    }
+  }
+}
