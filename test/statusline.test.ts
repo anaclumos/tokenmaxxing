@@ -29,7 +29,8 @@ function ctx(over: Partial<RenderCtx>): RenderCtx {
     accounts: { version: 1, activeAccountUuid: null, accounts: [] },
     perModel: {},
     switchModels: ["fable", "opus"],
-    threshold: 95,
+    // both bars at 95: the parked-sort cases pin windows at 96/97 against it.
+    thresholds: { session: 95, weekly: 95 },
     worktree: null,
     now: NOW,
     color: false,

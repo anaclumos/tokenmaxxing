@@ -20,21 +20,25 @@ import {
 // ---- config.json (minimal, fixed schema) ---------------------------------
 
 const DEFAULT_CONFIG: Config = {
-  threshold: 98,
+  // Screening bars, split per window (user 2026-07-16): a session reset is
+  // cheap to sit out, weekly quota is use-it-or-lose-it so it drains to 98.
+  thresholds: { session: 95, weekly: 98 },
   claudeBin: "",
   // per-model weekly caps exist only for Sonnet and Fable (no Opus-only quota,
   // per the user 2026-07-12), and only Fable's is worth switching on.
-  policy: { projectionMargin: 0, switchModels: ["fable"], usagePollTtlMs: 90_000, maxWaitMs: 3_600_000 },
+  // greedySessionFloor 50: half a session window buys the swap (user 2026-07-16).
+  policy: { projectionMargin: 0, greedySessionFloor: 50, switchModels: ["fable"], usagePollTtlMs: 90_000, maxWaitMs: 3_600_000 },
 };
 
 /** On-disk shape (all optional); validated via Zod, merged over defaults. */
 const ConfigFileSchema = z
   .object({
-    threshold: z.number(),
+    thresholds: z.object({ session: z.number(), weekly: z.number() }).partial(),
     claudeBin: z.string(),
     policy: z
       .object({
         projectionMargin: z.number(),
+        greedySessionFloor: z.number(),
         switchModels: z.array(z.string()),
         usagePollTtlMs: z.number(),
         maxWaitMs: z.number(),
@@ -44,7 +48,7 @@ const ConfigFileSchema = z
   .partial();
 
 export function loadConfig(): Config {
-  const cfg: Config = { ...DEFAULT_CONFIG, policy: { ...DEFAULT_CONFIG.policy } };
+  const cfg: Config = { ...DEFAULT_CONFIG, thresholds: { ...DEFAULT_CONFIG.thresholds }, policy: { ...DEFAULT_CONFIG.policy } };
   if (existsSync(paths.configJson)) {
     let raw: unknown = {};
     try {
@@ -54,9 +58,11 @@ export function loadConfig(): Config {
     }
     const parsed = ConfigFileSchema.safeParse(raw);
     const p = parsed.success ? parsed.data : {};
-    cfg.threshold = p.threshold ?? cfg.threshold;
+    cfg.thresholds.session = p.thresholds?.session ?? cfg.thresholds.session;
+    cfg.thresholds.weekly = p.thresholds?.weekly ?? cfg.thresholds.weekly;
     cfg.claudeBin = p.claudeBin ?? cfg.claudeBin;
     cfg.policy.projectionMargin = p.policy?.projectionMargin ?? cfg.policy.projectionMargin;
+    cfg.policy.greedySessionFloor = p.policy?.greedySessionFloor ?? cfg.policy.greedySessionFloor;
     cfg.policy.usagePollTtlMs = p.policy?.usagePollTtlMs ?? cfg.policy.usagePollTtlMs;
     cfg.policy.maxWaitMs = p.policy?.maxWaitMs ?? cfg.policy.maxWaitMs;
     if (p.policy?.switchModels) {

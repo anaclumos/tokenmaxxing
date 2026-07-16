@@ -23,7 +23,7 @@ function installFakeClaude(body: string): void {
   const fake = join(scratch, "claude");
   writeFileSync(fake, `#!/bin/sh\nprintf '%s\\n' "$@" > ${JSON.stringify(argsFile)}\nenv > ${JSON.stringify(envFile)}\npwd > ${JSON.stringify(cwdFile)}\n${body}\n`);
   chmodSync(fake, 0o755);
-  saveConfig({ threshold: 98, claudeBin: fake, policy: { projectionMargin: 0, switchModels: ["fable"], usagePollTtlMs: 90_000, maxWaitMs: 3_600_000 } });
+  saveConfig({ thresholds: { session: 95, weekly: 98 }, claudeBin: fake, policy: { projectionMargin: 0, greedySessionFloor: 50, switchModels: ["fable"], usagePollTtlMs: 90_000, maxWaitMs: 3_600_000 } });
 }
 
 afterEach(() => {

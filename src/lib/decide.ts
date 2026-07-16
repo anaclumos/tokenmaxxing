@@ -2,7 +2,14 @@
 // `check` timer. Cheap pre-check off the lock; the authoritative re-check + swap
 // under the flock.
 //
-// Two limit families are checked, both metered against the CURRENTLY-active org:
+// The decision ENGAGES (user policy 2026-07-16) once the active account's 5h
+// session window reaches policy.greedySessionFloor, or once any screening bar
+// is crossed. Engaged-but-under-every-bar runs the same greedy pace-pressure
+// convergence as bare `xx switch` (swap only onto a STRICTLY better usable
+// account, current keeps its seat on ties, never a depleted pre-park); over a
+// bar keeps the original hard semantics (swap or depleted-wait).
+//
+// The windows feeding that, all metered against the CURRENTLY-active org:
 //   1. AGGREGATE windows (session=five_hour, week-all=seven_day). A rendering
 //      statusLine tees them fresh every turn; when nothing renders (headless
 //      boxes, idle TUIs) they come from `claude -p '/usage'`, re-probed once the
@@ -23,7 +30,7 @@ import { paths } from "./paths.ts";
 import { loadAccounts, loadConfig, loadLastSwapAt, loadUsage, loadModelUsage, saveAccounts, saveModelUsage, usageTeeAt, writeUsage } from "./state.ts";
 import { readOAuthAccount } from "./claudejson.ts";
 import { chooseAndSwap, performSwap } from "./swap.ts";
-import { pickEarliestReset, usableAt } from "./picker.ts";
+import { currentWins, effectiveBars, pickBest, pickEarliestReset, usableAt } from "./picker.ts";
 import { InvalidGrantError } from "./oauth.ts";
 import { familyTokens, gatedFamilies, probeUsage } from "./usage.ts";
 import { log } from "./log.ts";
@@ -54,14 +61,18 @@ function capForFamily(mu: ModelUsageState, family: string, now: number): UsageWi
   return maxBy(rows, (w) => liveUsed(w, now));
 }
 
-/** True if the active account is over the floor on ANY applicable limit. */
-function isOver(u: UsageState | null, mu: ModelUsageState | null, org: string | null, cfg: Config, floor: number, now: number): boolean {
+/** True if the active account is over its floor on ANY screening bar: the 5h
+ *  session against thresholds.session, the 7-day aggregate and gated per-model
+ *  caps against thresholds.weekly. Over a bar means the hard path (swap away
+ *  or depleted-wait); the greedy path may fire well before this. */
+function isOver(u: UsageState | null, mu: ModelUsageState | null, org: string | null, cfg: Config, now: number): boolean {
   if (!u || !org || u.org !== org) return false;
-  if (liveUsed(u.fiveHour, now) >= floor || liveUsed(u.sevenDay, now) >= floor) return true;
+  const bars = effectiveBars(cfg);
+  if (liveUsed(u.fiveHour, now) >= bars.session || liveUsed(u.sevenDay, now) >= bars.weekly) return true;
   if (mu && mu.org === org) {
     for (const family of gatedFamilies(u.model, cfg.policy.switchModels)) {
       const cap = capForFamily(mu, family, now);
-      if (cap && liveUsed(cap, now) >= floor) return true;
+      if (cap && liveUsed(cap, now) >= bars.weekly) return true;
     }
   }
   return false;
@@ -70,6 +81,14 @@ function isOver(u: UsageState | null, mu: ModelUsageState | null, org: string | 
 /** Does a per-model cap gate the decision for this usage snapshot? */
 function needsPerModel(u: UsageState | null, cfg: Config): boolean {
   return u != null && gatedFamilies(u.model, cfg.policy.switchModels).length > 0;
+}
+
+/** Whether the decision engages at all: half a session window buys the swap
+ *  (greedySessionFloor), and a crossed screening bar always does. Below both,
+ *  a fresh session rides its account - no churn. */
+function isEngaged(u: UsageState | null, mu: ModelUsageState | null, org: string | null, cfg: Config, now: number): boolean {
+  if (!u || !org || u.org !== org) return false;
+  return liveUsed(u.fiveHour, now) >= cfg.policy.greedySessionFloor || isOver(u, mu, org, cfg, now);
 }
 
 const SnapshotsSchema = z.object({
@@ -155,13 +174,12 @@ export async function evaluateAndMaybeSwap(now = Date.now(), anticipatory = fals
   }
 
   const cfg = loadConfig();
-  const floor = cfg.threshold - cfg.policy.projectionMargin;
   const activeOrg = readOAuthAccount()?.organizationUuid ?? null;
 
   const { u: usage, mu } = await loadFreshSnapshots(cfg, activeOrg, now);
 
   // cheap pre-check off the lock - the common case exits here.
-  if (!isOver(usage, mu, activeOrg, cfg, floor, now)) {
+  if (!isEngaged(usage, mu, activeOrg, cfg, now)) {
     return { swapped: false, account: null, reason: "under-threshold-or-stale" };
   }
 
@@ -185,20 +203,51 @@ export async function evaluateAndMaybeSwap(now = Date.now(), anticipatory = fals
       }
     }
 
-    if (!isOver(u2, mu2, org2, cfg, floor, now)) {
+    if (!isEngaged(u2, mu2, org2, cfg, now)) {
       return { swapped: false, account: null, reason: "raced-already-swapped" };
     }
 
     // Candidates are screened by the same families that drove this decision, so
     // the pool cannot ping-pong onto an account the gate would immediately flag.
     const switchFamilies = gatedFamilies(u2?.model ?? null, cfg.policy.switchModels);
-    const landed = await chooseAndSwap({ now, threshold: cfg.threshold, switchFamilies });
+
+    // Greedy path: engaged but under every screening bar. Converge like bare
+    // `xx switch` - swap only onto a strictly better usable account - and stay
+    // put otherwise: with a usable current account, a depleted pre-park or wait
+    // would trade a working session for nothing. NOT chooseAndSwap: its dead-
+    // token fallback lands on the next usable candidate unconditionally, but
+    // here the fallback must ALSO strictly beat the current account, or a dead
+    // refresh token on the winner would bounce a healthy session onto a worse
+    // account and back. performSwap marks needs-reauth before throwing, so each
+    // reload re-ranks without the dead account and the loop must terminate.
+    if (!isOver(u2, mu2, org2, cfg, now)) {
+      const ctxAll = { now, thresholds: effectiveBars(cfg), currentAccountUuid: null, switchFamilies };
+      while (true) {
+        const cur = loadAccounts();
+        const active = cur.accounts.find((a) => a.accountUuid === cur.activeAccountUuid) ?? null;
+        if (currentWins(active, cur.accounts, ctxAll)) {
+          return { swapped: false, account: null, reason: "current-best" };
+        }
+        const best = pickBest(cur.accounts, { ...ctxAll, currentAccountUuid: cur.activeAccountUuid });
+        if (!best) return { swapped: false, account: null, reason: "no-usable-target" };
+        try {
+          await performSwap(best);
+        } catch (e) {
+          if (e instanceof InvalidGrantError) continue;
+          throw e;
+        }
+        log("decide.greedy_swap", { account: best.accountUuid.slice(0, 8) });
+        return { swapped: true, account: best, reason: "swapped" };
+      }
+    }
+
+    const landed = await chooseAndSwap({ now, thresholds: effectiveBars(cfg), switchFamilies });
     if (landed) return { swapped: true, account: landed, reason: "swapped" };
 
     // Every account is depleted. Wait for whichever recovers soonest (including the
     // current one), if that reset is within the auto-wait window.
     const fresh = loadAccounts();
-    const ctx = { now, threshold: cfg.threshold, currentAccountUuid: fresh.activeAccountUuid, switchFamilies };
+    const ctx = { now, thresholds: effectiveBars(cfg), currentAccountUuid: fresh.activeAccountUuid, switchFamilies };
     const current = fresh.accounts.find((a) => a.accountUuid === fresh.activeAccountUuid);
     const currentAt = current ? usableAt(current, ctx) : Number.POSITIVE_INFINITY;
     const other = pickEarliestReset(fresh.accounts, ctx);

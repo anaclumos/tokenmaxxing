@@ -105,11 +105,30 @@ export const AccountsIndexSchema = z.object({
 export const LastSwapSchema = z.object({ ts: z.number() });
 export type AccountsIndex = z.infer<typeof AccountsIndexSchema>;
 
+/** Per-window screening bars (used %): an account with a window at/over its bar
+ *  is no switch candidate until that window resets. The session bar is lower
+ *  than the weekly one: a session reset is at most 5h away, so burning a little
+ *  headroom there is cheap, while weekly quota is use-it-or-lose-it and worth
+ *  draining closer to the wall. Screening is these bars' ONLY job - the switch
+ *  trigger is the greedy pace-pressure convergence (policy.greedySessionFloor). */
+export const ThresholdsSchema = z.object({
+  /** 5h session window. */
+  session: z.number(),
+  /** 7-day aggregate AND per-model weekly caps. */
+  weekly: z.number(),
+});
+export type Thresholds = z.infer<typeof ThresholdsSchema>;
+
 export const ConfigSchema = z.object({
-  threshold: z.number(),
+  thresholds: ThresholdsSchema,
   claudeBin: z.string(),
   policy: z.object({
     projectionMargin: z.number(),
+    /** session-used % at which the greedy convergence engages: from here on,
+     *  every evaluation swaps to the usable account furthest behind its weekly
+     *  pace whenever that beats the current one (idempotent; current keeps its
+     *  seat on ties). Below the floor a fresh session rides its account. */
+    greedySessionFloor: z.number(),
     /** models whose PER-MODEL weekly cap should trigger a switch (display names, lowercased). */
     switchModels: z.array(z.string()),
     /** how long a `/usage` per-model poll stays fresh before we re-poll (ms). */

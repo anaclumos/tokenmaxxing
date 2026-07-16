@@ -15,12 +15,20 @@ const scratch = join(paths.home, "probe-hang-test");
 const sleeperPids = join(scratch, "sleeper-pids");
 
 afterAll(() => {
-  // reap the deliberately-leaked pipe holders so runs don't leave orphans
+  // reap the deliberately-leaked pipe holders so runs don't leave orphans;
+  // a missing pid file (no sleepers spawned) or an already-exited pid is fine.
   try {
     for (const pid of readFileSync(sleeperPids, "utf8").trim().split("\n")) {
-      if (pid) process.kill(Number(pid), "SIGKILL");
+      if (!pid) continue;
+      try {
+        process.kill(Number(pid), "SIGKILL");
+      } catch (e) {
+        if ((e as { code?: string }).code !== "ESRCH") throw e;
+      }
     }
-  } catch { /* already gone */ }
+  } catch (e) {
+    if ((e as { code?: string }).code !== "ENOENT") throw e;
+  }
   rmSync(scratch, { recursive: true, force: true });
   rmSync(paths.configJson, { force: true });
 });
@@ -33,7 +41,7 @@ test(
     // exits immediately but leaves a background child holding the pipes open
     writeFileSync(fake, `#!/bin/sh\nsleep 30 &\necho $! >> ${JSON.stringify(sleeperPids)}\necho '{"result":"Current session: 10% used"}'\nexit 0\n`);
     chmodSync(fake, 0o755);
-    saveConfig({ threshold: 95, claudeBin: fake, policy: { projectionMargin: 0, switchModels: ["fable"], usagePollTtlMs: 90_000, maxWaitMs: 3_600_000 } });
+    saveConfig({ thresholds: { session: 95, weekly: 98 }, claudeBin: fake, policy: { projectionMargin: 0, greedySessionFloor: 50, switchModels: ["fable"], usagePollTtlMs: 90_000, maxWaitMs: 3_600_000 } });
 
     const started = Date.now();
     const result = await probeUsage();

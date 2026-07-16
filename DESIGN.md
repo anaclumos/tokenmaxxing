@@ -1,6 +1,6 @@
 # tokenmaxxing - design
 
-Automatic Claude Code account switching. You run `claude` exactly as always; when the active account crosses **98%** usage, tokenmaxxing swaps to a fresh account and - at the next safe turn boundary - **restarts your session resumed on it, automatically**. Works across many concurrent sessions at once.
+Automatic Claude Code account switching. You run `claude` exactly as always; when the active account crosses its swap threshold (**95%** of the 5h session window, **98%** of a weekly window), tokenmaxxing swaps to a fresh account and - at the next safe turn boundary - **restarts your session resumed on it, automatically**. Works across many concurrent sessions at once.
 
 > Scope: **Claude Code only, macOS first.** Codex and other CLIs deferred (see `.memory/cc-codex-auth-mechanics.md`).
 >
@@ -10,9 +10,9 @@ Automatic Claude Code account switching. You run `claude` exactly as always; whe
 
 ## 1. Why there is a thin supervisor (and why that's the whole trick)
 
-A **running** `claude` cannot adopt a swapped credential mid-flight - binary-verified: it holds its OAuth token in memory and a 429 (the limit event) does **not** invalidate it, so it never re-reads the keychain on the event we care about. A keychain swap is only picked up by a **fresh** `claude` process.
+A **running** `claude` DOES adopt an externally swapped credential (verified live 2026-07-10, correcting this document's original claim): an ensure-fresh poll re-reads the credential store around every request, so a swap lands within ~30s on macOS (raw keychain cache) and on the next request on Linux. What a swap alone cannot give you is a *clean cutover*: a mid-flight 429 retry keeps its already-snapshotted token, and an account already at the wall still needs the session paused until something resets.
 
-The clean way to exploit that is not to fight the live process but to **replace it at a salvageable moment**: after a turn completes, the conversation is fully written to the transcript JSONL and `claude` is idle at the prompt - killing it there loses nothing, and a `claude --resume <session-id>` comes back cold on the new account and continues exactly where it left off. **This is why we swap at 98%: the 2% headroom is the budget to reach a clean turn boundary and respawn before the account actually hits the wall.**
+So the supervisor's job is to **replace the process at a salvageable moment**: after a turn completes, the conversation is fully written to the transcript JSONL and `claude` is idle at the prompt - killing it there loses nothing, and a `claude --resume <session-id>` comes back cold on the new account and continues exactly where it left off. **This is why we swap below 100%: the headroom is the budget to reach a clean turn boundary and respawn before the account actually hits the wall.** The session window swaps at 95 (a 5h reset is cheap to sit out) while the weekly windows drain to 98 (weekly allowance is use-it-or-lose-it).
 
 A hook can't do the respawn - when `claude` exits, the shell owns the terminal. So tokenmaxxing installs a **supervisor** (aliased to `claude`) that owns the process lifecycle:
 
@@ -47,7 +47,7 @@ No background daemon - it's event-driven (statusline pushes usage; hooks + super
 The Stop hook's stdin has no usage data, but the **statusLine does** (`rate_limits.{five_hour,seven_day}.{used_percentage,resets_at}`, after every turn, 300ms debounce, zero cost). tokenmaxxing's statusLine shim tees that to `usage.json` (write-on-change, O(ms)) and passes your real statusline through unchanged. Cold-start fallback if `usage.json` is absent: `TOKENMAXXING_PROBE=1 claude -p '/usage'`, with `[ -n "$TOKENMAXXING_PROBE" ] && exit 0` as the hook's first line to stop the nested process recursing (hooks fire in `-p` too). The probe scrubs every ambient credential override claude reads before the keychain (`CLAUDE_CODE_OAUTH_TOKEN`, `CLAUDE_SECURESTORAGE_CONFIG_DIR`, etc.) so it can only meter the credential in the keychain item, and retries the transient empty-footer case (claude prints local stats with no percentages when its own usage fetch throttles).
 
 ### 3.2 Detect + swap + signal (Stop hook, per turn)
-1. Read `usage.json`; `exit 0` fast if both windows `< 98%` (metered per `organizationUuid`).
+1. Read `usage.json`; `exit 0` fast if every window is under its threshold (metered per `organizationUuid`).
 2. Else take a `flock` on `~/.config/tokenmaxxing/lock`, re-check under it (parallel sessions race - first winner already swapped), pick the best parked account (not rate-limited, furthest behind its own weekly pace first: highest remaining% / time-to-weekly-reset, since unused allowance is forfeited at the fixed per-account reset; tiebreak soonest expiry then lowest 7-day usage), and **swap the credential** (§3.4).
 3. Write `respawn/<session_id>` (atomic temp+rename) and `SIGTERM` the parent `claude` (`kill -TERM $PPID`). The turn is already committed, so this is a clean stop.
 
@@ -62,7 +62,7 @@ The supervisor's `claude` call returns; it sees `respawn/<sid>`, deletes it, res
 5. Do steps 1, 3, 4 inside Claude's own `~/.claude.lock` so the writes can't collide with a token refresh.
 
 ### 3.5 Multiple concurrent sessions
-Each terminal ran the supervisor, so each has its own child `claude`, its own `--session-id`, and its own respawn marker. When the shared account hits 98%, the first Stop hook to win the `flock` performs the one swap; **every** session's Stop hook writes its own respawn marker and SIGTERMs its own `claude`; **every** supervisor independently relaunches `claude --resume <its-own-sid>`. All of them come back on the new account, each continuing its own conversation. (They share one credential, so they always move together - consistent with "one current account, many windows.")
+Each terminal ran the supervisor, so each has its own child `claude`, its own `--session-id`, and its own respawn marker. When the shared account hits a threshold, the first Stop hook to win the `flock` performs the one swap; **every** session's Stop hook writes its own respawn marker and SIGTERMs its own `claude`; **every** supervisor independently relaunches `claude --resume <its-own-sid>`. All of them come back on the new account, each continuing its own conversation. (They share one credential, so they always move together - consistent with "one current account, many windows.")
 
 ---
 
@@ -76,7 +76,7 @@ Each terminal ran the supervisor, so each has its own child `claude`, its own `-
 ---
 
 ## 5. Rotation policy
-Trigger at `five_hour >= 98%` OR `seven_day >= 98%`, per org. "Exhausted" is a **timestamped state** (`resets_at`), not a flag - an account is a candidate again after it resets. Optional projected threshold (`98 − EMA(per-turn Δ%)`) so a single large turn can't blow past 100% before the next Stop hook.
+The decision engages at `five_hour >= 50%` (policy.greedySessionFloor): from there it greedily converges on the usable account furthest behind its weekly pace, staying put whenever the current account wins or ties. The hard bars - `five_hour >= 95%` OR `seven_day >= 98%`, per org - always force a switch and also screen candidates. "Exhausted" is a **timestamped state** (`resets_at`), not a flag - an account is a candidate again after it resets. Optional projected threshold (`bar - EMA(per-turn Δ%)`) so a single large turn can't blow past 100% before the next Stop hook.
 
 **Model-aware trigger.** Claude subscriptions also enforce **per-model weekly caps** - currently only for Sonnet and Fable (there is no Opus-only quota), and Fable's tighter limit binds *before* the aggregate (e.g. 80% week-Fable at only 50% week-all-models). This cap isn't in statusLine stdin, so when the active model is in `policy.switchModels` we read it from `claude -p '/usage'` (free, 0 tokens, TTL-cached) and add `week(<activeModel>) >= threshold` to the trigger. A Fable session switches on the Fable cap; a Sonnet session rides the aggregate.
 
@@ -85,7 +85,7 @@ Trigger at `five_hour >= 98%` OR `seven_day >= 98%`, per org. "Exhausted" is a *
 ## 6. Honest papercuts
 - **Respawn hiccup.** At the swap turn you see `claude` restart (~1–2s) and resume. Anything you typed in the split second before respawn is lost - mitigate by respawning fast and showing a clear "switching" state; the supervisor resets terminal mode so nothing is left garbled.
 - **One cold turn.** Prompt cache is org-scoped: the first turn after resuming on B re-uploads context once (bigger on long transcripts).
-- **Single-turn overshoot.** If one turn jumps from <98% straight past the wall, that turn can end rate-limited before the Stop hook swaps; the respawn then still recovers it. Projected threshold reduces this.
+- **Single-turn overshoot.** If one turn jumps from under the threshold straight past the wall, that turn can end rate-limited before the Stop hook swaps; the respawn then still recovers it. Projected threshold reduces this.
 - **Shared blast radius.** All default-profile sessions share one keychain item, so a swap moves them all (each via its own respawn). The `flock` + re-check is mandatory or racing hooks burn two accounts at once.
 - **Refresh-token rotation / parked-token rot.** Step 1 re-harvest is mandatory; a parked refresh token can be invalidated by logging in elsewhere → picker must catch `invalid_grant`, mark `needs_reauth`, fall through.
 - **statusLine fragility.** The shim is the most visible surface - a bug flickers or breaks your real status line. Keep it O(ms), write-on-change.
@@ -95,7 +95,7 @@ Trigger at `five_hour >= 98%` OR `seven_day >= 98%`, per org. "Exhausted" is a *
 ---
 
 ## 7. Scope
-**v1:** `tokenmaxxing init` / `add` / `ls` / `status` / `doctor`; the supervisor; statusLine shim + Stop/SessionStart hooks; 98% swap with `flock` + reset-aware picker; platform credential store (macOS keychain / Linux 0600 files, one facade); auto-respawn across concurrent sessions. macOS + Linux.
+**v1:** `tokenmaxxing init` / `add` / `ls` / `status` / `doctor`; the supervisor; statusLine shim + Stop/SessionStart hooks; threshold swap with `flock` + reset-aware picker; platform credential store (macOS keychain / Linux 0600 files, one facade); auto-respawn across concurrent sessions. macOS + Linux.
 
 **v2:** projected-threshold pre-emption; a `UserPromptSubmit` guard that respawns *before* a turn starts when already over; Windows.
 

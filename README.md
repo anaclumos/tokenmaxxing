@@ -13,7 +13,7 @@ $ claude
 
 ## Why
 
-A running `claude` holds its OAuth token in memory and a 429 does **not** make it re-read the credential store - so you can't hot-swap a live session. tokenmaxxing instead swaps the credential and **respawns** `claude --resume <id>` at a committed turn boundary (the transcript is already on disk, so nothing is lost). A thin `claude` supervisor on your PATH owns that respawn; everything else about `claude` is unchanged - all flags, MCP, hooks, and skills pass through.
+A running `claude` re-checks the credential store between requests, so a swapped credential is adopted in-place (within ~30s on macOS, the next request on Linux). tokenmaxxing performs the swap at a committed turn boundary and **respawns** `claude --resume <id>` (the transcript is already on disk, so nothing is lost) - the respawn is what gives you a clean cutover and, when the whole pool is depleted, a countdown that auto-resumes at the soonest reset. A thin `claude` supervisor on your PATH owns that respawn; everything else about `claude` is unchanged - all flags, MCP, hooks, and skills pass through.
 
 ## Install
 
@@ -46,14 +46,14 @@ claude                  # use claude as always
 
 ## How switching decides
 
-Switching triggers at **98%** (configurable) on any of:
+Switching engages (configurable) once the active account's 5-hour session window is **50% used** - from there, every evaluation greedily converges on the usable account **furthest behind its own weekly pace**, and does nothing when the current account already wins. Independent of that, crossing a hard screening bar - **95%** session or **98%** weekly - always forces a switch. The bars also screen candidates on any of:
 
 - **Session** (5-hour) or **week (all models)** - the aggregate windows, fed free/push-based by the statusLine.
 - **Per-model weekly cap** - the most capable model (Fable) has its own tighter weekly limit that binds *before* the aggregate (per-model caps currently exist only for Sonnet and Fable, and Sonnet's is generous). tokenmaxxing reads it from `claude -p '/usage'` (free, 0 tokens, TTL-cached) whenever the active model is one of `policy.switchModels`, so a Fable session switches on the Fable cap while a Sonnet session rides the aggregate.
 
-The 2% headroom is deliberate: it's the budget to reach a clean turn boundary and respawn before the wall.
+The bars' headroom is deliberate: it's the budget to reach a clean turn boundary and respawn before the wall. The session bar sits lower (95) because a 5-hour reset is cheap to sit out; weekly quota is use-it-or-lose-it, so it drains closer to the wall (98). The greedy engagement floor sits far below both: weekly allowance is forfeited at each account's fixed reset, so once half a session window justifies the swap, quota is best burned on whichever account has the most at risk.
 
-The **target** is chosen greedily off each account's cached windows: the usable account (session and week under threshold, or past their reset) whose weekly window **expires soonest** - unused weekly allowance is forfeited at the fixed per-account reset. Cached resets are absolute UTC epochs, so a stale snapshot still resolves correctly: a weekly reset that has passed extrapolates forward in 7-day steps, and a session window past its reset counts as empty. `tokenmaxxing switch` ranks the current account too and does nothing when it already wins, so it is idempotent - running it periodically converges on the right account.
+The **target** is chosen greedily off each account's cached windows: among usable accounts (every window under its bar, or past its reset), the one **furthest behind its own weekly pace** - highest remaining% divided by time to its weekly reset - because unused weekly allowance is forfeited at the fixed per-account reset. Cached resets are absolute UTC epochs, so a stale snapshot still resolves correctly: a weekly reset that has passed extrapolates forward in 7-day steps, and a session window past its reset counts as empty. Both `tokenmaxxing switch` and the automatic path rank the current account too and do nothing when it already wins, so they are idempotent - evaluating periodically converges on the right account.
 
 ## Configuration
 
@@ -61,16 +61,17 @@ The **target** is chosen greedily off each account's cached windows: the usable 
 
 ```json
 {
-  "threshold": 98,
+  "thresholds": { "session": 95, "weekly": 98 },
   "policy": {
     "projectionMargin": 0,
+    "greedySessionFloor": 50,
     "switchModels": ["fable"],
     "usagePollTtlMs": 90000
   }
 }
 ```
 
-`projectionMargin` subtracts an EMA of per-turn Δ% for pre-emption; `switchModels` names the models whose per-model cap triggers a switch; `usagePollTtlMs` is how long a `/usage` per-model poll stays fresh.
+`projectionMargin` subtracts an EMA of per-turn Δ% for pre-emption; `greedySessionFloor` is the session-used % at which the greedy convergence engages; `switchModels` names the models whose per-model cap triggers a switch; `usagePollTtlMs` is how long a `/usage` per-model poll stays fresh.
 
 State lives entirely in `~/.config/tokenmaxxing/`. Per-account credentials follow the platform's Claude Code store: the login keychain on macOS (`tokenmaxxing-cred-<uuid8>` items, never plaintext on disk), 0600 files under `~/.config/tokenmaxxing/creds/` on Linux (the same plaintext model claude itself uses for `~/.claude/.credentials.json`).
 

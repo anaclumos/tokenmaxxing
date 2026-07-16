@@ -18,12 +18,13 @@ import { z } from "zod";
 import { readOAuthAccount } from "../lib/claudejson.ts";
 import { loadAccounts, loadConfig, loadLastSwapAt, loadModelUsage, writeUsage } from "../lib/state.ts";
 import { familyTokens, gatedFamilies, matchedFamily, parseStatusLineStdin, parseStatusLineModel } from "../lib/usage.ts";
-import { isExhausted, swapPreference, weeklyExpiry } from "../lib/picker.ts";
+import { effectiveBars, isExhausted, swapPreference, weeklyExpiry } from "../lib/picker.ts";
 import { worktreeName } from "../lib/worktree.ts";
 import { fmtResetShort, makeColors } from "../cli/render.ts";
 import {
   AccountsIndexSchema,
   StatusLineStdinSchema,
+  ThresholdsSchema,
   UsageWindowSchema,
   type Account,
   type UsageState,
@@ -41,7 +42,7 @@ const RenderCtxSchema = z.object({
   perModel: z.record(z.string(), UsageWindowSchema),
   /** families (lowercased) whose per-model weekly cap gates a switch. */
   switchModels: z.array(z.string()),
-  threshold: z.number(),
+  thresholds: ThresholdsSchema,
   /** linked-worktree basename, null in a main checkout. */
   worktree: z.string().nullable(),
   now: z.number(),
@@ -107,7 +108,7 @@ export function renderStatusline(stdinObj: unknown, ctx: RenderCtx): string {
   // ---- parked accounts, in swap order: the first usable ◇ is the next target
   const pickCtx = {
     now: ctx.now,
-    threshold: ctx.threshold,
+    thresholds: ctx.thresholds,
     currentAccountUuid: ctx.accounts.activeAccountUuid,
     switchFamilies: gatedFamilies(parseStatusLineModel(stdinObj), ctx.switchModels),
   };
@@ -181,7 +182,7 @@ export async function runStatusline(): Promise<number> {
     accounts: loadAccounts(),
     perModel: modelUsage && modelUsage.org === org ? modelUsage.perModel : {},
     switchModels: cfg.policy.switchModels,
-    threshold: cfg.threshold,
+    thresholds: effectiveBars(cfg),
     worktree: dir == null ? null : worktreeName(dir),
     now,
     color: !process.env.NO_COLOR,

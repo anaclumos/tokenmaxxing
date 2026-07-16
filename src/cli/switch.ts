@@ -19,7 +19,7 @@ import { paths } from "../lib/paths.ts";
 import { loadAccounts, loadConfig } from "../lib/state.ts";
 import { readOAuthAccount } from "../lib/claudejson.ts";
 import { performSwap, chooseAndSwap } from "../lib/swap.ts";
-import { isExhausted, pickBest, pickEarliestReset, swapPreference, weeklyExpiry, type PickCtx } from "../lib/picker.ts";
+import { currentWins, effectiveBars, pickEarliestReset, weeklyExpiry, type PickCtx } from "../lib/picker.ts";
 import { InvalidGrantError } from "../lib/oauth.ts";
 import { findAccount } from "./rename.ts";
 import { c, fmtReset } from "./render.ts";
@@ -60,21 +60,17 @@ export async function cmdSwitch(selector?: string): Promise<number> {
 
     // auto: greedy over everyone, current included - a no-op when current wins.
     // No session context here, so every configured per-model family gates.
-    const everyone: PickCtx = { now, threshold: cfg.threshold, currentAccountUuid: null, switchFamilies: cfg.policy.switchModels };
+    const everyone: PickCtx = { now, thresholds: effectiveBars(cfg), currentAccountUuid: null, switchFamilies: cfg.policy.switchModels };
     const active = idx.accounts.find((a) => a.accountUuid === idx.activeAccountUuid) ?? null;
-    const best = pickBest(idx.accounts, everyone);
-    const currentWins =
-      best != null && active != null && !active.needsReauth && !isExhausted(active, everyone) &&
-      (best.accountUuid === active.accountUuid || swapPreference(now).every((k) => k(active) === k(best)));
-    if (currentWins) {
+    if (active != null && currentWins(active, idx.accounts, everyone)) {
       if (drifted) return swapTo(active);
       const expiry = weeklyExpiry(active, now);
       const why = Number.isFinite(expiry) ? ` (weekly ${fmtReset(expiry, now)})` : "";
       console.log(`already on the best account: ${c.bold(active.label)}${why}`);
       return 0;
     }
-    if (best) {
-      const landed = await chooseAndSwap({ now, threshold: cfg.threshold, switchFamilies: cfg.policy.switchModels });
+    {
+      const landed = await chooseAndSwap({ now, thresholds: effectiveBars(cfg), switchFamilies: cfg.policy.switchModels });
       if (landed) {
         console.log(`${c.green("↻")} switched to ${c.bold(landed.label)}`);
         return 0;

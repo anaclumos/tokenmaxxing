@@ -16,11 +16,12 @@ function acct(): Account {
 }
 
 describe("config round-trip", () => {
-  test("save/load preserves threshold + policy", () => {
-    saveConfig({ threshold: 90, claudeBin: "/bin/claude", policy: { projectionMargin: 3, switchModels: ["fable", "opus"], usagePollTtlMs: 60_000, maxWaitMs: 3_600_000 } });
+  test("save/load preserves thresholds + policy", () => {
+    saveConfig({ thresholds: { session: 90, weekly: 93 }, claudeBin: "/bin/claude", policy: { projectionMargin: 3, greedySessionFloor: 40, switchModels: ["fable", "opus"], usagePollTtlMs: 60_000, maxWaitMs: 3_600_000 } });
     const c = loadConfig();
-    expect(c.threshold).toBe(90);
+    expect(c.thresholds).toEqual({ session: 90, weekly: 93 });
     expect(c.policy.projectionMargin).toBe(3);
+    expect(c.policy.greedySessionFloor).toBe(40);
     expect(c.policy.switchModels).toEqual(["fable", "opus"]);
     expect(c.policy.usagePollTtlMs).toBe(60_000);
     // note: claudeBin may be overridden by TOKENMAXXING_CLAUDE_BIN env (unset here)
@@ -28,7 +29,8 @@ describe("config round-trip", () => {
   });
   test("missing config yields defaults", () => {
     // fresh load after a save still valid; defaults path covered by schema
-    expect(loadConfig().threshold).toBeGreaterThan(0);
+    expect(loadConfig().thresholds.session).toBeGreaterThan(0);
+    expect(loadConfig().thresholds.weekly).toBeGreaterThan(0);
   });
 });
 

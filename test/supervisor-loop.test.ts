@@ -52,7 +52,7 @@ ${reexec}
   );
   writeFileSync(
     join(tmHome, "config.json"),
-    JSON.stringify({ threshold: 95, claudeBin: shim, policy: { switchModels: ["fable"] } }),
+    JSON.stringify({ thresholds: { session: 95, weekly: 98 }, claudeBin: shim, policy: { switchModels: ["fable"] } }),
   );
   return { tmHome, binDir, counterFile };
 }

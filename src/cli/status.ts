@@ -17,7 +17,7 @@ import { readOAuthAccount } from "../lib/claudejson.ts";
 import { probeActiveUsage, probeParkedUsage, type SampleOutcome } from "../lib/sample.ts";
 import { withLock } from "../lib/lock.ts";
 import { paths } from "../lib/paths.ts";
-import { isExhausted, nextWeeklyReset } from "../lib/picker.ts";
+import { effectiveBars, isExhausted, nextWeeklyReset } from "../lib/picker.ts";
 import { bar, c, fmtAgo, fmtReset } from "./render.ts";
 import type { FullUsage } from "../lib/usage.ts";
 import type { UsageWindow } from "../lib/types.ts";
@@ -89,7 +89,7 @@ export async function cmdStatus(force = false): Promise<number> {
     saveAccounts(idx);
   });
 
-  console.log(c.dim(`threshold ${cfg.threshold}%  ·  ${idx.accounts.length} account(s)`));
+  console.log(c.dim(`threshold 5h ${cfg.thresholds.session}% · week ${cfg.thresholds.weekly}%  ·  ${idx.accounts.length} account(s)`));
   console.log();
 
   // A window whose cached reset has passed is empty again; weekly windows recur
@@ -115,7 +115,7 @@ export async function cmdStatus(force = false): Promise<number> {
     const badges: string[] = [];
     if (active) badges.push(c.green("active"));
     if (a.needsReauth) badges.push(c.red("needs-reauth"));
-    if (isExhausted(a, { now, threshold: cfg.threshold, currentAccountUuid: idx.activeAccountUuid, switchFamilies: cfg.policy.switchModels }))
+    if (isExhausted(a, { now, thresholds: effectiveBars(cfg), currentAccountUuid: idx.activeAccountUuid, switchFamilies: cfg.policy.switchModels }))
       badges.push(c.yellow("exhausted"));
 
     console.log(`${marker} ${c.bold(a.label || a.email)} ${badges.join(" ")}`);

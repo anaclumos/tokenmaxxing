@@ -56,10 +56,10 @@ function poolAccount(uuid: string, over: Partial<Account> = {}): Account {
   };
 }
 
-function installFixtures(extraAccounts: Account[] = []): void {
+function installFixtures(extraAccounts: Account[] = [], thresholds = { session: 95, weekly: 95 }): void {
   writeFileSync(
     paths.configJson,
-    JSON.stringify({ threshold: 95, claudeBin: fakeClaude, policy: { switchModels: ["fable"] } }),
+    JSON.stringify({ thresholds, claudeBin: fakeClaude, policy: { switchModels: ["fable"] } }),
   );
   writeFileSync(
     paths.claudeJson,
@@ -179,6 +179,103 @@ describe("evaluateAndMaybeSwap headless snapshot handling", () => {
     const d = await evaluateAndMaybeSwap();
     expect(d.reason).toBe("post-swap-cooldown");
     expect(await Bun.file(probeMarker).exists()).toBe(false);
+  });
+
+  test("greedy: at the session floor, a pace-behind account takes the seat", async () => {
+    const D2 = 2 * D;
+    installFakeClaude(50, Date.now() + D2);
+    installFixtures([
+      poolAccount("B", {
+        lastUsage: {
+          fiveHour: { usedPercentage: 5, resetsAt: null },
+          sevenDay: { usedPercentage: 10, resetsAt: Date.now() + D2 },
+        },
+        lastUsageAt: Date.now(),
+      }),
+    ]);
+    // fresh sonnet tee, under every bar, session half-used: B (90 left) out-pressures A (40 left).
+    writeUsageJson({
+      fiveHour: { usedPercentage: 55, resetsAt: Date.now() + 3_600_000 },
+      sevenDay: { usedPercentage: 60, resetsAt: Date.now() + D2 },
+      model: { id: "claude-3-5-sonnet-20241022", display: "Sonnet" },
+    });
+    // the greedy path chose to swap onto B - proven by the loud missing-credential throw.
+    await expect(evaluateAndMaybeSwap()).rejects.toThrow(/no parked credential/);
+  });
+
+  test("greedy: the current account keeps its seat while it has the most at-risk quota", async () => {
+    installFakeClaude(50, Date.now() + 2 * D);
+    installFixtures([
+      poolAccount("B", {
+        lastUsage: {
+          fiveHour: { usedPercentage: 5, resetsAt: null },
+          sevenDay: { usedPercentage: 80, resetsAt: Date.now() + 2 * D },
+        },
+        lastUsageAt: Date.now(),
+      }),
+    ]);
+    writeUsageJson({
+      fiveHour: { usedPercentage: 55, resetsAt: Date.now() + 3_600_000 },
+      sevenDay: { usedPercentage: 60, resetsAt: Date.now() + 2 * D },
+      model: { id: "claude-3-5-sonnet-20241022", display: "Sonnet" },
+    });
+    const d = await evaluateAndMaybeSwap();
+    expect(d.reason).toBe("current-best");
+    expect(d.swapped).toBe(false);
+  });
+
+  test("greedy: below the session floor the decision stays disengaged", async () => {
+    installFakeClaude(50, Date.now() + 2 * D);
+    installFixtures([
+      poolAccount("B", {
+        lastUsage: {
+          fiveHour: { usedPercentage: 5, resetsAt: null },
+          sevenDay: { usedPercentage: 10, resetsAt: Date.now() + 2 * D },
+        },
+        lastUsageAt: Date.now(),
+      }),
+    ]);
+    writeUsageJson({
+      fiveHour: { usedPercentage: 45, resetsAt: Date.now() + 3_600_000 },
+      sevenDay: { usedPercentage: 60, resetsAt: Date.now() + 2 * D },
+      model: { id: "claude-3-5-sonnet-20241022", display: "Sonnet" },
+    });
+    const d = await evaluateAndMaybeSwap();
+    expect(d.reason).toBe("under-threshold-or-stale");
+  });
+
+  test("split thresholds: a session window over its own bar triggers below the weekly bar", async () => {
+    installFakeClaude(50, Date.now() + 2 * D);
+    installFixtures([], { session: 95, weekly: 98 });
+    // fresh sonnet tee: no per-model gate, no probe; session 96 >= 95 is the sole trigger.
+    writeUsageJson({
+      fiveHour: { usedPercentage: 96, resetsAt: Date.now() + 2 * D },
+      model: { id: "claude-3-5-sonnet-20241022", display: "Sonnet" },
+    });
+    const d = await evaluateAndMaybeSwap();
+    expect(d.reason).toBe("all-depleted");
+    expect(await Bun.file(probeMarker).exists()).toBe(false);
+  });
+
+  test("split thresholds: weekly windows between the bars do not trigger", async () => {
+    // week-all 96 and week-Fable 96 both sit under the 98 weekly bar; the old
+    // single 95 bar would have swapped on either.
+    installFakeClaude(96, Date.now() + 2 * D);
+    installFixtures([], { session: 95, weekly: 98 });
+    writeUsageJson({
+      sevenDay: { usedPercentage: 96, resetsAt: Date.now() + 2 * D },
+      model: { id: "claude-fable-5", display: "Fable" },
+    });
+    const d = await evaluateAndMaybeSwap();
+    expect(d.reason).toBe("under-threshold-or-stale");
+  });
+
+  test("split thresholds: a per-model cap at the weekly bar still triggers", async () => {
+    installFakeClaude(98, Date.now() + 2 * D);
+    installFixtures([], { session: 95, weekly: 98 });
+    const d = await evaluateAndMaybeSwap();
+    expect(d.reason).toBe("all-depleted");
+    expect(loadModelUsage()?.perModel["Fable"]?.usedPercentage).toBe(98);
   });
 
   test("only a pause-capable caller may pre-park on a still-blocked account", async () => {

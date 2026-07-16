@@ -17,9 +17,9 @@ import { paths } from "../src/lib/paths.ts";
 import { saveConfig } from "../src/lib/state.ts";
 
 const cfg = (claudeBin: string) => ({
-  threshold: 95,
+  thresholds: { session: 95, weekly: 98 },
   claudeBin,
-  policy: { projectionMargin: 0, switchModels: ["fable"], usagePollTtlMs: 90_000, maxWaitMs: 3_600_000 },
+  policy: { projectionMargin: 0, greedySessionFloor: 50, switchModels: ["fable"], usagePollTtlMs: 90_000, maxWaitMs: 3_600_000 },
 });
 
 function writeExecutable(path: string, body: string): void {
