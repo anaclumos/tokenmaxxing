@@ -22,7 +22,10 @@ import { bar, c, fmtAgo, fmtReset } from "./render.ts";
 import type { FullUsage } from "../lib/usage.ts";
 import type { UsageWindow } from "../lib/types.ts";
 
-export async function cmdStatus(force = false): Promise<number> {
+/** `preRender` runs after sampling, right before the first output line: `watch`
+ *  keeps the previous frame on screen through the multi-second sample and
+ *  clears only when the fresh frame is ready to paint (watch(1) semantics). */
+export async function cmdStatus(force = false, preRender?: () => void): Promise<number> {
   let idx = loadAccounts();
   const cfg = loadConfig();
   const now = Date.now();
@@ -89,6 +92,7 @@ export async function cmdStatus(force = false): Promise<number> {
     saveAccounts(idx);
   });
 
+  preRender?.();
   console.log(c.dim(`threshold 5h ${cfg.thresholds.session}% · week ${cfg.thresholds.weekly}%  ·  ${idx.accounts.length} account(s)`));
   console.log();
 

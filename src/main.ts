@@ -12,6 +12,7 @@ import { cmdInit } from "./cli/init.ts";
 import { cmdAdd } from "./cli/add.ts";
 import { cmdLs } from "./cli/ls.ts";
 import { cmdStatus } from "./cli/status.ts";
+import { cmdWatch } from "./cli/watch.ts";
 import { cmdDoctor } from "./cli/doctor.ts";
 import { cmdRm } from "./cli/rm.ts";
 import { cmdRename } from "./cli/rename.ts";
@@ -31,6 +32,7 @@ function printHelp(): void {
   ${c.cyan("tokenmaxxing ls")}         list pooled accounts
   ${c.cyan("tokenmaxxing status")}     accounts with 5h / weekly / per-model usage bars
   ${c.cyan("tokenmaxxing status --force")}  ping every account (one tiny haiku request each) so all 5h session timers start now, then sample fresh; ${c.cyan("xx --force")} works too
+  ${c.cyan("tokenmaxxing watch")} [seconds]  live status: re-render every N seconds (default 120, never pings)
   ${c.cyan("tokenmaxxing doctor")}     verify the install is intact
   ${c.cyan("tokenmaxxing rename")} <sel> <label>
   ${c.cyan("tokenmaxxing rm")} <sel>
@@ -65,6 +67,7 @@ async function main(): Promise<number> {
     case "add": return cmdAdd();
     case "ls": return cmdLs();
     case "status": return cmdStatus(args.includes("--force"));
+    case "watch": return cmdWatch(args[1]);
     case "doctor": return cmdDoctor();
     case "rm": return cmdRm(args[1]);
     case "rename": return cmdRename(args[1], args[2]);
