@@ -1,0 +1,52 @@
+README.md
+  s_f6c0512957b93d::t_6e71df1e18d9e1 15
+  s_f6c0512957b93d::t_b20bb8566b7c51 3,9-10
+  s_f6c0512957b93d::t_cd27ab884a8632 58
+  s_f6c0512957b93d::t_c539087f81c208 123
+  s_f6c0512957b93d::t_5397279fcf2eb9 126
+  s_f6c0512957b93d::t_5a38b3e9afa1d3 48
+  s_f6c0512957b93d::t_0885606f7f8dc6 124-125
+AGENTS.md
+  s_f6c0512957b93d::t_da33e720f2196b 130
+  s_f6c0512957b93d::t_626565b374d071 76
+  s_f6c0512957b93d::t_84862a01f9a510 77
+  s_f6c0512957b93d::t_2e2b1a41cad0d8 78
+  s_f6c0512957b93d::t_18c000319a1145 230
+test/pure.test.ts
+  s_f6c0512957b93d::t_0a968238416e72 6
+  s_f6c0512957b93d::t_92880545dde752 233-241
+src/lib/types.ts
+  s_f6c0512957b93d::t_2921d56200e7b6 144-145,149-150
+src/entries/stophook.ts
+  s_f6c0512957b93d::t_0c160ace97c796 2-7
+  s_f6c0512957b93d::t_ceb90caeb4f4a6 41-43
+src/entries/supervisor.ts
+  s_f6c0512957b93d::t_1e99f90fdfb133 4-8
+  s_f6c0512957b93d::t_2030a6d04ec3cf 217
+package.json
+  s_f6c0512957b93d::t_e9f6ffd39f9a84 3
+DESIGN.md
+  s_f6c0512957b93d::t_388bdbbff264e1 13,15,17
+  s_f6c0512957b93d::t_c98b6447e5702e 52
+  s_f6c0512957b93d::t_ec4d4d96cfba97 36
+  s_f6c0512957b93d::t_793a172854e735 65
+  s_f6c0512957b93d::t_9a95df9a8ddb4a 86-90
+  s_f6c0512957b93d::t_72beeec1c77d0e 54-55
+  s_f6c0512957b93d::t_9b15eee4afd7ae 3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "fcea1fdb7e285948a45f6d5f7b4ed29000f298ca",
+  "prompts": {},
+  "sessions": {
+    "s_f6c0512957b93d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "014a7d52-2fe0-48ba-b823-3529ecc8cdd0",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    }
+  }
+}
