@@ -1,10 +1,11 @@
 // The `claude` supervisor. Invoked in place of claude (via ~/.config/tokenmaxxing/
 // bin/claude on PATH). Runs the REAL claude with inherited stdio (claude owns the
 // real terminal exactly as if run directly), pins a session id, and watches for a
-// respawn marker dropped by the Stop/SessionStart hook. When the marker appears it
-// SIGTERMs its own child at the (already-committed) turn boundary and relaunches
-// `claude --resume <id>` on the freshly-swapped account. Process/terminal manager
-// only - it never reads or proxies tokens.
+// respawn marker dropped by the Stop hook on a depleted-pool wait (plain swaps
+// adopt in place and never respawn). When the marker appears it SIGTERMs its own
+// child at the (already-committed) turn boundary, counts down to the reset, and
+// relaunches `claude --resume <id>`. Process/terminal manager only - it never
+// reads or proxies tokens.
 
 import { existsSync, mkdirSync, rmSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
@@ -213,7 +214,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
       const m = RespawnMarkerSchema.parse(await Bun.file(marker).json());
       rmSync(marker, { force: true });
       respawns++;
-      if (m.waitUntil && m.waitUntil > Date.now()) await countdownWait(m.account, m.waitUntil);
+      if (m.waitUntil > Date.now()) await countdownWait(m.account, m.waitUntil);
       else process.stdout.write(`\n\x1b[36m↻ tokenmaxxing: switched to ${m.account} - resuming...\x1b[0m\n`);
       launchArgs = ["--resume", sid, ...base];
       continue;

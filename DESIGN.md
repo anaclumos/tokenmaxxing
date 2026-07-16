@@ -1,6 +1,6 @@
 # tokenmaxxing - design
 
-Automatic Claude Code account switching. You run `claude` exactly as always; when the active account crosses its swap threshold (**95%** of the 5h session window, **98%** of a weekly window), tokenmaxxing swaps to a fresh account and - at the next safe turn boundary - **restarts your session resumed on it, automatically**. Works across many concurrent sessions at once.
+Automatic Claude Code account switching. You run `claude` exactly as always; when the active account crosses its swap threshold (**95%** of the 5h session window, **98%** of a weekly window), tokenmaxxing swaps the credential to a fresh account at a safe turn boundary and **your running session adopts it in place - no restart**. Works across many concurrent sessions at once; a fully depleted pool pauses with a countdown and auto-resumes at the soonest reset.
 
 > Scope: **Claude Code only, macOS first.** Codex and other CLIs deferred (see `.memory/cc-codex-auth-mechanics.md`).
 >
@@ -10,11 +10,11 @@ Automatic Claude Code account switching. You run `claude` exactly as always; whe
 
 ## 1. Why there is a thin supervisor (and why that's the whole trick)
 
-A **running** `claude` DOES adopt an externally swapped credential (verified live 2026-07-10, correcting this document's original claim): an ensure-fresh poll re-reads the credential store around every request, so a swap lands within ~30s on macOS (raw keychain cache) and on the next request on Linux. What a swap alone cannot give you is a *clean cutover*: a mid-flight 429 retry keeps its already-snapshotted token, and an account already at the wall still needs the session paused until something resets.
+A **running** `claude` DOES adopt an externally swapped credential (verified live 2026-07-10, correcting this document's original claim): an ensure-fresh poll re-reads the credential store around every request, so a swap lands within ~30s on macOS (raw keychain cache) and on the next request on Linux. A plain swap therefore needs no process management at all (since 0.15.0, 2026-07-16; earlier versions respawned on every swap): the Stop hook swaps the credential and the session keeps running. What adoption cannot give you is the depleted case: when every account is at the wall the session must be PAUSED until something resets, and a live `claude` cannot pause itself.
 
-So the supervisor's job is to **replace the process at a salvageable moment**: after a turn completes, the conversation is fully written to the transcript JSONL and `claude` is idle at the prompt - killing it there loses nothing, and a `claude --resume <session-id>` comes back cold on the new account and continues exactly where it left off. **This is why we swap below 100%: the headroom is the budget to reach a clean turn boundary and respawn before the account actually hits the wall.** The session window swaps at 95 (a 5h reset is cheap to sit out) while the weekly windows drain to 98 (weekly allowance is use-it-or-lose-it).
+So the supervisor's job is narrow: on a depleted pool it **replaces the process at a salvageable moment** - after a turn completes, the conversation is fully written to the transcript JSONL and `claude` is idle at the prompt, so killing it there loses nothing - shows an interruptible countdown to the soonest reset, and relaunches `claude --resume <session-id>` when it passes. **Thresholds still sit below 100%: the headroom is the budget to reach a clean turn boundary (plus up to one turn of adoption lag on macOS) before the account actually hits the wall.** The session window swaps at 95 (a 5h reset is cheap to sit out) while the weekly windows drain to 98 (weekly allowance is use-it-or-lose-it).
 
-A hook can't do the respawn - when `claude` exits, the shell owns the terminal. So tokenmaxxing installs a **supervisor** (aliased to `claude`) that owns the process lifecycle:
+A hook can't do the pause-and-relaunch - when `claude` exits, the shell owns the terminal. So tokenmaxxing installs a **supervisor** (aliased to `claude`) that owns the process lifecycle:
 
 ```
 supervisor (you type `claude`)  →  real claude (in a PTY)  →  Stop hook
@@ -33,7 +33,7 @@ It is a process/PTY manager only - spawn, forward the terminal, wait, restore te
   - `config.json` - threshold, account order/policy.
   - `accounts.json` - non-secret index `{email, organizationUuid, accountUuid, lastUsage, resetsAt, needs_reauth}`.
   - `usage.json` - live usage, written by the statusLine shim.
-  - `respawn/<session-id>` - per-session respawn markers (the hook→supervisor signal).
+  - `respawn/<session-id>` - per-session respawn markers (the hook→supervisor signal, depleted-pool waits only).
   - `bin/claude` - the supervisor.
 - Per-account **credentials** follow the platform's Claude Code store: macOS = login-keychain items `tokenmaxxing-cred-<accountUuid[:8]>` (never plaintext on disk); Linux = 0600 files `creds/tokenmaxxing-cred-<accountUuid[:8]>.json` (the same plaintext model claude itself uses - its Linux build has no keyring path at all, binary-verified 2.1.205). One `credstore` facade dispatches on a `{kind: keychain|file}` target; call sites never branch on platform.
 
@@ -49,10 +49,10 @@ The Stop hook's stdin has no usage data, but the **statusLine does** (`rate_limi
 ### 3.2 Detect + swap + signal (Stop hook, per turn)
 1. Read `usage.json`; `exit 0` fast if every window is under its threshold (metered per `organizationUuid`).
 2. Else take a `flock` on `~/.config/tokenmaxxing/lock`, re-check under it (parallel sessions race - first winner already swapped), pick the best parked account (not rate-limited, furthest behind its own weekly pace first: highest remaining% / time-to-weekly-reset, since unused allowance is forfeited at the fixed per-account reset; tiebreak soonest expiry then lowest 7-day usage), and **swap the credential** (§3.4).
-3. Write `respawn/<session_id>` (atomic temp+rename) and `SIGTERM` the parent `claude` (`kill -TERM $PPID`). The turn is already committed, so this is a clean stop.
+3. Done - the running session adopts the new credential on its own within a request or two. Only when the pool is depleted (the decision returned a `waitUntil`: pre-parked on the soonest-recovering account, or staying on the current one when it recovers first) does the hook write `respawn/<session_id>` (atomic temp+rename).
 
-### 3.3 Respawn (supervisor)
-The supervisor's `claude` call returns; it sees `respawn/<sid>`, deletes it, resets the terminal, prints `↻ switched to <account>`, and relaunches `claude --resume <sid>`. The resumed process reads the keychain cold → runs on the new account, same conversation. The `SessionStart` hook (source `resume`) re-checks the account before the first turn as a backstop.
+### 3.3 Depleted-pool pause (supervisor)
+The supervisor sees `respawn/<sid>`, SIGTERMs its child at the already-committed turn boundary, deletes the marker, resets the terminal, shows an interruptible countdown to the reset, and relaunches `claude --resume <sid>` when it passes. The resumed process reads the keychain cold → runs on the recovered account, same conversation. The `SessionStart` hook (source `resume`) re-checks the account before the first turn as a backstop.
 
 ### 3.4 Swap sequence (under the lock)
 1. **Harvest the live credential into its TRUE owner's backup** - read the current `Claude Code-credentials` blob and resolve which account it actually belongs to via the roles endpoint (`GET /api/oauth/claude_cli/roles`), NOT the `accounts.json` active label. The label drifts from the live blob (a kill mid-swap, a manual `/login`), and harvesting by label once overwrote another account's backup and destroyed its only credential. Mandatory anyway: Claude rotates the refresh token in place, so older backups are dead. Refuse the swap if the live credential belongs to no pooled account.
@@ -62,7 +62,7 @@ The supervisor's `claude` call returns; it sees `respawn/<sid>`, deletes it, res
 5. Do steps 1, 3, 4 inside Claude's own `~/.claude.lock` so the writes can't collide with a token refresh.
 
 ### 3.5 Multiple concurrent sessions
-Each terminal ran the supervisor, so each has its own child `claude`, its own `--session-id`, and its own respawn marker. When the shared account hits a threshold, the first Stop hook to win the `flock` performs the one swap; **every** session's Stop hook writes its own respawn marker and SIGTERMs its own `claude`; **every** supervisor independently relaunches `claude --resume <its-own-sid>`. All of them come back on the new account, each continuing its own conversation. (They share one credential, so they always move together - consistent with "one current account, many windows.")
+Each terminal ran the supervisor, so each has its own child `claude` and its own `--session-id`. When the shared account hits a threshold, the first Stop hook to win the `flock` performs the one swap; every running session then adopts the new credential in place - no restarts. (They share one credential, so they always move together - consistent with "one current account, many windows.") Only a depleted pool fans out: each supervised session's Stop hook writes its own `respawn/<sid>` marker, and each supervisor independently pauses and later relaunches `claude --resume <its-own-sid>`.
 
 ---
 
@@ -83,10 +83,11 @@ The decision engages at `five_hour >= 50%` (policy.greedySessionFloor): from the
 ---
 
 ## 6. Honest papercuts
-- **Respawn hiccup.** At the swap turn you see `claude` restart (~1–2s) and resume. Anything you typed in the split second before respawn is lost - mitigate by respawning fast and showing a clear "switching" state; the supervisor resets terminal mode so nothing is left garbled.
-- **One cold turn.** Prompt cache is org-scoped: the first turn after resuming on B re-uploads context once (bigger on long transcripts).
-- **Single-turn overshoot.** If one turn jumps from under the threshold straight past the wall, that turn can end rate-limited before the Stop hook swaps; the respawn then still recovers it. Projected threshold reduces this.
-- **Shared blast radius.** All default-profile sessions share one keychain item, so a swap moves them all (each via its own respawn). The `flock` + re-check is mandatory or racing hooks burn two accounts at once.
+- **Respawn hiccup (depleted pause only).** Plain swaps never restart the session. When the whole pool is depleted you see `claude` stop, a countdown, and a resume; anything typed in the split second before the SIGTERM is lost, and the supervisor resets terminal mode so nothing is left garbled.
+- **Adoption lag.** macOS reads the keychain through a raw 30s cache, so at most the first turn after a swap can still meter the old account. The bars' headroom absorbs it.
+- **One cold turn.** Prompt cache is org-scoped: the first turn on B re-uploads context once (bigger on long transcripts).
+- **Single-turn overshoot.** If one turn jumps from under the threshold straight past the wall, that turn can end rate-limited before the Stop hook swaps; the swap then still recovers the session (its next turn adopts the fresh account). Projected threshold reduces this.
+- **Shared blast radius.** All default-profile sessions share one keychain item, so a swap moves them all (each adopts in place). The `flock` + re-check is mandatory or racing hooks burn two accounts at once.
 - **Refresh-token rotation / parked-token rot.** Step 1 re-harvest is mandatory; a parked refresh token can be invalidated by logging in elsewhere → picker must catch `invalid_grant`, mark `needs_reauth`, fall through.
 - **statusLine fragility.** The shim is the most visible surface - a bug flickers or breaks your real status line. Keep it O(ms), write-on-change.
 - **Keychain blob size & ps-safety.** The live `Claude Code-credentials` item also holds per-MCP-server OAuth state, so it can exceed `security -i`'s ~4KB interactive line buffer (verified on a real machine - a 4.3KB blob truncated). tokenmaxxing therefore stores parked backups as **`claudeAiOauth`-only** (small → always the ps-safe stdin write) and, on a swap, **merges** the fresh `claudeAiOauth` into the *current* live blob so MCP tokens survive the switch - using the argv write path (secret briefly visible in `ps` on your own machine) only for that one oversized live write.

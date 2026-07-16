@@ -141,12 +141,13 @@ export const ConfigSchema = z.object({
 });
 export type Config = z.infer<typeof ConfigSchema>;
 
-/** The hook -> supervisor respawn marker at respawn/<session-id>. */
+/** The hook -> supervisor respawn marker at respawn/<session-id>. Written only
+ *  for a depleted-pool wait (plain swaps adopt in place, no respawn). */
 export const RespawnMarkerSchema = z.object({
   account: z.string(),
   ts: z.number(),
-  /** when set, the supervisor waits until this epoch ms before relaunching. */
-  waitUntil: z.number().optional(),
+  /** the supervisor waits until this epoch ms before relaunching. */
+  waitUntil: z.number(),
 });
 export type RespawnMarker = z.infer<typeof RespawnMarkerSchema>;
 

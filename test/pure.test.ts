@@ -3,6 +3,7 @@ import { analyzeArgs, stripSessionFlags } from "../src/entries/supervisor.ts";
 import { currentWins, pacePressure, pickBest, isExhausted, nextWeeklyReset, pickEarliestReset, usableAt, weeklyExpiry } from "../src/lib/picker.ts";
 import { familyTokens, gatedFamilies, matchedFamily, normalizeResetsAt, parseStatusLineStdin, parseStatusLineModel, parseUsageText, parseUsageTextFull, parseResetClock } from "../src/lib/usage.ts";
 import { fmtAgo } from "../src/cli/render.ts";
+import { RespawnMarkerSchema } from "../src/lib/types.ts";
 import type { Account } from "../src/lib/types.ts";
 
 const UUID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e";
@@ -226,6 +227,15 @@ describe("account picker", () => {
       lastUsageAt: now - 8 * 24 * H,
     });
     expect(isExhausted(fableNull, ctx)).toBe(false);
+  });
+});
+
+describe("respawn marker contract", () => {
+  test("a marker IS a depleted wait: waitUntil is required", () => {
+    // Plain swaps adopt in place and write no marker (0.15.0); a marker that
+    // parses without waitUntil would respawn a session for nothing.
+    expect(RespawnMarkerSchema.safeParse({ account: "a", ts: 1 }).success).toBe(false);
+    expect(RespawnMarkerSchema.safeParse({ account: "a", ts: 1, waitUntil: 2 }).success).toBe(true);
   });
 });
 
