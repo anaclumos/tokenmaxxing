@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { z } from "zod";
 import { codexIdentityOf, isCodexAccessExpiring, readCodexAuthAt, readLiveCodexAuth, readParkedCodexAuth, writeLiveCodexAuth, writeParkedCodexAuth } from "../src/lib/codexauth.ts";
 import { CodexInvalidGrantError, CodexRefreshFailedError, refreshCodexAuth } from "../src/lib/codexoauth.ts";
-import { fetchCodexUsage, isSessionWindow, weeklyWindowOf } from "../src/lib/codexusage.ts";
+import { codexLimitLabel, fetchCodexUsage, isSessionWindow, weeklyWindowOf } from "../src/lib/codexusage.ts";
 import { CODEX_SWAP_IMPROVEMENT, codexCurrentWins, codexPacePressure, isCodexEngaged, isCodexExhausted, pickBestCodex } from "../src/lib/codexpick.ts";
 import { performCodexSwap } from "../src/lib/codexswap.ts";
 import { evaluateAndMaybeSwapCodex } from "../src/lib/codexdecide.ts";
@@ -216,6 +216,13 @@ describe("codex usage mapping", () => {
     expect(isSessionWindow({ window: window({ used: 0, seconds: null }) })).toBe(false);
     const weekly = window({ used: 10, seconds: week });
     expect(weeklyWindowOf({ aggregate: [window({ used: 50, seconds: 5 * 3600 }), weekly] })).toEqual(weekly);
+  });
+
+  test("chart label is the lowercase family, structural across versions", () => {
+    expect(codexLimitLabel({ limitName: "GPT-5.3-Codex-Spark" })).toBe("spark");
+    expect(codexLimitLabel({ limitName: "GPT-6.1-Codex-Spark" })).toBe("spark");
+    expect(codexLimitLabel({ limitName: "GPT-5.3-Codex" })).toBe("codex");
+    expect(codexLimitLabel({ limitName: "5.3" })).toBe("5.3");
   });
 });
 

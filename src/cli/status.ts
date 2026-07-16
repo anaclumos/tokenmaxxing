@@ -21,7 +21,7 @@ import { effectiveBars, isExhausted, nextWeeklyReset } from "../lib/picker.ts";
 import { loadCodexAccounts, saveCodexAccounts } from "../lib/codexstate.ts";
 import { liveCodexAccountId, sampleCodexAccount, type CodexSampleOutcome } from "../lib/codexsample.ts";
 import { isCodexExhausted } from "../lib/codexpick.ts";
-import { isSessionWindow } from "../lib/codexusage.ts";
+import { codexLimitLabel, isSessionWindow } from "../lib/codexusage.ts";
 import { bar, c, count, fmtAgo, fmtReset } from "./render.ts";
 import type { FullUsage } from "../lib/usage.ts";
 import type { Config, CodexWindow, UsageWindow } from "../lib/types.ts";
@@ -127,11 +127,13 @@ export async function cmdStatus(force = false, preRender?: () => void): Promise<
       badges.push(c.yellow("exhausted"));
 
     console.log(`${marker} ${c.bold(a.label || a.email)} ${badges.join(" ")}`);
+    // Chart label convention (user rule 2026-07-17): everything lowercase,
+    // model names short ("fable", "spark").
     if (aggregate) {
       row("5h", aggregate.fiveHour, false);
       row("week", aggregate.sevenDay, true);
     }
-    if (perModel) for (const [name, w] of Object.entries(perModel)) row(name, w, true);
+    if (perModel) for (const [name, w] of Object.entries(perModel)) row(name.toLowerCase(), w, true);
     if (failed && outcome && !outcome.ok) {
       const cached = aggregate || perModel ? `cached${a.lastUsageAt != null ? ` ${fmtAgo(a.lastUsageAt, now)}` : ""}, ` : "";
       console.log(`    ${c.yellow(`${cached}live sample failed`)}: ${c.dim(outcome.reason)}`);
@@ -205,7 +207,7 @@ async function renderCodexSection(input: {
     if (usage) {
       for (const window of usage.aggregate) row(windowLabel(window), window, !isSessionWindow({ window }));
       for (const [name, windows] of Object.entries(usage.perLimit)) {
-        for (const window of windows) row(name, window, !isSessionWindow({ window }));
+        for (const window of windows) row(codexLimitLabel({ limitName: name }), window, !isSessionWindow({ window }));
       }
     }
     const outcome = outcomes.get(account.accountId);

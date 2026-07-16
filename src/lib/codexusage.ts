@@ -14,6 +14,7 @@ import { z } from "zod";
 import { http, safeErrorDetail } from "./http.ts";
 import { CodexUsageSchema, type CodexAuthJson, type CodexUsage, type CodexWindow } from "./types.ts";
 import { codexIdentityOf } from "./codexauth.ts";
+import { familyTokens } from "./usage.ts";
 
 const EnvOverrideSchema = z.string().min(1).optional().catch(undefined);
 const USAGE_URL = EnvOverrideSchema.parse(process.env.TOKENMAXXING_CODEX_USAGE_URL) ?? "https://chatgpt.com/backend-api/wham/usage";
@@ -112,6 +113,15 @@ export async function fetchCodexUsage(input: { auth: CodexAuthJson }): Promise<C
     aggregate: toWindows(wire.rate_limit),
     perLimit,
   });
+}
+
+/** Quota-chart label for an additional_rate_limits row: the model family,
+ *  lowercase ("GPT-5.3-Codex-Spark" -> "spark"). Wire names are versioned, so
+ *  the label is derived structurally (last non-numeric token), never by exact
+ *  string (user rule 2026-07-17: chart names are lowercase, e.g. "spark"). */
+export function codexLimitLabel(input: { limitName: string }): string {
+  const tokens = familyTokens(input.limitName).filter((t) => Number.isNaN(Number(t)));
+  return tokens.at(-1) ?? input.limitName.trim().toLowerCase();
 }
 
 const SESSION_WINDOW_MAX_S = 6 * 3600;
