@@ -1,0 +1,21 @@
+test/e2e/swap-concurrency.ts
+  s_dd8a76210ccaac::t_830582285884f8 12
+  s_dd8a76210ccaac::t_9b22d303217af6 37-38
+  s_dd8a76210ccaac::t_2ca1ea01bc1342 52,55
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "ba451120823c7f56236dbba35bdde264092aa9d9",
+  "prompts": {},
+  "sessions": {
+    "s_dd8a76210ccaac": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d24f58e4-f0b7-4401-be97-e21d2242ce08",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    }
+  }
+}
