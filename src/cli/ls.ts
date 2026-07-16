@@ -3,7 +3,7 @@
 import { loadAccounts } from "../lib/state.ts";
 import { loadCodexAccounts } from "../lib/codexstate.ts";
 import { liveCodexAccountId } from "../lib/codexsample.ts";
-import { c } from "./render.ts";
+import { c, claudeTierLabel } from "./render.ts";
 
 export function cmdLs(): number {
   const idx = loadAccounts();
@@ -19,7 +19,7 @@ export function cmdLs(): number {
     const tag = flags.length ? ` ${flags.join(" ")}` : "";
     const label = a.label || a.email;
     console.log(`${marker} ${c.bold(label)}${tag}`);
-    console.log(`  ${c.dim(`org ${a.organizationUuid.slice(0, 8)}, ${a.subscriptionType ?? "?"}, uuid ${a.accountUuid.slice(0, 8)}`)}`);
+    console.log(`  ${c.dim(`org ${a.organizationUuid.slice(0, 8)}, ${claudeTierLabel(a) ?? "?"}, uuid ${a.accountUuid.slice(0, 8)}`)}`);
   }
 
   const codex = loadCodexAccounts();

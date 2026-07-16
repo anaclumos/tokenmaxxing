@@ -36,6 +36,9 @@ export const OAuthAccountSchema = z.looseObject({
   seatTier: z.string().nullish(),
   billingType: z.string().nullish(),
   displayName: z.string().nullish(),
+  /** rate-limit tier id ("default_claude_max_20x"), same value the credential
+   *  blob carries; claude fills it in on profile fetch (live-verified 2.1.211). */
+  organizationRateLimitTier: z.string().nullish(),
 });
 export type OAuthAccount = z.infer<typeof OAuthAccountSchema>;
 
@@ -90,6 +93,10 @@ export const AccountSchema = z.object({
   lastUsageAt: z.number().optional(),
   needsReauth: z.boolean().optional(),
   subscriptionType: z.string().optional(),
+  /** the blob's rate-limit tier id (e.g. "default_claude_max_20x"): the only
+   *  field that distinguishes max 5x from max 20x (subscriptionType is just
+   *  "max" for both). Refreshed on every verified sample. */
+  rateLimitTier: z.string().optional(),
 });
 export type Account = z.infer<typeof AccountSchema>;
 

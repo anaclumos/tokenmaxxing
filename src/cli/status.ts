@@ -22,7 +22,7 @@ import { loadCodexAccounts, saveCodexAccounts } from "../lib/codexstate.ts";
 import { liveCodexAccountId, sampleCodexAccount, type CodexSampleOutcome } from "../lib/codexsample.ts";
 import { isCodexExhausted } from "../lib/codexpick.ts";
 import { codexLimitLabel, isSessionWindow } from "../lib/codexusage.ts";
-import { bar, c, count, fmtAgo, fmtReset } from "./render.ts";
+import { bar, c, claudeTierLabel, count, fmtAgo, fmtReset } from "./render.ts";
 import type { FullUsage } from "../lib/usage.ts";
 import type { Config, CodexWindow, UsageWindow } from "../lib/types.ts";
 
@@ -48,10 +48,15 @@ export async function cmdStatus(force = false, preRender?: () => void): Promise<
     idx = loadAccounts();
     const live = loadUsage();
     const modelUsage = loadModelUsage();
-    const activeOrg = readOAuthAccount()?.organizationUuid ?? null;
+    const liveOAuth = readOAuthAccount();
+    const activeOrg = liveOAuth?.organizationUuid ?? null;
     await Promise.all(
       idx.accounts.map(async (a) => {
         const isActive = a.accountUuid === idx.activeAccountUuid && activeOrg === a.organizationUuid;
+        // The tee path never opens the credential blob, so the active account's
+        // tier comes from the live oauthAccount instead - it names this very org
+        // (uuid-matched above), so the tier is attributed to its own identity.
+        if (isActive && liveOAuth?.organizationRateLimitTier != null) a.rateLimitTier = liveOAuth.organizationRateLimitTier;
         // Active account: prefer the free statusLine push (usage.json) so we never
         // poll its own token, which is busy exactly when it matters. per-model
         // comes from model-usage.json (also statusLine-driven).
@@ -126,7 +131,8 @@ export async function cmdStatus(force = false, preRender?: () => void): Promise<
     if (isExhausted(a, { now, thresholds: effectiveBars(cfg), currentAccountUuid: idx.activeAccountUuid, switchFamilies: cfg.policy.switchModels }))
       badges.push(c.yellow("exhausted"));
 
-    console.log(`${marker} ${c.bold(a.label || a.email)} ${badges.join(" ")}`);
+    const tier = claudeTierLabel(a);
+    console.log(`${marker} ${c.bold(a.label || a.email)}${tier ? ` ${c.dim(tier)}` : ""}${badges.length ? ` ${badges.join(" ")}` : ""}`);
     // Chart label convention (user rule 2026-07-17): everything lowercase,
     // model names short ("fable", "spark").
     if (aggregate) {
@@ -201,7 +207,7 @@ async function renderCodexSection(input: {
     if (active) badges.push(c.green("active"));
     if (account.needsReauth) badges.push(c.red("needs-reauth"));
     if (isCodexExhausted({ account, thresholds: effectiveBars(cfg), now })) badges.push(c.yellow("exhausted"));
-    console.log(`${marker} ${c.bold(account.label)} ${account.planType ? c.dim(account.planType) : ""} ${badges.join(" ")}`);
+    console.log(`${marker} ${c.bold(account.label)}${account.planType ? ` ${c.dim(account.planType)}` : ""}${badges.length ? ` ${badges.join(" ")}` : ""}`);
 
     const usage = account.lastUsage;
     if (usage) {

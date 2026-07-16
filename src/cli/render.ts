@@ -18,6 +18,19 @@ export function makeColors(enabled: boolean) {
 
 export const c = makeColors(!process.env.NO_COLOR && !!process.stdout.isTTY);
 
+/** Plan label for a claude account, e.g. "max 20x": subscription name plus the
+ *  multiplier segment of the rate-limit tier id ("default_claude_max_20x").
+ *  Structural, never exact-string: the multiplier is any <digits>x segment, so
+ *  tiers without one (e.g. "default_claude_zero") fall back to the bare
+ *  subscription name, and an absent blob field falls back to null (unmeasured
+ *  must not look like a tier). */
+export function claudeTierLabel(input: { subscriptionType?: string; rateLimitTier?: string }): string | null {
+  const segments = input.rateLimitTier?.split("_") ?? [];
+  const multiplier = segments.find((seg) => seg.length > 1 && seg.endsWith("x") && Number.isInteger(Number(seg.slice(0, -1))));
+  if (input.subscriptionType == null) return multiplier ?? null;
+  return multiplier ? `${input.subscriptionType} ${multiplier}` : input.subscriptionType;
+}
+
 /** "1 account" / "3 accounts": counted nouns always pluralize properly. */
 export function count(input: { n: number; noun: string }): string {
   return `${input.n} ${input.noun}${input.n === 1 ? "" : "s"}`;

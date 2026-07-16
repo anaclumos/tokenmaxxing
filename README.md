@@ -45,7 +45,7 @@ claude                  # use claude as always
 | `tokenmaxxing watch [seconds]` | live status: re-render every N seconds (default 120, floor 30; never pings) |
 | `tokenmaxxing config` | effective config with sources; `get`/`set`/`unset` dotted keys, `tidy` prunes unknown keys |
 | `tokenmaxxing doctor` | verify the supervisor + settings entries survived |
-| `tokenmaxxing rename <sel> <label>` / `rm <sel>` | manage the pool |
+| `tokenmaxxing rename [--codex] <sel> <label>` / `rm <sel>` | manage the pool (`--codex` targets the codex pool: one email can hold both a claude and a codex account) |
 | `tokenmaxxing uninstall` | remove supervisor + settings entries (accounts/credentials kept) |
 
 ## How switching decides

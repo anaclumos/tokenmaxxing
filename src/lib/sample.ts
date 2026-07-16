@@ -49,6 +49,14 @@ async function identityMismatch(creds: OAuthCreds, account: Account): Promise<st
   return `credential actually belongs to ${org.organization_name} (org ${org.organization_uuid.slice(0, 8)})`;
 }
 
+/** Stamp the blob's plan fields onto the account (caller persists). Runs only
+ *  after the identity check passed, so a drifted credential can never write
+ *  another account's tier. Absent blob fields keep the last-known values. */
+function refreshPlanFields(account: Account, creds: OAuthCreds): void {
+  if (creds.subscriptionType != null) account.subscriptionType = creds.subscriptionType;
+  if (creds.rateLimitTier != null) account.rateLimitTier = creds.rateLimitTier;
+}
+
 /**
  * Live-sample `account`'s `/usage` in isolation. On a dead refresh token or a
  * mislabeled credential it sets `account.needsReauth` in place (the caller
@@ -89,6 +97,7 @@ export async function probeParkedUsage(account: Account, opts: { ping?: boolean 
     account.needsReauth = true;
     return { ok: false, reason: `${mismatch} - this account's own credential is gone; re-auth with \`tokenmaxxing add\`` };
   }
+  refreshPlanFields(account, creds);
 
   const dir = join(paths.sampleDir, credItemFor(account.accountUuid));
   rmSync(dir, { recursive: true, force: true });
@@ -149,6 +158,7 @@ export async function probeActiveUsage(account: Account, opts: { ping?: boolean 
 
   const mismatch = await identityMismatch(creds, account);
   if (mismatch) return { ok: false, reason: `live ${mismatch} - active label drifted; run \`tokenmaxxing switch\`` };
+  refreshPlanFields(account, creds);
 
   const pingError = opts.ping ? await pingSession() : null;
   const usage = await probeUsage();

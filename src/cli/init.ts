@@ -10,7 +10,7 @@ import { installSupervisor, shellRcPath, ensurePathInRc, timerActivationHint, ty
 import { resolveVerifiedClaude } from "../lib/claudebin.ts";
 import { credItemFor, paths } from "../lib/paths.ts";
 import { CredentialBlobSchema, type Account } from "../lib/types.ts";
-import { c } from "./render.ts";
+import { c, claudeTierLabel } from "./render.ts";
 
 /** Put the supervisor bin dir on PATH via the user's shell rc (idempotent).
  *  Falls back to the manual instruction when the shell is unknown. */
@@ -121,6 +121,7 @@ export async function cmdInit(): Promise<number> {
     oauthAccount,
     addedAt: existing?.addedAt ?? new Date().toISOString(),
     subscriptionType: blob.claudeAiOauth.subscriptionType,
+    rateLimitTier: blob.claudeAiOauth.rateLimitTier,
     needsReauth: false,
   };
   if (existing) Object.assign(existing, account);
@@ -134,7 +135,7 @@ export async function cmdInit(): Promise<number> {
 
   const out = installSupervisor();
 
-  console.log(`${c.green("✓")} imported current account → ${c.bold(account.email)} (${account.subscriptionType ?? "?"})`);
+  console.log(`${c.green("✓")} imported current account → ${c.bold(account.email)} (${claudeTierLabel(account) ?? "?"})`);
   console.log(`${c.green("✓")} installed ${c.bold("claude")} supervisor + statusLine/Stop/SessionStart hooks`);
   reportTimer(out);
   if (!out.pathAhead) {

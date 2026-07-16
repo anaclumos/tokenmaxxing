@@ -44,7 +44,7 @@ function printHelp(): void {
   ${c.cyan("tokenmaxxing watch")} [seconds]  live status: re-render every N seconds (default 120, never pings)
   ${c.cyan("tokenmaxxing config")} [get|set|unset|tidy]  inspect and edit config.json (bare = effective config with sources)
   ${c.cyan("tokenmaxxing doctor")}     verify the install is intact
-  ${c.cyan("tokenmaxxing rename")} <sel> <label>
+  ${c.cyan("tokenmaxxing rename")} [--codex] <sel> <label>
   ${c.cyan("tokenmaxxing rm")} <sel>
   ${c.cyan("tokenmaxxing uninstall")}  remove supervisor + settings entries
 
@@ -85,7 +85,7 @@ async function main(): Promise<number> {
     case "watch": return cmdWatch(args[1]);
     case "doctor": return cmdDoctor();
     case "rm": return cmdRm(args[1]);
-    case "rename": return cmdRename(args[1], args[2]);
+    case "rename": return cmdRename(args.slice(1));
     case "uninstall":
       uninstallSupervisor();
       console.log("removed supervisor wrapper + settings entries (accounts/credentials kept)");

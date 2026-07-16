@@ -2,9 +2,10 @@ import { describe, expect, test } from "bun:test";
 import { analyzeArgs, stripSessionFlags } from "../src/entries/supervisor.ts";
 import { currentWins, pacePressure, pickBest, isExhausted, nextWeeklyReset, pickEarliestReset, usableAt, weeklyExpiry } from "../src/lib/picker.ts";
 import { familyTokens, gatedFamilies, matchedFamily, normalizeResetsAt, parseStatusLineStdin, parseStatusLineModel, parseUsageText, parseUsageTextFull, parseResetClock } from "../src/lib/usage.ts";
-import { fmtAgo } from "../src/cli/render.ts";
+import { claudeTierLabel, fmtAgo } from "../src/cli/render.ts";
+import { findAccount, findCodexAccount } from "../src/cli/rename.ts";
 import { RespawnMarkerSchema } from "../src/lib/types.ts";
-import type { Account } from "../src/lib/types.ts";
+import type { Account, CodexAccount } from "../src/lib/types.ts";
 
 const UUID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e";
 
@@ -361,5 +362,59 @@ describe("model family gate", () => {
     expect(gatedFamilies({ id: "claude-fable-5", display: "Fable 5" }, ["fable", "opus"])).toEqual(["fable"]);
     expect(gatedFamilies({ id: "claude-3-5-sonnet-20241022", display: "Sonnet" }, ["fable", "opus"])).toEqual([]);
     expect(gatedFamilies(null, ["fable", "opus"])).toEqual(["fable", "opus"]);
+  });
+});
+
+describe("claudeTierLabel", () => {
+  test("subscription plus the tier's multiplier segment", () => {
+    expect(claudeTierLabel({ subscriptionType: "max", rateLimitTier: "default_claude_max_20x" })).toBe("max 20x");
+    expect(claudeTierLabel({ subscriptionType: "max", rateLimitTier: "default_claude_max_5x" })).toBe("max 5x");
+  });
+  test("a tier without a multiplier falls back to the bare subscription", () => {
+    expect(claudeTierLabel({ subscriptionType: "free", rateLimitTier: "default_claude_zero" })).toBe("free");
+    // "max" ends in x but is not <digits>x - it must never read as a multiplier.
+    expect(claudeTierLabel({ subscriptionType: "max", rateLimitTier: "default_claude_max" })).toBe("max");
+  });
+  test("missing fields degrade to what is known, never to a fake tier", () => {
+    expect(claudeTierLabel({ subscriptionType: "max" })).toBe("max");
+    expect(claudeTierLabel({ rateLimitTier: "default_claude_max_20x" })).toBe("20x");
+    expect(claudeTierLabel({})).toBe(null);
+  });
+});
+
+describe("account selectors", () => {
+  const claudeAccount = (over: Partial<Account>): Account => ({
+    accountUuid: UUID,
+    email: "a@b.com",
+    organizationUuid: "org-1",
+    label: "tim",
+    keychainItem: "tokenmaxxing-cred-1",
+    oauthAccount: { accountUuid: UUID, emailAddress: "a@b.com", organizationUuid: "org-1" },
+    addedAt: "2026-07-09T00:00:00.000Z",
+    ...over,
+  });
+  const codexAccount = (over: Partial<CodexAccount>): CodexAccount => ({
+    accountId: "acct-0123456789",
+    email: "a@b.com",
+    label: "tim",
+    planType: "plus",
+    credFile: "codex-creds/acct.json",
+    addedAt: "2026-07-16T00:00:00.000Z",
+    ...over,
+  });
+
+  test("findAccount matches email, then label, then uuid prefix, case-insensitively", () => {
+    const accounts = [claudeAccount({}), claudeAccount({ accountUuid: "feed1234", email: "x@y.com", label: "zuck" })];
+    expect(findAccount(accounts, "X@Y.COM")?.label).toBe("zuck");
+    expect(findAccount(accounts, "ZUCK")?.email).toBe("x@y.com");
+    expect(findAccount(accounts, "feed12")?.label).toBe("zuck");
+    expect(findAccount(accounts, "nobody")).toBeUndefined();
+  });
+  test("findCodexAccount matches email, label, or accountId prefix; a null email never matches", () => {
+    const accounts = [codexAccount({ email: null, accountId: "acct-aaaa" }), codexAccount({ accountId: "acct-bbbb", label: "zuck" })];
+    expect(findCodexAccount(accounts, "a@b.com")?.accountId).toBe("acct-bbbb");
+    expect(findCodexAccount(accounts, "ZUCK")?.accountId).toBe("acct-bbbb");
+    expect(findCodexAccount(accounts, "acct-aa")?.accountId).toBe("acct-aaaa");
+    expect(findCodexAccount(accounts, "nobody")).toBeUndefined();
   });
 });
