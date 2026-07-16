@@ -23,6 +23,7 @@ import { cmdRm } from "./cli/rm.ts";
 import { cmdRename } from "./cli/rename.ts";
 import { cmdSwitch } from "./cli/switch.ts";
 import { cmdCheck } from "./cli/check.ts";
+import { cmdConfig } from "./cli/config.ts";
 import { uninstallSupervisor } from "./lib/install.ts";
 import { c } from "./cli/render.ts";
 
@@ -41,6 +42,7 @@ function printHelp(): void {
   ${c.cyan("tokenmaxxing status")}     accounts with 5h / weekly / per-model usage bars
   ${c.cyan("tokenmaxxing status --force")}  ping every account (one tiny haiku request each) so all 5h session timers start now, then sample fresh; ${c.cyan("xx --force")} works too
   ${c.cyan("tokenmaxxing watch")} [seconds]  live status: re-render every N seconds (default 120, never pings)
+  ${c.cyan("tokenmaxxing config")} [get|set|unset|tidy]  inspect and edit config.json (bare = effective config with sources)
   ${c.cyan("tokenmaxxing doctor")}     verify the install is intact
   ${c.cyan("tokenmaxxing rename")} <sel> <label>
   ${c.cyan("tokenmaxxing rm")} <sel>
@@ -75,6 +77,7 @@ async function main(): Promise<number> {
     case "--force": return cmdStatus(true); // bare `xx --force` → status --force
     case "switch": return args[1] === "--codex" ? cmdCodexSwitch(args[2]) : cmdSwitch(args[1]);
     case "check": return cmdCheck();
+    case "config": return cmdConfig(args.slice(1));
     case "init": return args.includes("--codex") ? cmdCodexInit() : cmdInit();
     case "add": return args.includes("--codex") ? cmdCodexAdd() : cmdAdd();
     case "ls": return cmdLs();

@@ -31,8 +31,9 @@ const DEFAULT_CONFIG: Config = {
   policy: { projectionMargin: 0, greedySessionFloor: 50, switchModels: ["fable"], usagePollTtlMs: 90_000, maxWaitMs: 3_600_000 },
 };
 
-/** On-disk shape (all optional); validated via Zod, merged over defaults. */
-const ConfigFileSchema = z
+/** On-disk shape (all optional); validated via Zod, merged over defaults.
+ *  Exported for `xx config`, which edits and housekeeps the sparse file. */
+export const ConfigFileSchema = z
   .object({
     thresholds: z.object({ session: z.number(), weekly: z.number() }).partial(),
     claudeBin: z.string(),
