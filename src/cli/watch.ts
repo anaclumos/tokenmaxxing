@@ -4,7 +4,7 @@
 // 5h session windows, so watching must stay free; each refresh costs only the
 // parked accounts' `/usage` probes the one-shot status already does.
 
-import { delay } from "es-toolkit";
+import { clamp, delay } from "es-toolkit";
 import { loadAccounts } from "../lib/state.ts";
 import { cmdStatus } from "./status.ts";
 import { c } from "./render.ts";
@@ -22,7 +22,7 @@ export function resolveWatchInterval(arg?: string): number | null {
   if (arg === undefined) return DEFAULT_INTERVAL_S;
   const n = Number(arg);
   if (!Number.isFinite(n) || n <= 0) return null;
-  return Math.min(Math.max(n, MIN_INTERVAL_S), MAX_INTERVAL_S);
+  return clamp(n, MIN_INTERVAL_S, MAX_INTERVAL_S);
 }
 
 /** Home + clear screen + clear scrollback. Written only once the fresh frame is
