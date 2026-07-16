@@ -1,0 +1,28 @@
+src/lib/codexusage.ts
+  s_f6c0512957b93d::t_c718c6e1a5f047 118-126
+  s_f6c0512957b93d::t_5cc624e7115523 17
+test/codex.test.ts
+  s_f6c0512957b93d::t_1a1e4c78ee5793 220-226
+  s_f6c0512957b93d::t_3dbd140978c475 7
+src/cli/status.ts
+  s_f6c0512957b93d::t_5b1f517f51637a 130-131
+  s_f6c0512957b93d::t_403e6707727836 210
+  s_f6c0512957b93d::t_3f5168a0ac752a 136
+  s_f6c0512957b93d::t_f2af4a79449994 24
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "cccd952e0a1dd0cb91c47cfd818525f1a62b4801",
+  "prompts": {},
+  "sessions": {
+    "s_f6c0512957b93d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "014a7d52-2fe0-48ba-b823-3529ecc8cdd0",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    }
+  }
+}
