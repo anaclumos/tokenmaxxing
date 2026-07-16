@@ -99,6 +99,8 @@ The decision engages at `five_hour >= 50%` (policy.greedySessionFloor): from the
 
 **v2:** projected-threshold pre-emption; a `UserPromptSubmit` guard that respawns *before* a turn starts when already over; Windows.
 
+**Shipped since (0.11.0):** a programmatic SDK surface (`src/sdk.ts`, the package's `exports["."]`) for pairing with the Claude Agent SDK - personal use across the owner's own pooled accounts. The Agent SDK reads credentials per subprocess spawn and has no statusLine, so the surface is boundary-driven: run the shared switch decision before a spawn (`ensureBestAccount`) and at Stop-hook turn boundaries (`stopHookCheck`), and hand the SDK a pinned real-claude path plus a full replacement env scrubbed of credential overrides (`pooledOptions`).
+
 **Later:** Codex as a second pool; tool-agnostic picker.
 
 **Non-goals:** an API/MITM proxy; reimplementing OAuth beyond the single refresh-grant call in the swap.

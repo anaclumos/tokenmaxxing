@@ -197,7 +197,7 @@ export function parseUsageText(text: string, now = Date.now()): UsageWindows | n
 /** Env-var identity/credential overrides the claude binary honors BEFORE its
  *  keychain lookup (verified 2.1.205). A probe MUST scrub every one of these or
  *  an ambient value silently meters the wrong account. */
-const CRED_ENV_OVERRIDES = [
+export const CRED_ENV_OVERRIDES = [
   "ANTHROPIC_API_KEY",
   "ANTHROPIC_AUTH_TOKEN",
   "CLAUDE_CODE_OAUTH_TOKEN",
