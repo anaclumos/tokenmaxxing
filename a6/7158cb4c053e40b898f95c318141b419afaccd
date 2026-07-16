@@ -1,0 +1,40 @@
+README.md
+  s_dd8a76210ccaac::t_11dbc7d530eadc 86
+  s_dd8a76210ccaac::t_da1be5f53ed43f 78-85,87-98,100-102
+  s_dd8a76210ccaac::t_f248575a53247a 99
+src/sdk.ts
+  s_dd8a76210ccaac::t_9fbd75a5d74572 93-99,102-108
+  s_dd8a76210ccaac::t_913d82d94d1788 42-50,55-57,65-71
+  s_dd8a76210ccaac::t_69eb4aa18711a5 20
+  s_dd8a76210ccaac::t_bf087f9f33a14d 1-19,21-41,51-54,63-64,72-92,100-101,109-110
+  s_dd8a76210ccaac::t_15c71df2cf8f9c 58-62
+package.json
+  s_dd8a76210ccaac::t_111c8cbe3dcb87 3
+  s_dd8a76210ccaac::t_8c99e1c920437e 16-19
+test/sdk.test.ts
+  s_dd8a76210ccaac::t_e78f5b873212c6 2-3,20-23,36,40-43,52-59,80-87
+  s_dd8a76210ccaac::t_f87d3ddab2c4f1 1,4-19,24-35,37-39,44-51,60-79,88-90
+DESIGN.md
+  s_dd8a76210ccaac::t_adeb8ae8c183d0 102-103
+AGENTS.md
+  s_dd8a76210ccaac::t_d7e7b2d8764941 149
+  s_dd8a76210ccaac::t_6f906380e2cc59 145-148,150-151
+src/lib/usage.ts
+  s_dd8a76210ccaac::t_2a3fce9843b1f1 200
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "a67158cb4c053e40b898f95c318141b419afaccd",
+  "prompts": {},
+  "sessions": {
+    "s_dd8a76210ccaac": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d24f58e4-f0b7-4401-be97-e21d2242ce08",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    }
+  }
+}
