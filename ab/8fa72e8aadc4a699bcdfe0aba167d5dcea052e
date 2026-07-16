@@ -1,0 +1,55 @@
+src/cli/status.ts
+  s_896b196c9dbc69::t_6124e33523fddd 25
+  s_896b196c9dbc69::t_ae50a7a545c495 51-52,56-59
+  s_896b196c9dbc69::t_f4bd9cc477a6dd 135
+  s_896b196c9dbc69::t_58b3c4b370bdff 210
+  s_896b196c9dbc69::t_a159f9ba7bf0ae 134
+src/cli/render.ts
+  s_896b196c9dbc69::t_abd6945fcb6da1 21-33
+src/cli/rename.ts
+  s_896b196c9dbc69::t_89dc37fc84675c 1-4,7,9,11,13,23-52,54,57,63
+src/lib/types.ts
+  s_896b196c9dbc69::t_abeb24dfd26bcc 39-41
+  s_896b196c9dbc69::t_ba2fd190db34cb 96-99
+src/cli/init.ts
+  s_896b196c9dbc69::t_0671445e733ca5 138
+  s_896b196c9dbc69::t_106e3f8d4da278 13
+  s_896b196c9dbc69::t_e885a0cb913093 124
+src/cli/add.ts
+  s_896b196c9dbc69::t_74a9f383d931f4 18
+  s_896b196c9dbc69::t_bd925922d886dd 134
+  s_896b196c9dbc69::t_65fa7c4d571acb 118
+src/cli/ls.ts
+  s_896b196c9dbc69::t_e72ed1fdad6d38 6
+  s_896b196c9dbc69::t_3316bb9a327ff1 22
+package.json
+  s_896b196c9dbc69::t_1102615f8f1647 3
+src/lib/sample.ts
+  s_896b196c9dbc69::t_323619a136fa48 161
+  s_896b196c9dbc69::t_36fb72a9a03489 100
+  s_896b196c9dbc69::t_deb583791a3129 52-59
+README.md
+  s_896b196c9dbc69::t_c7bdc8333fbd55 48
+test/pure.test.ts
+  s_896b196c9dbc69::t_5d64ef3106103e 5-6,8
+  s_896b196c9dbc69::t_259a55d0860307 367-420
+src/main.ts
+  s_896b196c9dbc69::t_22dcb597c05b76 47
+  s_896b196c9dbc69::t_47d16f9cb623a6 88
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "ab8fa72e8aadc4a699bcdfe0aba167d5dcea052e",
+  "prompts": {},
+  "sessions": {
+    "s_896b196c9dbc69": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "585acccb-2c39-4e66-a0ea-8629406eeee3",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    }
+  }
+}
