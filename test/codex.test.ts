@@ -529,27 +529,45 @@ describe("codex supervisor install lifecycle", () => {
 // ---- hooks install ----------------------------------------------------------------
 
 describe("codex hooks.json install", () => {
-  test("merges idempotently and preserves foreign declarations", () => {
+  // the event map nests under a top-level `hooks` field (HooksFile) - a live
+  // 0.13.0 install with the claude-style top-level map made codex refuse the
+  // whole file: "unknown field Stop, expected description or hooks".
+  const HooksFileSchema = z.looseObject({
+    hooks: z.looseObject({
+      PreToolUse: z.array(z.unknown()).optional(),
+      Stop: z.array(z.looseObject({ hooks: z.array(z.looseObject({ command: z.string() })) })),
+    }),
+  });
+
+  test("merges idempotently under the hooks field and preserves foreign declarations", () => {
     mkdirSync(codexPaths.home, { recursive: true });
     writeFileSync(codexPaths.hooksJson, JSON.stringify({
-      PreToolUse: [{ matcher: "^Bash$", hooks: [{ type: "command", command: "/usr/bin/somebody-else" }] }],
-      Stop: [{ hooks: [{ type: "command", command: "/usr/bin/foreign-stop" }] }],
+      description: "user hooks",
+      hooks: {
+        PreToolUse: [{ matcher: "^Bash$", hooks: [{ type: "command", command: "/usr/bin/somebody-else" }] }],
+        Stop: [{ hooks: [{ type: "command", command: "/usr/bin/foreign-stop" }] }],
+      },
     }));
     installCodexStopHook();
     installCodexStopHook();
-    const HooksFileSchema = z.looseObject({
-      PreToolUse: z.array(z.unknown()),
-      Stop: z.array(z.looseObject({ hooks: z.array(z.looseObject({ command: z.string() })) })),
-    });
     const merged = HooksFileSchema.parse(JSON.parse(readFileSync(codexPaths.hooksJson, "utf8")));
-    expect(merged.PreToolUse).toHaveLength(1);
-    expect(merged.Stop).toHaveLength(2);
-    expect(merged.Stop.filter((group) => group.hooks.some((hook) => hook.command.includes("__codex-stop-hook")))).toHaveLength(1);
+    expect(merged.hooks.PreToolUse).toHaveLength(1);
+    expect(merged.hooks.Stop).toHaveLength(2);
+    expect(merged.hooks.Stop.filter((group) => group.hooks.some((hook) => hook.command.includes("__codex-stop-hook")))).toHaveLength(1);
+    expect(z.looseObject({ description: z.string() }).parse(JSON.parse(readFileSync(codexPaths.hooksJson, "utf8"))).description).toBe("user hooks");
 
     uninstallCodexStopHook();
     const cleaned = HooksFileSchema.parse(JSON.parse(readFileSync(codexPaths.hooksJson, "utf8")));
-    expect(cleaned.Stop).toHaveLength(1);
-    expect(cleaned.Stop[0]!.hooks[0]!.command).toBe("/usr/bin/foreign-stop");
+    expect(cleaned.hooks.Stop).toHaveLength(1);
+    expect(cleaned.hooks.Stop[0]!.hooks[0]!.command).toBe("/usr/bin/foreign-stop");
+  });
+
+  test("a fresh install produces the nested HooksFile shape, never a top-level event map", () => {
+    installCodexStopHook();
+    const written = JSON.parse(readFileSync(codexPaths.hooksJson, "utf8"));
+    expect(z.looseObject({ Stop: z.unknown().optional() }).parse(written).Stop).toBeUndefined();
+    const parsed = HooksFileSchema.parse(written);
+    expect(parsed.hooks.Stop).toHaveLength(1);
   });
 });
 

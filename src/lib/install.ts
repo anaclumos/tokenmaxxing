@@ -58,10 +58,18 @@ export function installSupervisor(): InstallOutcome {
 
 // ---- codex supervisor + Stop hook -------------------------------------------
 
-/** Codex hook declarations we merge into. Loose everywhere: every other event
- *  and every foreign Stop entry rides along verbatim. */
-const CodexHooksFileSchema = z.looseObject({
+/** Codex hook declarations we merge into. The FILE nests the event map under a
+ *  `hooks` field (`struct HooksFile { description?, hooks }`, binary-verified
+ *  0.144.4 after a live parse failure proved the docs' claude-style top-level
+ *  event map wrong: "unknown field Stop, expected description or hooks").
+ *  Loose everywhere: every other event and every foreign Stop entry rides
+ *  along verbatim. */
+const CodexHookEventsSchema = z.looseObject({
   Stop: z.array(z.looseObject({ hooks: z.array(z.looseObject({ command: z.string().optional() })).default([]) })).default([]),
+});
+const CodexHooksFileSchema = z.looseObject({
+  description: z.string().optional(),
+  hooks: CodexHookEventsSchema.default({ Stop: [] }),
 });
 
 const CODEX_STOP_HOOK_SUBCOMMAND = "__codex-stop-hook";
@@ -80,15 +88,18 @@ export function installCodexStopHook(): void {
   const current = existsSync(codexPaths.hooksJson)
     ? CodexHooksFileSchema.parse(JSON.parse(readFileSync(codexPaths.hooksJson, "utf8")))
     : CodexHooksFileSchema.parse({});
-  const foreign = current.Stop.filter(
+  const foreign = current.hooks.Stop.filter(
     (group) => !group.hooks.some((hook) => hook.command?.includes(CODEX_STOP_HOOK_SUBCOMMAND)),
   );
   const next = {
     ...current,
-    Stop: [
-      ...foreign,
-      { hooks: [{ type: "command", command: codexStopHookCommand(), timeout: 120, statusMessage: "tokenmaxxing switch check" }] },
-    ],
+    hooks: {
+      ...current.hooks,
+      Stop: [
+        ...foreign,
+        { hooks: [{ type: "command", command: codexStopHookCommand(), timeout: 120, statusMessage: "tokenmaxxing switch check" }] },
+      ],
+    },
   };
   mkdirSync(codexPaths.home, { recursive: true });
   writeFileAtomic(codexPaths.hooksJson, JSON.stringify(next, null, 2) + "\n");
@@ -99,7 +110,10 @@ export function uninstallCodexStopHook(): void {
   const current = CodexHooksFileSchema.parse(JSON.parse(readFileSync(codexPaths.hooksJson, "utf8")));
   const next = {
     ...current,
-    Stop: current.Stop.filter((group) => !group.hooks.some((hook) => hook.command?.includes(CODEX_STOP_HOOK_SUBCOMMAND))),
+    hooks: {
+      ...current.hooks,
+      Stop: current.hooks.Stop.filter((group) => !group.hooks.some((hook) => hook.command?.includes(CODEX_STOP_HOOK_SUBCOMMAND))),
+    },
   };
   writeFileAtomic(codexPaths.hooksJson, JSON.stringify(next, null, 2) + "\n");
 }
