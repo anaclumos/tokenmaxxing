@@ -9,6 +9,7 @@
 import { mkdirSync, rmSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { z } from "zod";
 
 const base = join(tmpdir(), `tm-e2e-${process.pid}`);
 rmSync(base, { recursive: true, force: true });
@@ -33,6 +34,8 @@ const { saveAccounts, loadAccounts, saveConfig } = await import("../../src/lib/s
 const { evaluateAndMaybeSwap } = await import("../../src/lib/decide.ts");
 import type { Account, UsageState } from "../../src/lib/types.ts";
 
+const RefreshGrantSchema = z.looseObject({ refresh_token: z.string() });
+
 let refreshCalls = 0;
 const server = Bun.serve({
   port: 8792,
@@ -46,10 +49,10 @@ const server = Bun.serve({
       if (!tag) return new Response("unknown test token", { status: 401 });
       return Response.json({ organization_uuid: `org-${tag}`, organization_name: `Org ${tag}`, organization_role: "admin" });
     }
-    const body: any = await req.json();
+    const body = RefreshGrantSchema.parse(await req.json());
     refreshCalls++;
     // a DEAD-prefixed refresh token is a dead grant (test 9's needs-reauth winner).
-    if (typeof body.refresh_token === "string" && body.refresh_token.startsWith("DEAD")) {
+    if (body.refresh_token.startsWith("DEAD")) {
       return new Response(JSON.stringify({ error: "invalid_grant" }), { status: 400 });
     }
     return Response.json({
