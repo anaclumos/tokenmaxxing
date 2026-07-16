@@ -16,11 +16,15 @@ import { loadAccounts, loadConfig, loadUsage, loadModelUsage, saveAccounts } fro
 import { readOAuthAccount } from "../lib/claudejson.ts";
 import { probeActiveUsage, probeParkedUsage, type SampleOutcome } from "../lib/sample.ts";
 import { withLock } from "../lib/lock.ts";
-import { paths } from "../lib/paths.ts";
+import { codexPaths, paths } from "../lib/paths.ts";
 import { effectiveBars, isExhausted, nextWeeklyReset } from "../lib/picker.ts";
-import { bar, c, fmtAgo, fmtReset } from "./render.ts";
+import { loadCodexAccounts, saveCodexAccounts } from "../lib/codexstate.ts";
+import { liveCodexAccountId, sampleCodexAccount, type CodexSampleOutcome } from "../lib/codexsample.ts";
+import { isCodexExhausted } from "../lib/codexpick.ts";
+import { isSessionWindow } from "../lib/codexusage.ts";
+import { bar, c, count, fmtAgo, fmtReset } from "./render.ts";
 import type { FullUsage } from "../lib/usage.ts";
-import type { UsageWindow } from "../lib/types.ts";
+import type { Config, CodexWindow, UsageWindow } from "../lib/types.ts";
 
 /** `preRender` runs after sampling, right before the first output line: `watch`
  *  keeps the previous frame on screen through the multi-second sample and
@@ -93,7 +97,7 @@ export async function cmdStatus(force = false, preRender?: () => void): Promise<
   });
 
   preRender?.();
-  console.log(c.dim(`threshold 5h ${cfg.thresholds.session}% · week ${cfg.thresholds.weekly}%  ·  ${idx.accounts.length} account(s)`));
+  console.log(c.dim(`thresholds 5h ${cfg.thresholds.session}% weekly ${cfg.thresholds.weekly}%  (${count({ n: idx.accounts.length, noun: "claude account" })})`));
   console.log();
 
   // A window whose cached reset has passed is empty again; weekly windows recur
@@ -129,7 +133,7 @@ export async function cmdStatus(force = false, preRender?: () => void): Promise<
     }
     if (perModel) for (const [name, w] of Object.entries(perModel)) row(name, w, true);
     if (failed && outcome && !outcome.ok) {
-      const cached = aggregate || perModel ? `cached${a.lastUsageAt != null ? ` ${fmtAgo(a.lastUsageAt, now)}` : ""} · ` : "";
+      const cached = aggregate || perModel ? `cached${a.lastUsageAt != null ? ` ${fmtAgo(a.lastUsageAt, now)}` : ""}, ` : "";
       console.log(`    ${c.yellow(`${cached}live sample failed`)}: ${c.dim(outcome.reason)}`);
     }
     if (outcome?.pingError != null) {
@@ -144,5 +148,71 @@ export async function cmdStatus(force = false, preRender?: () => void): Promise<
     }
     console.log();
   }
+
+  await renderCodexSection({ cfg, now, row });
   return 0;
+}
+
+/** The codex pool, appended when it is non-empty. Every account samples via
+ *  the free usage GET (nothing metered, no window started): the live account
+ *  through the live auth.json, parked accounts through their parked blobs. */
+async function renderCodexSection(input: {
+  cfg: Config;
+  now: number;
+  row: (name: string, w: UsageWindow, weekly: boolean) => void;
+}): Promise<void> {
+  const { cfg, now, row } = input;
+  let index = loadCodexAccounts();
+  if (index.accounts.length === 0) return;
+
+  console.error(c.dim("sampling codex usage..."));
+  const outcomes = new Map<string, CodexSampleOutcome>();
+  let liveId: string | null = null;
+  await withLock(codexPaths.lockFile, async () => {
+    index = loadCodexAccounts();
+    liveId = liveCodexAccountId();
+    await Promise.all(
+      index.accounts.map(async (account) => {
+        const outcome = await sampleCodexAccount({ account, liveAccountId: liveId, now });
+        outcomes.set(account.accountId, outcome);
+        if (outcome.ok) {
+          account.lastUsage = { aggregate: outcome.usage.aggregate, perLimit: outcome.usage.perLimit };
+          account.lastUsageAt = Date.now();
+          if (outcome.usage.email != null) account.email = outcome.usage.email;
+          if (outcome.usage.planType != null) account.planType = outcome.usage.planType;
+        } else if (outcome.deadGrant) {
+          account.needsReauth = true;
+        }
+      }),
+    );
+    saveCodexAccounts({ index });
+  });
+
+  console.log(c.dim(`codex  (${count({ n: index.accounts.length, noun: "account" })})`));
+  console.log();
+  const windowLabel = (window: CodexWindow) =>
+    isSessionWindow({ window }) ? `${Math.round((window.windowSeconds ?? 0) / 3600)}h` : "week";
+  for (const account of index.accounts) {
+    const active = account.accountId === liveId;
+    const marker = active ? c.green("●") : c.dim("○");
+    const badges: string[] = [];
+    if (active) badges.push(c.green("active"));
+    if (account.needsReauth) badges.push(c.red("needs-reauth"));
+    if (isCodexExhausted({ account, thresholds: effectiveBars(cfg), now })) badges.push(c.yellow("exhausted"));
+    console.log(`${marker} ${c.bold(account.label)} ${account.planType ? c.dim(account.planType) : ""} ${badges.join(" ")}`);
+
+    const usage = account.lastUsage;
+    if (usage) {
+      for (const window of usage.aggregate) row(windowLabel(window), window, !isSessionWindow({ window }));
+      for (const [name, windows] of Object.entries(usage.perLimit)) {
+        for (const window of windows) row(name, window, !isSessionWindow({ window }));
+      }
+    }
+    const outcome = outcomes.get(account.accountId);
+    if (outcome && !outcome.ok) {
+      const cached = usage ? `cached${account.lastUsageAt != null ? ` ${fmtAgo(account.lastUsageAt, now)}` : ""}, ` : "";
+      console.log(`    ${c.yellow(`${cached}live sample failed`)}: ${c.dim(outcome.reason)}`);
+    }
+    console.log();
+  }
 }

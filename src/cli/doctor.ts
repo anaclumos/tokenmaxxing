@@ -52,7 +52,7 @@ export async function cmdDoctor(): Promise<number> {
     try {
       const org = await blobOrg(live);
       if (org) check(org.organization_uuid === active.organizationUuid, `live credential identity matches active (${active.email})`, `token belongs to ${org.organization_name} - run \`tokenmaxxing switch\``);
-      else console.log(c.dim(`  · live credential identity unverifiable (access token expired)`));
+      else console.log(c.dim(`  - live credential identity unverifiable (access token expired)`));
     } catch (e) {
       check(false, `live credential identity matches active (${active.email})`, String((e as Error).message ?? e).slice(0, 100));
     }
@@ -65,7 +65,7 @@ export async function cmdDoctor(): Promise<number> {
       try {
         const org = await blobOrg(parked);
         if (org) check(org.organization_uuid === a.organizationUuid, `parked credential identity matches ${a.email}`, `token belongs to ${org.organization_name} - re-auth with \`tokenmaxxing add\``);
-        else console.log(c.dim(`  · ${a.email} identity unverifiable (access token expired)`));
+        else console.log(c.dim(`  - ${a.email} identity unverifiable (access token expired)`));
       } catch (e) {
         check(false, `parked credential identity matches ${a.email}`, String((e as Error).message ?? e).slice(0, 100));
       }

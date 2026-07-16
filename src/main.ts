@@ -10,6 +10,11 @@ import { runStopHook } from "./entries/stophook.ts";
 import { runSessionStart } from "./entries/sessionstart.ts";
 import { cmdInit } from "./cli/init.ts";
 import { cmdAdd } from "./cli/add.ts";
+import { cmdCodexAdd } from "./cli/codexadd.ts";
+import { cmdCodexInit } from "./cli/codexinit.ts";
+import { cmdCodexSwitch } from "./cli/codexswitch.ts";
+import { runCodexSupervisor } from "./entries/codexsupervisor.ts";
+import { runCodexStopHook } from "./entries/codexstophook.ts";
 import { cmdLs } from "./cli/ls.ts";
 import { cmdStatus } from "./cli/status.ts";
 import { cmdWatch } from "./cli/watch.ts";
@@ -28,7 +33,10 @@ function printHelp(): void {
   ${c.cyan("tokenmaxxing switch")} [sel]  switch to the best (or a specific) account; no-op when already on it
   ${c.cyan("tokenmaxxing check")}      evaluate once, switch if over threshold (run by the periodic timer)
   ${c.cyan("tokenmaxxing init")}       import the current account + install supervisor & hooks
+  ${c.cyan("tokenmaxxing init --codex")}  same for codex: import login, install codex supervisor + Stop hook (trust it via /hooks)
   ${c.cyan("tokenmaxxing add")}        register an additional account (isolated login)
+  ${c.cyan("tokenmaxxing add --codex")}   register an additional codex account (isolated login)
+  ${c.cyan("tokenmaxxing switch --codex")} [sel]  switch the codex pool (takes effect on next codex start)
   ${c.cyan("tokenmaxxing ls")}         list pooled accounts
   ${c.cyan("tokenmaxxing status")}     accounts with 5h / weekly / per-model usage bars
   ${c.cyan("tokenmaxxing status --force")}  ping every account (one tiny haiku request each) so all 5h session timers start now, then sample fresh; ${c.cyan("xx --force")} works too
@@ -54,17 +62,21 @@ async function main(): Promise<number> {
   if (argv0 === "claude" || sub === "__supervise") {
     return runSupervisor(sub === "__supervise" ? args.slice(1) : args);
   }
+  if (argv0 === "codex" || sub === "__supervise-codex") {
+    return runCodexSupervisor({ argv: sub === "__supervise-codex" ? args.slice(1) : args });
+  }
 
   switch (sub) {
     case "__statusline": return runStatusline();
     case "__stop-hook": return runStopHook();
     case "__session-start": return runSessionStart();
+    case "__codex-stop-hook": return runCodexStopHook();
     case undefined: return cmdStatus(); // bare `tokenmaxxing` / `xx` → status
     case "--force": return cmdStatus(true); // bare `xx --force` → status --force
-    case "switch": return cmdSwitch(args[1]);
+    case "switch": return args[1] === "--codex" ? cmdCodexSwitch(args[2]) : cmdSwitch(args[1]);
     case "check": return cmdCheck();
-    case "init": return cmdInit();
-    case "add": return cmdAdd();
+    case "init": return args.includes("--codex") ? cmdCodexInit() : cmdInit();
+    case "add": return args.includes("--codex") ? cmdCodexAdd() : cmdAdd();
     case "ls": return cmdLs();
     case "status": return cmdStatus(args.includes("--force"));
     case "watch": return cmdWatch(args[1]);

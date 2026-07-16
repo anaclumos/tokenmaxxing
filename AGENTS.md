@@ -9,6 +9,18 @@ Standing rules for anyone (human or agent) working in this repo. Follow them exa
 - Always use es-toolkit instead of shipping hand-written utility code.
 - Never use an em-dash. Use a regular hyphen, a colon, or parentheses.
 - Do not cast to `any` to get around a type issue. Fix the type.
+- Never use `as` casts; the only allowed forms are `import * as` and `as const`. Fix the type at the source.
+- No new regex. Validate strings structurally: `startsWith` / `endsWith`, split on delimiters, zod validators, or a real parser. A regex that exactly mirrors an external contract (like the `/usage` reset-clock format) is the one exception; pre-existing regexes stay.
+- Write modern TS from the start: `for...of` / `.entries()`, destructuring, lookup tables over nested ternaries, async/await only (no `.then` chains, no `forEach`).
+- A missing field maps to null or undefined, never `''` / `0` / `false`. An unmeasured usage percent must never read as 0; unmeasured must not look safe.
+- Keep type-only imports as `import type` so they erase at runtime.
+- Name function inputs with an object, not positional params; keep lists explicit, no terse throwaway destructuring or magic string slicing.
+- When renaming a command, hook, or job, rename the full surface (files, launchd/systemd job IDs, shim names, log labels, docs), not just one occurrence.
+- No speculative path guessing: locate the real path, binary, or credential location and use that single location, plus at most one documented env override for tests (`TOKENMAXXING_SHELL_RC` style). Never a candidate list of guessed fallbacks; a configured-but-missing path fails fast instead of falling through to a scan.
+- Code is a liability; every line is maintenance. Delete and simplify first, and build the simplest version that works; for each addition ask whether it is needed now and solves a real problem.
+- Document an intentional tradeoff in-file with its reason. When a review flags one, confirm the justification still holds and mark it WONTFIX; escalate only if it breaks a stated invariant.
+- Never use an interpunct or middle dot either: not in prose, comments, strings, or terminal output.
+- Parse env overrides (`TOKENMAXXING_*`, claude env knobs) through zod where they are read; an unset override parses to undefined and its feature degrades at the use site. Never assign to `process.env` to paper over a missing value.
 
 ## Behavior
 
@@ -17,6 +29,11 @@ Standing rules for anyone (human or agent) working in this repo. Follow them exa
 - NEVER ASSUME ANYTHING. There is infinite exa, grep, and context7 quota. Always search the web / the codebase before acting.
 - Always search the web whenever possible.
 - Install things via the CLI (`bun add`, etc.) so you get the latest versions.
+- NO HACKS. When stuck, stop and fix the underlying flaw robustly, or say honestly that the task cannot be done without one. An honest "this isn't working" beats a passing workaround that breaks later.
+- Do exactly what is asked: no unsolicited code, refactors, or extras. Note follow-up implications in the reply, but implement them only when asked.
+- When the planned approach hits a blocker, a policy issue, or a real design fork, surface the options and let the user pick. Never substitute a different approach unilaterally.
+- Never mark a task done without first-hand, in-session proof: the exact command plus its observable output. A session that changed code runs a fresh verification pass afterward; a prior session's status notes prove wiring, not a green run.
+- All source edits go through the editor tool, never scripted Bash edits (`sed` / `python` loops); mechanical multi-file changes are N individual edits. Revert your own work via the editor, never git.
 
 ## State and compatibility
 
@@ -36,11 +53,19 @@ On every edit, delete:
 - Casts to `any`.
 - Any other style inconsistent with the file.
 
+## Safeguards
+
+- No `rm -rf`, no `git clean -fdx`, no forced recursive deletes: use `trash` (reversible). Avoid deleting files at all; temporary artifacts this session created are the one exception. When a single-file `rm` is unavoidable, see the `rm -i` alias gotcha under Machine and environment gotchas.
+- The user and other agents work in this checkout concurrently, and the Mac runs tokenmaxxing straight from this working tree, so a bad git operation breaks the live install. Never `git reset`, `git checkout --`, `git restore`, or stash over changes you did not author; uncommitted changes you do not recognize belong to someone else. On a collision, stop and ask.
+- Stop processes by PID, never `pkill -f` a pattern that could match your own shell. This machine runs many live `bun` and `claude` processes (supervisors, hooks, the launchd check, the user's real sessions); a pattern kill takes out the user's work. Never kill a running claude session or supervisor to free a resource without asking.
+- Never print credential material (keychain blobs, `.credentials.json` / `auth.json` contents, OAuth access or refresh tokens) in logs, test output, or replies. Check presence, verify identity via `fetchTokenOrg`, and report account labels plus status only.
+- Never dump a full HTTP error or response that may carry a token; allowlist the fields you need. Scrub request headers from thrown ky errors before they reach logs (a ky error carries its request, Authorization header included), and treat any token visible in an error payload as exposed.
+
 ## Project
 
 tokenmaxxing (greenfield 2026-07-08) is Sunghyun's CLI for managing usage quota across the owner's own agent-CLI accounts: pool the owner's Claude Code (and eventually Codex) logins, swap to a fresher one when the active account nears its 5-hour or weekly limit, and keep sessions continuable across swaps. Every design decision serves that goal. Full design lives in `DESIGN.md` (auth/quota internals in its §2).
 
-- Scope (2026-07-08, after the user twice narrowed it): v1 is Claude Code ONLY, macOS first. Linux support landed 2026-07-09 (commit bca7551). Codex is dropped for now; its verified mechanics are preserved below for v2.
+- Scope (2026-07-08, after the user twice narrowed it): v1 is Claude Code ONLY, macOS first. Linux support landed 2026-07-09 (commit bca7551). Codex support landed 0.13.0 (2026-07-16, user chose the FULL auto-switch scope over manual-core-first, and the direct usage GET over the app-server CLI method).
 - The npm name `tokenmaxxing` is owned by the user (anaclumos). v0.1.0 shipped 2026-07-09 (GitHub release + full acceptance: 32 unit tests, hermetic swap/concurrency/model-aware E2E, CLI init/doctor/uninstall through the compiled binary). Linux verified green in both a Docker ubuntu:24.04 arm64 container and on stella.
 - All config and state live in `~/.config/tokenmaxxing/`. `CLAUDE_CONFIG_DIR` is used ONLY during `add` onboarding. There is NO `adopt` command: `tokenmaxxing init` auto-registers the existing login as account #1, and init's repair branch re-pins claudeBin and saves config.
 - Bare `tokenmaxxing` / `xx` runs `status` (user ask 2026-07-09); `switch` stays explicit.
@@ -67,6 +92,12 @@ tokenmaxxing (greenfield 2026-07-08) is Sunghyun's CLI for managing usage quota 
 - Release flow: bump `package.json` version, commit/push, `gh release create v<version>`; `.github/workflows/ci.yml` publishes via npm trusted publishing (OIDC; the registered publisher is anaclumos/tokenmaxxing + `ci.yml`, and the workflow filename must match exactly). ci.yml guards that the release tag equals `v<package.json version>`.
 - Hard-won CI facts (verified against official docs 2026-07-09): trusted publishing needs npm >= 11.5.1, so node 24 via setup-node@v6 (ubuntu-latest's default node 22 bundles npm 10.9.8, silently too old); `id-token: write`; GitHub-hosted runners only; provenance automatic. `bun publish` has NO OIDC support as of bun 1.3.14 (oven-sh/bun#15601, PR #30522 unmerged), so the publish step must be `npm publish`.
 - `bun add -g <local .tgz>` over an existing same-name global errors `DependencyLoop`; `bun remove -g` first.
+- Commit often: small commits for small changes, conventional-commits style with a detailed body, no Co-Authored-By trailer. Commit and push after each verified milestone; do not sit on a finished diff.
+- Stage only your own hunks: on a co-edited file extract your hunk with `git apply --cached`, never stage the whole file (whole-file add is fine only for files this session created). Inspect `git status` and `git diff --cached` untruncated immediately before committing.
+- Never force-push and never amend a pushed commit. On any concurrent-commit signal (rejected push, unexpected remote sha, staged hunks you did not write), stop and ask.
+- Never commit temporary artifacts (captured statusline output, logs, scratch dumps); write them to the session scratchpad with absolute paths, and `trash` any that land in the worktree.
+- Run `bun run typecheck` and `bun test` before committing, and run every script or check you add or change once before committing; an unexecuted script is unverified. After a decision-path change, also re-run the standalone swap-concurrency E2E (see Outstanding test debt).
+- When a change alters CI or operational semantics (release flow, hooks, timers, install paths), update this file and DESIGN.md in the same commit.
 
 ## Claude Code auth and quota internals (verified)
 
@@ -91,13 +122,33 @@ Verified against Claude Code 2.1.204-2.1.207 and Codex CLI 0.143.0 (rust-v0.143.
 - `claude setup-token` / `CLAUDE_CODE_OAUTH_TOKEN` was investigated and ABANDONED 2026-07-09; do not revisit without solving usage. The setup-token (`sk-ant-oat01-`, 1yr, non-rotating, precedence above keychain, meters against the subscription) would kill reauth churn BUT is inference-only scoped and verified (real token, 2.1.205) to break monitoring: `claude -p '/usage'` returns the headless cost footer with NO rate-limit percentages. Verified-good under the token: precedence over keychain, no keychain mutation, no rotation collision (5/5 parallel probes). Stay on keychain-swap.
 - Claude's background daemon bypasses PATH shims (observed on stella 2026-07-10): `claude daemon` / `bg-pty-host` sessions spawn the REAL versioned binary by absolute path (`~/.local/share/claude/versions/<v>`), so they never pass through the supervisor; bg sessions are unsupervised (hooks still fire via settings.json; on Linux adoption + the periodic timer cover switching, but there is no marker-driven respawn). Long-lived bg processes keep running an OLD version after an auto-update. A supervisor auto-`--resume` can collide with a bg fork of the same transcript and exit immediately; the `supervisor.exit` log (added 2026-07-10) records child exit code/signal for diagnosis.
 
-## Codex internals (v2 reference)
+## Codex internals (verified for 0.13.0)
 
-- Creds in `$CODEX_HOME/auth.json` (0600) by default; can be OS keyring (`config.toml` `cli_auth_credentials_store` = keyring/auto). `CODEX_HOME` must pre-exist as a dir.
-- Hot-swap is impossible in a running process: `AuthManager` reloads are gated by `reload_if_account_id_matches`, so swapping auth.json to a different account mid-process is ignored; a restart is required to switch.
-- Rate limits: `RateLimitSnapshot{primary(300min), secondary(10080min)}` on `TokenCount` rollout events (often null), or cleanly via `codex app-server` JSON-RPC `account/rateLimits/read`. Limit hit = HTTP 429 `usage_limit_reached`; `codex exec` exits 1 with stderr `You've hit your usage limit`.
-- Headless login: `codex login --device-auth` (browser OAuth pinned to ports 1455/1457).
-- Neither CLI has native multi-account as of these versions.
+Verified 2026-07-16 against openai/codex tag rust-v0.144.5 source (auth moved to a `login/` crate, config to a `config/` crate), the local 0.144.4 binary's embedded wire schemas, the official hooks docs (developers.openai.com/codex redirects to learn.chatgpt.com/docs), and one live read of the usage endpoint. Codex changes monthly: re-verify before trusting in a later month.
+
+- Creds in `$CODEX_HOME/auth.json` (0600; default `~/.codex`). Store mode config key is now `cli_auth_credentials_store_mode` (file/keyring/auto/ephemeral, default auto = keyring-if-available); the keyring entry is service "Codex Auth", per-home hash-namespaced. tokenmaxxing REQUIRES file mode (`init --codex` fails fast on a keyring pin; `add --codex` writes `cli_auth_credentials_store_mode = "file"` into the onboard home's config.toml so the isolated login lands harvestable). auth.json shape: `tokens {id_token, access_token, refresh_token, account_id?}`, `last_refresh`, plus siblings (auth_mode, OPENAI_API_KEY possibly null) preserved verbatim on round-trip. Identity claims live in the id_token payload under the `https://api.openai.com/auth` claim (chatgpt_account_id, chatgpt_plan_type); `tokens.account_id` is the explicit copy.
+- HOT-SWAP IS STILL IMPOSSIBLE: `AuthManager.reload_if_account_id_matches` skips a reload when auth.json now names a different account ("you have since logged out or signed in to another account"). RESTART IS THE SWITCH; `codex resume <session-id>` / `resume --last` / `codex exec resume` continue the local transcript on whatever account auth.json now holds.
+- Refresh: POST `https://auth.openai.com/oauth/token`, client_id `app_EMoamEEZ73f0CkXaXp7hrann`, JSON body, no auth headers. Proactive margin 5 minutes to JWT exp OR last_refresh older than 8 days. The refresh_token ROTATES and reuse of a superseded one is punished (`refresh_token_reused/expired/invalidated` all = dead grant), so harvest-by-true-owner is mandatory and every rotation must be persisted immediately. There is NO cross-process lock on auth.json (in-process semaphore only): tokenmaxxing's codex flock serializes only tokenmaxxing actors, and swaps happen at idle turn boundaries where the running codex has just finished with (and if needed refreshed) its token.
+- Usage: free authed GET `https://chatgpt.com/backend-api/wham/usage` (Bearer + `ChatGPT-Account-Id` + `User-Agent: codex-cli`), the same call the CLI's /status makes (user-approved direct GET 2026-07-16). Response (pinned live): top-level `account_id`/`email`/`plan_type` (= the token-identity ground truth, the roles-endpoint analog), `rate_limit.{primary,secondary}_window` with `used_percent`/`limit_window_seconds`/`reset_at` (epoch SECONDS), `additional_rate_limits[]` rows keyed by `limit_name` (per-model caps), `credits`, `rate_limit_reset_credits`. CRITICAL: the WEEKLY window is PRIMARY on current Plus/Pro plans (OpenAI removed the 5h window ~Jul 12 2026), so window classification is DURATION-driven (`limit_window_seconds`), never position-driven; per-model names get family matching, never exact strings (same trap as Claude's Opus display name).
+- Hooks (NEW since the old v2 reference; present in the local 0.144.4 binary): full event set incl. `Stop`, declared in `~/.codex/hooks.json` (or config.toml `[hooks]`; both present = both load + warn) as `{"Stop":[{"hooks":[{"type":"command","command":"...","timeout":N}]}]}`. Stop stdin carries `session_id`, `turn_id`, `transcript_path`, `stop_hook_active`, `last_assistant_message`; exit 0 + `{}` is the documented no-op; an unhandled hook failure can interrupt the turn. TRUST GATE: codex SKIPS non-managed hooks until the user trusts them via `/hooks` in the TUI (trust recorded against the hook's hash, so any edit re-requires it) - `init --codex` must (and does) tell the user this step or auto-switching silently never engages. Legacy `notify` still exists and the user's own config.toml already uses it (Computer Use client): never clobber `notify`; hooks.json merges preserve foreign entries.
+- Limit hit: HTTP 429 + `x-codex-rate-limit-reached-type`; per-model message "You've hit your usage limit for {limit_name}..."; `codex exec` exits 1. Login isolation: `CODEX_HOME=<dir> codex login` (browser, localhost 1455/1457), `--device-auth`, `--with-api-key`/`--with-access-token` on stdin. Still no native multi-account (profiles carry model settings only, no auth).
+
+## Codex architecture (0.13.0)
+
+- Parallel state, zero migration surface: `codex-accounts.json` + `codex-lastswap.json` + `codex-lock` + parked blobs as 0600 FILES under `codex-creds/` on BOTH platforms (codex's own store is a plaintext file, and ~6KB parked blobs would risk the security(1) write-size trap). The claude `accounts.json` schema is untouched. Codex state files that exist but fail to parse THROW (no silent empty pool); absent = empty.
+- `src/lib/codex*.ts` mirror the claude libs: codexbin (resolve/verify, same pointsBackAtUs + depth guards), codexauth (blob IO + id_token identity decode), codexoauth (refresh; CodexInvalidGrantError vs retryable CodexRefreshFailedError), codexusage (direct GET + duration-driven window mapping; CodexUsageReadError), codexstate, codexpick (pace pressure on the weekly window; the engagement floor reads against EVERY window class since there may be no 5h window), codexswap (harvests live under its OWN identity: an unknown live identity refuses the swap), codexsample (the ACTIVE account samples via the LIVE blob only: refreshing its stale parked copy would trip refresh_token_reused and kill the grant family; parked accounts sample via parked blobs, rotations persisted immediately), codexdecide (greedy + hard paths, 45s cooldown, NO depleted pre-park: nothing can pause a codex session for a countdown).
+- Supervisor: `bin/codex` shim, `__supervise-codex`, codexsupervisor.ts. Codex generates its own session ids (no --session-id flag), so pairing is via env: the supervisor exports `TOKENMAXXING_CODEX_SUPERVISOR_ID`; the Stop hook (`__codex-stop-hook`, declared in hooks.json) inherits it through codex, and on a swap writes `codex-respawn/<supervisorId>` carrying the hook-stdin session_id; the supervisor SIGTERMs and relaunches `codex resume <session-id>`. Respawn args are exactly `resume <sid>` (original launch flags are not replayed; model/sandbox prefs live in config.toml). Errors in the hook are logged, `{}` always printed, exit 0 always: never interrupt a codex turn. `shouldManageCodex` skips value-taking root options before finding the subcommand (else `codex -m X exec` would be wrongly supervised).
+
+## Codex decision invariants (0.13.0 adversarial review, 2026-07-16)
+
+Each guards a confirmed pre-ship finding. Preserve all of them.
+
+- The current account is ALWAYS the live auth.json's own identity (`liveCodexAccountId`), never the stored `activeAccountId` label. Trusting the label once let the decision target the RUNNING account: performCodexSwap would refresh its superseded parked token (reuse punishment kills the grant family) and rotate the live token out from under the session. `performCodexSwap` also backstops this: it refuses a target equal to the live identity.
+- `performCodexSwap` resolves and validates the live owner BEFORE the network refresh, and persists the target's rotation to its parked file the INSTANT the refresh returns. A refusal (or crash) after a rotation but before persistence strands a reuse-punished token.
+- PRESENCE FILES (`codex-live/<supervisorId>` = {accountId, pid, ts}; PID-validated, dead entries auto-cleaned): each supervisor declares its session's account at every (re)spawn. A present account is NEVER a swap target (picker paths filter through `targetableCodexAccounts`) and its parked blob is NEVER refreshed by the sampler: under concurrency, "parked" does not imply "not running" (a swap respawns only the deciding session; siblings keep their account and keep rotating its token).
+- The codex greedy path carries a RESPAWN-COST margin (`CODEX_SWAP_IMPROVEMENT` 1.2 in codexpick.ts): engagement is chronic on weekly-only plans, and every greedy swap visibly restarts a live session, so a challenger must beat the seat's pace pressure by 20%, not by a hair. The hard path (crossed bar) ignores the margin.
+- No depleted pre-park, 45s cooldown, dead-grant re-rank loops terminate via persisted needsReauth: all mirrored from the claude invariants.
+- Error-shape rule (repo-wide since 0.13.0): HTTP error bodies from token/usage endpoints are NEVER surfaced raw. `safeErrorDetail` (http.ts) allowlists error/error_description/detail/message; a token endpoint's failure body can echo request material.
 
 ## Switch policy and per-model limits
 
@@ -162,6 +213,11 @@ Each guards a verified live failure. Preserve all of them.
 - macOS has no `/bin/true` (only `/usr/bin/true`); use `/usr/bin/true` in tests (it exists on macOS and usr-merged Linux). Incident 2026-07-12: a swap e2e seeded `claudeBin: "/bin/true"`, `resolveRealClaude` fell through to its PATH scan (whose recursion guard only skipped the relocated test binDir), resolved the user's real installed wrapper, and spawned a forever-hung `/usage` probe that wedged the e2e for 15+ minutes. Fixes: `resolveRealClaude` now throws on a configured-but-missing claudeBin instead of PATH-scanning, and `probeUsageOnce` kills the child after 60s (PROBE_KILL_MS). Caveat learned 2026-07-13: the 60s kill alone was NOT sufficient (descendants inherit the stdout pipe and the read blocked past the kill); see the v0.6.2 recursion guards above.
 - Piping macOS tar into a Linux container creates AppleDouble `._*.test.ts` files that `bun test` executes; use `COPYFILE_DISABLE=1`.
 - macOS 26 recurring TCC dialogs "bun would like to access data from other apps" (first reported 2026-07-12) come from the tokenmaxxing periodic check: the `com.tokenmaxxing.check` launchd agent fires every 180s and runs the check via the dev shim, whose root executable is plain `bun`, so macOS attributes every TCC request from the job (including children) to "bun". The check spawns `claude -p /usage --output-format json` nearly every run (`usagePollTtlMs` 90s < 180s interval), and the claude CLI is known upstream to touch other apps' protected data (anthropics/claude-code issues #63130, #36832, #36675: unstable per-version binary identity, no app bundle). The system TCC db has bun listed in Full Disk Access but toggled OFF, so App Data prompts keep re-firing (the user-level `kTCCServiceSystemPolicyAppData` row, auth_value 5, does not stop them). Fix: toggle `bun` ON in System Settings > Privacy & Security > Full Disk Access. Scoped alternative: install a compiled tokenmaxxing binary signed with a stable (non-ad-hoc) identity + Info.plist and grant that FDA instead. Clicking Allow on the dialog does not durably persist for path-identified CLI clients.
+- Shell commands: atomic, small, readable; no long chained one-liners. On zsh, quote args and use `command <tool>` when an interactive alias could interfere (see the `rm -i` bullet above).
+- Run long steps (10+ minutes) in the background from the start with a hard time bound in the command itself (`gtimeout N ...`); keep quick probes in the foreground. Verification commands must surface real exit codes: never pipe through `| tail` or append `; true`.
+- Drive interactive CLIs (claude included) from non-TTY shells inside tmux (capture-pane / send-keys), never by piping newlines.
+- Watcher and poll loops you start surface errors as events (never swallowed with `2>/dev/null ... || true`), abort visibly after ~3 consecutive failures, cover every terminal state, and are never trusted as armed until confirmed to be a live process.
+- When uninstalling or relocating tooling, check the shell rcs for stale init and PATH blocks; they do not auto-remove, and a stale `# tokenmaxxing PATH` line pointing at an old binDir is exactly how the supervisor recursion incident started.
 
 ## Outstanding test debt
 
@@ -171,6 +227,7 @@ Each guards a verified live failure. Preserve all of them.
 - On Linux: watching a real supervised swap happen mid-session.
 - Original E2E list still owed from the design: SIGTERM-at-Stop cleanliness + resume restore, terminal-mode restoration between kill/respawn, SessionStart-before-first-getToken, keychain ACL from a headless hook, concurrent respawn.
 - Pre-existing E2E bugs already fixed, kept for context: the E2E never mocked the roles endpoint (broken since 89691d9), and it spawned literal "bun" instead of `process.execPath`.
+- New tests go inside `bun test`, never as standalone scripts; the standalone swap-concurrency E2E above already rotted silently once. If a test must stay standalone, record here exactly when it must be re-run.
 
 ## Mistakes I have made
 

@@ -36,7 +36,10 @@ claude                  # use claude as always
 | command | what it does |
 |---|---|
 | `tokenmaxxing init` | import the current account + install supervisor & hooks |
+| `tokenmaxxing init --codex` | same for codex: import login, install codex supervisor + Stop hook |
 | `tokenmaxxing add` | register an additional account (isolated login, harvested into the pool) |
+| `tokenmaxxing add --codex` | register an additional codex account (isolated login) |
+| `tokenmaxxing switch --codex [sel]` | switch the codex pool (takes effect on the next codex start) |
 | `tokenmaxxing ls` | list pooled accounts |
 | `tokenmaxxing status` | accounts with 5h / weekly usage bars, active + exhausted-until-reset |
 | `tokenmaxxing status --force` | additionally ping every account (one tiny haiku request each) so all 5h session timers start now, then sample fresh |
@@ -100,6 +103,20 @@ for await (const message of query({
 The SDK reads credentials when it spawns the claude subprocess and has no statusLine, so none of the CLI-side supervisor machinery applies; the integration is boundary-driven instead. `ensureBestAccount()` runs the exact greedy decision the CLI hooks and timer run (screening bars, pace-pressure target, post-swap cooldown - all shared code); like them, it deliberately does nothing until the decision engages (the active session past `policy.greedySessionFloor`, or a bar crossed), so a fresh account rides instead of churning. `pooledOptions()` pins `pathToClaudeCodeExecutable` to the real claude binary and supplies a full replacement `env` with every ambient credential override (`ANTHROPIC_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN`, ...) scrubbed, so the subprocess resolves the pool's live credential and nothing else. The pooled surface requires the default Claude Code credential store: it fails fast if `CLAUDE_CONFIG_DIR` or `CLAUDE_SECURESTORAGE_CONFIG_DIR` is set in your app's environment, because a swap would write the live credential where those point while the spawned subprocess reads the default store. `stopHookCheck` re-runs the decision at turn boundaries; a swap it lands takes effect on the next subprocess spawn (it never yanks a mid-query token). If your app loads user settings (see the SDK's `settingSources`), the Stop hook `tokenmaxxing init` installed may already fire in SDK sessions too - `stopHookCheck` makes the check explicit and works when settings are restricted.
 
 This is for pooling **your own** subscription accounts in agents you run yourself - the same personal-use posture as the CLI. Anthropic does not allow third-party products to offer claude.ai login or rate limits, including agents built on the Agent SDK; don't ship this surface to third parties.
+
+## Codex support
+
+The same pooling works for OpenAI's Codex CLI (your own ChatGPT-subscription accounts):
+
+```sh
+tokenmaxxing init --codex   # import your current codex login + install the codex supervisor & Stop hook
+tokenmaxxing add --codex    # log in another account, isolated - your primary login is untouched
+codex                       # use codex as always
+```
+
+Codex mechanics differ from Claude Code in one hard way: a running codex process refuses a credential swapped to a different account, so **a restart is the switch**. The installed Stop hook runs the same greedy pace-pressure decision at each turn boundary (usage read free from codex's own rate-limit endpoint: percentages plus absolute reset times, weekly aggregate and per-model caps alike); when it swaps, the supervisor relaunches `codex resume <session-id>` on the fresh account with the transcript intact. `tokenmaxxing switch --codex [sel]` does it manually, `status`/`watch`/`ls` show both pools.
+
+Two codex-specific facts worth knowing: codex does not run hooks it has not been told to trust, so after `init --codex` you must open codex once and trust the tokenmaxxing Stop hook via `/hooks` (auto-switching is inert until then); and codex has no cross-process lock on `auth.json`, so tokenmaxxing serializes all of its own credential writes behind its own lock and swaps only at idle turn boundaries.
 
 ## Honest limitations
 

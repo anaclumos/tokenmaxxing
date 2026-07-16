@@ -6,7 +6,7 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync, realpathSync, rmSy
 import { basename, dirname, join } from "node:path";
 import { escape } from "es-toolkit";
 import { z } from "zod";
-import { HOME, paths } from "./paths.ts";
+import { codexPaths, HOME, paths } from "./paths.ts";
 import { writeFileAtomic } from "./atomic.ts";
 import { installedBin, installSettings, uninstallSettings } from "./settings.ts";
 import { resolveRealClaude } from "./claudebin.ts";
@@ -54,6 +54,70 @@ export function installSupervisor(): InstallOutcome {
     pathAhead: isBinDirAhead(),
     timerLoaded: installCheckTimer(),
   };
+}
+
+// ---- codex supervisor + Stop hook -------------------------------------------
+
+/** Codex hook declarations we merge into. Loose everywhere: every other event
+ *  and every foreign Stop entry rides along verbatim. */
+const CodexHooksFileSchema = z.looseObject({
+  Stop: z.array(z.looseObject({ hooks: z.array(z.looseObject({ command: z.string().optional() })).default([]) })).default([]),
+});
+
+const CODEX_STOP_HOOK_SUBCOMMAND = "__codex-stop-hook";
+
+function codexStopHookCommand(): string {
+  // Quoted like the claude shim commands: an install path with a space would
+  // otherwise mis-split and the hook would silently never run.
+  return `${JSON.stringify(installedBin())} ${CODEX_STOP_HOOK_SUBCOMMAND}`;
+}
+
+/** Idempotently install the tokenmaxxing Stop entry in ~/.codex/hooks.json,
+ *  preserving every other declaration. Codex skips new hooks until the user
+ *  trusts them via /hooks (trust is recorded against the hook's hash), so the
+ *  caller must surface that step. */
+export function installCodexStopHook(): void {
+  const current = existsSync(codexPaths.hooksJson)
+    ? CodexHooksFileSchema.parse(JSON.parse(readFileSync(codexPaths.hooksJson, "utf8")))
+    : CodexHooksFileSchema.parse({});
+  const foreign = current.Stop.filter(
+    (group) => !group.hooks.some((hook) => hook.command?.includes(CODEX_STOP_HOOK_SUBCOMMAND)),
+  );
+  const next = {
+    ...current,
+    Stop: [
+      ...foreign,
+      { hooks: [{ type: "command", command: codexStopHookCommand(), timeout: 120, statusMessage: "tokenmaxxing switch check" }] },
+    ],
+  };
+  mkdirSync(codexPaths.home, { recursive: true });
+  writeFileAtomic(codexPaths.hooksJson, JSON.stringify(next, null, 2) + "\n");
+}
+
+export function uninstallCodexStopHook(): void {
+  if (!existsSync(codexPaths.hooksJson)) return;
+  const current = CodexHooksFileSchema.parse(JSON.parse(readFileSync(codexPaths.hooksJson, "utf8")));
+  const next = {
+    ...current,
+    Stop: current.Stop.filter((group) => !group.hooks.some((hook) => hook.command?.includes(CODEX_STOP_HOOK_SUBCOMMAND))),
+  };
+  writeFileAtomic(codexPaths.hooksJson, JSON.stringify(next, null, 2) + "\n");
+}
+
+export function codexSupervisorLink(): string {
+  return join(paths.binDir, "codex");
+}
+
+/** The on-PATH `codex` wrapper + the Stop hook declaration. */
+export function installCodexSupervisor(): void {
+  mkdirSync(paths.binDir, { recursive: true });
+  writeFileAtomic(codexSupervisorLink(), `#!/bin/sh\nexec ${JSON.stringify(installedBin())} __supervise-codex "$@"\n`, 0o755);
+  installCodexStopHook();
+}
+
+export function uninstallCodexSupervisor(): void {
+  uninstallCodexStopHook();
+  if (existsSync(codexSupervisorLink())) rmSync(codexSupervisorLink(), { force: true });
 }
 
 // ---- periodic `check` timer ------------------------------------------------
@@ -243,6 +307,7 @@ export function findClaudeShadowers(rcText: string): ShellShadower[] {
 export function uninstallSupervisor(): void {
   uninstallSettings();
   uninstallCheckTimer();
+  uninstallCodexSupervisor();
   for (const f of [paths.supervisorLink, join(paths.binDir, "xx"), installedBin()]) {
     if (existsSync(f)) rmSync(f, { force: true });
   }

@@ -122,6 +122,8 @@ export type Thresholds = z.infer<typeof ThresholdsSchema>;
 export const ConfigSchema = z.object({
   thresholds: ThresholdsSchema,
   claudeBin: z.string(),
+  /** the real codex binary (empty = resolve from PATH); pinned by `init --codex`. */
+  codexBin: z.string(),
   policy: z.object({
     projectionMargin: z.number(),
     /** session-used % at which the greedy convergence engages: from here on,
@@ -204,3 +206,90 @@ export const RolesResponseSchema = z.looseObject({
   organization_name: z.string(),
 });
 export type RolesResponse = z.infer<typeof RolesResponseSchema>;
+
+// ---- Codex pool ------------------------------------------------------------
+
+/** `tokens` inside $CODEX_HOME/auth.json (verified against a live 0.144.4
+ *  auth.json). Loose: preserve unknown siblings so a harvest and reinstall
+ *  round-trip is lossless. */
+export const CodexTokensSchema = z.looseObject({
+  id_token: z.string(),
+  access_token: z.string(),
+  refresh_token: z.string(),
+  account_id: z.string().optional(),
+});
+export type CodexTokens = z.infer<typeof CodexTokensSchema>;
+
+/** The whole auth.json. Loose: auth_mode, OPENAI_API_KEY (may be null), and
+ *  future siblings ride along verbatim. */
+export const CodexAuthJsonSchema = z.looseObject({
+  tokens: CodexTokensSchema,
+  last_refresh: z.string().optional(),
+});
+export type CodexAuthJson = z.infer<typeof CodexAuthJsonSchema>;
+
+/** One rate-limit window as tokenmaxxing stores it: percent used, absolute
+ *  epoch ms reset, and the server-declared duration. Codex windows are
+ *  duration-driven (the weekly window is PRIMARY on plans whose 5h window was
+ *  removed in July 2026), so classification must go by windowSeconds, never
+ *  by primary/secondary position. */
+export const CodexWindowSchema = z.object({
+  usedPercentage: z.number(),
+  resetsAt: z.number().nullable(),
+  windowSeconds: z.number().nullable(),
+});
+export type CodexWindow = z.infer<typeof CodexWindowSchema>;
+
+/** Everything one free usage read yields: the token's OWN identity (the codex
+ *  analog of the claude roles endpoint: labels drift, the token cannot lie)
+ *  plus every rate-limit window, aggregate and per-limit-family. */
+export const CodexUsageSchema = z.object({
+  accountId: z.string(),
+  email: z.string().nullable(),
+  planType: z.string().nullable(),
+  aggregate: z.array(CodexWindowSchema),
+  perLimit: z.record(z.string(), z.array(CodexWindowSchema)),
+});
+export type CodexUsage = z.infer<typeof CodexUsageSchema>;
+
+/** A pooled codex account (codex-accounts.json - NON-secret). */
+export const CodexAccountSchema = z.object({
+  accountId: z.string(),
+  email: z.string().nullable(),
+  label: z.string(),
+  planType: z.string().nullable(),
+  credFile: z.string(),
+  addedAt: z.string(),
+  needsReauth: z.boolean().optional(),
+  lastUsage: z
+    .object({
+      aggregate: z.array(CodexWindowSchema),
+      perLimit: z.record(z.string(), z.array(CodexWindowSchema)),
+    })
+    .optional(),
+  lastUsageAt: z.number().optional(),
+});
+export type CodexAccount = z.infer<typeof CodexAccountSchema>;
+
+export const CodexAccountsIndexSchema = z.object({
+  version: z.literal(1),
+  activeAccountId: z.string().nullable(),
+  accounts: z.array(CodexAccountSchema).default([]),
+});
+export type CodexAccountsIndex = z.infer<typeof CodexAccountsIndexSchema>;
+
+/** Codex Stop-hook stdin (verified against the 0.144.4 binary wire schema and
+ *  the official hooks reference): only what the swap trigger consumes. */
+export const CodexStopStdinSchema = z.looseObject({
+  session_id: z.string().optional(),
+  hook_event_name: z.string().optional(),
+});
+
+/** The codex supervisor's respawn marker payload: which session to resume and
+ *  under which account label (for the switch banner). */
+export const CodexRespawnMarkerSchema = z.object({
+  account: z.string(),
+  sessionId: z.string().nullable(),
+  ts: z.number(),
+});
+export type CodexRespawnMarker = z.infer<typeof CodexRespawnMarkerSchema>;

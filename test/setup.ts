@@ -16,6 +16,9 @@ process.env.TOKENMAXXING_CLAUDE_JSON = join(base, "claude.json");
 process.env.TOKENMAXXING_CLAUDE_SETTINGS = join(base, "settings.json");
 process.env.TOKENMAXXING_OAUTH_TOKEN_URL = "http://127.0.0.1:8791/token";
 process.env.TOKENMAXXING_SHELL_RC = join(base, "shellrc");
+process.env.TOKENMAXXING_CODEX_HOME = join(base, "codexhome");
+process.env.TOKENMAXXING_CODEX_TOKEN_URL = "http://127.0.0.1:8792/codex-token";
+process.env.TOKENMAXXING_CODEX_USAGE_URL = "http://127.0.0.1:8792/codex-usage";
 process.env.NO_COLOR = "1";
 
 // exposed for tests that want the sandbox root

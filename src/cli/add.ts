@@ -15,7 +15,7 @@ import { withLock } from "../lib/lock.ts";
 import { loadAccounts, saveAccounts } from "../lib/state.ts";
 import { credItemFor, paths } from "../lib/paths.ts";
 import { CredentialBlobSchema, OAuthAccountSchema, type Account } from "../lib/types.ts";
-import { c } from "./render.ts";
+import { c, count } from "./render.ts";
 
 /** True once `/login` has written a usable identity into the onboard dir. */
 function identityReady(cjPath: string): boolean {
@@ -129,7 +129,7 @@ export async function cmdAdd(): Promise<number> {
   await cleanup();
 
   console.log();
-  const usageNote = sampled ? ` · session ${sampled.session.usedPercentage}% / week ${sampled.weekAll.usedPercentage}%` : "";
-  console.log(`${c.green("✓")} added ${c.bold(account.email)} (${account.subscriptionType ?? "?"})${usageNote} → pool now has ${poolSize} account(s)`);
+  const usageNote = sampled ? ` (session ${sampled.session.usedPercentage}% / week ${sampled.weekAll.usedPercentage}%)` : "";
+  console.log(`${c.green("✓")} added ${c.bold(account.email)} (${account.subscriptionType ?? "?"})${usageNote} → pool now has ${count({ n: poolSize, noun: "account" })}`);
   return 0;
 }

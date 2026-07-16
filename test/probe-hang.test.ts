@@ -41,7 +41,7 @@ test(
     // exits immediately but leaves a background child holding the pipes open
     writeFileSync(fake, `#!/bin/sh\nsleep 30 &\necho $! >> ${JSON.stringify(sleeperPids)}\necho '{"result":"Current session: 10% used"}'\nexit 0\n`);
     chmodSync(fake, 0o755);
-    saveConfig({ thresholds: { session: 95, weekly: 98 }, claudeBin: fake, policy: { projectionMargin: 0, greedySessionFloor: 50, switchModels: ["fable"], usagePollTtlMs: 90_000, maxWaitMs: 3_600_000 } });
+    saveConfig({ thresholds: { session: 95, weekly: 98 }, claudeBin: fake, codexBin: "", policy: { projectionMargin: 0, greedySessionFloor: 50, switchModels: ["fable"], usagePollTtlMs: 90_000, maxWaitMs: 3_600_000 } });
 
     const started = Date.now();
     const result = await probeUsage();

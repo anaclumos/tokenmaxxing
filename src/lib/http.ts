@@ -4,6 +4,32 @@
 // so callers read the body and shape their own fail-fast error; retry still runs.
 
 import ky from "ky";
+import { z } from "zod";
+
+/** The error-shape fields OAuth/usage endpoints legitimately explain themselves
+ *  with. Error bodies are NEVER surfaced raw: a token endpoint's failure body
+ *  can echo request material, so anything outside this allowlist is dropped. */
+const ErrorBodySchema = z.looseObject({
+  error: z.string().optional(),
+  error_description: z.string().optional(),
+  detail: z.string().optional(),
+  message: z.string().optional(),
+});
+
+/** Allowlisted, token-safe rendering of an HTTP error body. */
+export function safeErrorDetail(input: { text: string }): string {
+  const parsed = ErrorBodySchema.safeParse((() => {
+    try {
+      return JSON.parse(input.text);
+    } catch {
+      return null;
+    }
+  })());
+  if (!parsed.success) return "(unparsable error body withheld)";
+  const fields = [parsed.data.error, parsed.data.error_description, parsed.data.detail, parsed.data.message];
+  const detail = fields.filter((field): field is string => field != null && field.length > 0).join(": ");
+  return detail.length > 0 ? detail.slice(0, 200) : "(no error detail)";
+}
 
 export const http = ky.create({
   timeout: 15_000,

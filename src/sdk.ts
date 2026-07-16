@@ -102,7 +102,7 @@ export async function stopHookCheck(): Promise<Record<string, never>> {
   try {
     await evaluateAndMaybeSwap(Date.now(), false);
   } catch (e) {
-    const err = String((e as Error).message ?? e);
+    const err = e instanceof Error ? e.message : String(e);
     console.error(`tokenmaxxing: switch check failed at turn boundary: ${err}`);
     log("sdk.stop_error", { err });
   }

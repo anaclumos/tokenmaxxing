@@ -40,7 +40,7 @@ export async function cmdWatch(intervalArg?: string): Promise<number> {
 
   const paintHeader = () => {
     process.stdout.write(process.stdout.isTTY ? CLEAR : "\n");
-    console.log(c.dim(`watch · every ${intervalS}s · ${new Date().toLocaleTimeString()} · ctrl-c to quit`));
+    console.log(c.dim(`watch: every ${intervalS}s, ${new Date().toLocaleTimeString()}, ctrl-c to quit`));
   };
   while (true) {
     // One failed tick (a mid-write ~/.claude.json read, a transient probe or
@@ -50,7 +50,7 @@ export async function cmdWatch(intervalArg?: string): Promise<number> {
       await cmdStatus(false, paintHeader);
     } catch (e) {
       paintHeader();
-      console.error(c.red(`status failed this tick: ${String((e as Error).message ?? e)}`));
+      console.error(c.red(`status failed this tick: ${e instanceof Error ? e.message : String(e)}`));
     }
     await delay(intervalS * 1000);
   }

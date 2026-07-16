@@ -18,6 +18,11 @@ export function makeColors(enabled: boolean) {
 
 export const c = makeColors(!process.env.NO_COLOR && !!process.stdout.isTTY);
 
+/** "1 account" / "3 accounts": counted nouns always pluralize properly. */
+export function count(input: { n: number; noun: string }): string {
+  return `${input.n} ${input.noun}${input.n === 1 ? "" : "s"}`;
+}
+
 /** A fixed-width usage bar, colored by fill. */
 export function bar(pct: number, width = 16): string {
   const clamped = clamp(pct, 0, 100);

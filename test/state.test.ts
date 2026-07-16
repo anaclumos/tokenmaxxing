@@ -17,7 +17,7 @@ function acct(): Account {
 
 describe("config round-trip", () => {
   test("save/load preserves thresholds + policy", () => {
-    saveConfig({ thresholds: { session: 90, weekly: 93 }, claudeBin: "/bin/claude", policy: { projectionMargin: 3, greedySessionFloor: 40, switchModels: ["fable", "opus"], usagePollTtlMs: 60_000, maxWaitMs: 3_600_000 } });
+    saveConfig({ thresholds: { session: 90, weekly: 93 }, claudeBin: "/bin/claude", codexBin: "", policy: { projectionMargin: 3, greedySessionFloor: 40, switchModels: ["fable", "opus"], usagePollTtlMs: 60_000, maxWaitMs: 3_600_000 } });
     const c = loadConfig();
     expect(c.thresholds).toEqual({ session: 90, weekly: 93 });
     expect(c.policy.projectionMargin).toBe(3);

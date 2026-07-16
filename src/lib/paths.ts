@@ -4,12 +4,15 @@
 
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { z } from "zod";
 
 const HOME = homedir();
 
+/** A set env override; empty or unset parses to undefined and the fallback applies. */
+const EnvOverrideSchema = z.string().min(1).optional().catch(undefined);
+
 function env(name: string, fallback: string): string {
-  const v = process.env[name];
-  return v && v.length > 0 ? v : fallback;
+  return EnvOverrideSchema.parse(process.env[name]) ?? fallback;
 }
 
 /** Root of all tokenmaxxing config + state. Default ~/.config/tokenmaxxing. */
@@ -52,6 +55,37 @@ export function claudeLockPath(): string {
   return env("TOKENMAXXING_CLAUDE_LOCK", join(HOME, ".claude.lock"));
 }
 
+/** Codex home: where the live auth.json lives. Test override first, then
+ *  codex's own CODEX_HOME env, then its default ~/.codex. */
+const CODEX_HOME = env("TOKENMAXXING_CODEX_HOME", env("CODEX_HOME", join(HOME, ".codex")));
+
+export const codexPaths = {
+  home: CODEX_HOME,
+  /** the live credential file (codex file-mode store; verified 0.144.4/5). */
+  authJson: join(CODEX_HOME, "auth.json"),
+  /** user-level hook declarations codex reads (verified against the binary + docs). */
+  hooksJson: join(CODEX_HOME, "hooks.json"),
+  /** tokenmaxxing's codex pool state, parallel to the claude files in TM_HOME. */
+  accountsJson: join(TM_HOME, "codex-accounts.json"),
+  lastSwapJson: join(TM_HOME, "codex-lastswap.json"),
+  lockFile: join(TM_HOME, "codex-lock"),
+  /** parked auth.json blobs: 0600 files on BOTH platforms (codex's own store is
+   *  a plaintext file, and parked blobs at ~6KB would risk the security(1)
+   *  write-size trap that once truncated a 4.3KB claude blob). */
+  credsDir: join(TM_HOME, "codex-creds"),
+  onboardDir: join(TM_HOME, "codex-onboard"),
+  respawnDir: join(TM_HOME, "codex-respawn"),
+  /** one file per RUNNING supervised codex session: {accountId, pid, ts}. A
+   *  running account's parked token must never be refreshed or targeted (its
+   *  live rotations supersede the parked copy, and reuse is punished). */
+  presenceDir: join(TM_HOME, "codex-live"),
+} as const;
+
+/** Per-account parked codex credential file name: tokenmaxxing-codex-<id8>. */
+export function codexCredItemFor(accountId: string): string {
+  return `tokenmaxxing-codex-${accountId.slice(0, 8)}`;
+}
+
 /** The macOS login-keychain generic-password the live `claude` reads. */
 export const keychain = {
   service: env("TOKENMAXXING_KEYCHAIN_SERVICE", "Claude Code-credentials"),
@@ -88,8 +122,12 @@ export function namespacedCredService(configDirRaw: string): string {
 
 /** Resolve the REAL claude binary (never our shim). Order: explicit env, config, PATH scan. */
 export function realClaudeBinFromEnv(): string | undefined {
-  const v = process.env.TOKENMAXXING_CLAUDE_BIN;
-  return v && v.length > 0 ? v : undefined;
+  return EnvOverrideSchema.parse(process.env.TOKENMAXXING_CLAUDE_BIN);
+}
+
+/** Same override hook for the real codex binary (tests / relocation). */
+export function realCodexBinFromEnv(): string | undefined {
+  return EnvOverrideSchema.parse(process.env.TOKENMAXXING_CODEX_BIN);
 }
 
 export { HOME };

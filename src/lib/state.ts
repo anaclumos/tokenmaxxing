@@ -3,7 +3,7 @@
 import { existsSync, readFileSync, rmSync, statSync, utimesSync } from "node:fs";
 import { isEqual } from "es-toolkit";
 import { z } from "zod";
-import { paths, realClaudeBinFromEnv } from "./paths.ts";
+import { paths, realClaudeBinFromEnv, realCodexBinFromEnv } from "./paths.ts";
 import { writeFileAtomic } from "./atomic.ts";
 import {
   AccountsIndexSchema,
@@ -24,6 +24,7 @@ const DEFAULT_CONFIG: Config = {
   // cheap to sit out, weekly quota is use-it-or-lose-it so it drains to 98.
   thresholds: { session: 95, weekly: 98 },
   claudeBin: "",
+  codexBin: "",
   // per-model weekly caps exist only for Sonnet and Fable (no Opus-only quota,
   // per the user 2026-07-12), and only Fable's is worth switching on.
   // greedySessionFloor 50: half a session window buys the swap (user 2026-07-16).
@@ -35,6 +36,7 @@ const ConfigFileSchema = z
   .object({
     thresholds: z.object({ session: z.number(), weekly: z.number() }).partial(),
     claudeBin: z.string(),
+    codexBin: z.string(),
     policy: z
       .object({
         projectionMargin: z.number(),
@@ -61,6 +63,7 @@ export function loadConfig(): Config {
     cfg.thresholds.session = p.thresholds?.session ?? cfg.thresholds.session;
     cfg.thresholds.weekly = p.thresholds?.weekly ?? cfg.thresholds.weekly;
     cfg.claudeBin = p.claudeBin ?? cfg.claudeBin;
+    cfg.codexBin = p.codexBin ?? cfg.codexBin;
     cfg.policy.projectionMargin = p.policy?.projectionMargin ?? cfg.policy.projectionMargin;
     cfg.policy.greedySessionFloor = p.policy?.greedySessionFloor ?? cfg.policy.greedySessionFloor;
     cfg.policy.usagePollTtlMs = p.policy?.usagePollTtlMs ?? cfg.policy.usagePollTtlMs;
@@ -69,9 +72,11 @@ export function loadConfig(): Config {
       cfg.policy.switchModels = p.policy.switchModels.map((s) => s.toLowerCase());
     }
   }
-  // env override wins for the claude binary (tests / relocation)
+  // env overrides win for the real binaries (tests / relocation)
   const envBin = realClaudeBinFromEnv();
   if (envBin) cfg.claudeBin = envBin;
+  const envCodexBin = realCodexBinFromEnv();
+  if (envCodexBin) cfg.codexBin = envCodexBin;
   return ConfigSchema.parse(cfg);
 }
 

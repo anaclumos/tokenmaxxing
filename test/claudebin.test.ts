@@ -19,6 +19,7 @@ import { saveConfig } from "../src/lib/state.ts";
 const cfg = (claudeBin: string) => ({
   thresholds: { session: 95, weekly: 98 },
   claudeBin,
+  codexBin: "",
   policy: { projectionMargin: 0, greedySessionFloor: 50, switchModels: ["fable"], usagePollTtlMs: 90_000, maxWaitMs: 3_600_000 },
 });
 

@@ -101,7 +101,9 @@ The decision engages at `five_hour >= 50%` (policy.greedySessionFloor): from the
 
 **Shipped since (0.11.0):** a programmatic SDK surface (`src/sdk.ts`, the package's `exports["."]`) for pairing with the Claude Agent SDK - personal use across the owner's own pooled accounts. The Agent SDK reads credentials per subprocess spawn and has no statusLine, so the surface is boundary-driven: run the shared switch decision before a spawn (`ensureBestAccount`) and at Stop-hook turn boundaries (`stopHookCheck`), and hand the SDK a pinned real-claude path plus a full replacement env scrubbed of credential overrides (`pooledOptions`).
 
-**Later:** Codex as a second pool; tool-agnostic picker.
+**Later:** tool-agnostic picker.
+
+**Shipped since (0.13.0):** Codex as a second pool, parallel state (`codex-accounts.json`, `codex-creds/`, own flock), same pace-pressure policy. Codex differences that shaped it: restart IS the switch (a running codex refuses another account's credential), usage is a free direct GET with epoch resets and a duration-classified window set (the weekly window is primary on current plans), the refresh token rotates with reuse punished (harvest-by-true-owner, persist every rotation), and codex's new Stop-hook system drives the auto-swap through a codex supervisor shim that respawns `codex resume <session-id>` (hooks must be trusted once via `/hooks`).
 
 **Non-goals:** an API/MITM proxy; reimplementing OAuth beyond the single refresh-grant call in the swap.
 
