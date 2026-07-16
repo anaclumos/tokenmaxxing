@@ -30,6 +30,7 @@ function printHelp(): void {
   ${c.cyan("tokenmaxxing add")}        register an additional account (isolated login)
   ${c.cyan("tokenmaxxing ls")}         list pooled accounts
   ${c.cyan("tokenmaxxing status")}     accounts with 5h / weekly / per-model usage bars
+  ${c.cyan("tokenmaxxing status --force")}  ping every account (one tiny haiku request each) so all 5h session timers start now, then sample fresh; ${c.cyan("xx --force")} works too
   ${c.cyan("tokenmaxxing doctor")}     verify the install is intact
   ${c.cyan("tokenmaxxing rename")} <sel> <label>
   ${c.cyan("tokenmaxxing rm")} <sel>
@@ -57,12 +58,13 @@ async function main(): Promise<number> {
     case "__stop-hook": return runStopHook();
     case "__session-start": return runSessionStart();
     case undefined: return cmdStatus(); // bare `tokenmaxxing` / `xx` → status
+    case "--force": return cmdStatus(true); // bare `xx --force` → status --force
     case "switch": return cmdSwitch(args[1]);
     case "check": return cmdCheck();
     case "init": return cmdInit();
     case "add": return cmdAdd();
     case "ls": return cmdLs();
-    case "status": return cmdStatus();
+    case "status": return cmdStatus(args.includes("--force"));
     case "doctor": return cmdDoctor();
     case "rm": return cmdRm(args[1]);
     case "rename": return cmdRename(args[1], args[2]);

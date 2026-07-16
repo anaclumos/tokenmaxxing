@@ -39,6 +39,7 @@ claude                  # use claude as always
 | `tokenmaxxing add` | register an additional account (isolated login, harvested into the pool) |
 | `tokenmaxxing ls` | list pooled accounts |
 | `tokenmaxxing status` | accounts with 5h / weekly usage bars, active + exhausted-until-reset |
+| `tokenmaxxing status --force` | additionally ping every account (one tiny haiku request each) so all 5h session timers start now, then sample fresh |
 | `tokenmaxxing doctor` | verify the supervisor + settings entries survived |
 | `tokenmaxxing rename <sel> <label>` · `rm <sel>` | manage the pool |
 | `tokenmaxxing uninstall` | remove supervisor + settings entries (accounts/credentials kept) |

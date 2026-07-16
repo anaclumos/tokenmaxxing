@@ -25,13 +25,15 @@ import { readItem, writeItem, deleteItem, liveTarget, parkedTarget, isolatedTarg
 import { credItemFor, paths } from "./paths.ts";
 import { withClaudeRefreshLock } from "./claudelock.ts";
 import { refreshCredential, isAccessTokenExpiring, fetchTokenOrg, InvalidGrantError } from "./oauth.ts";
-import { FullUsageSchema, probeUsage } from "./usage.ts";
+import { FullUsageSchema, pingSession, probeUsage } from "./usage.ts";
 import { CredentialBlobSchema, type Account, type OAuthCreds, type RolesResponse } from "./types.ts";
 
-/** Result of a live sample: the fresh usage, or why it could not be taken. */
+/** Result of a live sample: the fresh usage, or why it could not be taken.
+ *  `pingError` is set only when a requested ping (status --force) failed - the
+ *  account's 5h timer may not have started even if the sample itself succeeded. */
 export const SampleOutcomeSchema = z.discriminatedUnion("ok", [
-  z.object({ ok: z.literal(true), usage: FullUsageSchema }),
-  z.object({ ok: z.literal(false), reason: z.string() }),
+  z.object({ ok: z.literal(true), usage: FullUsageSchema, pingError: z.string().optional() }),
+  z.object({ ok: z.literal(false), reason: z.string(), pingError: z.string().optional() }),
 ]);
 export type SampleOutcome = z.infer<typeof SampleOutcomeSchema>;
 
@@ -51,8 +53,11 @@ async function identityMismatch(creds: OAuthCreds, account: Account): Promise<st
  * Live-sample `account`'s `/usage` in isolation. On a dead refresh token or a
  * mislabeled credential it sets `account.needsReauth` in place (the caller
  * persists accounts.json). Mutates only the passed object and keychain items.
+ * With `ping`, one minimal metered request runs first (through the same
+ * isolated credential) so the account's 5h session window starts now and the
+ * sample that follows reports the freshly opened window.
  */
-export async function probeParkedUsage(account: Account): Promise<SampleOutcome> {
+export async function probeParkedUsage(account: Account, opts: { ping?: boolean } = {}): Promise<SampleOutcome> {
   const backup = parkedTarget(account.keychainItem);
   const parkedRaw = await readItem(backup);
   if (!parkedRaw) return { ok: false, reason: "no parked credential - re-add with `tokenmaxxing add`" };
@@ -94,8 +99,13 @@ export async function probeParkedUsage(account: Account): Promise<SampleOutcome>
   try {
     await writeItem(isoTarget, installed);
     writeFileSync(join(dir, ".claude.json"), JSON.stringify({ oauthAccount: account.oauthAccount, hasCompletedOnboarding: true }));
+    const pingError = opts.ping ? await pingSession(dir) : null;
     const usage = await probeUsage(dir);
-    return usage ? { ok: true, usage } : { ok: false, reason: "`/usage` returned no limit data (see log)" };
+    const outcome: SampleOutcome = usage
+      ? { ok: true, usage }
+      : { ok: false, reason: "`/usage` returned no limit data (see log)" };
+    if (pingError != null) outcome.pingError = pingError;
+    return outcome;
   } finally {
     // capture-before-delete: never discard a rotation claude may have performed.
     const afterIso = await readItem(isoTarget);
@@ -109,9 +119,10 @@ export async function probeParkedUsage(account: Account): Promise<SampleOutcome>
  * Live-sample the ACTIVE account off the live login, verifying the live
  * credential belongs to it. `/usage` with no CLAUDE_CONFIG_DIR meters the live
  * keychain item. A drifted active label surfaces as an error, not another
- * account's bars.
+ * account's bars. With `ping`, one minimal metered request runs first (after
+ * the identity check - never spend quota on a drifted credential).
  */
-export async function probeActiveUsage(account: Account): Promise<SampleOutcome> {
+export async function probeActiveUsage(account: Account, opts: { ping?: boolean } = {}): Promise<SampleOutcome> {
   const liveRaw = await readItem(liveTarget());
   if (!liveRaw) return { ok: false, reason: "no live credential - run `claude` and `/login`" };
   let creds: OAuthCreds;
@@ -139,6 +150,9 @@ export async function probeActiveUsage(account: Account): Promise<SampleOutcome>
   const mismatch = await identityMismatch(creds, account);
   if (mismatch) return { ok: false, reason: `live ${mismatch} - active label drifted; run \`tokenmaxxing switch\`` };
 
+  const pingError = opts.ping ? await pingSession() : null;
   const usage = await probeUsage();
-  return usage ? { ok: true, usage } : { ok: false, reason: "`/usage` returned no limit data (see log)" };
+  const outcome: SampleOutcome = usage ? { ok: true, usage } : { ok: false, reason: "`/usage` returned no limit data (see log)" };
+  if (pingError != null) outcome.pingError = pingError;
+  return outcome;
 }

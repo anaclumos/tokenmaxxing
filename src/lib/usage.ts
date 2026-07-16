@@ -4,10 +4,13 @@
 // figures claude's own usage screen shows; we run it in a throwaway
 // CLAUDE_CONFIG_DIR to sample a parked account without disturbing the live login.
 
+import { mkdirSync } from "node:fs";
+import { join } from "node:path";
 import { delay } from "es-toolkit";
 import { z } from "zod";
 import { MAX_WRAP_DEPTH, WRAP_DEPTH_ENV, resolveRealClaude } from "./claudebin.ts";
 import { log } from "./log.ts";
+import { paths } from "./paths.ts";
 import { RateLimitsStdinSchema, UsageWindowSchema, type ModelInfo, type UsageWindow, type UsageWindows } from "./types.ts";
 
 /** Normalize a resets_at value (epoch s, epoch ms, or ISO string) to epoch ms. */
@@ -215,41 +218,56 @@ const PROBE_KILL_MS = 60_000;
 /** How long after the child's death to keep waiting for pipe EOF. */
 const PIPE_GRACE_MS = 2_000;
 
+const SpawnResultSchema = z.object({
+  exitCode: z.number().nullable(),
+  stdout: z.string(),
+  stderr: z.string(),
+});
+type SpawnResult = z.infer<typeof SpawnResultSchema>;
+
+/** Spawn one bounded claude invocation (shared by the `/usage` probe and the
+ *  `--force` ping). SIGKILL after PROBE_KILL_MS: claude traps SIGTERM, and a
+ *  wedged child that survives the kill would keep p.exited pending and re-wedge
+ *  the read race. Descendants inherit the output pipes, so EOF can lag the
+ *  child's death or never arrive at all - a leaked grandchild holding the pipe
+ *  wedged the 2026-07-12 probes forever, defeating the kill guard - so the
+ *  reads are bounded by child-exit + grace instead of awaiting EOF
+ *  unconditionally. Returns null when the pipes were withheld past the grace. */
+async function spawnClaudeBounded(
+  cmd: string[],
+  env: Record<string, string>,
+  cwd?: string,
+): Promise<SpawnResult | null> {
+  const p = Bun.spawn(cmd, { env, cwd, stdout: "pipe", stderr: "pipe" });
+  const killer = setTimeout(() => p.kill("SIGKILL"), PROBE_KILL_MS);
+  try {
+    const reads = Promise.all([new Response(p.stdout).text(), new Response(p.stderr).text()]);
+    const settled = await Promise.race([
+      reads,
+      p.exited.then(() => delay(PIPE_GRACE_MS)).then(() => null),
+    ]);
+    if (settled === null) return null;
+    const [stdout, stderr] = settled;
+    await p.exited;
+    return { exitCode: p.exitCode, stdout, stderr };
+  } finally {
+    clearTimeout(killer);
+  }
+}
+
 async function probeUsageOnce(env: Record<string, string>, now: number): Promise<FullUsage | null> {
   let out: string;
   try {
-    const p = Bun.spawn([resolveRealClaude(), "-p", "/usage", "--output-format", "json"], {
-      env,
-      stdout: "pipe",
-      stderr: "pipe",
-    });
-    // SIGKILL: claude traps SIGTERM, and a wedged probe child that survives the
-    // kill would keep p.exited pending and re-wedge the read race below.
-    const killer = setTimeout(() => p.kill("SIGKILL"), PROBE_KILL_MS);
-    try {
-      // Descendants inherit the output pipes, so EOF can lag the child's death
-      // or never arrive at all - a leaked grandchild holding the pipe wedged
-      // the 2026-07-12 probes forever, defeating the kill guard above. Bound
-      // the reads by child-exit + grace instead of awaiting EOF unconditionally.
-      const reads = Promise.all([new Response(p.stdout).text(), new Response(p.stderr).text()]);
-      const settled = await Promise.race([
-        reads,
-        p.exited.then(() => delay(PIPE_GRACE_MS)).then(() => null),
-      ]);
-      if (settled === null) {
-        log("usage.probe_failed", { err: "output pipes still open after child exit (leaked descendant)" });
-        return null;
-      }
-      const [text, errText] = settled;
-      await p.exited;
-      if (p.exitCode !== 0) {
-        log("usage.probe_failed", { exit: p.exitCode ?? "signal", stderr: errText.trim().slice(0, 200) });
-        return null;
-      }
-      out = text;
-    } finally {
-      clearTimeout(killer);
+    const r = await spawnClaudeBounded([resolveRealClaude(), "-p", "/usage", "--output-format", "json"], env);
+    if (r === null) {
+      log("usage.probe_failed", { err: "output pipes still open after child exit (leaked descendant)" });
+      return null;
     }
+    if (r.exitCode !== 0) {
+      log("usage.probe_failed", { exit: r.exitCode ?? "signal", stderr: r.stderr.trim().slice(0, 200) });
+      return null;
+    }
+    out = r.stdout;
   } catch (e) {
     log("usage.probe_failed", { err: String((e as Error).message ?? e) });
     return null;
@@ -285,14 +303,20 @@ const PROBE_RETRY_DELAYS_MS = [2000, 5000];
  * keychain item. The empty-footer case (claude's own usage call throttled) is
  * transient, so retry with backoff. Returns null if it never yields data.
  */
-export async function probeUsage(configDir?: string, now = Date.now()): Promise<FullUsage | null> {
-  // The probe spawns the real claude DIRECTLY - it never legitimately passes
-  // through the wrapper again. Preset the depth to the cap so a poisoned pin
-  // that leads back to the wrapper aborts on its first entry (the 2026-07-12
-  // ~1800-process recursion started as exactly this probe).
+/** The scrubbed env every probe/ping spawn uses. The child spawns the real
+ *  claude DIRECTLY - it never legitimately passes through the wrapper again -
+ *  so the depth is preset to the cap and a poisoned pin that leads back to the
+ *  wrapper aborts on its first entry (the 2026-07-12 ~1800-process recursion
+ *  started as exactly this probe). */
+function probeEnv(configDir?: string): Record<string, string> {
   const env: Record<string, string> = { ...process.env, TOKENMAXXING_PROBE: "1", [WRAP_DEPTH_ENV]: String(MAX_WRAP_DEPTH) };
   for (const k of CRED_ENV_OVERRIDES) delete env[k];
   if (configDir) env.CLAUDE_CONFIG_DIR = configDir;
+  return env;
+}
+
+export async function probeUsage(configDir?: string, now = Date.now()): Promise<FullUsage | null> {
+  const env = probeEnv(configDir);
 
   for (let attempt = 0; ; attempt++) {
     const full = await probeUsageOnce(env, now);
@@ -303,4 +327,54 @@ export async function probeUsage(configDir?: string, now = Date.now()): Promise<
     }
     await delay(PROBE_RETRY_DELAYS_MS[attempt]!);
   }
+}
+
+// ---- `--force` ping --------------------------------------------------------
+
+/** The ping is a REAL (but minimal) inference request: `/usage` is free and
+ *  starts nothing, while any metered request opens the account's 5h session
+ *  window at the current instant. haiku: the cheapest model (verified $1/$5 per
+ *  MTok vs $3+ for every other current tier), and one with no per-model weekly
+ *  cap (those exist only for Sonnet and Fable), so a ping never adds to a
+ *  per-model cap the policy gates on; its dent in the aggregate 5h/7d windows
+ *  is negligible. Hooks are disabled for the nested call
+ *  (`--settings`, the only supported way; `--bare` would kill keychain reads)
+ *  even though our own hooks already no-op on the probe env. */
+const PING_ARGS = [
+  "-p", "Reply with exactly: ok",
+  "--model", "haiku",
+  "--settings", '{"disableAllHooks":true}',
+  "--output-format", "json",
+];
+
+const PingResultSchema = z.looseObject({ is_error: z.boolean(), result: z.string().optional() });
+
+/**
+ * Send one minimal metered request so the account's 5h session window starts
+ * NOW instead of lying dormant until first real use. Pass `configDir` to ping a
+ * parked account through its isolated dir (credential already installed); omit
+ * to ping the live login. Runs from an empty scratch cwd so no project context
+ * (CLAUDE.md, project settings) inflates the request. Returns null on success,
+ * else the failure reason.
+ */
+export async function pingSession(configDir?: string): Promise<string | null> {
+  const cwd = join(paths.sampleDir, "ping-cwd");
+  const fail = (reason: string): string => {
+    log("usage.ping_failed", { dir: configDir ?? "live", reason: reason.slice(0, 200) });
+    return reason;
+  };
+  let r: SpawnResult | null;
+  try {
+    mkdirSync(cwd, { recursive: true });
+    r = await spawnClaudeBounded([resolveRealClaude(), ...PING_ARGS], probeEnv(configDir), cwd);
+  } catch (e) {
+    return fail(String((e as Error).message ?? e));
+  }
+  if (r === null) return fail("output pipes still open after child exit (leaked descendant)");
+  if (r.exitCode !== 0) return fail(`claude exited ${r.exitCode ?? "on signal"}: ${(r.stderr.trim() || r.stdout.trim()).slice(0, 160)}`);
+  const parsed = PingResultSchema.safeParse((() => { try { return JSON.parse(r.stdout); } catch { return null; } })());
+  if (!parsed.success) return fail(`unrecognized ping output: ${r.stdout.trim().slice(0, 120)}`);
+  if (parsed.data.is_error) return fail((parsed.data.result?.trim() || "request errored").slice(0, 160));
+  log("usage.ping_ok", { dir: configDir ?? "live" });
+  return null;
 }

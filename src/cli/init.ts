@@ -30,6 +30,20 @@ function reportTimer(out: InstallOutcome): void {
   else console.log(c.yellow(`⚠ check timer written but not activated - run: ${timerActivationHint()}`));
 }
 
+/** The how-to-use epilogue both init paths end on: the whole point of the tool
+ *  is that after init you just run `claude`, so say exactly that, and teach the
+ *  `xx` shorthand every other command hangs off. Exported for the render test. */
+export function printUsage(): void {
+  console.log();
+  console.log(`  ${c.bold("how to use")} - ${c.cyan("xx")} is shorthand for ${c.cyan("tokenmaxxing")}:`);
+  console.log(`    ${c.cyan("claude")}             use claude as always; it switches accounts near quota automatically`);
+  console.log(`    ${c.cyan("xx")}                 show the pool with usage bars (same as ${c.cyan("xx status")})`);
+  console.log(`    ${c.cyan("xx status --force")}  ping every account (one tiny haiku request each) so all 5h timers start now, then sample fresh`);
+  console.log(`    ${c.cyan("xx add")}             log in and pool another account`);
+  console.log(`    ${c.cyan("xx switch")}          hop to the best account right now (the automatic switching needs no command)`);
+  console.log(`    ${c.cyan("xx help")}            everything else`);
+}
+
 export async function cmdInit(): Promise<number> {
   mkdirSync(paths.home, { recursive: true });
 
@@ -50,7 +64,8 @@ export async function cmdInit(): Promise<number> {
     console.log(`${c.green("✓")} re-installed supervisor + hooks (pool already has ${existingIdx.accounts.length} account${existingIdx.accounts.length === 1 ? "" : "s"} - not re-importing)`);
     reportTimer(out);
     if (!out.pathAhead) ensurePathAhead();
-    console.log(`  active: ${c.bold(active?.label ?? "unknown")} · run ${c.cyan("tokenmaxxing add")} for more, ${c.cyan("tokenmaxxing status")} to check`);
+    console.log(`  active: ${c.bold(active?.label ?? "unknown")}`);
+    printUsage();
     return 0;
   }
 
@@ -127,6 +142,7 @@ export async function cmdInit(): Promise<number> {
     ensurePathAhead();
   }
   console.log();
-  console.log(`  pool ready (${idx.accounts.length} account${idx.accounts.length === 1 ? "" : "s"}) · add more with ${c.cyan("tokenmaxxing add")}`);
+  console.log(`  pool ready (${idx.accounts.length} account${idx.accounts.length === 1 ? "" : "s"})`);
+  printUsage();
   return 0;
 }
