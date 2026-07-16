@@ -1,0 +1,28 @@
+src/lib/install.ts
+  s_dd8a76210ccaac::t_1c770c93e83ea1 61-67,70-72
+  s_dd8a76210ccaac::t_6197a9a954b860 91,96-102,113-116
+  s_dd8a76210ccaac::t_e3b02b3bcf2049 73
+test/codex.test.ts
+  s_dd8a76210ccaac::t_f1319dc9e77637 568
+  s_dd8a76210ccaac::t_46688950e52ee5 532-542,545-549,554-557,561-567,569-570
+AGENTS.md
+  s_dd8a76210ccaac::t_c5da47caa1f340 133
+package.json
+  s_dd8a76210ccaac::t_f3920dec102b23 3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "926dffe5162dee29f85761346337eb5cea4bffe3",
+  "prompts": {},
+  "sessions": {
+    "s_dd8a76210ccaac": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d24f58e4-f0b7-4401-be97-e21d2242ce08",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    }
+  }
+}
