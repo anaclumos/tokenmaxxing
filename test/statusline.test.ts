@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { renderStatusline, type RenderCtx } from "../src/entries/statusline.ts";
-import { fmtResetShort } from "../src/cli/render.ts";
+import { fmtResetShort } from "../src/lib/usage.ts";
 import { worktreeName } from "../src/lib/worktree.ts";
 import type { Account, AccountsIndex } from "../src/lib/types.ts";
 

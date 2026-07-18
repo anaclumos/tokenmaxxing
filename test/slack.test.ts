@@ -10,6 +10,7 @@ import {
   SlackThreadSchema,
   bareChannelId,
   isChannelId,
+  isOutsideAuthor,
   linkForChannel,
   loadSlackConfig,
   loadSlackThread,
@@ -37,6 +38,37 @@ describe("SlackConfigSchema", () => {
   test("rejects wrong token prefixes", () => {
     expect(() => SlackConfigSchema.parse({ ...goodConfig, botToken: "xapp-1" })).toThrow();
     expect(() => SlackConfigSchema.parse({ ...goodConfig, appToken: "xoxb-1" })).toThrow();
+  });
+
+  test("workspaceTeamId is optional and round-trips", () => {
+    expect(SlackConfigSchema.parse(goodConfig).workspaceTeamId).toBeUndefined();
+    expect(SlackConfigSchema.parse({ ...goodConfig, workspaceTeamId: "T0HOME" }).workspaceTeamId).toBe("T0HOME");
+  });
+});
+
+describe("isOutsideAuthor", () => {
+  const workspaceTeamId = "T0HOME";
+
+  test("home-workspace payloads pass via any team field", () => {
+    expect(isOutsideAuthor({ raw: { team: "T0HOME" }, workspaceTeamId })).toBe(false);
+    expect(isOutsideAuthor({ raw: { user_team: "T0HOME" }, workspaceTeamId })).toBe(false);
+    expect(isOutsideAuthor({ raw: { source_team: "T0HOME" }, workspaceTeamId })).toBe(false);
+    expect(isOutsideAuthor({ raw: { team_id: "T0HOME" }, workspaceTeamId })).toBe(false);
+    expect(isOutsideAuthor({ raw: { team: "T0HOME", user_team: "T0HOME", source_team: "T0HOME", channel: "C1", ts: "1.2" }, workspaceTeamId })).toBe(false);
+  });
+
+  test("ANY present field disagreeing rejects (Slack Connect externals)", () => {
+    expect(isOutsideAuthor({ raw: { team: "T0HOME", user_team: "TEXTERNAL" }, workspaceTeamId })).toBe(true);
+    expect(isOutsideAuthor({ raw: { source_team: "TEXTERNAL" }, workspaceTeamId })).toBe(true);
+  });
+
+  test("fail-closed on unreadable or origin-less payloads", () => {
+    expect(isOutsideAuthor({ raw: {}, workspaceTeamId })).toBe(true);
+    expect(isOutsideAuthor({ raw: { channel: "C1", ts: "1.2" }, workspaceTeamId })).toBe(true);
+    expect(isOutsideAuthor({ raw: null, workspaceTeamId })).toBe(true);
+    expect(isOutsideAuthor({ raw: undefined, workspaceTeamId })).toBe(true);
+    expect(isOutsideAuthor({ raw: "not an object", workspaceTeamId })).toBe(true);
+    expect(isOutsideAuthor({ raw: { team: 123 }, workspaceTeamId })).toBe(true);
   });
 });
 

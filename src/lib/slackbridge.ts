@@ -8,9 +8,15 @@
 import { spawn } from "node:child_process";
 import { join } from "node:path";
 import { z } from "zod";
+import { delay } from "es-toolkit";
 import { createSdkMcpServer, query, tool, type SpawnOptions } from "@anthropic-ai/claude-agent-sdk";
 import type { StreamChunk } from "chat";
-import { ensureBestAccount, pooledOptions, stopHookCheck } from "../sdk.ts";
+import { ensureBestAccount, pooledOptions, stopHookCheck, type SwapDecision } from "../sdk.ts";
+import { POST_SWAP_COOLDOWN_MS } from "./decide.ts";
+import { readOAuthAccount } from "./claudejson.ts";
+import { http, safeErrorDetail } from "./http.ts";
+import { loadLastSwapAt } from "./state.ts";
+import { fmtResetShort, recordObservedLimit } from "./usage.ts";
 import { deleteSlackThread, type SlackLink } from "./slackstate.ts";
 import { agentEventChunks, newStreamMapState, SegmentBreakSchema } from "./slackstream.ts";
 import { log } from "./log.ts";
@@ -26,10 +32,133 @@ const SLACK_SYSTEM_PROMPT =
 export const TurnOutcomeSchema = z.object({
   sessionId: z.string().nullable(),
   failed: z.boolean(),
+  /** the FAILED turn hit a usage/rate limit (or the pool was depleted before
+   *  it could spawn). Only an errored result is ever limit-classified. */
+  rateLimited: z.boolean(),
   /** the model called finish_thread this turn: garbage-collect after the turn. */
   finish: z.boolean(),
 });
 export type TurnOutcome = z.infer<typeof TurnOutcomeSchema>;
+
+// ---- depleted-pool recovery policy (pure, unit-tested) ---------------------
+
+/** TOTAL parking budget for one Slack message (a single deadline across all
+ *  its parks, not per park): the parked handler holds the thread's queue slot,
+ *  so recovery further out gets an honest drop notice instead of a hostage
+ *  handler, and the daemon's queue-entry TTL is sized to outlast a full
+ *  park + turn so follow-ups fold instead of silently expiring. */
+export const PARK_MAX_MS = 840_000;
+/** spawn slightly after the reset passes, never right on the boundary. */
+const PARK_GRACE_MS = 5_000;
+/** post-limit short retry: one beat for the pool to observe the limit and
+ *  swap (slaude's parkShortRetry - a successful swap makes it invisible). */
+const RETRY_DELAY_MS = 10_000;
+/** parks + retries per Slack message; keeps a stale usage cache from looping
+ *  a thread forever. */
+export const MAX_RECOVERIES = 3;
+
+export const ParkPlanSchema = z.union([
+  z.object({ kind: z.literal("proceed") }),
+  z.object({ kind: z.literal("park"), wakeAt: z.number() }),
+  z.object({ kind: z.literal("drop"), recoversAt: z.number().nullable() }),
+]);
+export type ParkPlan = z.infer<typeof ParkPlanSchema>;
+
+/** What to do with a spawn-boundary switch decision: proceed on a usable pool,
+ *  park until the soonest recovery when it lands inside the message's one
+ *  shared deadline, drop honestly otherwise (dropping beats a false
+ *  will-resume promise - slaude's recorded rationale). The deadline is fixed
+ *  when the message's relay starts, so chained parks can never hold the queue
+ *  slot longer than PARK_MAX_MS in total. */
+export function parkPlan(input: { decision: SwapDecision; now: number; recoveries: number; deadline: number }): ParkPlan {
+  const depleted = input.decision.reason === "all-depleted" || input.decision.reason === "depleted-wait";
+  if (!depleted) return { kind: "proceed" };
+  const wake = input.decision.waitUntil ?? null;
+  // the grace counts against the deadline too: the promised total hold is
+  // exact, not deadline-plus-grace (review catch, PR #18).
+  if (wake == null || wake + PARK_GRACE_MS > input.deadline || input.recoveries >= MAX_RECOVERIES) {
+    return { kind: "drop", recoversAt: wake };
+  }
+  return { kind: "park", wakeAt: wake + PARK_GRACE_MS };
+}
+
+/** Phrases claude's ERRORED results carry at a usage/rate limit (ported from
+ *  slaude's battle-tested set). Checked only against errored results: a
+ *  successful answer that merely discusses usage limits (routine in this
+ *  repo's own threads) must never be discarded and re-run. */
+const RATE_LIMIT_PHRASES = [
+  "usage limit reached",
+  "rate limit reached",
+  "rate limit exceeded",
+  "rate limit hit",
+  "hit your usage limit",
+  "hit your weekly limit",
+  "limit will reset",
+  "5-hour limit",
+  "out of extra usage",
+];
+
+export function isRateLimitText(input: { text: string }): boolean {
+  const lower = input.text.toLowerCase();
+  return RATE_LIMIT_PHRASES.some((phrase) => lower.includes(phrase));
+}
+
+/** The CLI puts an errored result's reason in `result` even on non-success
+ *  subtypes (the exact shape PingResultSchema in usage.ts handles), while the
+ *  SDK's error type declares only `errors` - so limit text is gathered
+ *  loosely from both fields. */
+const ResultTextSchema = z.looseObject({
+  result: z.string().optional(),
+  errors: z.array(z.string()).optional(),
+});
+
+function erroredResultText(message: unknown): string {
+  const parsed = ResultTextSchema.safeParse(message);
+  if (!parsed.success) return "";
+  return [parsed.data.result, ...(parsed.data.errors ?? [])]
+    .filter((t): t is string => t != null && t !== "")
+    .join("\n");
+}
+
+// ---- workspace identity ----------------------------------------------------
+
+const AuthTestSchema = z.looseObject({
+  ok: z.boolean(),
+  team_id: z.string().optional(),
+  error: z.string().optional(),
+});
+
+/** auth.test: the home workspace (team) id the bot token belongs to - the
+ *  reference `isOutsideAuthor` compares message origins against. Errors carry
+ *  the Slack error code only, never the token. */
+export async function fetchWorkspaceTeamId(input: { botToken: string }): Promise<string> {
+  const res = await http
+    .post("https://slack.com/api/auth.test", {
+      headers: { authorization: `Bearer ${input.botToken}` },
+    })
+    .catch((e: unknown) => {
+      // a thrown ky error (timeout, network) carries its Request with the
+      // Authorization header - rethrow message-only so no caller can ever
+      // log the token.
+      throw new Error(`Slack auth.test failed: ${e instanceof Error ? e.message : String(e)}`);
+    });
+  const text = await res.text();
+  if (!res.ok) throw new Error(`Slack auth.test failed: HTTP ${res.status} (${safeErrorDetail({ text })})`);
+  const body: unknown = (() => {
+    try {
+      return JSON.parse(text);
+    } catch {
+      return null;
+    }
+  })();
+  const parsed = AuthTestSchema.safeParse(body);
+  if (!parsed.success || !parsed.data.ok || !parsed.data.team_id) {
+    throw new Error(
+      `Slack auth.test failed: ${parsed.success ? (parsed.data.error ?? "no team_id in response") : "unrecognized response"}`,
+    );
+  }
+  return parsed.data.team_id;
+}
 
 /** The serve plugin shipped inside the package (src/serve-plugin/): skills
  *  that teach a relayed session how to behave in a Slack thread, loaded per
@@ -215,6 +344,16 @@ export function detachedClaudeSpawn(options: SpawnOptions) {
  * post resolves. Never throws: a failure posts a short diagnostic line and
  * sets outcome.failed (the daemon must keep serving other threads). Error
  * text is message-only - a raw error body could echo request material.
+ *
+ * Depleted-pool recovery (ported from slaude at its shutdown, reshaped around
+ * the pool): the spawn-boundary switch decision is CONSUMED, not discarded -
+ * a depleted pool parks BEFORE a doomed spawn burns a failed turn, with an
+ * honest in-thread notice either way; a mid-turn limit the cached pool state
+ * did not predict is persisted (recordObservedLimit) and retried silently into
+ * the same session. Total parking is bounded by one shared PARK_MAX_MS
+ * deadline plus MAX_RECOVERIES, and every drop the relay itself performs is
+ * announced in-thread (a queue-entry TTL expiry upstream is the one drop it
+ * cannot see).
  */
 export async function relayThread(input: {
   cwd: string;
@@ -224,19 +363,24 @@ export async function relayThread(input: {
   requesterIds: string[];
   link: SlackLink;
   post: (m: AsyncIterable<SegmentChunk>) => Promise<unknown>;
-  /** fires the moment the init message assigns a session id, so the caller can
-   *  persist it BEFORE the turn ends - a first-turn kill must stay resumable
-   *  (2026-07-18 incident: a restart killed a first turn and the thread record
-   *  kept sessionId null, stranding the session). */
+  /** fires the moment an init message assigns a session id the caller has not
+   *  persisted yet, so a first-turn kill stays resumable (2026-07-18
+   *  incident: a restart killed a first turn and the thread record kept
+   *  sessionId null, stranding the session). Retries resume the same session,
+   *  so re-fires only on an actual id change. */
   onSessionId?: (sessionId: string) => void;
   /** fires with the DETACHED claude child's pid (= its process-group id) the
-   *  moment it spawns, so the caller can persist it into the activeTurn
-   *  marker: a daemon death that skips the exit hook (SIGKILL, crash) leaves
-   *  that group alive, and the next generation must find and reap it before
+   *  moment it spawns - once per spawn, so a retry's fresh child replaces the
+   *  previous pid - so the caller can persist it into the activeTurn marker:
+   *  a daemon death that skips the exit hook (SIGKILL, crash) leaves that
+   *  group alive, and the next generation must find and reap it before
    *  resuming the turn. */
   onSpawn?: (pid: number) => void;
+  /** daemon shutdown signal: aborts park/retry sleeps so a drain never sits
+   *  out a depleted-pool countdown. */
+  drainSignal?: AbortSignal;
 }): Promise<TurnOutcome> {
-  const outcome: TurnOutcome = { sessionId: input.sessionId, failed: false, finish: false };
+  const outcome: TurnOutcome = { sessionId: input.sessionId, failed: false, rateLimited: false, finish: false };
   let segment: ReturnType<typeof pushableStream> | null = null;
   let lastPost: Promise<unknown> = Promise.resolve();
   let postedText = false;
@@ -263,93 +407,205 @@ export async function relayThread(input: {
     segment?.end();
     segment = null;
   };
-  try {
-    // the switch decision runs at the spawn boundary, same as the CLI hooks.
-    await ensureBestAccount();
-    const pooled = pooledOptions();
-    const q = query({
-      prompt: input.prompt,
-      options: {
-        ...pooled,
-        // claude >= 2.1.142 emits the structured Task tools by default and
-        // TodoWrite (the source of the Todos checklist card) never fires;
-        // this documented opt-out restores it (agent-sdk todo-tracking docs,
-        // verified 2026-07-18 against SDK 0.3.214 + claude 2.1.214). Reuses
-        // pooled.env so the scrubbed env copy is built once per turn (cubic
-        // review catch on PR #5).
-        env: { ...pooled.env, CLAUDE_CODE_ENABLE_TASKS: "0" },
-        cwd: input.cwd,
-        permissionMode: input.link.permissionMode,
-        // the SDK refuses bypassPermissions without this explicit opt-in.
-        ...(input.link.permissionMode === "bypassPermissions" ? { allowDangerouslySkipPermissions: true } : {}),
-        includePartialMessages: true,
-        systemPrompt: SLACK_SYSTEM_PROMPT,
-        // no one can answer an interactive question dialog through Slack;
-        // without the tool the model asks in prose and the user's thread
-        // reply becomes the next turn.
-        disallowedTools: ["AskUserQuestion"],
-        spawnClaudeCodeProcess: (spawnOptions) => {
-          const child = detachedClaudeSpawn(spawnOptions);
-          if (child.pid !== undefined) {
-            try {
-              input.onSpawn?.(child.pid);
-            } catch (e) {
-              // a failed marker persist must not leave an untracked group
-              // running (cubic review catch): kill it, then fail the spawn
-              // loudly through the SDK.
-              killGroup(child.pid);
-              throw e;
-            }
-          }
-          return child;
-        },
-        // the user saying "we're done" closes the thread: the model flags it
-        // via this in-process tool, the daemon drops the record post-turn.
-        mcpServers: { tokenmaxxing: finishToolServer(() => { outcome.finish = true; }) },
-        allowedTools: [FINISH_THREAD_TOOL],
-        // serve skills (ask-the-user, serve-session); discovered skills are
-        // enabled by default, so no `skills` option is needed.
-        plugins: [{ type: "local", path: SERVE_PLUGIN_DIR }],
-        hooks: {
-          UserPromptSubmit: [{
-            hooks: [async () => ({
-              hookSpecificOutput: {
-                hookEventName: "UserPromptSubmit",
-                additionalContext: serveTurnContext({ requesterIds: input.requesterIds }),
-              },
-            })],
-          }],
-          Stop: [{ hooks: [stopHookCheck] }],
-        },
-        ...(input.link.model ? { model: input.link.model } : {}),
-        ...(input.sessionId ? { resume: input.sessionId } : {}),
-      },
-    });
-    const mapState = newStreamMapState();
-    let result: string | null = null;
-    for await (const message of q) {
-      if (message.type === "system" && message.subtype === "init") {
-        outcome.sessionId = message.session_id;
-        if (message.session_id !== input.sessionId) input.onSessionId?.(message.session_id);
-      }
-      if (message.type === "result") {
-        outcome.sessionId = message.session_id;
-        if (message.subtype === "success") result = message.result;
-        else outcome.failed = true;
-      }
-      for (const part of agentEventChunks({ state: mapState, message })) {
-        if (SegmentBreakSchema.safeParse(part).success) breakSegment();
-        else await push(SegmentChunkSchema.parse(part));
-      }
+  // a recovery status line reads as its own Slack message, not part of a
+  // streamed segment.
+  const notify = async (text: string) => {
+    breakSegment();
+    await push(text);
+    breakSegment();
+  };
+  // false when the daemon started draining mid-sleep.
+  const sleep = async (ms: number) => {
+    try {
+      await delay(Math.max(ms, 0), { signal: input.drainSignal });
+      return true;
+    } catch {
+      return false;
     }
-    // a turn that produced no streamed text (tool-only turns) still reports.
-    if (!postedText && result) await push(result);
-    if (!postedText && !result && outcome.failed) await push("the turn ended without a result (limit or error) - trying again may help");
-  } catch (e) {
-    outcome.failed = true;
-    const detail = (e instanceof Error ? e.message : String(e)).slice(0, 300);
-    log("serve.turn_error", { err: detail });
-    await push(`tokenmaxxing: turn failed: ${detail}`);
+  };
+  const inWord = (epochMs: number | null) => (epochMs == null ? "an unknown time" : `~${fmtResetShort(epochMs, Date.now()) || "1m"}`);
+
+  const runQueryOnce = async () => {
+    postedText = false;
+    outcome.failed = false;
+    outcome.rateLimited = false;
+    // outcome.finish stays sticky across retries: the tool call already
+    // happened in this session, and a limit right after it must not unfinish
+    // the thread.
+    // the identity this spawn meters: a limit observation is attributed to it,
+    // never to whatever account a concurrent thread swaps live mid-turn. Read
+    // inside the try: a malformed claude.json must fail the TURN, not the
+    // relay's never-throws contract.
+    let spawnOrg: string | null = null;
+    try {
+      spawnOrg = readOAuthAccount()?.organizationUuid ?? null;
+      const pooled = pooledOptions();
+      const q = query({
+        prompt: input.prompt,
+        options: {
+          ...pooled,
+          // claude >= 2.1.142 emits the structured Task tools by default and
+          // TodoWrite (the source of the Todos checklist card) never fires;
+          // this documented opt-out restores it (agent-sdk todo-tracking docs,
+          // verified 2026-07-18 against SDK 0.3.214 + claude 2.1.214). Reuses
+          // pooled.env so the scrubbed env copy is built once per turn (cubic
+          // review catch on PR #5).
+          env: { ...pooled.env, CLAUDE_CODE_ENABLE_TASKS: "0" },
+          cwd: input.cwd,
+          permissionMode: input.link.permissionMode,
+          // the SDK refuses bypassPermissions without this explicit opt-in.
+          ...(input.link.permissionMode === "bypassPermissions" ? { allowDangerouslySkipPermissions: true } : {}),
+          includePartialMessages: true,
+          systemPrompt: SLACK_SYSTEM_PROMPT,
+          // no one can answer an interactive question dialog through Slack;
+          // without the tool the model asks in prose and the user's thread
+          // reply becomes the next turn.
+          disallowedTools: ["AskUserQuestion"],
+          spawnClaudeCodeProcess: (spawnOptions) => {
+            const child = detachedClaudeSpawn(spawnOptions);
+            if (child.pid !== undefined) {
+              try {
+                input.onSpawn?.(child.pid);
+              } catch (e) {
+                // a failed marker persist must not leave an untracked group
+                // running (cubic review catch): kill it, then fail the spawn
+                // loudly through the SDK.
+                killGroup(child.pid);
+                throw e;
+              }
+            }
+            return child;
+          },
+          // the user saying "we're done" closes the thread: the model flags it
+          // via this in-process tool, the daemon drops the record post-turn.
+          mcpServers: { tokenmaxxing: finishToolServer(() => { outcome.finish = true; }) },
+          allowedTools: [FINISH_THREAD_TOOL],
+          // serve skills (ask-the-user, serve-session); discovered skills are
+          // enabled by default, so no `skills` option is needed.
+          plugins: [{ type: "local", path: SERVE_PLUGIN_DIR }],
+          hooks: {
+            UserPromptSubmit: [{
+              hooks: [async () => ({
+                hookSpecificOutput: {
+                  hookEventName: "UserPromptSubmit",
+                  additionalContext: serveTurnContext({ requesterIds: input.requesterIds }),
+                },
+              })],
+            }],
+            Stop: [{ hooks: [stopHookCheck] }],
+          },
+          ...(input.link.model ? { model: input.link.model } : {}),
+          // a retry resumes the session the failed attempt opened, so no
+          // context is lost across recoveries.
+          ...(outcome.sessionId ? { resume: outcome.sessionId } : {}),
+        },
+      });
+      const mapState = newStreamMapState();
+      let result: string | null = null;
+      for await (const message of q) {
+        if (message.type === "system" && message.subtype === "init") {
+          // persist BEFORE the turn ends so a first-turn kill stays
+          // resumable; compared against the last known id, so retry attempts
+          // resuming the same session re-fire only on an actual change.
+          if (message.session_id !== outcome.sessionId) input.onSessionId?.(message.session_id);
+          outcome.sessionId = message.session_id;
+        }
+        if (message.type === "result") {
+          outcome.sessionId = message.session_id;
+          // is_error can ride a "success" subtype (a mid-turn usage limit
+          // arrives exactly that way: result "Claude AI usage limit
+          // reached|<epoch>"), so errored is a field check, not a subtype
+          // check - and only an errored result is ever limit-classified.
+          if (message.is_error || message.subtype !== "success") {
+            const text = erroredResultText(message);
+            outcome.failed = true;
+            outcome.rateLimited = isRateLimitText({ text });
+            // persist the observation: the retry's decision otherwise re-reads
+            // the stale pre-limit snapshot (poll TTL) and respawns the same
+            // depleted account - a serve process has no statusLine tee.
+            if (outcome.rateLimited) await recordObservedLimit({ text, now: Date.now(), org: spawnOrg });
+          } else {
+            result = message.result;
+          }
+        }
+        for (const part of agentEventChunks({ state: mapState, message })) {
+          if (SegmentBreakSchema.safeParse(part).success) breakSegment();
+          else await push(SegmentChunkSchema.parse(part));
+        }
+      }
+      // a turn that produced no streamed text (tool-only turns) still reports.
+      if (!postedText && result) await push(result);
+      if (!postedText && !result && outcome.failed && !outcome.rateLimited) {
+        await push("the turn ended without a result - trying again may help");
+      }
+    } catch (e) {
+      outcome.failed = true;
+      const detail = (e instanceof Error ? e.message : String(e)).slice(0, 300);
+      outcome.rateLimited = isRateLimitText({ text: detail });
+      if (outcome.rateLimited) await recordObservedLimit({ text: detail, now: Date.now(), org: spawnOrg });
+      log("serve.turn_error", { err: detail });
+      if (!outcome.rateLimited) await push(`tokenmaxxing: turn failed: ${detail}`);
+    }
+  };
+
+  let recoveries = 0;
+  const parkDeadline = Date.now() + PARK_MAX_MS;
+  while (true) {
+    // the switch decision runs at the spawn boundary, same as the CLI hooks.
+    let decision: SwapDecision;
+    try {
+      decision = await ensureBestAccount();
+    } catch (e) {
+      outcome.failed = true;
+      const detail = (e instanceof Error ? e.message : String(e)).slice(0, 300);
+      log("serve.turn_error", { err: detail });
+      await push(`tokenmaxxing: turn failed: ${detail}`);
+      break;
+    }
+    const plan = parkPlan({ decision, now: Date.now(), recoveries, deadline: parkDeadline });
+    if (plan.kind === "drop") {
+      outcome.failed = true;
+      outcome.rateLimited = true;
+      log("serve.pool_depleted_drop", { recoversAt: plan.recoversAt });
+      await notify(`every pooled account is at its usage limit (recovers in ${inWord(plan.recoversAt)}) - this message was dropped; re-send it once the pool recovers.`);
+      break;
+    }
+    if (plan.kind === "park") {
+      recoveries += 1;
+      log("serve.pool_depleted_park", { wakeAt: plan.wakeAt, recoveries });
+      await notify(`every pooled account is at its usage limit - holding this message and retrying in ${inWord(plan.wakeAt)}.`);
+      if (!(await sleep(plan.wakeAt - Date.now()))) {
+        outcome.failed = true;
+        await notify("tokenmaxxing is restarting - this message was dropped; please re-send it.");
+        break;
+      }
+      continue;
+    }
+    await runQueryOnce();
+    if (!outcome.failed || !outcome.rateLimited) break;
+    if (recoveries >= MAX_RECOVERIES) {
+      log("serve.rate_limited_drop", { recoveries });
+      await notify("still at a usage limit after retries - this message was dropped; reply when you want to try again.");
+      break;
+    }
+    // a limit the cached pool state did not predict: give the pool one beat
+    // to observe it, then re-decide and retry the same prompt into the same
+    // session (slaude's silent short retry - a successful swap makes it
+    // invisible in the thread).
+    recoveries += 1;
+    breakSegment();
+    log("serve.rate_limited_retry", { recoveries });
+    // wait out an active post-swap cooldown too: a swap-then-instant-limit
+    // would otherwise burn every retry inside the 45s window where the
+    // decision refuses to re-evaluate, respawning the same limited account
+    // (review catch, PR #18). The persisted observation then makes the
+    // post-cooldown decision see the depleted account immediately.
+    const cooldownUntil = (loadLastSwapAt() ?? 0) + POST_SWAP_COOLDOWN_MS + 1_000;
+    if (!(await sleep(Math.max(RETRY_DELAY_MS, cooldownUntil - Date.now())))) {
+      outcome.failed = true;
+      await notify("tokenmaxxing is restarting - this message was dropped; please re-send it.");
+      break;
+    }
   }
   breakSegment();
   await lastPost;
