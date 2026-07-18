@@ -1,0 +1,52 @@
+src/lib/slackbridge.ts
+  s_129da2b1bd4c64::t_d20db7b07b200e 115-118
+test/slackbridge.test.ts
+  s_129da2b1bd4c64::t_6c3a33e9582a86 49-58
+AGENTS.md
+  s_129da2b1bd4c64::t_d1d43cb6e01a93 210
+  s_0de5a2f5ec0bbf::t_f647c6d3868f98 94,209,212,266-269
+.memory/MEMORY.md
+  s_129da2b1bd4c64::t_03f23bb2e1f106 4,9
+.memory/serve-slackbot-decisions.md
+  s_129da2b1bd4c64::t_87a1b091a8a62f 30-37
+.memory/shipping-pr-based.md
+  s_129da2b1bd4c64::t_735ee73478504a 3,5-8,10
+DESIGN.md
+  s_129da2b1bd4c64::t_a9710c48e22610 98,100,134
+src/cli/serve.ts
+  s_129da2b1bd4c64::t_7952aa9e8d6657 39,188-210,222-226,309,317-320
+src/lib/log.ts
+  s_129da2b1bd4c64::t_6e76f33d7a2127 17-26,28,30-35,37,41-47
+src/lib/slackstream.ts
+  s_129da2b1bd4c64::t_984558e89fba7f 15-29,136-139,195-208
+test/log.test.ts
+  s_129da2b1bd4c64::t_e5991f0c5acea3 1-72
+test/slack.test.ts
+  s_129da2b1bd4c64::t_ca582229904a0d 90-98
+test/slackstream.test.ts
+  s_129da2b1bd4c64::t_8baf03a6042166 5,14-28,72-85,145-165
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "40d276e1112531f29021e9a3d16714329d3726f5",
+  "prompts": {},
+  "sessions": {
+    "s_0de5a2f5ec0bbf": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "64dfd01b-80fd-4d43-a405-f9132fb102e5",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    },
+    "s_129da2b1bd4c64": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c5beabd3-42ae-4eb8-8d63-4632c4d1dcf2",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    }
+  }
+}
