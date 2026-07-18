@@ -388,7 +388,12 @@ async function runDaemon(): Promise<number> {
       } catch (e) {
         const detail = (e instanceof Error ? e.message : String(e)).slice(0, 300);
         log("serve.cleanup_error", { thread: thread.id, err: detail });
-        await thread.post(`tokenmaxxing: cleanup failed: ${detail}`).catch(() => {});
+        try {
+          await thread.post(`tokenmaxxing: cleanup failed: ${detail}`);
+        } catch (postErr) {
+          // the diagnostic is best-effort, but its failure is never silent.
+          log("serve.finish_notify_error", { thread: thread.id, err: (postErr instanceof Error ? postErr.message : String(postErr)).slice(0, 300) });
+        }
         return;
       }
       // the Slack calls are guarded too: this whole path runs inside the Chat
