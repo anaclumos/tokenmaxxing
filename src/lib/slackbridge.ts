@@ -290,7 +290,17 @@ export async function relayThread(input: {
         disallowedTools: ["AskUserQuestion"],
         spawnClaudeCodeProcess: (spawnOptions) => {
           const child = detachedClaudeSpawn(spawnOptions);
-          if (child.pid !== undefined) input.onSpawn?.(child.pid);
+          if (child.pid !== undefined) {
+            try {
+              input.onSpawn?.(child.pid);
+            } catch (e) {
+              // a failed marker persist must not leave an untracked group
+              // running (cubic review catch): kill it, then fail the spawn
+              // loudly through the SDK.
+              killGroup(child.pid);
+              throw e;
+            }
+          }
           return child;
         },
         // the user saying "we're done" closes the thread: the model flags it

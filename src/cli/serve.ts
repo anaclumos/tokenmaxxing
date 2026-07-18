@@ -322,7 +322,11 @@ async function runDaemon(): Promise<number> {
         link: input.link,
         post: (m) => input.thread.post(m),
         onSpawn: (pid) => {
-          record = { ...record, activeTurn: { ...input.marker, pid } };
+          // the lstart token makes the pid a verifiable identity for the
+          // orphan reaper; a child dead before ps sees it persists without
+          // one, and an identity-less pid is never signaled.
+          const startedAt = pidStartTime(pid);
+          record = { ...record, activeTurn: { ...input.marker, pid, ...(startedAt === null ? {} : { pidStartedAt: startedAt }) } };
           saveSlackThread(record);
         },
         onSessionId: (sessionId) => {
@@ -477,30 +481,32 @@ async function runDaemon(): Promise<number> {
     return { thread: handle, requesterIds: [] };
   };
 
-  /** The command a pid is currently running, or null when no such process. */
-  const pidCommand = (pid: number): string | null => {
-    const res = Bun.spawnSync(["ps", "-p", String(pid), "-o", "command="]);
+  /** The ps lstart token for a pid, or null when no such process. pid + start
+   *  time is the standard process identity: equality with the token captured
+   *  at spawn proves this is still OUR child, never a recycled pid. */
+  const pidStartTime = (pid: number): string | null => {
+    const res = Bun.spawnSync(["ps", "-p", String(pid), "-o", "lstart="]);
     if (res.exitCode !== 0) return null;
-    const cmd = res.stdout.toString().trim();
-    return cmd === "" ? null : cmd;
+    const lstart = res.stdout.toString().trim();
+    return lstart === "" ? null : lstart;
   };
 
   /** Reap a previous generation's detached claude child that survived an
    *  uncatchable daemon death (SIGKILL, crash: the "exit" event never fires
    *  on those, so the hook that kills the group never ran) - resuming beside
    *  a live orphan would put two claude processes on one cwd and session
-   *  (adversarial-review catch). The marker pid is validated against its live
-   *  command line first: a recycled pid must never get the signal. SIGTERM
-   *  the group, escalate to SIGKILL if it lingers past the grace. */
+   *  (adversarial-review catch). Signals fire ONLY on a verified pid+lstart
+   *  identity match (cubic review catch: this machine runs the user's real
+   *  claude sessions; a recycled pid must never get the kill). SIGTERM the
+   *  group, escalate to SIGKILL if it lingers past the grace. */
   const reapOrphan = async (turn: ActiveTurn) => {
-    if (turn.pid === undefined) return;
-    const cmd = pidCommand(turn.pid);
-    if (cmd === null || !(cmd.includes("claude") || cmd.includes("bun"))) return;
+    if (turn.pid === undefined || turn.pidStartedAt === undefined) return;
+    if (pidStartTime(turn.pid) !== turn.pidStartedAt) return; // gone, or a recycled pid
     log("serve.orphan_reaped", { pid: turn.pid });
     killGroup(turn.pid);
     for (let i = 0; i < 10; i++) {
       await delay(500);
-      if (pidCommand(turn.pid) === null) return;
+      if (pidStartTime(turn.pid) !== turn.pidStartedAt) return;
     }
     killGroup(turn.pid, "SIGKILL");
   };
@@ -623,10 +629,15 @@ async function runDaemon(): Promise<number> {
   // kill-groups the DETACHED claude child never runs, the child survives as
   // an orphan still mutating the cwd, and the freed serve-lock lets the next
   // generation resume the same session beside it (adversarial-review catch,
-  // exit-skip verified empirically on Bun). Draining instead keeps the child
-  // owned; its Slack streaming needs no tty, so the turn can even finish. A
-  // SIGKILL/crash still orphans, bounded: the orphan dies on its next stdout
-  // write to the dead daemon pipe.
+  // exit-skip verified empirically on Bun; a mid-turn orphan does NOT die on
+  // its dead stdout pipe - also verified - which is why the reaper exists).
+  // Draining instead keeps the child owned; its Slack streaming needs no
+  // tty, so the turn can even finish. A SIGKILL/crash orphan is covered by
+  // reapOrphan via the marker's pid identity; the only unmarked window is
+  // spawn-to-persist, both inside the spawn hook BEFORE the SDK writes the
+  // prompt, and a prompt-less orphan exits on its dead stdin's EOF (verified
+  // against the real claude binary in the SDK's exact stdio shape: dead in
+  // 2s, zero API calls).
   process.on("SIGHUP", () => void shutdown("SIGHUP"));
 
   // initialize() starts the PERSISTENT Socket Mode client (auto-reconnecting)

@@ -71,6 +71,12 @@ export const ActiveTurnSchema = z.object({
    *  two claude processes must never share the thread's cwd and session.
    *  Absent until the spawn callback fires. */
   pid: z.number().int().positive().optional(),
+  /** the ps lstart token captured for that pid at spawn: pid + start time is
+   *  the process identity, so recovery signals only a verified match - a
+   *  recycled pid must never get the kill (cubic review catch; this machine
+   *  runs the user's real claude sessions). Absent = identity unverifiable =
+   *  never signal. */
+  pidStartedAt: z.string().optional(),
 });
 export type ActiveTurn = z.infer<typeof ActiveTurnSchema>;
 
