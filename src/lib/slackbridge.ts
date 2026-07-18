@@ -119,7 +119,7 @@ function finishToolServer(onFinish: () => void) {
     tools: [
       tool(
         "finish_thread",
-        "Wrap up this Slack thread when the user clearly states the work is finished (shipped, done, clean this up) and wants the thread closed out. After this turn ends the daemon removes the thread's git worktree and branch and drops its session record, then posts a confirmation. Uncommitted work is never discarded: a dirty worktree refuses the cleanup and the confirmation tells the user to commit or push first (or remove the worktree by hand). Do not call this for a merely answered question - only for an explicit wrap-up.",
+        "Wrap up this Slack thread when the user clearly states the work is finished (shipped, done, clean this up) and wants the thread closed out. After this turn ends the daemon removes the thread's git worktree and branch and drops its session record, then posts a confirmation. Nothing outside git is ever discarded: any modified, untracked, or ignored files (node_modules, .env) make the cleanup refuse, and the confirmation lists them so they can be committed, pushed, or deleted before finishing again. An unmerged branch is preserved under a -kept-<sha> name. Do not call this for a merely answered question - only for an explicit wrap-up.",
         {},
         async () => {
           onFinish();
@@ -138,41 +138,53 @@ export const CleanupOutcomeSchema = z.object({
 export type CleanupOutcome = z.infer<typeof CleanupOutcomeSchema>;
 
 /**
- * Garbage-collect a finished thread. The safety gates are git's own and are
- * never overridden: a dirty worktree refuses `git worktree remove` (the bot
- * NEVER discards uncommitted work - repo safeguard; the refusal tells the user
- * how to clean up by hand), and an unmerged branch refuses `git branch -d` and
- * is kept (the branch is a cheap pointer to real work; the worktree is the
- * disk hog, so its refusal aborts the whole cleanup while a kept branch does
- * not). In-place links only drop the thread record - the repo itself is never
- * touched. A refusal keeps the record and the subscription so the thread stays
- * live for a retry after the user commits.
+ * Garbage-collect a finished thread. The bot NEVER discards work (repo
+ * safeguard): any worktree residue - modified, untracked, or IGNORED files -
+ * refuses the removal with the offenders listed (a stricter gate than git's
+ * own, which would happily delete ignored .env or scratch files), and an
+ * unmerged branch refuses `git branch -d` and survives under an archive name
+ * (`-kept-<sha>`; the branch is a cheap pointer to real work; the worktree is
+ * the disk hog, so its refusal aborts the whole cleanup while an archived
+ * branch does not - and archiving off the canonical name keeps a revived
+ * thread genuinely fresh instead of reattaching the stale tip). Cleanup is
+ * keyed entirely on the thread RECORD (its cwd and repo), never the current
+ * link config: a channel re-linked `--no-worktree` or onto another repo must
+ * still collect its older worktree threads, and a thread that ran in-place
+ * (cwd = the repo, which can never equal the worktree path) only drops its
+ * record - the repo itself is never touched. A refusal keeps the record and
+ * the subscription so the thread stays live for a retry after the user
+ * commits.
  */
-export function cleanupThread(input: { link: SlackLink; threadId: string; cwd: string }): CleanupOutcome {
+export function cleanupThread(input: { threadId: string; cwd: string; repo: string }): CleanupOutcome {
   const notes: string[] = [];
   const key = threadKey(input.threadId);
   const worktreeDir = join(paths.slackWorktreesDir, key);
-  if (input.link.worktree && input.cwd === worktreeDir) {
+  if (input.cwd === worktreeDir) {
     const branch = `tm-slack-${key}`;
     if (existsSync(worktreeDir)) {
-      try {
-        git(input.link.repo, ["worktree", "remove", worktreeDir]);
-        notes.push("worktree removed");
-      } catch (e) {
-        const detail = e instanceof Error ? e.message : String(e);
+      // stricter than git's own gate: `git worktree remove` ignores IGNORED
+      // files, but "finished" must not silently destroy anything (.env,
+      // scratch dumps), so ANY residue - modified, untracked, or ignored -
+      // refuses, and the refusal lists what is in the way.
+      const residue = git(worktreeDir, ["status", "--porcelain", "--ignored"]).split("\n").filter((line) => line !== "");
+      if (residue.length > 0) {
+        const shown = residue.slice(0, 10).map((line) => line.slice(3)).join(", ");
+        const more = residue.length > 10 ? ` and ${residue.length - 10} more` : "";
         return {
           removed: false,
-          message: `not cleaned up (${detail}) - commit or push the work in ${worktreeDir} first, then say finish again; to discard it instead, remove the worktree by hand`,
+          message: `not cleaned up - the worktree still holds: ${shown}${more}. commit, push, or delete them in ${worktreeDir}, then say finish again`,
         };
       }
+      git(input.repo, ["worktree", "remove", worktreeDir]);
+      notes.push("worktree removed");
     } else {
       // the dir was deleted by hand; prune the stale registration, else the
       // branch below still counts as checked out there.
-      git(input.link.repo, ["worktree", "prune"]);
+      git(input.repo, ["worktree", "prune"]);
       notes.push("worktree was already gone");
     }
     try {
-      git(input.link.repo, ["branch", "-d", branch]);
+      git(input.repo, ["branch", "-d", branch]);
       notes.push(`branch ${branch} deleted`);
     } catch (e) {
       const detail = e instanceof Error ? e.message : String(e);
@@ -181,7 +193,20 @@ export function cleanupThread(input: { link: SlackLink; threadId: string; cwd: s
       // be mislabeled as unmerged. The worktree is already gone by now, so the
       // cleanup still completes either way - the note carries the diagnosis.
       if (detail.toLowerCase().includes("not fully merged")) {
-        notes.push(`branch ${branch} kept (unmerged - merge or delete it by hand)`);
+        // unmerged: the work must survive, but under an ARCHIVE name - left on
+        // the canonical name, the next mention's ensureThreadCwd would
+        // reattach the stale tip and silently resurrect old work into a
+        // session the user was told is fresh.
+        const archive = `${branch}-kept-${git(input.repo, ["rev-parse", "--short", branch])}`;
+        try {
+          git(input.repo, ["branch", "-m", branch, archive]);
+          notes.push(`unmerged branch archived as ${archive} - merge or delete it by hand`);
+        } catch (renameErr) {
+          // a collision means this exact tip is already archived; the
+          // canonical branch stays and the note says so.
+          const renameDetail = renameErr instanceof Error ? renameErr.message : String(renameErr);
+          notes.push(`branch ${branch} kept (unmerged, archive failed: ${renameDetail})`);
+        }
       } else {
         notes.push(`branch ${branch} not deleted (${detail})`);
       }

@@ -1,7 +1,7 @@
 // cleanupThread: the finish_thread garbage collector. Hermetic real-git
-// fixtures under the sandboxed TOKENMAXXING_HOME (test/setup.ts); the safety
-// gates under test are git's own (worktree remove refuses dirty, branch -d
-// refuses unmerged), so mocking git would test nothing.
+// fixtures under the sandboxed TOKENMAXXING_HOME (test/setup.ts); the gates
+// under test are the residue check (stricter than git: ignored files refuse
+// too) plus git's own branch -d refusal, so mocking git would test nothing.
 
 import { describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
@@ -24,6 +24,7 @@ function makeRepo(name: string): string {
   run(repo, ["config", "user.name", "t"]);
   run(repo, ["config", "commit.gpgsign", "false"]);
   writeFileSync(join(repo, "readme.md"), "fixture\n");
+  writeFileSync(join(repo, ".gitignore"), "ignored.txt\n");
   run(repo, ["add", "."]);
   run(repo, ["commit", "-m", "init"]);
   return repo;
@@ -45,7 +46,7 @@ function branchExists(repo: string, branch: string): boolean {
 describe("cleanupThread", () => {
   test("clean worktree: removes worktree, branch, and record", () => {
     const t = makeThread({ name: "clean" });
-    const out = cleanupThread({ link: t.link, threadId: t.threadId, cwd: t.cwd });
+    const out = cleanupThread({ threadId: t.threadId, cwd: t.cwd, repo: t.repo });
     expect(out.removed).toBe(true);
     expect(existsSync(t.cwd)).toBe(false);
     expect(branchExists(t.repo, t.branch)).toBe(false);
@@ -53,18 +54,29 @@ describe("cleanupThread", () => {
     expect(out.message).toContain("worktree removed");
   });
 
-  test("dirty worktree refuses: uncommitted work is never discarded", () => {
+  test("dirty worktree refuses and lists the residue", () => {
     const t = makeThread({ name: "dirty" });
     writeFileSync(join(t.cwd, "scratch.txt"), "uncommitted\n");
-    const out = cleanupThread({ link: t.link, threadId: t.threadId, cwd: t.cwd });
+    const out = cleanupThread({ threadId: t.threadId, cwd: t.cwd, repo: t.repo });
     expect(out.removed).toBe(false);
-    expect(out.message).toContain("commit or push");
+    expect(out.message).toContain("scratch.txt");
+    expect(out.message).toContain("say finish again");
     expect(existsSync(join(t.cwd, "scratch.txt"))).toBe(true);
     expect(branchExists(t.repo, t.branch)).toBe(true);
     expect(loadSlackThread(t.threadId)).not.toBeNull();
   });
 
-  test("committed-but-unmerged branch is kept, worktree and record still go", () => {
+  test("gitignored residue refuses too: nothing outside git is discarded", () => {
+    const t = makeThread({ name: "ignored" });
+    writeFileSync(join(t.cwd, "ignored.txt"), "would be silently destroyed\n");
+    const out = cleanupThread({ threadId: t.threadId, cwd: t.cwd, repo: t.repo });
+    expect(out.removed).toBe(false);
+    expect(out.message).toContain("ignored.txt");
+    expect(existsSync(join(t.cwd, "ignored.txt"))).toBe(true);
+    expect(loadSlackThread(t.threadId)).not.toBeNull();
+  });
+
+  test("unmerged branch is archived off the canonical name; revival cuts fresh from HEAD", () => {
     const t = makeThread({ name: "unmerged" });
     writeFileSync(join(t.cwd, "work.md"), "real work\n");
     run(t.cwd, ["config", "user.email", "t@t.invalid"]);
@@ -72,18 +84,23 @@ describe("cleanupThread", () => {
     run(t.cwd, ["config", "commit.gpgsign", "false"]);
     run(t.cwd, ["add", "."]);
     run(t.cwd, ["commit", "-m", "unmerged work"]);
-    const out = cleanupThread({ link: t.link, threadId: t.threadId, cwd: t.cwd });
+    const tip = run(t.cwd, ["rev-parse", "--short", "HEAD"]);
+    const out = cleanupThread({ threadId: t.threadId, cwd: t.cwd, repo: t.repo });
     expect(out.removed).toBe(true);
     expect(existsSync(t.cwd)).toBe(false);
-    expect(branchExists(t.repo, t.branch)).toBe(true);
-    expect(out.message).toContain("kept");
+    expect(out.message).toContain("archived as");
+    expect(branchExists(t.repo, t.branch)).toBe(false);
+    expect(branchExists(t.repo, `${t.branch}-kept-${tip}`)).toBe(true);
     expect(loadSlackThread(t.threadId)).toBeNull();
+    // revival regression pin: a fresh mention must NOT resurrect the stale tip.
+    const cwd2 = ensureThreadCwd({ link: t.link, threadId: t.threadId });
+    expect(run(cwd2, ["rev-parse", "HEAD"])).toBe(run(t.repo, ["rev-parse", "HEAD"]));
   });
 
   test("worktree dir deleted by hand: prunes the registration, still collects", () => {
     const t = makeThread({ name: "handgone" });
     rmSync(t.cwd, { recursive: true, force: true });
-    const out = cleanupThread({ link: t.link, threadId: t.threadId, cwd: t.cwd });
+    const out = cleanupThread({ threadId: t.threadId, cwd: t.cwd, repo: t.repo });
     expect(out.removed).toBe(true);
     expect(out.message).toContain("already gone");
     expect(branchExists(t.repo, t.branch)).toBe(false);
@@ -93,7 +110,7 @@ describe("cleanupThread", () => {
   test("in-place link: only the record is dropped, the repo is untouched", () => {
     const t = makeThread({ name: "inplace", worktree: false });
     expect(t.cwd).toBe(t.repo);
-    const out = cleanupThread({ link: t.link, threadId: t.threadId, cwd: t.cwd });
+    const out = cleanupThread({ threadId: t.threadId, cwd: t.cwd, repo: t.repo });
     expect(out.removed).toBe(true);
     expect(existsSync(join(t.repo, "readme.md"))).toBe(true);
     expect(out.message).not.toContain("worktree");
@@ -105,7 +122,7 @@ describe("cleanupThread", () => {
     const link = SlackLinkSchema.parse({ channel: "C0GCTEST", repo, worktree: true });
     const threadId = "slack:C0GCTEST:drifted";
     saveSlackThread({ threadId, repo, cwd: repo, sessionId: null, createdAt: new Date().toISOString() });
-    const out = cleanupThread({ link, threadId, cwd: repo });
+    const out = cleanupThread({ threadId, cwd: repo, repo });
     expect(out.removed).toBe(true);
     expect(existsSync(join(repo, "readme.md"))).toBe(true);
     expect(loadSlackThread(threadId)).toBeNull();

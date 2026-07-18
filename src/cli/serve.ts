@@ -295,7 +295,7 @@ async function runDaemon(): Promise<number> {
     if (outcome.finish) {
       let result: CleanupOutcome;
       try {
-        result = cleanupThread({ link, threadId: thread.id, cwd: record.cwd });
+        result = cleanupThread({ threadId: thread.id, cwd: record.cwd, repo: record.repo });
       } catch (e) {
         const detail = (e instanceof Error ? e.message : String(e)).slice(0, 300);
         log("serve.cleanup_error", { thread: thread.id, err: detail });
