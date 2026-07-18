@@ -81,11 +81,40 @@ describe("link edits", () => {
 });
 
 describe("stripLeadingMention", () => {
-  test("strips one leading mention token and trims", () => {
-    expect(stripLeadingMention("<@U0123> fix the tests")).toBe("fix the tests");
-    expect(stripLeadingMention("  <@U0123>   fix ")).toBe("fix");
-    expect(stripLeadingMention("no mention here")).toBe("no mention here");
-    expect(stripLeadingMention("<@U0123 unclosed")).toBe("<@U0123 unclosed");
+  test("strips one leading bot mention token and trims", () => {
+    expect(stripLeadingMention({ text: "<@U0123> fix the tests", botUserId: "U0123" })).toBe("fix the tests");
+    expect(stripLeadingMention({ text: "  <@U0123>   fix ", botUserId: "U0123" })).toBe("fix");
+    expect(stripLeadingMention({ text: "<@U0123|tokenmaxxing> fix", botUserId: "U0123" })).toBe("fix");
+    expect(stripLeadingMention({ text: "no mention here", botUserId: "U0123" })).toBe("no mention here");
+    expect(stripLeadingMention({ text: "<@U0123 unclosed", botUserId: "U0123" })).toBe("<@U0123 unclosed");
+  });
+
+  test("strips the bare form the Chat SDK's mrkdwn normalization produces", () => {
+    expect(stripLeadingMention({ text: "@U0BHS1YKNSK add related skills", botUserId: "U0BHS1YKNSK" })).toBe("add related skills");
+    expect(stripLeadingMention({ text: "  @W0123ABC\nnext line", botUserId: "W0123ABC" })).toBe("next line");
+    expect(stripLeadingMention({ text: "@U0123", botUserId: "U0123" })).toBe("");
+    // prose and display-name mentions are not structurally user ids: pass through.
+    expect(stripLeadingMention({ text: "@bob please look", botUserId: "U0123" })).toBe("@bob please look");
+    expect(stripLeadingMention({ text: "@U lone letter", botUserId: "U0123" })).toBe("@U lone letter");
+    expect(stripLeadingMention({ text: "@U0123: colon glued", botUserId: "U0123" })).toBe("@U0123: colon glued");
+    expect(stripLeadingMention({ text: "email@U0123 is not a mention", botUserId: "U0123" })).toBe("email@U0123 is not a mention");
+  });
+
+  test("keeps mentions of anyone but the bot (review catch 2026-07-18)", () => {
+    expect(stripLeadingMention({ text: "@UALICE99 can you check this", botUserId: "U0123" })).toBe("@UALICE99 can you check this");
+    expect(stripLeadingMention({ text: "<@UALICE99> can you check this", botUserId: "U0123" })).toBe("<@UALICE99> can you check this");
+    // unknown bot id strips nothing: we cannot tell the bot's mention apart.
+    expect(stripLeadingMention({ text: "<@U0123> fix the tests", botUserId: null })).toBe("<@U0123> fix the tests");
+    expect(stripLeadingMention({ text: "@U0123 fix", botUserId: null })).toBe("@U0123 fix");
+  });
+
+  test("both Slack slash-command arrival forms land the command at position 0", () => {
+    // Slack's composer eats bare "/cmd" client-side (never delivered); the
+    // two forms that DO post are mention-first and Slack's own leading-space
+    // workaround. Both must normalize so the CLI parses the slash command.
+    expect(stripLeadingMention({ text: "<@U0123> /usage", botUserId: "U0123" })).toBe("/usage");
+    expect(stripLeadingMention({ text: " /usage", botUserId: "U0123" })).toBe("/usage");
+    expect(stripLeadingMention({ text: "<@U0123> /goal ship the feature", botUserId: "U0123" })).toBe("/goal ship the feature");
   });
 });
 
