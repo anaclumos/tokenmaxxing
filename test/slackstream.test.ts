@@ -20,6 +20,9 @@ describe("toolCardTitle", () => {
     expect(toolCardTitle("WebFetch")).toBe("Fetching page");
     expect(toolCardTitle("Bash")).toBe("Bash");
     expect(toolCardTitle("mcp__plugin_linear_linear__get_issue")).toBe("mcp__plugin_linear_linear__get_issue");
+    // inherited Object.prototype keys must not shadow the verbatim fallback
+    expect(toolCardTitle("toString")).toBe("toString");
+    expect(toolCardTitle("constructor")).toBe("constructor");
   });
 });
 

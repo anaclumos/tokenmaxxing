@@ -13,17 +13,18 @@ const DETAILS_MAX = 400;
 const OUTPUT_MAX = 600;
 
 /** Natural activity labels for tool cards (user ask 2026-07-18: these five raw
- *  names read awkwardly in Slack). Every other tool name renders verbatim. */
-const TOOL_TITLES: Record<string, string> = {
-  TaskCreate: "Creating task",
-  TaskUpdate: "Updating task",
-  ToolSearch: "Loading tools",
-  WebFetch: "Fetching page",
-  WebSearch: "Searching the web",
-};
+ *  names read awkwardly in Slack). Every other tool name renders verbatim; a
+ *  Map keeps prototype keys like "toString" from shadowing the fallback. */
+const TOOL_TITLES = new Map([
+  ["TaskCreate", "Creating task"],
+  ["TaskUpdate", "Updating task"],
+  ["ToolSearch", "Loading tools"],
+  ["WebFetch", "Fetching page"],
+  ["WebSearch", "Searching the web"],
+]);
 
 export function toolCardTitle(name: string): string {
-  return TOOL_TITLES[name] ?? name;
+  return TOOL_TITLES.get(name) ?? name;
 }
 
 /** Tool-input fields worth showing on a task card, most human-readable first. */
