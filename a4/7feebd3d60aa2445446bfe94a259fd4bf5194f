@@ -1,0 +1,94 @@
+.memory/serve-restart-kills-turns.md
+  s_0de5a2f5ec0bbf::t_84d44969a28365 1-22
+.memory/slaude-harvest-verdict.md
+  s_b46a7a06a33da9::t_957bd2df22e281 1-15
+.memory/MEMORY.md
+  s_b46a7a06a33da9::t_e01aecf1ab1381 4
+  s_0de5a2f5ec0bbf::t_aee62ce0a54d56 3
+docs/.gitignore
+  s_129da2b1bd4c64::t_e079320bc267f6 1-26
+docs/README.md
+  s_129da2b1bd4c64::t_5ceb529c20c4c8 1-45
+docs/app/(home)/layout.tsx
+  s_129da2b1bd4c64::t_ed306a9d76e814 1-6
+docs/app/(home)/page.tsx
+  s_129da2b1bd4c64::t_4eea00a23161a7 1-16
+docs/app/api/search/route.ts
+  s_129da2b1bd4c64::t_85c608fc6e92fa 1-7
+docs/app/docs/[[...slug]]/page.tsx
+  s_129da2b1bd4c64::t_45e2a1b75bc5a3 1-63
+docs/app/docs/layout.tsx
+  s_129da2b1bd4c64::t_03f9e75f352b00 1-11
+docs/app/global.css
+  s_129da2b1bd4c64::t_c7bf9f2aae13f8 1-12
+docs/app/layout.tsx
+  s_129da2b1bd4c64::t_98019e6ed833e6 1-17
+docs/app/llms-full.txt/route.ts
+  s_129da2b1bd4c64::t_a36809d787d711 1-10
+docs/app/llms.mdx/docs/[[...slug]]/route.ts
+  s_129da2b1bd4c64::t_e964aa3c08027c 1-23
+docs/app/llms.txt/route.ts
+  s_129da2b1bd4c64::t_56a23038e13bce 1-8
+docs/app/og/docs/[...slug]/route.tsx
+  s_129da2b1bd4c64::t_797627868f0738 1-28
+docs/bun.lock
+  s_129da2b1bd4c64::t_8f7770f30fcd46 1-726
+docs/components/mdx.tsx
+  s_129da2b1bd4c64::t_4f7ebb6d7bff9e 1-15
+docs/content/docs/index.mdx
+  s_129da2b1bd4c64::t_350479e6cf812f 1-13
+docs/content/docs/test.mdx
+  s_129da2b1bd4c64::t_250bb64a6c309e 1-17
+docs/lib/cn.ts
+  s_129da2b1bd4c64::t_004a890148441a 1
+docs/lib/layout.shared.tsx
+  s_129da2b1bd4c64::t_5f8640e2795dd1 1-12
+docs/lib/shared.ts
+  s_129da2b1bd4c64::t_0f293766d05ea1 1-11
+docs/lib/source.ts
+  s_129da2b1bd4c64::t_3f9baee4ff11ed 1-37
+docs/next.config.mjs
+  s_129da2b1bd4c64::t_61a6681ab9beff 1-10
+docs/package.json
+  s_129da2b1bd4c64::t_b955672f6b298d 1-32
+docs/postcss.config.mjs
+  s_129da2b1bd4c64::t_5218dfefd87dba 1-7
+docs/proxy.ts
+  s_129da2b1bd4c64::t_7fb80b06d69ba5 1-29
+docs/source.config.ts
+  s_129da2b1bd4c64::t_f237b2b1d877b3 1-23
+docs/tsconfig.json
+  s_129da2b1bd4c64::t_fecf0f26feaf6c 1-35
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "a47feebd3d60aa2445446bfe94a259fd4bf5194f",
+  "prompts": {},
+  "sessions": {
+    "s_0de5a2f5ec0bbf": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "64dfd01b-80fd-4d43-a405-f9132fb102e5",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    },
+    "s_129da2b1bd4c64": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c5beabd3-42ae-4eb8-8d63-4632c4d1dcf2",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    },
+    "s_b46a7a06a33da9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f099df50-4f97-4d4a-ac3e-6707f6883e97",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    }
+  }
+}
