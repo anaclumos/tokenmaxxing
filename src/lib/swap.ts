@@ -2,16 +2,16 @@
 // caller - the Stop hook or a CLI command). The keychain/json writes additionally
 // run under claude's own refresh lock so they can't interleave with a token refresh.
 //
-//   refresh B (network, no lock)
+//   refresh B (network, no lock), persist B's rotation to its backup at once
 //   refresh an expiring live credential (network, under claude's refresh lock)
 //   resolve the live credential's TRUE owner (network, no lock)
 //   ── under claude refresh lock ──
 //     harvest live → its OWNER's backup (mandatory: refresh token rotates in place)
 //     install B into the live item
-//     persist B's rotated token into B's backup
 //     rewrite oauthAccount in ~/.claude.json
-//     mark B active (inside the lock: a crash before this write leaves a stale
-//     active label, which is exactly what once made a harvest destroy a backup)
+//     mark B active (kept adjacent to the identity write: the files cannot be
+//     crash-atomic together, but the next swap's true-owner resolution catches
+//     and logs any crash drift - swap.harvest_drift)
 
 import { clearUsageSnapshots, loadAccounts, saveAccounts, saveLastSwapAt } from "./state.ts";
 import { readItem, writeItem, liveTarget, parkedTarget, claudeAiOauthOnly, mergeIntoLive } from "./credstore.ts";
@@ -48,6 +48,11 @@ export async function performSwap(target: Account): Promise<void> {
     }
     throw e;
   }
+  // The rotation exists server-side from this instant: persist it before ANY
+  // later step can fail (mirrors codexswap) - a refusal below would otherwise
+  // strand the parked file on the superseded refresh token.
+  await writeItem(parkedTarget(target.keychainItem), JSON.stringify({ claudeAiOauth: fresh }));
+
   // 2. resolve the live credential's TRUE owner - the harvest destination.
   //    activeAccountUuid is a label, and labels drift from the blob they describe
   //    (crash mid-swap, manual /login, historical re-init); harvesting by label is
@@ -108,12 +113,12 @@ export async function performSwap(target: Account): Promise<void> {
 
     // install B: merge B's fresh claudeAiOauth into the CURRENT live blob so all
     // sibling state (MCP OAuth tokens, etc.) is preserved across the swap.
+    // (B's rotation was already persisted to its backup right after the refresh.)
     await writeItem(liveTarget(), mergeIntoLive(currentLive, fresh));
-    // persist B's rotated token into its small backup item.
-    await writeItem(parkedTarget(target.keychainItem), JSON.stringify({ claudeAiOauth: fresh }));
     swapOAuthAccount(target.oauthAccount);
-    // record B as active INSIDE the critical section so a crash cannot leave the
-    // installed credential and the active label pointing at different accounts.
+    // record B as active immediately after the identity write. These separate
+    // files cannot be crash-atomic together; the divergence window is one write
+    // and the next swap's true-owner resolution catches it (swap.harvest_drift).
     idx.activeAccountUuid = target.accountUuid;
     const t2 = idx.accounts.find((a) => a.accountUuid === target.accountUuid);
     if (t2) { t2.needsReauth = false; }

@@ -10,7 +10,7 @@ import {
 } from "../src/lib/credstore.ts";
 import { credDir, paths } from "../src/lib/paths.ts";
 
-const base = (globalThis as { __TM_TEST_BASE__?: string }).__TM_TEST_BASE__!;
+const base = globalThis.__TM_TEST_BASE__!;
 
 describe("file-backend I/O", () => {
   const target: CredTarget = { kind: "file", path: join(base, "credfiles", "t.json") };

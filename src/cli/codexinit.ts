@@ -25,8 +25,14 @@ function keyringStoreConfigured(): boolean {
   if (!existsSync(configToml)) return false;
   for (const rawLine of readFileSync(configToml, "utf8").split("\n")) {
     const line = rawLine.trim();
-    if (!line.startsWith("cli_auth_credentials_store_mode")) continue;
-    return line.includes("keyring");
+    // The real key is `cli_auth_credentials_store` (binary-verified 0.144.5;
+    // an earlier verification misread the enum TYPE name as a `_mode` key).
+    // Structural equality on the key segment so an unrelated longer key never
+    // false-positives this fail-fast.
+    if (!line.startsWith("cli_auth_credentials_store")) continue;
+    const rest = line.slice("cli_auth_credentials_store".length).trimStart();
+    if (!rest.startsWith("=")) continue;
+    return rest.includes("keyring");
   }
   return false;
 }
@@ -43,8 +49,8 @@ export async function cmdCodexInit(): Promise<number> {
   saveConfig(cfg);
 
   if (keyringStoreConfigured()) {
-    console.error(c.red("codex config.toml pins cli_auth_credentials_store_mode to keyring - tokenmaxxing swaps the plain auth.json file."));
-    console.error(c.dim('recovery: set cli_auth_credentials_store_mode = "file" in ~/.codex/config.toml, run `codex login`, then re-run this.'));
+    console.error(c.red("codex config.toml pins cli_auth_credentials_store to keyring - tokenmaxxing swaps the plain auth.json file."));
+    console.error(c.dim('recovery: set cli_auth_credentials_store = "file" in ~/.codex/config.toml, run `codex login`, then re-run this.'));
     return 1;
   }
 

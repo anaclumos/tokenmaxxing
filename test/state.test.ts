@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { loadAccounts, saveAccounts, loadConfig, saveConfig, loadUsage, usageTeeAt, writeUsage } from "../src/lib/state.ts";
+import { paths } from "../src/lib/paths.ts";
 import type { Account, UsageState } from "../src/lib/types.ts";
 
 function acct(): Account {
@@ -41,6 +43,34 @@ describe("accounts round-trip", () => {
     expect(idx.accounts.length).toBe(1);
     expect(idx.activeAccountUuid).toBe(acct().accountUuid);
     expect((idx.accounts[0]!.oauthAccount as any).extra).toBe("kept");
+  });
+});
+
+describe("corrupt state fails loud", () => {
+  const withReplaced = (path: string, content: string, fn: () => void) => {
+    const prior = existsSync(path) ? readFileSync(path, "utf8") : null;
+    writeFileSync(path, content);
+    try {
+      fn();
+    } finally {
+      if (prior == null) rmSync(path, { force: true });
+      else writeFileSync(path, prior);
+    }
+  };
+  test("unparsable accounts.json throws instead of reading as an empty pool", () => {
+    withReplaced(paths.accountsJson, "{ definitely not json", () => {
+      expect(() => loadAccounts()).toThrow("refusing to treat a damaged pool as empty");
+    });
+  });
+  test("schema-invalid accounts.json throws too", () => {
+    withReplaced(paths.accountsJson, JSON.stringify({ version: 99, accounts: "nope" }), () => {
+      expect(() => loadAccounts()).toThrow("does not match the accounts schema");
+    });
+  });
+  test("unparsable config.json throws instead of silently defaulting", () => {
+    withReplaced(paths.configJson, "not json either", () => {
+      expect(() => loadConfig()).toThrow("corrupt");
+    });
   });
 });
 
