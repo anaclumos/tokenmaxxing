@@ -1,0 +1,44 @@
+src/cli/serve.ts
+  s_ed0ed0d85004e1::t_0485df62831be7 1-108,110-266
+  s_ed0ed0d85004e1::t_2ae54bde3cd9e6 109
+src/main.ts
+  s_ed0ed0d85004e1::t_47a858dc389ab5 85
+  s_ed0ed0d85004e1::t_cf7a7308374884 28
+  s_ed0ed0d85004e1::t_2c74b7af30c4f3 49
+src/lib/paths.ts
+  s_ed0ed0d85004e1::t_82f6b81078c230 38-44
+src/lib/slackstate.ts
+  s_ed0ed0d85004e1::t_6f391168a41c05 1-125
+AGENTS.md
+  s_ed0ed0d85004e1::t_b435507eb10660 198-204
+  s_ed0ed0d85004e1::t_2f3255744b34c0 85-86
+test/slack.test.ts
+  s_ed0ed0d85004e1::t_f5da31b170064c 1-115
+package.json
+  s_ed0ed0d85004e1::t_0174984810b65d 45
+  s_ed0ed0d85004e1::t_356e36725c995e 43-44,46
+src/lib/slackbridge.ts
+  s_ed0ed0d85004e1::t_ac7d7146ede702 1-107
+DESIGN.md
+  s_ed0ed0d85004e1::t_b1cb38b90488d3 86-97
+README.md
+  s_ed0ed0d85004e1::t_32505d5d7ac41e 48
+bun.lock
+  s_ed0ed0d85004e1::t_6f105401b322f3 8-11,23-64,67-72,75-98,101-152,155-234,237-412,417-440,442-455
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "3a930e59584a0b43bcb83af9a757747ae5b82698",
+  "prompts": {},
+  "sessions": {
+    "s_ed0ed0d85004e1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "98fc7c12-0e4d-422f-aea0-2a37bfb68ffb",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    }
+  }
+}
