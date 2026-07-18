@@ -122,19 +122,25 @@ export function bareChannelId(id: string): string {
 }
 
 /**
- * Strip a leading Slack mention token from message text. Two forms: raw
+ * Strip a leading Slack mention OF THE BOT from message text. Two forms: raw
  * mrkdwn ("<@U0123> rest") and the bare form the Chat SDK's incoming
  * mrkdwn->markdown normalization produces ("@U0123 rest") - observed live
- * 2026-07-18 when a relayed prompt arrived starting "@U0BHS1YKNSK". The bare
- * form is stripped only when the token is structurally a Slack user id
- * (U/W + uppercase alnum), so prose like "@bob rest" passes through.
+ * 2026-07-18 when a relayed prompt arrived starting "@U0BHS1YKNSK". Only a
+ * token whose id equals botUserId is stripped (review catch 2026-07-18:
+ * handleTurn runs this over every subscribed message, so a follow-up starting
+ * with a colleague's mention must keep it - the prompt would otherwise lose
+ * who it is about). An unknown botUserId strips nothing: without the id we
+ * cannot tell the bot's mention from anyone else's.
  */
-export function stripLeadingMention(text: string): string {
-  const trimmed = text.trimStart();
+export function stripLeadingMention(input: { text: string; botUserId: string | null }): string {
+  const trimmed = input.text.trimStart();
+  if (input.botUserId === null) return input.text.trim();
   if (trimmed.startsWith("<@")) {
     const close = trimmed.indexOf(">");
-    if (close < 0) return text.trim();
-    return trimmed.slice(close + 1).trim();
+    if (close < 0) return input.text.trim();
+    const [id] = trimmed.slice(2, close).split("|");
+    if (id === input.botUserId) return trimmed.slice(close + 1).trim();
+    return input.text.trim();
   }
   if (trimmed.startsWith("@U") || trimmed.startsWith("@W")) {
     let end = 1;
@@ -145,7 +151,7 @@ export function stripLeadingMention(text: string): string {
     }
     const next = trimmed[end];
     const atBoundary = next === undefined || next === " " || next === "\n" || next === "\t";
-    if (end - 1 >= 2 && atBoundary) return trimmed.slice(end).trim();
+    if (end - 1 >= 2 && atBoundary && trimmed.slice(1, end) === input.botUserId) return trimmed.slice(end).trim();
   }
-  return text.trim();
+  return input.text.trim();
 }

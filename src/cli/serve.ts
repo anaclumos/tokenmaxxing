@@ -16,7 +16,7 @@
 //   serve                  run the daemon
 
 import { existsSync, realpathSync } from "node:fs";
-import { delay } from "es-toolkit";
+import { delay, uniq } from "es-toolkit";
 import { Chat, type StreamChunk } from "chat";
 import { createSlackAdapter } from "@chat-adapter/slack";
 import { createMemoryState } from "@chat-adapter/state-memory";
@@ -241,8 +241,11 @@ async function runDaemon(): Promise<number> {
   const handleTurn = async (input: {
     thread: { id: string; channelId: string; post: (m: AsyncIterable<string | StreamChunk>) => Promise<unknown>; subscribe: () => Promise<void>; startTyping: () => Promise<void> };
     texts: string[];
-    /** bare Slack user id (U...) of the triggering message's author. */
-    requesterId: string | null;
+    /** bare Slack user ids (U...) of every relayed message's author this
+     *  turn: queue-skipped messages fold into one prompt, so a decision may
+     *  be owed to an earlier sender, not just the triggering one (review
+     *  catch 2026-07-18). */
+    requesterIds: string[];
     isMention: boolean;
   }) => {
     const { thread, texts, isMention } = input;
@@ -263,7 +266,7 @@ async function runDaemon(): Promise<number> {
     // strategy hands a turn only the LATEST message and the rest via
     // context.skipped, so they are folded into one prompt here.
     const prompt = texts
-      .map((t) => stripLeadingMention(t))
+      .map((t) => stripLeadingMention({ text: t, botUserId: slack.botUserId ?? null }))
       .filter((t) => t !== "")
       .join("\n\n");
     if (!prompt) return;
@@ -284,7 +287,7 @@ async function runDaemon(): Promise<number> {
       cwd: record.cwd,
       sessionId: record.sessionId,
       prompt,
-      requesterId: input.requesterId,
+      requesterIds: input.requesterIds,
       link,
       post: (m) => thread.post(m),
     });
@@ -305,13 +308,15 @@ async function runDaemon(): Promise<number> {
   };
 
   bot.onNewMention(async (thread, message, context) => {
-    const texts = [...(context?.skipped ?? []).filter(relayable), message].map((m) => m.text);
-    await tracked(handleTurn({ thread, texts, requesterId: message.author.userId, isMention: true }));
+    const relayed = [...(context?.skipped ?? []).filter(relayable), message];
+    const texts = relayed.map((m) => m.text);
+    await tracked(handleTurn({ thread, texts, requesterIds: uniq(relayed.map((m) => m.author.userId)), isMention: true }));
   });
   bot.onSubscribedMessage(async (thread, message, context) => {
     if (!relayable(message)) return; // never relay our own posts
-    const texts = [...(context?.skipped ?? []).filter(relayable), message].map((m) => m.text);
-    await tracked(handleTurn({ thread, texts, requesterId: message.author.userId, isMention: false }));
+    const relayed = [...(context?.skipped ?? []).filter(relayable), message];
+    const texts = relayed.map((m) => m.text);
+    await tracked(handleTurn({ thread, texts, requesterIds: uniq(relayed.map((m) => m.author.userId)), isMention: false }));
   });
 
   // initialize() starts the PERSISTENT Socket Mode client (auto-reconnecting)
