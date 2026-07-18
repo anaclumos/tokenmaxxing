@@ -1,5 +1,6 @@
 # Memory index
 
+- [PR review replies must be threaded](pr-review-replies-threaded.md) - user 2026-07-18: answer each inline review finding as a threaded reply on that comment (gh api .../comments/<id>/replies), never only a separate PR-level comment
 - [Deletion scope is literal](deletion-scope-is-literal.md) - user correction 2026-07-18: "delete all stale worktrees" authorizes worktrees ONLY; the 40 associated branches I also deleted were scope creep (restored at exact tips); before a deletion pass, list targets by artifact kind and touch only the named kind
 - [serve restarts kill in-flight turns](serve-restart-kills-turns.md) - 2026-07-18 incident diagnosis: pre-0.19.1 daemon died signal-less mid-ship-turn; four gaps survive 0.19.1 (non-detached SDK child vs Ctrl-C, 300s drain vs hour-long turns, sessionId persisted only post-turn, no interrupted-turn notify/resume)
 - [Slaude harvest verdict](slaude-harvest-verdict.md) - 2026-07-18 audit before Slaude's shutdown: 4 verified ports into xx serve (external-author guard, park-and-retry, drain-drop notice, prod-Slack safeguard bullet) + verified skips (chat 4.34.0 dedupe/no-slice facts) and 2 owner-decision items
