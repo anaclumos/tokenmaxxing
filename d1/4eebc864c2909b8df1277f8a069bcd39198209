@@ -1,0 +1,20 @@
+test/serveplugin.test.ts
+  s_129da2b1bd4c64::t_4e2bc2b5cbe4cc 57,69-74,76
+  s_129da2b1bd4c64::t_3bc209ec6ffd9e 44-46,49-50
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "d14eebc864c2909b8df1277f8a069bcd39198209",
+  "prompts": {},
+  "sessions": {
+    "s_129da2b1bd4c64": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c5beabd3-42ae-4eb8-8d63-4632c4d1dcf2",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    }
+  }
+}
