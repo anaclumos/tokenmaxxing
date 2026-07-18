@@ -1,0 +1,46 @@
+AGENTS.md
+  s_eaf36da1edfe18::t_2841d02b15a358 211
+  s_eaf36da1edfe18::t_386e3f28b7c11a 81
+  s_eaf36da1edfe18::t_e1ac56b68ff025 117
+src/lib/claudelock.ts
+  s_eaf36da1edfe18::t_5ecf1829c46194 1-18,20,22-23,26-47,50,53-60,62-74,76,78-84,86-110,114-118,120-124
+  s_eaf36da1edfe18::t_4e1e2fc7ecf38b 51
+  s_eaf36da1edfe18::t_d3e69bc38b6d55 111
+test/claudelock.test.ts
+  s_eaf36da1edfe18::t_9620c1275bdd88 1-78
+src/lib/swap.ts
+  s_eaf36da1edfe18::t_5dcb9db2cf86bc 57-58
+  s_eaf36da1edfe18::t_30bb49661ddd94 66-67,70-75
+  s_eaf36da1edfe18::t_1e031530c9f1bc 6
+  s_eaf36da1edfe18::t_430aad05140454 68-69
+  s_eaf36da1edfe18::t_eed98a0bce682a 101,103
+src/lib/paths.ts
+  s_eaf36da1edfe18::t_4d2e7236c63cec 54-55
+src/cli/init.ts
+  s_eaf36da1edfe18::t_578fdb50dbe6ad 100-101,104-109
+  s_eaf36da1edfe18::t_e9e9bd2f1cbac4 102-103
+  s_eaf36da1edfe18::t_baf870d9185d46 8
+src/lib/sample.ts
+  s_eaf36da1edfe18::t_398d8e773c0354 148-149
+  s_eaf36da1edfe18::t_4e5e28dae3f794 147,152-154
+src/cli/serve.ts
+  s_eaf36da1edfe18::t_2c36b08a9f170e 212
+DESIGN.md
+  s_eaf36da1edfe18::t_b26df65712f8fc 62
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "938bb04f6ba7e7362f75a4ca8e725d86fe1b5b3e",
+  "prompts": {},
+  "sessions": {
+    "s_eaf36da1edfe18": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "085f0c3d-1bd0-4a58-8930-8dfdcf1a0376",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    }
+  }
+}
