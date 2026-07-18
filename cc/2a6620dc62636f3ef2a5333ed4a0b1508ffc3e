@@ -1,0 +1,35 @@
+src/entries/statusline.ts
+  s_eaf36da1edfe18::t_a6d7118512805f 177-199
+docs/content/docs/architecture.mdx
+  s_eaf36da1edfe18::t_313e98095c6d07 27,29
+src/cli/codexinit.ts
+  s_eaf36da1edfe18::t_51ada78c89f8de 57-58
+  s_eaf36da1edfe18::t_b74b314b99ee93 22-29,37-41
+src/lib/state.ts
+  s_eaf36da1edfe18::t_84ea59232df22a 65-72
+test/state.test.ts
+  s_eaf36da1edfe18::t_81bd19027a9517 75-82
+DESIGN.md
+  s_eaf36da1edfe18::t_ffcadd405fc2e6 139
+src/lib/credstore.ts
+  s_eaf36da1edfe18::t_905956526f8d33 96-98
+src/lib/swap.ts
+  s_eaf36da1edfe18::t_dbec23393038c2 108-115
+  s_eaf36da1edfe18::t_3574c71bb2536a 126-128
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "cc2a6620dc62636f3ef2a5333ed4a0b1508ffc3e",
+  "prompts": {},
+  "sessions": {
+    "s_eaf36da1edfe18": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "085f0c3d-1bd0-4a58-8930-8dfdcf1a0376",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    }
+  }
+}
