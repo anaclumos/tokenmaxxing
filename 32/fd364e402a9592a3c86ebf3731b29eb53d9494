@@ -1,0 +1,21 @@
+src/lib/slackbridge.ts
+  s_129da2b1bd4c64::t_ca76e41fe9ab6b 44-48
+  s_129da2b1bd4c64::t_d366b2e3e5e70d 166
+  s_129da2b1bd4c64::t_5bad90c6b986df 110
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "32fd364e402a9592a3c86ebf3731b29eb53d9494",
+  "prompts": {},
+  "sessions": {
+    "s_129da2b1bd4c64": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c5beabd3-42ae-4eb8-8d63-4632c4d1dcf2",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    }
+  }
+}
