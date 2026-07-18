@@ -16,7 +16,7 @@ import { paths } from "../lib/paths.ts";
 import { CredentialBlobSchema, OAuthAccountSchema } from "../lib/types.ts";
 import { c } from "./render.ts";
 
-export const HarvestedLoginSchema = z.object({
+const HarvestedLoginSchema = z.object({
   /** the raw isolated credential blob (park it via claudeAiOauthOnly). */
   blobRaw: z.string(),
   blob: CredentialBlobSchema,

@@ -19,7 +19,7 @@ import type { Account, AccountsIndex } from "../lib/types.ts";
 
 const AUTH_USAGE = "usage: tokenmaxxing auth [<email|label|id> | --all]";
 
-export const AuthPlanSchema = z.discriminatedUnion("kind", [
+const AuthPlanSchema = z.discriminatedUnion("kind", [
   /** malformed argv: print AUTH_USAGE, exit 2. */
   z.object({ kind: z.literal("usage") }),
   /** unresolvable state (empty pool, unknown selector): exit 1. */

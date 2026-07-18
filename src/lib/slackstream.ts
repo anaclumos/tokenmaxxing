@@ -47,7 +47,7 @@ const OpenBlockSchema = z.object({
 });
 type OpenBlock = z.infer<typeof OpenBlockSchema>;
 
-export const StreamMapStateSchema = z.object({
+const StreamMapStateSchema = z.object({
   /** open content blocks by stream index. */
   open: z.record(z.string(), OpenBlockSchema),
   /** tool_use id -> tool name, for labeling the eventual tool_result. */
@@ -71,9 +71,8 @@ export function newStreamMapState(): StreamMapState {
  *  current Slack message there and posts the rest as a new one, mirroring how
  *  an agent turn reads as separate messages around its tool runs. */
 export const SegmentBreakSchema = z.object({ type: z.literal("segment_break") });
-export type SegmentBreak = z.infer<typeof SegmentBreakSchema>;
 
-export const StreamPartSchema = z.union([z.string(), z.custom<StreamChunk>(), SegmentBreakSchema]);
+const StreamPartSchema = z.union([z.string(), z.custom<StreamChunk>(), SegmentBreakSchema]);
 export type StreamPart = z.infer<typeof StreamPartSchema>;
 
 /** One human line out of a tool-input JSON blob; null when nothing fits. */

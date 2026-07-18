@@ -127,7 +127,7 @@ export function pacePressure(a: Account, now: number): number {
 /** The switch preference: furthest behind its own weekly pace first (highest
  *  pacePressure), tiebreak soonest weekly expiry then lowest 7-day usage.
  *  Ranks swaps only; display surfaces order by earliestReset instead. */
-export const swapPreference = (now: number) => [
+const swapPreference = (now: number) => [
   (a: Account) => -pacePressure(a, now),
   (a: Account) => weeklyExpiry(a, now),
   (a: Account) => a.lastUsage?.sevenDay.usedPercentage ?? 0,

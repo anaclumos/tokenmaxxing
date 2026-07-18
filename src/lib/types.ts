@@ -7,7 +7,7 @@ import { z } from "zod";
 
 /** OAuth object inside the keychain blob (`claudeAiOauth`). Loose: preserve any
  *  extra fields claude may add so a harvest→install round-trip is lossless. */
-export const OAuthCredsSchema = z.looseObject({
+const OAuthCredsSchema = z.looseObject({
   accessToken: z.string(),
   refreshToken: z.string(),
   expiresAt: z.number(),
@@ -22,7 +22,6 @@ export type OAuthCreds = z.infer<typeof OAuthCredsSchema>;
  *  sibling state (e.g. per-MCP-server OAuth tokens), which we must preserve when
  *  swapping - we only ever replace `claudeAiOauth`. */
 export const CredentialBlobSchema = z.looseObject({ claudeAiOauth: OAuthCredsSchema });
-export type CredentialBlob = z.infer<typeof CredentialBlobSchema>;
 
 /** The `oauthAccount` identity object in ~/.claude.json. Loose: preserve every
  *  key so we can reinstall it verbatim on activation. Only the three ids are
@@ -48,13 +47,13 @@ export const UsageWindowSchema = z.object({
 });
 export type UsageWindow = z.infer<typeof UsageWindowSchema>;
 
-export const UsageWindowsSchema = z.object({
+const UsageWindowsSchema = z.object({
   fiveHour: UsageWindowSchema,
   sevenDay: UsageWindowSchema,
 });
 export type UsageWindows = z.infer<typeof UsageWindowsSchema>;
 
-export const ModelInfoSchema = z.object({ id: z.string(), display: z.string() });
+const ModelInfoSchema = z.object({ id: z.string(), display: z.string() });
 export type ModelInfo = z.infer<typeof ModelInfoSchema>;
 
 /** usage.json - written by the statusLine shim, read by the Stop hook. Carries
@@ -156,7 +155,6 @@ export const RespawnMarkerSchema = z.object({
   /** the supervisor waits until this epoch ms before relaunching. */
   waitUntil: z.number(),
 });
-export type RespawnMarker = z.infer<typeof RespawnMarkerSchema>;
 
 /** rate_limits + model as they appear in statusLine stdin (epoch-seconds resets). */
 export const RateLimitsStdinSchema = z.looseObject({
@@ -227,7 +225,6 @@ export const RefreshResponseSchema = z.looseObject({
   scope: z.string().optional(),
   token_type: z.string().optional(),
 });
-export type RefreshResponse = z.infer<typeof RefreshResponseSchema>;
 
 /** Success body of GET /api/oauth/claude_cli/roles - the org a token ACTUALLY
  *  belongs to, independent of any stored label. */
@@ -242,13 +239,12 @@ export type RolesResponse = z.infer<typeof RolesResponseSchema>;
 /** `tokens` inside $CODEX_HOME/auth.json (verified against a live 0.144.4
  *  auth.json). Loose: preserve unknown siblings so a harvest and reinstall
  *  round-trip is lossless. */
-export const CodexTokensSchema = z.looseObject({
+const CodexTokensSchema = z.looseObject({
   id_token: z.string(),
   access_token: z.string(),
   refresh_token: z.string(),
   account_id: z.string().optional(),
 });
-export type CodexTokens = z.infer<typeof CodexTokensSchema>;
 
 /** The whole auth.json. Loose: auth_mode, OPENAI_API_KEY (may be null), and
  *  future siblings ride along verbatim. */
@@ -263,7 +259,7 @@ export type CodexAuthJson = z.infer<typeof CodexAuthJsonSchema>;
  *  duration-driven (the weekly window is PRIMARY on plans whose 5h window was
  *  removed in July 2026), so classification must go by windowSeconds, never
  *  by primary/secondary position. */
-export const CodexWindowSchema = z.object({
+const CodexWindowSchema = z.object({
   usedPercentage: z.number(),
   resetsAt: z.number().nullable(),
   windowSeconds: z.number().nullable(),
@@ -322,4 +318,3 @@ export const CodexRespawnMarkerSchema = z.object({
   sessionId: z.string().nullable(),
   ts: z.number(),
 });
-export type CodexRespawnMarker = z.infer<typeof CodexRespawnMarkerSchema>;

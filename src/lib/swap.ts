@@ -3,6 +3,7 @@
 // run under claude's own refresh lock so they can't interleave with a token refresh.
 //
 //   refresh B (network, no lock)
+//   refresh an expiring live credential (network, under claude's refresh lock)
 //   resolve the live credential's TRUE owner (network, no lock)
 //   ── under claude refresh lock ──
 //     harvest live → its OWNER's backup (mandatory: refresh token rotates in place)
@@ -16,9 +17,7 @@ import { clearUsageSnapshots, loadAccounts, saveAccounts, saveLastSwapAt } from 
 import { readItem, writeItem, liveTarget, parkedTarget, claudeAiOauthOnly, mergeIntoLive } from "./credstore.ts";
 import { refreshCredential, isAccessTokenExpiring, fetchTokenOrg, InvalidGrantError } from "./oauth.ts";
 import { swapOAuthAccount } from "./claudejson.ts";
-import { withLock } from "./lock.ts";
 import { withClaudeRefreshLock } from "./claudelock.ts";
-import { paths } from "./paths.ts";
 import { log } from "./log.ts";
 import { pickBest, type PickCtx } from "./picker.ts";
 import { CredentialBlobSchema, type Account, type OAuthCreds } from "./types.ts";
@@ -53,8 +52,8 @@ export async function performSwap(target: Account): Promise<void> {
   //    activeAccountUuid is a label, and labels drift from the blob they describe
   //    (crash mid-swap, manual /login, historical re-init); harvesting by label is
   //    how a backup once got destroyed. The token itself cannot lie. A rotation
-  //    between here and the harvest write keeps the same owner, so this can stay
-  //    outside the (fast, local) critical section.
+  //    between here and the harvest write keeps the same owner, so the roles
+  //    lookup can stay outside the (fast, local) critical section.
   const preLive = await readItem(liveTarget());
   let liveOwner: Account | null = null;
   if (preLive) {
@@ -62,8 +61,16 @@ export async function performSwap(target: Account): Promise<void> {
     let identifiable = true;
     if (isAccessTokenExpiring(liveCreds, 60_000)) {
       try {
-        liveCreds = await refreshCredential(liveCreds);
-        await writeItem(liveTarget(), mergeIntoLive(preLive, liveCreds));
+        await withClaudeRefreshLock(async (lock) => {
+          // re-read inside the lock: claude may have rotated it while we waited.
+          const raw2 = await readItem(liveTarget());
+          if (raw2 == null) throw new Error("live credential vanished while waiting for the refresh lock");
+          const current = parseBlob(raw2).claudeAiOauth;
+          liveCreds = isAccessTokenExpiring(current, 60_000) ? await refreshCredential(current) : current;
+          if (liveCreds === current) return;
+          if (lock.compromised()) throw new Error("refresh lock compromised mid-refresh - discarding the live rewrite");
+          await writeItem(liveTarget(), mergeIntoLive(raw2, liveCreds));
+        });
       } catch (e) {
         if (!(e instanceof InvalidGrantError)) throw e;
         // dead credential family: nothing worth preserving, skip the harvest.
@@ -89,8 +96,9 @@ export async function performSwap(target: Account): Promise<void> {
   }
 
   // 3. the fast, local, atomic-vs-claude-refresh critical section.
-  await withClaudeRefreshLock(async () => {
+  await withClaudeRefreshLock(async (lock) => {
     const currentLive = await readItem(liveTarget());
+    if (lock.compromised()) throw new Error("refresh lock compromised - aborting the swap before any write");
 
     // harvest the live claudeAiOauth into its OWNER's (small) backup item.
     if (liveOwner && currentLive) {
@@ -141,7 +149,3 @@ export async function chooseAndSwap(ctx: Omit<PickCtx, "currentAccountUuid">): P
   }
 }
 
-/** Standalone lock-taking variant for CLI/manual use (NEVER call under a held flock). */
-export async function swapToBest(ctx: Omit<PickCtx, "currentAccountUuid">): Promise<Account | null> {
-  return withLock(paths.lockFile, () => chooseAndSwap(ctx));
-}

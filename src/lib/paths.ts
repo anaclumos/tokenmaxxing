@@ -16,7 +16,7 @@ function env(name: string, fallback: string): string {
 }
 
 /** Root of all tokenmaxxing config + state. Default ~/.config/tokenmaxxing. */
-export const TM_HOME = env("TOKENMAXXING_HOME", join(HOME, ".config", "tokenmaxxing"));
+const TM_HOME = env("TOKENMAXXING_HOME", join(HOME, ".config", "tokenmaxxing"));
 
 export const paths = {
   home: TM_HOME,
@@ -51,18 +51,14 @@ export const paths = {
     "TOKENMAXXING_CLAUDE_SETTINGS",
     join(env("CLAUDE_CONFIG_DIR", join(HOME, ".claude")), "settings.json"),
   ),
-  /** ~/.claude - for the credential-refresh lock and projects/ transcripts. */
+  /** ~/.claude - claude's config dir (settings.json, projects/ transcripts;
+   *  credDir() falls back to it). */
   claudeDir: env("CLAUDE_CONFIG_DIR", join(HOME, ".claude")),
 
   /** where the periodic-check timer units live (launchd / systemd user). */
   launchdAgentsDir: env("TOKENMAXXING_LAUNCHD_DIR", join(HOME, "Library", "LaunchAgents")),
   systemdUserDir: env("TOKENMAXXING_SYSTEMD_USER_DIR", join(HOME, ".config", "systemd", "user")),
 } as const;
-
-/** Claude's own credential-refresh lock (verified path filled from facts). */
-export function claudeLockPath(): string {
-  return env("TOKENMAXXING_CLAUDE_LOCK", join(HOME, ".claude.lock"));
-}
 
 /** Codex home: where the live auth.json lives. Test override first, then
  *  codex's own CODEX_HOME env, then its default ~/.codex. */

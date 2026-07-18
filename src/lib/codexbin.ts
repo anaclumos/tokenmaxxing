@@ -10,7 +10,7 @@ import { loadConfig } from "./state.ts";
 import { paths } from "./paths.ts";
 
 /** First PATH entry with a `codex` that is not us. null when PATH has none. */
-export function scanPathForCodex(): string | null {
+function scanPathForCodex(): string | null {
   for (const d of (process.env.PATH ?? "").split(":")) {
     if (!d) continue;
     const cand = join(d, "codex");

@@ -7,7 +7,7 @@ import { z } from "zod";
 import { paths } from "./paths.ts";
 
 /** Redact anything that looks like a token so an accidental pass-through can't leak. */
-export function redact(s: string): string {
+function redact(s: string): string {
   return s
     // JWT-ish / long opaque tokens
     .replace(/\b(sk-ant-[A-Za-z0-9._-]{6,})/g, "sk-ant-***")

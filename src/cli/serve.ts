@@ -209,7 +209,7 @@ function cmdServeLinks(): number {
  *  for degraded-but-continuing conditions, cyan otherwise. Structural endsWith
  *  checks so new events inherit sensible colors from their naming. */
 const RED_EVENT_ENDINGS = ["error", "failed", "invalid_grant"];
-const YELLOW_EVENT_ENDINGS = ["_dropped", "_drift", "_unparsed", "_gave_up", "_abort", "forced_exit", "proceed_without", "draining"];
+const YELLOW_EVENT_ENDINGS = ["_dropped", "_drift", "_unparsed", "_gave_up", "_abort", "forced_exit", "contested", "draining"];
 
 function eventPaint(event: string): (s: string) => string {
   if (RED_EVENT_ENDINGS.some((ending) => event.endsWith(ending))) return c.red;

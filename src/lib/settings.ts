@@ -43,7 +43,7 @@ function writeSettings(s: Settings): void {
 }
 
 /** True if a hook/statusline command string is one tokenmaxxing installed. */
-export function isOurCommand(cmd: string | undefined): boolean {
+function isOurCommand(cmd: string | undefined): boolean {
   if (!cmd) return false;
   return (
     cmd.includes(SUBCMD.statusline) ||

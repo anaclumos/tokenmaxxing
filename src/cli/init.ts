@@ -5,6 +5,7 @@ import { mkdirSync } from "node:fs";
 import { isApiKeyMode, readOAuthAccount } from "../lib/claudejson.ts";
 import { readItem, writeItem, liveTarget, parkedTarget, mergeIntoLive } from "../lib/credstore.ts";
 import { refreshCredential, isAccessTokenExpiring, fetchTokenOrg } from "../lib/oauth.ts";
+import { withClaudeRefreshLock } from "../lib/claudelock.ts";
 import { loadAccounts, saveAccounts, loadConfig, saveConfig } from "../lib/state.ts";
 import { installSupervisor, shellRcPath, ensurePathInRc, timerActivationHint, type InstallOutcome } from "../lib/install.ts";
 import { resolveVerifiedClaude } from "../lib/claudebin.ts";
@@ -96,8 +97,16 @@ export async function cmdInit(): Promise<number> {
   // keychain credential, and importing on drifted state parks a mislabeled blob.
   let creds = blob.claudeAiOauth;
   if (isAccessTokenExpiring(creds)) {
-    creds = await refreshCredential(creds);
-    await writeItem(liveTarget(), mergeIntoLive(liveRaw, creds));
+    await withClaudeRefreshLock(async (lock) => {
+      // re-read inside the lock: a running claude may have rotated it already.
+      const raw2 = await readItem(liveTarget());
+      if (raw2 == null) throw new Error("live credential vanished while waiting for the refresh lock");
+      const current = CredentialBlobSchema.parse(JSON.parse(raw2)).claudeAiOauth;
+      creds = isAccessTokenExpiring(current) ? await refreshCredential(current) : current;
+      if (creds === current) return;
+      if (lock.compromised()) throw new Error("refresh lock compromised mid-refresh - discarding the live rewrite");
+      await writeItem(liveTarget(), mergeIntoLive(raw2, creds));
+    });
   }
   const org = await fetchTokenOrg(creds.accessToken);
   if (org.organization_uuid !== oauthAccount.organizationUuid) {

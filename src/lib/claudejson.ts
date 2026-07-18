@@ -7,9 +7,11 @@ import { paths } from "./paths.ts";
 import { writeFileAtomic } from "./atomic.ts";
 import { OAuthAccountSchema, type OAuthAccount } from "./types.ts";
 
-export function readClaudeJson(): Record<string, unknown> {
+const ClaudeJsonSchema = z.record(z.string(), z.unknown());
+
+function readClaudeJson(): Record<string, unknown> {
   if (!existsSync(paths.claudeJson)) return {};
-  return JSON.parse(readFileSync(paths.claudeJson, "utf8")) as Record<string, unknown>;
+  return ClaudeJsonSchema.parse(JSON.parse(readFileSync(paths.claudeJson, "utf8")));
 }
 
 export function readOAuthAccount(): OAuthAccount | null {
@@ -32,9 +34,7 @@ export function isApiKeyMode(): boolean {
  * to unrelated keys with a stale in-memory copy.
  */
 export function swapOAuthAccount(next: OAuthAccount): void {
-  const j = existsSync(paths.claudeJson)
-    ? (JSON.parse(readFileSync(paths.claudeJson, "utf8")) as Record<string, unknown>)
-    : {};
+  const j = readClaudeJson();
   j["oauthAccount"] = next;
   writeFileAtomic(paths.claudeJson, JSON.stringify(j, null, 2) + "\n", 0o600);
 }
