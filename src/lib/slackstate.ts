@@ -121,11 +121,31 @@ export function bareChannelId(id: string): string {
   return id.startsWith("slack:") ? id.slice("slack:".length) : id;
 }
 
-/** Strip a leading Slack mention token ("<@U0123> rest") from message text. */
+/**
+ * Strip a leading Slack mention token from message text. Two forms: raw
+ * mrkdwn ("<@U0123> rest") and the bare form the Chat SDK's incoming
+ * mrkdwn->markdown normalization produces ("@U0123 rest") - observed live
+ * 2026-07-18 when a relayed prompt arrived starting "@U0BHS1YKNSK". The bare
+ * form is stripped only when the token is structurally a Slack user id
+ * (U/W + uppercase alnum), so prose like "@bob rest" passes through.
+ */
 export function stripLeadingMention(text: string): string {
   const trimmed = text.trimStart();
-  if (!trimmed.startsWith("<@")) return text.trim();
-  const close = trimmed.indexOf(">");
-  if (close < 0) return text.trim();
-  return trimmed.slice(close + 1).trim();
+  if (trimmed.startsWith("<@")) {
+    const close = trimmed.indexOf(">");
+    if (close < 0) return text.trim();
+    return trimmed.slice(close + 1).trim();
+  }
+  if (trimmed.startsWith("@U") || trimmed.startsWith("@W")) {
+    let end = 1;
+    while (end < trimmed.length) {
+      const ch = trimmed[end] ?? "";
+      if ((ch >= "0" && ch <= "9") || (ch >= "A" && ch <= "Z")) end += 1;
+      else break;
+    }
+    const next = trimmed[end];
+    const atBoundary = next === undefined || next === " " || next === "\n" || next === "\t";
+    if (end - 1 >= 2 && atBoundary) return trimmed.slice(end).trim();
+  }
+  return text.trim();
 }

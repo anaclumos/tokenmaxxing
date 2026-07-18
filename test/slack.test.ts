@@ -88,6 +88,17 @@ describe("stripLeadingMention", () => {
     expect(stripLeadingMention("no mention here")).toBe("no mention here");
     expect(stripLeadingMention("<@U0123 unclosed")).toBe("<@U0123 unclosed");
   });
+
+  test("strips the bare form the Chat SDK's mrkdwn normalization produces", () => {
+    expect(stripLeadingMention("@U0BHS1YKNSK add related skills")).toBe("add related skills");
+    expect(stripLeadingMention("  @W0123ABC\nnext line")).toBe("next line");
+    expect(stripLeadingMention("@U0123")).toBe("");
+    // prose and display-name mentions are not structurally user ids: pass through.
+    expect(stripLeadingMention("@bob please look")).toBe("@bob please look");
+    expect(stripLeadingMention("@U lone letter")).toBe("@U lone letter");
+    expect(stripLeadingMention("@U0123: colon glued")).toBe("@U0123: colon glued");
+    expect(stripLeadingMention("email@U0123 is not a mention")).toBe("email@U0123 is not a mention");
+  });
 });
 
 describe("slack.json contract", () => {
