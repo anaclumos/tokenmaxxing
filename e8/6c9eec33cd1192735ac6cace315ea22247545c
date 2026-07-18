@@ -1,0 +1,25 @@
+AGENTS.md
+  s_3384a451aaa8f2::t_f9b85f06c8936a 92
+  s_3384a451aaa8f2::t_9ec35e77d4e4d9 98
+  s_3384a451aaa8f2::t_741ed18e38b3d0 95
+.memory/shipping-pr-based.md
+  s_3384a451aaa8f2::t_66ae4d82f2a5f8 1-9
+.memory/MEMORY.md
+  s_3384a451aaa8f2::t_06b6be0211fbfb 3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "e86c9eec33cd1192735ac6cace315ea22247545c",
+  "prompts": {},
+  "sessions": {
+    "s_3384a451aaa8f2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7e9524e3-c51b-42f9-b453-343595019f2d",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    }
+  }
+}
