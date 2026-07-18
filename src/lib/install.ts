@@ -165,7 +165,7 @@ function run(cmd: string[]): boolean {
 /** Install + activate the periodic check job. False means the unit files are in
  *  place but activation failed (e.g. systemd user session absent over ssh) -
  *  the caller prints the manual activation step. */
-export function installCheckTimer(): boolean {
+function installCheckTimer(): boolean {
   if (process.platform === "darwin") {
     const plist = launchdPlist();
     writeFileAtomic(
@@ -245,7 +245,7 @@ export function checkTimerHealthy(): boolean {
   );
 }
 
-export function uninstallCheckTimer(): void {
+function uninstallCheckTimer(): void {
   if (process.platform === "darwin") {
     const domain = launchdDomain();
     if (domain != null) run(["launchctl", "bootout", `${domain}/${LAUNCHD_LABEL}`]);

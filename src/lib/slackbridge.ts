@@ -57,7 +57,7 @@ const RETRY_DELAY_MS = 10_000;
  *  a thread forever. */
 export const MAX_RECOVERIES = 3;
 
-export const ParkPlanSchema = z.union([
+const ParkPlanSchema = z.union([
   z.object({ kind: z.literal("proceed") }),
   z.object({ kind: z.literal("park"), wakeAt: z.number() }),
   z.object({ kind: z.literal("drop"), recoversAt: z.number().nullable() }),
@@ -226,7 +226,7 @@ function pushableStream(): {
 /** Full permission name of the finish_thread tool (mcp__<server>__<tool>):
  *  it must be in allowedTools, because no one can answer a permission prompt
  *  through Slack. */
-export const FINISH_THREAD_TOOL = "mcp__tokenmaxxing__finish_thread";
+const FINISH_THREAD_TOOL = "mcp__tokenmaxxing__finish_thread";
 
 /** The per-turn in-process MCP server exposing finish_thread. The handler runs
  *  in the daemon process, but it must NOT delete anything inline: the claude
@@ -253,7 +253,7 @@ function finishToolServer(onFinish: () => void) {
   });
 }
 
-export const CleanupOutcomeSchema = z.object({
+const CleanupOutcomeSchema = z.object({
   /** the thread's state is gone; a fresh @mention starts a new session. */
   removed: z.boolean(),
   message: z.string(),

@@ -16,7 +16,7 @@ function env(name: string, fallback: string): string {
 }
 
 /** Root of all tokenmaxxing config + state. Default ~/.config/tokenmaxxing. */
-export const TM_HOME = env("TOKENMAXXING_HOME", join(HOME, ".config", "tokenmaxxing"));
+const TM_HOME = env("TOKENMAXXING_HOME", join(HOME, ".config", "tokenmaxxing"));
 
 export const paths = {
   home: TM_HOME,

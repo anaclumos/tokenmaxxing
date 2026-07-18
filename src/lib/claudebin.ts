@@ -72,7 +72,7 @@ export function pointsBackAtUs(bin: string): boolean {
  *  All of them, not just the first: a user-made wrapper script named claude can
  *  sit ahead of the real binary, and verified resolution must be able to walk
  *  past it. */
-export function scanPathForClaudeCandidates(): string[] {
+function scanPathForClaudeCandidates(): string[] {
   const seen = new Set<string>();
   const out: string[] = [];
   for (const d of (process.env.PATH ?? "").split(":")) {

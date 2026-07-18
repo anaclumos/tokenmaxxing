@@ -14,7 +14,7 @@ import { writeFileAtomic } from "./atomic.ts";
 /** Claude Agent SDK permission modes an unattended bridge may run under.
  *  acceptEdits (default) auto-approves file edits but not arbitrary Bash;
  *  bypassPermissions is full autonomy - a per-link, user-chosen risk posture. */
-export const ServePermissionModeSchema = z.enum(["default", "acceptEdits", "bypassPermissions", "dontAsk", "plan"]);
+const ServePermissionModeSchema = z.enum(["default", "acceptEdits", "bypassPermissions", "dontAsk", "plan"]);
 
 export const SlackLinkSchema = z.object({
   /** Slack channel id (C.../G...). Names are not stored - ids are stable. */
@@ -85,7 +85,7 @@ export function isChannelId(s: string): boolean {
  *  auto-resumes it (2026-07-18 incident: a redeploy silently killed a ship
  *  turn 8 minutes in). resumeCount caps the retries: every resumed attempt
  *  spends real quota, so a turn that keeps dying must not retry forever. */
-export const ActiveTurnSchema = z.object({
+const ActiveTurnSchema = z.object({
   /** the original folded prompt, replayed verbatim when the killed turn never
    *  reached its init message (sessionId still null = nothing to resume). */
   prompt: z.string(),
@@ -165,7 +165,7 @@ export function listSlackThreads(): SlackThread[] {
  *  this many times before startup gives up and asks for a human message. */
 export const MAX_TURN_RESUMES = 3;
 
-export const ResumeDecisionSchema = z.union([
+const ResumeDecisionSchema = z.union([
   z.object({ kind: z.literal("give-up"), notice: z.string() }),
   z.object({
     kind: z.literal("resume"),

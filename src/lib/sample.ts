@@ -31,7 +31,7 @@ import { CredentialBlobSchema, type Account, type OAuthCreds, type RolesResponse
 /** Result of a live sample: the fresh usage, or why it could not be taken.
  *  `pingError` is set only when a requested ping (status --force) failed - the
  *  account's 5h timer may not have started even if the sample itself succeeded. */
-export const SampleOutcomeSchema = z.discriminatedUnion("ok", [
+const SampleOutcomeSchema = z.discriminatedUnion("ok", [
   z.object({ ok: z.literal(true), usage: FullUsageSchema, pingError: z.string().optional() }),
   z.object({ ok: z.literal(false), reason: z.string(), pingError: z.string().optional() }),
 ]);

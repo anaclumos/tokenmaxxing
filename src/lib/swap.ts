@@ -17,9 +17,7 @@ import { clearUsageSnapshots, loadAccounts, saveAccounts, saveLastSwapAt } from 
 import { readItem, writeItem, liveTarget, parkedTarget, claudeAiOauthOnly, mergeIntoLive } from "./credstore.ts";
 import { refreshCredential, isAccessTokenExpiring, fetchTokenOrg, InvalidGrantError } from "./oauth.ts";
 import { swapOAuthAccount } from "./claudejson.ts";
-import { withLock } from "./lock.ts";
 import { withClaudeRefreshLock } from "./claudelock.ts";
-import { paths } from "./paths.ts";
 import { log } from "./log.ts";
 import { pickBest, type PickCtx } from "./picker.ts";
 import { CredentialBlobSchema, type Account, type OAuthCreds } from "./types.ts";
@@ -151,7 +149,3 @@ export async function chooseAndSwap(ctx: Omit<PickCtx, "currentAccountUuid">): P
   }
 }
 
-/** Standalone lock-taking variant for CLI/manual use (NEVER call under a held flock). */
-export async function swapToBest(ctx: Omit<PickCtx, "currentAccountUuid">): Promise<Account | null> {
-  return withLock(paths.lockFile, () => chooseAndSwap(ctx));
-}
