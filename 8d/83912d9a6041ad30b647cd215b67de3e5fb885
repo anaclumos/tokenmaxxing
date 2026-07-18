@@ -1,0 +1,57 @@
+src/lib/usage.ts
+  s_b46a7a06a33da9::t_181aba2c7cba26 158-175
+  s_b46a7a06a33da9::t_f1c545bb148766 12,15
+  s_b46a7a06a33da9::t_798bc50d004dee 176-211,213,215-219,221-222
+  s_b46a7a06a33da9::t_c8cc74e1f3871c 212,214,220
+src/entries/statusline.ts
+  s_b46a7a06a33da9::t_53beb517dc6b35 27-28
+src/cli/serve.ts
+  s_b46a7a06a33da9::t_b7eb2e0d40bae3 291-294
+  s_b46a7a06a33da9::t_fc48554192063b 248-253
+  s_b46a7a06a33da9::t_5538ba9e44cdea 279-281,283-290,295-297
+  s_b46a7a06a33da9::t_bec01da5d5f800 402-407
+src/lib/slackbridge.ts
+  s_b46a7a06a33da9::t_4fc003f2e9f77b 61-66,70
+  s_b46a7a06a33da9::t_b115e646ea25b2 283-286
+  s_b46a7a06a33da9::t_8a33ade2a7f883 305
+  s_b46a7a06a33da9::t_4d04ed064950d6 14
+  s_b46a7a06a33da9::t_cbb17737f4ccd5 325,329
+  s_b46a7a06a33da9::t_2dddeb81d0eafb 182-186
+  s_b46a7a06a33da9::t_dd80cca4e49152 312
+  s_b46a7a06a33da9::t_eeaaaace4a5985 38-42
+test/statusline.test.ts
+  s_b46a7a06a33da9::t_29e1356e7d251e 6
+test/slackbridge.test.ts
+  s_b46a7a06a33da9::t_f2d4346ee40564 7,10,16-17,21,27,31-45,50,55-65
+  s_0de5a2f5ec0bbf::t_6aee054876273e 66-67
+AGENTS.md
+  s_b46a7a06a33da9::t_322ca0989b2fb0 209
+  s_b46a7a06a33da9::t_80b70f31ca5066 211
+DESIGN.md
+  s_b46a7a06a33da9::t_5797595fcb7bf8 97
+  s_b46a7a06a33da9::t_3765464c3ec25a 95
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "8d83912d9a6041ad30b647cd215b67de3e5fb885",
+  "prompts": {},
+  "sessions": {
+    "s_0de5a2f5ec0bbf": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "64dfd01b-80fd-4d43-a405-f9132fb102e5",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    },
+    "s_b46a7a06a33da9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f099df50-4f97-4d4a-ac3e-6707f6883e97",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    }
+  }
+}
