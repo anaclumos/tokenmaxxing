@@ -1,9 +1,11 @@
 // Maps Claude Agent SDK messages onto Chat SDK stream chunks so a relayed
 // Slack turn shows the agent's process natively: task cards for thinking and
 // tool calls (pending -> in_progress -> complete/error), streamed text via
-// markdown_text, and a closing turn card with model/cost/duration. Structured
-// chunks render only when the Slack app has the agent feature + assistant:write
-// (the adapter drops them gracefully otherwise); plain text streams either way.
+// markdown_text, and a closing turn card with model/cost/duration. TodoWrite
+// is special-cased into one stable "Todos" checklist card per stream that
+// updates in place as items progress. Structured chunks render only when the
+// Slack app has the agent feature + assistant:write (the adapter drops them
+// gracefully otherwise); plain text streams either way.
 
 import { z } from "zod";
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk";
@@ -11,12 +13,17 @@ import type { StreamChunk } from "chat";
 
 const DETAILS_MAX = 400;
 const OUTPUT_MAX = 600;
+/** Slack docs claim a 256-char cap on task_update chunks, yet 400/600-char
+ *  card fields render fine (live-verified 2026-07-18). 600 is the largest
+ *  size observed rendering; staying inside that envelope beats trusting an
+ *  unverified bigger budget (a ~15-line checklist still fits). */
+const TODO_DETAILS_MAX = 600;
 
 /** Tool-input fields worth showing on a task card, most human-readable first. */
 const SUMMARY_FIELDS = ["command", "description", "file_path", "pattern", "prompt", "query", "url"] as const;
 
 const OpenBlockSchema = z.object({
-  kind: z.enum(["thinking", "tool"]),
+  kind: z.enum(["thinking", "tool", "todo"]),
   id: z.string(),
   title: z.string(),
   /** accumulated thinking text or partial tool-input JSON. */
@@ -29,6 +36,11 @@ export const StreamMapStateSchema = z.object({
   open: z.record(z.string(), OpenBlockSchema),
   /** tool_use id -> tool name, for labeling the eventual tool_result. */
   toolTitles: z.record(z.string(), z.string()),
+  /** TodoWrite tool_use id -> stable checklist-card id: a successful result
+   *  is suppressed as noise, but a FAILED write must flip the card to error
+   *  (the optimistic checklist would otherwise claim a state that never took
+   *  effect). */
+  todoCards: z.record(z.string(), z.string()),
   thinkingCount: z.number(),
   /** reply text streamed since the last segment break. */
   textSinceBreak: z.boolean(),
@@ -36,7 +48,7 @@ export const StreamMapStateSchema = z.object({
 export type StreamMapState = z.infer<typeof StreamMapStateSchema>;
 
 export function newStreamMapState(): StreamMapState {
-  return { open: {}, toolTitles: {}, thinkingCount: 0, textSinceBreak: false };
+  return { open: {}, toolTitles: {}, todoCards: {}, thinkingCount: 0, textSinceBreak: false };
 }
 
 /** Emitted when a tool starts after streamed reply text: the bridge closes the
@@ -68,6 +80,44 @@ export function toolInputSummary(rawJson: string): string | null {
   }
   const compact = JSON.stringify(parsed);
   return compact === "{}" ? null : truncate({ text: compact, max: DETAILS_MAX });
+}
+
+const TodoItemSchema = z.object({
+  content: z.string(),
+  status: z.enum(["pending", "in_progress", "completed"]),
+  activeForm: z.string(),
+});
+const TodoListSchema = z.object({ todos: z.array(TodoItemSchema) });
+
+/** Same status iconography the Chat SDK's own Plan object renders with. */
+const TODO_ICONS = { completed: "✅", in_progress: "🔄", pending: "⬜" } as const;
+
+/** The stable checklist-card id: every TodoWrite in the same stream updates
+ *  one card in place instead of stacking a new card per call. */
+function todoCardId(parent: string | null): string {
+  return parent === null ? "todos" : `todos-${parent}`;
+}
+
+/** Checklist text out of a TodoWrite input blob; null when empty or junk.
+ *  The in-progress item shows its activeForm ("Running tests") so the card
+ *  reads as live narration, not a static list. */
+export function todoChecklist(rawJson: string): { text: string; allDone: boolean } | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(rawJson);
+  } catch {
+    return null;
+  }
+  const list = TodoListSchema.safeParse(parsed);
+  if (!list.success || list.data.todos.length === 0) return null;
+  const lines = list.data.todos.map((t) => {
+    const label = t.status === "in_progress" && t.activeForm !== "" ? t.activeForm : t.content;
+    return `${TODO_ICONS[t.status]} ${label}`;
+  });
+  return {
+    text: truncate({ text: lines.join("\n"), max: TODO_DETAILS_MAX }),
+    allDone: list.data.todos.every((t) => t.status === "completed"),
+  };
 }
 
 const ToolResultBlockSchema = z.object({
@@ -118,6 +168,16 @@ export function agentEventChunks(input: { state: StreamMapState; message: SDKMes
       }
       if (event.content_block.type === "tool_use") {
         const { id, name } = event.content_block;
+        if (name === "TodoWrite") {
+          // bookkeeping, not a real tool run: no card until the list arrives,
+          // no segment break, and no toolTitles entry (its "Todos have been
+          // modified" success result is noise; failures still surface via
+          // todoCards below).
+          const cardId = todoCardId(message.parent_tool_use_id);
+          state.open[key] = { kind: "todo", id: cardId, title: "Todos", acc: "" };
+          state.todoCards[id] = cardId;
+          return [];
+        }
         state.open[key] = { kind: "tool", id, title: name, acc: "" };
         state.toolTitles[id] = name;
         const card: StreamPart = { type: "task_update", id, title: name, status: "in_progress" };
@@ -148,6 +208,11 @@ export function agentEventChunks(input: { state: StreamMapState; message: SDKMes
       if (open.kind === "thinking") {
         return [{ type: "task_update", id: open.id, title: open.title, status: "complete", details: truncate({ text: open.acc.trim(), max: DETAILS_MAX }) }];
       }
+      if (open.kind === "todo") {
+        const list = todoChecklist(open.acc);
+        if (list === null) return [];
+        return [{ type: "task_update", id: open.id, title: open.title, status: list.allDone ? "complete" : "in_progress", details: list.text }];
+      }
       const details = toolInputSummary(open.acc);
       return [{ type: "task_update", id: open.id, title: open.title, status: "in_progress", ...(details ? { details } : {}) }];
     }
@@ -160,6 +225,13 @@ export function agentEventChunks(input: { state: StreamMapState; message: SDKMes
     for (const block of content) {
       const parsed = ToolResultBlockSchema.safeParse(block);
       if (!parsed.success) continue;
+      const todoCard = state.todoCards[parsed.data.tool_use_id];
+      if (todoCard !== undefined) {
+        if (parsed.data.is_error !== true) continue;
+        const output = resultText(parsed.data.content);
+        chunks.push({ type: "task_update", id: todoCard, title: "Todos", status: "error", ...(output ? { output } : {}) });
+        continue;
+      }
       const title = state.toolTitles[parsed.data.tool_use_id];
       if (title === undefined) continue;
       const output = resultText(parsed.data.content);

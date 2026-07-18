@@ -2,7 +2,7 @@
 
 import { describe, expect, test } from "bun:test";
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk";
-import { agentEventChunks, newStreamMapState, toolInputSummary } from "../src/lib/slackstream.ts";
+import { agentEventChunks, newStreamMapState, todoChecklist, toolInputSummary } from "../src/lib/slackstream.ts";
 
 const UUID = "00000000-0000-0000-0000-000000000000";
 const SID = "test-session";
@@ -18,6 +18,35 @@ describe("toolInputSummary", () => {
     expect(toolInputSummary('{"weird":42}')).toBe('{"weird":42}');
     expect(toolInputSummary("{}")).toBeNull();
     expect(toolInputSummary('{"command":')).toBeNull();
+  });
+});
+
+describe("todoChecklist", () => {
+  test("renders icon lines, activeForm for the in-progress item, allDone flag", () => {
+    const list = todoChecklist(JSON.stringify({ todos: [
+      { content: "Fix parser", status: "completed", activeForm: "Fixing parser" },
+      { content: "Run tests", status: "in_progress", activeForm: "Running tests" },
+      { content: "Ship it", status: "pending", activeForm: "Shipping it" },
+    ] }));
+    expect(list).toEqual({ text: "✅ Fix parser\n🔄 Running tests\n⬜ Ship it", allDone: false });
+    const done = todoChecklist(JSON.stringify({ todos: [
+      { content: "Fix parser", status: "completed", activeForm: "Fixing parser" },
+    ] }));
+    expect(done).toEqual({ text: "✅ Fix parser", allDone: true });
+  });
+
+  test("null on junk, partial json, and an empty list", () => {
+    expect(todoChecklist("")).toBeNull();
+    expect(todoChecklist('{"todos":')).toBeNull();
+    expect(todoChecklist('{"other":1}')).toBeNull();
+    expect(todoChecklist('{"todos":[]}')).toBeNull();
+  });
+
+  test("an empty activeForm falls back to content", () => {
+    const list = todoChecklist(JSON.stringify({ todos: [
+      { content: "Run tests", status: "in_progress", activeForm: "" },
+    ] }));
+    expect(list).toEqual({ text: "🔄 Run tests", allDone: false });
   });
 });
 
@@ -104,6 +133,64 @@ describe("agentEventChunks", () => {
       session_id: SID,
     } });
     expect(orphan).toEqual([]);
+  });
+
+  test("TodoWrite maps to one stable checklist card: no break, no result card", () => {
+    const state = newStreamMapState();
+    agentEventChunks({ state, message: streamEvent({ event: { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "Planning." } } }) });
+    // start emits nothing and does NOT break the segment even after text
+    const start = agentEventChunks({ state, message: streamEvent({ event: { type: "content_block_start", index: 1, content_block: { type: "tool_use", id: "toolu_td1", name: "TodoWrite", input: {} } } }) });
+    expect(start).toEqual([]);
+    const input = JSON.stringify({ todos: [
+      { content: "Fix parser", status: "in_progress", activeForm: "Fixing parser" },
+      { content: "Run tests", status: "pending", activeForm: "Running tests" },
+    ] });
+    agentEventChunks({ state, message: streamEvent({ event: { type: "content_block_delta", index: 1, delta: { type: "input_json_delta", partial_json: input } } }) });
+    const stop = agentEventChunks({ state, message: streamEvent({ event: { type: "content_block_stop", index: 1 } }) });
+    expect(stop).toEqual([{ type: "task_update", id: "todos", title: "Todos", status: "in_progress", details: "🔄 Fixing parser\n⬜ Run tests" }]);
+    // the "Todos have been modified successfully" result is suppressed
+    const result = agentEventChunks({ state, message: {
+      type: "user",
+      message: { role: "user", content: [{ type: "tool_result", tool_use_id: "toolu_td1", content: "Todos have been modified successfully" }] },
+      parent_tool_use_id: null,
+      uuid: UUID,
+      session_id: SID,
+    } });
+    expect(result).toEqual([]);
+    // ...but a FAILED TodoWrite flips the checklist card to error: the
+    // optimistic checklist must not claim a state that never took effect
+    const failed = agentEventChunks({ state, message: {
+      type: "user",
+      message: { role: "user", content: [{ type: "tool_result", tool_use_id: "toolu_td1", content: "write failed", is_error: true }] },
+      parent_tool_use_id: null,
+      uuid: UUID,
+      session_id: SID,
+    } });
+    expect(failed).toEqual([{ type: "task_update", id: "todos", title: "Todos", status: "error", output: "write failed" }]);
+    // a later TodoWrite reuses the SAME card id, completing it when all done
+    agentEventChunks({ state, message: streamEvent({ event: { type: "content_block_start", index: 2, content_block: { type: "tool_use", id: "toolu_td2", name: "TodoWrite", input: {} } } }) });
+    const allDone = JSON.stringify({ todos: [
+      { content: "Fix parser", status: "completed", activeForm: "Fixing parser" },
+      { content: "Run tests", status: "completed", activeForm: "Running tests" },
+    ] });
+    agentEventChunks({ state, message: streamEvent({ event: { type: "content_block_delta", index: 2, delta: { type: "input_json_delta", partial_json: allDone } } }) });
+    const stop2 = agentEventChunks({ state, message: streamEvent({ event: { type: "content_block_stop", index: 2 } }) });
+    expect(stop2).toEqual([{ type: "task_update", id: "todos", title: "Todos", status: "complete", details: "✅ Fix parser\n✅ Run tests" }]);
+    // textSinceBreak survived the todo card: the next REAL tool still breaks
+    const tool = agentEventChunks({ state, message: streamEvent({ event: { type: "content_block_start", index: 3, content_block: { type: "tool_use", id: "toolu_5", name: "Bash", input: {} } } }) });
+    expect(tool).toEqual([
+      { type: "segment_break" },
+      { type: "task_update", id: "toolu_5", title: "Bash", status: "in_progress" },
+    ]);
+  });
+
+  test("a subagent TodoWrite gets its own per-subagent card id", () => {
+    const state = newStreamMapState();
+    agentEventChunks({ state, message: streamEvent({ event: { type: "content_block_start", index: 0, content_block: { type: "tool_use", id: "toolu_td3", name: "TodoWrite", input: {} } }, parent: "toolu_parent" }) });
+    const input = JSON.stringify({ todos: [{ content: "Scan repo", status: "in_progress", activeForm: "Scanning repo" }] });
+    agentEventChunks({ state, message: streamEvent({ event: { type: "content_block_delta", index: 0, delta: { type: "input_json_delta", partial_json: input } }, parent: "toolu_parent" }) });
+    const stop = agentEventChunks({ state, message: streamEvent({ event: { type: "content_block_stop", index: 0 }, parent: "toolu_parent" }) });
+    expect(stop).toEqual([{ type: "task_update", id: "todos-toolu_parent", title: "Todos", status: "in_progress", details: "🔄 Scanning repo" }]);
   });
 
   test("result message emits the closing turn card", () => {
