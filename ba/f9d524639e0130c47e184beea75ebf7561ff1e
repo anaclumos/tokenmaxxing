@@ -1,0 +1,43 @@
+.memory/MEMORY.md
+  s_129da2b1bd4c64::t_a21a87f180560c 3,5,9
+.memory/git-show-not-checkout-for-reads.md
+  s_129da2b1bd4c64::t_1608f45f9558b8 1-7
+.memory/serve-slackbot-decisions.md
+  s_129da2b1bd4c64::t_b999904c08c313 3,15-17,28-29
+.memory/tokenmaxxing-project.md
+  s_129da2b1bd4c64::t_f73ef25a8b6c18 27-28
+DESIGN.md
+  s_129da2b1bd4c64::t_23e1f36302883f 90-91,100
+README.md
+  s_129da2b1bd4c64::t_c2ef291b7fc20c 48
+package.json
+  s_129da2b1bd4c64::t_8176f80e48f450 3
+src/cli/serve.ts
+  s_129da2b1bd4c64::t_b4cf0ad55ca8a5 2-10,13,38,42,139,154,182,271,273
+src/lib/paths.ts
+  s_129da2b1bd4c64::t_bc77e0115cd0d0 39
+src/lib/slackbridge.ts
+  s_129da2b1bd4c64::t_f338a1f56e971c 12
+src/lib/slackstate.ts
+  s_129da2b1bd4c64::t_6495ea5b033227 60-62
+src/main.ts
+  s_129da2b1bd4c64::t_a7a76e667a983e 50
+test/slack.test.ts
+  s_129da2b1bd4c64::t_5340f12de2221b 29
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "baf9d524639e0130c47e184beea75ebf7561ff1e",
+  "prompts": {},
+  "sessions": {
+    "s_129da2b1bd4c64": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c5beabd3-42ae-4eb8-8d63-4632c4d1dcf2",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    }
+  }
+}
