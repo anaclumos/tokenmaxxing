@@ -16,6 +16,14 @@ import { threadKey, type SlackLink } from "./slackstate.ts";
 import { agentEventChunks, newStreamMapState, SegmentBreakSchema } from "./slackstream.ts";
 import { log } from "./log.ts";
 
+/** With systemPrompt omitted the SDK runs a MINIMAL system prompt (the
+ *  claude_code preset is opt-in since SDK 0.1.0, re-verified for 0.3.214
+ *  2026-07-18), so this small standalone prompt replaces nothing. It exists
+ *  because a relayed model once answered with a literal "<br>": Slack renders
+ *  markdown, never HTML. */
+const SLACK_SYSTEM_PROMPT =
+  "Your replies are relayed into a Slack thread and render as Slack-flavored markdown. Write plain markdown only - never HTML tags such as <br> (use real line breaks).";
+
 export const TurnOutcomeSchema = z.object({
   sessionId: z.string().nullable(),
   failed: z.boolean(),
@@ -118,9 +126,14 @@ export async function relayThread(input: {
       await lastPost; // strict message order: previous segment fully posted first
       seg = pushableStream();
       segment = seg;
+      const posted = seg;
       lastPost = input.post(seg.iterable).catch((e: unknown) => {
         const detail = (e instanceof Error ? e.message : String(e)).slice(0, 300);
         log("serve.post_error", { err: detail });
+        // the consumer is gone (e.g. Slack finalized an idle stream:
+        // message_not_in_streaming_state) - drop the dead segment so the
+        // next chunk opens a fresh message instead of vanishing into it.
+        if (segment === posted) segment = null;
       });
     }
     if (!postedText && !(chunk instanceof Object)) postedText = true;
@@ -142,6 +155,7 @@ export async function relayThread(input: {
         // the SDK refuses bypassPermissions without this explicit opt-in.
         ...(input.link.permissionMode === "bypassPermissions" ? { allowDangerouslySkipPermissions: true } : {}),
         includePartialMessages: true,
+        systemPrompt: SLACK_SYSTEM_PROMPT,
         // no one can answer an interactive question dialog through Slack;
         // without the tool the model asks in prose and the user's thread
         // reply becomes the next turn.

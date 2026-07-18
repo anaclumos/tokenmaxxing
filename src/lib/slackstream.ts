@@ -133,7 +133,10 @@ export function agentEventChunks(input: { state: StreamMapState; message: SDKMes
       const open = state.open[`${message.parent_tool_use_id ?? "main"}:${event.index}`];
       if (event.delta.type === "text_delta") {
         if (!isMain) return [];
-        state.textSinceBreak = true;
+        // whitespace-only deltas must not count as reply text: a "\n\n"
+        // before a tool call would otherwise break the segment and strand a
+        // near-blank Slack message.
+        if (event.delta.text.trim() !== "") state.textSinceBreak = true;
         return [event.delta.text];
       }
       if (event.delta.type === "thinking_delta" && open) open.acc += event.delta.thinking;
