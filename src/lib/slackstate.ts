@@ -30,9 +30,35 @@ export type SlackLink = z.infer<typeof SlackLinkSchema>;
 export const SlackConfigSchema = z.object({
   botToken: z.string().startsWith("xoxb-"),
   appToken: z.string().startsWith("xapp-"),
+  /** the home workspace's team id (auth.test), the reference the external-author
+   *  guard compares message origins against; captured at setup and ensured at
+   *  daemon start, so it is only absent in configs saved before the guard. */
+  workspaceTeamId: z.string().optional(),
   links: z.array(SlackLinkSchema).default([]),
 });
 export type SlackConfig = z.infer<typeof SlackConfigSchema>;
+
+/** Team-origin fields Slack stamps on message/mention event payloads. */
+const MessageOriginSchema = z.looseObject({
+  source_team: z.string().optional(),
+  team: z.string().optional(),
+  team_id: z.string().optional(),
+  user_team: z.string().optional(),
+});
+
+/** Outsiders must not drive sessions (owner rule 2026-07-16, ported from Slaude
+ *  at its shutdown): in Slack Connect shared channels an external-workspace
+ *  author carries team fields (`user_team` / `source_team` / `team`) that
+ *  differ from the home workspace. Fail closed: reject a payload whose author
+ *  origin is unreadable, absent, or disagrees on ANY present field. */
+export function isOutsideAuthor(input: { raw: unknown; workspaceTeamId: string }): boolean {
+  const parsed = MessageOriginSchema.safeParse(input.raw);
+  if (!parsed.success) return true;
+  const fields = [parsed.data.user_team, parsed.data.source_team, parsed.data.team, parsed.data.team_id]
+    .filter((team): team is string => team !== undefined);
+  if (fields.length === 0) return true;
+  return fields.some((team) => team !== input.workspaceTeamId);
+}
 
 export function loadSlackConfig(): SlackConfig | null {
   if (!existsSync(paths.slackJson)) return null;

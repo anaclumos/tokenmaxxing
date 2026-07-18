@@ -23,6 +23,7 @@ import { createMemoryState } from "@chat-adapter/state-memory";
 import {
   bareChannelId,
   isChannelId,
+  isOutsideAuthor,
   linkForChannel,
   listSlackThreads,
   loadSlackConfig,
@@ -35,7 +36,7 @@ import {
   SlackLinkSchema,
   type SlackConfig,
 } from "../lib/slackstate.ts";
-import { relayThread } from "../lib/slackbridge.ts";
+import { fetchWorkspaceTeamId, relayThread } from "../lib/slackbridge.ts";
 import { log } from "../lib/log.ts";
 import { c, count } from "./render.ts";
 
@@ -93,7 +94,7 @@ function printSetupInstructions(): void {
   console.log(`${c.dim("Existing app? Paste the manifest over App Manifest in its settings, then reinstall to the workspace (scope changes need it). Tokens stay valid unless you rotate them.")}`);
 }
 
-function cmdServeSetup(): number {
+async function cmdServeSetup(): Promise<number> {
   printSetupInstructions();
   console.log();
   const botToken = prompt("bot token (xoxb-...):")?.trim();
@@ -111,7 +112,19 @@ function cmdServeSetup(): number {
     console.error(c.red("tokens rejected: the bot token must start with xoxb- and the app token with xapp-"));
     return 1;
   }
-  console.log(`${c.green("✓")} saved to slack.json (0600) with ${count({ n: cfg.links.length, noun: "link" })}`);
+  // the external-author guard needs the home workspace id; capture it from the
+  // token itself so the reference can never drift from the workspace the bot
+  // actually lives in (re-captured on every setup: new tokens may belong to a
+  // different workspace).
+  try {
+    cfg = { ...cfg, workspaceTeamId: await fetchWorkspaceTeamId({ botToken }) };
+    saveSlackConfig(cfg);
+  } catch (e) {
+    const detail = e instanceof Error ? e.message : String(e);
+    console.error(c.red(`tokens saved, but ${detail} - check the bot token; the daemon re-tries the capture at start`));
+    return 1;
+  }
+  console.log(`${c.green("✓")} saved to slack.json (0600) for workspace ${cfg.workspaceTeamId} with ${count({ n: cfg.links.length, noun: "link" })}`);
   return 0;
 }
 
@@ -186,7 +199,7 @@ function cmdServeLinks(): number {
 }
 
 async function runDaemon(): Promise<number> {
-  const cfg = loadSlackConfig();
+  let cfg = loadSlackConfig();
   if (!cfg) {
     printSetupInstructions();
     return 1;
@@ -194,6 +207,16 @@ async function runDaemon(): Promise<number> {
   if (cfg.links.length === 0) {
     console.error(c.red("no channel links - run `tokenmaxxing serve link <channel-id> <repo>` first"));
     return 1;
+  }
+  // the external-author guard compares every message's origin against the home
+  // workspace; ensure the reference exists (configs saved before the guard
+  // lack it). A failed capture fails the daemon fast: the guard never runs
+  // reference-less.
+  const workspaceTeamId = cfg.workspaceTeamId ?? (await fetchWorkspaceTeamId({ botToken: cfg.botToken }));
+  if (cfg.workspaceTeamId !== workspaceTeamId) {
+    cfg = { ...cfg, workspaceTeamId };
+    saveSlackConfig(cfg);
+    log("serve.team_captured", { team: workspaceTeamId });
   }
 
   const slack = createSlackAdapter({
@@ -236,6 +259,9 @@ async function runDaemon(): Promise<number> {
   // killing a half-streamed answer (live incident 2026-07-18: a deploy
   // restart cut a turn mid-sentence and the answer never reached Slack).
   const activeTurns = new Set<Promise<void>>();
+  // aborts depleted-pool park/retry sleeps on drain, so a countdown never
+  // holds the restart hostage.
+  const drainAbort = new AbortController();
   let draining = false;
 
   const handleTurn = async (input: {
@@ -247,8 +273,17 @@ async function runDaemon(): Promise<number> {
     if (draining) {
       // the socket stays connected until the drain finishes; anything landing
       // in that window is dropped loudly rather than spawning an unwaitable
-      // turn. The user re-sends after the restart.
+      // turn - and the THREAD is told, not just the log (a silent drop reads
+      // as the bot thinking; slaude's recorded drop-notice rule). Fire and
+      // forget: the notice must never stall the drain.
       log("serve.drain_dropped", { thread: thread.id });
+      void thread
+        .post(
+          (async function* () {
+            yield "tokenmaxxing is restarting - this message was dropped; please re-send it in a moment.";
+          })(),
+        )
+        .catch(() => {});
       return;
     }
     const link = linkForChannel(cfg, bareChannelId(thread.channelId));
@@ -284,13 +319,24 @@ async function runDaemon(): Promise<number> {
       prompt,
       link,
       post: (m) => thread.post(m),
+      drainSignal: drainAbort.signal,
     });
     if (outcome.sessionId !== record.sessionId) {
       saveSlackThread({ ...record, sessionId: outcome.sessionId });
     }
   };
 
-  const relayable = (m: { author: { isMe: boolean; isBot?: boolean | "unknown" } }) => !m.author.isMe && m.author.isBot !== true;
+  const relayable = (m: { author: { isMe: boolean; isBot?: boolean | "unknown" }; raw?: unknown }) => {
+    if (m.author.isMe || m.author.isBot === true) return false;
+    // outsiders must not drive sessions (owner rule 2026-07-16, ported from
+    // slaude): Slack Connect externals and cross-workspace guests are
+    // rejected fail-closed - silent in Slack, loud in the log.
+    if (isOutsideAuthor({ raw: m.raw, workspaceTeamId })) {
+      log("serve.outside_author", {});
+      return false;
+    }
+    return true;
+  };
 
   const tracked = async (turn: Promise<void>) => {
     activeTurns.add(turn);
@@ -302,6 +348,7 @@ async function runDaemon(): Promise<number> {
   };
 
   bot.onNewMention(async (thread, message, context) => {
+    if (!relayable(message)) return; // a mention from an outsider never opens a session
     const texts = [...(context?.skipped ?? []).filter(relayable), message].map((m) => m.text);
     await tracked(handleTurn({ thread, texts, isMention: true }));
   });
@@ -338,6 +385,7 @@ async function runDaemon(): Promise<number> {
       process.exit(1);
     }
     draining = true;
+    drainAbort.abort(); // parked/retrying turns wake, post their drop notice, and finish
     log("serve.draining", { signal, turns: activeTurns.size });
     console.log(`${c.yellow("●")} ${signal}: draining ${count({ n: activeTurns.size, noun: "in-flight turn" })} (again to force)`);
     await Promise.race([Promise.allSettled([...activeTurns]), delay(DRAIN_MS)]);

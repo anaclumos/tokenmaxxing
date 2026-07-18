@@ -6,9 +6,12 @@
 // 0.3.214 and code.claude.com/docs 2026-07-18; both change monthly.
 
 import { z } from "zod";
+import { delay } from "es-toolkit";
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import type { StreamChunk } from "chat";
-import { ensureBestAccount, pooledOptions, stopHookCheck } from "../sdk.ts";
+import { ensureBestAccount, pooledOptions, stopHookCheck, type SwapDecision } from "../sdk.ts";
+import { fmtResetShort } from "../cli/render.ts";
+import { http, safeErrorDetail } from "./http.ts";
 import type { SlackLink } from "./slackstate.ts";
 import { agentEventChunks, newStreamMapState, SegmentBreakSchema } from "./slackstream.ts";
 import { log } from "./log.ts";
@@ -24,8 +27,100 @@ const SLACK_SYSTEM_PROMPT =
 export const TurnOutcomeSchema = z.object({
   sessionId: z.string().nullable(),
   failed: z.boolean(),
+  /** the FAILED turn hit a usage/rate limit (or the pool was depleted before
+   *  it could spawn). Only an errored result is ever limit-classified. */
+  rateLimited: z.boolean(),
 });
 export type TurnOutcome = z.infer<typeof TurnOutcomeSchema>;
+
+// ---- depleted-pool recovery policy (pure, unit-tested) ---------------------
+
+/** A park holds the thread's queue slot, so it stays under the daemon's 900s
+ *  queue-entry TTL; a recovery further out gets an honest drop notice instead
+ *  of a hostage handler. */
+export const PARK_MAX_MS = 840_000;
+/** spawn slightly after the reset passes, never right on the boundary. */
+const PARK_GRACE_MS = 5_000;
+/** post-limit short retry: one beat for the pool to observe the limit and
+ *  swap (slaude's parkShortRetry - a successful swap makes it invisible). */
+const RETRY_DELAY_MS = 10_000;
+/** parks + retries per Slack message; keeps a stale usage cache from looping
+ *  a thread forever. */
+export const MAX_RECOVERIES = 3;
+
+export const ParkPlanSchema = z.union([
+  z.object({ kind: z.literal("proceed") }),
+  z.object({ kind: z.literal("park"), wakeAt: z.number() }),
+  z.object({ kind: z.literal("drop"), recoversAt: z.number().nullable() }),
+]);
+export type ParkPlan = z.infer<typeof ParkPlanSchema>;
+
+/** What to do with a spawn-boundary switch decision: proceed on a usable pool,
+ *  park until the soonest recovery when it is near, drop honestly otherwise
+ *  (dropping beats a false will-resume promise - slaude's recorded rationale). */
+export function parkPlan(input: { decision: SwapDecision; now: number; recoveries: number }): ParkPlan {
+  const depleted = input.decision.reason === "all-depleted" || input.decision.reason === "depleted-wait";
+  if (!depleted) return { kind: "proceed" };
+  const wake = input.decision.waitUntil ?? null;
+  if (wake == null || wake - input.now > PARK_MAX_MS || input.recoveries >= MAX_RECOVERIES) {
+    return { kind: "drop", recoversAt: wake };
+  }
+  return { kind: "park", wakeAt: wake + PARK_GRACE_MS };
+}
+
+/** Phrases claude's ERRORED results carry at a usage/rate limit (ported from
+ *  slaude's battle-tested set). Checked only against errored results: a
+ *  successful answer that merely discusses usage limits (routine in this
+ *  repo's own threads) must never be discarded and re-run. */
+const RATE_LIMIT_PHRASES = [
+  "usage limit reached",
+  "rate limit reached",
+  "rate limit exceeded",
+  "rate limit hit",
+  "hit your usage limit",
+  "hit your weekly limit",
+  "limit will reset",
+  "5-hour limit",
+  "out of extra usage",
+];
+
+export function isRateLimitText(input: { text: string }): boolean {
+  const lower = input.text.toLowerCase();
+  return RATE_LIMIT_PHRASES.some((phrase) => lower.includes(phrase));
+}
+
+// ---- workspace identity ----------------------------------------------------
+
+const AuthTestSchema = z.looseObject({
+  ok: z.boolean(),
+  team_id: z.string().optional(),
+  error: z.string().optional(),
+});
+
+/** auth.test: the home workspace (team) id the bot token belongs to - the
+ *  reference `isOutsideAuthor` compares message origins against. Errors carry
+ *  the Slack error code only, never the token. */
+export async function fetchWorkspaceTeamId(input: { botToken: string }): Promise<string> {
+  const res = await http.post("https://slack.com/api/auth.test", {
+    headers: { authorization: `Bearer ${input.botToken}` },
+  });
+  const text = await res.text();
+  if (!res.ok) throw new Error(`Slack auth.test failed: HTTP ${res.status} (${safeErrorDetail({ text })})`);
+  const body: unknown = (() => {
+    try {
+      return JSON.parse(text);
+    } catch {
+      return null;
+    }
+  })();
+  const parsed = AuthTestSchema.safeParse(body);
+  if (!parsed.success || !parsed.data.ok || !parsed.data.team_id) {
+    throw new Error(
+      `Slack auth.test failed: ${parsed.success ? (parsed.data.error ?? "no team_id in response") : "unrecognized response"}`,
+    );
+  }
+  return parsed.data.team_id;
+}
 
 const SegmentChunkSchema = z.union([z.string(), z.custom<StreamChunk>()]);
 type SegmentChunk = z.infer<typeof SegmentChunkSchema>;
@@ -74,6 +169,13 @@ function pushableStream(): {
  * post resolves. Never throws: a failure posts a short diagnostic line and
  * sets outcome.failed (the daemon must keep serving other threads). Error
  * text is message-only - a raw error body could echo request material.
+ *
+ * Depleted-pool recovery (ported from slaude at its shutdown, reshaped around
+ * the pool): the spawn-boundary switch decision is CONSUMED, not discarded -
+ * a depleted pool parks BEFORE a doomed spawn burns a failed turn, with an
+ * honest in-thread notice either way; a mid-turn limit the cached pool state
+ * did not predict gets a short silent retry into the same session. Everything
+ * is bounded by MAX_RECOVERIES and every drop is announced in-thread.
  */
 export async function relayThread(input: {
   cwd: string;
@@ -81,8 +183,11 @@ export async function relayThread(input: {
   prompt: string;
   link: SlackLink;
   post: (m: AsyncIterable<SegmentChunk>) => Promise<unknown>;
+  /** daemon shutdown signal: aborts park/retry sleeps so a drain never sits
+   *  out a depleted-pool countdown. */
+  drainSignal?: AbortSignal;
 }): Promise<TurnOutcome> {
-  const outcome: TurnOutcome = { sessionId: input.sessionId, failed: false };
+  const outcome: TurnOutcome = { sessionId: input.sessionId, failed: false, rateLimited: false };
   let segment: ReturnType<typeof pushableStream> | null = null;
   let lastPost: Promise<unknown> = Promise.resolve();
   let postedText = false;
@@ -109,50 +214,138 @@ export async function relayThread(input: {
     segment?.end();
     segment = null;
   };
-  try {
-    // the switch decision runs at the spawn boundary, same as the CLI hooks.
-    await ensureBestAccount();
-    const q = query({
-      prompt: input.prompt,
-      options: {
-        ...pooledOptions(),
-        cwd: input.cwd,
-        permissionMode: input.link.permissionMode,
-        // the SDK refuses bypassPermissions without this explicit opt-in.
-        ...(input.link.permissionMode === "bypassPermissions" ? { allowDangerouslySkipPermissions: true } : {}),
-        includePartialMessages: true,
-        systemPrompt: SLACK_SYSTEM_PROMPT,
-        // no one can answer an interactive question dialog through Slack;
-        // without the tool the model asks in prose and the user's thread
-        // reply becomes the next turn.
-        disallowedTools: ["AskUserQuestion"],
-        hooks: { Stop: [{ hooks: [stopHookCheck] }] },
-        ...(input.link.model ? { model: input.link.model } : {}),
-        ...(input.sessionId ? { resume: input.sessionId } : {}),
-      },
-    });
-    const mapState = newStreamMapState();
-    let result: string | null = null;
-    for await (const message of q) {
-      if (message.type === "system" && message.subtype === "init") outcome.sessionId = message.session_id;
-      if (message.type === "result") {
-        outcome.sessionId = message.session_id;
-        if (message.subtype === "success") result = message.result;
-        else outcome.failed = true;
-      }
-      for (const part of agentEventChunks({ state: mapState, message })) {
-        if (SegmentBreakSchema.safeParse(part).success) breakSegment();
-        else await push(SegmentChunkSchema.parse(part));
-      }
+  // a recovery status line reads as its own Slack message, not part of a
+  // streamed segment.
+  const notify = async (text: string) => {
+    breakSegment();
+    await push(text);
+    breakSegment();
+  };
+  // false when the daemon started draining mid-sleep.
+  const sleep = async (ms: number) => {
+    try {
+      await delay(Math.max(ms, 0), { signal: input.drainSignal });
+      return true;
+    } catch {
+      return false;
     }
-    // a turn that produced no streamed text (tool-only turns) still reports.
-    if (!postedText && result) await push(result);
-    if (!postedText && !result && outcome.failed) await push("the turn ended without a result (limit or error) - trying again may help");
-  } catch (e) {
-    outcome.failed = true;
-    const detail = (e instanceof Error ? e.message : String(e)).slice(0, 300);
-    log("serve.turn_error", { err: detail });
-    await push(`tokenmaxxing: turn failed: ${detail}`);
+  };
+  const inWord = (epochMs: number | null) => (epochMs == null ? "an unknown time" : `~${fmtResetShort(epochMs, Date.now()) || "1m"}`);
+
+  const runQueryOnce = async () => {
+    postedText = false;
+    outcome.failed = false;
+    outcome.rateLimited = false;
+    try {
+      const q = query({
+        prompt: input.prompt,
+        options: {
+          ...pooledOptions(),
+          cwd: input.cwd,
+          permissionMode: input.link.permissionMode,
+          // the SDK refuses bypassPermissions without this explicit opt-in.
+          ...(input.link.permissionMode === "bypassPermissions" ? { allowDangerouslySkipPermissions: true } : {}),
+          includePartialMessages: true,
+          systemPrompt: SLACK_SYSTEM_PROMPT,
+          // no one can answer an interactive question dialog through Slack;
+          // without the tool the model asks in prose and the user's thread
+          // reply becomes the next turn.
+          disallowedTools: ["AskUserQuestion"],
+          hooks: { Stop: [{ hooks: [stopHookCheck] }] },
+          ...(input.link.model ? { model: input.link.model } : {}),
+          // a retry resumes the session the failed attempt opened, so no
+          // context is lost across recoveries.
+          ...(outcome.sessionId ? { resume: outcome.sessionId } : {}),
+        },
+      });
+      const mapState = newStreamMapState();
+      let result: string | null = null;
+      for await (const message of q) {
+        if (message.type === "system" && message.subtype === "init") outcome.sessionId = message.session_id;
+        if (message.type === "result") {
+          outcome.sessionId = message.session_id;
+          // is_error can ride a "success" subtype (a mid-turn usage limit
+          // arrives exactly that way: result "Claude AI usage limit
+          // reached|<epoch>"), so errored is a field check, not a subtype
+          // check - and only an errored result is ever limit-classified.
+          const text = message.subtype === "success" ? message.result : message.errors.join("\n");
+          if (message.is_error || message.subtype !== "success") {
+            outcome.failed = true;
+            outcome.rateLimited = isRateLimitText({ text });
+          } else {
+            result = text;
+          }
+        }
+        for (const part of agentEventChunks({ state: mapState, message })) {
+          if (SegmentBreakSchema.safeParse(part).success) breakSegment();
+          else await push(SegmentChunkSchema.parse(part));
+        }
+      }
+      // a turn that produced no streamed text (tool-only turns) still reports.
+      if (!postedText && result) await push(result);
+      if (!postedText && !result && outcome.failed && !outcome.rateLimited) {
+        await push("the turn ended without a result - trying again may help");
+      }
+    } catch (e) {
+      outcome.failed = true;
+      const detail = (e instanceof Error ? e.message : String(e)).slice(0, 300);
+      outcome.rateLimited = isRateLimitText({ text: detail });
+      log("serve.turn_error", { err: detail });
+      if (!outcome.rateLimited) await push(`tokenmaxxing: turn failed: ${detail}`);
+    }
+  };
+
+  let recoveries = 0;
+  while (true) {
+    // the switch decision runs at the spawn boundary, same as the CLI hooks.
+    let decision: SwapDecision;
+    try {
+      decision = await ensureBestAccount();
+    } catch (e) {
+      outcome.failed = true;
+      const detail = (e instanceof Error ? e.message : String(e)).slice(0, 300);
+      log("serve.turn_error", { err: detail });
+      await push(`tokenmaxxing: turn failed: ${detail}`);
+      break;
+    }
+    const plan = parkPlan({ decision, now: Date.now(), recoveries });
+    if (plan.kind === "drop") {
+      outcome.failed = true;
+      outcome.rateLimited = true;
+      log("serve.pool_depleted_drop", { recoversAt: plan.recoversAt ?? 0 });
+      await notify(`every pooled account is at its usage limit (recovers in ${inWord(plan.recoversAt)}) - this message was dropped; re-send it once the pool recovers.`);
+      break;
+    }
+    if (plan.kind === "park") {
+      recoveries += 1;
+      log("serve.pool_depleted_park", { wakeAt: plan.wakeAt, recoveries });
+      await notify(`every pooled account is at its usage limit - holding this message and retrying in ${inWord(plan.wakeAt)}.`);
+      if (!(await sleep(plan.wakeAt - Date.now()))) {
+        outcome.failed = true;
+        await notify("tokenmaxxing is restarting - this message was dropped; please re-send it.");
+        break;
+      }
+      continue;
+    }
+    await runQueryOnce();
+    if (!outcome.failed || !outcome.rateLimited) break;
+    if (recoveries >= MAX_RECOVERIES) {
+      log("serve.rate_limited_drop", { recoveries });
+      await notify("still at a usage limit after retries - this message was dropped; reply when you want to try again.");
+      break;
+    }
+    // a limit the cached pool state did not predict: give the pool one beat
+    // to observe it, then re-decide and retry the same prompt into the same
+    // session (slaude's silent short retry - a successful swap makes it
+    // invisible in the thread).
+    recoveries += 1;
+    breakSegment();
+    log("serve.rate_limited_retry", { recoveries });
+    if (!(await sleep(RETRY_DELAY_MS))) {
+      outcome.failed = true;
+      await notify("tokenmaxxing is restarting - this message was dropped; please re-send it.");
+      break;
+    }
   }
   breakSegment();
   await lastPost;

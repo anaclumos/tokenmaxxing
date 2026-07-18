@@ -40,7 +40,10 @@ const SwapDecisionSchema = z.object({
   swapped: z.boolean(),
   account: AccountSchema.nullable(),
   reason: z.string(),
-  /** set when every account is depleted: epoch ms the chosen account recovers. */
+  /** set when every account is depleted and the soonest recovery is known:
+   *  epoch ms that account recovers. The wait target on depleted-wait;
+   *  informational on a bare all-depleted (callers like `xx serve` park on
+   *  it - nothing here waits). */
   waitUntil: z.number().optional(),
 });
 export type SwapDecision = z.infer<typeof SwapDecisionSchema>;
@@ -260,13 +263,13 @@ export async function evaluateAndMaybeSwap(now = Date.now(), anticipatory = fals
 
     if (!target || waitUntil - now > cfg.policy.maxWaitMs) {
       log("decide.depleted", { waitUntil: Number.isFinite(waitUntil) ? waitUntil : 0 });
-      return { swapped: false, account: null, reason: "all-depleted" };
+      return { swapped: false, account: null, reason: "all-depleted", ...(Number.isFinite(waitUntil) ? { waitUntil } : {}) };
     }
 
     const isCurrent = target.accountUuid === fresh.activeAccountUuid;
     if (!isCurrent && !anticipatory) {
       log("decide.depleted_no_park", { account: target.accountUuid.slice(0, 8), waitUntil });
-      return { swapped: false, account: null, reason: "all-depleted" };
+      return { swapped: false, account: null, reason: "all-depleted", waitUntil };
     }
     if (!isCurrent) {
       try {
