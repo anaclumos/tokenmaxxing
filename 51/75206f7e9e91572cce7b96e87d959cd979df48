@@ -1,0 +1,23 @@
+.memory/tokenmaxxing-project.md
+  s_6989300ba15c83::t_4eee6528c456dc 31-32
+.memory/MEMORY.md
+  s_6989300ba15c83::t_ca701c891f0cb0 5
+.memory/pre-commit-full-diff-inspection.md
+  s_6989300ba15c83::t_db78bbddb348d0 1-23
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "5175206f7e9e91572cce7b96e87d959cd979df48",
+  "prompts": {},
+  "sessions": {
+    "s_6989300ba15c83": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "cd317eea-7b46-4231-b130-e794097fe0d3",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    }
+  }
+}
