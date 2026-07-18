@@ -359,15 +359,36 @@ async function runDaemon(): Promise<number> {
     }
   };
 
+  // Per-thread serialization owned HERE, not only by the SDK's queue lock:
+  // chat 4.34.0 acquires the dispatch lock with a 30s TTL and extends it only
+  // BETWEEN dispatches, so any handler outliving 30s (every claude turn, any
+  // depleted-pool park) lets a later message take the expired lock and start
+  // a second concurrent handler in the same thread and cwd (review catch,
+  // PR #18). Escaped messages run as sequential turns in arrival order.
+  const threadTurns = new Map<string, Promise<void>>();
+  const serialized = (threadId: string, run: () => Promise<void>) => {
+    const prev = threadTurns.get(threadId) ?? Promise.resolve();
+    const next = prev.then(run, run);
+    threadTurns.set(threadId, next);
+    void next.finally(() => {
+      if (threadTurns.get(threadId) === next) threadTurns.delete(threadId);
+    });
+    return next;
+  };
+
+  // filter EVERY message, trigger included: an outsider (or our own post)
+  // arriving last must not discard relayable home-workspace messages queued
+  // behind the turn - the queue hands the handler only the latest message and
+  // the rest ride context.skipped (review catch, PR #18).
   bot.onNewMention(async (thread, message, context) => {
-    if (!relayable(message)) return; // a mention from an outsider never opens a session
-    const texts = [...(context?.skipped ?? []).filter(relayable), message].map((m) => m.text);
-    await tracked(handleTurn({ thread, texts, isMention: true }));
+    const texts = [...(context?.skipped ?? []), message].filter(relayable).map((m) => m.text);
+    if (texts.length === 0) return; // outsider mentions never open a session
+    await tracked(serialized(thread.id, () => handleTurn({ thread, texts, isMention: true })));
   });
   bot.onSubscribedMessage(async (thread, message, context) => {
-    if (!relayable(message)) return; // never relay our own posts
-    const texts = [...(context?.skipped ?? []).filter(relayable), message].map((m) => m.text);
-    await tracked(handleTurn({ thread, texts, isMention: false }));
+    const texts = [...(context?.skipped ?? []), message].filter(relayable).map((m) => m.text);
+    if (texts.length === 0) return;
+    await tracked(serialized(thread.id, () => handleTurn({ thread, texts, isMention: false })));
   });
 
   // initialize() starts the PERSISTENT Socket Mode client (auto-reconnecting)

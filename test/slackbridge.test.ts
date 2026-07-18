@@ -100,6 +100,16 @@ describe("recordObservedLimit", () => {
     expect(u?.sevenDay.usedPercentage).toBe(70); // weekly carried, never fabricated
   });
 
+  test("a weekly-phrased limit stamps the WEEKLY window, not the 5h one", () => {
+    // a 5h-only stamp would re-seat the account in 5h against a days-dead cap.
+    seedIdentity("org-a");
+    writeUsage(priorUsage("org-a"));
+    recordObservedLimit({ text: "You've hit your weekly limit.", now: NOW, org: "org-a" });
+    const u = loadUsage();
+    expect(u?.sevenDay).toEqual({ usedPercentage: 100, resetsAt: null });
+    expect(u?.fiveHour.usedPercentage).toBe(40); // session carried
+  });
+
   test("never stamps when the spawn org is no longer live (mid-turn swap)", () => {
     seedIdentity("org-b");
     writeUsage(priorUsage("org-b"));

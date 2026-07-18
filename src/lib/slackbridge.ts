@@ -126,9 +126,16 @@ const AuthTestSchema = z.looseObject({
  *  reference `isOutsideAuthor` compares message origins against. Errors carry
  *  the Slack error code only, never the token. */
 export async function fetchWorkspaceTeamId(input: { botToken: string }): Promise<string> {
-  const res = await http.post("https://slack.com/api/auth.test", {
-    headers: { authorization: `Bearer ${input.botToken}` },
-  });
+  const res = await http
+    .post("https://slack.com/api/auth.test", {
+      headers: { authorization: `Bearer ${input.botToken}` },
+    })
+    .catch((e: unknown) => {
+      // a thrown ky error (timeout, network) carries its Request with the
+      // Authorization header - rethrow message-only so no caller can ever
+      // log the token.
+      throw new Error(`Slack auth.test failed: ${e instanceof Error ? e.message : String(e)}`);
+    });
   const text = await res.text();
   if (!res.ok) throw new Error(`Slack auth.test failed: HTTP ${res.status} (${safeErrorDetail({ text })})`);
   const body: unknown = (() => {
@@ -265,9 +272,12 @@ export async function relayThread(input: {
     outcome.failed = false;
     outcome.rateLimited = false;
     // the identity this spawn meters: a limit observation is attributed to it,
-    // never to whatever account a concurrent thread swaps live mid-turn.
-    const spawnOrg = readOAuthAccount()?.organizationUuid ?? null;
+    // never to whatever account a concurrent thread swaps live mid-turn. Read
+    // inside the try: a malformed claude.json must fail the TURN, not the
+    // relay's never-throws contract.
+    let spawnOrg: string | null = null;
     try {
+      spawnOrg = readOAuthAccount()?.organizationUuid ?? null;
       const q = query({
         prompt: input.prompt,
         options: {

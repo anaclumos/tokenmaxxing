@@ -184,7 +184,9 @@ export function agentEventChunks(input: { state: StreamMapState; message: SDKMes
       type: "task_update",
       id: "turn",
       title: "Turn",
-      status: message.subtype === "success" ? "complete" : "error",
+      // is_error can ride subtype "success" (a mid-turn usage limit does),
+      // and that turn must not render as complete.
+      status: message.subtype === "success" && message.is_error !== true ? "complete" : "error",
       details: [models, cost, secs].filter((p) => p !== "").join("  "),
     }];
   }

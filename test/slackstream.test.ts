@@ -145,4 +145,39 @@ describe("agentEventChunks", () => {
     } });
     expect(chunks).toEqual([{ type: "task_update", id: "turn", title: "Turn", status: "complete", details: "$0.0123  12s" }]);
   });
+
+  test("is_error riding a success subtype closes the turn card as error", () => {
+    // a mid-turn usage limit arrives exactly this way; the card must not
+    // render a completed turn right before the silent retry.
+    const state = newStreamMapState();
+    const chunks = agentEventChunks({ state, message: {
+      type: "result",
+      subtype: "success",
+      duration_ms: 12400,
+      duration_api_ms: 9000,
+      is_error: true,
+      num_turns: 1,
+      result: "Claude AI usage limit reached|1784369046",
+      stop_reason: null,
+      total_cost_usd: 0.0123,
+      usage: {
+        cache_creation: { ephemeral_1h_input_tokens: 0, ephemeral_5m_input_tokens: 0 },
+        cache_creation_input_tokens: 0,
+        cache_read_input_tokens: 0,
+        inference_geo: "us",
+        input_tokens: 1,
+        iterations: [],
+        output_tokens: 1,
+        output_tokens_details: { thinking_tokens: 0 },
+        server_tool_use: { web_fetch_requests: 0, web_search_requests: 0 },
+        service_tier: "standard" as const,
+        speed: "standard" as const,
+      },
+      modelUsage: {},
+      permission_denials: [],
+      uuid: UUID,
+      session_id: SID,
+    } });
+    expect(chunks).toEqual([{ type: "task_update", id: "turn", title: "Turn", status: "error", details: "$0.0123  12s" }]);
+  });
 });

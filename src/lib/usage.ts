@@ -218,14 +218,19 @@ export function recordObservedLimit(input: { text: string; now: number; org: str
   const prior = loadUsage();
   if (!prior || prior.org !== input.org) return;
   const resetsAt = parseUsageLimitEpoch({ text: input.text });
+  // a weekly-phrased limit exhausts the WEEKLY window: stamping only the 5h
+  // window would let the picker re-seat this account in 5h while the weekly
+  // cap stays dead for days (review catch, PR #18). Unknown-reset blocked
+  // windows self-bound at the window's own duration either way.
+  const weekly = input.text.toLowerCase().includes("weekly");
   writeUsage({
-    fiveHour: { usedPercentage: 100, resetsAt },
-    sevenDay: prior.sevenDay,
+    fiveHour: weekly ? prior.fiveHour : { usedPercentage: 100, resetsAt },
+    sevenDay: weekly ? { usedPercentage: 100, resetsAt } : prior.sevenDay,
     org: input.org,
     ts: input.now,
     model: prior.model,
   });
-  log("usage.observed_limit", { resetsAt });
+  log("usage.observed_limit", { resetsAt, weekly });
 }
 
 /**
