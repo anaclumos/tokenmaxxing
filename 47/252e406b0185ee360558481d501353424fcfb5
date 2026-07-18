@@ -1,0 +1,20 @@
+.memory/git-bright-lines-ask-first.md
+  s_b46a7a06a33da9::t_cd6200f3dc57b7 1-2,4-7,9,11
+  s_b46a7a06a33da9::t_08fa8bab0fd70e 3,8,10,12
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "47252e406b0185ee360558481d501353424fcfb5",
+  "prompts": {},
+  "sessions": {
+    "s_b46a7a06a33da9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f099df50-4f97-4d4a-ac3e-6707f6883e97",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    }
+  }
+}
