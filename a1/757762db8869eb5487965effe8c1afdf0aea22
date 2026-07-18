@@ -1,0 +1,39 @@
+.memory/serve-slackbot-decisions.md
+  s_01302d876347ce::t_0eaf5552949cd2 27
+test/slackstream.test.ts
+  s_01302d876347ce::t_30705eb48993c7 14,16-20,23-25,80
+  s_01302d876347ce::t_7ed8870f0e177a 5
+  s_01302d876347ce::t_292719e1a6e466 15,21-22
+  s_01302d876347ce::t_f9a05bd36c5c92 77-79
+  s_01302d876347ce::t_729d61e02f4416 81-82
+  s_01302d876347ce::t_ced7327a45e10e 69-76
+src/lib/slackstream.ts
+  s_01302d876347ce::t_d014a21f72a0ac 15-16,26
+  s_01302d876347ce::t_b8da0fec9280cf 17-25,27
+  s_01302d876347ce::t_0a2d4e97bda31f 135-138
+  s_3384a451aaa8f2::t_d16e1d33809555 28
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "a1757762db8869eb5487965effe8c1afdf0aea22",
+  "prompts": {},
+  "sessions": {
+    "s_01302d876347ce": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c3215185-c3a7-4d72-8bbf-7ad6bbd92dde",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    },
+    "s_3384a451aaa8f2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7e9524e3-c51b-42f9-b453-343595019f2d",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    }
+  }
+}
