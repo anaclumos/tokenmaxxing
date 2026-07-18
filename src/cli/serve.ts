@@ -241,6 +241,8 @@ async function runDaemon(): Promise<number> {
   const handleTurn = async (input: {
     thread: { id: string; channelId: string; post: (m: AsyncIterable<string | StreamChunk>) => Promise<unknown>; subscribe: () => Promise<void>; startTyping: () => Promise<void> };
     texts: string[];
+    /** bare Slack user id (U...) of the triggering message's author. */
+    requesterId: string | null;
     isMention: boolean;
   }) => {
     const { thread, texts, isMention } = input;
@@ -283,6 +285,7 @@ async function runDaemon(): Promise<number> {
       cwd: record.cwd,
       sessionId: record.sessionId,
       prompt,
+      requesterId: input.requesterId,
       link,
       post: (m) => thread.post(m),
     });
@@ -304,12 +307,12 @@ async function runDaemon(): Promise<number> {
 
   bot.onNewMention(async (thread, message, context) => {
     const texts = [...(context?.skipped ?? []).filter(relayable), message].map((m) => m.text);
-    await tracked(handleTurn({ thread, texts, isMention: true }));
+    await tracked(handleTurn({ thread, texts, requesterId: message.author.userId, isMention: true }));
   });
   bot.onSubscribedMessage(async (thread, message, context) => {
     if (!relayable(message)) return; // never relay our own posts
     const texts = [...(context?.skipped ?? []).filter(relayable), message].map((m) => m.text);
-    await tracked(handleTurn({ thread, texts, isMention: false }));
+    await tracked(handleTurn({ thread, texts, requesterId: message.author.userId, isMention: false }));
   });
 
   // initialize() starts the PERSISTENT Socket Mode client (auto-reconnecting)

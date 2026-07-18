@@ -30,6 +30,31 @@ export const TurnOutcomeSchema = z.object({
 });
 export type TurnOutcome = z.infer<typeof TurnOutcomeSchema>;
 
+/** The serve plugin shipped inside the package (src/serve-plugin/): skills
+ *  that teach a relayed session how to behave in a Slack thread, loaded per
+ *  turn via the SDK's local-plugin option and namespaced `tokenmaxxing:...`. */
+const SERVE_PLUGIN_DIR = join(import.meta.dir, "..", "serve-plugin");
+
+/**
+ * The per-turn context a UserPromptSubmit hook injects. The skills are static
+ * files, so the one dynamic fact they cannot carry - WHO asked - rides in
+ * here as the requester's raw mention token (`<@U...>` passes verbatim
+ * through the streamed markdown_text path, and the post-and-edit fallback's
+ * finalize leaves an already-formed mention intact). Wording is load-bearing:
+ * the ask-the-user skill points at the "Slack relay context" note.
+ */
+export function serveTurnContext(input: { requesterId: string | null }): string {
+  const requester = input.requesterId
+    ? `The requesting user's Slack mention token is <@${input.requesterId}>; include it literally in reply text to notify them.`
+    : "The requesting user is unknown this turn, so no mention token is available.";
+  return [
+    "Slack relay context: this session is relayed into a Slack thread by tokenmaxxing serve, and your reply posts back into the thread.",
+    requester,
+    "When you need the user's decision, approval, or input, follow the tokenmaxxing:ask-the-user skill (tag them, ask, end the turn).",
+    "The tokenmaxxing:serve-session skill explains how this session runs.",
+  ].join(" ");
+}
+
 const SegmentChunkSchema = z.union([z.string(), z.custom<StreamChunk>()]);
 type SegmentChunk = z.infer<typeof SegmentChunkSchema>;
 
@@ -113,6 +138,8 @@ export async function relayThread(input: {
   cwd: string;
   sessionId: string | null;
   prompt: string;
+  /** bare Slack user id (U...) of the triggering message's author. */
+  requesterId: string | null;
   link: SlackLink;
   post: (m: AsyncIterable<SegmentChunk>) => Promise<unknown>;
 }): Promise<TurnOutcome> {
@@ -160,7 +187,20 @@ export async function relayThread(input: {
         // without the tool the model asks in prose and the user's thread
         // reply becomes the next turn.
         disallowedTools: ["AskUserQuestion"],
-        hooks: { Stop: [{ hooks: [stopHookCheck] }] },
+        // serve skills (ask-the-user, serve-session); discovered skills are
+        // enabled by default, so no `skills` option is needed.
+        plugins: [{ type: "local", path: SERVE_PLUGIN_DIR }],
+        hooks: {
+          UserPromptSubmit: [{
+            hooks: [async () => ({
+              hookSpecificOutput: {
+                hookEventName: "UserPromptSubmit",
+                additionalContext: serveTurnContext({ requesterId: input.requesterId }),
+              },
+            })],
+          }],
+          Stop: [{ hooks: [stopHookCheck] }],
+        },
         ...(input.link.model ? { model: input.link.model } : {}),
         ...(input.sessionId ? { resume: input.sessionId } : {}),
       },
