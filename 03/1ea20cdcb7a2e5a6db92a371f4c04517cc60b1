@@ -1,0 +1,19 @@
+DESIGN.md
+  s_3384a451aaa8f2::t_a231396aebe2bf 130
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "031ea20cdcb7a2e5a6db92a371f4c04517cc60b1",
+  "prompts": {},
+  "sessions": {
+    "s_3384a451aaa8f2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7e9524e3-c51b-42f9-b453-343595019f2d",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    }
+  }
+}
