@@ -5,7 +5,7 @@
 
 - [Live pool runs need permission](live-pool-runs-need-permission.md) - ask before any run that meters quota or starts a session window on real accounts; hermetic tests + free /usage reads only by default
 
-- [tokenmaxxing project goal](tokenmaxxing-project.md) - CLI pooling Claude Code/Codex accounts, hot-swap on quota; npm name owned by user (anaclumos); latest ships: 0.17.0 auth command, 0.18.0 RELEASED 2026-07-18 (statusline colors + subagent rows + serve Slack bridge), 0.19.0 IN FLIGHT via PR #7 (first PR-based ship: serve live fixes + subagent tool cards + natural card titles for five tools; mark RELEASED only after npm publish proof); .memory git-tracked since 2026-07-18
+- [tokenmaxxing project goal](tokenmaxxing-project.md) - CLI pooling Claude Code/Codex accounts, hot-swap on quota; npm name owned by user (anaclumos); latest ships: 0.17.0 auth command, 0.18.0 RELEASED 2026-07-18 (statusline colors + subagent rows + serve Slack bridge), 0.19.0 RELEASED 2026-07-18 via PR #6 (first PR-based ship: serve live fixes + subagent tool cards; does NOT include the five natural card titles, which follow in 0.20.0 via PR #7 - mark that RELEASED only after npm publish proof); .memory git-tracked since 2026-07-18
 - [CC/Codex auth mechanics](cc-codex-auth-mechanics.md) — verified keychain/CODEX_HOME/quota internals both CLIs depend on; see DESIGN.md §2
 - [Per-model weekly caps](cc-per-model-limits.md) — per-model weekly limits exist only for Sonnet and Fable, no Opus-only quota (user 2026-07-12); only Fable gates a switch ("fable=switch, sonnet=ok")
 - [ARM Linux host](linux-arm-host.md) - the owner's Pi: the Linux test box; claude 2.1.207, 4-account pool, tokenmaxxing 0.6.1
