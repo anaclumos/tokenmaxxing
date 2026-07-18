@@ -16,7 +16,7 @@
 //   serve                  run the daemon
 
 import { existsSync, realpathSync } from "node:fs";
-import { delay, omit } from "es-toolkit";
+import { delay, omit, uniq } from "es-toolkit";
 import { Chat, ThreadImpl, type StreamChunk } from "chat";
 import { createSlackAdapter } from "@chat-adapter/slack";
 import { createMemoryState } from "@chat-adapter/state-memory";
@@ -39,10 +39,10 @@ import {
   type SlackLink,
   type SlackThread,
 } from "../lib/slackstate.ts";
-import { relayThread } from "../lib/slackbridge.ts";
+import { cleanupThread, relayThread, type CleanupOutcome, type TurnOutcome } from "../lib/slackbridge.ts";
 import { acquireLock } from "../lib/lock.ts";
 import { paths } from "../lib/paths.ts";
-import { log } from "../lib/log.ts";
+import { log, setLogEcho } from "../lib/log.ts";
 import { c, count } from "./render.ts";
 
 const SERVE_USAGE = "usage: tokenmaxxing serve [setup | link <channel-id> <repo> [--yolo | --dangerous] [--model <m>] | unlink <channel-id> | links]";
@@ -191,6 +191,29 @@ function cmdServeLinks(): number {
   return 0;
 }
 
+/** Event-name endings that pick the terminal paint: red for failures, yellow
+ *  for degraded-but-continuing conditions, cyan otherwise. Structural endsWith
+ *  checks so new events inherit sensible colors from their naming. */
+const RED_EVENT_ENDINGS = ["error", "failed", "invalid_grant"];
+const YELLOW_EVENT_ENDINGS = ["_dropped", "_drift", "_unparsed", "_gave_up", "_abort", "forced_exit", "proceed_without", "draining"];
+
+function eventPaint(event: string): (s: string) => string {
+  if (RED_EVENT_ENDINGS.some((ending) => event.endsWith(ending))) return c.red;
+  if (YELLOW_EVENT_ENDINGS.some((ending) => event.endsWith(ending))) return c.yellow;
+  return c.cyan;
+}
+
+/** One terminal line per log() event while the daemon runs: the file log stays
+ *  canonical; this makes `xx serve` observable without tailing tokenmaxxing.log.
+ *  Field values can carry newlines (e.g. usage.probe_failed's stderr excerpt),
+ *  so they are escaped to keep the one-line-per-event contract. Exported for
+ *  tests. */
+export function formatLogLine(input: { event: string; parts: string }): string {
+  const time = new Date().toLocaleTimeString("en-GB");
+  const parts = input.parts.replaceAll("\r", "\\r").replaceAll("\n", "\\n");
+  return `${c.dim(time)} ${eventPaint(input.event)(input.event)}${parts ? ` ${parts}` : ""}`;
+}
+
 async function runDaemon(): Promise<number> {
   const cfg = loadSlackConfig();
   if (!cfg) {
@@ -201,6 +224,11 @@ async function runDaemon(): Promise<number> {
     console.error(c.red("no channel links - run `tokenmaxxing serve link <channel-id> <repo>` first"));
     return 1;
   }
+
+  // every log() event from here on (serve.* plus the in-process swap/decision
+  // events fired by ensureBestAccount/stopHookCheck) also prints to the
+  // terminal, so a foreground `xx serve` shows what it is doing live.
+  setLogEcho({ printer: (entry) => console.log(formatLogLine(entry)) });
 
   // single-instance guard, held for the process lifetime (the fd releases on
   // exit): without it a replacement daemon can start inside the previous
@@ -277,17 +305,20 @@ async function runDaemon(): Promise<number> {
     thread: { id: string; post: (m: AsyncIterable<string | StreamChunk>) => Promise<unknown> };
     record: SlackThread;
     prompt: string;
+    requesterIds: string[];
     sessionId: string | null;
     marker: ActiveTurn;
     link: SlackLink;
-  }) => {
+  }): Promise<TurnOutcome> => {
     let record: SlackThread = { ...input.record, activeTurn: input.marker };
     saveSlackThread(record);
+    let outcome: TurnOutcome | null = null;
     try {
-      const outcome = await relayThread({
+      outcome = await relayThread({
         cwd: record.cwd,
         sessionId: input.sessionId,
         prompt: input.prompt,
+        requesterIds: input.requesterIds,
         link: input.link,
         post: (m) => input.thread.post(m),
         onSessionId: (sessionId) => {
@@ -296,17 +327,30 @@ async function runDaemon(): Promise<number> {
         },
       });
       record = { ...record, sessionId: outcome.sessionId };
+      return outcome;
     } finally {
-      saveSlackThread(omit(record, ["activeTurn"]));
+      // a failure DURING a drain is presumed to be the shutdown signal killing
+      // the claude child (terminal Ctrl-C and group signals hit the whole
+      // process group, so the child dies and relayThread returns failed while
+      // the daemon is still draining - codex review catch): keep the marker so
+      // the next generation auto-resumes, exactly the killed-turn state it
+      // exists to detect. Outside a drain, or on success, clear it.
+      const presumedKilled = draining && (outcome?.failed ?? true);
+      saveSlackThread(presumedKilled ? record : omit(record, ["activeTurn"]));
     }
   };
 
   const handleTurn = async (input: {
-    thread: { id: string; channelId: string; post: (m: AsyncIterable<string | StreamChunk>) => Promise<unknown>; subscribe: () => Promise<void>; startTyping: () => Promise<void> };
-    texts: string[];
+    thread: { id: string; channelId: string; post: (m: string | AsyncIterable<string | StreamChunk>) => Promise<unknown>; subscribe: () => Promise<void>; unsubscribe: () => Promise<void>; startTyping: () => Promise<void> };
+    /** every relayed message this turn (queue-skipped + triggering), text
+     *  paired with its author id: a decision may be owed to an earlier
+     *  folded sender, and a sender whose whole message was the bot mention
+     *  contributes no prompt text, so text and author filter together
+     *  (review catches 2026-07-18). */
+    relayed: { text: string; authorId: string }[];
     isMention: boolean;
   }) => {
-    const { thread, texts, isMention } = input;
+    const { thread, isMention } = input;
     if (draining) {
       // the socket stays connected until the drain finishes; anything landing
       // in that window is dropped loudly rather than spawning an unwaitable
@@ -319,14 +363,17 @@ async function runDaemon(): Promise<number> {
       log("serve.unlinked_channel", { channel: thread.channelId });
       return; // not a linked channel - stay silent in Slack
     }
-    log("serve.message", { thread: thread.id, isMention, texts: texts.length });
-    // texts carries queue-skipped messages plus the triggering one: the queue
-    // strategy hands a turn only the LATEST message and the rest via
-    // context.skipped, so they are folded into one prompt here.
-    const prompt = texts
-      .map((t) => stripLeadingMention(t))
-      .filter((t) => t !== "")
-      .join("\n\n");
+    log("serve.message", { thread: thread.id, isMention, texts: input.relayed.length });
+    // relayed carries queue-skipped messages plus the triggering one: the
+    // queue strategy hands a turn only the LATEST message and the rest via
+    // context.skipped, so they are folded into one prompt here. A message
+    // that is empty once its bot mention is stripped contributes neither
+    // prompt text nor a requester id (cursor review catch 2026-07-18).
+    const stripped = input.relayed
+      .map((m) => ({ text: stripLeadingMention({ text: m.text, botUserId: slack.botUserId ?? null }), authorId: m.authorId }))
+      .filter((m) => m.text !== "");
+    const prompt = stripped.map((m) => m.text).join("\n\n");
+    const requesterIds = uniq(stripped.map((m) => m.authorId));
     if (!prompt) return;
     const opened = loadSlackThread(thread.id);
     if (!opened) {
@@ -347,16 +394,50 @@ async function runDaemon(): Promise<number> {
         // see the session id that resume persisted.
         const record = loadSlackThread(thread.id);
         if (!record) return;
-        await runTurn({
+        const startedAt = Date.now();
+        const outcome = await runTurn({
           thread,
           record,
           prompt,
+          requesterIds,
           sessionId: record.sessionId,
           marker: { prompt, startedAt: new Date().toISOString(), resumeCount: 0 },
           link,
         });
+        await settleTurn({ thread, outcome, startedAt });
       },
     });
+  };
+
+  /** Post-turn bookkeeping shared by inbound and resumed turns: the outcome
+   *  log line, and the finish_thread garbage collection when the model called
+   *  it. Never throws into the caller - the daemon must keep serving. */
+  const settleTurn = async (input: {
+    thread: { id: string; post: (m: string | AsyncIterable<string | StreamChunk>) => Promise<unknown>; unsubscribe: () => Promise<void> };
+    outcome: TurnOutcome;
+    startedAt: number;
+  }) => {
+    const { thread, outcome, startedAt } = input;
+    log(outcome.failed ? "serve.turn_failed" : "serve.turn_done", {
+      thread: thread.id,
+      seconds: Math.round((Date.now() - startedAt) / 1000),
+    });
+    // the user declared the work finished: close the thread now that the
+    // turn (and its claude subprocess) is over.
+    if (!outcome.finish) return;
+    let result: CleanupOutcome;
+    try {
+      result = cleanupThread({ threadId: thread.id });
+    } catch (e) {
+      const detail = (e instanceof Error ? e.message : String(e)).slice(0, 300);
+      log("serve.cleanup_error", { thread: thread.id, err: detail });
+      await thread.post(`tokenmaxxing: cleanup failed: ${detail}`);
+      return;
+    }
+    // a refusal keeps the subscription so the thread stays live for a retry.
+    if (result.removed) await thread.unsubscribe();
+    await thread.post(result.message);
+    log("serve.thread_finished", { thread: thread.id, removed: result.removed });
   };
 
   /** A proactive thread handle that can still stream natively. bot.thread()
@@ -365,17 +446,18 @@ async function runDaemon(): Promise<number> {
    *  falls back to card-less post-and-edit that also strands a blank message
    *  per card-only segment (verified in chat 4.34.0 + @chat-adapter/slack).
    *  Reusing the newest human message in the thread as currentMessage
-   *  restores the exact context an inbound turn would have. The explicit
-   *  ThreadImpl constructor (published typed API) is deliberate over the
-   *  prose-documented ThreadImpl.fromJSON/reviver restore path: fromJSON
-   *  takes the lazy config branch, which silently reverts
-   *  fallbackStreamingPlaceholderText to "..." (re-stranding the placeholder
-   *  this daemon suppresses) and needs registerSingleton for state. */
+   *  restores the exact context an inbound turn would have, and its author is
+   *  the natural requester to tag on a resumed turn. The explicit ThreadImpl
+   *  constructor (published typed API) is deliberate over the prose-documented
+   *  ThreadImpl.fromJSON/reviver restore path: fromJSON takes the lazy config
+   *  branch, which silently reverts fallbackStreamingPlaceholderText to "..."
+   *  (re-stranding the placeholder this daemon suppresses) and needs
+   *  registerSingleton for state. */
   const streamableThread = async (threadId: string) => {
     const handle = bot.thread(threadId);
     for await (const message of handle.messages) {
       if (relayable(message)) {
-        return new ThreadImpl({
+        const thread = new ThreadImpl({
           adapter: slack,
           stateAdapter: state,
           channelId: handle.channelId,
@@ -384,9 +466,11 @@ async function runDaemon(): Promise<number> {
           currentMessage: message,
           fallbackStreamingPlaceholderText: null,
         });
+        return { thread, requesterIds: [message.author.userId] };
       }
     }
-    return handle; // no human message on record: card-less is all there is
+    // no human message on record: card-less is all there is
+    return { thread: handle, requesterIds: [] };
   };
 
   /** Recover one thread whose activeTurn marker survived the previous daemon:
@@ -401,7 +485,7 @@ async function runDaemon(): Promise<number> {
    *  persisted (adversarial-review catch). */
   const recoverInterrupted = async (record: SlackThread) => {
     try {
-      const thread = await streamableThread(record.threadId);
+      const { thread, requesterIds } = await streamableThread(record.threadId);
       const link = linkForChannel(cfg, bareChannelId(thread.channelId));
       await withThreadTurn({
         threadId: record.threadId,
@@ -439,7 +523,9 @@ async function runDaemon(): Promise<number> {
           // A permanently unpostable channel (bot kicked, archived) therefore
           // retries on every restart; unlinking it clears the marker.
           await thread.post(decision.notice);
-          await runTurn({ thread, record: fresh, prompt: decision.prompt, sessionId: decision.sessionId, marker: decision.marker, link });
+          const startedAt = Date.now();
+          const outcome = await runTurn({ thread, record: fresh, prompt: decision.prompt, requesterIds, sessionId: decision.sessionId, marker: decision.marker, link });
+          await settleTurn({ thread, outcome, startedAt });
         },
       });
     } catch (e) {
@@ -460,14 +546,44 @@ async function runDaemon(): Promise<number> {
   };
 
   bot.onNewMention(async (thread, message, context) => {
-    const texts = [...(context?.skipped ?? []).filter(relayable), message].map((m) => m.text);
-    await tracked(handleTurn({ thread, texts, isMention: true }));
+    const relayed = [...(context?.skipped ?? []).filter(relayable), message].map((m) => ({ text: m.text, authorId: m.author.userId }));
+    await tracked(handleTurn({ thread, relayed, isMention: true }));
   });
   bot.onSubscribedMessage(async (thread, message, context) => {
     if (!relayable(message)) return; // never relay our own posts
-    const texts = [...(context?.skipped ?? []).filter(relayable), message].map((m) => m.text);
-    await tracked(handleTurn({ thread, texts, isMention: false }));
+    const relayed = [...(context?.skipped ?? []).filter(relayable), message].map((m) => ({ text: m.text, authorId: m.author.userId }));
+    await tracked(handleTurn({ thread, relayed, isMention: false }));
   });
+
+  // drain instead of dying mid-answer: stop taking new turns, let in-flight
+  // ones finish (bounded - a hung claude turn must not block a restart
+  // forever), then disconnect. A second signal forces an immediate exit.
+  // Registered BEFORE initialize() (post-0.19.1 review catch): the socket
+  // goes live inside initialize, so a turn could start while runDaemon was
+  // still suspended there and a signal in that window hit default
+  // disposition - an instant kill with no drain.
+  const DRAIN_MS = 300_000;
+  const shutdown = async (signal: string) => {
+    if (draining) {
+      log("serve.forced_exit", { signal });
+      process.exit(1);
+    }
+    draining = true;
+    log("serve.draining", { signal, turns: activeTurns.size });
+    console.log(`${c.yellow("●")} ${signal}: draining ${count({ n: activeTurns.size, noun: "in-flight turn" })} (again to force)`);
+    await Promise.race([Promise.allSettled([...activeTurns]), delay(DRAIN_MS)]);
+    try {
+      await bot.shutdown();
+    } catch (e) {
+      // exit must be reached even when the socket teardown rejects; the
+      // second-signal force path must not be the only escape.
+      log("serve.shutdown_error", { err: (e instanceof Error ? e.message : String(e)).slice(0, 300) });
+    }
+    log("serve.stopped", { dropped: activeTurns.size });
+    process.exit(0);
+  };
+  process.on("SIGTERM", () => void shutdown("SIGTERM"));
+  process.on("SIGINT", () => void shutdown("SIGINT"));
 
   // initialize() starts the PERSISTENT Socket Mode client (auto-reconnecting)
   // wired straight into event routing; the daemon only has to stay alive.
@@ -496,25 +612,6 @@ async function runDaemon(): Promise<number> {
     void tracked(recoverInterrupted(record));
   }
 
-  // drain instead of dying mid-answer: stop taking new turns, let in-flight
-  // ones finish (bounded - a hung claude turn must not block a restart
-  // forever), then disconnect. A second signal forces an immediate exit.
-  const DRAIN_MS = 300_000;
-  const shutdown = async (signal: string) => {
-    if (draining) {
-      log("serve.forced_exit", { signal });
-      process.exit(1);
-    }
-    draining = true;
-    log("serve.draining", { signal, turns: activeTurns.size });
-    console.log(`${c.yellow("●")} ${signal}: draining ${count({ n: activeTurns.size, noun: "in-flight turn" })} (again to force)`);
-    await Promise.race([Promise.allSettled([...activeTurns]), delay(DRAIN_MS)]);
-    await bot.shutdown();
-    log("serve.stopped", { dropped: activeTurns.size });
-    process.exit(0);
-  };
-  process.on("SIGTERM", () => void shutdown("SIGTERM"));
-  process.on("SIGINT", () => void shutdown("SIGINT"));
 
   console.log(`${c.green("●")} serving ${count({ n: cfg.links.length, noun: "linked channel" })} over Slack Socket Mode - mention the bot in a linked channel to open a session (Ctrl-C to stop)`);
   log("serve.started", { links: cfg.links.length });

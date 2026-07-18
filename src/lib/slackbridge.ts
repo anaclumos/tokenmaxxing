@@ -5,11 +5,13 @@
 // without losing threads). Verified against @anthropic-ai/claude-agent-sdk
 // 0.3.214 and code.claude.com/docs 2026-07-18; both change monthly.
 
+import { spawn } from "node:child_process";
+import { join } from "node:path";
 import { z } from "zod";
-import { query } from "@anthropic-ai/claude-agent-sdk";
+import { createSdkMcpServer, query, tool, type SpawnOptions } from "@anthropic-ai/claude-agent-sdk";
 import type { StreamChunk } from "chat";
 import { ensureBestAccount, pooledOptions, stopHookCheck } from "../sdk.ts";
-import type { SlackLink } from "./slackstate.ts";
+import { deleteSlackThread, type SlackLink } from "./slackstate.ts";
 import { agentEventChunks, newStreamMapState, SegmentBreakSchema } from "./slackstream.ts";
 import { log } from "./log.ts";
 
@@ -24,8 +26,36 @@ const SLACK_SYSTEM_PROMPT =
 export const TurnOutcomeSchema = z.object({
   sessionId: z.string().nullable(),
   failed: z.boolean(),
+  /** the model called finish_thread this turn: garbage-collect after the turn. */
+  finish: z.boolean(),
 });
 export type TurnOutcome = z.infer<typeof TurnOutcomeSchema>;
+
+/** The serve plugin shipped inside the package (src/serve-plugin/): skills
+ *  that teach a relayed session how to behave in a Slack thread, loaded per
+ *  turn via the SDK's local-plugin option and namespaced `tokenmaxxing:...`. */
+const SERVE_PLUGIN_DIR = join(import.meta.dir, "..", "serve-plugin");
+
+/**
+ * The per-turn context a UserPromptSubmit hook injects. The skills are static
+ * files, so the one dynamic fact they cannot carry - WHO asked - rides in
+ * here as the requester's raw mention token (`<@U...>` passes verbatim
+ * through the streamed markdown_text path, and the post-and-edit fallback's
+ * finalize leaves an already-formed mention intact). Wording is load-bearing:
+ * the ask-the-user skill points at the "Slack relay context" note.
+ */
+export function serveTurnContext(input: { requesterIds: string[] }): string {
+  const tokens = input.requesterIds.map((id) => `<@${id}>`);
+  let requester = "The requesting user is unknown this turn, so no mention token is available.";
+  if (tokens.length === 1) requester = `The requesting user's Slack mention token is ${tokens[0]}; include it literally in reply text to notify them.`;
+  if (tokens.length > 1) requester = `This turn folds messages from several users; their Slack mention tokens are ${tokens.join(" ")}. Include the relevant user's token literally in reply text to notify them.`;
+  return [
+    "Slack relay context: this session is relayed into a Slack thread by tokenmaxxing serve, and your reply posts back into the thread.",
+    requester,
+    "When you need the user's decision, approval, or input, follow the tokenmaxxing:ask-the-user skill (tag them, ask, end the turn).",
+    "The tokenmaxxing:serve-session skill explains how this session runs.",
+  ].join(" ");
+}
 
 const SegmentChunkSchema = z.union([z.string(), z.custom<StreamChunk>()]);
 type SegmentChunk = z.infer<typeof SegmentChunkSchema>;
@@ -64,6 +94,114 @@ function pushableStream(): {
   };
 }
 
+/** Full permission name of the finish_thread tool (mcp__<server>__<tool>):
+ *  it must be in allowedTools, because no one can answer a permission prompt
+ *  through Slack. */
+export const FINISH_THREAD_TOOL = "mcp__tokenmaxxing__finish_thread";
+
+/** The per-turn in-process MCP server exposing finish_thread. The handler runs
+ *  in the daemon process, but it must NOT delete anything inline: the claude
+ *  subprocess is still mid-turn and segments are still streaming to Slack, so
+ *  it only records the request and the daemon closes the thread after the
+ *  turn ends (serve.ts). alwaysLoad keeps the tool visible in the prompt
+ *  instead of deferred behind tool search: it has to be in view at the exact
+ *  moment the user says the work is done. */
+function finishToolServer(onFinish: () => void) {
+  return createSdkMcpServer({
+    name: "tokenmaxxing",
+    alwaysLoad: true,
+    tools: [
+      tool(
+        "finish_thread",
+        "Close out this Slack thread when the user clearly states the work is finished (shipped, done, clean this up) and wants the thread closed. After this turn ends the daemon drops the thread's session record, unsubscribes, and posts a confirmation; the repo checkout and everything in it are untouched. Do not call this for a merely answered question - only for an explicit wrap-up.",
+        {},
+        async () => {
+          onFinish();
+          return { content: [{ type: "text", text: "close-out scheduled - it runs right after this turn ends and posts its own confirmation; just acknowledge the wrap-up now" }] };
+        },
+      ),
+    ],
+  });
+}
+
+export const CleanupOutcomeSchema = z.object({
+  /** the thread's state is gone; a fresh @mention starts a new session. */
+  removed: z.boolean(),
+  message: z.string(),
+});
+export type CleanupOutcome = z.infer<typeof CleanupOutcomeSchema>;
+
+/**
+ * Close out a finished thread. Threads run IN the linked repo checkout (no
+ * per-thread worktree or branch since #14), so there is nothing on disk to
+ * collect: dropping the slack-threads record is the whole cleanup, and the
+ * shared checkout is never touched. The worktree-era residue gate and branch
+ * archiving died with the worktrees themselves.
+ */
+export function cleanupThread(input: { threadId: string }): CleanupOutcome {
+  deleteSlackThread(input.threadId);
+  return { removed: true, message: "thread finished - session closed; a fresh @mention here starts a new one" };
+}
+
+/** Live detached process-group leader pids: one process-exit hook SIGTERMs
+ *  them all, so a forced daemon exit (second signal, drain timeout) cannot
+ *  leak claude's tool subprocesses. */
+const liveGroups = new Set<number>();
+let groupExitHookArmed = false;
+
+function killGroup(pid: number): void {
+  try {
+    process.kill(-pid, "SIGTERM");
+  } catch (e) {
+    // ESRCH = the group is already gone, which is the state we wanted;
+    // anything else (EPERM, a bad pid) must surface, not silently leak.
+    if (!(e instanceof Error && "code" in e && e.code === "ESRCH")) throw e;
+  }
+}
+
+/**
+ * Spawns the claude child in its OWN process group (post-0.19.1 review catch):
+ * a terminal Ctrl-C delivers SIGINT to the whole foreground group, so a
+ * non-detached child died at the same instant the daemon's drain started and
+ * the drain could never preserve the in-flight turn. Detached, only the daemon
+ * receives the terminal signal. Two consequences the review on PR #16 caught:
+ * the SDK's SpawnedProcess contract consumes only stdin/stdout, so stderr must
+ * be ignored outright (a piped-but-never-read stderr fills and blocks a chatty
+ * child; exit errors lose the stderr tail, an accepted cost of turn survival),
+ * and the SDK's abort path kills the lone PID, so the forwarded abort signal
+ * and a process-exit hook SIGTERM the whole detached group instead - claude's
+ * tool subprocesses must not outlive the daemon or the turn.
+ */
+export function detachedClaudeSpawn(options: SpawnOptions) {
+  const stdio: ["pipe", "pipe", "ignore"] = ["pipe", "pipe", "ignore"];
+  const child = spawn(options.command, options.args, {
+    cwd: options.cwd,
+    env: options.env,
+    stdio,
+    detached: true,
+  });
+  if (!groupExitHookArmed) {
+    groupExitHookArmed = true;
+    process.once("exit", () => {
+      for (const pid of liveGroups) killGroup(pid);
+    });
+  }
+  if (child.pid !== undefined) {
+    const pid = child.pid;
+    liveGroups.add(pid);
+    const onAbort = () => killGroup(pid);
+    // an already-aborted signal never fires "abort" again (cubic review
+    // catch): a cancellation racing the spawn must still kill the group.
+    if (options.signal?.aborted) onAbort();
+    else options.signal?.addEventListener("abort", onAbort, { once: true });
+    child.once("exit", () => {
+      liveGroups.delete(pid);
+      options.signal?.removeEventListener("abort", onAbort);
+    });
+  }
+  return child;
+}
+
 /**
  * One claude turn relayed into a Slack thread as a SEQUENCE of messages: reply
  * text streams natively, thinking and tool calls stream as task_update cards
@@ -79,6 +217,8 @@ export async function relayThread(input: {
   cwd: string;
   sessionId: string | null;
   prompt: string;
+  /** bare Slack user id (U...) of the triggering message's author. */
+  requesterIds: string[];
   link: SlackLink;
   post: (m: AsyncIterable<SegmentChunk>) => Promise<unknown>;
   /** fires the moment the init message assigns a session id, so the caller can
@@ -87,7 +227,7 @@ export async function relayThread(input: {
    *  kept sessionId null, stranding the session). */
   onSessionId?: (sessionId: string) => void;
 }): Promise<TurnOutcome> {
-  const outcome: TurnOutcome = { sessionId: input.sessionId, failed: false };
+  const outcome: TurnOutcome = { sessionId: input.sessionId, failed: false, finish: false };
   let segment: ReturnType<typeof pushableStream> | null = null;
   let lastPost: Promise<unknown> = Promise.resolve();
   let postedText = false;
@@ -117,10 +257,18 @@ export async function relayThread(input: {
   try {
     // the switch decision runs at the spawn boundary, same as the CLI hooks.
     await ensureBestAccount();
+    const pooled = pooledOptions();
     const q = query({
       prompt: input.prompt,
       options: {
-        ...pooledOptions(),
+        ...pooled,
+        // claude >= 2.1.142 emits the structured Task tools by default and
+        // TodoWrite (the source of the Todos checklist card) never fires;
+        // this documented opt-out restores it (agent-sdk todo-tracking docs,
+        // verified 2026-07-18 against SDK 0.3.214 + claude 2.1.214). Reuses
+        // pooled.env so the scrubbed env copy is built once per turn (cubic
+        // review catch on PR #5).
+        env: { ...pooled.env, CLAUDE_CODE_ENABLE_TASKS: "0" },
         cwd: input.cwd,
         permissionMode: input.link.permissionMode,
         // the SDK refuses bypassPermissions without this explicit opt-in.
@@ -131,7 +279,25 @@ export async function relayThread(input: {
         // without the tool the model asks in prose and the user's thread
         // reply becomes the next turn.
         disallowedTools: ["AskUserQuestion"],
-        hooks: { Stop: [{ hooks: [stopHookCheck] }] },
+        spawnClaudeCodeProcess: detachedClaudeSpawn,
+        // the user saying "we're done" closes the thread: the model flags it
+        // via this in-process tool, the daemon drops the record post-turn.
+        mcpServers: { tokenmaxxing: finishToolServer(() => { outcome.finish = true; }) },
+        allowedTools: [FINISH_THREAD_TOOL],
+        // serve skills (ask-the-user, serve-session); discovered skills are
+        // enabled by default, so no `skills` option is needed.
+        plugins: [{ type: "local", path: SERVE_PLUGIN_DIR }],
+        hooks: {
+          UserPromptSubmit: [{
+            hooks: [async () => ({
+              hookSpecificOutput: {
+                hookEventName: "UserPromptSubmit",
+                additionalContext: serveTurnContext({ requesterIds: input.requesterIds }),
+              },
+            })],
+          }],
+          Stop: [{ hooks: [stopHookCheck] }],
+        },
         ...(input.link.model ? { model: input.link.model } : {}),
         ...(input.sessionId ? { resume: input.sessionId } : {}),
       },

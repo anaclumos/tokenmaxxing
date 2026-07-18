@@ -5,7 +5,7 @@
 // the cwd must stay byte-stable for the thread's whole life). A present but
 // unparseable slack.json THROWS (no silent empty config); absent = null.
 
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
 import { paths } from "./paths.ts";
@@ -105,6 +105,12 @@ export function saveSlackThread(t: SlackThread): void {
   writeFileAtomic(threadFile(t.threadId), JSON.stringify(SlackThreadSchema.parse(t), null, 2) + "\n");
 }
 
+/** Drop a finished thread's record: the thread-level GC (cleanupThread). */
+export function deleteSlackThread(threadId: string): void {
+  const f = threadFile(threadId);
+  if (existsSync(f)) unlinkSync(f);
+}
+
 export function listSlackThreads(): SlackThread[] {
   if (!existsSync(paths.slackThreadsDir)) return [];
   const out: SlackThread[] = [];
@@ -191,11 +197,37 @@ export function bareChannelId(id: string): string {
   return id.startsWith("slack:") ? id.slice("slack:".length) : id;
 }
 
-/** Strip a leading Slack mention token ("<@U0123> rest") from message text. */
-export function stripLeadingMention(text: string): string {
-  const trimmed = text.trimStart();
-  if (!trimmed.startsWith("<@")) return text.trim();
-  const close = trimmed.indexOf(">");
-  if (close < 0) return text.trim();
-  return trimmed.slice(close + 1).trim();
+/**
+ * Strip a leading Slack mention OF THE BOT from message text. Two forms: raw
+ * mrkdwn ("<@U0123> rest") and the bare form the Chat SDK's incoming
+ * mrkdwn->markdown normalization produces ("@U0123 rest") - observed live
+ * 2026-07-18 when a relayed prompt arrived starting "@U0BHS1YKNSK". Only a
+ * token whose id equals botUserId is stripped (review catch 2026-07-18:
+ * handleTurn runs this over every subscribed message, so a follow-up starting
+ * with a colleague's mention must keep it - the prompt would otherwise lose
+ * who it is about). An unknown botUserId strips nothing: without the id we
+ * cannot tell the bot's mention from anyone else's.
+ */
+export function stripLeadingMention(input: { text: string; botUserId: string | null }): string {
+  const trimmed = input.text.trimStart();
+  if (input.botUserId === null) return input.text.trim();
+  if (trimmed.startsWith("<@")) {
+    const close = trimmed.indexOf(">");
+    if (close < 0) return input.text.trim();
+    const [id] = trimmed.slice(2, close).split("|");
+    if (id === input.botUserId) return trimmed.slice(close + 1).trim();
+    return input.text.trim();
+  }
+  if (trimmed.startsWith("@U") || trimmed.startsWith("@W")) {
+    let end = 1;
+    while (end < trimmed.length) {
+      const ch = trimmed[end] ?? "";
+      if ((ch >= "0" && ch <= "9") || (ch >= "A" && ch <= "Z")) end += 1;
+      else break;
+    }
+    const next = trimmed[end];
+    const atBoundary = next === undefined || next === " " || next === "\n" || next === "\t";
+    if (end - 1 >= 2 && atBoundary && trimmed.slice(1, end) === input.botUserId) return trimmed.slice(end).trim();
+  }
+  return input.text.trim();
 }
