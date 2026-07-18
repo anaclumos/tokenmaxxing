@@ -36,9 +36,13 @@ export const paths = {
   credsDir: join(TM_HOME, "creds"),
 
   /** `xx serve` slack bridge: tokens + channel->repo links (0600: holds the
-   *  xoxb-/xapp- tokens) and per-thread claude session records. */
+   *  xoxb-/xapp- tokens), per-thread claude session records, and the
+   *  single-instance flock (a new daemon generation blocks on it until the
+   *  previous one - possibly still draining an in-flight turn - fully exits,
+   *  so two generations never act on the same thread records or cwd). */
   slackJson: join(TM_HOME, "slack.json"),
   slackThreadsDir: join(TM_HOME, "slack-threads"),
+  serveLockFile: join(TM_HOME, "serve-lock"),
 
   /** ~/.claude.json - holds the active `oauthAccount` identity object. */
   claudeJson: env("TOKENMAXXING_CLAUDE_JSON", join(HOME, ".claude.json")),

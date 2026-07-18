@@ -278,9 +278,12 @@ export function cleanupThread(input: { threadId: string }): CleanupOutcome {
 const liveGroups = new Set<number>();
 let groupExitHookArmed = false;
 
-function killGroup(pid: number): void {
+/** Exported for serve's orphan reaping: a daemon killed uncatchably (SIGKILL,
+ *  crash) never runs the exit hook below, so the next generation must be able
+ *  to terminate a surviving detached group before resuming its turn. */
+export function killGroup(pid: number, signal: "SIGTERM" | "SIGKILL" = "SIGTERM"): void {
   try {
-    process.kill(-pid, "SIGTERM");
+    process.kill(-pid, signal);
   } catch (e) {
     // ESRCH = the group is already gone, which is the state we wanted;
     // anything else (EPERM, a bad pid) must surface, not silently leak.
@@ -360,6 +363,19 @@ export async function relayThread(input: {
   requesterIds: string[];
   link: SlackLink;
   post: (m: AsyncIterable<SegmentChunk>) => Promise<unknown>;
+  /** fires the moment an init message assigns a session id the caller has not
+   *  persisted yet, so a first-turn kill stays resumable (2026-07-18
+   *  incident: a restart killed a first turn and the thread record kept
+   *  sessionId null, stranding the session). Retries resume the same session,
+   *  so re-fires only on an actual id change. */
+  onSessionId?: (sessionId: string) => void;
+  /** fires with the DETACHED claude child's pid (= its process-group id) the
+   *  moment it spawns - once per spawn, so a retry's fresh child replaces the
+   *  previous pid - so the caller can persist it into the activeTurn marker:
+   *  a daemon death that skips the exit hook (SIGKILL, crash) leaves that
+   *  group alive, and the next generation must find and reap it before
+   *  resuming the turn. */
+  onSpawn?: (pid: number) => void;
   /** daemon shutdown signal: aborts park/retry sleeps so a drain never sits
    *  out a depleted-pool countdown. */
   drainSignal?: AbortSignal;
@@ -445,7 +461,21 @@ export async function relayThread(input: {
           // without the tool the model asks in prose and the user's thread
           // reply becomes the next turn.
           disallowedTools: ["AskUserQuestion"],
-          spawnClaudeCodeProcess: detachedClaudeSpawn,
+          spawnClaudeCodeProcess: (spawnOptions) => {
+            const child = detachedClaudeSpawn(spawnOptions);
+            if (child.pid !== undefined) {
+              try {
+                input.onSpawn?.(child.pid);
+              } catch (e) {
+                // a failed marker persist must not leave an untracked group
+                // running (cubic review catch): kill it, then fail the spawn
+                // loudly through the SDK.
+                killGroup(child.pid);
+                throw e;
+              }
+            }
+            return child;
+          },
           // the user saying "we're done" closes the thread: the model flags it
           // via this in-process tool, the daemon drops the record post-turn.
           mcpServers: { tokenmaxxing: finishToolServer(() => { outcome.finish = true; }) },
@@ -473,7 +503,13 @@ export async function relayThread(input: {
       const mapState = newStreamMapState();
       let result: string | null = null;
       for await (const message of q) {
-        if (message.type === "system" && message.subtype === "init") outcome.sessionId = message.session_id;
+        if (message.type === "system" && message.subtype === "init") {
+          // persist BEFORE the turn ends so a first-turn kill stays
+          // resumable; compared against the last known id, so retry attempts
+          // resuming the same session re-fire only on an actual change.
+          if (message.session_id !== outcome.sessionId) input.onSessionId?.(message.session_id);
+          outcome.sessionId = message.session_id;
+        }
         if (message.type === "result") {
           outcome.sessionId = message.session_id;
           // is_error can ride a "success" subtype (a mid-turn usage limit
