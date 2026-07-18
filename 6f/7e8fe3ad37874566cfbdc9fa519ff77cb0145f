@@ -1,0 +1,50 @@
+AGENTS.md
+  s_ed0ed0d85004e1::t_a8c140d534b997 70-71
+src/cli/onboard.ts
+  s_ed0ed0d85004e1::t_8ac1182f9e1509 1-112
+README.md
+  s_ed0ed0d85004e1::t_1db3b26c1e920d 41
+test/auth.test.ts
+  s_ed0ed0d85004e1::t_7be588f2c7ff73 1-58,62-63,69,71-78
+  s_ed0ed0d85004e1::t_9d0e1acf3c8d89 59-61,64-68,70
+src/cli/add.ts
+  s_ed0ed0d85004e1::t_4c7610dbe6d60e 1-3,8-10,18-20
+  s_ed0ed0d85004e1::t_00914739d7d703 25-27,29
+src/cli/auth.ts
+  s_ed0ed0d85004e1::t_a1100c378bac8e 1-22,26-32,35-37,40-102,107,109-139,144-145,147-177
+  s_ed0ed0d85004e1::t_e54b0854578213 23-25,33-34,38-39
+  s_ed0ed0d85004e1::t_8a63768d6e9271 103-106,108
+  s_ed0ed0d85004e1::t_7c6cd0c4a5bbf9 140-143,146
+src/main.ts
+  s_ed0ed0d85004e1::t_8bb6961a31847e 85
+  s_ed0ed0d85004e1::t_5862bf61fe16cf 41
+  s_ed0ed0d85004e1::t_c603185e7884ec 13
+src/cli/switch.ts
+  s_ed0ed0d85004e1::t_6368dddfc25b03 89
+  s_ed0ed0d85004e1::t_bed849e765ed08 46
+DESIGN.md
+  s_ed0ed0d85004e1::t_c28da1ae8cf585 74
+src/cli/doctor.ts
+  s_ed0ed0d85004e1::t_4840e169b8141f 73
+  s_ed0ed0d85004e1::t_130608b7eb2d5a 63
+  s_ed0ed0d85004e1::t_dc614a74da7bbc 67
+src/lib/sample.ts
+  s_ed0ed0d85004e1::t_84d23d247cc191 71
+  s_ed0ed0d85004e1::t_6ec7b9d3d83f01 77
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "6f7e8fe3ad37874566cfbdc9fa519ff77cb0145f",
+  "prompts": {},
+  "sessions": {
+    "s_ed0ed0d85004e1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "98fc7c12-0e4d-422f-aea0-2a37bfb68ffb",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    }
+  }
+}
