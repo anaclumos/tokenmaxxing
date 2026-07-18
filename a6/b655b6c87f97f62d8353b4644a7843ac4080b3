@@ -1,0 +1,26 @@
+test/slack.test.ts
+  s_249ac92195dd11::t_2ac1d8ddbad233 91-101
+.memory/serve-slackbot-decisions.md
+  s_249ac92195dd11::t_19c53911708d6f 32
+AGENTS.md
+  s_249ac92195dd11::t_636a3aabcb525b 204
+src/lib/slackstate.ts
+  s_249ac92195dd11::t_03b67dba4efcb5 124-131,134-139,149-150
+  s_249ac92195dd11::t_bc18da6c5651f6 140-148
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "a6b655b6c87f97f62d8353b4644a7843ac4080b3",
+  "prompts": {},
+  "sessions": {
+    "s_249ac92195dd11": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c3800604-37ed-4c22-8982-e44d70040ced",
+        "model": "claude-fable-5"
+      },
+      "human_author": null
+    }
+  }
+}
