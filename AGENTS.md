@@ -82,7 +82,8 @@ tokenmaxxing (greenfield 2026-07-08) is Sunghyun's CLI for managing usage quota 
 
 ## Stack and dependencies
 
-- TS on Bun. Deps are exactly: zod, es-toolkit, ky. ky does the bounded Retry-After GET retries: do not hand-roll them. `flock(2)` via `bun:ffi` (`dlopen("libc.so.6")` works on Linux arm64 glibc; LOCK constants identical to darwin).
+- TS on Bun. Core deps: zod, es-toolkit, ky. ky does the bounded Retry-After GET retries: do not hand-roll them. `flock(2)` via `bun:ffi` (`dlopen("libc.so.6")` works on Linux arm64 glibc; LOCK constants identical to darwin).
+- `xx serve` deps (user-authorized 2026-07-18, serve-only - nothing else may import them): `chat` + `@chat-adapter/slack` + `@chat-adapter/state-memory` (Vercel Chat SDK, Socket Mode) and `@anthropic-ai/claude-agent-sdk` (driven through src/sdk.ts's pooled surface). EVE was researched and dropped (user choice: it owns its own model loop instead of driving Claude Code). sdk.ts itself still imports nothing from the Agent SDK.
 - Config is JSON at `config.json` (user dropped TOML/smol-toml 2026-07-09: "let's just use json").
 - node:fs/path/os ARE Bun-native (Zig impls); Bun's docs point to node:fs beyond Bun.file/Bun.write, which are async-only, non-atomic, and have no create-mode, so they are unfit for the 0600 cred store and the flock fd (assessed 2026-07-09). The user probes for simplification regularly; keep this rationale handy.
 
@@ -193,6 +194,13 @@ Each guards a verified live failure. Preserve all of them.
 - Rejected on the way (do not reintroduce): meter glyphs and Unicode fractions (hard to read), dim/faint ANSI anywhere (the user finds it unreadable; semantic colors only), account names, filled/hollow-circle markers, S/W window labels, % signs, remaining-instead-of-used, showing the active account twice, reverse-video alarms, hiding the 5h window when green.
 - Gotcha (fixed 2026-07-11): statusLine stdin sends top-level sub-objects (workspace/context_window/cost/effort) as JSON null, so schemas must be `.nullable().optional()`, not just `.optional()`.
 - Code placement: familyTokens/matchedFamily live in usage.ts (moved out of decide.ts so the statusline shim stays off flock/oauth); swapPreference in picker.ts is shared by pickBest and the pool sort.
+
+## Slack bridge (`xx serve`, 0.18.0)
+
+- Local Socket Mode daemon: `serve setup` (manifest + token prompts into 0600 `slack.json`), `serve link <channel-id> <repo> [--no-worktree] [--dangerous] [--model <m>]`, bare `serve` runs. A mention in a linked channel subscribes the thread, creates a worktree (`slack-worktrees/<threadKey>`, branch `tm-slack-<threadKey>`, never auto-deleted), and each thread message runs ONE Agent SDK `query()` with `resume` - never a persistent streaming query, so `ensureBestAccount()` lands every turn on the freshest account and the daemon restarts without losing threads (thread records in `slack-threads/`, resume is cwd-keyed so the cwd must stay byte-stable).
+- Channel links accept channel IDs only (isChannelId, structural C/G check). Per-link `permissionMode` defaults to acceptEdits; `--dangerous` = bypassPermissions. Turn errors post trimmed message-only text (a raw error body could echo request material). Socket loop aborts visibly after 3 consecutive failures.
+- Chat SDK facts (verified 2026-07-18 against installed 4.34.0 types, both change often): `createSlackAdapter({mode:"socket", botToken, appToken})`, `new Chat({userName, adapters, state: createMemoryState(), concurrency: "queue"})` (per-thread lock+queue), handlers `onNewMention`/`onSubscribedMessage(thread, message)`, `thread.post(AsyncIterable<string>)` streams with debounced edit fallback, `startSocketModeListener({}, durationMs)` with no webhookUrl processes events in-process (the serverless forwarding path is not used). Message.author has isMe/isBot for self-loop guards.
+- NOT yet live-verified: a real Socket Mode connection (needs real tokens) and a real relayed turn (meters an account - ask the user first). Run one live smoke test before trusting the bridge; keep this bullet updated when it happens.
 
 ## SDK surface (v0.11.0)
 

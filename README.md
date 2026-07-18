@@ -45,6 +45,7 @@ claude                  # use claude as always
 | `tokenmaxxing status --force` | additionally ping every account (one tiny haiku request each) so all 5h session timers start now, then sample fresh |
 | `tokenmaxxing watch [seconds]` | live status: re-render every N seconds (default 120, floor 30; never pings) |
 | `tokenmaxxing config` | effective config with sources; `get`/`set`/`unset` dotted keys, `tidy` prunes unknown keys |
+| `tokenmaxxing serve` | Slack bridge daemon (Socket Mode, no public URL): `setup` prints the app manifest and stores the two tokens, `link <channel-id> <repo>` ties a channel to a repo, then mentioning the bot in that channel opens a Claude Code session per thread (own git worktree by default) and thread messages relay in and out |
 | `tokenmaxxing doctor` | verify the supervisor + settings entries survived |
 | `tokenmaxxing rename [--codex] <sel> <label>` / `rm <sel>` | manage the pool (`--codex` targets the codex pool: one email can hold both a claude and a codex account) |
 | `tokenmaxxing uninstall` | remove supervisor + settings entries (accounts/credentials kept) |

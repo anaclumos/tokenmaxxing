@@ -83,6 +83,18 @@ The decision engages at `five_hour >= 50%` (policy.greedySessionFloor): from the
 
 ---
 
+## 5b. The Slack bridge (`xx serve`, 0.18.0)
+
+A local Socket Mode daemon (no public URL) that turns Slack threads into Claude Code sessions on the pooled accounts. Stack (user decision 2026-07-18): Vercel's Chat SDK (`chat` + `@chat-adapter/slack`) for the Slack side; the Claude Agent SDK driven through `src/sdk.ts`'s pooled surface for the claude side - `xx serve` is that surface's first in-repo consumer. EVE (Vercel's agent framework) was researched and explicitly dropped: it owns its own model loop via AI Gateway, so it would replace Claude Code rather than drive it.
+
+- **Config**: `slack.json` (0600 - it holds the xoxb-/xapp- tokens) with per-channel links `{channel, repo, worktree, permissionMode, model?}`. `serve setup` prints the app manifest (minimal scopes: app_mentions:read, channels:history, groups:history, chat:write, files:write, users:read + socket mode) and prompts for the tokens; `serve link <channel-id> <repo>` manages links (channel IDs only - names drift, ids don't).
+- **Thread = session**: a bot mention in a linked channel subscribes the thread, creates `slack-worktrees/<threadKey>` (branch `tm-slack-<threadKey>` cut from the repo's HEAD; `--no-worktree` links run in the repo itself), and records `{threadId, cwd, sessionId}` under `slack-threads/`. Resume is cwd-keyed in claude, so the cwd stays byte-stable for the thread's life; worktrees are never auto-deleted (they hold the thread's work).
+- **Turn = spawn**: each thread message runs ONE `query()` with `resume: sessionId` (never a persistent streaming query - the SDK subprocess reads credentials at spawn, so per-turn spawns are what let `ensureBestAccount()` land each turn on the freshest account, and the daemon can restart without losing threads). `stopHookCheck` rides along as the SDK Stop hook. Streamed `text_delta`s feed `thread.post(AsyncIterable)` (the adapter debounces edits); tool-only turns post the final result text.
+- **Safety posture**: per-link `permissionMode`, default `acceptEdits`; `--dangerous` opts a link into `bypassPermissions`. Turn failures post a trimmed message-only diagnostic (never a raw error body). The socket loop aborts visibly after 3 consecutive connection failures.
+- **Verified hermetically** (2026-07-18): schema/link management, worktree creation + idempotency, arg parsing, daemon fail-fast paths. **Not yet live-verified**: a real Socket Mode connection under Bun (needs real tokens; the underlying ws/undici primitives tested clean) and a real relayed turn (meters an account). Run one live smoke test before relying on it.
+
+---
+
 ## 6. Honest papercuts
 - **Respawn hiccup (depleted pause only).** Plain swaps never restart the session. When the whole pool is depleted you see `claude` stop, a countdown, and a resume; anything typed in the split second before the SIGTERM is lost, and the supervisor resets terminal mode so nothing is left garbled.
 - **Adoption lag.** macOS reads the keychain through a raw 30s cache, so at most the first turn after a swap can still meter the old account. The bars' headroom absorbs it.
