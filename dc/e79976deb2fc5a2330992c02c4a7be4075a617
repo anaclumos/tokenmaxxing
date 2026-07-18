@@ -1,0 +1,216 @@
+.memory/stella-linux-host.md
+  s_ee50bd8da49b28::t_7fc45bf073f4c5 10
+  s_ee50bd8da49b28::t_4200e7b5660777 7-9
+  s_ee50bd8da49b28::t_a90e0ec7ae8d74 1-6
+.memory/headless-decision-freshness.md
+  s_ee50bd8da49b28::t_a3aade75f75f2e 1-18
+.memory/switch-policy-pace-pressure.md
+  s_dd8a76210ccaac::t_8ebb8daf19900c 3
+  s_fd756308d14a99::t_175d8a3be4bee6 16
+  s_dd8a76210ccaac::t_734b97493de864 12-13
+  s_fd756308d14a99::t_38135e520ee391 1-2,4-11,14-15
+.memory/no-rm-rf-command-form.md
+  s_dd8a76210ccaac::t_da9ad50d2433b2 1-12
+.memory/xx-quota-chart-labels.md
+  s_f6c0512957b93d::t_7e7dc2be491c89 1-2,4-7,9-12
+  s_f6c0512957b93d::t_dfb7ad6b8332f8 3,8
+.memory/macos-no-bin-true-probe-recursion.md
+  s_5fb03bae7200e6::t_7858bdd2495565 12
+  s_5fb03bae7200e6::t_8facf38b7b99af 1-11
+.memory/lunicomputer-linux-host.md
+  s_ee50bd8da49b28::t_b4477a7b0009ae 8
+  s_ee50bd8da49b28::t_b9d02dd08a815a 5-7
+  s_ee50bd8da49b28::t_2fa2a1a09e73aa 1-4
+.memory/credential-dir-cleanup-rule.md
+  s_dd8a76210ccaac::t_ec580a9f6dab2c 1-12
+.memory/MEMORY.md
+  s_ed0ed0d85004e1::t_b559905e988ee2 3
+  s_ee50bd8da49b28::t_ab167a2927ebd7 17-18
+  s_ee50bd8da49b28::t_cbdbf16071b416 10
+  s_dd8a76210ccaac::t_681c9baea8306b 12
+  s_dd8a76210ccaac::t_fc4bd0c4936e4e 22
+  s_920957095b64ab::t_c79a9dbf5ac634 19
+  s_dd8a76210ccaac::t_ec4e264a6a67ce 20
+  s_ed0ed0d85004e1::t_0a9032c0df0f3a 7
+  s_6b74f358a350d3::t_87bfec02329778 15
+  s_dd8a76210ccaac::t_0a2a6c416f60d3 23
+  s_ed0ed0d85004e1::t_9714a2f6dec392 1-2
+  s_ed0ed0d85004e1::t_ae1cdff938dfc7 4-6
+  s_dd8a76210ccaac::t_7709649d4df4d7 21
+  s_dd8a76210ccaac::t_159464e1f4d9a6 24
+  s_ed0ed0d85004e1::t_0bae27009f3204 8-9,11,13-14,16
+.memory/live-pool-runs-need-permission.md
+  s_1eb3b42f595d2e::t_e86f892d565140 1-12
+.memory/cc-codex-auth-mechanics.md
+  s_dd8a76210ccaac::t_831a36df176f11 24
+  s_dd8a76210ccaac::t_46f47ab89b9d42 8
+  s_f6c0512957b93d::t_b0f1650965593f 26-27
+  s_896b196c9dbc69::t_be6c60d034b41e 30-31
+  s_dd8a76210ccaac::t_281ac8c4f3be3b 12
+  s_dd8a76210ccaac::t_bba09c7c703174 10
+  s_6b74f358a350d3::t_c4b0db44925d4c 1-7,9,11,13-23,25,28-29,32-34
+.memory/bun-tcc-appdata-prompts.md
+  s_920957095b64ab::t_0f8a8c04afea7a 1-15
+.memory/serve-slackbot-decisions.md
+  s_ed0ed0d85004e1::t_7c7e6dccc55858 19-27
+  s_ed0ed0d85004e1::t_21160261e351af 16-18
+  s_ed0ed0d85004e1::t_29c5854041978e 28
+  s_ed0ed0d85004e1::t_2784bd99e48575 1-15
+.memory/statusline-replacement-in-progress.md
+  s_6b74f358a350d3::t_b08ead8d463a8a 3,10-24
+  s_6b74f358a350d3::t_c52de44f8beda5 8
+  s_5e6dd772697113::t_b8f2d3d30a9dce 1-2,4-7,9
+.memory/linux-boxes-track-npm.md
+  s_ee50bd8da49b28::t_747e0b4cb28b6f 1-11
+.memory/tokenmaxxing-project.md
+  s_6b74f358a350d3::t_868091144d0286 23-24
+  s_ebfaed2de28b91::t_f6a02eca4416c3 1-22
+.memory/agent-sdk-auth-surface.md
+  s_dd8a76210ccaac::t_5f50bc153c7156 19
+  s_dd8a76210ccaac::t_3a89a1b677935e 1-11,13-18
+  s_dd8a76210ccaac::t_085403c43c5510 12
+.memory/supervisor-recursion-guards.md
+  s_a5698ddb7fa9fb::t_c553f7d1cf9232 1-12
+.memory/cc-per-model-limits.md
+  s_dbde73105c072d::t_c9de2ced0b7a17 1-23
+.memory/macos-rm-interactive-alias.md
+  s_efc0814a8ed1d5::t_0b0c59a6ec67c6 1-12
+.memory/usage-after-switch-live-observation.md
+  s_246dd70c9802f0::t_3a0edf51a323df 1-8
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "dce79976deb2fc5a2330992c02c4a7be4075a617",
+  "prompts": {},
+  "sessions": {
+    "s_1eb3b42f595d2e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9fd60d4b-79f0-43ac-96cf-09949e7bb408",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    },
+    "s_246dd70c9802f0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "10d001fa-7386-4c6d-a118-7e378a795dcc",
+        "model": "unknown"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    },
+    "s_5e6dd772697113": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d368b753-1403-4bb0-8ea2-63a277abc20a",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    },
+    "s_5fb03bae7200e6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1b57944e-de3a-46f0-b053-b9e19e890f86",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    },
+    "s_6b74f358a350d3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7425fd0e-6db7-4ac2-b396-ff318cae9221",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    },
+    "s_896b196c9dbc69": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "585acccb-2c39-4e66-a0ea-8629406eeee3",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    },
+    "s_920957095b64ab": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "dc218aa2-eb86-4de9-9676-e5b5bb6f16f4",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    },
+    "s_a5698ddb7fa9fb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f3fa1870-d052-421c-af6a-956d5bc647ac",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    },
+    "s_dbde73105c072d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bc651c69-2ec5-402c-a272-c517bb0f09b4",
+        "model": "unknown"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    },
+    "s_dd8a76210ccaac": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d24f58e4-f0b7-4401-be97-e21d2242ce08",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    },
+    "s_ebfaed2de28b91": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "02381e79-cf1a-4109-9968-62b000c625ea",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    },
+    "s_ed0ed0d85004e1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "98fc7c12-0e4d-422f-aea0-2a37bfb68ffb",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    },
+    "s_ee50bd8da49b28": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c672f012-7623-47d2-bba2-86ec6b7ae14e",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    },
+    "s_efc0814a8ed1d5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "87a38591-828a-43e4-9fdb-5866a186dd87",
+        "model": "unknown"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    },
+    "s_f6c0512957b93d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "014a7d52-2fe0-48ba-b823-3529ecc8cdd0",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    },
+    "s_fd756308d14a99": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f9878177-4bf3-43cd-8b56-620320bd4402",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    }
+  }
+}
