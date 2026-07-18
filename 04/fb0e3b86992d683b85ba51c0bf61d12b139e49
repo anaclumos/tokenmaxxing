@@ -1,0 +1,65 @@
+docs/lib/source.ts
+  s_36700e42083764::t_f37fb8564eab45 5,9
+docs/content/docs/switching.mdx
+  s_36700e42083764::t_37eb4766f655be 1-41
+docs/content/docs/sdk.mdx
+  s_36700e42083764::t_51c0ea2f36d7fb 1-31
+docs/app/[lang]/(docs)/layout.tsx
+  s_36700e42083764::t_49c9b9ab7146b2 1-13
+docs/content/docs/state-directory.mdx
+  s_36700e42083764::t_b6b0be5203b94d 1-25
+docs/content/docs/distribution.mdx
+  s_36700e42083764::t_0f41bd6483e21a 1-12
+docs/content/docs/index.mdx
+  s_36700e42083764::t_d5b804201eaab2 2-3,6-26,31-34
+docs/content/docs/platforms.mdx
+  s_36700e42083764::t_24b5bc1e69afa6 1-16
+docs/content/docs/commands.mdx
+  s_36700e42083764::t_18d46c0e68169a 1-25
+docs/proxy.ts
+  s_36700e42083764::t_8d69e8524d3b43 6,8-10,18-20
+  s_36700e42083764::t_590e51c4a7f573 37,41
+docs/content/docs/serve.mdx
+  s_36700e42083764::t_0631a832505d01 1-23
+docs/app/[lang]/(docs)/[[...slug]]/page.tsx
+  s_36700e42083764::t_4c23a2c130fdca 1-65
+docs/content/docs/meta.json
+  s_36700e42083764::t_e4fba8f636ebad 19
+  s_36700e42083764::t_55617182140854 1-18,20-21
+docs/lib/shared.ts
+  s_36700e42083764::t_c3a5bed0713214 2-3
+docs/content/docs/codex.mdx
+  s_36700e42083764::t_a65f9607b95966 1-27
+docs/content/docs/terms.mdx
+  s_36700e42083764::t_bbca6340312123 1-6
+docs/content/docs/statusline.mdx
+  s_36700e42083764::t_7f8e557315c61c 1-21
+docs/content/docs/limitations.mdx
+  s_36700e42083764::t_ed06b46647ebf5 1-10
+docs/content/docs/quickstart.mdx
+  s_36700e42083764::t_87be6a9d38a697 1-28
+docs/content/docs/credentials.mdx
+  s_36700e42083764::t_43e716b8e515c6 1-19
+docs/content/docs/architecture.mdx
+  s_36700e42083764::t_98b1d0cf569c07 1-48
+docs/content/docs/configuration.mdx
+  s_36700e42083764::t_5d3c6b3ac08bd6 1-28
+docs/content/docs/troubleshooting.mdx
+  s_36700e42083764::t_1957fee95cc73e 1-34
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "04fb0e3b86992d683b85ba51c0bf61d12b139e49",
+  "prompts": {},
+  "sessions": {
+    "s_36700e42083764": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ceac3c73-063c-4280-a339-82888d1d952a",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    }
+  }
+}
