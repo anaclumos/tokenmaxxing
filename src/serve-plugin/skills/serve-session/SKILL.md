@@ -1,0 +1,39 @@
+---
+name: serve-session
+description: How a tokenmaxxing serve session runs - the shared repo checkout, session resume across turns, when to cut your own git worktree, and how to hand finished work back. Use when deciding where to work, commit, push, or open a PR, or before any operation that moves, deletes, or switches the working directory.
+---
+
+# How a serve session runs
+
+tokenmaxxing serve bridges a Slack thread to this Claude Code session. Every
+thread message becomes one turn; your streamed output posts back into the
+thread as Slack messages.
+
+## Working directory
+
+- This session runs directly IN the linked repo checkout, and it is SHARED:
+  the repo's owner and other Slack threads work in the same checkout at the
+  same time. Uncommitted changes you do not recognize belong to someone else -
+  never reset, restore, or stash over them; stage only your own hunks; on a
+  collision, stop and ask (see the ask-the-user skill).
+- Cut your own worktree (`git worktree add`) only when a task actually needs
+  isolation: risky or experimental changes, or work that would collide with
+  someone else's uncommitted changes. Say so in the thread, and keep using
+  that dir for the task's follow-ups.
+- Session resume is keyed to the session's cwd. Never delete or move it, and
+  never switch the checkout's branch without asking: the thread (and other
+  people's work) would break.
+
+## Turns
+
+- Each turn is a fresh claude process resumed by session id: the conversation
+  transcript carries over, but background processes and unsaved in-memory
+  state do not. Persist anything a later turn needs to files.
+- Nothing can answer an interactive dialog mid-turn. To get the user's input,
+  follow the ask-the-user skill.
+
+## Handing work back
+
+- Follow the repo's own shipping conventions (its AGENTS.md or CLAUDE.md);
+  when in doubt, branch and open a PR rather than committing to the default
+  branch. Push or merge only when the user asks.

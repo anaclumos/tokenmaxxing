@@ -16,7 +16,7 @@
 //   serve                  run the daemon
 
 import { existsSync, realpathSync } from "node:fs";
-import { delay } from "es-toolkit";
+import { delay, uniq } from "es-toolkit";
 import { Chat, type StreamChunk } from "chat";
 import { createSlackAdapter } from "@chat-adapter/slack";
 import { createMemoryState } from "@chat-adapter/state-memory";
@@ -268,10 +268,15 @@ async function runDaemon(): Promise<number> {
 
   const handleTurn = async (input: {
     thread: { id: string; channelId: string; post: (m: AsyncIterable<string | StreamChunk>) => Promise<unknown>; subscribe: () => Promise<void>; startTyping: () => Promise<void> };
-    texts: string[];
+    /** every relayed message this turn (queue-skipped + triggering), text
+     *  paired with its author id: a decision may be owed to an earlier
+     *  folded sender, and a sender whose whole message was the bot mention
+     *  contributes no prompt text, so text and author filter together
+     *  (review catches 2026-07-18). */
+    relayed: { text: string; authorId: string }[];
     isMention: boolean;
   }) => {
-    const { thread, texts, isMention } = input;
+    const { thread, isMention } = input;
     if (draining) {
       // the socket stays connected until the drain finishes; anything landing
       // in that window is dropped loudly rather than spawning an unwaitable
@@ -284,14 +289,17 @@ async function runDaemon(): Promise<number> {
       log("serve.unlinked_channel", { channel: thread.channelId });
       return; // not a linked channel - stay silent in Slack
     }
-    log("serve.message", { thread: thread.id, isMention, texts: texts.length });
-    // texts carries queue-skipped messages plus the triggering one: the queue
-    // strategy hands a turn only the LATEST message and the rest via
-    // context.skipped, so they are folded into one prompt here.
-    const prompt = texts
-      .map((t) => stripLeadingMention(t))
-      .filter((t) => t !== "")
-      .join("\n\n");
+    log("serve.message", { thread: thread.id, isMention, texts: input.relayed.length });
+    // relayed carries queue-skipped messages plus the triggering one: the
+    // queue strategy hands a turn only the LATEST message and the rest via
+    // context.skipped, so they are folded into one prompt here. A message
+    // that is empty once its bot mention is stripped contributes neither
+    // prompt text nor a requester id (cursor review catch 2026-07-18).
+    const stripped = input.relayed
+      .map((m) => ({ text: stripLeadingMention({ text: m.text, botUserId: slack.botUserId ?? null }), authorId: m.authorId }))
+      .filter((m) => m.text !== "");
+    const prompt = stripped.map((m) => m.text).join("\n\n");
+    const requesterIds = uniq(stripped.map((m) => m.authorId));
     if (!prompt) return;
     let record = loadSlackThread(thread.id);
     if (!record) {
@@ -311,6 +319,7 @@ async function runDaemon(): Promise<number> {
       cwd: record.cwd,
       sessionId: record.sessionId,
       prompt,
+      requesterIds,
       link,
       post: (m) => thread.post(m),
     });
@@ -335,13 +344,13 @@ async function runDaemon(): Promise<number> {
   };
 
   bot.onNewMention(async (thread, message, context) => {
-    const texts = [...(context?.skipped ?? []).filter(relayable), message].map((m) => m.text);
-    await tracked(handleTurn({ thread, texts, isMention: true }));
+    const relayed = [...(context?.skipped ?? []).filter(relayable), message].map((m) => ({ text: m.text, authorId: m.author.userId }));
+    await tracked(handleTurn({ thread, relayed, isMention: true }));
   });
   bot.onSubscribedMessage(async (thread, message, context) => {
     if (!relayable(message)) return; // never relay our own posts
-    const texts = [...(context?.skipped ?? []).filter(relayable), message].map((m) => m.text);
-    await tracked(handleTurn({ thread, texts, isMention: false }));
+    const relayed = [...(context?.skipped ?? []).filter(relayable), message].map((m) => ({ text: m.text, authorId: m.author.userId }));
+    await tracked(handleTurn({ thread, relayed, isMention: false }));
   });
 
   // initialize() starts the PERSISTENT Socket Mode client (auto-reconnecting)
