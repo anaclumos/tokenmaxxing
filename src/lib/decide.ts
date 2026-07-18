@@ -111,7 +111,7 @@ function usageFresh(u: UsageState | null, org: string | null, ttl: number, now: 
  * are absent, org-drifted, or older than the poll TTL. ONE probe carries all
  * three limit kinds, so a success refreshes BOTH files; anything less leaves a
  * headless box (no rendering statusLine to tee) evaluating frozen or
- * org-mismatched values forever - the 2026-07-12 stella blindness. The
+ * org-mismatched values forever - the 2026-07-12 ARM-box blindness. The
  * refreshed usage carries model: null (whatever session stamped the old model
  * may be gone), which gates every configured family. model-usage.json's ts also
  * stamps FAILED attempts, so a busy live token cannot cause a probe storm

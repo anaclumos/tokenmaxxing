@@ -1,7 +1,7 @@
 // The headless paths of evaluateAndMaybeSwap: no rendering statusLine, so the
 // decision runs off `claude -p '/usage'` probes with the model unknown. The
 // probe must feed BOTH snapshots, refresh them once they age past the poll TTL
-// or drift orgs, and gate on every configured family - on 2026-07-12 stella sat
+// or drift orgs, and gate on every configured family - on 2026-07-12 the ARM box sat
 // at its Fable cap for hours of periodic checks because the per-model half was
 // discarded and nothing ever refreshed the aggregates. Every case here resolves
 // without touching a credential store; decisions that would perform a real swap

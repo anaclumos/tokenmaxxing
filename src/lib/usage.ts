@@ -76,7 +76,7 @@ export function matchedFamily(model: ModelInfo | null, families: string[]): stri
  *  unknown. The unknown case matters on headless boxes: a swap clears the
  *  snapshots and only an actively-rendering statusLine restores the model, so
  *  the periodic check ran model-blind for hours while the active account sat at
- *  its Fable cap (the 2026-07-12 stella incident). */
+ *  its Fable cap (the 2026-07-12 ARM-box incident). */
 export function gatedFamilies(model: ModelInfo | null, families: string[]): string[] {
   if (!model) return families;
   const family = matchedFamily(model, families);

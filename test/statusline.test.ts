@@ -52,11 +52,11 @@ describe("renderStatusline", () => {
   test("renders one line: infos, active account's windows, parked accounts, blocks double-spaced", () => {
     const accounts: AccountsIndex = {
       version: 1,
-      activeAccountUuid: "uuid-sis",
+      activeAccountUuid: "uuid-b1",
       accounts: [
         acct({
-          accountUuid: "uuid-sis",
-          label: "sister",
+          accountUuid: "uuid-b1",
+          label: "backup",
           lastUsage: {
             fiveHour: { usedPercentage: 5, resetsAt: NOW + 2 * H },
             sevenDay: { usedPercentage: 38, resetsAt: NOW + 30 * H },
