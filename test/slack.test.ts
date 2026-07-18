@@ -6,6 +6,7 @@ import { rmSync, writeFileSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import {
   SlackConfigSchema,
+  bareChannelId,
   isChannelId,
   linkForChannel,
   loadSlackConfig,
@@ -71,6 +72,12 @@ describe("link edits", () => {
   test("linkForChannel finds by id", () => {
     expect(linkForChannel(cfg, "C0123ABC")?.repo).toBe("/tmp/repo");
     expect(linkForChannel(cfg, "C404")).toBeNull();
+  });
+
+  test("bareChannelId strips the chat-sdk adapter prefix", () => {
+    expect(bareChannelId("slack:C0123ABC")).toBe("C0123ABC");
+    expect(bareChannelId("C0123ABC")).toBe("C0123ABC");
+    expect(linkForChannel(cfg, bareChannelId("slack:C0123ABC"))?.repo).toBe("/tmp/repo");
   });
 });
 

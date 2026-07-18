@@ -14,10 +14,11 @@
 //   serve                  run the daemon
 
 import { existsSync, realpathSync } from "node:fs";
-import { Chat } from "chat";
+import { Chat, type StreamChunk } from "chat";
 import { createSlackAdapter } from "@chat-adapter/slack";
 import { createMemoryState } from "@chat-adapter/state-memory";
 import {
+  bareChannelId,
   isChannelId,
   linkForChannel,
   loadSlackConfig,
@@ -30,20 +31,24 @@ import {
   SlackLinkSchema,
   type SlackConfig,
 } from "../lib/slackstate.ts";
-import { ensureThreadCwd, relayTurn, type TurnOutcome } from "../lib/slackbridge.ts";
+import { ensureThreadCwd, relayThread } from "../lib/slackbridge.ts";
 import { log } from "../lib/log.ts";
 import { c, count } from "./render.ts";
 
-const SERVE_USAGE = "usage: tokenmaxxing serve [setup | link <channel-id> <repo> [--no-worktree] [--dangerous] [--model <m>] | unlink <channel-id> | links]";
+const SERVE_USAGE = "usage: tokenmaxxing serve [setup | link <channel-id> <repo> [--no-worktree] [--yolo | --dangerous] [--model <m>] | unlink <channel-id> | links]";
 
 /** The manifest the user pastes at api.slack.com/apps > From an app manifest.
- *  Scopes/events verified against docs.slack.dev 2026-07-18: exactly what a
- *  channel-thread relay needs, nothing more. */
+ *  Scopes/events verified against docs.slack.dev 2026-07-18: a channel-thread
+ *  relay plus Slack's Agent messaging experience (agent_view + assistant:write
+ *  power the DM assistant surface and typing status; channel-thread streaming
+ *  works without them, verified live). Changing scopes on an existing app
+ *  requires reinstalling it to the workspace. */
 const APP_MANIFEST = `display_information:
   name: tokenmaxxing
   description: bridges Slack threads to Claude Code sessions
 
 features:
+  agent_view: true
   bot_user:
     display_name: tokenmaxxing
     always_online: true
@@ -52,6 +57,7 @@ oauth_config:
   scopes:
     bot:
       - app_mentions:read
+      - assistant:write
       - channels:history
       - groups:history
       - chat:write
@@ -61,9 +67,12 @@ oauth_config:
 settings:
   event_subscriptions:
     bot_events:
+      - app_context_changed
+      - app_home_opened
       - app_mention
       - message.channels
       - message.groups
+      - message.im
   socket_mode_enabled: true
   org_deploy_enabled: false
   token_rotation_enabled: false`;
@@ -77,6 +86,7 @@ function printSetupInstructions(): void {
   console.log("2. OAuth & Permissions > Install to Workspace, copy the Bot User OAuth Token (xoxb-...).");
   console.log("3. Basic Information > App-Level Tokens > Generate (add the connections:write scope), copy the token (xapp-...).");
   console.log(`4. Run ${c.cyan("tokenmaxxing serve setup")} and paste both tokens, then ${c.cyan("tokenmaxxing serve link <channel-id> <repo>")} and invite the bot to that channel.`);
+  console.log(`${c.dim("Existing app? Paste the manifest over App Manifest in its settings, then reinstall to the workspace (scope changes need it). Tokens stay valid unless you rotate them.")}`);
 }
 
 function cmdServeSetup(): number {
@@ -103,7 +113,8 @@ function cmdServeSetup(): number {
 
 function cmdServeLink(argv: string[]): number {
   const worktree = !argv.includes("--no-worktree");
-  const dangerous = argv.includes("--dangerous");
+  // yolo mode = the SDK's bypassPermissions; --dangerous is the same switch.
+  const dangerous = argv.includes("--yolo") || argv.includes("--dangerous");
   const modelIdx = argv.indexOf("--model");
   const model = modelIdx >= 0 ? argv[modelIdx + 1] : undefined;
   const rest = argv.filter((a, i) => !a.startsWith("--") && (modelIdx < 0 || i !== modelIdx + 1));
@@ -172,12 +183,6 @@ function cmdServeLinks(): number {
   return 0;
 }
 
-/** One socket lease: how long each startSocketModeListener call holds the
- *  WebSocket before the loop reconnects (the adapter treats the listener as
- *  leased, not infinite). */
-const SOCKET_LEASE_MS = 3_600_000;
-const MAX_CONSECUTIVE_FAILURES = 3;
-
 async function runDaemon(): Promise<number> {
   const cfg = loadSlackConfig();
   if (!cfg) {
@@ -189,66 +194,107 @@ async function runDaemon(): Promise<number> {
     return 1;
   }
 
-  const slack = createSlackAdapter({ mode: "socket", botToken: cfg.botToken, appToken: cfg.appToken });
+  const slack = createSlackAdapter({
+    mode: "socket",
+    botToken: cfg.botToken,
+    appToken: cfg.appToken,
+    // Native append-streaming (chat.startStream) with task cards is the
+    // correct mode (user-confirmed live 2026-07-18): it works in channel
+    // threads even when auth.test reports no assistant:write, so never gate
+    // it on a scope probe. The adapter falls back to post-and-edit by itself
+    // when a workspace truly rejects streaming. agentView matches the
+    // manifest's Agent messaging experience for the DM surface.
+    agentView: true,
+    // the web-api default retry policy (tenRetriesInAboutThirtyMinutes) can
+    // stall a streamed turn ~30min on one rate-limited edit; this is
+    // @slack/web-api's fiveRetriesInFiveMinutes literal (dep not declared,
+    // so the values are inlined).
+    webClientOptions: { retryConfig: { retries: 5, factor: 3.86 }, timeout: 15_000 },
+  });
   const bot = new Chat({
     userName: "tokenmaxxing",
     adapters: { slack },
     state: createMemoryState(),
     // per-thread lock with queueing: a message landing mid-turn waits its turn
-    // instead of being dropped or racing a second claude spawn on the same cwd.
-    concurrency: "queue",
+    // instead of racing a second claude spawn on the same cwd. The default
+    // 90s queue-entry TTL silently discards anything queued behind a turn
+    // longer than that (claude turns routinely are), hence the override.
+    concurrency: { strategy: "queue", queueEntryTtlMs: 900_000 },
+    // without this a cards-only segment in post-and-edit fallback would
+    // strand a bare "..." placeholder message.
+    fallbackStreamingPlaceholderText: null,
     logger: "warn",
   });
 
-  const handleTurn = async (thread: { id: string; channelId: string; post: (m: AsyncIterable<string>) => Promise<unknown>; subscribe: () => Promise<void> }, rawText: string, isMention: boolean) => {
-    const link = linkForChannel(cfg, thread.channelId);
-    if (!link) return; // not a linked channel - stay silent
-    const prompt = stripLeadingMention(rawText);
+  const handleTurn = async (input: {
+    thread: { id: string; channelId: string; post: (m: AsyncIterable<string | StreamChunk>) => Promise<unknown>; subscribe: () => Promise<void>; startTyping: () => Promise<void> };
+    texts: string[];
+    isMention: boolean;
+  }) => {
+    const { thread, texts, isMention } = input;
+    const link = linkForChannel(cfg, bareChannelId(thread.channelId));
+    if (!link) {
+      log("serve.unlinked_channel", { channel: thread.channelId });
+      return; // not a linked channel - stay silent in Slack
+    }
+    log("serve.message", { thread: thread.id, isMention, texts: texts.length });
+    // texts carries queue-skipped messages plus the triggering one: the queue
+    // strategy hands a turn only the LATEST message and the rest via
+    // context.skipped, so they are folded into one prompt here.
+    const prompt = texts
+      .map((t) => stripLeadingMention(t))
+      .filter((t) => t !== "")
+      .join("\n\n");
     if (!prompt) return;
     let record = loadSlackThread(thread.id);
     if (!record) {
       if (!isMention) return; // only a mention opens a session
-      await thread.subscribe();
       const cwd = ensureThreadCwd({ link, threadId: thread.id });
       record = { threadId: thread.id, repo: link.repo, cwd, sessionId: null, createdAt: new Date().toISOString() };
       saveSlackThread(record);
       log("serve.thread_opened", { thread: thread.id, cwd });
     }
-    const outcome: TurnOutcome = { sessionId: record.sessionId, failed: false };
-    await thread.post(relayTurn({ cwd: record.cwd, sessionId: record.sessionId, prompt, link }, outcome));
+    // subscriptions live in the memory state, so a daemon restart forgets
+    // them; every mention re-subscribes to keep follow-up replies flowing.
+    if (isMention) await thread.subscribe();
+    // "is working..." assistant status; a no-op until the Slack app has the
+    // agent feature + assistant:write (the adapter warns instead of throwing).
+    await thread.startTyping();
+    const outcome = await relayThread({
+      cwd: record.cwd,
+      sessionId: record.sessionId,
+      prompt,
+      link,
+      post: (m) => thread.post(m),
+    });
     if (outcome.sessionId !== record.sessionId) {
       saveSlackThread({ ...record, sessionId: outcome.sessionId });
     }
   };
 
-  bot.onNewMention(async (thread, message) => {
-    await handleTurn(thread, message.text, true);
+  const relayable = (m: { author: { isMe: boolean; isBot?: boolean | "unknown" } }) => !m.author.isMe && m.author.isBot !== true;
+
+  bot.onNewMention(async (thread, message, context) => {
+    const texts = [...(context?.skipped ?? []).filter(relayable), message].map((m) => m.text);
+    await handleTurn({ thread, texts, isMention: true });
   });
-  bot.onSubscribedMessage(async (thread, message) => {
-    if (message.author.isMe || message.author.isBot === true) return; // never relay our own posts
-    await handleTurn(thread, message.text, false);
+  bot.onSubscribedMessage(async (thread, message, context) => {
+    if (!relayable(message)) return; // never relay our own posts
+    const texts = [...(context?.skipped ?? []).filter(relayable), message].map((m) => m.text);
+    await handleTurn({ thread, texts, isMention: false });
   });
 
+  // initialize() starts the PERSISTENT Socket Mode client (auto-reconnecting)
+  // wired straight into event routing; the daemon only has to stay alive.
+  // Never call startSocketModeListener here: that is the serverless leased
+  // variant (it demands options.waitUntil and returns instantly without it),
+  // and awaiting it in a loop starved the event loop so hard the WebSocket
+  // never delivered a single event (live incident 2026-07-18).
   await bot.initialize();
-  console.log(`${c.green("●")} serving ${count({ n: cfg.links.length, noun: "linked channel" })} over Slack Socket Mode - mention the bot in a linked channel to open a session`);
-
-  let consecutiveFailures = 0;
-  while (true) {
-    try {
-      await slack.startSocketModeListener({}, SOCKET_LEASE_MS);
-      consecutiveFailures = 0;
-    } catch (e) {
-      consecutiveFailures += 1;
-      const err = (e instanceof Error ? e.message : String(e)).slice(0, 200);
-      console.error(c.red(`socket listener failed (${consecutiveFailures}/${MAX_CONSECUTIVE_FAILURES}): ${err}`));
-      log("serve.socket_error", { err, consecutiveFailures });
-      if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
-        console.error(c.red("giving up after 3 consecutive socket failures - check the tokens with `tokenmaxxing serve setup`"));
-        return 1;
-      }
-      await Bun.sleep(5_000);
-    }
-  }
+  console.log(`${c.green("●")} serving ${count({ n: cfg.links.length, noun: "linked channel" })} over Slack Socket Mode - mention the bot in a linked channel to open a session (Ctrl-C to stop)`);
+  log("serve.started", { links: cfg.links.length });
+  await new Promise<never>(() => {});
+  return 0;
 }
 
 export async function cmdServe(argv: string[]): Promise<number> {

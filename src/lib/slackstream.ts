@@ -1,0 +1,185 @@
+// Maps Claude Agent SDK messages onto Chat SDK stream chunks so a relayed
+// Slack turn shows the agent's process natively: task cards for thinking and
+// tool calls (pending -> in_progress -> complete/error), streamed text via
+// markdown_text, and a closing turn card with model/cost/duration. Structured
+// chunks render only when the Slack app has the agent feature + assistant:write
+// (the adapter drops them gracefully otherwise); plain text streams either way.
+
+import { z } from "zod";
+import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk";
+import type { StreamChunk } from "chat";
+
+const DETAILS_MAX = 400;
+const OUTPUT_MAX = 600;
+
+/** Tool-input fields worth showing on a task card, most human-readable first. */
+const SUMMARY_FIELDS = ["command", "description", "file_path", "pattern", "prompt", "query", "url"] as const;
+
+const OpenBlockSchema = z.object({
+  kind: z.enum(["thinking", "tool"]),
+  id: z.string(),
+  title: z.string(),
+  /** accumulated thinking text or partial tool-input JSON. */
+  acc: z.string(),
+});
+type OpenBlock = z.infer<typeof OpenBlockSchema>;
+
+export const StreamMapStateSchema = z.object({
+  /** open content blocks by stream index. */
+  open: z.record(z.string(), OpenBlockSchema),
+  /** tool_use id -> tool name, for labeling the eventual tool_result. */
+  toolTitles: z.record(z.string(), z.string()),
+  thinkingCount: z.number(),
+  /** reply text streamed since the last segment break. */
+  textSinceBreak: z.boolean(),
+});
+export type StreamMapState = z.infer<typeof StreamMapStateSchema>;
+
+export function newStreamMapState(): StreamMapState {
+  return { open: {}, toolTitles: {}, thinkingCount: 0, textSinceBreak: false };
+}
+
+/** Emitted when a tool starts after streamed reply text: the bridge closes the
+ *  current Slack message there and posts the rest as a new one, mirroring how
+ *  an agent turn reads as separate messages around its tool runs. */
+export const SegmentBreakSchema = z.object({ type: z.literal("segment_break") });
+export type SegmentBreak = z.infer<typeof SegmentBreakSchema>;
+
+export const StreamPartSchema = z.union([z.string(), z.custom<StreamChunk>(), SegmentBreakSchema]);
+export type StreamPart = z.infer<typeof StreamPartSchema>;
+
+function truncate(input: { text: string; max: number }): string {
+  return input.text.length > input.max ? `${input.text.slice(0, input.max)}...` : input.text;
+}
+
+/** One human line out of a tool-input JSON blob; null when nothing fits. */
+export function toolInputSummary(rawJson: string): string | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(rawJson);
+  } catch {
+    return null; // partial or empty input JSON - show the bare tool name
+  }
+  const obj = z.record(z.string(), z.unknown()).safeParse(parsed);
+  if (!obj.success) return null;
+  for (const field of SUMMARY_FIELDS) {
+    const value = z.string().min(1).safeParse(obj.data[field]);
+    if (value.success) return truncate({ text: value.data, max: DETAILS_MAX });
+  }
+  const compact = JSON.stringify(parsed);
+  return compact === "{}" ? null : truncate({ text: compact, max: DETAILS_MAX });
+}
+
+const ToolResultBlockSchema = z.object({
+  type: z.literal("tool_result"),
+  tool_use_id: z.string(),
+  content: z.union([z.string(), z.array(z.unknown())]).optional(),
+  is_error: z.boolean().optional(),
+});
+
+const TextPartSchema = z.object({ type: z.literal("text"), text: z.string() });
+
+function resultText(content: z.infer<typeof ToolResultBlockSchema>["content"]): string | undefined {
+  if (content === undefined) return undefined;
+  const joined = Array.isArray(content)
+    ? content
+        .flatMap((part) => {
+          const p = TextPartSchema.safeParse(part);
+          return p.success ? [p.data.text] : [];
+        })
+        .join("\n")
+    : content;
+  const trimmed = joined.trim();
+  return trimmed === "" ? undefined : truncate({ text: trimmed, max: OUTPUT_MAX });
+}
+
+/**
+ * Consume one SDK message, mutating state, and return the stream chunks it
+ * produces (strings are streamed reply text; objects are native task cards).
+ * Subagent-internal events (parent_tool_use_id set) are skipped: their tool
+ * churn belongs to the subagent, not this thread's timeline.
+ */
+export function agentEventChunks(input: { state: StreamMapState; message: SDKMessage }): StreamPart[] {
+  const { state, message } = input;
+  if (message.type === "stream_event") {
+    if (message.parent_tool_use_id !== null) return [];
+    const event = message.event;
+    if (event.type === "content_block_start") {
+      const index = String(event.index);
+      if (event.content_block.type === "thinking") {
+        state.thinkingCount += 1;
+        const id = `thinking-${state.thinkingCount}`;
+        state.open[index] = { kind: "thinking", id, title: "Thinking", acc: "" };
+        return [{ type: "task_update", id, title: "Thinking", status: "in_progress" }];
+      }
+      if (event.content_block.type === "tool_use") {
+        const { id, name } = event.content_block;
+        state.open[index] = { kind: "tool", id, title: name, acc: "" };
+        state.toolTitles[id] = name;
+        const card: StreamPart = { type: "task_update", id, title: name, status: "in_progress" };
+        if (state.textSinceBreak) {
+          state.textSinceBreak = false;
+          return [{ type: "segment_break" }, card];
+        }
+        return [card];
+      }
+      return [];
+    }
+    if (event.type === "content_block_delta") {
+      const open = state.open[String(event.index)];
+      if (event.delta.type === "text_delta") {
+        state.textSinceBreak = true;
+        return [event.delta.text];
+      }
+      if (event.delta.type === "thinking_delta" && open) open.acc += event.delta.thinking;
+      if (event.delta.type === "input_json_delta" && open) open.acc += event.delta.partial_json;
+      return [];
+    }
+    if (event.type === "content_block_stop") {
+      const index = String(event.index);
+      const open = state.open[index];
+      if (!open) return [];
+      delete state.open[index];
+      if (open.kind === "thinking") {
+        return [{ type: "task_update", id: open.id, title: open.title, status: "complete", details: truncate({ text: open.acc.trim(), max: DETAILS_MAX }) }];
+      }
+      const details = toolInputSummary(open.acc);
+      return [{ type: "task_update", id: open.id, title: open.title, status: "in_progress", ...(details ? { details } : {}) }];
+    }
+    return [];
+  }
+  if (message.type === "user") {
+    if (message.parent_tool_use_id !== null) return [];
+    const content = message.message.content;
+    if (!Array.isArray(content)) return [];
+    const chunks: StreamChunk[] = [];
+    for (const block of content) {
+      const parsed = ToolResultBlockSchema.safeParse(block);
+      if (!parsed.success) continue;
+      const title = state.toolTitles[parsed.data.tool_use_id];
+      if (title === undefined) continue;
+      const output = resultText(parsed.data.content);
+      chunks.push({
+        type: "task_update",
+        id: parsed.data.tool_use_id,
+        title,
+        status: parsed.data.is_error === true ? "error" : "complete",
+        ...(output ? { output } : {}),
+      });
+    }
+    return chunks;
+  }
+  if (message.type === "result") {
+    const models = Object.keys(message.modelUsage).join(" ");
+    const cost = `$${message.total_cost_usd.toFixed(4)}`;
+    const secs = `${Math.round(message.duration_ms / 1000)}s`;
+    return [{
+      type: "task_update",
+      id: "turn",
+      title: "Turn",
+      status: message.subtype === "success" ? "complete" : "error",
+      details: [models, cost, secs].filter((p) => p !== "").join("  "),
+    }];
+  }
+  return [];
+}

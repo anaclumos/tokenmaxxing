@@ -115,6 +115,12 @@ export function linkForChannel(cfg: SlackConfig, channel: string): SlackLink | n
   return cfg.links.find((l) => l.channel === channel) ?? null;
 }
 
+/** Chat SDK channel ids are adapter-prefixed ("slack:C0123"); links store the
+ *  bare Slack id, so lookups must strip the prefix. */
+export function bareChannelId(id: string): string {
+  return id.startsWith("slack:") ? id.slice("slack:".length) : id;
+}
+
 /** Strip a leading Slack mention token ("<@U0123> rest") from message text. */
 export function stripLeadingMention(text: string): string {
   const trimmed = text.trimStart();
