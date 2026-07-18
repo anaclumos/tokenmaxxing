@@ -1,0 +1,23 @@
+AGENTS.md
+  s_249ac92195dd11::t_14fef556be5ec1 204
+DESIGN.md
+  s_249ac92195dd11::t_c97793cbc40d87 94
+.memory/serve-slackbot-decisions.md
+  s_249ac92195dd11::t_6a714049c0e845 31-32
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "0f62f7b7f62b2df4f29195ea567d2b2e9e19e122",
+  "prompts": {},
+  "sessions": {
+    "s_249ac92195dd11": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c3800604-37ed-4c22-8982-e44d70040ced",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    }
+  }
+}
