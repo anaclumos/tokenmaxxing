@@ -1,0 +1,19 @@
+src/cli/serve.ts
+  s_b46a7a06a33da9::t_2d71a63aeba8f0 391,394-404
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "c42f6ffb3b77d960bd9c995de3738a3ce42a18d6",
+  "prompts": {},
+  "sessions": {
+    "s_b46a7a06a33da9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f099df50-4f97-4d4a-ac3e-6707f6883e97",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    }
+  }
+}
