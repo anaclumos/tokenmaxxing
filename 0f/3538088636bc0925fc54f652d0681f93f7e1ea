@@ -1,0 +1,26 @@
+DESIGN.md
+  s_b46a7a06a33da9::t_7b2fdf39f3eb6a 91
+  s_b46a7a06a33da9::t_6ce07ed5156434 95
+src/serve-plugin/skills/serve-session/SKILL.md
+  s_b46a7a06a33da9::t_af2eabe9b85dde 29-33
+AGENTS.md
+  s_b46a7a06a33da9::t_93ee060f563ea8 206
+  s_b46a7a06a33da9::t_c1b054f05ef2d6 207
+  s_b46a7a06a33da9::t_1fd0b31cbac65b 213
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "0f3538088636bc0925fc54f652d0681f93f7e1ea",
+  "prompts": {},
+  "sessions": {
+    "s_b46a7a06a33da9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f099df50-4f97-4d4a-ac3e-6707f6883e97",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    }
+  }
+}
