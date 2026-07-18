@@ -1,0 +1,41 @@
+.memory/serve-slackbot-decisions.md
+  s_4afed832cb1ba4::t_24183f799dabc0 33-34
+  s_4afed832cb1ba4::t_6d183b58a5373e 36
+src/lib/slackbridge.ts
+  s_4afed832cb1ba4::t_bc5f1932376c17 178,183,187
+  s_4afed832cb1ba4::t_e3980167af08c6 141-148
+  s_4afed832cb1ba4::t_68cc7d2d72c109 122
+  s_4afed832cb1ba4::t_b820d561dca8c0 196-199,201,203-209
+  s_4afed832cb1ba4::t_def086ebbac267 162
+  s_4afed832cb1ba4::t_bf775a9018519a 149-156,158
+  s_4afed832cb1ba4::t_a9f13843ab243e 200,202
+  s_4afed832cb1ba4::t_18823372d12512 165-172,175,179
+test/slackbridge.test.ts
+  s_4afed832cb1ba4::t_6ecaacb259d4c2 49,60,72,88,103,113
+  s_4afed832cb1ba4::t_b2ef1eb4f3f469 125
+  s_4afed832cb1ba4::t_7fddddbb583260 2-4
+  s_4afed832cb1ba4::t_9d139600b9b2eb 57,62-63,69-71,73-79,87,91-93,95-97
+  s_4afed832cb1ba4::t_40a5b44a4c43fb 27
+DESIGN.md
+  s_4afed832cb1ba4::t_263f3416fc450c 92
+src/cli/serve.ts
+  s_4afed832cb1ba4::t_515e301e537121 298
+AGENTS.md
+  s_4afed832cb1ba4::t_49c59784dc2069 210
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "cf3fb111ee84ef266723811b16d8a36d9bd63d86",
+  "prompts": {},
+  "sessions": {
+    "s_4afed832cb1ba4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "331d9884-41eb-4751-bc30-210337ede30c",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    }
+  }
+}
