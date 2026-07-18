@@ -1,0 +1,19 @@
+.memory/tokenmaxxing-project.md
+  s_01302d876347ce::t_5809e006a29d94 25-26
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "ef389a6fcb17edc236b08d3ccfd8a0901cdfa2c7",
+  "prompts": {},
+  "sessions": {
+    "s_01302d876347ce": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c3215185-c3a7-4d72-8bbf-7ad6bbd92dde",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    }
+  }
+}
