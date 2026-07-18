@@ -1,0 +1,21 @@
+AGENTS.md
+  s_01302d876347ce::t_ed4fe941befbab 261
+  s_01302d876347ce::t_c6d8929ae8bef2 262
+  s_01302d876347ce::t_2d554b24efdf61 263-264
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "9e65d6b5208a72278728a55894e0d4f606425973",
+  "prompts": {},
+  "sessions": {
+    "s_01302d876347ce": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c3215185-c3a7-4d72-8bbf-7ad6bbd92dde",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    }
+  }
+}
