@@ -7,8 +7,8 @@
 - [Live pool runs need permission](live-pool-runs-need-permission.md) - ask before any run that meters quota or starts a session window on real accounts; hermetic tests + free /usage reads only by default
 
 - [tokenmaxxing project goal](tokenmaxxing-project.md) - CLI pooling Claude Code/Codex accounts, hot-swap on quota; npm name owned by user (anaclumos); latest ships: 0.19.0 RELEASED 2026-07-18 (serve live fixes + native streaming + subagent tool cards; first PR-based ship, PR #6), 0.19.1 2026-07-18 (serve restart resilience: startup re-subscribe, drain, dead-segment recovery, PR #8), five natural card titles merged unreleased (PR #7); .memory git-tracked since 2026-07-18
-- [CC/Codex auth mechanics](cc-codex-auth-mechanics.md) — verified keychain/CODEX_HOME/quota internals both CLIs depend on; see DESIGN.md §2
-- [Per-model weekly caps](cc-per-model-limits.md) — per-model weekly limits exist only for Sonnet and Fable, no Opus-only quota (user 2026-07-12); only Fable gates a switch ("fable=switch, sonnet=ok")
+- [CC/Codex auth mechanics](cc-codex-auth-mechanics.md) - verified keychain/CODEX_HOME/quota internals both CLIs depend on; see DESIGN.md §2
+- [Per-model weekly caps](cc-per-model-limits.md) - per-model weekly limits exist only for Sonnet and Fable, no Opus-only quota (user 2026-07-12); only Fable gates a switch ("fable=switch, sonnet=ok")
 - [ARM Linux host](linux-arm-host.md) - the owner's Pi: the Linux test box; claude 2.1.207, 4-account pool, tokenmaxxing 0.6.1
 - [x86 Linux host](linux-x86-host.md) - the owner's Fedora box: 4-account pool; bun/xx under ~/.bun/bin; Linux claude prints comma reset-clock glue
 - [Switch policy: pace pressure](switch-policy-pace-pressure.md) - user decisions 2026-07-13 + 2026-07-16: rank by pacePressure (furthest behind own weekly pace first); hooks/timer engage greedily at 50% session (greedySessionFloor), thresholds are screening-only bars (session 95 / weekly 98) via effectiveBars; shipped v0.7.0 + v0.10.0
