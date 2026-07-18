@@ -1,0 +1,68 @@
+test/slackbridge.test.ts
+  s_b46a7a06a33da9::t_6256c2e8b63428 155-221
+  s_b46a7a06a33da9::t_ba7beddee82d00 1-4,8,11
+  s_b46a7a06a33da9::t_7f07129d1a026a 151-154
+src/serve-plugin/.claude-plugin/plugin.json
+  s_b46a7a06a33da9::t_6256c2e8b63428 1-4
+test/serveplugin.test.ts
+  s_b46a7a06a33da9::t_6256c2e8b63428 1-80
+src/lib/log.ts
+  s_b46a7a06a33da9::t_6256c2e8b63428 17-26,28,30-35,37,41-46
+  s_b46a7a06a33da9::t_c6d66511e91c57 47
+DESIGN.md
+  s_b46a7a06a33da9::t_6256c2e8b63428 92,101,103-104,138
+  s_b46a7a06a33da9::t_012cd671a56b6a 95,98
+src/lib/slackstream.ts
+  s_b46a7a06a33da9::t_6256c2e8b63428 4-8,10,17-36,42,55-59,67,91,94-135,158,186-199,228-233,247-253,267-280
+.memory/serve-slackbot-decisions.md
+  s_b46a7a06a33da9::t_6256c2e8b63428 30-53
+package.json
+  s_b46a7a06a33da9::t_6256c2e8b63428 3
+AGENTS.md
+  s_b46a7a06a33da9::t_41050a7c41c47d 212
+  s_b46a7a06a33da9::t_6256c2e8b63428 95,207,211,214-216,270-273
+src/lib/slackstate.ts
+  s_b46a7a06a33da9::t_6256c2e8b63428 8,117-122,156-188
+test/slack.test.ts
+  s_b46a7a06a33da9::t_6256c2e8b63428 116-149
+test/log.test.ts
+  s_b46a7a06a33da9::t_6256c2e8b63428 1-72
+src/serve-plugin/skills/ask-the-user/SKILL.md
+  s_b46a7a06a33da9::t_6256c2e8b63428 1-36
+.memory/MEMORY.md
+  s_b46a7a06a33da9::t_6256c2e8b63428 4-5,9
+.memory/shipping-pr-based.md
+  s_b46a7a06a33da9::t_6256c2e8b63428 3,5-8,10
+test/slackstream.test.ts
+  s_b46a7a06a33da9::t_6256c2e8b63428 5,14-28,39-80,114-127,187-264
+  s_b46a7a06a33da9::t_0d7d995a5dd686 265
+src/lib/slackbridge.ts
+  s_b46a7a06a33da9::t_9191c010b0baa1 12
+  s_b46a7a06a33da9::t_ce46bd1e562a7d 36-37
+  s_b46a7a06a33da9::t_b483a8321e9cf4 414-416,424,428-435,446-464
+  s_b46a7a06a33da9::t_6256c2e8b63428 8-9,18,161-186,224-331,357-358
+  s_b46a7a06a33da9::t_5bb9db08b5405d 365
+src/cli/serve.ts
+  s_b46a7a06a33da9::t_3ff71da73faa5e 39
+  s_b46a7a06a33da9::t_033261ce327297 444-446,449-451
+  s_b46a7a06a33da9::t_6256c2e8b63428 19,40,201-223,246-250,299-305,308,339-349,364,369,374-377,381-398,457-460,477-483
+  s_b46a7a06a33da9::t_de98fe840ae1b9 490-506
+src/serve-plugin/skills/serve-session/SKILL.md
+  s_b46a7a06a33da9::t_6256c2e8b63428 1-39
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "2628961c001b1c5e552910e20bdde4c34c00fcac",
+  "prompts": {},
+  "sessions": {
+    "s_b46a7a06a33da9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f099df50-4f97-4d4a-ac3e-6707f6883e97",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    }
+  }
+}
