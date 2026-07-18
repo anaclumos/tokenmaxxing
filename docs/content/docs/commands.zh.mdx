@@ -7,9 +7,9 @@ description: "每一个 tokenmaxxing 命令及其作用"
 |---|---|
 | `tokenmaxxing init` | 导入当前账户，安装监督进程、hooks 和 statusline |
 | `tokenmaxxing init --codex` | 对 Codex 执行同样操作：导入登录、安装 codex 监督进程和 Stop hook |
-| `tokenmaxxing add` | 注册一个额外账户（隔离登录，收集进池中） |
-| `tokenmaxxing add --codex` | 注册一个额外的 Codex 账户（隔离登录） |
-| `tokenmaxxing auth [sel \| --all]` | 就地重新认证一个池内账户。裸执行会列出账户池并询问选哪个；选择器定位到某一账户并告诉你该用哪个邮箱登录；`--all` 会逐个走完所有需重新认证的账户 |
+| `tokenmaxxing add` | 注册额外账户（隔离登录，收集进池中） |
+| `tokenmaxxing add --codex` | 注册额外的 Codex 账户（隔离登录） |
+| `tokenmaxxing auth [sel \| --all]` | 就地重新认证池内账户。裸执行会列出账户池并询问选哪个；选择器定位到某一账户并告诉你该用哪个邮箱登录；`--all` 会逐个走完所有需重新认证的账户 |
 | `tokenmaxxing switch [sel]` | 切换到最佳账户（贪心、幂等），或强制指定某一账户 |
 | `tokenmaxxing switch --codex [sel]` | 切换 Codex 账户池（在下一次 codex 启动时生效） |
 | `tokenmaxxing ls` | 列出池内账户 |
@@ -20,6 +20,6 @@ description: "每一个 tokenmaxxing 命令及其作用"
 | `tokenmaxxing check` | 评估一次切换决策（这正是周期性定时器所运行的） |
 | `tokenmaxxing serve [setup\|link\|unlink\|links]` | Slack 桥接守护进程（Socket Mode，无需公网 URL） |
 | `tokenmaxxing doctor` | 校验监督进程和设置条目是否仍然存在 |
-| `tokenmaxxing rename [--codex] <sel> <label>` | 重新标注一个池内账户 |
-| `tokenmaxxing rm <sel>` | 从池中移除一个账户 |
+| `tokenmaxxing rename [--codex] <sel> <label>` | 重新标注池内账户 |
+| `tokenmaxxing rm <sel>` | 从池中移除账户 |
 | `tokenmaxxing uninstall` | 移除监督进程和设置条目（账户与凭证会保留） |

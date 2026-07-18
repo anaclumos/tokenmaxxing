@@ -5,11 +5,11 @@ description: "每個 tokenmaxxing 指令同佢做啲乜"
 
 | 指令 | 佢做啲乜 |
 |---|---|
-| `tokenmaxxing init` | 匯入當前帳戶，安裝監督者、hook 同 statusline |
-| `tokenmaxxing init --codex` | Codex 嘅相同操作：匯入登入資料，安裝 codex 監督者同 Stop hook |
-| `tokenmaxxing add` | 註冊一個額外帳戶（隔離登入，收集入帳戶池） |
-| `tokenmaxxing add --codex` | 註冊一個額外嘅 Codex 帳戶（隔離登入） |
-| `tokenmaxxing auth [sel \| --all]` | 就地重新認證一個帳戶池內嘅帳戶。淨行會列出帳戶池並問你揀邊個；一個選擇器會針對一個帳戶並話你知用邊個 email 登入；`--all` 會逐個處理每個需要重新認證嘅帳戶 |
+| `tokenmaxxing init` | 匯入現時嘅帳戶，安裝監督者、hook 同 statusline |
+| `tokenmaxxing init --codex` | Codex 都一樣：匯入登入資料，安裝 codex 監督者同 Stop hook |
+| `tokenmaxxing add` | 註冊多一個帳戶（隔離登入，收集入帳戶池） |
+| `tokenmaxxing add --codex` | 註冊多一個 Codex 帳戶（隔離登入） |
+| `tokenmaxxing auth [sel \| --all]` | 就地重新認證帳戶池內嘅帳戶。淨行會列出帳戶池，再問你揀邊個；選擇器會針對某個帳戶，話你知要用邊個 email 登入；`--all` 會逐個處理每個需要重新認證嘅帳戶 |
 | `tokenmaxxing switch [sel]` | 切換去最佳帳戶（貪婪、冪等）或者強制指定一個 |
 | `tokenmaxxing switch --codex [sel]` | 切換 Codex 帳戶池（喺下一次 codex 啟動時生效） |
 | `tokenmaxxing ls` | 列出帳戶池內嘅帳戶 |
@@ -17,9 +17,9 @@ description: "每個 tokenmaxxing 指令同佢做啲乜"
 | `tokenmaxxing status --force` | 額外 ping 每個帳戶（每個一次極細嘅 haiku 請求），令所有 5h session 計時器即刻開始，然後重新採樣 |
 | `tokenmaxxing watch [seconds]` | 即時狀態，每 N 秒重新渲染一次（預設 120，下限 30；永遠唔 ping） |
 | `tokenmaxxing config [get\|set\|unset\|tidy]` | 連同來源嘅有效設定；編輯點分隔嘅 key；`tidy` 會刪走未知嘅 key |
-| `tokenmaxxing check` | 評估切換決定一次（呢個就係定期計時器所行嘅） |
+| `tokenmaxxing check` | 評估切換決定一次（呢個就係定期計時器會行嘅） |
 | `tokenmaxxing serve [setup\|link\|unlink\|links]` | Slack 橋接守護程序（Socket Mode，唔需要公開 URL） |
 | `tokenmaxxing doctor` | 驗證監督者同設定項目係咪仲喺度 |
-| `tokenmaxxing rename [--codex] <sel> <label>` | 重新標籤一個帳戶池內嘅帳戶 |
+| `tokenmaxxing rename [--codex] <sel> <label>` | 重新標籤帳戶池內嘅帳戶 |
 | `tokenmaxxing rm <sel>` | 從帳戶池移除一個帳戶 |
 | `tokenmaxxing uninstall` | 移除監督者同設定項目（帳戶同憑證會保留） |

@@ -3,7 +3,7 @@ title: 状态目录布局
 description: "~/.config/tokenmaxxing 底下嗰每一个文件搭目录。"
 ---
 
-所有物事侪勒 `~/.config/tokenmaxxing/` 底下（好用 `TOKENMAXXING_HOME` 覆盖；每一条外头看得着嗰路径侪有一个环境变量覆盖，畀整个工具好勒测试里向密封地跑）。
+所有物事侪勒 `~/.config/tokenmaxxing/` 底下（好用 `TOKENMAXXING_HOME` 覆盖；每一条外头看得着嗰路径侪有环境变量好覆盖，畀整个工具好勒测试里向密封地跑）。
 
 | 路径 | 存啥个 |
 |---|---|
@@ -20,6 +20,6 @@ description: "~/.config/tokenmaxxing 底下嗰每一个文件搭目录。"
 | `onboard/`、`sample/` | 畀 `add`/`auth` 登录搭停放账户 `/usage` 探测用嗰一次性隔离配置 home；拿牢明文凭据嗰 onboard home 采集之后就删脱 |
 | `slack.json` | `xx serve` 嗰 token 搭频道链接（0600） |
 | `slack-threads/` | `xx serve` 每条 thread 各自嗰会话记录 |
-| `codex-*` | 并行嗰 Codex 池子：`codex-accounts.json`、`codex-lastswap.json`、`codex-lock`、`codex-creds/`、`codex-onboard/`、`codex-respawn/`，搭 `codex-live/`（每个跑牢嗰受监管 codex 会话各自一个 PID 校验过嗰在场文件，所以一个活跃账户永远勿是切换目标） |
+| `codex-*` | 并行嗰 Codex 池子：`codex-accounts.json`、`codex-lastswap.json`、`codex-lock`、`codex-creds/`、`codex-onboard/`、`codex-respawn/`，搭 `codex-live/`（每个跑牢嗰受监管 codex 会话各自一个 PID 校验过嗰在场文件，所以活跃账户永远勿会是切换目标） |
 
 勒伊自家嗰目录外头，tokenmaxxing 碰嗰恰恰是搿眼：`~/.claude.json`（`oauthAccount` 切换）、Claude Code 嗰 `settings.json`（hook 搭 statusline 条目）、活跃凭据存储（macOS 高头是 `Claude Code-credentials` keychain 条目，Linux 高头是 `.credentials.json`）、`~/.claude.lock`（claude 嗰刷新锁，切换当中拿嗰）、codex 嗰 `auth.json` 搭 `hooks.json`，还有 launchd 或者 systemd 里向嗰定期检查单元。

@@ -1,6 +1,6 @@
 ---
 title: Slack 橋接：xx serve
-description: "xx serve 透過 Socket Mode 由 Slack thread 運行 Claude Code session"
+description: "xx serve 透過 Socket Mode 喺 Slack thread 行 Claude Code session"
 ---
 
 `tokenmaxxing serve` 透過 Socket Mode 行一個本地 Slack 守護程序 - 唔需要公開 URL。設定：
@@ -11,13 +11,13 @@ tokenmaxxing serve link <channel-id> <repo> # 將一個頻道綁去一個 repo c
 tokenmaxxing serve                          # 行守護程序
 ```
 
-喺一個連結咗嘅頻道提及個 bot，佢就會為嗰條 thread 喺連結嘅 repo checkout 入面開一個 Claude Code session。每條 thread 訊息都行一次帶 `resume` 嘅 Agent SDK `query()` - 永遠唔係一個持久嘅串流 query - 所以 `ensureBestAccount()` 每一個回合都重新評估帳戶池，而守護程序可以重新啟動而唔會失去 thread（thread 記錄係持久嘅;守護程序喺啟動時重新訂閱佢哋）。
+喺連結咗嘅頻道提及個 bot，佢就會為嗰條 thread 喺連結嘅 repo checkout 入面開一個 Claude Code session。每條 thread 訊息都行一次帶 `resume` 嘅 Agent SDK `query()` - 永遠唔係持久嘅串流 query - 所以 `ensureBestAccount()` 每一個回合都會重新評估帳戶池，而守護程序就算重新啟動都唔會失去 thread（thread 記錄係持久嘅;守護程序一啟動就會重新訂閱佢哋）。
 
 值得注意嘅行為：
 
-- **串流**：回覆原生串流入 Slack，帶有思考同工具運行嘅任務卡片、用高亮渲染嘅圍欄程式碼、一個帶有成本同持續時間嘅收尾「Turn」卡片，同埋每當一個工具運行打斷咗串流文字時就開一個新嘅 Slack 訊息，令一個回合讀落好似圍住工具運行嘅分開訊息。TodoWrite 呼叫會就地更新一個穩定嘅檢查清單卡片。
-- **權限**：每個連結嘅 `permissionMode` 預設係 `acceptEdits`;`--yolo`（別名 `--dangerous`）令一個連結選擇加入 `bypassPermissions`。互動式對話喺轉發嘅回合入面唔被允許 - 無人可以透過 Slack 回答一個 - 所以個模型會用散文問，而你嘅 thread 回覆就係下一個回合。一個附帶嘅 plugin skill 教佢喺需要一個決定時去標記請求者並結束回合。
-- **斜線指令**：一條剝除咗嘅文字以 `/` 開頭嘅 thread 訊息會行做一個 claude 斜線指令。Slack 嘅撰寫器會食咗以 `/` 開頭嘅訊息，所以用提及優先嘅形式（`@bot /usage`）或者一個前導空格。
-- **優雅關閉**：SIGTERM/SIGINT 會排走 - 新回合會被大聲丟棄，運行中嘅回合有最多 5 分鐘，而個 claude 仔進程喺佢自己嘅進程群組入面分離咁運行，所以一個終端嘅 Ctrl-C 無法喺排走保存個回合之前殺死佢。
-- **thread 清理**：當你話俾佢知件工作做完咗，個模型會呼叫一個進程內嘅 `finish_thread` 工具;喺回合完全結束之後，守護程序會丟棄個 thread 記錄、取消訂閱，並貼一個確認。一個新嘅提及會開始一個新嘅 session。
-- **錯誤衛生**：回合錯誤貼經修剪嘅淨訊息文字，永遠唔會係原始嘅錯誤內容。
+- **串流**：回覆會原生串流入 Slack，有思考同工具運行嘅任務卡片、用高亮渲染嘅圍欄程式碼、一張寫住成本同持續時間嘅收尾「Turn」卡片，每當有工具運行打斷串流文字，就會開一條新 Slack 訊息，令一個回合睇落好似圍住工具運行嘅分開訊息。TodoWrite 呼叫會就地更新同一張穩定嘅檢查清單卡片。
+- **權限**：每個連結嘅 `permissionMode` 預設係 `acceptEdits`;`--yolo`（別名 `--dangerous`）就令連結轉用 `bypassPermissions`。轉發嘅回合入面唔准用互動式對話 - 冇人可以喺 Slack 度回答 - 所以個模型會用文字問，而你嘅 thread 回覆就係下一個回合。附帶嘅 plugin skill 會教佢，一需要做決定就標記請求者，然後結束個回合。
+- **斜線指令**：一條 thread 訊息，剝除後嘅文字以 `/` 開頭，就會當做 claude 斜線指令嚟行。Slack 嘅撰寫器會食咗以 `/` 開頭嘅訊息，所以要用提及優先嘅形式（`@bot /usage`），或者喺前面加個空格。
+- **優雅關閉**：SIGTERM/SIGINT 會排走 - 大聲噉丟棄新回合，畀行緊嘅回合最多 5 分鐘，而 claude 仔進程會喺自己嘅進程群組入面獨立噉行，所以終端嘅 Ctrl-C 喺排走保存個回合之前都殺佢唔死。
+- **thread 清理**：當你話俾佢知件工作做完咗，個模型會呼叫進程內嘅 `finish_thread` 工具;喺回合完全結束之後，守護程序會丟棄個 thread 記錄、取消訂閱，再貼一個確認。一次新嘅提及就會開一個新 session。
+- **錯誤衛生**：回合出錯時只會貼經修剪嘅淨訊息文字，永遠唔會係原始嘅錯誤內容。

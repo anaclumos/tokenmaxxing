@@ -1,6 +1,6 @@
 ---
 title: 快速開始
-description: "安裝 tokenmaxxing、匯入你當前嘅帳戶，並集合更多帳戶"
+description: "安裝 tokenmaxxing、匯入你而家用緊嘅帳戶，再集合多啲帳戶"
 ---
 
 需要 [Bun](https://bun.sh) 同 Claude Code，喺 macOS 或者 Linux 上面。
@@ -12,17 +12,17 @@ tokenmaxxing init
 
 `init` 會做五件事：
 
-1. 將你已經登入緊嘅帳戶匯入做帳戶 #1（無一個獨立嘅 `adopt` 指令）。
+1. 將你已經登入咗嘅帳戶匯入做帳戶 #1（冇獨立嘅 `adopt` 指令）。
 2. 安裝 `claude` 監督者 shim。
-3. 喺 Claude Code 嘅 `settings.json` 入面安裝三個項目：一個 statusLine、一個 Stop hook 同一個 SessionStart hook（加上一個 subagentStatusLine 項目）。
-4. 將監督者嘅 bin 目錄加去你嘅 shell rc 嘅 PATH（冪等，用一個 `# tokenmaxxing PATH` 註解標記）。佢必須喺 PATH 上面排喺真正嘅 `claude` 前面先攔截到佢。
-5. 安裝一個定期檢查計時器（macOS 上面係一個 launchd agent，Linux 上面係一個 systemd user timer），每 180 秒行一次 `tokenmaxxing check`。
+3. 喺 Claude Code 嘅 `settings.json` 入面安裝三個項目：statusLine、Stop hook 同 SessionStart hook（仲會加埋一個 subagentStatusLine 項目）。
+4. 將監督者嘅 bin 目錄加去 shell rc 嘅 PATH（冪等，會用 `# tokenmaxxing PATH` 註解標記）。佢喺 PATH 上面必須排喺真正嘅 `claude` 前面，先至攔截到。
+5. 安裝定期檢查計時器（macOS 上面係 launchd agent，Linux 上面係 systemd user timer），每 180 秒行一次 `tokenmaxxing check`。
 
-重新啟動你嘅 shell，然後加多啲帳戶就開始用：
+重新啟動 shell，然後加多啲帳戶就開始用：
 
 ```sh
-tokenmaxxing add        # 用隔離方式登入多一個帳戶，並將佢加入帳戶池
+tokenmaxxing add        # 用隔離方式登入多一個帳戶，再加入帳戶池
 claude                  # 照舊咁用 claude
 ```
 
-`tokenmaxxing` 亦都有一個別名 `xx`。淨行 `tokenmaxxing`（或者 `xx`）會執行 `status`；`switch` 就保持要明確講。
+`tokenmaxxing` 亦都有個別名 `xx`。淨係行 `tokenmaxxing`（或者 `xx`）會執行 `status`；`switch` 就要明確噉打出嚟。

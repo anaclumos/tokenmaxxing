@@ -11,6 +11,6 @@ description: "macOS 同 Linux 喺儲存、採用同計時器上面點樣唔同"
 | 定期檢查 | launchd agent，每 180 秒 | systemd user timer，每 180 秒 |
 | 隔離登入儲存 | 每設定目錄有 hash 命名空間嘅 keychain 服務 | 隔離設定目錄入面嘅一個檔案 |
 
-兩個值得知嘅 Linux 專屬細節：claude 會先由 `CLAUDE_SECURESTORAGE_CONFIG_DIR`（然後 `CLAUDE_CONFIG_DIR`，再然後 `~/.claude`）解析佢嘅憑證目錄，而 tokenmaxxing 準確咁鏡像嗰個解析令兩者永遠唔會失步。仲有相同 claude 版本嘅兩個 OS build 會用唔同方式格式化 `/usage` 重設時鐘（一個用 " at " 黐埋，另一個用一個逗號）；tokenmaxxing 嘅解析器準確咁接受嗰兩種形式，而喺遇到任何第三種時記錄落嚟，而唔係去估。
+有兩個 Linux 專屬細節值得知：claude 解析憑證目錄嗰陣，會先睇 `CLAUDE_SECURESTORAGE_CONFIG_DIR`（然後 `CLAUDE_CONFIG_DIR`，再然後 `~/.claude`），而 tokenmaxxing 完全跟足同一套解析，令兩邊永遠唔會失步。仲有，同一個 claude 版本嘅兩個 OS build 格式化 `/usage` 重設時鐘嘅方式唔同（一個用 " at " 黐埋，另一個用逗號）；tokenmaxxing 嘅解析器就係接受嗰兩種形式，遇到任何第三種就記錄低，而唔係靠估。
 
-喺 macOS 上面，一個誠實嘅限制：`init` 同 `add` 刻意互動咁掂 keychain，所以喺一個無頭 hook 入面第一次 `security` 存取唔會係冷嘅。
+喺 macOS 上面，有個要老實講嘅限制：`init` 同 `add` 特登用互動方式掂 keychain，所以喺無頭 hook 入面，第一次 `security` 存取就唔會係冷嘅。

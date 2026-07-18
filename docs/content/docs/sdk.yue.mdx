@@ -1,9 +1,9 @@
 ---
 title: Agent SDK 表面
-description: "喺你自己運行嘅 agent 入面將帳戶池同 Claude Agent SDK 配對"
+description: "喺你自己行嘅 agent 入面將帳戶池同 Claude Agent SDK 配對"
 ---
 
-呢個套件嘅程式化入口（`exports["."]` 指向 `src/sdk.ts`）將 tokenmaxxing 同 Claude Agent SDK 配對，俾你對住自己嘅集合帳戶去建立 agent。你嘅 app 必須喺 Bun 下面運行（tokenmaxxing 發布 TypeScript 原始碼並使用 `bun:ffi`）。
+呢個套件嘅程式化入口（`exports["."]` 指向 `src/sdk.ts`）會將 tokenmaxxing 同 Claude Agent SDK 配對，俾你用自己嘅帳戶池建立 agent。你個 app 一定要喺 Bun 上面行（tokenmaxxing 出嘅係 TypeScript 原始碼，仲會用到 `bun:ffi`）。
 
 ```ts
 import { query } from "@anthropic-ai/claude-agent-sdk";
@@ -22,10 +22,10 @@ for await (const message of query({
 }
 ```
 
-Agent SDK 每個 `query()` 都會生成一個 claude 子進程並喺生成時讀取一次憑證 - 無 statusline，無 query 中途嘅熱切換 - 所以呢個整合係基於邊界嘅：
+Agent SDK 每次 `query()` 都會生成一個 claude 子進程，喺生成嗰陣讀一次憑證 - 冇 statusline，query 中途亦都冇熱切換 - 所以呢個整合係跟邊界嚟行嘅：
 
-- `ensureBestAccount()` 就係 CLI hook 同計時器所行嘅確切決定（界線、步伐壓力、冷卻，全部係共用程式碼），永遠唔係預期性嘅：一個 SDK session 永遠無法為咗一次耗盡倒數而暫停。
-- `pooledOptions()` 將 `pathToClaudeCodeExecutable` 固定去真正嘅 claude 二進位檔（永遠唔係監督者包裝），並提供一個完整嘅替換 `env`，將每個環境嘅憑證覆寫擦除。如果你嘅 app 環境設定咗 `CLAUDE_CONFIG_DIR` 或者 `CLAUDE_SECURESTORAGE_CONFIG_DIR`，佢就會快速失敗：喺 Linux 一次切換會將活躍憑證寫去嗰啲指向嘅地方，而擦除咗嘅子進程讀取預設儲存，一個靜靜哋嘅錯帳戶失步。
-- `stopHookCheck` 喺回合邊界重新行個決定;佢落嘅一次切換會喺下一次生成時生效。佢會捕捉佢自己嘅錯誤（記錄去 stderr 同記錄）而唔係重新拋出，因為一個未處理嘅 hook 例外可以打斷個 agent，而為咗一個壞咗嘅切換檢查去中止一個回合嘅代價,大過騎住當前帳戶捱過去。
+- `ensureBestAccount()` 就係 CLI hook 同計時器行嗰個一模一樣嘅決定（界線、步伐壓力、冷卻，全部都係共用程式碼），永遠都唔會搶先做：SDK session 永遠都唔可以為咗一次耗盡倒數而停低。
+- `pooledOptions()` 會將 `pathToClaudeCodeExecutable` 固定喺真正嘅 claude 二進位檔（永遠唔會係監督者包裝），再俾一個完整嘅替換 `env`，將環境入面每個憑證覆寫都擦走。如果喺你 app 嘅環境入面設定咗 `CLAUDE_CONFIG_DIR` 或者 `CLAUDE_SECURESTORAGE_CONFIG_DIR`，佢就會快速失敗：喺 Linux，一次切換會將活躍憑證寫落嗰啲指向嘅位置，但擦走咗嘅子進程讀嘅係預設儲存，靜靜哋就會搞錯帳戶失步。
+- `stopHookCheck` 會喺回合邊界度重新行個決定，佢落到嘅切換要到下一次生成先至生效。佢會捉番自己嘅錯誤（寫落 stderr 同個 log），而唔係重新拋出，因為未處理嘅 hook 例外會打斷個 agent，而為咗個壞咗嘅切換檢查去中止成個回合，代價比騎住而家個帳戶捱落去仲大。
 
-`sdk.ts` 自己咩都唔會由 Agent SDK 匯入;佢嘅值結構性咁展開入 SDK 嘅選項。
+`sdk.ts` 本身冇由 Agent SDK 匯入任何嘢，佢啲值會按結構散開，併入 SDK 嘅選項。
