@@ -1,0 +1,25 @@
+.memory/pr-review-replies-threaded.md
+  s_b46a7a06a33da9::t_af77a35e2ee9fe 1-12
+.memory/slaude-harvest-verdict.md
+  s_b46a7a06a33da9::t_a6713d76fe15bb 8
+src/cli/serve.ts
+  s_b46a7a06a33da9::t_acdb16bdf56a18 391-396
+.memory/MEMORY.md
+  s_b46a7a06a33da9::t_0f2a2241b3e1f0 3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "1c4b99cb22a620122174778303958c4e219fa3d0",
+  "prompts": {},
+  "sessions": {
+    "s_b46a7a06a33da9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f099df50-4f97-4d4a-ac3e-6707f6883e97",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    }
+  }
+}
