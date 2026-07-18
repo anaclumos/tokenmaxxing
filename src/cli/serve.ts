@@ -526,9 +526,12 @@ async function runDaemon(): Promise<number> {
 
   /** The ps lstart token for a pid, or null when no such process. pid + start
    *  time is the standard process identity: equality with the token captured
-   *  at spawn proves this is still OUR child, never a recycled pid. */
+   *  at spawn proves this is still OUR child, never a recycled pid. LC_ALL=C
+   *  pins the lstart rendering (cubic review catch): the capturing and the
+   *  comparing daemon generation can run under different locales (terminal vs
+   *  launchd), and a formatting mismatch would silently skip a needed reap. */
   const pidStartTime = (pid: number): string | null => {
-    const res = Bun.spawnSync(["ps", "-p", String(pid), "-o", "lstart="]);
+    const res = Bun.spawnSync(["ps", "-p", String(pid), "-o", "lstart="], { env: { ...process.env, LC_ALL: "C" } });
     if (res.exitCode !== 0) return null;
     const lstart = res.stdout.toString().trim();
     return lstart === "" ? null : lstart;
