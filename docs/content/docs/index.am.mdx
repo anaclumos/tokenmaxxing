@@ -1,13 +1,35 @@
 ---
-title: እንኳን ደህና መጡ
-description: የራስዎን የ agent CLI መለያዎች ያሰባስቡ እና እያንዳንዱን session በእንቅስቃሴ ላይ ያቆዩ
+title: tokenmaxxing
+description: "አውቶማቲክ የ Claude Code መለያ መቀያየር - የራስዎን የደንበኝነት ምዝገባ መለያዎች ያሰባስቡ እና ኮታ ሲሞላ credentialዎችን hot-swap ያድርጉ፣ እያንዳንዱን session ተከታታይ በማድረግ።"
 ---
 
-tokenmaxxing የ Claude Code (እና Codex) በበርካታ የራሳቸው መለያዎች ላይ ለሚያሄዱ ሰዎች የተዘጋጀ CLI ነው። የአጠቃቀም ኮታዎችን ይከታተላል፣ ገደብ ከመድረሱ በፊት ንቁ የሆነውን credential ትልቁ ክፍተት ወዳለው መለያ ይቀይራል፣ እና sessionዎችዎን በመቀያየሮች መካከል ተከታታይ ያደርጋል።
+tokenmaxxing አውቶማቲክ የ Claude Code መለያ መቀያየር የሚያከናውን CLI ነው። የእርስዎ የሆኑ በርካታ የደንበኝነት ምዝገባ (Pro/Max) መለያዎችን ያሰባስባል እና በስራ ላይ ያለው መለያ ወደ አጠቃቀም ገደብ ሲቃረብ ንቁ የሆነውን credential ወደ ትኩስ መለያ hot-swap ያደርጋል። `claude` ን ልክ ሁልጊዜ እንደሚያደርጉት በትክክል ያሄዳሉ፤ መቀያየሩ ደህንነቱ በተጠበቀ የ turn ወሰን ላይ ይከሰታል እና እየሄደ ያለው session በአዲሱ መለያ ላይ ተመሳሳዩን ውይይት ዳግም ሳይጀምር ይቀጥላል። በአንድ ጊዜ በበርካታ ተባባሪ sessionዎች ላይ ይሰራል።
+
+ብቸኛው የሚታይ ባህሪ የከፋው ሁኔታ ነው፦ ሙሉ pool ገደቡ ላይ በሚሆንበት ጊዜ፣ session በ countdown ይቆም እና ዳግም በሚጀምረው ቀጣይ መለያ ላይ በራስ-ሰር ይቀጥላል (Ctrl-C ወዲያውኑ ይቀጥላል)።
+
+<Callout>
+ወሰን፦ Claude Code በ macOS እና Linux ላይ፣ በተጨማሪም የ OpenAI Codex CLI እንደ ሁለተኛ ትይዩ pool። የደንበኝነት ምዝገባ መለያዎችን ያሰባስባል እንጂ API keys ን አይደለም። ይህ የራስዎ የሆኑ መለያዎችን፣ በራስዎ በሚያሄዷቸው sessionዎች እና agentዎች ውስጥ ለማሰባሰብ የግል-አገልግሎት መሳሪያ ነው - [የግል አጠቃቀም እና የአገልግሎት ውሎች](/am/terms) ይመልከቱ።
+</Callout>
+
+## ችግሩ
+
+የ Claude ደንበኝነት ምዝገባ በአንድ ጊዜ ሦስት ገደቦችን ይለካል (ሁሉም በ `/usage` የተረጋገጡ)፦
+
+- **አሁን ያለው session**፦ ተንከባላይ የ5-ሰዓት መስኮት።
+- **አሁን ያለው ሳምንት (ሁሉም ሞዴሎች)**፦ የ7-ቀን ጥቅል።
+- **አሁን ያለው ሳምንት፣ በሞዴል**፦ ለተናጠል ሞዴል ቤተሰቦች የተለያዩ ሳምንታዊ ገደቦች። እነዚህ በአሁኑ ጊዜ ለ Sonnet እና Fable ብቻ የሚገኙ ናቸው፣ እና ጠቃሚ የሚሆነው የ Fable ገደብ ብቻ ነው - ከጥቅሉ ቀድሞ በጣም ይይዛል። አንድ ማሽን በ week-Fable ላይ 80% ላይ እያለ በ week-all ላይ 50% ላይ ሊሆን ይችላል።
+
+ሳምንታዊ ኮታ ተጠቀም-ወይም-አጣ ነው፦ አንድ መለያ በተወሰነው ሳምንታዊ ዳግም ማስጀመሪያው ያልተጠቀመው ማንኛውም ነገር ይወረሳል። በርካታ መለያዎች ካሉዎት፣ ምክንያታዊው ስልት ከራሱ ሳምንታዊ ፍጥነት ወደኋላ በጣም በቀረው መለያ ላይ ኮታ ማቃጠሉን መቀጠል፣ እና ማንኛውም አንድ ገደብ በ session መካከል ግድግዳውን ከመምታቱ በፊት መቀየር ነው።
+
+ይህን በእጅ ማድረግ ማለት መውጣት፣ መግባት እና ውይይትዎን ማጣት ማለት ነው። tokenmaxxing ያንን በራስ-ሰር ያደርገዋል፦ እየሄደ ያለ `claude` በ request መካከል የ credential store ውን እንደገና ይፈትሻል፣ ስለዚህ ከሱ ስር የተቀየረ credential በቦታው ይወሰዳል (በ macOS ላይ በ30 ሰከንድ ገደማ ውስጥ፣ በ Linux ላይ በሚቀጥለው request)። ተራ መቀያየር session ዎን በጭራሽ ዳግም አያስጀምርም። አሁንም process አስተዳደር የሚያስፈልገው ብቸኛው ሁኔታ ሙሉ በሙሉ የተሟጠጠ pool ነው - session ራሱን ማቆም አይችልም - እና ቀጭኑ supervisor የሚኖረው ለዚህ ነው።
+
+ስለ `claude` ሌላው ሁሉ ነገር አልተለወጠም፦ ሁሉም flagዎች፣ MCP serverዎች፣ hookዎች እና skillዎች ያልፋሉ።
 
 ## ወዴት መሄድ እንደሚቻል
 
 <Cards>
-  <Card title="ሙሉ መመሪያ" href="/am/docs/tokenmaxxing" />
-  <Card title="በ GitHub ላይ ያለ ምንጭ" href="https://github.com/anaclumos/tokenmaxxing" />
+  <Card title="ፈጣን ጅምር" href="/am/quickstart" />
+  <Card title="Commandዎች" href="/am/commands" />
+  <Card title="Architecture" href="/am/architecture" />
+  <Card title="መቀያየር እንዴት እንደሚወስን" href="/am/switching" />
 </Cards>

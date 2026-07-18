@@ -1,0 +1,25 @@
+---
+title: Komutlar
+description: "Her tokenmaxxing komutu ve ne yaptığı"
+---
+
+| Komut | Ne yapar |
+|---|---|
+| `tokenmaxxing init` | Mevcut hesabı içe aktarır, gözetmeni, hook'ları ve statusline'ı kurar |
+| `tokenmaxxing init --codex` | Codex için aynısı: oturumu içe aktarır, codex gözetmenini ve Stop hook'unu kurar |
+| `tokenmaxxing add` | Ek bir hesap kaydeder (izole oturum açma, havuza toplanmış) |
+| `tokenmaxxing add --codex` | Ek bir Codex hesabı kaydeder (izole oturum açma) |
+| `tokenmaxxing auth [sel \| --all]` | Havuzdaki bir hesabı yerinde yeniden kimlik doğrular. Sade hali havuzu listeler ve hangisini sorar; bir seçici tek bir hesabı hedefler ve hangi e-posta ile oturum açmanız gerektiğini söyler; `--all` yeniden kimlik doğrulama gereken her hesabı tek tek gezer |
+| `tokenmaxxing switch [sel]` | En iyi hesaba geçer (açgözlü, idempotent) veya belirli birini zorlar |
+| `tokenmaxxing switch --codex [sel]` | Codex havuzunu değiştirir (bir sonraki codex başlangıcında etkin olur) |
+| `tokenmaxxing ls` | Havuzdaki hesapları listeler |
+| `tokenmaxxing status` | 5s / haftalık / model başına kullanım çubuklarıyla hesaplar, aktif ve sıfırlanana kadar tükenmiş |
+| `tokenmaxxing status --force` | Ayrıca her hesaba ping atar (her birine ufak bir haiku isteği) böylece tüm 5s oturum zamanlayıcıları şimdi başlar, ardından taze örnekler |
+| `tokenmaxxing watch [saniye]` | Her N saniyede bir yeniden işlenen canlı durum (varsayılan 120, taban 30; asla ping atmaz) |
+| `tokenmaxxing config [get\|set\|unset\|tidy]` | Kaynaklarıyla birlikte etkin yapılandırma; noktalı anahtarları düzenler; `tidy` bilinmeyen anahtarları budar |
+| `tokenmaxxing check` | Geçiş kararını bir kez değerlendirir (periyodik zamanlayıcının çalıştırdığı budur) |
+| `tokenmaxxing serve [setup\|link\|unlink\|links]` | Slack köprüsü daemon'u (Socket Mode, genel URL yok) |
+| `tokenmaxxing doctor` | Gözetmenin ve ayar girişlerinin hayatta kaldığını doğrular |
+| `tokenmaxxing rename [--codex] <sel> <label>` | Havuzdaki bir hesabı yeniden etiketler |
+| `tokenmaxxing rm <sel>` | Havuzdan bir hesabı kaldırır |
+| `tokenmaxxing uninstall` | Gözetmeni ve ayar girişlerini kaldırır (hesaplar ve kimlik bilgileri korunur) |

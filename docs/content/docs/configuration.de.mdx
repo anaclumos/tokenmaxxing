@@ -1,0 +1,28 @@
+---
+title: Konfiguration
+description: "Das config.json-Schema, die Schwellenwerte und die Richtlinien-Stellschrauben"
+---
+
+Die Konfiguration ist JSON unter `~/.config/tokenmaxxing/config.json`. Jedes Feld ist optional; Standardwerte gelten pro Feld.
+
+```json
+{
+  "thresholds": { "session": 95, "weekly": 98 },
+  "policy": {
+    "projectionMargin": 0,
+    "greedySessionFloor": 50,
+    "switchModels": ["fable"],
+    "usagePollTtlMs": 90000,
+    "maxWaitMs": 3600000
+  }
+}
+```
+
+- `thresholds.session` / `thresholds.weekly`: die oben beschriebenen Screening-Schranken.
+- `policy.projectionMargin`: von beiden Schranken abgezogen, um die effektiven Schranken zu bilden.
+- `policy.greedySessionFloor`: der Sitzungsnutzungsprozentsatz, bei dem die greedy-Konvergenz greift.
+- `policy.switchModels`: Modellfamilien, deren wöchentliche Pro-Modell-Obergrenze einen Wechsel gated (Einträge werden beim Laden kleingeschrieben).
+- `policy.usagePollTtlMs`: wie lange eine `/usage`-Pro-Modell-Abfrage frisch bleibt.
+- `policy.maxWaitMs`: die Warteobergrenze für den automatischen Erschöpft-Pool.
+
+`tokenmaxxing config` zeigt die effektive Konfiguration mit Quellen; `config set`/`unset` bearbeiten punktierte Schlüssel; `config tidy` entfernt unbekannte Schlüssel.

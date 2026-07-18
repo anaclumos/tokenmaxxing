@@ -1,0 +1,25 @@
+---
+title: የ State directory አቀማመጥ
+description: "በ ~/.config/tokenmaxxing ስር ያለ እያንዳንዱ ፋይል እና directory"
+---
+
+ሁሉም ነገር በ `~/.config/tokenmaxxing/` ስር ይኖራል (በ `TOKENMAXXING_HOME` ሊሻር የሚችል፤ በውጭ ሊታይ የሚችል እያንዳንዱ path የ env override አለው ስለዚህ ሙሉ መሳሪያው በ testዎች ውስጥ hermetic ሆኖ ሊሄድ ይችላል)።
+
+| Path | ምን እንደሚይዝ |
+|---|---|
+| `config.json` | የእርስዎ ውቅር (sparse፤ ነባሪዎች በ-field ይተገበራሉ) |
+| `accounts.json` | የተሰበሰቡ Claude መለያዎች ሚስጥር-ያልሆነ index፦ labelዎች፣ idዎች፣ cache-የተደረጉ የአጠቃቀም መስኮቶች። በጭራሽ tokenዎች አይደሉም |
+| `usage.json` | የ statusline tee ው ጥቅል መስኮት snapshot፤ mtime ው የ feed ው የህያውነት heartbeat ነው |
+| `model-usage.json` | ከ `/usage` የ TTL-cache የተደረጉ በ-ሞዴል ሳምንታዊ ገደቦች |
+| `lastswap.json` | የመጨረሻው መቀያየር epoch timestamp፤ የ45-ሰከንድ cooldown ን ይነዳል |
+| `lock` | መቀያየሮችን serialize የሚያደርግ የ `flock` ፋይል |
+| `tokenmaxxing.log` | Append-only የ event log |
+| `bin/` | የ PATH shimዎች፦ `claude`፣ `codex`፣ እና የ `tokenmaxxing` / `xx` entry pointዎች |
+| `respawn/<session-id>` | supervisor ው የሚከታተላቸው የተሟጠጠ-ጥበቃ respawn markerዎች |
+| `creds/` | ለ Linux ብቻ፦ የተያዙ credential ፋይሎች፣ በ 0700 directory ውስጥ 0600 (macOS credentialዎችን በ-መለያ keychain ንጥሎች አድርጎ ይይዛል) |
+| `onboard/`, `sample/` | ለ `add`/`auth` loginዎች እና የተያዙ-መለያ `/usage` probeዎች የሚጣሉ የተነጠሉ config homeዎች፤ plaintext credentialዎችን የያዙ onboard homeዎች ከመሰብሰብ በኋላ ይሰረዛሉ |
+| `slack.json` | የ `xx serve` tokenዎች እና channel linkዎች (0600) |
+| `slack-threads/` | ለ `xx serve` በ-thread session መዝገቦች |
+| `codex-*` | ትይዩ የ Codex pool፦ `codex-accounts.json`፣ `codex-lastswap.json`፣ `codex-lock`፣ `codex-creds/`፣ `codex-onboard/`፣ `codex-respawn/`፣ እና `codex-live/` (በእያንዳንዱ የሚሄድ የተቆጣጠረ codex session አንድ በ PID-የተረጋገጠ presence ፋይል፣ ስለዚህ ቀጥታ መለያ በጭራሽ የመቀያየር ኢላማ አይሆንም) |
+
+ከራሱ directory ውጭ፣ tokenmaxxing በትክክል የሚነካቸው፦ `~/.claude.json` (የ `oauthAccount` መቀያየር)፣ የ Claude Code `settings.json` (የ hook እና statusline ግቤቶች)፣ ቀጥታው credential store (በ macOS ላይ የ `Claude Code-credentials` keychain ንጥል፣ በ Linux ላይ `.credentials.json`)፣ `~/.claude.lock` (የ claude refresh lock፣ በመቀያየር ጊዜ የተወሰደ)፣ የ codex `auth.json` እና `hooks.json`፣ እና በ launchd ወይም systemd ውስጥ ያለው ወቅታዊ-ፍተሻ unit ናቸው።

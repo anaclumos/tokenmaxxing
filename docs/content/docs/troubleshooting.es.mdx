@@ -1,0 +1,34 @@
+---
+title: Resolución de problemas y preguntas frecuentes
+description: "Preguntas frecuentes y los diagnósticos que hay detrás"
+---
+
+**`claude` no parece estar supervisado.**
+Ejecuta `tokenmaxxing doctor`. El shim debe ganar la resolución del PATH; comprueba que la línea `# tokenmaxxing PATH` en el rc de tu shell apunte al directorio bin actual y vaya por delante del claude real. `doctor` también advierte sobre `alias claude=...` o una función de shell `claude()` que ensombrezca el envoltorio, y sobre alias que lanzan un binario de claude por ruta absoluta (esos eluden el supervisor por completo).
+
+**El cambio automático nunca se dispara en Codex.**
+Codex omite los hooks en los que no se le ha dicho que confíe. Abre codex, ejecuta `/hooks`, y confía en el hook Stop de tokenmaxxing. La confianza se registra contra el hash del hook, así que debe volver a concederse si el hook se edita alguna vez.
+
+**Una cuenta muestra un `✗` rojo en la statusline.**
+Su token de refresco está muerto (revocado o rotado por debajo de su copia de seguridad). Ejecuta `tokenmaxxing auth <sel>` para volver a autenticarla en su lugar; el comando te dice con qué correo iniciar sesión y se niega a un inicio de sesión que aterrice en una cuenta distinta.
+
+**¿Por qué no cambia a la cuenta con más cuota restante?**
+Porque esa no es la cuenta con más riesgo de perder cuota. El destino es la cuenta más atrasada respecto a su propio ritmo semanal: porcentaje restante dividido por el tiempo hasta su restablecimiento semanal. Con cantidades restantes iguales eso se reduce a vencimiento más próximo primero, y con vencimiento igual a mayor restante primero.
+
+**Acaba de cambiar y la statusline aún muestra la cuenta vieja.**
+Esperado durante hasta ~30 segundos en macOS: la sesión en ejecución adopta la credencial cambiada en su siguiente refresco de caché de credenciales. El tee de uso se suprime durante 45 segundos tras un cambio precisamente por esta razón.
+
+**¿`status --force` cuesta algo?**
+Sí, deliberadamente: envía una solicitud haiku medida mínima por cuenta para que cada ventana de sesión de 5 horas arranque en ese instante en vez de yacer dormida, luego muestrea en fresco. `status` y `watch` a secas nunca hacen ping; las lecturas de `/usage` son gratis. Ten en cuenta que el feed de uso del servidor puede retrasar una ventana recién abierta de segundos a minutos, así que una sonda inmediatamente después del ping aún puede mostrar el estado previo al ping - `status` renderiza una nota en vez de fingir que el ping falló.
+
+**La sonda `/usage` no devolvió nada para la cuenta activa.**
+Ese es un comportamiento conocido de claude: cuando su recuperación interna de uso falla o está limitada por tasa, `/usage` imprime solo estadísticas locales de sesión sin líneas de porcentaje. tokenmaxxing muestrea la cuenta activa desde el push de la statusline y solo sondea cuentas estacionadas, precisamente para evitar esto.
+
+**Sesiones de claude en segundo plano.**
+El daemon en segundo plano de claude lanza el binario versionado real por ruta absoluta, eludiendo los shims del PATH, así que las sesiones en segundo plano no están supervisadas. Los hooks aún se disparan mediante `settings.json`, y la adopción de credenciales más el temporizador periódico cubren el cambio, pero no hay reaparición impulsada por marcador para ellas.
+
+**Algo lanzó muchos procesos una vez. ¿Sigue siendo posible?**
+El supervisor lleva protecciones de recursión en capas contra exactamente ese fallo histórico (un envoltorio obsoleto fijado como el claude "real"): un centinela de profundidad en el entorno que aborta a los 5 niveles, un limitador de tasa de lanzamiento en disco, comprobaciones de identidad por realpath que rechazan cualquier candidato que se resuelva de vuelta al propio directorio bin de tokenmaxxing, y un fallo duro (nunca un escaneo silencioso del PATH) cuando una ruta de claude configurada ya no existe. `init` y `doctor` verifican que un candidato realmente sea claude ejecutando `--version` antes de fijarlo.
+
+**Desinstalar.**
+`tokenmaxxing uninstall` elimina los shims del supervisor, las entradas de configuración y el temporizador periódico, y deja intactas tus cuentas y credenciales estacionadas. Solo elimina entradas de statusline que reconoce como propias.

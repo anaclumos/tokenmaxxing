@@ -1,0 +1,25 @@
+---
+title: Umarni
+description: "Kowane umarni na tokenmaxxing da abin da yake yi"
+---
+
+| Umarni | Abin da yake yi |
+|---|---|
+| `tokenmaxxing init` | Shigo da asusun yanzu, shigar da mai kula, hooks, da statusline |
+| `tokenmaxxing init --codex` | Haka ga Codex: shigo da shiga, shigar da mai kula na codex da Stop hook |
+| `tokenmaxxing add` | Yi rajistar ƙarin asusu (shiga a ware, an tattara shi cikin tafki) |
+| `tokenmaxxing add --codex` | Yi rajistar ƙarin asusun Codex (shiga a ware) |
+| `tokenmaxxing auth [sel \| --all]` | Sake tantance asusun da ke cikin tafki a wurinsa. Shi kaɗai yana lissafa tafkin kuma yana tambaya wanne; mai zaɓe yana nufin asusu ɗaya kuma yana gaya maka wace imel za ka shiga da ita; `--all` yana bin kowane asusun da ke buƙatar sake-tantancewa ɗaya bayan ɗaya |
+| `tokenmaxxing switch [sel]` | Musanya zuwa asusu mafi kyau (greedy, idempotent) ko tilasta wani takamaimai |
+| `tokenmaxxing switch --codex [sel]` | Musanya tafkin Codex (yana aiki a farawar codex ta gaba) |
+| `tokenmaxxing ls` | Lissafa asusun da ke cikin tafki |
+| `tokenmaxxing status` | Asusu tare da sandunan amfani na awa 5 / mako / kowane-model, masu aiki da waɗanda suka ƙare-har-sake-saitawa |
+| `tokenmaxxing status --force` | Ƙari da haka a ping kowane asusu (ƙaramar buƙatar haiku ɗaya kowanne) don duk agogon zaman awa 5 su fara yanzu, sannan a ɗauki sabon samfur |
+| `tokenmaxxing watch [seconds]` | Matsayi kai tsaye, ana sake nunawa kowace daƙiƙa N (tsohuwa 120, mafi ƙasa 30; ba ya taɓa ping) |
+| `tokenmaxxing config [get\|set\|unset\|tidy]` | Tsarin da ke aiki tare da tushe; gyara maɓallan da aka raba da aya; `tidy` yana yanke maɓallan da ba a sani ba |
+| `tokenmaxxing check` | Auna shawarar musanya sau ɗaya (wannan shi ne abin da agogon lokaci-lokaci ke gudanarwa) |
+| `tokenmaxxing serve [setup\|link\|unlink\|links]` | Daemon na gadar Slack (Socket Mode, babu URL na jama'a) |
+| `tokenmaxxing doctor` | Tabbatar da cewa mai kula da shigarwar saituna sun tsira |
+| `tokenmaxxing rename [--codex] <sel> <label>` | Sake yiwa asusun da ke cikin tafki lakabi |
+| `tokenmaxxing rm <sel>` | Cire asusu daga tafki |
+| `tokenmaxxing uninstall` | Cire mai kula da shigarwar saituna (ana kiyaye asusu da tantancewa) |

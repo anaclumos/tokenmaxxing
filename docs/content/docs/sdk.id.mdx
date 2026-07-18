@@ -1,0 +1,31 @@
+---
+title: Permukaan Agent SDK
+description: "Pasangkan gabungan dengan Claude Agent SDK dalam agen yang Anda jalankan sendiri"
+---
+
+Titik masuk terprogram paket (`exports["."]` menunjuk ke `src/sdk.ts`) memasangkan tokenmaxxing dengan Claude Agent SDK untuk agen yang Anda bangun terhadap akun tergabung Anda sendiri. Aplikasi Anda harus berjalan di bawah Bun (tokenmaxxing mengirimkan kode sumber TypeScript dan menggunakan `bun:ffi`).
+
+```ts
+import { query } from "@anthropic-ai/claude-agent-sdk";
+import { ensureBestAccount, pooledOptions, stopHookCheck } from "tokenmaxxing";
+
+await ensureBestAccount(); // run the switch decision before the spawn
+
+for await (const message of query({
+  prompt: "...",
+  options: {
+    ...pooledOptions(), // pinned real claude + scrubbed env
+    hooks: { Stop: [{ hooks: [stopHookCheck] }] }, // re-decide at every turn boundary
+  },
+})) {
+  // capture the session id from the init message for `resume` across swaps
+}
+```
+
+Agent SDK menelurkan sebuah subproses claude per `query()` dan membaca kredensial sekali saat penelurannya - tanpa statusline, tanpa hot-swap di tengah query - jadi integrasinya digerakkan-batas:
+
+- `ensureBestAccount()` adalah keputusan persis yang dijalankan hook dan pengatur waktu CLI (bilah, tekanan laju, cooldown, semuanya kode bersama), tidak pernah antisipatif: sebuah sesi SDK tidak pernah bisa dijeda untuk hitung mundur gabungan-habis.
+- `pooledOptions()` menyematkan `pathToClaudeCodeExecutable` ke biner claude asli (tidak pernah pembungkus supervisor) dan memasok `env` pengganti penuh dengan setiap penggantian kredensial ambien dibersihkan. Ia gagal cepat jika `CLAUDE_CONFIG_DIR` atau `CLAUDE_SECURESTORAGE_CONFIG_DIR` disetel di lingkungan aplikasi Anda: di Linux sebuah pertukaran akan menulis kredensial langsung ke tempat yang ditunjuk variabel itu sementara subproses yang dibersihkan membaca penyimpanan default, sebuah ketaksinkronan akun-salah yang senyap.
+- `stopHookCheck` menjalankan ulang keputusan di batas giliran; sebuah pertukaran yang ia daratkan berlaku pada penelurusan berikutnya. Ia menangkap error-nya sendiri (mencatat ke stderr dan log) alih-alih melemparkannya ulang, karena sebuah pengecualian hook yang tak tertangani dapat menyela agen, dan membatalkan sebuah giliran karena pemeriksaan pertukaran yang rusak lebih mahal daripada mengendarai akun saat ini.
+
+`sdk.ts` tidak mengimpor apa pun dari Agent SDK itu sendiri; nilainya menyebar secara struktural ke dalam opsi SDK.

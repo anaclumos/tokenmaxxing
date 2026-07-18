@@ -1,0 +1,31 @@
+---
+title: พื้นผิว Agent SDK
+description: "จับคู่พูลเข้ากับ Claude Agent SDK ใน agent ที่คุณรันเอง"
+---
+
+จุดเข้าเชิงโปรแกรมของแพ็กเกจ (`exports["."]` ชี้ไปที่ `src/sdk.ts`) จับคู่ tokenmaxxing กับ Claude Agent SDK สำหรับ agent ที่คุณสร้างขึ้นโดยใช้บัญชีในพูลของคุณเอง แอปของคุณต้องรันบน Bun (tokenmaxxing ส่งมาเป็นซอร์สโค้ด TypeScript และใช้ `bun:ffi`)
+
+```ts
+import { query } from "@anthropic-ai/claude-agent-sdk";
+import { ensureBestAccount, pooledOptions, stopHookCheck } from "tokenmaxxing";
+
+await ensureBestAccount(); // run the switch decision before the spawn
+
+for await (const message of query({
+  prompt: "...",
+  options: {
+    ...pooledOptions(), // pinned real claude + scrubbed env
+    hooks: { Stop: [{ hooks: [stopHookCheck] }] }, // re-decide at every turn boundary
+  },
+})) {
+  // capture the session id from the init message for `resume` across swaps
+}
+```
+
+Agent SDK จะ spawn โปรเซสย่อย claude ต่อ `query()` หนึ่งครั้ง และอ่าน credential เพียงครั้งเดียวตอน spawn ไม่มี statusline ไม่มี hot-swap ระหว่าง query ดังนั้นการผสานรวมจึงขับเคลื่อนด้วยขอบเขต:
+
+- `ensureBestAccount()` คือการตัดสินใจแบบเดียวกับที่ฮุกและตัวจับเวลาของ CLI รัน (แถบ, pace pressure, ช่วงพัก ล้วนเป็นโค้ดที่ใช้ร่วมกัน) ไม่เคยทำแบบคาดการณ์ล่วงหน้า เพราะเซสชัน SDK ไม่มีทางถูกหยุดเพื่อนับถอยหลังเมื่อหมดโควตาได้
+- `pooledOptions()` ปักหมุด `pathToClaudeCodeExecutable` ไปที่ไบนารี claude ตัวจริง (ไม่ใช่ตัวห่อ supervisor) และจัดหา `env` แทนที่แบบเต็มโดยล้างการ override credential จากสภาพแวดล้อมทุกตัว มันจะล้มเหลวทันทีหากมีการตั้ง `CLAUDE_CONFIG_DIR` หรือ `CLAUDE_SECURESTORAGE_CONFIG_DIR` ในสภาพแวดล้อมของแอปคุณ เพราะบน Linux การสลับจะเขียน credential สดไปยังที่ที่ตัวแปรเหล่านั้นชี้ ในขณะที่โปรเซสย่อยที่ถูกล้างอ่านจากที่เก็บเริ่มต้น เกิดความไม่ตรงกันของบัญชีที่ผิดแบบเงียบๆ
+- `stopHookCheck` รันการตัดสินใจซ้ำที่ขอบเขตเทิร์น การสลับที่มันทำจะมีผลในการ spawn ครั้งถัดไป มันดักจับข้อผิดพลาดของตัวเอง (โดยบันทึกไปยัง stderr และ log) แทนที่จะโยนต่อ เพราะข้อยกเว้นของฮุกที่ไม่ได้จัดการอาจขัดจังหวะ agent และการยกเลิกเทิร์นเพราะการตรวจสอบการสลับที่เสียมีต้นทุนสูงกว่าการอยู่กับบัญชีปัจจุบันต่อไป
+
+`sdk.ts` ไม่ import อะไรจาก Agent SDK เองเลย ค่าของมันกระจายเข้าไปในตัวเลือกของ SDK เชิงโครงสร้าง

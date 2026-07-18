@@ -1,0 +1,21 @@
+---
+title: Statusline
+description: "Kuota dibawa dalam warna, satu baris, setiap akun terlihat"
+---
+
+tokenmaxxing merender statusline Claude Code secara native (sambil mengalirkan umpan penggunaan). Prinsip desainnya: kuota dibawa dalam warna, bukan angka. Satu baris, misalnya:
+
+```
+tm-wt-demo Fable 5 (high) +156/-23  ◆ 𝒇 2h 1d  ◇ 19h  ◇ 𝒇 2d  ◇ full  ✗ ?
+```
+
+- Setiap token jendela adalah waktu-menuju-reset-nya, dilukis pada gradasi hijau-ke-kuning-ke-merah yang kontinu berdasarkan persen terpakai (truecolor ketika terminal mendukungnya, dilangkahkan ke kubus 256-warna jika tidak). Gradasi berlabuh di hijau murni untuk 0, kuning di 75, dan merah di 95 ke atas, sehingga pita keparahan lama bertahan sebagai jangkar gradasi.
+- Nama model dilukis oleh isi jendela-konteks pada gradasi yang sama.
+- Sebuah `◆` hijau memimpin jendela akun aktif; setiap akun terparkir mendapatkan `◇` sian-nya sendiri (`✗` merah jika perlu autentikasi ulang). Akun diurutkan berdasarkan reset mendatang paling cepat.
+- Per-model muncul pertama di setiap blok sebagai inisial polos yang dilukis: Fable dirender `𝒇`; keluarga lain memakai huruf pertamanya dalam huruf besar, selalu dicocokkan-keluarga.
+- Sebuah akun terparkir yang belum tersentuh merender `full` hijau. Penggunaan terukur dengan reset yang tidak diketahui merender `?` yang dilukis, dan batas per-model yang tak terukur pada model tergerbang merender `𝒇?` polos - yang tak terukur tidak boleh terlihat aman.
+- Hitung mundur reset menampilkan hanya unit terbesar, tidak pernah "now" atau "0m"; sebuah jendela tanpa reset mendatang merender `0` hijau (kosong lagi).
+- Basename dari git worktree tertaut memimpin baris; checkout utama tidak merender apa pun di sana. Deteksi membaca sistem berkas untuk berkas `.git` dan tidak pernah menelurkan subproses git.
+- Dengan `NO_COLOR` disetel, baris jatuh kembali ke format numerik terlekat (`2h5` berarti reset dalam 2 jam, terpakai 5%; `ctx 42` untuk isi konteks) - tanpa warna, sebuah jendela yang terkuras tidak boleh terlihat segar.
+
+Tugas subagen mendapatkan baris panelnya sendiri melalui permukaan subagentStatusLine milik claude: satu baris per tugas aktif, nama keluarga dilukis oleh isi konteks tugas itu.

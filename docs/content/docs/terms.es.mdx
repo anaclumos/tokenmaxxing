@@ -1,0 +1,6 @@
+---
+title: Uso personal y términos de servicio
+description: "Agrupa cuentas de tu propiedad, en sesiones y agentes que ejecutas tú mismo"
+---
+
+tokenmaxxing agrupa cuentas de tu propiedad, en sesiones y agentes que ejecutas tú mismo. Esa redacción es deliberada: Anthropic no permite que productos de terceros ofrezcan el inicio de sesión de claude.ai ni los límites de tasa de claude.ai, y eso incluye agentes construidos sobre el Agent SDK. No distribuyas la superficie del SDK agrupado, ni nada construido sobre ella, a terceros. tokenmaxxing también se mantiene deliberadamente en la vía `/usage` mediada por la CLI para los datos de cuota en vez de reimplementar OAuth o hacer de proxy del tráfico de la API: no es un proxy, y los únicos endpoints de OAuth que toca son el grant de refresco estándar usado durante un cambio y una comprobación de identidad de solo lectura (el endpoint de roles) que verifica a qué cuenta pertenece realmente un token.

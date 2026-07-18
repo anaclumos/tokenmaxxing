@@ -1,0 +1,10 @@
+---
+title: Limitations honnêtes
+description: "Les compromis qu'implique la bascule à chaud mutualisée"
+---
+
+- **Un tour à froid.** Le cache de prompt est cloisonné par organisation, si bien que le premier tour sur un nouveau compte réenvoie le contexte une fois.
+- **Accroc de la pause sur épuisement.** Seul un pool entièrement épuisé arrête la session pour le compte à rebours ; tout ce qui est tapé pendant cette fraction de seconde est perdu.
+- **Latence d'adoption.** Sur macOS, le premier tour dans les ~30 secondes suivant une bascule peut encore compter sur l'ancien compte ; la marge des barres l'absorbe.
+- **Rayon d'impact partagé.** Toutes les sessions du profil par défaut partagent un unique identifiant actif, de sorte qu'une bascule les déplace toutes ensemble (chacune adopte sur place).
+- **Identifiants en clair sur Linux.** Claude Code lui-même stocke les identifiants Linux dans un fichier en clair 0600 ; les copies parquées de tokenmaxxing suivent le même modèle.

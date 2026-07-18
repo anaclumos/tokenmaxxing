@@ -1,0 +1,48 @@
+---
+title: Architecture
+description: "Le shim superviseur, le tee de la statusline, la bascule du hook Stop et le modèle d'adoption"
+---
+
+tokenmaxxing est un point d'entrée multi-appel unique (`src/main.ts`) qui se comporte comme le superviseur `claude` lorsqu'il est invoqué sous ce nom, sert les shims de hook et de statusline via des sous-commandes internes, et dispatche sinon le CLI. Il s'exécute directement sous Bun ; le paquet npm livre du code source TypeScript, pas une compilation.
+
+Les rouages :
+
+## Le shim superviseur
+
+`init` écrit un shim shell de 2 lignes nommé `claude` dans `~/.config/tokenmaxxing/bin/` et place ce répertoire en tête du PATH. Lorsque vous tapez `claude`, le shim exécute le superviseur, qui lance le vrai binaire claude avec des stdio hérités et un instantané du terminal `stty -g` sauvegardé. C'est uniquement un gestionnaire de processus et de terminal : il ne fait jamais transiter le trafic d'API par un proxy et ne touche jamais aux jetons en transit.
+
+Les invocations en mode impression (`claude -p`, `--version`, `--help`), les sous-commandes non interactives (`claude mcp`, `claude config`, etc.) et les propres sondes de tokenmaxxing passent directement sans gestion de session. Pour une session interactive, le superviseur fixe un identifiant de session (en en générant un, ou en réutilisant celui que vous avez passé via `--session-id` / `-r` / `-c`), conserve vos options de lancement pour qu'un relancement ultérieur puisse les rejouer, puis surveille un fichier marqueur de respawn associé à cette session.
+
+## Le tee de la statusline
+
+Claude Code pousse les données de limite de débit (`rate_limits.five_hour` et `rate_limits.seven_day`) dans le stdin de la statusline à chaque tour. tokenmaxxing possède l'emplacement de la statusline, si bien que son moteur de rendu fait aussi office de flux d'utilisation gratuit, basé sur le push : à chaque tick, il duplique (tee) les fenêtres agrégées ainsi que le modèle actif dans `usage.json`. Les plafonds par modèle ne sont pas dans le stdin de la statusline ; ils proviennent uniquement de `claude -p '/usage'` (gratuit, zéro jeton), qui est interrogé avec un TTL et mis en cache dans `model-usage.json` lorsque le modèle actif est contraint par sa capacité.
+
+Le tee écrit uniquement en cas de changement : lorsque les chiffres sont inchangés, il ne fait qu'actualiser le mtime du fichier, qui sert de battement de coeur (heartbeat) de vivacité du flux. La fraîcheur est toujours jugée d'après le mtime, jamais d'après l'horodatage intégré.
+
+## Le hook Stop et la bascule
+
+À chaque frontière de tour, le hook Stop exécute la décision de bascule (voir [Comment la bascule décide](/fr/switching)). Lorsqu'une bascule est justifiée, elle se produit sous un verrou exclusif `flock(2)` (pris via `bun:ffi`, puisque macOS ne livre aucun binaire `flock(1)`), et les écritures d'identifiants s'imbriquent en plus avec le propre verrou de rafraîchissement de Claude Code. Au sein de la section critique, une bascule :
+
+1. Récupère l'identifiant actif actuel dans la sauvegarde parquée de son véritable propriétaire.
+2. Installe l'identifiant fraîchement rafraîchi du compte cible comme identifiant actif, en fusionnant avec le blob actif existant afin que l'état voisin (tel que les jetons OAuth par serveur MCP) survive.
+3. Conserve le jeton pivoté de la cible dans sa propre sauvegarde.
+4. Réécrit atomiquement le champ `oauthAccount` dans `~/.claude.json`.
+5. Valide la nouvelle étiquette active et efface les instantanés d'utilisation périmés, le tout avant que le verrou ne se libère, de sorte qu'un plantage ne puisse jamais laisser l'identifiant installé et l'étiquette active pointer vers des comptes différents.
+
+Comme toutes les sessions du profil par défaut partagent l'unique identifiant actif, une seule bascule migre toutes les sessions en même temps, et le flock, plus une revérification sous le verrou, empêche des hooks en concurrence de consommer deux comptes.
+
+## Adoption sur place
+
+Une session claude en cours d'exécution interroge son magasin d'identifiants entre les requêtes : sur macOS, elle relit le trousseau via un cache court et compare les jetons d'accès ; sur Linux, elle inspecte le mtime du fichier d'identifiants et vide ses caches de jetons en cas de changement. L'effet net est qu'un identifiant échangé est adopté par toutes les sessions en cours en environ 30 secondes sur macOS et dès la requête suivante sur Linux, sans aucun redémarrage. C'est pourquoi une bascule simple n'écrit aucun marqueur et ne déclenche aucun respawn : la session poursuit simplement sur le nouveau compte. Le `/usage` en session partage les mêmes caches de jetons, de sorte que l'affichage de son compte bascule en même temps que l'adoption.
+
+## Attente sur pool épuisé et reprise automatique
+
+Ce n'est que lorsque chaque compte du pool dépasse ses barres que le hook Stop écrit un marqueur de respawn (le schéma du marqueur exige un horodatage `waitUntil` ; une bascule simple ne peut jamais en produire un). Le superviseur voit le marqueur, envoie un SIGTERM à son enfant à la frontière de tour déjà validée (le hook Stop s'exécute après que la transcription est sur disque et que claude est inactif, donc rien n'est perdu), restaure le terminal, affiche un compte à rebours jusqu'à la réinitialisation la plus proche, puis relance `claude --resume <session-id>` sur le compte rétabli. Ctrl-C pendant le compte à rebours reprend immédiatement. L'attente automatique est bornée par `policy.maxWaitMs` (par défaut 1 heure) ; au-delà, la décision signale le pool comme épuisé au lieu d'attendre.
+
+## La minuterie de vérification périodique
+
+Les hooks ne se déclenchent qu'aux frontières de tour, et un long tour agentique peut consumer une fenêtre, la faisant passer de saine à épuisée, sans une seule frontière. `init` installe donc aussi une minuterie périodique (un agent launchd sur macOS, une minuterie utilisateur systemd sur Linux) qui exécute `tokenmaxxing check` toutes les 180 secondes, indépendamment de l'activité des tours.
+
+## Un hook SessionStart
+
+Exécute la même évaluation lorsqu'une session démarre ou reprend, afin qu'une nouvelle session commence sur le bon compte. Le délai de récupération post-bascule en fait une opération sans effet correcte juste après un respawn.

@@ -1,0 +1,34 @@
+---
+title: Troubleshooting and FAQ
+description: "Common questions and the diagnostics wey dey behind dem"
+---
+
+**`claude` no dey look like say dem dey supervise am.**
+Run `tokenmaxxing doctor`. The shim must win PATH resolution; check say the `# tokenmaxxing PATH` line for your shell rc dey point at the current bin directory and e dey sit ahead of the real claude. `doctor` dey also warn about `alias claude=...` or one `claude()` shell function wey dey shadow the wrapper, and about aliases wey dey launch one claude binary by absolute path (those dey bypass the supervisor entirely).
+
+**Auto-switching no dey ever fire on Codex.**
+Codex dey skip hooks wey dem never tell am to trust. Open codex, run `/hooks`, and trust the tokenmaxxing Stop hook. Dem dey record trust against the hook im hash, so dem must re-grant am if dem ever edit the hook.
+
+**One account dey show one red `✗` for the statusline.**
+Im refresh token don die (dem revoke am or rotate am comot under im backup). Run `tokenmaxxing auth <sel>` to reauthenticate am for the same place; the command dey tell you which email make you sign in with and e dey refuse a login wey land for one different account.
+
+**Why e no dey switch to the account with the most remaining quota?**
+Because dat one no be the account wey dey most at risk to forfeit quota. The target na the account wey dey furthest behind im own weekly pace: remaining percent divide by time to im weekly reset. With equal amounts remaining dat one dey reduce to soonest expiry first, and with equal expiry to most remaining first.
+
+**E just switch and the statusline still dey show the old account.**
+Na wetin we expect for up to ~30 seconds for macOS: the session wey dey run dey adopt the swapped credential for im next credential-cache refresh. Dem dey suppress the usage tee for 45 seconds after a swap for exactly dis reason.
+
+**E `status --force` dey cost anything?**
+Yes, deliberately: e dey send one minimal metered haiku request per account so every 5-hour session window go start for dat instant instead of to lie dormant, then e dey sample fresh. Plain `status` and `watch` no dey ever ping; `/usage` reads na free. Note say the server usage feed fit lag one freshly opened window by seconds to minutes, so one probe immediately after the ping fit still show the pre-ping state - `status` dey render one note instead of to pretend say the ping fail.
+
+**The `/usage` probe return nothing for the active account.**
+Na one known claude behavior: when im internal usage fetch fail or dem rate-limit am, `/usage` dey print only local session stats with no percentage lines. tokenmaxxing dey sample the active account from the statusline push and e dey only probe parked accounts, precisely to avoid dis one.
+
+**Background claude sessions.**
+Claude im background daemon dey spawn the real versioned binary by absolute path, e dey bypass PATH shims, so background sessions no dey supervised. Hooks still dey fire via `settings.json`, and credential adoption plus the periodic timer dey cover switching, but no marker-driven respawn dey for dem.
+
+**Something spawn plenty processes one time. E still possible?**
+The supervisor dey carry layered recursion guards against exactly dat historical failure (one stale wrapper wey dem pin as the "real" claude): one depth sentinel for the environment wey dey abort at 5 levels, one on-disk spawn-rate limiter, realpath identity checks wey dey reject any candidate wey dey resolve back into tokenmaxxing im own bin directory, and one hard failure (never a silent PATH scan) when one configured claude path no dey exist again. `init` and `doctor` dey verify say one candidate actually na claude by running `--version` before to pin am.
+
+**Uninstalling.**
+`tokenmaxxing uninstall` dey remove the supervisor shims, settings entries, and the periodic timer, and e dey leave your accounts and parked credentials intact. E dey only remove statusline entries wey e recognize as im own.

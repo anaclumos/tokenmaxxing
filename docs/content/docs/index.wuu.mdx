@@ -1,13 +1,35 @@
 ---
-title: 欢迎
-description: 把侬自家嗰 agent CLI 账户汇拢来，让每一趟会话勿停脚
+title: tokenmaxxing
+description: "Claude Code 账户自动切换：拿侬自家嗰订阅账户汇拢来，等额度满嗰辰光热切换凭据，让每一趟会话侪接得下去。"
 ---
 
-tokenmaxxing 是一款 CLI 工具，畀勒好几个自家账户高头跑 Claude Code（搭 Codex）嗰人用。伊盯牢用量额度，勒限额碰壁之前拿当前凭据换到余量顶多嗰账户，还保证会话勒切换前后照样接得下去。
+tokenmaxxing 是一款畀 Claude Code 账户自动切换用嗰 CLI 工具。伊拿侬自家嗰好几个订阅（Pro/Max）账户汇拢来，等勒用嗰账户快要碰着用量限额嗰辰光，拿当前凭据热切换到一个更新鲜嗰账户高头。侬照常跑 `claude`；切换勒一个安全嗰回合边界高头发生，跑牢嗰会话勿用重启就勒新账户高头接牢同一场对话。伊好同时对付蛮多并发嗰会话。
 
-## 到啥地方去看
+唯一看得着嗰表现是最坏嗰情况：等整个账户池侪到限额嗰辰光，会话会带一个倒计时暂停脱，然后勒下一个复位嗰账户高头自动接牢跑（揿 Ctrl-C 就立刻接牢跑）。
+
+<Callout>
+适用范围：macOS 搭 Linux 高头嗰 Claude Code，另外还有 OpenAI 嗰 Codex CLI，当作第二个并行嗰账户池。伊汇拢嗰是订阅账户，勿是 API key。搿是一款个人使用嗰工具，畀侬拿自家嗰账户汇拢来，用勒侬自家跑嗰会话搭 agent 里向，详见[个人使用搭服务条款](/wuu/terms)。
+</Callout>
+
+## 问题所在
+
+一个 Claude 订阅会同时计量三种限额（侪好通过 `/usage` 确认）：
+
+- **当前会话**：一个滚动嗰 5 钟头窗口。
+- **当前礼拜（所有模型）**：7 天嗰汇总。
+- **当前礼拜，分模型**：单个模型系列各自嗰礼拜上限。搿眼现在只有 Sonnet 搭 Fable 有，而且只有 Fable 嗰上限紧到要紧嗰程度，伊比汇总早老早就顶牢类。一台机器好一面礼拜总量才 50%，一面礼拜 Fable 已经到 80% 类。
+
+礼拜额度是勿用脱就作废嗰：一个账户到伊固定嗰礼拜复位辰光还呒没用脱嗰部分，统统作废。假使侬有好几个账户，理性嗰做法就是拣落自家礼拜进度顶落后嗰埃只账户接牢烧额度，还要勒任何单一限额勒会话半当中撞墙之前就切换开脱。
+
+手工做搿桩事体就意味着要登出、登进、还要丢脱侬嗰对话。tokenmaxxing 拿伊自动化脱：跑牢嗰 `claude` 会勒两趟请求当中重新检查伊嗰凭据存储，所以勒伊底下换脱嗰凭据会就地被采用（macOS 高头大约 30 秒之内，Linux 高头下一趟请求就采用）。普通嗰切换勿会重启侬嗰会话。唯一还需要进程管理嗰情况是整个账户池统统耗光嗰辰光，会话呒办法自家暂停，搿也就是埃个薄薄嗰 supervisor 存在嗰道理。
+
+`claude` 其余一切侪勿变：所有 flag、MCP server、hook 搭 skill 侪原样通过。
+
+## 到啥地方去
 
 <Cards>
-  <Card title="完整指南" href="/wuu/docs/tokenmaxxing" />
-  <Card title="GitHub 高头嗰源码" href="https://github.com/anaclumos/tokenmaxxing" />
+  <Card title="快速上手" href="/wuu/quickstart" />
+  <Card title="命令" href="/wuu/commands" />
+  <Card title="架构" href="/wuu/architecture" />
+  <Card title="切换是哪能决定嗰" href="/wuu/switching" />
 </Cards>

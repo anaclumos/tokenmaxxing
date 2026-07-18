@@ -1,0 +1,12 @@
+---
+title: ビルドと配布
+description: "npm 上の TypeScript ソース。Bun で実行し、来歴付きで公開"
+---
+
+npm パッケージはビルド成果物ではなく TypeScript ソースを配布します。`tokenmaxxing` の bin は Bun のシバンとともに `src/main.ts` を直接指し、Bun 1.2.6 以降はそれをそのまま実行します。これが Bun が必須要件である理由です。コンパイル済みバイナリは設計上存在しません。初期のリリースは単一の61 MB の macOS バイナリをすべてのプラットフォームに配布し、Linux では `exec format error` で失敗しました。プラットフォームごとのコンパイル済みパッケージはそれぞれ独自のリリースパイプラインを必要とするため、Bun によるソース実行が配布モデルになりました。
+
+パッケージの `exports` マップは、上で説明したプログラム的エントリとして `src/sdk.ts` を公開します。リリースは GitHub 上で `v<version>` としてタグ付けされます。CI は trusted publishing (OIDC、来歴付き) を通じて npm に公開し、公開ゲートはまず型チェックとフルのテストスイートを実行します。
+
+## ライセンス
+
+MIT。ソースは [anaclumos/tokenmaxxing](https://github.com/anaclumos/tokenmaxxing) にあります。

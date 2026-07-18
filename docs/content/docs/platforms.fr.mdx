@@ -1,0 +1,16 @@
+---
+title: "Notes de plateforme : macOS contre Linux"
+description: "En quoi macOS et Linux diffèrent pour le stockage, l'adoption et les minuteries"
+---
+
+| | macOS | Linux |
+|---|---|---|
+| Identifiant actif | Élément de mot de passe générique du trousseau de connexion | Fichier `.credentials.json` 0600 |
+| Identifiants parqués | Éléments de trousseau par compte | Fichiers 0600 dans un répertoire 0700 |
+| Adoption après une bascule | En ~30 secondes (cache de lecture du trousseau) | Requête suivante (interrogation du mtime du fichier) |
+| Vérification périodique | Agent launchd, toutes les 180s | Minuterie utilisateur systemd, toutes les 180s |
+| Magasin de connexion isolée | Service de trousseau à espace de noms haché par répertoire de config | Un fichier dans le répertoire de config isolé |
+
+Deux détails spécifiques à Linux méritent d'être connus : claude résout son répertoire d'identifiants à partir de `CLAUDE_SECURESTORAGE_CONFIG_DIR` en premier (puis `CLAUDE_CONFIG_DIR`, puis `~/.claude`), et tokenmaxxing reproduit exactement cette résolution afin que les deux ne se désynchronisent jamais. Et les deux compilations d'OS d'une même version de claude formatent différemment les horloges de réinitialisation de `/usage` (l'une utilise le liant " at ", l'autre une virgule) ; l'analyseur de tokenmaxxing accepte exactement ces deux formes et journalise, plutôt que de deviner, pour toute troisième.
+
+Sur macOS, une limitation honnête : `init` et `add` accèdent au trousseau de manière interactive à dessein, afin que le premier accès `security` ne soit pas à froid au sein d'un hook sans interface.

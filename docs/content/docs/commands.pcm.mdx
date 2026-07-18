@@ -1,0 +1,25 @@
+---
+title: Commands
+description: "Every tokenmaxxing command and wetin e dey do"
+---
+
+| Command | Wetin e dey do |
+|---|---|
+| `tokenmaxxing init` | Import the current account, install the supervisor, hooks, and statusline |
+| `tokenmaxxing init --codex` | Same thing for Codex: import the login, install the codex supervisor and Stop hook |
+| `tokenmaxxing add` | Register additional account (isolated login, harvest am go the pool) |
+| `tokenmaxxing add --codex` | Register additional Codex account (isolated login) |
+| `tokenmaxxing auth [sel \| --all]` | Reauthenticate a pooled account for the same place. Bare go list the pool and ask you which one; a selector go target one account and tell you which email make you sign in with; `--all` go waka through every needs-reauth account one by one |
+| `tokenmaxxing switch [sel]` | Switch go the best account (greedy, idempotent) or force one specific one |
+| `tokenmaxxing switch --codex [sel]` | Switch the Codex pool (e go take effect for the next codex start) |
+| `tokenmaxxing ls` | List pooled accounts |
+| `tokenmaxxing status` | Accounts with 5h / weekly / per-model usage bars, active and exhausted-until-reset |
+| `tokenmaxxing status --force` | E go ping every account extra (one tiny haiku request each) so all 5h session timers go start now, then sample fresh |
+| `tokenmaxxing watch [seconds]` | Live status, wey dey re-render every N seconds (default 120, floor 30; e no dey ping at all) |
+| `tokenmaxxing config [get\|set\|unset\|tidy]` | Effective config with sources; edit dotted keys; `tidy` go prune unknown keys |
+| `tokenmaxxing check` | Evaluate the switch decision one time (na dis one the periodic timer dey run) |
+| `tokenmaxxing serve [setup\|link\|unlink\|links]` | Slack bridge daemon (Socket Mode, no public URL) |
+| `tokenmaxxing doctor` | Verify say the supervisor and settings entries survive |
+| `tokenmaxxing rename [--codex] <sel> <label>` | Relabel a pooled account |
+| `tokenmaxxing rm <sel>` | Remove an account from the pool |
+| `tokenmaxxing uninstall` | Remove the supervisor and settings entries (accounts and credentials dey kept) |

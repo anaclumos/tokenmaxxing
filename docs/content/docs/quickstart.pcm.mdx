@@ -1,0 +1,28 @@
+---
+title: Quickstart
+description: "Install tokenmaxxing, import the account wey you dey use now, and pool more"
+---
+
+E need [Bun](https://bun.sh) and Claude Code, for macOS or Linux.
+
+```sh
+bun add -g tokenmaxxing
+tokenmaxxing init
+```
+
+`init` dey do five things:
+
+1. E dey import the account wey you don already login with as account #1 (no separate `adopt` command dey).
+2. E dey install the `claude` supervisor shim.
+3. E dey install three entries for Claude Code im `settings.json`: one statusLine, one Stop hook, and one SessionStart hook (plus one subagentStatusLine entry).
+4. E dey append the supervisor im bin directory go your shell rc im PATH (idempotent, wey dem mark with `# tokenmaxxing PATH` comment). E must sit ahead of the real `claude` for PATH make e fit intercept am.
+5. E dey install one periodic check timer (launchd agent for macOS, systemd user timer for Linux) wey dey run `tokenmaxxing check` every 180 seconds.
+
+Restart your shell, then add more accounts and go:
+
+```sh
+tokenmaxxing add        # dey login one more account, for isolation, and pool am
+claude                  # use claude as you dey always use am
+```
+
+`tokenmaxxing` get alias too as `xx`. Bare `tokenmaxxing` (or `xx`) dey run `status`; `switch` still dey explicit.

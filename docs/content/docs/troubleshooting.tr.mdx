@@ -1,0 +1,34 @@
+---
+title: Sorun giderme ve SSS
+description: "Sık sorulan sorular ve arkalarındaki tanılamalar"
+---
+
+**`claude` gözetimli görünmüyor.**
+`tokenmaxxing doctor` çalıştırın. Shim PATH çözümlemesini kazanmalıdır; kabuk rc'nizdeki `# tokenmaxxing PATH` satırının mevcut bin dizinine işaret ettiğini ve gerçek claude'un önünde durduğunu denetleyin. `doctor` ayrıca sarmalayıcıyı gölgeleyen `alias claude=...` veya bir `claude()` kabuk fonksiyonu hakkında ve bir claude ikili dosyasını mutlak yolla başlatan takma adlar (bunlar gözetmeni tamamen atlar) hakkında uyarır.
+
+**Codex'te otomatik geçiş asla tetiklenmiyor.**
+Codex, güvenmesi söylenmemiş hook'ları atlar. Codex'i açın, `/hooks` çalıştırın ve tokenmaxxing Stop hook'una güvenin. Güven, hook'un hash'ine karşı kaydedilir, bu nedenle hook düzenlenirse yeniden verilmelidir.
+
+**Statusline'da bir hesap kırmızı bir `✗` gösteriyor.**
+Yenileme token'ı ölü (iptal edilmiş veya yedeğinin altından döndürülmüş). Onu yerinde yeniden kimlik doğrulamak için `tokenmaxxing auth <sel>` çalıştırın; komut hangi e-posta ile oturum açmanız gerektiğini söyler ve farklı bir hesaba inen bir oturum açmayı reddeder.
+
+**Neden en fazla kalan kotaya sahip hesaba geçmiyor?**
+Çünkü kota kaybetme riski en yüksek hesap o değildir. Hedef, kendi haftalık temposunun en gerisinde kalan hesaptır: kalan yüzdenin haftalık sıfırlamasına kalan süreye bölümü. Eşit miktarda kalan ile bu önce en yakın sona ermeye indirgenir ve eşit sona erme ile önce en fazla kalana.
+
+**Az önce geçti ve statusline hâlâ eski hesabı gösteriyor.**
+macOS'ta ~30 saniyeye kadar beklenir: çalışan oturum, değiştirilen kimlik bilgisini bir sonraki kimlik bilgisi önbellek yenilemesinde benimser. Kullanım tee'si tam olarak bu nedenle bir geçişten sonra 45 saniye boyunca bastırılır.
+
+**`status --force` bir maliyeti var mı?**
+Evet, kasıtlı olarak: her hesaba minimal ölçülen bir haiku isteği gönderir, böylece her 5 saatlik oturum penceresi atıl yatmak yerine o anda başlar, ardından taze örnekler. Sade `status` ve `watch` asla ping atmaz; `/usage` okumaları ücretsizdir. Sunucu kullanım beslemesinin taze açılmış bir pencereyi saniyelerden dakikalara kadar geciktirebileceğini unutmayın, bu nedenle ping'in hemen ardından bir probe hâlâ ping öncesi durumu gösterebilir - `status`, ping'in başarısız olduğunu iddia etmek yerine bir not işler.
+
+**`/usage` probe'u aktif hesap için hiçbir şey döndürmedi.**
+Bu bilinen bir claude davranışıdır: dahili kullanım getirmesi başarısız olduğunda veya hız sınırlandığında, `/usage` yalnızca yerel oturum istatistiklerini yüzde satırları olmadan yazdırır. tokenmaxxing tam olarak bundan kaçınmak için aktif hesabı statusline itmesinden örnekler ve yalnızca park edilmiş hesapları probe eder.
+
+**Arka plan claude oturumları.**
+Claude'un arka plan daemon'u gerçek sürümlü ikili dosyayı mutlak yolla başlatır, PATH shim'lerini atlar, bu nedenle arka plan oturumları gözetimsizdir. Hook'lar hâlâ `settings.json` aracılığıyla tetiklenir ve kimlik bilgisi benimsemesi artı periyodik zamanlayıcı geçişi kapsar, ancak onlar için işaretçi güdümlü yeniden başlatma yoktur.
+
+**Bir keresinde bir şey çok sayıda süreç başlattı. Bu hâlâ mümkün mü?**
+Gözetmen tam olarak o tarihsel başarısızlığa karşı katmanlı özyineleme korumaları taşır (gerçek claude olarak sabitlenmiş bayat bir sarmalayıcı): ortamda 5 seviyede iptal eden bir derinlik nöbetçisi, disk üzerinde bir başlatma-hızı sınırlayıcı, tokenmaxxing'in kendi bin dizinine geri çözülen herhangi bir adayı reddeden realpath kimlik denetimleri ve yapılandırılmış bir claude yolu artık mevcut olmadığında sert bir başarısızlık (asla sessiz bir PATH taraması değil). `init` ve `doctor`, bir adayı sabitlemeden önce `--version` çalıştırarak gerçekten claude olduğunu doğrular.
+
+**Kaldırma.**
+`tokenmaxxing uninstall`, gözetmen shim'lerini, ayar girişlerini ve periyodik zamanlayıcıyı kaldırır ve hesaplarınızı ile park edilmiş kimlik bilgilerinizi bozulmadan bırakır. Yalnızca kendisine ait olarak tanıdığı statusline girişlerini kaldırır.

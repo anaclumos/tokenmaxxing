@@ -1,0 +1,28 @@
+---
+title: Hızlı başlangıç
+description: "tokenmaxxing'i kurun, mevcut hesabınızı içe aktarın ve daha fazlasını havuzlayın"
+---
+
+macOS veya Linux üzerinde [Bun](https://bun.sh) ve Claude Code gerektirir.
+
+```sh
+bun add -g tokenmaxxing
+tokenmaxxing init
+```
+
+`init` beş şey yapar:
+
+1. Halihazırda oturum açtığınız hesabı 1 numaralı hesap olarak içe aktarır (ayrı bir `adopt` komutu yoktur).
+2. `claude` gözetmen shim'ini kurar.
+3. Claude Code'un `settings.json` dosyasına üç giriş kurar: bir statusLine, bir Stop hook ve bir SessionStart hook (artı bir subagentStatusLine girişi).
+4. Gözetmenin bin dizinini kabuk rc dosyanızın PATH'ine ekler (idempotent, `# tokenmaxxing PATH` yorumuyla işaretlenmiş). Onu yakalayabilmek için PATH üzerinde gerçek `claude`'un önünde durması gerekir.
+5. Her 180 saniyede bir `tokenmaxxing check` çalıştıran periyodik bir denetim zamanlayıcısı kurar (macOS'ta bir launchd agent, Linux'ta bir systemd kullanıcı zamanlayıcısı).
+
+Kabuğunuzu yeniden başlatın, ardından daha fazla hesap ekleyin ve başlayın:
+
+```sh
+tokenmaxxing add        # bir hesap daha izole olarak oturum açar ve havuza katar
+claude                  # claude'u her zamanki gibi kullanın
+```
+
+`tokenmaxxing` ayrıca `xx` olarak da takma adlandırılmıştır. Sade `tokenmaxxing` (veya `xx`) `status`'ü çalıştırır; `switch` açık kalır.

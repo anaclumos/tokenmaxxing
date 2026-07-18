@@ -1,0 +1,34 @@
+---
+title: Khắc phục sự cố và câu hỏi thường gặp
+description: "Các câu hỏi thường gặp và cách chẩn đoán đằng sau chúng"
+---
+
+**`claude` có vẻ không được giám sát.**
+Chạy `tokenmaxxing doctor`. Shim phải thắng trong việc phân giải PATH; hãy kiểm tra rằng dòng `# tokenmaxxing PATH` trong tệp rc của shell của bạn trỏ tới thư mục bin hiện tại và đứng trước claude thật. `doctor` cũng cảnh báo về `alias claude=...` hoặc một hàm shell `claude()` che khuất lớp bọc, và về các bí danh khởi chạy một tệp nhị phân claude bằng đường dẫn tuyệt đối (những cái đó bỏ qua bộ giám sát hoàn toàn).
+
+**Việc tự động chuyển đổi không bao giờ kích hoạt trên Codex.**
+Codex bỏ qua các hook mà nó chưa được yêu cầu tin tưởng. Mở codex, chạy `/hooks`, và tin tưởng Stop hook của tokenmaxxing. Sự tin tưởng được ghi lại theo hash của hook, nên nó phải được cấp lại nếu hook từng bị chỉnh sửa.
+
+**Một tài khoản hiển thị `✗` màu đỏ trong statusline.**
+Refresh token của nó đã chết (bị thu hồi hoặc bị xoay vòng khỏi bản sao lưu của nó). Chạy `tokenmaxxing auth <sel>` để xác thực lại nó tại chỗ; lệnh cho bạn biết email nào cần đăng nhập và từ chối một lần đăng nhập rơi vào một tài khoản khác.
+
+**Vì sao nó không chuyển sang tài khoản có nhiều hạn ngạch còn lại nhất?**
+Vì đó không phải là tài khoản có nguy cơ bị mất hạn ngạch cao nhất. Mục tiêu là tài khoản đang tụt lại xa nhất so với nhịp độ hàng tuần của chính nó: phần trăm còn lại chia cho thời gian đến lần đặt lại hàng tuần của nó. Khi lượng còn lại bằng nhau thì điều đó rút gọn thành ưu tiên tài khoản hết hạn sớm nhất, và khi hết hạn bằng nhau thì ưu tiên tài khoản còn lại nhiều nhất.
+
+**Nó vừa chuyển đổi mà statusline vẫn hiển thị tài khoản cũ.**
+Điều này bình thường trong tối đa khoảng 30 giây trên macOS: phiên đang chạy tiếp nhận thông tin xác thực đã hoán đổi ở lần làm mới bộ nhớ đệm thông tin xác thực tiếp theo của nó. Bộ tee sử dụng bị chặn trong 45 giây sau một lần hoán đổi chính vì lý do này.
+
+**`status --force` có tốn phí gì không?**
+Có, một cách chủ ý: nó gửi một yêu cầu haiku tối thiểu có tính phí cho mỗi tài khoản để mọi cửa sổ phiên 5 giờ bắt đầu ngay khoảnh khắc đó thay vì nằm im lìm, rồi lấy mẫu mới. `status` và `watch` thông thường không bao giờ ping; các lần đọc `/usage` là miễn phí. Lưu ý rằng nguồn cấp sử dụng của máy chủ có thể trễ một cửa sổ vừa mở từ vài giây đến vài phút, nên một phép thăm dò ngay sau lần ping có thể vẫn hiển thị trạng thái trước ping: `status` kết xuất một ghi chú thay vì giả vờ rằng lần ping đã thất bại.
+
+**Phép thăm dò `/usage` không trả về gì cho tài khoản đang hoạt động.**
+Đó là một hành vi đã biết của claude: khi việc lấy dữ liệu sử dụng nội bộ của nó thất bại hoặc bị giới hạn tốc độ, `/usage` chỉ in các thống kê phiên cục bộ mà không có dòng phần trăm nào. tokenmaxxing lấy mẫu tài khoản đang hoạt động từ luồng đẩy của statusline và chỉ thăm dò các tài khoản dự trữ, chính xác là để tránh điều này.
+
+**Các phiên claude nền.**
+Daemon nền của Claude khởi tạo tệp nhị phân thật có đánh phiên bản bằng đường dẫn tuyệt đối, bỏ qua các shim PATH, nên các phiên nền không được giám sát. Các hook vẫn kích hoạt qua `settings.json`, và việc tiếp nhận thông tin xác thực cộng với bộ hẹn giờ định kỳ lo việc chuyển đổi, nhưng không có respawn dựa trên tệp đánh dấu cho chúng.
+
+**Đã từng có gì đó khởi tạo rất nhiều tiến trình một lần. Điều đó còn có thể xảy ra không?**
+Bộ giám sát mang các lớp bảo vệ chống đệ quy nhằm vào chính sự cố lịch sử đó (một lớp bọc cũ bị ghim làm claude "thật"): một biến canh gác độ sâu trong môi trường hủy bỏ ở 5 cấp, một bộ giới hạn tốc độ khởi tạo trên đĩa, các phép kiểm tra danh tính bằng realpath từ chối bất kỳ ứng viên nào phân giải ngược trở lại thư mục bin của chính tokenmaxxing, và một thất bại cứng (không bao giờ là một lần quét PATH âm thầm) khi một đường dẫn claude đã cấu hình không còn tồn tại. `init` và `doctor` xác minh một ứng viên thực sự là claude bằng cách chạy `--version` trước khi ghim nó.
+
+**Gỡ cài đặt.**
+`tokenmaxxing uninstall` gỡ bỏ các shim giám sát, các mục cài đặt, và bộ hẹn giờ định kỳ, đồng thời giữ nguyên vẹn các tài khoản và thông tin xác thực dự trữ của bạn. Nó chỉ gỡ bỏ các mục statusline mà nó nhận ra là của chính mình.

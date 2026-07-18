@@ -1,0 +1,28 @@
+---
+title: झटपट सुरुवात
+description: "tokenmaxxing स्थापित करा, तुमचे सध्याचे खाते आयात करा, आणि आणखी एकत्र करा"
+---
+
+macOS किंवा Linux वर [Bun](https://bun.sh) आणि Claude Code आवश्यक आहेत.
+
+```sh
+bun add -g tokenmaxxing
+tokenmaxxing init
+```
+
+`init` पाच गोष्टी करते:
+
+1. तुम्ही आधीच ज्या खात्याने लॉग इन आहात ते खाते #1 म्हणून आयात करते (वेगळी `adopt` कमांड नाही).
+2. `claude` पर्यवेक्षक शिम स्थापित करते.
+3. Claude Code च्या `settings.json` मध्ये तीन नोंदी स्थापित करते: एक statusLine, एक Stop हुक, आणि एक SessionStart हुक (तसेच एक subagentStatusLine नोंद).
+4. तुमच्या शेल rc च्या PATH मध्ये पर्यवेक्षकाची bin डिरेक्टरी जोडते (आयडेम्पोटेंट, `# tokenmaxxing PATH` टिप्पणीने चिन्हांकित). त्याला रोखण्यासाठी ते PATH वर खऱ्या `claude` च्या पुढे बसणे आवश्यक आहे.
+5. एक नियतकालिक तपासणी टायमर स्थापित करते (macOS वर launchd एजंट, Linux वर systemd यूजर टायमर) जो दर १८० सेकंदांनी `tokenmaxxing check` चालवतो.
+
+तुमचे शेल पुन्हा सुरू करा, नंतर अधिक खाती जोडा आणि सुरू करा:
+
+```sh
+tokenmaxxing add        # आणखी एक खाते वेगळेपणाने लॉग इन करते आणि पूलमध्ये जोडते
+claude                  # नेहमीप्रमाणे claude वापरा
+```
+
+`tokenmaxxing` ला `xx` असे टोपणनाव देखील आहे. साधा `tokenmaxxing` (किंवा `xx`) `status` चालवतो; `switch` स्पष्ट राहतो.

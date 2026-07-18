@@ -1,0 +1,25 @@
+---
+title: Comandos
+description: "Cada comando de tokenmaxxing y qué hace"
+---
+
+| Comando | Qué hace |
+|---|---|
+| `tokenmaxxing init` | Importa la cuenta actual, instala el supervisor, los hooks y la statusline |
+| `tokenmaxxing init --codex` | Lo mismo para Codex: importa el inicio de sesión, instala el supervisor de codex y el hook Stop |
+| `tokenmaxxing add` | Registra una cuenta adicional (inicio de sesión aislado, recolectado hacia el grupo) |
+| `tokenmaxxing add --codex` | Registra una cuenta adicional de Codex (inicio de sesión aislado) |
+| `tokenmaxxing auth [sel \| --all]` | Vuelve a autenticar una cuenta del grupo en su lugar. A secas lista el grupo y pregunta cuál; un selector apunta a una cuenta y te dice con qué correo iniciar sesión; `--all` recorre una por una cada cuenta que necesita reautenticación |
+| `tokenmaxxing switch [sel]` | Cambia a la mejor cuenta (voraz, idempotente) o fuerza una específica |
+| `tokenmaxxing switch --codex [sel]` | Cambia el grupo de Codex (surte efecto en el próximo arranque de codex) |
+| `tokenmaxxing ls` | Lista las cuentas agrupadas |
+| `tokenmaxxing status` | Cuentas con barras de uso de 5h / semanal / por modelo, activa y agotada hasta el restablecimiento |
+| `tokenmaxxing status --force` | Además hace ping a cada cuenta (una diminuta solicitud haiku cada una) para que todos los temporizadores de sesión de 5h arranquen ahora, luego muestrea en fresco |
+| `tokenmaxxing watch [seconds]` | Estado en vivo, renderizado de nuevo cada N segundos (por defecto 120, mínimo 30; nunca hace ping) |
+| `tokenmaxxing config [get\|set\|unset\|tidy]` | Configuración efectiva con sus fuentes; edita claves con puntos; `tidy` poda claves desconocidas |
+| `tokenmaxxing check` | Evalúa la decisión de cambio una vez (esto es lo que ejecuta el temporizador periódico) |
+| `tokenmaxxing serve [setup\|link\|unlink\|links]` | Daemon puente de Slack (Socket Mode, sin URL pública) |
+| `tokenmaxxing doctor` | Verifica que el supervisor y las entradas de configuración sobrevivieron |
+| `tokenmaxxing rename [--codex] <sel> <label>` | Reetiqueta una cuenta agrupada |
+| `tokenmaxxing rm <sel>` | Elimina una cuenta del grupo |
+| `tokenmaxxing uninstall` | Elimina el supervisor y las entradas de configuración (las cuentas y credenciales se conservan) |

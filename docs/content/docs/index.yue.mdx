@@ -1,13 +1,35 @@
 ---
-title: 歡迎
-description: 將你自己嘅 agent CLI 帳戶集合埋一齊，令每個 session 都繼續運行
+title: tokenmaxxing
+description: "自動切換 Claude Code 帳戶 - 將你自己嘅訂閱帳戶集合埋一齊，喺配額用滿時熱切換憑證，令每個 session 都可以繼續。"
 ---
 
-tokenmaxxing 係一個俾人喺自己幾個帳戶上面行 Claude Code（同埋 Codex）嘅 CLI。佢會監察用量配額，喺撞到上限之前將活躍嘅憑證換去仲有最多餘裕嘅帳戶，並且令你嘅 session 喺換帳戶之後都可以繼續。
+tokenmaxxing 係一個自動切換 Claude Code 帳戶嘅 CLI。佢會將你擁有嘅多個訂閱（Pro/Max）帳戶集合埋一齊，當使用緊嘅帳戶接近用量上限時，就將活躍憑證熱切換去一個更新鮮嘅帳戶。你照舊咁行 `claude`；切換會喺一個安全嘅回合邊界發生，而你正在運行嘅 session 會喺新帳戶上面繼續同一段對話，唔使重新啟動。佢可以同時喺好多個並行 session 上面運作。
+
+唯一睇得到嘅行為就係最壞嘅情況：當成個帳戶池都去到上限時，session 會暫停並顯示倒數，然後喺下一個重設嘅帳戶上面自動繼續（撳 Ctrl-C 即刻繼續）。
+
+<Callout>
+範圍：macOS 同 Linux 上面嘅 Claude Code，加上 OpenAI 嘅 Codex CLI 作為第二個並行帳戶池。佢集合嘅係訂閱帳戶，唔係 API key。呢個係一個個人用途嘅工具，用嚟集合你自己擁有嘅帳戶，喺你自己運行嘅 session 同 agent 入面使用 - 睇[個人用途同服務條款](/yue/terms)。
+</Callout>
+
+## 問題所在
+
+一個 Claude 訂閱會同時計量三個上限（全部都透過 `/usage` 確認）：
+
+- **當前 session**：一個滾動嘅 5 小時窗口。
+- **當前週（所有模型）**：一個 7 日嘅總量。
+- **當前週，每個模型**：個別模型系列各自嘅每週上限。呢啲目前只存在於 Sonnet 同 Fable，而且只有 Fable 嘅上限緊到會影響切換 - 佢會遠早於總量之前就綁死。一部機可以喺週總量只有 50% 嘅時候，而週 Fable 已經去到 80%。
+
+每週配額係用剩即棄：一個帳戶喺佢固定嘅每週重設之前無用完嘅份額會被沒收。如果你擁有幾個帳戶，理性嘅策略就係持續喺最落後於自己每週步伐嘅帳戶上面燒配額，並且喺任何單一上限喺 session 中途撞牆之前先切換走。
+
+用手做呢件事就即係要登出、登入，同埋失去你嘅對話。tokenmaxxing 將佢自動化：一個正在運行嘅 `claude` 會喺請求之間重新檢查佢嘅憑證儲存，所以喺佢下面被換咗嘅憑證會就地被採用（喺 macOS 大約 30 秒之內，喺 Linux 就喺下一次請求）。一次普通嘅切換永遠唔會重新啟動你嘅 session。唯一仍然需要進程管理嘅情況係一個完全耗盡嘅帳戶池 - 一個 session 無法暫停佢自己 - 而呢個就係嗰個輕量監督者存在嘅原因。
+
+關於 `claude` 嘅所有其他嘢都無變：所有旗標、MCP 伺服器、hook 同 skill 都會照樣通過。
 
 ## 去邊度
 
 <Cards>
-  <Card title="完整指南" href="/yue/docs/tokenmaxxing" />
-  <Card title="GitHub 上嘅原始碼" href="https://github.com/anaclumos/tokenmaxxing" />
+  <Card title="快速開始" href="/yue/quickstart" />
+  <Card title="指令" href="/yue/commands" />
+  <Card title="架構" href="/yue/architecture" />
+  <Card title="切換點樣決定" href="/yue/switching" />
 </Cards>

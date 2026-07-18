@@ -1,13 +1,35 @@
 ---
-title: Maligayang pagdating
-description: I-pool ang iyong sariling mga account sa agent CLI at panatilihing gumagalaw ang bawat session
+title: tokenmaxxing
+description: Awtomatikong pagpapalit ng account sa Claude Code - i-pool ang iyong sariling mga subscription account at hot-swap ang mga credential kapag napuno ang quota, na pinananatiling maaaring ipagpatuloy ang bawat session.
 ---
 
-Ang tokenmaxxing ay isang CLI para sa mga taong nagpapatakbo ng Claude Code (at Codex) sa ilan sa kanilang sariling mga account. Binabantayan nito ang mga usage quota, ipinapalit ang aktibong credential sa account na may pinakamalaking puwang bago tumama ang isang limitasyon, at pinananatiling maaaring ipagpatuloy ang iyong mga session sa kabila ng mga pagpapalit.
+Ang tokenmaxxing ay isang CLI para sa awtomatikong pagpapalit ng account sa Claude Code. Pinagsasama-sama nito ang maraming subscription (Pro/Max) account na pag-aari mo at hot-swap ang aktibong credential patungo sa mas sariwang account kapag ang ginagamit ay malapit na sa isang usage limit. Pinapatakbo mo ang `claude` nang eksakto tulad ng dati; nangyayari ang pagpapalit sa isang ligtas na turn boundary at ang iyong tumatakbong session ay nagpapatuloy sa parehong pag-uusap sa bagong account nang hindi nagre-restart. Gumagana ito sa maraming magkakasabay na session nang sabay-sabay.
+
+Ang tanging nakikitang gawi ay ang pinakamasamang kaso: kapag nasa limitasyon na ang buong pool, huhinto ang session na may countdown at awtomatikong magpapatuloy sa susunod na account na magre-reset (agad na nagpapatuloy ang Ctrl-C).
+
+<Callout>
+Saklaw: Claude Code sa macOS at Linux, kasama ang Codex CLI ng OpenAI bilang pangalawang, parallel na pool. Pinagsasama-sama nito ang mga subscription account, hindi ang mga API key. Ito ay isang tool para sa personal na paggamit para sa pagpo-pool ng mga account na pag-aari mo, sa mga session at agent na ikaw mismo ang nagpapatakbo - tingnan ang [Personal na paggamit at mga tuntunin ng serbisyo](/tl/terms).
+</Callout>
+
+## Ang problema
+
+Ang isang Claude subscription ay sumusukat ng tatlong limitasyon nang sabay-sabay (lahat ay nakumpirma sa pamamagitan ng `/usage`):
+
+- **Kasalukuyang session**: isang gumugulong na 5-oras na window.
+- **Kasalukuyang linggo (lahat ng modelo)**: isang 7-araw na kabuuan.
+- **Kasalukuyang linggo, bawat modelo**: hiwalay na lingguhang cap para sa indibidwal na mga pamilya ng modelo. Kasalukuyang umiiral lamang ito para sa Sonnet at Fable, at ang cap ng Fable lamang ang sapat na masikip para magkaroon ng bisa - tumatama ito nang maaga bago ang kabuuan. Maaaring nasa 50% week-all ang isang makina habang nasa 80% na week-Fable.
+
+Ang lingguhang quota ay use-it-or-lose-it: anumang hindi nagamit ng isang account sa pagsapit ng nakatakdang lingguhang reset nito ay mawawala. Kung mayroon kang ilang account, ang makatuwirang estratehiya ay ipagpatuloy ang paggamit ng quota sa alinmang account na pinakanahuhuli sa sarili nitong lingguhang bilis, at lumipat palayo bago tumama sa dingding ang alinmang limitasyon sa gitna ng session.
+
+Ang paggawa nito nang manu-mano ay nangangahulugang pag-log out, pag-log in, at pagkawala ng iyong pag-uusap. Awtomatiko itong ginagawa ng tokenmaxxing: ang isang tumatakbong `claude` ay muling nagsusuri ng credential store nito sa pagitan ng mga request, kaya't ang isang credential na ipinalit sa ilalim nito ay ginagamit kaagad (sa loob ng humigit-kumulang 30 segundo sa macOS, sa susunod na request sa Linux). Hindi kailanman nire-restart ng isang simpleng pagpapalit ang iyong session. Ang tanging kaso na nangangailangan pa rin ng pamamahala ng proseso ay ang isang ganap na naubos na pool - hindi maaaring i-pause ng isang session ang sarili nito - at iyon ang dahilan kung bakit umiiral ang manipis na supervisor.
+
+Lahat ng iba pa tungkol sa `claude` ay hindi nagbabago: lahat ng flag, MCP server, hook, at skill ay dumadaan.
 
 ## Saan pupunta
 
 <Cards>
-  <Card title="Ang kumpletong gabay" href="/tl/docs/tokenmaxxing" />
-  <Card title="Source sa GitHub" href="https://github.com/anaclumos/tokenmaxxing" />
+  <Card title="Mabilisang pagsisimula" href="/tl/quickstart" />
+  <Card title="Mga Command" href="/tl/commands" />
+  <Card title="Arkitektura" href="/tl/architecture" />
+  <Card title="Paano nagpapasya ang pagpapalit" href="/tl/switching" />
 </Cards>

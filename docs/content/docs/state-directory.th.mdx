@@ -1,0 +1,25 @@
+---
+title: โครงสร้างไดเรกทอรีสถานะ
+description: "ทุกไฟล์และไดเรกทอรีภายใต้ ~/.config/tokenmaxxing"
+---
+
+ทุกอย่างอยู่ใต้ `~/.config/tokenmaxxing/` (แทนที่ได้ด้วย `TOKENMAXXING_HOME` ทุกพาธที่สังเกตได้จากภายนอกมี env override เพื่อให้ทั้งเครื่องมือรันแบบแยกสมบูรณ์ (hermetic) ในการทดสอบได้)
+
+| พาธ | เก็บอะไร |
+|---|---|
+| `config.json` | การตั้งค่าของคุณ (แบบเบาบาง ค่าเริ่มต้นมีผลรายฟิลด์) |
+| `accounts.json` | ดัชนีที่ไม่เป็นความลับของบัญชี Claude ในพูล: ป้ายชื่อ, id, หน้าต่างการใช้งานที่แคชไว้ ไม่เคยเก็บ token |
+| `usage.json` | สแนปช็อตหน้าต่างรวมจากการ tee ของ statusline; mtime ของมันคือสัญญาณชีพว่าฟีดยังมีชีวิตอยู่ |
+| `model-usage.json` | ลิมิตรายสัปดาห์แยกตามโมเดลจาก `/usage` ที่แคชแบบมี TTL |
+| `lastswap.json` | เวลา epoch ของการสลับครั้งล่าสุด ใช้ขับช่วงพัก 45 วินาที |
+| `lock` | ไฟล์ `flock` ที่ทำให้การสลับเป็นลำดับ |
+| `tokenmaxxing.log` | log เหตุการณ์แบบ append-only |
+| `bin/` | shim ของ PATH: `claude`, `codex` และจุดเข้า `tokenmaxxing` / `xx` |
+| `respawn/<session-id>` | มาร์กเกอร์ respawn เมื่อรอเพราะโควตาหมด ที่ supervisor คอยเฝ้าดู |
+| `creds/` | เฉพาะ Linux: ไฟล์ credential ที่จอดไว้ สิทธิ์ 0600 ในไดเรกทอรี 0700 (บน macOS จะจอด credential เป็นรายการ keychain รายบัญชีแทน) |
+| `onboard/`, `sample/` | config home แบบแยกส่วนที่ใช้แล้วทิ้ง สำหรับการล็อกอิน `add`/`auth` และการ probe `/usage` ของบัญชีที่จอดไว้ onboard home ที่มี credential แบบข้อความล้วนจะถูกลบหลังเก็บเกี่ยว |
+| `slack.json` | token และลิงก์ช่องของ `xx serve` (0600) |
+| `slack-threads/` | บันทึกเซสชันรายเธรดสำหรับ `xx serve` |
+| `codex-*` | พูล Codex คู่ขนาน: `codex-accounts.json`, `codex-lastswap.json`, `codex-lock`, `codex-creds/`, `codex-onboard/`, `codex-respawn/` และ `codex-live/` (ไฟล์แสดงการมีอยู่หนึ่งไฟล์ที่ตรวจ PID ต่อเซสชัน codex ที่มี supervisor กำลังรัน เพื่อไม่ให้บัญชีที่กำลังทำงานถูกใช้เป็นเป้าหมายการสลับ) |
+
+นอกไดเรกทอรีของตัวเอง tokenmaxxing แตะต้องเพียง: `~/.claude.json` (การสลับ `oauthAccount`), `settings.json` ของ Claude Code (รายการฮุกและ statusline), ที่เก็บ credential ที่ใช้งานจริง (รายการ keychain `Claude Code-credentials` บน macOS, `.credentials.json` บน Linux), `~/.claude.lock` (ล็อกรีเฟรชของ claude ที่จับระหว่างการสลับ), `auth.json` และ `hooks.json` ของ codex และยูนิตตรวจสอบเป็นระยะใน launchd หรือ systemd

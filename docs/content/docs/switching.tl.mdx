@@ -1,0 +1,41 @@
+---
+title: Paano nagpapasya ang pagpapalit
+description: "Engagement, mga screening bar, pace pressure, at ang greedy laban sa hard path"
+---
+
+May dalawang layer ang desisyon: isang engagement gate, at pagkatapos ay isang greedy o hard path.
+
+## Engagement
+
+Sa ibaba ng `policy.greedySessionFloor` (default na 50, sa porsyento ng 5-oras na session window), hindi tumatakbo ang desisyon - sumasakay ang isang sariwang session sa account nito. Kapag 50% na ang nagamit sa aktibong session window, o may na-cross na anumang hard bar, nag-e-engage ang desisyon.
+
+## Mga screening bar
+
+Ang mga threshold ay mga screening bar, hindi ang trigger para sa pagkataranta:
+
+- `thresholds.session`: 95. Mura lamang ang paghihintay sa isang 5-oras na reset, kaya't mas maaga nang lumilipat palayo ang session window.
+- `thresholds.weekly`: 98. Sinasakop ng isang bar na ito ang parehong 7-araw na kabuuan at bawat per-model na lingguhang cap. Ang lingguhang quota ay use-it-or-lose-it, kaya't naaubos ito malapit sa dingding.
+
+Ang dalawa ay sinadyang mas mababa sa 100: ang headroom ay ang badyet upang maabot ang isang malinis na turn boundary (kasama ang hanggang isang turn ng adoption lag sa macOS) bago talagang tumama ang account sa limitasyon nito. Ang parehong mga bar ang nagse-screen ng mga swap candidate: ang isang account na lampas sa alinman sa mga bar nito ay hindi isang wastong target. Ang trigger at screening ay palaging gumagamit ng parehong epektibong mga bar (mga threshold na binawasan ng `policy.projectionMargin`), dahil ang isang screen na mas maluwag kaysa sa trigger ay maglalapag ng mga swap sa mga account na agad na muling ini-flag ng trigger, na nagpi-ping-pong sa pool.
+
+## Ang target: pace pressure
+
+Sa mga magagamit na account, ang target ay ang pinakanahuhuli sa sarili nitong lingguhang bilis: pinakamataas na **pace pressure**, na tinutukoy bilang natitirang lingguhang porsyento na hinati sa oras hanggang sa lingguhang reset ng account na iyon. Nananalo ang account na may pinakamaraming quota na malapit nang mawala. Ang mga tie ay pinuputol sa pinakamaagang lingguhang pag-expire, pagkatapos ay pinakamababang 7-araw na paggamit.
+
+Lahat ay tumatakbo mula sa mga naka-cache na window na nakaimbak bilang absolute UTC epoch, kaya't ang isang lipas na snapshot ay maayos pa ring nire-resolve: ang isang lingguhang reset na lumipas na ay nag-e-extrapolate pasulong sa eksaktong 7-araw na hakbang, at ang anumang window na lampas sa naka-cache na reset nito ay binibilang bilang sariwang walang laman (hindi kailanman dahilan para lumipat, hindi kailanman dahilan para panatilihing naka-bench ang isang account).
+
+## Greedy laban sa hard path
+
+- **Greedy path** (naka-engage, ngunit nasa ilalim ng bawat bar): iranggo ang bawat account, kasama ang kasalukuyan. Kung nananalo o kapareho na ng ranggo ang kasalukuyang account, walang gagawin. Kung hindi ay lumipat sa mahigpit na mas mahusay na account. Hindi ito kailanman naghihintay at hindi kailanman nagpapa-pre-park - ang isang magagamit na kasalukuyang account ay hindi ipinapalit para sa isang paghihintay. Dahil naka-ranggo rin ang kasalukuyang account, ang automatic path at ang payak na `tokenmaxxing switch` ay parehong idempotent: ang pana-panahong pagsusuri ay nagko-converge sa tamang account at pagkatapos ay nananatili.
+- **Hard path** (may na-cross na bar): lumipat palayo sa pinakamahusay na magagamit na kandidato. Kung ang refresh token ng isang kandidato ay lumabas na patay, ini-flag itong needs-reauth at sinusubukan ang susunod na kandidato. Kung walang magagamit, tumatakbo ang depleted-wait logic; tanging ang isang caller na aktwal na maaaring mag-pause ng session (ang supervised na Stop hook) ang pinapayagang mag-pre-park sa isang naka-block pa rin ngunit pinakamaagang-magre-recover na account.
+
+## Mga per-model cap
+
+Pinapangalanan ng `policy.switchModels` (default na `["fable"]`) ang mga pamilya ng modelo na ang per-model na lingguhang cap ay maaaring mag-trigger ng isang pagpapalit. Ang pagtutugma ay sa pamamagitan ng family token, hindi kailanman sa pamamagitan ng eksaktong display string: gumagalaw ang mga display name ng modelo (ang "Fable" ay naging "Fable 5"), at isang exact-string gate ang minsang tahimik na ganap na nag-disable ng per-model switching. Dalawang kaugnay na safety rule:
+
+- Ang isang hindi kilalang aktibong modelo ay nagsasara sa bawat na-configure na pamilya. Kaagad pagkatapos linisin ng isang pagpapalit ang mga snapshot, ang isang headless na makina ay maaaring tumakbo nang model-blind; ang pagturing sa hindi kilala bilang walang limitasyon noon ay nagpahintulot sa isang account na manatili sa Fable cap nito nang ilang oras nang hindi napapansin.
+- Binibilang din ng candidate screening ang mga naka-gate na per-model cap, kaya't ang isang pool kung saan nasunog na ng bawat account ang Fable cap nito ay hindi nagro-round-robin.
+
+## Cooldown
+
+Isang 45-segundong post-swap cooldown ang nagse-set ng gate sa automatic path. Ang statusline tee ay pinipigilan sa parehong 45 segundo pagkatapos ng isang pagpapalit (umaabot ng hanggang 30 segundo ang adopsyon sa macOS), kaya't ang isang mas maagang pagsusuri ay tatakbo sa data na na-invalidate mismo ng pagpapalit - ang eksaktong senaryong iyon ay minsang lumikha ng isang A-to-B-and-back na respawn loop. Ang manu-manong `tokenmaxxing switch` ay hindi apektado ng cooldown.

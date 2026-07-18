@@ -1,0 +1,27 @@
+---
+title: Codex ድጋፍ
+description: "ለ Codex CLI የ ChatGPT-ደንበኝነት ምዝገባ መለያዎችን ማሰባሰብ፣ በዳግም-ማስጀመር ላይ የተመሰረተ"
+---
+
+ተመሳሳዩ ማሰባሰብ ለ OpenAI Codex CLI ይሰራል፣ በራስዎ የ ChatGPT-ደንበኝነት ምዝገባ መለያዎች ላይ፦
+
+```sh
+tokenmaxxing init --codex   # አሁን ያለውን codex login ያስገቡ + codex supervisor እና Stop hook ን ይጫኑ
+tokenmaxxing add --codex    # ሌላ መለያ ይግቡ፣ የተነጠለ - ዋና login ዎ አይነካም
+codex                       # codex ን እንደ ሁልጊዜው ይጠቀሙ
+```
+
+የ Codex pool ሙሉ በሙሉ ትይዩ state ነው፦ የራሱ accounts index፣ የራሱ የተያዙ credential ፋይሎች (በሁለቱም platformዎች ላይ 0600 ፋይሎች፣ የ codex የራሱ store plaintext ፋይል ስለሆነ)፣ የራሱ lock፣ የራሱ last-swap timestamp። ከ decision-policy ኮድ በስተቀር ከ Claude pool ጋር ምንም አይጋራም።
+
+## በ Codex ላይ hot-swap ለምን የማይቻል እንደሆነ
+
+እየሄደ ያለ codex process አንድ in-memory auth manager ይይዛል እና አሁን የተለየ መለያ ሲሰይም `auth.json` ን እንደገና መጫን በግልጽ እምቢ ይላል። ምንም file watcher እና ምንም በ-request credential poll የለም፣ ስለዚህ እየሄደ ካለ codex ስር የተቀየረ credential ለ inference በቀላሉ በጭራሽ ተግባራዊ አይሆንም። ዳግም ማስጀመር መቀያየሩ ነው፦ `codex resume <session-id>` local transcript ን `auth.json` አሁን በያዘው ማንኛውም መለያ ላይ ይቀጥላል።
+
+tokenmaxxing ይህን በ codex supervisor shim ይይዘዋል፦ Stop hook ው ተመሳሳዩን greedy pace-pressure ውሳኔ በእያንዳንዱ turn ወሰን ላይ ያሄዳል፣ እና ሲቀይር፣ supervisor ው session ን በተረጋገጠው ወሰን ላይ SIGTERM እንዲያደርግ እና `codex resume <session-id>` ን በአዲሱ መለያ ላይ transcript ሳይበላሽ እንደገና እንዲያስነሳ የሚያደርግ marker ይጽፋል። እያንዳንዱ codex መቀያየር የሚታይ ዳግም ማስጀመር ስለሆነ፣ የ codex greedy path 1.2x የማሻሻያ margin ይይዛል፦ ተፎካካሪ የአሁኑን መለያ pace pressure በ20% ማሸነፍ አለበት እንጂ በጭራሽ በጥቂት አይደለም። hard path (የተሻገረ bar) margin ን ችላ ይላል። ለ codex የተሟጠጠ-pool countdown የለም - ምንም codex session ማቆም አይችልም - ስለዚህ ሙሉ በሙሉ የተሟጠጠ codex pool ይቆያል።
+
+ሌሎች ለ codex-የተለዩ ስልቶች፦
+
+- አጠቃቀም በ codex የራሱ rate-limit endpoint ላይ ከነጻ የተረጋገጠ GET ይነበባል (CLI `/status` የሚያደርገው ተመሳሳይ ጥሪ)፦ መቶኛዎች በተጨማሪም ፍጹም epoch የዳግም ማስጀመሪያ ጊዜያት፣ ጥቅል መስኮቶች እና በ-ሞዴል ገደቦች እኩል። የመስኮት ምደባ duration-driven ነው እንጂ position-driven በጭራሽ አይደለም፣ ምክንያቱም የአሁኑ planዎች ምንም የ5-ሰዓት መስኮት ላይኖራቸው ስለሚችል እና ሳምንታዊው መስኮት በ primary slot ውስጥ ስለሚቀመጥ።
+- የ Codex refresh tokenዎች ይሽከረከራሉ፣ እና የተተካውን እንደገና መጠቀም ሙሉ grant family ን ይገድላል። እያንዳንዱ ማሽከርከር ወዲያውኑ ሲመለስ ይቀመጣል፣ ንቁ መለያው በቀጥታ blob በኩል ብቻ ናሙና ይወሰዳል (በጭራሽ ያረጀ የተያዘ ቅጂ አይደለም)፣ እና በ-session presence ፋይሎች በ live sibling session ውስጥ የሚሄድ መለያ በጭራሽ የመቀያየር ኢላማ እንዳይሆን እና የተያዘ token ው በጭራሽ እንዳይታደስ ያረጋግጣሉ።
+- Codex የ file credential store ን ይፈልጋል፦ keyring store ከተያዘ `init --codex` በፍጥነት ይወድቃል፣ እና `add --codex` login harvestable ሆኖ እንዲያርፍ የ file-mode ቅንብርን ወደ ተነጠለው onboarding home ይጽፋል።
+- አንድ በእጅ የሚደረግ ደረጃ፦ codex እንዲያምናቸው ያልተነገሩትን hookዎች ይዘላል። ከ `init --codex` በኋላ፣ codex ን አንድ ጊዜ ይክፈቱ እና የ tokenmaxxing Stop hook ን በ `/hooks` በኩል ያመኑ፣ አለበለዚያ auto-switching በጸጥታ ስራ ፈት ሆኖ ይቆያል። `init --codex` ይህን ማስታወሻ ያትማል።

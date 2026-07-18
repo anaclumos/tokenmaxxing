@@ -1,0 +1,23 @@
+---
+title: "El puente de Slack: xx serve"
+description: "xx serve ejecuta sesiones de Claude Code desde hilos de Slack mediante Socket Mode"
+---
+
+`tokenmaxxing serve` ejecuta un daemon local de Slack sobre Socket Mode - no se requiere URL pública. Configuración:
+
+```sh
+tokenmaxxing serve setup                    # imprime el manifiesto de la app, solicita los dos tokens
+tokenmaxxing serve link <channel-id> <repo> # vincula un canal a un checkout de repo
+tokenmaxxing serve                          # ejecuta el daemon
+```
+
+Menciona al bot en un canal vinculado y abre una sesión de Claude Code para ese hilo, en el checkout del repo vinculado. Cada mensaje de hilo ejecuta un `query()` del Agent SDK con `resume` - nunca una consulta de streaming persistente - de modo que `ensureBestAccount()` reevalúa el grupo en cada turno y el daemon puede reiniciarse sin perder hilos (los registros de hilo son duraderos; el daemon se resuscribe a ellos al arrancar).
+
+Comportamiento destacado:
+
+- **Streaming**: las respuestas fluyen de forma nativa a Slack, con tarjetas de tarea para pensamiento y ejecuciones de herramientas, código en cercado renderizado con resaltado, una tarjeta de cierre "Turn" con coste y duración, y un nuevo mensaje de Slack abierto cada vez que una ejecución de herramienta interrumpe texto en streaming, de modo que un turno se lee como mensajes separados alrededor de las ejecuciones de herramientas. Las llamadas a TodoWrite actualizan una única tarjeta de lista de tareas estable en su lugar.
+- **Permisos**: el `permissionMode` por vínculo tiene por defecto `acceptEdits`; `--yolo` (alias `--dangerous`) inscribe un vínculo en `bypassPermissions`. Los diálogos interactivos no se permiten en turnos retransmitidos - nadie puede responder uno a través de Slack - así que el modelo pregunta en prosa y tu respuesta en el hilo es el siguiente turno. Una skill de plugin incluida le enseña a etiquetar al solicitante y terminar el turno cuando necesita una decisión.
+- **Comandos de barra**: un mensaje de hilo cuyo texto limpio empieza con `/` se ejecuta como un comando de barra de claude. El compositor de Slack se come los mensajes que empiezan con `/`, así que usa la forma mención primero (`@bot /usage`) o un espacio inicial.
+- **Apagado ordenado**: SIGTERM/SIGINT drena - los turnos nuevos se descartan ruidosamente, los turnos en curso obtienen hasta 5 minutos, y el hijo claude se ejecuta desacoplado en su propio grupo de procesos para que un Ctrl-C de terminal no pueda matarlo antes de que el drenaje preserve el turno.
+- **Limpieza de hilo**: cuando le dices que el trabajo está hecho, el modelo llama a una herramienta en proceso `finish_thread`; después de que el turno termina por completo, el daemon descarta el registro del hilo, se desuscribe y publica una confirmación. Una mención fresca inicia una nueva sesión.
+- **Higiene de errores**: los errores de turno publican texto recortado solo del mensaje, nunca cuerpos de error en crudo.

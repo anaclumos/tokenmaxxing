@@ -1,0 +1,28 @@
+---
+title: چھیتی شروعات
+description: "tokenmaxxing انسٹال کرو، اپنا موجودہ اکاؤنٹ درآمد کرو، تے ہور اکٹھے کرو"
+---
+
+macOS یا Linux تے [Bun](https://bun.sh) تے Claude Code دی لوڑ اے۔
+
+```sh
+bun add -g tokenmaxxing
+tokenmaxxing init
+```
+
+`init` پنج کم کردا اے:
+
+1. جیہڑے اکاؤنٹ نال تُسیں پہلوں لاگ اِن او اوہنوں اکاؤنٹ #1 وانگوں درآمد کردا اے (کوئی الگ `adopt` کمانڈ نئیں)۔
+2. `claude` سُپروائزر شِم انسٹال کردا اے۔
+3. Claude Code دی `settings.json` وچ تِن اِندراج انسٹال کردا اے: اک statusLine، اک Stop ہُک، تے اک SessionStart ہُک (نال اک subagentStatusLine اِندراج وی)۔
+4. سُپروائزر دی bin ڈائریکٹری نوں تہاڈے شیل rc دے PATH نال جوڑدا اے (idempotent، اک `# tokenmaxxing PATH` تبصرے نال نشان زدہ)۔ اصل `claude` نوں روکن لئی ایہنوں PATH تے اوہدے توں اگے بیٹھنا پیندا اے۔
+5. اک وقفے وار جانچ ٹائمر انسٹال کردا اے (macOS تے اک launchd ایجنٹ، Linux تے اک systemd یوزر ٹائمر) جیہڑا ہر 180 سیکنڈ بعد `tokenmaxxing check` چلاندا اے۔
+
+اپنا شیل مُڑ چالو کرو، فیر ہور اکاؤنٹ شامل کرو تے چل پوو:
+
+```sh
+tokenmaxxing add        # اک ہور اکاؤنٹ نوں الگ تھلگ لاگ اِن کر کے پول وچ پا دیندا اے
+claude                  # claude نوں ہمیشہ وانگوں ورتو
+```
+
+`tokenmaxxing` دا اک عرف `xx` وی اے۔ نِرا `tokenmaxxing` (یا `xx`) `status` چلاندا اے؛ `switch` ظاہر رہندا اے۔

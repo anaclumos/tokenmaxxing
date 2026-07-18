@@ -1,0 +1,25 @@
+---
+title: Durum dizini düzeni
+description: "~/.config/tokenmaxxing altındaki her dosya ve dizin"
+---
+
+Her şey `~/.config/tokenmaxxing/` altında yaşar (`TOKENMAXXING_HOME` ile geçersiz kılınabilir; harici olarak gözlemlenebilir her yolun bir ortam değişkeni geçersiz kılması vardır, böylece tüm araç testlerde hermetik olarak çalışabilir).
+
+| Yol | Ne tutar |
+|---|---|
+| `config.json` | Yapılandırmanız (seyrek; varsayılanlar alan başına uygulanır) |
+| `accounts.json` | Havuzdaki Claude hesaplarının gizli olmayan indeksi: etiketler, kimlikler, önbelleğe alınmış kullanım pencereleri. Asla token'lar değil |
+| `usage.json` | Statusline tee'sinin toplam pencere anlık görüntüsü; mtime'ı beslemenin canlılık nabzıdır |
+| `model-usage.json` | `/usage`'dan TTL ile önbelleğe alınmış model başına haftalık üst sınırlar |
+| `lastswap.json` | Son geçişin epoch zaman damgası; 45 saniyelik bekleme süresini yönetir |
+| `lock` | Geçişleri sıralayan `flock` dosyası |
+| `tokenmaxxing.log` | Yalnızca-ekleme olay günlüğü |
+| `bin/` | PATH shim'leri: `claude`, `codex` ve `tokenmaxxing` / `xx` giriş noktaları |
+| `respawn/<session-id>` | Gözetmenin izlediği tükenmiş bekleme yeniden başlatma işaretçileri |
+| `creds/` | Yalnızca Linux: park edilmiş kimlik bilgisi dosyaları, bir 0700 dizininde 0600 (macOS bunun yerine kimlik bilgilerini hesap başına anahtar zinciri öğeleri olarak park eder) |
+| `onboard/`, `sample/` | `add`/`auth` oturum açmaları ve park edilmiş hesap `/usage` probe'ları için tek kullanımlık izole yapılandırma home'ları; düz metin kimlik bilgileri tutan onboard home'ları toplama sonrası silinir |
+| `slack.json` | `xx serve` token'ları ve kanal bağlantıları (0600) |
+| `slack-threads/` | `xx serve` için thread başına oturum kayıtları |
+| `codex-*` | Paralel Codex havuzu: `codex-accounts.json`, `codex-lastswap.json`, `codex-lock`, `codex-creds/`, `codex-onboard/`, `codex-respawn/` ve `codex-live/` (çalışan her gözetimli codex oturumu başına PID ile doğrulanmış bir varlık dosyası, böylece canlı bir hesap asla bir geçiş hedefi olmaz) |
+
+tokenmaxxing, kendi dizini dışında tam olarak şunlara dokunur: `~/.claude.json` (`oauthAccount` geçişi), Claude Code'un `settings.json` dosyası (hook ve statusline girişleri), canlı kimlik bilgisi deposu (macOS'ta `Claude Code-credentials` anahtar zinciri öğesi, Linux'ta `.credentials.json`), `~/.claude.lock` (claude'un geçişler sırasında alınan yenileme kilidi), codex'in `auth.json` ve `hooks.json` dosyaları ve launchd veya systemd'deki periyodik denetim birimi.

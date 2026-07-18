@@ -1,0 +1,25 @@
+---
+title: Disposition du répertoire d'état
+description: "Chaque fichier et répertoire sous ~/.config/tokenmaxxing"
+---
+
+Tout réside sous `~/.config/tokenmaxxing/` (surchargeable avec `TOKENMAXXING_HOME` ; chaque chemin observable de l'extérieur dispose d'une surcharge d'environnement afin que l'outil entier puisse s'exécuter de manière hermétique dans les tests).
+
+| Chemin | Ce qu'il contient |
+|---|---|
+| `config.json` | Votre configuration (creuse ; les valeurs par défaut s'appliquent champ par champ) |
+| `accounts.json` | Index non secret des comptes Claude du pool : étiquettes, ids, fenêtres d'utilisation mises en cache. Jamais de jetons |
+| `usage.json` | L'instantané des fenêtres agrégées du tee de la statusline ; son mtime est le battement de coeur de vivacité du flux |
+| `model-usage.json` | Plafonds hebdomadaires par modèle issus de `/usage`, mis en cache avec TTL |
+| `lastswap.json` | Horodatage epoch de la dernière bascule ; pilote le délai de récupération de 45 secondes |
+| `lock` | Le fichier `flock` qui sérialise les bascules |
+| `tokenmaxxing.log` | Journal d'événements en ajout seul |
+| `bin/` | Les shims du PATH : `claude`, `codex`, et les points d'entrée `tokenmaxxing` / `xx` |
+| `respawn/<session-id>` | Marqueurs de respawn d'attente sur épuisement que le superviseur surveille |
+| `creds/` | Linux uniquement : fichiers d'identifiants parqués, 0600 dans un répertoire 0700 (macOS parque plutôt les identifiants sous forme d'éléments de trousseau par compte) |
+| `onboard/`, `sample/` | Répertoires de config isolés jetables pour les connexions `add`/`auth` et les sondes `/usage` des comptes parqués ; les répertoires d'intégration contenant des identifiants en clair sont supprimés après récupération |
+| `slack.json` | Jetons et liens de canaux de `xx serve` (0600) |
+| `slack-threads/` | Enregistrements de session par fil pour `xx serve` |
+| `codex-*` | Le pool Codex parallèle : `codex-accounts.json`, `codex-lastswap.json`, `codex-lock`, `codex-creds/`, `codex-onboard/`, `codex-respawn/`, et `codex-live/` (un fichier de présence validé par PID par session codex supervisée en cours, de sorte qu'un compte actif n'est jamais une cible de bascule) |
+
+En dehors de son propre répertoire, tokenmaxxing touche exactement : `~/.claude.json` (la bascule de `oauthAccount`), le `settings.json` de Claude Code (les entrées de hook et de statusline), le magasin d'identifiants actif (l'élément de trousseau `Claude Code-credentials` sur macOS, `.credentials.json` sur Linux), `~/.claude.lock` (le verrou de rafraîchissement de claude, pris pendant les bascules), l'`auth.json` et le `hooks.json` de codex, et l'unité de vérification périodique dans launchd ou systemd.

@@ -1,0 +1,23 @@
+---
+title: "Die Slack-Bridge: xx serve"
+description: "xx serve führt Claude-Code-Sitzungen aus Slack-Threads über Socket Mode aus"
+---
+
+`tokenmaxxing serve` betreibt einen lokalen Slack-Daemon über Socket Mode - keine öffentliche URL erforderlich. Einrichtung:
+
+```sh
+tokenmaxxing serve setup                    # gibt das App-Manifest aus, fragt nach den beiden Tokens
+tokenmaxxing serve link <channel-id> <repo> # bindet einen Kanal an einen Repo-Checkout
+tokenmaxxing serve                          # startet den Daemon
+```
+
+Erwähnen Sie den Bot in einem verlinkten Kanal, und er öffnet eine Claude-Code-Sitzung für diesen Thread, im verlinkten Repo-Checkout. Jede Thread-Nachricht führt ein Agent-SDK-`query()` mit `resume` aus - nie eine dauerhafte Streaming-Abfrage - sodass `ensureBestAccount()` den Pool bei jedem einzelnen Zug neu auswertet und der Daemon neu starten kann, ohne Threads zu verlieren (Thread-Datensätze sind dauerhaft; der Daemon abonniert sie beim Start erneut).
+
+Bemerkenswertes Verhalten:
+
+- **Streaming**: Antworten streamen nativ in Slack, mit Aufgabenkarten für Denken und Werkzeugläufe, in Blöcken eingefasstem Code mit Syntaxhervorhebung, einer abschließenden "Turn"-Karte mit Kosten und Dauer und einer neuen Slack-Nachricht, die geöffnet wird, wann immer ein Werkzeuglauf gestreamten Text unterbricht, sodass ein Zug sich als getrennte Nachrichten rund um Werkzeugläufe liest. TodoWrite-Aufrufe aktualisieren eine stabile Checklisten-Karte an Ort und Stelle.
+- **Berechtigungen**: Der `permissionMode` pro Link ist standardmäßig `acceptEdits`; `--yolo` (Alias `--dangerous`) meldet einen Link für `bypassPermissions` an. Interaktive Dialoge sind in relaisierten Zügen unzulässig - niemand kann einen davon über Slack beantworten - sodass das Modell in Prosa fragt und Ihre Thread-Antwort der nächste Zug ist. Ein mitgeliefertes Plugin-Skill bringt ihm bei, den Anforderer zu markieren und den Zug zu beenden, wenn es eine Entscheidung braucht.
+- **Slash-Befehle**: Eine Thread-Nachricht, deren bereinigter Text mit `/` beginnt, läuft als claude-Slash-Befehl. Slacks Composer schluckt Nachrichten, die mit `/` beginnen, daher verwenden Sie die Mention-zuerst-Form (`@bot /usage`) oder ein führendes Leerzeichen.
+- **Ordentliches Herunterfahren**: SIGTERM/SIGINT drainiert - neue Züge werden lautstark verworfen, laufende Züge erhalten bis zu 5 Minuten, und das claude-Kind läuft losgelöst in seiner eigenen Prozessgruppe, sodass ein Terminal-Ctrl-C es nicht töten kann, bevor die Drainierung den Zug bewahrt.
+- **Thread-Aufräumen**: Wenn Sie ihm sagen, dass die Arbeit erledigt ist, ruft das Modell ein prozessinternes `finish_thread`-Werkzeug auf; nachdem der Zug vollständig endet, verwirft der Daemon den Thread-Datensatz, meldet sich ab und postet eine Bestätigung. Eine frische Erwähnung startet eine neue Sitzung.
+- **Fehler-Hygiene**: Zugfehler posten gekürzten, reinen Nachrichtentext, nie rohe Fehlerkörper.

@@ -1,0 +1,23 @@
+---
+title: "Daraja la Slack: xx serve"
+description: "xx serve huendesha vikao vya Claude Code kutoka nyuzi za Slack kupitia Socket Mode"
+---
+
+`tokenmaxxing serve` huendesha daemon ya Slack ya ndani kupitia Socket Mode - hakuna URL ya umma inayohitajika. Usanidi:
+
+```sh
+tokenmaxxing serve setup                    # huchapisha manifesto ya programu, huomba tokeni mbili
+tokenmaxxing serve link <channel-id> <repo> # unganisha kituo na checkout ya repo
+tokenmaxxing serve                          # endesha daemon
+```
+
+Mtaje bot kwenye kituo kilichounganishwa nayo hufungua kikao cha Claude Code kwa uzi huo, katika checkout ya repo iliyounganishwa. Kila ujumbe wa uzi huendesha `query()` moja ya Agent SDK na `resume` - kamwe si uchunguzi endelevu wa mtiririko - hivyo `ensureBestAccount()` hutathmini upya mkusanyiko kwenye kila zamu moja na daemon inaweza kuanzisha upya bila kupoteza nyuzi (rekodi za nyuzi ni imara; daemon hujiandikisha upya wakati wa kuanza).
+
+Tabia za kuzingatia:
+
+- **Mtiririko**: majibu hutiririka kwa asili ndani ya Slack, na kadi za kazi kwa kufikiri na uendeshaji wa zana, msimbo uliozungushwa uliorendwa kwa kuangazia, kadi ya kufunga ya "Turn" yenye gharama na muda, na ujumbe mpya wa Slack unaofunguliwa wakati wowote uendeshaji wa zana unapokatiza maandishi yaliyotiririka, hivyo zamu husomeka kama ujumbe tofauti kuzunguka uendeshaji wa zana. Miito ya TodoWrite husasisha kadi moja imara ya orodha ya ukaguzi papo hapo.
+- **Ruhusa**: `permissionMode` ya kila kiungo ina chaguo-msingi `acceptEdits`; `--yolo` (lakabu `--dangerous`) huchagua kiungo kuingia `bypassPermissions`. Midahalo ya maingiliano hairuhusiwi katika zamu zilizopelekwa - hakuna anayeweza kuijibu kupitia Slack - hivyo muundo huuliza kwa nathari na jibu lako la uzi ni zamu inayofuata. Ustadi wa programu-jalizi uliobebwa huufundisha kumtaja muombaji na kumaliza zamu unapohitaji uamuzi.
+- **Amri za mstari-mshazari**: ujumbe wa uzi ambao maandishi yake yaliyokatwa yanaanza na `/` huendeshwa kama amri ya mstari-mshazari ya claude. Kitunzi cha Slack humeza ujumbe unaoanza na `/`, hivyo tumia fomu ya kutaja-kwanza (`@bot /usage`) au nafasi ya kuanzia.
+- **Kuzima kwa upole**: SIGTERM/SIGINT humwaga - zamu mpya huachwa kwa kelele, zamu zilizo safarini hupata hadi dakika 5, na mtoto wa claude huendeshwa akiwa amejitenga katika kundi lake la mchakato ili Ctrl-C ya terminal isiweze kumuua kabla ya kumwaga kuhifadhi zamu.
+- **Usafishaji wa uzi**: unapoiambia kazi imekamilika, muundo huita zana ya ndani ya `finish_thread`; baada ya zamu kumalizika kabisa, daemon huondoa rekodi ya uzi, hujiondoa, na huchapisha uthibitisho mmoja. Kutaja kupya huanzisha kikao kipya.
+- **Usafi wa makosa**: makosa ya zamu huchapisha maandishi ya ujumbe-pekee yaliyopunguzwa, kamwe si miili ghafi ya makosa.

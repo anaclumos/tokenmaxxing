@@ -1,0 +1,16 @@
+---
+title: 平台備註：macOS 對 Linux
+description: "macOS 同 Linux 喺儲存、採用同計時器上面點樣唔同"
+---
+
+| | macOS | Linux |
+|---|---|---|
+| 活躍憑證 | 登入 keychain 通用密碼項目 | 0600 `.credentials.json` 檔案 |
+| 泊存憑證 | 每帳戶 keychain 項目 | 一個 0700 目錄入面嘅 0600 檔案 |
+| 切換後採用 | ~30 秒之內（keychain 讀取快取） | 下一次請求（檔案 mtime 輪詢） |
+| 定期檢查 | launchd agent，每 180 秒 | systemd user timer，每 180 秒 |
+| 隔離登入儲存 | 每設定目錄有 hash 命名空間嘅 keychain 服務 | 隔離設定目錄入面嘅一個檔案 |
+
+兩個值得知嘅 Linux 專屬細節：claude 會先由 `CLAUDE_SECURESTORAGE_CONFIG_DIR`（然後 `CLAUDE_CONFIG_DIR`，再然後 `~/.claude`）解析佢嘅憑證目錄，而 tokenmaxxing 準確咁鏡像嗰個解析令兩者永遠唔會失步。仲有相同 claude 版本嘅兩個 OS build 會用唔同方式格式化 `/usage` 重設時鐘（一個用 " at " 黐埋，另一個用一個逗號）；tokenmaxxing 嘅解析器準確咁接受嗰兩種形式，而喺遇到任何第三種時記錄落嚟，而唔係去估。
+
+喺 macOS 上面，一個誠實嘅限制：`init` 同 `add` 刻意互動咁掂 keychain，所以喺一個無頭 hook 入面第一次 `security` 存取唔會係冷嘅。

@@ -1,0 +1,25 @@
+---
+title: Commandes
+description: "Chaque commande tokenmaxxing et ce qu'elle fait"
+---
+
+| Commande | Ce qu'elle fait |
+|---|---|
+| `tokenmaxxing init` | Importe le compte actuel, installe le superviseur, les hooks et la statusline |
+| `tokenmaxxing init --codex` | Idem pour Codex : importe la connexion, installe le superviseur codex et le hook Stop |
+| `tokenmaxxing add` | Enregistre un compte supplémentaire (connexion isolée, récupérée dans le pool) |
+| `tokenmaxxing add --codex` | Enregistre un compte Codex supplémentaire (connexion isolée) |
+| `tokenmaxxing auth [sel \| --all]` | Réauthentifie un compte du pool sur place. Sans argument, liste le pool et demande lequel ; un sélecteur cible un compte et vous indique avec quel e-mail vous connecter ; `--all` parcourt un par un chaque compte nécessitant une réauthentification |
+| `tokenmaxxing switch [sel]` | Bascule vers le meilleur compte (glouton, idempotent) ou en force un précis |
+| `tokenmaxxing switch --codex [sel]` | Bascule le pool Codex (prend effet au prochain démarrage de codex) |
+| `tokenmaxxing ls` | Liste les comptes du pool |
+| `tokenmaxxing status` | Comptes avec barres d'utilisation 5h / hebdomadaire / par modèle, actifs et épuisés jusqu'à réinitialisation |
+| `tokenmaxxing status --force` | Ping en plus chaque compte (une minuscule requête haiku chacun) pour que toutes les minuteries de session 5h démarrent maintenant, puis échantillonne à neuf |
+| `tokenmaxxing watch [seconds]` | Statut en direct, réaffiché toutes les N secondes (par défaut 120, plancher 30 ; ne ping jamais) |
+| `tokenmaxxing config [get\|set\|unset\|tidy]` | Config effective avec ses sources ; modifie les clés à points ; `tidy` élague les clés inconnues |
+| `tokenmaxxing check` | Évalue la décision de bascule une fois (c'est ce qu'exécute la minuterie périodique) |
+| `tokenmaxxing serve [setup\|link\|unlink\|links]` | Démon de passerelle Slack (Socket Mode, sans URL publique) |
+| `tokenmaxxing doctor` | Vérifie que le superviseur et les entrées de configuration ont survécu |
+| `tokenmaxxing rename [--codex] <sel> <label>` | Renomme un compte du pool |
+| `tokenmaxxing rm <sel>` | Retire un compte du pool |
+| `tokenmaxxing uninstall` | Retire le superviseur et les entrées de configuration (les comptes et les identifiants sont conservés) |

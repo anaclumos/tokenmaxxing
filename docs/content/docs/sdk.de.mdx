@@ -1,0 +1,31 @@
+---
+title: Die Agent-SDK-Oberfläche
+description: "Den Pool mit dem Claude Agent SDK in Agenten paaren, die Sie selbst betreiben"
+---
+
+Der programmatische Einstiegspunkt des Pakets (`exports["."]` zeigt auf `src/sdk.ts`) paart tokenmaxxing mit dem Claude Agent SDK für Agenten, die Sie gegen Ihre eigenen gebündelten Konten bauen. Ihre App muss unter Bun laufen (tokenmaxxing liefert TypeScript-Quellcode aus und verwendet `bun:ffi`).
+
+```ts
+import { query } from "@anthropic-ai/claude-agent-sdk";
+import { ensureBestAccount, pooledOptions, stopHookCheck } from "tokenmaxxing";
+
+await ensureBestAccount(); // die Wechselentscheidung vor dem Spawn ausführen
+
+for await (const message of query({
+  prompt: "...",
+  options: {
+    ...pooledOptions(), // fixiertes echtes claude + bereinigte env
+    hooks: { Stop: [{ hooks: [stopHookCheck] }] }, // an jeder Zuggrenze neu entscheiden
+  },
+})) {
+  // die Sitzungs-ID aus der Init-Nachricht für `resume` über Wechsel hinweg erfassen
+}
+```
+
+Das Agent SDK startet pro `query()` einen claude-Unterprozess und liest die Anmeldeinformationen einmal beim Spawn - keine Statusline, kein Hot-Swap mitten in der Abfrage - sodass die Integration grenzgesteuert ist:
+
+- `ensureBestAccount()` ist genau die Entscheidung, die die CLI-Hooks und der Timer ausführen (Schranken, Tempodruck, Abkühlzeit, alles geteilter Code), nie antizipatorisch: Eine SDK-Sitzung kann nie für einen Erschöpft-Countdown pausiert werden.
+- `pooledOptions()` fixiert `pathToClaudeCodeExecutable` auf das echte claude-Binary (nie den Supervisor-Wrapper) und liefert ein vollständiges Ersatz-`env`, in dem jede umgebende Anmeldeinformations-Überschreibung bereinigt ist. Es schlägt schnell fehl, wenn `CLAUDE_CONFIG_DIR` oder `CLAUDE_SECURESTORAGE_CONFIG_DIR` in der Umgebung Ihrer App gesetzt ist: Auf Linux würde ein Wechsel die Live-Anmeldeinformation dorthin schreiben, wohin diese zeigen, während der bereinigte Unterprozess den Standardspeicher liest, eine stille Falsches-Konto-Desynchronisation.
+- `stopHookCheck` führt die Entscheidung an Zuggrenzen erneut aus; ein Wechsel, den er landet, wird beim nächsten Spawn wirksam. Er fängt seine eigenen Fehler ab (loggt auf stderr und ins Log), statt sie erneut zu werfen, denn eine unbehandelte Hook-Ausnahme kann den Agenten unterbrechen, und einen Zug wegen einer defekten Wechselprüfung abzubrechen kostet mehr, als das aktuelle Konto auszureiten.
+
+`sdk.ts` importiert nichts vom Agent SDK selbst; seine Werte spreizen sich strukturell in die Optionen des SDK.

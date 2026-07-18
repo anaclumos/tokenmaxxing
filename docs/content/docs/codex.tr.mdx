@@ -1,0 +1,27 @@
+---
+title: Codex desteği
+description: "Codex CLI için ChatGPT abonelik hesaplarını havuzlama, yeniden başlatma tabanlı"
+---
+
+Aynı havuzlama, OpenAI'nin Codex CLI'si için, kendi ChatGPT aboneliği hesaplarınıza karşı çalışır:
+
+```sh
+tokenmaxxing init --codex   # mevcut codex oturumunuzu içe aktarın + codex gözetmenini ve Stop hook'unu kurun
+tokenmaxxing add --codex    # başka bir hesaba izole olarak oturum açın - birincil oturumunuza dokunulmaz
+codex                       # codex'i her zamanki gibi kullanın
+```
+
+Codex havuzu tamamen paralel durumdur: kendi hesap indeksi, kendi park edilmiş kimlik bilgisi dosyaları (codex'in kendi deposu bir düz metin dosyası olduğundan her iki platformda da 0600 dosyaları), kendi kilidi, kendi son geçiş zaman damgası. Karar politikası kodu dışında Claude havuzuyla hiçbir şey paylaşılmaz.
+
+## Codex'te anında geçiş neden imkansızdır
+
+Çalışan bir codex süreci belleğinde tek bir kimlik yöneticisini tutar ve artık farklı bir hesabı adlandırdığında `auth.json`'ı yeniden yüklemeyi açıkça reddeder. Dosya izleyici ve istek başına kimlik bilgisi poll'ü yoktur, bu nedenle çalışan bir codex'in altından değiştirilen bir kimlik bilgisi çıkarım için basitçe asla etkin olmaz. Yeniden başlatma geçiştir: `codex resume <session-id>` yerel transcript'i `auth.json`'ın artık hangi hesabı tuttuysa onda sürdürür.
+
+tokenmaxxing bunu bir codex gözetmen shim'iyle ele alır: Stop hook her tur sınırında aynı açgözlü tempo baskısı kararını çalıştırır ve değiştirdiğinde, gözetmenin oturumu commit edilmiş sınırda SIGTERM etmesini ve taze hesapta transcript bozulmadan `codex resume <session-id>` komutunu yeniden başlatmasını sağlayan bir işaretçi yazar. Her codex geçişi görünür bir yeniden başlatma olduğundan, codex açgözlü yolu 1.2x'lik bir iyileştirme marjı taşır: bir meydan okuyucunun mevcut hesabın tempo baskısını kıl payıyla değil, %20 geçmesi gerekir. Sert yol (aşılmış bir çubuk) marjı yok sayar. Codex için tükenmiş havuz geri sayımı da yoktur - hiçbir şey bir codex oturumunu duraklatamaz - bu yüzden tamamen tükenmiş bir codex havuzu yerinde kalır.
+
+Diğer codex'e özgü mekanikler:
+
+- Kullanım, codex'in kendi hız limiti endpoint'ine karşı ücretsiz kimlik doğrulamalı bir GET'ten okunur (CLI'nin `/status`'ünün yaptığı çağrının aynısı): yüzdeler artı mutlak epoch sıfırlama süreleri, toplam pencereler ve model başına üst sınırlar dahil. Pencere sınıflandırması asla konum güdümlü değil, süre güdümlüdür, çünkü mevcut planlarda hiç 5 saatlik pencere olmayabilir ve haftalık pencere birincil yuvada oturur.
+- Codex yenileme token'ları döner ve süresi geçmiş birini yeniden kullanmak tüm yetkilendirme ailesini öldürür. Her döndürme geri döndüğü an kalıcılaştırılır, aktif hesap yalnızca canlı blob üzerinden örneklenir (asla bayat park edilmiş bir kopya değil) ve oturum başına varlık dosyaları, canlı bir kardeş oturumda çalışan bir hesabın asla bir geçiş hedefi olmamasını ve park edilmiş token'ının asla yenilenmemesini sağlar.
+- Codex, dosya kimlik bilgisi deposunu gerektirir: `init --codex`, keyring deposu sabitlenmişse hızla başarısız olur ve `add --codex`, oturum açmanın toplanabilir inmesi için izole başlatma home'una dosya modu ayarını yazar.
+- Bir manuel adım: codex, güvenmesi söylenmemiş hook'ları atlar. `init --codex`'ten sonra codex'i bir kez açın ve tokenmaxxing Stop hook'una `/hooks` aracılığıyla güvenin, aksi halde otomatik geçiş sessizce inert kalır. `init --codex` bu hatırlatmayı yazdırır.

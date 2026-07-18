@@ -1,0 +1,28 @@
+---
+title: 快速上手
+description: "安装 tokenmaxxing，导入你当前的账户，并汇集更多账户"
+---
+
+需要 [Bun](https://bun.sh) 和 Claude Code，运行于 macOS 或 Linux。
+
+```sh
+bun add -g tokenmaxxing
+tokenmaxxing init
+```
+
+`init` 会做五件事：
+
+1. 把你当前已登录的账户作为 #1 号账户导入（没有单独的 `adopt` 命令）。
+2. 安装 `claude` 监督进程 shim。
+3. 在 Claude Code 的 `settings.json` 中安装三个条目：一个 statusLine、一个 Stop hook，和一个 SessionStart hook（另加一个 subagentStatusLine 条目）。
+4. 把监督进程的 bin 目录追加到你 shell rc 的 PATH 中（幂等操作，用 `# tokenmaxxing PATH` 注释标记）。它必须排在真正的 `claude` 之前，才能拦截到它。
+5. 安装一个周期性检查定时器（macOS 上为 launchd agent，Linux 上为 systemd 用户定时器），每 180 秒运行一次 `tokenmaxxing check`。
+
+重启你的 shell，然后添加更多账户即可开始：
+
+```sh
+tokenmaxxing add        # 以隔离方式再登录一个账户，并将其纳入池中
+claude                  # 像往常一样使用 claude
+```
+
+`tokenmaxxing` 也有别名 `xx`。裸执行 `tokenmaxxing`（或 `xx`）会运行 `status`；`switch` 仍需显式调用。

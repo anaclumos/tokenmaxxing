@@ -1,0 +1,28 @@
+---
+title: เริ่มต้นอย่างรวดเร็ว
+description: "ติดตั้ง tokenmaxxing นำเข้าบัญชีปัจจุบันของคุณ และรวมบัญชีเพิ่มเข้าพูล"
+---
+
+ต้องใช้ [Bun](https://bun.sh) และ Claude Code บน macOS หรือ Linux
+
+```sh
+bun add -g tokenmaxxing
+tokenmaxxing init
+```
+
+`init` ทำห้าอย่าง:
+
+1. นำเข้าบัญชีที่คุณเข้าสู่ระบบอยู่แล้วเป็นบัญชี #1 (ไม่มีคำสั่ง `adopt` แยกต่างหาก)
+2. ติดตั้ง shim ของ supervisor สำหรับ `claude`
+3. ติดตั้งสามรายการใน `settings.json` ของ Claude Code ได้แก่ statusLine, Stop hook และ SessionStart hook (พร้อมกับรายการ subagentStatusLine)
+4. เพิ่มไดเรกทอรี bin ของ supervisor เข้าไปใน PATH ของไฟล์ rc ของเชลล์คุณ (ทำซ้ำได้โดยไม่เปลี่ยนผล มีคอมเมนต์ `# tokenmaxxing PATH` กำกับไว้) มันต้องอยู่ก่อน `claude` ตัวจริงใน PATH เพื่อดักจับ
+5. ติดตั้งตัวจับเวลาตรวจสอบเป็นระยะ (launchd agent บน macOS และ systemd user timer บน Linux) ที่รัน `tokenmaxxing check` ทุก 180 วินาที
+
+รีสตาร์ทเชลล์ของคุณ จากนั้นเพิ่มบัญชีและเริ่มใช้งานได้เลย:
+
+```sh
+tokenmaxxing add        # เข้าสู่ระบบอีกหนึ่งบัญชีแบบแยกส่วน แล้วรวมเข้าพูล
+claude                  # ใช้ claude ได้เหมือนเดิม
+```
+
+`tokenmaxxing` มี alias เป็น `xx` ด้วย การพิมพ์ `tokenmaxxing` (หรือ `xx`) เปล่าๆ จะรัน `status` ส่วน `switch` ต้องระบุอย่างชัดเจนเสมอ

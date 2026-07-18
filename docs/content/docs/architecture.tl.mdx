@@ -1,0 +1,48 @@
+---
+title: Arkitektura
+description: "Ang supervisor shim, statusline tee, pagpapalit sa Stop hook, at modelo ng adopsyon"
+---
+
+Ang tokenmaxxing ay isang multi-call entry point (`src/main.ts`) na kumikilos bilang `claude` supervisor kapag ini-invoke sa ilalim ng pangalang iyon, naghahatid ng hook at statusline shim sa pamamagitan ng mga internal na subcommand, at kung hindi ay nagpapadala ng CLI. Direkta itong tumatakbo sa ilalim ng Bun; ang npm package ay naghahatid ng TypeScript source, hindi isang build.
+
+Ang mga gumagalaw na bahagi:
+
+## Ang supervisor shim
+
+Nagsusulat ang `init` ng 2-linyang shell shim na pinangalanang `claude` sa `~/.config/tokenmaxxing/bin/` at inilalagay ang direktoryong iyon nang una sa PATH. Kapag ni-type mo ang `claude`, pinapatakbo ng shim ang supervisor, na nagbubuo ng tunay na claude binary na may minanang stdio at isang nai-save na `stty -g` terminal snapshot. Ito ay isang tagapamahala ng proseso at terminal lamang: hindi nito kailanman pinoproxy ang API traffic at hindi kailanman hinahawakan ang mga token na papalipad.
+
+Ang mga invocation sa print-mode (`claude -p`, `--version`, `--help`), mga non-interactive na subcommand (`claude mcp`, `claude config`, at iba pa), at ang sariling mga probe ng tokenmaxxing ay dumadaan nang tuwiran nang walang pamamahala ng session. Para sa isang interactive na session, ang supervisor ay nagpi-pin ng isang session id (gumagawa ng isa, o muling ginagamit ang ipinasa mo sa pamamagitan ng `--session-id` / `-r` / `-c`), pinananatili ang iyong mga launch flag upang maaaring i-replay ng isang susunod na relaunch, at pagkatapos ay binabantayan ang isang respawn marker file na naka-key sa session na iyon.
+
+## Ang statusline tee
+
+Itinutulak ng Claude Code ang rate-limit data (`rate_limits.five_hour` at `rate_limits.seven_day`) sa stdin ng statusline sa bawat turn. Pag-aari ng tokenmaxxing ang statusline slot, kaya't ang renderer nito ay nagsisilbi ring libre, push-based na usage feed: sa bawat tick ay tini-tee nito ang aggregate na mga window kasama ang aktibong modelo sa `usage.json`. Ang mga per-model cap ay wala sa stdin ng statusline; nagmumula lamang ang mga ito sa `claude -p '/usage'` (libre, zero na token), na pino-poll na may TTL at nakalagay sa cache sa `model-usage.json` kapag limitado ang kapasidad ng aktibong modelo.
+
+Ang tee ay write-on-change: kapag hindi nagbago ang mga numero, itinataas lamang nito ang mtime ng file, na kumikilos bilang liveness heartbeat ng feed. Ang pagiging sariwa ay palaging hinuhusgahan sa pamamagitan ng mtime, hindi kailanman sa pamamagitan ng naka-embed na timestamp.
+
+## Ang Stop hook at ang pagpapalit
+
+Sa bawat turn boundary, pinapatakbo ng Stop hook ang desisyon sa pagpapalit (tingnan ang [Paano nagpapasya ang pagpapalit](/tl/switching)). Kapag makatwiran ang isang pagpapalit, nangyayari ito sa ilalim ng isang `flock(2)` exclusive lock (kinuha sa pamamagitan ng `bun:ffi`, dahil walang inihahatid na `flock(1)` binary ang macOS), at ang mga credential write ay karagdagang naka-interlock sa sariling refresh lock ng Claude Code. Sa loob ng critical section, isang pagpapalit ang:
+
+1. Inaani ang kasalukuyang live credential papunta sa parked backup ng tunay na may-ari nito.
+2. Ini-install ang sariwang na-refresh na credential ng target na account bilang ang live, na isinasama sa umiiral na live blob upang mabuhay ang sibling state (tulad ng per-MCP-server OAuth token).
+3. Pinananatili ang na-rotate na token ng target sa sarili nitong backup.
+4. Atomically na muling isinusulat ang field na `oauthAccount` sa `~/.claude.json`.
+5. Kino-commit ang bagong aktibong label at nililinis ang mga lipas na usage snapshot, lahat bago mag-release ang lock, upang hindi kailanman maaaring iwan ng isang crash ang naka-install na credential at ang aktibong label na nakaturo sa magkaibang account.
+
+Dahil ibinabahagi ng lahat ng default-profile na session ang iisang live credential, ang isang pagpapalit ay naglilipat ng bawat session nang sabay-sabay, at pinipigilan ng flock kasama ang muling pagsusuri sa ilalim ng lock ang mga nagtutunggaliang hook na masunog ang dalawang account.
+
+## Adopsyon sa lugar
+
+Ang isang tumatakbong claude session ay nagpo-poll ng credential store nito sa pagitan ng mga request: sa macOS ay muli nitong binabasa ang keychain sa pamamagitan ng isang maikling cache at inihahambing ang mga access token; sa Linux ay sina-stat nito ang mtime ng credentials file at nililinis ang mga token cache nito kapag may pagbabago. Ang net na epekto ay ginagamit ang isang naipalit na credential ng bawat tumatakbong session sa loob ng humigit-kumulang 30 segundo sa macOS at sa mismong susunod na request sa Linux, nang walang anumang restart. Ito ang dahilan kung bakit walang isinusulat na marker ang isang simpleng pagpapalit at hindi ito nagti-trigger ng respawn - ang session ay nagpapatuloy lamang sa bagong account. Ang in-session na `/usage` ay nagbabahagi ng parehong mga token cache, kaya't ang account display nito ay lumilipat kasama ng adopsyon.
+
+## Paghihintay sa naubos na pool at awtomatikong pagpapatuloy
+
+Tanging kapag lampas na sa mga bar nito ang bawat account sa pool ay nagsusulat ang Stop hook ng isang respawn marker (nangangailangan ang marker schema ng isang `waitUntil` timestamp; hindi kailanman makakagawa ng isa ang isang simpleng pagpapalit). Nakikita ng supervisor ang marker, sina-SIGTERM ang child nito sa naka-commit nang turn boundary (tumatakbo ang Stop hook pagkatapos nasa disk na ang transcript at idle na ang claude, kaya't walang nawawala), ibinabalik ang terminal, ipinapakita ang isang countdown patungo sa pinakamaagang reset, at pagkatapos ay muling inilulunsad ang `claude --resume <session-id>` sa na-recover na account. Ang Ctrl-C sa panahon ng countdown ay agad na nagpapatuloy. Ang auto-wait ay nalilimitahan ng `policy.maxWaitMs` (default na 1 oras); lampas doon ay iniuulat ng desisyon na naubos na ang pool sa halip na maghintay.
+
+## Ang pana-panahong check timer
+
+Ang mga hook ay pumuputok lamang sa mga turn boundary, at ang isang mahabang agentic na turn ay maaaring masunog ang isang window mula sa malusog patungong naubos nang walang kahit isang boundary. Kaya't nag-i-install din ang `init` ng isang pana-panahong timer - isang launchd agent sa macOS, isang systemd user timer sa Linux - na nagpapatakbo ng `tokenmaxxing check` tuwing 180 segundo anuman ang aktibidad ng turn.
+
+## Isang SessionStart hook
+
+Pinapatakbo ang parehong pagsusuri kapag nagsimula o nagpatuloy ang isang session, upang magsimula ang isang sariwang session sa tamang account. Ginagawa ng post-swap cooldown na isang tamang no-op ito kaagad pagkatapos ng isang respawn.

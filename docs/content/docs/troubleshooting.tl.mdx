@@ -1,0 +1,34 @@
+---
+title: Troubleshooting at FAQ
+description: "Mga karaniwang tanong at ang mga diagnostic sa likod ng mga ito"
+---
+
+**Mukhang hindi na-su-supervise ang `claude`.**
+Patakbuhin ang `tokenmaxxing doctor`. Dapat manalo ang shim sa PATH resolution; tiyakin na ang `# tokenmaxxing PATH` na linya sa iyong shell rc ay nakaturo sa kasalukuyang bin directory at nasa unahan ng tunay na claude. Nagbabala rin ang `doctor` tungkol sa `alias claude=...` o isang `claude()` shell function na tumatabing sa wrapper, at tungkol sa mga alias na naglulunsad ng isang claude binary sa pamamagitan ng absolute path (ganap na nilalampasan ng mga iyon ang supervisor).
+
+**Hindi kailanman pumuputok ang auto-switching sa Codex.**
+Nilalaktawan ng Codex ang mga hook na hindi pa nito sinabihang pagkatiwalaan. Buksan ang codex, patakbuhin ang `/hooks`, at pagkatiwalaan ang tokenmaxxing Stop hook. Ang tiwala ay naitatala laban sa hash ng hook, kaya't dapat itong muling ipagkaloob kung na-edit man ang hook.
+
+**Nagpapakita ng pulang `✗` ang isang account sa statusline.**
+Patay na ang refresh token nito (binawi o na-rotate palabas mula sa ilalim ng backup nito). Patakbuhin ang `tokenmaxxing auth <sel>` upang muling i-authenticate ito nang nasa lugar; sinasabi sa iyo ng command kung aling email ang gagamitin sa pag-sign in at tumatanggi sa isang login na napupunta sa ibang account.
+
+**Bakit hindi ito lumilipat sa account na may pinakamaraming natitirang quota?**
+Dahil hindi iyon ang account na may pinakamalaking panganib na mawalan ng quota. Ang target ay ang account na pinakanahuhuli sa sarili nitong lingguhang bilis: natitirang porsyento na hinati sa oras hanggang sa lingguhang reset nito. Sa magkaparehong dami ng natitira, bumababa ito sa pinakamaagang pag-expire muna, at sa magkaparehong pag-expire ay sa pinakamaraming natitira muna.
+
+**Kalilipat lang at ipinapakita pa rin ng statusline ang lumang account.**
+Inaasahan sa hanggang ~30 segundo sa macOS: ina-adopt ng tumatakbong session ang naipalit na credential sa susunod nitong credential-cache refresh. Ang usage tee ay pinipigilan sa loob ng 45 segundo pagkatapos ng isang pagpapalit para sa mismong dahilang ito.
+
+**May gastos ba ang `status --force`?**
+Oo, sinadya: nagpapadala ito ng isang minimal na metered na haiku request bawat account upang magsimula ang bawat 5-oras na session window sa sandaling iyon sa halip na manatiling nakatulog, pagkatapos ay kumukuha ng sariwang sample. Ang payak na `status` at `watch` ay hindi kailanman nag-ping; libre ang mga pagbasa ng `/usage`. Tandaan na maaaring ma-lag ng server usage feed ang isang bagong-buksang window nang segundo hanggang minuto, kaya't ang isang probe kaagad pagkatapos ng ping ay maaari pa ring magpakita ng pre-ping na estado - nagre-render ang `status` ng isang tala sa halip na magpanggap na nabigo ang ping.
+
+**Walang ibinalik ang `/usage` probe para sa aktibong account.**
+Iyon ay isang kilalang gawi ng claude: kapag nabigo o na-rate-limit ang internal usage fetch nito, ipinipirinta ng `/usage` ang lokal na session stats lamang nang walang mga percentage line. Sinasample ng tokenmaxxing ang aktibong account mula sa statusline push at nagpo-probe lamang ng mga naka-park na account, tiyak upang maiwasan ito.
+
+**Mga background na claude session.**
+Ang background daemon ng claude ay nag-spawn ng tunay na versioned na binary sa pamamagitan ng absolute path, na nilalampasan ang mga PATH shim, kaya't hindi na-su-supervise ang mga background session. Pumuputok pa rin ang mga hook sa pamamagitan ng `settings.json`, at sinasaklaw ng credential adoption kasama ang pana-panahong timer ang pagpapalit, ngunit walang marker-driven na respawn para sa kanila.
+
+**May nag-spawn ng maraming proseso minsan. Posible pa ba iyon?**
+Ang supervisor ay may dalang mga layered na recursion guard laban mismo sa makasaysayang pagkabigong iyon (isang lipas na wrapper na naka-pin bilang ang "tunay" na claude): isang depth sentinel sa environment na humihinto sa 5 na antas, isang on-disk na spawn-rate limiter, mga realpath identity check na tumatanggi sa anumang kandidatong nire-resolve pabalik sa sariling bin directory ng tokenmaxxing, at isang matinding pagkabigo (hindi kailanman isang tahimik na PATH scan) kapag ang isang na-configure na claude path ay wala na. Pinapatunayan ng `init` at `doctor` na ang isang kandidato ay talagang claude sa pamamagitan ng pagpapatakbo ng `--version` bago ito i-pin.
+
+**Pag-uninstall.**
+Inaalis ng `tokenmaxxing uninstall` ang mga supervisor shim, settings entry, at ang pana-panahong timer, at iniiwang buo ang iyong mga account at naka-park na credential. Inaalis lamang nito ang mga statusline entry na kinikilala nito bilang sarili nito.

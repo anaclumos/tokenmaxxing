@@ -1,0 +1,34 @@
+---
+title: Pemecahan masalah dan FAQ
+description: "Pertanyaan umum dan diagnostik di baliknya"
+---
+
+**`claude` sepertinya tidak tersupervisi.**
+Jalankan `tokenmaxxing doctor`. Shim harus memenangkan resolusi PATH; periksa bahwa baris `# tokenmaxxing PATH` di shell rc Anda menunjuk ke direktori bin saat ini dan berada di depan claude asli. `doctor` juga memperingatkan tentang `alias claude=...` atau fungsi shell `claude()` yang membayangi pembungkus, dan tentang alias yang meluncurkan biner claude lewat jalur absolut (itu melewati supervisor sepenuhnya).
+
+**Pergantian otomatis tidak pernah menyala di Codex.**
+Codex melewati hook yang belum diberi tahu untuk dipercaya. Buka codex, jalankan `/hooks`, dan percayai hook Stop tokenmaxxing. Kepercayaan dicatat terhadap hash hook, jadi harus diberikan ulang jika hook pernah disunting.
+
+**Sebuah akun menampilkan `✗` merah di statusline.**
+Token refresh-nya mati (dicabut atau dirotasi keluar dari bawah cadangannya). Jalankan `tokenmaxxing auth <sel>` untuk mengautentikasinya ulang di tempat; perintah memberi tahu email mana yang harus dipakai login dan menolak login yang mendarat di akun berbeda.
+
+**Mengapa ia tidak berpindah ke akun dengan kuota tersisa paling banyak?**
+Karena itu bukan akun yang paling berisiko menghanguskan kuota. Target adalah akun yang paling tertinggal dari laju mingguannya sendiri: persen tersisa dibagi waktu ke reset mingguannya. Dengan jumlah tersisa yang sama, itu menyusut menjadi kedaluwarsa tercepat lebih dulu, dan dengan kedaluwarsa yang sama menjadi tersisa terbanyak lebih dulu.
+
+**Baru saja berpindah dan statusline masih menampilkan akun lama.**
+Diperkirakan hingga ~30 detik di macOS: sesi yang berjalan mengadopsi kredensial yang ditukar pada penyegaran cache-kredensial berikutnya. Tee penggunaan ditekan selama 45 detik setelah sebuah pertukaran justru karena alasan ini.
+
+**Apakah `status --force` memakan biaya?**
+Ya, dengan sengaja: ia mengirim satu permintaan haiku terukur minimal per akun sehingga setiap jendela sesi 5 jam mulai pada saat itu alih-alih diam terlelap, lalu mengambil sampel segar. `status` biasa dan `watch` tidak pernah memberi ping; pembacaan `/usage` gratis. Perhatikan umpan penggunaan server bisa terlambat mencerminkan jendela yang baru dibuka dalam hitungan detik hingga menit, jadi sebuah probe langsung setelah ping mungkin masih menampilkan keadaan pra-ping - `status` merender sebuah catatan alih-alih berpura-pura ping gagal.
+
+**Probe `/usage` tidak mengembalikan apa pun untuk akun aktif.**
+Itu perilaku claude yang diketahui: ketika pengambilan penggunaan internalnya gagal atau dibatasi-laju, `/usage` hanya mencetak statistik sesi lokal tanpa baris persentase. tokenmaxxing mengambil sampel akun aktif dari dorongan statusline dan hanya memprobe akun terparkir, justru untuk menghindari ini.
+
+**Sesi claude di latar belakang.**
+Daemon latar belakang claude menelurkan biner berversi asli lewat jalur absolut, melewati shim PATH, sehingga sesi latar belakang tidak tersupervisi. Hook tetap menyala melalui `settings.json`, dan adopsi kredensial ditambah pengatur waktu berkala menutupi pergantian, tetapi tidak ada respawn yang digerakkan-penanda untuknya.
+
+**Sesuatu pernah menelurkan banyak proses. Apakah itu masih mungkin?**
+Supervisor membawa penjaga rekursi berlapis terhadap justru kegagalan historis itu (sebuah pembungkus usang disematkan sebagai claude "asli"): sebuah sentinel kedalaman di lingkungan yang membatalkan pada 5 level, sebuah pembatas laju-teluran di-disk, pemeriksaan identitas realpath yang menolak kandidat mana pun yang menyelesaikan kembali ke direktori bin milik tokenmaxxing sendiri, dan sebuah kegagalan keras (tidak pernah pemindaian PATH yang senyap) ketika sebuah jalur claude yang dikonfigurasi tidak lagi ada. `init` dan `doctor` memverifikasi sebuah kandidat benar-benar claude dengan menjalankan `--version` sebelum menyematkannya.
+
+**Menghapus instalasi.**
+`tokenmaxxing uninstall` menghapus shim supervisor, entri pengaturan, dan pengatur waktu berkala, dan membiarkan akun serta kredensial terparkir Anda utuh. Ia hanya menghapus entri statusline yang dikenalinya sebagai miliknya sendiri.

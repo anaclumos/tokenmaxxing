@@ -1,0 +1,34 @@
+---
+title: Solução de problemas e perguntas frequentes
+description: "Perguntas comuns e os diagnósticos por trás delas"
+---
+
+**O `claude` não parece estar supervisionado.**
+Execute `tokenmaxxing doctor`. O shim precisa vencer a resolução do PATH; verifique se a linha `# tokenmaxxing PATH` no rc do seu shell aponta para o diretório bin atual e fica à frente do claude real. O `doctor` também avisa sobre `alias claude=...` ou uma função de shell `claude()` sombreando o wrapper, e sobre aliases que lançam um binário claude por caminho absoluto (esses contornam o supervisor inteiramente).
+
+**A troca automática nunca dispara no Codex.**
+O Codex ignora hooks que não foi instruído a confiar. Abra o codex, execute `/hooks` e confie no hook Stop do tokenmaxxing. A confiança é registrada contra o hash do hook, então ela precisa ser reconcedida se o hook for editado.
+
+**Uma conta mostra um `✗` vermelho no statusline.**
+Seu token de atualização está morto (revogado ou rotacionado por baixo de seu backup). Execute `tokenmaxxing auth <sel>` para reautenticá-la no lugar; o comando informa com qual e-mail entrar e recusa um login que caia em uma conta diferente.
+
+**Por que ele não troca para a conta com mais cota restante?**
+Porque essa não é a conta com mais risco de perder cota. O destino é a conta mais atrasada em relação ao seu próprio ritmo semanal: porcentagem restante dividida pelo tempo até sua redefinição semanal. Com quantidades restantes iguais, isso se reduz à expiração mais próxima primeiro, e com expiração igual, à maior quantidade restante primeiro.
+
+**Acabou de trocar e o statusline ainda mostra a conta antiga.**
+Esperado por até ~30 segundos no macOS: a sessão em execução adota a credencial trocada em sua próxima atualização de cache de credencial. O tee de uso fica suprimido por 45 segundos após uma troca exatamente por isso.
+
+**O `status --force` custa alguma coisa?**
+Sim, deliberadamente: ele envia uma requisição haiku medida mínima por conta para que cada janela de sessão de 5 horas inicie naquele instante em vez de ficar dormente, depois amostra dados frescos. O `status` puro e o `watch` nunca fazem ping; as leituras de `/usage` são gratuitas. Observe que o feed de uso do servidor pode atrasar uma janela recém-aberta em segundos a minutos, então um probe imediatamente após o ping pode ainda mostrar o estado anterior ao ping - o `status` renderiza uma nota em vez de fingir que o ping falhou.
+
+**O probe do `/usage` não retornou nada para a conta ativa.**
+Esse é um comportamento conhecido do claude: quando sua busca interna de uso falha ou é limitada por taxa, o `/usage` imprime apenas estatísticas locais da sessão sem linhas de porcentagem. tokenmaxxing amostra a conta ativa a partir do push do statusline e só faz probe em contas estacionadas, precisamente para evitar isso.
+
+**Sessões claude em segundo plano.**
+O daemon de segundo plano do claude gera o binário versionado real por caminho absoluto, contornando os shims de PATH, então as sessões de segundo plano são não supervisionadas. Os hooks ainda disparam via `settings.json`, e a adoção de credencial mais o timer periódico cobrem a troca, mas não há respawn guiado por marcador para elas.
+
+**Algo gerou muitos processos uma vez. Isso ainda é possível?**
+O supervisor carrega guardas de recursão em camadas contra exatamente aquela falha histórica (um wrapper obsoleto fixado como o claude "real"): uma sentinela de profundidade no ambiente que aborta em 5 níveis, um limitador de taxa de spawn em disco, verificações de identidade por realpath que rejeitam qualquer candidato que se resolva de volta ao próprio diretório bin do tokenmaxxing, e uma falha rígida (nunca uma varredura silenciosa de PATH) quando um caminho de claude configurado não existe mais. `init` e `doctor` verificam se um candidato realmente é o claude executando `--version` antes de fixá-lo.
+
+**Desinstalando.**
+`tokenmaxxing uninstall` remove os shims do supervisor, as entradas de settings e o timer periódico, e deixa suas contas e credenciais estacionadas intactas. Ele só remove as entradas de statusline que reconhece como suas.

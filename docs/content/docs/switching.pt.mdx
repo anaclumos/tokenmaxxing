@@ -1,0 +1,41 @@
+---
+title: Como a troca decide
+description: "Engajamento, barras de triagem, pressão de ritmo e os caminhos guloso vs rígido"
+---
+
+A decisão tem duas camadas: um portão de engajamento e, em seguida, um caminho guloso ou rígido.
+
+## Engajamento
+
+Abaixo de `policy.greedySessionFloor` (padrão 50, em porcentagem da janela de sessão de 5 horas), a decisão não roda de forma alguma - uma sessão nova segue em sua conta. Assim que a janela de sessão ativa está 50% usada, ou qualquer barra rígida é cruzada, a decisão se engaja.
+
+## Barras de triagem
+
+Os limiares são barras de triagem, não o gatilho para pânico:
+
+- `thresholds.session`: 95. Uma redefinição de 5 horas é barata de esperar, então a janela de sessão troca mais cedo.
+- `thresholds.weekly`: 98. Essa única barra cobre tanto o agregado de 7 dias quanto todos os limites semanais por modelo. A cota semanal é usar ou perder, então ela drena perto da parede.
+
+Ambas estão deliberadamente abaixo de 100: a folga é o orçamento para alcançar um limite de turno limpo (mais até um turno de atraso de adoção no macOS) antes de a conta realmente atingir seu limite. As mesmas barras filtram os candidatos à troca: uma conta acima de qualquer uma de suas barras não é um destino válido. Gatilho e triagem sempre usam as mesmas barras efetivas (limiares menos `policy.projectionMargin`), porque uma triagem mais frouxa que o gatilho colocaria trocas em contas que o gatilho remarca imediatamente, fazendo o grupo ir e voltar como pingue-pongue.
+
+## O destino: pressão de ritmo
+
+Entre as contas usáveis, o destino é a que está mais atrasada em relação ao seu próprio ritmo semanal: maior **pressão de ritmo**, definida como a porcentagem semanal restante dividida pelo tempo até a redefinição semanal daquela conta. A conta com mais cota prestes a ser perdida vence. Empates são resolvidos pela expiração semanal mais próxima, depois pelo menor uso de 7 dias.
+
+Tudo roda com base em janelas em cache armazenadas como épocas UTC absolutas, então um instantâneo obsoleto ainda resolve corretamente: uma redefinição semanal que já passou é extrapolada adiante em passos exatos de 7 dias, e qualquer janela além de sua redefinição em cache conta como recém-esvaziada (nunca um motivo para trocar, nunca um motivo para manter uma conta no banco).
+
+## Caminho guloso vs rígido
+
+- **Caminho guloso** (engajado, mas abaixo de todas as barras): classifica todas as contas, a atual incluída. Se a conta atual já vence ou empata, não faz nada. Caso contrário, troca para a conta estritamente melhor. Ele nunca espera e nunca pré-estaciona - uma conta atual usável não é trocada por uma espera. Como a conta atual também é classificada, tanto o caminho automático quanto o `tokenmaxxing switch` puro são idempotentes: avaliar periodicamente converge para a conta certa e então permanece parado.
+- **Caminho rígido** (uma barra cruzada): troca para o melhor candidato usável. Se o token de atualização de um candidato se revelar morto, ele é sinalizado como precisando de reautenticação e o próximo candidato é tentado. Se nada for usável, a lógica de espera por esgotamento roda; apenas um chamador que pode de fato pausar a sessão (o hook Stop supervisionado) tem permissão para pré-estacionar em uma conta ainda bloqueada, mas de recuperação mais próxima.
+
+## Limites por modelo
+
+`policy.switchModels` (padrão `["fable"]`) nomeia as famílias de modelos cujo limite semanal por modelo pode disparar uma troca. A correspondência é por token de família, nunca por string de exibição exata: os nomes de exibição dos modelos mudam ("Fable" virou "Fable 5"), e um portão de string exata uma vez desabilitou silenciosamente toda a troca por modelo. Duas regras de segurança relacionadas:
+
+- Um modelo ativo desconhecido bloqueia todas as famílias configuradas. Logo após uma troca limpar os instantâneos, uma máquina headless pode rodar cega quanto ao modelo; tratar o desconhecido como sem restrição uma vez deixou uma conta parada em seu limite do Fable por horas sem ser notada.
+- A triagem de candidatos conta também os limites por modelo bloqueados, então um grupo em que toda conta queimou seu limite do Fable não fica em rodízio.
+
+## Cooldown
+
+Um cooldown pós-troca de 45 segundos controla o caminho automático. O tee do statusline fica suprimido pelos mesmos 45 segundos após uma troca (a adoção leva até 30 segundos no macOS), pois uma avaliação anterior rodaria com dados que a própria troca invalidou - esse exato cenário uma vez produziu um loop de respawn de A para B e de volta. O `tokenmaxxing switch` manual não é afetado pelo cooldown.

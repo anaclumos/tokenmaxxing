@@ -1,0 +1,6 @@
+---
+title: Penggunaan pribadi dan ketentuan layanan
+description: "Gabungkan akun yang Anda miliki, dalam sesi dan agen yang Anda jalankan sendiri"
+---
+
+tokenmaxxing menggabungkan akun yang Anda miliki, dalam sesi dan agen yang Anda jalankan sendiri. Kata-kata itu disengaja: Anthropic tidak mengizinkan produk pihak ketiga menawarkan login claude.ai atau batas-laju claude.ai, dan itu termasuk agen yang dibangun di atas Agent SDK. Jangan kirimkan permukaan SDK tergabung, atau apa pun yang dibangun di atasnya, ke pihak ketiga. tokenmaxxing juga sengaja tetap di jalur `/usage` yang dimediasi-CLI untuk data kuota alih-alih mengimplementasikan ulang OAuth atau memproksi lalu lintas API: ia bukan sebuah proksi, dan satu-satunya endpoint OAuth yang ia sentuh adalah grant refresh standar yang digunakan selama sebuah pertukaran dan sebuah pemeriksaan identitas hanya-baca (endpoint roles) yang memverifikasi akun mana yang sebenarnya dimiliki sebuah token.

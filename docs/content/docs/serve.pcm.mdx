@@ -1,0 +1,23 @@
+---
+title: "The Slack bridge: xx serve"
+description: "xx serve dey run Claude Code sessions from Slack threads over Socket Mode"
+---
+
+`tokenmaxxing serve` dey run one local Slack daemon over Socket Mode - no public URL required. Setup:
+
+```sh
+tokenmaxxing serve setup                    # e go print the app manifest, prompt for the two tokens
+tokenmaxxing serve link <channel-id> <repo> # tie one channel to one repo checkout
+tokenmaxxing serve                          # run the daemon
+```
+
+Mention the bot for one linked channel and e go open one Claude Code session for dat thread, for the linked repo checkout. Every thread message dey run one Agent SDK `query()` with `resume` - never a persistent streaming query - so `ensureBestAccount()` dey re-evaluate the pool for every single turn and the daemon fit restart without losing threads (thread records dey durable; the daemon dey re-subscribe dem for startup).
+
+Notable behavior:
+
+- **Streaming**: replies dey stream natively go inside Slack, with task cards for thinking and tool runs, fenced code wey dem render with highlighting, one closing "Turn" card with cost and duration, and one new Slack message wey dem open whenever one tool run interrupt streamed text, so one turn dey read as separate messages around tool runs. TodoWrite calls dey update one stable checklist card for the same place.
+- **Permissions**: per-link `permissionMode` dey default to `acceptEdits`; `--yolo` (alias `--dangerous`) dey opt one link go inside `bypassPermissions`. Interactive dialogs no dey allowed for relayed turns - nobody fit answer one through Slack - so the model dey ask for prose and your thread reply na the next turn. One bundled plugin skill dey teach am to tag the requester and end the turn when e need a decision.
+- **Slash commands**: one thread message wey im stripped text start with `/` dey run as one claude slash command. Slack im composer dey chop messages wey start with `/`, so use the mention-first form (`@bot /usage`) or one leading space.
+- **Graceful shutdown**: SIGTERM/SIGINT dey drain - dem dey drop new turns loudly, in-flight turns dey get up to 5 minutes, and the claude child dey run detached for im own process group so one terminal Ctrl-C no fit kill am before the drain preserve the turn.
+- **Thread cleanup**: when you tell am say the work don finish, the model dey call one in-process `finish_thread` tool; after the turn fully end, the daemon dey drop the thread record, unsubscribe, and post one confirmation. One fresh mention dey start one new session.
+- **Error hygiene**: turn errors dey post trimmed message-only text, never raw error bodies.

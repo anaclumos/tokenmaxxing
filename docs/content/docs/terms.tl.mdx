@@ -1,0 +1,6 @@
+---
+title: Personal na paggamit at mga tuntunin ng serbisyo
+description: "I-pool ang mga account na pag-aari mo, sa mga session at agent na ikaw mismo ang nagpapatakbo"
+---
+
+Pinagsasama-sama ng tokenmaxxing ang mga account na pag-aari mo, sa mga session at agent na ikaw mismo ang nagpapatakbo. Sinadya ang pananalitang iyon: hindi pinapayagan ng Anthropic ang mga third-party na produkto na mag-alok ng claude.ai login o claude.ai rate limit, at kasama diyan ang mga agent na binuo sa Agent SDK. Huwag ipamahagi ang naka-pool na SDK surface, o anumang binuo dito, sa mga third party. Sinasadya rin ng tokenmaxxing na manatili sa CLI-mediated na `/usage` path para sa quota data sa halip na muling ipatupad ang OAuth o i-proxy ang API traffic: hindi ito isang proxy, at ang tanging mga OAuth endpoint na hinahawakan nito ay ang standard refresh grant na ginagamit sa isang pagpapalit at isang read-only na identity check (ang roles endpoint) na nagpapatunay kung aling account talaga ang pag-aari ng isang token.

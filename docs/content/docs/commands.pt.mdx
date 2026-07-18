@@ -1,0 +1,25 @@
+---
+title: Comandos
+description: "Cada comando do tokenmaxxing e o que ele faz"
+---
+
+| Comando | O que faz |
+|---|---|
+| `tokenmaxxing init` | Importa a conta atual, instala o supervisor, os hooks e o statusline |
+| `tokenmaxxing init --codex` | O mesmo para o Codex: importa o login, instala o supervisor codex e o hook Stop |
+| `tokenmaxxing add` | Registra uma conta adicional (login isolado, colhido para o grupo) |
+| `tokenmaxxing add --codex` | Registra uma conta Codex adicional (login isolado) |
+| `tokenmaxxing auth [sel \| --all]` | Reautentica uma conta do grupo no lugar. Puro lista o grupo e pergunta qual; um seletor mira uma conta e informa com qual e-mail entrar; `--all` percorre uma a uma todas as contas que precisam de reautenticação |
+| `tokenmaxxing switch [sel]` | Troca para a melhor conta (guloso, idempotente) ou força uma específica |
+| `tokenmaxxing switch --codex [sel]` | Troca o grupo Codex (entra em vigor no próximo início do codex) |
+| `tokenmaxxing ls` | Lista as contas do grupo |
+| `tokenmaxxing status` | Contas com barras de uso de 5h / semanal / por modelo, ativa e esgotada até a redefinição |
+| `tokenmaxxing status --force` | Além disso, faz um ping em cada conta (uma pequena requisição haiku cada) para que todos os timers de sessão de 5h iniciem agora, depois amostra dados frescos |
+| `tokenmaxxing watch [seconds]` | Status ao vivo, rerenderizado a cada N segundos (padrão 120, piso 30; nunca faz ping) |
+| `tokenmaxxing config [get\|set\|unset\|tidy]` | Config efetiva com fontes; edita chaves com pontos; `tidy` remove chaves desconhecidas |
+| `tokenmaxxing check` | Avalia a decisão de troca uma vez (é o que o timer periódico executa) |
+| `tokenmaxxing serve [setup\|link\|unlink\|links]` | Daemon da ponte com o Slack (Socket Mode, sem URL pública) |
+| `tokenmaxxing doctor` | Verifica se o supervisor e as entradas de settings sobreviveram |
+| `tokenmaxxing rename [--codex] <sel> <label>` | Renomeia uma conta do grupo |
+| `tokenmaxxing rm <sel>` | Remove uma conta do grupo |
+| `tokenmaxxing uninstall` | Remove o supervisor e as entradas de settings (contas e credenciais são mantidas) |

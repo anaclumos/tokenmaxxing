@@ -1,0 +1,28 @@
+---
+title: کنفیگریشن
+description: "config.json اسکیما، تھریشولڈز، اور پالیسی نوبز"
+---
+
+Config ایک JSON ہے `~/.config/tokenmaxxing/config.json` پر۔ ہر فیلڈ اختیاری ہے؛ ڈیفالٹس فی فیلڈ لاگو ہوتے ہیں۔
+
+```json
+{
+  "thresholds": { "session": 95, "weekly": 98 },
+  "policy": {
+    "projectionMargin": 0,
+    "greedySessionFloor": 50,
+    "switchModels": ["fable"],
+    "usagePollTtlMs": 90000,
+    "maxWaitMs": 3600000
+  }
+}
+```
+
+- `thresholds.session` / `thresholds.weekly`: اوپر بیان کردہ اسکریننگ بارز۔
+- `policy.projectionMargin`: مؤثر بارز بنانے کے لیے دونوں بارز سے تفریق کیا جاتا ہے۔
+- `policy.greedySessionFloor`: سیشن-استعمال فیصد جس پر لالچی یکجائی مصروف ہوتی ہے۔
+- `policy.switchModels`: ماڈل فیملیز جن کی فی ماڈل ہفتہ وار حد ایک سوئچ کو گیٹ کرتی ہے (لوڈ ہونے پر اندراجات لوئر کیس کر دیے جاتے ہیں)۔
+- `policy.usagePollTtlMs`: ایک `/usage` فی ماڈل پول کتنی دیر تازہ رہتا ہے۔
+- `policy.maxWaitMs`: ختم شدہ پول کا خودکار انتظار حد۔
+
+`tokenmaxxing config` ذرائع کے ساتھ مؤثر config دکھاتا ہے؛ `config set`/`unset` ڈوٹڈ کیز میں ترمیم کرتے ہیں؛ `config tidy` نامعلوم کیز کو صاف کرتا ہے۔

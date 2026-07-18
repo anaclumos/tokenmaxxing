@@ -1,13 +1,35 @@
 ---
-title: Selamat Datang
-description: Gabungkan akun CLI agen Anda sendiri dan jaga setiap sesi tetap berjalan
+title: tokenmaxxing
+description: Pergantian akun Claude Code otomatis - gabungkan akun langganan Anda sendiri dan tukar kredensial secara langsung saat kuota penuh, menjaga setiap sesi tetap dapat dilanjutkan.
 ---
 
-tokenmaxxing adalah CLI untuk orang yang menjalankan Claude Code (dan Codex) di beberapa akun mereka sendiri. Ia memantau kuota penggunaan, menukar kredensial aktif ke akun dengan ruang tersisa paling banyak sebelum batas tercapai, dan menjaga sesi Anda tetap dapat dilanjutkan lintas pertukaran.
+tokenmaxxing adalah CLI untuk pergantian akun Claude Code otomatis. Ia menggabungkan beberapa akun langganan (Pro/Max) yang Anda miliki dan menukar kredensial aktif secara langsung ke akun yang lebih segar ketika akun yang sedang dipakai mendekati batas penggunaan. Anda menjalankan `claude` persis seperti biasa; pertukaran terjadi pada batas giliran yang aman dan sesi Anda yang sedang berjalan melanjutkan percakapan yang sama di akun baru tanpa memulai ulang. Ini bekerja lintas banyak sesi bersamaan sekaligus.
+
+Satu-satunya perilaku yang terlihat adalah kasus terburuk: ketika seluruh gabungan akun mencapai batasnya, sesi dijeda dengan hitung mundur dan otomatis dilanjutkan pada akun berikutnya yang meresetnya (Ctrl-C melanjutkan dengan segera).
+
+<Callout>
+Cakupan: Claude Code di macOS dan Linux, ditambah Codex CLI dari OpenAI sebagai gabungan akun kedua yang berjalan paralel. Ia menggabungkan akun langganan, bukan kunci API. Ini adalah alat penggunaan pribadi untuk menggabungkan akun yang Anda miliki, dalam sesi dan agen yang Anda jalankan sendiri - lihat [Penggunaan pribadi dan ketentuan layanan](/id/terms).
+</Callout>
+
+## Masalahnya
+
+Sebuah langganan Claude memetakan tiga batas sekaligus (semua dikonfirmasi melalui `/usage`):
+
+- **Sesi saat ini**: jendela bergulir 5 jam.
+- **Minggu saat ini (semua model)**: agregat 7 hari.
+- **Minggu saat ini, per model**: batas mingguan terpisah untuk masing-masing keluarga model. Saat ini batas ini hanya ada untuk Sonnet dan Fable, dan hanya batas Fable yang cukup ketat untuk berpengaruh - ia mengikat jauh sebelum agregat mencapainya. Sebuah mesin bisa berada di 50% minggu-keseluruhan sementara sudah di 80% minggu-Fable.
+
+Kuota mingguan bersifat pakai-atau-hangus: apa pun yang belum dikonsumsi sebuah akun sampai reset mingguannya yang tetap akan hangus. Jika Anda memiliki beberapa akun, strategi rasionalnya adalah terus membakar kuota di akun mana pun yang paling tertinggal dari laju mingguannya sendiri, dan berpindah sebelum satu batas pun menabrak dinding di tengah sesi.
+
+Melakukannya secara manual berarti keluar, masuk kembali, dan kehilangan percakapan Anda. tokenmaxxing mengotomatiskannya: sebuah `claude` yang berjalan memeriksa ulang penyimpanan kredensialnya di antara permintaan, sehingga kredensial yang ditukar di bawahnya diadopsi di tempat (dalam sekitar 30 detik di macOS, pada permintaan berikutnya di Linux). Pertukaran biasa tidak pernah memulai ulang sesi Anda. Satu-satunya kasus yang masih membutuhkan manajemen proses adalah gabungan akun yang benar-benar habis - sebuah sesi tidak bisa menjeda dirinya sendiri - dan itulah alasan keberadaan supervisor tipis tersebut.
+
+Segala hal lain tentang `claude` tidak berubah: semua flag, server MCP, hook, dan skill diteruskan.
 
 ## Ke mana selanjutnya
 
 <Cards>
-  <Card title="Panduan lengkap" href="/id/docs/tokenmaxxing" />
-  <Card title="Kode sumber di GitHub" href="https://github.com/anaclumos/tokenmaxxing" />
+  <Card title="Mulai cepat" href="/id/quickstart" />
+  <Card title="Perintah" href="/id/commands" />
+  <Card title="Arsitektur" href="/id/architecture" />
+  <Card title="Cara pertukaran diputuskan" href="/id/switching" />
 </Cards>

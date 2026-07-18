@@ -1,0 +1,28 @@
+---
+title: कॉन्फिगरेशन
+description: "config.json स्कीमा, थ्रेशोल्ड्स, आणि धोरण नॉब्स"
+---
+
+कॉन्फिग `~/.config/tokenmaxxing/config.json` येथे JSON आहे. प्रत्येक फील्ड ऐच्छिक आहे; डीफॉल्ट्स प्रति-फील्ड लागू होतात.
+
+```json
+{
+  "thresholds": { "session": 95, "weekly": 98 },
+  "policy": {
+    "projectionMargin": 0,
+    "greedySessionFloor": 50,
+    "switchModels": ["fable"],
+    "usagePollTtlMs": 90000,
+    "maxWaitMs": 3600000
+  }
+}
+```
+
+- `thresholds.session` / `thresholds.weekly`: वर वर्णन केलेले स्क्रीनिंग बार.
+- `policy.projectionMargin`: प्रभावी बार तयार करण्यासाठी दोन्ही बारांमधून वजा केला जातो.
+- `policy.greedySessionFloor`: सत्र-वापर टक्केवारी ज्यावर हावरट एकवटणे सहभागी होते.
+- `policy.switchModels`: मॉडेल कुटुंबे ज्यांची प्रति-मॉडेल साप्ताहिक मर्यादा बदल गेट करते (नोंदी लोड होताना लोअरकेस केल्या जातात).
+- `policy.usagePollTtlMs`: एक `/usage` प्रति-मॉडेल पोल किती काळ ताजा राहतो.
+- `policy.maxWaitMs`: संपलेल्या-पूलची स्वयं-प्रतीक्षा मर्यादा.
+
+`tokenmaxxing config` स्रोतांसह प्रभावी कॉन्फिग दाखवते; `config set`/`unset` डॉट-केलेल्या कीज संपादित करतात; `config tidy` अज्ञात कीज काढून टाकते.

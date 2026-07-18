@@ -1,0 +1,28 @@
+---
+title: Configuration
+description: "Le schéma de config.json, les seuils et les réglages de politique"
+---
+
+La configuration est du JSON dans `~/.config/tokenmaxxing/config.json`. Chaque champ est optionnel ; les valeurs par défaut s'appliquent champ par champ.
+
+```json
+{
+  "thresholds": { "session": 95, "weekly": 98 },
+  "policy": {
+    "projectionMargin": 0,
+    "greedySessionFloor": 50,
+    "switchModels": ["fable"],
+    "usagePollTtlMs": 90000,
+    "maxWaitMs": 3600000
+  }
+}
+```
+
+- `thresholds.session` / `thresholds.weekly` : les barres de filtrage décrites ci-dessus.
+- `policy.projectionMargin` : soustrait des deux barres pour former les barres effectives.
+- `policy.greedySessionFloor` : pourcentage de session utilisé auquel la convergence gloutonne s'engage.
+- `policy.switchModels` : familles de modèles dont le plafond hebdomadaire par modèle verrouille une bascule (les entrées sont mises en minuscules au chargement).
+- `policy.usagePollTtlMs` : durée pendant laquelle une interrogation `/usage` par modèle reste fraîche.
+- `policy.maxWaitMs` : la borne de l'attente automatique sur pool épuisé.
+
+`tokenmaxxing config` affiche la configuration effective avec ses sources ; `config set`/`unset` modifient les clés à points ; `config tidy` élague les clés inconnues.

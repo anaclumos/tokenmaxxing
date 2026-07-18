@@ -1,0 +1,23 @@
+---
+title: "La passerelle Slack : xx serve"
+description: "xx serve exécute des sessions Claude Code depuis des fils Slack via Socket Mode"
+---
+
+`tokenmaxxing serve` exécute un démon Slack local via Socket Mode, sans URL publique requise. Configuration :
+
+```sh
+tokenmaxxing serve setup                    # affiche le manifeste de l'app, demande les deux jetons
+tokenmaxxing serve link <channel-id> <repo> # lie un canal à un checkout de dépôt
+tokenmaxxing serve                          # exécute le démon
+```
+
+Mentionnez le bot dans un canal lié et il ouvre une session Claude Code pour ce fil, dans le checkout du dépôt lié. Chaque message de fil exécute un unique `query()` de l'Agent SDK avec `resume` (jamais une requête de streaming persistante), de sorte que `ensureBestAccount()` réévalue le pool à chaque tour et que le démon peut redémarrer sans perdre de fils (les enregistrements de fils sont durables ; le démon les réabonne au démarrage).
+
+Comportements notables :
+
+- **Streaming** : les réponses sont diffusées nativement dans Slack, avec des cartes de tâche pour la réflexion et les exécutions d'outils, du code entre balises rendu avec coloration syntaxique, une carte « Turn » de clôture avec le coût et la durée, et un nouveau message Slack ouvert chaque fois qu'une exécution d'outil interrompt le texte diffusé, de sorte qu'un tour se lit comme des messages distincts autour des exécutions d'outils. Les appels TodoWrite mettent à jour sur place une unique carte de liste de contrôle stable.
+- **Permissions** : le `permissionMode` par lien vaut par défaut `acceptEdits` ; `--yolo` (alias `--dangerous`) fait passer un lien en `bypassPermissions`. Les dialogues interactifs sont interdits dans les tours relayés (personne ne peut y répondre via Slack), de sorte que le modèle demande en prose et que votre réponse dans le fil constitue le tour suivant. Un skill de plugin intégré lui apprend à mentionner le demandeur et à terminer le tour lorsqu'il a besoin d'une décision.
+- **Commandes slash** : un message de fil dont le texte nettoyé commence par `/` s'exécute comme une commande slash de claude. Le compositeur de Slack avale les messages commençant par `/`, donc utilisez la forme mention en premier (`@bot /usage`) ou une espace initiale.
+- **Arrêt gracieux** : SIGTERM/SIGINT vidange : les nouveaux tours sont rejetés bruyamment, les tours en cours disposent de jusqu'à 5 minutes, et l'enfant claude s'exécute détaché dans son propre groupe de processus afin qu'un Ctrl-C de terminal ne puisse pas le tuer avant que la vidange ne préserve le tour.
+- **Nettoyage des fils** : lorsque vous lui dites que le travail est terminé, le modèle appelle un outil `finish_thread` en cours de processus ; une fois le tour entièrement terminé, le démon supprime l'enregistrement du fil, se désabonne et publie une confirmation. Une nouvelle mention démarre une nouvelle session.
+- **Hygiène des erreurs** : les erreurs de tour publient un texte réduit au seul message, jamais de corps d'erreur bruts.

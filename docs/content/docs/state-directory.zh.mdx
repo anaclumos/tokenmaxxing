@@ -1,0 +1,25 @@
+---
+title: 状态目录布局
+description: "~/.config/tokenmaxxing 之下的每个文件与目录"
+---
+
+一切都存放在 `~/.config/tokenmaxxing/` 之下（可用 `TOKENMAXXING_HOME` 覆盖；每个外部可观测的路径都有一个环境变量覆盖，因此整个工具可以在测试中密封地运行）。
+
+| 路径 | 存放内容 |
+|---|---|
+| `config.json` | 你的配置（稀疏；默认值逐字段应用） |
+| `accounts.json` | 池内 Claude 账户的非机密索引：标签、id、缓存的用量窗口。绝不含 token |
+| `usage.json` | statusline 分流的汇总窗口快照；其 mtime 是数据源的存活心跳 |
+| `model-usage.json` | 来自 `/usage` 的、按 TTL 缓存的按模型周上限 |
+| `lastswap.json` | 上次切换的纪元时间戳；驱动 45 秒冷却期 |
+| `lock` | 用于串行化切换的 `flock` 文件 |
+| `tokenmaxxing.log` | 仅追加的事件日志 |
+| `bin/` | PATH shim：`claude`、`codex`，以及 `tokenmaxxing` / `xx` 入口点 |
+| `respawn/<session-id>` | 监督进程所监视的耗尽等待 respawn 标记 |
+| `creds/` | 仅 Linux：停放的凭证文件，位于一个 0700 目录中的 0600 文件（macOS 改为把凭证停放为每账户各一个钥匙串条目） |
+| `onboard/`、`sample/` | 用于 `add`/`auth` 登录以及停放账户 `/usage` 探测的一次性隔离配置 home；持有明文凭证的 onboard home 会在收集后被删除 |
+| `slack.json` | `xx serve` 的 token 和频道链接（0600） |
+| `slack-threads/` | `xx serve` 的按线程会话记录 |
+| `codex-*` | 并行的 Codex 账户池：`codex-accounts.json`、`codex-lastswap.json`、`codex-lock`、`codex-creds/`、`codex-onboard/`、`codex-respawn/`，以及 `codex-live/`（每个正在运行的受监督 codex 会话各一个经 PID 校验的存在文件，因此一个活动账户绝不会成为切换目标） |
+
+在自己的目录之外，tokenmaxxing 恰好触碰这些：`~/.claude.json`（`oauthAccount` 切换）、Claude Code 的 `settings.json`（hook 和 statusline 条目）、活动凭证存储（macOS 上的 `Claude Code-credentials` 钥匙串条目，Linux 上的 `.credentials.json`）、`~/.claude.lock`（claude 的刷新锁，在切换期间取用）、codex 的 `auth.json` 和 `hooks.json`，以及 launchd 或 systemd 中的周期性检查单元。

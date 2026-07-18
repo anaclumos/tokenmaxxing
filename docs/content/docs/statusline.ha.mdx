@@ -1,0 +1,21 @@
+---
+title: statusline ɗin
+description: "Ƙayyadaddu a cikin launi, layi ɗaya, kowane asusu a bayyane"
+---
+
+tokenmaxxing yana nuna statusline na Claude Code a asali (yayin da yake tee ɗin abincin amfani). Ka'idar ƙira: ana ɗauke da ƙayyadaddu cikin launi, ba lambobi ba. Layi ɗaya, misali:
+
+```
+tm-wt-demo Fable 5 (high) +156/-23  ◆ 𝒇 2h 1d  ◇ 19h  ◇ 𝒇 2d  ◇ full  ✗ ?
+```
+
+- Kowane token na taga shi ne lokacinsa-zuwa-sake-saiti, an fenta shi a kan ramp mai ci gaba na kore-zuwa-rawaya-zuwa-ja bisa kason da aka yi amfani (truecolor lokacin da tashar ta goyi bayansa, an mataki zuwa kubu na launi 256 in ba haka ba). Ramp ɗin yana daure a tsantsar kore ga 0, rawaya a 75, da ja a 95 zuwa sama, don haka tsofaffin rukunan tsanani suna tsira a matsayin daurin ramp.
+- Ana fenta sunan model bisa cikar tagar mahallin (context-window) a kan ramp ɗin iri ɗaya.
+- Kore `◆` yana jagorancin tagogin asusun da ke aiki; kowane asusun da aka ajiye yana samun `◇` na cyan nasa (ja `✗` idan yana buƙatar sake-tantancewa). Asusu suna jero bisa sake saiti mai zuwa mafi wuri.
+- Kowane-model yana zuwa da farko a kowane toshe a matsayin baƙin fentin farko: Fable yana nuna `𝒇`; sauran iyalai suna amfani da babban harafinsu na farko, koyaushe da aka daidaita da iyali.
+- Asusun da aka ajiye da ba a taɓa ba yana nuna `full` na kore. Amfani da aka auna tare da sake saiti da ba a sani ba yana nuna `?` da aka fenta, kuma iyakar kowane-model da ba a auna ba a kan model da aka toshe yana nuna `𝒇?` marar fenti - abin da ba a auna ba kada ya taɓa kama kamar mai aminci.
+- Ƙirge-ƙirgen sake saiti suna nuna babban naúra kawai, ba "now" ko "0m" ba; taga marar sake saiti mai zuwa tana nuna `0` na kore (fanko kuma).
+- Sunan tushe (basename) na git worktree da aka haɗa yana jagorancin layin; babban checkout ba ya nuna komai a can. Ganowar tana karanta tsarin fayil don fayil ɗin `.git` kuma ba ta taɓa ƙirƙirar wani git subprocess ba.
+- Da `NO_COLOR` an saita, layin yana komawa zuwa tsarin lamba mai haɗe (`2h5` yana nufin sake saiti cikin awa 2, 5% an yi amfani; `ctx 42` don cikar mahalli) - ba tare da launi ba, taga da ta zube kada ta kama kamar sabuwa.
+
+Ayyukan subagent suna samun layukan panel nasu ta hanyar saman subagentStatusLine na claude: layi guda ga kowane aiki mai gudana, an fenta sunan iyali bisa cikar mahallin wancan aiki.

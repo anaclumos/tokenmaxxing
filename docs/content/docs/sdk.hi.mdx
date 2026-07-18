@@ -1,0 +1,31 @@
+---
+title: Agent SDK सतह
+description: "पूल को Claude Agent SDK के साथ उन एजेंट में जोड़ें जिन्हें आप स्वयं चलाते हैं"
+---
+
+पैकेज का प्रोग्रामेटिक प्रवेश (`exports["."]` `src/sdk.ts` की ओर इशारा करता है) उन एजेंट के लिए tokenmaxxing को Claude Agent SDK के साथ जोड़ता है जिन्हें आप अपने स्वयं के पूल किए गए खातों के विरुद्ध बनाते हैं। आपके ऐप को Bun के तहत चलना होगा (tokenmaxxing TypeScript सोर्स भेजता है और `bun:ffi` का उपयोग करता है)।
+
+```ts
+import { query } from "@anthropic-ai/claude-agent-sdk";
+import { ensureBestAccount, pooledOptions, stopHookCheck } from "tokenmaxxing";
+
+await ensureBestAccount(); // run the switch decision before the spawn
+
+for await (const message of query({
+  prompt: "...",
+  options: {
+    ...pooledOptions(), // pinned real claude + scrubbed env
+    hooks: { Stop: [{ hooks: [stopHookCheck] }] }, // re-decide at every turn boundary
+  },
+})) {
+  // capture the session id from the init message for `resume` across swaps
+}
+```
+
+Agent SDK प्रति `query()` एक claude सबप्रोसेस स्पॉन करता है और स्पॉन पर एक बार क्रेडेंशियल पढ़ता है - कोई statusline नहीं, कोई मध्य-क्वेरी हॉट-स्वैप नहीं - इसलिए एकीकरण सीमा-चालित है:
+
+- `ensureBestAccount()` वही सटीक निर्णय है जो CLI हुक और टाइमर चलाते हैं (बार, गति दबाव, कूलडाउन, सभी साझा कोड), कभी पूर्वानुमानित नहीं: एक SDK सेशन को कभी एक समाप्त काउंटडाउन के लिए रोका नहीं जा सकता।
+- `pooledOptions()` `pathToClaudeCodeExecutable` को असली claude बाइनरी पर पिन करता है (कभी सुपरवाइज़र रैपर नहीं) और हर परिवेशी क्रेडेंशियल ओवरराइड को साफ़ किए गए एक पूर्ण प्रतिस्थापन `env` की आपूर्ति करता है। यदि आपके ऐप के पर्यावरण में `CLAUDE_CONFIG_DIR` या `CLAUDE_SECURESTORAGE_CONFIG_DIR` सेट है तो यह तेज़ी से विफल हो जाता है: Linux पर एक स्वैप लाइव क्रेडेंशियल को वहां लिखता जहां वे इशारा करते हैं जबकि साफ़ किया गया सबप्रोसेस डिफ़ॉल्ट स्टोर पढ़ता है, एक मौन गलत-खाता desync।
+- `stopHookCheck` टर्न सीमाओं पर निर्णय फिर से चलाता है; यह जो स्वैप उतारता है वह अगले स्पॉन पर प्रभावी होता है। यह पुनः फेंकने के बजाय अपनी स्वयं की त्रुटियों को पकड़ता है (stderr और लॉग में लॉगिंग), क्योंकि एक अनहैंडल्ड हुक अपवाद एजेंट को बाधित कर सकता है, और एक टूटी हुई स्विच जांच पर एक टर्न को रद्द करना वर्तमान खाते पर टिके रहने से अधिक महंगा पड़ता है।
+
+`sdk.ts` Agent SDK से स्वयं कुछ भी आयात नहीं करता; इसके मान संरचनात्मक रूप से SDK के विकल्पों में फैल जाते हैं।

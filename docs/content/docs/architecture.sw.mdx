@@ -1,0 +1,48 @@
+---
+title: Muundo
+description: "Shim ya msimamizi, tee ya statusline, ubadilishaji wa Stop hook, na mfumo wa upokeaji"
+---
+
+tokenmaxxing ni kiingilio kimoja cha simu-nyingi (`src/main.ts`) kinachotenda kama msimamizi wa `claude` kinapoitwa kwa jina hilo, kinatoa shims za hook na statusline kupitia amri-ndogo za ndani, na vinginevyo kinatuma CLI. Inaendeshwa moja kwa moja chini ya Bun; kifurushi cha npm hutuma chanzo cha TypeScript, si build.
+
+Sehemu zinazosonga:
+
+## Shim ya msimamizi
+
+`init` huandika shim ya shell ya mistari 2 iitwayo `claude` ndani ya `~/.config/tokenmaxxing/bin/` na kuweka saraka hiyo kwanza kwenye PATH. Unapoandika `claude`, shim huendesha msimamizi, ambaye huzalisha binary halisi ya claude na stdio iliyorithiwa na picha ya terminal ya `stty -g` iliyohifadhiwa. Ni meneja wa mchakato na terminal pekee: haipitishi kamwe trafiki ya API na haigusi kamwe tokeni zilizo safarini.
+
+Miito ya modi ya kuchapisha (`claude -p`, `--version`, `--help`), amri-ndogo zisizo za maingiliano (`claude mcp`, `claude config`, na kadhalika), na probes za tokenmaxxing zenyewe hupita moja kwa moja bila usimamizi wa kikao. Kwa kikao cha maingiliano, msimamizi hubandika kitambulisho cha kikao (kuzalisha kimoja, au kutumia tena kile ulichopitisha kupitia `--session-id` / `-r` / `-c`), huhifadhi bendera zako za uzinduzi ili uzinduzi wa baadaye uweze kuzicheza tena, kisha huangalia faili ya alama ya kuzalisha upya iliyofungwa kwenye kikao hicho.
+
+## Tee ya statusline
+
+Claude Code husukuma data ya kikomo cha kasi (`rate_limits.five_hour` na `rate_limits.seven_day`) kwenye stdin ya statusline kila zamu. tokenmaxxing inamiliki nafasi ya statusline, hivyo kirenda chake kinafanya kazi pia kama malisho ya matumizi ya bure, yanayotegemea kusukuma: kila tiki inatee madirisha ya jumla pamoja na muundo unaotumika kwenye `usage.json`. Vikomo vya kila muundo havipo kwenye stdin ya statusline; vinatoka tu kwenye `claude -p '/usage'` (bure, tokeni sifuri), ambayo inachunguzwa kwa TTL na kuhifadhiwa kwenye `model-usage.json` wakati muundo unaotumika unabanwa na uwezo.
+
+Tee ni andika-kwa-mabadiliko: takwimu zisipobadilika inaongeza tu mtime ya faili, ambayo hufanya kazi kama mpigo wa moyo wa uhai wa malisho. Ubichi hupimwa kila mara kwa mtime, kamwe si kwa muhuri wa muda uliopachikwa.
+
+## Stop hook na ubadilishaji
+
+Kwenye kila mpaka wa zamu, Stop hook huendesha uamuzi wa kubadilisha (angalia [Jinsi kubadilisha kunavyoamua](/sw/switching)). Ubadilishaji unapohitajika, hutokea chini ya kufuli maalum ya `flock(2)` (inayochukuliwa kupitia `bun:ffi`, kwa kuwa macOS haitumi binary ya `flock(1)`), na uandishi wa vitambulisho unaingiliana zaidi na kufuli ya kuonyesha upya ya Claude Code yenyewe. Ndani ya sehemu muhimu, ubadilishaji mmoja:
+
+1. Huvuna kitambulisho hai cha sasa hadi nakala rudufu iliyoegeshwa ya mmiliki wake halisi.
+2. Husakinisha kitambulisho kilichoonyeshwa upya cha akaunti lengwa kama kile hai, kikiunganisha kwenye blob hai iliyopo ili hali ndugu (kama vile tokeni za OAuth za kila-seva-ya-MCP) isalie.
+3. Huhifadhi tokeni iliyozungushwa ya lengwa kwenye nakala rudufu yake yenyewe.
+4. Huandika upya kwa uatomiki uga wa `oauthAccount` katika `~/.claude.json`.
+5. Huhifadhi lebo mpya inayotumika na kufuta picha kuu za matumizi zilizopitwa na wakati, vyote kabla ya kufuli kuachiliwa, ili kuanguka kusiweze kamwe kuacha kitambulisho kilichosakinishwa na lebo inayotumika vikielekeza kwenye akaunti tofauti.
+
+Kwa kuwa vikao vyote vya wasifu-msingi vinashiriki kitambulisho kimoja hai, ubadilishaji mmoja huhamisha kila kikao kwa wakati mmoja, na flock pamoja na ukaguzi-upya chini ya kufuli huzuia hooks zinazoshindana zisiharibu akaunti mbili.
+
+## Upokeaji papo hapo
+
+Kikao cha claude kinachoendeshwa huchunguza hifadhi yake ya vitambulisho kati ya maombi: kwenye macOS husoma tena keychain kupitia kache fupi na kulinganisha tokeni za ufikiaji; kwenye Linux hupima mtime ya faili ya vitambulisho na kufuta kache zake za tokeni kunapotokea mabadiliko. Athari ya jumla ni kwamba kitambulisho kilichobadilishwa hupokewa na kila kikao kinachoendeshwa ndani ya sekunde 30 hivi kwenye macOS na kwenye ombi linalofuata kabisa kwenye Linux, bila kuanzisha upya kwa vyovyote. Hii ndiyo sababu ubadilishaji wa kawaida hauandiki alama yoyote na hausababishi kuzalisha upya - kikao kinaendelea tu kwenye akaunti mpya. `/usage` ndani ya kikao inashiriki kache zile zile za tokeni, hivyo onyesho lake la akaunti hubadilika sambamba na upokeaji.
+
+## Kusubiri kwa mkusanyiko uliokwisha na kuendelea otomatiki
+
+Ni pale tu kila akaunti kwenye mkusanyiko inapozidi baa zake ndipo Stop hook huandika alama ya kuzalisha upya (schema ya alama inahitaji muhuri wa muda wa `waitUntil`; ubadilishaji wa kawaida hauwezi kamwe kuzalisha mmoja). Msimamizi huona alama, hutuma SIGTERM kwa mtoto wake kwenye mpaka wa zamu uliokwishahifadhiwa (Stop hook huendeshwa baada ya nakala kuwa kwenye diski na claude kuwa tuli, hivyo hakuna kinachopotea), hurejesha terminal, huonyesha kihesabu cha kurudi nyuma hadi kujiweka upya kunakofuata kwanza, kisha huzindua tena `claude --resume <session-id>` kwenye akaunti iliyorejeshwa. Ctrl-C wakati wa kuhesabu kurudi nyuma huendelea mara moja. Kusubiri otomatiki kunawekewa mpaka na `policy.maxWaitMs` (chaguo-msingi saa 1); zaidi ya hapo uamuzi huripoti mkusanyiko kama uliokwisha badala ya kusubiri.
+
+## Kipima muda cha ukaguzi wa mara kwa mara
+
+Hooks huwaka tu kwenye mipaka ya zamu, na zamu moja ndefu ya agent inaweza kuchoma dirisha kutoka afya hadi kwisha bila mpaka hata mmoja. Kwa hiyo `init` pia husakinisha kipima muda cha mara kwa mara - launchd agent kwenye macOS, systemd user timer kwenye Linux - kinachoendesha `tokenmaxxing check` kila sekunde 180 bila kujali shughuli ya zamu.
+
+## SessionStart hook
+
+Huendesha tathmini ile ile kikao kinapoanza au kinapoendelea, ili kikao kipya kianze kwenye akaunti sahihi. Kipindi cha kupoa baada ya ubadilishaji hufanya kuwa hakuna-operesheni sahihi mara tu baada ya kuzalisha upya.

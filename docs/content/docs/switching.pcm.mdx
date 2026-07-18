@@ -1,0 +1,41 @@
+---
+title: How switching dey decide
+description: "Engagement, screening bars, pace pressure, and the greedy vs hard paths"
+---
+
+The decision get two layers: one engagement gate, and then one greedy or hard path.
+
+## Engagement
+
+Below `policy.greedySessionFloor` (default 50, for percent of the 5-hour session window), the decision no dey run at all - a fresh session dey ride im account. Once the active session window don use 50%, or any hard bar don cross, the decision dey engage.
+
+## Screening bars
+
+The thresholds na screening bars, no be the trigger for panic:
+
+- `thresholds.session`: 95. One 5-hour reset cheap make you sit am out, so the session window dey swap comot earlier.
+- `thresholds.weekly`: 98. Dis one bar dey cover both the 7-day aggregate and every per-model weekly cap. Weekly quota na use-am-or-lose-am, so e dey drain close to the wall.
+
+The two of dem dey deliberately below 100: the headroom na the budget to reach one clean turn boundary (plus up to one turn of adoption lag for macOS) before the account go actually hit im limit. The same bars dey screen swap candidates: an account wey pass any of im bars no be valid target. Trigger and screening dey always use the same effective bars (thresholds minus `policy.projectionMargin`), because one screen wey laxer pass the trigger go land swaps for accounts wey the trigger go immediately re-flag, and e go ping-pong the pool.
+
+## The target: pace pressure
+
+Among usable accounts, the target na the one wey dey furthest behind im own weekly pace: highest **pace pressure**, wey dem define as remaining weekly percent divide by time until dat account im weekly reset. The account with the most quota wey dey about to lose na im go win. Ties dey break to soonest weekly expiry, then lowest 7-day usage.
+
+Everything dey run off cached windows wey dem store as absolute UTC epochs, so even one stale snapshot still dey resolve correctly: a weekly reset wey don pass dey extrapolate forward for exact 7-day steps, and any window wey pass im cached reset dey count as freshly empty (never a reason to switch, never a reason to keep an account benched).
+
+## Greedy vs hard path
+
+- **Greedy path** (engaged, but under every bar): rank every account, current one included. If the current account don already win or tie, do nothing. Otherwise swap go the strictly better account. E no dey wait at all and e no dey pre-park at all - a usable current account no be something wey you go trade for a wait. Because the current account dey ranked too, both the automatic path and bare `tokenmaxxing switch` dey idempotent: to evaluate periodically dey converge for the right account and then e dey stay put.
+- **Hard path** (a bar cross): swap comot go the best usable candidate. If one candidate im refresh token turn out to dey dead, dem go flag am needs-reauth and dem go try the next candidate. If nothing dey usable, the depleted-wait logic go run; only a caller wey fit actually pause the session (the supervised Stop hook) dey allowed to pre-park go one still-blocked but soonest-recovering account.
+
+## Per-model caps
+
+`policy.switchModels` (default `["fable"]`) dey name the model families wey dia per-model weekly cap fit trigger a switch. Matching dey by family token, never by exact display string: model display names dey drift ("Fable" become "Fable 5"), and one exact-string gate one time silently disable per-model switching entirely. Two related safety rules:
+
+- One unknown active model dey gate every configured family. Right after a swap clear snapshots, a headless machine fit run model-blind; to treat unknown as unconstrained one time let one account sit for im Fable cap for hours without anybody notice am.
+- Candidate screening dey count gated per-model caps too, so a pool wey every account don burn im Fable cap no dey round-robin.
+
+## Cooldown
+
+One 45-second post-swap cooldown dey gate the automatic path. Dem dey suppress the statusline tee for the same 45 seconds after a swap (adoption dey take up to 30 seconds for macOS), so an earlier evaluation for run for data wey the swap imself don invalidate - na dat exact scenario one time produce one A-to-B-and-back respawn loop. Manual `tokenmaxxing switch` no dey affected by the cooldown.

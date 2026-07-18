@@ -1,0 +1,28 @@
+---
+title: پیکربندی
+description: "شمای config.json، آستانه‌ها، و کلیدهای سیاست"
+---
+
+پیکربندی به‌صورت JSON در `~/.config/tokenmaxxing/config.json` است. هر فیلد اختیاری است؛ پیش‌فرض‌ها به‌ازای هر فیلد اعمال می‌شوند.
+
+```json
+{
+  "thresholds": { "session": 95, "weekly": 98 },
+  "policy": {
+    "projectionMargin": 0,
+    "greedySessionFloor": 50,
+    "switchModels": ["fable"],
+    "usagePollTtlMs": 90000,
+    "maxWaitMs": 3600000
+  }
+}
+```
+
+- `thresholds.session` / `thresholds.weekly`: نوارهای غربالگری توصیف‌شده در بالا.
+- `policy.projectionMargin`: از هر دو نوار کم می‌شود تا نوارهای مؤثر شکل بگیرند.
+- `policy.greedySessionFloor`: درصد استفاده نشست که در آن همگرایی حریصانه درگیر می‌شود.
+- `policy.switchModels`: خانواده‌های مدلی که سقف هفتگی به‌ازای هر مدلشان یک جابه‌جایی را دروازه‌بندی می‌کند (ورودی‌ها هنگام بارگذاری کوچک‌حروف می‌شوند).
+- `policy.usagePollTtlMs`: مدت زمانی که یک پیمایش `/usage` به‌ازای هر مدل تازه می‌ماند.
+- `policy.maxWaitMs`: مرز انتظار خودکار استخر تهی.
+
+`tokenmaxxing config` پیکربندی مؤثر را با منابع نشان می‌دهد؛ `config set`/`unset` کلیدهای نقطه‌ای را ویرایش می‌کنند؛ `config tidy` کلیدهای ناشناخته را هرس می‌کند.

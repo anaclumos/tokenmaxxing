@@ -1,0 +1,6 @@
+---
+title: Sử dụng cá nhân và điều khoản dịch vụ
+description: "Gộp chung các tài khoản bạn sở hữu, trong các phiên làm việc và agent mà chính bạn chạy"
+---
+
+tokenmaxxing gộp chung các tài khoản bạn sở hữu, trong các phiên làm việc và agent mà chính bạn chạy. Cách diễn đạt đó là có chủ ý: Anthropic không cho phép các sản phẩm của bên thứ ba cung cấp đăng nhập claude.ai hoặc giới hạn tốc độ claude.ai, và điều đó bao gồm cả các agent được xây dựng trên Agent SDK. Đừng phân phối bề mặt SDK gộp chung, hay bất cứ thứ gì được xây dựng trên nó, cho các bên thứ ba. tokenmaxxing cũng cố ý bám vào lối `/usage` qua trung gian CLI để lấy dữ liệu hạn ngạch thay vì tự cài đặt lại OAuth hoặc làm proxy cho lưu lượng API: nó không phải là một proxy, và các điểm cuối OAuth duy nhất mà nó chạm tới là cấp phép làm mới tiêu chuẩn được dùng trong một lần hoán đổi và một phép kiểm tra danh tính chỉ-đọc (điểm cuối roles) xác minh xem một token thực sự thuộc về tài khoản nào.

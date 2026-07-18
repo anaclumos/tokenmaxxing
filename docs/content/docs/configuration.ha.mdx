@@ -1,0 +1,28 @@
+---
+title: Saitawa
+description: "Tsarin config.json, ƙofofi, da maɓallan manufa"
+---
+
+Saituna JSON ne a `~/.config/tokenmaxxing/config.json`. Kowane fili na zaɓi ne; tsohuwar ƙima tana aiki ga kowane fili.
+
+```json
+{
+  "thresholds": { "session": 95, "weekly": 98 },
+  "policy": {
+    "projectionMargin": 0,
+    "greedySessionFloor": 50,
+    "switchModels": ["fable"],
+    "usagePollTtlMs": 90000,
+    "maxWaitMs": 3600000
+  }
+}
+```
+
+- `thresholds.session` / `thresholds.weekly`: sandunan tantancewa da aka bayyana a sama.
+- `policy.projectionMargin`: ana ragi daga sandunan biyu don samar da sandunan da ke aiki.
+- `policy.greedySessionFloor`: kason da aka yi amfani-zama a wanda haɗuwar greedy ke shiga.
+- `policy.switchModels`: iyalan model waɗanda iyakar mako na kowane-model ɗinsu ke toshe musanya (ana mai da shigarwa ƙananan haruffa lokacin lodi).
+- `policy.usagePollTtlMs`: tsawon lokacin da dubawar kowane-model na `/usage` ke ci gaba da sabo.
+- `policy.maxWaitMs`: iyakar jiran atomatik na tafki da ya ƙare.
+
+`tokenmaxxing config` yana nuna saitunan da ke aiki tare da tushe; `config set`/`unset` suna gyara maɓallan da aka raba da aya; `config tidy` yana yanke maɓallan da ba a sani ba.

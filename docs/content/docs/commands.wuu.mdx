@@ -1,0 +1,25 @@
+---
+title: 命令
+description: "每一条 tokenmaxxing 命令搭伊做啥个。"
+---
+
+| 命令 | 做啥个 |
+|---|---|
+| `tokenmaxxing init` | 导入当前账户，装好 supervisor、hook 搭 statusline |
+| `tokenmaxxing init --codex` | Codex 也照样：导入登录，装好 codex supervisor 搭 Stop hook |
+| `tokenmaxxing add` | 再登记一个账户（隔离登录，采集进池子） |
+| `tokenmaxxing add --codex` | 再登记一个 Codex 账户（隔离登录） |
+| `tokenmaxxing auth [sel \| --all]` | 就地重新认证池子里嗰一个账户。单独跑会列出池子问侬拣啥个；带选择器嗰对准一个账户，还会告诉侬用啥个邮箱登进；`--all` 会一个一个走过每个需要重新认证嗰账户 |
+| `tokenmaxxing switch [sel]` | 切换到最好嗰账户（贪心、幂等），或者强制指定一个 |
+| `tokenmaxxing switch --codex [sel]` | 切换 Codex 池子（下一趟 codex 启动辰光生效） |
+| `tokenmaxxing ls` | 列出池子里嗰账户 |
+| `tokenmaxxing status` | 账户加 5 钟头 / 礼拜 / 分模型嗰用量条，还有当前活跃嗰搭耗光等复位嗰 |
+| `tokenmaxxing status --force` | 另外还 ping 每个账户（每个发一趟极小嗰 haiku 请求），让所有 5 钟头会话计时器现在就起头，然后重新采样 |
+| `tokenmaxxing watch [seconds]` | 实时状态，每 N 秒重新渲染一趟（默认 120，最低 30；从来勿 ping） |
+| `tokenmaxxing config [get\|set\|unset\|tidy]` | 带来源嗰有效配置；编辑带点嗰键；`tidy` 会剪脱勿认得嗰键 |
+| `tokenmaxxing check` | 评估一趟切换决策（定期定时器跑嗰就是搿个） |
+| `tokenmaxxing serve [setup\|link\|unlink\|links]` | Slack 桥接守护进程（Socket Mode，勿需要公开 URL） |
+| `tokenmaxxing doctor` | 核实 supervisor 搭设置条目还勒勿勒 |
+| `tokenmaxxing rename [--codex] <sel> <label>` | 畀池子里嗰账户重新贴标签 |
+| `tokenmaxxing rm <sel>` | 从池子里删脱一个账户 |
+| `tokenmaxxing uninstall` | 删脱 supervisor 搭设置条目（账户搭凭据保留） |

@@ -1,0 +1,34 @@
+---
+title: Dépannage et FAQ
+description: "Questions courantes et les diagnostics qui les accompagnent"
+---
+
+**`claude` ne semble pas être supervisé.**
+Exécutez `tokenmaxxing doctor`. Le shim doit gagner la résolution du PATH ; vérifiez que la ligne `# tokenmaxxing PATH` de votre fichier rc de shell pointe vers le répertoire bin actuel et se place avant le vrai claude. `doctor` avertit aussi au sujet d'un `alias claude=...` ou d'une fonction shell `claude()` masquant le wrapper, et au sujet des alias qui lancent un binaire claude par chemin absolu (ceux-ci contournent entièrement le superviseur).
+
+**La bascule automatique ne se déclenche jamais sur Codex.**
+Codex ignore les hooks auxquels on ne lui a pas dit de faire confiance. Ouvrez codex, exécutez `/hooks`, et faites confiance au hook Stop de tokenmaxxing. La confiance est enregistrée par rapport au hachage du hook, elle doit donc être réaccordée si le hook est un jour modifié.
+
+**Un compte affiche un `✗` rouge dans la statusline.**
+Son jeton de rafraîchissement est mort (révoqué ou pivoté hors de sa sauvegarde). Exécutez `tokenmaxxing auth <sel>` pour le réauthentifier sur place ; la commande vous indique avec quel e-mail vous connecter et refuse une connexion qui aboutit à un compte différent.
+
+**Pourquoi ne bascule-t-il pas vers le compte disposant du plus de quota restant ?**
+Parce que ce n'est pas le compte le plus exposé au risque de perdre du quota. La cible est le compte le plus en retard sur son propre rythme hebdomadaire : le pourcentage restant divisé par le temps restant jusqu'à sa réinitialisation hebdomadaire. À quantités restantes égales, cela se ramène à l'expiration la plus proche d'abord, et à expiration égale, au plus de quota restant d'abord.
+
+**Il vient de basculer et la statusline affiche toujours l'ancien compte.**
+Attendu pendant jusqu'à ~30 secondes sur macOS : la session en cours adopte l'identifiant échangé lors de son prochain rafraîchissement du cache d'identifiants. Le tee d'utilisation est suspendu pendant 45 secondes après une bascule pour exactement cette raison.
+
+**Est-ce que `status --force` coûte quelque chose ?**
+Oui, délibérément : il envoie une requête haiku comptabilisée minimale par compte afin que chaque fenêtre de session de 5 heures démarre à cet instant au lieu de rester dormante, puis échantillonne à neuf. Le `status` simple et `watch` ne ping jamais ; les lectures `/usage` sont gratuites. Notez que le flux d'utilisation du serveur peut retarder de quelques secondes à quelques minutes une fenêtre fraîchement ouverte, de sorte qu'une sonde immédiatement après le ping peut encore afficher l'état d'avant le ping : `status` rend une note au lieu de prétendre que le ping a échoué.
+
+**La sonde `/usage` n'a rien renvoyé pour le compte actif.**
+C'est un comportement connu de claude : lorsque sa récupération d'utilisation interne échoue ou est limitée en débit, `/usage` n'affiche que les statistiques de session locales sans lignes de pourcentage. tokenmaxxing échantillonne le compte actif à partir du push de la statusline et ne sonde que les comptes parqués, précisément pour éviter cela.
+
+**Sessions claude en arrière-plan.**
+Le démon d'arrière-plan de Claude lance le vrai binaire versionné par chemin absolu, contournant les shims du PATH, de sorte que les sessions en arrière-plan ne sont pas supervisées. Les hooks se déclenchent tout de même via `settings.json`, et l'adoption d'identifiants ainsi que la minuterie périodique couvrent la bascule, mais il n'y a pas de respawn piloté par marqueur pour elles.
+
+**Quelque chose a lancé beaucoup de processus une fois. Est-ce encore possible ?**
+Le superviseur porte des garde-fous de récursion en couches contre exactement cette défaillance historique (un wrapper périmé épinglé comme le « vrai » claude) : une sentinelle de profondeur dans l'environnement qui avorte à 5 niveaux, un limiteur de taux de lancement sur disque, des vérifications d'identité par realpath qui rejettent tout candidat se résolvant à nouveau vers le propre répertoire bin de tokenmaxxing, et un échec dur (jamais un balayage silencieux du PATH) lorsqu'un chemin claude configuré n'existe plus. `init` et `doctor` vérifient qu'un candidat est réellement claude en exécutant `--version` avant de l'épingler.
+
+**Désinstallation.**
+`tokenmaxxing uninstall` retire les shims du superviseur, les entrées de configuration et la minuterie périodique, et laisse vos comptes et identifiants parqués intacts. Il ne retire que les entrées de statusline qu'il reconnaît comme les siennes.

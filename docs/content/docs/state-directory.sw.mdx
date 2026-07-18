@@ -1,0 +1,25 @@
+---
+title: Muundo wa saraka ya hali
+description: "Kila faili na saraka chini ya ~/.config/tokenmaxxing"
+---
+
+Kila kitu kinakaa chini ya `~/.config/tokenmaxxing/` (kinachoweza kubadilishwa kwa `TOKENMAXXING_HOME`; kila njia inayoonekana kwa nje ina ubadilishaji wa mazingira ili zana nzima iweze kuendeshwa kwa kujitenga kabisa katika majaribio).
+
+| Njia | Inachoshikilia |
+|---|---|
+| `config.json` | Usanidi wako (haba; chaguo-msingi hutumika kwa kila uga) |
+| `accounts.json` | Faharasa isiyo ya siri ya akaunti za Claude zilizokusanywa: lebo, vitambulisho, madirisha ya matumizi yaliyowekwa kwenye kache. Kamwe si tokeni |
+| `usage.json` | Picha ya papo hapo ya dirisha la jumla ya tee ya statusline; mtime yake ni mpigo wa uhai wa malisho |
+| `model-usage.json` | Vikomo vya kila wiki vya kila muundo vilivyowekwa kache kwa TTL kutoka `/usage` |
+| `lastswap.json` | Muhuri wa muda wa epoki wa ubadilishaji wa mwisho; huendesha kipindi cha kupoa cha sekunde 45 |
+| `lock` | Faili ya `flock` inayopanga ubadilishaji kwa mfululizo |
+| `tokenmaxxing.log` | Kumbukumbu ya matukio ya kuongeza-tu |
+| `bin/` | Shim za PATH: `claude`, `codex`, na viingilio vya `tokenmaxxing` / `xx` |
+| `respawn/<session-id>` | Alama za kuzalisha upya za kusubiri-kukwisha ambazo msimamizi huzitazama |
+| `creds/` | Linux pekee: faili za vitambulisho zilizoegeshwa, 0600 katika saraka ya 0700 (macOS huegesha vitambulisho kama vitu vya keychain vya kila akaunti badala yake) |
+| `onboard/`, `sample/` | Nyumba za usanidi zilizojitenga za matumizi-ya-kutupwa kwa uingiaji wa `add`/`auth` na uchunguzi wa `/usage` wa akaunti zilizoegeshwa; nyumba za kujiunga zenye vitambulisho vya maandishi wazi hufutwa baada ya mavuno |
+| `slack.json` | Tokeni za `xx serve` na viungo vya vituo (0600) |
+| `slack-threads/` | Rekodi za vikao za kila uzi kwa `xx serve` |
+| `codex-*` | Mkusanyiko sambamba wa Codex: `codex-accounts.json`, `codex-lastswap.json`, `codex-lock`, `codex-creds/`, `codex-onboard/`, `codex-respawn/`, na `codex-live/` (faili moja ya uwepo iliyothibitishwa kwa PID kwa kila kikao cha codex kinachosimamiwa kinachoendeshwa, ili akaunti hai isiwe kamwe lengo la ubadilishaji) |
+
+Nje ya saraka yake yenyewe, tokenmaxxing hugusa hasa: `~/.claude.json` (ubadilishaji wa `oauthAccount`), `settings.json` ya Claude Code (viingizo vya hook na statusline), hifadhi hai ya vitambulisho (kitu cha keychain `Claude Code-credentials` kwenye macOS, `.credentials.json` kwenye Linux), `~/.claude.lock` (kufuli ya kuonyesha upya ya claude, inayochukuliwa wakati wa ubadilishaji), `auth.json` na `hooks.json` za codex, na kizio cha ukaguzi wa mara kwa mara katika launchd au systemd.

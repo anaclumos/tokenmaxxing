@@ -1,0 +1,21 @@
+---
+title: Ang statusline
+description: "Quota na dinadala sa kulay, isang linya, bawat account ay nakikita"
+---
+
+Nire-render ng tokenmaxxing ang statusline ng Claude Code nang natively (habang tini-tee ang usage feed). Ang prinsipyo ng disenyo: ang quota ay dinadala sa kulay, hindi sa mga numero. Isang linya, halimbawa:
+
+```
+tm-wt-demo Fable 5 (high) +156/-23  ◆ 𝒇 2h 1d  ◇ 19h  ◇ 𝒇 2d  ◇ full  ✗ ?
+```
+
+- Ang bawat window token ay ang time-to-reset nito, ipininta sa isang tuloy-tuloy na green-to-yellow-to-red ramp ayon sa nagamit na porsyento (truecolor kapag sinusuportahan ito ng terminal, hinakbang sa 256-color cube kung hindi). Ang ramp ay naka-angkla sa purong berde para sa 0, dilaw sa 75, at pula sa 95 pataas, kaya't ang mga lumang severity band ay nananatili bilang mga ramp anchor.
+- Ang pangalan ng modelo ay ipininta ayon sa context-window fill sa parehong ramp.
+- Ang isang berdeng `◆` ang nangunguna sa mga window ng aktibong account; ang bawat naka-park na account ay may sariling cyan na `◇` (pulang `✗` kung nangangailangan ito ng reauth). Ang mga account ay pinag-uuri-uri ayon sa pinakamaagang paparating na reset.
+- Ang per-model ang nauuna sa bawat block bilang isang hubad na ipinintang inisyal: nire-render ng Fable ang `𝒇`; ang ibang mga pamilya ay gumagamit ng kanilang uppercase na unang titik, palaging family-matched.
+- Ang isang hindi nagalaw na naka-park na account ay nagre-render ng berdeng `full`. Ang nasukat na paggamit na may hindi kilalang reset ay nagre-render ng isang ipinintang `?`, at ang isang hindi nasukat na per-model cap sa isang naka-gate na modelo ay nagre-render ng isang hindi ipinintang `𝒇?` - hindi dapat kailanman magmukhang ligtas ang hindi nasukat.
+- Ipinapakita ng mga reset countdown ang pinakamalaking unit lamang, hindi kailanman ang "now" o "0m"; ang isang window na walang paparating na reset ay nagre-render ng berdeng `0` (walang laman muli).
+- Ang basename ng isang naka-link na git worktree ang nangunguna sa linya; ang isang main checkout ay walang ini-render doon. Binabasa ng detection ang filesystem para sa isang `.git` na file at hindi kailanman nag-spawn ng git subprocess.
+- Kapag naka-set ang `NO_COLOR`, ang linya ay bumabalik sa isang glued na numeric format (ang `2h5` ay nangangahulugang magre-reset sa 2 oras, 5% ang nagamit; `ctx 42` para sa context fill) - nang walang kulay, hindi dapat magmukhang sariwa ang isang naubos na window.
+
+Ang mga subagent task ay may sariling mga panel row sa pamamagitan ng subagentStatusLine surface ng claude: isang row bawat aktibong task, ang pangalan ng pamilya ay ipininta ayon sa context fill ng task na iyon.

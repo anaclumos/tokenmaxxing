@@ -1,0 +1,48 @@
+---
+title: Kiến trúc
+description: "Shim giám sát, bộ tee statusline, việc hoán đổi qua Stop hook, và mô hình tiếp nhận"
+---
+
+tokenmaxxing là một điểm vào đa lệnh (`src/main.ts`) hoạt động như bộ giám sát `claude` khi được gọi dưới tên đó, phục vụ các shim hook và statusline qua các lệnh con nội bộ, và ngoài ra thì điều phối CLI. Nó chạy trực tiếp dưới Bun; gói npm phân phối mã nguồn TypeScript, không phải bản dựng.
+
+Các bộ phận cấu thành:
+
+## Shim giám sát
+
+`init` ghi một shim shell 2 dòng tên `claude` vào `~/.config/tokenmaxxing/bin/` và đặt thư mục đó lên đầu PATH. Khi bạn gõ `claude`, shim chạy bộ giám sát, nó khởi tạo tệp nhị phân claude thật với stdio kế thừa và một bản chụp trạng thái terminal `stty -g` đã lưu. Nó chỉ là một trình quản lý tiến trình và terminal: nó không bao giờ làm proxy cho lưu lượng API và không bao giờ chạm vào các token đang di chuyển.
+
+Các lần gọi ở chế độ in (`claude -p`, `--version`, `--help`), các lệnh con không tương tác (`claude mcp`, `claude config`, v.v.), và các phép thăm dò của chính tokenmaxxing đều đi thẳng qua mà không có quản lý phiên. Đối với một phiên tương tác, bộ giám sát ghim một id phiên (tạo một id mới, hoặc tái sử dụng id bạn truyền vào qua `--session-id` / `-r` / `-c`), lưu lại các cờ khởi động của bạn để một lần khởi động lại về sau có thể phát lại chúng, rồi theo dõi một tệp đánh dấu respawn gắn với phiên đó.
+
+## Bộ tee statusline
+
+Claude Code đẩy dữ liệu giới hạn tốc độ (`rate_limits.five_hour` và `rate_limits.seven_day`) vào stdin của statusline ở mỗi lượt. tokenmaxxing sở hữu vị trí statusline, nên trình kết xuất của nó kiêm luôn vai trò một nguồn cấp dữ liệu sử dụng miễn phí, theo kiểu đẩy: ở mỗi nhịp nó tee các cửa sổ tổng hợp cùng mô hình đang hoạt động vào `usage.json`. Các mức trần theo từng mô hình không có trong stdin của statusline; chúng chỉ đến từ `claude -p '/usage'` (miễn phí, không tốn token), được thăm dò với một TTL và lưu vào bộ nhớ đệm trong `model-usage.json` khi mô hình đang hoạt động bị ràng buộc về dung lượng.
+
+Việc tee ghi-khi-thay-đổi: khi các con số không thay đổi, nó chỉ cập nhật mtime của tệp, đóng vai trò nhịp tim báo sống của nguồn cấp. Độ mới luôn được đánh giá bằng mtime, không bao giờ bằng dấu thời gian nhúng bên trong.
+
+## Stop hook và việc hoán đổi
+
+Tại mỗi ranh giới lượt, Stop hook chạy quyết định chuyển đổi (xem [Cách chuyển đổi được quyết định](/vi/switching)). Khi một lần hoán đổi là chính đáng, nó diễn ra dưới một khóa độc quyền `flock(2)` (lấy qua `bun:ffi`, vì macOS không đi kèm tệp nhị phân `flock(1)`), và các thao tác ghi thông tin xác thực còn khóa liên động thêm với khóa làm mới của chính Claude Code. Bên trong đoạn tới hạn, một lần hoán đổi:
+
+1. Thu hoạch thông tin xác thực đang hoạt động hiện tại vào bản sao lưu dự trữ của chủ sở hữu thực sự của nó.
+2. Cài đặt thông tin xác thực vừa được làm mới của tài khoản đích làm thông tin đang hoạt động, hợp nhất vào blob đang hoạt động hiện có để trạng thái đồng cấp (chẳng hạn như các token OAuth theo từng máy chủ MCP) được giữ lại.
+3. Lưu bền token đã xoay vòng của tài khoản đích vào bản sao lưu của chính nó.
+4. Ghi lại một cách nguyên tử trường `oauthAccount` trong `~/.claude.json`.
+5. Xác nhận nhãn hoạt động mới và xóa các ảnh chụp sử dụng cũ, tất cả trước khi khóa được giải phóng, nên một sự cố sập không bao giờ có thể để thông tin xác thực đã cài đặt và nhãn hoạt động trỏ tới các tài khoản khác nhau.
+
+Vì tất cả các phiên làm việc dùng hồ sơ mặc định đều chia sẻ chung một thông tin xác thực đang hoạt động, một lần hoán đổi duy nhất di chuyển mọi phiên làm việc cùng một lúc, và flock cộng với một lần kiểm tra lại dưới khóa giữ cho các hook chạy đua khỏi việc đốt hai tài khoản.
+
+## Tiếp nhận tại chỗ
+
+Một phiên claude đang chạy thăm dò kho thông tin xác thực của nó giữa các yêu cầu: trên macOS nó đọc lại keychain qua một bộ nhớ đệm ngắn và so sánh các access token; trên Linux nó lấy thông tin mtime của tệp thông tin xác thực và xả các bộ nhớ đệm token khi có thay đổi. Kết quả cuối cùng là một thông tin xác thực đã hoán đổi được mọi phiên đang chạy tiếp nhận trong khoảng 30 giây trên macOS và ngay ở yêu cầu kế tiếp trên Linux, mà không cần khởi động lại. Đây là lý do một lần hoán đổi thông thường không ghi tệp đánh dấu nào và không kích hoạt respawn nào: phiên làm việc chỉ đơn giản tiếp tục trên tài khoản mới. `/usage` trong phiên chia sẻ cùng các bộ nhớ đệm token đó, nên phần hiển thị tài khoản của nó cũng lật theo quá trình tiếp nhận.
+
+## Chờ khi nhóm cạn kiệt và tự động tiếp tục
+
+Chỉ khi mọi tài khoản trong nhóm đều vượt qua các ngưỡng của nó thì Stop hook mới ghi một tệp đánh dấu respawn (lược đồ của tệp đánh dấu yêu cầu một dấu thời gian `waitUntil`; một lần hoán đổi thông thường không bao giờ có thể tạo ra nó). Bộ giám sát thấy tệp đánh dấu, gửi SIGTERM cho tiến trình con của nó tại ranh giới lượt đã được xác nhận (Stop hook chạy sau khi bản ghi hội thoại đã nằm trên đĩa và claude đang rảnh, nên không mất gì), khôi phục terminal, hiển thị một bộ đếm ngược đến lần đặt lại sớm nhất, rồi khởi động lại `claude --resume <session-id>` trên tài khoản đã hồi phục. Ctrl-C trong lúc đếm ngược sẽ tiếp tục ngay lập tức. Thời gian tự động chờ bị giới hạn bởi `policy.maxWaitMs` (mặc định 1 giờ); vượt quá mức đó thì quyết định báo cáo nhóm là đã cạn kiệt thay vì chờ.
+
+## Bộ hẹn giờ kiểm tra định kỳ
+
+Các hook chỉ kích hoạt tại các ranh giới lượt, và một lượt agentic dài có thể đốt một cửa sổ từ khỏe mạnh đến cạn kiệt mà không có một ranh giới nào. Do đó `init` cũng cài đặt một bộ hẹn giờ định kỳ (một launchd agent trên macOS, một systemd user timer trên Linux) chạy `tokenmaxxing check` mỗi 180 giây bất kể hoạt động lượt như thế nào.
+
+## Một SessionStart hook
+
+Chạy cùng phép đánh giá đó khi một phiên bắt đầu hoặc tiếp tục, để một phiên mới bắt đầu trên đúng tài khoản. Thời gian hồi sau khi hoán đổi khiến nó trở thành một thao tác rỗng đúng đắn ngay sau một lần respawn.

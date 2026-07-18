@@ -1,0 +1,25 @@
+---
+title: コマンド
+description: "すべての tokenmaxxing コマンドとその動作"
+---
+
+| コマンド | 動作 |
+|---|---|
+| `tokenmaxxing init` | 現在のアカウントをインポートし、スーパーバイザー、フック、statusline をインストールする |
+| `tokenmaxxing init --codex` | Codex 向けに同じ処理を行う。ログインをインポートし、codex スーパーバイザーと Stop フックをインストールする |
+| `tokenmaxxing add` | 追加のアカウントを登録する (分離ログインでプールに取り込む) |
+| `tokenmaxxing add --codex` | 追加の Codex アカウントを登録する (分離ログイン) |
+| `tokenmaxxing auth [sel \| --all]` | プール内のアカウントをその場で再認証する。引数なしはプールを一覧表示してどれかを尋ね、セレクタは1つのアカウントを対象にしてどのメールでサインインするか伝え、`--all` は再認証が必要なアカウントを1つずつたどる |
+| `tokenmaxxing switch [sel]` | 最良のアカウントに切り替える (グリーディかつ冪等) か、特定のアカウントを強制する |
+| `tokenmaxxing switch --codex [sel]` | Codex プールを切り替える (次の codex 起動時に反映される) |
+| `tokenmaxxing ls` | プール内のアカウントを一覧表示する |
+| `tokenmaxxing status` | 5h / 週次 / モデルごとの使用量バー、アクティブ状態、リセットまで枯渇のアカウント一覧 |
+| `tokenmaxxing status --force` | さらに各アカウントに ping を送り (それぞれ小さな haiku リクエスト1回)、すべての5hセッションタイマーを今開始させてから新しくサンプリングする |
+| `tokenmaxxing watch [seconds]` | ライブステータスを N 秒ごとに再描画する (デフォルト120、下限30、ping は決して送らない) |
+| `tokenmaxxing config [get\|set\|unset\|tidy]` | 有効な設定とそのソースを表示する。ドット区切りキーを編集する。`tidy` は不明なキーを削除する |
+| `tokenmaxxing check` | 切り替えの判断を1回評価する (定期タイマーが実行するのはこれ) |
+| `tokenmaxxing serve [setup\|link\|unlink\|links]` | Slack ブリッジデーモン (Socket Mode、公開 URL 不要) |
+| `tokenmaxxing doctor` | スーパーバイザーと設定エントリが残っているか検証する |
+| `tokenmaxxing rename [--codex] <sel> <label>` | プール内のアカウントのラベルを付け替える |
+| `tokenmaxxing rm <sel>` | プールからアカウントを削除する |
+| `tokenmaxxing uninstall` | スーパーバイザーと設定エントリを削除する (アカウントと認証情報は保持される) |

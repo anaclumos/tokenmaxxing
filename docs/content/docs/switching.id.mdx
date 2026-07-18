@@ -1,0 +1,41 @@
+---
+title: Cara pertukaran diputuskan
+description: "Keterlibatan, bilah penyaringan, tekanan laju, dan jalur rakus vs jalur keras"
+---
+
+Keputusan ini memiliki dua lapis: sebuah gerbang keterlibatan, lalu jalur rakus atau jalur keras.
+
+## Keterlibatan
+
+Di bawah `policy.greedySessionFloor` (default 50, dalam persen jendela sesi 5 jam), keputusan tidak dijalankan sama sekali - sesi segar mengendarai akunnya. Begitu jendela sesi aktif terpakai 50%, atau bilah keras mana pun dilewati, keputusan terlibat.
+
+## Bilah penyaringan
+
+Ambang batas adalah bilah penyaringan, bukan pemicu kepanikan:
+
+- `thresholds.session`: 95. Reset 5 jam murah untuk didiamkan, jadi jendela sesi berpindah lebih awal.
+- `thresholds.weekly`: 98. Satu bilah ini mencakup agregat 7 hari maupun setiap batas mingguan per-model. Kuota mingguan bersifat pakai-atau-hangus, jadi ia dikuras dekat dengan dinding.
+
+Keduanya sengaja di bawah 100: ruang tersisa adalah anggaran untuk mencapai batas giliran yang bersih (ditambah hingga satu giliran keterlambatan adopsi di macOS) sebelum akun benar-benar menabrak batasnya. Bilah yang sama menyaring kandidat pertukaran: sebuah akun yang melewati salah satu bilahnya bukan target yang sah. Pemicu dan penyaringan selalu memakai bilah efektif yang sama (ambang batas dikurangi `policy.projectionMargin`), karena penyaringan yang lebih longgar dari pemicu akan mendaratkan pertukaran ke akun yang segera ditandai ulang oleh pemicu, memantul-mantulkan gabungan.
+
+## Target: tekanan laju
+
+Di antara akun yang dapat dipakai, target adalah yang paling tertinggal dari laju mingguannya sendiri: **tekanan laju** tertinggi, didefinisikan sebagai persen mingguan tersisa dibagi waktu sampai reset mingguan akun itu. Akun dengan kuota terbanyak yang akan hangus menang. Seri diputuskan ke kedaluwarsa mingguan tercepat, lalu penggunaan 7 hari terendah.
+
+Segalanya berjalan dari jendela yang di-cache dan disimpan sebagai epoch UTC absolut, sehingga snapshot usang tetap terselesaikan dengan benar: reset mingguan yang telah lewat diekstrapolasi maju dalam langkah 7 hari yang tepat, dan jendela mana pun yang melewati reset yang di-cache dihitung sebagai baru kosong (tidak pernah menjadi alasan untuk berpindah, tidak pernah menjadi alasan untuk membangku-cadangkan sebuah akun).
+
+## Jalur rakus vs jalur keras
+
+- **Jalur rakus** (terlibat, tetapi di bawah setiap bilah): peringkatkan setiap akun, termasuk yang saat ini. Jika akun saat ini sudah menang atau seri, jangan lakukan apa pun. Kalau tidak, berpindahlah ke akun yang benar-benar lebih baik. Ia tidak pernah menunggu dan tidak pernah pra-parkir - akun saat ini yang masih dapat dipakai tidak ditukar dengan penungguan. Karena akun saat ini juga diperingkatkan, baik jalur otomatis maupun `tokenmaxxing switch` tanpa argumen bersifat idempoten: mengevaluasi secara berkala akan konvergen ke akun yang tepat lalu tetap di sana.
+- **Jalur keras** (sebuah bilah dilewati): berpindah ke kandidat terbaik yang dapat dipakai. Jika token refresh sebuah kandidat ternyata mati, ia ditandai perlu-autentikasi-ulang dan kandidat berikutnya dicoba. Jika tidak ada yang dapat dipakai, logika tunggu-gabungan-habis berjalan; hanya pemanggil yang benar-benar bisa menjeda sesi (hook Stop yang tersupervisi) yang diizinkan untuk pra-parkir ke akun yang masih terblokir tetapi paling cepat pulih.
+
+## Batas per-model
+
+`policy.switchModels` (default `["fable"]`) menamai keluarga model yang batas mingguan per-model-nya dapat memicu sebuah pertukaran. Pencocokan dilakukan berdasarkan token keluarga, tidak pernah berdasarkan string tampilan yang persis: nama tampilan model berubah ("Fable" menjadi "Fable 5"), dan sebuah gerbang string-persis pernah diam-diam menonaktifkan seluruh pertukaran per-model. Dua aturan keselamatan terkait:
+
+- Sebuah model aktif yang tidak dikenal menggerbangi setiap keluarga yang dikonfigurasi. Tepat setelah sebuah pertukaran menghapus snapshot, mesin tanpa kepala bisa berjalan buta-model; memperlakukan yang tidak dikenal sebagai tak terbatas pernah membuat sebuah akun duduk di batas Fable-nya berjam-jam tanpa disadari.
+- Penyaringan kandidat juga menghitung batas per-model yang tergerbang, sehingga gabungan di mana setiap akun telah membakar batas Fable-nya tidak berputar-giliran.
+
+## Cooldown
+
+Cooldown pasca-pertukaran selama 45 detik menggerbangi jalur otomatis. Tee statusline ditekan selama 45 detik yang sama setelah sebuah pertukaran (adopsi memakan waktu hingga 30 detik di macOS), sehingga evaluasi lebih awal akan berjalan pada data yang justru dibatalkan oleh pertukaran itu sendiri - skenario persis itu pernah menghasilkan loop respawn A-ke-B-dan-kembali. `tokenmaxxing switch` manual tidak terpengaruh oleh cooldown.

@@ -1,0 +1,48 @@
+---
+title: Arquitetura
+description: "O shim supervisor, o tee do statusline, a troca do hook Stop e o modelo de adoção"
+---
+
+tokenmaxxing é um único ponto de entrada multichamada (`src/main.ts`) que se comporta como o supervisor do `claude` quando invocado sob esse nome, serve os shims de hook e statusline por meio de subcomandos internos e, de resto, despacha a CLI. Ele roda diretamente sob o Bun; o pacote npm entrega o código-fonte TypeScript, não uma build.
+
+As partes móveis:
+
+## O shim supervisor
+
+`init` grava um shim de shell de 2 linhas chamado `claude` em `~/.config/tokenmaxxing/bin/` e coloca esse diretório em primeiro no PATH. Quando você digita `claude`, o shim executa o supervisor, que gera o binário real do claude com stdio herdado e um instantâneo do terminal `stty -g` salvo. Ele é apenas um gerenciador de processo e terminal: nunca faz proxy do tráfego de API e nunca toca em tokens em trânsito.
+
+Invocações em modo de impressão (`claude -p`, `--version`, `--help`), subcomandos não interativos (`claude mcp`, `claude config` e assim por diante) e os próprios probes do tokenmaxxing passam direto sem gerenciamento de sessão. Para uma sessão interativa, o supervisor fixa um id de sessão (gerando um, ou reutilizando o que você passou via `--session-id` / `-r` / `-c`), persiste suas flags de inicialização para que uma reinicialização posterior possa reproduzi-las, e então observa um arquivo marcador de respawn associado a essa sessão.
+
+## O tee do statusline
+
+O Claude Code envia dados de limite de taxa (`rate_limits.five_hour` e `rate_limits.seven_day`) para o stdin do statusline a cada turno. tokenmaxxing detém o slot do statusline, então seu renderizador também funciona como um feed de uso gratuito baseado em push: a cada tick ele faz o tee das janelas agregadas mais o modelo ativo para `usage.json`. Os limites por modelo não estão no stdin do statusline; eles vêm apenas de `claude -p '/usage'` (gratuito, zero tokens), que é consultado com um TTL e armazenado em cache em `model-usage.json` quando o modelo ativo está com restrição de capacidade.
+
+O tee é grava-ao-mudar: quando os números não mudam, ele apenas atualiza o mtime do arquivo, que atua como o batimento de vitalidade do feed. A atualidade é sempre julgada pelo mtime, nunca pelo carimbo de data/hora incorporado.
+
+## O hook Stop e a troca
+
+Em cada limite de turno, o hook Stop executa a decisão de troca (veja [Como a troca decide](/pt/switching)). Quando uma troca é justificada, ela acontece sob um bloqueio exclusivo `flock(2)` (obtido via `bun:ffi`, já que o macOS não vem com um binário `flock(1)`), e as gravações de credencial adicionalmente se interbloqueiam com o próprio bloqueio de atualização do Claude Code. Dentro da seção crítica, uma troca:
+
+1. Colhe a credencial ativa atual para o backup estacionado de seu verdadeiro dono.
+2. Instala a credencial recém-atualizada da conta de destino como a ativa, mesclando-a no blob ativo existente para que o estado irmão (como tokens OAuth por servidor MCP) sobreviva.
+3. Persiste o token rotacionado do destino em seu próprio backup.
+4. Reescreve atomicamente o campo `oauthAccount` em `~/.claude.json`.
+5. Confirma o novo rótulo ativo e limpa instantâneos de uso obsoletos, tudo antes de o bloqueio ser liberado, para que uma falha nunca possa deixar a credencial instalada e o rótulo ativo apontando para contas diferentes.
+
+Como todas as sessões do perfil padrão compartilham a única credencial ativa, uma única troca migra todas as sessões de uma vez, e o flock mais uma reverificação sob o bloqueio impede que hooks concorrentes queimem duas contas.
+
+## Adoção no lugar
+
+Uma sessão claude em execução consulta seu armazenamento de credenciais entre as requisições: no macOS ela relê o keychain por meio de um cache curto e compara os tokens de acesso; no Linux ela verifica o mtime do arquivo de credenciais e descarrega seus caches de token quando ele muda. O efeito líquido é que uma credencial trocada é adotada por cada sessão em execução em cerca de 30 segundos no macOS e na própria requisição seguinte no Linux, sem nenhum reinício. É por isso que uma troca simples não grava marcador e não dispara respawn - a sessão apenas continua na nova conta. O `/usage` dentro da sessão compartilha os mesmos caches de token, então sua exibição de conta muda junto com a adoção.
+
+## Espera de grupo esgotado e retomada automática
+
+Somente quando todas as contas do grupo estão acima de suas barras é que o hook Stop grava um marcador de respawn (o esquema do marcador exige um carimbo de data/hora `waitUntil`; uma troca simples nunca pode produzir um). O supervisor vê o marcador, envia SIGTERM ao seu filho no limite de turno já confirmado (o hook Stop roda depois que a transcrição está em disco e o claude está ocioso, então nada é perdido), restaura o terminal, mostra uma contagem regressiva até a redefinição mais próxima e então reinicia `claude --resume <session-id>` na conta recuperada. Ctrl-C durante a contagem regressiva retoma imediatamente. A espera automática é limitada por `policy.maxWaitMs` (padrão 1 hora); além disso, a decisão reporta o grupo como esgotado em vez de esperar.
+
+## O timer de verificação periódica
+
+Os hooks só disparam em limites de turno, e um único turno agêntico longo pode queimar uma janela de saudável a esgotada sem um único limite. Portanto, `init` também instala um timer periódico - um agente launchd no macOS, um timer de usuário systemd no Linux - que executa `tokenmaxxing check` a cada 180 segundos independentemente da atividade de turno.
+
+## Um hook SessionStart
+
+Executa a mesma avaliação quando uma sessão inicia ou retoma, para que uma sessão nova comece na conta certa. O cooldown pós-troca faz disso um no-op correto logo após um respawn.

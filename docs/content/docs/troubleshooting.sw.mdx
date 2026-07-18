@@ -1,0 +1,34 @@
+---
+title: Utatuzi wa matatizo na Maswali Yanayoulizwa Mara kwa Mara
+description: "Maswali ya kawaida na uchunguzi ulio nyuma yao"
+---
+
+**`claude` haionekani kusimamiwa.**
+Endesha `tokenmaxxing doctor`. Shim ni lazima ishinde utatuzi wa PATH; hakikisha mstari wa `# tokenmaxxing PATH` katika rc ya shell yako unaelekeza kwenye saraka ya sasa ya bin na unakaa mbele ya claude halisi. `doctor` pia huonya kuhusu `alias claude=...` au kazi ya shell ya `claude()` inayofunika kifuniko, na kuhusu lakabu zinazozindua binary ya claude kwa njia kamili (hizo hupita msimamizi kabisa).
+
+**Ubadilishaji otomatiki haufyatuki kamwe kwenye Codex.**
+Codex huruka hooks ambazo haijaambiwa kuziamini. Fungua codex, endesha `/hooks`, na uamini tokenmaxxing Stop hook. Uaminifu hurekodiwa dhidi ya hash ya hook, hivyo ni lazima utolewe tena ikiwa hook itahaririwa wakati wowote.
+
+**Akaunti inaonyesha `✗` nyekundu kwenye statusline.**
+Tokeni yake ya kuonyesha upya imekufa (imefutwa au imezungushwa kutoka chini ya nakala rudufu yake). Endesha `tokenmaxxing auth <sel>` kuithibitisha upya papo hapo; amri hukuambia barua pepe ipi ya kuingia nayo na hukataa uingiaji unaotua kwenye akaunti tofauti.
+
+**Kwa nini haibadilishi hadi akaunti yenye mgao mwingi zaidi uliobaki?**
+Kwa sababu hiyo si akaunti iliyo katika hatari zaidi ya kupoteza mgao. Lengo ni akaunti iliyo nyuma zaidi ya mwendo wake wa kila wiki: asilimia iliyobaki ikigawanywa kwa muda hadi kujiweka upya kwake kwa wiki. Kwa kiasi sawa kilichobaki hilo hupungua hadi kwisha kunakokuja mapema zaidi kwanza, na kwa kwisha sawa hadi kiasi kilichobaki zaidi kwanza.
+
+**Imebadilisha tu na statusline bado inaonyesha akaunti ya zamani.**
+Inatarajiwa kwa hadi sekunde 30 hivi kwenye macOS: kikao kinachoendeshwa hupokea kitambulisho kilichobadilishwa kwenye kuonyesha upya kunakofuata kwa kache-ya-kitambulisho. Tee ya matumizi hukandamizwa kwa sekunde 45 baada ya ubadilishaji kwa sababu hii hasa.
+
+**Je, `status --force` inagharimu kitu?**
+Ndio, kwa makusudi: hutuma ombi moja dogo la haiku lililopimwa kwa kila akaunti ili kila dirisha la kikao la saa 5 lianze wakati huo badala ya kulala tuli, kisha huchukua sampuli mpya. `status` ya kawaida na `watch` hazitumi ping kamwe; usomaji wa `/usage` ni wa bure. Kumbuka malisho ya matumizi ya seva yanaweza kuchelewesha dirisha lililofunguliwa upya kwa sekunde hadi dakika, hivyo probe mara tu baada ya ping inaweza bado kuonyesha hali ya kabla ya ping - `status` hurenda dokezo badala ya kujifanya ping imeshindwa.
+
+**Probe ya `/usage` haikurudisha chochote kwa akaunti inayotumika.**
+Hiyo ni tabia inayojulikana ya claude: wakati upakuaji wake wa ndani wa matumizi unaposhindwa au unapowekewa kikomo cha kasi, `/usage` huchapisha takwimu za kikao za ndani pekee bila mistari ya asilimia. tokenmaxxing husampuli akaunti inayotumika kutoka kwa msukumo wa statusline na huchunguza tu akaunti zilizoegeshwa, hasa ili kuepuka hili.
+
+**Vikao vya claude vya nyuma.**
+Daemon ya nyuma ya Claude huzalisha binary halisi yenye toleo kwa njia kamili, ikipita shims za PATH, hivyo vikao vya nyuma haviisimamiwi. Hooks bado huwaka kupitia `settings.json`, na upokeaji wa vitambulisho pamoja na kipima muda cha mara kwa mara hushughulikia ubadilishaji, lakini hakuna kuzalisha upya kunakoendeshwa na alama kwao.
+
+**Kitu kilizalisha michakato mingi wakati mmoja. Je, hilo bado linawezekana?**
+Msimamizi hubeba walinzi wa urudiaji wa tabaka dhidi ya kushindwa hicho hasa cha kihistoria (kifuniko kilichopitwa na wakati kilichobandikwa kama claude "halisi"): mlinzi wa kina katika mazingira unaoahirisha kwenye viwango 5, kizuizi cha kasi-ya-kuzalisha cha kwenye diski, ukaguzi wa utambulisho wa realpath unaokataa mgombea yeyote anayetatuliwa kurudi ndani ya saraka ya bin ya tokenmaxxing yenyewe, na kushindwa kugumu (kamwe si uchunguzi wa PATH wa kimya) wakati njia ya claude iliyosanidiwa haipo tena. `init` na `doctor` huthibitisha mgombea kweli ni claude kwa kuendesha `--version` kabla ya kumbandika.
+
+**Kuondoa usakinishaji.**
+`tokenmaxxing uninstall` huondoa shims za msimamizi, viingizo vya mipangilio, na kipima muda cha mara kwa mara, na huacha akaunti zako na vitambulisho vilivyoegeshwa vikiwa salama. Huondoa tu viingizo vya statusline ambavyo huvitambua kama vyake.

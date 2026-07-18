@@ -1,0 +1,28 @@
+---
+title: الإعداد
+description: "مخطط config.json، والعتبات، ومقابض السياسة"
+---
+
+الإعداد بصيغة JSON في `~/.config/tokenmaxxing/config.json`. وكل حقل اختياري؛ وتُطبَّق القيم الافتراضية لكل حقل.
+
+```json
+{
+  "thresholds": { "session": 95, "weekly": 98 },
+  "policy": {
+    "projectionMargin": 0,
+    "greedySessionFloor": 50,
+    "switchModels": ["fable"],
+    "usagePollTtlMs": 90000,
+    "maxWaitMs": 3600000
+  }
+}
+```
+
+- `thresholds.session` / `thresholds.weekly`: أشرطة الفرز الموصوفة أعلاه.
+- `policy.projectionMargin`: يُطرَح من كلا الشريطين لتكوين الأشرطة الفعّالة.
+- `policy.greedySessionFloor`: النسبة المئوية لاستخدام الجلسة التي يُفعَّل عندها التقارب الجشِع.
+- `policy.switchModels`: عائلات النماذج التي يحجب حدّها الأسبوعي لكل نموذج التبديلَ (تُحوَّل المدخلات إلى أحرف صغيرة عند التحميل).
+- `policy.usagePollTtlMs`: المدّة التي يبقى فيها استطلاع `/usage` لكل نموذج حديثًا.
+- `policy.maxWaitMs`: حدّ الانتظار التلقائي للتجمّع المُستنفَد.
+
+يعرض `tokenmaxxing config` الإعداد الفعّال مع مصادره؛ ويحرّر `config set`/`unset` المفاتيح المنقّطة؛ ويقلّم `config tidy` المفاتيح غير المعروفة.

@@ -1,0 +1,27 @@
+---
+title: Codex 支持
+description: "畀 Codex CLI 汇拢 ChatGPT 订阅账户，靠重启来切换。"
+---
+
+同样嗰汇拢对 OpenAI 嗰 Codex CLI 也管用，针对侬自家嗰 ChatGPT 订阅账户：
+
+```sh
+tokenmaxxing init --codex   # 导入侬当前嗰 codex 登录 + 装好 codex supervisor 搭 Stop hook
+tokenmaxxing add --codex    # 登进另外一个账户，隔离嗰，侬嗰主登录勿动
+codex                       # 照常用 codex
+```
+
+Codex 池子是完全并行嗰状态：自家嗰账户索引、自家嗰停放凭据文件（两个平台高头侪是 0600 文件，因为 codex 自家嗰存储就是一个明文文件）、自家嗰锁、自家嗰顶末一趟切换时间戳。除脱决策策略嗰代码，啥也勿跟 Claude 池子共用。
+
+## 为啥 Codex 高头热切换做勿到
+
+一个跑牢嗰 codex 进程握牢一个内存里嗰 auth manager，等 `auth.json` 现在指嗰是另外一个账户嗰辰光，伊明确拒绝重新加载。呒没文件监视器，也呒没每趟请求嗰凭据轮询，所以勒一个跑牢嗰 codex 底下换脱嗰凭据，对推理来讲根本永远勿生效。重启就是切换：`codex resume <session-id>` 会勒 `auth.json` 现在拿牢嗰随便啥账户高头接牢本地记录跑。
+
+tokenmaxxing 用一个 codex supervisor 垫片来对付搿桩事体：Stop hook 勒每个回合边界高头跑同样嗰贪心进度压力决策，等伊切换嗰辰光，伊写一个标记，让 supervisor 勒提交好嗰边界高头对会话发 SIGTERM，再勒新账户高头重启 `codex resume <session-id>`，记录原封不动。因为每一趟 codex 切换侪是一个看得着嗰重启，codex 贪心路径带一个 1.2 倍嗰改进裕度：一个挑战者必须拿当前账户嗰进度压力赢过 20%，勿好只赢一点点。硬路径（一条阈值被越过）勿管搿个裕度。codex 还呒没耗光池子嗰倒计时，因为呒没啥好暂停一个 codex 会话，所以一个完全耗光嗰 codex 池子就勿动脱。
+
+其余 codex 专有嗰机制：
+
+- 用量是从对 codex 自家限速端点嗰一趟免费认证 GET 读来嗰（搭 CLI 嗰 `/status` 发嗰是同一个调用）：百分比再加上绝对嗰纪元复位辰光，汇总窗口搭分模型上限一样对待。窗口分类是按时长驱动嗰，从来勿按位置驱动，因为现在嗰套餐可能根本呒没 5 钟头窗口，而礼拜窗口坐勒主槽位高头。
+- Codex 嗰刷新 token 会轮换，重用一个被替换脱嗰会拿整个授权家族弄死。每一趟轮换一回来就立刻持久化，当前活跃账户永远只通过活跃 blob 来采样（从来勿用一份过时嗰停放副本），而且每个会话嗰在场文件保证一个勒活跃同伴会话里向跑牢嗰账户永远勿是切换目标、也永远勿会拿伊嗰停放 token 去刷新。
+- Codex 需要文件凭据存储：假使钉牢嗰是 keyring 存储，`init --codex` 会快速失败，`add --codex` 会拿文件模式嗰设置写进隔离嗰引导 home 里向，畀登录落下来是好采集嗰。
+- 有一步手工活：codex 会跳过呒没被告知去信任嗰 hook。`init --codex` 之后，开一趟 codex，通过 `/hooks` 信任 tokenmaxxing 嗰 Stop hook，否则自动切换会悄悄躺牢勿动。`init --codex` 会打印搿条提醒。

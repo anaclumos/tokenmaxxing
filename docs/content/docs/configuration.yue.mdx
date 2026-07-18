@@ -1,0 +1,28 @@
+---
+title: 設定
+description: "config.json 嘅 schema、閾值，同策略選項"
+---
+
+設定係喺 `~/.config/tokenmaxxing/config.json` 嘅 JSON。每個欄位都係可選;預設值逐欄位套用。
+
+```json
+{
+  "thresholds": { "session": 95, "weekly": 98 },
+  "policy": {
+    "projectionMargin": 0,
+    "greedySessionFloor": 50,
+    "switchModels": ["fable"],
+    "usagePollTtlMs": 90000,
+    "maxWaitMs": 3600000
+  }
+}
+```
+
+- `thresholds.session` / `thresholds.weekly`：上面描述嘅篩選界線。
+- `policy.projectionMargin`：從兩條界線減去嚟形成有效界線。
+- `policy.greedySessionFloor`：貪婪收斂參與嗰個 session 已用百分比。
+- `policy.switchModels`：嗰啲每模型每週上限會閘住一次切換嘅模型系列（載入時項目會轉做細楷）。
+- `policy.usagePollTtlMs`：一個 `/usage` 每模型輪詢保持新鮮嘅時間。
+- `policy.maxWaitMs`：帳戶池耗盡自動等待嘅上限。
+
+`tokenmaxxing config` 會顯示連同來源嘅有效設定；`config set`/`unset` 編輯點分隔嘅 key；`config tidy` 刪走未知嘅 key。

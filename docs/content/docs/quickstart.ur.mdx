@@ -1,0 +1,28 @@
+---
+title: فوری آغاز
+description: "tokenmaxxing انسٹال کریں، اپنا موجودہ اکاؤنٹ امپورٹ کریں، اور مزید پول کریں"
+---
+
+macOS یا Linux پر [Bun](https://bun.sh) اور Claude Code درکار ہیں۔
+
+```sh
+bun add -g tokenmaxxing
+tokenmaxxing init
+```
+
+`init` پانچ کام کرتا ہے:
+
+1. جس اکاؤنٹ سے آپ پہلے ہی لاگ اِن ہیں اسے اکاؤنٹ #1 کے طور پر امپورٹ کرتا ہے (کوئی الگ `adopt` کمانڈ نہیں ہے)۔
+2. `claude` سپروائزر شِم انسٹال کرتا ہے۔
+3. Claude Code کی `settings.json` میں تین اندراجات انسٹال کرتا ہے: ایک statusLine، ایک Stop ہک، اور ایک SessionStart ہک (نیز ایک subagentStatusLine اندراج)۔
+4. سپروائزر کی bin ڈائرکٹری کو آپ کے شیل rc کے PATH میں شامل کرتا ہے (idempotent، ایک `# tokenmaxxing PATH` تبصرے سے نشان زد)۔ اسے اصل `claude` سے پہلے PATH پر بیٹھنا پڑتا ہے تاکہ اسے روک سکے۔
+5. ایک وقفہ وار چیک ٹائمر انسٹال کرتا ہے (macOS پر ایک launchd ایجنٹ، Linux پر ایک systemd یوزر ٹائمر) جو ہر 180 سیکنڈ میں `tokenmaxxing check` چلاتا ہے۔
+
+اپنے شیل کو دوبارہ شروع کریں، پھر مزید اکاؤنٹس شامل کریں اور آگے بڑھیں:
+
+```sh
+tokenmaxxing add        # ایک اور اکاؤنٹ کو الگ تھلگ حالت میں لاگ اِن کر کے پول میں شامل کرتا ہے
+claude                  # claude کو ہمیشہ کی طرح استعمال کریں
+```
+
+`tokenmaxxing` کا عرف `xx` بھی ہے۔ خالی `tokenmaxxing` (یا `xx`) `status` چلاتا ہے؛ `switch` واضح طور پر لکھنا لازم رہتا ہے۔

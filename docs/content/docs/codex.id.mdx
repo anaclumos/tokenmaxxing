@@ -1,0 +1,27 @@
+---
+title: Dukungan Codex
+description: "Menggabungkan akun langganan ChatGPT untuk Codex CLI, berbasis restart"
+---
+
+Penggabungan yang sama bekerja untuk Codex CLI dari OpenAI, terhadap akun langganan ChatGPT Anda sendiri:
+
+```sh
+tokenmaxxing init --codex   # impor login codex Anda saat ini + pasang supervisor codex & hook Stop
+tokenmaxxing add --codex    # login akun lain, terisolasi - login utama Anda tidak tersentuh
+codex                       # gunakan codex seperti biasa
+```
+
+Gabungan Codex adalah status yang sepenuhnya paralel: indeks akunnya sendiri, berkas kredensial terparkirnya sendiri (berkas 0600 di kedua platform, karena penyimpanan codex sendiri adalah berkas teks polos), kuncinya sendiri, cap waktu pertukaran-terakhirnya sendiri. Tidak ada yang dibagi dengan gabungan Claude kecuali kode kebijakan-keputusan.
+
+## Mengapa hot-swap tidak mungkin di Codex
+
+Sebuah proses codex yang berjalan memegang satu pengelola auth dalam-memori dan secara eksplisit menolak memuat ulang `auth.json` ketika ia kini menamai akun yang berbeda. Tidak ada pengawas berkas dan tidak ada poll kredensial per-permintaan, jadi kredensial yang ditukar di bawah codex yang berjalan sekadar tidak pernah berlaku untuk inferensi. Memulai ulang adalah pertukarannya: `codex resume <session-id>` melanjutkan transkrip lokal di akun mana pun yang kini dipegang `auth.json`.
+
+tokenmaxxing menangani ini dengan sebuah shim supervisor codex: hook Stop menjalankan keputusan tekanan-laju rakus yang sama di setiap batas giliran, dan ketika ia berpindah, ia menulis sebuah penanda yang membuat supervisor mengirim SIGTERM ke sesi pada batas yang ter-commit dan meluncurkan ulang `codex resume <session-id>` di akun yang segar, transkrip utuh. Karena setiap pertukaran codex adalah restart yang terlihat, jalur rakus codex membawa margin peningkatan 1,2x: seorang penantang harus mengalahkan tekanan laju akun saat ini sebesar 20%, bukan sekadar sedikit. Jalur keras (sebuah bilah terlewati) mengabaikan margin. Juga tidak ada hitung mundur gabungan-habis untuk codex - tidak ada yang bisa menjeda sesi codex - sehingga gabungan codex yang benar-benar habis tetap di tempat.
+
+Mekanika khusus-codex lainnya:
+
+- Penggunaan dibaca dari sebuah GET terautentikasi gratis terhadap endpoint batas-laju codex sendiri (panggilan yang sama yang dilakukan `/status` milik CLI): persentase ditambah waktu reset epoch absolut, jendela agregat maupun batas per-model. Klasifikasi jendela digerakkan-durasi, tidak pernah digerakkan-posisi, karena paket saat ini mungkin tidak memiliki jendela 5 jam sama sekali dan jendela mingguan duduk di slot primer.
+- Token refresh Codex berotasi, dan menggunakan kembali yang telah digantikan mematikan seluruh keluarga grant. Setiap rotasi disimpan pada saat ia kembali, akun aktif hanya pernah disampel melalui blob langsung (tidak pernah salinan terparkir yang usang), dan berkas kehadiran per-sesi memastikan sebuah akun yang berjalan di sesi saudara yang aktif tidak pernah menjadi target pertukaran dan tidak pernah mendapat token terparkirnya disegarkan.
+- Codex membutuhkan penyimpanan kredensial berkas: `init --codex` gagal cepat jika penyimpanan keyring disematkan, dan `add --codex` menulis pengaturan mode-berkas ke dalam home onboarding terisolasi sehingga login mendarat siap-panen.
+- Satu langkah manual: codex melewati hook yang belum diberi tahu untuk dipercaya. Setelah `init --codex`, buka codex sekali dan percayai hook Stop tokenmaxxing melalui `/hooks`, atau pergantian otomatis tetap diam-diam mati. `init --codex` mencetak pengingat ini.

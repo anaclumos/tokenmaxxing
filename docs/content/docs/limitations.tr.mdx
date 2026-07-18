@@ -1,0 +1,10 @@
+---
+title: Dürüst kısıtlamalar
+description: "Havuzlanmış anında geçişle gelen ödünleşimler"
+---
+
+- **Bir soğuk tur.** Prompt önbelleği organizasyon kapsamlıdır, bu nedenle yeni bir hesaptaki ilk tur bağlamı bir kez yeniden yükler.
+- **Tükenme-duraklaması aksaklığı.** Yalnızca tamamen tükenmiş bir havuz oturumu geri sayım için durdurur; o an içinde yazılan her şey kaybolur.
+- **Benimseme gecikmesi.** macOS'ta bir geçişten ~30 saniye içindeki ilk tur hâlâ eski hesabı ölçebilir; çubukların boşluğu bunu emer.
+- **Paylaşılan etki alanı.** Tüm varsayılan profil oturumları tek bir canlı kimlik bilgisini paylaşır, bu nedenle bir geçiş hepsini birlikte taşır (her biri yerinde benimser).
+- **Linux'ta düz metin kimlik bilgileri.** Claude Code'un kendisi Linux kimlik bilgilerini bir 0600 düz metin dosyası olarak saklar; tokenmaxxing'in park edilmiş kopyaları aynı modeli izler.

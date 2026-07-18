@@ -1,0 +1,27 @@
+---
+title: Prise en charge de Codex
+description: "Regrouper des comptes d'abonnement ChatGPT pour le CLI Codex, basé sur le redémarrage"
+---
+
+Le même regroupement fonctionne pour le CLI Codex d'OpenAI, contre vos propres comptes d'abonnement ChatGPT :
+
+```sh
+tokenmaxxing init --codex   # importe votre connexion codex actuelle + installe le superviseur codex et le hook Stop
+tokenmaxxing add --codex    # connecte un autre compte, isolé : votre connexion principale reste intacte
+codex                       # utilisez codex comme d'habitude
+```
+
+Le pool Codex est un état entièrement parallèle : son propre index de comptes, ses propres fichiers d'identifiants parqués (des fichiers 0600 sur les deux plateformes, puisque le magasin propre de codex est un fichier en clair), son propre verrou, son propre horodatage de dernière bascule. Rien n'est partagé avec le pool Claude, à l'exception du code de politique de décision.
+
+## Pourquoi la bascule à chaud est impossible sur Codex
+
+Un processus codex en cours d'exécution détient un unique gestionnaire d'authentification en mémoire et refuse explicitement de recharger `auth.json` lorsqu'il nomme désormais un compte différent. Il n'y a ni observateur de fichier ni interrogation d'identifiants par requête, si bien qu'un identifiant échangé sous un codex en cours d'exécution ne prend tout simplement jamais effet pour l'inférence. Le redémarrage est la bascule : `codex resume <session-id>` poursuit la transcription locale sur le compte que `auth.json` détient désormais.
+
+tokenmaxxing gère cela avec un shim superviseur codex : le hook Stop exécute la même décision gloutonne de pression de rythme à chaque frontière de tour, et lorsqu'il bascule, il écrit un marqueur qui fait envoyer au superviseur un SIGTERM à la session à la frontière validée et relancer `codex resume <session-id>` sur le compte frais, transcription intacte. Comme chaque bascule codex est un redémarrage visible, le chemin glouton de codex porte une marge d'amélioration de 1,2x : un prétendant doit battre la pression de rythme du compte actuel de 20 %, pas d'un cheveu. Le chemin dur (une barre franchie) ignore la marge. Il n'y a pas non plus de compte à rebours sur pool épuisé pour codex (rien ne peut mettre une session codex en pause), de sorte qu'un pool codex entièrement épuisé reste en place.
+
+Autres mécaniques spécifiques à codex :
+
+- L'utilisation est lue depuis un GET authentifié gratuit contre le propre point de terminaison de limite de débit de codex (le même appel que fait le `/status` du CLI) : des pourcentages ainsi que des heures de réinitialisation en epoch absolu, aussi bien pour les fenêtres agrégées que pour les plafonds par modèle. La classification des fenêtres est pilotée par la durée, jamais par la position, car les forfaits actuels peuvent n'avoir aucune fenêtre de 5 heures et la fenêtre hebdomadaire occupe l'emplacement principal.
+- Les jetons de rafraîchissement de codex pivotent, et réutiliser un jeton supplanté tue toute la famille d'autorisations. Chaque rotation est persistée à l'instant où elle revient, le compte actif n'est jamais échantillonné qu'à travers le blob actif (jamais une copie parquée périmée), et des fichiers de présence par session garantissent qu'un compte s'exécutant dans une session voisine active n'est jamais une cible de bascule et ne voit jamais son jeton parqué rafraîchi.
+- Codex exige le magasin d'identifiants sur fichier : `init --codex` échoue rapidement si le magasin keyring est épinglé, et `add --codex` écrit le réglage de mode fichier dans le répertoire d'intégration isolé afin que la connexion aboutisse de manière récupérable.
+- Une étape manuelle : codex ignore les hooks auxquels on ne lui a pas dit de faire confiance. Après `init --codex`, ouvrez codex une fois et faites confiance au hook Stop de tokenmaxxing via `/hooks`, sans quoi la bascule automatique reste silencieusement inerte. `init --codex` affiche ce rappel.

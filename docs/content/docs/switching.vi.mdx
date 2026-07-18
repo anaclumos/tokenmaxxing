@@ -1,0 +1,41 @@
+---
+title: Cách chuyển đổi được quyết định
+description: "Việc kích hoạt, các ngưỡng sàng lọc, áp lực nhịp độ, và lối tham lam so với lối cứng"
+---
+
+Quyết định có hai lớp: một cổng kích hoạt, và sau đó là một lối tham lam hoặc lối cứng.
+
+## Kích hoạt
+
+Dưới `policy.greedySessionFloor` (mặc định 50, tính theo phần trăm của cửa sổ phiên 5 giờ), quyết định hoàn toàn không chạy: một phiên mới cứ dùng tài khoản của nó. Một khi cửa sổ phiên đang hoạt động đã dùng 50%, hoặc bất kỳ ngưỡng cứng nào bị vượt qua, quyết định sẽ kích hoạt.
+
+## Các ngưỡng sàng lọc
+
+Các ngưỡng là các ngưỡng sàng lọc, không phải là yếu tố kích hoạt sự hoảng loạn:
+
+- `thresholds.session`: 95. Một lần đặt lại 5 giờ thì rẻ để ngồi chờ, nên cửa sổ phiên chuyển đi sớm hơn.
+- `thresholds.weekly`: 98. Một ngưỡng này bao trùm cả mức tổng hợp 7 ngày lẫn mọi mức trần hàng tuần theo từng mô hình. Hạn ngạch hàng tuần theo kiểu dùng-hoặc-mất, nên nó được tiêu cạn đến sát tường.
+
+Cả hai đều cố ý ở dưới 100: khoảng dư là ngân sách để đạt tới một ranh giới lượt sạch (cộng với tối đa một lượt trễ tiếp nhận trên macOS) trước khi tài khoản thực sự chạm giới hạn của nó. Cùng các ngưỡng đó sàng lọc các ứng viên hoán đổi: một tài khoản vượt bất kỳ ngưỡng nào của nó thì không phải là một mục tiêu hợp lệ. Việc kích hoạt và việc sàng lọc luôn dùng cùng các ngưỡng hiệu lực (các ngưỡng trừ đi `policy.projectionMargin`), vì một bộ sàng lọc lỏng hơn yếu tố kích hoạt sẽ đẩy các lần hoán đổi lên các tài khoản mà yếu tố kích hoạt lập tức gắn cờ lại, khiến nhóm tài khoản bị dội qua dội lại.
+
+## Mục tiêu: áp lực nhịp độ
+
+Trong số các tài khoản dùng được, mục tiêu là tài khoản đang tụt lại xa nhất so với nhịp độ hàng tuần của chính nó: **áp lực nhịp độ** cao nhất, được định nghĩa là phần trăm hàng tuần còn lại chia cho thời gian cho đến lần đặt lại hàng tuần của tài khoản đó. Tài khoản có nhiều hạn ngạch sắp bị mất nhất sẽ thắng. Khi hòa, ưu tiên tài khoản hết hạn hàng tuần sớm nhất, rồi đến mức sử dụng 7 ngày thấp nhất.
+
+Mọi thứ chạy dựa trên các cửa sổ được lưu trong bộ nhớ đệm dưới dạng mốc epoch UTC tuyệt đối, nên một ảnh chụp cũ vẫn được giải quyết đúng: một lần đặt lại hàng tuần đã qua sẽ được ngoại suy về phía trước theo các bước 7 ngày chính xác, và bất kỳ cửa sổ nào đã qua lần đặt lại được lưu trong bộ nhớ đệm đều được tính là trống mới (không bao giờ là lý do để chuyển đổi, không bao giờ là lý do để giữ một tài khoản trên băng ghế dự bị).
+
+## Lối tham lam so với lối cứng
+
+- **Lối tham lam** (đã kích hoạt, nhưng ở dưới mọi ngưỡng): xếp hạng mọi tài khoản, bao gồm cả tài khoản hiện tại. Nếu tài khoản hiện tại đã thắng hoặc hòa, không làm gì cả. Ngược lại thì hoán đổi sang tài khoản tốt hơn một cách rõ ràng. Nó không bao giờ chờ và không bao giờ dự trữ trước: một tài khoản hiện tại còn dùng được thì không bị đánh đổi để lấy một lần chờ. Vì tài khoản hiện tại cũng được xếp hạng, cả lối tự động lẫn `tokenmaxxing switch` chạy trần đều bất biến: đánh giá định kỳ sẽ hội tụ về đúng tài khoản rồi giữ nguyên tại đó.
+- **Lối cứng** (một ngưỡng bị vượt qua): hoán đổi đi sang ứng viên dùng được tốt nhất. Nếu refresh token của một ứng viên hóa ra đã chết, nó được gắn cờ cần-xác-thực-lại và ứng viên tiếp theo được thử. Nếu không có gì dùng được, logic chờ-khi-cạn-kiệt sẽ chạy; chỉ một bên gọi thực sự có thể tạm dừng phiên làm việc (Stop hook được giám sát) mới được phép dự trữ trước lên một tài khoản vẫn còn bị chặn nhưng sẽ hồi phục sớm nhất.
+
+## Mức trần theo từng mô hình
+
+`policy.switchModels` (mặc định `["fable"]`) nêu tên các họ mô hình mà mức trần hàng tuần theo từng mô hình của chúng có thể kích hoạt một lần chuyển đổi. Việc so khớp dựa trên token của họ, không bao giờ theo chuỗi hiển thị chính xác: tên hiển thị của mô hình thay đổi trôi dạt ("Fable" đã trở thành "Fable 5"), và một cổng khớp-chuỗi-chính-xác đã từng âm thầm vô hiệu hóa hoàn toàn việc chuyển đổi theo từng mô hình. Hai quy tắc an toàn liên quan:
+
+- Một mô hình đang hoạt động không xác định sẽ chặn mọi họ đã cấu hình. Ngay sau khi một lần hoán đổi xóa các ảnh chụp, một máy không đầu có thể chạy trong tình trạng mù mô hình; việc coi cái không xác định là không bị ràng buộc đã từng để một tài khoản nằm ở mức trần Fable của nó suốt nhiều giờ mà không ai để ý.
+- Việc sàng lọc ứng viên cũng tính đến các mức trần theo từng mô hình bị chặn, nên một nhóm mà mọi tài khoản đều đã đốt hết mức trần Fable của nó sẽ không quay vòng.
+
+## Thời gian hồi
+
+Một thời gian hồi 45 giây sau khi hoán đổi kiểm soát lối tự động. Bộ tee statusline bị chặn trong đúng 45 giây đó sau một lần hoán đổi (việc tiếp nhận mất tối đa 30 giây trên macOS), nếu không một phép đánh giá sớm hơn sẽ chạy trên dữ liệu mà chính lần hoán đổi đã làm cho vô hiệu: đúng kịch bản đó đã từng tạo ra một vòng lặp respawn từ A sang B rồi quay lại. `tokenmaxxing switch` thủ công không bị ảnh hưởng bởi thời gian hồi.

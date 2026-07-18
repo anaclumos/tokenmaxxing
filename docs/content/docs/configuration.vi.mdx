@@ -1,0 +1,28 @@
+---
+title: Cấu hình
+description: "Lược đồ config.json, các ngưỡng, và các núm chỉnh chính sách"
+---
+
+Cấu hình là JSON tại `~/.config/tokenmaxxing/config.json`. Mọi trường đều là tùy chọn; giá trị mặc định áp dụng cho từng trường.
+
+```json
+{
+  "thresholds": { "session": 95, "weekly": 98 },
+  "policy": {
+    "projectionMargin": 0,
+    "greedySessionFloor": 50,
+    "switchModels": ["fable"],
+    "usagePollTtlMs": 90000,
+    "maxWaitMs": 3600000
+  }
+}
+```
+
+- `thresholds.session` / `thresholds.weekly`: các ngưỡng sàng lọc được mô tả ở trên.
+- `policy.projectionMargin`: được trừ khỏi cả hai ngưỡng để tạo thành các ngưỡng hiệu lực.
+- `policy.greedySessionFloor`: phần trăm phiên đã dùng mà tại đó sự hội tụ tham lam kích hoạt.
+- `policy.switchModels`: các họ mô hình mà mức trần hàng tuần theo từng mô hình của chúng kiểm soát một lần chuyển đổi (các mục được chuyển thành chữ thường khi tải).
+- `policy.usagePollTtlMs`: một lần thăm dò `/usage` theo từng mô hình giữ độ mới trong bao lâu.
+- `policy.maxWaitMs`: giới hạn thời gian tự động chờ khi nhóm cạn kiệt.
+
+`tokenmaxxing config` hiển thị cấu hình hiệu lực kèm nguồn; `config set`/`unset` chỉnh sửa các khóa dạng chấm; `config tidy` loại bỏ các khóa không xác định.

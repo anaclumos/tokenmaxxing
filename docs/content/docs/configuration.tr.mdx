@@ -1,0 +1,28 @@
+---
+title: Yapılandırma
+description: "config.json şeması, eşikler ve politika ayarları"
+---
+
+Yapılandırma `~/.config/tokenmaxxing/config.json` konumunda JSON'dur. Her alan isteğe bağlıdır; varsayılanlar alan başına uygulanır.
+
+```json
+{
+  "thresholds": { "session": 95, "weekly": 98 },
+  "policy": {
+    "projectionMargin": 0,
+    "greedySessionFloor": 50,
+    "switchModels": ["fable"],
+    "usagePollTtlMs": 90000,
+    "maxWaitMs": 3600000
+  }
+}
+```
+
+- `thresholds.session` / `thresholds.weekly`: yukarıda açıklanan eleme çubukları.
+- `policy.projectionMargin`: etkin çubukları oluşturmak için her iki çubuktan çıkarılır.
+- `policy.greedySessionFloor`: açgözlü yakınsamanın devreye girdiği oturum-kullanılmış yüzdesi.
+- `policy.switchModels`: model başına haftalık üst sınırı bir geçişi kapatan model aileleri (girişler yüklemede küçük harfe çevrilir).
+- `policy.usagePollTtlMs`: bir `/usage` model başına poll'ünün ne kadar süre taze kaldığı.
+- `policy.maxWaitMs`: tükenmiş havuz otomatik bekleme sınırı.
+
+`tokenmaxxing config` etkin yapılandırmayı kaynaklarıyla gösterir; `config set`/`unset` noktalı anahtarları düzenler; `config tidy` bilinmeyen anahtarları budar.

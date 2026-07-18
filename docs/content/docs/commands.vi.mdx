@@ -1,0 +1,25 @@
+---
+title: Các lệnh
+description: "Mọi lệnh tokenmaxxing và chức năng của nó"
+---
+
+| Lệnh | Chức năng |
+|---|---|
+| `tokenmaxxing init` | Nhập tài khoản hiện tại, cài đặt bộ giám sát, các hook, và statusline |
+| `tokenmaxxing init --codex` | Tương tự cho Codex: nhập thông tin đăng nhập, cài đặt bộ giám sát codex và Stop hook |
+| `tokenmaxxing add` | Đăng ký thêm một tài khoản (đăng nhập biệt lập, thu hoạch vào nhóm) |
+| `tokenmaxxing add --codex` | Đăng ký thêm một tài khoản Codex (đăng nhập biệt lập) |
+| `tokenmaxxing auth [sel \| --all]` | Xác thực lại một tài khoản trong nhóm tại chỗ. Khi chạy trần sẽ liệt kê nhóm và hỏi tài khoản nào; một bộ chọn nhắm đến một tài khoản và cho bạn biết email nào cần đăng nhập; `--all` lần lượt duyệt qua từng tài khoản cần xác thực lại |
+| `tokenmaxxing switch [sel]` | Chuyển sang tài khoản tốt nhất (tham lam, bất biến) hoặc buộc chọn một tài khoản cụ thể |
+| `tokenmaxxing switch --codex [sel]` | Chuyển nhóm Codex (có hiệu lực ở lần khởi động codex tiếp theo) |
+| `tokenmaxxing ls` | Liệt kê các tài khoản trong nhóm |
+| `tokenmaxxing status` | Các tài khoản kèm thanh sử dụng 5h / hàng tuần / theo từng mô hình, đang hoạt động và đã cạn kiệt cho đến khi đặt lại |
+| `tokenmaxxing status --force` | Ngoài ra ping mọi tài khoản (mỗi tài khoản một yêu cầu haiku nhỏ) để tất cả các bộ hẹn giờ phiên 5h bắt đầu ngay bây giờ, rồi lấy mẫu mới |
+| `tokenmaxxing watch [seconds]` | Trạng thái trực tiếp, hiển thị lại mỗi N giây (mặc định 120, tối thiểu 30; không bao giờ ping) |
+| `tokenmaxxing config [get\|set\|unset\|tidy]` | Cấu hình có hiệu lực kèm nguồn; chỉnh sửa các khóa dạng chấm; `tidy` loại bỏ các khóa không xác định |
+| `tokenmaxxing check` | Đánh giá quyết định chuyển đổi một lần (đây là những gì bộ hẹn giờ định kỳ chạy) |
+| `tokenmaxxing serve [setup\|link\|unlink\|links]` | Daemon cầu nối Slack (Socket Mode, không cần URL công khai) |
+| `tokenmaxxing doctor` | Xác minh bộ giám sát và các mục cài đặt vẫn còn nguyên |
+| `tokenmaxxing rename [--codex] <sel> <label>` | Đổi nhãn một tài khoản trong nhóm |
+| `tokenmaxxing rm <sel>` | Xóa một tài khoản khỏi nhóm |
+| `tokenmaxxing uninstall` | Gỡ bỏ bộ giám sát và các mục cài đặt (các tài khoản và thông tin xác thực được giữ lại) |

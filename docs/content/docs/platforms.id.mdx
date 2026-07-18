@@ -1,0 +1,16 @@
+---
+title: "Catatan platform: macOS vs Linux"
+description: "Bagaimana macOS dan Linux berbeda dalam penyimpanan, adopsi, dan pengatur waktu"
+---
+
+| | macOS | Linux |
+|---|---|---|
+| Kredensial langsung | Item generic-password di login keychain | Berkas `.credentials.json` 0600 |
+| Kredensial terparkir | Item keychain per-akun | Berkas 0600 di direktori 0700 |
+| Adopsi setelah pertukaran | Dalam ~30 detik (cache baca keychain) | Permintaan berikutnya (poll mtime berkas) |
+| Pemeriksaan berkala | Agen launchd, setiap 180 detik | Pengatur waktu pengguna systemd, setiap 180 detik |
+| Penyimpanan login-terisolasi | Layanan keychain dengan namespace-hash per direktori config | Sebuah berkas di dalam direktori config yang terisolasi |
+
+Dua detail khusus-Linux yang perlu diketahui: claude menyelesaikan direktori kredensialnya dari `CLAUDE_SECURESTORAGE_CONFIG_DIR` lebih dulu (lalu `CLAUDE_CONFIG_DIR`, lalu `~/.claude`), dan tokenmaxxing mencerminkan resolusi itu persis sehingga keduanya tidak pernah tak sinkron. Dan kedua build OS dari versi claude yang sama memformat jam reset `/usage` secara berbeda (yang satu memakai perekat " at ", yang lain sebuah koma); parser tokenmaxxing menerima persis kedua bentuk itu dan mencatat, alih-alih menebak, pada bentuk ketiga mana pun.
+
+Di macOS, satu keterbatasan yang jujur: `init` dan `add` menyentuh keychain secara interaktif dengan sengaja, sehingga akses `security` pertama tidak dingin di dalam sebuah hook tanpa kepala.

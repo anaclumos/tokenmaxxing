@@ -1,0 +1,34 @@
+---
+title: 疑難排解同常見問題
+description: "常見問題，同背後嘅診斷"
+---
+
+**`claude` 好似無被監督。**
+行 `tokenmaxxing doctor`。個 shim 必須贏得 PATH 解析;檢查你 shell rc 入面嘅 `# tokenmaxxing PATH` 行係咪指向當前 bin 目錄並排喺真正 claude 前面。`doctor` 亦都會警告 `alias claude=...` 或者一個 `claude()` shell 函數遮蔽咗個包裝，同埋以絕對路徑啟動一個 claude 二進位檔嘅別名（嗰啲完全繞過監督者）。
+
+**Codex 上面自動切換永遠唔觸發。**
+Codex 會跳過佢未被告知去信任嘅 hook。開 codex，行 `/hooks`，並信任 tokenmaxxing Stop hook。信任係對住個 hook 嘅 hash 記錄嘅，所以如果個 hook 曾經被編輯就必須重新授予。
+
+**一個帳戶喺 statusline 顯示一個紅色 `✗`。**
+佢嘅刷新 token 死咗（被撤銷,或者喺佢嘅備份下面被輪換走）。行 `tokenmaxxing auth <sel>` 就地重新認證佢;個指令會話你知用邊個 email 登入,並拒絕一個落喺一個唔同帳戶嘅登入。
+
+**點解佢唔切換去剩餘配額最多嗰個帳戶？**
+因為嗰個唔係最有風險沒收配額嘅帳戶。目標係最落後於自己每週步伐嘅帳戶：剩餘百分比除以直到佢每週重設嘅時間。喺剩餘量相等嘅情況下，佢就簡化為最快到期先，而喺到期相等嘅情況下就簡化為最多剩餘先。
+
+**佢啱啱切換咗但係 statusline 仍然顯示舊帳戶。**
+喺 macOS 最多 ~30 秒係預期嘅：正在運行嘅 session 會喺佢下一次憑證快取刷新時採用換咗嘅憑證。用量 tee 喺一次切換之後 45 秒被抑制，就係為咗呢個原因。
+
+**`status --force` 使唔使錢？**
+使，係刻意嘅：佢每個帳戶發送一個最小嘅計量 haiku 請求，令每個 5 小時 session 窗口喺嗰一刻開始，而唔係一直休眠住，然後重新採樣。淨嘅 `status` 同 `watch` 永遠唔 ping;`/usage` 讀取係免費嘅。留意伺服器用量資訊來源可以將一個啱啱開嘅窗口延遲幾秒到幾分鐘，所以喺 ping 之後即刻嘅一個探測可能仍然顯示 ping 前嘅狀態 - `status` 會渲染一個備註而唔係扮 ping 失敗咗。
+
+**`/usage` 探測為活躍帳戶返咗無嘢。**
+嗰個係一個已知嘅 claude 行為：當佢嘅內部用量抓取失敗或者被速率限制,`/usage` 淨係列印本地 session 統計而無百分比行。tokenmaxxing 由 statusline 推送採樣活躍帳戶,並且只探測泊存帳戶，就係為咗避免呢個。
+
+**背景 claude session。**
+Claude 嘅背景守護程序以絕對路徑生成真正嘅版本化二進位檔，繞過 PATH shim，所以背景 session 係無監督嘅。Hook 仍然透過 `settings.json` 觸發，而憑證採用加上定期計時器涵蓋咗切換，但係佢哋無標記驅動嘅重生。
+
+**有樣嘢曾經生成咗好多進程。呢個仲有可能發生嗎？**
+監督者帶有針對嗰個確切歷史故障（一個過時包裝被固定做「真正」claude）嘅分層遞迴防護：一個環境入面嘅深度哨兵喺 5 層中止、一個磁碟上嘅生成速率限制器、拒絕任何解析返 tokenmaxxing 自己 bin 目錄嘅候選嘅 realpath 身分檢查，同埋當一個已設定嘅 claude 路徑唔再存在時嘅一個硬失敗（永遠唔係一個靜靜哋嘅 PATH 掃描）。`init` 同 `doctor` 喺固定一個候選之前先行 `--version` 驗證佢確實係 claude。
+
+**解除安裝。**
+`tokenmaxxing uninstall` 會移除監督者 shim、設定項目同定期計時器，並保留你嘅帳戶同泊存憑證完好無缺。佢只會移除佢辨認得出係佢自己嘅 statusline 項目。

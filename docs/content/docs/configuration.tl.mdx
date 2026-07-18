@@ -1,0 +1,28 @@
+---
+title: Pagsasaayos
+description: "Ang schema ng config.json, mga threshold, at mga policy knob"
+---
+
+Ang config ay JSON sa `~/.config/tokenmaxxing/config.json`. Opsyonal ang bawat field; nalalapat ang mga default kada field.
+
+```json
+{
+  "thresholds": { "session": 95, "weekly": 98 },
+  "policy": {
+    "projectionMargin": 0,
+    "greedySessionFloor": 50,
+    "switchModels": ["fable"],
+    "usagePollTtlMs": 90000,
+    "maxWaitMs": 3600000
+  }
+}
+```
+
+- `thresholds.session` / `thresholds.weekly`: ang mga screening bar na inilarawan sa itaas.
+- `policy.projectionMargin`: ibinabawas sa parehong bar upang buuin ang mga epektibong bar.
+- `policy.greedySessionFloor`: ang porsyento ng nagamit na session kung saan nag-e-engage ang greedy convergence.
+- `policy.switchModels`: mga pamilya ng modelo na ang per-model na lingguhang cap ay nagse-set ng gate sa isang pagpapalit (ang mga entry ay ginagawang lowercase sa pag-load).
+- `policy.usagePollTtlMs`: kung gaano katagal nananatiling sariwa ang isang `/usage` per-model poll.
+- `policy.maxWaitMs`: ang hangganan ng auto-wait para sa naubos na pool.
+
+Ipinapakita ng `tokenmaxxing config` ang epektibong config na may mga pinagmulan; ini-edit ng `config set`/`unset` ang mga dotted key; pinuputol ng `config tidy` ang mga hindi kilalang key.

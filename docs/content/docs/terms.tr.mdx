@@ -1,0 +1,6 @@
+---
+title: Kişisel kullanım ve hizmet şartları
+description: "Sahip olduğunuz hesapları, kendi çalıştırdığınız oturum ve agent'larda havuzlayın"
+---
+
+tokenmaxxing, sahip olduğunuz hesapları, kendi çalıştırdığınız oturum ve agent'larda havuzlar. Bu ifade kasıtlıdır: Anthropic, üçüncü taraf ürünlerin claude.ai oturum açmasını veya claude.ai hız limitlerini sunmasına izin vermez ve buna Agent SDK üzerine inşa edilen agent'lar dahildir. Havuzlanmış SDK yüzeyini veya onun üzerine inşa edilen hiçbir şeyi üçüncü taraflara göndermeyin. tokenmaxxing ayrıca kota verileri için OAuth'u yeniden uygulamak veya API trafiğine aracılık etmek yerine kasıtlı olarak CLI aracılı `/usage` yolunda kalır: bu bir proxy değildir ve dokunduğu tek OAuth endpoint'leri bir geçiş sırasında kullanılan standart yenileme yetkilendirmesi ve bir token'ın gerçekte hangi hesaba ait olduğunu doğrulayan salt okunur bir kimlik denetimidir (roles endpoint'i).

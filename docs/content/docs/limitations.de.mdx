@@ -1,0 +1,10 @@
+---
+title: Ehrliche Einschränkungen
+description: "Die Kompromisse, die mit gebündeltem Hot-Swapping einhergehen"
+---
+
+- **Ein kalter Zug.** Der Prompt-Cache ist organisationsgebunden, sodass der erste Zug auf einem neuen Konto den Kontext einmal erneut hochlädt.
+- **Erschöpft-Pause-Ruckler.** Nur ein vollständig erschöpfter Pool stoppt die Sitzung für den Countdown; alles, was in diesem Sekundenbruchteil getippt wird, geht verloren.
+- **Übernahmeverzögerung.** Auf macOS kann der erste Zug innerhalb von ~30 Sekunden nach einem Wechsel noch das alte Konto belasten; der Spielraum der Schranken fängt das ab.
+- **Geteilter Wirkungsradius.** Alle Sitzungen des Standardprofils teilen eine Live-Anmeldeinformation, sodass ein Wechsel sie alle zusammen bewegt (jede übernimmt an Ort und Stelle).
+- **Klartext-Anmeldeinformationen auf Linux.** Claude Code selbst speichert Linux-Anmeldeinformationen als 0600-Klartextdatei; tokenmaxxings geparkte Kopien folgen demselben Modell.

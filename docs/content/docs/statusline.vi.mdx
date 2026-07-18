@@ -1,0 +1,21 @@
+---
+title: Statusline
+description: "Hạn ngạch được thể hiện bằng màu sắc, một dòng, mọi tài khoản đều hiển thị"
+---
+
+tokenmaxxing kết xuất statusline của Claude Code một cách bản địa (đồng thời tee nguồn cấp sử dụng). Nguyên tắc thiết kế: hạn ngạch được thể hiện bằng màu sắc, không phải con số. Một dòng, ví dụ:
+
+```
+tm-wt-demo Fable 5 (high) +156/-23  ◆ 𝒇 2h 1d  ◇ 19h  ◇ 𝒇 2d  ◇ full  ✗ ?
+```
+
+- Mỗi token cửa sổ là thời gian-đến-khi-đặt-lại của nó, được tô trên một dải chuyển màu liên tục xanh-lá-đến-vàng-đến-đỏ theo phần trăm đã dùng (truecolor khi terminal hỗ trợ, nếu không thì được bước hóa lên khối màu 256). Dải chuyển màu neo ở xanh lá thuần cho mức 0, vàng ở 75, và đỏ ở 95 trở lên, nên các dải mức độ nghiêm trọng cũ vẫn tồn tại dưới dạng các điểm neo của dải chuyển màu.
+- Tên mô hình được tô theo mức lấp đầy cửa sổ ngữ cảnh trên cùng dải chuyển màu đó.
+- Một `◆` màu xanh lá dẫn đầu các cửa sổ của tài khoản đang hoạt động; mỗi tài khoản dự trữ có `◇` màu lục lam riêng của nó (`✗` màu đỏ nếu nó cần xác thực lại). Các tài khoản được sắp xếp theo lần đặt lại sắp tới sớm nhất.
+- Theo từng mô hình đứng đầu trong mỗi khối dưới dạng một chữ cái đầu được tô trần: Fable hiển thị `𝒇`; các họ khác dùng chữ cái đầu viết hoa của chúng, luôn được so khớp theo họ.
+- Một tài khoản dự trữ chưa được đụng đến hiển thị `full` màu xanh lá. Mức sử dụng đã đo với một lần đặt lại không xác định hiển thị `?` được tô, và một mức trần theo từng mô hình chưa được đo trên một mô hình bị chặn hiển thị `𝒇?` không được tô: cái chưa được đo không bao giờ được phép trông có vẻ an toàn.
+- Bộ đếm ngược đặt lại chỉ hiển thị đơn vị lớn nhất, không bao giờ là "now" hay "0m"; một cửa sổ không có lần đặt lại sắp tới hiển thị `0` màu xanh lá (lại trống).
+- Tên cơ sở của một git worktree được liên kết dẫn đầu dòng; một checkout chính không hiển thị gì ở đó. Việc phát hiện đọc hệ thống tệp để tìm một tệp `.git` và không bao giờ khởi tạo một tiến trình con git.
+- Khi `NO_COLOR` được đặt, dòng quay về một định dạng số dán liền (`2h5` nghĩa là đặt lại sau 2 giờ, đã dùng 5%; `ctx 42` cho mức lấp đầy ngữ cảnh): không có màu, một cửa sổ đã cạn không được phép trông có vẻ tươi mới.
+
+Các tác vụ subagent có các hàng bảng riêng của chúng qua bề mặt subagentStatusLine của claude: một hàng cho mỗi tác vụ đang hoạt động, tên họ được tô theo mức lấp đầy ngữ cảnh của tác vụ đó.

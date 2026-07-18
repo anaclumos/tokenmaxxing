@@ -1,0 +1,6 @@
+---
+title: Usage personnel et conditions d'utilisation
+description: "Regroupez des comptes que vous possédez, dans des sessions et des agents que vous exécutez vous-même"
+---
+
+tokenmaxxing regroupe des comptes que vous possédez, dans des sessions et des agents que vous exécutez vous-même. Cette formulation est délibérée : Anthropic n'autorise pas les produits tiers à proposer la connexion claude.ai ou les limites de débit de claude.ai, et cela inclut les agents construits sur l'Agent SDK. Ne distribuez pas la surface SDK regroupée, ni rien de construit dessus, à des tiers. tokenmaxxing reste aussi délibérément sur la voie `/usage` médiée par le CLI pour les données de quota plutôt que de réimplémenter OAuth ou de faire transiter le trafic d'API par un proxy : ce n'est pas un proxy, et les seuls points de terminaison OAuth qu'il touche sont l'autorisation de rafraîchissement standard utilisée lors d'une bascule et une vérification d'identité en lecture seule (le point de terminaison des rôles) qui vérifie à quel compte un jeton appartient réellement.

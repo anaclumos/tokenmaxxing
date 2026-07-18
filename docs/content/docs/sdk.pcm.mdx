@@ -1,0 +1,31 @@
+---
+title: The Agent SDK surface
+description: "Pair the pool with the Claude Agent SDK for agents wey you your own dey run"
+---
+
+The package im programmatic entry (`exports["."]` dey point at `src/sdk.ts`) dey pair tokenmaxxing with the Claude Agent SDK for agents wey you build against your own pooled accounts. Your app must run under Bun (tokenmaxxing dey ship TypeScript source and e dey use `bun:ffi`).
+
+```ts
+import { query } from "@anthropic-ai/claude-agent-sdk";
+import { ensureBestAccount, pooledOptions, stopHookCheck } from "tokenmaxxing";
+
+await ensureBestAccount(); // run the switch decision before the spawn
+
+for await (const message of query({
+  prompt: "...",
+  options: {
+    ...pooledOptions(), // pinned real claude + scrubbed env
+    hooks: { Stop: [{ hooks: [stopHookCheck] }] }, // re-decide at every turn boundary
+  },
+})) {
+  // capture the session id from the init message for `resume` across swaps
+}
+```
+
+The Agent SDK dey spawn one claude subprocess per `query()` and e dey read credentials one time for the spawn - no statusline, no mid-query hot-swap - so the integration na boundary-driven:
+
+- `ensureBestAccount()` na the exact decision wey the CLI hooks and timer dey run (bars, pace pressure, cooldown, all shared code), never anticipatory: one SDK session no fit ever get paused for one depleted countdown.
+- `pooledOptions()` dey pin `pathToClaudeCodeExecutable` to the real claude binary (never the supervisor wrapper) and e dey supply one full replacement `env` with every ambient credential override wey dem scrub. E dey fail fast if `CLAUDE_CONFIG_DIR` or `CLAUDE_SECURESTORAGE_CONFIG_DIR` dey set for your app im environment: for Linux one swap go write the live credential wia those dey point while the scrubbed subprocess dey read the default store, one silent wrong-account desync.
+- `stopHookCheck` dey re-run the decision for turn boundaries; one swap wey e land go take effect for the next spawn. E dey catch im own errors (e dey log go stderr and the log) rather than to rethrow am, because one unhandled hook exception fit interrupt the agent, and to abort one turn over one broken switch check dey cost more than to ride out the current account.
+
+`sdk.ts` no dey import anything from the Agent SDK imself; im values dey spread structurally go inside the SDK im options.

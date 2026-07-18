@@ -1,0 +1,48 @@
+---
+title: Gine-gine
+description: "Shim na mai kula, tee na statusline, musanyar Stop hook, da tsarin amincewa"
+---
+
+tokenmaxxing wani wurin shiga ne guda mai kira da yawa (`src/main.ts`) da ke aiki kamar mai kula na `claude` lokacin da aka kira shi da wannan suna, yana ba da shims na hook da statusline ta hanyar umarni na cikin gida, kuma in ba haka ba yana aika CLI. Yana gudana kai tsaye ƙarƙashin Bun; kunshin npm yana aika lambar tushe ta TypeScript, ba build ba.
+
+Sassan da ke motsi:
+
+## Shim na mai kula
+
+`init` yana rubuta shim na shell mai layi 2 mai suna `claude` a cikin `~/.config/tokenmaxxing/bin/` kuma yana sanya wannan babban shiri farko a kan PATH. Lokacin da ka rubuta `claude`, shim ɗin yana gudanar da mai kula, wanda yake ƙirƙira ainihin binary na claude tare da stdio da aka gada da hoton tashar `stty -g` da aka ajiye. Manajan tsari da tashar ne kawai: ba ya taɓa yin proxy na zirga-zirgar API kuma ba ya taɓa taɓa tokens da ke tafiya.
+
+Kiran yanayin bugu (`claude -p`, `--version`, `--help`), umarnin da ba na hulɗa ba (`claude mcp`, `claude config`, da sauransu), da probes na tokenmaxxing suna ratsawa kai tsaye ba tare da sarrafa zama ba. Ga zama na hulɗa, mai kula yana ƙayyade ID na zama (yana samar da ɗaya, ko sake amfani da wanda ka bayar ta `--session-id` / `-r` / `-c`), yana adana flags ɗin farawarka domin sake farawa daga baya zai iya sake maimaita su, sannan yana kallon fayil ɗin alamar sake-farawa (respawn marker) da aka danganta ga wannan zama.
+
+## Tee na statusline
+
+Claude Code yana turo bayanan iyakar-ƙima (`rate_limits.five_hour` da `rate_limits.seven_day`) cikin stdin na statusline a kowane zagaye. tokenmaxxing yana mallakar slot ɗin statusline, don haka mai nuna shi yana yin aiki biyu a matsayin abincin amfani na kyauta, mai tushen turawa: a kowane tick yana tee ɗin tagogin tarin tare da model ɗin da ke aiki cikin `usage.json`. Iyakokin kowane-model ba sa cikin stdin na statusline; suna zuwa ne kawai daga `claude -p '/usage'` (kyauta, sifili tokens), wanda ake dubawa da TTL kuma a ajiye shi cikin `model-usage.json` lokacin da model ɗin da ke aiki ke da ƙayyadaddun ƙarfin ɗauka.
+
+Tee ɗin yana rubutu-akan-canji: lokacin da alkaluma ba su canza ba yana kawai ɗaga mtime na fayil, wanda ke aiki a matsayin bugun zuciyar rayuwar abincin. Ana yin hukunci akan sabon-samu koyaushe ta mtime, ba ta hatimin lokaci da aka saka ba.
+
+## Stop hook da musanya
+
+A kowane iyakar zagaye, Stop hook yana gudanar da shawarar musanya (duba [Yadda musanya ke yanke shawara](/ha/switching)). Lokacin da musanya ta cancanta, tana faruwa a ƙarƙashin makullin keɓe na `flock(2)` (an ɗauka ta `bun:ffi`, tunda macOS ba ta zo da binary na `flock(1)` ba), kuma rubuce-rubucen tantancewa suna ƙulla haɗi ƙari da makullin sabuntawa na Claude Code. A cikin sashe mai muhimmanci, musanya guda:
+
+1. Yana tattara tantancewar da ke aiki a yanzu cikin adana na mai shi na gaskiya.
+2. Yana shigar da sabuwar tantancewar da aka sabunta na asusun da ake nufi a matsayin mai aiki, yana haɗawa cikin blob ɗin da ke aiki don yanayin "yan'uwa" (kamar tokens na OAuth na kowane MCP-server) su tsira.
+3. Yana adana token ɗin da aka juya na wanda ake nufi zuwa ajiyarsa.
+4. Yana sake rubuta filin `oauthAccount` cikin `~/.claude.json` ta hanyar atomic.
+5. Yana tabbatar da sabuwar lakabin mai aiki kuma yana share tsofaffin samfuran amfani, duka kafin makullin ya saki, don kar wani hatsari ya bar tantancewar da aka shigar da lakabin mai aiki suna nuni ga asusu daban-daban.
+
+Domin dukkan zaman bayanan martaba na tsohuwa suna raba tantancewa guda ɗaya da ke aiki, musanya guda tana ƙaura da kowane zama a lokaci ɗaya, kuma flock tare da sake-dubawa ƙarƙashin makulli yana hana hooks masu tsere ƙona asusu biyu.
+
+## Amincewa a wurin
+
+Zaman claude da ke gudana yana bincika ma'ajin tantancewarsa tsakanin buƙatu: a kan macOS yana sake karanta keychain ta hanyar ajiya na ɗan gajeren lokaci kuma yana kwatanta access tokens; a kan Linux yana ɗaukar mtime na fayil ɗin tantancewa kuma yana zubar da ajiyar tokens ɗinsa lokacin canji. Sakamakon shi ne cewa kowane zama da ke gudana yana amincewa da tantancewar da aka musanya cikin kusan daƙiƙa 30 a kan macOS kuma a buƙata ta gaba kai tsaye a kan Linux, ba tare da wani sake farawa ba. Wannan shi ne dalilin da ya sa musanya na yau da kullum ba ya rubuta alama kuma ba ya haifar da sake-farawa - zaman kawai yana ci gaba a kan sabon asusu. `/usage` na cikin zama yana raba ajiyar tokens iri ɗaya, don haka nunin asusunsa yana juyawa tare da amincewa.
+
+## Jira lokacin ƙarewar tafki da ci gaba ta atomatik
+
+Sai lokacin da kowane asusu a cikin tafki ya wuce sandunansa ne Stop hook ke rubuta alamar sake-farawa (tsarin alamar yana buƙatar hatimin lokaci na `waitUntil`; musanya na yau da kullum ba ta iya samar da ɗaya ba). Mai kula yana ganin alamar, yana yiwa yaronsa SIGTERM a iyakar zagaye da aka riga aka tabbatar (Stop hook yana gudana bayan rubutun ya kasance a diski kuma claude ba ya aiki, don haka babu abin da ya ɓace), yana maido da tashar, yana nuna ƙirgar baya zuwa sake saiti mafi kusa, sannan yana sake ƙaddamar da `claude --resume <session-id>` a kan asusun da aka dawo da shi. Ctrl-C yayin ƙirgar baya yana ci gaba nan take. Ana ƙayyade jiran atomatik ta `policy.maxWaitMs` (tsohuwa awa 1); bayan wannan shawarar tana ba da rahoton tafkin a matsayin wanda ya ƙare maimakon jira.
+
+## Agogon dubawa na lokaci-lokaci
+
+Hooks suna aiki ne kawai a iyakokin zagaye, kuma zagaye guda mai tsawo na agent na iya ƙona taga daga lafiya zuwa ƙarewa ba tare da iyaka guda ɗaya ba. Saboda haka `init` yana kuma shigar da agogon lokaci-lokaci - launchd agent a kan macOS, systemd user timer a kan Linux - da ke gudanar da `tokenmaxxing check` kowace daƙiƙa 180 ba tare da la'akari da ayyukan zagaye ba.
+
+## SessionStart hook
+
+Yana gudanar da auna iri ɗaya lokacin da zama ya fara ko ya ci gaba, don sabon zama ya fara a kan asusun da ya dace. Sanyaya bayan-musanya yana sa ya zama daidai babu-aiki (no-op) nan da nan bayan sake-farawa.

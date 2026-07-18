@@ -1,0 +1,12 @@
+---
+title: Build dan distribusi
+description: "Kode sumber TypeScript di npm, dijalankan oleh Bun, diterbitkan dengan provenance"
+---
+
+Paket npm mengirimkan kode sumber TypeScript, bukan sebuah build: bin `tokenmaxxing` menunjuk langsung ke `src/main.ts` dengan sebuah shebang Bun, dan Bun 1.2.6 atau yang lebih baru menjalankannya apa adanya. Itulah sebabnya Bun adalah persyaratan mutlak. Tidak ada biner terkompilasi berdasarkan desain: sebuah rilis awal mengirimkan satu biner macOS 61 MB ke setiap platform dan gagal di Linux dengan `exec format error`, dan paket terkompilasi per-platform masing-masing akan membutuhkan pipeline rilisnya sendiri, sehingga sumber-dijalankan-oleh-Bun menjadi model distribusinya.
+
+Peta `exports` paket mengekspos `src/sdk.ts` sebagai titik masuk terprogram yang dijelaskan di atas. Rilis ditandai `v<version>` di GitHub; CI menerbitkan ke npm melalui trusted publishing (OIDC, dengan provenance), dan gerbang penerbitan menjalankan typecheck dan seluruh rangkaian pengujian terlebih dahulu.
+
+## Lisensi
+
+MIT. Kode sumber di [anaclumos/tokenmaxxing](https://github.com/anaclumos/tokenmaxxing).

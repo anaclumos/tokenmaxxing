@@ -1,0 +1,41 @@
+---
+title: Jinsi kubadilisha kunavyoamua
+description: "Kujihusisha, baa za uchujaji, shinikizo la mwendo, na njia za greedy dhidi ya ngumu"
+---
+
+Uamuzi una tabaka mbili: lango la kujihusisha, kisha njia ya greedy au ngumu.
+
+## Kujihusisha
+
+Chini ya `policy.greedySessionFloor` (chaguo-msingi 50, kwa asilimia ya dirisha la kikao la saa 5), uamuzi hauendeshwi kabisa - kikao kipya hupanda akaunti yake. Mara dirisha la kikao kinachotumika linapofika 50% ya matumizi, au baa yoyote ngumu inapovukwa, uamuzi hujihusisha.
+
+## Baa za uchujaji
+
+Vizingiti ni baa za uchujaji, si kichocheo cha hofu:
+
+- `thresholds.session`: 95. Kujiweka upya kwa saa 5 ni rahisi kukisubiri, hivyo dirisha la kikao hubadilika mapema zaidi.
+- `thresholds.weekly`: 98. Baa hii moja inashughulikia jumla ya siku 7 na kila kikomo cha kila wiki cha kila muundo. Mgao wa kila wiki ni tumia-au-poteza, hivyo hukauka karibu na ukuta.
+
+Zote zimewekwa chini ya 100 kwa makusudi: nafasi ni bajeti ya kufikia mpaka safi wa zamu (pamoja na hadi zamu moja ya ucheleweshaji wa upokeaji kwenye macOS) kabla akaunti haijafikia kikomo chake hasa. Baa zile zile huchuja wagombea wa ubadilishaji: akaunti iliyozidi baa zake zozote si lengo halali. Kichocheo na uchujaji hutumia kila mara baa zile zile zinazotumika (vizingiti bila `policy.projectionMargin`), kwa sababu uchujaji ulio legevu kuliko kichocheo ungeweka ubadilishaji kwenye akaunti ambazo kichocheo huziweka alama tena mara moja, ukiufanya mkusanyiko kwenda na kurudi kama ping-pong.
+
+## Lengo: shinikizo la mwendo
+
+Miongoni mwa akaunti zinazoweza kutumika, lengo ni ile iliyo nyuma zaidi ya mwendo wake wa kila wiki: **shinikizo la mwendo** la juu zaidi, linalofafanuliwa kama asilimia ya kila wiki iliyobaki ikigawanywa kwa muda hadi kujiweka upya kwa wiki kwa akaunti hiyo. Akaunti yenye mgao mwingi zaidi unaokaribia kupotea hushinda. Sare huvunjika kwa muda wa kwisha wa wiki unaokuja mapema zaidi, kisha matumizi ya chini kabisa ya siku 7.
+
+Kila kitu huendeshwa kutokana na madirisha yaliyohifadhiwa kwenye kache yaliyohifadhiwa kama epoki kamili za UTC, hivyo picha kuu iliyopitwa na wakati bado hutatuliwa kwa usahihi: kujiweka upya kwa wiki kulikopita hukadiriwa mbele kwa hatua kamili za siku 7, na dirisha lolote lililopita kujiweka upya kwake kwenye kache huhesabiwa kama tupu jipya (kamwe si sababu ya kubadilisha, kamwe si sababu ya kuiweka akaunti kando).
+
+## Njia ya greedy dhidi ya ngumu
+
+- **Njia ya greedy** (imejihusisha, lakini chini ya kila baa): panga kila akaunti, ikijumuisha ya sasa. Ikiwa akaunti ya sasa tayari inashinda au inasare, usifanye chochote. Vinginevyo badilisha hadi akaunti bora kabisa. Haisubiri kamwe na haiegeshi mapema kamwe - akaunti ya sasa inayoweza kutumika haibadilishwi kwa ajili ya kusubiri. Kwa kuwa akaunti ya sasa pia inapangwa, njia ya otomatiki na `tokenmaxxing switch` peke yake zote ni idempotent: kutathmini mara kwa mara hukusanyika kwenye akaunti sahihi kisha hukaa pale.
+- **Njia ngumu** (baa imevukwa): badilisha uende kwa mgombea bora zaidi anayeweza kutumika. Ikiwa tokeni ya kuonyesha upya ya mgombea itakuwa imekufa, huwekewa alama ya inahitaji-uthibitishaji-upya na mgombea anayefuata hujaribiwa. Ikiwa hakuna kinachoweza kutumika, mantiki ya kusubiri-kwa-kukwisha huendeshwa; ni mpigaji simu pekee anayeweza kweli kusimamisha kikao (Stop hook iliyosimamiwa) ndiye anayeruhusiwa kuegesha mapema kwenye akaunti ambayo bado imezuiwa lakini inayopona mapema zaidi.
+
+## Vikomo vya kila muundo
+
+`policy.switchModels` (chaguo-msingi `["fable"]`) hutaja familia za miundo ambazo kikomo chao cha kila wiki cha kila muundo kinaweza kusababisha ubadilishaji. Ulinganishaji ni kwa tokeni ya familia, kamwe si kwa mfuatano kamili wa kuonyeshwa: majina ya kuonyeshwa ya miundo hubadilika-badilika ("Fable" ikawa "Fable 5"), na lango la mfuatano-kamili wakati mmoja lilizima kimyakimya ubadilishaji wa kila muundo kabisa. Kanuni mbili zinazohusiana za usalama:
+
+- Muundo unaotumika usiojulikana hulinda kila familia iliyosanidiwa. Mara tu baada ya ubadilishaji kufuta picha kuu, mashine isiyo na kichwa inaweza kuendeshwa bila kuona muundo; kutendea usiojulikana kama usiyozuiwa wakati mmoja kuliacha akaunti ikae kwenye kikomo chake cha Fable kwa masaa bila kutambuliwa.
+- Uchujaji wa wagombea huhesabu pia vikomo vya kila muundo vilivyolindwa, hivyo mkusanyiko ambapo kila akaunti imechoma kikomo chake cha Fable haufanyi mzunguko wa kupokezana.
+
+## Kipindi cha kupoa
+
+Kipindi cha kupoa cha sekunde 45 baada ya ubadilishaji hulinda njia ya otomatiki. Tee ya statusline hukandamizwa kwa sekunde 45 zile zile baada ya ubadilishaji (upokeaji huchukua hadi sekunde 30 kwenye macOS), hivyo tathmini ya mapema ingeweza kuendeshwa kwenye data ambayo ubadilishaji wenyewe ulibatilisha - hali hiyo hasa wakati mmoja ilizalisha kitanzi cha kuzalisha upya cha A-kwenda-B-na-kurudi. `tokenmaxxing switch` ya mkono haiathiriwi na kipindi cha kupoa.

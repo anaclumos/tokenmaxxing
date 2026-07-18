@@ -1,0 +1,31 @@
+---
+title: Bề mặt Agent SDK
+description: "Ghép nhóm tài khoản với Claude Agent SDK trong các agent mà chính bạn chạy"
+---
+
+Điểm vào lập trình của gói (`exports["."]` trỏ tới `src/sdk.ts`) ghép tokenmaxxing với Claude Agent SDK cho các agent mà bạn xây dựng dựa trên các tài khoản đã gộp chung của riêng bạn. Ứng dụng của bạn phải chạy dưới Bun (tokenmaxxing phân phối mã nguồn TypeScript và dùng `bun:ffi`).
+
+```ts
+import { query } from "@anthropic-ai/claude-agent-sdk";
+import { ensureBestAccount, pooledOptions, stopHookCheck } from "tokenmaxxing";
+
+await ensureBestAccount(); // run the switch decision before the spawn
+
+for await (const message of query({
+  prompt: "...",
+  options: {
+    ...pooledOptions(), // pinned real claude + scrubbed env
+    hooks: { Stop: [{ hooks: [stopHookCheck] }] }, // re-decide at every turn boundary
+  },
+})) {
+  // capture the session id from the init message for `resume` across swaps
+}
+```
+
+Agent SDK khởi tạo một tiến trình con claude cho mỗi `query()` và đọc thông tin xác thực một lần khi khởi tạo (không có statusline, không hoán đổi nóng giữa query), nên việc tích hợp dựa trên ranh giới:
+
+- `ensureBestAccount()` chính là quyết định mà các hook CLI và bộ hẹn giờ chạy (các ngưỡng, áp lực nhịp độ, thời gian hồi, tất cả đều là mã dùng chung), không bao giờ mang tính dự đoán trước: một phiên SDK không bao giờ có thể bị tạm dừng cho một bộ đếm ngược khi cạn kiệt.
+- `pooledOptions()` ghim `pathToClaudeCodeExecutable` tới tệp nhị phân claude thật (không bao giờ là lớp bọc giám sát) và cung cấp một `env` thay thế đầy đủ với mọi ghi đè thông tin xác thực từ môi trường đã được làm sạch. Nó thất bại nhanh nếu `CLAUDE_CONFIG_DIR` hoặc `CLAUDE_SECURESTORAGE_CONFIG_DIR` được đặt trong môi trường ứng dụng của bạn: trên Linux một lần hoán đổi sẽ ghi thông tin xác thực đang hoạt động vào nơi các biến đó trỏ tới trong khi tiến trình con đã làm sạch lại đọc kho mặc định, một sự mất đồng bộ tài khoản sai một cách âm thầm.
+- `stopHookCheck` chạy lại quyết định tại các ranh giới lượt; một lần hoán đổi mà nó thực hiện có hiệu lực ở lần khởi tạo tiếp theo. Nó bắt các lỗi của chính nó (ghi ra stderr và nhật ký) thay vì ném lại, vì một ngoại lệ hook chưa được xử lý có thể ngắt quãng agent, và việc hủy bỏ một lượt vì một phép kiểm tra chuyển đổi hỏng tốn kém hơn là cứ tiếp tục dùng tài khoản hiện tại.
+
+`sdk.ts` không nhập gì từ chính Agent SDK; các giá trị của nó được trải cấu trúc vào các tùy chọn của SDK.
