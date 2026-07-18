@@ -159,7 +159,7 @@ async function loadFreshSnapshots(cfg: Config, org: string | null, now: number):
  *  sooner runs model-blind on data the swap itself invalidated - that is how a
  *  model-aware swap got immediately undone into an A<->B respawn loop. Manual
  *  `switch` is unaffected. */
-const POST_SWAP_COOLDOWN_MS = 45_000;
+export const POST_SWAP_COOLDOWN_MS = 45_000;
 
 /**
  * `anticipatory` allows the depleted path to swap onto an account that is still

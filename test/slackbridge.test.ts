@@ -93,38 +93,38 @@ describe("recordObservedLimit", () => {
     model: null,
   });
 
-  test("stamps the spawn org's session window 100% with the announced reset", () => {
+  test("stamps the spawn org's session window 100% with the announced reset", async () => {
     seedIdentity("org-a");
     writeUsage(priorUsage("org-a"));
-    recordObservedLimit({ text: "Claude AI usage limit reached|1784369046", now: NOW, org: "org-a" });
+    await recordObservedLimit({ text: "Claude AI usage limit reached|1784369046", now: NOW, org: "org-a" });
     const u = loadUsage();
     expect(u?.fiveHour).toEqual({ usedPercentage: 100, resetsAt: 1_784_369_046_000 });
     expect(u?.sevenDay.usedPercentage).toBe(70); // weekly carried, never fabricated
   });
 
-  test("a weekly-phrased limit stamps the WEEKLY window, not the 5h one", () => {
+  test("a weekly-phrased limit stamps the WEEKLY window, not the 5h one", async () => {
     // a 5h-only stamp would re-seat the account in 5h against a days-dead cap.
     seedIdentity("org-a");
     writeUsage(priorUsage("org-a"));
-    recordObservedLimit({ text: "You've hit your weekly limit.", now: NOW, org: "org-a" });
+    await recordObservedLimit({ text: "You've hit your weekly limit.", now: NOW, org: "org-a" });
     const u = loadUsage();
     expect(u?.sevenDay).toEqual({ usedPercentage: 100, resetsAt: null });
     expect(u?.fiveHour.usedPercentage).toBe(40); // session carried
   });
 
-  test("never stamps when the spawn org is no longer live (mid-turn swap)", () => {
+  test("never stamps when the spawn org is no longer live (mid-turn swap)", async () => {
     seedIdentity("org-b");
     writeUsage(priorUsage("org-b"));
-    recordObservedLimit({ text: "usage limit reached|1784369046", now: NOW, org: "org-a" });
+    await recordObservedLimit({ text: "usage limit reached|1784369046", now: NOW, org: "org-a" });
     expect(loadUsage()?.fiveHour.usedPercentage).toBe(40);
   });
 
-  test("never stamps without a same-org prior snapshot or a known org", () => {
+  test("never stamps without a same-org prior snapshot or a known org", async () => {
     seedIdentity("org-a");
     writeUsage(priorUsage("org-b"));
-    recordObservedLimit({ text: "usage limit reached|1784369046", now: NOW, org: "org-a" });
+    await recordObservedLimit({ text: "usage limit reached|1784369046", now: NOW, org: "org-a" });
     expect(loadUsage()?.fiveHour.usedPercentage).toBe(40);
-    recordObservedLimit({ text: "usage limit reached|1784369046", now: NOW, org: null });
+    await recordObservedLimit({ text: "usage limit reached|1784369046", now: NOW, org: null });
     expect(loadUsage()?.fiveHour.usedPercentage).toBe(40);
   });
 });

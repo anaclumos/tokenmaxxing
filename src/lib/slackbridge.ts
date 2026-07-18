@@ -12,8 +12,10 @@ import { delay } from "es-toolkit";
 import { createSdkMcpServer, query, tool, type SpawnOptions } from "@anthropic-ai/claude-agent-sdk";
 import type { StreamChunk } from "chat";
 import { ensureBestAccount, pooledOptions, stopHookCheck, type SwapDecision } from "../sdk.ts";
+import { POST_SWAP_COOLDOWN_MS } from "./decide.ts";
 import { readOAuthAccount } from "./claudejson.ts";
 import { http, safeErrorDetail } from "./http.ts";
+import { loadLastSwapAt } from "./state.ts";
 import { fmtResetShort, recordObservedLimit } from "./usage.ts";
 import { deleteSlackThread, type SlackLink } from "./slackstate.ts";
 import { agentEventChunks, newStreamMapState, SegmentBreakSchema } from "./slackstream.ts";
@@ -485,7 +487,7 @@ export async function relayThread(input: {
             // persist the observation: the retry's decision otherwise re-reads
             // the stale pre-limit snapshot (poll TTL) and respawns the same
             // depleted account - a serve process has no statusLine tee.
-            if (outcome.rateLimited) recordObservedLimit({ text, now: Date.now(), org: spawnOrg });
+            if (outcome.rateLimited) await recordObservedLimit({ text, now: Date.now(), org: spawnOrg });
           } else {
             result = message.result;
           }
@@ -504,7 +506,7 @@ export async function relayThread(input: {
       outcome.failed = true;
       const detail = (e instanceof Error ? e.message : String(e)).slice(0, 300);
       outcome.rateLimited = isRateLimitText({ text: detail });
-      if (outcome.rateLimited) recordObservedLimit({ text: detail, now: Date.now(), org: spawnOrg });
+      if (outcome.rateLimited) await recordObservedLimit({ text: detail, now: Date.now(), org: spawnOrg });
       log("serve.turn_error", { err: detail });
       if (!outcome.rateLimited) await push(`tokenmaxxing: turn failed: ${detail}`);
     }
@@ -557,7 +559,13 @@ export async function relayThread(input: {
     recoveries += 1;
     breakSegment();
     log("serve.rate_limited_retry", { recoveries });
-    if (!(await sleep(RETRY_DELAY_MS))) {
+    // wait out an active post-swap cooldown too: a swap-then-instant-limit
+    // would otherwise burn every retry inside the 45s window where the
+    // decision refuses to re-evaluate, respawning the same limited account
+    // (review catch, PR #18). The persisted observation then makes the
+    // post-cooldown decision see the depleted account immediately.
+    const cooldownUntil = (loadLastSwapAt() ?? 0) + POST_SWAP_COOLDOWN_MS + 1_000;
+    if (!(await sleep(Math.max(RETRY_DELAY_MS, cooldownUntil - Date.now())))) {
       outcome.failed = true;
       await notify("tokenmaxxing is restarting - this message was dropped; please re-send it.");
       break;

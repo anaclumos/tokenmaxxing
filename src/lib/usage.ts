@@ -10,6 +10,7 @@ import { delay } from "es-toolkit";
 import { z } from "zod";
 import { MAX_WRAP_DEPTH, WRAP_DEPTH_ENV, resolveRealClaude } from "./claudebin.ts";
 import { readOAuthAccount } from "./claudejson.ts";
+import { withLock } from "./lock.ts";
 import { log } from "./log.ts";
 import { paths } from "./paths.ts";
 import { loadUsage, writeUsage } from "./state.ts";
@@ -212,25 +213,32 @@ export function parseUsageLimitEpoch(input: { text: string }): number | null {
  * unmeasured must not look fresh), so the observation is dropped and the
  * retry stays merely bounded.
  */
-export function recordObservedLimit(input: { text: string; now: number; org: string | null }): void {
-  const live = readOAuthAccount()?.organizationUuid ?? null;
-  if (!input.org || live !== input.org) return;
-  const prior = loadUsage();
-  if (!prior || prior.org !== input.org) return;
-  const resetsAt = parseUsageLimitEpoch({ text: input.text });
-  // a weekly-phrased limit exhausts the WEEKLY window: stamping only the 5h
-  // window would let the picker re-seat this account in 5h while the weekly
-  // cap stays dead for days (review catch, PR #18). Unknown-reset blocked
-  // windows self-bound at the window's own duration either way.
-  const weekly = input.text.toLowerCase().includes("weekly");
-  writeUsage({
-    fiveHour: weekly ? prior.fiveHour : { usedPercentage: 100, resetsAt },
-    sevenDay: weekly ? { usedPercentage: 100, resetsAt } : prior.sevenDay,
-    org: input.org,
-    ts: input.now,
-    model: prior.model,
+export async function recordObservedLimit(input: { text: string; now: number; org: string | null }): Promise<void> {
+  if (!input.org) return;
+  // the whole check-then-write runs under the swap flock: a concurrent
+  // performSwap clears the snapshots and flips the live org, and a stale
+  // depleted write must not land for the wrong org right after that
+  // (review catch, PR #18).
+  await withLock(paths.lockFile, () => {
+    const live = readOAuthAccount()?.organizationUuid ?? null;
+    if (live !== input.org) return;
+    const prior = loadUsage();
+    if (!prior || prior.org !== input.org) return;
+    const resetsAt = parseUsageLimitEpoch({ text: input.text });
+    // a weekly-phrased limit exhausts the WEEKLY window: stamping only the 5h
+    // window would let the picker re-seat this account in 5h while the weekly
+    // cap stays dead for days (review catch, PR #18). Unknown-reset blocked
+    // windows self-bound at the window's own duration either way.
+    const weekly = input.text.toLowerCase().includes("weekly");
+    writeUsage({
+      fiveHour: weekly ? prior.fiveHour : { usedPercentage: 100, resetsAt },
+      sevenDay: weekly ? { usedPercentage: 100, resetsAt } : prior.sevenDay,
+      org: input.org,
+      ts: input.now,
+      model: prior.model,
+    });
+    log("usage.observed_limit", { resetsAt, weekly });
   });
-  log("usage.observed_limit", { resetsAt, weekly });
 }
 
 /**

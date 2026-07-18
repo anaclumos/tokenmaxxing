@@ -430,9 +430,14 @@ async function runDaemon(): Promise<number> {
     const prev = threadTurns.get(threadId) ?? Promise.resolve();
     const next = prev.then(run, run);
     threadTurns.set(threadId, next);
-    void next.finally(() => {
-      if (threadTurns.get(threadId) === next) threadTurns.delete(threadId);
-    });
+    // the .finally chain is its own promise: without the .catch, a rejected
+    // turn leaves it as an unhandled rejection even though `next` itself is
+    // awaited by the handler (cubic review catch, PR #18).
+    void next
+      .finally(() => {
+        if (threadTurns.get(threadId) === next) threadTurns.delete(threadId);
+      })
+      .catch(() => {});
     return next;
   };
 
