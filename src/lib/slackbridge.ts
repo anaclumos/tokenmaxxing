@@ -252,10 +252,18 @@ export async function relayThread(input: {
   try {
     // the switch decision runs at the spawn boundary, same as the CLI hooks.
     await ensureBestAccount();
+    const pooled = pooledOptions();
     const q = query({
       prompt: input.prompt,
       options: {
-        ...pooledOptions(),
+        ...pooled,
+        // claude >= 2.1.142 emits the structured Task tools by default and
+        // TodoWrite (the source of the Todos checklist card) never fires;
+        // this documented opt-out restores it (agent-sdk todo-tracking docs,
+        // verified 2026-07-18 against SDK 0.3.214 + claude 2.1.214). Reuses
+        // pooled.env so the scrubbed env copy is built once per turn (cubic
+        // review catch on PR #5).
+        env: { ...pooled.env, CLAUDE_CODE_ENABLE_TASKS: "0" },
         cwd: input.cwd,
         permissionMode: input.link.permissionMode,
         // the SDK refuses bypassPermissions without this explicit opt-in.
