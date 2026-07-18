@@ -1,0 +1,51 @@
+src/lib/slackstate.ts
+  s_d753ced63abba7::t_5108df3178e6b9 60-62
+src/main.ts
+  s_d753ced63abba7::t_3041d0a69a6acf 50
+README.md
+  s_d753ced63abba7::t_fc7d97024f810a 48
+src/lib/paths.ts
+  s_d753ced63abba7::t_37aef32d731548 39
+.memory/serve-slackbot-decisions.md
+  s_d753ced63abba7::t_e38751daa3e72f 3
+  s_d753ced63abba7::t_e387628645b390 15-17
+  s_d753ced63abba7::t_2791b718752f2b 28
+test/slack.test.ts
+  s_d753ced63abba7::t_a3c7ab2243d827 29
+AGENTS.md
+  s_d753ced63abba7::t_921be47a30206e 209
+  s_d753ced63abba7::t_2bc8c89f1f0043 203
+DESIGN.md
+  s_d753ced63abba7::t_dfeb07ef4a41a9 90
+  s_d753ced63abba7::t_a2a2dcb5575dc8 99
+  s_d753ced63abba7::t_d758f5d2e355e8 91
+src/cli/serve.ts
+  s_d753ced63abba7::t_9b3bfdbe1b4cc7 38
+  s_d753ced63abba7::t_f2cf4b249fc164 271
+  s_d753ced63abba7::t_2475948dc650fb 154
+  s_d753ced63abba7::t_80c5703a4975b4 2-10,13
+  s_d753ced63abba7::t_46142576206ac6 273
+  s_d753ced63abba7::t_6ef04a2599913d 182
+  s_d753ced63abba7::t_c3b66d86b5a5d2 42
+  s_d753ced63abba7::t_15c775fdda9294 139
+src/lib/slackbridge.ts
+  s_d753ced63abba7::t_49234790140635 12
+.memory/MEMORY.md
+  s_d753ced63abba7::t_434ec25103dc31 4
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "4211f1bf72d8d2e9cc29f508b57690c253b712b5",
+  "prompts": {},
+  "sessions": {
+    "s_d753ced63abba7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2a212b43-5647-4342-ac13-850d77c63204",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    }
+  }
+}
