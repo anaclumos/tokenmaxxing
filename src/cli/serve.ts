@@ -471,8 +471,7 @@ async function runDaemon(): Promise<number> {
       try {
         await thread.post(`tokenmaxxing: cleanup failed: ${detail}`);
       } catch (postErr) {
-        // never throw into the caller, but an unposted diagnostic must not
-        // vanish silently either.
+        // the diagnostic is best-effort, but its failure is never silent.
         log("serve.finish_notify_error", { thread: thread.id, err: (postErr instanceof Error ? postErr.message : String(postErr)).slice(0, 300) });
       }
       return;
