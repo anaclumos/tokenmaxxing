@@ -3,9 +3,11 @@ import type { NextFetchEvent } from 'next/server';
 import { isMarkdownPreferred, rewritePath } from 'fumadocs-core/negotiation';
 import { createI18nMiddleware } from 'fumadocs-core/i18n/middleware';
 import { i18n } from '@/lib/i18n';
-import { docsContentRoute, docsRoute } from '@/lib/shared';
+import { docsContentRoute } from '@/lib/shared';
 
-// Routes living outside the [lang] segment; they must never be locale-redirected.
+// Routes that must never be locale-redirected or markdown-rewritten. With the
+// docs mounted at the site root, the og and llms.mdx endpoints (bare and
+// locale-prefixed alike) must be excluded before the catch-all page rewrites.
 const passthroughPrefixes = [
   '/api/',
   '/_next/',
@@ -13,6 +15,9 @@ const passthroughPrefixes = [
   '/llms.txt',
   '/llms-full.txt',
   '/favicon.ico',
+  '/og/',
+  '/llms.mdx/',
+  ...i18n.languages.flatMap((lang) => [`/${lang}/og/`, `/${lang}/llms.mdx/`]),
 ];
 
 // The default language answers on the bare path (hideLocale: 'default-locale'),
@@ -29,15 +34,11 @@ const localePrefixes = [
 
 const rewriteDocs = localePrefixes.map(
   ({ prefix, target }) =>
-    rewritePath(`${prefix}${docsRoute}{/*path}`, `${target}${docsContentRoute}{/*path}/content.md`)
-      .rewrite,
+    rewritePath(`${prefix}{/*path}`, `${target}${docsContentRoute}{/*path}/content.md`).rewrite,
 );
 const rewriteSuffix = localePrefixes.map(
   ({ prefix, target }) =>
-    rewritePath(
-      `${prefix}${docsRoute}{/*path}.md`,
-      `${target}${docsContentRoute}{/*path}/content.md`,
-    ).rewrite,
+    rewritePath(`${prefix}{/*path}.md`, `${target}${docsContentRoute}{/*path}/content.md`).rewrite,
 );
 
 const i18nMiddleware = createI18nMiddleware(i18n);

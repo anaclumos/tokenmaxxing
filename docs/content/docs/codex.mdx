@@ -1,0 +1,27 @@
+---
+title: Codex support
+description: Pooling ChatGPT-subscription accounts for the Codex CLI, restart-based
+---
+
+The same pooling works for OpenAI's Codex CLI, against your own ChatGPT-subscription accounts:
+
+```sh
+tokenmaxxing init --codex   # import your current codex login + install the codex supervisor & Stop hook
+tokenmaxxing add --codex    # log in another account, isolated - your primary login is untouched
+codex                       # use codex as always
+```
+
+The Codex pool is fully parallel state: its own accounts index, its own parked credential files (0600 files on both platforms, since codex's own store is a plaintext file), its own lock, its own last-swap timestamp. Nothing is shared with the Claude pool except the decision-policy code.
+
+## Why hot-swap is impossible on Codex
+
+A running codex process holds one in-memory auth manager and explicitly refuses to reload `auth.json` when it now names a different account. There is no file watcher and no per-request credential poll, so a credential swapped underneath a running codex simply never takes effect for inference. Restart is the switch: `codex resume <session-id>` continues the local transcript on whatever account `auth.json` now holds.
+
+tokenmaxxing handles this with a codex supervisor shim: the Stop hook runs the same greedy pace-pressure decision at each turn boundary, and when it swaps, it writes a marker that makes the supervisor SIGTERM the session at the committed boundary and relaunch `codex resume <session-id>` on the fresh account, transcript intact. Because every codex switch is a visible restart, the codex greedy path carries a 1.2x improvement margin: a challenger must beat the current account's pace pressure by 20%, not by a hair. The hard path (a crossed bar) ignores the margin. There is also no depleted-pool countdown for codex - nothing can pause a codex session - so a fully depleted codex pool stays put.
+
+Other codex-specific mechanics:
+
+- Usage is read from a free authenticated GET against codex's own rate-limit endpoint (the same call the CLI's `/status` makes): percentages plus absolute epoch reset times, aggregate windows and per-model caps alike. Window classification is duration-driven, never position-driven, because current plans may have no 5-hour window at all and the weekly window sits in the primary slot.
+- Codex refresh tokens rotate, and reusing a superseded one kills the whole grant family. Every rotation is persisted the instant it returns, the active account is only ever sampled through the live blob (never a stale parked copy), and per-session presence files ensure an account running in a live sibling session is never a swap target and never gets its parked token refreshed.
+- Codex requires the file credential store: `init --codex` fails fast if the keyring store is pinned, and `add --codex` writes the file-mode setting into the isolated onboarding home so the login lands harvestable.
+- One manual step: codex skips hooks it has not been told to trust. After `init --codex`, open codex once and trust the tokenmaxxing Stop hook via `/hooks`, or auto-switching stays silently inert. `init --codex` prints this reminder.

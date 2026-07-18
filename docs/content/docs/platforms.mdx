@@ -1,0 +1,16 @@
+---
+title: Platform notes
+description: How macOS and Linux differ in storage, adoption, and timers
+---
+
+| | macOS | Linux |
+|---|---|---|
+| Live credential | Login keychain generic-password item | 0600 `.credentials.json` file |
+| Parked credentials | Per-account keychain items | 0600 files in a 0700 directory |
+| Adoption after a swap | Within ~30 seconds (keychain read cache) | Next request (file mtime poll) |
+| Periodic check | launchd agent, every 180s | systemd user timer, every 180s |
+| Isolated-login store | Hash-namespaced keychain service per config dir | A file inside the isolated config dir |
+
+Two Linux-specific details worth knowing: claude resolves its credential directory from `CLAUDE_SECURESTORAGE_CONFIG_DIR` first (then `CLAUDE_CONFIG_DIR`, then `~/.claude`), and tokenmaxxing mirrors that resolution exactly so the two never desync. And the two OS builds of the same claude version format `/usage` reset clocks differently (one uses " at " glue, the other a comma); tokenmaxxing's parser accepts exactly those two forms and logs, rather than guesses, on any third.
+
+On macOS, one honest limitation: `init` and `add` touch the keychain interactively on purpose, so the first `security` access is not cold inside a headless hook.

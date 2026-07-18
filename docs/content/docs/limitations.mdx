@@ -1,0 +1,10 @@
+---
+title: Honest limitations
+description: The tradeoffs that come with pooled hot-swapping
+---
+
+- **One cold turn.** Prompt cache is org-scoped, so the first turn on a new account re-uploads context once.
+- **Depleted-pause hiccup.** Only a fully depleted pool stops the session for the countdown; anything typed in that split second is lost.
+- **Adoption lag.** On macOS the first turn within ~30 seconds of a swap can still meter the old account; the bars' headroom absorbs it.
+- **Shared blast radius.** All default-profile sessions share one live credential, so a swap moves them all together (each adopts in place).
+- **Plaintext credentials on Linux.** Claude Code itself stores Linux credentials as a 0600 plaintext file; tokenmaxxing's parked copies follow the same model.

@@ -1,0 +1,25 @@
+---
+title: Commands
+description: Every tokenmaxxing command and what it does
+---
+
+| Command | What it does |
+|---|---|
+| `tokenmaxxing init` | Import the current account, install the supervisor, hooks, and statusline |
+| `tokenmaxxing init --codex` | Same for Codex: import the login, install the codex supervisor and Stop hook |
+| `tokenmaxxing add` | Register an additional account (isolated login, harvested into the pool) |
+| `tokenmaxxing add --codex` | Register an additional Codex account (isolated login) |
+| `tokenmaxxing auth [sel \| --all]` | Reauthenticate a pooled account in place. Bare lists the pool and asks which; a selector targets one account and tells you which email to sign in with; `--all` walks every needs-reauth account one by one |
+| `tokenmaxxing switch [sel]` | Switch to the best account (greedy, idempotent) or force a specific one |
+| `tokenmaxxing switch --codex [sel]` | Switch the Codex pool (takes effect on the next codex start) |
+| `tokenmaxxing ls` | List pooled accounts |
+| `tokenmaxxing status` | Accounts with 5h / weekly / per-model usage bars, active and exhausted-until-reset |
+| `tokenmaxxing status --force` | Additionally ping every account (one tiny haiku request each) so all 5h session timers start now, then sample fresh |
+| `tokenmaxxing watch [seconds]` | Live status, re-rendered every N seconds (default 120, floor 30; never pings) |
+| `tokenmaxxing config [get\|set\|unset\|tidy]` | Effective config with sources; edit dotted keys; `tidy` prunes unknown keys |
+| `tokenmaxxing check` | Evaluate the switch decision once (this is what the periodic timer runs) |
+| `tokenmaxxing serve [setup\|link\|unlink\|links]` | Slack bridge daemon (Socket Mode, no public URL) |
+| `tokenmaxxing doctor` | Verify the supervisor and settings entries survived |
+| `tokenmaxxing rename [--codex] <sel> <label>` | Relabel a pooled account |
+| `tokenmaxxing rm <sel>` | Remove an account from the pool |
+| `tokenmaxxing uninstall` | Remove the supervisor and settings entries (accounts and credentials are kept) |

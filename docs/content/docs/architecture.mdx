@@ -1,0 +1,48 @@
+---
+title: Architecture
+description: The supervisor shim, statusline tee, Stop hook swap, and adoption model
+---
+
+tokenmaxxing is one multi-call entry point (`src/main.ts`) that behaves as the `claude` supervisor when invoked under that name, serves the hook and statusline shims via internal subcommands, and otherwise dispatches the CLI. It runs directly under Bun; the npm package ships TypeScript source, not a build.
+
+The moving parts:
+
+## The supervisor shim
+
+`init` writes a 2-line shell shim named `claude` into `~/.config/tokenmaxxing/bin/` and puts that directory first on PATH. When you type `claude`, the shim runs the supervisor, which spawns the real claude binary with inherited stdio and a saved `stty -g` terminal snapshot. It is a process and terminal manager only: it never proxies API traffic and never touches tokens in flight.
+
+Print-mode invocations (`claude -p`, `--version`, `--help`), non-interactive subcommands (`claude mcp`, `claude config`, and so on), and tokenmaxxing's own probes pass straight through with no session management. For an interactive session, the supervisor pins a session id (generating one, or reusing the one you passed via `--session-id` / `-r` / `-c`), persists your launch flags so a later relaunch can replay them, and then watches for a respawn marker file keyed to that session.
+
+## The statusline tee
+
+Claude Code pushes rate-limit data (`rate_limits.five_hour` and `rate_limits.seven_day`) into the statusline's stdin every turn. tokenmaxxing owns the statusline slot, so its renderer doubles as a free, push-based usage feed: each tick it tees the aggregate windows plus the active model into `usage.json`. Per-model caps are not in statusline stdin; they come only from `claude -p '/usage'` (free, zero tokens), which is polled with a TTL and cached into `model-usage.json` when the active model is capacity-constrained.
+
+The tee is write-on-change: when figures are unchanged it only bumps the file's mtime, which acts as the feed's liveness heartbeat. Freshness is always judged by mtime, never by the embedded timestamp.
+
+## The Stop hook and the swap
+
+At every turn boundary, the Stop hook runs the switch decision (see [How switching decides](/switching)). When a swap is warranted, it happens under a `flock(2)` exclusive lock (taken via `bun:ffi`, since macOS ships no `flock(1)` binary), and the credential writes additionally interlock with Claude Code's own refresh lock. Inside the critical section, one swap:
+
+1. Harvests the current live credential into its true owner's parked backup.
+2. Installs the target account's freshly refreshed credential as the live one, merging into the existing live blob so sibling state (such as per-MCP-server OAuth tokens) survives.
+3. Persists the target's rotated token to its own backup.
+4. Atomically rewrites the `oauthAccount` field in `~/.claude.json`.
+5. Commits the new active label and clears stale usage snapshots, all before the lock releases, so a crash can never leave the installed credential and the active label pointing at different accounts.
+
+Because all default-profile sessions share the one live credential, a single swap migrates every session at once, and the flock plus a re-check under the lock keeps racing hooks from burning two accounts.
+
+## In-place adoption
+
+A running claude session polls its credential store between requests: on macOS it re-reads the keychain through a short cache and compares access tokens; on Linux it stats the credentials file's mtime and flushes its token caches on change. The net effect is that a swapped credential is adopted by every running session within about 30 seconds on macOS and on the very next request on Linux, without any restart. This is why a plain swap writes no marker and triggers no respawn - the session just continues on the new account. In-session `/usage` shares the same token caches, so its account display flips along with adoption.
+
+## Depleted-pool wait and auto-resume
+
+Only when every account in the pool is over its bars does the Stop hook write a respawn marker (the marker schema requires a `waitUntil` timestamp; a plain swap can never produce one). The supervisor sees the marker, SIGTERMs its child at the already-committed turn boundary (the Stop hook runs after the transcript is on disk and claude is idle, so nothing is lost), restores the terminal, shows a countdown to the soonest reset, and then relaunches `claude --resume <session-id>` on the recovered account. Ctrl-C during the countdown resumes immediately. The auto-wait is bounded by `policy.maxWaitMs` (default 1 hour); beyond that the decision reports the pool as depleted instead of waiting.
+
+## The periodic check timer
+
+Hooks only fire at turn boundaries, and one long agentic turn can burn a window from healthy to depleted without a single boundary. `init` therefore also installs a periodic timer - a launchd agent on macOS, a systemd user timer on Linux - that runs `tokenmaxxing check` every 180 seconds regardless of turn activity.
+
+## A SessionStart hook
+
+Runs the same evaluation when a session starts or resumes, so a fresh session begins on the right account. The post-swap cooldown makes it a correct no-op right after a respawn.

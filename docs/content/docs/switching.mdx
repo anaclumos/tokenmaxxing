@@ -1,0 +1,41 @@
+---
+title: How switching decides
+description: Engagement, screening bars, pace pressure, and the greedy vs hard paths
+---
+
+The decision has two layers: an engagement gate, and then a greedy or hard path.
+
+## Engagement
+
+Below `policy.greedySessionFloor` (default 50, in percent of the 5-hour session window), the decision does not run at all - a fresh session rides its account. Once the active session window is 50% used, or any hard bar is crossed, the decision engages.
+
+## Screening bars
+
+The thresholds are screening bars, not the trigger for panic:
+
+- `thresholds.session`: 95. A 5-hour reset is cheap to sit out, so the session window swaps away earlier.
+- `thresholds.weekly`: 98. This one bar covers both the 7-day aggregate and every per-model weekly cap. Weekly quota is use-it-or-lose-it, so it drains close to the wall.
+
+Both are deliberately below 100: the headroom is the budget to reach a clean turn boundary (plus up to one turn of adoption lag on macOS) before the account actually hits its limit. The same bars screen swap candidates: an account over any of its bars is not a valid target. Trigger and screening always use the same effective bars (thresholds minus `policy.projectionMargin`), because a screen laxer than the trigger would land swaps on accounts the trigger immediately re-flags, ping-ponging the pool.
+
+## The target: pace pressure
+
+Among usable accounts, the target is the one furthest behind its own weekly pace: highest **pace pressure**, defined as remaining weekly percent divided by time until that account's weekly reset. The account with the most quota about to be forfeited wins. Ties break to soonest weekly expiry, then lowest 7-day usage.
+
+Everything runs off cached windows stored as absolute UTC epochs, so a stale snapshot still resolves correctly: a weekly reset that has passed extrapolates forward in exact 7-day steps, and any window past its cached reset counts as freshly empty (never a reason to switch, never a reason to keep an account benched).
+
+## Greedy vs hard path
+
+- **Greedy path** (engaged, but under every bar): rank every account, current included. If the current account already wins or ties, do nothing. Otherwise swap onto the strictly better account. It never waits and never pre-parks - a usable current account is not traded for a wait. Because the current account is ranked too, both the automatic path and bare `tokenmaxxing switch` are idempotent: evaluating periodically converges on the right account and then stays put.
+- **Hard path** (a bar crossed): swap away to the best usable candidate. If a candidate's refresh token turns out to be dead, it is flagged needs-reauth and the next candidate is tried. If nothing is usable, the depleted-wait logic runs; only a caller that can actually pause the session (the supervised Stop hook) is allowed to pre-park onto a still-blocked but soonest-recovering account.
+
+## Per-model caps
+
+`policy.switchModels` (default `["fable"]`) names the model families whose per-model weekly cap can trigger a switch. Matching is by family token, never by exact display string: model display names drift ("Fable" became "Fable 5"), and an exact-string gate once silently disabled per-model switching entirely. Two related safety rules:
+
+- An unknown active model gates every configured family. Right after a swap clears snapshots, a headless machine can run model-blind; treating unknown as unconstrained once let an account sit at its Fable cap for hours unnoticed.
+- Candidate screening counts gated per-model caps too, so a pool where every account has burnt its Fable cap does not round-robin.
+
+## Cooldown
+
+A 45-second post-swap cooldown gates the automatic path. The statusline tee is suppressed for the same 45 seconds after a swap (adoption takes up to 30 seconds on macOS), so an earlier evaluation would run on data the swap itself invalidated - that exact scenario once produced an A-to-B-and-back respawn loop. Manual `tokenmaxxing switch` is unaffected by the cooldown.

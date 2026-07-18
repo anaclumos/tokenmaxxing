@@ -1,0 +1,34 @@
+---
+title: Troubleshooting and FAQ
+description: Common questions and the diagnostics behind them
+---
+
+**`claude` doesn't seem to be supervised.**
+Run `tokenmaxxing doctor`. The shim must win PATH resolution; check that the `# tokenmaxxing PATH` line in your shell rc points at the current bin directory and sits ahead of the real claude. `doctor` also warns about `alias claude=...` or a `claude()` shell function shadowing the wrapper, and about aliases that launch a claude binary by absolute path (those bypass the supervisor entirely).
+
+**Auto-switching never fires on Codex.**
+Codex skips hooks it has not been told to trust. Open codex, run `/hooks`, and trust the tokenmaxxing Stop hook. Trust is recorded against the hook's hash, so it must be re-granted if the hook is ever edited.
+
+**An account shows a red `✗` in the statusline.**
+Its refresh token is dead (revoked or rotated out from under its backup). Run `tokenmaxxing auth <sel>` to reauthenticate it in place; the command tells you which email to sign in with and refuses a login that lands on a different account.
+
+**Why doesn't it switch to the account with the most remaining quota?**
+Because that is not the account most at risk of forfeiting quota. The target is the account furthest behind its own weekly pace: remaining percent divided by time to its weekly reset. With equal amounts remaining that reduces to soonest expiry first, and with equal expiry to most remaining first.
+
+**It just switched and the statusline still shows the old account.**
+Expected for up to ~30 seconds on macOS: the running session adopts the swapped credential on its next credential-cache refresh. The usage tee is suppressed for 45 seconds after a swap for exactly this reason.
+
+**Does `status --force` cost anything?**
+Yes, deliberately: it sends one minimal metered haiku request per account so every 5-hour session window starts at that instant instead of lying dormant, then samples fresh. Plain `status` and `watch` never ping; `/usage` reads are free. Note the server usage feed can lag a freshly opened window by seconds to minutes, so a probe immediately after the ping may still show the pre-ping state - `status` renders a note instead of pretending the ping failed.
+
+**The `/usage` probe returned nothing for the active account.**
+That is a known claude behavior: when its internal usage fetch fails or is rate-limited, `/usage` prints only local session stats with no percentage lines. tokenmaxxing samples the active account from the statusline push and only probes parked accounts, precisely to avoid this.
+
+**Background claude sessions.**
+Claude's background daemon spawns the real versioned binary by absolute path, bypassing PATH shims, so background sessions are unsupervised. Hooks still fire via `settings.json`, and credential adoption plus the periodic timer cover switching, but there is no marker-driven respawn for them.
+
+**Something spawned a lot of processes once. Is that still possible?**
+The supervisor carries layered recursion guards against exactly that historical failure (a stale wrapper pinned as the "real" claude): a depth sentinel in the environment that aborts at 5 levels, an on-disk spawn-rate limiter, realpath identity checks that reject any candidate resolving back into tokenmaxxing's own bin directory, and a hard failure (never a silent PATH scan) when a configured claude path no longer exists. `init` and `doctor` verify a candidate actually is claude by running `--version` before pinning it.
+
+**Uninstalling.**
+`tokenmaxxing uninstall` removes the supervisor shims, settings entries, and the periodic timer, and leaves your accounts and parked credentials intact. It only removes statusline entries it recognizes as its own.

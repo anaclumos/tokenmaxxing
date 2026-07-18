@@ -1,0 +1,6 @@
+---
+title: Personal use and terms of service
+description: Pool accounts you own, in sessions and agents you run yourself
+---
+
+tokenmaxxing pools accounts you own, in sessions and agents you run yourself. That wording is deliberate: Anthropic does not allow third-party products to offer claude.ai login or claude.ai rate limits, and that includes agents built on the Agent SDK. Do not ship the pooled SDK surface, or anything built on it, to third parties. tokenmaxxing also deliberately stays on the CLI-mediated `/usage` path for quota data rather than reimplementing OAuth or proxying API traffic: it is not a proxy, and the only OAuth endpoints it touches are the standard refresh grant used during a swap and a read-only identity check (the roles endpoint) that verifies which account a token actually belongs to.

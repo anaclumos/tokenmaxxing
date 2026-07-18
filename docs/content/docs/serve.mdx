@@ -1,0 +1,23 @@
+---
+title: The Slack bridge
+description: xx serve runs Claude Code sessions from Slack threads over Socket Mode
+---
+
+`tokenmaxxing serve` runs a local Slack daemon over Socket Mode - no public URL required. Setup:
+
+```sh
+tokenmaxxing serve setup                    # prints the app manifest, prompts for the two tokens
+tokenmaxxing serve link <channel-id> <repo> # tie a channel to a repo checkout
+tokenmaxxing serve                          # run the daemon
+```
+
+Mention the bot in a linked channel and it opens a Claude Code session for that thread, in the linked repo checkout. Every thread message runs one Agent SDK `query()` with `resume` - never a persistent streaming query - so `ensureBestAccount()` re-evaluates the pool on every single turn and the daemon can restart without losing threads (thread records are durable; the daemon re-subscribes them on startup).
+
+Notable behavior:
+
+- **Streaming**: replies stream natively into Slack, with task cards for thinking and tool runs, fenced code rendered with highlighting, a closing "Turn" card with cost and duration, and a new Slack message opened whenever a tool run interrupts streamed text, so a turn reads as separate messages around tool runs. TodoWrite calls update one stable checklist card in place.
+- **Permissions**: per-link `permissionMode` defaults to `acceptEdits`; `--yolo` (alias `--dangerous`) opts a link into `bypassPermissions`. Interactive dialogs are disallowed in relayed turns - nobody can answer one through Slack - so the model asks in prose and your thread reply is the next turn. A bundled plugin skill teaches it to tag the requester and end the turn when it needs a decision.
+- **Slash commands**: a thread message whose stripped text starts with `/` runs as a claude slash command. Slack's composer eats messages starting with `/`, so use the mention-first form (`@bot /usage`) or a leading space.
+- **Graceful shutdown**: SIGTERM/SIGINT drains - new turns are dropped loudly, in-flight turns get up to 5 minutes, and the claude child runs detached in its own process group so a terminal Ctrl-C cannot kill it before the drain preserves the turn.
+- **Thread cleanup**: when you tell it the work is done, the model calls an in-process `finish_thread` tool; after the turn fully ends, the daemon drops the thread record, unsubscribes, and posts one confirmation. A fresh mention starts a new session.
+- **Error hygiene**: turn errors post trimmed message-only text, never raw error bodies.
