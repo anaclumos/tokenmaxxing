@@ -1,0 +1,119 @@
+docs/app/layout.tsx
+  s_0de5a2f5ec0bbf::t_08bf56eae9a5da 1-17
+docs/app/api/search/route.ts
+  s_0de5a2f5ec0bbf::t_08bf56eae9a5da 1-7
+docs/app/global.css
+  s_0de5a2f5ec0bbf::t_08bf56eae9a5da 1-12
+test/statusline.test.ts
+  s_0de5a2f5ec0bbf::t_08bf56eae9a5da 6
+AGENTS.md
+  s_0de5a2f5ec0bbf::t_d3e3dc404a1bd1 213
+  s_0de5a2f5ec0bbf::t_08bf56eae9a5da 65,210,212,214
+src/cli/serve.ts
+  s_0de5a2f5ec0bbf::t_c7ef443a5ff652 418-423,425-426,435-443,445
+  s_0de5a2f5ec0bbf::t_bd6c8580e1d9c9 462-463,480-490
+  s_0de5a2f5ec0bbf::t_3e23d45fe67199 471-477
+  s_0de5a2f5ec0bbf::t_72c954cec21087 561-566,571
+  s_0de5a2f5ec0bbf::t_70a14d563562d5 349
+  s_0de5a2f5ec0bbf::t_08bf56eae9a5da 26,103,121-133,231,240-250,291-296,307-309,379-382,384-398,617-627,638-663,665-667,670-672,689,692-697
+  s_0de5a2f5ec0bbf::t_0e91003aa2c75e 572-593,595-609
+  s_0de5a2f5ec0bbf::t_708e195d19a811 43
+docs/postcss.config.mjs
+  s_0de5a2f5ec0bbf::t_08bf56eae9a5da 1-7
+src/lib/slackstate.ts
+  s_0de5a2f5ec0bbf::t_08bf56eae9a5da 33-36,41-61
+  s_0de5a2f5ec0bbf::t_dcc1a5b924546c 62
+docs/.gitignore
+  s_0de5a2f5ec0bbf::t_08bf56eae9a5da 1-26
+docs/app/og/docs/[...slug]/route.tsx
+  s_0de5a2f5ec0bbf::t_08bf56eae9a5da 1-28
+docs/package.json
+  s_0de5a2f5ec0bbf::t_08bf56eae9a5da 1-32
+docs/proxy.ts
+  s_0de5a2f5ec0bbf::t_08bf56eae9a5da 1-29
+src/entries/statusline.ts
+  s_0de5a2f5ec0bbf::t_08bf56eae9a5da 27-28
+test/slack.test.ts
+  s_0de5a2f5ec0bbf::t_08bf56eae9a5da 13,42-72
+docs/app/llms.txt/route.ts
+  s_0de5a2f5ec0bbf::t_08bf56eae9a5da 1-8
+.memory/deletion-scope-is-literal.md
+  s_0de5a2f5ec0bbf::t_08bf56eae9a5da 1-12
+docs/app/(home)/page.tsx
+  s_0de5a2f5ec0bbf::t_08bf56eae9a5da 1-16
+docs/app/docs/layout.tsx
+  s_0de5a2f5ec0bbf::t_08bf56eae9a5da 1-11
+docs/lib/cn.ts
+  s_0de5a2f5ec0bbf::t_08bf56eae9a5da 1
+src/lib/slackstream.ts
+  s_0de5a2f5ec0bbf::t_08bf56eae9a5da 289-291
+docs/lib/layout.shared.tsx
+  s_0de5a2f5ec0bbf::t_08bf56eae9a5da 1-12
+docs/app/llms.mdx/docs/[[...slug]]/route.ts
+  s_0de5a2f5ec0bbf::t_08bf56eae9a5da 1-23
+docs/README.md
+  s_0de5a2f5ec0bbf::t_08bf56eae9a5da 1-45
+.memory/slaude-harvest-verdict.md
+  s_0de5a2f5ec0bbf::t_08bf56eae9a5da 1-15
+docs/next.config.mjs
+  s_0de5a2f5ec0bbf::t_08bf56eae9a5da 1-10
+src/lib/usage.ts
+  s_0de5a2f5ec0bbf::t_08bf56eae9a5da 12-13,16,159-242
+  s_0de5a2f5ec0bbf::t_83fe96e93cb18c 243
+test/slackstream.test.ts
+  s_0de5a2f5ec0bbf::t_08bf56eae9a5da 298-332
+src/lib/decide.ts
+  s_0de5a2f5ec0bbf::t_08bf56eae9a5da 43-46,162,266,272
+DESIGN.md
+  s_0de5a2f5ec0bbf::t_08bf56eae9a5da 94,97-98,100
+.memory/serve-restart-kills-turns.md
+  s_0de5a2f5ec0bbf::t_08bf56eae9a5da 1-22
+.memory/MEMORY.md
+  s_0de5a2f5ec0bbf::t_08bf56eae9a5da 3-5
+docs/app/llms-full.txt/route.ts
+  s_0de5a2f5ec0bbf::t_08bf56eae9a5da 1-10
+docs/lib/source.ts
+  s_0de5a2f5ec0bbf::t_08bf56eae9a5da 1-37
+docs/app/(home)/layout.tsx
+  s_0de5a2f5ec0bbf::t_08bf56eae9a5da 1-6
+docs/content/docs/test.mdx
+  s_0de5a2f5ec0bbf::t_08bf56eae9a5da 1-17
+docs/lib/shared.ts
+  s_0de5a2f5ec0bbf::t_08bf56eae9a5da 1-11
+docs/source.config.ts
+  s_0de5a2f5ec0bbf::t_08bf56eae9a5da 1-23
+test/slackbridge.test.ts
+  s_0de5a2f5ec0bbf::t_08bf56eae9a5da 1-4,7-10,13-154
+  s_0de5a2f5ec0bbf::t_8eaca66f427184 155
+docs/components/mdx.tsx
+  s_0de5a2f5ec0bbf::t_08bf56eae9a5da 1-15
+docs/app/docs/[[...slug]]/page.tsx
+  s_0de5a2f5ec0bbf::t_08bf56eae9a5da 1-63
+docs/content/docs/index.mdx
+  s_0de5a2f5ec0bbf::t_08bf56eae9a5da 1-13
+docs/tsconfig.json
+  s_0de5a2f5ec0bbf::t_08bf56eae9a5da 1-35
+src/lib/slackbridge.ts
+  s_0de5a2f5ec0bbf::t_6113da81845e40 506-512
+  s_0de5a2f5ec0bbf::t_a3d65b8960d96f 464-475,477-478
+  s_0de5a2f5ec0bbf::t_08bf56eae9a5da 11,14-19,35-37,43-162,347-356,379-381,383,410-463,479-500,502-505,513-534,536-539,541-580,582-607
+  s_0de5a2f5ec0bbf::t_7cdcc5b5edb413 366-370,373-376
+docs/bun.lock
+  s_0de5a2f5ec0bbf::t_5ef43ef9033ce1 1-726
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "7813ed004c61403453bed24c6d5427658768eb10",
+  "prompts": {},
+  "sessions": {
+    "s_0de5a2f5ec0bbf": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "64dfd01b-80fd-4d43-a405-f9132fb102e5",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    }
+  }
+}
