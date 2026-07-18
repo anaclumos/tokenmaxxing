@@ -189,7 +189,7 @@ function cmdServeLinks(): number {
  *  for degraded-but-continuing conditions, cyan otherwise. Structural endsWith
  *  checks so new events inherit sensible colors from their naming. */
 const RED_EVENT_ENDINGS = ["error", "failed", "invalid_grant"];
-const YELLOW_EVENT_ENDINGS = ["_dropped", "_drift", "_unparsed", "_gave_up", "_abort", "forced_exit", "proceed_without"];
+const YELLOW_EVENT_ENDINGS = ["_dropped", "_drift", "_unparsed", "_gave_up", "_abort", "forced_exit", "proceed_without", "draining"];
 
 function eventPaint(event: string): (s: string) => string {
   if (RED_EVENT_ENDINGS.some((ending) => event.endsWith(ending))) return c.red;
@@ -199,10 +199,13 @@ function eventPaint(event: string): (s: string) => string {
 
 /** One terminal line per log() event while the daemon runs: the file log stays
  *  canonical; this makes `xx serve` observable without tailing tokenmaxxing.log.
- *  Exported for tests. */
+ *  Field values can carry newlines (e.g. usage.probe_failed's stderr excerpt),
+ *  so they are escaped to keep the one-line-per-event contract. Exported for
+ *  tests. */
 export function formatLogLine(input: { event: string; parts: string }): string {
   const time = new Date().toLocaleTimeString("en-GB");
-  return `${c.dim(time)} ${eventPaint(input.event)(input.event)}${input.parts ? ` ${input.parts}` : ""}`;
+  const parts = input.parts.replaceAll("\r", "\\r").replaceAll("\n", "\\n");
+  return `${c.dim(time)} ${eventPaint(input.event)(input.event)}${parts ? ` ${parts}` : ""}`;
 }
 
 async function runDaemon(): Promise<number> {
