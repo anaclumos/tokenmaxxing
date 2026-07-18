@@ -109,6 +109,13 @@ describe("agentEventChunks", () => {
     expect(again).toEqual([{ type: "task_update", id: "toolu_4", title: "Read", status: "in_progress" }]);
   });
 
+  test("whitespace-only text does not trigger a segment break", () => {
+    const state = newStreamMapState();
+    agentEventChunks({ state, message: streamEvent({ event: { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "\n\n" } } }) });
+    const chunks = agentEventChunks({ state, message: streamEvent({ event: { type: "content_block_start", index: 1, content_block: { type: "tool_use", id: "toolu_ws", name: "Bash", input: {} } } }) });
+    expect(chunks).toEqual([{ type: "task_update", id: "toolu_ws", title: "Bash", status: "in_progress" }]);
+  });
+
   test("subagent text is skipped but subagent tool calls emit cards without breaks", () => {
     const state = newStreamMapState();
     agentEventChunks({ state, message: streamEvent({ event: { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "main text" } } }) });
@@ -133,6 +140,27 @@ describe("agentEventChunks", () => {
       session_id: SID,
     } });
     expect(orphan).toEqual([]);
+  });
+
+  test("local_command_output posts its content as reply text, empty stays silent", () => {
+    const state = newStreamMapState();
+    const chunks = agentEventChunks({ state, message: {
+      type: "system",
+      subtype: "local_command_output",
+      content: "Current session: 13% used",
+      uuid: UUID,
+      session_id: SID,
+    } });
+    expect(chunks).toEqual(["Current session: 13% used"]);
+    expect(state.textSinceBreak).toBe(true);
+    const empty = agentEventChunks({ state, message: {
+      type: "system",
+      subtype: "local_command_output",
+      content: "   ",
+      uuid: UUID,
+      session_id: SID,
+    } });
+    expect(empty).toEqual([]);
   });
 
   test("result message emits the closing turn card", () => {

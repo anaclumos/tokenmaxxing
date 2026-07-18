@@ -149,7 +149,10 @@ export function agentEventChunks(input: { state: StreamMapState; message: SDKMes
       const open = state.open[`${message.parent_tool_use_id ?? "main"}:${event.index}`];
       if (event.delta.type === "text_delta") {
         if (!isMain) return [];
-        state.textSinceBreak = true;
+        // whitespace-only deltas must not count as reply text: a "\n\n"
+        // before a tool call would otherwise break the segment and strand a
+        // near-blank Slack message.
+        if (event.delta.text.trim() !== "") state.textSinceBreak = true;
         return [event.delta.text];
       }
       if (event.delta.type === "thinking_delta" && open) open.acc += event.delta.thinking;
@@ -188,6 +191,20 @@ export function agentEventChunks(input: { state: StreamMapState; message: SDKMes
       });
     }
     return chunks;
+  }
+  if (message.type === "system" && message.subtype === "local_command_output") {
+    // Slash-command relay (user ask 2026-07-18): a leading-slash prompt runs
+    // as a claude slash command CLI-side, and a local command's output
+    // (/usage, /context, ...) arrives as a non-streamed assistant message
+    // plus result.result with num_turns 0 - relayThread's no-text fallback
+    // posts that (verified live on SDK 0.3.214 + claude 2.1.214, fresh and
+    // resumed). This subtype is the SDK's documented wire surface for the
+    // same output, so map it too: if a claude update flips the engine to
+    // emitting it, the output still posts, and having posted text suppresses
+    // the result fallback so it never double-posts.
+    if (message.content.trim() === "") return [];
+    state.textSinceBreak = true;
+    return [message.content];
   }
   if (message.type === "result") {
     const models = Object.keys(message.modelUsage).join(" ");
