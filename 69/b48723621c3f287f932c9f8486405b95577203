@@ -1,0 +1,48 @@
+.memory/serve-slackbot-decisions.md
+  s_129da2b1bd4c64::t_3ff6449390da5a 37-38
+  s_129da2b1bd4c64::t_0dad6ae113c439 39-41
+  s_129da2b1bd4c64::t_ca4205951a2f78 42-44
+src/cli/serve.ts
+  s_129da2b1bd4c64::t_1ecb90e7229e93 292-302
+  s_129da2b1bd4c64::t_1ed4f224a6ebdd 271-276
+  s_129da2b1bd4c64::t_bb00c2986d364c 322
+  s_129da2b1bd4c64::t_a5350f9181da91 279
+  s_129da2b1bd4c64::t_87c48e7006f87c 347-348,352-353
+  s_129da2b1bd4c64::t_9a531ac643a7f4 39,188-210,222-226,317,326-329
+test/slack.test.ts
+  s_129da2b1bd4c64::t_e0bbd7de2b87e7 115-117
+  s_129da2b1bd4c64::t_b97f397325d59e 112-114
+  s_129da2b1bd4c64::t_7ed2390e667051 118
+.memory/MEMORY.md
+  s_129da2b1bd4c64::t_116822d9e7ba46 4
+.memory/shipping-pr-based.md
+  s_129da2b1bd4c64::t_7d2a879f656cbb 3,5-8,10
+AGENTS.md
+  s_129da2b1bd4c64::t_d55a1cb2f47f0f 94,210,213
+DESIGN.md
+  s_129da2b1bd4c64::t_31b7e03bd3d571 99,101,135
+src/lib/log.ts
+  s_129da2b1bd4c64::t_49df25e612c9e3 17-26,28,30-35,37,41-47
+src/lib/slackstream.ts
+  s_129da2b1bd4c64::t_cb817ba6a0593a 179-192
+test/log.test.ts
+  s_129da2b1bd4c64::t_a3eab9ba06d4a8 1-72
+test/slackstream.test.ts
+  s_129da2b1bd4c64::t_2294627473fa9d 116-136
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "69b48723621c3f287f932c9f8486405b95577203",
+  "prompts": {},
+  "sessions": {
+    "s_129da2b1bd4c64": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c5beabd3-42ae-4eb8-8d63-4632c4d1dcf2",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    }
+  }
+}
