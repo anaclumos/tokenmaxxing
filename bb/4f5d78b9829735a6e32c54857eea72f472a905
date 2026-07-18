@@ -1,0 +1,47 @@
+src/cli/serve.ts
+  s_b46a7a06a33da9::t_728cd2a781c041 252-284,288-293,307-312,327-379,433-436,442,451-453,456-457,460-471,477-485,487-490,492,494-505,573-579,610-617,657-659,668-760,798-812,831-839
+  s_b46a7a06a33da9::t_967a4f6ab48723 840
+  s_48df7f19f2a9b8::t_3aadc7b4bdef0d 19,21,33,39,42,44-46
+.memory/MEMORY.md
+  s_b46a7a06a33da9::t_8114212c4b53b1 15-16
+.memory/serve-restart-kills-turns.md
+  s_b46a7a06a33da9::t_200e2993f410fd 23-24
+AGENTS.md
+  s_b46a7a06a33da9::t_86ae44246b55c5 206-207,213-214,268,275
+DESIGN.md
+  s_b46a7a06a33da9::t_99291992e800a3 91,95,99
+src/lib/paths.ts
+  s_b46a7a06a33da9::t_376415aeda02bf 39-42,45
+src/lib/slackbridge.ts
+  s_b46a7a06a33da9::t_c0e9bcaf86d789 281-284,286,366-378,464-478,506-512
+src/lib/slackstate.ts
+  s_b46a7a06a33da9::t_795bf6690dfb03 82-108,120-121,162-214
+src/serve-plugin/skills/serve-session/SKILL.md
+  s_b46a7a06a33da9::t_41bba1c6bed079 16-33
+test/slack.test.ts
+  s_b46a7a06a33da9::t_97d56f1eae4331 8,10,18,171-178,181-182,186-239
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "bb4f5d78b9829735a6e32c54857eea72f472a905",
+  "prompts": {},
+  "sessions": {
+    "s_48df7f19f2a9b8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-aba11765dd68849d5",
+        "model": "unknown"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    },
+    "s_b46a7a06a33da9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f099df50-4f97-4d4a-ac3e-6707f6883e97",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    }
+  }
+}
