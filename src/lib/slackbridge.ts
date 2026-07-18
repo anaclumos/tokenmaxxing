@@ -5,9 +5,10 @@
 // without losing threads). Verified against @anthropic-ai/claude-agent-sdk
 // 0.3.214 and code.claude.com/docs 2026-07-18; both change monthly.
 
+import { spawn } from "node:child_process";
 import { join } from "node:path";
 import { z } from "zod";
-import { query } from "@anthropic-ai/claude-agent-sdk";
+import { query, type SpawnOptions } from "@anthropic-ai/claude-agent-sdk";
 import type { StreamChunk } from "chat";
 import { ensureBestAccount, pooledOptions, stopHookCheck } from "../sdk.ts";
 import type { SlackLink } from "./slackstate.ts";
@@ -91,6 +92,65 @@ function pushableStream(): {
   };
 }
 
+/** Live detached process-group leader pids: one process-exit hook SIGTERMs
+ *  them all, so a forced daemon exit (second signal, drain timeout) cannot
+ *  leak claude's tool subprocesses. */
+const liveGroups = new Set<number>();
+let groupExitHookArmed = false;
+
+function killGroup(pid: number): void {
+  try {
+    process.kill(-pid, "SIGTERM");
+  } catch (e) {
+    // ESRCH = the group is already gone, which is the state we wanted;
+    // anything else (EPERM, a bad pid) must surface, not silently leak.
+    if (!(e instanceof Error && "code" in e && e.code === "ESRCH")) throw e;
+  }
+}
+
+/**
+ * Spawns the claude child in its OWN process group (post-0.19.1 review catch):
+ * a terminal Ctrl-C delivers SIGINT to the whole foreground group, so a
+ * non-detached child died at the same instant the daemon's drain started and
+ * the drain could never preserve the in-flight turn. Detached, only the daemon
+ * receives the terminal signal. Two consequences the review on PR #16 caught:
+ * the SDK's SpawnedProcess contract consumes only stdin/stdout, so stderr must
+ * be ignored outright (a piped-but-never-read stderr fills and blocks a chatty
+ * child; exit errors lose the stderr tail, an accepted cost of turn survival),
+ * and the SDK's abort path kills the lone PID, so the forwarded abort signal
+ * and a process-exit hook SIGTERM the whole detached group instead - claude's
+ * tool subprocesses must not outlive the daemon or the turn.
+ */
+export function detachedClaudeSpawn(options: SpawnOptions) {
+  const stdio: ["pipe", "pipe", "ignore"] = ["pipe", "pipe", "ignore"];
+  const child = spawn(options.command, options.args, {
+    cwd: options.cwd,
+    env: options.env,
+    stdio,
+    detached: true,
+  });
+  if (!groupExitHookArmed) {
+    groupExitHookArmed = true;
+    process.once("exit", () => {
+      for (const pid of liveGroups) killGroup(pid);
+    });
+  }
+  if (child.pid !== undefined) {
+    const pid = child.pid;
+    liveGroups.add(pid);
+    const onAbort = () => killGroup(pid);
+    // an already-aborted signal never fires "abort" again (cubic review
+    // catch): a cancellation racing the spawn must still kill the group.
+    if (options.signal?.aborted) onAbort();
+    else options.signal?.addEventListener("abort", onAbort, { once: true });
+    child.once("exit", () => {
+      liveGroups.delete(pid);
+      options.signal?.removeEventListener("abort", onAbort);
+    });
+  }
+  return child;
+}
+
 /**
  * One claude turn relayed into a Slack thread as a SEQUENCE of messages: reply
  * text streams natively, thinking and tool calls stream as task_update cards
@@ -155,6 +215,7 @@ export async function relayThread(input: {
         // without the tool the model asks in prose and the user's thread
         // reply becomes the next turn.
         disallowedTools: ["AskUserQuestion"],
+        spawnClaudeCodeProcess: detachedClaudeSpawn,
         // serve skills (ask-the-user, serve-session); discovered skills are
         // enabled by default, so no `skills` option is needed.
         plugins: [{ type: "local", path: SERVE_PLUGIN_DIR }],
