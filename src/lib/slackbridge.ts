@@ -41,10 +41,11 @@ const SERVE_PLUGIN_DIR = join(import.meta.dir, "..", "serve-plugin");
  * finalize leaves an already-formed mention intact). Wording is load-bearing:
  * the ask-the-user skill points at the "Slack relay context" note.
  */
-export function serveTurnContext(input: { requesterId: string | null }): string {
-  const requester = input.requesterId
-    ? `The requesting user's Slack mention token is <@${input.requesterId}>; include it literally in reply text to notify them.`
-    : "The requesting user is unknown this turn, so no mention token is available.";
+export function serveTurnContext(input: { requesterIds: string[] }): string {
+  const tokens = input.requesterIds.map((id) => `<@${id}>`);
+  let requester = "The requesting user is unknown this turn, so no mention token is available.";
+  if (tokens.length === 1) requester = `The requesting user's Slack mention token is ${tokens[0]}; include it literally in reply text to notify them.`;
+  if (tokens.length > 1) requester = `This turn folds messages from several users; their Slack mention tokens are ${tokens.join(" ")}. Include the relevant user's token literally in reply text to notify them.`;
   return [
     "Slack relay context: this session is relayed into a Slack thread by tokenmaxxing serve, and your reply posts back into the thread.",
     requester,
@@ -106,7 +107,7 @@ export async function relayThread(input: {
   sessionId: string | null;
   prompt: string;
   /** bare Slack user id (U...) of the triggering message's author. */
-  requesterId: string | null;
+  requesterIds: string[];
   link: SlackLink;
   post: (m: AsyncIterable<SegmentChunk>) => Promise<unknown>;
 }): Promise<TurnOutcome> {
@@ -162,7 +163,7 @@ export async function relayThread(input: {
             hooks: [async () => ({
               hookSpecificOutput: {
                 hookEventName: "UserPromptSubmit",
-                additionalContext: serveTurnContext({ requesterId: input.requesterId }),
+                additionalContext: serveTurnContext({ requesterIds: input.requesterIds }),
               },
             })],
           }],
