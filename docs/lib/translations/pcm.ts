@@ -17,7 +17,7 @@ const pcm: Partial<Translations> = {
   "Dark(theme switcher)(aria-label)": "Dark",
   "Default(type table)": "Default",
   "Edit on GitHub(edit page)": "Edit am for GitHub",
-  "Last updated on(page footer)": "Last update on",
+  "Last updated on(page footer)": "Last time wey dem update am na",
   "Light(theme switcher)(aria-label)": "Light",
   "Next Page(pagination)": "Next Page",
   "No Headings(table of contents)": "No Headings dey",

@@ -17,10 +17,14 @@ const passthroughPrefixes = [
 
 // The default language answers on the bare path (hideLocale: 'default-locale'),
 // every other locale on its own prefix; rewrite targets always carry the locale
-// because the actual routes live under [lang].
+// because the actual routes live under [lang]. The default language gets NO
+// prefixed pattern: a /en/... request must fall through to the i18n middleware
+// so it canonicalizes to the bare path instead of serving content at /en.
 const localePrefixes = [
   { prefix: '', target: `/${i18n.defaultLanguage}` },
-  ...i18n.languages.map((lang) => ({ prefix: `/${lang}`, target: `/${lang}` })),
+  ...i18n.languages
+    .filter((lang) => lang !== i18n.defaultLanguage)
+    .map((lang) => ({ prefix: `/${lang}`, target: `/${lang}` })),
 ];
 
 const rewriteDocs = localePrefixes.map(
