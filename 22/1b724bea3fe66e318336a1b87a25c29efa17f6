@@ -1,0 +1,64 @@
+.memory/MEMORY.md
+  s_129da2b1bd4c64::t_10ff8a05548cff 9
+  s_0de5a2f5ec0bbf::t_95a7d79034f0f4 3-5
+.memory/git-show-not-checkout-for-reads.md
+  s_129da2b1bd4c64::t_0e441237862412 1-7
+.memory/serve-slackbot-decisions.md
+  s_0de5a2f5ec0bbf::t_08e5a46344c78d 3,15-17,28-29,32-38
+.memory/shipping-pr-based.md
+  s_129da2b1bd4c64::t_71c56589a9b41e 3,5-8,10
+.memory/tokenmaxxing-project.md
+  s_129da2b1bd4c64::t_65a9875d983ed1 27-28
+AGENTS.md
+  s_129da2b1bd4c64::t_ae5a140d9963c0 1-2,94,205,209-210,212-213
+DESIGN.md
+  s_129da2b1bd4c64::t_455942c01583ff 90-91,95-98,100-101,134
+README.md
+  s_129da2b1bd4c64::t_c01a0ab72b3e94 48
+src/cli/serve.ts
+  s_129da2b1bd4c64::t_45092c1b76eb7c 2-10,13,19,27,38-39,42,139,154,182,188-210,222-226,244-247,251,263-268,275-281,299,301,309,317-320,328-336,339,344,354-383
+src/lib/log.ts
+  s_129da2b1bd4c64::t_677465a66ff680 17-26,28,30-35,37,41-47
+src/lib/paths.ts
+  s_129da2b1bd4c64::t_62f8c3e71de586 39
+src/lib/slackbridge.ts
+  s_129da2b1bd4c64::t_042ef766708c43 12,16-23,95,99-102,124
+src/lib/slackstate.ts
+  s_129da2b1bd4c64::t_c4b0f1e88c10cd 60-62
+src/lib/slackstream.ts
+  s_129da2b1bd4c64::t_6ec808fa66216f 152-155,195-208
+src/main.ts
+  s_129da2b1bd4c64::t_86bb22d59b0e24 50
+test/log.test.ts
+  s_129da2b1bd4c64::t_f3752726c2ce00 1-72
+test/slack.test.ts
+  s_129da2b1bd4c64::t_5739512617b19c 29,90-98
+test/slackstream.test.ts
+  s_129da2b1bd4c64::t_5c1fdf7642c1c6 112-118,145-165
+package.json
+  s_129da2b1bd4c64::t_80eb96b2ad7e5d 3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "221b724bea3fe66e318336a1b87a25c29efa17f6",
+  "prompts": {},
+  "sessions": {
+    "s_0de5a2f5ec0bbf": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "64dfd01b-80fd-4d43-a405-f9132fb102e5",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    },
+    "s_129da2b1bd4c64": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c5beabd3-42ae-4eb8-8d63-4632c4d1dcf2",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    }
+  }
+}
