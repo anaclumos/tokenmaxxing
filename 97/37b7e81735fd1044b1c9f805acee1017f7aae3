@@ -1,0 +1,37 @@
+.memory/MEMORY.md
+  s_b46a7a06a33da9::t_4c35055d3300a4 15-16
+src/cli/serve.ts
+  s_b46a7a06a33da9::t_4c35055d3300a4 19-20,32,38,40-41,43-45,257-264,312-364,418-421,427,436-438,441-442,445-456,462-470,472-475,477-519,521-615,712-726,745-754
+  s_b46a7a06a33da9::t_5fedcb53e0f1fb 755
+src/lib/slackbridge.ts
+  s_b46a7a06a33da9::t_4c35055d3300a4 281-284,286,366-378,464-478,506-512
+src/lib/paths.ts
+  s_b46a7a06a33da9::t_4c35055d3300a4 39-42,45
+DESIGN.md
+  s_b46a7a06a33da9::t_4c35055d3300a4 99
+src/lib/slackstate.ts
+  s_b46a7a06a33da9::t_4c35055d3300a4 82-108,120-121,162-212
+  s_b46a7a06a33da9::t_f85d5b3bdf751f 213-214
+AGENTS.md
+  s_b46a7a06a33da9::t_4c35055d3300a4 213,268,275
+.memory/serve-restart-kills-turns.md
+  s_b46a7a06a33da9::t_4c35055d3300a4 23-24
+test/slack.test.ts
+  s_b46a7a06a33da9::t_4c35055d3300a4 8,10,18,171-178,181-182,186-239
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "9737b7e81735fd1044b1c9f805acee1017f7aae3",
+  "prompts": {},
+  "sessions": {
+    "s_b46a7a06a33da9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f099df50-4f97-4d4a-ac3e-6707f6883e97",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    }
+  }
+}
