@@ -1,0 +1,21 @@
+docs/proxy.ts
+  s_36700e42083764::t_1e35c916830683 59-60,66-72
+  s_36700e42083764::t_81d7bef5cae777 8,16-21,32-33,38
+  s_36700e42083764::t_0a25a185d8ecc5 73-74
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "80da585fa111a8f06f04a9f6596a9cefb4539fce",
+  "prompts": {},
+  "sessions": {
+    "s_36700e42083764": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ceac3c73-063c-4280-a339-82888d1d952a",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    }
+  }
+}
