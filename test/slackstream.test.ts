@@ -2,7 +2,7 @@
 
 import { describe, expect, test } from "bun:test";
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk";
-import { agentEventChunks, newStreamMapState, todoChecklist, toolInputSummary } from "../src/lib/slackstream.ts";
+import { agentEventChunks, newStreamMapState, todoChecklist, toolCardTitle, toolInputSummary } from "../src/lib/slackstream.ts";
 
 const UUID = "00000000-0000-0000-0000-000000000000";
 const SID = "test-session";
@@ -10,6 +10,21 @@ const SID = "test-session";
 function streamEvent(input: { event: Extract<SDKMessage, { type: "stream_event" }>["event"]; parent?: string }): SDKMessage {
   return { type: "stream_event", event: input.event, parent_tool_use_id: input.parent ?? null, uuid: UUID, session_id: SID };
 }
+
+describe("toolCardTitle", () => {
+  test("maps the five awkward names to natural labels, leaves the rest verbatim", () => {
+    expect(toolCardTitle("TaskCreate")).toBe("Creating task");
+    expect(toolCardTitle("ToolSearch")).toBe("Loading tools");
+    expect(toolCardTitle("TaskUpdate")).toBe("Updating task");
+    expect(toolCardTitle("WebSearch")).toBe("Searching the web");
+    expect(toolCardTitle("WebFetch")).toBe("Fetching page");
+    expect(toolCardTitle("Bash")).toBe("Bash");
+    expect(toolCardTitle("mcp__plugin_linear_linear__get_issue")).toBe("mcp__plugin_linear_linear__get_issue");
+    // inherited Object.prototype keys must not shadow the verbatim fallback
+    expect(toolCardTitle("toString")).toBe("toString");
+    expect(toolCardTitle("constructor")).toBe("constructor");
+  });
+});
 
 describe("toolInputSummary", () => {
   test("prefers the command field, falls back to compact json, null on junk", () => {
@@ -96,6 +111,20 @@ describe("agentEventChunks", () => {
     expect(result).toEqual([{ type: "task_update", id: "toolu_1", title: "Bash", status: "complete", output: "4 accounts" }]);
   });
 
+  test("a mapped tool name carries its natural label through start and result cards", () => {
+    const state = newStreamMapState();
+    const start = agentEventChunks({ state, message: streamEvent({ event: { type: "content_block_start", index: 0, content_block: { type: "tool_use", id: "toolu_ws", name: "WebSearch", input: {} } } }) });
+    expect(start).toEqual([{ type: "task_update", id: "toolu_ws", title: "Searching the web", status: "in_progress" }]);
+    const result = agentEventChunks({ state, message: {
+      type: "user",
+      message: { role: "user", content: [{ type: "tool_result", tool_use_id: "toolu_ws", content: "3 results" }] },
+      parent_tool_use_id: null,
+      uuid: UUID,
+      session_id: SID,
+    } });
+    expect(result).toEqual([{ type: "task_update", id: "toolu_ws", title: "Searching the web", status: "complete", output: "3 results" }]);
+  });
+
   test("tool_result is_error maps to an error card", () => {
     const state = newStreamMapState();
     agentEventChunks({ state, message: streamEvent({ event: { type: "content_block_start", index: 0, content_block: { type: "tool_use", id: "toolu_2", name: "Bash", input: {} } } }) });
@@ -120,6 +149,13 @@ describe("agentEventChunks", () => {
     // a second tool with no text in between must NOT break again
     const again = agentEventChunks({ state, message: streamEvent({ event: { type: "content_block_start", index: 2, content_block: { type: "tool_use", id: "toolu_4", name: "Read", input: {} } } }) });
     expect(again).toEqual([{ type: "task_update", id: "toolu_4", title: "Read", status: "in_progress" }]);
+  });
+
+  test("whitespace-only text does not trigger a segment break", () => {
+    const state = newStreamMapState();
+    agentEventChunks({ state, message: streamEvent({ event: { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "\n\n" } } }) });
+    const chunks = agentEventChunks({ state, message: streamEvent({ event: { type: "content_block_start", index: 1, content_block: { type: "tool_use", id: "toolu_ws", name: "Bash", input: {} } } }) });
+    expect(chunks).toEqual([{ type: "task_update", id: "toolu_ws", title: "Bash", status: "in_progress" }]);
   });
 
   test("subagent text is skipped but subagent tool calls emit cards without breaks", () => {
@@ -204,6 +240,27 @@ describe("agentEventChunks", () => {
     agentEventChunks({ state, message: streamEvent({ event: { type: "content_block_delta", index: 0, delta: { type: "input_json_delta", partial_json: input } }, parent: "toolu_parent" }) });
     const stop = agentEventChunks({ state, message: streamEvent({ event: { type: "content_block_stop", index: 0 }, parent: "toolu_parent" }) });
     expect(stop).toEqual([{ type: "task_update", id: "todos-toolu_parent", title: "Todos", status: "in_progress", details: "🔄 Scanning repo" }]);
+  });
+
+  test("local_command_output posts its content as reply text, empty stays silent", () => {
+    const state = newStreamMapState();
+    const chunks = agentEventChunks({ state, message: {
+      type: "system",
+      subtype: "local_command_output",
+      content: "Current session: 13% used",
+      uuid: UUID,
+      session_id: SID,
+    } });
+    expect(chunks).toEqual(["Current session: 13% used"]);
+    expect(state.textSinceBreak).toBe(true);
+    const empty = agentEventChunks({ state, message: {
+      type: "system",
+      subtype: "local_command_output",
+      content: "   ",
+      uuid: UUID,
+      session_id: SID,
+    } });
+    expect(empty).toEqual([]);
   });
 
   test("result message emits the closing turn card", () => {

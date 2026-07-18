@@ -47,7 +47,7 @@ function printHelp(): void {
   ${c.cyan("tokenmaxxing status --force")}  ping every account (one tiny haiku request each) so all 5h session timers start now, then sample fresh; ${c.cyan("xx --force")} works too
   ${c.cyan("tokenmaxxing watch")} [seconds]  live status: re-render every N seconds (default 120, never pings)
   ${c.cyan("tokenmaxxing config")} [get|set|unset|tidy]  inspect and edit config.json (bare = effective config with sources)
-  ${c.cyan("tokenmaxxing serve")} [setup|link|unlink|links]  Slack bridge daemon: mention the bot in a linked channel to open a claude session per thread (worktree by default)
+  ${c.cyan("tokenmaxxing serve")} [setup|link|unlink|links]  Slack bridge daemon: mention the bot in a linked channel to open a claude session per thread in the repo checkout
   ${c.cyan("tokenmaxxing doctor")}     verify the install is intact
   ${c.cyan("tokenmaxxing rename")} [--codex] <sel> <label>
   ${c.cyan("tokenmaxxing rm")} <sel>
