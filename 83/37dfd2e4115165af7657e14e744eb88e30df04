@@ -1,0 +1,19 @@
+src/serve-plugin/skills/serve-session/SKILL.md
+  s_b46a7a06a33da9::t_09b5cd4810f4fa 16-28
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "8337dfd2e4115165af7657e14e744eb88e30df04",
+  "prompts": {},
+  "sessions": {
+    "s_b46a7a06a33da9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f099df50-4f97-4d4a-ac3e-6707f6883e97",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    }
+  }
+}
