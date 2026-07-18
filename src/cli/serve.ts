@@ -17,6 +17,7 @@
 
 import { existsSync, realpathSync } from "node:fs";
 import { delay, uniq } from "es-toolkit";
+import { z } from "zod";
 import { Chat, type StreamChunk } from "chat";
 import { createSlackAdapter } from "@chat-adapter/slack";
 import { createMemoryState } from "@chat-adapter/state-memory";
@@ -35,8 +36,9 @@ import {
   upsertLink,
   SlackLinkSchema,
   type SlackConfig,
+  type SlackLink,
 } from "../lib/slackstate.ts";
-import { cleanupThread, fetchWorkspaceTeamId, relayThread, type CleanupOutcome } from "../lib/slackbridge.ts";
+import { cleanupThread, fetchWorkspaceTeamId, relayThread, type CleanupOutcome, type TurnOutcome } from "../lib/slackbridge.ts";
 import { log, setLogEcho } from "../lib/log.ts";
 import { c, count } from "./render.ts";
 
@@ -221,6 +223,244 @@ export function formatLogLine(input: { event: string; parts: string }): string {
   return `${c.dim(time)} ${eventPaint(input.event)(input.event)}${parts ? ` ${parts}` : ""}`;
 }
 
+/** The slice of a Chat SDK thread the runtime touches. z.custom because it
+ *  carries functions: the zod-native way to name the structural shape once for
+ *  the daemon and test fakes alike. */
+const ServeThreadSchema = z.custom<{
+  id: string;
+  channelId: string;
+  post: (m: string | AsyncIterable<string | StreamChunk>) => Promise<unknown>;
+  subscribe: () => Promise<void>;
+  unsubscribe: () => Promise<void>;
+  startTyping: () => Promise<void>;
+}>();
+type ServeThread = z.infer<typeof ServeThreadSchema>;
+
+/** The slice of a Chat SDK message the author guard + folding read. */
+const ServeMessageSchema = z.custom<{
+  text: string;
+  author: { userId: string; isMe: boolean; isBot?: boolean | "unknown" };
+  raw?: unknown;
+}>();
+type ServeMessage = z.infer<typeof ServeMessageSchema>;
+
+/**
+ * The daemon's message-handling runtime, extracted from runDaemon as an
+ * injectable seam so tests can drive the REAL handler wiring (author guard,
+ * skipped-message folding, per-thread serialization, drain drops, finish
+ * close-out) against fake threads and a fake relay. runDaemon passes the
+ * production deps; behavior is identical.
+ */
+export function buildServeRuntime(seam: {
+  cfg: SlackConfig;
+  workspaceTeamId: string;
+  /** read per message: the adapter only learns its bot user id on connect. */
+  botUserId: () => string | null;
+  relay: (input: {
+    cwd: string;
+    sessionId: string | null;
+    prompt: string;
+    requesterIds: string[];
+    link: SlackLink;
+    post: (m: AsyncIterable<string | StreamChunk>) => Promise<unknown>;
+    drainSignal?: AbortSignal;
+  }) => Promise<TurnOutcome>;
+  cleanup: (input: { threadId: string }) => CleanupOutcome;
+}) {
+  const { cfg, workspaceTeamId } = seam;
+  // in-flight turns, tracked so a shutdown signal can drain them instead of
+  // killing a half-streamed answer (live incident 2026-07-18: a deploy
+  // restart cut a turn mid-sentence and the answer never reached Slack).
+  const activeTurns = new Set<Promise<void>>();
+  // aborts depleted-pool park/retry sleeps on drain, so a countdown never
+  // holds the restart hostage.
+  const drainAbort = new AbortController();
+  let draining = false;
+
+  const handleTurn = async (input: {
+    thread: ServeThread;
+    /** every relayed message this turn (queue-skipped + triggering), text
+     *  paired with its author id: a decision may be owed to an earlier
+     *  folded sender, and a sender whose whole message was the bot mention
+     *  contributes no prompt text, so text and author filter together
+     *  (review catches 2026-07-18). */
+    relayed: { text: string; authorId: string }[];
+    isMention: boolean;
+  }) => {
+    const { thread, isMention } = input;
+    if (draining) {
+      // the socket stays connected until the drain finishes; anything landing
+      // in that window is dropped loudly rather than spawning an unwaitable
+      // turn - and the THREAD is told, not just the log (a silent drop reads
+      // as the bot thinking; slaude's recorded drop-notice rule). Tracked so
+      // the drain wait flushes it before exit; errors swallowed so the notice
+      // can never fail the drain.
+      log("serve.drain_dropped", { thread: thread.id });
+      void tracked(
+        (async () => {
+          try {
+            await thread.post(
+              (async function* () {
+                yield "tokenmaxxing is restarting - this message was dropped; please re-send it in a moment.";
+              })(),
+            );
+          } catch (e) {
+            // caught (never rethrown - the notice must not fail the drain)
+            // but logged: an unposted notice means the user saw nothing.
+            log("serve.drain_notice_failed", { thread: thread.id, err: (e instanceof Error ? e.message : String(e)).slice(0, 300) });
+          }
+        })(),
+      );
+      return;
+    }
+    const link = linkForChannel(cfg, bareChannelId(thread.channelId));
+    if (!link) {
+      log("serve.unlinked_channel", { channel: thread.channelId });
+      return; // not a linked channel - stay silent in Slack
+    }
+    log("serve.message", { thread: thread.id, isMention, texts: input.relayed.length });
+    // relayed carries queue-skipped messages plus the triggering one: the
+    // queue strategy hands a turn only the LATEST message and the rest via
+    // context.skipped, so they are folded into one prompt here. A message
+    // that is empty once its bot mention is stripped contributes neither
+    // prompt text nor a requester id (cursor review catch 2026-07-18).
+    const stripped = input.relayed
+      .map((m) => ({ text: stripLeadingMention({ text: m.text, botUserId: seam.botUserId() }), authorId: m.authorId }))
+      .filter((m) => m.text !== "");
+    const prompt = stripped.map((m) => m.text).join("\n\n");
+    const requesterIds = uniq(stripped.map((m) => m.authorId));
+    if (!prompt) return;
+    let record = loadSlackThread(thread.id);
+    if (!record) {
+      if (!isMention) return; // only a mention opens a session
+      record = { threadId: thread.id, repo: link.repo, cwd: link.repo, sessionId: null, createdAt: new Date().toISOString() };
+      saveSlackThread(record);
+      log("serve.thread_opened", { thread: thread.id, cwd: record.cwd });
+    }
+    // subscriptions live in the memory state, so a daemon restart forgets
+    // them; every mention re-subscribes to keep follow-up replies flowing.
+    if (isMention) await thread.subscribe();
+    // "is working..." assistant status; a no-op until the Slack app has the
+    // agent feature + assistant:write (the adapter warns instead of throwing).
+    await thread.startTyping();
+    const startedAt = Date.now();
+    const outcome = await seam.relay({
+      cwd: record.cwd,
+      sessionId: record.sessionId,
+      prompt,
+      requesterIds,
+      link,
+      post: (m) => thread.post(m),
+      drainSignal: drainAbort.signal,
+    });
+    log(outcome.failed ? "serve.turn_failed" : "serve.turn_done", {
+      thread: thread.id,
+      seconds: Math.round((Date.now() - startedAt) / 1000),
+    });
+    if (outcome.sessionId !== record.sessionId) {
+      saveSlackThread({ ...record, sessionId: outcome.sessionId });
+    }
+    // the user declared the work finished: close the thread now that the
+    // turn (and its claude subprocess) is over. Never throw into the Chat
+    // SDK handler - the daemon must keep serving other threads.
+    if (outcome.finish) {
+      let result: CleanupOutcome;
+      try {
+        result = seam.cleanup({ threadId: thread.id });
+      } catch (e) {
+        const detail = (e instanceof Error ? e.message : String(e)).slice(0, 300);
+        log("serve.cleanup_error", { thread: thread.id, err: detail });
+        try {
+          await thread.post(`tokenmaxxing: cleanup failed: ${detail}`);
+        } catch (postErr) {
+          // the diagnostic is best-effort, but its failure is never silent.
+          log("serve.finish_notify_error", { thread: thread.id, err: (postErr instanceof Error ? postErr.message : String(postErr)).slice(0, 300) });
+        }
+        return;
+      }
+      // the Slack calls are guarded too: this whole path runs inside the Chat
+      // SDK handler and must never throw into it (review catch, PR #18) - the
+      // record is already gone, so a failed confirmation only gets logged.
+      try {
+        // a refusal keeps the subscription so the thread stays live for a retry.
+        if (result.removed) await thread.unsubscribe();
+        await thread.post(result.message);
+      } catch (e) {
+        const detail = (e instanceof Error ? e.message : String(e)).slice(0, 300);
+        log("serve.finish_notify_error", { thread: thread.id, err: detail });
+      }
+      log("serve.thread_finished", { thread: thread.id, removed: result.removed });
+    }
+  };
+
+  const relayable = (m: ServeMessage) => {
+    if (m.author.isMe || m.author.isBot === true) return false;
+    // outsiders must not drive sessions (owner rule 2026-07-16, ported from
+    // slaude): Slack Connect externals and cross-workspace guests are
+    // rejected fail-closed - silent in Slack, loud in the log.
+    if (isOutsideAuthor({ raw: m.raw, workspaceTeamId })) {
+      log("serve.outside_author", {});
+      return false;
+    }
+    return true;
+  };
+
+  const tracked = async (turn: Promise<void>) => {
+    activeTurns.add(turn);
+    try {
+      await turn;
+    } finally {
+      activeTurns.delete(turn);
+    }
+  };
+
+  // Per-thread serialization owned HERE, not only by the SDK's queue lock:
+  // chat 4.34.0 acquires the dispatch lock with a 30s TTL and extends it only
+  // BETWEEN dispatches, so any handler outliving 30s (every claude turn, any
+  // depleted-pool park) lets a later message take the expired lock and start
+  // a second concurrent handler in the same thread and cwd (review catch,
+  // PR #18). Escaped messages run as sequential turns in arrival order.
+  const threadTurns = new Map<string, Promise<void>>();
+  const serialized = (threadId: string, run: () => Promise<void>) => {
+    const prev = threadTurns.get(threadId) ?? Promise.resolve();
+    const next = prev.then(run, run);
+    threadTurns.set(threadId, next);
+    // the .finally chain is its own promise: without the .catch, a rejected
+    // turn leaves it as an unhandled rejection even though `next` itself is
+    // awaited by the handler (cubic review catch, PR #18).
+    void next
+      .finally(() => {
+        if (threadTurns.get(threadId) === next) threadTurns.delete(threadId);
+      })
+      .catch(() => {});
+    return next;
+  };
+
+  // both Chat SDK callbacks funnel here. Filter EVERY message, trigger
+  // included: an outsider (or our own post) arriving last must not discard
+  // relayable home-workspace messages queued behind the turn - the queue hands
+  // the handler only the latest message and the rest ride context.skipped
+  // (review catch, PR #18).
+  const onMessage = async (input: { thread: ServeThread; message: ServeMessage; skipped: ServeMessage[]; isMention: boolean }) => {
+    const relayed = [...input.skipped, input.message].filter(relayable).map((m) => ({ text: m.text, authorId: m.author.userId }));
+    if (relayed.length === 0) return; // outsider mentions never open a session
+    await tracked(serialized(input.thread.id, () => handleTurn({ thread: input.thread, relayed, isMention: input.isMention })));
+  };
+
+  return {
+    /** in-flight turn promises; shutdown drains them. */
+    activeTurns,
+    isDraining: () => draining,
+    /** stop taking new turns and wake parked/retrying ones. */
+    beginDrain: () => {
+      draining = true;
+      drainAbort.abort();
+    },
+    relayable,
+    onMessage,
+  };
+}
+
 async function runDaemon(): Promise<number> {
   let cfg = loadSlackConfig();
   if (!cfg) {
@@ -286,188 +526,19 @@ async function runDaemon(): Promise<number> {
     logger: "warn",
   });
 
-  // in-flight turns, tracked so a shutdown signal can drain them instead of
-  // killing a half-streamed answer (live incident 2026-07-18: a deploy
-  // restart cut a turn mid-sentence and the answer never reached Slack).
-  const activeTurns = new Set<Promise<void>>();
-  // aborts depleted-pool park/retry sleeps on drain, so a countdown never
-  // holds the restart hostage.
-  const drainAbort = new AbortController();
-  let draining = false;
-
-  const handleTurn = async (input: {
-    thread: { id: string; channelId: string; post: (m: string | AsyncIterable<string | StreamChunk>) => Promise<unknown>; subscribe: () => Promise<void>; unsubscribe: () => Promise<void>; startTyping: () => Promise<void> };
-    /** every relayed message this turn (queue-skipped + triggering), text
-     *  paired with its author id: a decision may be owed to an earlier
-     *  folded sender, and a sender whose whole message was the bot mention
-     *  contributes no prompt text, so text and author filter together
-     *  (review catches 2026-07-18). */
-    relayed: { text: string; authorId: string }[];
-    isMention: boolean;
-  }) => {
-    const { thread, isMention } = input;
-    if (draining) {
-      // the socket stays connected until the drain finishes; anything landing
-      // in that window is dropped loudly rather than spawning an unwaitable
-      // turn - and the THREAD is told, not just the log (a silent drop reads
-      // as the bot thinking; slaude's recorded drop-notice rule). Tracked so
-      // the drain wait flushes it before exit; errors swallowed so the notice
-      // can never fail the drain.
-      log("serve.drain_dropped", { thread: thread.id });
-      void tracked(
-        (async () => {
-          try {
-            await thread.post(
-              (async function* () {
-                yield "tokenmaxxing is restarting - this message was dropped; please re-send it in a moment.";
-              })(),
-            );
-          } catch (e) {
-            // caught (never rethrown - the notice must not fail the drain)
-            // but logged: an unposted notice means the user saw nothing.
-            log("serve.drain_notice_failed", { thread: thread.id, err: (e instanceof Error ? e.message : String(e)).slice(0, 300) });
-          }
-        })(),
-      );
-      return;
-    }
-    const link = linkForChannel(cfg, bareChannelId(thread.channelId));
-    if (!link) {
-      log("serve.unlinked_channel", { channel: thread.channelId });
-      return; // not a linked channel - stay silent in Slack
-    }
-    log("serve.message", { thread: thread.id, isMention, texts: input.relayed.length });
-    // relayed carries queue-skipped messages plus the triggering one: the
-    // queue strategy hands a turn only the LATEST message and the rest via
-    // context.skipped, so they are folded into one prompt here. A message
-    // that is empty once its bot mention is stripped contributes neither
-    // prompt text nor a requester id (cursor review catch 2026-07-18).
-    const stripped = input.relayed
-      .map((m) => ({ text: stripLeadingMention({ text: m.text, botUserId: slack.botUserId ?? null }), authorId: m.authorId }))
-      .filter((m) => m.text !== "");
-    const prompt = stripped.map((m) => m.text).join("\n\n");
-    const requesterIds = uniq(stripped.map((m) => m.authorId));
-    if (!prompt) return;
-    let record = loadSlackThread(thread.id);
-    if (!record) {
-      if (!isMention) return; // only a mention opens a session
-      record = { threadId: thread.id, repo: link.repo, cwd: link.repo, sessionId: null, createdAt: new Date().toISOString() };
-      saveSlackThread(record);
-      log("serve.thread_opened", { thread: thread.id, cwd: record.cwd });
-    }
-    // subscriptions live in the memory state, so a daemon restart forgets
-    // them; every mention re-subscribes to keep follow-up replies flowing.
-    if (isMention) await thread.subscribe();
-    // "is working..." assistant status; a no-op until the Slack app has the
-    // agent feature + assistant:write (the adapter warns instead of throwing).
-    await thread.startTyping();
-    const startedAt = Date.now();
-    const outcome = await relayThread({
-      cwd: record.cwd,
-      sessionId: record.sessionId,
-      prompt,
-      requesterIds,
-      link,
-      post: (m) => thread.post(m),
-      drainSignal: drainAbort.signal,
-    });
-    log(outcome.failed ? "serve.turn_failed" : "serve.turn_done", {
-      thread: thread.id,
-      seconds: Math.round((Date.now() - startedAt) / 1000),
-    });
-    if (outcome.sessionId !== record.sessionId) {
-      saveSlackThread({ ...record, sessionId: outcome.sessionId });
-    }
-    // the user declared the work finished: close the thread now that the
-    // turn (and its claude subprocess) is over. Never throw into the Chat
-    // SDK handler - the daemon must keep serving other threads.
-    if (outcome.finish) {
-      let result: CleanupOutcome;
-      try {
-        result = cleanupThread({ threadId: thread.id });
-      } catch (e) {
-        const detail = (e instanceof Error ? e.message : String(e)).slice(0, 300);
-        log("serve.cleanup_error", { thread: thread.id, err: detail });
-        try {
-          await thread.post(`tokenmaxxing: cleanup failed: ${detail}`);
-        } catch (postErr) {
-          // the diagnostic is best-effort, but its failure is never silent.
-          log("serve.finish_notify_error", { thread: thread.id, err: (postErr instanceof Error ? postErr.message : String(postErr)).slice(0, 300) });
-        }
-        return;
-      }
-      // the Slack calls are guarded too: this whole path runs inside the Chat
-      // SDK handler and must never throw into it (review catch, PR #18) - the
-      // record is already gone, so a failed confirmation only gets logged.
-      try {
-        // a refusal keeps the subscription so the thread stays live for a retry.
-        if (result.removed) await thread.unsubscribe();
-        await thread.post(result.message);
-      } catch (e) {
-        const detail = (e instanceof Error ? e.message : String(e)).slice(0, 300);
-        log("serve.finish_notify_error", { thread: thread.id, err: detail });
-      }
-      log("serve.thread_finished", { thread: thread.id, removed: result.removed });
-    }
-  };
-
-  const relayable = (m: { author: { isMe: boolean; isBot?: boolean | "unknown" }; raw?: unknown }) => {
-    if (m.author.isMe || m.author.isBot === true) return false;
-    // outsiders must not drive sessions (owner rule 2026-07-16, ported from
-    // slaude): Slack Connect externals and cross-workspace guests are
-    // rejected fail-closed - silent in Slack, loud in the log.
-    if (isOutsideAuthor({ raw: m.raw, workspaceTeamId })) {
-      log("serve.outside_author", {});
-      return false;
-    }
-    return true;
-  };
-
-  const tracked = async (turn: Promise<void>) => {
-    activeTurns.add(turn);
-    try {
-      await turn;
-    } finally {
-      activeTurns.delete(turn);
-    }
-  };
-
-  // Per-thread serialization owned HERE, not only by the SDK's queue lock:
-  // chat 4.34.0 acquires the dispatch lock with a 30s TTL and extends it only
-  // BETWEEN dispatches, so any handler outliving 30s (every claude turn, any
-  // depleted-pool park) lets a later message take the expired lock and start
-  // a second concurrent handler in the same thread and cwd (review catch,
-  // PR #18). Escaped messages run as sequential turns in arrival order.
-  const threadTurns = new Map<string, Promise<void>>();
-  const serialized = (threadId: string, run: () => Promise<void>) => {
-    const prev = threadTurns.get(threadId) ?? Promise.resolve();
-    const next = prev.then(run, run);
-    threadTurns.set(threadId, next);
-    // the .finally chain is its own promise: without the .catch, a rejected
-    // turn leaves it as an unhandled rejection even though `next` itself is
-    // awaited by the handler (cubic review catch, PR #18).
-    void next
-      .finally(() => {
-        if (threadTurns.get(threadId) === next) threadTurns.delete(threadId);
-      })
-      .catch(() => {});
-    return next;
-  };
-
-  // filter EVERY message, trigger included: an outsider (or our own post)
-  // arriving last must not discard relayable home-workspace messages queued
-  // behind the turn - the queue hands the handler only the latest message and
-  // the rest ride context.skipped (review catch, PR #18).
-  bot.onNewMention(async (thread, message, context) => {
-    const relayed = [...(context?.skipped ?? []), message].filter(relayable).map((m) => ({ text: m.text, authorId: m.author.userId }));
-    if (relayed.length === 0) return; // outsider mentions never open a session
-    await tracked(serialized(thread.id, () => handleTurn({ thread, relayed, isMention: true })));
+  // the message-handling runtime (author guard, folding, per-thread
+  // serialization, drain drops, finish close-out) lives in buildServeRuntime
+  // so tests can drive the real wiring; production deps go in here.
+  const runtime = buildServeRuntime({
+    cfg,
+    workspaceTeamId,
+    botUserId: () => slack.botUserId ?? null,
+    relay: relayThread,
+    cleanup: cleanupThread,
   });
-  bot.onSubscribedMessage(async (thread, message, context) => {
-    const relayed = [...(context?.skipped ?? []), message].filter(relayable).map((m) => ({ text: m.text, authorId: m.author.userId }));
-    if (relayed.length === 0) return;
-    await tracked(serialized(thread.id, () => handleTurn({ thread, relayed, isMention: false })));
-  });
+
+  bot.onNewMention(async (thread, message, context) => runtime.onMessage({ thread, message, skipped: context?.skipped ?? [], isMention: true }));
+  bot.onSubscribedMessage(async (thread, message, context) => runtime.onMessage({ thread, message, skipped: context?.skipped ?? [], isMention: false }));
 
   // drain instead of dying mid-answer: stop taking new turns, let in-flight
   // ones finish (bounded - a hung claude turn must not block a restart
@@ -478,19 +549,18 @@ async function runDaemon(): Promise<number> {
   // disposition - an instant kill with no drain.
   const DRAIN_MS = 300_000;
   const shutdown = async (signal: string) => {
-    if (draining) {
+    if (runtime.isDraining()) {
       log("serve.forced_exit", { signal });
       process.exit(1);
     }
-    draining = true;
-    drainAbort.abort(); // parked/retrying turns wake, post their drop notice, and finish
-    log("serve.draining", { signal, turns: activeTurns.size });
-    console.log(`${c.yellow("●")} ${signal}: draining ${count({ n: activeTurns.size, noun: "in-flight turn" })} (again to force)`);
+    runtime.beginDrain(); // parked/retrying turns wake, post their drop notice, and finish
+    log("serve.draining", { signal, turns: runtime.activeTurns.size });
+    console.log(`${c.yellow("●")} ${signal}: draining ${count({ n: runtime.activeTurns.size, noun: "in-flight turn" })} (again to force)`);
     // re-snapshot until stable inside the deadline: drain-window drop notices
     // join activeTurns after the first snapshot and must still flush.
     const deadline = Date.now() + DRAIN_MS;
-    while (activeTurns.size > 0 && Date.now() < deadline) {
-      await Promise.race([Promise.allSettled([...activeTurns]), delay(deadline - Date.now())]);
+    while (runtime.activeTurns.size > 0 && Date.now() < deadline) {
+      await Promise.race([Promise.allSettled([...runtime.activeTurns]), delay(deadline - Date.now())]);
     }
     try {
       await bot.shutdown();
@@ -499,7 +569,7 @@ async function runDaemon(): Promise<number> {
       // second-signal force path must not be the only escape.
       log("serve.shutdown_error", { err: (e instanceof Error ? e.message : String(e)).slice(0, 300) });
     }
-    log("serve.stopped", { dropped: activeTurns.size });
+    log("serve.stopped", { dropped: runtime.activeTurns.size });
     process.exit(0);
   };
   process.on("SIGTERM", () => void shutdown("SIGTERM"));
