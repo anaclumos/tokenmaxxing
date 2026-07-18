@@ -81,6 +81,11 @@ export async function relayThread(input: {
   prompt: string;
   link: SlackLink;
   post: (m: AsyncIterable<SegmentChunk>) => Promise<unknown>;
+  /** fires the moment the init message assigns a session id, so the caller can
+   *  persist it BEFORE the turn ends - a first-turn kill must stay resumable
+   *  (2026-07-18 incident: a restart killed a first turn and the thread record
+   *  kept sessionId null, stranding the session). */
+  onSessionId?: (sessionId: string) => void;
 }): Promise<TurnOutcome> {
   const outcome: TurnOutcome = { sessionId: input.sessionId, failed: false };
   let segment: ReturnType<typeof pushableStream> | null = null;
@@ -134,7 +139,10 @@ export async function relayThread(input: {
     const mapState = newStreamMapState();
     let result: string | null = null;
     for await (const message of q) {
-      if (message.type === "system" && message.subtype === "init") outcome.sessionId = message.session_id;
+      if (message.type === "system" && message.subtype === "init") {
+        outcome.sessionId = message.session_id;
+        if (message.session_id !== input.sessionId) input.onSessionId?.(message.session_id);
+      }
       if (message.type === "result") {
         outcome.sessionId = message.session_id;
         if (message.subtype === "success") result = message.result;

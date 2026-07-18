@@ -53,6 +53,21 @@ export function isChannelId(s: string): boolean {
 
 // ---- per-thread session records -------------------------------------------
 
+/** Durable in-flight-turn marker. Written before a turn spawns and removed
+ *  when it returns, so a marker that survives into the next daemon start means
+ *  a restart killed the turn mid-run - startup then notifies the thread and
+ *  auto-resumes it (2026-07-18 incident: a redeploy silently killed a ship
+ *  turn 8 minutes in). resumeCount caps the retries: every resumed attempt
+ *  spends real quota, so a turn that keeps dying must not retry forever. */
+export const ActiveTurnSchema = z.object({
+  /** the original folded prompt, replayed verbatim when the killed turn never
+   *  reached its init message (sessionId still null = nothing to resume). */
+  prompt: z.string(),
+  startedAt: z.string(),
+  resumeCount: z.number().int().nonnegative(),
+});
+export type ActiveTurn = z.infer<typeof ActiveTurnSchema>;
+
 export const SlackThreadSchema = z.object({
   /** chat-sdk thread id, e.g. "slack:C0123:1721300000.123456". */
   threadId: z.string(),
@@ -64,6 +79,8 @@ export const SlackThreadSchema = z.object({
   /** claude session id; null until the first turn's init message arrives. */
   sessionId: z.string().nullable(),
   createdAt: z.string(),
+  /** present only while a turn is running (or was killed mid-run). */
+  activeTurn: ActiveTurnSchema.optional(),
 });
 export type SlackThread = z.infer<typeof SlackThreadSchema>;
 
@@ -96,6 +113,59 @@ export function listSlackThreads(): SlackThread[] {
     out.push(SlackThreadSchema.parse(JSON.parse(readFileSync(join(paths.slackThreadsDir, f), "utf8"))));
   }
   return out;
+}
+
+// ---- interrupted-turn resume decision (unit-tested) ------------------------
+
+/** Resumed attempts spend real quota, so an interrupted turn retries at most
+ *  this many times before startup gives up and asks for a human message. */
+export const MAX_TURN_RESUMES = 3;
+
+export const ResumeDecisionSchema = z.union([
+  z.object({ kind: z.literal("give-up"), notice: z.string() }),
+  z.object({
+    kind: z.literal("resume"),
+    notice: z.string(),
+    prompt: z.string(),
+    /** session to resume; null = the kill landed before init assigned one,
+     *  so the original prompt replays in a fresh session. */
+    sessionId: z.string().nullable(),
+    /** the incremented marker to persist BEFORE the resumed turn spawns, so
+     *  a kill during the resume still counts toward the cap. */
+    marker: ActiveTurnSchema,
+  }),
+]);
+export type ResumeDecision = z.infer<typeof ResumeDecisionSchema>;
+
+/** What startup should do with a thread whose activeTurn marker survived the
+ *  previous daemon. Returns null for threads with no surviving marker. */
+export function resumeDecision(record: SlackThread): ResumeDecision | null {
+  const turn = record.activeTurn;
+  if (!turn) return null;
+  if (turn.resumeCount >= MAX_TURN_RESUMES) {
+    return {
+      kind: "give-up",
+      notice: `a daemon restart interrupted this turn, and ${MAX_TURN_RESUMES} resume attempts were interrupted too - giving up. Send a new message to continue.`,
+    };
+  }
+  const marker = { ...turn, resumeCount: turn.resumeCount + 1 };
+  const attempt = marker.resumeCount > 1 ? ` (attempt ${marker.resumeCount}/${MAX_TURN_RESUMES})` : "";
+  if (record.sessionId === null) {
+    return {
+      kind: "resume",
+      notice: `a daemon restart interrupted this turn before its session opened - starting it over${attempt}`,
+      prompt: turn.prompt,
+      sessionId: null,
+      marker,
+    };
+  }
+  return {
+    kind: "resume",
+    notice: `a daemon restart interrupted this turn - resuming${attempt}`,
+    prompt: `A tokenmaxxing serve daemon restart killed your previous turn mid-run. Pick up exactly where you left off and finish the task. If the work was already complete, just summarize the final state. The original request was:\n\n${turn.prompt}`,
+    sessionId: record.sessionId,
+    marker,
+  };
 }
 
 // ---- pure link edits (unit-tested) ----------------------------------------

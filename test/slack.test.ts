@@ -5,13 +5,16 @@ import { describe, expect, test } from "bun:test";
 import { rmSync, writeFileSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import {
+  MAX_TURN_RESUMES,
   SlackConfigSchema,
+  SlackThreadSchema,
   bareChannelId,
   isChannelId,
   linkForChannel,
   loadSlackConfig,
   loadSlackThread,
   removeLink,
+  resumeDecision,
   saveSlackThread,
   stripLeadingMention,
   threadKey,
@@ -104,18 +107,65 @@ describe("slack.json contract", () => {
   });
 });
 
+const baseRecord = {
+  threadId: "slack:C0123:1721.456",
+  repo: "/tmp/repo",
+  cwd: "/tmp/repo",
+  sessionId: null,
+  createdAt: "2026-07-18T00:00:00.000Z",
+};
+
 describe("thread records", () => {
   test("round-trip by thread id", () => {
-    const record = {
-      threadId: "slack:C0123:1721.456",
-      repo: "/tmp/repo",
-      cwd: "/tmp/repo",
-      sessionId: null,
-      createdAt: "2026-07-18T00:00:00.000Z",
-    };
-    saveSlackThread(record);
-    const loaded = loadSlackThread(record.threadId);
+    saveSlackThread(baseRecord);
+    const loaded = loadSlackThread(baseRecord.threadId);
     expect(loaded?.cwd).toBe("/tmp/repo");
     expect(loaded?.sessionId).toBeNull();
+  });
+
+  test("records without activeTurn still parse (pre-marker records)", () => {
+    const loaded = SlackThreadSchema.parse(baseRecord);
+    expect(loaded.activeTurn).toBeUndefined();
+  });
+
+  test("activeTurn marker survives a save/load round-trip and clears on omit-save", () => {
+    const marker = { prompt: "ship the thing", startedAt: "2026-07-18T10:00:00.000Z", resumeCount: 1 };
+    saveSlackThread({ ...baseRecord, activeTurn: marker });
+    expect(loadSlackThread(baseRecord.threadId)?.activeTurn).toEqual(marker);
+    saveSlackThread(baseRecord);
+    expect(loadSlackThread(baseRecord.threadId)?.activeTurn).toBeUndefined();
+  });
+});
+
+describe("resumeDecision", () => {
+  const marker = { prompt: "ship the thing", startedAt: "2026-07-18T10:00:00.000Z", resumeCount: 0 };
+
+  test("no marker = nothing to recover", () => {
+    expect(resumeDecision(baseRecord)).toBeNull();
+  });
+
+  test("marker with a session id resumes it with a continuation prompt", () => {
+    const decision = resumeDecision({ ...baseRecord, sessionId: "sess-1", activeTurn: marker });
+    expect(decision?.kind).toBe("resume");
+    if (decision?.kind !== "resume") throw new Error("expected resume");
+    expect(decision.sessionId).toBe("sess-1");
+    expect(decision.prompt).toContain("ship the thing");
+    expect(decision.prompt).not.toBe("ship the thing");
+    expect(decision.marker.resumeCount).toBe(1);
+  });
+
+  test("marker without a session id replays the original prompt fresh", () => {
+    const decision = resumeDecision({ ...baseRecord, activeTurn: marker });
+    if (decision?.kind !== "resume") throw new Error("expected resume");
+    expect(decision.sessionId).toBeNull();
+    expect(decision.prompt).toBe("ship the thing");
+    expect(decision.marker.resumeCount).toBe(1);
+  });
+
+  test("gives up at the retry cap, never below it", () => {
+    const nearCap = resumeDecision({ ...baseRecord, activeTurn: { ...marker, resumeCount: MAX_TURN_RESUMES - 1 } });
+    expect(nearCap?.kind).toBe("resume");
+    const atCap = resumeDecision({ ...baseRecord, activeTurn: { ...marker, resumeCount: MAX_TURN_RESUMES } });
+    expect(atCap?.kind).toBe("give-up");
   });
 });
