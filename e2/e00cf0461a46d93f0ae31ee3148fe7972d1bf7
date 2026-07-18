@@ -1,0 +1,34 @@
+package.json
+  s_ed0ed0d85004e1::t_df9091a4827721 3
+.memory/tokenmaxxing-project.md
+  s_ed0ed0d85004e1::t_d71aaff98f3f79 27-28
+.memory/serve-slackbot-decisions.md
+  s_ed0ed0d85004e1::t_d5c88d0201afde 27
+.memory/MEMORY.md
+  s_08338c5aab50f8::t_fd5df9bfc9eeb9 3
+  s_ed0ed0d85004e1::t_b96e100e509029 9
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "e2e00cf0461a46d93f0ae31ee3148fe7972d1bf7",
+  "prompts": {},
+  "sessions": {
+    "s_08338c5aab50f8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "449abe10-aeff-477a-adc0-732212d69713",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    },
+    "s_ed0ed0d85004e1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "98fc7c12-0e4d-422f-aea0-2a37bfb68ffb",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    }
+  }
+}
