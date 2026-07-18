@@ -1,0 +1,58 @@
+src/lib/picker.ts
+  s_eaf36da1edfe18::t_41fc8765a9d4a2 130
+src/lib/install.ts
+  s_eaf36da1edfe18::t_58cfadad350955 248
+  s_eaf36da1edfe18::t_04d1572dea6b0c 168
+src/lib/slackstate.ts
+  s_eaf36da1edfe18::t_36ce8176a6c408 17
+  s_eaf36da1edfe18::t_b9ba9c9fc7f6ae 168
+  s_eaf36da1edfe18::t_1df9916e3e6769 88
+src/cli/auth.ts
+  s_eaf36da1edfe18::t_f122c8e3aac43f 22
+src/lib/types.ts
+  s_eaf36da1edfe18::t_8bf1b569daceeb 10
+  s_eaf36da1edfe18::t_e22c9c7b18cf07 56
+  s_eaf36da1edfe18::t_8088191ce458e2 50
+  s_eaf36da1edfe18::t_ce863db50b2213 242
+  s_eaf36da1edfe18::t_f6d376ac59dee9 262
+src/lib/slackbridge.ts
+  s_eaf36da1edfe18::t_1302ff863be1b9 60
+  s_eaf36da1edfe18::t_54652dd31553d6 229
+  s_eaf36da1edfe18::t_2671c23fdeb2e2 256
+src/lib/slackstream.ts
+  s_eaf36da1edfe18::t_1c11fdd6075737 75
+  s_eaf36da1edfe18::t_1418398740d9cf 50
+src/lib/sample.ts
+  s_eaf36da1edfe18::t_2f9c853d6cb06b 34
+src/lib/settings.ts
+  s_eaf36da1edfe18::t_ca475b8ab11cbb 46
+src/lib/codexbin.ts
+  s_eaf36da1edfe18::t_a8324fbd1955a0 13
+src/lib/log.ts
+  s_eaf36da1edfe18::t_aa443ac0f329c1 10
+src/cli/onboard.ts
+  s_eaf36da1edfe18::t_2518e19f2ab421 19
+src/lib/paths.ts
+  s_eaf36da1edfe18::t_8471b63f05dbd9 19
+src/lib/claudejson.ts
+  s_eaf36da1edfe18::t_71023a34013e52 37
+  s_eaf36da1edfe18::t_732a08bb470cb4 10-12,14
+src/lib/claudebin.ts
+  s_eaf36da1edfe18::t_0980225fd0792a 75
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "04ddc34d9fc329bd0cb41478ad0ec92e0d277726",
+  "prompts": {},
+  "sessions": {
+    "s_eaf36da1edfe18": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "085f0c3d-1bd0-4a58-8930-8dfdcf1a0376",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    }
+  }
+}
