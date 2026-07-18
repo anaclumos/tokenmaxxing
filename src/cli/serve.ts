@@ -16,9 +16,9 @@
 //   serve                  run the daemon
 
 import { existsSync, realpathSync } from "node:fs";
-import { delay, uniq } from "es-toolkit";
+import { delay, omit, uniq } from "es-toolkit";
 import { z } from "zod";
-import { Chat, type StreamChunk } from "chat";
+import { Chat, ThreadImpl, type StreamChunk } from "chat";
 import { createSlackAdapter } from "@chat-adapter/slack";
 import { createMemoryState } from "@chat-adapter/state-memory";
 import {
@@ -30,15 +30,20 @@ import {
   loadSlackConfig,
   loadSlackThread,
   removeLink,
+  resumeDecision,
   saveSlackConfig,
   saveSlackThread,
   stripLeadingMention,
   upsertLink,
   SlackLinkSchema,
+  type ActiveTurn,
   type SlackConfig,
   type SlackLink,
+  type SlackThread,
 } from "../lib/slackstate.ts";
-import { cleanupThread, fetchWorkspaceTeamId, relayThread, type CleanupOutcome, type TurnOutcome } from "../lib/slackbridge.ts";
+import { cleanupThread, fetchWorkspaceTeamId, killGroup, relayThread, type CleanupOutcome, type TurnOutcome } from "../lib/slackbridge.ts";
+import { acquireLock } from "../lib/lock.ts";
+import { paths } from "../lib/paths.ts";
 import { log, setLogEcho } from "../lib/log.ts";
 import { c, count } from "./render.ts";
 
@@ -244,12 +249,48 @@ const ServeMessageSchema = z.custom<{
 }>();
 type ServeMessage = z.infer<typeof ServeMessageSchema>;
 
+/** The ps lstart token for a pid, or null when no such process. pid + start
+ *  time is the standard process identity: equality with the token captured
+ *  at spawn proves this is still OUR child, never a recycled pid. LC_ALL=C
+ *  pins the lstart rendering (cubic review catch): the capturing and the
+ *  comparing daemon generation can run under different locales (terminal vs
+ *  launchd), and a formatting mismatch would silently skip a needed reap. */
+function pidStartTime(pid: number): string | null {
+  const res = Bun.spawnSync(["ps", "-p", String(pid), "-o", "lstart="], { env: { ...process.env, LC_ALL: "C" } });
+  if (res.exitCode !== 0) return null;
+  const lstart = res.stdout.toString().trim();
+  return lstart === "" ? null : lstart;
+}
+
+/** Reap a previous generation's detached claude child that survived an
+ *  uncatchable daemon death (SIGKILL, crash: the "exit" event never fires
+ *  on those, so the hook that kills the group never ran) - resuming beside
+ *  a live orphan would put two claude processes on one cwd and session
+ *  (adversarial-review catch). Signals fire ONLY on a verified pid+lstart
+ *  identity match (cubic review catch: this machine runs the user's real
+ *  claude sessions; a recycled pid must never get the kill). SIGTERM the
+ *  group, escalate to SIGKILL if it lingers past the grace. */
+async function reapOrphan(turn: ActiveTurn): Promise<void> {
+  if (turn.pid === undefined || turn.pidStartedAt === undefined) return;
+  if (pidStartTime(turn.pid) !== turn.pidStartedAt) return; // gone, or a recycled pid
+  log("serve.orphan_reaped", { pid: turn.pid });
+  killGroup(turn.pid);
+  for (let i = 0; i < 10; i++) {
+    await delay(500);
+    if (pidStartTime(turn.pid) !== turn.pidStartedAt) return;
+  }
+  killGroup(turn.pid, "SIGKILL");
+}
+
 /**
  * The daemon's message-handling runtime, extracted from runDaemon as an
  * injectable seam so tests can drive the REAL handler wiring (author guard,
- * skipped-message folding, per-thread serialization, drain drops, finish
- * close-out) against fake threads and a fake relay. runDaemon passes the
- * production deps; behavior is identical.
+ * skipped-message folding, per-thread serialization, activeTurn markers,
+ * drain drops, finish close-out) against fake threads and a fake relay.
+ * runDaemon passes the production deps; behavior is identical. The startup
+ * interrupted-turn recovery stays inline in runDaemon (it needs the live bot
+ * and adapter for streamable thread handles) and reuses the chain/turn pieces
+ * exposed here.
  */
 export function buildServeRuntime(seam: {
   cfg: SlackConfig;
@@ -263,6 +304,12 @@ export function buildServeRuntime(seam: {
     requesterIds: string[];
     link: SlackLink;
     post: (m: AsyncIterable<string | StreamChunk>) => Promise<unknown>;
+    /** fires when init assigns a session id the caller has not persisted yet
+     *  (see relayThread). */
+    onSessionId?: (sessionId: string) => void;
+    /** fires with the detached claude child's pid at each spawn (see
+     *  relayThread). */
+    onSpawn?: (pid: number) => void;
     drainSignal?: AbortSignal;
   }) => Promise<TurnOutcome>;
   cleanup: (input: { threadId: string }) => CleanupOutcome;
@@ -276,6 +323,59 @@ export function buildServeRuntime(seam: {
   // holds the restart hostage.
   const drainAbort = new AbortController();
   let draining = false;
+
+  /** One relayed turn with the durable activeTurn marker around it: written
+   *  before the spawn, cleared when the turn returns, so a marker surviving
+   *  into the next daemon start identifies a turn a restart killed mid-run.
+   *  The session id persists the moment init assigns it - a first-turn kill
+   *  must stay resumable. */
+  const runTurn = async (input: {
+    thread: { id: string; post: (m: AsyncIterable<string | StreamChunk>) => Promise<unknown> };
+    record: SlackThread;
+    prompt: string;
+    requesterIds: string[];
+    sessionId: string | null;
+    marker: ActiveTurn;
+    link: SlackLink;
+  }): Promise<TurnOutcome> => {
+    let record: SlackThread = { ...input.record, activeTurn: input.marker };
+    saveSlackThread(record);
+    let outcome: TurnOutcome | null = null;
+    try {
+      outcome = await seam.relay({
+        cwd: record.cwd,
+        sessionId: input.sessionId,
+        prompt: input.prompt,
+        requesterIds: input.requesterIds,
+        link: input.link,
+        post: (m) => input.thread.post(m),
+        onSpawn: (pid) => {
+          // the lstart token makes the pid a verifiable identity for the
+          // orphan reaper; a child dead before ps sees it persists without
+          // one, and an identity-less pid is never signaled.
+          const startedAt = pidStartTime(pid);
+          record = { ...record, activeTurn: { ...input.marker, pid, ...(startedAt === null ? {} : { pidStartedAt: startedAt }) } };
+          saveSlackThread(record);
+        },
+        onSessionId: (sessionId) => {
+          record = { ...record, sessionId };
+          saveSlackThread(record);
+        },
+        drainSignal: drainAbort.signal,
+      });
+      record = { ...record, sessionId: outcome.sessionId };
+      return outcome;
+    } finally {
+      // a failure DURING a drain is presumed to be the shutdown signal killing
+      // the claude child (terminal Ctrl-C and group signals hit the whole
+      // process group, so the child dies and relayThread returns failed while
+      // the daemon is still draining - codex review catch): keep the marker so
+      // the next generation auto-resumes, exactly the killed-turn state it
+      // exists to detect. Outside a drain, or on success, clear it.
+      const presumedKilled = draining && (outcome?.failed ?? true);
+      saveSlackThread(presumedKilled ? record : omit(record, ["activeTurn"]));
+    }
+  };
 
   const handleTurn = async (input: {
     thread: ServeThread;
@@ -330,12 +430,16 @@ export function buildServeRuntime(seam: {
     const prompt = stripped.map((m) => m.text).join("\n\n");
     const requesterIds = uniq(stripped.map((m) => m.authorId));
     if (!prompt) return;
+    // this whole handler runs inside the per-thread `serialized` chain (call
+    // sites below), which startup resumes share too - so this load already
+    // sees any session id a resume persisted, and no second claude process
+    // can ever share this thread's cwd.
     let record = loadSlackThread(thread.id);
     if (!record) {
       if (!isMention) return; // only a mention opens a session
       record = { threadId: thread.id, repo: link.repo, cwd: link.repo, sessionId: null, createdAt: new Date().toISOString() };
       saveSlackThread(record);
-      log("serve.thread_opened", { thread: thread.id, cwd: record.cwd });
+      log("serve.thread_opened", { thread: thread.id, cwd: link.repo });
     }
     // subscriptions live in the memory state, so a daemon restart forgets
     // them; every mention re-subscribes to keep follow-up replies flowing.
@@ -344,53 +448,61 @@ export function buildServeRuntime(seam: {
     // agent feature + assistant:write (the adapter warns instead of throwing).
     await thread.startTyping();
     const startedAt = Date.now();
-    const outcome = await seam.relay({
-      cwd: record.cwd,
-      sessionId: record.sessionId,
+    const outcome = await runTurn({
+      thread,
+      record,
       prompt,
       requesterIds,
+      sessionId: record.sessionId,
+      marker: { prompt, startedAt: new Date().toISOString(), resumeCount: 0 },
       link,
-      post: (m) => thread.post(m),
-      drainSignal: drainAbort.signal,
     });
+    await settleTurn({ thread, outcome, startedAt });
+  };
+
+  /** Post-turn bookkeeping shared by inbound and resumed turns: the outcome
+   *  log line, and the finish_thread garbage collection when the model called
+   *  it. Never throws into the caller - the daemon must keep serving. */
+  const settleTurn = async (input: {
+    thread: { id: string; post: (m: string | AsyncIterable<string | StreamChunk>) => Promise<unknown>; unsubscribe: () => Promise<void> };
+    outcome: TurnOutcome;
+    startedAt: number;
+  }) => {
+    const { thread, outcome, startedAt } = input;
     log(outcome.failed ? "serve.turn_failed" : "serve.turn_done", {
       thread: thread.id,
       seconds: Math.round((Date.now() - startedAt) / 1000),
     });
-    if (outcome.sessionId !== record.sessionId) {
-      saveSlackThread({ ...record, sessionId: outcome.sessionId });
-    }
     // the user declared the work finished: close the thread now that the
-    // turn (and its claude subprocess) is over. Never throw into the Chat
-    // SDK handler - the daemon must keep serving other threads.
-    if (outcome.finish) {
-      let result: CleanupOutcome;
+    // turn (and its claude subprocess) is over. Never throw into the caller -
+    // the daemon must keep serving other threads.
+    if (!outcome.finish) return;
+    let result: CleanupOutcome;
+    try {
+      result = seam.cleanup({ threadId: thread.id });
+    } catch (e) {
+      const detail = (e instanceof Error ? e.message : String(e)).slice(0, 300);
+      log("serve.cleanup_error", { thread: thread.id, err: detail });
       try {
-        result = seam.cleanup({ threadId: thread.id });
-      } catch (e) {
-        const detail = (e instanceof Error ? e.message : String(e)).slice(0, 300);
-        log("serve.cleanup_error", { thread: thread.id, err: detail });
-        try {
-          await thread.post(`tokenmaxxing: cleanup failed: ${detail}`);
-        } catch (postErr) {
-          // the diagnostic is best-effort, but its failure is never silent.
-          log("serve.finish_notify_error", { thread: thread.id, err: (postErr instanceof Error ? postErr.message : String(postErr)).slice(0, 300) });
-        }
-        return;
+        await thread.post(`tokenmaxxing: cleanup failed: ${detail}`);
+      } catch (postErr) {
+        // the diagnostic is best-effort, but its failure is never silent.
+        log("serve.finish_notify_error", { thread: thread.id, err: (postErr instanceof Error ? postErr.message : String(postErr)).slice(0, 300) });
       }
-      // the Slack calls are guarded too: this whole path runs inside the Chat
-      // SDK handler and must never throw into it (review catch, PR #18) - the
-      // record is already gone, so a failed confirmation only gets logged.
-      try {
-        // a refusal keeps the subscription so the thread stays live for a retry.
-        if (result.removed) await thread.unsubscribe();
-        await thread.post(result.message);
-      } catch (e) {
-        const detail = (e instanceof Error ? e.message : String(e)).slice(0, 300);
-        log("serve.finish_notify_error", { thread: thread.id, err: detail });
-      }
-      log("serve.thread_finished", { thread: thread.id, removed: result.removed });
+      return;
     }
+    // the Slack calls are guarded too: this whole path must never throw into
+    // the caller (review catch, PR #18) - the record is already gone, so a
+    // failed confirmation only gets logged.
+    try {
+      // a refusal keeps the subscription so the thread stays live for a retry.
+      if (result.removed) await thread.unsubscribe();
+      await thread.post(result.message);
+    } catch (e) {
+      const detail = (e instanceof Error ? e.message : String(e)).slice(0, 300);
+      log("serve.finish_notify_error", { thread: thread.id, err: detail });
+    }
+    log("serve.thread_finished", { thread: thread.id, removed: result.removed });
   };
 
   const relayable = (m: ServeMessage) => {
@@ -458,6 +570,13 @@ export function buildServeRuntime(seam: {
     },
     relayable,
     onMessage,
+    /** the pieces runDaemon's startup interrupted-turn recovery reuses, so a
+     *  resumed turn shares the exact chain and marker machinery of an inbound
+     *  one. */
+    serialized,
+    tracked,
+    runTurn,
+    settleTurn,
   };
 }
 
@@ -487,6 +606,14 @@ async function runDaemon(): Promise<number> {
   // events fired by ensureBestAccount/stopHookCheck) also prints to the
   // terminal, so a foreground `xx serve` shows what it is doing live.
   setLogEcho({ printer: (entry) => console.log(formatLogLine(entry)) });
+
+  // single-instance guard, held for the process lifetime (the fd releases on
+  // exit): without it a replacement daemon can start inside the previous
+  // generation's drain window, read a still-RUNNING turn's activeTurn marker,
+  // and resume it - two claude processes in one cwd (adversarial-review
+  // catch). Blocking here makes a rolling restart wait out the drain instead.
+  console.log(c.dim("acquiring the serve singleton lock (waits for a draining daemon to exit)"));
+  acquireLock(paths.serveLockFile);
 
   const slack = createSlackAdapter({
     mode: "socket",
@@ -527,8 +654,9 @@ async function runDaemon(): Promise<number> {
   });
 
   // the message-handling runtime (author guard, folding, per-thread
-  // serialization, drain drops, finish close-out) lives in buildServeRuntime
-  // so tests can drive the real wiring; production deps go in here.
+  // serialization, activeTurn markers, drain drops, finish close-out) lives
+  // in buildServeRuntime so tests can drive the real wiring; production deps
+  // go in here.
   const runtime = buildServeRuntime({
     cfg,
     workspaceTeamId,
@@ -536,6 +664,99 @@ async function runDaemon(): Promise<number> {
     relay: relayThread,
     cleanup: cleanupThread,
   });
+
+  /** A proactive thread handle that can still stream natively. bot.thread()
+   *  carries no currentMessage, and without one handleStream has no
+   *  recipientUserId/recipientTeamId, so the Slack adapter's stream() gate
+   *  falls back to card-less post-and-edit that also strands a blank message
+   *  per card-only segment (verified in chat 4.34.0 + @chat-adapter/slack).
+   *  Reusing the newest human message in the thread as currentMessage
+   *  restores the exact context an inbound turn would have, and its author is
+   *  the natural requester to tag on a resumed turn. The explicit ThreadImpl
+   *  constructor (published typed API) is deliberate over the prose-documented
+   *  ThreadImpl.fromJSON/reviver restore path: fromJSON takes the lazy config
+   *  branch, which silently reverts fallbackStreamingPlaceholderText to "..."
+   *  (re-stranding the placeholder this daemon suppresses) and needs
+   *  registerSingleton for state. */
+  const streamableThread = async (threadId: string) => {
+    const handle = bot.thread(threadId);
+    for await (const message of handle.messages) {
+      if (runtime.relayable(message)) {
+        const thread = new ThreadImpl({
+          adapter: slack,
+          stateAdapter: state,
+          channelId: handle.channelId,
+          id: threadId,
+          isDM: false,
+          currentMessage: message,
+          fallbackStreamingPlaceholderText: null,
+        });
+        return { thread, requesterIds: [message.author.userId] };
+      }
+    }
+    // no human message on record: card-less is all there is
+    return { thread: handle, requesterIds: [] };
+  };
+
+  /** Recover one thread whose activeTurn marker survived the previous daemon:
+   *  a restart killed that turn mid-run. Notify the thread, then resume the
+   *  session (or replay the original prompt when the kill landed before init
+   *  assigned a session id); past the retry cap, give up loudly. EVERY branch
+   *  runs inside the shared per-thread `serialized` chain and recomputes the
+   *  decision from a fresh reload there: an inbound turn (or Slack
+   *  redelivering the killed turn's unacked mention) can win the chain first,
+   *  handle the thread, and clear the marker - acting on the startup snapshot
+   *  would then re-run superseded work and write stale record fields over the
+   *  session id that turn persisted (adversarial-review catch). */
+  const recoverInterrupted = async (record: SlackThread) => {
+    try {
+      const { thread, requesterIds } = await streamableThread(record.threadId);
+      const link = linkForChannel(cfg, bareChannelId(thread.channelId));
+      await runtime.serialized(record.threadId, async () => {
+        // a drain signal can land between the scan and this turn; leave the
+        // marker at its previous count so the next start retries.
+        if (runtime.isDraining()) return;
+        const fresh = loadSlackThread(record.threadId);
+        const turn = fresh?.activeTurn;
+        const decision = fresh ? resumeDecision(fresh) : null;
+        if (!fresh || !turn || !decision) return; // superseded: an earlier turn already cleared the marker
+        await reapOrphan(turn);
+        if (!link) {
+          // unlinked since the turn started: nothing can run here; drop the
+          // marker and stay silent, like every unlinked-channel path.
+          saveSlackThread(omit(fresh, ["activeTurn"]));
+          log("serve.resume_unlinked", { thread: record.threadId });
+          return;
+        }
+        if (decision.kind === "give-up") {
+          log("serve.resume_gave_up", { thread: record.threadId });
+          // post BEFORE clearing, mirroring the resume branch's ordering: a
+          // kill or post failure here leaves the marker for the next restart
+          // to retry the notice (at-least-once; worst case a duplicate
+          // give-up notice), instead of the thread going permanently dark
+          // with the user never told the daemon gave up.
+          await thread.post(decision.notice);
+          saveSlackThread(omit(fresh, ["activeTurn"]));
+          return;
+        }
+        log("serve.resume_interrupted", { thread: record.threadId, attempt: decision.marker.resumeCount });
+        // the notice posts BEFORE runTurn persists the incremented marker,
+        // on purpose: the cap bounds quota-SPENDING attempts (the spawn),
+        // and a failed notice spends nothing - the marker survives at its
+        // old count for the next restart to retry, at most once per
+        // operator-triggered restart, each logged as serve.resume_error.
+        // A permanently unpostable channel (bot kicked, archived) therefore
+        // retries on every restart; unlinking it clears the marker.
+        await thread.post(decision.notice);
+        const startedAt = Date.now();
+        const outcome = await runtime.runTurn({ thread, record: fresh, prompt: decision.prompt, requesterIds, sessionId: decision.sessionId, marker: decision.marker, link });
+        await runtime.settleTurn({ thread, outcome, startedAt });
+      });
+    } catch (e) {
+      const detail = (e instanceof Error ? e.message : String(e)).slice(0, 300);
+      log("serve.resume_error", { thread: record.threadId, err: detail });
+    }
+  };
 
   bot.onNewMention(async (thread, message, context) => runtime.onMessage({ thread, message, skipped: context?.skipped ?? [], isMention: true }));
   bot.onSubscribedMessage(async (thread, message, context) => runtime.onMessage({ thread, message, skipped: context?.skipped ?? [], isMention: false }));
@@ -574,6 +795,21 @@ async function runDaemon(): Promise<number> {
   };
   process.on("SIGTERM", () => void shutdown("SIGTERM"));
   process.on("SIGINT", () => void shutdown("SIGINT"));
+  // closing the foreground terminal sends SIGHUP, whose default disposition
+  // kills the daemon WITHOUT the "exit" event - so the process-exit hook that
+  // kill-groups the DETACHED claude child never runs, the child survives as
+  // an orphan still mutating the cwd, and the freed serve-lock lets the next
+  // generation resume the same session beside it (adversarial-review catch,
+  // exit-skip verified empirically on Bun; a mid-turn orphan does NOT die on
+  // its dead stdout pipe - also verified - which is why the reaper exists).
+  // Draining instead keeps the child owned; its Slack streaming needs no
+  // tty, so the turn can even finish. A SIGKILL/crash orphan is covered by
+  // reapOrphan via the marker's pid identity; the only unmarked window is
+  // spawn-to-persist, both inside the spawn hook BEFORE the SDK writes the
+  // prompt, and a prompt-less orphan exits on its dead stdin's EOF (verified
+  // against the real claude binary in the SDK's exact stdio shape: dead in
+  // 2s, zero API calls).
+  process.on("SIGHUP", () => void shutdown("SIGHUP"));
 
   // initialize() starts the PERSISTENT Socket Mode client (auto-reconnecting)
   // wired straight into event routing; the daemon only has to stay alive.
@@ -591,6 +827,16 @@ async function runDaemon(): Promise<number> {
   const records = listSlackThreads();
   for (const record of records) await state.subscribe(record.threadId);
   log("serve.resubscribed", { threads: records.length });
+
+  // threads whose activeTurn marker survived the previous daemon were killed
+  // mid-turn by a restart (live incident 2026-07-18: a redeploy silently
+  // killed a ship turn 8 minutes in and the thread just went dark). Each gets
+  // a notice and an auto-resumed turn, tracked so a drain waits for them too;
+  // the actionable decision is recomputed under the per-thread lock inside.
+  for (const record of records) {
+    if (!record.activeTurn) continue;
+    void runtime.tracked(recoverInterrupted(record));
+  }
 
   console.log(`${c.green("●")} serving ${count({ n: cfg.links.length, noun: "linked channel" })} over Slack Socket Mode - mention the bot in a linked channel to open a session (Ctrl-C to stop)`);
   log("serve.started", { links: cfg.links.length });
