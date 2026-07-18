@@ -1,0 +1,26 @@
+src/lib/slackstate.ts
+  s_0de5a2f5ec0bbf::t_22ce9123229956 74-79
+src/lib/slackbridge.ts
+  s_0de5a2f5ec0bbf::t_a4d569bf20a9a3 293-303
+src/cli/serve.ts
+  s_0de5a2f5ec0bbf::t_f35814bd545889 638-640
+  s_0de5a2f5ec0bbf::t_ec2904c7874cbf 632-637
+  s_0de5a2f5ec0bbf::t_486a5254e6c5ab 484-488,490-491,498-501,503-504,509
+  s_0de5a2f5ec0bbf::t_abe2beea1455c7 325-329
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "1edbc2ef5de6b78cdeb29a1648f49e4d5a78e001",
+  "prompts": {},
+  "sessions": {
+    "s_0de5a2f5ec0bbf": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "64dfd01b-80fd-4d43-a405-f9132fb102e5",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    }
+  }
+}
