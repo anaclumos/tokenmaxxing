@@ -1,0 +1,21 @@
+.memory/MEMORY.md
+  s_b46a7a06a33da9::t_d6cec9f004137b 4
+.memory/source-moves-editor-only.md
+  s_b46a7a06a33da9::t_4065b01346da3a 1-12
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "b294809ccce9a7934cf774759b86c696c44904f4",
+  "prompts": {},
+  "sessions": {
+    "s_b46a7a06a33da9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f099df50-4f97-4d4a-ac3e-6707f6883e97",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    }
+  }
+}
