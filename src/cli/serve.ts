@@ -388,12 +388,20 @@ async function runDaemon(): Promise<number> {
       } catch (e) {
         const detail = (e instanceof Error ? e.message : String(e)).slice(0, 300);
         log("serve.cleanup_error", { thread: thread.id, err: detail });
-        await thread.post(`tokenmaxxing: cleanup failed: ${detail}`);
+        await thread.post(`tokenmaxxing: cleanup failed: ${detail}`).catch(() => {});
         return;
       }
-      // a refusal keeps the subscription so the thread stays live for a retry.
-      if (result.removed) await thread.unsubscribe();
-      await thread.post(result.message);
+      // the Slack calls are guarded too: this whole path runs inside the Chat
+      // SDK handler and must never throw into it (review catch, PR #18) - the
+      // record is already gone, so a failed confirmation only gets logged.
+      try {
+        // a refusal keeps the subscription so the thread stays live for a retry.
+        if (result.removed) await thread.unsubscribe();
+        await thread.post(result.message);
+      } catch (e) {
+        const detail = (e instanceof Error ? e.message : String(e)).slice(0, 300);
+        log("serve.finish_notify_error", { thread: thread.id, err: detail });
+      }
       log("serve.thread_finished", { thread: thread.id, removed: result.removed });
     }
   };
