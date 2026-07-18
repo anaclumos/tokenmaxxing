@@ -1,0 +1,92 @@
+src/lib/slackstate.ts
+  s_ed0ed0d85004e1::t_38bb84998ab20f 118-123
+src/lib/slackbridge.ts
+  s_ed0ed0d85004e1::t_aaaa4f4add2323 94-100,104-115,118,122-126,128-132,164-166,169-170,175,177-179
+  s_ed0ed0d85004e1::t_8370e4f998acca 142-143
+  s_ed0ed0d85004e1::t_0d2beb6c292eb1 116-117,119-121,127
+  s_ed0ed0d85004e1::t_9535c8761cdbc9 163
+  s_ed0ed0d85004e1::t_dc6bd1e1f2d616 12
+  s_ed0ed0d85004e1::t_a107b6a90043c8 154
+  s_ed0ed0d85004e1::t_1c106f05a76e4e 16,27-49,51-60
+  s_ed0ed0d85004e1::t_ed3910844da7fc 25-26,50
+  s_ed0ed0d85004e1::t_1ac60652d7015b 145-148
+  s_ed0ed0d85004e1::t_ba04164c02b259 61
+DESIGN.md
+  s_ed0ed0d85004e1::t_1d420d984df151 93-97
+src/lib/slackstream.ts
+  s_ed0ed0d85004e1::t_76d372bd462c43 33-34,39,41-47
+  s_ed0ed0d85004e1::t_1714f71e6220af 119-124,130-133
+  s_ed0ed0d85004e1::t_03792408886fb1 144
+  s_ed0ed0d85004e1::t_a4bef913a7510c 112-113
+  s_ed0ed0d85004e1::t_57dfc0d7b72bd0 67
+  s_ed0ed0d85004e1::t_ac477ba1c45669 93
+  s_ed0ed0d85004e1::t_26042f327b224f 84-91
+  s_ed0ed0d85004e1::t_e9fefb0e93765f 179
+  s_ed0ed0d85004e1::t_d3eaee54a82cbd 70
+  s_ed0ed0d85004e1::t_454550ca23905d 51-52
+  s_ed0ed0d85004e1::t_f50ee3eb0174e0 48-49
+  s_ed0ed0d85004e1::t_a05737d2ed7125 102-103
+  s_ed0ed0d85004e1::t_5445ebb3b0d5ee 1-32,35-38,40,50,53-66,68-69,71-83,92,94-101,104-111,114-118,125-129,134-143,145-160,162-178,180-185
+  s_ed0ed0d85004e1::t_fee0cc65098a33 161
+test/slackstream.test.ts
+  s_ed0ed0d85004e1::t_9ab928fbcf5f6f 27
+  s_ed0ed0d85004e1::t_02c526c696e706 98
+  s_ed0ed0d85004e1::t_05d6785b170a7c 125
+  s_ed0ed0d85004e1::t_26a1b58c5e0b72 108-115,117-120
+  s_ed0ed0d85004e1::t_d1cf34556e580a 79
+  s_ed0ed0d85004e1::t_3837cc78153984 116
+  s_ed0ed0d85004e1::t_e88e18f2a96b49 37
+  s_ed0ed0d85004e1::t_d18863351bfb82 10-11
+  s_ed0ed0d85004e1::t_ba7bb02a119b5e 85-86,92
+  s_ed0ed0d85004e1::t_5ba89d99f76df8 72-73
+  s_ed0ed0d85004e1::t_61bc12d66c2741 1-9,12-26,28-32,38-41,43,46,48-52,54-58,61-65,67-69,83-84,87-91,93-97,99-107,121-124,127-128
+  s_ed0ed0d85004e1::t_4f8d5ecb102733 70-71,74-78,80-82
+  s_ed0ed0d85004e1::t_7e162f95c3dae9 34
+  s_ed0ed0d85004e1::t_79479998b45d37 126
+  s_ed0ed0d85004e1::t_a9797af3ac77c2 59-60,66
+  s_ed0ed0d85004e1::t_3db1bf8ef7a80c 33,35-36
+  s_ed0ed0d85004e1::t_6d074e74b1f1f4 42,44-45,47,53
+AGENTS.md
+  s_ed0ed0d85004e1::t_1f24616c2a9687 202-207
+README.md
+  s_ed0ed0d85004e1::t_afa0ef0d786046 48
+test/slack.test.ts
+  s_ed0ed0d85004e1::t_d453378d1c54a8 76-80
+  s_ed0ed0d85004e1::t_22b488667dd2d0 9
+  s_ed0ed0d85004e1::t_936ef3c9cef8aa 81
+src/cli/serve.ts
+  s_ed0ed0d85004e1::t_490259eeb39073 21
+  s_ed0ed0d85004e1::t_205d69cc946034 41-42,45,51,60,70-71,75
+  s_ed0ed0d85004e1::t_5819fec950039d 223-225
+  s_ed0ed0d85004e1::t_2e109d73d362bb 287-292,294-297
+  s_ed0ed0d85004e1::t_ed9bf8f1333623 34
+  s_ed0ed0d85004e1::t_0ecc10f8d815af 197-200,207-213,219-222
+  s_ed0ed0d85004e1::t_d61d2f71b5bb78 89
+  s_ed0ed0d85004e1::t_b3018e952588ca 116-117
+  s_ed0ed0d85004e1::t_d715db765c8953 205-206
+  s_ed0ed0d85004e1::t_e4a9ed47fbf6aa 235-239,257-259
+  s_ed0ed0d85004e1::t_80792027d854cd 38
+  s_ed0ed0d85004e1::t_5c239487564c92 17
+  s_ed0ed0d85004e1::t_e1693c81150bfe 229-234,240-247,260-262,276,278-279,281-284
+  s_ed0ed0d85004e1::t_d877d3360acce2 275
+  s_ed0ed0d85004e1::t_e114075ca210db 263-269
+  s_ed0ed0d85004e1::t_8d1f335535d70e 43-44
+  s_ed0ed0d85004e1::t_dceda79e5586d6 277
+  s_ed0ed0d85004e1::t_17e3817af81f7e 201-204
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "744dd552e59892fac3c24e69b4441adac23d63bf",
+  "prompts": {},
+  "sessions": {
+    "s_ed0ed0d85004e1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "98fc7c12-0e4d-422f-aea0-2a37bfb68ffb",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    }
+  }
+}
