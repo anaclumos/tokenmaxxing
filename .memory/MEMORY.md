@@ -1,7 +1,7 @@
 # Memory index
 
 - [git show, not checkout, for reads](git-show-not-checkout-for-reads.md) - hook correction 2026-07-18: never `git checkout <ref> -- <file>` to read an old version (it overwrites the shared working copy); use `git show <ref>:<path>` / `git diff <refA>..<refB> -- <path>`
-- [Shipping is PR-based](shipping-pr-based.md) - user 2026-07-18: completed work reaches main only via a PR (branch, push, gh pr create, CI green, review handled, merge); never a direct push to main; supersedes the direct-push flow used through 0.18.0
+- [Shipping is PR-based](shipping-pr-based.md) - user 2026-07-18, refined same day: ship = do the work, open a PR, CI green, wait 10 min for reviews, handle each (agree-fix or refute with reasons), merge, tear down (delete branch, clean temp artifacts); never a direct push to main; tag the user in Slack only when a decision or intervention is needed
 - [xx serve slackbot decisions](serve-slackbot-decisions.md) - user 2026-07-18: Chat SDK only (EVE dropped), Socket Mode local daemon, NORMAL MODE (threads run in the linked repo; worktree-per-thread removed same day - agents cut a worktree themselves only when a task needs isolation); LIVE-VERIFIED 2026-07-18 incl. the socket-lifecycle root cause (never loop startSocketModeListener), prefixed ids, native cards + segment breaks, yolo/AskUserQuestion, queue TTL folding
 
 - [Live pool runs need permission](live-pool-runs-need-permission.md) - ask before any run that meters quota or starts a session window on real accounts; hermetic tests + free /usage reads only by default
