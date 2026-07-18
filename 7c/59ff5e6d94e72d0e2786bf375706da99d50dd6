@@ -1,0 +1,73 @@
+src/lib/slackbridge.ts
+  s_129da2b1bd4c64::t_90fca7b0c158ba 255,259,263-266
+  s_129da2b1bd4c64::t_3c0018afc56228 8,11,13-14,18-25,29-30,34-59,97-124,127-133,135-139,141-202,220-221,225,235,239-242,272,277-295
+test/slackstream.test.ts
+  s_129da2b1bd4c64::t_ce04b0dc2e254a 5
+  s_129da2b1bd4c64::t_91ceb390c1e517 14-28,114-127,154-160,245-265
+.memory/MEMORY.md
+  s_129da2b1bd4c64::t_c6d236f0b8a193 3-5,9
+.memory/git-show-not-checkout-for-reads.md
+  s_129da2b1bd4c64::t_dbd54c32caf19b 1-7
+.memory/shipping-pr-based.md
+  s_129da2b1bd4c64::t_7a325175491b43 3,5-8,10
+.memory/tokenmaxxing-project.md
+  s_129da2b1bd4c64::t_869e7d4f6e5570 25-28
+AGENTS.md
+  s_0de5a2f5ec0bbf::t_95b4f5bfd0966d 1-2,94,205-206,210-211,213-215,268-271
+README.md
+  s_129da2b1bd4c64::t_7419aab3dea236 48
+src/cli/serve.ts
+  s_129da2b1bd4c64::t_fb6258f1fe8311 2-10,13,19,27,38-39,42,139,154,182,188-210,222-226,244-247,251,263-268,270-276,279-286,292-302,307,309,317,322,326-329,333-350,355-363,365-366,370-371,374-403,411-420
+src/lib/log.ts
+  s_129da2b1bd4c64::t_dc48f6fad0786d 17-26,28,30-35,37,41-47
+src/lib/paths.ts
+  s_129da2b1bd4c64::t_8a53162d483025 39
+src/lib/slackstate.ts
+  s_129da2b1bd4c64::t_7eda9e3f4badff 8,60-62,91-96,130-162
+src/main.ts
+  s_129da2b1bd4c64::t_948d1a1d0c35ab 50
+src/serve-plugin/.claude-plugin/plugin.json
+  s_129da2b1bd4c64::t_60a436612efbeb 1-4
+src/serve-plugin/skills/ask-the-user/SKILL.md
+  s_129da2b1bd4c64::t_120eaf51bfab6d 1-36
+src/serve-plugin/skills/serve-session/SKILL.md
+  s_129da2b1bd4c64::t_85946fd7141794 1-39
+test/log.test.ts
+  s_129da2b1bd4c64::t_2148bf0e68a673 1-72
+test/serveplugin.test.ts
+  s_129da2b1bd4c64::t_566353526cba7f 1-80
+test/slack.test.ts
+  s_129da2b1bd4c64::t_fcfc9733acd944 29,84-117
+test/slackbridge.test.ts
+  s_129da2b1bd4c64::t_742131d42fb376 1-79
+DESIGN.md
+  s_129da2b1bd4c64::t_54160e4eb1e499 90-92,95,97-100,103-104,137
+package.json
+  s_129da2b1bd4c64::t_e3e7204ad7e72c 3
+src/lib/slackstream.ts
+  s_129da2b1bd4c64::t_64f179ef820893 23-37,196-199,212-215,267-280
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "7c59ff5e6d94e72d0e2786bf375706da99d50dd6",
+  "prompts": {},
+  "sessions": {
+    "s_0de5a2f5ec0bbf": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "64dfd01b-80fd-4d43-a405-f9132fb102e5",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    },
+    "s_129da2b1bd4c64": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c5beabd3-42ae-4eb8-8d63-4632c4d1dcf2",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    }
+  }
+}
