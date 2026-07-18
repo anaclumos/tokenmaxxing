@@ -1,0 +1,47 @@
+.memory/git-show-not-checkout-for-reads.md
+  s_129da2b1bd4c64::t_a19b724d1ca0b1 1-7
+.memory/serve-slackbot-decisions.md
+  s_129da2b1bd4c64::t_982eb692c6f616 3,15-17,28-29
+.memory/tokenmaxxing-project.md
+  s_129da2b1bd4c64::t_0c2ba556235ffe 25-28
+AGENTS.md
+  s_129da2b1bd4c64::t_d5b0a69206fc0e 1-2,205,209,211
+DESIGN.md
+  s_129da2b1bd4c64::t_f96612db67368c 90-91,95-97,99
+README.md
+  s_129da2b1bd4c64::t_4ec4b6ff4d3730 48
+package.json
+  s_129da2b1bd4c64::t_da9c5fe8fe7d43 3
+src/cli/serve.ts
+  s_129da2b1bd4c64::t_cc86821eef75c0 2-10,13,19,27,38,42,139,154,182,216-219,223,235-240,247-253,271,273,295-303,306,311,321-350
+src/lib/paths.ts
+  s_129da2b1bd4c64::t_f68b7204c82ec9 39
+src/lib/slackbridge.ts
+  s_129da2b1bd4c64::t_9b2f56bbcee573 12,16-23,95,99-102,124
+src/lib/slackstate.ts
+  s_129da2b1bd4c64::t_70453295188bed 60-62
+src/lib/slackstream.ts
+  s_129da2b1bd4c64::t_859d2d4183fcc5 136-139
+src/main.ts
+  s_129da2b1bd4c64::t_809019a9a5f088 50
+test/slack.test.ts
+  s_129da2b1bd4c64::t_e5431f24a6571d 29
+test/slackstream.test.ts
+  s_129da2b1bd4c64::t_2c3dde33077762 83-89
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "166fda605c316fa3ab48a3fa3defc8be82c13a77",
+  "prompts": {},
+  "sessions": {
+    "s_129da2b1bd4c64": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c5beabd3-42ae-4eb8-8d63-4632c4d1dcf2",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    }
+  }
+}
