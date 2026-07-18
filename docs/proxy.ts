@@ -5,9 +5,7 @@ import { createI18nMiddleware } from 'fumadocs-core/i18n/middleware';
 import { i18n } from '@/lib/i18n';
 import { docsContentRoute } from '@/lib/shared';
 
-// Routes that must never be locale-redirected or markdown-rewritten. With the
-// docs mounted at the site root, the og and llms.mdx endpoints (bare and
-// locale-prefixed alike) must be excluded before the catch-all page rewrites.
+// Routes that must never touch the i18n middleware at all.
 const passthroughPrefixes = [
   '/api/',
   '/_next/',
@@ -15,6 +13,12 @@ const passthroughPrefixes = [
   '/llms.txt',
   '/llms-full.txt',
   '/favicon.ico',
+];
+
+// The og and llms.mdx endpoints skip the catch-all markdown rewrites but still
+// need the i18n middleware: a bare /og/... or /llms.mdx/... URL relies on its
+// default-locale rewrite to reach the [lang]-nested route handler.
+const rewriteExemptPrefixes = [
   '/og/',
   '/llms.mdx/',
   ...i18n.languages.flatMap((lang) => [`/${lang}/og/`, `/${lang}/llms.mdx/`]),
@@ -25,11 +29,13 @@ const passthroughPrefixes = [
 // because the actual routes live under [lang]. The default language gets NO
 // prefixed pattern: a /en/... request must fall through to the i18n middleware
 // so it canonicalizes to the bare path instead of serving content at /en.
+// Locale-prefixed patterns come FIRST: with docs at the root, the bare
+// catch-all would otherwise swallow /fr/quickstart before /fr is tried.
 const localePrefixes = [
-  { prefix: '', target: `/${i18n.defaultLanguage}` },
   ...i18n.languages
     .filter((lang) => lang !== i18n.defaultLanguage)
     .map((lang) => ({ prefix: `/${lang}`, target: `/${lang}` })),
+  { prefix: '', target: `/${i18n.defaultLanguage}` },
 ];
 
 const rewriteDocs = localePrefixes.map(
@@ -50,18 +56,20 @@ export default function proxy(request: NextRequest, event: NextFetchEvent) {
     return NextResponse.next();
   }
 
-  for (const rewrite of rewriteSuffix) {
-    const result = rewrite(pathname);
-    if (result) {
-      return NextResponse.rewrite(new URL(result, request.nextUrl));
-    }
-  }
-
-  if (isMarkdownPreferred(request)) {
-    for (const rewrite of rewriteDocs) {
+  if (!rewriteExemptPrefixes.some((prefix) => pathname.startsWith(prefix))) {
+    for (const rewrite of rewriteSuffix) {
       const result = rewrite(pathname);
       if (result) {
         return NextResponse.rewrite(new URL(result, request.nextUrl));
+      }
+    }
+
+    if (isMarkdownPreferred(request)) {
+      for (const rewrite of rewriteDocs) {
+        const result = rewrite(pathname);
+        if (result) {
+          return NextResponse.rewrite(new URL(result, request.nextUrl));
+        }
       }
     }
   }
