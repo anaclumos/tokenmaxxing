@@ -1,0 +1,29 @@
+.memory/stella-linux-host.md
+  s_ed0ed0d85004e1::t_325fed9dfe9b69 8,10
+.memory/lunicomputer-linux-host.md
+  s_ed0ed0d85004e1::t_56fd1ab342b053 8
+.memory/tokenmaxxing-project.md
+  s_ed0ed0d85004e1::t_a6b382d76d4089 10
+.memory/linux-boxes-track-npm.md
+  s_ed0ed0d85004e1::t_3b072412eda78f 8
+.memory/headless-decision-freshness.md
+  s_ed0ed0d85004e1::t_2a4f572d68c452 13
+.memory/bun-tcc-appdata-prompts.md
+  s_ed0ed0d85004e1::t_84449f3eaef2c3 13
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "ca234eacf389d20b7a437454ac3b49510bb55585",
+  "prompts": {},
+  "sessions": {
+    "s_ed0ed0d85004e1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "98fc7c12-0e4d-422f-aea0-2a37bfb68ffb",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    }
+  }
+}
