@@ -5,6 +5,3 @@ dist/
 scratch/
 .env
 bun.lockb
-
-# personal memory / project notes — not for publication
-.memory/
