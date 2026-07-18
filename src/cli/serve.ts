@@ -14,6 +14,7 @@
 //   serve                  run the daemon
 
 import { existsSync, realpathSync } from "node:fs";
+import { delay } from "es-toolkit";
 import { Chat, type StreamChunk } from "chat";
 import { createSlackAdapter } from "@chat-adapter/slack";
 import { createMemoryState } from "@chat-adapter/state-memory";
@@ -21,6 +22,7 @@ import {
   bareChannelId,
   isChannelId,
   linkForChannel,
+  listSlackThreads,
   loadSlackConfig,
   loadSlackThread,
   removeLink,
@@ -211,10 +213,14 @@ async function runDaemon(): Promise<number> {
     // so the values are inlined).
     webClientOptions: { retryConfig: { retries: 5, factor: 3.86 }, timeout: 15_000 },
   });
+  // held directly (not only via Chat) so startup can re-subscribe recorded
+  // threads: subscriptions live in this in-memory state and die with the
+  // process, and only a fresh mention would otherwise revive a thread.
+  const state = createMemoryState();
   const bot = new Chat({
     userName: "tokenmaxxing",
     adapters: { slack },
-    state: createMemoryState(),
+    state,
     // per-thread lock with queueing: a message landing mid-turn waits its turn
     // instead of racing a second claude spawn on the same cwd. The default
     // 90s queue-entry TTL silently discards anything queued behind a turn
@@ -226,12 +232,25 @@ async function runDaemon(): Promise<number> {
     logger: "warn",
   });
 
+  // in-flight turns, tracked so a shutdown signal can drain them instead of
+  // killing a half-streamed answer (live incident 2026-07-18: a deploy
+  // restart cut a turn mid-sentence and the answer never reached Slack).
+  const activeTurns = new Set<Promise<void>>();
+  let draining = false;
+
   const handleTurn = async (input: {
     thread: { id: string; channelId: string; post: (m: AsyncIterable<string | StreamChunk>) => Promise<unknown>; subscribe: () => Promise<void>; startTyping: () => Promise<void> };
     texts: string[];
     isMention: boolean;
   }) => {
     const { thread, texts, isMention } = input;
+    if (draining) {
+      // the socket stays connected until the drain finishes; anything landing
+      // in that window is dropped loudly rather than spawning an unwaitable
+      // turn. The user re-sends after the restart.
+      log("serve.drain_dropped", { thread: thread.id });
+      return;
+    }
     const link = linkForChannel(cfg, bareChannelId(thread.channelId));
     if (!link) {
       log("serve.unlinked_channel", { channel: thread.channelId });
@@ -274,14 +293,23 @@ async function runDaemon(): Promise<number> {
 
   const relayable = (m: { author: { isMe: boolean; isBot?: boolean | "unknown" } }) => !m.author.isMe && m.author.isBot !== true;
 
+  const tracked = async (turn: Promise<void>) => {
+    activeTurns.add(turn);
+    try {
+      await turn;
+    } finally {
+      activeTurns.delete(turn);
+    }
+  };
+
   bot.onNewMention(async (thread, message, context) => {
     const texts = [...(context?.skipped ?? []).filter(relayable), message].map((m) => m.text);
-    await handleTurn({ thread, texts, isMention: true });
+    await tracked(handleTurn({ thread, texts, isMention: true }));
   });
   bot.onSubscribedMessage(async (thread, message, context) => {
     if (!relayable(message)) return; // never relay our own posts
     const texts = [...(context?.skipped ?? []).filter(relayable), message].map((m) => m.text);
-    await handleTurn({ thread, texts, isMention: false });
+    await tracked(handleTurn({ thread, texts, isMention: false }));
   });
 
   // initialize() starts the PERSISTENT Socket Mode client (auto-reconnecting)
@@ -291,6 +319,36 @@ async function runDaemon(): Promise<number> {
   // and awaiting it in a loop starved the event loop so hard the WebSocket
   // never delivered a single event (live incident 2026-07-18).
   await bot.initialize();
+
+  // subscriptions live in the memory state and died with the previous daemon;
+  // the durable slack-threads/ records say which threads are ours, so restore
+  // routing for them (message routing checks stateAdapter.isSubscribed,
+  // verified in chat 4.34.0). Without this a restart leaves every open thread
+  // deaf to non-mention follow-ups.
+  const records = listSlackThreads();
+  for (const record of records) await state.subscribe(record.threadId);
+  log("serve.resubscribed", { threads: records.length });
+
+  // drain instead of dying mid-answer: stop taking new turns, let in-flight
+  // ones finish (bounded - a hung claude turn must not block a restart
+  // forever), then disconnect. A second signal forces an immediate exit.
+  const DRAIN_MS = 300_000;
+  const shutdown = async (signal: string) => {
+    if (draining) {
+      log("serve.forced_exit", { signal });
+      process.exit(1);
+    }
+    draining = true;
+    log("serve.draining", { signal, turns: activeTurns.size });
+    console.log(`${c.yellow("●")} ${signal}: draining ${count({ n: activeTurns.size, noun: "in-flight turn" })} (again to force)`);
+    await Promise.race([Promise.allSettled([...activeTurns]), delay(DRAIN_MS)]);
+    await bot.shutdown();
+    log("serve.stopped", { dropped: activeTurns.size });
+    process.exit(0);
+  };
+  process.on("SIGTERM", () => void shutdown("SIGTERM"));
+  process.on("SIGINT", () => void shutdown("SIGINT"));
+
   console.log(`${c.green("●")} serving ${count({ n: cfg.links.length, noun: "linked channel" })} over Slack Socket Mode - mention the bot in a linked channel to open a session (Ctrl-C to stop)`);
   log("serve.started", { links: cfg.links.length });
   await new Promise<never>(() => {});
