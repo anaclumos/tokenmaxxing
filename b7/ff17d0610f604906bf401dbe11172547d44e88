@@ -1,0 +1,37 @@
+test/slackstream.test.ts
+  s_ed0ed0d85004e1::t_bd11b0c726772e 83-89
+src/lib/slackstream.ts
+  s_ed0ed0d85004e1::t_5bd201da591b37 136-139
+src/cli/serve.ts
+  s_ed0ed0d85004e1::t_6108e42ee18c2e 216-219,223
+  s_ed0ed0d85004e1::t_fc389d3f73c264 25
+  s_ed0ed0d85004e1::t_424cb472b3300e 235-240,247-253
+  s_ed0ed0d85004e1::t_b76baa9c5d0463 296-304,307,312
+  s_ed0ed0d85004e1::t_dff6275259ab0c 344
+  s_ed0ed0d85004e1::t_23a2c541e95f1f 17
+  s_ed0ed0d85004e1::t_cc97f22e9f0f0e 322-343,345-351
+src/lib/slackbridge.ts
+  s_ed0ed0d85004e1::t_a50bc1b7690025 19-26
+  s_ed0ed0d85004e1::t_b3b7be7057df0d 158
+  s_ed0ed0d85004e1::t_5750c4dc7aeaf4 129,133-136
+AGENTS.md
+  s_ed0ed0d85004e1::t_6dbe67edf7f623 207
+DESIGN.md
+  s_ed0ed0d85004e1::t_2a3edbdd0af2a9 95-97
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "b7ff17d0610f604906bf401dbe11172547d44e88",
+  "prompts": {},
+  "sessions": {
+    "s_ed0ed0d85004e1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "98fc7c12-0e4d-422f-aea0-2a37bfb68ffb",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    }
+  }
+}
