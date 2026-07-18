@@ -185,6 +185,29 @@ Config na JSON for `~/.config/tokenmaxxing/config.json`. Every field na optional
 
 `tokenmaxxing config` dey show the effective config with sources; `config set`/`unset` dey edit dotted keys; `config tidy` dey prune unknown keys.
 
+## How the state directory dey arrange
+
+Everything dey live under `~/.config/tokenmaxxing/` (you fit override am with `TOKENMAXXING_HOME`; every path wey person fit observe from outside get one env override so the whole tool fit run hermetically for tests).
+
+| Path | Wetin e dey hold |
+|---|---|
+| `config.json` | Your configuration (sparse; defaults dey apply per field) |
+| `accounts.json` | Index wey no be secret of pooled Claude accounts: labels, ids, cached usage windows. No tokens at all |
+| `usage.json` | The statusline tee im aggregate window snapshot; im mtime na the feed im liveness heartbeat |
+| `model-usage.json` | TTL-cached per-model weekly caps from `/usage` |
+| `lastswap.json` | Epoch timestamp of the last swap; e dey drive the 45-second cooldown |
+| `lock` | The `flock` file wey dey serialize swaps |
+| `tokenmaxxing.log` | Append-only event log |
+| `bin/` | The PATH shims: `claude`, `codex`, and the `tokenmaxxing` / `xx` entry points |
+| `respawn/<session-id>` | Depleted-wait respawn markers wey the supervisor dey watch |
+| `creds/` | Linux only: parked credential files, 0600 inside one 0700 directory (macOS dey park credentials as per-account keychain items instead) |
+| `onboard/`, `sample/` | Throwaway isolated config homes for `add`/`auth` logins and parked-account `/usage` probes; onboard homes wey dey hold plaintext credentials dem dey delete after harvest |
+| `slack.json` | `xx serve` tokens and channel links (0600) |
+| `slack-threads/` | Per-thread session records for `xx serve` |
+| `codex-*` | The parallel Codex pool: `codex-accounts.json`, `codex-lastswap.json`, `codex-lock`, `codex-creds/`, `codex-onboard/`, `codex-respawn/`, and `codex-live/` (one PID-validated presence file per running supervised codex session, so a live account no be ever swap target) |
+
+Outside im own directory, tokenmaxxing dey touch exactly: `~/.claude.json` (the `oauthAccount` swap), Claude Code im `settings.json` (the hook and statusline entries), the live credential store (the `Claude Code-credentials` keychain item for macOS, `.credentials.json` for Linux), `~/.claude.lock` (claude im refresh lock, wey dem take during swaps), codex im `auth.json` and `hooks.json`, and the periodic-check unit for launchd or systemd.
+
 ## Credential storage and safety model
 
 All state dey live for `~/.config/tokenmaxxing/`. Credential I/O dey pass through one single platform-selected store facade; call sites no dey branch on platform.
@@ -309,6 +332,12 @@ The Agent SDK dey spawn one claude subprocess per `query()` and e dey read crede
 - `stopHookCheck` dey re-run the decision for turn boundaries; one swap wey e land go take effect for the next spawn. E dey catch im own errors (e dey log go stderr and the log) rather than to rethrow am, because one unhandled hook exception fit interrupt the agent, and to abort one turn over one broken switch check dey cost more than to ride out the current account.
 
 `sdk.ts` no dey import anything from the Agent SDK imself; im values dey spread structurally go inside the SDK im options.
+
+## How dem dey build am and share am
+
+The npm package dey ship TypeScript source, no be build: the `tokenmaxxing` bin dey point straight at `src/main.ts` with one Bun shebang, and Bun 1.2.6 or newer dey run am as-is. Na why Bun na hard requirement. No compiled binaries dey by design: one early release ship one single 61 MB macOS binary go every platform and e fail for Linux with `exec format error`, and per-platform compiled packages go each need dia own release pipeline, so source-run-by-Bun become the distribution model.
+
+The package im `exports` map dey expose `src/sdk.ts` as the programmatic entry wey we describe above. Dem dey tag releases `v<version>` for GitHub; CI dey publish to npm via trusted publishing (OIDC, with provenance), and the publish gate dey run the typecheck and the full test suite first.
 
 ## How you fit use am for yourself and terms of service [#personal-use-and-terms-of-service]
 

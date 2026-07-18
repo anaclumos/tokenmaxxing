@@ -118,4 +118,64 @@ export const homeCopy: Record<string, { beforeLink: string; linkLabel: string; a
       linkLabel: 'belgeleri',
       afterLink: ' açın.',
     },
+    pnb: {
+      beforeLink:
+        'اپنے Claude Code تے Codex اکاؤنٹ اکٹھے کرو تے ہر سیشن نوں چالو رکھو۔ شروع کرن لئی ',
+      linkLabel: 'دستاویزات',
+      afterLink: ' کھولو۔',
+    },
+    sw: {
+      beforeLink:
+        'Kusanya akaunti zako mwenyewe za Claude Code na Codex na uendeleze kila kikao. Fungua ',
+      linkLabel: 'nyaraka',
+      afterLink: ' ili kuanza.',
+    },
+    tl: {
+      beforeLink:
+        'I-pool ang iyong sariling mga Claude Code at Codex account at panatilihing gumagalaw ang bawat session. Buksan ang ',
+      linkLabel: 'dokumentasyon',
+      afterLink: ' para makapagsimula.',
+    },
+    ta: {
+      beforeLink:
+        'உங்கள் சொந்த Claude Code மற்றும் Codex கணக்குகளை ஒன்றிணைத்து ஒவ்வொரு அமர்வையும் தொடர்ந்து இயங்க வையுங்கள். தொடங்குவதற்கு ',
+      linkLabel: 'ஆவணங்களை',
+      afterLink: ' திறக்கவும்.',
+    },
+    yue: {
+      beforeLink:
+        '將你自己嘅 Claude Code 同 Codex 帳戶集合埋一齊，令每個 session 都繼續運行。打開',
+      linkLabel: '文件',
+      afterLink: '就可以開始。',
+    },
+    wuu: {
+      beforeLink:
+        '拿侬自家嗰 Claude Code 搭 Codex 账户汇拢来，让每一趟会话侪勿停脚。打开',
+      linkLabel: '文档',
+      afterLink: '就好上手。',
+    },
+    fa: {
+      beforeLink:
+        'حساب‌های Claude Code و Codex خودتان را یکجا جمع کنید و هر نشست را در جریان نگه دارید. برای شروع، ',
+      linkLabel: 'مستندات',
+      afterLink: ' را باز کنید.',
+    },
+    ko: {
+      beforeLink:
+        '직접 보유한 Claude Code와 Codex 계정을 모아 관리하고 모든 세션을 계속 이어가세요. 시작하려면 ',
+      linkLabel: '문서',
+      afterLink: '를 여세요.',
+    },
+    am: {
+      beforeLink:
+        'የራስዎን የ Claude Code እና Codex መለያዎች ያሰባስቡ እና እያንዳንዱን session በእንቅስቃሴ ላይ ያቆዩ። ለመጀመር ',
+      linkLabel: 'ሰነዱን',
+      afterLink: ' ይክፈቱ።',
+    },
+    th: {
+      beforeLink:
+        'รวมบัญชี Claude Code และ Codex ของคุณเองไว้ด้วยกัน และทำให้ทุกเซสชันเดินหน้าต่อไปได้ เปิด',
+      linkLabel: 'เอกสารประกอบ',
+      afterLink: 'เพื่อเริ่มต้นใช้งาน',
+    },
   };

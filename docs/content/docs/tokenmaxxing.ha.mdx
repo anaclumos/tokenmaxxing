@@ -185,6 +185,29 @@ Saituna JSON ne a `~/.config/tokenmaxxing/config.json`. Kowane fili na zaɓi ne;
 
 `tokenmaxxing config` yana nuna saitunan da ke aiki tare da tushe; `config set`/`unset` suna gyara maɓallan da aka raba da aya; `config tidy` yana yanke maɓallan da ba a sani ba.
 
+## Tsarin babban shirin yanayi
+
+Komai yana zaune ƙarƙashin `~/.config/tokenmaxxing/` (ana iya sauya shi da `TOKENMAXXING_HOME`; kowace hanya da ake iya gani daga waje tana da sauyawar env don dukkan kayan aikin ya iya gudana a keɓe cikin gwaje-gwaje).
+
+| Hanya | Abin da yake riƙe |
+|---|---|
+| `config.json` | Saitunanka (bai cika ba; tsohuwar ƙima tana aiki ga kowane fili) |
+| `accounts.json` | Fihirisar da ba ta sirri ba ta asusun Claude da ke cikin tafki: lakabai, id, tagogin amfani da aka ajiye. Ba tokens ba |
+| `usage.json` | Samfurin tagar tarin na tee na statusline; mtime nasa shi ne bugun zuciyar rayuwar abincin |
+| `model-usage.json` | Iyakokin mako na kowane-model da aka ajiye da TTL daga `/usage` |
+| `lastswap.json` | Hatimin lokaci na epoch na musanya ta ƙarshe; yana tuƙa sanyaya na daƙiƙa 45 |
+| `lock` | Fayil ɗin `flock` da ke jera musanya |
+| `tokenmaxxing.log` | Log na al'amura na ƙari-kawai |
+| `bin/` | Shims na PATH: `claude`, `codex`, da wuraren shiga na `tokenmaxxing` / `xx` |
+| `respawn/<session-id>` | Alamomin sake-farawa na jira-ƙarewa da mai kula ke kallo |
+| `creds/` | Linux kawai: fayilolin tantancewa da aka ajiye, 0600 cikin babban shirin 0700 (macOS yana ajiye tantancewa a matsayin abubuwan keychain na kowane asusu maimakon haka) |
+| `onboard/`, `sample/` | Gidajen saitin da aka ware na jefarwa don shiga na `add`/`auth` da probes na `/usage` na asusun da aka ajiye; gidajen onboard da ke riƙe tantancewa bayyananne ana share su bayan tattarawa |
+| `slack.json` | Tokens na `xx serve` da haɗin tashoshi (0600) |
+| `slack-threads/` | Bayanan zama na kowane zare don `xx serve` |
+| `codex-*` | Tafkin Codex mai gudana a layi ɗaya: `codex-accounts.json`, `codex-lastswap.json`, `codex-lock`, `codex-creds/`, `codex-onboard/`, `codex-respawn/`, da `codex-live/` (fayil ɗin kasancewa guda da aka tabbatar da PID ga kowane zaman codex da ake kula da shi mai gudana, don asusu mai aiki ba ya taɓa zama abin nufi na musanya) |
+
+A wajen babban shirinsa, tokenmaxxing yana taɓa ainihin waɗannan: `~/.claude.json` (musanyar `oauthAccount`), `settings.json` na Claude Code (shigarwar hook da statusline), ma'ajin tantancewar da ke aiki (abin keychain na `Claude Code-credentials` a kan macOS, `.credentials.json` a kan Linux), `~/.claude.lock` (makullin sabuntawa na claude, da ake ɗauka yayin musanya), `auth.json` da `hooks.json` na codex, da na'urar dubawa-ta-lokaci-lokaci a cikin launchd ko systemd.
+
 ## Ajiyar tantancewa da tsarin aminci
 
 Dukkan yanayi yana zaune a `~/.config/tokenmaxxing/`. I/O na tantancewa yana bi ta wani facade na ma'aji guda da aka zaɓa bisa dandali; wuraren kira ba sa taɓa reshe bisa dandali.
@@ -309,6 +332,12 @@ Agent SDK yana ƙirƙirar subprocess na claude ga kowane `query()` kuma yana kar
 - `stopHookCheck` yana sake gudanar da shawarar a iyakokin zagaye; musanya da ya sauka tana aiki a ƙirƙira ta gaba. Yana kama kuskurorinsa (yana rubutawa zuwa stderr da log) maimakon sake jefawa, domin banda hook da ba a sarrafa ba na iya katse agent, kuma dakatar da zagaye saboda dubawar musanya da ta karye yana da tsada fiye da ci gaba a kan asusun yanzu.
 
 `sdk.ts` ba ya shigo da komai daga Agent SDK da kansa; ƙimominsa suna yaɗuwa cikin tsari zuwa cikin zaɓuɓɓukan SDK.
+
+## Ginawa da rarrabawa
+
+Kunshin npm yana aika lambar tushe ta TypeScript, ba build ba: bin na `tokenmaxxing` yana nuni kai tsaye ga `src/main.ts` da shebang na Bun, kuma Bun 1.2.6 ko sabo yana gudanar da shi kamar yadda yake. Wannan shi ne dalilin da ya sa Bun ke zama buƙata mai tsauri. Babu binaries da aka haɗa (compiled) da gangan: wani sakin farko ya aika binary na macOS guda na 61 MB zuwa kowane dandali kuma ya gaza a kan Linux da `exec format error`, kuma kunshin da aka haɗa na kowane dandali kowanne zai buƙaci layin saki nasa na kansa, don haka tushe-da-Bun-ke-gudanarwa ya zama tsarin rarrabawa.
+
+Taswirar `exports` na kunshin tana fallasa `src/sdk.ts` a matsayin wurin shigar shirye-shirye da aka bayyana a sama. Ana yiwa saki alama da `v<version>` a kan GitHub; CI yana wallafa zuwa npm ta hanyar wallafa amintacce (OIDC, tare da tushen asali), kuma ƙofar wallafa tana gudanar da typecheck da cikakken jerin gwaje-gwaje da farko.
 
 ## Amfanin kai da sharuɗɗan sabis [#personal-use-and-terms-of-service]
 

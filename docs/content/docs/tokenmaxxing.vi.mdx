@@ -185,6 +185,29 @@ Cấu hình là JSON tại `~/.config/tokenmaxxing/config.json`. Mọi trường
 
 `tokenmaxxing config` hiển thị cấu hình hiệu lực kèm nguồn; `config set`/`unset` chỉnh sửa các khóa dạng chấm; `config tidy` loại bỏ các khóa không xác định.
 
+## Bố cục thư mục trạng thái
+
+Mọi thứ nằm trong `~/.config/tokenmaxxing/` (có thể ghi đè bằng `TOKENMAXXING_HOME`; mọi đường dẫn có thể quan sát được từ bên ngoài đều có một biến môi trường ghi đè để toàn bộ công cụ có thể chạy hoàn toàn biệt lập trong các bài kiểm thử).
+
+| Đường dẫn | Nội dung nó chứa |
+|---|---|
+| `config.json` | Cấu hình của bạn (thưa; giá trị mặc định áp dụng cho từng trường) |
+| `accounts.json` | Chỉ mục không bí mật của các tài khoản Claude trong nhóm: nhãn, id, các cửa sổ sử dụng được lưu trong bộ nhớ đệm. Không bao giờ chứa token |
+| `usage.json` | Ảnh chụp cửa sổ tổng hợp của bộ tee statusline; mtime của nó là nhịp tim báo sống của nguồn cấp |
+| `model-usage.json` | Các mức trần hàng tuần theo từng mô hình từ `/usage`, được lưu vào bộ nhớ đệm theo TTL |
+| `lastswap.json` | Dấu thời gian epoch của lần hoán đổi gần nhất; điều khiển thời gian hồi 45 giây |
+| `lock` | Tệp `flock` tuần tự hóa các lần hoán đổi |
+| `tokenmaxxing.log` | Nhật ký sự kiện chỉ-ghi-thêm |
+| `bin/` | Các shim PATH: `claude`, `codex`, và các điểm vào `tokenmaxxing` / `xx` |
+| `respawn/<session-id>` | Các tệp đánh dấu respawn khi chờ do cạn kiệt mà bộ giám sát theo dõi |
+| `creds/` | Chỉ Linux: các tệp thông tin xác thực dự trữ, 0600 trong một thư mục 0700 (macOS thay vào đó dự trữ thông tin xác thực dưới dạng các mục keychain theo từng tài khoản) |
+| `onboard/`, `sample/` | Các thư mục cấu hình biệt lập dùng-một-lần cho các lần đăng nhập `add`/`auth` và các phép thăm dò `/usage` của tài khoản dự trữ; các thư mục onboard chứa thông tin xác thực dạng văn bản thuần bị xóa sau khi thu hoạch |
+| `slack.json` | Các token và liên kết kênh của `xx serve` (0600) |
+| `slack-threads/` | Các bản ghi phiên theo từng luồng cho `xx serve` |
+| `codex-*` | Nhóm Codex song song: `codex-accounts.json`, `codex-lastswap.json`, `codex-lock`, `codex-creds/`, `codex-onboard/`, `codex-respawn/`, và `codex-live/` (một tệp hiện diện được xác thực PID cho mỗi phiên codex được giám sát đang chạy, nên một tài khoản còn sống không bao giờ là mục tiêu hoán đổi) |
+
+Bên ngoài thư mục riêng của mình, tokenmaxxing chạm đến đúng những thứ sau: `~/.claude.json` (việc hoán đổi `oauthAccount`), `settings.json` của Claude Code (các mục hook và statusline), kho thông tin xác thực đang hoạt động (mục keychain `Claude Code-credentials` trên macOS, `.credentials.json` trên Linux), `~/.claude.lock` (khóa làm mới của claude, được lấy trong các lần hoán đổi), `auth.json` và `hooks.json` của codex, và đơn vị kiểm tra định kỳ trong launchd hoặc systemd.
+
 ## Lưu trữ thông tin xác thực và mô hình an toàn
 
 Toàn bộ trạng thái nằm trong `~/.config/tokenmaxxing/`. Việc đọc/ghi thông tin xác thực đi qua một mặt tiền kho lưu trữ duy nhất được chọn theo nền tảng; các điểm gọi không bao giờ rẽ nhánh theo nền tảng.
@@ -309,6 +332,12 @@ Agent SDK khởi tạo một tiến trình con claude cho mỗi `query()` và đ
 - `stopHookCheck` chạy lại quyết định tại các ranh giới lượt; một lần hoán đổi mà nó thực hiện có hiệu lực ở lần khởi tạo tiếp theo. Nó bắt các lỗi của chính nó (ghi ra stderr và nhật ký) thay vì ném lại, vì một ngoại lệ hook chưa được xử lý có thể ngắt quãng agent, và việc hủy bỏ một lượt vì một phép kiểm tra chuyển đổi hỏng tốn kém hơn là cứ tiếp tục dùng tài khoản hiện tại.
 
 `sdk.ts` không nhập gì từ chính Agent SDK; các giá trị của nó được trải cấu trúc vào các tùy chọn của SDK.
+
+## Xây dựng và phân phối
+
+Gói npm phân phối mã nguồn TypeScript, không phải bản dựng: bin `tokenmaxxing` trỏ thẳng tới `src/main.ts` với một shebang Bun, và Bun 1.2.6 trở lên chạy nó nguyên trạng. Đó là lý do Bun là một yêu cầu bắt buộc. Không có tệp nhị phân biên dịch nào theo thiết kế: một bản phát hành ban đầu đã phân phối một tệp nhị phân macOS 61 MB duy nhất cho mọi nền tảng và thất bại trên Linux với `exec format error`, và các gói biên dịch theo từng nền tảng sẽ mỗi gói cần một quy trình phát hành riêng, nên chạy-mã-nguồn-bằng-Bun đã trở thành mô hình phân phối.
+
+Ánh xạ `exports` của gói công khai `src/sdk.ts` làm điểm vào lập trình được mô tả ở trên. Các bản phát hành được gắn thẻ `v<version>` trên GitHub; CI xuất bản lên npm qua trusted publishing (OIDC, kèm provenance), và cổng xuất bản chạy phép kiểm tra kiểu và toàn bộ bộ kiểm thử trước tiên.
 
 ## Sử dụng cá nhân và điều khoản dịch vụ [#personal-use-and-terms-of-service]
 

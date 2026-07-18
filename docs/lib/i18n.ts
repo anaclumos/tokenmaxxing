@@ -1,6 +1,6 @@
 import { defineI18n } from 'fumadocs-core/i18n';
 
-// Top 20 most used languages by total speakers (Ethnologue 2026), in rank order.
+// Top 30 most used languages by total speakers (Ethnologue 2026), in rank order.
 export const i18n = defineI18n({
   defaultLanguage: 'en',
   hideLocale: 'default-locale',
@@ -25,10 +25,20 @@ export const i18n = defineI18n({
     'te',
     'ha',
     'tr',
+    'pnb',
+    'sw',
+    'tl',
+    'ta',
+    'yue',
+    'wuu',
+    'fa',
+    'ko',
+    'am',
+    'th',
   ],
 });
 
-const rtlLanguages: readonly string[] = ['ar', 'arz', 'ur'];
+const rtlLanguages: readonly string[] = ['ar', 'arz', 'ur', 'pnb', 'fa'];
 
 export function localeDir({ locale }: { locale: string }): 'ltr' | 'rtl' {
   return rtlLanguages.includes(locale) ? 'rtl' : 'ltr';

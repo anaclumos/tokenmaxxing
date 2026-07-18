@@ -185,6 +185,29 @@ La configuración es JSON en `~/.config/tokenmaxxing/config.json`. Cada campo es
 
 `tokenmaxxing config` muestra la configuración efectiva con sus fuentes; `config set`/`unset` editan claves con puntos; `config tidy` poda claves desconocidas.
 
+## Distribución del directorio de estado
+
+Todo vive bajo `~/.config/tokenmaxxing/` (sobreescribible con `TOKENMAXXING_HOME`; cada ruta observable externamente tiene una sobrescritura por variable de entorno para que toda la herramienta pueda ejecutarse de forma hermética en las pruebas).
+
+| Ruta | Qué contiene |
+|---|---|
+| `config.json` | Tu configuración (dispersa; los valores por defecto se aplican por campo) |
+| `accounts.json` | Índice no secreto de las cuentas de Claude agrupadas: etiquetas, ids, ventanas de uso cacheadas. Nunca tokens |
+| `usage.json` | La instantánea de ventana agregada del tee de la statusline; su mtime es el latido de vida del feed |
+| `model-usage.json` | Topes semanales por modelo cacheados con TTL desde `/usage` |
+| `lastswap.json` | Marca de tiempo epoch del último cambio; impulsa el enfriamiento de 45 segundos |
+| `lock` | El archivo `flock` que serializa los cambios |
+| `tokenmaxxing.log` | Registro de eventos de solo anexado |
+| `bin/` | Los shims del PATH: `claude`, `codex`, y los puntos de entrada `tokenmaxxing` / `xx` |
+| `respawn/<session-id>` | Marcadores de reaparición de espera por agotamiento que el supervisor vigila |
+| `creds/` | Solo Linux: archivos de credenciales estacionadas, 0600 en un directorio 0700 (macOS estaciona las credenciales como elementos de llavero por cuenta en su lugar) |
+| `onboard/`, `sample/` | Homes de configuración aislados y desechables para los inicios de sesión de `add`/`auth` y las sondas `/usage` de cuentas estacionadas; los homes de incorporación que contienen credenciales en texto plano se eliminan tras la recolección |
+| `slack.json` | Tokens y vínculos de canal de `xx serve` (0600) |
+| `slack-threads/` | Registros de sesión por hilo para `xx serve` |
+| `codex-*` | El grupo paralelo de Codex: `codex-accounts.json`, `codex-lastswap.json`, `codex-lock`, `codex-creds/`, `codex-onboard/`, `codex-respawn/`, y `codex-live/` (un archivo de presencia validado por PID por cada sesión de codex supervisada en ejecución, así que una cuenta en vivo nunca es un destino de cambio) |
+
+Fuera de su propio directorio, tokenmaxxing toca exactamente: `~/.claude.json` (el cambio de `oauthAccount`), el `settings.json` de Claude Code (las entradas de hook y statusline), el almacén de credenciales en vivo (el elemento de llavero `Claude Code-credentials` en macOS, `.credentials.json` en Linux), `~/.claude.lock` (el bloqueo de refresco de claude, tomado durante los cambios), el `auth.json` y `hooks.json` de codex, y la unidad de comprobación periódica en launchd o systemd.
+
 ## Almacenamiento de credenciales y modelo de seguridad
 
 Todo el estado vive en `~/.config/tokenmaxxing/`. La E/S de credenciales pasa por una única fachada de almacén seleccionada por plataforma; los puntos de llamada nunca se ramifican según la plataforma.
@@ -309,6 +332,12 @@ El Agent SDK lanza un subproceso claude por `query()` y lee las credenciales una
 - `stopHookCheck` vuelve a ejecutar la decisión en los límites de turno; un cambio que aterrice surte efecto en el siguiente lanzamiento. Captura sus propios errores (registrando en stderr y en el log) en vez de relanzarlos, porque una excepción de hook no manejada puede interrumpir al agente, y abortar un turno por una comprobación de cambio rota cuesta más que aguantar la cuenta actual.
 
 `sdk.ts` no importa nada del propio Agent SDK; sus valores se esparcen estructuralmente en las opciones del SDK.
+
+## Compilación y distribución
+
+El paquete npm distribuye código fuente de TypeScript, no un build: el bin `tokenmaxxing` apunta directamente a `src/main.ts` con un shebang de Bun, y Bun 1.2.6 o más reciente lo ejecuta tal cual. Por eso Bun es un requisito estricto. No hay binarios compilados por diseño: un lanzamiento temprano distribuyó un único binario de macOS de 61 MB a todas las plataformas y falló en Linux con `exec format error`, y los paquetes compilados por plataforma necesitarían cada uno su propia canalización de lanzamiento, así que el código fuente ejecutado por Bun se convirtió en el modelo de distribución.
+
+El mapa `exports` del paquete expone `src/sdk.ts` como el punto de entrada programático descrito arriba. Los lanzamientos se etiquetan como `v<version>` en GitHub; CI publica en npm mediante publicación de confianza (OIDC, con procedencia), y la compuerta de publicación ejecuta primero la comprobación de tipos y la suite de pruebas completa.
 
 ## Uso personal y términos de servicio [#personal-use-and-terms-of-service]
 

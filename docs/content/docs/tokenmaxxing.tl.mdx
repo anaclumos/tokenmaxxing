@@ -1,0 +1,388 @@
+---
+title: tokenmaxxing
+description: Awtomatikong pagpapalit ng account sa Claude Code - i-pool ang iyong sariling mga subscription account at hot-swap ang mga credential kapag napuno ang quota, na pinananatiling maaaring ipagpatuloy ang bawat session.
+---
+
+Ang tokenmaxxing ay isang CLI para sa awtomatikong pagpapalit ng account sa Claude Code. Pinagsasama-sama nito ang maraming subscription (Pro/Max) account na pag-aari mo at hot-swap ang aktibong credential patungo sa mas sariwang account kapag ang ginagamit ay malapit na sa isang usage limit. Pinapatakbo mo ang `claude` nang eksakto tulad ng dati; nangyayari ang pagpapalit sa isang ligtas na turn boundary at ang iyong tumatakbong session ay nagpapatuloy sa parehong pag-uusap sa bagong account nang hindi nagre-restart. Gumagana ito sa maraming magkakasabay na session nang sabay-sabay.
+
+Ang tanging nakikitang gawi ay ang pinakamasamang kaso: kapag nasa limitasyon na ang buong pool, huhinto ang session na may countdown at awtomatikong magpapatuloy sa susunod na account na magre-reset (agad na nagpapatuloy ang Ctrl-C).
+
+<Callout>
+Saklaw: Claude Code sa macOS at Linux, kasama ang Codex CLI ng OpenAI bilang pangalawang, parallel na pool. Pinagsasama-sama nito ang mga subscription account, hindi ang mga API key. Ito ay isang tool para sa personal na paggamit para sa pagpo-pool ng mga account na pag-aari mo, sa mga session at agent na ikaw mismo ang nagpapatakbo - tingnan ang [Personal na paggamit at mga tuntunin ng serbisyo](#personal-use-and-terms-of-service).
+</Callout>
+
+## Ang problema
+
+Ang isang Claude subscription ay sumusukat ng tatlong limitasyon nang sabay-sabay (lahat ay nakumpirma sa pamamagitan ng `/usage`):
+
+- **Kasalukuyang session**: isang gumugulong na 5-oras na window.
+- **Kasalukuyang linggo (lahat ng modelo)**: isang 7-araw na kabuuan.
+- **Kasalukuyang linggo, bawat modelo**: hiwalay na lingguhang cap para sa indibidwal na mga pamilya ng modelo. Kasalukuyang umiiral lamang ito para sa Sonnet at Fable, at ang cap ng Fable lamang ang sapat na masikip para magkaroon ng bisa - tumatama ito nang maaga bago ang kabuuan. Maaaring nasa 50% week-all ang isang makina habang nasa 80% na week-Fable.
+
+Ang lingguhang quota ay use-it-or-lose-it: anumang hindi nagamit ng isang account sa pagsapit ng nakatakdang lingguhang reset nito ay mawawala. Kung mayroon kang ilang account, ang makatuwirang estratehiya ay ipagpatuloy ang paggamit ng quota sa alinmang account na pinakanahuhuli sa sarili nitong lingguhang bilis, at lumipat palayo bago tumama sa dingding ang alinmang limitasyon sa gitna ng session.
+
+Ang paggawa nito nang manu-mano ay nangangahulugang pag-log out, pag-log in, at pagkawala ng iyong pag-uusap. Awtomatiko itong ginagawa ng tokenmaxxing: ang isang tumatakbong `claude` ay muling nagsusuri ng credential store nito sa pagitan ng mga request, kaya't ang isang credential na ipinalit sa ilalim nito ay ginagamit kaagad (sa loob ng humigit-kumulang 30 segundo sa macOS, sa susunod na request sa Linux). Hindi kailanman nire-restart ng isang simpleng pagpapalit ang iyong session. Ang tanging kaso na nangangailangan pa rin ng pamamahala ng proseso ay ang isang ganap na naubos na pool - hindi maaaring i-pause ng isang session ang sarili nito - at iyon ang dahilan kung bakit umiiral ang manipis na supervisor.
+
+Lahat ng iba pa tungkol sa `claude` ay hindi nagbabago: lahat ng flag, MCP server, hook, at skill ay dumadaan.
+
+## Mabilisang pagsisimula
+
+Nangangailangan ng [Bun](https://bun.sh) at Claude Code, sa macOS o Linux.
+
+```sh
+bun add -g tokenmaxxing
+tokenmaxxing init
+```
+
+May limang bagay na ginagawa ang `init`:
+
+1. In-i-import ang account na kasalukuyan mong naka-log in bilang account #1 (walang hiwalay na `adopt` command).
+2. Ini-install ang `claude` supervisor shim.
+3. Nag-i-install ng tatlong entry sa `settings.json` ng Claude Code: isang statusLine, isang Stop hook, at isang SessionStart hook (kasama ang isang subagentStatusLine entry).
+4. Idinaragdag ang bin directory ng supervisor sa PATH ng iyong shell rc (idempotent, minarkahan ng isang `# tokenmaxxing PATH` na komento). Kailangan itong nasa unahan ng tunay na `claude` sa PATH upang ma-intercept ito.
+5. Nag-i-install ng isang pana-panahong check timer (isang launchd agent sa macOS, isang systemd user timer sa Linux) na nagpapatakbo ng `tokenmaxxing check` tuwing 180 segundo.
+
+I-restart ang iyong shell, pagkatapos ay magdagdag ng higit pang mga account at magsimula:
+
+```sh
+tokenmaxxing add        # nagla-log in ng isa pang account, nang nakahiwalay, at ipinu-pool ito
+claude                  # gamitin ang claude tulad ng dati
+```
+
+Ang `tokenmaxxing` ay may alias ding `xx`. Ang payak na `tokenmaxxing` (o `xx`) ay nagpapatakbo ng `status`; nananatiling explicit ang `switch`.
+
+## Mga Command
+
+| Command | Ano ang ginagawa nito |
+|---|---|
+| `tokenmaxxing init` | I-import ang kasalukuyang account, i-install ang supervisor, mga hook, at statusline |
+| `tokenmaxxing init --codex` | Pareho para sa Codex: i-import ang login, i-install ang codex supervisor at Stop hook |
+| `tokenmaxxing add` | Magrehistro ng karagdagang account (nakahiwalay na login, aani papunta sa pool) |
+| `tokenmaxxing add --codex` | Magrehistro ng karagdagang Codex account (nakahiwalay na login) |
+| `tokenmaxxing auth [sel \| --all]` | Muling i-authenticate ang isang naka-pool na account nang nasa lugar. Inililista ng payak na anyo ang pool at nagtatanong kung alin; ang isang selector ay tumutukoy sa isang account at sinasabi kung aling email ang gagamitin sa pag-sign in; nililibot ng `--all` ang bawat account na nangangailangan ng reauth nang isa-isa |
+| `tokenmaxxing switch [sel]` | Lumipat sa pinakamahusay na account (greedy, idempotent) o pilitin ang isang partikular |
+| `tokenmaxxing switch --codex [sel]` | Ilipat ang Codex pool (magkakabisa sa susunod na pagsisimula ng codex) |
+| `tokenmaxxing ls` | Ilista ang mga naka-pool na account |
+| `tokenmaxxing status` | Mga account na may 5h / lingguhan / bawat-modelo na usage bar, aktibo at naubos-hanggang-reset |
+| `tokenmaxxing status --force` | Karagdagang mag-ping sa bawat account (isang maliit na haiku request bawat isa) upang magsimula na ngayon ang lahat ng 5h session timer, pagkatapos ay kumuha ng sariwang sample |
+| `tokenmaxxing watch [seconds]` | Live na status, muling ini-render tuwing N segundo (default 120, floor 30; hindi kailanman nag-ping) |
+| `tokenmaxxing config [get\|set\|unset\|tidy]` | Epektibong config na may mga pinagmulan; i-edit ang mga dotted key; pinuputol ng `tidy` ang mga hindi kilalang key |
+| `tokenmaxxing check` | Suriin ang desisyon sa pagpapalit nang isang beses (ito ang pinapatakbo ng pana-panahong timer) |
+| `tokenmaxxing serve [setup\|link\|unlink\|links]` | Slack bridge daemon (Socket Mode, walang pampublikong URL) |
+| `tokenmaxxing doctor` | Patunayan na nakaligtas ang supervisor at mga settings entry |
+| `tokenmaxxing rename [--codex] <sel> <label>` | Palitan ang label ng isang naka-pool na account |
+| `tokenmaxxing rm <sel>` | Alisin ang isang account mula sa pool |
+| `tokenmaxxing uninstall` | Alisin ang supervisor at mga settings entry (pinananatili ang mga account at credential) |
+
+## Arkitektura
+
+Ang tokenmaxxing ay isang multi-call entry point (`src/main.ts`) na kumikilos bilang `claude` supervisor kapag ini-invoke sa ilalim ng pangalang iyon, naghahatid ng hook at statusline shim sa pamamagitan ng mga internal na subcommand, at kung hindi ay nagpapadala ng CLI. Direkta itong tumatakbo sa ilalim ng Bun; ang npm package ay naghahatid ng TypeScript source, hindi isang build.
+
+Ang mga gumagalaw na bahagi:
+
+### Ang supervisor shim
+
+Nagsusulat ang `init` ng 2-linyang shell shim na pinangalanang `claude` sa `~/.config/tokenmaxxing/bin/` at inilalagay ang direktoryong iyon nang una sa PATH. Kapag ni-type mo ang `claude`, pinapatakbo ng shim ang supervisor, na nagbubuo ng tunay na claude binary na may minanang stdio at isang nai-save na `stty -g` terminal snapshot. Ito ay isang tagapamahala ng proseso at terminal lamang: hindi nito kailanman pinoproxy ang API traffic at hindi kailanman hinahawakan ang mga token na papalipad.
+
+Ang mga invocation sa print-mode (`claude -p`, `--version`, `--help`), mga non-interactive na subcommand (`claude mcp`, `claude config`, at iba pa), at ang sariling mga probe ng tokenmaxxing ay dumadaan nang tuwiran nang walang pamamahala ng session. Para sa isang interactive na session, ang supervisor ay nagpi-pin ng isang session id (gumagawa ng isa, o muling ginagamit ang ipinasa mo sa pamamagitan ng `--session-id` / `-r` / `-c`), pinananatili ang iyong mga launch flag upang maaaring i-replay ng isang susunod na relaunch, at pagkatapos ay binabantayan ang isang respawn marker file na naka-key sa session na iyon.
+
+### Ang statusline tee
+
+Itinutulak ng Claude Code ang rate-limit data (`rate_limits.five_hour` at `rate_limits.seven_day`) sa stdin ng statusline sa bawat turn. Pag-aari ng tokenmaxxing ang statusline slot, kaya't ang renderer nito ay nagsisilbi ring libre, push-based na usage feed: sa bawat tick ay tini-tee nito ang aggregate na mga window kasama ang aktibong modelo sa `usage.json`. Ang mga per-model cap ay wala sa stdin ng statusline; nagmumula lamang ang mga ito sa `claude -p '/usage'` (libre, zero na token), na pino-poll na may TTL at nakalagay sa cache sa `model-usage.json` kapag limitado ang kapasidad ng aktibong modelo.
+
+Ang tee ay write-on-change: kapag hindi nagbago ang mga numero, itinataas lamang nito ang mtime ng file, na kumikilos bilang liveness heartbeat ng feed. Ang pagiging sariwa ay palaging hinuhusgahan sa pamamagitan ng mtime, hindi kailanman sa pamamagitan ng naka-embed na timestamp.
+
+### Ang Stop hook at ang pagpapalit
+
+Sa bawat turn boundary, pinapatakbo ng Stop hook ang desisyon sa pagpapalit (tingnan ang [Paano nagpapasya ang pagpapalit](#how-switching-decides)). Kapag makatwiran ang isang pagpapalit, nangyayari ito sa ilalim ng isang `flock(2)` exclusive lock (kinuha sa pamamagitan ng `bun:ffi`, dahil walang inihahatid na `flock(1)` binary ang macOS), at ang mga credential write ay karagdagang naka-interlock sa sariling refresh lock ng Claude Code. Sa loob ng critical section, isang pagpapalit ang:
+
+1. Inaani ang kasalukuyang live credential papunta sa parked backup ng tunay na may-ari nito.
+2. Ini-install ang sariwang na-refresh na credential ng target na account bilang ang live, na isinasama sa umiiral na live blob upang mabuhay ang sibling state (tulad ng per-MCP-server OAuth token).
+3. Pinananatili ang na-rotate na token ng target sa sarili nitong backup.
+4. Atomically na muling isinusulat ang field na `oauthAccount` sa `~/.claude.json`.
+5. Kino-commit ang bagong aktibong label at nililinis ang mga lipas na usage snapshot, lahat bago mag-release ang lock, upang hindi kailanman maaaring iwan ng isang crash ang naka-install na credential at ang aktibong label na nakaturo sa magkaibang account.
+
+Dahil ibinabahagi ng lahat ng default-profile na session ang iisang live credential, ang isang pagpapalit ay naglilipat ng bawat session nang sabay-sabay, at pinipigilan ng flock kasama ang muling pagsusuri sa ilalim ng lock ang mga nagtutunggaliang hook na masunog ang dalawang account.
+
+### Adopsyon sa lugar
+
+Ang isang tumatakbong claude session ay nagpo-poll ng credential store nito sa pagitan ng mga request: sa macOS ay muli nitong binabasa ang keychain sa pamamagitan ng isang maikling cache at inihahambing ang mga access token; sa Linux ay sina-stat nito ang mtime ng credentials file at nililinis ang mga token cache nito kapag may pagbabago. Ang net na epekto ay ginagamit ang isang naipalit na credential ng bawat tumatakbong session sa loob ng humigit-kumulang 30 segundo sa macOS at sa mismong susunod na request sa Linux, nang walang anumang restart. Ito ang dahilan kung bakit walang isinusulat na marker ang isang simpleng pagpapalit at hindi ito nagti-trigger ng respawn - ang session ay nagpapatuloy lamang sa bagong account. Ang in-session na `/usage` ay nagbabahagi ng parehong mga token cache, kaya't ang account display nito ay lumilipat kasama ng adopsyon.
+
+### Paghihintay sa naubos na pool at awtomatikong pagpapatuloy
+
+Tanging kapag lampas na sa mga bar nito ang bawat account sa pool ay nagsusulat ang Stop hook ng isang respawn marker (nangangailangan ang marker schema ng isang `waitUntil` timestamp; hindi kailanman makakagawa ng isa ang isang simpleng pagpapalit). Nakikita ng supervisor ang marker, sina-SIGTERM ang child nito sa naka-commit nang turn boundary (tumatakbo ang Stop hook pagkatapos nasa disk na ang transcript at idle na ang claude, kaya't walang nawawala), ibinabalik ang terminal, ipinapakita ang isang countdown patungo sa pinakamaagang reset, at pagkatapos ay muling inilulunsad ang `claude --resume <session-id>` sa na-recover na account. Ang Ctrl-C sa panahon ng countdown ay agad na nagpapatuloy. Ang auto-wait ay nalilimitahan ng `policy.maxWaitMs` (default na 1 oras); lampas doon ay iniuulat ng desisyon na naubos na ang pool sa halip na maghintay.
+
+### Ang pana-panahong check timer
+
+Ang mga hook ay pumuputok lamang sa mga turn boundary, at ang isang mahabang agentic na turn ay maaaring masunog ang isang window mula sa malusog patungong naubos nang walang kahit isang boundary. Kaya't nag-i-install din ang `init` ng isang pana-panahong timer - isang launchd agent sa macOS, isang systemd user timer sa Linux - na nagpapatakbo ng `tokenmaxxing check` tuwing 180 segundo anuman ang aktibidad ng turn.
+
+### Isang SessionStart hook
+
+Pinapatakbo ang parehong pagsusuri kapag nagsimula o nagpatuloy ang isang session, upang magsimula ang isang sariwang session sa tamang account. Ginagawa ng post-swap cooldown na isang tamang no-op ito kaagad pagkatapos ng isang respawn.
+
+## Paano nagpapasya ang pagpapalit [#how-switching-decides]
+
+May dalawang layer ang desisyon: isang engagement gate, at pagkatapos ay isang greedy o hard path.
+
+### Engagement
+
+Sa ibaba ng `policy.greedySessionFloor` (default na 50, sa porsyento ng 5-oras na session window), hindi tumatakbo ang desisyon - sumasakay ang isang sariwang session sa account nito. Kapag 50% na ang nagamit sa aktibong session window, o may na-cross na anumang hard bar, nag-e-engage ang desisyon.
+
+### Mga screening bar
+
+Ang mga threshold ay mga screening bar, hindi ang trigger para sa pagkataranta:
+
+- `thresholds.session`: 95. Mura lamang ang paghihintay sa isang 5-oras na reset, kaya't mas maaga nang lumilipat palayo ang session window.
+- `thresholds.weekly`: 98. Sinasakop ng isang bar na ito ang parehong 7-araw na kabuuan at bawat per-model na lingguhang cap. Ang lingguhang quota ay use-it-or-lose-it, kaya't naaubos ito malapit sa dingding.
+
+Ang dalawa ay sinadyang mas mababa sa 100: ang headroom ay ang badyet upang maabot ang isang malinis na turn boundary (kasama ang hanggang isang turn ng adoption lag sa macOS) bago talagang tumama ang account sa limitasyon nito. Ang parehong mga bar ang nagse-screen ng mga swap candidate: ang isang account na lampas sa alinman sa mga bar nito ay hindi isang wastong target. Ang trigger at screening ay palaging gumagamit ng parehong epektibong mga bar (mga threshold na binawasan ng `policy.projectionMargin`), dahil ang isang screen na mas maluwag kaysa sa trigger ay maglalapag ng mga swap sa mga account na agad na muling ini-flag ng trigger, na nagpi-ping-pong sa pool.
+
+### Ang target: pace pressure
+
+Sa mga magagamit na account, ang target ay ang pinakanahuhuli sa sarili nitong lingguhang bilis: pinakamataas na **pace pressure**, na tinutukoy bilang natitirang lingguhang porsyento na hinati sa oras hanggang sa lingguhang reset ng account na iyon. Nananalo ang account na may pinakamaraming quota na malapit nang mawala. Ang mga tie ay pinuputol sa pinakamaagang lingguhang pag-expire, pagkatapos ay pinakamababang 7-araw na paggamit.
+
+Lahat ay tumatakbo mula sa mga naka-cache na window na nakaimbak bilang absolute UTC epoch, kaya't ang isang lipas na snapshot ay maayos pa ring nire-resolve: ang isang lingguhang reset na lumipas na ay nag-e-extrapolate pasulong sa eksaktong 7-araw na hakbang, at ang anumang window na lampas sa naka-cache na reset nito ay binibilang bilang sariwang walang laman (hindi kailanman dahilan para lumipat, hindi kailanman dahilan para panatilihing naka-bench ang isang account).
+
+### Greedy laban sa hard path
+
+- **Greedy path** (naka-engage, ngunit nasa ilalim ng bawat bar): iranggo ang bawat account, kasama ang kasalukuyan. Kung nananalo o kapareho na ng ranggo ang kasalukuyang account, walang gagawin. Kung hindi ay lumipat sa mahigpit na mas mahusay na account. Hindi ito kailanman naghihintay at hindi kailanman nagpapa-pre-park - ang isang magagamit na kasalukuyang account ay hindi ipinapalit para sa isang paghihintay. Dahil naka-ranggo rin ang kasalukuyang account, ang automatic path at ang payak na `tokenmaxxing switch` ay parehong idempotent: ang pana-panahong pagsusuri ay nagko-converge sa tamang account at pagkatapos ay nananatili.
+- **Hard path** (may na-cross na bar): lumipat palayo sa pinakamahusay na magagamit na kandidato. Kung ang refresh token ng isang kandidato ay lumabas na patay, ini-flag itong needs-reauth at sinusubukan ang susunod na kandidato. Kung walang magagamit, tumatakbo ang depleted-wait logic; tanging ang isang caller na aktwal na maaaring mag-pause ng session (ang supervised na Stop hook) ang pinapayagang mag-pre-park sa isang naka-block pa rin ngunit pinakamaagang-magre-recover na account.
+
+### Mga per-model cap
+
+Pinapangalanan ng `policy.switchModels` (default na `["fable"]`) ang mga pamilya ng modelo na ang per-model na lingguhang cap ay maaaring mag-trigger ng isang pagpapalit. Ang pagtutugma ay sa pamamagitan ng family token, hindi kailanman sa pamamagitan ng eksaktong display string: gumagalaw ang mga display name ng modelo (ang "Fable" ay naging "Fable 5"), at isang exact-string gate ang minsang tahimik na ganap na nag-disable ng per-model switching. Dalawang kaugnay na safety rule:
+
+- Ang isang hindi kilalang aktibong modelo ay nagsasara sa bawat na-configure na pamilya. Kaagad pagkatapos linisin ng isang pagpapalit ang mga snapshot, ang isang headless na makina ay maaaring tumakbo nang model-blind; ang pagturing sa hindi kilala bilang walang limitasyon noon ay nagpahintulot sa isang account na manatili sa Fable cap nito nang ilang oras nang hindi napapansin.
+- Binibilang din ng candidate screening ang mga naka-gate na per-model cap, kaya't ang isang pool kung saan nasunog na ng bawat account ang Fable cap nito ay hindi nagro-round-robin.
+
+### Cooldown
+
+Isang 45-segundong post-swap cooldown ang nagse-set ng gate sa automatic path. Ang statusline tee ay pinipigilan sa parehong 45 segundo pagkatapos ng isang pagpapalit (umaabot ng hanggang 30 segundo ang adopsyon sa macOS), kaya't ang isang mas maagang pagsusuri ay tatakbo sa data na na-invalidate mismo ng pagpapalit - ang eksaktong senaryong iyon ay minsang lumikha ng isang A-to-B-and-back na respawn loop. Ang manu-manong `tokenmaxxing switch` ay hindi apektado ng cooldown.
+
+## Pagsasaayos
+
+Ang config ay JSON sa `~/.config/tokenmaxxing/config.json`. Opsyonal ang bawat field; nalalapat ang mga default kada field.
+
+```json
+{
+  "thresholds": { "session": 95, "weekly": 98 },
+  "policy": {
+    "projectionMargin": 0,
+    "greedySessionFloor": 50,
+    "switchModels": ["fable"],
+    "usagePollTtlMs": 90000,
+    "maxWaitMs": 3600000
+  }
+}
+```
+
+- `thresholds.session` / `thresholds.weekly`: ang mga screening bar na inilarawan sa itaas.
+- `policy.projectionMargin`: ibinabawas sa parehong bar upang buuin ang mga epektibong bar.
+- `policy.greedySessionFloor`: ang porsyento ng nagamit na session kung saan nag-e-engage ang greedy convergence.
+- `policy.switchModels`: mga pamilya ng modelo na ang per-model na lingguhang cap ay nagse-set ng gate sa isang pagpapalit (ang mga entry ay ginagawang lowercase sa pag-load).
+- `policy.usagePollTtlMs`: kung gaano katagal nananatiling sariwa ang isang `/usage` per-model poll.
+- `policy.maxWaitMs`: ang hangganan ng auto-wait para sa naubos na pool.
+
+Ipinapakita ng `tokenmaxxing config` ang epektibong config na may mga pinagmulan; ini-edit ng `config set`/`unset` ang mga dotted key; pinuputol ng `config tidy` ang mga hindi kilalang key.
+
+## Ayos ng state directory
+
+Ang lahat ay nasa ilalim ng `~/.config/tokenmaxxing/` (maaaring i-override gamit ang `TOKENMAXXING_HOME`; bawat panlabas na nakikitang path ay may env override upang ang buong tool ay makatakbo nang hermetically sa mga test).
+
+| Path | Ano ang taglay nito |
+|---|---|
+| `config.json` | Ang iyong configuration (kalat-kalat; nalalapat ang mga default kada field) |
+| `accounts.json` | Hindi-lihim na index ng mga naka-pool na Claude account: mga label, id, naka-cache na usage window. Hindi kailanman mga token |
+| `usage.json` | Ang aggregate window snapshot ng statusline tee; ang mtime nito ang liveness heartbeat ng feed |
+| `model-usage.json` | TTL-cached na per-model na lingguhang cap mula sa `/usage` |
+| `lastswap.json` | Epoch timestamp ng huling pagpapalit; nagpapatakbo sa 45-segundong cooldown |
+| `lock` | Ang `flock` na file na nagse-serialize sa mga pagpapalit |
+| `tokenmaxxing.log` | Append-only na event log |
+| `bin/` | Ang mga PATH shim: `claude`, `codex`, at ang mga `tokenmaxxing` / `xx` entry point |
+| `respawn/<session-id>` | Mga depleted-wait na respawn marker na binabantayan ng supervisor |
+| `creds/` | Linux lamang: mga naka-park na credential file, 0600 sa isang 0700 na directory (sa halip ay nagpa-park ang macOS ng mga credential bilang per-account na keychain item) |
+| `onboard/`, `sample/` | Mga throwaway na isolated config home para sa mga `add`/`auth` login at mga `/usage` probe ng naka-park na account; ang mga onboard home na may hawak na plaintext credential ay tinatanggal pagkatapos ng pag-ani |
+| `slack.json` | Mga `xx serve` na token at channel link (0600) |
+| `slack-threads/` | Mga per-thread na session record para sa `xx serve` |
+| `codex-*` | Ang parallel na Codex pool: `codex-accounts.json`, `codex-lastswap.json`, `codex-lock`, `codex-creds/`, `codex-onboard/`, `codex-respawn/`, at `codex-live/` (isang PID-validated na presence file kada tumatakbong supervised na codex session, kaya't ang isang live account ay hindi kailanman isang swap target) |
+
+Sa labas ng sarili nitong directory, hinahawakan ng tokenmaxxing ang eksaktong ito lamang: `~/.claude.json` (ang `oauthAccount` swap), ang `settings.json` ng Claude Code (ang mga hook at statusline entry), ang live credential store (ang `Claude Code-credentials` na keychain item sa macOS, `.credentials.json` sa Linux), `~/.claude.lock` (ang refresh lock ng claude, kinukuha sa panahon ng mga pagpapalit), ang `auth.json` at `hooks.json` ng codex, at ang periodic-check unit sa launchd o systemd.
+
+## Pag-iimbak ng credential at modelo ng kaligtasan
+
+Ang lahat ng state ay nasa `~/.config/tokenmaxxing/`. Ang credential I/O ay dumadaan sa isang platform-selected na store facade; hindi kailanman nagsasanga ang mga call site ayon sa platform.
+
+**macOS**: ang mga credential ay nasa login keychain bilang mga generic-password na item, na tumutugma kung saan pinananatili ng Claude Code mismo ang mga ito. Ang live na item ang binabasa ng claude; ang backup ng bawat naka-pool na account ay naka-park bilang sarili nitong `tokenmaxxing-cred-<uuid8>` na keychain item. Walang plaintext sa disk. Gumagamit ang mga pagbasa ng `security find-generic-password -w` (ang secret ay lumalabas lamang sa stdout); ang mga pagsulat ay nagpi-pipe ng isang `add-generic-password` na linya papunta sa `security -i` sa pamamagitan ng stdin upang hindi kailanman lumitaw ang secret sa argv ng anumang proseso. Ang interactive mode ay may humigit-kumulang 4 KB na line buffer, kaya't ang mga labis na malaking blob ay bumabalik sa isang argv write - isang dahilan kung bakit ang mga naka-park na item ay nag-iimbak lamang ng minimal na OAuth object.
+
+**Linux**: nag-iimbak ang Claude Code ng mga credential bilang isang 0600 plaintext file, at sinusunod ng tokenmaxxing ang parehong modelo: ang live file ay ang sariling `.credentials.json` ng claude, at ang mga naka-park na backup ay atomic na 0600 file sa ilalim ng `~/.config/tokenmaxxing/creds/` sa isang 0700 directory. Ang atomic dito ay nangangahulugang write-to-temp, fsync, pagkatapos ay rename: ang isang concurrent na reader ay palaging nakakakita ng isang buong luma o buong bagong file, hindi kailanman ng bahagyang isa.
+
+Ang mga safety rule na ipinapatupad ng pagpapalit:
+
+- **Pag-ani ayon sa tunay na may-ari.** Bago ang isang pagpapalit, ang aktwal na may-ari ng live credential ay tinutukoy sa pamamagitan ng pagtatanong sa API kung aling organisasyon ang pag-aari ng token (`fetchTokenOrg` laban sa OAuth roles endpoint) - hindi kailanman sa pamamagitan ng pagtitiwala sa nakaimbak na aktibong label, na maaaring gumalaw. Isang gumalaw na label ang minsang naging sanhi upang ma-overwrite ng pag-ani ng isang account ang tanging backup ng ibang account. Kung ang live credential ay pag-aari ng isang account sa labas ng pool, tumatanggi ang pagpapalit nang tuwiran sa halip na sirain ito.
+- **Isang critical section.** Ang pag-ani, ang pag-install ng bagong credential, ang backup ng na-rotate nitong token, ang pagpapalit ng account sa `~/.claude.json`, at ang pag-commit ng aktibong label ay lahat nangyayari sa loob ng parehong naka-lock na section.
+- **Interlock sa sariling refresh ng claude.** Ang isang malapit-nang-mag-expire na session ay maaaring mag-rotate ng sarili nitong token anumang sandali, kaya't kinukuha rin ng mga credential write ang refresh lock ng Claude Code (best-effort, na may stale-lock reclaim at isang bounded na timeout).
+- **Malinis na bumababa ang mga patay na grant.** Ang isang refresh na bumalik nang `invalid_grant` ay nagfla-flag sa account na iyon bilang needs-reauth at pinananatili ang flag bago kumalat ang error, kaya't pinaliliit ng mga retry loop ang candidate set at natatapos. Inaayos ng `tokenmaxxing auth` ang isang naka-flag na account nang nasa lugar, at tumatanggi ito sa isang login na napupunta sa ibang account kaysa sa isinasaayos.
+- **Walang pag-log ng token.** Hindi kailanman lumilitaw ang mga token sa mga log, error, o output. Ang mga error body mula sa token at usage endpoint ay hindi kailanman inilalabas nang hilaw; tanging ang isang allowlisted na set ng mga field ang nananatili, dahil ang failure body ng isang token endpoint ay maaaring mag-echo ng request material.
+- **Kalinisan ng probe.** Nililinis ng anumang na-spawn na `claude` probe ang walong environment variable na iginagalang ng claude bago ang keychain lookup nito (`ANTHROPIC_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN`, `CLAUDE_SECURESTORAGE_CONFIG_DIR`, at iba pa), kaya't hindi kailanman maaaring maiugnay ang isang probe sa maling account.
+
+## Mga tala sa platform: macOS laban sa Linux
+
+| | macOS | Linux |
+|---|---|---|
+| Live na credential | Generic-password item sa login keychain | 0600 na `.credentials.json` na file |
+| Mga naka-park na credential | Mga per-account na keychain item | Mga 0600 na file sa isang 0700 na directory |
+| Adopsyon pagkatapos ng isang pagpapalit | Sa loob ng ~30 segundo (keychain read cache) | Susunod na request (file mtime poll) |
+| Pana-panahong check | launchd agent, tuwing 180s | systemd user timer, tuwing 180s |
+| Isolated-login store | Hash-namespaced na keychain service kada config dir | Isang file sa loob ng isolated config dir |
+
+Dalawang Linux-specific na detalye na dapat malaman: nire-resolve ng claude ang credential directory nito mula sa `CLAUDE_SECURESTORAGE_CONFIG_DIR` muna (pagkatapos ay `CLAUDE_CONFIG_DIR`, pagkatapos ay `~/.claude`), at ginagaya ng tokenmaxxing ang resolution na iyon nang eksakto upang hindi kailanman mag-desync ang dalawa. At ang dalawang OS build ng parehong bersyon ng claude ay naka-format ng `/usage` reset clock nang magkaiba (isa ang gumagamit ng " at " na glue, ang isa ay isang kuwit); tinatanggap ng parser ng tokenmaxxing ang eksaktong dalawang anyo na iyon at nagla-log, sa halip na manghula, sa alinmang pangatlo.
+
+Sa macOS, isang tapat na limitasyon: sinasadyang hinahawakan ng `init` at `add` ang keychain nang interactive, upang ang unang `security` access ay hindi malamig sa loob ng isang headless na hook.
+
+## Ang statusline
+
+Nire-render ng tokenmaxxing ang statusline ng Claude Code nang natively (habang tini-tee ang usage feed). Ang prinsipyo ng disenyo: ang quota ay dinadala sa kulay, hindi sa mga numero. Isang linya, halimbawa:
+
+```
+tm-wt-demo Fable 5 (high) +156/-23  ◆ 𝒇 2h 1d  ◇ 19h  ◇ 𝒇 2d  ◇ full  ✗ ?
+```
+
+- Ang bawat window token ay ang time-to-reset nito, ipininta sa isang tuloy-tuloy na green-to-yellow-to-red ramp ayon sa nagamit na porsyento (truecolor kapag sinusuportahan ito ng terminal, hinakbang sa 256-color cube kung hindi). Ang ramp ay naka-angkla sa purong berde para sa 0, dilaw sa 75, at pula sa 95 pataas, kaya't ang mga lumang severity band ay nananatili bilang mga ramp anchor.
+- Ang pangalan ng modelo ay ipininta ayon sa context-window fill sa parehong ramp.
+- Ang isang berdeng `◆` ang nangunguna sa mga window ng aktibong account; ang bawat naka-park na account ay may sariling cyan na `◇` (pulang `✗` kung nangangailangan ito ng reauth). Ang mga account ay pinag-uuri-uri ayon sa pinakamaagang paparating na reset.
+- Ang per-model ang nauuna sa bawat block bilang isang hubad na ipinintang inisyal: nire-render ng Fable ang `𝒇`; ang ibang mga pamilya ay gumagamit ng kanilang uppercase na unang titik, palaging family-matched.
+- Ang isang hindi nagalaw na naka-park na account ay nagre-render ng berdeng `full`. Ang nasukat na paggamit na may hindi kilalang reset ay nagre-render ng isang ipinintang `?`, at ang isang hindi nasukat na per-model cap sa isang naka-gate na modelo ay nagre-render ng isang hindi ipinintang `𝒇?` - hindi dapat kailanman magmukhang ligtas ang hindi nasukat.
+- Ipinapakita ng mga reset countdown ang pinakamalaking unit lamang, hindi kailanman ang "now" o "0m"; ang isang window na walang paparating na reset ay nagre-render ng berdeng `0` (walang laman muli).
+- Ang basename ng isang naka-link na git worktree ang nangunguna sa linya; ang isang main checkout ay walang ini-render doon. Binabasa ng detection ang filesystem para sa isang `.git` na file at hindi kailanman nag-spawn ng git subprocess.
+- Kapag naka-set ang `NO_COLOR`, ang linya ay bumabalik sa isang glued na numeric format (ang `2h5` ay nangangahulugang magre-reset sa 2 oras, 5% ang nagamit; `ctx 42` para sa context fill) - nang walang kulay, hindi dapat magmukhang sariwa ang isang naubos na window.
+
+Ang mga subagent task ay may sariling mga panel row sa pamamagitan ng subagentStatusLine surface ng claude: isang row bawat aktibong task, ang pangalan ng pamilya ay ipininta ayon sa context fill ng task na iyon.
+
+## Suporta sa Codex
+
+Gumagana ang parehong pooling para sa Codex CLI ng OpenAI, laban sa iyong sariling mga ChatGPT-subscription account:
+
+```sh
+tokenmaxxing init --codex   # i-import ang iyong kasalukuyang codex login + i-install ang codex supervisor at Stop hook
+tokenmaxxing add --codex    # mag-log in ng ibang account, nakahiwalay - hindi nagagalaw ang iyong pangunahing login
+codex                       # gamitin ang codex tulad ng dati
+```
+
+Ang Codex pool ay ganap na parallel na state: sarili nitong accounts index, sarili nitong mga naka-park na credential file (0600 na file sa parehong platform, dahil ang sariling store ng codex ay isang plaintext file), sarili nitong lock, sarili nitong last-swap timestamp. Walang ibinabahagi sa Claude pool maliban sa decision-policy code.
+
+### Bakit imposible ang hot-swap sa Codex
+
+Ang isang tumatakbong codex process ay humahawak ng isang in-memory auth manager at tahasang tumatanggi na i-reload ang `auth.json` kapag ito ay nagngangalan na ng ibang account. Walang file watcher at walang per-request credential poll, kaya't ang isang credential na ipinalit sa ilalim ng isang tumatakbong codex ay basta hindi nagkakabisa para sa inference. Ang restart ang pagpapalit: ipinagpapatuloy ng `codex resume <session-id>` ang lokal na transcript sa alinmang account na hawak na ngayon ng `auth.json`.
+
+Hinahawakan ito ng tokenmaxxing gamit ang isang codex supervisor shim: pinapatakbo ng Stop hook ang parehong greedy pace-pressure na desisyon sa bawat turn boundary, at kapag lumipat ito, nagsusulat ito ng isang marker na nagpapa-SIGTERM sa supervisor sa session sa naka-commit na boundary at muling naglulunsad ng `codex resume <session-id>` sa sariwang account, buo ang transcript. Dahil ang bawat codex switch ay isang nakikitang restart, ang codex greedy path ay may dalang 1.2x na improvement margin: dapat talunin ng isang challenger ang pace pressure ng kasalukuyang account nang 20%, hindi lamang nang kaunti. Binabalewala ng hard path (isang na-cross na bar) ang margin. Wala ring depleted-pool countdown para sa codex - walang makakapagpa-pause sa isang codex session - kaya't ang isang ganap na naubos na codex pool ay nananatili.
+
+Iba pang codex-specific na mekanika:
+
+- Ang paggamit ay binabasa mula sa isang libreng authenticated GET laban sa sariling rate-limit endpoint ng codex (ang parehong tawag na ginagawa ng `/status` ng CLI): mga porsyento kasama ang absolute epoch reset time, parehong aggregate window at per-model cap. Ang pag-uuri ng window ay duration-driven, hindi kailanman position-driven, dahil ang mga kasalukuyang plano ay maaaring walang 5-oras na window at ang lingguhang window ay nasa primary slot.
+- Nagro-rotate ang mga Codex refresh token, at ang muling paggamit ng isang napalitan na ay pumapatay sa buong grant family. Ang bawat rotation ay pinananatili sa sandaling bumalik ito, ang aktibong account ay sinasample lamang sa pamamagitan ng live blob (hindi kailanman isang lipas na naka-park na kopya), at tinitiyak ng per-session presence file na ang isang account na tumatakbo sa isang live sibling session ay hindi kailanman isang swap target at hindi kailanman nare-refresh ang naka-park nitong token.
+- Nangangailangan ang Codex ng file credential store: mabilis na nabibigo ang `init --codex` kung naka-pin ang keyring store, at isinusulat ng `add --codex` ang file-mode setting sa isolated onboarding home upang ang login ay mapunta nang maaani.
+- Isang manu-manong hakbang: nilalaktawan ng codex ang mga hook na hindi pa nito sinabihang pagkatiwalaan. Pagkatapos ng `init --codex`, buksan ang codex nang minsan at pagkatiwalaan ang tokenmaxxing Stop hook sa pamamagitan ng `/hooks`, o mananatiling tahimik na hindi gumagana ang auto-switching. Ipinipirinta ng `init --codex` ang paalalang ito.
+
+## Ang Slack bridge: xx serve
+
+Nagpapatakbo ang `tokenmaxxing serve` ng isang lokal na Slack daemon sa pamamagitan ng Socket Mode - walang kinakailangang pampublikong URL. Setup:
+
+```sh
+tokenmaxxing serve setup                    # ipinipirinta ang app manifest, humihingi ng dalawang token
+tokenmaxxing serve link <channel-id> <repo> # itali ang isang channel sa isang repo checkout
+tokenmaxxing serve                          # patakbuhin ang daemon
+```
+
+Banggitin ang bot sa isang naka-link na channel at magbubukas ito ng isang Claude Code session para sa thread na iyon, sa naka-link na repo checkout. Ang bawat thread message ay nagpapatakbo ng isang Agent SDK `query()` na may `resume` - hindi kailanman isang persistent na streaming query - kaya't muling sinusuri ng `ensureBestAccount()` ang pool sa bawat isang turn at maaaring mag-restart ang daemon nang hindi nawawala ang mga thread (matibay ang mga thread record; muling nag-su-subscribe ang daemon sa mga ito sa startup).
+
+Kapansin-pansing gawi:
+
+- **Streaming**: ang mga tugon ay nagse-stream nang natively papunta sa Slack, na may mga task card para sa pag-iisip at pagtakbo ng tool, fenced code na nire-render na may highlighting, isang panghuling "Turn" card na may cost at tagal, at isang bagong Slack message na binubuksan tuwing may tool run na nakakaabala sa streamed na text, kaya't ang isang turn ay nababasa bilang magkakahiwalay na mensahe sa paligid ng mga tool run. Ina-update ng mga TodoWrite call ang isang stable na checklist card nang nasa lugar.
+- **Permissions**: ang per-link na `permissionMode` ay nagde-default sa `acceptEdits`; ang `--yolo` (alias `--dangerous`) ay nagpapasok ng isang link sa `bypassPermissions`. Ang mga interactive na dialog ay hindi pinapayagan sa mga naka-relay na turn - walang makakasagot sa isa sa pamamagitan ng Slack - kaya't nagtatanong ang modelo sa prosa at ang iyong thread reply ang susunod na turn. Isang naka-bundle na plugin skill ang nagtuturo dito na i-tag ang humihiling at tapusin ang turn kapag kailangan nito ng isang desisyon.
+- **Slash commands**: ang isang thread message na ang stripped na text ay nagsisimula sa `/` ay tumatakbo bilang isang claude slash command. Kinakain ng composer ng Slack ang mga mensaheng nagsisimula sa `/`, kaya't gamitin ang mention-first na anyo (`@bot /usage`) o isang paunang espasyo.
+- **Graceful shutdown**: nagd-drain ang SIGTERM/SIGINT - ang mga bagong turn ay maingay na ibinabagsak, ang mga in-flight na turn ay binibigyan ng hanggang 5 minuto, at ang claude child ay tumatakbo nang nakahiwalay sa sarili nitong process group upang hindi ito mapatay ng isang terminal na Ctrl-C bago maisalba ng drain ang turn.
+- **Thread cleanup**: kapag sinabi mo dito na tapos na ang trabaho, tumatawag ang modelo ng isang in-process na `finish_thread` na tool; pagkatapos ganap na matapos ang turn, ibinabagsak ng daemon ang thread record, nag-u-unsubscribe, at nagpo-post ng isang kumpirmasyon. Ang isang sariwang pagbanggit ay nagsisimula ng isang bagong session.
+- **Error hygiene**: ang mga turn error ay nagpo-post ng pinutol na message-only na text, hindi kailanman hilaw na error body.
+
+## Ang Agent SDK surface
+
+Ang programmatic entry ng package (ang `exports["."]` ay nakaturo sa `src/sdk.ts`) ay ipinapares ang tokenmaxxing sa Claude Agent SDK para sa mga agent na binubuo mo laban sa iyong sariling mga naka-pool na account. Dapat tumakbo ang iyong app sa ilalim ng Bun (naghahatid ang tokenmaxxing ng TypeScript source at gumagamit ng `bun:ffi`).
+
+```ts
+import { query } from "@anthropic-ai/claude-agent-sdk";
+import { ensureBestAccount, pooledOptions, stopHookCheck } from "tokenmaxxing";
+
+await ensureBestAccount(); // run the switch decision before the spawn
+
+for await (const message of query({
+  prompt: "...",
+  options: {
+    ...pooledOptions(), // pinned real claude + scrubbed env
+    hooks: { Stop: [{ hooks: [stopHookCheck] }] }, // re-decide at every turn boundary
+  },
+})) {
+  // capture the session id from the init message for `resume` across swaps
+}
+```
+
+Ang Agent SDK ay nag-spawn ng isang claude subprocess kada `query()` at binabasa ang mga credential nang minsan sa spawn - walang statusline, walang mid-query hot-swap - kaya't ang integration ay boundary-driven:
+
+- Ang `ensureBestAccount()` ang eksaktong desisyon na pinapatakbo ng CLI hooks at timer (mga bar, pace pressure, cooldown, lahat ay shared code), hindi kailanman anticipatory: ang isang SDK session ay hindi kailanman maaaring i-pause para sa isang depleted countdown.
+- Ang `pooledOptions()` ay nagpi-pin ng `pathToClaudeCodeExecutable` sa tunay na claude binary (hindi kailanman ang supervisor wrapper) at nagbibigay ng buong kapalit na `env` na may bawat ambient credential override na nalinis. Mabilis itong nabibigo kung ang `CLAUDE_CONFIG_DIR` o `CLAUDE_SECURESTORAGE_CONFIG_DIR` ay naka-set sa environment ng iyong app: sa Linux ay isusulat ng isang pagpapalit ang live credential kung saan nakaturo ang mga iyon habang binabasa ng scrubbed na subprocess ang default store, isang tahimik na wrong-account na desync.
+- Muling pinapatakbo ng `stopHookCheck` ang desisyon sa mga turn boundary; ang isang pagpapalit na naisagawa nito ay magkakabisa sa susunod na spawn. Nahuhuli nito ang sarili nitong mga error (nagla-log sa stderr at sa log) sa halip na muling itapon, dahil ang isang hindi nahawakang hook exception ay maaaring makagambala sa agent, at ang pagpapahinto sa isang turn dahil sa isang sirang switch check ay mas mahal kaysa sa pagtitiis sa kasalukuyang account.
+
+Walang ini-import ang `sdk.ts` mula sa Agent SDK mismo; ang mga halaga nito ay structural na kumakalat sa mga opsyon ng SDK.
+
+## Build at pamamahagi
+
+Ang npm package ay naghahatid ng TypeScript source, hindi isang build: ang `tokenmaxxing` bin ay direktang nakaturo sa `src/main.ts` na may Bun shebang, at pinapatakbo ito ng Bun 1.2.6 o mas bago nang walang binago. Iyon ang dahilan kung bakit ang Bun ay isang mahigpit na kinakailangan. Walang mga compiled na binary ayon sa disenyo: isang maagang release ang naghatid ng iisang 61 MB na macOS binary sa bawat platform at nabigo sa Linux nang may `exec format error`, at ang bawat per-platform na compiled package ay mangangailangan ng sarili nitong release pipeline, kaya't naging modelo ng pamamahagi ang source-run-by-Bun.
+
+Ang `exports` map ng package ay naglalantad ng `src/sdk.ts` bilang ang programmatic entry na inilarawan sa itaas. Ang mga release ay tinatatakan ng `v<version>` sa GitHub; naglalathala ang CI sa npm sa pamamagitan ng trusted publishing (OIDC, na may provenance), at pinapatakbo ng publish gate ang typecheck at ang buong test suite muna.
+
+## Personal na paggamit at mga tuntunin ng serbisyo [#personal-use-and-terms-of-service]
+
+Pinagsasama-sama ng tokenmaxxing ang mga account na pag-aari mo, sa mga session at agent na ikaw mismo ang nagpapatakbo. Sinadya ang pananalitang iyon: hindi pinapayagan ng Anthropic ang mga third-party na produkto na mag-alok ng claude.ai login o claude.ai rate limit, at kasama diyan ang mga agent na binuo sa Agent SDK. Huwag ipamahagi ang naka-pool na SDK surface, o anumang binuo dito, sa mga third party. Sinasadya rin ng tokenmaxxing na manatili sa CLI-mediated na `/usage` path para sa quota data sa halip na muling ipatupad ang OAuth o i-proxy ang API traffic: hindi ito isang proxy, at ang tanging mga OAuth endpoint na hinahawakan nito ay ang standard refresh grant na ginagamit sa isang pagpapalit at isang read-only na identity check (ang roles endpoint) na nagpapatunay kung aling account talaga ang pag-aari ng isang token.
+
+## Mga tapat na limitasyon
+
+- **Isang malamig na turn.** Ang prompt cache ay org-scoped, kaya't ang unang turn sa isang bagong account ay muling nag-a-upload ng konteksto nang minsan.
+- **Depleted-pause na aberya.** Tanging ang isang ganap na naubos na pool ang humihinto sa session para sa countdown; anumang na-type sa split-second na iyon ay nawawala.
+- **Adoption lag.** Sa macOS ang unang turn sa loob ng ~30 segundo ng isang pagpapalit ay maaari pa ring mag-meter sa lumang account; sinisipsip ito ng headroom ng mga bar.
+- **Shared na blast radius.** Ibinabahagi ng lahat ng default-profile na session ang isang live credential, kaya't inililipat silang lahat nang sabay ng isang pagpapalit (bawat isa ay ina-adopt sa lugar).
+- **Mga plaintext na credential sa Linux.** Ang Claude Code mismo ay nag-iimbak ng mga Linux credential bilang isang 0600 plaintext file; sinusunod ng mga naka-park na kopya ng tokenmaxxing ang parehong modelo.
+
+## Troubleshooting at FAQ
+
+**Mukhang hindi na-su-supervise ang `claude`.**
+Patakbuhin ang `tokenmaxxing doctor`. Dapat manalo ang shim sa PATH resolution; tiyakin na ang `# tokenmaxxing PATH` na linya sa iyong shell rc ay nakaturo sa kasalukuyang bin directory at nasa unahan ng tunay na claude. Nagbabala rin ang `doctor` tungkol sa `alias claude=...` o isang `claude()` shell function na tumatabing sa wrapper, at tungkol sa mga alias na naglulunsad ng isang claude binary sa pamamagitan ng absolute path (ganap na nilalampasan ng mga iyon ang supervisor).
+
+**Hindi kailanman pumuputok ang auto-switching sa Codex.**
+Nilalaktawan ng Codex ang mga hook na hindi pa nito sinabihang pagkatiwalaan. Buksan ang codex, patakbuhin ang `/hooks`, at pagkatiwalaan ang tokenmaxxing Stop hook. Ang tiwala ay naitatala laban sa hash ng hook, kaya't dapat itong muling ipagkaloob kung na-edit man ang hook.
+
+**Nagpapakita ng pulang `✗` ang isang account sa statusline.**
+Patay na ang refresh token nito (binawi o na-rotate palabas mula sa ilalim ng backup nito). Patakbuhin ang `tokenmaxxing auth <sel>` upang muling i-authenticate ito nang nasa lugar; sinasabi sa iyo ng command kung aling email ang gagamitin sa pag-sign in at tumatanggi sa isang login na napupunta sa ibang account.
+
+**Bakit hindi ito lumilipat sa account na may pinakamaraming natitirang quota?**
+Dahil hindi iyon ang account na may pinakamalaking panganib na mawalan ng quota. Ang target ay ang account na pinakanahuhuli sa sarili nitong lingguhang bilis: natitirang porsyento na hinati sa oras hanggang sa lingguhang reset nito. Sa magkaparehong dami ng natitira, bumababa ito sa pinakamaagang pag-expire muna, at sa magkaparehong pag-expire ay sa pinakamaraming natitira muna.
+
+**Kalilipat lang at ipinapakita pa rin ng statusline ang lumang account.**
+Inaasahan sa hanggang ~30 segundo sa macOS: ina-adopt ng tumatakbong session ang naipalit na credential sa susunod nitong credential-cache refresh. Ang usage tee ay pinipigilan sa loob ng 45 segundo pagkatapos ng isang pagpapalit para sa mismong dahilang ito.
+
+**May gastos ba ang `status --force`?**
+Oo, sinadya: nagpapadala ito ng isang minimal na metered na haiku request bawat account upang magsimula ang bawat 5-oras na session window sa sandaling iyon sa halip na manatiling nakatulog, pagkatapos ay kumukuha ng sariwang sample. Ang payak na `status` at `watch` ay hindi kailanman nag-ping; libre ang mga pagbasa ng `/usage`. Tandaan na maaaring ma-lag ng server usage feed ang isang bagong-buksang window nang segundo hanggang minuto, kaya't ang isang probe kaagad pagkatapos ng ping ay maaari pa ring magpakita ng pre-ping na estado - nagre-render ang `status` ng isang tala sa halip na magpanggap na nabigo ang ping.
+
+**Walang ibinalik ang `/usage` probe para sa aktibong account.**
+Iyon ay isang kilalang gawi ng claude: kapag nabigo o na-rate-limit ang internal usage fetch nito, ipinipirinta ng `/usage` ang lokal na session stats lamang nang walang mga percentage line. Sinasample ng tokenmaxxing ang aktibong account mula sa statusline push at nagpo-probe lamang ng mga naka-park na account, tiyak upang maiwasan ito.
+
+**Mga background na claude session.**
+Ang background daemon ng claude ay nag-spawn ng tunay na versioned na binary sa pamamagitan ng absolute path, na nilalampasan ang mga PATH shim, kaya't hindi na-su-supervise ang mga background session. Pumuputok pa rin ang mga hook sa pamamagitan ng `settings.json`, at sinasaklaw ng credential adoption kasama ang pana-panahong timer ang pagpapalit, ngunit walang marker-driven na respawn para sa kanila.
+
+**May nag-spawn ng maraming proseso minsan. Posible pa ba iyon?**
+Ang supervisor ay may dalang mga layered na recursion guard laban mismo sa makasaysayang pagkabigong iyon (isang lipas na wrapper na naka-pin bilang ang "tunay" na claude): isang depth sentinel sa environment na humihinto sa 5 na antas, isang on-disk na spawn-rate limiter, mga realpath identity check na tumatanggi sa anumang kandidatong nire-resolve pabalik sa sariling bin directory ng tokenmaxxing, at isang matinding pagkabigo (hindi kailanman isang tahimik na PATH scan) kapag ang isang na-configure na claude path ay wala na. Pinapatunayan ng `init` at `doctor` na ang isang kandidato ay talagang claude sa pamamagitan ng pagpapatakbo ng `--version` bago ito i-pin.
+
+**Pag-uninstall.**
+Inaalis ng `tokenmaxxing uninstall` ang mga supervisor shim, settings entry, at ang pana-panahong timer, at iniiwang buo ang iyong mga account at naka-park na credential. Inaalis lamang nito ang mga statusline entry na kinikilala nito bilang sarili nito.
+
+## Lisensya
+
+MIT. Source sa [anaclumos/tokenmaxxing](https://github.com/anaclumos/tokenmaxxing).

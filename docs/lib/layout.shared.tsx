@@ -21,6 +21,16 @@ import vi from './translations/vi';
 import te from './translations/te';
 import ha from './translations/ha';
 import tr from './translations/tr';
+import pnb from './translations/pnb';
+import sw from './translations/sw';
+import tl from './translations/tl';
+import ta from './translations/ta';
+import yue from './translations/yue';
+import wuu from './translations/wuu';
+import fa from './translations/fa';
+import ko from './translations/ko';
+import am from './translations/am';
+import th from './translations/th';
 
 export const translations = i18n
   .translations()
@@ -46,6 +56,16 @@ export const translations = i18n
     te,
     ha,
     tr,
+    pnb,
+    sw,
+    tl,
+    ta,
+    yue,
+    wuu,
+    fa,
+    ko,
+    am,
+    th,
   });
 
 export function baseOptions({ locale }: { locale: string }): BaseLayoutProps {

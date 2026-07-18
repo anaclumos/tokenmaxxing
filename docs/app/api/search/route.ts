@@ -50,5 +50,21 @@ export const { GET } = createFromSource(source, {
     te: { components: { tokenizer: segmenterTokenizer({ locale: 'te' }) } },
     ha: { components: { tokenizer: segmenterTokenizer({ locale: 'ha' }) } },
     tr: { language: 'turkish' },
+    pnb: { components: { tokenizer: segmenterTokenizer({ locale: 'pnb' }) } },
+    sw: { components: { tokenizer: segmenterTokenizer({ locale: 'sw' }) } },
+    tl: { components: { tokenizer: segmenterTokenizer({ locale: 'tl' }) } },
+    ta: { language: 'tamil' },
+    yue: {
+      components: { tokenizer: createMandarinTokenizer() },
+      search: { threshold: 0, tolerance: 0 },
+    },
+    wuu: {
+      components: { tokenizer: createMandarinTokenizer() },
+      search: { threshold: 0, tolerance: 0 },
+    },
+    fa: { components: { tokenizer: segmenterTokenizer({ locale: 'fa' }) } },
+    ko: { components: { tokenizer: segmenterTokenizer({ locale: 'ko' }) } },
+    am: { components: { tokenizer: segmenterTokenizer({ locale: 'am' }) } },
+    th: { components: { tokenizer: segmenterTokenizer({ locale: 'th' }) } },
   },
 });

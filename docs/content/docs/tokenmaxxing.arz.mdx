@@ -185,6 +185,29 @@ Claude Code بيدفع بيانات حدود المعدل (`rate_limits.five_hou
 
 `tokenmaxxing config` بيوريّك الإعدادات الفعّالة مع مصادرها؛ `config set`/`unset` بيعدّلوا المفاتيح المنقّطة؛ `config tidy` بيشيل المفاتيح المجهولة.
 
+## تخطيط مجلد الحالة
+
+كل حاجة موجودة تحت `~/.config/tokenmaxxing/` (تقدر تتجاوزها بـ `TOKENMAXXING_HOME`؛ كل مسار قابل للملاحظة من برّه ليه تجاوز عن طريق env عشان الأداة كلها تقدر تشتغل بمعزل تمامًا في الاختبارات).
+
+| المسار | بيحتوي إيه |
+|---|---|
+| `config.json` | الإعدادات بتاعتك (متفرّقة؛ القيم الافتراضية بتتطبّق لكل حقل) |
+| `accounts.json` | index مش سري لحسابات Claude اللي في الـ pool: اللابلات، والـ ids، ونوافذ الاستخدام المخزّنة في الكاش. عمره ما tokens |
+| `usage.json` | لقطة النوافذ الإجمالية بتاعت الـ statusline tee؛ الـ mtime بتاعه هو نبضة حياة الـ feed |
+| `model-usage.json` | الحدود الأسبوعية لكل موديل المخزّنة في الكاش بـ TTL من `/usage` |
+| `lastswap.json` | timestamp بالـ epoch لآخر تبديل؛ بيحرّك فترة التهدئة بتاعت الـ 45 ثانية |
+| `lock` | ملف الـ `flock` اللي بيسلسل التبديلات |
+| `tokenmaxxing.log` | لوج أحداث بيتكتب عليه بس (append-only) |
+| `bin/` | الـ PATH shims: `claude`، و `codex`، ونقاط دخول `tokenmaxxing` / `xx` |
+| `respawn/<session-id>` | markers الـ respawn بتاعت انتظار الاستنفاد اللي الـ supervisor بيراقبها |
+| `creds/` | Linux بس: ملفات credential مركونة، 0600 في مجلد 0700 (macOS بتركن الـ credentials كعناصر keychain لكل حساب بدل كده) |
+| `onboard/`، `sample/` | homes إعدادات معزولة للرمي لتسجيلات دخول `add`/`auth` وبروبات `/usage` للحسابات المركونة؛ الـ onboard homes اللي فيها credentials نص عادي بتتمسح بعد الحصاد |
+| `slack.json` | tokens و روابط قنوات `xx serve` (0600) |
+| `slack-threads/` | سجلات session لكل thread لـ `xx serve` |
+| `codex-*` | الـ Codex pool المتوازي: `codex-accounts.json`، و `codex-lastswap.json`، و `codex-lock`، و `codex-creds/`، و `codex-onboard/`، و `codex-respawn/`، و `codex-live/` (ملف حضور واحد متحقّق منه بالـ PID لكل codex session مُشرَف عليها وشغّالة، عشان الحساب الحي عمره ما يبقى هدف تبديل) |
+
+برّه مجلده الخاص، tokenmaxxing بيلمس بالظبط: `~/.claude.json` (تبديل `oauthAccount`)، و `settings.json` بتاع Claude Code (مدخلات الـ hook والـ statusline)، ومخزن الـ credential الحي (عنصر keychain `Claude Code-credentials` على macOS، و `.credentials.json` على Linux)، و `~/.claude.lock` (قفل التحديث بتاع claude، اللي بيتاخد أثناء التبديلات)، و `auth.json` و `hooks.json` بتوع codex، ووحدة الفحص الدوري في launchd أو systemd.
+
 ## تخزين الـ credentials ونموذج الأمان
 
 كل الحالة موجودة في `~/.config/tokenmaxxing/`. عمليات الإدخال والإخراج للـ credential بتعدّي عن طريق واجهة مخزن واحدة بتتحدّد حسب المنصة؛ مواقع الاستدعاء عمرها ما بتتفرّع حسب المنصة.
@@ -309,6 +332,12 @@ for await (const message of query({
 - `stopHookCheck` بيعيد تشغيل القرار عند حدود الـ turn؛ أي تبديل بيوقّعه بيسري مفعوله في الإطلاق اللي بعده. بيمسك أخطاءه بنفسه (وبيسجّلها في stderr واللوج) بدل ما يرميها تاني، لأن استثناء hook مش متعامَل معاه ممكن يقطع الـ agent، وإجهاض turn بسبب فحص تبديل باظ بيكلّف أكتر من إنك تكمّل على الحساب الحالي.
 
 `sdk.ts` مابيستوردش أي حاجة من الـ Agent SDK نفسه؛ قيمه بتنتشر هيكليًا في خيارات الـ SDK.
+
+## البناء والتوزيع
+
+باكدج الـ npm بيشحن كود TypeScript، مش build: الـ `tokenmaxxing` bin بيأشّر على طول على `src/main.ts` بـ Bun shebang، و Bun 1.2.6 أو أحدث بيشغّله زي ما هو. عشان كده Bun مطلب أساسي. مفيش binaries مترجمة عن قصد في التصميم: إصدار بدري شحن binary واحد بحجم 61 MB لـ macOS لكل المنصات وفشل على Linux بـ `exec format error`، والباكدجات المترجمة لكل منصة كل واحدة كانت هتحتاج pipeline إصدار خاص بيها، فالكود اللي بيتشغّل بـ Bun بقى نموذج التوزيع.
+
+خريطة الـ `exports` بتاعت الباكدج بتكشف `src/sdk.ts` كنقطة الدخول البرمجية الموصوفة فوق. الإصدارات بتتعلّم بـ `v<version>` على GitHub؛ الـ CI بينشر لـ npm عن طريق النشر الموثوق (OIDC، مع provenance)، وبوابة النشر بتشغّل الـ typecheck ومجموعة الاختبارات الكاملة الأول.
 
 ## الاستخدام الشخصي وشروط الخدمة [#personal-use-and-terms-of-service]
 
