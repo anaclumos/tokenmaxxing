@@ -1,3 +1,5 @@
+Default: ship = do the work in a worktree, open a PR, wait 10 minutes for reviews to kick in, handle reviews (refute or agree), then merge, tear down (clean up & delete worktree). Tag the user in Slack when a decision is needed or user intervention is needed.
+
 # Agent rules
 
 Standing rules for anyone (human or agent) working in this repo. Follow them exactly.
