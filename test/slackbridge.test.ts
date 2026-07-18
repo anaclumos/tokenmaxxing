@@ -3,8 +3,10 @@
 // rate-limit text classifier (both ported from slaude at its shutdown).
 
 import { describe, expect, test } from "bun:test";
+import { writeFileSync } from "node:fs";
 import { MAX_RECOVERIES, PARK_MAX_MS, TurnOutcomeSchema, isRateLimitText, parkPlan } from "../src/lib/slackbridge.ts";
-import { parseUsageLimitEpoch } from "../src/lib/usage.ts";
+import { parseUsageLimitEpoch, recordObservedLimit } from "../src/lib/usage.ts";
+import { loadUsage, writeUsage } from "../src/lib/state.ts";
 
 const NOW = 1_784_400_000_000;
 const DEADLINE = NOW + PARK_MAX_MS;
@@ -21,6 +23,13 @@ describe("parkPlan", () => {
     const plan = parkPlan({ decision: { ...depleted, waitUntil: NOW + 60_000 }, now: NOW, recoveries: 0, deadline: DEADLINE });
     expect(plan.kind).toBe("park");
     if (plan.kind === "park") expect(plan.wakeAt).toBeGreaterThan(NOW + 60_000);
+  });
+
+  test("the wake grace counts against the deadline", () => {
+    // a reset in the final seconds of the budget would wake past the promised
+    // total hold, so it drops instead of parking.
+    expect(parkPlan({ decision: { ...depleted, waitUntil: DEADLINE - 1_000 }, now: NOW, recoveries: 0, deadline: DEADLINE }).kind).toBe("drop");
+    expect(parkPlan({ decision: { ...depleted, waitUntil: DEADLINE - 60_000 }, now: NOW, recoveries: 0, deadline: DEADLINE }).kind).toBe("park");
   });
 
   test("depleted-wait counts as depleted", () => {
@@ -61,7 +70,50 @@ describe("parseUsageLimitEpoch", () => {
   test("null on phrase-only or malformed epochs", () => {
     expect(parseUsageLimitEpoch({ text: "usage limit reached, resets 3pm" })).toBeNull();
     expect(parseUsageLimitEpoch({ text: "usage limit reached|12345" })).toBeNull();
+    // 11/12-digit runs are malformed, never "seconds" (they would become
+    // far-future resets).
+    expect(parseUsageLimitEpoch({ text: "usage limit reached|17843690460" })).toBeNull();
+    expect(parseUsageLimitEpoch({ text: "usage limit reached|178436904600" })).toBeNull();
     expect(parseUsageLimitEpoch({ text: "no limit here" })).toBeNull();
+  });
+});
+
+describe("recordObservedLimit", () => {
+  const claudeJson = process.env.TOKENMAXXING_CLAUDE_JSON!;
+  const seedIdentity = (org: string) => {
+    writeFileSync(claudeJson, JSON.stringify({ oauthAccount: { accountUuid: "u1", emailAddress: "a@e.com", organizationUuid: org } }));
+  };
+  const priorUsage = (org: string) => ({
+    fiveHour: { usedPercentage: 40, resetsAt: NOW + 3_600_000 },
+    sevenDay: { usedPercentage: 70, resetsAt: NOW + 86_400_000 },
+    org,
+    ts: NOW - 60_000,
+    model: null,
+  });
+
+  test("stamps the spawn org's session window 100% with the announced reset", () => {
+    seedIdentity("org-a");
+    writeUsage(priorUsage("org-a"));
+    recordObservedLimit({ text: "Claude AI usage limit reached|1784369046", now: NOW, org: "org-a" });
+    const u = loadUsage();
+    expect(u?.fiveHour).toEqual({ usedPercentage: 100, resetsAt: 1_784_369_046_000 });
+    expect(u?.sevenDay.usedPercentage).toBe(70); // weekly carried, never fabricated
+  });
+
+  test("never stamps when the spawn org is no longer live (mid-turn swap)", () => {
+    seedIdentity("org-b");
+    writeUsage(priorUsage("org-b"));
+    recordObservedLimit({ text: "usage limit reached|1784369046", now: NOW, org: "org-a" });
+    expect(loadUsage()?.fiveHour.usedPercentage).toBe(40);
+  });
+
+  test("never stamps without a same-org prior snapshot or a known org", () => {
+    seedIdentity("org-a");
+    writeUsage(priorUsage("org-b"));
+    recordObservedLimit({ text: "usage limit reached|1784369046", now: NOW, org: "org-a" });
+    expect(loadUsage()?.fiveHour.usedPercentage).toBe(40);
+    recordObservedLimit({ text: "usage limit reached|1784369046", now: NOW, org: null });
+    expect(loadUsage()?.fiveHour.usedPercentage).toBe(40);
   });
 });
 

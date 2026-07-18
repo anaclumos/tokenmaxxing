@@ -10,6 +10,7 @@ import { delay } from "es-toolkit";
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import type { StreamChunk } from "chat";
 import { ensureBestAccount, pooledOptions, stopHookCheck, type SwapDecision } from "../sdk.ts";
+import { readOAuthAccount } from "./claudejson.ts";
 import { http, safeErrorDetail } from "./http.ts";
 import { fmtResetShort, recordObservedLimit } from "./usage.ts";
 import type { SlackLink } from "./slackstate.ts";
@@ -67,7 +68,9 @@ export function parkPlan(input: { decision: SwapDecision; now: number; recoverie
   const depleted = input.decision.reason === "all-depleted" || input.decision.reason === "depleted-wait";
   if (!depleted) return { kind: "proceed" };
   const wake = input.decision.waitUntil ?? null;
-  if (wake == null || wake > input.deadline || input.recoveries >= MAX_RECOVERIES) {
+  // the grace counts against the deadline too: the promised total hold is
+  // exact, not deadline-plus-grace (review catch, PR #18).
+  if (wake == null || wake + PARK_GRACE_MS > input.deadline || input.recoveries >= MAX_RECOVERIES) {
     return { kind: "drop", recoversAt: wake };
   }
   return { kind: "park", wakeAt: wake + PARK_GRACE_MS };
@@ -92,6 +95,23 @@ const RATE_LIMIT_PHRASES = [
 export function isRateLimitText(input: { text: string }): boolean {
   const lower = input.text.toLowerCase();
   return RATE_LIMIT_PHRASES.some((phrase) => lower.includes(phrase));
+}
+
+/** The CLI puts an errored result's reason in `result` even on non-success
+ *  subtypes (the exact shape PingResultSchema in usage.ts handles), while the
+ *  SDK's error type declares only `errors` - so limit text is gathered
+ *  loosely from both fields. */
+const ResultTextSchema = z.looseObject({
+  result: z.string().optional(),
+  errors: z.array(z.string()).optional(),
+});
+
+function erroredResultText(message: unknown): string {
+  const parsed = ResultTextSchema.safeParse(message);
+  if (!parsed.success) return "";
+  return [parsed.data.result, ...(parsed.data.errors ?? [])]
+    .filter((t): t is string => t != null && t !== "")
+    .join("\n");
 }
 
 // ---- workspace identity ----------------------------------------------------
@@ -244,6 +264,9 @@ export async function relayThread(input: {
     postedText = false;
     outcome.failed = false;
     outcome.rateLimited = false;
+    // the identity this spawn meters: a limit observation is attributed to it,
+    // never to whatever account a concurrent thread swaps live mid-turn.
+    const spawnOrg = readOAuthAccount()?.organizationUuid ?? null;
     try {
       const q = query({
         prompt: input.prompt,
@@ -276,16 +299,16 @@ export async function relayThread(input: {
           // arrives exactly that way: result "Claude AI usage limit
           // reached|<epoch>"), so errored is a field check, not a subtype
           // check - and only an errored result is ever limit-classified.
-          const text = message.subtype === "success" ? message.result : message.errors.join("\n");
           if (message.is_error || message.subtype !== "success") {
+            const text = erroredResultText(message);
             outcome.failed = true;
             outcome.rateLimited = isRateLimitText({ text });
             // persist the observation: the retry's decision otherwise re-reads
             // the stale pre-limit snapshot (poll TTL) and respawns the same
             // depleted account - a serve process has no statusLine tee.
-            if (outcome.rateLimited) recordObservedLimit({ text, now: Date.now() });
+            if (outcome.rateLimited) recordObservedLimit({ text, now: Date.now(), org: spawnOrg });
           } else {
-            result = text;
+            result = message.result;
           }
         }
         for (const part of agentEventChunks({ state: mapState, message })) {
@@ -302,7 +325,7 @@ export async function relayThread(input: {
       outcome.failed = true;
       const detail = (e instanceof Error ? e.message : String(e)).slice(0, 300);
       outcome.rateLimited = isRateLimitText({ text: detail });
-      if (outcome.rateLimited) recordObservedLimit({ text: detail, now: Date.now() });
+      if (outcome.rateLimited) recordObservedLimit({ text: detail, now: Date.now(), org: spawnOrg });
       log("serve.turn_error", { err: detail });
       if (!outcome.rateLimited) await push(`tokenmaxxing: turn failed: ${detail}`);
     }

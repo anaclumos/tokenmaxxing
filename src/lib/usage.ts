@@ -186,9 +186,12 @@ export function parseUsageLimitEpoch(input: { text: string }): number | null {
     if (ch < "0" || ch > "9") break;
     digits += ch;
   }
-  if (digits.length < 10 || digits.length > 13) return null;
+  // exactly the two real encodings: 10-digit seconds or 13-digit ms. An 11-
+  // or 12-digit run is malformed and must stay an unknown reset, not become
+  // a far-future one via the seconds branch.
+  if (digits.length !== 10 && digits.length !== 13) return null;
   const n = Number(digits);
-  return digits.length >= 13 ? n : n * 1000;
+  return digits.length === 13 ? n : n * 1000;
 }
 
 /**
@@ -200,20 +203,25 @@ export function parseUsageLimitEpoch(input: { text: string }): number | null {
  * pre-limit snapshot and respawns the same depleted account. The session
  * window is stamped 100% with the announced reset: whichever window actually
  * tripped, the account is unusable until then, and the hard path swaps away.
- * Without a same-org prior snapshot there is nothing safe to write (a
- * synthetic weekly value would flow into `account.lastUsage` and poison the
- * picker's ranking; unmeasured must not look fresh), so the observation is
- * dropped and the retry stays merely bounded.
+ * `org` is the identity captured AT THE SPAWN BOUNDARY of the turn that
+ * failed; the write happens only when that identity is known and still live,
+ * so a concurrent thread's mid-turn swap can never get its fresh account
+ * stamped depleted by this turn's failure (review catch, PR #18). Without a
+ * same-org prior snapshot there is nothing safe to write (a synthetic weekly
+ * value would flow into `account.lastUsage` and poison the picker's ranking;
+ * unmeasured must not look fresh), so the observation is dropped and the
+ * retry stays merely bounded.
  */
-export function recordObservedLimit(input: { text: string; now: number }): void {
-  const org = readOAuthAccount()?.organizationUuid ?? null;
+export function recordObservedLimit(input: { text: string; now: number; org: string | null }): void {
+  const live = readOAuthAccount()?.organizationUuid ?? null;
+  if (!input.org || live !== input.org) return;
   const prior = loadUsage();
-  if (!org || !prior || prior.org !== org) return;
+  if (!prior || prior.org !== input.org) return;
   const resetsAt = parseUsageLimitEpoch({ text: input.text });
   writeUsage({
     fiveHour: { usedPercentage: 100, resetsAt },
     sevenDay: prior.sevenDay,
-    org,
+    org: input.org,
     ts: input.now,
     model: prior.model,
   });

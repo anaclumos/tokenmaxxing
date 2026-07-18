@@ -209,10 +209,11 @@ async function runDaemon(): Promise<number> {
     return 1;
   }
   // the external-author guard compares every message's origin against the home
-  // workspace; ensure the reference exists (configs saved before the guard
-  // lack it). A failed capture fails the daemon fast: the guard never runs
-  // reference-less.
-  const workspaceTeamId = cfg.workspaceTeamId ?? (await fetchWorkspaceTeamId({ botToken: cfg.botToken }));
+  // workspace. The reference is re-captured from the live token at EVERY start
+  // (a stale persisted id would fail-closed reject the owner's own messages);
+  // a failed capture fails the daemon fast - the guard never runs
+  // reference-less, and the daemon is useless without Slack reachable anyway.
+  const workspaceTeamId = await fetchWorkspaceTeamId({ botToken: cfg.botToken });
   if (cfg.workspaceTeamId !== workspaceTeamId) {
     cfg = { ...cfg, workspaceTeamId };
     saveSlackConfig(cfg);
