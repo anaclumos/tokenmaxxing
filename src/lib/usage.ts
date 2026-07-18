@@ -9,8 +9,11 @@ import { join } from "node:path";
 import { delay } from "es-toolkit";
 import { z } from "zod";
 import { MAX_WRAP_DEPTH, WRAP_DEPTH_ENV, resolveRealClaude } from "./claudebin.ts";
+import { readOAuthAccount } from "./claudejson.ts";
+import { withLock } from "./lock.ts";
 import { log } from "./log.ts";
 import { paths } from "./paths.ts";
+import { loadUsage, writeUsage } from "./state.ts";
 import { RateLimitsStdinSchema, UsageWindowSchema, type ModelInfo, type UsageWindow, type UsageWindows } from "./types.ts";
 
 /** Normalize a resets_at value (epoch s, epoch ms, or ISO string) to epoch ms. */
@@ -151,6 +154,91 @@ export function parseResetClock(clock: string, now = Date.now()): number | null 
     if (best === null || Math.abs(epoch - now) < Math.abs(best - now)) best = epoch;
   }
   return best;
+}
+
+/** Compact time-until-reset: the largest unit only ("6d", "2h", "45m"),
+ *  floored to "1m" so a live window never reads as zero, and "" once the reset
+ *  has passed (the window is simply empty again). Non-empty output always ends
+ *  in a unit letter, so the statusLine's digit-leading used-percent glued
+ *  after it stays parseable. Lives here (not cli/render.ts) so headless lib
+ *  consumers stay off the terminal-rendering module. */
+export function fmtResetShort(epochMs: number | null | undefined, now = Date.now()): string {
+  if (epochMs == null) return "";
+  const dsec = Math.round((epochMs - now) / 1000);
+  if (dsec <= 0) return "";
+  const d = Math.floor(dsec / 86400);
+  const h = Math.floor((dsec % 86400) / 3600);
+  const m = Math.floor((dsec % 3600) / 60);
+  if (d > 0) return `${d}d`;
+  if (h > 0) return `${h}h`;
+  return `${Math.max(m, 1)}m`;
+}
+
+/** The reset epoch a limit result announces ("Claude AI usage limit
+ *  reached|<epoch>", 10-digit seconds or 13-digit ms). Structural scan, no
+ *  regex: everything after the pipe up to the first non-digit. Null when the
+ *  text is a phrase-only limit with no epoch. */
+export function parseUsageLimitEpoch(input: { text: string }): number | null {
+  const marker = "usage limit reached|";
+  const at = input.text.toLowerCase().indexOf(marker);
+  if (at < 0) return null;
+  let digits = "";
+  for (const ch of input.text.slice(at + marker.length)) {
+    if (ch < "0" || ch > "9") break;
+    digits += ch;
+  }
+  // exactly the two real encodings: 10-digit seconds or 13-digit ms. An 11-
+  // or 12-digit run is malformed and must stay an unknown reset, not become
+  // a far-future one via the seconds branch.
+  if (digits.length !== 10 && digits.length !== 13) return null;
+  const n = Number(digits);
+  return digits.length === 13 ? n : n * 1000;
+}
+
+/**
+ * Persist a limit observed in a turn RESULT into usage.json so the next
+ * decision sees the depleted account immediately. A headless serve/SDK process
+ * has no statusLine tee and `loadFreshSnapshots` skips re-probing inside the
+ * poll TTL (and `/usage` is fail-silent against the just-limited active token
+ * anyway), so without this write a post-limit retry re-decides off the stale
+ * pre-limit snapshot and respawns the same depleted account. The session
+ * window is stamped 100% with the announced reset: whichever window actually
+ * tripped, the account is unusable until then, and the hard path swaps away.
+ * `org` is the identity captured AT THE SPAWN BOUNDARY of the turn that
+ * failed; the write happens only when that identity is known and still live,
+ * so a concurrent thread's mid-turn swap can never get its fresh account
+ * stamped depleted by this turn's failure (review catch, PR #18). Without a
+ * same-org prior snapshot there is nothing safe to write (a synthetic weekly
+ * value would flow into `account.lastUsage` and poison the picker's ranking;
+ * unmeasured must not look fresh), so the observation is dropped and the
+ * retry stays merely bounded.
+ */
+export async function recordObservedLimit(input: { text: string; now: number; org: string | null }): Promise<void> {
+  if (!input.org) return;
+  // the whole check-then-write runs under the swap flock: a concurrent
+  // performSwap clears the snapshots and flips the live org, and a stale
+  // depleted write must not land for the wrong org right after that
+  // (review catch, PR #18).
+  await withLock(paths.lockFile, () => {
+    const live = readOAuthAccount()?.organizationUuid ?? null;
+    if (live !== input.org) return;
+    const prior = loadUsage();
+    if (!prior || prior.org !== input.org) return;
+    const resetsAt = parseUsageLimitEpoch({ text: input.text });
+    // a weekly-phrased limit exhausts the WEEKLY window: stamping only the 5h
+    // window would let the picker re-seat this account in 5h while the weekly
+    // cap stays dead for days (review catch, PR #18). Unknown-reset blocked
+    // windows self-bound at the window's own duration either way.
+    const weekly = input.text.toLowerCase().includes("weekly");
+    writeUsage({
+      fiveHour: weekly ? prior.fiveHour : { usedPercentage: 100, resetsAt },
+      sevenDay: weekly ? { usedPercentage: 100, resetsAt } : prior.sevenDay,
+      org: input.org,
+      ts: input.now,
+      model: prior.model,
+    });
+    log("usage.observed_limit", { resetsAt, weekly });
+  });
 }
 
 /**

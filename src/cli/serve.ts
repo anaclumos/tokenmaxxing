@@ -23,6 +23,7 @@ import { createMemoryState } from "@chat-adapter/state-memory";
 import {
   bareChannelId,
   isChannelId,
+  isOutsideAuthor,
   linkForChannel,
   listSlackThreads,
   loadSlackConfig,
@@ -35,7 +36,7 @@ import {
   SlackLinkSchema,
   type SlackConfig,
 } from "../lib/slackstate.ts";
-import { cleanupThread, relayThread, type CleanupOutcome } from "../lib/slackbridge.ts";
+import { cleanupThread, fetchWorkspaceTeamId, relayThread, type CleanupOutcome } from "../lib/slackbridge.ts";
 import { log, setLogEcho } from "../lib/log.ts";
 import { c, count } from "./render.ts";
 
@@ -93,7 +94,7 @@ function printSetupInstructions(): void {
   console.log(`${c.dim("Existing app? Paste the manifest over App Manifest in its settings, then reinstall to the workspace (scope changes need it). Tokens stay valid unless you rotate them.")}`);
 }
 
-function cmdServeSetup(): number {
+async function cmdServeSetup(): Promise<number> {
   printSetupInstructions();
   console.log();
   const botToken = prompt("bot token (xoxb-...):")?.trim();
@@ -111,7 +112,19 @@ function cmdServeSetup(): number {
     console.error(c.red("tokens rejected: the bot token must start with xoxb- and the app token with xapp-"));
     return 1;
   }
-  console.log(`${c.green("✓")} saved to slack.json (0600) with ${count({ n: cfg.links.length, noun: "link" })}`);
+  // the external-author guard needs the home workspace id; capture it from the
+  // token itself so the reference can never drift from the workspace the bot
+  // actually lives in (re-captured on every setup: new tokens may belong to a
+  // different workspace).
+  try {
+    cfg = { ...cfg, workspaceTeamId: await fetchWorkspaceTeamId({ botToken }) };
+    saveSlackConfig(cfg);
+  } catch (e) {
+    const detail = e instanceof Error ? e.message : String(e);
+    console.error(c.red(`tokens saved, but ${detail} - check the bot token; the daemon re-tries the capture at start`));
+    return 1;
+  }
+  console.log(`${c.green("✓")} saved to slack.json (0600) for workspace ${cfg.workspaceTeamId} with ${count({ n: cfg.links.length, noun: "link" })}`);
   return 0;
 }
 
@@ -209,7 +222,7 @@ export function formatLogLine(input: { event: string; parts: string }): string {
 }
 
 async function runDaemon(): Promise<number> {
-  const cfg = loadSlackConfig();
+  let cfg = loadSlackConfig();
   if (!cfg) {
     printSetupInstructions();
     return 1;
@@ -217,6 +230,17 @@ async function runDaemon(): Promise<number> {
   if (cfg.links.length === 0) {
     console.error(c.red("no channel links - run `tokenmaxxing serve link <channel-id> <repo>` first"));
     return 1;
+  }
+  // the external-author guard compares every message's origin against the home
+  // workspace. The reference is re-captured from the live token at EVERY start
+  // (a stale persisted id would fail-closed reject the owner's own messages);
+  // a failed capture fails the daemon fast - the guard never runs
+  // reference-less, and the daemon is useless without Slack reachable anyway.
+  const workspaceTeamId = await fetchWorkspaceTeamId({ botToken: cfg.botToken });
+  if (cfg.workspaceTeamId !== workspaceTeamId) {
+    cfg = { ...cfg, workspaceTeamId };
+    saveSlackConfig(cfg);
+    log("serve.team_captured", { team: workspaceTeamId });
   }
 
   // every log() event from here on (serve.* plus the in-process swap/decision
@@ -250,10 +274,12 @@ async function runDaemon(): Promise<number> {
     adapters: { slack },
     state,
     // per-thread lock with queueing: a message landing mid-turn waits its turn
-    // instead of racing a second claude spawn on the same cwd. The default
-    // 90s queue-entry TTL silently discards anything queued behind a turn
-    // longer than that (claude turns routinely are), hence the override.
-    concurrency: { strategy: "queue", queueEntryTtlMs: 900_000 },
+    // instead of racing a second claude spawn on the same cwd. Queue-entry TTL
+    // expiry is SILENT (chat 4.34.0 has no app callback for it), so the TTL
+    // must outlast the longest legitimate hold: a depleted-pool park
+    // (PARK_MAX_MS 14min) plus a long claude turn. Expired-and-folded beats
+    // silently-vanished, hence a full hour.
+    concurrency: { strategy: "queue", queueEntryTtlMs: 3_600_000 },
     // without this a cards-only segment in post-and-edit fallback would
     // strand a bare "..." placeholder message.
     fallbackStreamingPlaceholderText: null,
@@ -264,6 +290,9 @@ async function runDaemon(): Promise<number> {
   // killing a half-streamed answer (live incident 2026-07-18: a deploy
   // restart cut a turn mid-sentence and the answer never reached Slack).
   const activeTurns = new Set<Promise<void>>();
+  // aborts depleted-pool park/retry sleeps on drain, so a countdown never
+  // holds the restart hostage.
+  const drainAbort = new AbortController();
   let draining = false;
 
   const handleTurn = async (input: {
@@ -280,8 +309,26 @@ async function runDaemon(): Promise<number> {
     if (draining) {
       // the socket stays connected until the drain finishes; anything landing
       // in that window is dropped loudly rather than spawning an unwaitable
-      // turn. The user re-sends after the restart.
+      // turn - and the THREAD is told, not just the log (a silent drop reads
+      // as the bot thinking; slaude's recorded drop-notice rule). Tracked so
+      // the drain wait flushes it before exit; errors swallowed so the notice
+      // can never fail the drain.
       log("serve.drain_dropped", { thread: thread.id });
+      void tracked(
+        (async () => {
+          try {
+            await thread.post(
+              (async function* () {
+                yield "tokenmaxxing is restarting - this message was dropped; please re-send it in a moment.";
+              })(),
+            );
+          } catch (e) {
+            // caught (never rethrown - the notice must not fail the drain)
+            // but logged: an unposted notice means the user saw nothing.
+            log("serve.drain_notice_failed", { thread: thread.id, err: (e instanceof Error ? e.message : String(e)).slice(0, 300) });
+          }
+        })(),
+      );
       return;
     }
     const link = linkForChannel(cfg, bareChannelId(thread.channelId));
@@ -322,6 +369,7 @@ async function runDaemon(): Promise<number> {
       requesterIds,
       link,
       post: (m) => thread.post(m),
+      drainSignal: drainAbort.signal,
     });
     log(outcome.failed ? "serve.turn_failed" : "serve.turn_done", {
       thread: thread.id,
@@ -340,17 +388,35 @@ async function runDaemon(): Promise<number> {
       } catch (e) {
         const detail = (e instanceof Error ? e.message : String(e)).slice(0, 300);
         log("serve.cleanup_error", { thread: thread.id, err: detail });
-        await thread.post(`tokenmaxxing: cleanup failed: ${detail}`);
+        await thread.post(`tokenmaxxing: cleanup failed: ${detail}`).catch(() => {});
         return;
       }
-      // a refusal keeps the subscription so the thread stays live for a retry.
-      if (result.removed) await thread.unsubscribe();
-      await thread.post(result.message);
+      // the Slack calls are guarded too: this whole path runs inside the Chat
+      // SDK handler and must never throw into it (review catch, PR #18) - the
+      // record is already gone, so a failed confirmation only gets logged.
+      try {
+        // a refusal keeps the subscription so the thread stays live for a retry.
+        if (result.removed) await thread.unsubscribe();
+        await thread.post(result.message);
+      } catch (e) {
+        const detail = (e instanceof Error ? e.message : String(e)).slice(0, 300);
+        log("serve.finish_notify_error", { thread: thread.id, err: detail });
+      }
       log("serve.thread_finished", { thread: thread.id, removed: result.removed });
     }
   };
 
-  const relayable = (m: { author: { isMe: boolean; isBot?: boolean | "unknown" } }) => !m.author.isMe && m.author.isBot !== true;
+  const relayable = (m: { author: { isMe: boolean; isBot?: boolean | "unknown" }; raw?: unknown }) => {
+    if (m.author.isMe || m.author.isBot === true) return false;
+    // outsiders must not drive sessions (owner rule 2026-07-16, ported from
+    // slaude): Slack Connect externals and cross-workspace guests are
+    // rejected fail-closed - silent in Slack, loud in the log.
+    if (isOutsideAuthor({ raw: m.raw, workspaceTeamId })) {
+      log("serve.outside_author", {});
+      return false;
+    }
+    return true;
+  };
 
   const tracked = async (turn: Promise<void>) => {
     activeTurns.add(turn);
@@ -361,14 +427,41 @@ async function runDaemon(): Promise<number> {
     }
   };
 
+  // Per-thread serialization owned HERE, not only by the SDK's queue lock:
+  // chat 4.34.0 acquires the dispatch lock with a 30s TTL and extends it only
+  // BETWEEN dispatches, so any handler outliving 30s (every claude turn, any
+  // depleted-pool park) lets a later message take the expired lock and start
+  // a second concurrent handler in the same thread and cwd (review catch,
+  // PR #18). Escaped messages run as sequential turns in arrival order.
+  const threadTurns = new Map<string, Promise<void>>();
+  const serialized = (threadId: string, run: () => Promise<void>) => {
+    const prev = threadTurns.get(threadId) ?? Promise.resolve();
+    const next = prev.then(run, run);
+    threadTurns.set(threadId, next);
+    // the .finally chain is its own promise: without the .catch, a rejected
+    // turn leaves it as an unhandled rejection even though `next` itself is
+    // awaited by the handler (cubic review catch, PR #18).
+    void next
+      .finally(() => {
+        if (threadTurns.get(threadId) === next) threadTurns.delete(threadId);
+      })
+      .catch(() => {});
+    return next;
+  };
+
+  // filter EVERY message, trigger included: an outsider (or our own post)
+  // arriving last must not discard relayable home-workspace messages queued
+  // behind the turn - the queue hands the handler only the latest message and
+  // the rest ride context.skipped (review catch, PR #18).
   bot.onNewMention(async (thread, message, context) => {
-    const relayed = [...(context?.skipped ?? []).filter(relayable), message].map((m) => ({ text: m.text, authorId: m.author.userId }));
-    await tracked(handleTurn({ thread, relayed, isMention: true }));
+    const relayed = [...(context?.skipped ?? []), message].filter(relayable).map((m) => ({ text: m.text, authorId: m.author.userId }));
+    if (relayed.length === 0) return; // outsider mentions never open a session
+    await tracked(serialized(thread.id, () => handleTurn({ thread, relayed, isMention: true })));
   });
   bot.onSubscribedMessage(async (thread, message, context) => {
-    if (!relayable(message)) return; // never relay our own posts
-    const relayed = [...(context?.skipped ?? []).filter(relayable), message].map((m) => ({ text: m.text, authorId: m.author.userId }));
-    await tracked(handleTurn({ thread, relayed, isMention: false }));
+    const relayed = [...(context?.skipped ?? []), message].filter(relayable).map((m) => ({ text: m.text, authorId: m.author.userId }));
+    if (relayed.length === 0) return;
+    await tracked(serialized(thread.id, () => handleTurn({ thread, relayed, isMention: false })));
   });
 
   // drain instead of dying mid-answer: stop taking new turns, let in-flight
@@ -385,9 +478,15 @@ async function runDaemon(): Promise<number> {
       process.exit(1);
     }
     draining = true;
+    drainAbort.abort(); // parked/retrying turns wake, post their drop notice, and finish
     log("serve.draining", { signal, turns: activeTurns.size });
     console.log(`${c.yellow("●")} ${signal}: draining ${count({ n: activeTurns.size, noun: "in-flight turn" })} (again to force)`);
-    await Promise.race([Promise.allSettled([...activeTurns]), delay(DRAIN_MS)]);
+    // re-snapshot until stable inside the deadline: drain-window drop notices
+    // join activeTurns after the first snapshot and must still flush.
+    const deadline = Date.now() + DRAIN_MS;
+    while (activeTurns.size > 0 && Date.now() < deadline) {
+      await Promise.race([Promise.allSettled([...activeTurns]), delay(deadline - Date.now())]);
+    }
     try {
       await bot.shutdown();
     } catch (e) {
