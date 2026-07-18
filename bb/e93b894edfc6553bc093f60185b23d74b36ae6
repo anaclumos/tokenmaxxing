@@ -1,0 +1,27 @@
+AGENTS.md
+  s_ed0ed0d85004e1::t_1ffdfc96e7ed06 66,69,125,163,170,218,220-221
+src/lib/decide.ts
+  s_ed0ed0d85004e1::t_f0ffe538ca9cf9 114
+src/lib/usage.ts
+  s_ed0ed0d85004e1::t_bc78ace5dd8a9a 79
+test/decide.test.ts
+  s_ed0ed0d85004e1::t_021bf783a5cfcf 4
+test/statusline.test.ts
+  s_ed0ed0d85004e1::t_6cae882cc72ffa 55,58-59
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "bbe93b894edfc6553bc093f60185b23d74b36ae6",
+  "prompts": {},
+  "sessions": {
+    "s_ed0ed0d85004e1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "98fc7c12-0e4d-422f-aea0-2a37bfb68ffb",
+        "model": "unknown"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    }
+  }
+}
