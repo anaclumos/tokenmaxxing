@@ -7,6 +7,7 @@
 // Slack app has the agent feature + assistant:write (the adapter drops them
 // gracefully otherwise); plain text streams either way.
 
+import { truncate } from "es-toolkit/compat";
 import { z } from "zod";
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 import type { StreamChunk } from "chat";
@@ -60,10 +61,6 @@ export type SegmentBreak = z.infer<typeof SegmentBreakSchema>;
 export const StreamPartSchema = z.union([z.string(), z.custom<StreamChunk>(), SegmentBreakSchema]);
 export type StreamPart = z.infer<typeof StreamPartSchema>;
 
-function truncate(input: { text: string; max: number }): string {
-  return input.text.length > input.max ? `${input.text.slice(0, input.max)}...` : input.text;
-}
-
 /** One human line out of a tool-input JSON blob; null when nothing fits. */
 export function toolInputSummary(rawJson: string): string | null {
   let parsed: unknown;
@@ -76,10 +73,10 @@ export function toolInputSummary(rawJson: string): string | null {
   if (!obj.success) return null;
   for (const field of SUMMARY_FIELDS) {
     const value = z.string().min(1).safeParse(obj.data[field]);
-    if (value.success) return truncate({ text: value.data, max: DETAILS_MAX });
+    if (value.success) return truncate(value.data, { length: DETAILS_MAX });
   }
   const compact = JSON.stringify(parsed);
-  return compact === "{}" ? null : truncate({ text: compact, max: DETAILS_MAX });
+  return compact === "{}" ? null : truncate(compact, { length: DETAILS_MAX });
 }
 
 const TodoItemSchema = z.object({
@@ -100,7 +97,10 @@ function todoCardId(parent: string | null): string {
 
 /** Checklist text out of a TodoWrite input blob; null when empty or junk.
  *  The in-progress item shows its activeForm ("Running tests") so the card
- *  reads as live narration, not a static list. */
+ *  reads as live narration, not a static list. An empty todos list maps to
+ *  null on purpose: claude clears the list only after everything completed,
+ *  and skipping that update keeps the finished all-checked card visible
+ *  instead of blanking it (intentional tradeoff, PR #5 review). */
 export function todoChecklist(rawJson: string): { text: string; allDone: boolean } | null {
   let parsed: unknown;
   try {
@@ -115,7 +115,7 @@ export function todoChecklist(rawJson: string): { text: string; allDone: boolean
     return `${TODO_ICONS[t.status]} ${label}`;
   });
   return {
-    text: truncate({ text: lines.join("\n"), max: TODO_DETAILS_MAX }),
+    text: truncate(lines.join("\n"), { length: TODO_DETAILS_MAX }),
     allDone: list.data.todos.every((t) => t.status === "completed"),
   };
 }
@@ -140,7 +140,7 @@ function resultText(content: z.infer<typeof ToolResultBlockSchema>["content"]): 
         .join("\n")
     : content;
   const trimmed = joined.trim();
-  return trimmed === "" ? undefined : truncate({ text: trimmed, max: OUTPUT_MAX });
+  return trimmed === "" ? undefined : truncate(trimmed, { length: OUTPUT_MAX });
 }
 
 /**
@@ -206,7 +206,7 @@ export function agentEventChunks(input: { state: StreamMapState; message: SDKMes
       if (!open) return [];
       delete state.open[key];
       if (open.kind === "thinking") {
-        return [{ type: "task_update", id: open.id, title: open.title, status: "complete", details: truncate({ text: open.acc.trim(), max: DETAILS_MAX }) }];
+        return [{ type: "task_update", id: open.id, title: open.title, status: "complete", details: truncate(open.acc.trim(), { length: DETAILS_MAX }) }];
       }
       if (open.kind === "todo") {
         const list = todoChecklist(open.acc);

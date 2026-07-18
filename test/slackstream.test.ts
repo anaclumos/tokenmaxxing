@@ -48,6 +48,19 @@ describe("todoChecklist", () => {
     ] }));
     expect(list).toEqual({ text: "🔄 Run tests", allDone: false });
   });
+
+  test("a long emoji-heavy checklist truncates without splitting a surrogate pair", () => {
+    const list = todoChecklist(JSON.stringify({ todos: [
+      { content: "🔄".repeat(700), status: "pending", activeForm: "" },
+    ] }));
+    if (list === null) throw new Error("expected a checklist");
+    expect(list.text.endsWith("...")).toBe(true);
+    expect(Array.from(list.text).length).toBe(600);
+    const hasLoneSurrogate = Array.from(list.text).some(
+      (c) => c.length === 1 && c.charCodeAt(0) >= 0xd800 && c.charCodeAt(0) <= 0xdfff,
+    );
+    expect(hasLoneSurrogate).toBe(false);
+  });
 });
 
 describe("agentEventChunks", () => {

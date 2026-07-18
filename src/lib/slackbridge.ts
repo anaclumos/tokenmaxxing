@@ -10,7 +10,7 @@ import { join } from "node:path";
 import { z } from "zod";
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import type { StreamChunk } from "chat";
-import { ensureBestAccount, pooledOptions, stopHookCheck } from "../sdk.ts";
+import { ensureBestAccount, pooledOptions, pooledSpawnEnv, stopHookCheck } from "../sdk.ts";
 import { paths } from "./paths.ts";
 import { threadKey, type SlackLink } from "./slackstate.ts";
 import { agentEventChunks, newStreamMapState, SegmentBreakSchema } from "./slackstream.ts";
@@ -137,6 +137,11 @@ export async function relayThread(input: {
       prompt: input.prompt,
       options: {
         ...pooledOptions(),
+        // claude >= 2.1.142 emits the structured Task tools by default and
+        // TodoWrite (the source of the Todos checklist card) never fires;
+        // this documented opt-out restores it (agent-sdk todo-tracking docs,
+        // verified 2026-07-18 against SDK 0.3.214 + claude 2.1.214).
+        env: { ...pooledSpawnEnv(), CLAUDE_CODE_ENABLE_TASKS: "0" },
         cwd: input.cwd,
         permissionMode: input.link.permissionMode,
         // the SDK refuses bypassPermissions without this explicit opt-in.
