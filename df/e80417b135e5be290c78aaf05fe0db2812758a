@@ -1,0 +1,21 @@
+.memory/MEMORY.md
+  s_01302d876347ce::t_11e75dcb17f2b6 8
+package.json
+  s_01302d876347ce::t_52222e84b86757 3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "dfe80417b135e5be290c78aaf05fe0db2812758a",
+  "prompts": {},
+  "sessions": {
+    "s_01302d876347ce": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c3215185-c3a7-4d72-8bbf-7ad6bbd92dde",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    }
+  }
+}
