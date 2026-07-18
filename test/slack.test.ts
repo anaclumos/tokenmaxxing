@@ -164,6 +164,14 @@ describe("thread records", () => {
     saveSlackThread(baseRecord);
     expect(loadSlackThread(baseRecord.threadId)?.activeTurn).toBeUndefined();
   });
+
+  test("the spawn pid persists on the marker; a pre-spawn marker has none", () => {
+    const marker = { prompt: "ship", startedAt: "2026-07-18T10:00:00.000Z", resumeCount: 0 };
+    saveSlackThread({ ...baseRecord, activeTurn: { ...marker, pid: 4242 } });
+    expect(loadSlackThread(baseRecord.threadId)?.activeTurn?.pid).toBe(4242);
+    saveSlackThread({ ...baseRecord, activeTurn: marker });
+    expect(loadSlackThread(baseRecord.threadId)?.activeTurn?.pid).toBeUndefined();
+  });
 });
 
 describe("resumeDecision", () => {

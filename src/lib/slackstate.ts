@@ -65,6 +65,12 @@ export const ActiveTurnSchema = z.object({
   prompt: z.string(),
   startedAt: z.string(),
   resumeCount: z.number().int().nonnegative(),
+  /** the DETACHED claude child's process-group id, persisted at spawn: an
+   *  uncatchable daemon death (SIGKILL, crash) skips the exit hook that kills
+   *  the group, so recovery must reap a surviving orphan before resuming -
+   *  two claude processes must never share the thread's cwd and session.
+   *  Absent until the spawn callback fires. */
+  pid: z.number().int().positive().optional(),
 });
 export type ActiveTurn = z.infer<typeof ActiveTurnSchema>;
 

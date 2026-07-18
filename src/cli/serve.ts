@@ -39,7 +39,7 @@ import {
   type SlackLink,
   type SlackThread,
 } from "../lib/slackstate.ts";
-import { cleanupThread, relayThread, type CleanupOutcome, type TurnOutcome } from "../lib/slackbridge.ts";
+import { cleanupThread, killGroup, relayThread, type CleanupOutcome, type TurnOutcome } from "../lib/slackbridge.ts";
 import { acquireLock } from "../lib/lock.ts";
 import { paths } from "../lib/paths.ts";
 import { log, setLogEcho } from "../lib/log.ts";
@@ -321,6 +321,10 @@ async function runDaemon(): Promise<number> {
         requesterIds: input.requesterIds,
         link: input.link,
         post: (m) => input.thread.post(m),
+        onSpawn: (pid) => {
+          record = { ...record, activeTurn: { ...input.marker, pid } };
+          saveSlackThread(record);
+        },
         onSessionId: (sessionId) => {
           record = { ...record, sessionId };
           saveSlackThread(record);
@@ -473,6 +477,34 @@ async function runDaemon(): Promise<number> {
     return { thread: handle, requesterIds: [] };
   };
 
+  /** The command a pid is currently running, or null when no such process. */
+  const pidCommand = (pid: number): string | null => {
+    const res = Bun.spawnSync(["ps", "-p", String(pid), "-o", "command="]);
+    if (res.exitCode !== 0) return null;
+    const cmd = res.stdout.toString().trim();
+    return cmd === "" ? null : cmd;
+  };
+
+  /** Reap a previous generation's detached claude child that survived an
+   *  uncatchable daemon death (SIGKILL, crash: the "exit" event never fires
+   *  on those, so the hook that kills the group never ran) - resuming beside
+   *  a live orphan would put two claude processes on one cwd and session
+   *  (adversarial-review catch). The marker pid is validated against its live
+   *  command line first: a recycled pid must never get the signal. SIGTERM
+   *  the group, escalate to SIGKILL if it lingers past the grace. */
+  const reapOrphan = async (turn: ActiveTurn) => {
+    if (turn.pid === undefined) return;
+    const cmd = pidCommand(turn.pid);
+    if (cmd === null || !(cmd.includes("claude") || cmd.includes("bun"))) return;
+    log("serve.orphan_reaped", { pid: turn.pid });
+    killGroup(turn.pid);
+    for (let i = 0; i < 10; i++) {
+      await delay(500);
+      if (pidCommand(turn.pid) === null) return;
+    }
+    killGroup(turn.pid, "SIGKILL");
+  };
+
   /** Recover one thread whose activeTurn marker survived the previous daemon:
    *  a restart killed that turn mid-run. Notify the thread, then resume the
    *  session (or replay the original prompt when the kill landed before init
@@ -494,8 +526,10 @@ async function runDaemon(): Promise<number> {
           // marker at its previous count so the next start retries.
           if (draining) return;
           const fresh = loadSlackThread(record.threadId);
+          const turn = fresh?.activeTurn;
           const decision = fresh ? resumeDecision(fresh) : null;
-          if (!fresh || !decision) return; // superseded: an earlier turn already cleared the marker
+          if (!fresh || !turn || !decision) return; // superseded: an earlier turn already cleared the marker
+          await reapOrphan(turn);
           if (!link) {
             // unlinked since the turn started: nothing can run here; drop the
             // marker and stay silent, like every unlinked-channel path.
@@ -584,6 +618,16 @@ async function runDaemon(): Promise<number> {
   };
   process.on("SIGTERM", () => void shutdown("SIGTERM"));
   process.on("SIGINT", () => void shutdown("SIGINT"));
+  // closing the foreground terminal sends SIGHUP, whose default disposition
+  // kills the daemon WITHOUT the "exit" event - so the process-exit hook that
+  // kill-groups the DETACHED claude child never runs, the child survives as
+  // an orphan still mutating the cwd, and the freed serve-lock lets the next
+  // generation resume the same session beside it (adversarial-review catch,
+  // exit-skip verified empirically on Bun). Draining instead keeps the child
+  // owned; its Slack streaming needs no tty, so the turn can even finish. A
+  // SIGKILL/crash still orphans, bounded: the orphan dies on its next stdout
+  // write to the dead daemon pipe.
+  process.on("SIGHUP", () => void shutdown("SIGHUP"));
 
   // initialize() starts the PERSISTENT Socket Mode client (auto-reconnecting)
   // wired straight into event routing; the daemon only has to stay alive.
