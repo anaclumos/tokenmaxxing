@@ -6,14 +6,11 @@
 // 0.3.214 and code.claude.com/docs 2026-07-18; both change monthly.
 
 import { spawn } from "node:child_process";
-import { existsSync, mkdirSync } from "node:fs";
-import { join } from "node:path";
 import { z } from "zod";
 import { query, type SpawnOptions } from "@anthropic-ai/claude-agent-sdk";
 import type { StreamChunk } from "chat";
 import { ensureBestAccount, pooledOptions, stopHookCheck } from "../sdk.ts";
-import { paths } from "./paths.ts";
-import { threadKey, type SlackLink } from "./slackstate.ts";
+import type { SlackLink } from "./slackstate.ts";
 import { agentEventChunks, newStreamMapState, SegmentBreakSchema } from "./slackstream.ts";
 import { log } from "./log.ts";
 
@@ -66,37 +63,6 @@ function pushableStream(): {
       },
     },
   };
-}
-
-/** Run one git command against a repo; throws with trimmed stderr on failure. */
-function git(repo: string, args: string[]): string {
-  const r = Bun.spawnSync(["git", "-C", repo, ...args], { stdout: "pipe", stderr: "pipe" });
-  const stderr = new TextDecoder().decode(r.stderr).trim();
-  if (r.exitCode !== 0) throw new Error(`git ${args[0]} failed: ${stderr.slice(0, 200)}`);
-  return new TextDecoder().decode(r.stdout).trim();
-}
-
-/**
- * The stable cwd a thread's turns run in. Worktree mode (default) creates
- * `slack-worktrees/<threadKey>` on branch `tm-slack-<threadKey>` cut from the
- * repo's current HEAD, once; both survive daemon restarts because resume is
- * cwd-keyed. Worktrees are never auto-deleted (they hold the thread's work):
- * clean up with `git worktree remove` when done.
- */
-export function ensureThreadCwd(input: { link: SlackLink; threadId: string }): string {
-  if (!input.link.worktree) return input.link.repo;
-  const key = threadKey(input.threadId);
-  const dir = join(paths.slackWorktreesDir, key);
-  if (existsSync(dir)) return dir;
-  mkdirSync(paths.slackWorktreesDir, { recursive: true });
-  const branch = `tm-slack-${key}`;
-  const branchExists = Bun.spawnSync(["git", "-C", input.link.repo, "rev-parse", "--verify", "--quiet", branch]).exitCode === 0;
-  // a crash between branch creation and worktree add leaves the branch behind;
-  // reattach instead of failing on -b collision.
-  if (branchExists) git(input.link.repo, ["worktree", "add", dir, branch]);
-  else git(input.link.repo, ["worktree", "add", dir, "-b", branch]);
-  log("serve.worktree_created", { dir, branch });
-  return dir;
 }
 
 /**
