@@ -1,0 +1,104 @@
+docs/lib/translations/ru.ts
+  s_36700e42083764::t_ac7f87ab3240d7 1-7
+docs/lib/translations/pt.ts
+  s_36700e42083764::t_450938914108bf 1-7
+docs/lib/translations/ja.ts
+  s_36700e42083764::t_069a36e04d3aad 1-7
+docs/app/[lang]/docs/layout.tsx
+  s_36700e42083764::t_5d506145e6e6e5 2-9
+docs/lib/translations/te.ts
+  s_36700e42083764::t_87bfd365bf7bd4 1-7
+docs/lib/translations/zh.ts
+  s_36700e42083764::t_bce3a6e3353fc0 1-7
+docs/lib/translations/fr.ts
+  s_36700e42083764::t_22c35aa22c3f67 1-7
+docs/app/[lang]/llms.mdx/docs/[[...slug]]/route.ts
+  s_36700e42083764::t_1f4998d3bf062c 22-27
+  s_36700e42083764::t_ddb16b5ca4e864 6-11
+docs/lib/translations/bn.ts
+  s_36700e42083764::t_c0dd057b327a4a 1-7
+docs/lib/home-copy.ts
+  s_36700e42083764::t_e6f18b6e4650bd 1-10
+docs/lib/source.ts
+  s_36700e42083764::t_866769c07fbfc8 10,18-19
+  s_36700e42083764::t_b95a40418b4534 15-17,25,34
+  s_36700e42083764::t_433385b7fc3393 4
+docs/proxy.ts
+  s_36700e42083764::t_bc6989d91c13d4 41-46,48-49,55-64
+  s_36700e42083764::t_c730f2318d3dd8 2,4-5,8-17,29,39
+  s_36700e42083764::t_1af28fffbe1be0 18-28,31-36
+docs/lib/translations/ha.ts
+  s_36700e42083764::t_b5fdbb98819bba 1-7
+docs/lib/translations/ar.ts
+  s_36700e42083764::t_c56c9bd7c25ce1 1-7
+docs/package.json
+  s_36700e42083764::t_ec5fc1e00cf85b 13-14
+docs/lib/i18n.ts
+  s_36700e42083764::t_8be759c4013b66 36-43
+  s_36700e42083764::t_5a020c424e4bff 6
+  s_36700e42083764::t_32994e76b37391 1-2,4-5,29-30,32-35
+  s_36700e42083764::t_f5c8ea24732cae 3,7-28,31
+docs/lib/translations/id.ts
+  s_36700e42083764::t_9b5c2f7527ce91 1-7
+docs/lib/layout.shared.tsx
+  s_36700e42083764::t_8a0b66544d0540 2,5-23,25-51
+  s_36700e42083764::t_c0694de4341ce3 3
+  s_36700e42083764::t_f58ec449168e26 55
+docs/lib/translations/pcm.ts
+  s_36700e42083764::t_47629e1b4704c7 1-7
+docs/app/api/search/route.ts
+  s_36700e42083764::t_0687a402878778 3-4,6-24,26-53
+docs/app/[lang]/(home)/layout.tsx
+  s_36700e42083764::t_36867bdc150597 4-7
+docs/app/llms-full.txt/route.ts
+  s_36700e42083764::t_376c83fb84e619 2,7
+docs/lib/translations/arz.ts
+  s_36700e42083764::t_15902b6aeb85b9 1-7
+docs/lib/translations/es.ts
+  s_36700e42083764::t_9aa45ce1cdb927 1-7
+docs/lib/translations/hi.ts
+  s_36700e42083764::t_e045c773fa1e65 1-7
+docs/lib/translations/vi.ts
+  s_36700e42083764::t_afac2dfc7f556e 1-7
+docs/app/[lang]/(home)/page.tsx
+  s_36700e42083764::t_33a28938cffc37 2,7
+  s_36700e42083764::t_a7a262e55cad13 3
+  s_36700e42083764::t_62555853b8337f 5-6,8-13,15-17
+  s_36700e42083764::t_ea33596e659126 14
+  s_36700e42083764::t_c14d8a3d5e0655 4
+docs/app/[lang]/og/docs/[...slug]/route.tsx
+  s_36700e42083764::t_7b8c46214f74e1 9-11
+  s_36700e42083764::t_1919ec5b0ee18b 20,24-29
+docs/lib/translations/de.ts
+  s_36700e42083764::t_950c9ed003c90b 1-7
+docs/lib/shared.ts
+  s_36700e42083764::t_4c1f994970be7c 1,7-8
+docs/lib/translations/ur.ts
+  s_36700e42083764::t_80140e081138fa 1-7
+docs/lib/translations/mr.ts
+  s_36700e42083764::t_ef20c9d1135abc 1-7
+docs/lib/translations/tr.ts
+  s_36700e42083764::t_ab31c49fef3629 1-7
+docs/app/[lang]/docs/[[...slug]]/page.tsx
+  s_36700e42083764::t_85d22b75bf78f7 9-55
+docs/app/[lang]/layout.tsx
+  s_36700e42083764::t_f8985c5d807ee1 2-33
+docs/bun.lock
+  s_36700e42083764::t_631adde096a8df 8-9,188-189,264-265
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "230fd304e1c2ce8e8ce7799f2c21f87eef1a6c38",
+  "prompts": {},
+  "sessions": {
+    "s_36700e42083764": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ceac3c73-063c-4280-a339-82888d1d952a",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    }
+  }
+}
