@@ -1,14 +1,16 @@
 // `tokenmaxxing serve` - the Slack bridge daemon. Socket Mode (no public URL):
-// a mention in a linked channel opens a claude session for that thread (in its
-// own git worktree by default), and every further thread message becomes one
-// claude turn whose streamed output posts back into the thread. Stack chosen by
-// the user 2026-07-18: Vercel Chat SDK (`chat` + `@chat-adapter/slack`) for
-// Slack, the Claude Agent SDK driven through src/sdk.ts for claude (EVE was
-// researched and dropped: it owns its own model loop instead of driving
-// Claude Code).
+// a mention in a linked channel opens a claude session for that thread IN the
+// linked repo checkout (normal mode, user decision 2026-07-18 superseding the
+// same-day worktree-per-thread default: a thread's agent cuts its own worktree
+// only when a task needs isolation, guidance in `.memory`), and every further
+// thread message becomes one claude turn whose streamed output posts back into
+// the thread. Stack chosen by the user 2026-07-18: Vercel Chat SDK (`chat` +
+// `@chat-adapter/slack`) for Slack, the Claude Agent SDK driven through
+// src/sdk.ts for claude (EVE was researched and dropped: it owns its own model
+// loop instead of driving Claude Code).
 //
 //   serve setup            print the app manifest + prompt for the two tokens
-//   serve link <ch> <repo> [--no-worktree] [--dangerous] [--model <m>]
+//   serve link <ch> <repo> [--dangerous] [--model <m>]
 //   serve unlink <ch>      remove a link
 //   serve links            list links
 //   serve                  run the daemon
@@ -33,11 +35,11 @@ import {
   SlackLinkSchema,
   type SlackConfig,
 } from "../lib/slackstate.ts";
-import { ensureThreadCwd, relayThread } from "../lib/slackbridge.ts";
+import { relayThread } from "../lib/slackbridge.ts";
 import { log } from "../lib/log.ts";
 import { c, count } from "./render.ts";
 
-const SERVE_USAGE = "usage: tokenmaxxing serve [setup | link <channel-id> <repo> [--no-worktree] [--yolo | --dangerous] [--model <m>] | unlink <channel-id> | links]";
+const SERVE_USAGE = "usage: tokenmaxxing serve [setup | link <channel-id> <repo> [--yolo | --dangerous] [--model <m>] | unlink <channel-id> | links]";
 
 /** The manifest the user pastes at api.slack.com/apps > From an app manifest.
  *  Scopes/events verified against docs.slack.dev 2026-07-18: a channel-thread
@@ -114,7 +116,6 @@ function cmdServeSetup(): number {
 }
 
 function cmdServeLink(argv: string[]): number {
-  const worktree = !argv.includes("--no-worktree");
   // yolo mode = the SDK's bypassPermissions; --dangerous is the same switch.
   const dangerous = argv.includes("--yolo") || argv.includes("--dangerous");
   const modelIdx = argv.indexOf("--model");
@@ -135,7 +136,7 @@ function cmdServeLink(argv: string[]): number {
   }
   const repoReal = realpathSync(repo);
   if (!existsSync(`${repoReal}/.git`)) {
-    console.error(c.red(`${repoReal} is not a git repository (worktree mode needs one)`));
+    console.error(c.red(`${repoReal} is not a git repository`));
     return 1;
   }
   const cfg = loadSlackConfig();
@@ -146,12 +147,11 @@ function cmdServeLink(argv: string[]): number {
   const link = SlackLinkSchema.parse({
     channel,
     repo: repoReal,
-    worktree,
     permissionMode: dangerous ? "bypassPermissions" : "acceptEdits",
     ...(model ? { model } : {}),
   });
   saveSlackConfig(upsertLink(cfg, link));
-  const flags = [worktree ? "worktree" : "in-place", link.permissionMode, ...(model ? [model] : [])].join(", ");
+  const flags = [link.permissionMode, ...(model ? [model] : [])].join(", ");
   console.log(`${c.green("✓")} linked ${c.bold(channel)} → ${repoReal} (${flags})`);
   return 0;
 }
@@ -179,7 +179,7 @@ function cmdServeLinks(): number {
     return 0;
   }
   for (const l of cfg.links) {
-    const flags = [l.worktree ? "worktree" : "in-place", l.permissionMode, ...(l.model ? [l.model] : [])].join(", ");
+    const flags = [l.permissionMode, ...(l.model ? [l.model] : [])].join(", ");
     console.log(`${c.bold(l.channel)} → ${l.repo} ${c.dim(`(${flags})`)}`);
   }
   return 0;
@@ -270,10 +270,9 @@ async function runDaemon(): Promise<number> {
     let record = loadSlackThread(thread.id);
     if (!record) {
       if (!isMention) return; // only a mention opens a session
-      const cwd = ensureThreadCwd({ link, threadId: thread.id });
-      record = { threadId: thread.id, repo: link.repo, cwd, sessionId: null, createdAt: new Date().toISOString() };
+      record = { threadId: thread.id, repo: link.repo, cwd: link.repo, sessionId: null, createdAt: new Date().toISOString() };
       saveSlackThread(record);
-      log("serve.thread_opened", { thread: thread.id, cwd });
+      log("serve.thread_opened", { thread: thread.id, cwd: record.cwd });
     }
     // subscriptions live in the memory state, so a daemon restart forgets
     // them; every mention re-subscribes to keep follow-up replies flowing.

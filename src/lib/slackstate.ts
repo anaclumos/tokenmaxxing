@@ -21,8 +21,6 @@ export const SlackLinkSchema = z.object({
   channel: z.string(),
   /** absolute path of the git repo this channel drives. */
   repo: z.string(),
-  /** run each thread in its own git worktree (user default 2026-07-18: true). */
-  worktree: z.boolean().default(true),
   permissionMode: ServePermissionModeSchema.default("acceptEdits"),
   /** optional model override for this repo's sessions. */
   model: z.string().optional(),
@@ -59,7 +57,9 @@ export const SlackThreadSchema = z.object({
   /** chat-sdk thread id, e.g. "slack:C0123:1721300000.123456". */
   threadId: z.string(),
   repo: z.string(),
-  /** the dir every turn of this thread runs in (repo or its worktree). */
+  /** the dir every turn of this thread runs in; resume is cwd-keyed, so it
+   *  stays byte-stable for the thread's whole life (records from the removed
+   *  worktree-per-thread era pin their old worktree and keep working). */
   cwd: z.string(),
   /** claude session id; null until the first turn's init message arrives. */
   sessionId: z.string().nullable(),

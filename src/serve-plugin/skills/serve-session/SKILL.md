@@ -1,6 +1,6 @@
 ---
 name: serve-session
-description: How a tokenmaxxing serve session runs - the per-thread git worktree and branch, session resume across turns, and how to hand finished work back. Use when deciding where to commit, push, or open a PR, or before any operation that moves, deletes, or switches the working directory.
+description: How a tokenmaxxing serve session runs - the shared repo checkout, session resume across turns, when to cut your own git worktree, and how to hand finished work back. Use when deciding where to work, commit, push, or open a PR, or before any operation that moves, deletes, or switches the working directory.
 ---
 
 # How a serve session runs
@@ -11,15 +11,18 @@ thread as Slack messages.
 
 ## Working directory
 
-- Worktree mode (the default): this session runs in its own git worktree,
-  `slack-worktrees/<threadKey>` under the tokenmaxxing config dir, on branch
-  `tm-slack-<threadKey>` cut from the linked repo's HEAD when the thread
-  opened.
-- In-place mode (channels linked with --no-worktree): the session runs in the
-  linked repo itself and shares its checkout with the user. Be conservative
-  there, and never switch branches without asking.
-- Session resume is keyed to this directory. Never delete, move, or
-  `git worktree remove` it: the thread would lose its session.
+- This session runs directly IN the linked repo checkout, and it is SHARED:
+  the repo's owner and other Slack threads work in the same checkout at the
+  same time. Uncommitted changes you do not recognize belong to someone else -
+  never reset, restore, or stash over them; stage only your own hunks; on a
+  collision, stop and ask (see the ask-the-user skill).
+- Cut your own worktree (`git worktree add`) only when a task actually needs
+  isolation: risky or experimental changes, or work that would collide with
+  someone else's uncommitted changes. Say so in the thread, and keep using
+  that dir for the task's follow-ups.
+- Session resume is keyed to the session's cwd. Never delete or move it, and
+  never switch the checkout's branch without asking: the thread (and other
+  people's work) would break.
 
 ## Turns
 
@@ -31,7 +34,6 @@ thread as Slack messages.
 
 ## Handing work back
 
-- In worktree mode, commit on the thread branch; do not commit to the linked
-  repo's default branch from here.
-- The worktree is never auto-deleted, so committed work survives the thread
-  going quiet. Push the branch or open a PR when the user asks.
+- Follow the repo's own shipping conventions (its AGENTS.md or CLAUDE.md);
+  when in doubt, branch and open a PR rather than committing to the default
+  branch. Push or merge only when the user asks.

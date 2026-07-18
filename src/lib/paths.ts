@@ -36,11 +36,9 @@ export const paths = {
   credsDir: join(TM_HOME, "creds"),
 
   /** `xx serve` slack bridge: tokens + channel->repo links (0600: holds the
-   *  xoxb-/xapp- tokens), per-thread claude session records, and the git
-   *  worktrees threads run in. */
+   *  xoxb-/xapp- tokens) and per-thread claude session records. */
   slackJson: join(TM_HOME, "slack.json"),
   slackThreadsDir: join(TM_HOME, "slack-threads"),
-  slackWorktreesDir: join(TM_HOME, "slack-worktrees"),
 
   /** ~/.claude.json - holds the active `oauthAccount` identity object. */
   claudeJson: env("TOKENMAXXING_CLAUDE_JSON", join(HOME, ".claude.json")),

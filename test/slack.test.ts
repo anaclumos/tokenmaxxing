@@ -26,9 +26,8 @@ const goodConfig = {
 };
 
 describe("SlackConfigSchema", () => {
-  test("accepts xoxb-/xapp- tokens and defaults worktree + permissionMode", () => {
+  test("accepts xoxb-/xapp- tokens and defaults permissionMode", () => {
     const cfg = SlackConfigSchema.parse(goodConfig);
-    expect(cfg.links[0]?.worktree).toBe(true);
     expect(cfg.links[0]?.permissionMode).toBe("acceptEdits");
   });
 
