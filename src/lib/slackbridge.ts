@@ -10,8 +10,8 @@ import { delay } from "es-toolkit";
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import type { StreamChunk } from "chat";
 import { ensureBestAccount, pooledOptions, stopHookCheck, type SwapDecision } from "../sdk.ts";
-import { fmtResetShort } from "../cli/render.ts";
 import { http, safeErrorDetail } from "./http.ts";
+import { fmtResetShort, recordObservedLimit } from "./usage.ts";
 import type { SlackLink } from "./slackstate.ts";
 import { agentEventChunks, newStreamMapState, SegmentBreakSchema } from "./slackstream.ts";
 import { log } from "./log.ts";
@@ -35,9 +35,11 @@ export type TurnOutcome = z.infer<typeof TurnOutcomeSchema>;
 
 // ---- depleted-pool recovery policy (pure, unit-tested) ---------------------
 
-/** A park holds the thread's queue slot, so it stays under the daemon's 900s
- *  queue-entry TTL; a recovery further out gets an honest drop notice instead
- *  of a hostage handler. */
+/** TOTAL parking budget for one Slack message (a single deadline across all
+ *  its parks, not per park): the parked handler holds the thread's queue slot,
+ *  so recovery further out gets an honest drop notice instead of a hostage
+ *  handler, and the daemon's queue-entry TTL is sized to outlast a full
+ *  park + turn so follow-ups fold instead of silently expiring. */
 export const PARK_MAX_MS = 840_000;
 /** spawn slightly after the reset passes, never right on the boundary. */
 const PARK_GRACE_MS = 5_000;
@@ -56,13 +58,16 @@ export const ParkPlanSchema = z.union([
 export type ParkPlan = z.infer<typeof ParkPlanSchema>;
 
 /** What to do with a spawn-boundary switch decision: proceed on a usable pool,
- *  park until the soonest recovery when it is near, drop honestly otherwise
- *  (dropping beats a false will-resume promise - slaude's recorded rationale). */
-export function parkPlan(input: { decision: SwapDecision; now: number; recoveries: number }): ParkPlan {
+ *  park until the soonest recovery when it lands inside the message's one
+ *  shared deadline, drop honestly otherwise (dropping beats a false
+ *  will-resume promise - slaude's recorded rationale). The deadline is fixed
+ *  when the message's relay starts, so chained parks can never hold the queue
+ *  slot longer than PARK_MAX_MS in total. */
+export function parkPlan(input: { decision: SwapDecision; now: number; recoveries: number; deadline: number }): ParkPlan {
   const depleted = input.decision.reason === "all-depleted" || input.decision.reason === "depleted-wait";
   if (!depleted) return { kind: "proceed" };
   const wake = input.decision.waitUntil ?? null;
-  if (wake == null || wake - input.now > PARK_MAX_MS || input.recoveries >= MAX_RECOVERIES) {
+  if (wake == null || wake > input.deadline || input.recoveries >= MAX_RECOVERIES) {
     return { kind: "drop", recoversAt: wake };
   }
   return { kind: "park", wakeAt: wake + PARK_GRACE_MS };
@@ -174,8 +179,11 @@ function pushableStream(): {
  * the pool): the spawn-boundary switch decision is CONSUMED, not discarded -
  * a depleted pool parks BEFORE a doomed spawn burns a failed turn, with an
  * honest in-thread notice either way; a mid-turn limit the cached pool state
- * did not predict gets a short silent retry into the same session. Everything
- * is bounded by MAX_RECOVERIES and every drop is announced in-thread.
+ * did not predict is persisted (recordObservedLimit) and retried silently into
+ * the same session. Total parking is bounded by one shared PARK_MAX_MS
+ * deadline plus MAX_RECOVERIES, and every drop the relay itself performs is
+ * announced in-thread (a queue-entry TTL expiry upstream is the one drop it
+ * cannot see).
  */
 export async function relayThread(input: {
   cwd: string;
@@ -272,6 +280,10 @@ export async function relayThread(input: {
           if (message.is_error || message.subtype !== "success") {
             outcome.failed = true;
             outcome.rateLimited = isRateLimitText({ text });
+            // persist the observation: the retry's decision otherwise re-reads
+            // the stale pre-limit snapshot (poll TTL) and respawns the same
+            // depleted account - a serve process has no statusLine tee.
+            if (outcome.rateLimited) recordObservedLimit({ text, now: Date.now() });
           } else {
             result = text;
           }
@@ -290,12 +302,14 @@ export async function relayThread(input: {
       outcome.failed = true;
       const detail = (e instanceof Error ? e.message : String(e)).slice(0, 300);
       outcome.rateLimited = isRateLimitText({ text: detail });
+      if (outcome.rateLimited) recordObservedLimit({ text: detail, now: Date.now() });
       log("serve.turn_error", { err: detail });
       if (!outcome.rateLimited) await push(`tokenmaxxing: turn failed: ${detail}`);
     }
   };
 
   let recoveries = 0;
+  const parkDeadline = Date.now() + PARK_MAX_MS;
   while (true) {
     // the switch decision runs at the spawn boundary, same as the CLI hooks.
     let decision: SwapDecision;
@@ -308,11 +322,11 @@ export async function relayThread(input: {
       await push(`tokenmaxxing: turn failed: ${detail}`);
       break;
     }
-    const plan = parkPlan({ decision, now: Date.now(), recoveries });
+    const plan = parkPlan({ decision, now: Date.now(), recoveries, deadline: parkDeadline });
     if (plan.kind === "drop") {
       outcome.failed = true;
       outcome.rateLimited = true;
-      log("serve.pool_depleted_drop", { recoversAt: plan.recoversAt ?? 0 });
+      log("serve.pool_depleted_drop", { recoversAt: plan.recoversAt });
       await notify(`every pooled account is at its usage limit (recovers in ${inWord(plan.recoversAt)}) - this message was dropped; re-send it once the pool recovers.`);
       break;
     }

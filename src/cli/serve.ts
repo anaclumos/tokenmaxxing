@@ -245,10 +245,12 @@ async function runDaemon(): Promise<number> {
     adapters: { slack },
     state,
     // per-thread lock with queueing: a message landing mid-turn waits its turn
-    // instead of racing a second claude spawn on the same cwd. The default
-    // 90s queue-entry TTL silently discards anything queued behind a turn
-    // longer than that (claude turns routinely are), hence the override.
-    concurrency: { strategy: "queue", queueEntryTtlMs: 900_000 },
+    // instead of racing a second claude spawn on the same cwd. Queue-entry TTL
+    // expiry is SILENT (chat 4.34.0 has no app callback for it), so the TTL
+    // must outlast the longest legitimate hold: a depleted-pool park
+    // (PARK_MAX_MS 14min) plus a long claude turn. Expired-and-folded beats
+    // silently-vanished, hence a full hour.
+    concurrency: { strategy: "queue", queueEntryTtlMs: 3_600_000 },
     // without this a cards-only segment in post-and-edit fallback would
     // strand a bare "..." placeholder message.
     fallbackStreamingPlaceholderText: null,
@@ -274,16 +276,25 @@ async function runDaemon(): Promise<number> {
       // the socket stays connected until the drain finishes; anything landing
       // in that window is dropped loudly rather than spawning an unwaitable
       // turn - and the THREAD is told, not just the log (a silent drop reads
-      // as the bot thinking; slaude's recorded drop-notice rule). Fire and
-      // forget: the notice must never stall the drain.
+      // as the bot thinking; slaude's recorded drop-notice rule). Tracked so
+      // the drain wait flushes it before exit; errors swallowed so the notice
+      // can never fail the drain.
       log("serve.drain_dropped", { thread: thread.id });
-      void thread
-        .post(
-          (async function* () {
-            yield "tokenmaxxing is restarting - this message was dropped; please re-send it in a moment.";
-          })(),
-        )
-        .catch(() => {});
+      void tracked(
+        (async () => {
+          try {
+            await thread.post(
+              (async function* () {
+                yield "tokenmaxxing is restarting - this message was dropped; please re-send it in a moment.";
+              })(),
+            );
+          } catch (e) {
+            // caught (never rethrown - the notice must not fail the drain)
+            // but logged: an unposted notice means the user saw nothing.
+            log("serve.drain_notice_failed", { thread: thread.id, err: (e instanceof Error ? e.message : String(e)).slice(0, 300) });
+          }
+        })(),
+      );
       return;
     }
     const link = linkForChannel(cfg, bareChannelId(thread.channelId));
@@ -388,7 +399,12 @@ async function runDaemon(): Promise<number> {
     drainAbort.abort(); // parked/retrying turns wake, post their drop notice, and finish
     log("serve.draining", { signal, turns: activeTurns.size });
     console.log(`${c.yellow("●")} ${signal}: draining ${count({ n: activeTurns.size, noun: "in-flight turn" })} (again to force)`);
-    await Promise.race([Promise.allSettled([...activeTurns]), delay(DRAIN_MS)]);
+    // re-snapshot until stable inside the deadline: drain-window drop notices
+    // join activeTurns after the first snapshot and must still flush.
+    const deadline = Date.now() + DRAIN_MS;
+    while (activeTurns.size > 0 && Date.now() < deadline) {
+      await Promise.race([Promise.allSettled([...activeTurns]), delay(deadline - Date.now())]);
+    }
     await bot.shutdown();
     log("serve.stopped", { dropped: activeTurns.size });
     process.exit(0);

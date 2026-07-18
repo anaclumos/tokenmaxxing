@@ -24,7 +24,8 @@ import { loadAccounts, loadConfig, loadLastSwapAt, loadModelUsage, writeUsage } 
 import { familyTokens, matchedFamily, parseStatusLineStdin, parseStatusLineModel } from "../lib/usage.ts";
 import { earliestReset, weeklyExpiry } from "../lib/picker.ts";
 import { worktreeName } from "../lib/worktree.ts";
-import { fmtResetShort, makeColors, makeUsagePaint } from "../cli/render.ts";
+import { makeColors, makeUsagePaint } from "../cli/render.ts";
+import { fmtResetShort } from "../lib/usage.ts";
 import {
   AccountsIndexSchema,
   StatusLineStdinSchema,

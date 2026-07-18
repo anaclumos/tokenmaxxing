@@ -98,19 +98,3 @@ export function fmtAgo(epochMs: number, now = Date.now()): string {
   return `${m}m ago`;
 }
 
-/** Compact time-until-reset for the statusLine: the largest unit only ("6d",
- *  "2h", "45m"), floored to "1m" so a live window never reads as zero, and ""
- *  once the reset has passed (the window is simply empty again). Non-empty
- *  output always ends in a unit letter, so the digit-leading used-percent glued
- *  after it stays parseable. */
-export function fmtResetShort(epochMs: number | null | undefined, now = Date.now()): string {
-  if (epochMs == null) return "";
-  const dsec = Math.round((epochMs - now) / 1000);
-  if (dsec <= 0) return "";
-  const d = Math.floor(dsec / 86400);
-  const h = Math.floor((dsec % 86400) / 3600);
-  const m = Math.floor((dsec % 3600) / 60);
-  if (d > 0) return `${d}d`;
-  if (h > 0) return `${h}h`;
-  return `${Math.max(m, 1)}m`;
-}
