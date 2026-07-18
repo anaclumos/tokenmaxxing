@@ -12,6 +12,20 @@ import type { StreamChunk } from "chat";
 const DETAILS_MAX = 400;
 const OUTPUT_MAX = 600;
 
+/** Natural activity labels for tool cards (user ask 2026-07-18: these five raw
+ *  names read awkwardly in Slack). Every other tool name renders verbatim. */
+const TOOL_TITLES: Record<string, string> = {
+  TaskCreate: "Creating task",
+  TaskUpdate: "Updating task",
+  ToolSearch: "Loading tools",
+  WebFetch: "Fetching page",
+  WebSearch: "Searching the web",
+};
+
+export function toolCardTitle(name: string): string {
+  return TOOL_TITLES[name] ?? name;
+}
+
 /** Tool-input fields worth showing on a task card, most human-readable first. */
 const SUMMARY_FIELDS = ["command", "description", "file_path", "pattern", "prompt", "query", "url"] as const;
 
@@ -118,9 +132,10 @@ export function agentEventChunks(input: { state: StreamMapState; message: SDKMes
       }
       if (event.content_block.type === "tool_use") {
         const { id, name } = event.content_block;
-        state.open[key] = { kind: "tool", id, title: name, acc: "" };
-        state.toolTitles[id] = name;
-        const card: StreamPart = { type: "task_update", id, title: name, status: "in_progress" };
+        const title = toolCardTitle(name);
+        state.open[key] = { kind: "tool", id, title, acc: "" };
+        state.toolTitles[id] = title;
+        const card: StreamPart = { type: "task_update", id, title, status: "in_progress" };
         if (isMain && state.textSinceBreak) {
           state.textSinceBreak = false;
           return [{ type: "segment_break" }, card];

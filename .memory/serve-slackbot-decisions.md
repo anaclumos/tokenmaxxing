@@ -24,5 +24,6 @@ Live debugging + user shaping (2026-07-18, all live-verified in #tokenmaxxing-do
 - bypassPermissions needs `allowDangerouslySkipPermissions: true` in the Agent SDK or it refuses; `--yolo` is the user-facing flag name. `AskUserQuestion` is disallowedTools in relayed turns (user asked why its card appeared: no one can answer a dialog over Slack).
 - queue strategy: handler gets only the LATEST message, earlier ones in `context.skipped` (fold into prompt); default 90s queueEntryTtl drops messages queued behind a long turn (raised to 900s); webClientOptions pins fiveRetriesInFiveMinutes (default retry can stall ~30min).
 - `.memory` is git-tracked since 2026-07-18 (user: "memory should be git controlled") so thread worktrees inherit it; npm `files` whitelist keeps it out of the package.
+- Card titles (user ask 2026-07-18, second pass on "tool names verbatim"): EXACTLY five tools map to natural activity labels via `toolCardTitle` in slackstream.ts - TaskCreate "Creating task", TaskUpdate "Updating task", ToolSearch "Loading tools", WebSearch "Searching the web", WebFetch "Fetching page". Every other tool name (Bash, Read, mcp__*) still renders verbatim; the user named those five only, so no blanket humanizing and no fallback transform.
 
 Related: [[tokenmaxxing-project]], [[agent-sdk-auth-surface]]
