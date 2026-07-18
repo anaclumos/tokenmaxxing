@@ -112,7 +112,10 @@ export function detachedClaudeSpawn(options: SpawnOptions) {
     const pid = child.pid;
     liveGroups.add(pid);
     const onAbort = () => killGroup(pid);
-    options.signal?.addEventListener("abort", onAbort, { once: true });
+    // an already-aborted signal never fires "abort" again (cubic review
+    // catch): a cancellation racing the spawn must still kill the group.
+    if (options.signal?.aborted) onAbort();
+    else options.signal?.addEventListener("abort", onAbort, { once: true });
     child.once("exit", () => {
       liveGroups.delete(pid);
       options.signal?.removeEventListener("abort", onAbort);

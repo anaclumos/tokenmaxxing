@@ -87,6 +87,15 @@ describe("stripLeadingMention", () => {
     expect(stripLeadingMention("no mention here")).toBe("no mention here");
     expect(stripLeadingMention("<@U0123 unclosed")).toBe("<@U0123 unclosed");
   });
+
+  test("both Slack slash-command arrival forms land the command at position 0", () => {
+    // Slack's composer eats bare "/cmd" client-side (never delivered); the
+    // two forms that DO post are mention-first and Slack's own leading-space
+    // workaround. Both must normalize so the CLI parses the slash command.
+    expect(stripLeadingMention("<@U0123> /usage")).toBe("/usage");
+    expect(stripLeadingMention(" /usage")).toBe("/usage");
+    expect(stripLeadingMention("<@U0123> /goal ship the feature")).toBe("/goal ship the feature");
+  });
 });
 
 describe("slack.json contract", () => {

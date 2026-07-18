@@ -46,4 +46,14 @@ describe("detachedClaudeSpawn", () => {
     ac.abort();
     expect(await exited).toBe("SIGTERM");
   });
+
+  test("an already-aborted signal kills the child instead of leaking it", async () => {
+    const ac = new AbortController();
+    ac.abort();
+    const child = detachedClaudeSpawn({ command: "/bin/sleep", args: ["30"], env: {}, signal: ac.signal });
+    const exited = new Promise((resolve) => {
+      child.once("exit", (_c, sig) => resolve(sig));
+    });
+    expect(await exited).toBe("SIGTERM");
+  });
 });
