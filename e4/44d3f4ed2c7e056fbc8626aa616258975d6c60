@@ -1,0 +1,37 @@
+.memory/serve-slackbot-decisions.md
+  s_129da2b1bd4c64::t_714755c0d810c0 32-39
+AGENTS.md
+  s_129da2b1bd4c64::t_009169a0999e90 206
+DESIGN.md
+  s_129da2b1bd4c64::t_4926ff4ff09fd2 94
+src/cli/serve.ts
+  s_129da2b1bd4c64::t_e134f3cb679ddb 19,271-276,279,292-302,322,347-348,352-353
+src/lib/slackstate.ts
+  s_129da2b1bd4c64::t_d9334a91b7efa3 124-156
+src/serve-plugin/.claude-plugin/plugin.json
+  s_129da2b1bd4c64::t_0706cb7fb5a337 1-4
+src/serve-plugin/skills/ask-the-user/SKILL.md
+  s_129da2b1bd4c64::t_1d5e71655da426 1-36
+src/serve-plugin/skills/serve-session/SKILL.md
+  s_129da2b1bd4c64::t_6a7c41864404fb 1-39
+test/serveplugin.test.ts
+  s_129da2b1bd4c64::t_42ce38377485e6 1-80
+test/slack.test.ts
+  s_129da2b1bd4c64::t_eaf915e5ecdb3d 84-108,115-117
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "e444d3f4ed2c7e056fbc8626aa616258975d6c60",
+  "prompts": {},
+  "sessions": {
+    "s_129da2b1bd4c64": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c5beabd3-42ae-4eb8-8d63-4632c4d1dcf2",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    }
+  }
+}
