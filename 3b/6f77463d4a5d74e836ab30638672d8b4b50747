@@ -1,0 +1,23 @@
+src/lib/slackstream.ts
+  s_01302d876347ce::t_d3d28b4f571fa3 16-24,27
+test/slackstream.test.ts
+  s_01302d876347ce::t_02b37af9be00d6 23-25
+.memory/MEMORY.md
+  s_01302d876347ce::t_c2e416b72d5ea5 8
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "3b6f77463d4a5d74e836ab30638672d8b4b50747",
+  "prompts": {},
+  "sessions": {
+    "s_01302d876347ce": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c3215185-c3a7-4d72-8bbf-7ad6bbd92dde",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    }
+  }
+}
