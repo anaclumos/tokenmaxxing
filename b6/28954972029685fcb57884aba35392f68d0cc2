@@ -1,0 +1,197 @@
+docs/content/docs/test.te.mdx
+  s_36700e42083764::t_732d9c11b7a581 1-17
+docs/lib/translations/zh.ts
+  s_36700e42083764::t_99a6be7e0b37b6 4
+  s_36700e42083764::t_18566792fb83d9 5-48
+docs/lib/translations/ja.ts
+  s_36700e42083764::t_526f814aa0ef08 4-48
+docs/lib/translations/ur.ts
+  s_36700e42083764::t_7bf0b00bfd6972 5-48
+docs/content/docs/tokenmaxxing.ru.mdx
+  s_36700e42083764::t_aa5e1b4efb59ee 1-359
+docs/content/docs/tokenmaxxing.ja.mdx
+  s_36700e42083764::t_33db3e38107c86 1-359
+docs/content/docs/test.hi.mdx
+  s_36700e42083764::t_617a5199c8196f 1-17
+docs/content/docs/index.te.mdx
+  s_36700e42083764::t_d2e876b78c0575 1-13
+docs/lib/translations/id.ts
+  s_36700e42083764::t_64a1857ddd7cec 5-48
+  s_36700e42083764::t_4d7a3f6b1d4771 4
+docs/content/docs/test.ja.mdx
+  s_36700e42083764::t_8c79f75266a936 1-17
+docs/lib/translations/ar.ts
+  s_36700e42083764::t_484d30070f0d90 4-48
+docs/content/docs/test.bn.mdx
+  s_36700e42083764::t_3040103f5c3a4b 1-17
+docs/content/docs/tokenmaxxing.hi.mdx
+  s_36700e42083764::t_8a32195331fde3 1-359
+docs/content/docs/index.ha.mdx
+  s_36700e42083764::t_4fe9ca1e66b277 1-13
+docs/content/docs/test.pcm.mdx
+  s_36700e42083764::t_ba497123e2ca8d 1-14,17
+  s_36700e42083764::t_5b9181978e42d7 15-16
+docs/content/docs/index.pcm.mdx
+  s_36700e42083764::t_24e4d17a454c64 1-10,12-13
+  s_36700e42083764::t_1d617e14e60863 11
+docs/lib/translations/bn.ts
+  s_36700e42083764::t_b63c029f71a6bf 4-48
+docs/content/docs/index.bn.mdx
+  s_36700e42083764::t_9b7b0827050539 1-13
+docs/content/docs/tokenmaxxing.ar.mdx
+  s_36700e42083764::t_d212a80de20cd1 1-359
+docs/content/docs/index.id.mdx
+  s_36700e42083764::t_7d9830035364f8 1-13
+docs/content/docs/index.pt.mdx
+  s_36700e42083764::t_e7bcc4f38c12d8 1-13
+docs/content/docs/test.vi.mdx
+  s_36700e42083764::t_e8b0816fca4c08 1-17
+docs/lib/translations/te.ts
+  s_36700e42083764::t_2cb117d2cb8619 5-48
+docs/content/docs/index.zh.mdx
+  s_36700e42083764::t_031c8bcc07004b 1-13
+docs/content/docs/tokenmaxxing.tr.mdx
+  s_36700e42083764::t_67cf043501cd23 1-359
+docs/lib/translations/mr.ts
+  s_36700e42083764::t_00a8960833117a 5-48
+  s_36700e42083764::t_3ea2d3a04f4428 4
+docs/lib/translations/ru.ts
+  s_36700e42083764::t_375660ae15ca42 4-48
+docs/content/docs/test.ur.mdx
+  s_36700e42083764::t_6cdc3536f853b5 1-17
+docs/content/docs/tokenmaxxing.vi.mdx
+  s_36700e42083764::t_146b99b94cf803 3
+  s_36700e42083764::t_083b6adc90c124 1-2,4-359
+docs/content/docs/tokenmaxxing.pt.mdx
+  s_36700e42083764::t_0eb239851ee470 1-359
+docs/content/docs/index.ur.mdx
+  s_36700e42083764::t_0554125c303b74 1-13
+docs/lib/home-copy.ts
+  s_36700e42083764::t_11fca34f996446 10-120
+docs/content/docs/tokenmaxxing.de.mdx
+  s_36700e42083764::t_71605c29ac483a 1-359
+docs/content/docs/index.ja.mdx
+  s_36700e42083764::t_988b82d9b529b4 1-13
+docs/content/docs/test.ar.mdx
+  s_36700e42083764::t_e6c471e4670409 1-17
+docs/content/docs/tokenmaxxing.ur.mdx
+  s_36700e42083764::t_14ea3e30eb1269 1-359
+docs/lib/translations/arz.ts
+  s_36700e42083764::t_de5da6d66777c4 4
+  s_36700e42083764::t_f14977b18a5d91 5-48
+docs/content/docs/index.de.mdx
+  s_36700e42083764::t_a6077ce5f13580 1-13
+docs/lib/translations/vi.ts
+  s_36700e42083764::t_2a49cd175aa8b2 4-48
+docs/content/docs/tokenmaxxing.ha.mdx
+  s_36700e42083764::t_0f9ad66142d1ba 1-359
+docs/content/docs/test.tr.mdx
+  s_36700e42083764::t_1b5d90b93a6d67 1-17
+docs/content/docs/tokenmaxxing.zh.mdx
+  s_36700e42083764::t_2a071985de30e5 297-298
+  s_36700e42083764::t_e89bc66b619f63 292
+  s_36700e42083764::t_09ac042567308f 301
+  s_36700e42083764::t_73d077a41463b6 1-291,293-296,299-300,302-359
+docs/content/docs/index.fr.mdx
+  s_36700e42083764::t_280dceb8ada2ab 1-13
+docs/content/docs/index.ar.mdx
+  s_36700e42083764::t_6faa2163d4d6cf 1-13
+docs/lib/translations/fr.ts
+  s_36700e42083764::t_7c4d13591654c7 4-48
+docs/content/docs/test.es.mdx
+  s_36700e42083764::t_aae5d261e700a9 1-17
+docs/lib/translations/pt.ts
+  s_36700e42083764::t_5375c0776da4ac 4-48
+docs/content/docs/test.arz.mdx
+  s_36700e42083764::t_dbd0dfc75a431b 1-17
+docs/lib/translations/es.ts
+  s_36700e42083764::t_5c48517f1e8795 5-48
+  s_36700e42083764::t_a3f60a321ecc5f 4
+docs/lib/translations/hi.ts
+  s_36700e42083764::t_43cf27bb73fc2c 5-48
+docs/content/docs/test.fr.mdx
+  s_36700e42083764::t_1243ea8ce1c541 1-17
+docs/content/docs/test.id.mdx
+  s_36700e42083764::t_5c4d1ba0d52239 1-17
+docs/content/docs/index.mr.mdx
+  s_36700e42083764::t_e8667e0c62fa16 1-13
+docs/content/docs/tokenmaxxing.mr.mdx
+  s_36700e42083764::t_747e3bc94da9ed 1-359
+docs/lib/translations/de.ts
+  s_36700e42083764::t_6c655d310d2d0f 4-48
+docs/content/docs/test.de.mdx
+  s_36700e42083764::t_a9f17f72688ad3 1-17
+docs/content/docs/test.ru.mdx
+  s_36700e42083764::t_cd0a2cb31eae94 1-17
+docs/lib/translations/tr.ts
+  s_36700e42083764::t_f2f108218c7d24 4-48
+docs/content/docs/test.pt.mdx
+  s_36700e42083764::t_4c87521d5ff0e7 1-17
+docs/content/docs/index.arz.mdx
+  s_36700e42083764::t_69bbca5e441d47 1-13
+docs/content/docs/index.tr.mdx
+  s_36700e42083764::t_8de23e4d656819 1-13
+docs/content/docs/index.ru.mdx
+  s_36700e42083764::t_4aabf6cc5db685 1-13
+docs/content/docs/tokenmaxxing.bn.mdx
+  s_36700e42083764::t_feeb5ece999877 3
+  s_36700e42083764::t_fb25fd82c09d9d 1-2,4-359
+docs/content/docs/tokenmaxxing.mdx
+  s_36700e42083764::t_4fe4dec7bddce1 188-210
+  s_36700e42083764::t_5583d017809433 336-341
+docs/content/docs/index.es.mdx
+  s_36700e42083764::t_cdd15f6ba6d739 1-13
+docs/content/docs/tokenmaxxing.es.mdx
+  s_36700e42083764::t_a2c7fb82e224df 1-359
+docs/content/docs/index.hi.mdx
+  s_36700e42083764::t_a0f5d25c74dbc9 1-13
+docs/content/docs/tokenmaxxing.fr.mdx
+  s_36700e42083764::t_53714e233498af 1-2,4-359
+  s_36700e42083764::t_af6d8af86cf658 3
+docs/content/docs/test.ha.mdx
+  s_36700e42083764::t_aaef9a805ba563 1-17
+docs/lib/translations/ha.ts
+  s_36700e42083764::t_286309989680ca 4
+  s_36700e42083764::t_41794b4a6e3686 5-48
+docs/content/docs/test.mr.mdx
+  s_36700e42083764::t_62bf6c4730e7c0 1-17
+docs/lib/translations/pcm.ts
+  s_36700e42083764::t_1a4c0d6a520d37 4
+  s_36700e42083764::t_0ebfaf30e30467 5-48
+docs/content/docs/tokenmaxxing.pcm.mdx
+  s_36700e42083764::t_5841ac43f3750d 243
+  s_36700e42083764::t_a4eef39d5f7a71 1-10,12-96,98-242,245-312,314-359
+  s_36700e42083764::t_8b8ccd8be441dd 244
+  s_36700e42083764::t_d6aac4886a55a1 11
+  s_36700e42083764::t_5eeeb208b73722 313
+  s_36700e42083764::t_bb6ad5946aac40 97
+docs/content/docs/tokenmaxxing.arz.mdx
+  s_36700e42083764::t_32f31a6f55d1f0 1-2,4-359
+  s_36700e42083764::t_3f4d2c1e72b94d 3
+docs/content/docs/test.zh.mdx
+  s_36700e42083764::t_d26e8e98ade416 1-17
+docs/content/docs/index.vi.mdx
+  s_36700e42083764::t_cb2c9eb92d1837 1-13
+docs/content/docs/tokenmaxxing.id.mdx
+  s_36700e42083764::t_d23ad875cab365 1-359
+docs/content/docs/tokenmaxxing.te.mdx
+  s_36700e42083764::t_2f2ca006e648e9 1-187,211-335,342-388
+  s_36700e42083764::t_82afa43ab5889c 188-210
+  s_36700e42083764::t_91cd13f105acd1 336-341
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "b628954972029685fcb57884aba35392f68d0cc2",
+  "prompts": {},
+  "sessions": {
+    "s_36700e42083764": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ceac3c73-063c-4280-a339-82888d1d952a",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    }
+  }
+}
