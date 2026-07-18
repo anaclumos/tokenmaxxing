@@ -8,10 +8,10 @@
 import { spawn } from "node:child_process";
 import { join } from "node:path";
 import { z } from "zod";
-import { query, type SpawnOptions } from "@anthropic-ai/claude-agent-sdk";
+import { createSdkMcpServer, query, tool, type SpawnOptions } from "@anthropic-ai/claude-agent-sdk";
 import type { StreamChunk } from "chat";
 import { ensureBestAccount, pooledOptions, stopHookCheck } from "../sdk.ts";
-import type { SlackLink } from "./slackstate.ts";
+import { deleteSlackThread, type SlackLink } from "./slackstate.ts";
 import { agentEventChunks, newStreamMapState, SegmentBreakSchema } from "./slackstream.ts";
 import { log } from "./log.ts";
 
@@ -26,6 +26,8 @@ const SLACK_SYSTEM_PROMPT =
 export const TurnOutcomeSchema = z.object({
   sessionId: z.string().nullable(),
   failed: z.boolean(),
+  /** the model called finish_thread this turn: garbage-collect after the turn. */
+  finish: z.boolean(),
 });
 export type TurnOutcome = z.infer<typeof TurnOutcomeSchema>;
 
@@ -90,6 +92,55 @@ function pushableStream(): {
       },
     },
   };
+}
+
+/** Full permission name of the finish_thread tool (mcp__<server>__<tool>):
+ *  it must be in allowedTools, because no one can answer a permission prompt
+ *  through Slack. */
+export const FINISH_THREAD_TOOL = "mcp__tokenmaxxing__finish_thread";
+
+/** The per-turn in-process MCP server exposing finish_thread. The handler runs
+ *  in the daemon process, but it must NOT delete anything inline: the claude
+ *  subprocess is still mid-turn and segments are still streaming to Slack, so
+ *  it only records the request and the daemon closes the thread after the
+ *  turn ends (serve.ts). alwaysLoad keeps the tool visible in the prompt
+ *  instead of deferred behind tool search: it has to be in view at the exact
+ *  moment the user says the work is done. */
+function finishToolServer(onFinish: () => void) {
+  return createSdkMcpServer({
+    name: "tokenmaxxing",
+    alwaysLoad: true,
+    tools: [
+      tool(
+        "finish_thread",
+        "Close out this Slack thread when the user clearly states the work is finished (shipped, done, clean this up) and wants the thread closed. After this turn ends the daemon drops the thread's session record, unsubscribes, and posts a confirmation; the repo checkout and everything in it are untouched. Do not call this for a merely answered question - only for an explicit wrap-up.",
+        {},
+        async () => {
+          onFinish();
+          return { content: [{ type: "text", text: "close-out scheduled - it runs right after this turn ends and posts its own confirmation; just acknowledge the wrap-up now" }] };
+        },
+      ),
+    ],
+  });
+}
+
+export const CleanupOutcomeSchema = z.object({
+  /** the thread's state is gone; a fresh @mention starts a new session. */
+  removed: z.boolean(),
+  message: z.string(),
+});
+export type CleanupOutcome = z.infer<typeof CleanupOutcomeSchema>;
+
+/**
+ * Close out a finished thread. Threads run IN the linked repo checkout (no
+ * per-thread worktree or branch since #14), so there is nothing on disk to
+ * collect: dropping the slack-threads record is the whole cleanup, and the
+ * shared checkout is never touched. The worktree-era residue gate and branch
+ * archiving died with the worktrees themselves.
+ */
+export function cleanupThread(input: { threadId: string }): CleanupOutcome {
+  deleteSlackThread(input.threadId);
+  return { removed: true, message: "thread finished - session closed; a fresh @mention here starts a new one" };
 }
 
 /** Live detached process-group leader pids: one process-exit hook SIGTERMs
@@ -171,7 +222,7 @@ export async function relayThread(input: {
   link: SlackLink;
   post: (m: AsyncIterable<SegmentChunk>) => Promise<unknown>;
 }): Promise<TurnOutcome> {
-  const outcome: TurnOutcome = { sessionId: input.sessionId, failed: false };
+  const outcome: TurnOutcome = { sessionId: input.sessionId, failed: false, finish: false };
   let segment: ReturnType<typeof pushableStream> | null = null;
   let lastPost: Promise<unknown> = Promise.resolve();
   let postedText = false;
@@ -216,6 +267,10 @@ export async function relayThread(input: {
         // reply becomes the next turn.
         disallowedTools: ["AskUserQuestion"],
         spawnClaudeCodeProcess: detachedClaudeSpawn,
+        // the user saying "we're done" closes the thread: the model flags it
+        // via this in-process tool, the daemon drops the record post-turn.
+        mcpServers: { tokenmaxxing: finishToolServer(() => { outcome.finish = true; }) },
+        allowedTools: [FINISH_THREAD_TOOL],
         // serve skills (ask-the-user, serve-session); discovered skills are
         // enabled by default, so no `skills` option is needed.
         plugins: [{ type: "local", path: SERVE_PLUGIN_DIR }],

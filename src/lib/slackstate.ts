@@ -5,7 +5,7 @@
 // the cwd must stay byte-stable for the thread's whole life). A present but
 // unparseable slack.json THROWS (no silent empty config); absent = null.
 
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
 import { paths } from "./paths.ts";
@@ -86,6 +86,12 @@ export function loadSlackThread(threadId: string): SlackThread | null {
 
 export function saveSlackThread(t: SlackThread): void {
   writeFileAtomic(threadFile(t.threadId), JSON.stringify(SlackThreadSchema.parse(t), null, 2) + "\n");
+}
+
+/** Drop a finished thread's record: the thread-level GC (cleanupThread). */
+export function deleteSlackThread(threadId: string): void {
+  const f = threadFile(threadId);
+  if (existsSync(f)) unlinkSync(f);
 }
 
 export function listSlackThreads(): SlackThread[] {

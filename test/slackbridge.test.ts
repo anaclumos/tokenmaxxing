@@ -1,9 +1,13 @@
-// slackbridge: the detached claude child spawn. The daemon's drain can only
-// preserve an in-flight turn if a group-directed signal (terminal Ctrl-C)
-// does not reach the claude child, so the child must own its process group.
+// slackbridge: the detached claude child spawn and the finish_thread
+// close-out. The daemon's drain can only preserve an in-flight turn if a
+// group-directed signal (terminal Ctrl-C) does not reach the claude child, so
+// the child must own its process group; closing a thread is exactly dropping
+// its record (threads run in the linked repo checkout, no per-thread worktree
+// or branch since #14), and the repo itself must never be touched.
 
 import { describe, expect, test } from "bun:test";
-import { detachedClaudeSpawn } from "../src/lib/slackbridge.ts";
+import { cleanupThread, detachedClaudeSpawn } from "../src/lib/slackbridge.ts";
+import { loadSlackThread, saveSlackThread } from "../src/lib/slackstate.ts";
 
 function pgidOf(pid: number): number {
   const r = Bun.spawnSync(["ps", "-o", "pgid=", "-p", String(pid)]);
@@ -55,5 +59,21 @@ describe("detachedClaudeSpawn", () => {
       child.once("exit", (_c, sig) => resolve(sig));
     });
     expect(await exited).toBe("SIGTERM");
+  });
+});
+
+describe("cleanupThread", () => {
+  test("drops the thread record and reports the close-out", () => {
+    const threadId = "slack:C0GCTEST:closeout";
+    saveSlackThread({ threadId, repo: "/tmp/repo", cwd: "/tmp/repo", sessionId: "s-1", createdAt: new Date().toISOString() });
+    const out = cleanupThread({ threadId });
+    expect(out.removed).toBe(true);
+    expect(loadSlackThread(threadId)).toBeNull();
+    expect(out.message).toContain("fresh @mention");
+  });
+
+  test("a record-less thread still closes out idempotently", () => {
+    const out = cleanupThread({ threadId: "slack:C0GCTEST:neverexisted" });
+    expect(out.removed).toBe(true);
   });
 });
