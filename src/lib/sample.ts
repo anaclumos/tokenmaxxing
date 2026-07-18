@@ -144,11 +144,14 @@ export async function probeActiveUsage(account: Account, opts: { ping?: boolean 
   // A running claude keeps the live token fresh; after long idle it may not have.
   if (isAccessTokenExpiring(creds, 300_000)) {
     try {
-      await withClaudeRefreshLock(async () => {
-        const raw2 = (await readItem(liveTarget())) ?? liveRaw;
+      await withClaudeRefreshLock(async (lock) => {
+        const raw2 = await readItem(liveTarget());
+        if (raw2 == null) throw new Error("live credential vanished while waiting for the refresh lock");
         const current = CredentialBlobSchema.parse(JSON.parse(raw2)).claudeAiOauth;
         creds = isAccessTokenExpiring(current, 300_000) ? await refreshCredential(current) : current;
-        if (creds !== current) await writeItem(liveTarget(), mergeIntoLive(raw2, creds));
+        if (creds === current) return;
+        if (lock.compromised()) throw new Error("refresh lock compromised mid-refresh - discarding the live rewrite");
+        await writeItem(liveTarget(), mergeIntoLive(raw2, creds));
       });
     } catch (e) {
       if (e instanceof InvalidGrantError) return { ok: false, reason: "live refresh token dead - run `claude` and `/login`" };
