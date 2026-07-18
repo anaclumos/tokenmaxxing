@@ -105,8 +105,14 @@ export async function performSwap(target: Account): Promise<void> {
     const currentLive = await readItem(liveTarget());
     if (lock.compromised()) throw new Error("refresh lock compromised - aborting the swap before any write");
 
-    // harvest the live claudeAiOauth into its OWNER's (small) backup item.
-    if (liveOwner && currentLive) {
+    // harvest the live claudeAiOauth into its OWNER's (small) backup item -
+    // UNLESS the owner IS the target (label drift made us "swap onto" the
+    // account already live): its backup already holds the fresh rotation
+    // persisted right after the refresh, and harvesting the old live blob
+    // over it would strand the backup on a superseded token (review catch,
+    // PR #30). The install + label commit below still run: they repair the
+    // drift, and the running session adopts the fresh token in place.
+    if (liveOwner && currentLive && liveOwner.accountUuid !== target.accountUuid) {
       await writeItem(parkedTarget(liveOwner.keychainItem), claudeAiOauthOnly(currentLive));
       log("swap.harvest", { account: liveOwner.accountUuid.slice(0, 8) });
     }
@@ -117,8 +123,9 @@ export async function performSwap(target: Account): Promise<void> {
     await writeItem(liveTarget(), mergeIntoLive(currentLive, fresh));
     swapOAuthAccount(target.oauthAccount);
     // record B as active immediately after the identity write. These separate
-    // files cannot be crash-atomic together; the divergence window is one write
-    // and the next swap's true-owner resolution catches it (swap.harvest_drift).
+    // files cannot be crash-atomic together, so a crash may leave intermediate
+    // state; the next swap resolves the live owner from the token itself and
+    // logs any drift (swap.harvest_drift).
     idx.activeAccountUuid = target.accountUuid;
     const t2 = idx.accounts.find((a) => a.accountUuid === target.accountUuid);
     if (t2) { t2.needsReauth = false; }

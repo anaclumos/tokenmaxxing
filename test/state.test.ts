@@ -72,6 +72,14 @@ describe("corrupt state fails loud", () => {
       expect(() => loadConfig()).toThrow("corrupt");
     });
   });
+  test("wrong-typed known config keys throw; unknown keys stay tolerated", () => {
+    withReplaced(paths.configJson, JSON.stringify({ claudeBin: 42 }), () => {
+      expect(() => loadConfig()).toThrow("wrong-typed values (claudeBin)");
+    });
+    withReplaced(paths.configJson, JSON.stringify({ someFutureKey: true }), () => {
+      expect(loadConfig().thresholds.session).toBeGreaterThan(0); // stripped, defaults apply
+    });
+  });
 });
 
 describe("usage write-on-change", () => {

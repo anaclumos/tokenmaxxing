@@ -62,7 +62,14 @@ export function loadConfig(): Config {
       throw new Error(`${paths.configJson} is corrupt (unparsable JSON) - fix or remove it`);
     }
     const parsed = ConfigFileSchema.safeParse(raw);
-    const p = parsed.success ? parsed.data : {};
+    if (!parsed.success) {
+      // Valid JSON with wrong-typed KNOWN keys must not silently drop pins
+      // like claudeBin; unknown keys are stripped by the schema and stay
+      // tolerated (that is `config tidy`'s territory, not an error).
+      const fields = parsed.error.issues.map((issue) => issue.path.join(".")).join(", ");
+      throw new Error(`${paths.configJson} has wrong-typed values (${fields}) - fix or remove them`);
+    }
+    const p = parsed.data;
     cfg.thresholds.session = p.thresholds?.session ?? cfg.thresholds.session;
     cfg.thresholds.weekly = p.thresholds?.weekly ?? cfg.thresholds.weekly;
     cfg.claudeBin = p.claudeBin ?? cfg.claudeBin;

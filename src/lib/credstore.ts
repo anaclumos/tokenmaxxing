@@ -93,7 +93,9 @@ export function claudeAiOauthOnly(fullBlobRaw: string): string {
 /** Merge a fresh `claudeAiOauth` into the CURRENT live blob, preserving every
  *  sibling key (MCP OAuth state, etc.). Returns the full blob string to install. */
 export function mergeIntoLive(currentLiveRaw: string | null, freshClaudeAiOauth: unknown): string {
-  const base = currentLiveRaw ? BlobRecordSchema.parse(JSON.parse(currentLiveRaw)) : {};
+  // null-check, not falsiness: an EXISTING-but-empty blob is corruption and
+  // must surface (JSON.parse throws), never be silently replaced as "missing".
+  const base = currentLiveRaw == null ? {} : BlobRecordSchema.parse(JSON.parse(currentLiveRaw));
   base["claudeAiOauth"] = freshClaudeAiOauth;
   return JSON.stringify(base);
 }
