@@ -312,6 +312,36 @@ async function runDaemon(): Promise<number> {
     await tracked(handleTurn({ thread, texts, isMention: false }));
   });
 
+  // drain instead of dying mid-answer: stop taking new turns, let in-flight
+  // ones finish (bounded - a hung claude turn must not block a restart
+  // forever), then disconnect. A second signal forces an immediate exit.
+  // Registered BEFORE initialize() (post-0.19.1 review catch): the socket
+  // goes live inside initialize, so a turn could start while runDaemon was
+  // still suspended there and a signal in that window hit default
+  // disposition - an instant kill with no drain.
+  const DRAIN_MS = 300_000;
+  const shutdown = async (signal: string) => {
+    if (draining) {
+      log("serve.forced_exit", { signal });
+      process.exit(1);
+    }
+    draining = true;
+    log("serve.draining", { signal, turns: activeTurns.size });
+    console.log(`${c.yellow("●")} ${signal}: draining ${count({ n: activeTurns.size, noun: "in-flight turn" })} (again to force)`);
+    await Promise.race([Promise.allSettled([...activeTurns]), delay(DRAIN_MS)]);
+    try {
+      await bot.shutdown();
+    } catch (e) {
+      // exit must be reached even when the socket teardown rejects; the
+      // second-signal force path must not be the only escape.
+      log("serve.shutdown_error", { err: (e instanceof Error ? e.message : String(e)).slice(0, 300) });
+    }
+    log("serve.stopped", { dropped: activeTurns.size });
+    process.exit(0);
+  };
+  process.on("SIGTERM", () => void shutdown("SIGTERM"));
+  process.on("SIGINT", () => void shutdown("SIGINT"));
+
   // initialize() starts the PERSISTENT Socket Mode client (auto-reconnecting)
   // wired straight into event routing; the daemon only has to stay alive.
   // Never call startSocketModeListener here: that is the serverless leased
@@ -328,26 +358,6 @@ async function runDaemon(): Promise<number> {
   const records = listSlackThreads();
   for (const record of records) await state.subscribe(record.threadId);
   log("serve.resubscribed", { threads: records.length });
-
-  // drain instead of dying mid-answer: stop taking new turns, let in-flight
-  // ones finish (bounded - a hung claude turn must not block a restart
-  // forever), then disconnect. A second signal forces an immediate exit.
-  const DRAIN_MS = 300_000;
-  const shutdown = async (signal: string) => {
-    if (draining) {
-      log("serve.forced_exit", { signal });
-      process.exit(1);
-    }
-    draining = true;
-    log("serve.draining", { signal, turns: activeTurns.size });
-    console.log(`${c.yellow("●")} ${signal}: draining ${count({ n: activeTurns.size, noun: "in-flight turn" })} (again to force)`);
-    await Promise.race([Promise.allSettled([...activeTurns]), delay(DRAIN_MS)]);
-    await bot.shutdown();
-    log("serve.stopped", { dropped: activeTurns.size });
-    process.exit(0);
-  };
-  process.on("SIGTERM", () => void shutdown("SIGTERM"));
-  process.on("SIGINT", () => void shutdown("SIGINT"));
 
   console.log(`${c.green("●")} serving ${count({ n: cfg.links.length, noun: "linked channel" })} over Slack Socket Mode - mention the bot in a linked channel to open a session (Ctrl-C to stop)`);
   log("serve.started", { links: cfg.links.length });

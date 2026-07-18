@@ -5,10 +5,11 @@
 // without losing threads). Verified against @anthropic-ai/claude-agent-sdk
 // 0.3.214 and code.claude.com/docs 2026-07-18; both change monthly.
 
+import { spawn } from "node:child_process";
 import { existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
-import { query } from "@anthropic-ai/claude-agent-sdk";
+import { query, type SpawnOptions } from "@anthropic-ai/claude-agent-sdk";
 import type { StreamChunk } from "chat";
 import { ensureBestAccount, pooledOptions, stopHookCheck } from "../sdk.ts";
 import { paths } from "./paths.ts";
@@ -99,6 +100,29 @@ export function ensureThreadCwd(input: { link: SlackLink; threadId: string }): s
 }
 
 /**
+ * Spawns the claude child in its OWN process group (post-0.19.1 review catch):
+ * a terminal Ctrl-C delivers SIGINT to the whole foreground group, so a
+ * non-detached child died at the same instant the daemon's drain started and
+ * the drain could never preserve the in-flight turn. Detached, only the daemon
+ * receives the terminal signal; the SDK's kill/abort paths target the PID
+ * directly and its process-exit handler SIGTERMs surviving children, so
+ * neither cleanup path is affected. Mirrors the SDK's default local spawn
+ * (pipes + forwarded signal, which the SDK documents as safe to pass through)
+ * minus its stderr-tail collection: exit errors lose the stderr suffix, an
+ * accepted cost of turn survival.
+ */
+export function detachedClaudeSpawn(options: SpawnOptions) {
+  const stdio: ["pipe", "pipe", "pipe"] = ["pipe", "pipe", "pipe"];
+  return spawn(options.command, options.args, {
+    cwd: options.cwd,
+    env: options.env,
+    stdio,
+    signal: options.signal,
+    detached: true,
+  });
+}
+
+/**
  * One claude turn relayed into a Slack thread as a SEQUENCE of messages: reply
  * text streams natively, thinking and tool calls stream as task_update cards
  * (see slackstream.ts), and a segment_break (a tool starting after streamed
@@ -160,6 +184,7 @@ export async function relayThread(input: {
         // without the tool the model asks in prose and the user's thread
         // reply becomes the next turn.
         disallowedTools: ["AskUserQuestion"],
+        spawnClaudeCodeProcess: detachedClaudeSpawn,
         hooks: { Stop: [{ hooks: [stopHookCheck] }] },
         ...(input.link.model ? { model: input.link.model } : {}),
         ...(input.sessionId ? { resume: input.sessionId } : {}),
