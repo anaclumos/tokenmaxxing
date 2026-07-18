@@ -113,6 +113,27 @@ describe("agentEventChunks", () => {
     expect(orphan).toEqual([]);
   });
 
+  test("local_command_output posts its content as reply text, empty stays silent", () => {
+    const state = newStreamMapState();
+    const chunks = agentEventChunks({ state, message: {
+      type: "system",
+      subtype: "local_command_output",
+      content: "Current session: 13% used",
+      uuid: UUID,
+      session_id: SID,
+    } });
+    expect(chunks).toEqual(["Current session: 13% used"]);
+    expect(state.textSinceBreak).toBe(true);
+    const empty = agentEventChunks({ state, message: {
+      type: "system",
+      subtype: "local_command_output",
+      content: "   ",
+      uuid: UUID,
+      session_id: SID,
+    } });
+    expect(empty).toEqual([]);
+  });
+
   test("result message emits the closing turn card", () => {
     const state = newStreamMapState();
     const chunks = agentEventChunks({ state, message: {
