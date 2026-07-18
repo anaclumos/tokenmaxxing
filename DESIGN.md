@@ -2,9 +2,9 @@
 
 Automatic Claude Code account switching. You run `claude` exactly as always; when the active account crosses its swap threshold (**95%** of the 5h session window, **98%** of a weekly window), tokenmaxxing swaps the credential to a fresh account at a safe turn boundary and **your running session adopts it in place - no restart**. Works across many concurrent sessions at once; a fully depleted pool pauses with a countdown and auto-resumes at the soonest reset.
 
-> Scope: **Claude Code only, macOS first.** Codex and other CLIs deferred (see `.memory/cc-codex-auth-mechanics.md`).
+> Scope: **Claude Code first (macOS + Linux, the latter since 2026-07-09).** Codex support landed in 0.13.0 (2026-07-16) with its own parallel state, decision engine, and supervisor; its verified internals live in AGENTS.md's Codex sections.
 >
-> Status: **implemented** (v0.1.0, 2026-07-09). TypeScript on Bun → single binary; Zod validates every external-boundary payload, JSON config, es-toolkit for utilities, `flock(2)` via `bun:ffi`. All load-bearing external facts were adversarially verified against the `2.1.204` binary + docs (OAuth token endpoint is `platform.claude.com/v1/oauth/token`, client_id `9d1c250a-...`, JSON body). What the acceptance gate actually shows is in §9.
+> Status: **implemented** (v0.1.0, 2026-07-09). TypeScript on Bun, shipped as SOURCE with a bun-shebang bin (the compiled-binary distribution was deleted in 0.2.1); Zod validates every external-boundary payload, JSON config, es-toolkit for utilities, `flock(2)` via `bun:ffi`. All load-bearing external facts were adversarially verified against the `2.1.204` binary + docs (OAuth token endpoint is `platform.claude.com/v1/oauth/token`, client_id `9d1c250a-...`, JSON body). What the acceptance gate actually shows is in §9.
 
 ---
 
@@ -17,11 +17,11 @@ So the supervisor's job is narrow: on a depleted pool it **replaces the process 
 A hook can't do the pause-and-relaunch - when `claude` exits, the shell owns the terminal. So tokenmaxxing installs a **supervisor** (aliased to `claude`) that owns the process lifecycle:
 
 ```
-supervisor (you type `claude`)  →  real claude (in a PTY)  →  Stop hook
+supervisor (you type `claude`)  →  real claude (inherited stdio)  →  Stop hook
         ▲_______________ relaunch --resume <sid> ______________|
 ```
 
-It is a process/PTY manager only - spawn, forward the terminal, wait, restore terminal, relaunch. It never proxies API traffic or handles tokens. Everything else about `claude` is unchanged.
+It is a process manager only - spawn with inherited stdio plus saved `stty -g` termios (not a PTY copy), wait, restore the terminal, relaunch. It never proxies API traffic or handles tokens. Everything else about `claude` is unchanged.
 
 ---
 
@@ -136,7 +136,7 @@ A local Socket Mode daemon (no public URL) that turns Slack threads into Claude 
 ---
 
 ## 8. Stack
-TypeScript on Bun, shipped as source: one multi-call entry (`src/main.ts`, `#!/usr/bin/env bun`) serves the CLI, the `claude` supervisor, the statusLine shim, and the hooks; `init` installs a 2-line shim that `exec`s bun on the installed package's entry (the Stop path runs every turn; bun's start-up stays low-millisecond). Published to npm as `tokenmaxxing` (source, platform-independent - a compiled binary was tried and shipped one architecture's Mach-O to every platform). Shipping is PR-based since 2026-07-18: work reaches main only through a pull request (branch, PR, CI green, a 10-minute review wait, every review handled, merge, teardown), and a release is a PR-landed version bump followed by `gh release create` (details in AGENTS.md "Release and CI"). The supervisor needs a real PTY layer (spawn claude on a pty, forward resize/signals, restore mode between runs).
+TypeScript on Bun, shipped as source: one multi-call entry (`src/main.ts`, `#!/usr/bin/env bun`) serves the CLI, the `claude` supervisor, the statusLine shim, and the hooks; `init` installs a 2-line shim that `exec`s bun on the installed package's entry (the Stop path runs every turn; bun's start-up stays low-millisecond). Published to npm as `tokenmaxxing` (source, platform-independent - a compiled binary was tried and shipped one architecture's Mach-O to every platform). Shipping is PR-based since 2026-07-18: work reaches main only through a pull request (branch, PR, CI green, a 10-minute review wait, every review handled, merge, teardown), and a release is a PR-landed version bump followed by `gh release create` (details in AGENTS.md "Release and CI"). The supervisor spawns claude with inherited stdio and restores saved `stty -g` termios between runs - no PTY layer; resize and signals flow through the shared foreground process group.
 
 ---
 

@@ -243,9 +243,9 @@ export async function recordObservedLimit(input: { text: string; now: number; or
 
 /**
  * Parse `claude -p '/usage'` .result text into all three limit kinds:
- *   Current session: N% used · resets <clock>      → session (5h)
- *   Current week (all models): N% used · resets ...   → weekAll (7d aggregate)
- *   Current week (<Model>): N% used · resets ...      → perModel[<Model>]
+ *   Current session: N% used ... resets <clock>        → session (5h)
+ *   Current week (all models): N% used ... resets ...  → weekAll (7d aggregate)
+ *   Current week (<Model>): N% used ... resets ...     → perModel[<Model>]
  */
 export function parseUsageTextFull(text: string, now = Date.now()): FullUsage | null {
   if (!text) return null;
@@ -267,12 +267,11 @@ export function parseUsageTextFull(text: string, now = Date.now()): FullUsage | 
     else if (/^all models$/i.test(m[2]!.trim())) weekAll = window;
     else perModel[m[2]!.trim()] = window;
   }
-  if (!session && !weekAll && Object.keys(perModel).length === 0) return null;
-  return {
-    session: session ?? { usedPercentage: 0, resetsAt: null },
-    weekAll: weekAll ?? { usedPercentage: 0, resetsAt: null },
-    perModel,
-  };
+  // All-or-nothing on the aggregates: every captured /usage output shows both
+  // rows, so a missing one is format drift, and fabricating 0% for it would
+  // make an unmeasured window read as safe (the one thing it must never do).
+  if (!session || !weekAll) return null;
+  return { session, weekAll, perModel };
 }
 
 /** Aggregate windows only (session→5h, week-all→7d), for the cold-start fallback. */

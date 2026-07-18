@@ -28,6 +28,11 @@ describe("supervisor argument analysis", () => {
     expect(analyzeArgs(["-r"]).resumeId).toBe(null); // picker mode, no id
     expect(analyzeArgs(["-c"]).continueLatest).toBe(true);
   });
+  test("a non-UUID --session-id never becomes supervisor state (path traversal guard)", () => {
+    const bad = analyzeArgs(["--session-id", "../../../../some/file"]);
+    expect(bad.sessionId).toBe(null);
+    expect(bad.manage).toBe(false); // pass through unmanaged; real claude rejects the id
+  });
   test("stripSessionFlags removes only session selectors", () => {
     expect(stripSessionFlags(["--session-id", UUID, "--model", "opus"])).toEqual(["--model", "opus"]);
     expect(stripSessionFlags(["--resume", UUID, "foo"])).toEqual(["foo"]);
@@ -283,9 +288,17 @@ describe("usage parsing", () => {
     expect(Object.keys(f.perModel)).toEqual(["Fable"]); // "all models" excluded
   });
   test("parseUsageTextFull tolerates missing reset clocks", () => {
-    const f = parseUsageTextFull("Current session: 5% used", Date.parse("2026-07-09T12:00:00Z"))!;
+    const text = ["Current session: 5% used", "Current week (all models): 9% used"].join("\n");
+    const f = parseUsageTextFull(text, Date.parse("2026-07-09T12:00:00Z"))!;
     expect(f.session.usedPercentage).toBe(5);
     expect(f.session.resetsAt).toBe(null);
+    expect(f.weekAll.usedPercentage).toBe(9);
+  });
+  test("a partial parse (an aggregate row missing) is rejected, never zero-filled", () => {
+    // Fabricating 0% for an unparsed window would make unmeasured look safe.
+    expect(parseUsageTextFull("Current session: 41% used", Date.now())).toBeNull();
+    expect(parseUsageTextFull("Current week (all models): 41% used", Date.now())).toBeNull();
+    expect(parseUsageTextFull("Current week (Fable): 41% used", Date.now())).toBeNull();
   });
   test("parseUsageTextFull parses the comma day-time glue (real 2.1.206 Linux output)", () => {
     const now = Date.parse("2026-07-10T13:00:00+09:00"); // Asia/Seoul reference

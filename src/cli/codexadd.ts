@@ -28,7 +28,7 @@ export async function cmdCodexAdd(): Promise<number> {
   // Same rationale at the end-of-run cleanup below.
   rmSync(onboardDir, { recursive: true, force: true });
   mkdirSync(onboardDir, { recursive: true });
-  writeFileAtomic(join(onboardDir, "config.toml"), 'cli_auth_credentials_store_mode = "file"\n');
+  writeFileAtomic(join(onboardDir, "config.toml"), 'cli_auth_credentials_store = "file"\n');
 
   console.log(c.cyan("Opening an isolated codex login - your primary login is untouched."));
   console.log(c.dim("Complete the browser sign-in with the account to add; the command exits once you're in."));

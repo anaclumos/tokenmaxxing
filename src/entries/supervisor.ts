@@ -38,13 +38,22 @@ export function analyzeArgs(argv: string[]): Analysis {
   let resumeId: string | null = null;
   let continueLatest = false;
   let printMode = false;
+  let invalidSessionArg = false;
   let firstPositional: string | null = null;
 
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]!;
     if (a === "-p" || a === "--print") printMode = true;
     else if (a === "--version" || a === "-v" || a === "--help" || a === "-h") printMode = true;
-    else if (a === "--session-id") sessionId = argv[++i] ?? null;
+    else if (a === "--session-id") {
+      // A non-UUID here must never become supervisor state: the sid names the
+      // respawn-marker and session-flag paths (an unvalidated value could
+      // traverse out of them), and real claude rejects a malformed id anyway -
+      // pass it through unmanaged and let claude do the rejecting.
+      const next = argv[++i] ?? null;
+      if (next && isUuid(next)) sessionId = next;
+      else invalidSessionArg = true;
+    }
     else if (a === "-c" || a === "--continue") continueLatest = true;
     else if (a === "-r" || a === "--resume") {
       const next = argv[i + 1];
@@ -55,7 +64,7 @@ export function analyzeArgs(argv: string[]): Analysis {
   }
 
   const isSubcmd = firstPositional !== null && NONINTERACTIVE_SUBCMDS.has(firstPositional);
-  const manage = !printMode && !isSubcmd && !process.env.TOKENMAXXING_PROBE;
+  const manage = !printMode && !isSubcmd && !invalidSessionArg && !process.env.TOKENMAXXING_PROBE;
   return { manage, sessionId, resumeId, continueLatest };
 }
 

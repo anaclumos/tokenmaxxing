@@ -8,7 +8,7 @@
 //      live to answer HTTP 200 with plain Bearer auth (with or without the
 //      oauth beta header - we send it to match the CLI's OAuth convention).
 
-import { http } from "./http.ts";
+import { http, safeErrorDetail } from "./http.ts";
 import { RefreshResponseSchema, RolesResponseSchema, type OAuthCreds, type RolesResponse } from "./types.ts";
 
 const TOKEN_URL = process.env.TOKENMAXXING_OAUTH_TOKEN_URL ?? "https://platform.claude.com/v1/oauth/token";
@@ -59,17 +59,20 @@ export async function refreshCredential(creds: OAuthCreds, now = Date.now()): Pr
   const text = await res.text();
   if (!res.ok) {
     // invalid_grant → dead refresh token; anything else is transient/unknown.
+    // Bodies go through the safeErrorDetail allowlist, never raw: a token
+    // endpoint's failure body can echo request material.
     if (res.status === 400 && /invalid_grant/.test(text)) {
-      throw new InvalidGrantError(text.slice(0, 200));
+      throw new InvalidGrantError(safeErrorDetail({ text }));
     }
-    throw new Error(`token refresh failed (HTTP ${res.status}): ${text.slice(0, 200)}`);
+    throw new Error(`token refresh failed (HTTP ${res.status}): ${safeErrorDetail({ text })}`);
   }
 
   const parsed = RefreshResponseSchema.safeParse((() => {
     try { return JSON.parse(text); } catch { return null; }
   })());
   if (!parsed.success) {
-    throw new Error(`token endpoint returned unexpected body: ${text.slice(0, 120)}`);
+    // A success-status body holds live tokens: never echo any of it.
+    throw new Error(`token endpoint returned an unrecognized body (${text.length} bytes, withheld)`);
   }
   const json = parsed.data;
 
@@ -108,10 +111,10 @@ export async function fetchTokenOrg(accessToken: string): Promise<RolesResponse>
     throw new Error(`roles endpoint unreachable: ${String((e as Error).message ?? e)}`);
   }
   const text = await res.text();
-  if (!res.ok) throw new Error(`roles check failed (HTTP ${res.status}): ${text.slice(0, 140)}`);
+  if (!res.ok) throw new Error(`roles check failed (HTTP ${res.status}): ${safeErrorDetail({ text })}`);
   const parsed = RolesResponseSchema.safeParse((() => {
     try { return JSON.parse(text); } catch { return null; }
   })());
-  if (!parsed.success) throw new Error(`roles endpoint returned unexpected body: ${text.slice(0, 120)}`);
+  if (!parsed.success) throw new Error(`roles endpoint returned an unrecognized body (${text.length} bytes, withheld)`);
   return parsed.data;
 }

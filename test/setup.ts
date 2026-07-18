@@ -22,4 +22,7 @@ process.env.TOKENMAXXING_CODEX_USAGE_URL = "http://127.0.0.1:8792/codex-usage";
 process.env.NO_COLOR = "1";
 
 // exposed for tests that want the sandbox root
-(globalThis as any).__TM_TEST_BASE__ = base;
+declare global {
+  var __TM_TEST_BASE__: string | undefined;
+}
+globalThis.__TM_TEST_BASE__ = base;

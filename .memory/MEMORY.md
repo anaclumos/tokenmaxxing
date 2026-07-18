@@ -1,5 +1,6 @@
 # Memory index
 
+- [1Password vault-lock blocks commit signing](1password-signing-lock-blocks-commits.md) - "failed to fill whole buffer" = locked vault; staged work survives, only the user's unlock (or their explicit --no-gpg-sign say-so) unblocks; slow retry + Slack ping, never bypass unilaterally
 - [PR review replies must be threaded](pr-review-replies-threaded.md) - user 2026-07-18: answer each inline review finding as a threaded reply on that comment (gh api .../comments/<id>/replies), never only a separate PR-level comment
 - [Source moves are editor-only too](source-moves-editor-only.md) - hook correction 2026-07-18: the editor-only rule covers file moves; never `git mv`/`mv` source files via Bash - Write the new path, delete the old separately
 - [Pre-commit full-diff inspection](pre-commit-full-diff-inspection.md) - hook correction 2026-07-19: a diffstat + greps is not the required untruncated `git diff --cached` read; bulk agent-generated commits get the full read too, before the commit (or before the ship advances if caught late)

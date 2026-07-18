@@ -174,20 +174,28 @@ export async function runStatusline(): Promise<number> {
     // skip the tee, still render below
   }
 
-  const cfg = loadConfig();
-  const modelUsage = loadModelUsage();
-  const stdin = StatusLineStdinSchema.safeParse(obj);
-  const dir = stdin.success ? (stdin.data.workspace?.current_dir ?? stdin.data.workspace?.project_dir ?? null) : null;
-  const colorterm = z.string().optional().parse(process.env.COLORTERM);
-  const ctx: RenderCtx = {
-    accounts: loadAccounts(),
-    perModel: modelUsage && modelUsage.org === org ? modelUsage.perModel : {},
-    switchModels: cfg.policy.switchModels,
-    worktree: dir == null ? null : worktreeName(dir),
-    now,
-    color: !process.env.NO_COLOR,
-    truecolor: colorterm != null && (colorterm.includes("truecolor") || colorterm.includes("24bit")),
-  };
-  process.stdout.write(renderStatusline(obj, ctx) + "\n");
+  let line: string;
+  try {
+    const cfg = loadConfig();
+    const modelUsage = loadModelUsage();
+    const stdin = StatusLineStdinSchema.safeParse(obj);
+    const dir = stdin.success ? (stdin.data.workspace?.current_dir ?? stdin.data.workspace?.project_dir ?? null) : null;
+    const colorterm = z.string().optional().parse(process.env.COLORTERM);
+    const ctx: RenderCtx = {
+      accounts: loadAccounts(),
+      perModel: modelUsage && modelUsage.org === org ? modelUsage.perModel : {},
+      switchModels: cfg.policy.switchModels,
+      worktree: dir == null ? null : worktreeName(dir),
+      now,
+      color: !process.env.NO_COLOR,
+      truecolor: colorterm != null && (colorterm.includes("truecolor") || colorterm.includes("24bit")),
+    };
+    line = renderStatusline(obj, ctx);
+  } catch (e) {
+    // Corrupt local state (the loaders throw on it) must stay VISIBLE: render
+    // the failure as the statusline itself, never abort into a blank line.
+    line = `tokenmaxxing: ${e instanceof Error ? e.message : String(e)}`;
+  }
+  process.stdout.write(line + "\n");
   return 0;
 }

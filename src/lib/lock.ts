@@ -2,57 +2,79 @@
 // descriptor (macOS ships no flock(1) binary, and one codepath serves both
 // platforms). The lock is released when we close the fd (explicitly or on
 // process exit).
+//
+// The acquire is NON-BLOCKING (LOCK_EX|LOCK_NB) with an async retry loop: a
+// blocking LOCK_EX from this runtime freezes the whole event loop, and in
+// `xx serve` (many actors, one process) a second actor's blocking acquire
+// would stop the holder from ever resuming to release - a true single-process
+// deadlock; a cross-process holder would freeze the daemon for its whole
+// critical section (adversarial review catch, 2026-07-19). EWOULDBLOCK is
+// told apart from real failures via errno, so a bad fd still fails fast
+// instead of spinning.
 
 import { closeSync, mkdirSync, openSync } from "node:fs";
 import { dirname } from "node:path";
-import { dlopen, FFIType, suffix } from "bun:ffi";
+import { dlopen, FFIType, read } from "bun:ffi";
+import { delay } from "es-toolkit";
 
 // sys/file.h (identical on darwin + linux): LOCK_SH=1 LOCK_EX=2 LOCK_NB=4 LOCK_UN=8
 const LOCK_EX = 2;
+const LOCK_NB = 4;
 const LOCK_UN = 8;
+// errno.h: EWOULDBLOCK/EAGAIN is 35 on darwin, 11 on linux; EINTR is 4 on both.
+const EAGAIN = process.platform === "darwin" ? 35 : 11;
+const EINTR = 4;
+const RETRY_MS = 75;
 
-let _flock: ((fd: number, op: number) => number) | null = null;
+const FLOCK_DEF = { flock: { args: [FFIType.i32, FFIType.i32], returns: FFIType.i32 } } as const;
 
-function flockFn(): (fd: number, op: number) => number {
-  if (_flock) return _flock;
-  // darwin: flock(2) is in libSystem; the bare name resolves via the dyld shared
-  // cache even though no physical .dylib exists on disk (verified 2026-07-08).
-  // linux: glibc's libc.so.6 (verified in-container 2026-07-09, arm64).
-  const candidates =
-    process.platform === "darwin"
-      ? ["libSystem.B.dylib", "/usr/lib/libSystem.B.dylib", `libc.${suffix}`]
-      : [`libc.so.6`, `libc.${suffix}`];
-  let lib: ReturnType<typeof dlopen> | null = null;
-  let lastErr: unknown;
-  for (const path of candidates) {
-    try {
-      lib = dlopen(path, {
-        flock: { args: [FFIType.i32, FFIType.i32], returns: FFIType.i32 },
-      });
-      break;
-    } catch (e) {
-      lastErr = e;
-    }
+// darwin: flock(2) + __error live in libSystem; the bare name resolves via the
+// dyld shared cache even though no physical .dylib exists on disk (verified
+// 2026-07-08). linux: glibc's libc.so.6 + __errno_location (verified
+// in-container 2026-07-09, arm64). Exactly one verified path per platform -
+// a broken environment fails fast instead of falling through a guess list.
+function loadLibc() {
+  if (process.platform === "darwin") {
+    const lib = dlopen("libSystem.B.dylib", { ...FLOCK_DEF, __error: { args: [], returns: FFIType.ptr } });
+    return { flock: lib.symbols.flock, errnoPtr: lib.symbols.__error };
   }
-  if (!lib) throw new Error(`could not load flock(2): ${String(lastErr)}`);
-  const sym = lib.symbols.flock as unknown as (fd: number, op: number) => number;
-  _flock = sym;
-  return _flock;
+  const lib = dlopen("libc.so.6", { ...FLOCK_DEF, __errno_location: { args: [], returns: FFIType.ptr } });
+  return { flock: lib.symbols.flock, errnoPtr: lib.symbols.__errno_location };
+}
+
+let _libc: ReturnType<typeof loadLibc> | null = null;
+
+function libc(): ReturnType<typeof loadLibc> {
+  _libc ??= loadLibc();
+  return _libc;
+}
+
+function currentErrno(): number {
+  const p = libc().errnoPtr();
+  return p == null ? -1 : read.i32(p, 0);
 }
 
 /**
- * Acquire an exclusive advisory lock on `lockPath`, blocking until available.
- * Returns a handle whose release() drops the lock. The lock is process-scoped
- * (held via an open fd) so racing hooks in separate processes serialize.
+ * Acquire an exclusive advisory lock on `lockPath`, waiting (without blocking
+ * the event loop) until available. Returns a handle whose release() drops the
+ * lock. The lock is fd-scoped, so racing hooks in separate processes serialize
+ * and same-process actors queue on the retry loop.
  */
-export function acquireLock(lockPath: string): { release: () => void } {
+export async function acquireLock(lockPath: string): Promise<{ release: () => void }> {
   mkdirSync(dirname(lockPath), { recursive: true });
   const fd = openSync(lockPath, "a", 0o600);
-  const flock = flockFn();
-  const rc = flock(fd, LOCK_EX);
-  if (rc !== 0) {
+  const { flock } = libc();
+  try {
+    while (flock(fd, LOCK_EX | LOCK_NB) !== 0) {
+      const errno = currentErrno();
+      if (errno !== EAGAIN && errno !== EINTR) {
+        throw new Error(`flock LOCK_EX|LOCK_NB failed on ${lockPath} (errno ${errno})`);
+      }
+      await delay(RETRY_MS);
+    }
+  } catch (e) {
     closeSync(fd);
-    throw new Error(`flock LOCK_EX failed on ${lockPath} (rc=${rc})`);
+    throw e;
   }
   let released = false;
   const release = () => {
@@ -69,7 +91,7 @@ export function acquireLock(lockPath: string): { release: () => void } {
 
 /** Run `fn` while holding `lockPath`; always releases, even on throw. */
 export async function withLock<T>(lockPath: string, fn: () => Promise<T> | T): Promise<T> {
-  const held = acquireLock(lockPath);
+  const held = await acquireLock(lockPath);
   try {
     return await fn();
   } finally {

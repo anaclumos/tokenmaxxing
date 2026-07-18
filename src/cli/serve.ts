@@ -535,16 +535,22 @@ export function buildServeRuntime(seam: {
   const threadTurns = new Map<string, Promise<void>>();
   const serialized = (threadId: string, run: () => Promise<void>) => {
     const prev = threadTurns.get(threadId) ?? Promise.resolve();
-    const next = prev.then(run, run);
+    const next = (async () => {
+      try {
+        await prev;
+      } catch { /* the previous turn's rejection was already surfaced to its own handler */ }
+      await run();
+    })();
     threadTurns.set(threadId, next);
-    // the .finally chain is its own promise: without the .catch, a rejected
-    // turn leaves it as an unhandled rejection even though `next` itself is
-    // awaited by the handler (cubic review catch, PR #18).
-    void next
-      .finally(() => {
-        if (threadTurns.get(threadId) === next) threadTurns.delete(threadId);
-      })
-      .catch(() => {});
+    // GC observer: swallow next's rejection HERE only (the handler awaiting
+    // `next` still sees it), else the observer chain is an unhandled rejection
+    // (cubic review catch, PR #18).
+    void (async () => {
+      try {
+        await next;
+      } catch { /* surfaced to the awaiting handler */ }
+      if (threadTurns.get(threadId) === next) threadTurns.delete(threadId);
+    })();
     return next;
   };
 
@@ -613,7 +619,7 @@ async function runDaemon(): Promise<number> {
   // and resume it - two claude processes in one cwd (adversarial-review
   // catch). Blocking here makes a rolling restart wait out the drain instead.
   console.log(c.dim("acquiring the serve singleton lock (waits for a draining daemon to exit)"));
-  acquireLock(paths.serveLockFile);
+  await acquireLock(paths.serveLockFile);
 
   const slack = createSlackAdapter({
     mode: "socket",

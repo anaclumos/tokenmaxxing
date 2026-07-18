@@ -19,14 +19,26 @@ import { c } from "./render.ts";
 
 /** Fail fast when config.toml pins the credential store away from the plain
  *  file tokenmaxxing swaps (structural line scan: the repo ships no TOML
- *  parser, and this single key is the only one we ever inspect). */
-function keyringStoreConfigured(): boolean {
+ *  parser, and this single key is the only one we ever inspect). The real key
+ *  is `cli_auth_credentials_store` (binary-verified 0.144.5; an earlier
+ *  verification misread the enum TYPE name as a `_mode` key). An ABSENT key is
+ *  allowed: the default (`auto`) resolves to the plain file on every machine
+ *  this pool runs on, and init separately verifies a harvestable auth.json.
+ *  Any EXPLICIT non-file pin (keyring, auto, ephemeral) is a deliberate store
+ *  choice tokenmaxxing cannot honor. */
+function storePinnedAwayFromFile(): boolean {
   const configToml = `${codexPaths.home}/config.toml`;
   if (!existsSync(configToml)) return false;
   for (const rawLine of readFileSync(configToml, "utf8").split("\n")) {
     const line = rawLine.trim();
-    if (!line.startsWith("cli_auth_credentials_store_mode")) continue;
-    return line.includes("keyring");
+    if (!line.startsWith("cli_auth_credentials_store")) continue;
+    const rest = line.slice("cli_auth_credentials_store".length).trimStart();
+    if (!rest.startsWith("=")) continue;
+    // Value only: strip an inline TOML comment and the quotes structurally so
+    // a comment mentioning "keyring" never false-positives the fail-fast.
+    const beforeComment = rest.slice(1).split("#", 1)[0]!;
+    const value = beforeComment.replaceAll('"', "").replaceAll("'", "").trim();
+    return value !== "file";
   }
   return false;
 }
@@ -42,9 +54,9 @@ export async function cmdCodexInit(): Promise<number> {
   cfg.codexBin = real;
   saveConfig(cfg);
 
-  if (keyringStoreConfigured()) {
-    console.error(c.red("codex config.toml pins cli_auth_credentials_store_mode to keyring - tokenmaxxing swaps the plain auth.json file."));
-    console.error(c.dim('recovery: set cli_auth_credentials_store_mode = "file" in ~/.codex/config.toml, run `codex login`, then re-run this.'));
+  if (storePinnedAwayFromFile()) {
+    console.error(c.red("codex config.toml pins cli_auth_credentials_store away from the plain auth.json file tokenmaxxing swaps."));
+    console.error(c.dim('recovery: set cli_auth_credentials_store = "file" in ~/.codex/config.toml, run `codex login`, then re-run this.'));
     return 1;
   }
 

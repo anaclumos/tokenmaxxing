@@ -78,7 +78,16 @@ export async function performCodexSwap(input: { target: CodexAccount }): Promise
   writeParkedCodexAuth({ credFile: target.credFile, auth: fresh });
 
   if (live && liveOwner) {
-    writeParkedCodexAuth({ credFile: liveOwner.credFile, auth: live });
+    // Last-moment re-read: a running codex (the Apps surface) can rotate the
+    // live token outside our flock between the identity resolution above and
+    // this harvest, and parking the earlier snapshot would strand the newest
+    // rotation of a reuse-punished grant family. A mid-swap identity change
+    // refuses rather than harvesting under a stale owner.
+    const liveNow = readLiveCodexAuth();
+    if (!liveNow || codexIdentityOf({ auth: liveNow }).accountId !== liveOwner.accountId) {
+      throw new Error("live codex credential changed mid-swap - refusing to harvest under a stale identity; retry");
+    }
+    writeParkedCodexAuth({ credFile: liveOwner.credFile, auth: liveNow });
     log("codexswap.harvest", { account: liveOwner.accountId.slice(0, 8) });
   }
 

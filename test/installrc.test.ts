@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { ensurePathInRc, findClaudeShadowers, shellRcPath } from "../src/lib/install.ts";
 import { paths } from "../src/lib/paths.ts";
 
-const base = (globalThis as { __TM_TEST_BASE__?: string }).__TM_TEST_BASE__!;
+const base = globalThis.__TM_TEST_BASE__!;
 
 describe("shell rc PATH line", () => {
   test("shellRcPath honors the hermetic override", () => {

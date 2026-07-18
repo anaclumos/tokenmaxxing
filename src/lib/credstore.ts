@@ -23,8 +23,10 @@ export type CredTarget = z.infer<typeof CredTargetSchema>;
 
 const darwin = process.platform === "darwin";
 
+const BlobRecordSchema = z.record(z.string(), z.unknown());
+
 function isEnoent(e: unknown): boolean {
-  return (e as { code?: string }).code === "ENOENT";
+  return e instanceof Error && "code" in e && e.code === "ENOENT";
 }
 
 /** Read a target's credential blob. Returns null if it does not exist. */
@@ -91,7 +93,9 @@ export function claudeAiOauthOnly(fullBlobRaw: string): string {
 /** Merge a fresh `claudeAiOauth` into the CURRENT live blob, preserving every
  *  sibling key (MCP OAuth state, etc.). Returns the full blob string to install. */
 export function mergeIntoLive(currentLiveRaw: string | null, freshClaudeAiOauth: unknown): string {
-  const base = currentLiveRaw ? (JSON.parse(currentLiveRaw) as Record<string, unknown>) : {};
+  // null-check, not falsiness: an EXISTING-but-empty blob is corruption and
+  // must surface (JSON.parse throws), never be silently replaced as "missing".
+  const base = currentLiveRaw == null ? {} : BlobRecordSchema.parse(JSON.parse(currentLiveRaw));
   base["claudeAiOauth"] = freshClaudeAiOauth;
   return JSON.stringify(base);
 }
