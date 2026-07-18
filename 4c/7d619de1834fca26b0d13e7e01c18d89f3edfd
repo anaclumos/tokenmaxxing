@@ -1,0 +1,209 @@
+docs/content/docs/tokenmaxxing.ru.mdx
+  s_36700e42083764::t_0764e572c8de4d 188-210
+  s_36700e42083764::t_2da26c2fcaec7c 336-341
+docs/content/docs/index.wuu.mdx
+  s_36700e42083764::t_8fd2e070649b6a 1-13
+docs/content/docs/test.fa.mdx
+  s_36700e42083764::t_825df3b8f8224e 1-17
+docs/lib/translations/ko.ts
+  s_36700e42083764::t_84402e7d7c9d6c 4-48
+  s_36700e42083764::t_3eea8e238565b3 1-3,49-51
+docs/content/docs/tokenmaxxing.id.mdx
+  s_36700e42083764::t_11c70a364da0bf 188-210
+  s_36700e42083764::t_bd367e89745bf9 336-341
+docs/lib/translations/yue.ts
+  s_36700e42083764::t_e8dad15b14da96 1-3,49-51
+  s_36700e42083764::t_51cc8b3e112509 4-48
+docs/content/docs/test.ta.mdx
+  s_36700e42083764::t_1b9388dabdeab6 1-17
+docs/lib/translations/sw.ts
+  s_36700e42083764::t_50ef2b02a714ff 1-4,49-51
+  s_36700e42083764::t_c88af91d09a2cf 5-48
+docs/content/docs/tokenmaxxing.arz.mdx
+  s_36700e42083764::t_8a1afca5c10b46 336-341
+  s_36700e42083764::t_f097c434dc341b 188-210
+docs/lib/translations/wuu.ts
+  s_36700e42083764::t_3b124def18544c 1-3,49-51
+  s_36700e42083764::t_d340b738693b36 4-48
+docs/lib/translations/am.ts
+  s_36700e42083764::t_413bb7578b0fd9 4-48
+  s_36700e42083764::t_d4547b8e9736e2 1-3,49-51
+docs/content/docs/test.th.mdx
+  s_36700e42083764::t_84635c4403afcb 1-17
+docs/content/docs/index.pnb.mdx
+  s_36700e42083764::t_5744a1b72ef8b6 1-13
+docs/content/docs/tokenmaxxing.am.mdx
+  s_36700e42083764::t_a21f824f57984a 336-341
+  s_36700e42083764::t_677b12b5fbc786 1-187,211-335,342-388
+  s_36700e42083764::t_da673af441c4b9 188-210
+docs/lib/translations/pnb.ts
+  s_36700e42083764::t_5a24ac1784599f 1-4,49-51
+  s_36700e42083764::t_7a674e2bce69e3 5-48
+docs/content/docs/tokenmaxxing.de.mdx
+  s_36700e42083764::t_13ff2b221d307e 336-341
+  s_36700e42083764::t_149ae178d1c250 188-210
+docs/content/docs/tokenmaxxing.pnb.mdx
+  s_36700e42083764::t_61bb3a3f86551a 336-341
+  s_36700e42083764::t_5ead7e89aaa1d4 1-187,211-335,342-388
+  s_36700e42083764::t_20a8ac98849517 188-210
+docs/content/docs/index.th.mdx
+  s_36700e42083764::t_8cc775a28b871b 1-13
+docs/content/docs/tokenmaxxing.zh.mdx
+  s_36700e42083764::t_09b526979c823e 336-341
+  s_36700e42083764::t_0455ff1e61e2f5 188-210
+docs/app/[lang]/og/docs/[...slug]/route.tsx
+  s_36700e42083764::t_ea756eeb4a33cb 27-30
+  s_36700e42083764::t_c0f2e4980e826c 2
+  s_36700e42083764::t_5a49a9253a17a4 10-11,13-14
+docs/lib/home-copy.ts
+  s_36700e42083764::t_5404bfe54df4aa 121-180
+docs/content/docs/test.yue.mdx
+  s_36700e42083764::t_8958e6b4b81949 1-17
+docs/content/docs/tokenmaxxing.ta.mdx
+  s_36700e42083764::t_e03fced4947f6f 188-210
+  s_36700e42083764::t_a3c2eab60edd1d 336-341
+  s_36700e42083764::t_9f9750d5205ee0 144
+  s_36700e42083764::t_696f3e2fa8fa57 275
+  s_36700e42083764::t_a17ebab3fed332 1-143,145-187,211-274,276-335,342-388
+docs/content/docs/tokenmaxxing.ur.mdx
+  s_36700e42083764::t_05d74eed44dd21 336-341
+  s_36700e42083764::t_5f5817ad24ec90 188-210
+docs/content/docs/tokenmaxxing.es.mdx
+  s_36700e42083764::t_7ef57da469ed9f 336-341
+  s_36700e42083764::t_af6bde296f0b45 188-210
+docs/content/docs/tokenmaxxing.sw.mdx
+  s_36700e42083764::t_d62ade9d02c2b9 1-187,211-335,342-388
+  s_36700e42083764::t_baac4e85c344d5 336-341
+  s_36700e42083764::t_59a88eeb2bf712 188-210
+docs/content/docs/tokenmaxxing.mr.mdx
+  s_36700e42083764::t_7417f6ceda8b6c 336-341
+  s_36700e42083764::t_96708bcb227a91 188-210
+docs/content/docs/tokenmaxxing.tl.mdx
+  s_36700e42083764::t_3db18b62f8ac6a 1-187,211-335,342-388
+  s_36700e42083764::t_3deaf82f7701b0 188-210
+  s_36700e42083764::t_6f23e69113d395 336-341
+docs/content/docs/tokenmaxxing.yue.mdx
+  s_36700e42083764::t_323e7709f0d7ed 1-187,211-335,342-388
+  s_36700e42083764::t_55786b41dde2ce 188-210
+  s_36700e42083764::t_408c7a89324bed 336-341
+docs/content/docs/index.yue.mdx
+  s_36700e42083764::t_6009d2a80f8d21 1-13
+docs/content/docs/tokenmaxxing.th.mdx
+  s_36700e42083764::t_2cb3c49ac2f4fa 336-341
+  s_36700e42083764::t_edf2940bc43028 188-210
+  s_36700e42083764::t_028c8660ac4e9f 1-187,211-335,342-388
+docs/content/docs/tokenmaxxing.ha.mdx
+  s_36700e42083764::t_3a39c0a046173e 336-341
+  s_36700e42083764::t_833e2dea509e02 188-210
+docs/content/docs/tokenmaxxing.fr.mdx
+  s_36700e42083764::t_acd5d84ce4b386 188-210
+  s_36700e42083764::t_13d8f49827f060 336-341
+docs/content/docs/test.tl.mdx
+  s_36700e42083764::t_1263f3b6a44456 1-17
+docs/content/docs/tokenmaxxing.bn.mdx
+  s_36700e42083764::t_40da81beb1dcb7 188-210
+  s_36700e42083764::t_c3291351ffe1f3 336-341
+docs/app/api/search/route.ts
+  s_36700e42083764::t_29b9919a1a11ee 53-68
+docs/lib/translations/ta.ts
+  s_36700e42083764::t_d09fadc2092d77 1-3,49-51
+  s_36700e42083764::t_7b9777125a5657 4-48
+docs/content/docs/tokenmaxxing.hi.mdx
+  s_36700e42083764::t_64b9cbfd27152a 188-210
+  s_36700e42083764::t_68bad5bd6e1a62 336-341
+docs/content/docs/index.tl.mdx
+  s_36700e42083764::t_318202f13b9a7e 1-13
+docs/content/docs/test.am.mdx
+  s_36700e42083764::t_8499909a9be019 1-17
+docs/content/docs/tokenmaxxing.tr.mdx
+  s_36700e42083764::t_367e7cafd90c31 336-341
+  s_36700e42083764::t_18589ef69ce9cc 188-210
+docs/lib/translations/fa.ts
+  s_36700e42083764::t_25f83a4e26f358 1-4,49-51
+  s_36700e42083764::t_459d189a09ba75 5-48
+docs/content/docs/test.pnb.mdx
+  s_36700e42083764::t_29806368c0f5e1 1-17
+docs/lib/translations/th.ts
+  s_36700e42083764::t_03ae251aa22fdc 4
+  s_36700e42083764::t_0bfb2b62fd1ad3 5-48
+  s_36700e42083764::t_30d13543f1d006 1-3,49-51
+docs/content/docs/tokenmaxxing.ar.mdx
+  s_36700e42083764::t_d75e1882c0bd17 188-210
+  s_36700e42083764::t_a160c9bb91ad23 336-341
+docs/lib/i18n.ts
+  s_36700e42083764::t_f077b238169026 3,28-37,41
+docs/content/docs/tokenmaxxing.fa.mdx
+  s_36700e42083764::t_acd713bc72bf40 1-187,211-335,342-388
+  s_36700e42083764::t_9e7a7e0e35a6f7 188-210
+  s_36700e42083764::t_fc873122ff9ba9 336-341
+docs/content/docs/tokenmaxxing.vi.mdx
+  s_36700e42083764::t_0f13e5e3a0a0bc 188-210
+  s_36700e42083764::t_2dc635b55dffcc 336-341
+docs/content/docs/tokenmaxxing.ko.mdx
+  s_36700e42083764::t_3011cdfd6ed7cb 336-341
+  s_36700e42083764::t_e4e6a12a29fd77 1-187,211-335,342-388
+  s_36700e42083764::t_a3e358ca9b633f 188-210
+docs/content/docs/test.wuu.mdx
+  s_36700e42083764::t_c010a6de15c411 1-17
+docs/content/docs/index.fa.mdx
+  s_36700e42083764::t_ee2f8159a84d54 1-13
+docs/content/docs/index.ta.mdx
+  s_36700e42083764::t_9802ebbac688a4 6
+  s_36700e42083764::t_e5ab7608bbe70c 1-5,7-13
+docs/content/docs/test.ko.mdx
+  s_36700e42083764::t_a3fe4e88d6eed7 1-17
+docs/lib/translations/tl.ts
+  s_36700e42083764::t_a07dffe8bbb95e 4-48
+  s_36700e42083764::t_a23d00b1c823a6 1-3,49-51
+docs/content/docs/index.ko.mdx
+  s_36700e42083764::t_42d3326fff86c6 1-13
+docs/content/docs/tokenmaxxing.pt.mdx
+  s_36700e42083764::t_a17d382acea23e 188-210
+  s_36700e42083764::t_1e6f63b5aecfdb 336-341
+docs/content/docs/index.am.mdx
+  s_36700e42083764::t_1e32a26e56f7d9 1-13
+docs/lib/source.ts
+  s_36700e42083764::t_407d6dea050774 20-26
+  s_36700e42083764::t_934a27de56825d 32
+docs/lib/layout.shared.tsx
+  s_36700e42083764::t_28e4697d4ca519 24-33
+  s_36700e42083764::t_430e3121edfb7c 59-68
+docs/content/docs/tokenmaxxing.ja.mdx
+  s_36700e42083764::t_b52f566b8438cf 336-341
+  s_36700e42083764::t_9687ef6c31ad70 188-210
+docs/content/docs/tokenmaxxing.pcm.mdx
+  s_36700e42083764::t_92bd84f0a8dbc7 188-210
+  s_36700e42083764::t_7443f733dde1dc 336-341
+docs/content/docs/tokenmaxxing.wuu.mdx
+  s_36700e42083764::t_4cc1113b885d03 336-341
+  s_36700e42083764::t_012e110135aae8 1-187,211-335,342-388
+  s_36700e42083764::t_928c5bb787a136 188-210
+docs/content/docs/index.sw.mdx
+  s_0de5a2f5ec0bbf::t_b24e9cc015ca21 1-13
+docs/content/docs/test.sw.mdx
+  s_0de5a2f5ec0bbf::t_2be3112594b2fe 1-17
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "4c7d619de1834fca26b0d13e7e01c18d89f3edfd",
+  "prompts": {},
+  "sessions": {
+    "s_0de5a2f5ec0bbf": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "64dfd01b-80fd-4d43-a405-f9132fb102e5",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    },
+    "s_36700e42083764": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ceac3c73-063c-4280-a339-82888d1d952a",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    }
+  }
+}
