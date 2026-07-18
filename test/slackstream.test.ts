@@ -80,9 +80,22 @@ describe("agentEventChunks", () => {
     expect(again).toEqual([{ type: "task_update", id: "toolu_4", title: "Read", status: "in_progress" }]);
   });
 
-  test("subagent events and unknown tool results are skipped", () => {
+  test("subagent text is skipped but subagent tool calls emit cards without breaks", () => {
     const state = newStreamMapState();
+    agentEventChunks({ state, message: streamEvent({ event: { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "main text" } } }) });
     expect(agentEventChunks({ state, message: streamEvent({ event: { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "sub" } }, parent: "toolu_parent" }) })).toEqual([]);
+    // same index as the main stream: keys must not collide, and no segment
+    // break even though main text already streamed.
+    const card = agentEventChunks({ state, message: streamEvent({ event: { type: "content_block_start", index: 0, content_block: { type: "tool_use", id: "toolu_sub", name: "Grep", input: {} } }, parent: "toolu_parent" }) });
+    expect(card).toEqual([{ type: "task_update", id: "toolu_sub", title: "Grep", status: "in_progress" }]);
+    const result = agentEventChunks({ state, message: {
+      type: "user",
+      message: { role: "user", content: [{ type: "tool_result", tool_use_id: "toolu_sub", content: "hit" }] },
+      parent_tool_use_id: "toolu_parent",
+      uuid: UUID,
+      session_id: SID,
+    } });
+    expect(result).toEqual([{ type: "task_update", id: "toolu_sub", title: "Grep", status: "complete", output: "hit" }]);
     const orphan = agentEventChunks({ state, message: {
       type: "user",
       message: { role: "user", content: [{ type: "tool_result", tool_use_id: "toolu_unknown", content: "x" }] },

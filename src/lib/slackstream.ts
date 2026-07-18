@@ -96,28 +96,32 @@ function resultText(content: z.infer<typeof ToolResultBlockSchema>["content"]): 
 /**
  * Consume one SDK message, mutating state, and return the stream chunks it
  * produces (strings are streamed reply text; objects are native task cards).
- * Subagent-internal events (parent_tool_use_id set) are skipped: their tool
- * churn belongs to the subagent, not this thread's timeline.
+ * Subagent events (parent_tool_use_id set) contribute their TOOL cards to the
+ * timeline (user ask 2026-07-18: subagent activity shows as accordions like
+ * tool calls) but never reply text, thinking cards, or segment breaks: a
+ * subagent runs inside a top-level Task tool, so its churn decorates the
+ * current message rather than reshaping it. Open blocks are keyed per stream
+ * (parent + index) because concurrent subagent streams reuse index space.
  */
 export function agentEventChunks(input: { state: StreamMapState; message: SDKMessage }): StreamPart[] {
   const { state, message } = input;
   if (message.type === "stream_event") {
-    if (message.parent_tool_use_id !== null) return [];
+    const isMain = message.parent_tool_use_id === null;
     const event = message.event;
     if (event.type === "content_block_start") {
-      const index = String(event.index);
-      if (event.content_block.type === "thinking") {
+      const key = `${message.parent_tool_use_id ?? "main"}:${event.index}`;
+      if (event.content_block.type === "thinking" && isMain) {
         state.thinkingCount += 1;
         const id = `thinking-${state.thinkingCount}`;
-        state.open[index] = { kind: "thinking", id, title: "Thinking", acc: "" };
+        state.open[key] = { kind: "thinking", id, title: "Thinking", acc: "" };
         return [{ type: "task_update", id, title: "Thinking", status: "in_progress" }];
       }
       if (event.content_block.type === "tool_use") {
         const { id, name } = event.content_block;
-        state.open[index] = { kind: "tool", id, title: name, acc: "" };
+        state.open[key] = { kind: "tool", id, title: name, acc: "" };
         state.toolTitles[id] = name;
         const card: StreamPart = { type: "task_update", id, title: name, status: "in_progress" };
-        if (state.textSinceBreak) {
+        if (isMain && state.textSinceBreak) {
           state.textSinceBreak = false;
           return [{ type: "segment_break" }, card];
         }
@@ -126,8 +130,9 @@ export function agentEventChunks(input: { state: StreamMapState; message: SDKMes
       return [];
     }
     if (event.type === "content_block_delta") {
-      const open = state.open[String(event.index)];
+      const open = state.open[`${message.parent_tool_use_id ?? "main"}:${event.index}`];
       if (event.delta.type === "text_delta") {
+        if (!isMain) return [];
         state.textSinceBreak = true;
         return [event.delta.text];
       }
@@ -136,10 +141,10 @@ export function agentEventChunks(input: { state: StreamMapState; message: SDKMes
       return [];
     }
     if (event.type === "content_block_stop") {
-      const index = String(event.index);
-      const open = state.open[index];
+      const key = `${message.parent_tool_use_id ?? "main"}:${event.index}`;
+      const open = state.open[key];
       if (!open) return [];
-      delete state.open[index];
+      delete state.open[key];
       if (open.kind === "thinking") {
         return [{ type: "task_update", id: open.id, title: open.title, status: "complete", details: truncate({ text: open.acc.trim(), max: DETAILS_MAX }) }];
       }
@@ -149,7 +154,6 @@ export function agentEventChunks(input: { state: StreamMapState; message: SDKMes
     return [];
   }
   if (message.type === "user") {
-    if (message.parent_tool_use_id !== null) return [];
     const content = message.message.content;
     if (!Array.isArray(content)) return [];
     const chunks: StreamChunk[] = [];
