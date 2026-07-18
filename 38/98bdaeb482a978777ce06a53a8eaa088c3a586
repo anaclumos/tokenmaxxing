@@ -1,0 +1,21 @@
+.memory/MEMORY.md
+  s_129da2b1bd4c64::t_01cde6a3cc6513 3
+.memory/deletion-scope-is-literal.md
+  s_129da2b1bd4c64::t_5ff833908746e3 1-12
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "3898bdaeb482a978777ce06a53a8eaa088c3a586",
+  "prompts": {},
+  "sessions": {
+    "s_129da2b1bd4c64": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c5beabd3-42ae-4eb8-8d63-4632c4d1dcf2",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    }
+  }
+}
