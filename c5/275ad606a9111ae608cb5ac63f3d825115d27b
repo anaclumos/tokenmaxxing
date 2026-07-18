@@ -1,0 +1,29 @@
+src/cli/serve.ts
+  s_b46a7a06a33da9::t_588314ccc54a5a 20,39,41
+  s_b46a7a06a33da9::t_e378e5e6d2ed49 529-541
+  s_b46a7a06a33da9::t_29103dfde0e376 552,556-558,562-563
+  s_b46a7a06a33da9::t_04fea48439d7c1 226-237,239-245,247-270,281,328,347,369,396,439-445,447-463
+  s_b46a7a06a33da9::t_6f21b4324e7a00 572
+  s_b46a7a06a33da9::t_37360e02f039a5 464-466
+  s_b46a7a06a33da9::t_99fa9f5e53be3c 542
+test/slackrelay.test.ts
+  s_b46a7a06a33da9::t_455c1256c33d06 1-308
+test/servedaemon.test.ts
+  s_b46a7a06a33da9::t_8c2c7f6a4086ce 1-191
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "c5275ad606a9111ae608cb5ac63f3d825115d27b",
+  "prompts": {},
+  "sessions": {
+    "s_b46a7a06a33da9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f099df50-4f97-4d4a-ac3e-6707f6883e97",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    }
+  }
+}
