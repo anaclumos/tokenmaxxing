@@ -41,17 +41,20 @@ describe("serve plugin layout", () => {
   });
 
   test("skill files carry no em-dash or interpunct", () => {
+    // built from code points so this file itself stays free of the banned bytes.
+    const emDash = String.fromCodePoint(0x2014);
+    const interpunct = String.fromCodePoint(0xb7);
     for (const dir of readdirSync(join(pluginDir, "skills"))) {
       const content = readFileSync(join(pluginDir, "skills", dir, "SKILL.md"), "utf8");
-      expect(content.includes("—")).toBe(false);
-      expect(content.includes("·")).toBe(false);
+      expect(content.includes(emDash)).toBe(false);
+      expect(content.includes(interpunct)).toBe(false);
     }
   });
 });
 
 describe("serveTurnContext", () => {
   test("carries the requester's raw mention token", () => {
-    const ctx = serveTurnContext({ requesterId: "U0123ABC" });
+    const ctx = serveTurnContext({ requesterIds: ["U0123ABC"] });
     expect(ctx).toContain("<@U0123ABC>");
     expect(ctx).toContain("Slack relay context");
     // every skill the context points at must exist in the plugin.
@@ -63,8 +66,14 @@ describe("serveTurnContext", () => {
     }
   });
 
+  test("lists every folded sender's token so a decision reaches the right user", () => {
+    const ctx = serveTurnContext({ requesterIds: ["U0123ABC", "UALICE99"] });
+    expect(ctx).toContain("<@U0123ABC>");
+    expect(ctx).toContain("<@UALICE99>");
+  });
+
   test("an unknown requester yields no mention token, not a fake one", () => {
-    const ctx = serveTurnContext({ requesterId: null });
+    const ctx = serveTurnContext({ requesterIds: [] });
     expect(ctx.includes("<@")).toBe(false);
     expect(ctx).toContain("unknown");
   });
