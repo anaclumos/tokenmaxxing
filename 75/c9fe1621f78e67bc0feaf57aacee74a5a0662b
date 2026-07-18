@@ -18,6 +18,8 @@ src/serve-plugin/.claude-plugin/plugin.json
 src/cli/serve.ts
   s_249ac92195dd11::t_722259e2c6c73a 288
   s_249ac92195dd11::t_efad95c58c0f06 244-245
+  s_249ac92195dd11::t_bd9bf2b3b8721a 310
+  s_249ac92195dd11::t_75d3a4f9b35db2 315
 src/serve-plugin/skills/ask-the-user/SKILL.md
   s_01302d876347ce::t_39e9873f13b8b4 1-36
 ---
