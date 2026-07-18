@@ -1,0 +1,51 @@
+src/lib/paths.ts
+  s_249ac92195dd11::t_8af59d83756de6 39
+test/slack.test.ts
+  s_249ac92195dd11::t_8af59d83756de6 29
+README.md
+  s_249ac92195dd11::t_8af59d83756de6 48
+src/cli/serve.ts
+  s_249ac92195dd11::t_8af59d83756de6 2-10,13,38,42,139,154,182,273,275
+.memory/git-show-not-checkout-for-reads.md
+  s_249ac92195dd11::t_8af59d83756de6 1-7
+src/lib/slackbridge.ts
+  s_249ac92195dd11::t_8af59d83756de6 13
+DESIGN.md
+  s_249ac92195dd11::t_8af59d83756de6 90-91,100
+  s_249ac92195dd11::t_5e67171f68cfc9 94
+.memory/serve-slackbot-decisions.md
+  s_249ac92195dd11::t_2cefefc51dd85d 36
+  s_249ac92195dd11::t_8af59d83756de6 3,15-17,28-29
+  s_249ac92195dd11::t_b7f60ead81e61c 33
+package.json
+  s_249ac92195dd11::t_8af59d83756de6 3
+AGENTS.md
+  s_249ac92195dd11::t_8af59d83756de6 203,210
+  s_249ac92195dd11::t_59acc0200d9b27 204
+.memory/tokenmaxxing-project.md
+  s_249ac92195dd11::t_8af59d83756de6 27-28
+src/main.ts
+  s_249ac92195dd11::t_8af59d83756de6 50
+src/serve-plugin/skills/serve-session/SKILL.md
+  s_249ac92195dd11::t_3eabc8e6431b3d 3,14-25,37-39
+src/lib/slackstate.ts
+  s_249ac92195dd11::t_8af59d83756de6 60-62
+.memory/MEMORY.md
+  s_249ac92195dd11::t_8af59d83756de6 3,5,9
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "5cceea49b038ed225a81fdbbd9ccc19082e5b35a",
+  "prompts": {},
+  "sessions": {
+    "s_249ac92195dd11": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c3800604-37ed-4c22-8982-e44d70040ced",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    }
+  }
+}
