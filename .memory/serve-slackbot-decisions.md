@@ -25,4 +25,12 @@ Live debugging + user shaping (2026-07-18, all live-verified in #tokenmaxxing-do
 - queue strategy: handler gets only the LATEST message, earlier ones in `context.skipped` (fold into prompt); default 90s queueEntryTtl drops messages queued behind a long turn (raised to 900s); webClientOptions pins fiveRetriesInFiveMinutes (default retry can stall ~30min).
 - `.memory` is git-tracked since 2026-07-18 (user: "memory should be git controlled") so thread worktrees inherit it; npm `files` whitelist keeps it out of the package.
 
+Thread GC / finish_thread (user ask 2026-07-18: "when user say it's finished, then it should self clean"):
+
+- Detection is MODEL-decided, never keyword-parsed: an in-process `createSdkMcpServer` tool `finish_thread` (server name `tokenmaxxing`, alwaysLoad: true so it is never deferred behind tool search) registered per turn in relayThread; must be in `allowedTools` (`mcp__tokenmaxxing__finish_thread`) because nobody can answer a permission prompt over Slack.
+- The tool handler runs in the DAEMON process but only flags `outcome.finish`; the actual GC (`cleanupThread`) runs in serve.ts AFTER the turn ends - the claude subprocess is still mid-turn with cwd inside the worktree, and segments are still streaming.
+- GC = `git worktree remove` (plain), `git branch -d`, delete the slack-threads record, `thread.unsubscribe()` (else a casual unsubscribed-thread "thanks" would re-create a fresh worktree), post one confirmation line. Worktree dir already deleted by hand -> `git worktree prune` first, else the branch still counts as checked out.
+- NO FORCE PATH - repo policy (hook-enforced 2026-07-18): the bot must NEVER discard uncommitted work. A dirty worktree always refuses (`git worktree remove` without --force is the gate) and the message tells the user to commit/push or remove the worktree by hand; an unmerged branch is kept (`branch -d` only, never -D). A first draft had `force: true` on the tool and it was stopped by the repo hook; do not reintroduce it.
+- A refusal keeps the record AND the subscription so the thread stays live for a retry after committing.
+
 Related: [[tokenmaxxing-project]], [[agent-sdk-auth-surface]]

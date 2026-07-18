@@ -33,7 +33,7 @@ import {
   SlackLinkSchema,
   type SlackConfig,
 } from "../lib/slackstate.ts";
-import { ensureThreadCwd, relayThread } from "../lib/slackbridge.ts";
+import { cleanupThread, ensureThreadCwd, relayThread, type CleanupOutcome } from "../lib/slackbridge.ts";
 import { log } from "../lib/log.ts";
 import { c, count } from "./render.ts";
 
@@ -239,7 +239,7 @@ async function runDaemon(): Promise<number> {
   let draining = false;
 
   const handleTurn = async (input: {
-    thread: { id: string; channelId: string; post: (m: AsyncIterable<string | StreamChunk>) => Promise<unknown>; subscribe: () => Promise<void>; startTyping: () => Promise<void> };
+    thread: { id: string; channelId: string; post: (m: string | AsyncIterable<string | StreamChunk>) => Promise<unknown>; subscribe: () => Promise<void>; unsubscribe: () => Promise<void>; startTyping: () => Promise<void> };
     texts: string[];
     isMention: boolean;
   }) => {
@@ -288,6 +288,24 @@ async function runDaemon(): Promise<number> {
     });
     if (outcome.sessionId !== record.sessionId) {
       saveSlackThread({ ...record, sessionId: outcome.sessionId });
+    }
+    // the user declared the work finished: garbage-collect the thread now that
+    // the turn (and its claude subprocess) is over. Never throw into the Chat
+    // SDK handler - the daemon must keep serving other threads.
+    if (outcome.finish) {
+      let result: CleanupOutcome;
+      try {
+        result = cleanupThread({ link, threadId: thread.id, cwd: record.cwd });
+      } catch (e) {
+        const detail = (e instanceof Error ? e.message : String(e)).slice(0, 300);
+        log("serve.cleanup_error", { thread: thread.id, err: detail });
+        await thread.post(`tokenmaxxing: cleanup failed: ${detail}`);
+        return;
+      }
+      // a refusal keeps the subscription so the thread stays live for a retry.
+      if (result.removed) await thread.unsubscribe();
+      await thread.post(result.message);
+      log("serve.thread_finished", { thread: thread.id, removed: result.removed });
     }
   };
 
