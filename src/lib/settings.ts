@@ -1,7 +1,8 @@
-// Idempotent merge of tokenmaxxing's three entries into the user-owned
-// ~/.claude/settings.json: our statusLine, a Stop hook, a SessionStart hook.
-// Hooks APPEND to existing arrays; the statusLine slot is ours outright -
-// tokenmaxxing renders it natively, so any other statusLine command is replaced.
+// Idempotent merge of tokenmaxxing's entries into the user-owned
+// ~/.claude/settings.json: our statusLine + subagentStatusLine, a Stop hook,
+// a SessionStart hook. Hooks APPEND to existing arrays; the statusLine slots
+// are ours outright - tokenmaxxing renders them natively, so any other
+// statusLine command is replaced.
 
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -19,6 +20,7 @@ const HookGroupSchema = z.looseObject({ matcher: z.string().optional(), hooks: z
 const StatusLineSchema = z.looseObject({ type: z.string(), command: z.string() });
 const SettingsSchema = z.looseObject({
   statusLine: StatusLineSchema.optional(),
+  subagentStatusLine: StatusLineSchema.optional(),
   hooks: z.record(z.string(), z.array(HookGroupSchema)).optional(),
 });
 type Settings = z.infer<typeof SettingsSchema>;
@@ -26,6 +28,7 @@ type HookGroup = z.infer<typeof HookGroupSchema>;
 
 const SUBCMD = {
   statusline: "__statusline",
+  subagentStatusline: "__subagent-statusline",
   stop: "__stop-hook",
   sessionStart: "__session-start",
 } as const;
@@ -44,6 +47,7 @@ export function isOurCommand(cmd: string | undefined): boolean {
   if (!cmd) return false;
   return (
     cmd.includes(SUBCMD.statusline) ||
+    cmd.includes(SUBCMD.subagentStatusline) ||
     cmd.includes(SUBCMD.stop) ||
     cmd.includes(SUBCMD.sessionStart) ||
     // also match the installed bin path even if the subcommand text changes
@@ -70,29 +74,35 @@ function removeHook(s: Settings, event: string, sub: string): void {
   if (s.hooks![event]!.length === 0) delete s.hooks![event];
 }
 
-/** Install the three entries: take the statusLine slot, append our hooks. */
+/** Install the entries: take both statusLine slots, append our hooks. */
 export function installSettings(): void {
   const s = readSettings();
   s.statusLine = {
     type: "command",
     command: `${JSON.stringify(installedBin())} ${SUBCMD.statusline}`,
   };
+  s.subagentStatusLine = {
+    type: "command",
+    command: `${JSON.stringify(installedBin())} ${SUBCMD.subagentStatusline}`,
+  };
   appendHook(s, "Stop", SUBCMD.stop);
   appendHook(s, "SessionStart", SUBCMD.sessionStart);
   writeSettings(s);
 }
 
-/** Remove our three entries. The statusLine slot is deleted only if it is ours. */
+/** Remove our entries. The statusLine slots are deleted only if they are ours. */
 export function uninstallSettings(): void {
   const s = readSettings();
   removeHook(s, "Stop", SUBCMD.stop);
   removeHook(s, "SessionStart", SUBCMD.sessionStart);
   if (s.statusLine && isOurCommand(s.statusLine.command)) delete s.statusLine;
+  if (s.subagentStatusLine && isOurCommand(s.subagentStatusLine.command)) delete s.subagentStatusLine;
   writeSettings(s);
 }
 
 const SettingsCheckSchema = z.object({
   statusLineOk: z.boolean(),
+  subagentStatusLineOk: z.boolean(),
   stopOk: z.boolean(),
   sessionStartOk: z.boolean(),
 });
@@ -104,6 +114,7 @@ export function checkSettings(): SettingsCheck {
     !!s.hooks?.[event]?.some((g) => g.hooks?.some((h) => h.command?.includes(sub)));
   return {
     statusLineOk: isOurCommand(s.statusLine?.command),
+    subagentStatusLineOk: isOurCommand(s.subagentStatusLine?.command),
     stopOk: has("Stop", SUBCMD.stop),
     sessionStartOk: has("SessionStart", SUBCMD.sessionStart),
   };

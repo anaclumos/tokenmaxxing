@@ -18,6 +18,33 @@ export function makeColors(enabled: boolean) {
 
 export const c = makeColors(!process.env.NO_COLOR && !!process.stdout.isTTY);
 
+/** Used% -> RGB on a continuous green->yellow->red ramp, anchored at the
+ *  semantic severity bands (pure green at 0, yellow at 75, red from 95) so the
+ *  band boundaries read exactly like the old 3-color scheme. Blue stays 0. */
+function rampRgb(usedPct: number): { r: number; g: number } {
+  const u = clamp(usedPct, 0, 100);
+  if (u >= 95) return { r: 255, g: 0 };
+  if (u >= 75) return { r: 255, g: Math.round(255 * (1 - (u - 75) / 20)) };
+  return { r: Math.round((255 * u) / 75), g: 255 };
+}
+
+/** Usage-severity painter for the statusLine (user decision 2026-07-18: colors
+ *  carry quota status instead of numbers). Truecolor when the terminal
+ *  advertises it, else the nearest 256-color cube step; disabled -> identity,
+ *  and callers must then fall back to numeric rendering (without color a
+ *  drained window must not look fresh). */
+export function makeUsagePaint(input: { enabled: boolean; truecolor: boolean }) {
+  return (usedPct: number) =>
+    (s: string): string => {
+      if (!input.enabled) return s;
+      const { r, g } = rampRgb(usedPct);
+      const code = input.truecolor
+        ? `38;2;${r};${g};0`
+        : `38;5;${16 + 36 * Math.round(r / 51) + 6 * Math.round(g / 51)}`;
+      return `\x1b[${code}m${s}\x1b[0m`;
+    };
+}
+
 /** Plan label for a claude account, e.g. "max 20x": subscription name plus the
  *  multiplier segment of the rate-limit tier id ("default_claude_max_20x").
  *  Structural, never exact-string: the multiplier is any <digits>x segment, so

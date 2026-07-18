@@ -29,11 +29,10 @@ function ctx(over: Partial<RenderCtx>): RenderCtx {
     accounts: { version: 1, activeAccountUuid: null, accounts: [] },
     perModel: {},
     switchModels: ["fable", "opus"],
-    // both bars at 95: the parked-sort cases pin windows at 96/97 against it.
-    thresholds: { session: 95, weekly: 95 },
     worktree: null,
     now: NOW,
     color: false,
+    truecolor: false,
     ...over,
   };
 }
@@ -75,7 +74,7 @@ describe("renderStatusline", () => {
       ],
     };
     const out = renderStatusline(fullStdin, ctx({ accounts, perModel: { Fable: { usedPercentage: 26, resetsAt: NOW + 30 * H } } }));
-    expect(out).toBe("Fable 5 (high) ctx 42 +156/-23  ◆ F26 2h5 1d38  ◇ F67 2d40");
+    expect(out).toBe("Fable 5 (high) ctx 42 +156/-23  ◆ 𝒇26 2h5 1d38  ◇ 𝒇67 2d40");
   });
 
   test("renders nothing from no stdin, no per-model, no accounts", () => {
@@ -84,12 +83,12 @@ describe("renderStatusline", () => {
 
   test("windows line renders per-model alone when stdin has no rate limits", () => {
     const out = renderStatusline({}, ctx({ perModel: { Fable: { usedPercentage: 26, resetsAt: null } } }));
-    expect(out).toBe("◆ F26");
+    expect(out).toBe("◆ 𝒇26");
   });
 
-  test("a capacity-constrained model with no fresh per-model sample renders F?", () => {
+  test("a capacity-constrained model with no fresh per-model sample renders 𝒇?", () => {
     const out = renderStatusline(fullStdin, ctx({}));
-    expect(out).toBe("Fable 5 (high) ctx 42 +156/-23  ◆ F? 2h5 1d38");
+    expect(out).toBe("Fable 5 (high) ctx 42 +156/-23  ◆ 𝒇? 2h5 1d38");
   });
 
   test("a model outside switchModels never renders the unmeasured marker", () => {
@@ -108,7 +107,7 @@ describe("renderStatusline", () => {
     expect(out).toStartWith("tm-fix-auth Fable 5 (high) ctx 42");
   });
 
-  test("a fable-burnt parked account sorts last under a fable session, by pace pressure under sonnet", () => {
+  test("parked accounts sort by earliest upcoming reset regardless of model or exhaustion", () => {
     const accounts: AccountsIndex = {
       version: 1,
       activeAccountUuid: "uuid-act",
@@ -127,25 +126,26 @@ describe("renderStatusline", () => {
           accountUuid: "uuid-clean",
           label: "clean",
           lastUsage: {
-            fiveHour: { usedPercentage: 5, resetsAt: NOW + H },
+            fiveHour: { usedPercentage: 5, resetsAt: NOW + 30 * 60_000 },
             sevenDay: { usedPercentage: 40, resetsAt: NOW + 72 * H },
           },
           lastPerModel: { Fable: { usedPercentage: 10, resetsAt: NOW + 72 * H } },
         }),
       ],
     };
-    // Fable session: the burnt account is no swap target, so it sorts last
-    // despite its higher pace pressure (its F97 also surfaces as the binding cap).
+    // clean's 5h window resets in 30m, burnt's in 1h: clean leads even though
+    // burnt is more pace-starved, and the fable-burnt cap changes nothing -
+    // the pool order is purely informational since 2026-07-18 (the burnt
+    // account's 𝒇97 still surfaces as its binding cap).
     const underFable = renderStatusline(fullStdin, ctx({ accounts }));
-    expect(underFable).toBe("Fable 5 (high) ctx 42 +156/-23  ◆ F? 2h5 1d38  ◇ 3d40  ◇ F97 1d30");
-    // Sonnet session: the fable cap gates nothing; burnt must burn 70 in 1d,
-    // clean only 60 in 3d, so burnt leads on pressure.
+    expect(underFable).toBe("Fable 5 (high) ctx 42 +156/-23  ◆ 𝒇? 2h5 1d38  ◇ 3d40  ◇ 𝒇97 1d30");
+    // The order is model-independent: same pool under a sonnet session.
     const sonnetStdin = { ...fullStdin, model: { id: "claude-sonnet-5", display_name: "Sonnet 5" } };
     const underSonnet = renderStatusline(sonnetStdin, ctx({ accounts }));
-    expect(underSonnet).toBe("Sonnet 5 (high) ctx 42 +156/-23  ◆ 2h5 1d38  ◇ F97 1d30  ◇ 3d40");
+    expect(underSonnet).toBe("Sonnet 5 (high) ctx 42 +156/-23  ◆ 2h5 1d38  ◇ 3d40  ◇ 𝒇97 1d30");
   });
 
-  test("parked accounts render in swap-preference order, exhausted last", () => {
+  test("parked accounts render soonest reset first, unknown resets last", () => {
     const accounts: AccountsIndex = {
       version: 1,
       activeAccountUuid: null,
@@ -171,12 +171,19 @@ describe("renderStatusline", () => {
             sevenDay: { usedPercentage: 50, resetsAt: NOW + 10 * H },
           },
         }),
+        acct({
+          accountUuid: "uuid-noanchor",
+          lastUsage: {
+            fiveHour: { usedPercentage: 0, resetsAt: null },
+            sevenDay: { usedPercentage: 42, resetsAt: null },
+          },
+        }),
       ],
     };
-    expect(renderStatusline(null, ctx({ accounts }))).toBe("◇ 10h50  ◇ 3d20  ◇ 3d96");
+    expect(renderStatusline(null, ctx({ accounts }))).toBe("◇ 10h50  ◇ 3d20  ◇ 3d96  ◇ 42");
   });
 
-  test("adjacent untouched and unsampled parked runs collapse into counted tokens", () => {
+  test("every parked account renders its own marker, never a counted collapse", () => {
     const untouched = (uuid: string) =>
       acct({
         accountUuid: uuid,
@@ -194,7 +201,7 @@ describe("renderStatusline", () => {
         acct({
           accountUuid: "uuid-used",
           lastUsage: {
-            fiveHour: { usedPercentage: 1, resetsAt: NOW + H },
+            fiveHour: { usedPercentage: 1, resetsAt: NOW + 30 * 60_000 },
             sevenDay: { usedPercentage: 40, resetsAt: NOW + 65 * H },
           },
         }),
@@ -202,9 +209,10 @@ describe("renderStatusline", () => {
         acct({ accountUuid: "uuid-fresh2" }),
       ],
     };
-    // untouched-but-anchored accounts are furthest behind pace (100 left in
-    // ~4d beats 60 left in ~3d), so they lead; never-sampled (no anchor) last.
-    expect(renderStatusline(null, ctx({ accounts }))).toBe("◇ 2 full  ◇ 2d40  ◇ 2 ?");
+    // used's 5h resets soonest (30m), the untouched accounts' 5h in 1h, and
+    // never-sampled accounts (no reset anchor) sort last; each keeps its own
+    // marker (no counted collapse since 2026-07-18).
+    expect(renderStatusline(null, ctx({ accounts }))).toBe("◇ 2d40  ◇ full  ◇ full  ◇ ?  ◇ ?");
   });
 
   test("a lone untouched parked account still renders plain full", () => {
@@ -256,7 +264,7 @@ describe("renderStatusline", () => {
     expect(renderStatusline(null, ctx({ accounts }))).toBe("✗ ?  ✗ ?");
   });
 
-  test("color mode paints percentages bold by severity", () => {
+  test("color mode drops quota numbers: the countdown carries a truecolor ramp", () => {
     const accounts: AccountsIndex = {
       version: 1,
       activeAccountUuid: null,
@@ -270,9 +278,58 @@ describe("renderStatusline", () => {
         }),
       ],
     };
-    const out = renderStatusline(null, ctx({ accounts, color: true }));
-    expect(out).toContain("\x1b[1m\x1b[31m96\x1b[0m\x1b[0m"); // 95+ used weekly bold red
-    expect(out).toContain("\x1b[36m◇\x1b[0m"); // parked marker cyan
+    const out = renderStatusline(null, ctx({ accounts, color: true, truecolor: true }));
+    // 96 used weekly -> pure red countdown, bold, and no number anywhere
+    expect(out).toBe("\x1b[36m◇\x1b[0m \x1b[1m\x1b[38;2;255;0;0m1d\x1b[0m\x1b[0m");
+    // without truecolor the same ramp steps to the 256-color cube (196 = red)
+    const stepped = renderStatusline(null, ctx({ accounts, color: true, truecolor: false }));
+    expect(stepped).toBe("\x1b[36m◇\x1b[0m \x1b[1m\x1b[38;5;196m1d\x1b[0m\x1b[0m");
+  });
+
+  test("the active block paints per-model initial and window countdowns by used%", () => {
+    const out = renderStatusline(
+      fullStdin,
+      ctx({ perModel: { Fable: { usedPercentage: 26, resetsAt: NOW + 30 * H } }, color: true, truecolor: true }),
+    );
+    expect(out).toContain("\x1b[1m\x1b[38;2;88;255;0m𝒇\x1b[0m\x1b[0m"); // fable cap, 26 used
+    expect(out).toContain("\x1b[1m\x1b[38;2;17;255;0m2h\x1b[0m\x1b[0m"); // 5h window, 5 used
+    expect(out).toContain("\x1b[1m\x1b[38;2;129;255;0m1d\x1b[0m\x1b[0m"); // week, 38 used
+  });
+
+  test("a passed reset paints 0 (empty again); measured usage with no clock paints ?", () => {
+    const stdin = {
+      rate_limits: {
+        five_hour: { used_percentage: 90, resets_at: sec(NOW - 1000) },
+        seven_day: { used_percentage: 38, resets_at: sec(NOW + 30 * H) },
+      },
+    };
+    const out = renderStatusline(stdin, ctx({ switchModels: [], color: true, truecolor: true }));
+    expect(out).toContain("\x1b[1m\x1b[38;2;0;255;0m0\x1b[0m\x1b[0m");
+    const accounts: AccountsIndex = {
+      version: 1,
+      activeAccountUuid: null,
+      accounts: [
+        acct({ lastUsage: { fiveHour: { usedPercentage: 0, resetsAt: null }, sevenDay: { usedPercentage: 42, resetsAt: null } } }),
+      ],
+    };
+    const parkedOut = renderStatusline(null, ctx({ accounts, color: true, truecolor: true }));
+    expect(parkedOut).toContain("\x1b[38;2;143;255;0m?\x1b[0m");
+  });
+
+  test("colorless mode keeps the glued numbers so a drained window cannot look fresh", () => {
+    const accounts: AccountsIndex = {
+      version: 1,
+      activeAccountUuid: null,
+      accounts: [
+        acct({
+          lastUsage: {
+            fiveHour: { usedPercentage: 0, resetsAt: NOW + H },
+            sevenDay: { usedPercentage: 96, resetsAt: NOW + 30 * H },
+          },
+        }),
+      ],
+    };
+    expect(renderStatusline(null, ctx({ accounts }))).toBe("◇ 1d96");
   });
 
   test("the diff's removed count stays unpainted so red only ever means quota", () => {
@@ -294,15 +351,28 @@ describe("renderStatusline", () => {
   test("a wrong-shaped stdin field degrades to absent instead of erasing the info block", () => {
     const stdin = { ...fullStdin, effort: "high" };
     const out = renderStatusline(stdin, ctx({ perModel: { Fable: { usedPercentage: 26, resetsAt: NOW + 30 * H } } }));
-    expect(out).toBe("Fable 5 ctx 42 +156/-23  ◆ F26 2h5 1d38");
+    expect(out).toBe("Fable 5 ctx 42 +156/-23  ◆ 𝒇26 2h5 1d38");
   });
 
-  test("severity tiers switch exactly at 75 and 95 used", () => {
-    const at = (u: number) => renderStatusline({ context_window: { used_percentage: u } }, ctx({ color: true }));
-    expect(at(74)).toContain("\x1b[1m\x1b[32m74\x1b[0m\x1b[0m"); // green below 75
-    expect(at(75)).toContain("\x1b[1m\x1b[33m75\x1b[0m\x1b[0m"); // yellow from 75
-    expect(at(94)).toContain("\x1b[1m\x1b[33m94\x1b[0m\x1b[0m");
-    expect(at(95)).toContain("\x1b[1m\x1b[31m95\x1b[0m\x1b[0m"); // red from 95
+  test("the model name carries the ctx fill on the ramp: green 0, yellow 75, red 95, no ctx token", () => {
+    const at = (u: number) =>
+      renderStatusline(
+        { model: { display_name: "Fable 5" }, context_window: { used_percentage: u } },
+        ctx({ switchModels: [], color: true, truecolor: true }),
+      );
+    expect(at(0)).toContain("\x1b[1m\x1b[38;2;0;255;0mFable 5\x1b[0m\x1b[0m");
+    expect(at(75)).toContain("\x1b[1m\x1b[38;2;255;255;0mFable 5\x1b[0m\x1b[0m");
+    expect(at(94)).toContain("\x1b[1m\x1b[38;2;255;13;0mFable 5\x1b[0m\x1b[0m");
+    expect(at(95)).toContain("\x1b[1m\x1b[38;2;255;0;0mFable 5\x1b[0m\x1b[0m");
+    expect(at(95)).not.toContain("ctx");
+  });
+
+  test("colorless mode keeps the numeric ctx token", () => {
+    const out = renderStatusline(
+      { model: { display_name: "Fable 5" }, context_window: { used_percentage: 42 } },
+      ctx({ switchModels: [] }),
+    );
+    expect(out).toBe("Fable 5 ctx 42");
   });
 });
 

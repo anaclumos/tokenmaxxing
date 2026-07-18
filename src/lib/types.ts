@@ -196,6 +196,28 @@ export const StatusLineStdinSchema = RateLimitsStdinSchema.extend({
   effort: z.looseObject({ level: z.string().optional() }).nullable().optional().catch(undefined),
 });
 
+/** subagentStatusLine stdin: base session fields plus one entry per active
+ *  subagent task (verified against the 2.1.214 bundle + docs 2026-07-18;
+ *  tasks[].model/contextWindowSize need claude >= 2.1.205, effort >= 2.1.214).
+ *  Same loose + catch degradation contract as StatusLineStdinSchema. */
+export const SubagentStatusLineStdinSchema = z.looseObject({
+  tasks: z
+    .array(
+      z.looseObject({
+        id: z.string().optional(),
+        name: z.string().nullable().optional().catch(undefined),
+        description: z.string().nullable().optional().catch(undefined),
+        label: z.string().nullable().optional().catch(undefined),
+        model: z.string().nullable().optional().catch(undefined),
+        effort: z.string().nullable().optional().catch(undefined),
+        contextWindowSize: z.number().nullable().optional().catch(undefined),
+        tokenCount: z.number().nullable().optional().catch(undefined),
+      }),
+    )
+    .optional()
+    .catch(undefined),
+});
+
 /** Success body of the OAuth refresh grant. */
 export const RefreshResponseSchema = z.looseObject({
   access_token: z.string(),

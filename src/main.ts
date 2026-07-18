@@ -6,6 +6,7 @@
 import { basename } from "node:path";
 import { runSupervisor } from "./entries/supervisor.ts";
 import { runStatusline } from "./entries/statusline.ts";
+import { runSubagentStatusline } from "./entries/subagentstatusline.ts";
 import { runStopHook } from "./entries/stophook.ts";
 import { runSessionStart } from "./entries/sessionstart.ts";
 import { cmdInit } from "./cli/init.ts";
@@ -74,6 +75,7 @@ async function main(): Promise<number> {
 
   switch (sub) {
     case "__statusline": return runStatusline();
+    case "__subagent-statusline": return runSubagentStatusline();
     case "__stop-hook": return runStopHook();
     case "__session-start": return runSessionStart();
     case "__codex-stop-hook": return runCodexStopHook();

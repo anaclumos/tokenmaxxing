@@ -22,9 +22,10 @@ function read() {
 }
 
 describe("settings merge", () => {
-  test("takes the statusLine slot, replacing any other command", () => {
+  test("takes the statusLine slots, replacing any other command", () => {
     installSettings();
     expect(read().statusLine.command).toContain("__statusline");
+    expect(read().subagentStatusLine.command).toContain("__subagent-statusline");
   });
 
   test("appends our Stop hook without dropping the existing one; adds SessionStart", () => {
@@ -50,6 +51,7 @@ describe("settings merge", () => {
     installSettings();
     const c = checkSettings();
     expect(c.statusLineOk).toBe(true);
+    expect(c.subagentStatusLineOk).toBe(true);
     expect(c.stopOk).toBe(true);
     expect(c.sessionStartOk).toBe(true);
   });
@@ -59,6 +61,7 @@ describe("settings merge", () => {
     uninstallSettings();
     const s = read();
     expect(s.statusLine).toBeUndefined();
+    expect(s.subagentStatusLine).toBeUndefined();
     const stopCmds = s.hooks.Stop.flatMap((g: any) => g.hooks.map((h: any) => h.command));
     expect(stopCmds).toContain("/orca/hook.sh");
     expect(stopCmds.some((c: string) => c.includes("__stop-hook"))).toBe(false);

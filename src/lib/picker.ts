@@ -98,6 +98,16 @@ export function weeklyExpiry(a: Account, now: number): number {
   return nextWeeklyReset(a.lastUsage?.sevenDay.resetsAt ?? null, now) ?? Number.POSITIVE_INFINITY;
 }
 
+/** Soonest upcoming reset among the account's cached windows: the 5h session
+ *  reset if still ahead, else the extrapolated weekly expiry; Infinity with no
+ *  known reset anchor (sorts last). Display order for `status` and the
+ *  statusLine pool (user decision 2026-07-18) - deliberately decoupled from
+ *  swapPreference, which keeps ranking actual swaps. */
+export function earliestReset(a: Account, now: number): number {
+  const fiveHour = a.lastUsage?.fiveHour.resetsAt;
+  return Math.min(fiveHour != null && fiveHour > now ? fiveHour : Number.POSITIVE_INFINITY, weeklyExpiry(a, now));
+}
+
 /** How far behind its own weekly pace the account is, measured forward: the
  *  burn rate (percent per ms) its remaining weekly quota must be consumed at
  *  to beat the reset that forfeits it. A backward-looking used/expected ratio
@@ -116,8 +126,7 @@ export function pacePressure(a: Account, now: number): number {
 
 /** The switch preference: furthest behind its own weekly pace first (highest
  *  pacePressure), tiebreak soonest weekly expiry then lowest 7-day usage.
- *  Shared with the statusLine pool ordering so the display order IS the
- *  swap order. */
+ *  Ranks swaps only; display surfaces order by earliestReset instead. */
 export const swapPreference = (now: number) => [
   (a: Account) => -pacePressure(a, now),
   (a: Account) => weeklyExpiry(a, now),

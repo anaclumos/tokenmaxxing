@@ -12,12 +12,13 @@
 // fallback: its own `/usage` fail-silents exactly when a live session is
 // running it, and that session's tee is fresher than any cache.
 
+import { sortBy } from "es-toolkit";
 import { loadAccounts, loadConfig, loadUsage, loadModelUsage, saveAccounts } from "../lib/state.ts";
 import { readOAuthAccount } from "../lib/claudejson.ts";
 import { probeActiveUsage, probeParkedUsage, type SampleOutcome } from "../lib/sample.ts";
 import { withLock } from "../lib/lock.ts";
 import { codexPaths, paths } from "../lib/paths.ts";
-import { effectiveBars, isExhausted, nextWeeklyReset } from "../lib/picker.ts";
+import { earliestReset, effectiveBars, isExhausted, nextWeeklyReset } from "../lib/picker.ts";
 import { loadCodexAccounts, saveCodexAccounts } from "../lib/codexstate.ts";
 import { liveCodexAccountId, sampleCodexAccount, type CodexSampleOutcome } from "../lib/codexsample.ts";
 import { isCodexExhausted } from "../lib/codexpick.ts";
@@ -115,7 +116,11 @@ export async function cmdStatus(force = false, preRender?: () => void): Promise<
     console.log(`    ${name.padEnd(5)} ${bar(pct)}  ${c.dim(fmtReset(resetsAt, now))}`);
   };
 
-  for (const a of idx.accounts) {
+  // Display order (user decision 2026-07-18): earliest upcoming reset first
+  // (5h or extrapolated weekly, from the just-refreshed samples), needs-reauth
+  // last; the ● marker identifies the active account wherever it sorts.
+  const displayAccounts = sortBy(idx.accounts, [(a) => (a.needsReauth ? 1 : 0), (a) => earliestReset(a, now)]);
+  for (const a of displayAccounts) {
     const active = a.accountUuid === idx.activeAccountUuid;
     const outcome = outcomes.get(a.accountUuid);
     const failed = outcome ? !outcome.ok : false;
@@ -200,7 +205,17 @@ async function renderCodexSection(input: {
   console.log();
   const windowLabel = (window: CodexWindow) =>
     isSessionWindow({ window }) ? `${Math.round((window.windowSeconds ?? 0) / 3600)}h` : "week";
-  for (const account of index.accounts) {
+  // Same display order as the claude pool: earliest upcoming reset first
+  // across every cached window, needs-reauth last.
+  const displayAccounts = sortBy(index.accounts, [
+    (a) => (a.needsReauth ? 1 : 0),
+    (a) => {
+      const windows = [...(a.lastUsage?.aggregate ?? []), ...Object.values(a.lastUsage?.perLimit ?? {}).flat()];
+      const resets = windows.flatMap((w) => (w.resetsAt != null && w.resetsAt > now ? [w.resetsAt] : []));
+      return resets.length > 0 ? Math.min(...resets) : Number.POSITIVE_INFINITY;
+    },
+  ]);
+  for (const account of displayAccounts) {
     const active = account.accountId === liveId;
     const marker = active ? c.green("●") : c.dim("○");
     const badges: string[] = [];

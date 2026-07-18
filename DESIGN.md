@@ -28,7 +28,7 @@ It is a process/PTY manager only - spawn, forward the terminal, wait, restore te
 ## 2. What tokenmaxxing installs
 
 - A `claude` **supervisor** on your PATH ahead of the real binary (`~/.config/tokenmaxxing/bin/claude`), or a shell function - you invoke it identically.
-- Three `~/.claude/settings.json` entries (merged, preserving anything you already have): a transparent `statusLine` shim, a `Stop` hook, a `SessionStart` hook.
+- Four `~/.claude/settings.json` entries (merged, preserving anything you already have): a transparent `statusLine` shim, a `subagentStatusLine` shim (per-subagent rows in the agents panel), a `Stop` hook, a `SessionStart` hook.
 - **`~/.config/tokenmaxxing/`** - the single home for config and state:
   - `config.json` - threshold, account order/policy.
   - `accounts.json` - non-secret index `{email, organizationUuid, accountUuid, lastUsage, resetsAt, needs_reauth}`.
