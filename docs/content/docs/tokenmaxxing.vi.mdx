@@ -1,0 +1,359 @@
+---
+title: tokenmaxxing
+description: "Tự động chuyển đổi tài khoản Claude Code: gộp chung các tài khoản đăng ký của riêng bạn và hoán đổi nóng thông tin xác thực khi hạn ngạch đầy, giữ cho mọi phiên làm việc có thể tiếp tục."
+---
+
+tokenmaxxing là một CLI để tự động chuyển đổi tài khoản Claude Code. Nó gộp chung nhiều tài khoản đăng ký (Pro/Max) mà bạn sở hữu và hoán đổi nóng thông tin xác thực đang hoạt động sang một tài khoản còn tươi hơn khi tài khoản đang dùng gần chạm giới hạn sử dụng. Bạn chạy `claude` đúng như bạn vẫn luôn làm; việc hoán đổi diễn ra tại một ranh giới lượt an toàn và phiên làm việc đang chạy của bạn tiếp tục cùng cuộc hội thoại đó trên tài khoản mới mà không cần khởi động lại. Nó hoạt động trên nhiều phiên làm việc đồng thời cùng một lúc.
+
+Hành vi duy nhất mà bạn thấy được là trường hợp xấu nhất: khi toàn bộ nhóm tài khoản đều đã chạm giới hạn, phiên làm việc tạm dừng với một bộ đếm ngược và tự động tiếp tục trên tài khoản tiếp theo được đặt lại (Ctrl-C tiếp tục ngay lập tức).
+
+<Callout>
+Phạm vi: Claude Code trên macOS và Linux, cùng với Codex CLI của OpenAI như một nhóm tài khoản song song thứ hai. Nó gộp chung các tài khoản đăng ký, không phải khóa API. Đây là một công cụ dùng cho mục đích cá nhân để gộp chung các tài khoản bạn sở hữu, trong các phiên làm việc và agent mà chính bạn chạy: xem [Sử dụng cá nhân và điều khoản dịch vụ](#personal-use-and-terms-of-service).
+</Callout>
+
+## Vấn đề
+
+Một gói đăng ký Claude đo lường ba giới hạn cùng một lúc (tất cả đều được xác nhận qua `/usage`):
+
+- **Phiên hiện tại**: một cửa sổ trượt 5 giờ.
+- **Tuần hiện tại (tất cả các mô hình)**: tổng hợp trong 7 ngày.
+- **Tuần hiện tại, theo từng mô hình**: các mức trần hàng tuần riêng cho từng họ mô hình. Hiện tại các mức này chỉ tồn tại cho Sonnet và Fable, và chỉ có mức trần của Fable là đủ chặt để đáng quan tâm: nó ràng buộc từ rất lâu trước khi mức tổng hợp làm điều đó. Một máy có thể ở mức 50% tuần-tất-cả trong khi đã ở mức 80% tuần-Fable.
+
+Hạn ngạch hàng tuần theo kiểu dùng-hoặc-mất: bất cứ phần nào một tài khoản chưa tiêu thụ trước thời điểm đặt lại hàng tuần cố định của nó đều bị mất. Nếu bạn sở hữu nhiều tài khoản, chiến lược hợp lý là tiếp tục tiêu hạn ngạch trên bất kỳ tài khoản nào đang tụt lại xa nhất so với nhịp độ hàng tuần của chính nó, và chuyển đi trước khi bất kỳ giới hạn đơn lẻ nào chạm tường giữa phiên làm việc.
+
+Làm điều đó bằng tay có nghĩa là đăng xuất, đăng nhập, và mất cuộc hội thoại của bạn. tokenmaxxing tự động hóa việc này: một `claude` đang chạy kiểm tra lại kho thông tin xác thực của nó giữa các yêu cầu, nên một thông tin xác thực được hoán đổi bên dưới nó sẽ được tiếp nhận tại chỗ (trong khoảng 30 giây trên macOS, ở yêu cầu tiếp theo trên Linux). Một lần hoán đổi thông thường không bao giờ khởi động lại phiên làm việc của bạn. Trường hợp duy nhất vẫn cần quản lý tiến trình là khi cả nhóm tài khoản đã cạn kiệt hoàn toàn: một phiên làm việc không thể tự tạm dừng chính nó, và đó là lý do bộ giám sát mỏng tồn tại.
+
+Mọi thứ khác về `claude` đều không thay đổi: tất cả các cờ, máy chủ MCP, hook, và skill đều được truyền qua.
+
+## Bắt đầu nhanh
+
+Yêu cầu [Bun](https://bun.sh) và Claude Code, trên macOS hoặc Linux.
+
+```sh
+bun add -g tokenmaxxing
+tokenmaxxing init
+```
+
+`init` làm năm việc:
+
+1. Nhập tài khoản mà bạn đã đăng nhập sẵn làm tài khoản #1 (không có lệnh `adopt` riêng).
+2. Cài đặt shim giám sát `claude`.
+3. Cài đặt ba mục vào `settings.json` của Claude Code: một statusLine, một Stop hook, và một SessionStart hook (cùng một mục subagentStatusLine).
+4. Thêm thư mục bin của bộ giám sát vào PATH trong tệp rc của shell của bạn (bất biến, được đánh dấu bằng một chú thích `# tokenmaxxing PATH`). Nó phải đứng trước `claude` thật trên PATH để chặn bắt nó.
+5. Cài đặt một bộ hẹn giờ kiểm tra định kỳ (một launchd agent trên macOS, một systemd user timer trên Linux) chạy `tokenmaxxing check` mỗi 180 giây.
+
+Khởi động lại shell của bạn, rồi thêm nhiều tài khoản hơn và bắt đầu:
+
+```sh
+tokenmaxxing add        # đăng nhập thêm một tài khoản, biệt lập, và gộp nó vào nhóm
+claude                  # dùng claude như mọi khi
+```
+
+`tokenmaxxing` cũng có bí danh là `xx`. `tokenmaxxing` (hoặc `xx`) khi chạy trần sẽ chạy `status`; `switch` vẫn phải gọi tường minh.
+
+## Các lệnh
+
+| Lệnh | Chức năng |
+|---|---|
+| `tokenmaxxing init` | Nhập tài khoản hiện tại, cài đặt bộ giám sát, các hook, và statusline |
+| `tokenmaxxing init --codex` | Tương tự cho Codex: nhập thông tin đăng nhập, cài đặt bộ giám sát codex và Stop hook |
+| `tokenmaxxing add` | Đăng ký thêm một tài khoản (đăng nhập biệt lập, thu hoạch vào nhóm) |
+| `tokenmaxxing add --codex` | Đăng ký thêm một tài khoản Codex (đăng nhập biệt lập) |
+| `tokenmaxxing auth [sel \| --all]` | Xác thực lại một tài khoản trong nhóm tại chỗ. Khi chạy trần sẽ liệt kê nhóm và hỏi tài khoản nào; một bộ chọn nhắm đến một tài khoản và cho bạn biết email nào cần đăng nhập; `--all` lần lượt duyệt qua từng tài khoản cần xác thực lại |
+| `tokenmaxxing switch [sel]` | Chuyển sang tài khoản tốt nhất (tham lam, bất biến) hoặc buộc chọn một tài khoản cụ thể |
+| `tokenmaxxing switch --codex [sel]` | Chuyển nhóm Codex (có hiệu lực ở lần khởi động codex tiếp theo) |
+| `tokenmaxxing ls` | Liệt kê các tài khoản trong nhóm |
+| `tokenmaxxing status` | Các tài khoản kèm thanh sử dụng 5h / hàng tuần / theo từng mô hình, đang hoạt động và đã cạn kiệt cho đến khi đặt lại |
+| `tokenmaxxing status --force` | Ngoài ra ping mọi tài khoản (mỗi tài khoản một yêu cầu haiku nhỏ) để tất cả các bộ hẹn giờ phiên 5h bắt đầu ngay bây giờ, rồi lấy mẫu mới |
+| `tokenmaxxing watch [seconds]` | Trạng thái trực tiếp, hiển thị lại mỗi N giây (mặc định 120, tối thiểu 30; không bao giờ ping) |
+| `tokenmaxxing config [get\|set\|unset\|tidy]` | Cấu hình có hiệu lực kèm nguồn; chỉnh sửa các khóa dạng chấm; `tidy` loại bỏ các khóa không xác định |
+| `tokenmaxxing check` | Đánh giá quyết định chuyển đổi một lần (đây là những gì bộ hẹn giờ định kỳ chạy) |
+| `tokenmaxxing serve [setup\|link\|unlink\|links]` | Daemon cầu nối Slack (Socket Mode, không cần URL công khai) |
+| `tokenmaxxing doctor` | Xác minh bộ giám sát và các mục cài đặt vẫn còn nguyên |
+| `tokenmaxxing rename [--codex] <sel> <label>` | Đổi nhãn một tài khoản trong nhóm |
+| `tokenmaxxing rm <sel>` | Xóa một tài khoản khỏi nhóm |
+| `tokenmaxxing uninstall` | Gỡ bỏ bộ giám sát và các mục cài đặt (các tài khoản và thông tin xác thực được giữ lại) |
+
+## Kiến trúc
+
+tokenmaxxing là một điểm vào đa lệnh (`src/main.ts`) hoạt động như bộ giám sát `claude` khi được gọi dưới tên đó, phục vụ các shim hook và statusline qua các lệnh con nội bộ, và ngoài ra thì điều phối CLI. Nó chạy trực tiếp dưới Bun; gói npm phân phối mã nguồn TypeScript, không phải bản dựng.
+
+Các bộ phận cấu thành:
+
+### Shim giám sát
+
+`init` ghi một shim shell 2 dòng tên `claude` vào `~/.config/tokenmaxxing/bin/` và đặt thư mục đó lên đầu PATH. Khi bạn gõ `claude`, shim chạy bộ giám sát, nó khởi tạo tệp nhị phân claude thật với stdio kế thừa và một bản chụp trạng thái terminal `stty -g` đã lưu. Nó chỉ là một trình quản lý tiến trình và terminal: nó không bao giờ làm proxy cho lưu lượng API và không bao giờ chạm vào các token đang di chuyển.
+
+Các lần gọi ở chế độ in (`claude -p`, `--version`, `--help`), các lệnh con không tương tác (`claude mcp`, `claude config`, v.v.), và các phép thăm dò của chính tokenmaxxing đều đi thẳng qua mà không có quản lý phiên. Đối với một phiên tương tác, bộ giám sát ghim một id phiên (tạo một id mới, hoặc tái sử dụng id bạn truyền vào qua `--session-id` / `-r` / `-c`), lưu lại các cờ khởi động của bạn để một lần khởi động lại về sau có thể phát lại chúng, rồi theo dõi một tệp đánh dấu respawn gắn với phiên đó.
+
+### Bộ tee statusline
+
+Claude Code đẩy dữ liệu giới hạn tốc độ (`rate_limits.five_hour` và `rate_limits.seven_day`) vào stdin của statusline ở mỗi lượt. tokenmaxxing sở hữu vị trí statusline, nên trình kết xuất của nó kiêm luôn vai trò một nguồn cấp dữ liệu sử dụng miễn phí, theo kiểu đẩy: ở mỗi nhịp nó tee các cửa sổ tổng hợp cùng mô hình đang hoạt động vào `usage.json`. Các mức trần theo từng mô hình không có trong stdin của statusline; chúng chỉ đến từ `claude -p '/usage'` (miễn phí, không tốn token), được thăm dò với một TTL và lưu vào bộ nhớ đệm trong `model-usage.json` khi mô hình đang hoạt động bị ràng buộc về dung lượng.
+
+Việc tee ghi-khi-thay-đổi: khi các con số không thay đổi, nó chỉ cập nhật mtime của tệp, đóng vai trò nhịp tim báo sống của nguồn cấp. Độ mới luôn được đánh giá bằng mtime, không bao giờ bằng dấu thời gian nhúng bên trong.
+
+### Stop hook và việc hoán đổi
+
+Tại mỗi ranh giới lượt, Stop hook chạy quyết định chuyển đổi (xem [Cách chuyển đổi được quyết định](#how-switching-decides)). Khi một lần hoán đổi là chính đáng, nó diễn ra dưới một khóa độc quyền `flock(2)` (lấy qua `bun:ffi`, vì macOS không đi kèm tệp nhị phân `flock(1)`), và các thao tác ghi thông tin xác thực còn khóa liên động thêm với khóa làm mới của chính Claude Code. Bên trong đoạn tới hạn, một lần hoán đổi:
+
+1. Thu hoạch thông tin xác thực đang hoạt động hiện tại vào bản sao lưu dự trữ của chủ sở hữu thực sự của nó.
+2. Cài đặt thông tin xác thực vừa được làm mới của tài khoản đích làm thông tin đang hoạt động, hợp nhất vào blob đang hoạt động hiện có để trạng thái đồng cấp (chẳng hạn như các token OAuth theo từng máy chủ MCP) được giữ lại.
+3. Lưu bền token đã xoay vòng của tài khoản đích vào bản sao lưu của chính nó.
+4. Ghi lại một cách nguyên tử trường `oauthAccount` trong `~/.claude.json`.
+5. Xác nhận nhãn hoạt động mới và xóa các ảnh chụp sử dụng cũ, tất cả trước khi khóa được giải phóng, nên một sự cố sập không bao giờ có thể để thông tin xác thực đã cài đặt và nhãn hoạt động trỏ tới các tài khoản khác nhau.
+
+Vì tất cả các phiên làm việc dùng hồ sơ mặc định đều chia sẻ chung một thông tin xác thực đang hoạt động, một lần hoán đổi duy nhất di chuyển mọi phiên làm việc cùng một lúc, và flock cộng với một lần kiểm tra lại dưới khóa giữ cho các hook chạy đua khỏi việc đốt hai tài khoản.
+
+### Tiếp nhận tại chỗ
+
+Một phiên claude đang chạy thăm dò kho thông tin xác thực của nó giữa các yêu cầu: trên macOS nó đọc lại keychain qua một bộ nhớ đệm ngắn và so sánh các access token; trên Linux nó lấy thông tin mtime của tệp thông tin xác thực và xả các bộ nhớ đệm token khi có thay đổi. Kết quả cuối cùng là một thông tin xác thực đã hoán đổi được mọi phiên đang chạy tiếp nhận trong khoảng 30 giây trên macOS và ngay ở yêu cầu kế tiếp trên Linux, mà không cần khởi động lại. Đây là lý do một lần hoán đổi thông thường không ghi tệp đánh dấu nào và không kích hoạt respawn nào: phiên làm việc chỉ đơn giản tiếp tục trên tài khoản mới. `/usage` trong phiên chia sẻ cùng các bộ nhớ đệm token đó, nên phần hiển thị tài khoản của nó cũng lật theo quá trình tiếp nhận.
+
+### Chờ khi nhóm cạn kiệt và tự động tiếp tục
+
+Chỉ khi mọi tài khoản trong nhóm đều vượt qua các ngưỡng của nó thì Stop hook mới ghi một tệp đánh dấu respawn (lược đồ của tệp đánh dấu yêu cầu một dấu thời gian `waitUntil`; một lần hoán đổi thông thường không bao giờ có thể tạo ra nó). Bộ giám sát thấy tệp đánh dấu, gửi SIGTERM cho tiến trình con của nó tại ranh giới lượt đã được xác nhận (Stop hook chạy sau khi bản ghi hội thoại đã nằm trên đĩa và claude đang rảnh, nên không mất gì), khôi phục terminal, hiển thị một bộ đếm ngược đến lần đặt lại sớm nhất, rồi khởi động lại `claude --resume <session-id>` trên tài khoản đã hồi phục. Ctrl-C trong lúc đếm ngược sẽ tiếp tục ngay lập tức. Thời gian tự động chờ bị giới hạn bởi `policy.maxWaitMs` (mặc định 1 giờ); vượt quá mức đó thì quyết định báo cáo nhóm là đã cạn kiệt thay vì chờ.
+
+### Bộ hẹn giờ kiểm tra định kỳ
+
+Các hook chỉ kích hoạt tại các ranh giới lượt, và một lượt agentic dài có thể đốt một cửa sổ từ khỏe mạnh đến cạn kiệt mà không có một ranh giới nào. Do đó `init` cũng cài đặt một bộ hẹn giờ định kỳ (một launchd agent trên macOS, một systemd user timer trên Linux) chạy `tokenmaxxing check` mỗi 180 giây bất kể hoạt động lượt như thế nào.
+
+### Một SessionStart hook
+
+Chạy cùng phép đánh giá đó khi một phiên bắt đầu hoặc tiếp tục, để một phiên mới bắt đầu trên đúng tài khoản. Thời gian hồi sau khi hoán đổi khiến nó trở thành một thao tác rỗng đúng đắn ngay sau một lần respawn.
+
+## Cách chuyển đổi được quyết định [#how-switching-decides]
+
+Quyết định có hai lớp: một cổng kích hoạt, và sau đó là một lối tham lam hoặc lối cứng.
+
+### Kích hoạt
+
+Dưới `policy.greedySessionFloor` (mặc định 50, tính theo phần trăm của cửa sổ phiên 5 giờ), quyết định hoàn toàn không chạy: một phiên mới cứ dùng tài khoản của nó. Một khi cửa sổ phiên đang hoạt động đã dùng 50%, hoặc bất kỳ ngưỡng cứng nào bị vượt qua, quyết định sẽ kích hoạt.
+
+### Các ngưỡng sàng lọc
+
+Các ngưỡng là các ngưỡng sàng lọc, không phải là yếu tố kích hoạt sự hoảng loạn:
+
+- `thresholds.session`: 95. Một lần đặt lại 5 giờ thì rẻ để ngồi chờ, nên cửa sổ phiên chuyển đi sớm hơn.
+- `thresholds.weekly`: 98. Một ngưỡng này bao trùm cả mức tổng hợp 7 ngày lẫn mọi mức trần hàng tuần theo từng mô hình. Hạn ngạch hàng tuần theo kiểu dùng-hoặc-mất, nên nó được tiêu cạn đến sát tường.
+
+Cả hai đều cố ý ở dưới 100: khoảng dư là ngân sách để đạt tới một ranh giới lượt sạch (cộng với tối đa một lượt trễ tiếp nhận trên macOS) trước khi tài khoản thực sự chạm giới hạn của nó. Cùng các ngưỡng đó sàng lọc các ứng viên hoán đổi: một tài khoản vượt bất kỳ ngưỡng nào của nó thì không phải là một mục tiêu hợp lệ. Việc kích hoạt và việc sàng lọc luôn dùng cùng các ngưỡng hiệu lực (các ngưỡng trừ đi `policy.projectionMargin`), vì một bộ sàng lọc lỏng hơn yếu tố kích hoạt sẽ đẩy các lần hoán đổi lên các tài khoản mà yếu tố kích hoạt lập tức gắn cờ lại, khiến nhóm tài khoản bị dội qua dội lại.
+
+### Mục tiêu: áp lực nhịp độ
+
+Trong số các tài khoản dùng được, mục tiêu là tài khoản đang tụt lại xa nhất so với nhịp độ hàng tuần của chính nó: **áp lực nhịp độ** cao nhất, được định nghĩa là phần trăm hàng tuần còn lại chia cho thời gian cho đến lần đặt lại hàng tuần của tài khoản đó. Tài khoản có nhiều hạn ngạch sắp bị mất nhất sẽ thắng. Khi hòa, ưu tiên tài khoản hết hạn hàng tuần sớm nhất, rồi đến mức sử dụng 7 ngày thấp nhất.
+
+Mọi thứ chạy dựa trên các cửa sổ được lưu trong bộ nhớ đệm dưới dạng mốc epoch UTC tuyệt đối, nên một ảnh chụp cũ vẫn được giải quyết đúng: một lần đặt lại hàng tuần đã qua sẽ được ngoại suy về phía trước theo các bước 7 ngày chính xác, và bất kỳ cửa sổ nào đã qua lần đặt lại được lưu trong bộ nhớ đệm đều được tính là trống mới (không bao giờ là lý do để chuyển đổi, không bao giờ là lý do để giữ một tài khoản trên băng ghế dự bị).
+
+### Lối tham lam so với lối cứng
+
+- **Lối tham lam** (đã kích hoạt, nhưng ở dưới mọi ngưỡng): xếp hạng mọi tài khoản, bao gồm cả tài khoản hiện tại. Nếu tài khoản hiện tại đã thắng hoặc hòa, không làm gì cả. Ngược lại thì hoán đổi sang tài khoản tốt hơn một cách rõ ràng. Nó không bao giờ chờ và không bao giờ dự trữ trước: một tài khoản hiện tại còn dùng được thì không bị đánh đổi để lấy một lần chờ. Vì tài khoản hiện tại cũng được xếp hạng, cả lối tự động lẫn `tokenmaxxing switch` chạy trần đều bất biến: đánh giá định kỳ sẽ hội tụ về đúng tài khoản rồi giữ nguyên tại đó.
+- **Lối cứng** (một ngưỡng bị vượt qua): hoán đổi đi sang ứng viên dùng được tốt nhất. Nếu refresh token của một ứng viên hóa ra đã chết, nó được gắn cờ cần-xác-thực-lại và ứng viên tiếp theo được thử. Nếu không có gì dùng được, logic chờ-khi-cạn-kiệt sẽ chạy; chỉ một bên gọi thực sự có thể tạm dừng phiên làm việc (Stop hook được giám sát) mới được phép dự trữ trước lên một tài khoản vẫn còn bị chặn nhưng sẽ hồi phục sớm nhất.
+
+### Mức trần theo từng mô hình
+
+`policy.switchModels` (mặc định `["fable"]`) nêu tên các họ mô hình mà mức trần hàng tuần theo từng mô hình của chúng có thể kích hoạt một lần chuyển đổi. Việc so khớp dựa trên token của họ, không bao giờ theo chuỗi hiển thị chính xác: tên hiển thị của mô hình thay đổi trôi dạt ("Fable" đã trở thành "Fable 5"), và một cổng khớp-chuỗi-chính-xác đã từng âm thầm vô hiệu hóa hoàn toàn việc chuyển đổi theo từng mô hình. Hai quy tắc an toàn liên quan:
+
+- Một mô hình đang hoạt động không xác định sẽ chặn mọi họ đã cấu hình. Ngay sau khi một lần hoán đổi xóa các ảnh chụp, một máy không đầu có thể chạy trong tình trạng mù mô hình; việc coi cái không xác định là không bị ràng buộc đã từng để một tài khoản nằm ở mức trần Fable của nó suốt nhiều giờ mà không ai để ý.
+- Việc sàng lọc ứng viên cũng tính đến các mức trần theo từng mô hình bị chặn, nên một nhóm mà mọi tài khoản đều đã đốt hết mức trần Fable của nó sẽ không quay vòng.
+
+### Thời gian hồi
+
+Một thời gian hồi 45 giây sau khi hoán đổi kiểm soát lối tự động. Bộ tee statusline bị chặn trong đúng 45 giây đó sau một lần hoán đổi (việc tiếp nhận mất tối đa 30 giây trên macOS), nếu không một phép đánh giá sớm hơn sẽ chạy trên dữ liệu mà chính lần hoán đổi đã làm cho vô hiệu: đúng kịch bản đó đã từng tạo ra một vòng lặp respawn từ A sang B rồi quay lại. `tokenmaxxing switch` thủ công không bị ảnh hưởng bởi thời gian hồi.
+
+## Cấu hình
+
+Cấu hình là JSON tại `~/.config/tokenmaxxing/config.json`. Mọi trường đều là tùy chọn; giá trị mặc định áp dụng cho từng trường.
+
+```json
+{
+  "thresholds": { "session": 95, "weekly": 98 },
+  "policy": {
+    "projectionMargin": 0,
+    "greedySessionFloor": 50,
+    "switchModels": ["fable"],
+    "usagePollTtlMs": 90000,
+    "maxWaitMs": 3600000
+  }
+}
+```
+
+- `thresholds.session` / `thresholds.weekly`: các ngưỡng sàng lọc được mô tả ở trên.
+- `policy.projectionMargin`: được trừ khỏi cả hai ngưỡng để tạo thành các ngưỡng hiệu lực.
+- `policy.greedySessionFloor`: phần trăm phiên đã dùng mà tại đó sự hội tụ tham lam kích hoạt.
+- `policy.switchModels`: các họ mô hình mà mức trần hàng tuần theo từng mô hình của chúng kiểm soát một lần chuyển đổi (các mục được chuyển thành chữ thường khi tải).
+- `policy.usagePollTtlMs`: một lần thăm dò `/usage` theo từng mô hình giữ độ mới trong bao lâu.
+- `policy.maxWaitMs`: giới hạn thời gian tự động chờ khi nhóm cạn kiệt.
+
+`tokenmaxxing config` hiển thị cấu hình hiệu lực kèm nguồn; `config set`/`unset` chỉnh sửa các khóa dạng chấm; `config tidy` loại bỏ các khóa không xác định.
+
+## Lưu trữ thông tin xác thực và mô hình an toàn
+
+Toàn bộ trạng thái nằm trong `~/.config/tokenmaxxing/`. Việc đọc/ghi thông tin xác thực đi qua một mặt tiền kho lưu trữ duy nhất được chọn theo nền tảng; các điểm gọi không bao giờ rẽ nhánh theo nền tảng.
+
+**macOS**: thông tin xác thực nằm trong login keychain dưới dạng các mục generic-password, trùng với nơi chính Claude Code lưu chúng. Mục đang hoạt động là mục mà claude đọc; bản sao lưu của mỗi tài khoản trong nhóm được dự trữ dưới dạng mục keychain `tokenmaxxing-cred-<uuid8>` riêng của nó. Không có gì ở dạng văn bản thuần trên đĩa. Việc đọc dùng `security find-generic-password -w` (bí mật chỉ bao giờ xuất hiện trên stdout); việc ghi đưa một dòng `add-generic-password` qua đường ống vào `security -i` qua stdin để bí mật không bao giờ xuất hiện trong argv của bất kỳ tiến trình nào. Chế độ tương tác có một bộ đệm dòng khoảng 4 KB, nên các blob quá cỡ sẽ quay về cách ghi qua argv: một lý do khiến các mục dự trữ chỉ lưu đối tượng OAuth tối thiểu.
+
+**Linux**: Claude Code lưu thông tin xác thực dưới dạng một tệp văn bản thuần 0600, và tokenmaxxing theo cùng mô hình: tệp đang hoạt động là `.credentials.json` của chính claude, và các bản sao lưu dự trữ là các tệp 0600 nguyên tử trong `~/.config/tokenmaxxing/creds/` nằm trong một thư mục 0700. Nguyên tử ở đây có nghĩa là ghi-vào-tệp-tạm, fsync, rồi đổi tên: một trình đọc đồng thời luôn thấy hoặc trọn vẹn tệp cũ hoặc trọn vẹn tệp mới, không bao giờ thấy một tệp dở dang.
+
+Các quy tắc an toàn mà việc hoán đổi thực thi:
+
+- **Thu hoạch theo chủ sở hữu thực sự.** Trước một lần hoán đổi, chủ sở hữu thực tế của thông tin xác thực đang hoạt động được xác định bằng cách hỏi API xem token thuộc về tổ chức nào (`fetchTokenOrg` với điểm cuối roles của OAuth), không bao giờ bằng cách tin vào nhãn hoạt động đã lưu, vốn có thể trôi dạt. Một nhãn bị trôi dạt đã từng khiến việc thu hoạch của một tài khoản ghi đè lên bản sao lưu duy nhất của một tài khoản khác. Nếu thông tin xác thực đang hoạt động thuộc về một tài khoản ngoài nhóm, việc hoán đổi từ chối thẳng thừng thay vì đè lên nó.
+- **Một đoạn tới hạn.** Việc thu hoạch, việc cài đặt thông tin xác thực mới, việc sao lưu token đã xoay vòng của nó, việc hoán đổi tài khoản trong `~/.claude.json`, và việc xác nhận nhãn hoạt động đều diễn ra trong cùng một đoạn được khóa.
+- **Khóa liên động với việc làm mới của chính claude.** Một phiên gần hết hạn có thể xoay vòng token của chính nó vào bất kỳ lúc nào, nên các thao tác ghi thông tin xác thực cũng lấy khóa làm mới của Claude Code (theo kiểu nỗ lực-tốt-nhất, kèm cơ chế đòi lại khóa cũ và một thời gian chờ có giới hạn).
+- **Các cấp phép chết suy giảm một cách sạch sẽ.** Một lần làm mới trả về `invalid_grant` sẽ gắn cờ tài khoản đó là cần-xác-thực-lại và lưu bền cờ đó trước khi lỗi lan truyền, nên các vòng lặp thử lại thu nhỏ tập ứng viên và kết thúc. `tokenmaxxing auth` sửa một tài khoản bị gắn cờ tại chỗ, và nó từ chối một lần đăng nhập rơi vào một tài khoản khác với tài khoản đang được sửa.
+- **Không ghi nhật ký token.** Token không bao giờ xuất hiện trong nhật ký, lỗi, hoặc đầu ra. Phần thân lỗi từ các điểm cuối token và sử dụng không bao giờ được đưa ra ở dạng thô; chỉ một tập trường nằm trong danh sách cho phép mới được giữ lại, vì phần thân lỗi của một điểm cuối token có thể vọng lại tài liệu yêu cầu.
+- **Vệ sinh phép thăm dò.** Bất kỳ phép thăm dò `claude` nào được khởi tạo đều làm sạch tám biến môi trường mà claude tôn trọng trước khi tra cứu keychain của nó (`ANTHROPIC_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN`, `CLAUDE_SECURESTORAGE_CONFIG_DIR`, v.v.), nên một phép thăm dò không bao giờ có thể bị quy cho sai tài khoản.
+
+## Ghi chú nền tảng: macOS so với Linux
+
+| | macOS | Linux |
+|---|---|---|
+| Thông tin xác thực đang hoạt động | Mục generic-password trong login keychain | Tệp `.credentials.json` 0600 |
+| Thông tin xác thực dự trữ | Các mục keychain theo từng tài khoản | Các tệp 0600 trong một thư mục 0700 |
+| Tiếp nhận sau một lần hoán đổi | Trong khoảng 30 giây (bộ nhớ đệm đọc keychain) | Yêu cầu tiếp theo (thăm dò mtime tệp) |
+| Kiểm tra định kỳ | launchd agent, mỗi 180s | systemd user timer, mỗi 180s |
+| Kho đăng nhập biệt lập | Dịch vụ keychain đặt tên theo hash cho mỗi thư mục cấu hình | Một tệp bên trong thư mục cấu hình biệt lập |
+
+Hai chi tiết riêng của Linux đáng biết: claude phân giải thư mục thông tin xác thực của nó từ `CLAUDE_SECURESTORAGE_CONFIG_DIR` trước (rồi `CLAUDE_CONFIG_DIR`, rồi `~/.claude`), và tokenmaxxing phản chiếu chính xác cách phân giải đó để hai bên không bao giờ mất đồng bộ. Và hai bản dựng hệ điều hành của cùng một phiên bản claude định dạng đồng hồ đặt lại `/usage` khác nhau (một bản dùng chuỗi nối " at ", bản kia dùng dấu phẩy); trình phân tích của tokenmaxxing chấp nhận chính xác hai dạng đó và ghi nhật ký, thay vì đoán, khi gặp bất kỳ dạng thứ ba nào.
+
+Trên macOS, một hạn chế thành thật: `init` và `add` cố ý chạm vào keychain một cách tương tác, để lần truy cập `security` đầu tiên không bị nguội lạnh bên trong một hook không đầu.
+
+## Statusline
+
+tokenmaxxing kết xuất statusline của Claude Code một cách bản địa (đồng thời tee nguồn cấp sử dụng). Nguyên tắc thiết kế: hạn ngạch được thể hiện bằng màu sắc, không phải con số. Một dòng, ví dụ:
+
+```
+tm-wt-demo Fable 5 (high) +156/-23  ◆ 𝒇 2h 1d  ◇ 19h  ◇ 𝒇 2d  ◇ full  ✗ ?
+```
+
+- Mỗi token cửa sổ là thời gian-đến-khi-đặt-lại của nó, được tô trên một dải chuyển màu liên tục xanh-lá-đến-vàng-đến-đỏ theo phần trăm đã dùng (truecolor khi terminal hỗ trợ, nếu không thì được bước hóa lên khối màu 256). Dải chuyển màu neo ở xanh lá thuần cho mức 0, vàng ở 75, và đỏ ở 95 trở lên, nên các dải mức độ nghiêm trọng cũ vẫn tồn tại dưới dạng các điểm neo của dải chuyển màu.
+- Tên mô hình được tô theo mức lấp đầy cửa sổ ngữ cảnh trên cùng dải chuyển màu đó.
+- Một `◆` màu xanh lá dẫn đầu các cửa sổ của tài khoản đang hoạt động; mỗi tài khoản dự trữ có `◇` màu lục lam riêng của nó (`✗` màu đỏ nếu nó cần xác thực lại). Các tài khoản được sắp xếp theo lần đặt lại sắp tới sớm nhất.
+- Theo từng mô hình đứng đầu trong mỗi khối dưới dạng một chữ cái đầu được tô trần: Fable hiển thị `𝒇`; các họ khác dùng chữ cái đầu viết hoa của chúng, luôn được so khớp theo họ.
+- Một tài khoản dự trữ chưa được đụng đến hiển thị `full` màu xanh lá. Mức sử dụng đã đo với một lần đặt lại không xác định hiển thị `?` được tô, và một mức trần theo từng mô hình chưa được đo trên một mô hình bị chặn hiển thị `𝒇?` không được tô: cái chưa được đo không bao giờ được phép trông có vẻ an toàn.
+- Bộ đếm ngược đặt lại chỉ hiển thị đơn vị lớn nhất, không bao giờ là "now" hay "0m"; một cửa sổ không có lần đặt lại sắp tới hiển thị `0` màu xanh lá (lại trống).
+- Tên cơ sở của một git worktree được liên kết dẫn đầu dòng; một checkout chính không hiển thị gì ở đó. Việc phát hiện đọc hệ thống tệp để tìm một tệp `.git` và không bao giờ khởi tạo một tiến trình con git.
+- Khi `NO_COLOR` được đặt, dòng quay về một định dạng số dán liền (`2h5` nghĩa là đặt lại sau 2 giờ, đã dùng 5%; `ctx 42` cho mức lấp đầy ngữ cảnh): không có màu, một cửa sổ đã cạn không được phép trông có vẻ tươi mới.
+
+Các tác vụ subagent có các hàng bảng riêng của chúng qua bề mặt subagentStatusLine của claude: một hàng cho mỗi tác vụ đang hoạt động, tên họ được tô theo mức lấp đầy ngữ cảnh của tác vụ đó.
+
+## Hỗ trợ Codex
+
+Cùng cơ chế gộp chung đó hoạt động với Codex CLI của OpenAI, dựa trên các tài khoản đăng ký ChatGPT của riêng bạn:
+
+```sh
+tokenmaxxing init --codex   # nhập thông tin đăng nhập codex hiện tại của bạn + cài đặt bộ giám sát codex & Stop hook
+tokenmaxxing add --codex    # đăng nhập một tài khoản khác, biệt lập; thông tin đăng nhập chính của bạn không bị đụng đến
+codex                       # dùng codex như mọi khi
+```
+
+Nhóm Codex là trạng thái hoàn toàn song song: chỉ mục tài khoản riêng của nó, các tệp thông tin xác thực dự trữ riêng của nó (các tệp 0600 trên cả hai nền tảng, vì kho lưu trữ của chính codex là một tệp văn bản thuần), khóa riêng của nó, dấu thời gian hoán đổi gần nhất riêng của nó. Không có gì được chia sẻ với nhóm Claude ngoại trừ mã chính sách quyết định.
+
+### Vì sao không thể hoán đổi nóng trên Codex
+
+Một tiến trình codex đang chạy giữ một trình quản lý xác thực trong bộ nhớ và từ chối một cách tường minh việc tải lại `auth.json` khi nó lúc này nêu tên một tài khoản khác. Không có trình theo dõi tệp và không có phép thăm dò thông tin xác thực theo từng yêu cầu, nên một thông tin xác thực được hoán đổi bên dưới một codex đang chạy đơn giản là không bao giờ có hiệu lực cho suy luận. Khởi động lại chính là việc chuyển đổi: `codex resume <session-id>` tiếp tục bản ghi hội thoại cục bộ trên bất kỳ tài khoản nào mà `auth.json` đang giữ.
+
+tokenmaxxing xử lý việc này bằng một shim giám sát codex: Stop hook chạy cùng quyết định áp lực nhịp độ tham lam tại mỗi ranh giới lượt, và khi nó hoán đổi, nó ghi một tệp đánh dấu khiến bộ giám sát gửi SIGTERM cho phiên tại ranh giới đã được xác nhận và khởi động lại `codex resume <session-id>` trên tài khoản mới, bản ghi hội thoại còn nguyên vẹn. Vì mỗi lần chuyển đổi codex là một lần khởi động lại có thể thấy được, lối tham lam của codex mang một biên cải thiện 1,2 lần: một ứng viên thách thức phải vượt áp lực nhịp độ của tài khoản hiện tại 20%, không phải chỉ hơn một chút. Lối cứng (một ngưỡng bị vượt qua) bỏ qua biên này. Cũng không có bộ đếm ngược khi nhóm cạn kiệt cho codex, vì không gì có thể tạm dừng một phiên codex, nên một nhóm codex đã cạn kiệt hoàn toàn sẽ giữ nguyên tại chỗ.
+
+Các cơ chế riêng khác của codex:
+
+- Mức sử dụng được đọc từ một GET đã xác thực miễn phí tới điểm cuối giới hạn tốc độ của chính codex (cùng lệnh gọi mà `/status` của CLI thực hiện): các phần trăm cùng với thời gian đặt lại dạng epoch tuyệt đối, cả cửa sổ tổng hợp lẫn mức trần theo từng mô hình. Việc phân loại cửa sổ dựa trên thời lượng, không bao giờ dựa trên vị trí, vì các gói hiện tại có thể hoàn toàn không có cửa sổ 5 giờ và cửa sổ hàng tuần nằm ở vị trí chính.
+- Các refresh token của codex xoay vòng, và việc tái sử dụng một token đã bị thay thế sẽ giết chết cả họ cấp phép. Mỗi lần xoay vòng được lưu bền ngay khoảnh khắc nó trả về, tài khoản đang hoạt động chỉ bao giờ được lấy mẫu qua blob đang hoạt động (không bao giờ qua một bản dự trữ cũ), và các tệp hiện diện theo từng phiên bảo đảm một tài khoản đang chạy trong một phiên đồng cấp còn sống không bao giờ là mục tiêu hoán đổi và không bao giờ bị làm mới token dự trữ của nó.
+- Codex yêu cầu kho thông tin xác thực dạng tệp: `init --codex` thất bại nhanh nếu kho keyring bị ghim, và `add --codex` ghi thiết lập chế độ tệp vào thư mục khởi tạo biệt lập để thông tin đăng nhập rơi vào trạng thái có thể thu hoạch được.
+- Một bước thủ công: codex bỏ qua các hook mà nó chưa được yêu cầu tin tưởng. Sau `init --codex`, mở codex một lần và tin tưởng Stop hook của tokenmaxxing qua `/hooks`, nếu không việc tự động chuyển đổi sẽ âm thầm bất động. `init --codex` in ra lời nhắc này.
+
+## Cầu nối Slack: xx serve
+
+`tokenmaxxing serve` chạy một daemon Slack cục bộ qua Socket Mode, không cần URL công khai. Thiết lập:
+
+```sh
+tokenmaxxing serve setup                    # in ra manifest ứng dụng, hỏi hai token
+tokenmaxxing serve link <channel-id> <repo> # gắn một kênh với một checkout repo
+tokenmaxxing serve                          # chạy daemon
+```
+
+Nhắc đến bot trong một kênh đã liên kết và nó mở một phiên Claude Code cho luồng đó, trong checkout repo đã liên kết. Mỗi tin nhắn trong luồng chạy một `query()` của Agent SDK với `resume`, không bao giờ là một query truyền phát bền vững, nên `ensureBestAccount()` đánh giá lại nhóm ở mỗi lượt duy nhất và daemon có thể khởi động lại mà không mất các luồng (các bản ghi luồng là bền; daemon đăng ký lại chúng khi khởi động).
+
+Hành vi đáng chú ý:
+
+- **Truyền phát**: các câu trả lời truyền phát bản địa vào Slack, kèm các thẻ tác vụ cho việc suy nghĩ và các lần chạy công cụ, mã trong khối được kết xuất kèm tô sáng cú pháp, một thẻ "Turn" kết thúc kèm chi phí và thời lượng, và một tin nhắn Slack mới được mở mỗi khi một lần chạy công cụ ngắt quãng văn bản đang truyền phát, để một lượt đọc như những tin nhắn tách biệt xoay quanh các lần chạy công cụ. Các lệnh gọi TodoWrite cập nhật một thẻ danh sách kiểm tra ổn định tại chỗ.
+- **Quyền**: `permissionMode` theo từng liên kết mặc định là `acceptEdits`; `--yolo` (bí danh `--dangerous`) chọn cho một liên kết vào `bypassPermissions`. Các hộp thoại tương tác không được phép trong các lượt được chuyển tiếp, vì không ai có thể trả lời một hộp thoại qua Slack, nên mô hình hỏi bằng lời văn và câu trả lời của bạn trong luồng chính là lượt tiếp theo. Một plugin skill đi kèm dạy nó gắn thẻ người yêu cầu và kết thúc lượt khi nó cần một quyết định.
+- **Lệnh gạch chéo**: một tin nhắn trong luồng mà văn bản đã lược của nó bắt đầu bằng `/` sẽ chạy như một lệnh gạch chéo của claude. Trình soạn thảo của Slack nuốt các tin nhắn bắt đầu bằng `/`, nên hãy dùng dạng nhắc-trước (`@bot /usage`) hoặc một khoảng trắng ở đầu.
+- **Tắt máy êm đẹp**: SIGTERM/SIGINT rút cạn: các lượt mới bị loại bỏ một cách ồn ào, các lượt đang chạy được cho tối đa 5 phút, và tiến trình con claude chạy tách rời trong nhóm tiến trình riêng của nó để một Ctrl-C ở terminal không thể giết nó trước khi việc rút cạn bảo toàn lượt đó.
+- **Dọn dẹp luồng**: khi bạn báo nó rằng công việc đã xong, mô hình gọi một công cụ `finish_thread` trong tiến trình; sau khi lượt kết thúc hoàn toàn, daemon bỏ bản ghi luồng, hủy đăng ký, và đăng một xác nhận. Một lần nhắc mới bắt đầu một phiên mới.
+- **Vệ sinh lỗi**: các lỗi trong lượt đăng văn bản chỉ-thông-điệp đã cắt gọn, không bao giờ đăng phần thân lỗi thô.
+
+## Bề mặt Agent SDK
+
+Điểm vào lập trình của gói (`exports["."]` trỏ tới `src/sdk.ts`) ghép tokenmaxxing với Claude Agent SDK cho các agent mà bạn xây dựng dựa trên các tài khoản đã gộp chung của riêng bạn. Ứng dụng của bạn phải chạy dưới Bun (tokenmaxxing phân phối mã nguồn TypeScript và dùng `bun:ffi`).
+
+```ts
+import { query } from "@anthropic-ai/claude-agent-sdk";
+import { ensureBestAccount, pooledOptions, stopHookCheck } from "tokenmaxxing";
+
+await ensureBestAccount(); // run the switch decision before the spawn
+
+for await (const message of query({
+  prompt: "...",
+  options: {
+    ...pooledOptions(), // pinned real claude + scrubbed env
+    hooks: { Stop: [{ hooks: [stopHookCheck] }] }, // re-decide at every turn boundary
+  },
+})) {
+  // capture the session id from the init message for `resume` across swaps
+}
+```
+
+Agent SDK khởi tạo một tiến trình con claude cho mỗi `query()` và đọc thông tin xác thực một lần khi khởi tạo (không có statusline, không hoán đổi nóng giữa query), nên việc tích hợp dựa trên ranh giới:
+
+- `ensureBestAccount()` chính là quyết định mà các hook CLI và bộ hẹn giờ chạy (các ngưỡng, áp lực nhịp độ, thời gian hồi, tất cả đều là mã dùng chung), không bao giờ mang tính dự đoán trước: một phiên SDK không bao giờ có thể bị tạm dừng cho một bộ đếm ngược khi cạn kiệt.
+- `pooledOptions()` ghim `pathToClaudeCodeExecutable` tới tệp nhị phân claude thật (không bao giờ là lớp bọc giám sát) và cung cấp một `env` thay thế đầy đủ với mọi ghi đè thông tin xác thực từ môi trường đã được làm sạch. Nó thất bại nhanh nếu `CLAUDE_CONFIG_DIR` hoặc `CLAUDE_SECURESTORAGE_CONFIG_DIR` được đặt trong môi trường ứng dụng của bạn: trên Linux một lần hoán đổi sẽ ghi thông tin xác thực đang hoạt động vào nơi các biến đó trỏ tới trong khi tiến trình con đã làm sạch lại đọc kho mặc định, một sự mất đồng bộ tài khoản sai một cách âm thầm.
+- `stopHookCheck` chạy lại quyết định tại các ranh giới lượt; một lần hoán đổi mà nó thực hiện có hiệu lực ở lần khởi tạo tiếp theo. Nó bắt các lỗi của chính nó (ghi ra stderr và nhật ký) thay vì ném lại, vì một ngoại lệ hook chưa được xử lý có thể ngắt quãng agent, và việc hủy bỏ một lượt vì một phép kiểm tra chuyển đổi hỏng tốn kém hơn là cứ tiếp tục dùng tài khoản hiện tại.
+
+`sdk.ts` không nhập gì từ chính Agent SDK; các giá trị của nó được trải cấu trúc vào các tùy chọn của SDK.
+
+## Sử dụng cá nhân và điều khoản dịch vụ [#personal-use-and-terms-of-service]
+
+tokenmaxxing gộp chung các tài khoản bạn sở hữu, trong các phiên làm việc và agent mà chính bạn chạy. Cách diễn đạt đó là có chủ ý: Anthropic không cho phép các sản phẩm của bên thứ ba cung cấp đăng nhập claude.ai hoặc giới hạn tốc độ claude.ai, và điều đó bao gồm cả các agent được xây dựng trên Agent SDK. Đừng phân phối bề mặt SDK gộp chung, hay bất cứ thứ gì được xây dựng trên nó, cho các bên thứ ba. tokenmaxxing cũng cố ý bám vào lối `/usage` qua trung gian CLI để lấy dữ liệu hạn ngạch thay vì tự cài đặt lại OAuth hoặc làm proxy cho lưu lượng API: nó không phải là một proxy, và các điểm cuối OAuth duy nhất mà nó chạm tới là cấp phép làm mới tiêu chuẩn được dùng trong một lần hoán đổi và một phép kiểm tra danh tính chỉ-đọc (điểm cuối roles) xác minh xem một token thực sự thuộc về tài khoản nào.
+
+## Những hạn chế thành thật
+
+- **Một lượt nguội.** Bộ nhớ đệm prompt được giới hạn theo tổ chức, nên lượt đầu tiên trên một tài khoản mới sẽ tải lên ngữ cảnh lại một lần.
+- **Trục trặc khi tạm dừng do cạn kiệt.** Chỉ một nhóm đã cạn kiệt hoàn toàn mới dừng phiên làm việc để đếm ngược; bất cứ gì được gõ trong khoảnh khắc chớp nhoáng đó đều bị mất.
+- **Trễ tiếp nhận.** Trên macOS, lượt đầu tiên trong vòng khoảng 30 giây sau một lần hoán đổi vẫn có thể tính vào tài khoản cũ; khoảng dư của các ngưỡng hấp thụ điều đó.
+- **Bán kính ảnh hưởng chung.** Tất cả các phiên dùng hồ sơ mặc định chia sẻ một thông tin xác thực đang hoạt động, nên một lần hoán đổi di chuyển tất cả chúng cùng nhau (mỗi phiên tiếp nhận tại chỗ).
+- **Thông tin xác thực dạng văn bản thuần trên Linux.** Chính Claude Code lưu thông tin xác thực Linux dưới dạng một tệp văn bản thuần 0600; các bản sao dự trữ của tokenmaxxing theo cùng mô hình.
+
+## Khắc phục sự cố và câu hỏi thường gặp
+
+**`claude` có vẻ không được giám sát.**
+Chạy `tokenmaxxing doctor`. Shim phải thắng trong việc phân giải PATH; hãy kiểm tra rằng dòng `# tokenmaxxing PATH` trong tệp rc của shell của bạn trỏ tới thư mục bin hiện tại và đứng trước claude thật. `doctor` cũng cảnh báo về `alias claude=...` hoặc một hàm shell `claude()` che khuất lớp bọc, và về các bí danh khởi chạy một tệp nhị phân claude bằng đường dẫn tuyệt đối (những cái đó bỏ qua bộ giám sát hoàn toàn).
+
+**Việc tự động chuyển đổi không bao giờ kích hoạt trên Codex.**
+Codex bỏ qua các hook mà nó chưa được yêu cầu tin tưởng. Mở codex, chạy `/hooks`, và tin tưởng Stop hook của tokenmaxxing. Sự tin tưởng được ghi lại theo hash của hook, nên nó phải được cấp lại nếu hook từng bị chỉnh sửa.
+
+**Một tài khoản hiển thị `✗` màu đỏ trong statusline.**
+Refresh token của nó đã chết (bị thu hồi hoặc bị xoay vòng khỏi bản sao lưu của nó). Chạy `tokenmaxxing auth <sel>` để xác thực lại nó tại chỗ; lệnh cho bạn biết email nào cần đăng nhập và từ chối một lần đăng nhập rơi vào một tài khoản khác.
+
+**Vì sao nó không chuyển sang tài khoản có nhiều hạn ngạch còn lại nhất?**
+Vì đó không phải là tài khoản có nguy cơ bị mất hạn ngạch cao nhất. Mục tiêu là tài khoản đang tụt lại xa nhất so với nhịp độ hàng tuần của chính nó: phần trăm còn lại chia cho thời gian đến lần đặt lại hàng tuần của nó. Khi lượng còn lại bằng nhau thì điều đó rút gọn thành ưu tiên tài khoản hết hạn sớm nhất, và khi hết hạn bằng nhau thì ưu tiên tài khoản còn lại nhiều nhất.
+
+**Nó vừa chuyển đổi mà statusline vẫn hiển thị tài khoản cũ.**
+Điều này bình thường trong tối đa khoảng 30 giây trên macOS: phiên đang chạy tiếp nhận thông tin xác thực đã hoán đổi ở lần làm mới bộ nhớ đệm thông tin xác thực tiếp theo của nó. Bộ tee sử dụng bị chặn trong 45 giây sau một lần hoán đổi chính vì lý do này.
+
+**`status --force` có tốn phí gì không?**
+Có, một cách chủ ý: nó gửi một yêu cầu haiku tối thiểu có tính phí cho mỗi tài khoản để mọi cửa sổ phiên 5 giờ bắt đầu ngay khoảnh khắc đó thay vì nằm im lìm, rồi lấy mẫu mới. `status` và `watch` thông thường không bao giờ ping; các lần đọc `/usage` là miễn phí. Lưu ý rằng nguồn cấp sử dụng của máy chủ có thể trễ một cửa sổ vừa mở từ vài giây đến vài phút, nên một phép thăm dò ngay sau lần ping có thể vẫn hiển thị trạng thái trước ping: `status` kết xuất một ghi chú thay vì giả vờ rằng lần ping đã thất bại.
+
+**Phép thăm dò `/usage` không trả về gì cho tài khoản đang hoạt động.**
+Đó là một hành vi đã biết của claude: khi việc lấy dữ liệu sử dụng nội bộ của nó thất bại hoặc bị giới hạn tốc độ, `/usage` chỉ in các thống kê phiên cục bộ mà không có dòng phần trăm nào. tokenmaxxing lấy mẫu tài khoản đang hoạt động từ luồng đẩy của statusline và chỉ thăm dò các tài khoản dự trữ, chính xác là để tránh điều này.
+
+**Các phiên claude nền.**
+Daemon nền của Claude khởi tạo tệp nhị phân thật có đánh phiên bản bằng đường dẫn tuyệt đối, bỏ qua các shim PATH, nên các phiên nền không được giám sát. Các hook vẫn kích hoạt qua `settings.json`, và việc tiếp nhận thông tin xác thực cộng với bộ hẹn giờ định kỳ lo việc chuyển đổi, nhưng không có respawn dựa trên tệp đánh dấu cho chúng.
+
+**Đã từng có gì đó khởi tạo rất nhiều tiến trình một lần. Điều đó còn có thể xảy ra không?**
+Bộ giám sát mang các lớp bảo vệ chống đệ quy nhằm vào chính sự cố lịch sử đó (một lớp bọc cũ bị ghim làm claude "thật"): một biến canh gác độ sâu trong môi trường hủy bỏ ở 5 cấp, một bộ giới hạn tốc độ khởi tạo trên đĩa, các phép kiểm tra danh tính bằng realpath từ chối bất kỳ ứng viên nào phân giải ngược trở lại thư mục bin của chính tokenmaxxing, và một thất bại cứng (không bao giờ là một lần quét PATH âm thầm) khi một đường dẫn claude đã cấu hình không còn tồn tại. `init` và `doctor` xác minh một ứng viên thực sự là claude bằng cách chạy `--version` trước khi ghim nó.
+
+**Gỡ cài đặt.**
+`tokenmaxxing uninstall` gỡ bỏ các shim giám sát, các mục cài đặt, và bộ hẹn giờ định kỳ, đồng thời giữ nguyên vẹn các tài khoản và thông tin xác thực dự trữ của bạn. Nó chỉ gỡ bỏ các mục statusline mà nó nhận ra là của chính mình.
+
+## Giấy phép
+
+MIT. Mã nguồn tại [anaclumos/tokenmaxxing](https://github.com/anaclumos/tokenmaxxing).

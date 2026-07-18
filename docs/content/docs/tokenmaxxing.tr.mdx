@@ -1,0 +1,359 @@
+---
+title: tokenmaxxing
+description: Otomatik Claude Code hesap değiştirme - kendi abonelik hesaplarınızı havuzlayın ve kota dolduğunda kimlik bilgilerini anında değiştirin, böylece her oturum devam ettirilebilir kalır.
+---
+
+tokenmaxxing, otomatik Claude Code hesap değiştirme için bir CLI'dir. Sahip olduğunuz birden fazla abonelik (Pro/Max) hesabını havuzlar ve kullanımdaki hesap bir kullanım limitine yaklaştığında aktif kimlik bilgisini daha taze bir hesaba anında değiştirir. `claude` komutunu her zaman yaptığınız gibi çalıştırırsınız; geçiş güvenli bir tur sınırında gerçekleşir ve çalışan oturumunuz yeni hesapta aynı konuşmayı yeniden başlatmadan sürdürür. Aynı anda birçok eşzamanlı oturumda birden çalışır.
+
+Görünür tek davranış en kötü durumdur: tüm havuz limitine ulaştığında, oturum bir geri sayımla duraklar ve sıfırlanan ilk hesapta otomatik olarak devam eder (Ctrl-C anında devam ettirir).
+
+<Callout>
+Kapsam: macOS ve Linux üzerinde Claude Code, ayrıca ikinci ve paralel bir havuz olarak OpenAI'nin Codex CLI'si. API anahtarlarını değil, abonelik hesaplarını havuzlar. Bu, kendi sahip olduğunuz hesapları, kendi çalıştırdığınız oturum ve agent'larda havuzlamaya yönelik kişisel kullanım amaçlı bir araçtır - bkz. [Kişisel kullanım ve hizmet şartları](#personal-use-and-terms-of-service).
+</Callout>
+
+## Sorun
+
+Bir Claude aboneliği aynı anda üç limiti ölçer (hepsi `/usage` ile doğrulanmıştır):
+
+- **Mevcut oturum**: kayan 5 saatlik bir pencere.
+- **Mevcut hafta (tüm modeller)**: 7 günlük bir toplam.
+- **Mevcut hafta, model başına**: her bir model ailesi için ayrı haftalık üst sınırlar. Bunlar şu anda yalnızca Sonnet ve Fable için mevcuttur ve yalnızca Fable üst sınırı önemli olacak kadar sıkıdır - toplam limitten çok önce devreye girer. Bir makine hafta-Fable'da halihazırda %80'de iken hafta-tümü'nde %50'de kalabilir.
+
+Haftalık kota kullan ya da kaybet ilkesine tabidir: bir hesabın sabit haftalık sıfırlamasına kadar tüketmediği ne varsa kaybedilir. Birden fazla hesabınız varsa, rasyonel strateji kotayı kendi haftalık temposunun en gerisinde kalan hangi hesapsa onda tüketmeye devam etmek ve herhangi bir tek limit oturumun ortasında duvara çarpmadan önce başka bir hesaba geçmektir.
+
+Bunu elle yapmak oturumu kapatmak, oturum açmak ve konuşmanızı kaybetmek anlamına gelir. tokenmaxxing bunu otomatikleştirir: çalışan bir `claude`, istekler arasında kimlik bilgisi deposunu yeniden denetler, böylece altından değiştirilen bir kimlik bilgisi yerinde benimsenir (macOS'ta yaklaşık 30 saniye içinde, Linux'ta bir sonraki istekte). Sade bir geçiş oturumunuzu asla yeniden başlatmaz. Hâlâ süreç yönetimi gerektiren tek durum tamamen tükenmiş bir havuzdur - bir oturum kendini duraklatamaz - ve ince gözetmenin var olma nedeni de tam olarak budur.
+
+`claude` ile ilgili diğer her şey değişmeden kalır: tüm bayraklar, MCP sunucuları, hook'lar ve skill'ler doğrudan geçer.
+
+## Hızlı başlangıç
+
+macOS veya Linux üzerinde [Bun](https://bun.sh) ve Claude Code gerektirir.
+
+```sh
+bun add -g tokenmaxxing
+tokenmaxxing init
+```
+
+`init` beş şey yapar:
+
+1. Halihazırda oturum açtığınız hesabı 1 numaralı hesap olarak içe aktarır (ayrı bir `adopt` komutu yoktur).
+2. `claude` gözetmen shim'ini kurar.
+3. Claude Code'un `settings.json` dosyasına üç giriş kurar: bir statusLine, bir Stop hook ve bir SessionStart hook (artı bir subagentStatusLine girişi).
+4. Gözetmenin bin dizinini kabuk rc dosyanızın PATH'ine ekler (idempotent, `# tokenmaxxing PATH` yorumuyla işaretlenmiş). Onu yakalayabilmek için PATH üzerinde gerçek `claude`'un önünde durması gerekir.
+5. Her 180 saniyede bir `tokenmaxxing check` çalıştıran periyodik bir denetim zamanlayıcısı kurar (macOS'ta bir launchd agent, Linux'ta bir systemd kullanıcı zamanlayıcısı).
+
+Kabuğunuzu yeniden başlatın, ardından daha fazla hesap ekleyin ve başlayın:
+
+```sh
+tokenmaxxing add        # bir hesap daha izole olarak oturum açar ve havuza katar
+claude                  # claude'u her zamanki gibi kullanın
+```
+
+`tokenmaxxing` ayrıca `xx` olarak da takma adlandırılmıştır. Sade `tokenmaxxing` (veya `xx`) `status`'ü çalıştırır; `switch` açık kalır.
+
+## Komutlar
+
+| Komut | Ne yapar |
+|---|---|
+| `tokenmaxxing init` | Mevcut hesabı içe aktarır, gözetmeni, hook'ları ve statusline'ı kurar |
+| `tokenmaxxing init --codex` | Codex için aynısı: oturumu içe aktarır, codex gözetmenini ve Stop hook'unu kurar |
+| `tokenmaxxing add` | Ek bir hesap kaydeder (izole oturum açma, havuza toplanmış) |
+| `tokenmaxxing add --codex` | Ek bir Codex hesabı kaydeder (izole oturum açma) |
+| `tokenmaxxing auth [sel \| --all]` | Havuzdaki bir hesabı yerinde yeniden kimlik doğrular. Sade hali havuzu listeler ve hangisini sorar; bir seçici tek bir hesabı hedefler ve hangi e-posta ile oturum açmanız gerektiğini söyler; `--all` yeniden kimlik doğrulama gereken her hesabı tek tek gezer |
+| `tokenmaxxing switch [sel]` | En iyi hesaba geçer (açgözlü, idempotent) veya belirli birini zorlar |
+| `tokenmaxxing switch --codex [sel]` | Codex havuzunu değiştirir (bir sonraki codex başlangıcında etkin olur) |
+| `tokenmaxxing ls` | Havuzdaki hesapları listeler |
+| `tokenmaxxing status` | 5s / haftalık / model başına kullanım çubuklarıyla hesaplar, aktif ve sıfırlanana kadar tükenmiş |
+| `tokenmaxxing status --force` | Ayrıca her hesaba ping atar (her birine ufak bir haiku isteği) böylece tüm 5s oturum zamanlayıcıları şimdi başlar, ardından taze örnekler |
+| `tokenmaxxing watch [saniye]` | Her N saniyede bir yeniden işlenen canlı durum (varsayılan 120, taban 30; asla ping atmaz) |
+| `tokenmaxxing config [get\|set\|unset\|tidy]` | Kaynaklarıyla birlikte etkin yapılandırma; noktalı anahtarları düzenler; `tidy` bilinmeyen anahtarları budar |
+| `tokenmaxxing check` | Geçiş kararını bir kez değerlendirir (periyodik zamanlayıcının çalıştırdığı budur) |
+| `tokenmaxxing serve [setup\|link\|unlink\|links]` | Slack köprüsü daemon'u (Socket Mode, genel URL yok) |
+| `tokenmaxxing doctor` | Gözetmenin ve ayar girişlerinin hayatta kaldığını doğrular |
+| `tokenmaxxing rename [--codex] <sel> <label>` | Havuzdaki bir hesabı yeniden etiketler |
+| `tokenmaxxing rm <sel>` | Havuzdan bir hesabı kaldırır |
+| `tokenmaxxing uninstall` | Gözetmeni ve ayar girişlerini kaldırır (hesaplar ve kimlik bilgileri korunur) |
+
+## Mimari
+
+tokenmaxxing, o adla çağrıldığında `claude` gözetmeni gibi davranan, dahili alt komutlar aracılığıyla hook ve statusline shim'lerini sunan ve bunun dışında CLI'yi yönlendiren tek bir çok işlevli giriş noktasıdır (`src/main.ts`). Doğrudan Bun altında çalışır; npm paketi bir derleme değil, TypeScript kaynağı gönderir.
+
+Hareketli parçalar:
+
+### Gözetmen shim'i
+
+`init`, `~/.config/tokenmaxxing/bin/` içine `claude` adlı 2 satırlık bir kabuk shim'i yazar ve o dizini PATH'in başına koyar. `claude` yazdığınızda, shim gözetmeni çalıştırır; gözetmen de gerçek claude ikili dosyasını devralınan stdio ve kaydedilmiş bir `stty -g` terminal anlık görüntüsüyle başlatır. Yalnızca bir süreç ve terminal yöneticisidir: asla API trafiğine aracılık etmez ve uçuş halindeki token'lara asla dokunmaz.
+
+Yazdırma modu çağrıları (`claude -p`, `--version`, `--help`), etkileşimli olmayan alt komutlar (`claude mcp`, `claude config` vb.) ve tokenmaxxing'in kendi probe'ları hiçbir oturum yönetimi olmadan doğrudan geçer. Etkileşimli bir oturum için gözetmen bir oturum kimliğini sabitler (bir tane üretir veya `--session-id` / `-r` / `-c` yoluyla ilettiğinizi yeniden kullanır), daha sonraki bir yeniden başlatmanın onları tekrar oynatabilmesi için başlatma bayraklarınızı kalıcılaştırır ve ardından o oturuma anahtarlanmış bir yeniden başlatma işaretçi dosyasını izler.
+
+### Statusline tee'si
+
+Claude Code her turda statusline'ın stdin'ine hız limiti verilerini (`rate_limits.five_hour` ve `rate_limits.seven_day`) iter. tokenmaxxing statusline yuvasına sahiptir, bu nedenle işleyicisi aynı zamanda ücretsiz, itmeye dayalı bir kullanım beslemesi görevi görür: her tikte toplam pencereleri artı aktif modeli `usage.json`'a tee'ler. Model başına üst sınırlar statusline stdin'inde değildir; yalnızca `claude -p '/usage'` (ücretsiz, sıfır token) üzerinden gelirler ve aktif model kapasite kısıtlı olduğunda bir TTL ile poll edilip `model-usage.json`'a önbelleğe alınır.
+
+Tee değişiklikte yazma ilkesine tabidir: rakamlar değişmediğinde yalnızca dosyanın mtime'ını yükseltir; bu da beslemenin canlılık nabzı görevi görür. Tazelik her zaman gömülü zaman damgasıyla değil, mtime ile değerlendirilir.
+
+### Stop hook ve geçiş
+
+Her tur sınırında Stop hook, geçiş kararını çalıştırır (bkz. [Geçişe nasıl karar verilir](#how-switching-decides)). Bir geçiş gerektiğinde, bir `flock(2)` özel kilidi altında gerçekleşir (macOS bir `flock(1)` ikili dosyası göndermediğinden `bun:ffi` üzerinden alınır) ve kimlik bilgisi yazımları ek olarak Claude Code'un kendi yenileme kilidiyle iç içe geçer. Kritik bölüm içinde tek bir geçiş:
+
+1. Mevcut canlı kimlik bilgisini gerçek sahibinin park edilmiş yedeğine toplar.
+2. Hedef hesabın taze yenilenmiş kimlik bilgisini canlı olan olarak kurar, kardeş durumun (örneğin MCP sunucusu başına OAuth token'ları) hayatta kalması için mevcut canlı blob'a birleştirir.
+3. Hedefin döndürülmüş token'ını kendi yedeğine kalıcılaştırır.
+4. `~/.claude.json` içindeki `oauthAccount` alanını atomik olarak yeniden yazar.
+5. Kilit serbest bırakılmadan önce yeni aktif etiketi commit'ler ve bayat kullanım anlık görüntülerini temizler, böylece bir çökme, kurulu kimlik bilgisini ve aktif etiketi asla farklı hesaplara işaret eder halde bırakamaz.
+
+Tüm varsayılan profil oturumları tek canlı kimlik bilgisini paylaştığından, tek bir geçiş her oturumu aynı anda taşır ve flock artı kilit altındaki bir yeniden denetim, yarışan hook'ların iki hesabı yakmasını önler.
+
+### Yerinde benimseme
+
+Çalışan bir claude oturumu, istekler arasında kimlik bilgisi deposunu poll eder: macOS'ta anahtar zincirini kısa bir önbellek üzerinden yeniden okur ve erişim token'larını karşılaştırır; Linux'ta kimlik bilgisi dosyasının mtime'ını istatistikler ve değişiklikte token önbelleklerini boşaltır. Net etki şudur: değiştirilen bir kimlik bilgisi, herhangi bir yeniden başlatma olmadan, macOS'ta yaklaşık 30 saniye içinde ve Linux'ta bir sonraki istekte her çalışan oturum tarafından benimsenir. Sade bir geçişin neden hiçbir işaretçi yazmadığı ve hiçbir yeniden başlatmayı tetiklemediği budur - oturum yeni hesapta yalnızca devam eder. Oturum içi `/usage` aynı token önbelleklerini paylaşır, bu nedenle hesap görünümü benimseme ile birlikte değişir.
+
+### Tükenmiş havuz beklemesi ve otomatik devam
+
+Yalnızca havuzdaki her hesap kendi çubuklarının üzerinde olduğunda Stop hook bir yeniden başlatma işaretçisi yazar (işaretçi şeması bir `waitUntil` zaman damgası gerektirir; sade bir geçiş asla bir tane üretemez). Gözetmen işaretçiyi görür, çocuğunu halihazırda commit edilmiş tur sınırında SIGTERM eder (Stop hook, transcript disk üzerinde olduktan ve claude boşta olduktan sonra çalışır, bu yüzden hiçbir şey kaybolmaz), terminali geri yükler, en yakın sıfırlamaya bir geri sayım gösterir ve ardından kurtarılan hesapta `claude --resume <session-id>` komutunu yeniden başlatır. Geri sayım sırasında Ctrl-C anında devam ettirir. Otomatik bekleme `policy.maxWaitMs` (varsayılan 1 saat) ile sınırlıdır; bunun ötesinde karar, beklemek yerine havuzu tükenmiş olarak bildirir.
+
+### Periyodik denetim zamanlayıcısı
+
+Hook'lar yalnızca tur sınırlarında tetiklenir ve uzun bir agentic tur, tek bir sınır olmadan bir pencereyi sağlıklıdan tükenmişe yakabilir. Bu nedenle `init` ayrıca, tur etkinliğinden bağımsız olarak her 180 saniyede bir `tokenmaxxing check` çalıştıran periyodik bir zamanlayıcı (macOS'ta bir launchd agent, Linux'ta bir systemd kullanıcı zamanlayıcısı) kurar.
+
+### SessionStart hook
+
+Bir oturum başladığında veya devam ettiğinde aynı değerlendirmeyi çalıştırır, böylece taze bir oturum doğru hesapta başlar. Geçiş sonrası bekleme süresi, bir yeniden başlatmanın hemen ardından bunu doğru bir işlemsiz (no-op) yapar.
+
+## Geçişe nasıl karar verilir [#how-switching-decides]
+
+Kararın iki katmanı vardır: bir devreye girme kapısı ve ardından açgözlü veya sert bir yol.
+
+### Devreye girme
+
+`policy.greedySessionFloor` altında (varsayılan 50, 5 saatlik oturum penceresinin yüzdesi olarak) karar hiç çalışmaz - taze bir oturum kendi hesabında ilerler. Aktif oturum penceresi %50 kullanıldığında veya herhangi bir sert çubuk aşıldığında karar devreye girer.
+
+### Eleme çubukları
+
+Eşikler panik tetikleyicisi değil, eleme çubuklarıdır:
+
+- `thresholds.session`: 95. Bir 5 saatlik sıfırlamayı beklemek ucuzdur, bu nedenle oturum penceresi daha erken başka bir hesaba geçer.
+- `thresholds.weekly`: 98. Bu tek çubuk hem 7 günlük toplamı hem de her model başına haftalık üst sınırı kapsar. Haftalık kota kullan ya da kaybet ilkesine tabidir, bu yüzden duvara yakın tükenir.
+
+Her ikisi de kasıtlı olarak 100'ün altındadır: boşluk, hesap gerçekten limitine ulaşmadan önce temiz bir tur sınırına ulaşma bütçesidir (artı macOS'ta bir tura kadar benimseme gecikmesi). Aynı çubuklar geçiş adaylarını eler: çubuklarından herhangi birinin üzerinde olan bir hesap geçerli bir hedef değildir. Tetikleyici ve eleme her zaman aynı etkin çubukları kullanır (eşikler eksi `policy.projectionMargin`), çünkü tetikleyiciden daha gevşek bir eleme, geçişleri tetikleyicinin hemen yeniden işaretlediği hesaplara indirir ve havuzu ileri geri sektirir.
+
+### Hedef: tempo baskısı
+
+Kullanılabilir hesaplar arasında hedef, kendi haftalık temposunun en gerisinde kalandır: en yüksek **tempo baskısı**, kalan haftalık yüzdenin o hesabın haftalık sıfırlamasına kalan süreye bölümü olarak tanımlanır. Kaybedilmek üzere en fazla kotaya sahip hesap kazanır. Beraberlikler önce en yakın haftalık sona erme, ardından en düşük 7 günlük kullanımla çözülür.
+
+Her şey mutlak UTC epoch'ları olarak saklanan önbelleğe alınmış pencereler üzerinden çalışır, bu yüzden bayat bir anlık görüntü bile doğru çözülür: geçmiş bir haftalık sıfırlama tam 7 günlük adımlarla ileriye doğru dışdeğerlenir ve önbelleğe alınmış sıfırlamasını geçmiş herhangi bir pencere taze boş sayılır (asla geçiş nedeni değil, asla bir hesabı yedekte tutma nedeni değil).
+
+### Açgözlü ve sert yol karşılaştırması
+
+- **Açgözlü yol** (devrede, ancak her çubuğun altında): mevcut dahil her hesabı sıralar. Mevcut hesap zaten kazanıyor veya berabere kalıyorsa hiçbir şey yapmaz. Aksi halde kesinlikle daha iyi hesaba geçer. Asla beklemez ve asla önceden park etmez - kullanılabilir bir mevcut hesap bir bekleme karşılığında takas edilmez. Mevcut hesap da sıralandığından, hem otomatik yol hem de sade `tokenmaxxing switch` idempotenttir: periyodik değerlendirme doğru hesapta yakınsar ve ardından yerinde kalır.
+- **Sert yol** (bir çubuk aşıldı): en iyi kullanılabilir adaya geçer. Bir adayın yenileme token'ı ölü çıkarsa, yeniden kimlik doğrulama gerekli olarak işaretlenir ve bir sonraki aday denenir. Hiçbir şey kullanılabilir değilse, tükenmiş bekleme mantığı çalışır; yalnızca oturumu gerçekten duraklatabilen bir çağırıcının (gözetimli Stop hook) hâlâ engellenmiş ancak en yakında kurtulacak bir hesaba önceden park etmesine izin verilir.
+
+### Model başına üst sınırlar
+
+`policy.switchModels` (varsayılan `["fable"]`), model başına haftalık üst sınırı bir geçişi tetikleyebilen model ailelerini adlandırır. Eşleştirme, kesin görünen dizeyle değil, aile token'ıyla yapılır: model görünen adları kayar ("Fable", "Fable 5" oldu) ve kesin dize eşleştirmesi bir keresinde model başına geçişi sessizce tamamen devre dışı bıraktı. İlgili iki güvenlik kuralı:
+
+- Bilinmeyen bir aktif model, yapılandırılmış her aileyi kapar. Bir geçişin anlık görüntüleri temizlemesinin hemen ardından, başsız bir makine model körü çalışabilir; bilinmeyeni kısıtsız olarak ele almak bir keresinde bir hesabın saatlerce fark edilmeden Fable üst sınırında kalmasına neden oldu.
+- Aday elemesi kapatılmış model başına üst sınırları da sayar, bu nedenle her hesabın Fable üst sınırını yaktığı bir havuz sırayla dönüş yapmaz.
+
+### Bekleme süresi
+
+Otomatik yolu, geçiş sonrası 45 saniyelik bir bekleme süresi kapar. Statusline tee'si bir geçişten sonra aynı 45 saniye boyunca bastırılır (benimseme macOS'ta 30 saniyeye kadar sürer), böylece daha erken bir değerlendirme, geçişin kendisinin geçersiz kıldığı veriler üzerinde çalışırdı - tam olarak o senaryo bir keresinde A'dan B'ye ve geri bir yeniden başlatma döngüsü üretti. Manuel `tokenmaxxing switch` bekleme süresinden etkilenmez.
+
+## Yapılandırma
+
+Yapılandırma `~/.config/tokenmaxxing/config.json` konumunda JSON'dur. Her alan isteğe bağlıdır; varsayılanlar alan başına uygulanır.
+
+```json
+{
+  "thresholds": { "session": 95, "weekly": 98 },
+  "policy": {
+    "projectionMargin": 0,
+    "greedySessionFloor": 50,
+    "switchModels": ["fable"],
+    "usagePollTtlMs": 90000,
+    "maxWaitMs": 3600000
+  }
+}
+```
+
+- `thresholds.session` / `thresholds.weekly`: yukarıda açıklanan eleme çubukları.
+- `policy.projectionMargin`: etkin çubukları oluşturmak için her iki çubuktan çıkarılır.
+- `policy.greedySessionFloor`: açgözlü yakınsamanın devreye girdiği oturum-kullanılmış yüzdesi.
+- `policy.switchModels`: model başına haftalık üst sınırı bir geçişi kapatan model aileleri (girişler yüklemede küçük harfe çevrilir).
+- `policy.usagePollTtlMs`: bir `/usage` model başına poll'ünün ne kadar süre taze kaldığı.
+- `policy.maxWaitMs`: tükenmiş havuz otomatik bekleme sınırı.
+
+`tokenmaxxing config` etkin yapılandırmayı kaynaklarıyla gösterir; `config set`/`unset` noktalı anahtarları düzenler; `config tidy` bilinmeyen anahtarları budar.
+
+## Kimlik bilgisi depolama ve güvenlik modeli
+
+Tüm durum `~/.config/tokenmaxxing/` içinde yaşar. Kimlik bilgisi G/Ç'si tek bir platforma özgü seçilmiş depo cephesinden geçer; çağrı yerleri asla platforma göre dallanmaz.
+
+**macOS**: kimlik bilgileri, Claude Code'un onları tuttuğu yerle eşleşecek şekilde, oturum açma anahtar zincirinde generic-password öğeleri olarak yaşar. Canlı öğe claude'un okuduğu öğedir; her havuzdaki hesabın yedeği kendi `tokenmaxxing-cred-<uuid8>` anahtar zinciri öğesi olarak park edilir. Disk üzerinde hiçbir şey düz metin değildir. Okumalar `security find-generic-password -w` kullanır (sır yalnızca stdout'ta görünür); yazımlar bir `add-generic-password` satırını stdin üzerinden `security -i`'ye borular, böylece sır hiçbir sürecin argv'sinde asla görünmez. Etkileşimli mod yaklaşık 4 KB'lık bir satır arabelleğine sahiptir, bu nedenle aşırı boyutlu blob'lar bir argv yazımına geri döner - park edilmiş öğelerin yalnızca minimal OAuth nesnesini saklamasının bir nedeni.
+
+**Linux**: Claude Code kimlik bilgilerini bir 0600 düz metin dosyası olarak saklar ve tokenmaxxing aynı modeli izler: canlı dosya claude'un kendi `.credentials.json` dosyasıdır ve park edilmiş yedekler `~/.config/tokenmaxxing/creds/` altında bir 0700 dizininde atomik 0600 dosyalarıdır. Burada atomik, geçici dosyaya yaz, fsync, ardından yeniden adlandır anlamına gelir: eşzamanlı bir okuyucu her zaman kısmi bir dosyayı değil, bütün eski veya bütün yeni bir dosyayı görür.
+
+Geçişin uyguladığı güvenlik kuralları:
+
+- **Gerçek sahibe göre toplama.** Bir geçişten önce, canlı kimlik bilgisinin gerçek sahibi, token'ın hangi organizasyona ait olduğu API'ye sorularak çözülür (OAuth roles endpoint'ine karşı `fetchTokenOrg`) - asla kayabilen depolanmış aktif etikete güvenilerek değil. Kayan bir etiket bir keresinde bir hesabın toplamasının başka bir hesabın tek yedeğinin üzerine yazmasına neden oldu. Canlı kimlik bilgisi havuz dışındaki bir hesaba aitse, geçiş üzerine yazmak yerine tamamen reddeder.
+- **Tek kritik bölüm.** Toplama, yeni kimlik bilgisinin kurulumu, döndürülmüş token'ının yedeklenmesi, `~/.claude.json` hesap geçişi ve aktif etiket commit'i, hepsi aynı kilitli bölüm içinde gerçekleşir.
+- **Claude'un kendi yenilemesiyle iç içe geçme.** Süresi yakında dolacak bir oturum kendi token'ını herhangi bir anda döndürebilir, bu nedenle kimlik bilgisi yazımları da Claude Code'un yenileme kilidini alır (en iyi çaba, bayat kilit geri kazanımı ve sınırlı bir zaman aşımı ile).
+- **Ölü yetkilendirmeler temiz bir şekilde bozulur.** `invalid_grant` olarak geri dönen bir yenileme, o hesabı yeniden kimlik doğrulama gerekli olarak işaretler ve hata yayılmadan önce bayrağı kalıcılaştırır, böylece yeniden deneme döngüleri aday kümesini küçültür ve sonlanır. `tokenmaxxing auth` işaretlenmiş bir hesabı yerinde düzeltir ve onarılan hesaptan farklı bir hesaba inen bir oturum açmayı reddeder.
+- **Token günlüğe kaydı yok.** Token'lar asla günlüklerde, hatalarda veya çıktıda görünmez. Token ve kullanım endpoint'lerinden gelen hata gövdeleri asla ham olarak yüzeye çıkarılmaz; yalnızca izin listesindeki bir alan kümesi hayatta kalır, çünkü bir token endpoint'inin başarısızlık gövdesi istek materyalini yankılayabilir.
+- **Probe hijyeni.** Başlatılan herhangi bir `claude` probe'u, claude'un anahtar zinciri aramasından önce dikkate aldığı sekiz ortam değişkenini temizler (`ANTHROPIC_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN`, `CLAUDE_SECURESTORAGE_CONFIG_DIR` vb.), böylece bir probe asla yanlış hesaba atfedilemez.
+
+## Platform notları: macOS ve Linux karşılaştırması
+
+| | macOS | Linux |
+|---|---|---|
+| Canlı kimlik bilgisi | Oturum açma anahtar zinciri generic-password öğesi | 0600 `.credentials.json` dosyası |
+| Park edilmiş kimlik bilgileri | Hesap başına anahtar zinciri öğeleri | 0700 dizininde 0600 dosyaları |
+| Bir geçişten sonra benimseme | ~30 saniye içinde (anahtar zinciri okuma önbelleği) | Sonraki istek (dosya mtime poll'ü) |
+| Periyodik denetim | launchd agent, her 180s | systemd kullanıcı zamanlayıcısı, her 180s |
+| İzole oturum açma deposu | Yapılandırma dizini başına hash ad alanlı anahtar zinciri hizmeti | İzole yapılandırma dizini içinde bir dosya |
+
+Bilmeye değer iki Linux'a özgü ayrıntı: claude kimlik bilgisi dizinini önce `CLAUDE_SECURESTORAGE_CONFIG_DIR`'den (ardından `CLAUDE_CONFIG_DIR`, ardından `~/.claude`) çözer ve tokenmaxxing o çözümlemeyi tam olarak taklit eder, böylece ikisi asla senkronizasyonu kaybetmez. Ve aynı claude sürümünün iki OS derlemesi `/usage` sıfırlama saatlerini farklı biçimlendirir (biri " at " birleştirmesi, diğeri bir virgül kullanır); tokenmaxxing'in ayrıştırıcısı tam olarak bu iki formu kabul eder ve herhangi bir üçüncüsünde tahmin etmek yerine günlüğe kaydeder.
+
+macOS'ta bir dürüst kısıtlama: `init` ve `add` anahtar zincirine kasıtlı olarak etkileşimli dokunur, böylece ilk `security` erişimi başsız bir hook içinde soğuk değildir.
+
+## Statusline
+
+tokenmaxxing, Claude Code'un statusline'ını yerel olarak işler (kullanım beslemesini tee'lerken). Tasarım ilkesi: kota sayılarda değil, renkte taşınır. Bir satır, örneğin:
+
+```
+tm-wt-demo Fable 5 (high) +156/-23  ◆ 𝒇 2h 1d  ◇ 19h  ◇ 𝒇 2d  ◇ full  ✗ ?
+```
+
+- Her pencere token'ı sıfırlanma süresidir, kullanılan yüzdeye göre sürekli bir yeşil-sarı-kırmızı rampasında boyanır (terminal desteklediğinde truecolor, aksi halde 256 renkli küpe basamaklanmış). Rampa 0 için saf yeşilde, 75'te sarıda ve 95 ve üzerinde kırmızıda sabitlenir, böylece eski önem bantları rampa çıpaları olarak hayatta kalır.
+- Model adı aynı rampada bağlam penceresi doluluğuyla boyanır.
+- Yeşil bir `◆` aktif hesabın pencerelerine öncülük eder; her park edilmiş hesap kendi camgöbeği `◇`'sini alır (yeniden kimlik doğrulama gerekiyorsa kırmızı `✗`). Hesaplar en yakın gelecek sıfırlamaya göre sıralanır.
+- Model başına, her blokta çıplak boyanmış bir baş harf olarak ilk gelir: Fable `𝒇` olarak işlenir; diğer aileler her zaman aile eşleştirmeli olarak büyük harfe çevrilmiş ilk harflerini kullanır.
+- Dokunulmamış bir park edilmiş hesap yeşil bir `full` işler. Bilinmeyen sıfırlamalı ölçülmüş kullanım boyanmış bir `?` işler ve kapatılmış bir modeldeki ölçülmemiş bir model başına üst sınır boyanmamış bir `𝒇?` işler - ölçülmemiş olan asla güvenli görünmemelidir.
+- Sıfırlama geri sayımları yalnızca en büyük birimi gösterir, asla "now" veya "0m" değil; gelecek sıfırlaması olmayan bir pencere yeşil bir `0` işler (tekrar boş).
+- Bağlı bir git worktree'sinin base adı satıra öncülük eder; ana bir checkout orada hiçbir şey işlemez. Algılama dosya sistemini bir `.git` dosyası için okur ve asla bir git alt süreci başlatmaz.
+- `NO_COLOR` ayarlı olduğunda satır, birleştirilmiş sayısal bir biçime geri döner (`2h5`, 2 saatte sıfırlanır, %5 kullanılmış demektir; bağlam doluluğu için `ctx 42`) - renk olmadan, tükenmiş bir pencere taze görünmemelidir.
+
+Alt agent görevleri, claude'un subagentStatusLine yüzeyi aracılığıyla kendi panel satırlarını alır: aktif görev başına bir satır, o görevin bağlam doluluğuyla boyanmış aile adı.
+
+## Codex desteği
+
+Aynı havuzlama, OpenAI'nin Codex CLI'si için, kendi ChatGPT aboneliği hesaplarınıza karşı çalışır:
+
+```sh
+tokenmaxxing init --codex   # mevcut codex oturumunuzu içe aktarın + codex gözetmenini ve Stop hook'unu kurun
+tokenmaxxing add --codex    # başka bir hesaba izole olarak oturum açın - birincil oturumunuza dokunulmaz
+codex                       # codex'i her zamanki gibi kullanın
+```
+
+Codex havuzu tamamen paralel durumdur: kendi hesap indeksi, kendi park edilmiş kimlik bilgisi dosyaları (codex'in kendi deposu bir düz metin dosyası olduğundan her iki platformda da 0600 dosyaları), kendi kilidi, kendi son geçiş zaman damgası. Karar politikası kodu dışında Claude havuzuyla hiçbir şey paylaşılmaz.
+
+### Codex'te anında geçiş neden imkansızdır
+
+Çalışan bir codex süreci belleğinde tek bir kimlik yöneticisini tutar ve artık farklı bir hesabı adlandırdığında `auth.json`'ı yeniden yüklemeyi açıkça reddeder. Dosya izleyici ve istek başına kimlik bilgisi poll'ü yoktur, bu nedenle çalışan bir codex'in altından değiştirilen bir kimlik bilgisi çıkarım için basitçe asla etkin olmaz. Yeniden başlatma geçiştir: `codex resume <session-id>` yerel transcript'i `auth.json`'ın artık hangi hesabı tuttuysa onda sürdürür.
+
+tokenmaxxing bunu bir codex gözetmen shim'iyle ele alır: Stop hook her tur sınırında aynı açgözlü tempo baskısı kararını çalıştırır ve değiştirdiğinde, gözetmenin oturumu commit edilmiş sınırda SIGTERM etmesini ve taze hesapta transcript bozulmadan `codex resume <session-id>` komutunu yeniden başlatmasını sağlayan bir işaretçi yazar. Her codex geçişi görünür bir yeniden başlatma olduğundan, codex açgözlü yolu 1.2x'lik bir iyileştirme marjı taşır: bir meydan okuyucunun mevcut hesabın tempo baskısını kıl payıyla değil, %20 geçmesi gerekir. Sert yol (aşılmış bir çubuk) marjı yok sayar. Codex için tükenmiş havuz geri sayımı da yoktur - hiçbir şey bir codex oturumunu duraklatamaz - bu yüzden tamamen tükenmiş bir codex havuzu yerinde kalır.
+
+Diğer codex'e özgü mekanikler:
+
+- Kullanım, codex'in kendi hız limiti endpoint'ine karşı ücretsiz kimlik doğrulamalı bir GET'ten okunur (CLI'nin `/status`'ünün yaptığı çağrının aynısı): yüzdeler artı mutlak epoch sıfırlama süreleri, toplam pencereler ve model başına üst sınırlar dahil. Pencere sınıflandırması asla konum güdümlü değil, süre güdümlüdür, çünkü mevcut planlarda hiç 5 saatlik pencere olmayabilir ve haftalık pencere birincil yuvada oturur.
+- Codex yenileme token'ları döner ve süresi geçmiş birini yeniden kullanmak tüm yetkilendirme ailesini öldürür. Her döndürme geri döndüğü an kalıcılaştırılır, aktif hesap yalnızca canlı blob üzerinden örneklenir (asla bayat park edilmiş bir kopya değil) ve oturum başına varlık dosyaları, canlı bir kardeş oturumda çalışan bir hesabın asla bir geçiş hedefi olmamasını ve park edilmiş token'ının asla yenilenmemesini sağlar.
+- Codex, dosya kimlik bilgisi deposunu gerektirir: `init --codex`, keyring deposu sabitlenmişse hızla başarısız olur ve `add --codex`, oturum açmanın toplanabilir inmesi için izole başlatma home'una dosya modu ayarını yazar.
+- Bir manuel adım: codex, güvenmesi söylenmemiş hook'ları atlar. `init --codex`'ten sonra codex'i bir kez açın ve tokenmaxxing Stop hook'una `/hooks` aracılığıyla güvenin, aksi halde otomatik geçiş sessizce inert kalır. `init --codex` bu hatırlatmayı yazdırır.
+
+## Slack köprüsü: xx serve
+
+`tokenmaxxing serve`, Socket Mode üzerinden yerel bir Slack daemon'u çalıştırır - genel URL gerekmez. Kurulum:
+
+```sh
+tokenmaxxing serve setup                    # uygulama manifest'ini yazdırır, iki token'ı ister
+tokenmaxxing serve link <channel-id> <repo> # bir kanalı bir repo checkout'una bağlar
+tokenmaxxing serve                          # daemon'u çalıştırır
+```
+
+Bağlı bir kanalda bot'tan bahsedin (mention) ve o thread için, bağlı repo checkout'unda bir Claude Code oturumu açar. Her thread mesajı `resume` ile bir Agent SDK `query()` çalıştırır - asla kalıcı bir streaming query değil - böylece `ensureBestAccount()` havuzu her tek turda yeniden değerlendirir ve daemon thread'leri kaybetmeden yeniden başlatabilir (thread kayıtları kalıcıdır; daemon başlangıçta onlara yeniden abone olur).
+
+Dikkat çekici davranış:
+
+- **Streaming**: yanıtlar Slack'e yerel olarak akar; düşünme ve araç çalıştırmaları için görev kartları, vurgulamayla işlenmiş çitli kod, maliyet ve süreyle bir kapanış "Turn" kartı ve bir araç çalıştırması akan metni kesintiye uğrattığında açılan yeni bir Slack mesajı ile, böylece bir tur araç çalıştırmalarının etrafında ayrı mesajlar olarak okunur. TodoWrite çağrıları tek bir kararlı kontrol listesi kartını yerinde günceller.
+- **İzinler**: bağlantı başına `permissionMode` varsayılan olarak `acceptEdits`'tir; `--yolo` (takma ad `--dangerous`) bir bağlantıyı `bypassPermissions`'a dahil eder. Etkileşimli diyaloglar aktarılan turlarda izin verilmez - kimse birini Slack üzerinden yanıtlayamaz - bu yüzden model düzyazıyla sorar ve thread yanıtınız bir sonraki turdur. Paketlenmiş bir plugin skill'i, bir karara ihtiyaç duyduğunda talep edeni etiketlemeyi ve turu bitirmeyi ona öğretir.
+- **Slash komutları**: kırpılmış metni `/` ile başlayan bir thread mesajı bir claude slash komutu olarak çalışır. Slack'in besteleyicisi `/` ile başlayan mesajları yer, bu yüzden mention-önce formunu (`@bot /usage`) veya öndeki bir boşluğu kullanın.
+- **Nazik kapatma**: SIGTERM/SIGINT boşaltır - yeni turlar yüksek sesle düşürülür, uçuş halindeki turlar 5 dakikaya kadar alır ve claude çocuğu kendi süreç grubunda ayrık (detached) çalışır, böylece bir terminal Ctrl-C boşaltma turu korumadan önce onu öldüremez.
+- **Thread temizliği**: işin bittiğini söylediğinizde, model süreç içi bir `finish_thread` aracını çağırır; tur tamamen bittikten sonra daemon thread kaydını düşürür, aboneliği iptal eder ve bir onay gönderir. Taze bir mention yeni bir oturum başlatır.
+- **Hata hijyeni**: tur hataları asla ham hata gövdeleri değil, kırpılmış yalnızca-mesaj metni gönderir.
+
+## Agent SDK yüzeyi
+
+Paketin programatik giriş noktası (`exports["."]` `src/sdk.ts`'i işaret eder), tokenmaxxing'i kendi havuzlanmış hesaplarınıza karşı oluşturduğunuz agent'lar için Claude Agent SDK ile eşleştirir. Uygulamanız Bun altında çalışmalıdır (tokenmaxxing TypeScript kaynağı gönderir ve `bun:ffi` kullanır).
+
+```ts
+import { query } from "@anthropic-ai/claude-agent-sdk";
+import { ensureBestAccount, pooledOptions, stopHookCheck } from "tokenmaxxing";
+
+await ensureBestAccount(); // run the switch decision before the spawn
+
+for await (const message of query({
+  prompt: "...",
+  options: {
+    ...pooledOptions(), // pinned real claude + scrubbed env
+    hooks: { Stop: [{ hooks: [stopHookCheck] }] }, // re-decide at every turn boundary
+  },
+})) {
+  // capture the session id from the init message for `resume` across swaps
+}
+```
+
+Agent SDK, `query()` başına bir claude alt süreci başlatır ve kimlik bilgilerini başlatmada bir kez okur - statusline yok, query ortası anında geçiş yok - bu nedenle entegrasyon sınır güdümlüdür:
+
+- `ensureBestAccount()`, CLI hook'larının ve zamanlayıcının çalıştırdığı kararın aynısıdır (çubuklar, tempo baskısı, bekleme süresi, hepsi paylaşılan kod), asla öngörücü değil: bir SDK oturumu asla tükenmiş bir geri sayım için duraklatılamaz.
+- `pooledOptions()`, `pathToClaudeCodeExecutable`'ı gerçek claude ikili dosyasına sabitler (asla gözetmen sarmalayıcısına değil) ve her ortam kimlik bilgisi geçersiz kılmasının temizlendiği tam bir değiştirme `env`'i sağlar. Uygulamanızın ortamında `CLAUDE_CONFIG_DIR` veya `CLAUDE_SECURESTORAGE_CONFIG_DIR` ayarlıysa hızla başarısız olur: Linux'ta bir geçiş, canlı kimlik bilgisini bunların işaret ettiği yere yazarken temizlenmiş alt süreç varsayılan depoyu okur; sessiz bir yanlış hesap senkronizasyon kaybı.
+- `stopHookCheck` kararı tur sınırlarında yeniden çalıştırır; indirdiği bir geçiş bir sonraki başlatmada etkin olur. Yeniden fırlatmak yerine kendi hatalarını yakalar (stderr'e ve günlüğe kaydeder), çünkü ele alınmamış bir hook istisnası agent'ı kesintiye uğratabilir ve bozuk bir geçiş denetimi yüzünden bir turu iptal etmek, mevcut hesapta ilerlemekten daha pahalıya mal olur.
+
+`sdk.ts` Agent SDK'nın kendisinden hiçbir şey içe aktarmaz; değerleri SDK'nın seçeneklerine yapısal olarak yayılır.
+
+## Kişisel kullanım ve hizmet şartları [#personal-use-and-terms-of-service]
+
+tokenmaxxing, sahip olduğunuz hesapları, kendi çalıştırdığınız oturum ve agent'larda havuzlar. Bu ifade kasıtlıdır: Anthropic, üçüncü taraf ürünlerin claude.ai oturum açmasını veya claude.ai hız limitlerini sunmasına izin vermez ve buna Agent SDK üzerine inşa edilen agent'lar dahildir. Havuzlanmış SDK yüzeyini veya onun üzerine inşa edilen hiçbir şeyi üçüncü taraflara göndermeyin. tokenmaxxing ayrıca kota verileri için OAuth'u yeniden uygulamak veya API trafiğine aracılık etmek yerine kasıtlı olarak CLI aracılı `/usage` yolunda kalır: bu bir proxy değildir ve dokunduğu tek OAuth endpoint'leri bir geçiş sırasında kullanılan standart yenileme yetkilendirmesi ve bir token'ın gerçekte hangi hesaba ait olduğunu doğrulayan salt okunur bir kimlik denetimidir (roles endpoint'i).
+
+## Dürüst kısıtlamalar
+
+- **Bir soğuk tur.** Prompt önbelleği organizasyon kapsamlıdır, bu nedenle yeni bir hesaptaki ilk tur bağlamı bir kez yeniden yükler.
+- **Tükenme-duraklaması aksaklığı.** Yalnızca tamamen tükenmiş bir havuz oturumu geri sayım için durdurur; o an içinde yazılan her şey kaybolur.
+- **Benimseme gecikmesi.** macOS'ta bir geçişten ~30 saniye içindeki ilk tur hâlâ eski hesabı ölçebilir; çubukların boşluğu bunu emer.
+- **Paylaşılan etki alanı.** Tüm varsayılan profil oturumları tek bir canlı kimlik bilgisini paylaşır, bu nedenle bir geçiş hepsini birlikte taşır (her biri yerinde benimser).
+- **Linux'ta düz metin kimlik bilgileri.** Claude Code'un kendisi Linux kimlik bilgilerini bir 0600 düz metin dosyası olarak saklar; tokenmaxxing'in park edilmiş kopyaları aynı modeli izler.
+
+## Sorun giderme ve SSS
+
+**`claude` gözetimli görünmüyor.**
+`tokenmaxxing doctor` çalıştırın. Shim PATH çözümlemesini kazanmalıdır; kabuk rc'nizdeki `# tokenmaxxing PATH` satırının mevcut bin dizinine işaret ettiğini ve gerçek claude'un önünde durduğunu denetleyin. `doctor` ayrıca sarmalayıcıyı gölgeleyen `alias claude=...` veya bir `claude()` kabuk fonksiyonu hakkında ve bir claude ikili dosyasını mutlak yolla başlatan takma adlar (bunlar gözetmeni tamamen atlar) hakkında uyarır.
+
+**Codex'te otomatik geçiş asla tetiklenmiyor.**
+Codex, güvenmesi söylenmemiş hook'ları atlar. Codex'i açın, `/hooks` çalıştırın ve tokenmaxxing Stop hook'una güvenin. Güven, hook'un hash'ine karşı kaydedilir, bu nedenle hook düzenlenirse yeniden verilmelidir.
+
+**Statusline'da bir hesap kırmızı bir `✗` gösteriyor.**
+Yenileme token'ı ölü (iptal edilmiş veya yedeğinin altından döndürülmüş). Onu yerinde yeniden kimlik doğrulamak için `tokenmaxxing auth <sel>` çalıştırın; komut hangi e-posta ile oturum açmanız gerektiğini söyler ve farklı bir hesaba inen bir oturum açmayı reddeder.
+
+**Neden en fazla kalan kotaya sahip hesaba geçmiyor?**
+Çünkü kota kaybetme riski en yüksek hesap o değildir. Hedef, kendi haftalık temposunun en gerisinde kalan hesaptır: kalan yüzdenin haftalık sıfırlamasına kalan süreye bölümü. Eşit miktarda kalan ile bu önce en yakın sona ermeye indirgenir ve eşit sona erme ile önce en fazla kalana.
+
+**Az önce geçti ve statusline hâlâ eski hesabı gösteriyor.**
+macOS'ta ~30 saniyeye kadar beklenir: çalışan oturum, değiştirilen kimlik bilgisini bir sonraki kimlik bilgisi önbellek yenilemesinde benimser. Kullanım tee'si tam olarak bu nedenle bir geçişten sonra 45 saniye boyunca bastırılır.
+
+**`status --force` bir maliyeti var mı?**
+Evet, kasıtlı olarak: her hesaba minimal ölçülen bir haiku isteği gönderir, böylece her 5 saatlik oturum penceresi atıl yatmak yerine o anda başlar, ardından taze örnekler. Sade `status` ve `watch` asla ping atmaz; `/usage` okumaları ücretsizdir. Sunucu kullanım beslemesinin taze açılmış bir pencereyi saniyelerden dakikalara kadar geciktirebileceğini unutmayın, bu nedenle ping'in hemen ardından bir probe hâlâ ping öncesi durumu gösterebilir - `status`, ping'in başarısız olduğunu iddia etmek yerine bir not işler.
+
+**`/usage` probe'u aktif hesap için hiçbir şey döndürmedi.**
+Bu bilinen bir claude davranışıdır: dahili kullanım getirmesi başarısız olduğunda veya hız sınırlandığında, `/usage` yalnızca yerel oturum istatistiklerini yüzde satırları olmadan yazdırır. tokenmaxxing tam olarak bundan kaçınmak için aktif hesabı statusline itmesinden örnekler ve yalnızca park edilmiş hesapları probe eder.
+
+**Arka plan claude oturumları.**
+Claude'un arka plan daemon'u gerçek sürümlü ikili dosyayı mutlak yolla başlatır, PATH shim'lerini atlar, bu nedenle arka plan oturumları gözetimsizdir. Hook'lar hâlâ `settings.json` aracılığıyla tetiklenir ve kimlik bilgisi benimsemesi artı periyodik zamanlayıcı geçişi kapsar, ancak onlar için işaretçi güdümlü yeniden başlatma yoktur.
+
+**Bir keresinde bir şey çok sayıda süreç başlattı. Bu hâlâ mümkün mü?**
+Gözetmen tam olarak o tarihsel başarısızlığa karşı katmanlı özyineleme korumaları taşır (gerçek claude olarak sabitlenmiş bayat bir sarmalayıcı): ortamda 5 seviyede iptal eden bir derinlik nöbetçisi, disk üzerinde bir başlatma-hızı sınırlayıcı, tokenmaxxing'in kendi bin dizinine geri çözülen herhangi bir adayı reddeden realpath kimlik denetimleri ve yapılandırılmış bir claude yolu artık mevcut olmadığında sert bir başarısızlık (asla sessiz bir PATH taraması değil). `init` ve `doctor`, bir adayı sabitlemeden önce `--version` çalıştırarak gerçekten claude olduğunu doğrular.
+
+**Kaldırma.**
+`tokenmaxxing uninstall`, gözetmen shim'lerini, ayar girişlerini ve periyodik zamanlayıcıyı kaldırır ve hesaplarınızı ile park edilmiş kimlik bilgilerinizi bozulmadan bırakır. Yalnızca kendisine ait olarak tanıdığı statusline girişlerini kaldırır.
+
+## Lisans
+
+MIT. Kaynak: [anaclumos/tokenmaxxing](https://github.com/anaclumos/tokenmaxxing).

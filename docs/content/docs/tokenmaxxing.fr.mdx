@@ -1,0 +1,359 @@
+---
+title: tokenmaxxing
+description: "Bascule automatique de comptes Claude Code : regroupez vos propres comptes d'abonnement et échangez les identifiants à chaud lorsque le quota se remplit, en gardant chaque session continuable."
+---
+
+tokenmaxxing est un CLI pour la bascule automatique de comptes Claude Code. Il regroupe plusieurs comptes d'abonnement (Pro/Max) que vous possédez et échange à chaud les identifiants actifs vers un compte plus frais lorsque celui en cours d'utilisation approche d'une limite d'utilisation. Vous lancez `claude` exactement comme d'habitude ; la bascule se produit à une frontière de tour sûre et votre session en cours poursuit la même conversation sur le nouveau compte sans redémarrage. Cela fonctionne sur de nombreuses sessions simultanées à la fois.
+
+Le seul comportement visible correspond au pire des cas : lorsque tout le pool est à sa limite, la session se met en pause avec un compte à rebours et reprend automatiquement sur le prochain compte qui se réinitialise (Ctrl-C reprend immédiatement).
+
+<Callout>
+Périmètre : Claude Code sur macOS et Linux, ainsi que le CLI Codex d'OpenAI comme second pool parallèle. Il regroupe des comptes d'abonnement, pas des clés d'API. C'est un outil à usage personnel pour regrouper des comptes que vous possédez, dans des sessions et des agents que vous exécutez vous-même (voir [Usage personnel et conditions d'utilisation](#personal-use-and-terms-of-service)).
+</Callout>
+
+## Le problème
+
+Un abonnement Claude mesure trois limites à la fois (toutes confirmées via `/usage`) :
+
+- **Session en cours** : une fenêtre glissante de 5 heures.
+- **Semaine en cours (tous modèles)** : un agrégat sur 7 jours.
+- **Semaine en cours, par modèle** : des plafonds hebdomadaires distincts pour chaque famille de modèles. Ils n'existent actuellement que pour Sonnet et Fable, et seul le plafond de Fable est assez serré pour compter : il se déclenche bien avant l'agrégat. Une machine peut être à 50 % du plafond hebdomadaire global tout en étant déjà à 80 % du plafond hebdomadaire de Fable.
+
+Le quota hebdomadaire fonctionne selon le principe du tout ou rien : ce qu'un compte n'a pas consommé avant sa réinitialisation hebdomadaire fixe est perdu. Si vous possédez plusieurs comptes, la stratégie rationnelle consiste à continuer de consommer le quota du compte le plus en retard sur son propre rythme hebdomadaire, et à basculer avant qu'une seule limite ne touche le mur en pleine session.
+
+Le faire à la main implique de se déconnecter, de se reconnecter et de perdre votre conversation. tokenmaxxing l'automatise : un `claude` en cours d'exécution revérifie son magasin d'identifiants entre les requêtes, de sorte qu'un identifiant échangé sous ses pieds est adopté sur place (en environ 30 secondes sur macOS, à la requête suivante sur Linux). Une bascule simple ne redémarre jamais votre session. Le seul cas qui nécessite encore une gestion de processus est un pool entièrement épuisé (une session ne peut pas se mettre en pause elle-même), et c'est la raison d'être du fin superviseur.
+
+Tout le reste concernant `claude` est inchangé : toutes les options en ligne de commande, les serveurs MCP, les hooks et les skills sont transmis tels quels.
+
+## Démarrage rapide
+
+Nécessite [Bun](https://bun.sh) et Claude Code, sur macOS ou Linux.
+
+```sh
+bun add -g tokenmaxxing
+tokenmaxxing init
+```
+
+`init` fait cinq choses :
+
+1. Importe le compte avec lequel vous êtes déjà connecté en tant que compte #1 (il n'y a pas de commande `adopt` séparée).
+2. Installe le shim superviseur `claude`.
+3. Installe trois entrées dans le `settings.json` de Claude Code : une statusLine, un hook Stop et un hook SessionStart (plus une entrée subagentStatusLine).
+4. Ajoute le répertoire bin du superviseur au PATH du fichier rc de votre shell (idempotent, marqué d'un commentaire `# tokenmaxxing PATH`). Il doit se placer avant le vrai `claude` dans le PATH pour l'intercepter.
+5. Installe une minuterie de vérification périodique (un agent launchd sur macOS, une minuterie utilisateur systemd sur Linux) qui exécute `tokenmaxxing check` toutes les 180 secondes.
+
+Redémarrez votre shell, puis ajoutez d'autres comptes et lancez-vous :
+
+```sh
+tokenmaxxing add        # connecte un compte de plus, en isolation, et l'ajoute au pool
+claude                  # utilisez claude comme d'habitude
+```
+
+`tokenmaxxing` possède aussi l'alias `xx`. `tokenmaxxing` seul (ou `xx`) exécute `status` ; `switch` reste explicite.
+
+## Commandes
+
+| Commande | Ce qu'elle fait |
+|---|---|
+| `tokenmaxxing init` | Importe le compte actuel, installe le superviseur, les hooks et la statusline |
+| `tokenmaxxing init --codex` | Idem pour Codex : importe la connexion, installe le superviseur codex et le hook Stop |
+| `tokenmaxxing add` | Enregistre un compte supplémentaire (connexion isolée, récupérée dans le pool) |
+| `tokenmaxxing add --codex` | Enregistre un compte Codex supplémentaire (connexion isolée) |
+| `tokenmaxxing auth [sel \| --all]` | Réauthentifie un compte du pool sur place. Sans argument, liste le pool et demande lequel ; un sélecteur cible un compte et vous indique avec quel e-mail vous connecter ; `--all` parcourt un par un chaque compte nécessitant une réauthentification |
+| `tokenmaxxing switch [sel]` | Bascule vers le meilleur compte (glouton, idempotent) ou en force un précis |
+| `tokenmaxxing switch --codex [sel]` | Bascule le pool Codex (prend effet au prochain démarrage de codex) |
+| `tokenmaxxing ls` | Liste les comptes du pool |
+| `tokenmaxxing status` | Comptes avec barres d'utilisation 5h / hebdomadaire / par modèle, actifs et épuisés jusqu'à réinitialisation |
+| `tokenmaxxing status --force` | Ping en plus chaque compte (une minuscule requête haiku chacun) pour que toutes les minuteries de session 5h démarrent maintenant, puis échantillonne à neuf |
+| `tokenmaxxing watch [seconds]` | Statut en direct, réaffiché toutes les N secondes (par défaut 120, plancher 30 ; ne ping jamais) |
+| `tokenmaxxing config [get\|set\|unset\|tidy]` | Config effective avec ses sources ; modifie les clés à points ; `tidy` élague les clés inconnues |
+| `tokenmaxxing check` | Évalue la décision de bascule une fois (c'est ce qu'exécute la minuterie périodique) |
+| `tokenmaxxing serve [setup\|link\|unlink\|links]` | Démon de passerelle Slack (Socket Mode, sans URL publique) |
+| `tokenmaxxing doctor` | Vérifie que le superviseur et les entrées de configuration ont survécu |
+| `tokenmaxxing rename [--codex] <sel> <label>` | Renomme un compte du pool |
+| `tokenmaxxing rm <sel>` | Retire un compte du pool |
+| `tokenmaxxing uninstall` | Retire le superviseur et les entrées de configuration (les comptes et les identifiants sont conservés) |
+
+## Architecture
+
+tokenmaxxing est un point d'entrée multi-appel unique (`src/main.ts`) qui se comporte comme le superviseur `claude` lorsqu'il est invoqué sous ce nom, sert les shims de hook et de statusline via des sous-commandes internes, et dispatche sinon le CLI. Il s'exécute directement sous Bun ; le paquet npm livre du code source TypeScript, pas une compilation.
+
+Les rouages :
+
+### Le shim superviseur
+
+`init` écrit un shim shell de 2 lignes nommé `claude` dans `~/.config/tokenmaxxing/bin/` et place ce répertoire en tête du PATH. Lorsque vous tapez `claude`, le shim exécute le superviseur, qui lance le vrai binaire claude avec des stdio hérités et un instantané du terminal `stty -g` sauvegardé. C'est uniquement un gestionnaire de processus et de terminal : il ne fait jamais transiter le trafic d'API par un proxy et ne touche jamais aux jetons en transit.
+
+Les invocations en mode impression (`claude -p`, `--version`, `--help`), les sous-commandes non interactives (`claude mcp`, `claude config`, etc.) et les propres sondes de tokenmaxxing passent directement sans gestion de session. Pour une session interactive, le superviseur fixe un identifiant de session (en en générant un, ou en réutilisant celui que vous avez passé via `--session-id` / `-r` / `-c`), conserve vos options de lancement pour qu'un relancement ultérieur puisse les rejouer, puis surveille un fichier marqueur de respawn associé à cette session.
+
+### Le tee de la statusline
+
+Claude Code pousse les données de limite de débit (`rate_limits.five_hour` et `rate_limits.seven_day`) dans le stdin de la statusline à chaque tour. tokenmaxxing possède l'emplacement de la statusline, si bien que son moteur de rendu fait aussi office de flux d'utilisation gratuit, basé sur le push : à chaque tick, il duplique (tee) les fenêtres agrégées ainsi que le modèle actif dans `usage.json`. Les plafonds par modèle ne sont pas dans le stdin de la statusline ; ils proviennent uniquement de `claude -p '/usage'` (gratuit, zéro jeton), qui est interrogé avec un TTL et mis en cache dans `model-usage.json` lorsque le modèle actif est contraint par sa capacité.
+
+Le tee écrit uniquement en cas de changement : lorsque les chiffres sont inchangés, il ne fait qu'actualiser le mtime du fichier, qui sert de battement de coeur (heartbeat) de vivacité du flux. La fraîcheur est toujours jugée d'après le mtime, jamais d'après l'horodatage intégré.
+
+### Le hook Stop et la bascule
+
+À chaque frontière de tour, le hook Stop exécute la décision de bascule (voir [Comment la bascule décide](#how-switching-decides)). Lorsqu'une bascule est justifiée, elle se produit sous un verrou exclusif `flock(2)` (pris via `bun:ffi`, puisque macOS ne livre aucun binaire `flock(1)`), et les écritures d'identifiants s'imbriquent en plus avec le propre verrou de rafraîchissement de Claude Code. Au sein de la section critique, une bascule :
+
+1. Récupère l'identifiant actif actuel dans la sauvegarde parquée de son véritable propriétaire.
+2. Installe l'identifiant fraîchement rafraîchi du compte cible comme identifiant actif, en fusionnant avec le blob actif existant afin que l'état voisin (tel que les jetons OAuth par serveur MCP) survive.
+3. Conserve le jeton pivoté de la cible dans sa propre sauvegarde.
+4. Réécrit atomiquement le champ `oauthAccount` dans `~/.claude.json`.
+5. Valide la nouvelle étiquette active et efface les instantanés d'utilisation périmés, le tout avant que le verrou ne se libère, de sorte qu'un plantage ne puisse jamais laisser l'identifiant installé et l'étiquette active pointer vers des comptes différents.
+
+Comme toutes les sessions du profil par défaut partagent l'unique identifiant actif, une seule bascule migre toutes les sessions en même temps, et le flock, plus une revérification sous le verrou, empêche des hooks en concurrence de consommer deux comptes.
+
+### Adoption sur place
+
+Une session claude en cours d'exécution interroge son magasin d'identifiants entre les requêtes : sur macOS, elle relit le trousseau via un cache court et compare les jetons d'accès ; sur Linux, elle inspecte le mtime du fichier d'identifiants et vide ses caches de jetons en cas de changement. L'effet net est qu'un identifiant échangé est adopté par toutes les sessions en cours en environ 30 secondes sur macOS et dès la requête suivante sur Linux, sans aucun redémarrage. C'est pourquoi une bascule simple n'écrit aucun marqueur et ne déclenche aucun respawn : la session poursuit simplement sur le nouveau compte. Le `/usage` en session partage les mêmes caches de jetons, de sorte que l'affichage de son compte bascule en même temps que l'adoption.
+
+### Attente sur pool épuisé et reprise automatique
+
+Ce n'est que lorsque chaque compte du pool dépasse ses barres que le hook Stop écrit un marqueur de respawn (le schéma du marqueur exige un horodatage `waitUntil` ; une bascule simple ne peut jamais en produire un). Le superviseur voit le marqueur, envoie un SIGTERM à son enfant à la frontière de tour déjà validée (le hook Stop s'exécute après que la transcription est sur disque et que claude est inactif, donc rien n'est perdu), restaure le terminal, affiche un compte à rebours jusqu'à la réinitialisation la plus proche, puis relance `claude --resume <session-id>` sur le compte rétabli. Ctrl-C pendant le compte à rebours reprend immédiatement. L'attente automatique est bornée par `policy.maxWaitMs` (par défaut 1 heure) ; au-delà, la décision signale le pool comme épuisé au lieu d'attendre.
+
+### La minuterie de vérification périodique
+
+Les hooks ne se déclenchent qu'aux frontières de tour, et un long tour agentique peut consumer une fenêtre, la faisant passer de saine à épuisée, sans une seule frontière. `init` installe donc aussi une minuterie périodique (un agent launchd sur macOS, une minuterie utilisateur systemd sur Linux) qui exécute `tokenmaxxing check` toutes les 180 secondes, indépendamment de l'activité des tours.
+
+### Un hook SessionStart
+
+Exécute la même évaluation lorsqu'une session démarre ou reprend, afin qu'une nouvelle session commence sur le bon compte. Le délai de récupération post-bascule en fait une opération sans effet correcte juste après un respawn.
+
+## Comment la bascule décide [#how-switching-decides]
+
+La décision comporte deux couches : une porte d'engagement, puis un chemin glouton ou dur.
+
+### Engagement
+
+En dessous de `policy.greedySessionFloor` (par défaut 50, en pourcentage de la fenêtre de session de 5 heures), la décision ne s'exécute pas du tout : une nouvelle session reste sur son compte. Dès que la fenêtre de session active est utilisée à 50 %, ou qu'une barre dure est franchie, la décision s'engage.
+
+### Barres de filtrage
+
+Les seuils sont des barres de filtrage, pas le déclencheur d'une panique :
+
+- `thresholds.session` : 95. Une réinitialisation de 5 heures est peu coûteuse à attendre, donc la fenêtre de session bascule plus tôt.
+- `thresholds.weekly` : 98. Cette seule barre couvre à la fois l'agrégat sur 7 jours et chaque plafond hebdomadaire par modèle. Le quota hebdomadaire fonctionne selon le principe du tout ou rien, il se vide donc au plus près du mur.
+
+Les deux sont délibérément en dessous de 100 : la marge est le budget permettant d'atteindre une frontière de tour propre (plus jusqu'à un tour de latence d'adoption sur macOS) avant que le compte n'atteigne réellement sa limite. Les mêmes barres filtrent les candidats à la bascule : un compte dépassant l'une de ses barres n'est pas une cible valide. Le déclenchement et le filtrage utilisent toujours les mêmes barres effectives (les seuils moins `policy.projectionMargin`), car un filtrage plus laxiste que le déclenchement ferait atterrir des bascules sur des comptes que le déclenchement re-signale immédiatement, faisant faire du ping-pong au pool.
+
+### La cible : la pression de rythme
+
+Parmi les comptes utilisables, la cible est celui le plus en retard sur son propre rythme hebdomadaire : la plus haute **pression de rythme**, définie comme le pourcentage hebdomadaire restant divisé par le temps restant jusqu'à la réinitialisation hebdomadaire de ce compte. Le compte dont le plus de quota est sur le point d'être perdu l'emporte. Les égalités se départagent par l'expiration hebdomadaire la plus proche, puis par la plus faible utilisation sur 7 jours.
+
+Tout fonctionne à partir de fenêtres mises en cache, stockées sous forme d'epochs UTC absolus, de sorte qu'un instantané périmé se résout tout de même correctement : une réinitialisation hebdomadaire déjà passée est extrapolée vers l'avant par pas exacts de 7 jours, et toute fenêtre au-delà de sa réinitialisation mise en cache compte comme fraîchement vide (jamais une raison de basculer, jamais une raison de garder un compte sur le banc).
+
+### Chemin glouton contre chemin dur
+
+- **Chemin glouton** (engagé, mais sous chaque barre) : classe chaque compte, le compte actuel compris. Si le compte actuel l'emporte déjà ou est à égalité, ne rien faire. Sinon, basculer vers le compte strictement meilleur. Il n'attend jamais et ne pré-parque jamais : un compte actuel utilisable n'est pas échangé contre une attente. Comme le compte actuel est lui aussi classé, le chemin automatique et `tokenmaxxing switch` seul sont tous deux idempotents : une évaluation périodique converge vers le bon compte puis s'y maintient.
+- **Chemin dur** (une barre franchie) : basculer vers le meilleur candidat utilisable. Si le jeton de rafraîchissement d'un candidat s'avère mort, il est signalé comme nécessitant une réauthentification et le candidat suivant est essayé. Si rien n'est utilisable, la logique d'attente sur épuisement s'exécute ; seul un appelant capable de réellement mettre la session en pause (le hook Stop supervisé) est autorisé à pré-parquer sur un compte encore bloqué mais dont le rétablissement est le plus proche.
+
+### Plafonds par modèle
+
+`policy.switchModels` (par défaut `["fable"]`) nomme les familles de modèles dont le plafond hebdomadaire par modèle peut déclencher une bascule. La correspondance se fait par jeton de famille, jamais par chaîne d'affichage exacte : les noms d'affichage des modèles dérivent (« Fable » est devenu « Fable 5 »), et un filtre à chaîne exacte a une fois désactivé silencieusement toute la bascule par modèle. Deux règles de sécurité connexes :
+
+- Un modèle actif inconnu verrouille chaque famille configurée. Juste après qu'une bascule a effacé les instantanés, une machine sans interface peut fonctionner sans connaître le modèle ; traiter l'inconnu comme non contraint a une fois laissé un compte rester à son plafond Fable pendant des heures sans être remarqué.
+- Le filtrage des candidats compte aussi les plafonds par modèle verrouillés, de sorte qu'un pool où chaque compte a consommé son plafond Fable ne fait pas de tourniquet (round-robin).
+
+### Délai de récupération
+
+Un délai de récupération de 45 secondes après une bascule verrouille le chemin automatique. Le tee de la statusline est suspendu pendant ces mêmes 45 secondes après une bascule (l'adoption prend jusqu'à 30 secondes sur macOS), sans quoi une évaluation trop précoce s'exécuterait sur des données que la bascule elle-même a invalidées : ce scénario précis a une fois produit une boucle de respawn A vers B et retour. Le `tokenmaxxing switch` manuel n'est pas affecté par le délai de récupération.
+
+## Configuration
+
+La configuration est du JSON dans `~/.config/tokenmaxxing/config.json`. Chaque champ est optionnel ; les valeurs par défaut s'appliquent champ par champ.
+
+```json
+{
+  "thresholds": { "session": 95, "weekly": 98 },
+  "policy": {
+    "projectionMargin": 0,
+    "greedySessionFloor": 50,
+    "switchModels": ["fable"],
+    "usagePollTtlMs": 90000,
+    "maxWaitMs": 3600000
+  }
+}
+```
+
+- `thresholds.session` / `thresholds.weekly` : les barres de filtrage décrites ci-dessus.
+- `policy.projectionMargin` : soustrait des deux barres pour former les barres effectives.
+- `policy.greedySessionFloor` : pourcentage de session utilisé auquel la convergence gloutonne s'engage.
+- `policy.switchModels` : familles de modèles dont le plafond hebdomadaire par modèle verrouille une bascule (les entrées sont mises en minuscules au chargement).
+- `policy.usagePollTtlMs` : durée pendant laquelle une interrogation `/usage` par modèle reste fraîche.
+- `policy.maxWaitMs` : la borne de l'attente automatique sur pool épuisé.
+
+`tokenmaxxing config` affiche la configuration effective avec ses sources ; `config set`/`unset` modifient les clés à points ; `config tidy` élague les clés inconnues.
+
+## Stockage des identifiants et modèle de sécurité
+
+Tout l'état réside dans `~/.config/tokenmaxxing/`. Les E/S d'identifiants passent par une façade de magasin unique sélectionnée selon la plateforme ; les sites d'appel ne se ramifient jamais selon la plateforme.
+
+**macOS** : les identifiants résident dans le trousseau de connexion sous forme d'éléments de type mot de passe générique, à l'endroit même où Claude Code les conserve. L'élément actif est celui que claude lit ; la sauvegarde de chaque compte du pool est parquée dans son propre élément de trousseau `tokenmaxxing-cred-<uuid8>`. Rien n'est en clair sur le disque. Les lectures utilisent `security find-generic-password -w` (le secret n'apparaît jamais que sur stdout) ; les écritures acheminent une ligne `add-generic-password` vers `security -i` par stdin afin que le secret n'apparaisse jamais dans l'argv d'un quelconque processus. Le mode interactif dispose d'un tampon de ligne d'environ 4 Ko, si bien que les blobs surdimensionnés se rabattent sur une écriture par argv (une des raisons pour lesquelles les éléments parqués ne stockent que l'objet OAuth minimal).
+
+**Linux** : Claude Code stocke les identifiants dans un fichier en clair 0600, et tokenmaxxing suit le même modèle : le fichier actif est le propre `.credentials.json` de claude, et les sauvegardes parquées sont des fichiers atomiques 0600 sous `~/.config/tokenmaxxing/creds/` dans un répertoire 0700. Atomique signifie ici écrire dans un temporaire, fsync, puis renommer : un lecteur concurrent voit toujours un fichier entièrement ancien ou entièrement nouveau, jamais partiel.
+
+Les règles de sécurité que la bascule impose :
+
+- **Récupération par le véritable propriétaire.** Avant une bascule, le propriétaire réel de l'identifiant actif est résolu en demandant à l'API à quelle organisation appartient le jeton (`fetchTokenOrg` contre le point de terminaison des rôles OAuth), jamais en se fiant à l'étiquette active stockée, qui peut dériver. Une étiquette ayant dérivé a une fois amené la récupération d'un compte à écraser l'unique sauvegarde d'un autre compte. Si l'identifiant actif appartient à un compte extérieur au pool, la bascule refuse purement et simplement plutôt que de l'écraser.
+- **Une seule section critique.** La récupération, l'installation du nouvel identifiant, la sauvegarde de son jeton pivoté, la bascule de compte dans `~/.claude.json` et la validation de l'étiquette active se produisent toutes au sein de la même section verrouillée.
+- **Imbrication avec le propre rafraîchissement de claude.** Une session proche de l'expiration peut pivoter son propre jeton à tout moment, si bien que les écritures d'identifiants prennent aussi le verrou de rafraîchissement de Claude Code (au mieux, avec une reprise de verrou périmé et un délai borné).
+- **Les autorisations mortes se dégradent proprement.** Un rafraîchissement qui revient en `invalid_grant` signale ce compte comme nécessitant une réauthentification et persiste le signal avant que l'erreur ne se propage, de sorte que les boucles de réessai réduisent l'ensemble des candidats et se terminent. `tokenmaxxing auth` répare un compte signalé sur place, et il refuse une connexion qui aboutit à un compte différent de celui en cours de réparation.
+- **Aucune journalisation de jetons.** Les jetons n'apparaissent jamais dans les journaux, les erreurs ou la sortie. Les corps d'erreur des points de terminaison de jetons et d'utilisation ne sont jamais exposés bruts ; seul un ensemble de champs autorisés survit, car le corps d'échec d'un point de terminaison de jetons peut refléter des éléments de la requête.
+- **Hygiène des sondes.** Toute sonde `claude` lancée nettoie les huit variables d'environnement que claude prend en compte avant sa recherche dans le trousseau (`ANTHROPIC_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN`, `CLAUDE_SECURESTORAGE_CONFIG_DIR`, etc.), de sorte qu'une sonde ne puisse jamais être attribuée au mauvais compte.
+
+## Notes de plateforme : macOS contre Linux
+
+| | macOS | Linux |
+|---|---|---|
+| Identifiant actif | Élément de mot de passe générique du trousseau de connexion | Fichier `.credentials.json` 0600 |
+| Identifiants parqués | Éléments de trousseau par compte | Fichiers 0600 dans un répertoire 0700 |
+| Adoption après une bascule | En ~30 secondes (cache de lecture du trousseau) | Requête suivante (interrogation du mtime du fichier) |
+| Vérification périodique | Agent launchd, toutes les 180s | Minuterie utilisateur systemd, toutes les 180s |
+| Magasin de connexion isolée | Service de trousseau à espace de noms haché par répertoire de config | Un fichier dans le répertoire de config isolé |
+
+Deux détails spécifiques à Linux méritent d'être connus : claude résout son répertoire d'identifiants à partir de `CLAUDE_SECURESTORAGE_CONFIG_DIR` en premier (puis `CLAUDE_CONFIG_DIR`, puis `~/.claude`), et tokenmaxxing reproduit exactement cette résolution afin que les deux ne se désynchronisent jamais. Et les deux compilations d'OS d'une même version de claude formatent différemment les horloges de réinitialisation de `/usage` (l'une utilise le liant " at ", l'autre une virgule) ; l'analyseur de tokenmaxxing accepte exactement ces deux formes et journalise, plutôt que de deviner, pour toute troisième.
+
+Sur macOS, une limitation honnête : `init` et `add` accèdent au trousseau de manière interactive à dessein, afin que le premier accès `security` ne soit pas à froid au sein d'un hook sans interface.
+
+## La statusline
+
+tokenmaxxing rend nativement la statusline de Claude Code (tout en dupliquant le flux d'utilisation). Le principe de conception : le quota est porté par la couleur, pas par les nombres. Une seule ligne, par exemple :
+
+```
+tm-wt-demo Fable 5 (high) +156/-23  ◆ 𝒇 2h 1d  ◇ 19h  ◇ 𝒇 2d  ◇ full  ✗ ?
+```
+
+- Chaque jeton de fenêtre correspond à son temps avant réinitialisation, peint sur une rampe continue du vert au jaune au rouge selon le pourcentage utilisé (truecolor lorsque le terminal le prend en charge, sinon transposé sur le cube de 256 couleurs). La rampe s'ancre au vert pur à 0, au jaune à 75, et au rouge à 95 et au-delà, de sorte que les anciennes bandes de gravité survivent comme ancres de rampe.
+- Le nom du modèle est peint selon le remplissage de la fenêtre de contexte sur la même rampe.
+- Un `◆` vert précède les fenêtres du compte actif ; chaque compte parqué reçoit son propre `◇` cyan (`✗` rouge s'il nécessite une réauthentification). Les comptes sont triés par réinitialisation à venir la plus proche.
+- Le par-modèle vient en premier dans chaque bloc sous la forme d'une initiale peinte nue : Fable rend `𝒇` ; les autres familles utilisent leur première lettre en majuscule, toujours par correspondance de famille.
+- Un compte parqué intact rend un `full` vert. Une utilisation mesurée avec une réinitialisation inconnue rend un `?` peint, et un plafond par modèle non mesuré sur un modèle verrouillé rend un `𝒇?` non peint : ce qui n'est pas mesuré ne doit jamais paraître sûr.
+- Les comptes à rebours de réinitialisation n'affichent que la plus grande unité, jamais « now » ni « 0m » ; une fenêtre sans réinitialisation à venir rend un `0` vert (de nouveau vide).
+- Le nom de base d'un worktree git lié précède la ligne ; un checkout principal n'y rend rien. La détection lit le système de fichiers à la recherche d'un fichier `.git` et ne lance jamais de sous-processus git.
+- Avec `NO_COLOR` défini, la ligne se rabat sur un format numérique collé (`2h5` signifie réinitialisation dans 2 heures, 5 % utilisé ; `ctx 42` pour le remplissage de contexte) : sans couleur, une fenêtre vidée ne doit pas paraître fraîche.
+
+Les tâches de sous-agents obtiennent leurs propres lignes de panneau via la surface subagentStatusLine de claude : une ligne par tâche active, le nom de la famille peint selon le remplissage de contexte de cette tâche.
+
+## Prise en charge de Codex
+
+Le même regroupement fonctionne pour le CLI Codex d'OpenAI, contre vos propres comptes d'abonnement ChatGPT :
+
+```sh
+tokenmaxxing init --codex   # importe votre connexion codex actuelle + installe le superviseur codex et le hook Stop
+tokenmaxxing add --codex    # connecte un autre compte, isolé : votre connexion principale reste intacte
+codex                       # utilisez codex comme d'habitude
+```
+
+Le pool Codex est un état entièrement parallèle : son propre index de comptes, ses propres fichiers d'identifiants parqués (des fichiers 0600 sur les deux plateformes, puisque le magasin propre de codex est un fichier en clair), son propre verrou, son propre horodatage de dernière bascule. Rien n'est partagé avec le pool Claude, à l'exception du code de politique de décision.
+
+### Pourquoi la bascule à chaud est impossible sur Codex
+
+Un processus codex en cours d'exécution détient un unique gestionnaire d'authentification en mémoire et refuse explicitement de recharger `auth.json` lorsqu'il nomme désormais un compte différent. Il n'y a ni observateur de fichier ni interrogation d'identifiants par requête, si bien qu'un identifiant échangé sous un codex en cours d'exécution ne prend tout simplement jamais effet pour l'inférence. Le redémarrage est la bascule : `codex resume <session-id>` poursuit la transcription locale sur le compte que `auth.json` détient désormais.
+
+tokenmaxxing gère cela avec un shim superviseur codex : le hook Stop exécute la même décision gloutonne de pression de rythme à chaque frontière de tour, et lorsqu'il bascule, il écrit un marqueur qui fait envoyer au superviseur un SIGTERM à la session à la frontière validée et relancer `codex resume <session-id>` sur le compte frais, transcription intacte. Comme chaque bascule codex est un redémarrage visible, le chemin glouton de codex porte une marge d'amélioration de 1,2x : un prétendant doit battre la pression de rythme du compte actuel de 20 %, pas d'un cheveu. Le chemin dur (une barre franchie) ignore la marge. Il n'y a pas non plus de compte à rebours sur pool épuisé pour codex (rien ne peut mettre une session codex en pause), de sorte qu'un pool codex entièrement épuisé reste en place.
+
+Autres mécaniques spécifiques à codex :
+
+- L'utilisation est lue depuis un GET authentifié gratuit contre le propre point de terminaison de limite de débit de codex (le même appel que fait le `/status` du CLI) : des pourcentages ainsi que des heures de réinitialisation en epoch absolu, aussi bien pour les fenêtres agrégées que pour les plafonds par modèle. La classification des fenêtres est pilotée par la durée, jamais par la position, car les forfaits actuels peuvent n'avoir aucune fenêtre de 5 heures et la fenêtre hebdomadaire occupe l'emplacement principal.
+- Les jetons de rafraîchissement de codex pivotent, et réutiliser un jeton supplanté tue toute la famille d'autorisations. Chaque rotation est persistée à l'instant où elle revient, le compte actif n'est jamais échantillonné qu'à travers le blob actif (jamais une copie parquée périmée), et des fichiers de présence par session garantissent qu'un compte s'exécutant dans une session voisine active n'est jamais une cible de bascule et ne voit jamais son jeton parqué rafraîchi.
+- Codex exige le magasin d'identifiants sur fichier : `init --codex` échoue rapidement si le magasin keyring est épinglé, et `add --codex` écrit le réglage de mode fichier dans le répertoire d'intégration isolé afin que la connexion aboutisse de manière récupérable.
+- Une étape manuelle : codex ignore les hooks auxquels on ne lui a pas dit de faire confiance. Après `init --codex`, ouvrez codex une fois et faites confiance au hook Stop de tokenmaxxing via `/hooks`, sans quoi la bascule automatique reste silencieusement inerte. `init --codex` affiche ce rappel.
+
+## La passerelle Slack : xx serve
+
+`tokenmaxxing serve` exécute un démon Slack local via Socket Mode, sans URL publique requise. Configuration :
+
+```sh
+tokenmaxxing serve setup                    # affiche le manifeste de l'app, demande les deux jetons
+tokenmaxxing serve link <channel-id> <repo> # lie un canal à un checkout de dépôt
+tokenmaxxing serve                          # exécute le démon
+```
+
+Mentionnez le bot dans un canal lié et il ouvre une session Claude Code pour ce fil, dans le checkout du dépôt lié. Chaque message de fil exécute un unique `query()` de l'Agent SDK avec `resume` (jamais une requête de streaming persistante), de sorte que `ensureBestAccount()` réévalue le pool à chaque tour et que le démon peut redémarrer sans perdre de fils (les enregistrements de fils sont durables ; le démon les réabonne au démarrage).
+
+Comportements notables :
+
+- **Streaming** : les réponses sont diffusées nativement dans Slack, avec des cartes de tâche pour la réflexion et les exécutions d'outils, du code entre balises rendu avec coloration syntaxique, une carte « Turn » de clôture avec le coût et la durée, et un nouveau message Slack ouvert chaque fois qu'une exécution d'outil interrompt le texte diffusé, de sorte qu'un tour se lit comme des messages distincts autour des exécutions d'outils. Les appels TodoWrite mettent à jour sur place une unique carte de liste de contrôle stable.
+- **Permissions** : le `permissionMode` par lien vaut par défaut `acceptEdits` ; `--yolo` (alias `--dangerous`) fait passer un lien en `bypassPermissions`. Les dialogues interactifs sont interdits dans les tours relayés (personne ne peut y répondre via Slack), de sorte que le modèle demande en prose et que votre réponse dans le fil constitue le tour suivant. Un skill de plugin intégré lui apprend à mentionner le demandeur et à terminer le tour lorsqu'il a besoin d'une décision.
+- **Commandes slash** : un message de fil dont le texte nettoyé commence par `/` s'exécute comme une commande slash de claude. Le compositeur de Slack avale les messages commençant par `/`, donc utilisez la forme mention en premier (`@bot /usage`) ou une espace initiale.
+- **Arrêt gracieux** : SIGTERM/SIGINT vidange : les nouveaux tours sont rejetés bruyamment, les tours en cours disposent de jusqu'à 5 minutes, et l'enfant claude s'exécute détaché dans son propre groupe de processus afin qu'un Ctrl-C de terminal ne puisse pas le tuer avant que la vidange ne préserve le tour.
+- **Nettoyage des fils** : lorsque vous lui dites que le travail est terminé, le modèle appelle un outil `finish_thread` en cours de processus ; une fois le tour entièrement terminé, le démon supprime l'enregistrement du fil, se désabonne et publie une confirmation. Une nouvelle mention démarre une nouvelle session.
+- **Hygiène des erreurs** : les erreurs de tour publient un texte réduit au seul message, jamais de corps d'erreur bruts.
+
+## La surface de l'Agent SDK
+
+Le point d'entrée programmatique du paquet (`exports["."]` pointe vers `src/sdk.ts`) associe tokenmaxxing à l'Agent SDK de Claude pour les agents que vous construisez contre vos propres comptes regroupés. Votre application doit s'exécuter sous Bun (tokenmaxxing livre du code source TypeScript et utilise `bun:ffi`).
+
+```ts
+import { query } from "@anthropic-ai/claude-agent-sdk";
+import { ensureBestAccount, pooledOptions, stopHookCheck } from "tokenmaxxing";
+
+await ensureBestAccount(); // run the switch decision before the spawn
+
+for await (const message of query({
+  prompt: "...",
+  options: {
+    ...pooledOptions(), // pinned real claude + scrubbed env
+    hooks: { Stop: [{ hooks: [stopHookCheck] }] }, // re-decide at every turn boundary
+  },
+})) {
+  // capture the session id from the init message for `resume` across swaps
+}
+```
+
+L'Agent SDK lance un sous-processus claude par `query()` et lit les identifiants une seule fois au lancement (pas de statusline, pas de bascule à chaud en cours de requête), de sorte que l'intégration est pilotée par les frontières :
+
+- `ensureBestAccount()` est exactement la décision qu'exécutent les hooks et la minuterie du CLI (barres, pression de rythme, délai de récupération, tout du code partagé), jamais anticipatoire : une session SDK ne peut jamais être mise en pause pour un compte à rebours d'épuisement.
+- `pooledOptions()` fixe `pathToClaudeCodeExecutable` sur le vrai binaire claude (jamais le wrapper superviseur) et fournit un `env` de remplacement complet avec chaque surcharge d'identifiant ambiante nettoyée. Il échoue rapidement si `CLAUDE_CONFIG_DIR` ou `CLAUDE_SECURESTORAGE_CONFIG_DIR` est défini dans l'environnement de votre application : sur Linux, une bascule écrirait l'identifiant actif là où ces variables pointent tandis que le sous-processus nettoyé lit le magasin par défaut, une désynchronisation silencieuse de mauvais compte.
+- `stopHookCheck` réexécute la décision aux frontières de tour ; une bascule qu'il réalise prend effet au lancement suivant. Il attrape ses propres erreurs (en les journalisant sur stderr et dans le journal) plutôt que de les relancer, car une exception de hook non gérée peut interrompre l'agent, et avorter un tour à cause d'une vérification de bascule défaillante coûte plus cher que de rester sur le compte actuel.
+
+`sdk.ts` n'importe rien de l'Agent SDK lui-même ; ses valeurs se répandent structurellement dans les options du SDK.
+
+## Usage personnel et conditions d'utilisation [#personal-use-and-terms-of-service]
+
+tokenmaxxing regroupe des comptes que vous possédez, dans des sessions et des agents que vous exécutez vous-même. Cette formulation est délibérée : Anthropic n'autorise pas les produits tiers à proposer la connexion claude.ai ou les limites de débit de claude.ai, et cela inclut les agents construits sur l'Agent SDK. Ne distribuez pas la surface SDK regroupée, ni rien de construit dessus, à des tiers. tokenmaxxing reste aussi délibérément sur la voie `/usage` médiée par le CLI pour les données de quota plutôt que de réimplémenter OAuth ou de faire transiter le trafic d'API par un proxy : ce n'est pas un proxy, et les seuls points de terminaison OAuth qu'il touche sont l'autorisation de rafraîchissement standard utilisée lors d'une bascule et une vérification d'identité en lecture seule (le point de terminaison des rôles) qui vérifie à quel compte un jeton appartient réellement.
+
+## Limitations honnêtes
+
+- **Un tour à froid.** Le cache de prompt est cloisonné par organisation, si bien que le premier tour sur un nouveau compte réenvoie le contexte une fois.
+- **Accroc de la pause sur épuisement.** Seul un pool entièrement épuisé arrête la session pour le compte à rebours ; tout ce qui est tapé pendant cette fraction de seconde est perdu.
+- **Latence d'adoption.** Sur macOS, le premier tour dans les ~30 secondes suivant une bascule peut encore compter sur l'ancien compte ; la marge des barres l'absorbe.
+- **Rayon d'impact partagé.** Toutes les sessions du profil par défaut partagent un unique identifiant actif, de sorte qu'une bascule les déplace toutes ensemble (chacune adopte sur place).
+- **Identifiants en clair sur Linux.** Claude Code lui-même stocke les identifiants Linux dans un fichier en clair 0600 ; les copies parquées de tokenmaxxing suivent le même modèle.
+
+## Dépannage et FAQ
+
+**`claude` ne semble pas être supervisé.**
+Exécutez `tokenmaxxing doctor`. Le shim doit gagner la résolution du PATH ; vérifiez que la ligne `# tokenmaxxing PATH` de votre fichier rc de shell pointe vers le répertoire bin actuel et se place avant le vrai claude. `doctor` avertit aussi au sujet d'un `alias claude=...` ou d'une fonction shell `claude()` masquant le wrapper, et au sujet des alias qui lancent un binaire claude par chemin absolu (ceux-ci contournent entièrement le superviseur).
+
+**La bascule automatique ne se déclenche jamais sur Codex.**
+Codex ignore les hooks auxquels on ne lui a pas dit de faire confiance. Ouvrez codex, exécutez `/hooks`, et faites confiance au hook Stop de tokenmaxxing. La confiance est enregistrée par rapport au hachage du hook, elle doit donc être réaccordée si le hook est un jour modifié.
+
+**Un compte affiche un `✗` rouge dans la statusline.**
+Son jeton de rafraîchissement est mort (révoqué ou pivoté hors de sa sauvegarde). Exécutez `tokenmaxxing auth <sel>` pour le réauthentifier sur place ; la commande vous indique avec quel e-mail vous connecter et refuse une connexion qui aboutit à un compte différent.
+
+**Pourquoi ne bascule-t-il pas vers le compte disposant du plus de quota restant ?**
+Parce que ce n'est pas le compte le plus exposé au risque de perdre du quota. La cible est le compte le plus en retard sur son propre rythme hebdomadaire : le pourcentage restant divisé par le temps restant jusqu'à sa réinitialisation hebdomadaire. À quantités restantes égales, cela se ramène à l'expiration la plus proche d'abord, et à expiration égale, au plus de quota restant d'abord.
+
+**Il vient de basculer et la statusline affiche toujours l'ancien compte.**
+Attendu pendant jusqu'à ~30 secondes sur macOS : la session en cours adopte l'identifiant échangé lors de son prochain rafraîchissement du cache d'identifiants. Le tee d'utilisation est suspendu pendant 45 secondes après une bascule pour exactement cette raison.
+
+**Est-ce que `status --force` coûte quelque chose ?**
+Oui, délibérément : il envoie une requête haiku comptabilisée minimale par compte afin que chaque fenêtre de session de 5 heures démarre à cet instant au lieu de rester dormante, puis échantillonne à neuf. Le `status` simple et `watch` ne ping jamais ; les lectures `/usage` sont gratuites. Notez que le flux d'utilisation du serveur peut retarder de quelques secondes à quelques minutes une fenêtre fraîchement ouverte, de sorte qu'une sonde immédiatement après le ping peut encore afficher l'état d'avant le ping : `status` rend une note au lieu de prétendre que le ping a échoué.
+
+**La sonde `/usage` n'a rien renvoyé pour le compte actif.**
+C'est un comportement connu de claude : lorsque sa récupération d'utilisation interne échoue ou est limitée en débit, `/usage` n'affiche que les statistiques de session locales sans lignes de pourcentage. tokenmaxxing échantillonne le compte actif à partir du push de la statusline et ne sonde que les comptes parqués, précisément pour éviter cela.
+
+**Sessions claude en arrière-plan.**
+Le démon d'arrière-plan de Claude lance le vrai binaire versionné par chemin absolu, contournant les shims du PATH, de sorte que les sessions en arrière-plan ne sont pas supervisées. Les hooks se déclenchent tout de même via `settings.json`, et l'adoption d'identifiants ainsi que la minuterie périodique couvrent la bascule, mais il n'y a pas de respawn piloté par marqueur pour elles.
+
+**Quelque chose a lancé beaucoup de processus une fois. Est-ce encore possible ?**
+Le superviseur porte des garde-fous de récursion en couches contre exactement cette défaillance historique (un wrapper périmé épinglé comme le « vrai » claude) : une sentinelle de profondeur dans l'environnement qui avorte à 5 niveaux, un limiteur de taux de lancement sur disque, des vérifications d'identité par realpath qui rejettent tout candidat se résolvant à nouveau vers le propre répertoire bin de tokenmaxxing, et un échec dur (jamais un balayage silencieux du PATH) lorsqu'un chemin claude configuré n'existe plus. `init` et `doctor` vérifient qu'un candidat est réellement claude en exécutant `--version` avant de l'épingler.
+
+**Désinstallation.**
+`tokenmaxxing uninstall` retire les shims du superviseur, les entrées de configuration et la minuterie périodique, et laisse vos comptes et identifiants parqués intacts. Il ne retire que les entrées de statusline qu'il reconnaît comme les siennes.
+
+## Licence
+
+MIT. Code source sur [anaclumos/tokenmaxxing](https://github.com/anaclumos/tokenmaxxing).

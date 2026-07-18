@@ -1,0 +1,359 @@
+---
+title: tokenmaxxing
+description: Musanya asusun Claude Code ta atomatik - haɗa asusun biyan kuɗi (subscription) naka kuma ka yi hot-swap na tantancewa lokacin da ƙayyadaddu suka cika, tare da kiyaye kowane zama domin ci gaba.
+---
+
+tokenmaxxing wani CLI ne domin musanya asusun Claude Code ta atomatik. Yana haɗa asusun biyan kuɗi (Pro/Max) da yawa da kake mallaka kuma yana yin hot-swap na tantancewar da ke aiki zuwa wani sabon asusu lokacin da wanda ake amfani da shi ke kusa da iyakar amfani. Kana gudanar da `claude` daidai kamar yadda kake yi koyaushe; musanyar tana faruwa ne a wurin iyaka mai aminci na zagaye (turn boundary) kuma zaman ka da ke gudana yana ci gaba da tattaunawa iri ɗaya a kan sabon asusu ba tare da sake farawa ba. Yana aiki a kan zama da yawa a lokaci guda.
+
+Halayen da kawai ake iya gani su ne mafi munin yanayi: lokacin da dukkan tafkin (pool) ya kai iyakarsa, zaman zai tsaya tare da ƙirgar baya (countdown) kuma zai ci gaba ta atomatik a kan asusu na gaba da zai sake saitawa (Ctrl-C yana ci gaba nan take).
+
+<Callout>
+Iyaka: Claude Code a kan macOS da Linux, tare da Codex CLI na OpenAI a matsayin tafki na biyu, mai gudana a layi ɗaya. Yana haɗa asusun biyan kuɗi, ba maɓallan API ba. Wannan kayan aiki ne na amfanin kai domin haɗa asusun da kake mallaka, a cikin zama da agent ɗin da kai da kanka kake gudanarwa - duba [Amfanin kai da sharuɗɗan sabis](#personal-use-and-terms-of-service).
+</Callout>
+
+## Matsalar
+
+Biyan kuɗin Claude yana auna iyaka guda uku a lokaci ɗaya (duka an tabbatar da su ta hanyar `/usage`):
+
+- **Zaman yanzu**: taga mai jujjuyawa na awa 5.
+- **Makon yanzu (dukkan model)**: tarin kwanaki 7.
+- **Makon yanzu, ga kowane model**: iyakoki na mako daban-daban ga kowace iyali ta model. A yanzu waɗannan suna nan ne kawai ga Sonnet da Fable, kuma iyakar Fable kaɗai ce ta yi tsauri sosai da za ta yi tasiri - tana ɗaure kafin tarin ya yi. Na'ura na iya kasancewa a 50% na mako-duka yayin da take a 80% na mako-Fable.
+
+Ƙayyadaddun mako na "yi amfani da shi ko ka rasa shi" ne: duk abin da asusu bai cinye ba kafin sake saitawarsa na mako da aka ƙayyade zai ɓace. Idan kana mallakar asusu da yawa, dabarar da ta dace ita ce ci gaba da ƙona ƙayyadaddu a kan duk asusun da ya fi bin baya ga saurin makonsa, kuma a musanya kafin wata iyaka ta bugi bango a tsakiyar zama.
+
+Yin hakan da hannu na nufin fita, shiga, da rasa tattaunawarka. tokenmaxxing yana yin sa ta atomatik: `claude` da ke gudana yana sake duba ma'ajin tantancewarsa tsakanin buƙatu, don haka tantancewar da aka musanya ƙarƙashinsa ana amincewa da ita a wurinta (a cikin kusan daƙiƙa 30 a kan macOS, a buƙata ta gaba a kan Linux). Musanya na yau da kullum ba ya taɓa sake fara zaman ka. Yanayi guda da har yanzu yake buƙatar sarrafa tsari shi ne tafki da ya ƙare gaba ɗaya - zama ba zai iya dakatar da kansa ba - kuma wannan shi ne dalilin da ya sa mai kula (supervisor) mai sirara ke wanzuwa.
+
+Duk sauran abubuwa game da `claude` ba a canza su ba: duk flags, MCP servers, hooks, da skills suna ratsawa.
+
+## Farawa da sauri
+
+Yana buƙatar [Bun](https://bun.sh) da Claude Code, a kan macOS ko Linux.
+
+```sh
+bun add -g tokenmaxxing
+tokenmaxxing init
+```
+
+`init` yana yin abubuwa biyar:
+
+1. Yana shigo da asusun da kake ciki tuni a matsayin asusu na #1 (babu umarnin `adopt` na daban).
+2. Yana shigar da shim na mai kula na `claude`.
+3. Yana shigar da shigarwa guda uku a cikin `settings.json` na Claude Code: statusLine, Stop hook, da SessionStart hook (tare da shigarwar subagentStatusLine).
+4. Yana ƙara babban shirin (bin directory) na mai kula zuwa PATH na shell rc ɗinka (idempotent, an yiwa alama da sharhin `# tokenmaxxing PATH`). Dole ne ya kasance gaban ainihin `claude` a kan PATH domin ya tsare shi.
+5. Yana shigar da agogon dubawa na lokaci-lokaci (launchd agent a kan macOS, systemd user timer a kan Linux) da ke gudanar da `tokenmaxxing check` kowace daƙiƙa 180.
+
+Sake fara shell ɗinka, sannan ka ƙara ƙarin asusu ka ci gaba:
+
+```sh
+tokenmaxxing add        # yana shigar da ƙarin asusu ɗaya, cikin ware, kuma yana haɗa shi
+claude                  # yi amfani da claude kamar koyaushe
+```
+
+Har ila yau ana kiran `tokenmaxxing` da sunan `xx`. `tokenmaxxing` (ko `xx`) shi kaɗai yana gudanar da `status`; `switch` yana kasancewa a bayyane.
+
+## Umarni
+
+| Umarni | Abin da yake yi |
+|---|---|
+| `tokenmaxxing init` | Shigo da asusun yanzu, shigar da mai kula, hooks, da statusline |
+| `tokenmaxxing init --codex` | Haka ga Codex: shigo da shiga, shigar da mai kula na codex da Stop hook |
+| `tokenmaxxing add` | Yi rajistar ƙarin asusu (shiga a ware, an tattara shi cikin tafki) |
+| `tokenmaxxing add --codex` | Yi rajistar ƙarin asusun Codex (shiga a ware) |
+| `tokenmaxxing auth [sel \| --all]` | Sake tantance asusun da ke cikin tafki a wurinsa. Shi kaɗai yana lissafa tafkin kuma yana tambaya wanne; mai zaɓe yana nufin asusu ɗaya kuma yana gaya maka wace imel za ka shiga da ita; `--all` yana bin kowane asusun da ke buƙatar sake-tantancewa ɗaya bayan ɗaya |
+| `tokenmaxxing switch [sel]` | Musanya zuwa asusu mafi kyau (greedy, idempotent) ko tilasta wani takamaimai |
+| `tokenmaxxing switch --codex [sel]` | Musanya tafkin Codex (yana aiki a farawar codex ta gaba) |
+| `tokenmaxxing ls` | Lissafa asusun da ke cikin tafki |
+| `tokenmaxxing status` | Asusu tare da sandunan amfani na awa 5 / mako / kowane-model, masu aiki da waɗanda suka ƙare-har-sake-saitawa |
+| `tokenmaxxing status --force` | Ƙari da haka a ping kowane asusu (ƙaramar buƙatar haiku ɗaya kowanne) don duk agogon zaman awa 5 su fara yanzu, sannan a ɗauki sabon samfur |
+| `tokenmaxxing watch [seconds]` | Matsayi kai tsaye, ana sake nunawa kowace daƙiƙa N (tsohuwa 120, mafi ƙasa 30; ba ya taɓa ping) |
+| `tokenmaxxing config [get\|set\|unset\|tidy]` | Tsarin da ke aiki tare da tushe; gyara maɓallan da aka raba da aya; `tidy` yana yanke maɓallan da ba a sani ba |
+| `tokenmaxxing check` | Auna shawarar musanya sau ɗaya (wannan shi ne abin da agogon lokaci-lokaci ke gudanarwa) |
+| `tokenmaxxing serve [setup\|link\|unlink\|links]` | Daemon na gadar Slack (Socket Mode, babu URL na jama'a) |
+| `tokenmaxxing doctor` | Tabbatar da cewa mai kula da shigarwar saituna sun tsira |
+| `tokenmaxxing rename [--codex] <sel> <label>` | Sake yiwa asusun da ke cikin tafki lakabi |
+| `tokenmaxxing rm <sel>` | Cire asusu daga tafki |
+| `tokenmaxxing uninstall` | Cire mai kula da shigarwar saituna (ana kiyaye asusu da tantancewa) |
+
+## Gine-gine
+
+tokenmaxxing wani wurin shiga ne guda mai kira da yawa (`src/main.ts`) da ke aiki kamar mai kula na `claude` lokacin da aka kira shi da wannan suna, yana ba da shims na hook da statusline ta hanyar umarni na cikin gida, kuma in ba haka ba yana aika CLI. Yana gudana kai tsaye ƙarƙashin Bun; kunshin npm yana aika lambar tushe ta TypeScript, ba build ba.
+
+Sassan da ke motsi:
+
+### Shim na mai kula
+
+`init` yana rubuta shim na shell mai layi 2 mai suna `claude` a cikin `~/.config/tokenmaxxing/bin/` kuma yana sanya wannan babban shiri farko a kan PATH. Lokacin da ka rubuta `claude`, shim ɗin yana gudanar da mai kula, wanda yake ƙirƙira ainihin binary na claude tare da stdio da aka gada da hoton tashar `stty -g` da aka ajiye. Manajan tsari da tashar ne kawai: ba ya taɓa yin proxy na zirga-zirgar API kuma ba ya taɓa taɓa tokens da ke tafiya.
+
+Kiran yanayin bugu (`claude -p`, `--version`, `--help`), umarnin da ba na hulɗa ba (`claude mcp`, `claude config`, da sauransu), da probes na tokenmaxxing suna ratsawa kai tsaye ba tare da sarrafa zama ba. Ga zama na hulɗa, mai kula yana ƙayyade ID na zama (yana samar da ɗaya, ko sake amfani da wanda ka bayar ta `--session-id` / `-r` / `-c`), yana adana flags ɗin farawarka domin sake farawa daga baya zai iya sake maimaita su, sannan yana kallon fayil ɗin alamar sake-farawa (respawn marker) da aka danganta ga wannan zama.
+
+### Tee na statusline
+
+Claude Code yana turo bayanan iyakar-ƙima (`rate_limits.five_hour` da `rate_limits.seven_day`) cikin stdin na statusline a kowane zagaye. tokenmaxxing yana mallakar slot ɗin statusline, don haka mai nuna shi yana yin aiki biyu a matsayin abincin amfani na kyauta, mai tushen turawa: a kowane tick yana tee ɗin tagogin tarin tare da model ɗin da ke aiki cikin `usage.json`. Iyakokin kowane-model ba sa cikin stdin na statusline; suna zuwa ne kawai daga `claude -p '/usage'` (kyauta, sifili tokens), wanda ake dubawa da TTL kuma a ajiye shi cikin `model-usage.json` lokacin da model ɗin da ke aiki ke da ƙayyadaddun ƙarfin ɗauka.
+
+Tee ɗin yana rubutu-akan-canji: lokacin da alkaluma ba su canza ba yana kawai ɗaga mtime na fayil, wanda ke aiki a matsayin bugun zuciyar rayuwar abincin. Ana yin hukunci akan sabon-samu koyaushe ta mtime, ba ta hatimin lokaci da aka saka ba.
+
+### Stop hook da musanya
+
+A kowane iyakar zagaye, Stop hook yana gudanar da shawarar musanya (duba [Yadda musanya ke yanke shawara](#how-switching-decides)). Lokacin da musanya ta cancanta, tana faruwa a ƙarƙashin makullin keɓe na `flock(2)` (an ɗauka ta `bun:ffi`, tunda macOS ba ta zo da binary na `flock(1)` ba), kuma rubuce-rubucen tantancewa suna ƙulla haɗi ƙari da makullin sabuntawa na Claude Code. A cikin sashe mai muhimmanci, musanya guda:
+
+1. Yana tattara tantancewar da ke aiki a yanzu cikin adana na mai shi na gaskiya.
+2. Yana shigar da sabuwar tantancewar da aka sabunta na asusun da ake nufi a matsayin mai aiki, yana haɗawa cikin blob ɗin da ke aiki don yanayin "yan'uwa" (kamar tokens na OAuth na kowane MCP-server) su tsira.
+3. Yana adana token ɗin da aka juya na wanda ake nufi zuwa ajiyarsa.
+4. Yana sake rubuta filin `oauthAccount` cikin `~/.claude.json` ta hanyar atomic.
+5. Yana tabbatar da sabuwar lakabin mai aiki kuma yana share tsofaffin samfuran amfani, duka kafin makullin ya saki, don kar wani hatsari ya bar tantancewar da aka shigar da lakabin mai aiki suna nuni ga asusu daban-daban.
+
+Domin dukkan zaman bayanan martaba na tsohuwa suna raba tantancewa guda ɗaya da ke aiki, musanya guda tana ƙaura da kowane zama a lokaci ɗaya, kuma flock tare da sake-dubawa ƙarƙashin makulli yana hana hooks masu tsere ƙona asusu biyu.
+
+### Amincewa a wurin
+
+Zaman claude da ke gudana yana bincika ma'ajin tantancewarsa tsakanin buƙatu: a kan macOS yana sake karanta keychain ta hanyar ajiya na ɗan gajeren lokaci kuma yana kwatanta access tokens; a kan Linux yana ɗaukar mtime na fayil ɗin tantancewa kuma yana zubar da ajiyar tokens ɗinsa lokacin canji. Sakamakon shi ne cewa kowane zama da ke gudana yana amincewa da tantancewar da aka musanya cikin kusan daƙiƙa 30 a kan macOS kuma a buƙata ta gaba kai tsaye a kan Linux, ba tare da wani sake farawa ba. Wannan shi ne dalilin da ya sa musanya na yau da kullum ba ya rubuta alama kuma ba ya haifar da sake-farawa - zaman kawai yana ci gaba a kan sabon asusu. `/usage` na cikin zama yana raba ajiyar tokens iri ɗaya, don haka nunin asusunsa yana juyawa tare da amincewa.
+
+### Jira lokacin ƙarewar tafki da ci gaba ta atomatik
+
+Sai lokacin da kowane asusu a cikin tafki ya wuce sandunansa ne Stop hook ke rubuta alamar sake-farawa (tsarin alamar yana buƙatar hatimin lokaci na `waitUntil`; musanya na yau da kullum ba ta iya samar da ɗaya ba). Mai kula yana ganin alamar, yana yiwa yaronsa SIGTERM a iyakar zagaye da aka riga aka tabbatar (Stop hook yana gudana bayan rubutun ya kasance a diski kuma claude ba ya aiki, don haka babu abin da ya ɓace), yana maido da tashar, yana nuna ƙirgar baya zuwa sake saiti mafi kusa, sannan yana sake ƙaddamar da `claude --resume <session-id>` a kan asusun da aka dawo da shi. Ctrl-C yayin ƙirgar baya yana ci gaba nan take. Ana ƙayyade jiran atomatik ta `policy.maxWaitMs` (tsohuwa awa 1); bayan wannan shawarar tana ba da rahoton tafkin a matsayin wanda ya ƙare maimakon jira.
+
+### Agogon dubawa na lokaci-lokaci
+
+Hooks suna aiki ne kawai a iyakokin zagaye, kuma zagaye guda mai tsawo na agent na iya ƙona taga daga lafiya zuwa ƙarewa ba tare da iyaka guda ɗaya ba. Saboda haka `init` yana kuma shigar da agogon lokaci-lokaci - launchd agent a kan macOS, systemd user timer a kan Linux - da ke gudanar da `tokenmaxxing check` kowace daƙiƙa 180 ba tare da la'akari da ayyukan zagaye ba.
+
+### SessionStart hook
+
+Yana gudanar da auna iri ɗaya lokacin da zama ya fara ko ya ci gaba, don sabon zama ya fara a kan asusun da ya dace. Sanyaya bayan-musanya yana sa ya zama daidai babu-aiki (no-op) nan da nan bayan sake-farawa.
+
+## Yadda musanya ke yanke shawara [#how-switching-decides]
+
+Shawarar tana da yadudduka biyu: ƙofar shiga (engagement gate), sannan hanyar greedy ko hanya mai wuya (hard).
+
+### Shiga (Engagement)
+
+Ƙasa da `policy.greedySessionFloor` (tsohuwa 50, cikin kaso na tagar zaman awa 5), shawarar ba ta gudana kwata-kwata - sabon zama yana hawa asusunsa. Da zarar tagar zaman da ke aiki ta yi amfani 50%, ko an ƙetare wata sandar tsauri, shawarar tana shiga.
+
+### Sandunan tantancewa
+
+Ƙofofin (thresholds) sandunan tantancewa ne, ba abin da ke jawo firgita ba:
+
+- `thresholds.session`: 95. Sake saiti na awa 5 mai arha ne a jira, don haka tagar zaman tana musanya da wuri.
+- `thresholds.weekly`: 98. Wannan sanda guda tana rufe tarin kwanaki 7 da kowane iyakar mako na kowane-model. Ƙayyadaddun mako na "yi amfani da shi ko ka rasa shi" ne, don haka yana zubewa kusa da bango.
+
+Dukansu suna ƙasa da 100 da gangan: sararin shi ne kasafin da za a iso wurin iyakar zagaye mai tsafta (tare da har zuwa zagaye guda na jinkirin amincewa a kan macOS) kafin asusu ya bugi iyakarsa da gaske. Sandunan iri ɗaya suna tantance 'yan takarar musanya: asusun da ya wuce kowace sandarsa ba abin nufi ba ne mai inganci. Jawowa da tantancewa koyaushe suna amfani da sandunan da ke aiki iri ɗaya (thresholds ban da `policy.projectionMargin`), domin tantancewa mai sassauci fiye da jawowa zai sa musanya su sauka a kan asusun da jawowar za ta sake yiwa alama nan take, tana sa tafkin ping-pong.
+
+### Abin nufi: matsin sauri (pace pressure)
+
+Daga cikin asusun da za a iya amfani da su, abin nufi shi ne wanda ya fi bin baya ga saurin makonsa: mafi girman **matsin sauri**, wanda aka ayyana a matsayin sauran kason mako da aka raba da lokaci har zuwa sake saitin mako na wancan asusu. Asusun da ƙayyadaddu mafi yawa za su ɓace wa yana lashe. Daidaici yana warware zuwa ƙarewar mako mafi kusa, sannan mafi ƙarancin amfani na kwanaki 7.
+
+Komai yana gudana daga tagogin da aka ajiye a matsayin cikakkun UTC epochs, don haka tsohon samfur har yanzu yana warwarewa daidai: sake saitin mako da ya wuce yana ci gaba gaba a matakan kwanaki 7 daidai, kuma duk tagar da ta wuce sake saitinta da aka ajiye ana ƙidaya ta a matsayin sabuwa mai fanko (ba dalilin musanya ba ne, ba dalilin ajiye asusu a gefe ba ne).
+
+### Hanyar greedy da hanya mai wuya
+
+- **Hanyar greedy** (an shiga, amma ƙasa da kowace sanda): ka jera kowane asusu, tare da na yanzu. Idan asusun yanzu ya riga ya lashe ko ya daidaita, kada ka yi komai. In ba haka ba ka musanya zuwa asusun da ya fi kyau a fili. Ba ya taɓa jira kuma ba ya taɓa ajiyewa a gaba - ba a musanya asusu na yanzu mai amfani domin jira ba. Domin ana jera asusun yanzu ma, hanyar atomatik da `tokenmaxxing switch` shi kaɗai duk idempotent ne: auna lokaci-lokaci yana haɗuwa a kan asusun da ya dace sannan ya tsaya.
+- **Hanya mai wuya** (an ƙetare sanda): a musanya zuwa ɗan takara mafi kyau da za a iya amfani da shi. Idan refresh token na ɗan takara ya zama matacce, ana yiwa alama cewa yana buƙatar sake-tantancewa kuma ana gwada ɗan takara na gaba. Idan babu abin da za a iya amfani da shi, dabarar jira-ƙarewa tana gudana; kawai mai kira da zai iya dakatar da zaman da gaske (Stop hook da ake kula da shi) aka ba shi izinin ajiyewa a gaba zuwa asusu da har yanzu aka toshe amma zai fi kusa da dawowa.
+
+### Iyakoki na kowane-model
+
+`policy.switchModels` (tsohuwa `["fable"]`) yana ambaton iyalan model waɗanda iyakar mako na kowane-model ɗinsu zai iya jawo musanya. Daidaitawa tana ta hanyar token na iyali, ba ta ainihin kirtanin nunawa ba: sunayen nunin model suna canzawa ("Fable" ya zama "Fable 5"), kuma ƙofar-kirtani-daidai ta taɓa kashe musanyar kowane-model gaba ɗaya a shiru. Dokoki biyu na aminci masu alaƙa:
+
+- Model mai aiki da ba a sani ba yana toshe kowace iyali da aka tsara. Nan da nan bayan musanya ta share samfura, na'ura mara kai na iya gudana ba tare da sanin model ba; ɗaukar wanda ba a sani ba a matsayin mara ƙayyadewa ya taɓa bar asusu ya zauna a iyakar Fable ɗinsa na sa'o'i ba tare da a lura ba.
+- Tantance 'yan takara yana ƙidaya iyakoki na kowane-model da aka toshe ma, don haka tafki inda kowane asusu ya ƙona iyakar Fable ɗinsa ba ya round-robin.
+
+### Sanyaya (Cooldown)
+
+Sanyaya na daƙiƙa 45 bayan-musanya yana toshe hanyar atomatik. Ana danne tee na statusline na daƙiƙa 45 iri ɗaya bayan musanya (amincewa tana ɗaukar har zuwa daƙiƙa 30 a kan macOS), don haka auna na baya zai gudana a kan bayanan da musanyar da kanta ta ɓata - wannan takamaiman yanayi ya taɓa haifar da madauki na sake-farawa na A-zuwa-B-da-baya. `tokenmaxxing switch` na hannu ba a shafa shi da sanyaya.
+
+## Saitawa
+
+Saituna JSON ne a `~/.config/tokenmaxxing/config.json`. Kowane fili na zaɓi ne; tsohuwar ƙima tana aiki ga kowane fili.
+
+```json
+{
+  "thresholds": { "session": 95, "weekly": 98 },
+  "policy": {
+    "projectionMargin": 0,
+    "greedySessionFloor": 50,
+    "switchModels": ["fable"],
+    "usagePollTtlMs": 90000,
+    "maxWaitMs": 3600000
+  }
+}
+```
+
+- `thresholds.session` / `thresholds.weekly`: sandunan tantancewa da aka bayyana a sama.
+- `policy.projectionMargin`: ana ragi daga sandunan biyu don samar da sandunan da ke aiki.
+- `policy.greedySessionFloor`: kason da aka yi amfani-zama a wanda haɗuwar greedy ke shiga.
+- `policy.switchModels`: iyalan model waɗanda iyakar mako na kowane-model ɗinsu ke toshe musanya (ana mai da shigarwa ƙananan haruffa lokacin lodi).
+- `policy.usagePollTtlMs`: tsawon lokacin da dubawar kowane-model na `/usage` ke ci gaba da sabo.
+- `policy.maxWaitMs`: iyakar jiran atomatik na tafki da ya ƙare.
+
+`tokenmaxxing config` yana nuna saitunan da ke aiki tare da tushe; `config set`/`unset` suna gyara maɓallan da aka raba da aya; `config tidy` yana yanke maɓallan da ba a sani ba.
+
+## Ajiyar tantancewa da tsarin aminci
+
+Dukkan yanayi yana zaune a `~/.config/tokenmaxxing/`. I/O na tantancewa yana bi ta wani facade na ma'aji guda da aka zaɓa bisa dandali; wuraren kira ba sa taɓa reshe bisa dandali.
+
+**macOS**: tantancewa suna zaune cikin keychain na shiga a matsayin abubuwan generic-password, daidai da inda Claude Code da kanta ke ajiye su. Abin da ke aiki shi ne wanda claude ke karantawa; ajiyar kowane asusu da ke cikin tafki ana ajiye ta a matsayin abin keychain nata na `tokenmaxxing-cred-<uuid8>`. Babu wani abin da ke a matsayin rubutu bayyananne a diski. Karatu yana amfani da `security find-generic-password -w` (sirrin yana bayyana ne kawai a stdout); rubutu yana tura layin `add-generic-password` cikin `security -i` ta stdin don sirrin kada ya taɓa bayyana a argv na wani tsari. Yanayin hulɗa yana da buffer na layi kusan 4 KB, don haka blobs masu girman gaske suna komawa zuwa rubutun argv - dalili guda da ya sa abubuwan da aka ajiye ke adana kawai ƙaramin abin OAuth.
+
+**Linux**: Claude Code yana adana tantancewa a matsayin fayil ɗin rubutu bayyananne na 0600, kuma tokenmaxxing yana bin model iri ɗaya: fayil ɗin da ke aiki shi ne `.credentials.json` na claude, kuma ajiyoyin da aka ajiye fayilolin atomic ne na 0600 ƙarƙashin `~/.config/tokenmaxxing/creds/` cikin babban shirin 0700. Atomic a nan yana nufin rubuta-zuwa-na-ɗan-lokaci, fsync, sannan a sake suna: mai karatu a lokaci guda koyaushe yana ganin cikakken tsohon fayil ko cikakken sabon fayil, ba wani ɓangare ba.
+
+Dokokin aminci da musanya ke tilastawa:
+
+- **Tattarawa ta ainihin mai shi.** Kafin musanya, ana warware ainihin mai tantancewar da ke aiki ta hanyar tambayar API wace ƙungiya ce token ɗin ke ciki (`fetchTokenOrg` a kan OAuth roles endpoint) - ba ta hanyar dogaro da lakabin mai aiki da aka ajiye ba, wanda zai iya karkata. Lakabin da ya karkata ya taɓa sa tattarawar asusu ɗaya ta rubuta kan ajiyar kaɗai ta wani asusu. Idan tantancewar da ke aiki ta wani asusu ne a wajen tafki, musanya tana ƙi kai tsaye maimakon ta lalata ta.
+- **Sashe guda mai muhimmanci.** Tattarawa, shigar da sabuwar tantancewa, ajiyar token ɗinta da aka juya, musanyar asusu na `~/.claude.json`, da tabbatar da lakabin mai aiki duk suna faruwa a cikin sashe guda da aka kulle.
+- **Haɗuwa da sabuntawa na claude.** Zaman da ke kusa da ƙarewa na iya juya token ɗinsa a kowane lokaci, don haka rubuce-rubucen tantancewa suna kuma ɗaukar makullin sabuntawa na Claude Code (mafi ƙoƙari, tare da dawo da tsohon makulli da iyakar lokaci mai iyaka).
+- **Grants matattu suna raguwa cikin tsafta.** Sabuntawa da ta dawo `invalid_grant` tana yiwa wancan asusu alama cewa yana buƙatar sake-tantancewa kuma tana adana alamar kafin kuskuren ya yaɗu, don haka madaukan sake-gwadawa suna rage rukunin 'yan takara kuma su ƙare. `tokenmaxxing auth` yana gyara asusun da aka yiwa alama a wurinsa, kuma yana ƙin shigar da ta sauka a kan asusu daban da wanda ake gyara.
+- **Babu rubuta token.** Tokens ba sa taɓa bayyana a logs, kurakurai, ko fitarwa. Jikin kuskure daga endpoints na token da amfani ba a taɓa fitar da su danye; kawai rukunin filaye da aka amince da su ne ke tsira, domin jikin gazawar endpoint na token na iya sake maimaita kayan buƙata.
+- **Tsabtar probe.** Duk probe na `claude` da aka ƙirƙira yana share masu canjin muhalli guda takwas da claude ke girmamawa kafin binciken keychain ɗinsa (`ANTHROPIC_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN`, `CLAUDE_SECURESTORAGE_CONFIG_DIR`, da sauransu), don kada a taɓa danganta probe ga asusu da ba daidai ba.
+
+## Bayanan dandali: macOS da Linux
+
+| | macOS | Linux |
+|---|---|---|
+| Tantancewar da ke aiki | Abin generic-password na keychain na shiga | Fayil ɗin `.credentials.json` na 0600 |
+| Tantancewar da aka ajiye | Abubuwan keychain na kowane asusu | Fayilolin 0600 cikin babban shirin 0700 |
+| Amincewa bayan musanya | Cikin kusan daƙiƙa 30 (ajiyar karatun keychain) | Buƙata ta gaba (dubawar mtime na fayil) |
+| Dubawa na lokaci-lokaci | launchd agent, kowace 180s | systemd user timer, kowace 180s |
+| Ma'ajin shiga-a-ware | Sabis na keychain mai suna-hash ga kowane babban shirin saitin | Fayil a cikin babban shirin saitin da aka ware |
+
+Bayanai guda biyu na musamman ga Linux da suka cancanci sani: claude yana warware babban shirin tantancewarsa daga `CLAUDE_SECURESTORAGE_CONFIG_DIR` da farko (sannan `CLAUDE_CONFIG_DIR`, sannan `~/.claude`), kuma tokenmaxxing yana kwaikwayon wannan warwarewa daidai don kada su rabu. Kuma gine-ginen OS guda biyu na sigar claude iri ɗaya suna tsara agogon sake saiti na `/usage` daban-daban (ɗaya yana amfani da haɗin " at ", ɗayan waƙafi); mai fassarar tokenmaxxing yana karɓar waɗannan sifofi biyu daidai kuma yana rubutawa, maimakon hasashe, a kan kowane na uku.
+
+A kan macOS, iyaka guda ta gaskiya: `init` da `add` suna taɓa keychain ta hulɗa da gangan, don farkon shiga na `security` kada ya zama sanyi cikin hook mara kai.
+
+## statusline ɗin
+
+tokenmaxxing yana nuna statusline na Claude Code a asali (yayin da yake tee ɗin abincin amfani). Ka'idar ƙira: ana ɗauke da ƙayyadaddu cikin launi, ba lambobi ba. Layi ɗaya, misali:
+
+```
+tm-wt-demo Fable 5 (high) +156/-23  ◆ 𝒇 2h 1d  ◇ 19h  ◇ 𝒇 2d  ◇ full  ✗ ?
+```
+
+- Kowane token na taga shi ne lokacinsa-zuwa-sake-saiti, an fenta shi a kan ramp mai ci gaba na kore-zuwa-rawaya-zuwa-ja bisa kason da aka yi amfani (truecolor lokacin da tashar ta goyi bayansa, an mataki zuwa kubu na launi 256 in ba haka ba). Ramp ɗin yana daure a tsantsar kore ga 0, rawaya a 75, da ja a 95 zuwa sama, don haka tsofaffin rukunan tsanani suna tsira a matsayin daurin ramp.
+- Ana fenta sunan model bisa cikar tagar mahallin (context-window) a kan ramp ɗin iri ɗaya.
+- Kore `◆` yana jagorancin tagogin asusun da ke aiki; kowane asusun da aka ajiye yana samun `◇` na cyan nasa (ja `✗` idan yana buƙatar sake-tantancewa). Asusu suna jero bisa sake saiti mai zuwa mafi wuri.
+- Kowane-model yana zuwa da farko a kowane toshe a matsayin baƙin fentin farko: Fable yana nuna `𝒇`; sauran iyalai suna amfani da babban harafinsu na farko, koyaushe da aka daidaita da iyali.
+- Asusun da aka ajiye da ba a taɓa ba yana nuna `full` na kore. Amfani da aka auna tare da sake saiti da ba a sani ba yana nuna `?` da aka fenta, kuma iyakar kowane-model da ba a auna ba a kan model da aka toshe yana nuna `𝒇?` marar fenti - abin da ba a auna ba kada ya taɓa kama kamar mai aminci.
+- Ƙirge-ƙirgen sake saiti suna nuna babban naúra kawai, ba "now" ko "0m" ba; taga marar sake saiti mai zuwa tana nuna `0` na kore (fanko kuma).
+- Sunan tushe (basename) na git worktree da aka haɗa yana jagorancin layin; babban checkout ba ya nuna komai a can. Ganowar tana karanta tsarin fayil don fayil ɗin `.git` kuma ba ta taɓa ƙirƙirar wani git subprocess ba.
+- Da `NO_COLOR` an saita, layin yana komawa zuwa tsarin lamba mai haɗe (`2h5` yana nufin sake saiti cikin awa 2, 5% an yi amfani; `ctx 42` don cikar mahalli) - ba tare da launi ba, taga da ta zube kada ta kama kamar sabuwa.
+
+Ayyukan subagent suna samun layukan panel nasu ta hanyar saman subagentStatusLine na claude: layi guda ga kowane aiki mai gudana, an fenta sunan iyali bisa cikar mahallin wancan aiki.
+
+## Goyon bayan Codex
+
+Haɗe iri ɗaya yana aiki ga Codex CLI na OpenAI, a kan asusun biyan-kuɗin ChatGPT naka:
+
+```sh
+tokenmaxxing init --codex   # shigo da shigar codex ɗinka na yanzu + shigar da mai kula na codex & Stop hook
+tokenmaxxing add --codex    # shiga wani asusu, a ware - ba a taɓa shigar farko ba
+codex                       # yi amfani da codex kamar koyaushe
+```
+
+Tafkin Codex cikakken yanayi ne mai gudana a layi ɗaya: fihirisar asusunsa, fayilolin tantancewarsa da aka ajiye (fayilolin 0600 a kan dandali biyu, tunda ma'ajin codex da kanta fayil ne na rubutu bayyananne), makullinsa, hatimin lokacin musanya-ta-ƙarshe nasa. Babu abin da ake rabawa da tafkin Claude sai lambar-manufar-shawara.
+
+### Dalilin da ya sa hot-swap ba zai yiwu ba a Codex
+
+Tsarin codex da ke gudana yana riƙe manajan tantancewa guda a ƙwaƙwalwa kuma a fili yana ƙin sake lodin `auth.json` lokacin da yanzu yake ambaton asusu daban. Babu mai kallon fayil kuma babu dubawar tantancewa ta kowace buƙata, don haka tantancewar da aka musanya ƙarƙashin codex da ke gudana kawai ba ta taɓa yin tasiri ga inference. Sake farawa shi ne musanya: `codex resume <session-id>` yana ci gaba da rubutun gida a kan duk asusun da `auth.json` yake riƙe yanzu.
+
+tokenmaxxing yana sarrafa wannan da shim na mai kula na codex: Stop hook yana gudanar da shawarar matsin-sauri ta greedy iri ɗaya a kowace iyakar zagaye, kuma lokacin da ya yi musanya, yana rubuta alama da ke sa mai kula ya yi SIGTERM ga zaman a iyakar da aka tabbatar kuma ya sake ƙaddamar da `codex resume <session-id>` a kan sabon asusu, tare da rubutu cikakke. Domin kowace musanyar codex sake farawa ce da ake iya gani, hanyar greedy ta codex tana ɗauke da gefen ci gaba na 1.2x: ɗan takara dole ne ya doke matsin sauri na asusun yanzu da 20%, ba da kaɗan ba. Hanya mai wuya (sanda da aka ƙetare) tana yin watsi da gefen. Har ila yau babu ƙirgar baya na tafki da ya ƙare ga codex - babu abin da zai iya dakatar da zaman codex - don haka tafkin codex da ya ƙare gaba ɗaya yana tsayawa.
+
+Sauran hanyoyin aiki na musamman ga codex:
+
+- Ana karanta amfani daga GET da aka tantance na kyauta a kan rate-limit endpoint na codex (kira iri ɗaya da `/status` na CLI ke yi): kaso tare da cikakkun lokutan sake saiti na epoch, tagogin tarin da iyakoki na kowane-model duka. Rarrabuwar taga tana bisa tsawon lokaci, ba bisa matsayi ba, domin tsare-tsaren yanzu na iya rashin tagar awa 5 kwata-kwata kuma tagar mako tana zaune a slot ɗin farko.
+- Tokens na sabuntawa na Codex suna juyawa, kuma sake amfani da wanda aka maye gurbinsa yana kashe dukan iyalin grant. Ana adana kowace juyi nan take da ta dawo, ana ɗaukar samfurin asusun da ke aiki ne kawai ta blob ɗin da ke aiki (ba tsohon kwafin da aka ajiye ba), kuma fayilolin kasancewa na kowane zama suna tabbatar da cewa asusun da ke gudana a cikin zaman 'yan'uwa mai aiki ba ya taɓa zama abin nufi na musanya kuma ba a taɓa sabunta token ɗinsa da aka ajiye.
+- Codex yana buƙatar ma'ajin tantancewa na fayil: `init --codex` yana gazawa da sauri idan an ƙayyade ma'ajin keyring, kuma `add --codex` yana rubuta saitin yanayin-fayil cikin gidan shiga da aka ware don shigar ya sauka mai iya tattarawa.
+- Mataki guda na hannu: codex yana tsallake hooks da ba a gaya masa ya amince da su ba. Bayan `init --codex`, buɗe codex sau ɗaya kuma ka amince da Stop hook na tokenmaxxing ta `/hooks`, ko kuwa musanya-ta-atomatik za ta kasance babu aiki a shiru. `init --codex` yana buga wannan tunatarwa.
+
+## Gadar Slack: xx serve
+
+`tokenmaxxing serve` yana gudanar da daemon na Slack na gida ta Socket Mode - babu buƙatar URL na jama'a. Saitawa:
+
+```sh
+tokenmaxxing serve setup                    # yana buga manifest na aikace-aikacen, yana neman tokens biyu
+tokenmaxxing serve link <channel-id> <repo> # haɗa tashar zuwa checkout na repo
+tokenmaxxing serve                          # gudanar da daemon
+```
+
+Ambaci bot ɗin a cikin tashar da aka haɗa kuma zai buɗe zaman Claude Code na wancan zare, a cikin checkout na repo da aka haɗa. Kowane saƙon zare yana gudanar da `query()` guda na Agent SDK tare da `resume` - ba tsayayyen tambaya mai gudana ba - don haka `ensureBestAccount()` yana sake auna tafkin a kowane zagaye ɗaya kuma daemon zai iya sake farawa ba tare da rasa zaruruwa ba (bayanan zare suna dawwama; daemon yana sake biyan kuɗi (re-subscribe) su lokacin farawa).
+
+Halayen da suka cancanci lura:
+
+- **Kwarara (Streaming)**: amsoshi suna kwarara a asali cikin Slack, tare da katunan aiki don tunani da gudanar da kayan aiki, an nuna lambar da aka kewaye tare da haskakawa, katin "Turn" na rufewa tare da farashi da tsawon lokaci, da sabon saƙon Slack da aka buɗe duk lokacin da gudanar da kayan aiki ya katse rubutun da ake kwarara, don zagaye ya karanta a matsayin saƙonni daban-daban a kewayen gudanar da kayan aiki. Kiran TodoWrite yana sabunta katin lissafin dubawa guda mai tsayayye a wurinsa.
+- **Izini**: `permissionMode` na kowace haɗi tsohuwa ita ce `acceptEdits`; `--yolo` (laƙabi `--dangerous`) yana sa haɗi ta shiga `bypassPermissions`. Ba a yarda da tattaunawa ta hulɗa a cikin zagayen da aka isar ba - babu wanda zai iya amsa ɗaya ta Slack - don haka model yana tambaya cikin rubutu kuma amsarka ta zare ita ce zagaye na gaba. Wani skill na plugin da aka haɗa yana koya masa ya yiwa mai neman alama kuma ya ƙare zagaye lokacin da yake buƙatar shawara.
+- **Umarnin slash**: saƙon zare wanda rubutunsa da aka cire ya fara da `/` yana gudana a matsayin umarnin slash na claude. Mawallafin Slack yana cin saƙonni da suka fara da `/`, don haka yi amfani da sigar ambato-farko (`@bot /usage`) ko sarari na farko.
+- **Rufewa cikin annashuwa**: SIGTERM/SIGINT suna zubarwa - ana jefar da sabbin zagaye da ƙarfi, zagayen da ke tafiya suna samun har zuwa mintuna 5, kuma yaron claude yana gudana a ware cikin ƙungiyar tsarinsa don Ctrl-C na tashar kada ya iya kashe shi kafin zubarwa ta kiyaye zagaye.
+- **Tsaftar zare**: lokacin da ka gaya masa cewa an gama aikin, model yana kiran kayan aikin `finish_thread` na cikin-tsari; bayan zagaye ya ƙare gaba ɗaya, daemon yana jefar da bayanan zare, yana dakatar da biyan kuɗi (unsubscribe), kuma yana buga tabbaci guda. Sabon ambato yana fara sabon zama.
+- **Tsabtar kuskure**: kurakuran zagaye suna buga rubutun-saƙo-kawai da aka gyara, ba jikin kuskure danye ba.
+
+## Saman Agent SDK
+
+Wurin shigar shirye-shirye na kunshin (`exports["."]` yana nuni ga `src/sdk.ts`) yana haɗa tokenmaxxing da Claude Agent SDK ga agent ɗin da kake ginawa a kan asusunka da ke cikin tafki. Aikace-aikacenka dole ne ya gudana ƙarƙashin Bun (tokenmaxxing yana aika lambar tushe ta TypeScript kuma yana amfani da `bun:ffi`).
+
+```ts
+import { query } from "@anthropic-ai/claude-agent-sdk";
+import { ensureBestAccount, pooledOptions, stopHookCheck } from "tokenmaxxing";
+
+await ensureBestAccount(); // run the switch decision before the spawn
+
+for await (const message of query({
+  prompt: "...",
+  options: {
+    ...pooledOptions(), // pinned real claude + scrubbed env
+    hooks: { Stop: [{ hooks: [stopHookCheck] }] }, // re-decide at every turn boundary
+  },
+})) {
+  // capture the session id from the init message for `resume` across swaps
+}
+```
+
+Agent SDK yana ƙirƙirar subprocess na claude ga kowane `query()` kuma yana karanta tantancewa sau ɗaya lokacin ƙirƙira - babu statusline, babu hot-swap tsakiyar-tambaya - don haka haɗin yana bisa iyaka:
+
+- `ensureBestAccount()` ita ce ainihin shawarar da hooks na CLI da agogo ke gudanarwa (sandunan, matsin sauri, sanyaya, dukkan lambar da ake rabawa), ba ta hangen nesa ba: zaman SDK ba zai taɓa dakatar da shi domin ƙirgar baya na ƙarewa ba.
+- `pooledOptions()` yana ƙayyade `pathToClaudeCodeExecutable` zuwa ainihin binary na claude (ba wrapper na mai kula ba) kuma yana samar da cikakken `env` na maye gurbi tare da share kowane sauya-tantancewa na muhalli. Yana gazawa da sauri idan an saita `CLAUDE_CONFIG_DIR` ko `CLAUDE_SECURESTORAGE_CONFIG_DIR` a cikin muhallin aikace-aikacenka: a kan Linux musanya za ta rubuta tantancewar da ke aiki inda waɗannan suke nuni yayin da subprocess da aka share ke karanta ma'ajin tsohuwa, wani raunin-asusu-marar-daidai a shiru.
+- `stopHookCheck` yana sake gudanar da shawarar a iyakokin zagaye; musanya da ya sauka tana aiki a ƙirƙira ta gaba. Yana kama kuskurorinsa (yana rubutawa zuwa stderr da log) maimakon sake jefawa, domin banda hook da ba a sarrafa ba na iya katse agent, kuma dakatar da zagaye saboda dubawar musanya da ta karye yana da tsada fiye da ci gaba a kan asusun yanzu.
+
+`sdk.ts` ba ya shigo da komai daga Agent SDK da kansa; ƙimominsa suna yaɗuwa cikin tsari zuwa cikin zaɓuɓɓukan SDK.
+
+## Amfanin kai da sharuɗɗan sabis [#personal-use-and-terms-of-service]
+
+tokenmaxxing yana haɗa asusun da kake mallaka, a cikin zama da agent ɗin da kai da kanka kake gudanarwa. Wannan kalmar da gangan ne: Anthropic ba ta yarda kayayyakin ɓangare na uku su ba da shiga na claude.ai ko iyakokin ƙima na claude.ai ba, kuma wannan ya haɗa da agent ɗin da aka gina a kan Agent SDK. Kada ka aika saman SDK da aka haɗa, ko duk abin da aka gina a kansa, ga ɓangarori na uku. tokenmaxxing kuma da gangan yana kasancewa a kan hanyar `/usage` da CLI ke shiga tsakani ga bayanan ƙayyadaddu maimakon sake aiwatar da OAuth ko yin proxy na zirga-zirgar API: ba proxy ba ne, kuma kawai OAuth endpoints da yake taɓawa su ne daidaitaccen refresh grant da ake amfani da shi yayin musanya da dubawar shaida ta karatu-kawai (roles endpoint) da ke tabbatar da wace asusu ce token ɗin ke ciki da gaske.
+
+## Iyakoki na gaskiya
+
+- **Zagaye sanyi guda.** Ajiyar prompt tana iyakance ga ƙungiya, don haka zagaye na farko a kan sabon asusu yana sake loda mahalli sau ɗaya.
+- **Tsangwamar dakatarwar-ƙarewa.** Kawai tafki da ya ƙare gaba ɗaya ne ke tsayar da zaman domin ƙirgar baya; duk abin da aka rubuta a wannan ɗan lokaci yana ɓacewa.
+- **Jinkirin amincewa.** A kan macOS zagaye na farko cikin kusan daƙiƙa 30 na musanya na iya har yanzu auna tsohon asusu; sararin sandunan yana sha shi.
+- **Girman fashewa da ake rabawa.** Dukkan zaman bayanan martaba na tsohuwa suna raba tantancewa guda da ke aiki, don haka musanya tana motsa su duka tare (kowanne yana amincewa a wurinsa).
+- **Tantancewa bayyananne a Linux.** Claude Code da kanta tana adana tantancewar Linux a matsayin fayil ɗin rubutu bayyananne na 0600; kwafin da tokenmaxxing ke ajiye suna bin model iri ɗaya.
+
+## Warware matsala da FAQ
+
+**`claude` bai kama kamar ana kula da shi ba.**
+Gudanar da `tokenmaxxing doctor`. Shim ɗin dole ne ya lashe warware PATH; duba cewa layin `# tokenmaxxing PATH` a cikin shell rc ɗinka yana nuni ga babban shirin bin na yanzu kuma yana gaban ainihin claude. `doctor` yana kuma yin gargaɗi game da `alias claude=...` ko aikin shell na `claude()` da ke inuwar wrapper, da game da laƙabai da ke ƙaddamar da binary na claude ta cikakkiyar hanya (waɗannan suna zagaye mai kula gaba ɗaya).
+
+**Musanya-ta-atomatik ba ya taɓa aiki a Codex.**
+Codex yana tsallake hooks da ba a gaya masa ya amince da su ba. Buɗe codex, gudanar da `/hooks`, kuma ka amince da Stop hook na tokenmaxxing. Ana yin rikodin amana bisa hash na hook, don haka dole ne a sake bayar da ita idan aka gyara hook.
+
+**Asusu yana nuna ja `✗` a cikin statusline.**
+Token ɗin sabuntawarsa matacce ne (an soke shi ko an juya shi daga ƙarƙashin ajiyarsa). Gudanar da `tokenmaxxing auth <sel>` don sake tantance shi a wurinsa; umarnin yana gaya maka wace imel za ka shiga da ita kuma yana ƙin shigar da ta sauka a kan asusu daban.
+
+**Me ya sa ba ya musanya zuwa asusun da ke da ƙayyadaddu mafi yawa da suka rage?**
+Domin wannan ba shi ne asusu da ke cikin haɗarin rasa ƙayyadaddu mafi girma ba. Abin nufi shi ne asusun da ya fi bin baya ga saurin makonsa: kason da ya rage da aka raba da lokaci zuwa sake saitinsa na mako. Da adadin da suka rage daidai wannan yana raguwa zuwa ƙarewa mafi kusa da farko, kuma da ƙarewa daidai zuwa mafi yawa da suka rage da farko.
+
+**Ya kawai musanya kuma statusline har yanzu yana nuna tsohon asusu.**
+Ana sa ran haka har zuwa kusan daƙiƙa 30 a kan macOS: zaman da ke gudana yana amincewa da tantancewar da aka musanya a sabuntawar ajiyar-tantancewarsa ta gaba. Ana danne tee na amfani na daƙiƙa 45 bayan musanya saboda wannan dalili.
+
+**Shin `status --force` yana da farashi?**
+Eh, da gangan: yana aika ƙaramar buƙatar haiku da aka auna guda ga kowane asusu don kowace tagar zaman awa 5 ta fara a wannan lokaci maimakon ta kwanta ba tare da aiki ba, sannan ya ɗauki sabon samfur. `status` da `watch` na yau da kullum ba sa taɓa ping; karatun `/usage` na kyauta ne. Lura cewa abincin amfani na sabar na iya jinkirta taga da aka buɗe sabo da daƙiƙu zuwa mintuna, don haka probe nan da nan bayan ping na iya har yanzu nuna yanayin kafin-ping - `status` yana nuna bayanin kula maimakon yin kamar ping ya gaza.
+
+**Probe na `/usage` bai dawo da komai ba ga asusun da ke aiki.**
+Wannan hali ne da aka sani na claude: lokacin da ɗaukar amfaninsa na cikin gida ya gaza ko aka iyakance ƙima, `/usage` yana buga ƙididdigar zaman gida kawai ba tare da layukan kaso ba. tokenmaxxing yana ɗaukar samfurin asusun da ke aiki daga turawar statusline kuma yana probe asusun da aka ajiye kawai, daidai don guje wa wannan.
+
+**Zaman claude na baya.**
+Daemon na baya na Claude yana ƙirƙirar ainihin binary da aka sanya sigar ta cikakkiyar hanya, yana zagaye shims na PATH, don haka ba a kula da zaman baya. Hooks har yanzu suna aiki ta `settings.json`, kuma amincewa da tantancewa tare da agogon lokaci-lokaci suna rufe musanya, amma babu sake-farawa da alama ke jagoranta a gare su.
+
+**Wani abu ya ƙirƙiri tsare-tsare da yawa a wani lokaci. Shin har yanzu wannan yana yiwuwa?**
+Mai kula yana ɗauke da masu tsaron sake-maimaitawa masu yadudduka a kan wannan gazawar tarihi daidai (wrapper tsohon da aka ƙayyade a matsayin "ainihin" claude): mai tsaron zurfi a cikin muhalli da ke dakatarwa a matakai 5, mai iyakance ƙimar-ƙirƙira a diski, dubawar shaidar realpath da ke ƙin duk ɗan takara da ke warwarewa komawa cikin babban shirin bin na tokenmaxxing, da gazawa mai wuya (ba binciken PATH a shiru ba) lokacin da hanyar claude da aka tsara ba ta wanzu. `init` da `doctor` suna tabbatar da cewa ɗan takara da gaske claude ne ta hanyar gudanar da `--version` kafin ƙayyade shi.
+
+**Cirewa.**
+`tokenmaxxing uninstall` yana cire shims na mai kula, shigarwar saituna, da agogon lokaci-lokaci, kuma yana barin asusunka da tantancewar da aka ajiye cikakke. Yana cire shigarwar statusline da yake gane a matsayin nasa kawai.
+
+## Lasisi
+
+MIT. Lambar tushe a [anaclumos/tokenmaxxing](https://github.com/anaclumos/tokenmaxxing).

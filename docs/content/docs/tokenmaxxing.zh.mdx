@@ -1,0 +1,359 @@
+---
+title: tokenmaxxing
+description: Claude Code 账户自动切换 - 汇集你自有的订阅账户，在配额用尽时热切换凭证，让每个会话都能继续。
+---
+
+tokenmaxxing 是一款用于 Claude Code 账户自动切换的 CLI 工具。它会把你拥有的多个订阅（Pro/Max）账户汇集在一起，当正在使用的账户接近用量限额时，把活动凭证热切换到一个更空闲的账户。你像往常一样运行 `claude`；切换发生在安全的回合边界，你正在运行的会话会在新账户上继续同一段对话，无需重启。它可以同时在许多并发会话上工作。
+
+唯一可见的行为出现在最坏情况：当整个账户池都触及限额时，会话会带着倒计时暂停，并在下一个重置的账户上自动恢复（按 Ctrl-C 可立即恢复）。
+
+<Callout>
+适用范围：macOS 和 Linux 上的 Claude Code，外加 OpenAI 的 Codex CLI 作为第二个并行的账户池。它汇集的是订阅账户，而非 API 密钥。这是一款供个人使用的工具，用于汇集你自己拥有的账户，在你自己运行的会话与 agent 中使用 - 参见[个人使用与服务条款](#personal-use-and-terms-of-service)。
+</Callout>
+
+## 问题所在
+
+一个 Claude 订阅会同时计量三种限额（均已通过 `/usage` 确认）：
+
+- **当前会话**：一个滚动的 5 小时窗口。
+- **当前一周（所有模型）**：一个 7 天的汇总额度。
+- **当前一周，按模型**：针对各个模型家族的独立周上限。目前这类上限只存在于 Sonnet 和 Fable，且只有 Fable 的上限足够紧、值得关注 - 它会远早于汇总额度就触发约束。一台机器可能在周内所有模型仅用到 50% 时，就已经在周内 Fable 上用到 80%。
+
+周配额是用不完就作废：账户在其固定的每周重置之前没有消耗掉的部分都会被作废。如果你拥有多个账户，理性的策略是持续在最落后于自身周进度的账户上消耗配额，并在任一限额于会话中途触壁之前提前切走。
+
+手动完成这件事意味着退出登录、重新登录，并丢失你的对话。tokenmaxxing 将其自动化：正在运行的 `claude` 会在两次请求之间重新检查它的凭证存储，因此在其底层被切换的凭证会被就地采用（在 macOS 上约 30 秒内，在 Linux 上于下一次请求时）。普通切换永远不会重启你的会话。唯一仍需进程管理的情况是账户池彻底耗尽 - 会话无法让自己暂停 - 这正是那个轻量级监督进程存在的原因。
+
+`claude` 的其他一切都保持不变：所有标志、MCP 服务器、hooks 和 skills 都会原样透传。
+
+## 快速上手
+
+需要 [Bun](https://bun.sh) 和 Claude Code，运行于 macOS 或 Linux。
+
+```sh
+bun add -g tokenmaxxing
+tokenmaxxing init
+```
+
+`init` 会做五件事：
+
+1. 把你当前已登录的账户作为 #1 号账户导入（没有单独的 `adopt` 命令）。
+2. 安装 `claude` 监督进程 shim。
+3. 在 Claude Code 的 `settings.json` 中安装三个条目：一个 statusLine、一个 Stop hook，和一个 SessionStart hook（另加一个 subagentStatusLine 条目）。
+4. 把监督进程的 bin 目录追加到你 shell rc 的 PATH 中（幂等操作，用 `# tokenmaxxing PATH` 注释标记）。它必须排在真正的 `claude` 之前，才能拦截到它。
+5. 安装一个周期性检查定时器（macOS 上为 launchd agent，Linux 上为 systemd 用户定时器），每 180 秒运行一次 `tokenmaxxing check`。
+
+重启你的 shell，然后添加更多账户即可开始：
+
+```sh
+tokenmaxxing add        # 以隔离方式再登录一个账户，并将其纳入池中
+claude                  # 像往常一样使用 claude
+```
+
+`tokenmaxxing` 也有别名 `xx`。裸执行 `tokenmaxxing`（或 `xx`）会运行 `status`；`switch` 仍需显式调用。
+
+## 命令
+
+| 命令 | 作用 |
+|---|---|
+| `tokenmaxxing init` | 导入当前账户，安装监督进程、hooks 和 statusline |
+| `tokenmaxxing init --codex` | 对 Codex 执行同样操作：导入登录、安装 codex 监督进程和 Stop hook |
+| `tokenmaxxing add` | 注册一个额外账户（隔离登录，收集进池中） |
+| `tokenmaxxing add --codex` | 注册一个额外的 Codex 账户（隔离登录） |
+| `tokenmaxxing auth [sel \| --all]` | 就地重新认证一个池内账户。裸执行会列出账户池并询问选哪个；选择器定位到某一账户并告诉你该用哪个邮箱登录；`--all` 会逐个走完所有需重新认证的账户 |
+| `tokenmaxxing switch [sel]` | 切换到最佳账户（贪心、幂等），或强制指定某一账户 |
+| `tokenmaxxing switch --codex [sel]` | 切换 Codex 账户池（在下一次 codex 启动时生效） |
+| `tokenmaxxing ls` | 列出池内账户 |
+| `tokenmaxxing status` | 展示各账户的 5 小时 / 周 / 按模型用量条，以及活动和已耗尽到重置的状态 |
+| `tokenmaxxing status --force` | 额外对每个账户发一次 ping（每个一个极小的 haiku 请求），让所有 5 小时会话计时器立即开始，然后重新采样 |
+| `tokenmaxxing watch [seconds]` | 实时状态，每 N 秒重新渲染一次（默认 120，最低 30；从不 ping） |
+| `tokenmaxxing config [get\|set\|unset\|tidy]` | 显示带来源的有效配置；编辑点分键；`tidy` 清除未知键 |
+| `tokenmaxxing check` | 评估一次切换决策（这正是周期性定时器所运行的） |
+| `tokenmaxxing serve [setup\|link\|unlink\|links]` | Slack 桥接守护进程（Socket Mode，无需公网 URL） |
+| `tokenmaxxing doctor` | 校验监督进程和设置条目是否仍然存在 |
+| `tokenmaxxing rename [--codex] <sel> <label>` | 重新标注一个池内账户 |
+| `tokenmaxxing rm <sel>` | 从池中移除一个账户 |
+| `tokenmaxxing uninstall` | 移除监督进程和设置条目（账户与凭证会保留） |
+
+## 架构
+
+tokenmaxxing 是一个多重调用入口点（`src/main.ts`）：当以 `claude` 这个名字被调用时，它表现为 `claude` 监督进程；通过内部子命令提供 hook 和 statusline 的 shim；其余情况下则分派 CLI。它直接运行在 Bun 之上；npm 包发布的是 TypeScript 源码，而非构建产物。
+
+其组成部分：
+
+### 监督进程 shim
+
+`init` 会写入一个名为 `claude` 的两行 shell shim 到 `~/.config/tokenmaxxing/bin/`，并把该目录放到 PATH 最前面。当你输入 `claude` 时，shim 运行监督进程，后者以继承的 stdio 和一份保存的 `stty -g` 终端快照来 spawn 真正的 claude 二进制。它只是一个进程与终端管理器：从不代理 API 流量，也从不触碰传输中的 token。
+
+打印模式调用（`claude -p`、`--version`、`--help`）、非交互式子命令（`claude mcp`、`claude config` 等等）以及 tokenmaxxing 自己的探测，都会直接透传，不做任何会话管理。对于交互式会话，监督进程会固定一个会话 id（生成一个，或复用你通过 `--session-id` / `-r` / `-c` 传入的那个），持久化你的启动标志以便之后重新启动时能回放，然后监视一个绑定到该会话的 respawn 标记文件。
+
+### statusline 分流
+
+Claude Code 每个回合都会把速率限制数据（`rate_limits.five_hour` 和 `rate_limits.seven_day`）推送到 statusline 的 stdin。tokenmaxxing 掌管着 statusline 槽位，因此它的渲染器兼作一个免费的、基于推送的用量数据源：每一次心跳它都把汇总窗口加上活动模型分流写入 `usage.json`。按模型上限不在 statusline stdin 中；它们只来自 `claude -p '/usage'`（免费、零 token），当活动模型受容量约束时会带 TTL 轮询并缓存到 `model-usage.json`。
+
+分流是按变更写入：当数据未变化时它只更新文件的 mtime，作为数据源的存活心跳。新鲜度始终以 mtime 判断，而非以内嵌的时间戳判断。
+
+### Stop hook 与切换
+
+在每个回合边界，Stop hook 运行切换决策（参见[切换如何决策](#how-switching-decides)）。当需要切换时，它会在一个 `flock(2)` 独占锁下发生（通过 `bun:ffi` 获取，因为 macOS 不自带 `flock(1)` 二进制），且凭证写入还会额外与 Claude Code 自身的刷新锁互锁。在临界区内，一次切换会：
+
+1. 把当前活动凭证收集到其真正所有者的停放备份中。
+2. 把目标账户刚刷新的凭证安装为活动凭证，并合并进现有活动数据块中，让兄弟状态（例如各 MCP 服务器的 OAuth token）得以保留。
+3. 把目标账户轮换后的 token 持久化到它自己的备份中。
+4. 原子地重写 `~/.claude.json` 中的 `oauthAccount` 字段。
+5. 提交新的活动标签并清除过期的用量快照，这些全部在锁释放之前完成，因此崩溃绝不会留下已安装凭证与活动标签指向不同账户的情况。
+
+由于所有默认配置的会话共享这一份活动凭证，一次切换就会同时迁移每个会话；而 flock 加上锁内的重新检查，能防止相互竞争的 hook 烧掉两个账户。
+
+### 就地采用
+
+正在运行的 claude 会话会在两次请求之间轮询它的凭证存储：在 macOS 上，它通过一个短缓存重新读取钥匙串并比较访问 token；在 Linux 上，它 stat 凭证文件的 mtime，并在变化时刷新它的 token 缓存。最终效果是，被切换的凭证会被每个正在运行的会话采用 - 在 macOS 上约 30 秒内，在 Linux 上就在紧接着的下一次请求时 - 无需任何重启。这就是普通切换不写标记、不触发任何 respawn 的原因 - 会话只是在新账户上继续。会话内的 `/usage` 共享相同的 token 缓存，因此它的账户显示会随着采用一起翻转。
+
+### 账户池耗尽的等待与自动恢复
+
+只有当池中每个账户都超过其阈值条时，Stop hook 才会写入一个 respawn 标记（标记 schema 要求一个 `waitUntil` 时间戳；普通切换永远无法产出这样的标记）。监督进程看到该标记后，会在已提交的回合边界 SIGTERM 它的子进程（Stop hook 在转录写入磁盘且 claude 空闲之后才运行，因此不会丢失任何内容），恢复终端，显示一个到最近重置的倒计时，然后在已恢复的账户上重新启动 `claude --resume <session-id>`。倒计时期间按 Ctrl-C 会立即恢复。自动等待受 `policy.maxWaitMs`（默认 1 小时）限制；超过之后，决策会将账户池报告为耗尽而不再等待。
+
+### 周期性检查定时器
+
+Hooks 只在回合边界触发，而一个漫长的 agent 式回合可能在没有任何边界的情况下，把一个窗口从健康烧到耗尽。因此 `init` 还会安装一个周期性定时器 - macOS 上为 launchd agent，Linux 上为 systemd 用户定时器 - 无论回合活动如何，每 180 秒运行一次 `tokenmaxxing check`。
+
+### 一个 SessionStart hook
+
+在会话开始或恢复时运行同样的评估，让新会话从正确的账户开始。切换后的冷却期使它在 respawn 之后恰好成为一个正确的空操作。
+
+## 切换如何决策 [#how-switching-decides]
+
+决策有两层：一个参与门槛，以及随后的贪心路径或硬路径。
+
+### 参与
+
+在 `policy.greedySessionFloor`（默认 50，以 5 小时会话窗口的百分比计）之下，决策完全不运行 - 新会话继续用它的账户。一旦活动会话窗口用到 50%，或任一硬阈值条被越过，决策就会参与进来。
+
+### 筛选阈值条
+
+这些阈值是筛选用的门槛条，而非触发恐慌的信号：
+
+- `thresholds.session`：95。一个 5 小时重置的等待成本很低，所以会话窗口会更早地切走。
+- `thresholds.weekly`：98。这一条同时覆盖 7 天汇总额度和每个按模型的周上限。周配额是用不完就作废，所以会消耗到接近上限。
+
+两者都刻意低于 100：这段余量正是用来抵达一个干净回合边界（在 macOS 上再加上最多一个回合的采用延迟）的预算，赶在账户真正触及限额之前。同样的阈值条用于筛选切换候选账户：任何账户只要超过它的任一阈值条，就不是有效目标。触发与筛选始终使用相同的有效阈值条（阈值减去 `policy.projectionMargin`），因为一个比触发更宽松的筛选会把切换落在触发会立刻重新标记的账户上，让账户池来回抖动。
+
+### 目标：进度压力
+
+在可用账户中，目标是最落后于自身周进度的那个：**进度压力**最高，定义为剩余周百分比除以该账户距其周重置的时间。即将被作废配额最多的账户胜出。平手时按最近的周到期时间打破，再按最低的 7 天用量。
+
+一切都基于以绝对 UTC 纪元存储的缓存窗口运行，因此一个陈旧快照仍能正确解析：一个已经过去的周重置会以精确的 7 天步长向前外推，而任何超过其缓存重置的窗口都计为刚刚清空（既不构成切换的理由，也不构成把账户搁置的理由）。
+
+### 贪心路径 vs 硬路径
+
+- **贪心路径**（已参与，但未超过任何阈值条）：对每个账户排名，包括当前账户。如果当前账户已经胜出或平手，则什么也不做。否则切换到严格更优的账户。它从不等待，也从不预停放 - 一个可用的当前账户不会被换成一次等待。因为当前账户也在排名内，所以自动路径和裸执行 `tokenmaxxing switch` 都是幂等的：周期性评估会收敛到正确的账户，然后保持不动。
+- **硬路径**（越过了某个阈值条）：切走到最佳可用候选账户。如果某个候选账户的刷新 token 结果是失效的，就将其标记为需重新认证，并尝试下一个候选。如果没有可用账户，则运行耗尽等待逻辑；只有真正能暂停会话的调用方（受监督的 Stop hook）才被允许预停放到一个仍被阻塞但最快恢复的账户上。
+
+### 按模型上限
+
+`policy.switchModels`（默认 `["fable"]`）指定哪些模型家族的按模型周上限可以触发切换。匹配按家族标记进行，绝不按精确显示字符串：模型显示名会漂移（"Fable" 变成了 "Fable 5"），而一个精确字符串门槛曾经悄悄地完全禁用了按模型切换。两条相关的安全规则：
+
+- 未知的活动模型会对每个配置的家族都施加门槛。就在切换清除快照之后，一台无头机器可能会以模型盲的状态运行；曾经把未知当作无约束处理，导致一个账户在其 Fable 上限处静坐了数小时而无人察觉。
+- 候选账户筛选也会计入被门槛限制的按模型上限，因此一个每个账户都已烧掉 Fable 上限的账户池不会做轮询式切换。
+
+### 冷却期
+
+一个 45 秒的切换后冷却期为自动路径设了门槛。切换后 statusline 分流也会被抑制同样的 45 秒（在 macOS 上采用最多需 30 秒），否则一次更早的评估会基于切换本身已使其失效的数据运行 - 那个确切的场景曾经造成一个 A 到 B 又回来的 respawn 循环。手动 `tokenmaxxing switch` 不受冷却期影响。
+
+## 配置
+
+配置是位于 `~/.config/tokenmaxxing/config.json` 的 JSON。每个字段都是可选的；默认值逐字段应用。
+
+```json
+{
+  "thresholds": { "session": 95, "weekly": 98 },
+  "policy": {
+    "projectionMargin": 0,
+    "greedySessionFloor": 50,
+    "switchModels": ["fable"],
+    "usagePollTtlMs": 90000,
+    "maxWaitMs": 3600000
+  }
+}
+```
+
+- `thresholds.session` / `thresholds.weekly`：上文所述的筛选阈值条。
+- `policy.projectionMargin`：从两个阈值条中减去以形成有效阈值条。
+- `policy.greedySessionFloor`：贪心收敛开始参与时的会话已用百分比。
+- `policy.switchModels`：其按模型周上限会为切换设门槛的模型家族（加载时条目会被转为小写）。
+- `policy.usagePollTtlMs`：一次 `/usage` 按模型轮询保持新鲜的时长。
+- `policy.maxWaitMs`：账户池耗尽自动等待的上限。
+
+`tokenmaxxing config` 显示带来源的有效配置；`config set`/`unset` 编辑点分键；`config tidy` 清除未知键。
+
+## 凭证存储与安全模型
+
+所有状态都存放在 `~/.config/tokenmaxxing/`。凭证 I/O 都经过单一的、按平台选择的存储门面；调用点从不按平台分支。
+
+**macOS**：凭证以 generic-password 条目存放在登录钥匙串中，与 Claude Code 自身存放它们的位置一致。活动条目是 claude 读取的那个；每个池内账户的备份以它自己的 `tokenmaxxing-cred-<uuid8>` 钥匙串条目停放。磁盘上没有任何明文。读取使用 `security find-generic-password -w`（密文只会出现在 stdout 上）；写入把一行 `add-generic-password` 通过 stdin 管道输入 `security -i`，因此密文绝不会出现在任何进程的 argv 中。交互模式有大约 4 KB 的行缓冲，因此过大的数据块会退回到 argv 写入 - 这也是停放条目只存储最小 OAuth 对象的原因之一。
+
+**Linux**：Claude Code 把凭证存储为一个 0600 明文文件，tokenmaxxing 沿用同样的模型：活动文件是 claude 自己的 `.credentials.json`，停放备份则是位于一个 0700 目录下的 `~/.config/tokenmaxxing/creds/` 中的原子 0600 文件。这里的原子意味着写入临时文件、fsync，然后重命名：并发读取者始终看到的要么是完整的旧文件，要么是完整的新文件，绝不会是部分文件。
+
+切换所强制执行的安全规则：
+
+- **按真正所有者收集。** 在切换之前，活动凭证的实际所有者是通过询问 API 该 token 属于哪个组织来解析的（针对 OAuth roles 端点的 `fetchTokenOrg`）- 绝不通过信任可能漂移的已存活动标签。一个漂移的标签曾经导致一个账户的收集覆盖了另一个账户唯一的备份。如果活动凭证属于池外的某个账户，切换会直接拒绝，而不是把它覆盖掉。
+- **单一临界区。** 收集、新凭证的安装、其轮换 token 的备份、`~/.claude.json` 账户切换，以及活动标签提交，全都发生在同一个加锁区段内。
+- **与 claude 自身刷新互锁。** 一个临近过期的会话可能在任何时刻轮换它自己的 token，因此凭证写入也会取用 Claude Code 的刷新锁（尽力而为，带过期锁回收和有界超时）。
+- **失效授权优雅降级。** 一次返回 `invalid_grant` 的刷新会把该账户标记为需重新认证，并在错误传播之前持久化该标记，从而让重试循环缩小候选集并终止。`tokenmaxxing auth` 会就地修复一个被标记的账户，并拒绝一个落在与待修复账户不同账户上的登录。
+- **不记录 token。** Token 绝不出现在日志、错误或输出中。来自 token 和 usage 端点的错误正文绝不原样呈现；只有一组允许列表内的字段得以保留，因为一个 token 端点的失败正文可能回显请求材料。
+- **探测卫生。** 任何被 spawn 的 `claude` 探测都会清除 claude 在其钥匙串查找之前所遵循的八个环境变量（`ANTHROPIC_API_KEY`、`CLAUDE_CODE_OAUTH_TOKEN`、`CLAUDE_SECURESTORAGE_CONFIG_DIR` 等等），因此一次探测绝不会被归属到错误的账户上。
+
+## 平台说明：macOS vs Linux
+
+| | macOS | Linux |
+|---|---|---|
+| 活动凭证 | 登录钥匙串 generic-password 条目 | 0600 `.credentials.json` 文件 |
+| 停放凭证 | 每账户各一个钥匙串条目 | 一个 0700 目录下的 0600 文件 |
+| 切换后的采用 | 约 30 秒内（钥匙串读缓存） | 下一次请求（文件 mtime 轮询） |
+| 周期性检查 | launchd agent，每 180 秒 | systemd 用户定时器，每 180 秒 |
+| 隔离登录存储 | 按配置目录哈希命名空间化的钥匙串服务 | 隔离配置目录内的一个文件 |
+
+两个值得了解的 Linux 特有细节：claude 从 `CLAUDE_SECURESTORAGE_CONFIG_DIR` 起解析它的凭证目录（然后是 `CLAUDE_CONFIG_DIR`，再然后是 `~/.claude`），而 tokenmaxxing 精确地镜像了这套解析，因此两者绝不会失步。此外，同一版本 claude 的两个操作系统构建，对 `/usage` 重置时钟的格式化方式不同（一个用 " at " 粘连，另一个用逗号）；tokenmaxxing 的解析器恰好接受这两种形式，遇到任何第三种时记录日志，而非猜测。
+
+在 macOS 上有一个诚实的限制：`init` 和 `add` 会刻意以交互方式触碰钥匙串，这样第一次 `security` 访问就不会在一个无头 hook 内冷启动。
+
+## statusline
+
+tokenmaxxing 原生渲染 Claude Code 的 statusline（同时分流用量数据源）。设计原则是：配额用颜色承载，而非数字。一行，例如：
+
+```
+tm-wt-demo Fable 5 (high) +156/-23  ◆ 𝒇 2h 1d  ◇ 19h  ◇ 𝒇 2d  ◇ full  ✗ ?
+```
+
+- 每个窗口标记就是它的距重置时间，按已用百分比在一条连续的绿到黄到红渐变上着色（终端支持时用真彩色，否则降级到 256 色立方体）。渐变锚定在 0 为纯绿、75 为黄、95 及以上为红，因此旧的严重程度分段作为渐变锚点得以保留。
+- 模型名按上下文窗口填充在同一条渐变上着色。
+- 一个绿色 `◆` 领起活动账户的各窗口；每个停放账户都有自己的青色 `◇`（若需重新认证则为红色 `✗`）。账户按最近即将到来的重置排序。
+- 按模型排在每个块的最前面，作为一个裸的着色首字母：Fable 渲染为 `𝒇`；其他家族用其大写的首字母，始终按家族匹配。
+- 一个未触碰的停放账户渲染为绿色 `full`。已测量但重置未知的用量渲染为一个着色的 `?`，而一个受门槛限制的模型上未测量的按模型上限渲染为一个未着色的 `𝒇?` - 未测量的绝不能看起来安全。
+- 重置倒计时只显示最大的单位，绝不显示 "now" 或 "0m"；一个没有即将到来的重置的窗口渲染为绿色 `0`（再次清空）。
+- 一个链接的 git worktree 的 basename 领起该行；主检出在那里什么也不渲染。检测读取文件系统上的一个 `.git` 文件，从不 spawn git 子进程。
+- 设置了 `NO_COLOR` 时，该行退回到一个粘连的数字格式（`2h5` 表示 2 小时后重置、已用 5%；`ctx 42` 表示上下文填充）- 没有颜色时，一个耗尽的窗口绝不能看起来新鲜。
+
+子 agent 任务通过 claude 的 subagentStatusLine 界面获得自己的面板行：每个活动任务一行，家族名按该任务的上下文填充着色。
+
+## Codex 支持
+
+同样的汇集机制适用于 OpenAI 的 Codex CLI，针对你自己的 ChatGPT 订阅账户：
+
+```sh
+tokenmaxxing init --codex   # 导入你当前的 codex 登录，并安装 codex 监督进程和 Stop hook
+tokenmaxxing add --codex    # 以隔离方式登录另一个账户，你的主登录不受影响
+codex                       # 像往常一样使用 codex
+```
+
+Codex 账户池是完全并行的状态：它自己的账户索引、它自己的停放凭证文件（两个平台上都是 0600 文件，因为 codex 自身的存储就是一个明文文件）、它自己的锁、它自己的上次切换时间戳。除了决策策略代码之外，它与 Claude 账户池不共享任何东西。
+
+### 为什么 Codex 上无法热切换
+
+正在运行的 codex 进程持有一个内存中的认证管理器，并会在 `auth.json` 现在指向不同账户时明确拒绝重新加载。没有文件监视器，也没有按请求的凭证轮询，因此在正在运行的 codex 底层被切换的凭证，对于推理来说根本不会生效。重启就是切换：`codex resume <session-id>` 会在 `auth.json` 现在持有的任何账户上继续本地转录。
+
+tokenmaxxing 用一个 codex 监督进程 shim 来处理这个：Stop hook 在每个回合边界运行同样的贪心进度压力决策，当它切换时，会写入一个标记，让监督进程在已提交的边界 SIGTERM 会话，并在新账户上重新启动 `codex resume <session-id>`，转录完好无损。因为每次 codex 切换都是一次可见的重启，codex 贪心路径带有 1.2 倍的改进裕度：一个挑战者必须以 20% 的幅度、而非以毫厘之差，胜过当前账户的进度压力。硬路径（越过阈值条）会忽略该裕度。codex 也没有账户池耗尽倒计时 - 没有什么能暂停一个 codex 会话 - 因此一个彻底耗尽的 codex 账户池会保持不动。
+
+其他 codex 特有的机制：
+
+- 用量从针对 codex 自己的速率限制端点的一个免费的、经认证的 GET 读取（与 CLI 的 `/status` 所发出的调用相同）：百分比加上绝对纪元重置时间，汇总窗口和按模型上限皆然。窗口分类是按时长驱动，绝不按位置驱动，因为当前套餐可能根本没有 5 小时窗口，而周窗口位于主槽位。
+- Codex 刷新 token 会轮换，而重用一个被取代的 token 会杀掉整个授权家族。每次轮换都在它一返回就被持久化，活动账户只通过活动数据块采样（绝不用陈旧的停放副本），而按会话的存在文件确保一个在活动兄弟会话中运行的账户绝不会成为切换目标，也绝不会让它的停放 token 被刷新。
+- Codex 要求使用文件凭证存储：如果 keyring 存储被固定，`init --codex` 会快速失败，而 `add --codex` 会把文件模式设置写入隔离的引导 home，让登录落成可收集的形态。
+- 一个手动步骤：codex 会跳过它未被告知要信任的 hooks。在 `init --codex` 之后，打开一次 codex 并通过 `/hooks` 信任 tokenmaxxing 的 Stop hook，否则自动切换会一直悄悄失效。`init --codex` 会打印这条提醒。
+
+## Slack 桥接：xx serve
+
+`tokenmaxxing serve` 通过 Socket Mode 运行一个本地 Slack 守护进程 - 无需公网 URL。设置：
+
+```sh
+tokenmaxxing serve setup                    # 打印应用清单，提示输入两个 token
+tokenmaxxing serve link <channel-id> <repo> # 把一个频道绑定到一个仓库检出
+tokenmaxxing serve                          # 运行守护进程
+```
+
+在一个已链接的频道里提及机器人，它就会为那个线程打开一个 Claude Code 会话，在已链接的仓库检出中运行。每条线程消息运行一次带 `resume` 的 Agent SDK `query()` - 绝不是一个持久的流式 query - 因此 `ensureBestAccount()` 会在每一个回合重新评估账户池，且守护进程可以重启而不丢失线程（线程记录是持久的；守护进程在启动时会重新订阅它们）。
+
+值得注意的行为：
+
+- **流式**：回复原生地流入 Slack，思考和工具运行有任务卡片，围栏代码带高亮渲染，一张收尾的 "Turn" 卡片带成本和时长，每当一次工具运行打断流式文本时就打开一条新的 Slack 消息，因此一个回合读起来像是围绕工具运行的一系列独立消息。TodoWrite 调用会就地更新同一张稳定的清单卡片。
+- **权限**：按链接的 `permissionMode` 默认为 `acceptEdits`；`--yolo`（别名 `--dangerous`）让一个链接切换到 `bypassPermissions`。中继回合中不允许交互式对话框 - 没人能通过 Slack 回答一个 - 因此模型会以文字提问，你的线程回复就是下一个回合。一个捆绑的插件 skill 会教它在需要一个决策时提及请求者并结束回合。
+- **斜杠命令**：一条经过剥离后以 `/` 开头的线程消息会作为一个 claude 斜杠命令运行。Slack 的输入框会吞掉以 `/` 开头的消息，所以请用先提及的形式（`@bot /usage`）或用一个前导空格。
+- **优雅关停**：SIGTERM/SIGINT 会排空 - 新回合被大声丢弃，进行中的回合最多有 5 分钟，且 claude 子进程在它自己的进程组中分离运行，这样一个终端 Ctrl-C 就无法在排空保住该回合之前杀掉它。
+- **线程清理**：当你告诉它工作完成时，模型会调用一个进程内的 `finish_thread` 工具；在回合彻底结束之后，守护进程丢弃线程记录、取消订阅，并发一条确认消息。一次新的提及会开启一个新会话。
+- **错误卫生**：回合错误只发送裁剪过的纯消息文本，绝不发送原始错误正文。
+
+## Agent SDK 界面
+
+该包的编程入口（`exports["."]` 指向 `src/sdk.ts`）把 tokenmaxxing 与 Claude Agent SDK 配对，用于你针对自己汇集的账户构建的 agent。你的应用必须运行在 Bun 之上（tokenmaxxing 发布 TypeScript 源码并使用 `bun:ffi`）。
+
+```ts
+import { query } from "@anthropic-ai/claude-agent-sdk";
+import { ensureBestAccount, pooledOptions, stopHookCheck } from "tokenmaxxing";
+
+await ensureBestAccount(); // run the switch decision before the spawn
+
+for await (const message of query({
+  prompt: "...",
+  options: {
+    ...pooledOptions(), // pinned real claude + scrubbed env
+    hooks: { Stop: [{ hooks: [stopHookCheck] }] }, // re-decide at every turn boundary
+  },
+})) {
+  // capture the session id from the init message for `resume` across swaps
+}
+```
+
+Agent SDK 每次 `query()` 都 spawn 一个 claude 子进程，并在 spawn 时读取一次凭证 - 没有 statusline，没有 query 中途的热切换 - 因此这套集成是边界驱动的：
+
+- `ensureBestAccount()` 就是 CLI hooks 和定时器运行的那个确切决策（阈值条、进度压力、冷却期，全是共享代码），绝非预判式：一个 SDK 会话永远无法为了一个耗尽倒计时而被暂停。
+- `pooledOptions()` 把 `pathToClaudeCodeExecutable` 固定到真正的 claude 二进制（绝非监督进程包装器），并提供一个完整替换的 `env`，其中每一个环境中的凭证覆盖都已被清除。如果你的应用环境中设置了 `CLAUDE_CONFIG_DIR` 或 `CLAUDE_SECURESTORAGE_CONFIG_DIR`，它会快速失败：在 Linux 上，一次切换会把活动凭证写到那些变量指向的位置，而被清除的子进程读取的却是默认存储，这是一个悄无声息的错误账户失步。
+- `stopHookCheck` 在回合边界重新运行决策；它落定的一次切换会在下一次 spawn 时生效。它会捕获自己的错误（记录到 stderr 和日志），而非重新抛出，因为一个未处理的 hook 异常可能打断 agent，而为一个坏掉的切换检查而中止一个回合，代价比继续用当前账户更大。
+
+`sdk.ts` 本身不从 Agent SDK 导入任何东西；它的值会结构化地散布进 SDK 的选项中。
+
+## 个人使用与服务条款 [#personal-use-and-terms-of-service]
+
+tokenmaxxing 汇集的是你拥有的账户，在你自己运行的会话与 agent 中使用。这个措辞是刻意的：Anthropic 不允许第三方产品提供 claude.ai 登录或 claude.ai 速率限制，其中也包括基于 Agent SDK 构建的 agent。不要把汇集的 SDK 界面，或任何基于它构建的东西，交付给第三方。tokenmaxxing 也刻意坚持走 CLI 中介的 `/usage` 路径来获取配额数据，而非重新实现 OAuth 或代理 API 流量：它不是一个代理，它触碰的唯一 OAuth 端点是切换期间使用的标准刷新授权，以及一个只读的身份检查（roles 端点），用来核实一个 token 实际属于哪个账户。
+
+## 诚实的限制
+
+- **一个冷回合。** 提示缓存是按组织范围的，因此在一个新账户上的第一个回合会重新上传一次上下文。
+- **耗尽暂停的小顿挫。** 只有一个彻底耗尽的账户池才会为倒计时停下会话；在那一瞬间键入的任何内容都会丢失。
+- **采用延迟。** 在 macOS 上，切换后约 30 秒内的第一个回合仍可能计量到旧账户；阈值条的余量会吸收它。
+- **共享的波及范围。** 所有默认配置的会话共享一份活动凭证，因此一次切换会把它们全部一起挪动（各自就地采用）。
+- **Linux 上的明文凭证。** Claude Code 自身就把 Linux 凭证存储为一个 0600 明文文件；tokenmaxxing 的停放副本沿用同样的模型。
+
+## 故障排查与常见问题
+
+**`claude` 似乎没有被监督。**
+运行 `tokenmaxxing doctor`。shim 必须赢得 PATH 解析；检查你 shell rc 中的 `# tokenmaxxing PATH` 那行是否指向当前的 bin 目录，并排在真正的 claude 之前。`doctor` 还会对 `alias claude=...` 或一个遮蔽包装器的 `claude()` shell 函数发出警告，以及对以绝对路径启动 claude 二进制的别名发出警告（那些会完全绕过监督进程）。
+
+**Codex 上自动切换从不触发。**
+Codex 会跳过它未被告知要信任的 hooks。打开 codex，运行 `/hooks`，并信任 tokenmaxxing 的 Stop hook。信任是按 hook 的哈希记录的，因此如果 hook 曾被编辑，就必须重新授予。
+
+**某个账户在 statusline 中显示一个红色 `✗`。**
+它的刷新 token 已失效（被吊销，或在其备份底层被轮换掉）。运行 `tokenmaxxing auth <sel>` 来就地重新认证它；该命令会告诉你该用哪个邮箱登录，并拒绝一个落在不同账户上的登录。
+
+**为什么它不切换到剩余配额最多的账户？**
+因为那不是最有可能作废配额的账户。目标是最落后于自身周进度的账户：剩余百分比除以到其周重置的时间。在剩余量相等时，这就归结为最近到期者优先；在到期时间相等时，则归结为剩余最多者优先。
+
+**它刚切换过，而 statusline 仍显示旧账户。**
+在 macOS 上最多约 30 秒内这是预期的：正在运行的会话会在它下一次凭证缓存刷新时采用被切换的凭证。切换后 usage 分流会被抑制 45 秒，正是出于这个原因。
+
+**`status --force` 有代价吗？**
+有，是刻意的：它对每个账户发送一个极小的、会计量的 haiku 请求，让每个 5 小时会话窗口在那一刻开始，而非静静休眠，然后重新采样。普通的 `status` 和 `watch` 从不 ping；`/usage` 读取是免费的。请注意服务器用量数据源对一个刚打开的窗口可能有数秒到数分钟的延迟，因此在 ping 之后立即探测可能仍显示 ping 之前的状态 - `status` 会渲染一条说明，而非假装 ping 失败了。
+
+**`/usage` 探测对活动账户没有返回任何内容。**
+这是一个已知的 claude 行为：当它内部的用量获取失败或被限流时，`/usage` 只打印本地会话统计，没有百分比行。tokenmaxxing 从 statusline 推送对活动账户采样，只探测停放账户，正是为了避免这种情况。
+
+**后台 claude 会话。**
+Claude 的后台守护进程以绝对路径 spawn 真正的带版本二进制，绕过 PATH shim，因此后台会话不受监督。Hooks 仍会通过 `settings.json` 触发，凭证采用加上周期性定时器也能覆盖切换，但对它们没有基于标记的 respawn。
+
+**曾经有东西 spawn 了很多进程。这现在还可能发生吗？**
+监督进程带有分层的递归防护，专门针对那个历史上的故障（一个陈旧包装器被固定为"真正的" claude）：环境中一个在 5 层时中止的深度哨兵、一个磁盘上的 spawn 速率限制器、拒绝任何解析回 tokenmaxxing 自己 bin 目录的候选的 realpath 身份检查，以及当一个配置的 claude 路径不再存在时的硬失败（绝非一次悄无声息的 PATH 扫描）。`init` 和 `doctor` 会在固定一个候选之前，通过运行 `--version` 来核实它确实是 claude。
+
+**卸载。**
+`tokenmaxxing uninstall` 会移除监督进程 shim、设置条目和周期性定时器，并保留你的账户和停放凭证完好无损。它只移除它识别为自己所属的 statusline 条目。
+
+## 许可证
+
+MIT。源码在 [anaclumos/tokenmaxxing](https://github.com/anaclumos/tokenmaxxing)。

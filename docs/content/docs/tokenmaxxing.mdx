@@ -185,6 +185,29 @@ Config is JSON at `~/.config/tokenmaxxing/config.json`. Every field is optional;
 
 `tokenmaxxing config` shows the effective config with sources; `config set`/`unset` edit dotted keys; `config tidy` prunes unknown keys.
 
+## State directory layout
+
+Everything lives under `~/.config/tokenmaxxing/` (overridable with `TOKENMAXXING_HOME`; every externally observable path has an env override so the whole tool can run hermetically in tests).
+
+| Path | What it holds |
+|---|---|
+| `config.json` | Your configuration (sparse; defaults apply per field) |
+| `accounts.json` | Non-secret index of pooled Claude accounts: labels, ids, cached usage windows. Never tokens |
+| `usage.json` | The statusline tee's aggregate window snapshot; its mtime is the feed's liveness heartbeat |
+| `model-usage.json` | TTL-cached per-model weekly caps from `/usage` |
+| `lastswap.json` | Epoch timestamp of the last swap; drives the 45-second cooldown |
+| `lock` | The `flock` file that serializes swaps |
+| `tokenmaxxing.log` | Append-only event log |
+| `bin/` | The PATH shims: `claude`, `codex`, and the `tokenmaxxing` / `xx` entry points |
+| `respawn/<session-id>` | Depleted-wait respawn markers the supervisor watches |
+| `creds/` | Linux only: parked credential files, 0600 in a 0700 directory (macOS parks credentials as per-account keychain items instead) |
+| `onboard/`, `sample/` | Throwaway isolated config homes for `add`/`auth` logins and parked-account `/usage` probes; onboard homes holding plaintext credentials are deleted after harvest |
+| `slack.json` | `xx serve` tokens and channel links (0600) |
+| `slack-threads/` | Per-thread session records for `xx serve` |
+| `codex-*` | The parallel Codex pool: `codex-accounts.json`, `codex-lastswap.json`, `codex-lock`, `codex-creds/`, `codex-onboard/`, `codex-respawn/`, and `codex-live/` (one PID-validated presence file per running supervised codex session, so a live account is never a swap target) |
+
+Outside its own directory, tokenmaxxing touches exactly: `~/.claude.json` (the `oauthAccount` swap), Claude Code's `settings.json` (the hook and statusline entries), the live credential store (the `Claude Code-credentials` keychain item on macOS, `.credentials.json` on Linux), `~/.claude.lock` (claude's refresh lock, taken during swaps), codex's `auth.json` and `hooks.json`, and the periodic-check unit in launchd or systemd.
+
 ## Credential storage and safety model
 
 All state lives in `~/.config/tokenmaxxing/`. Credential I/O goes through a single platform-selected store facade; call sites never branch on platform.
@@ -309,6 +332,12 @@ The Agent SDK spawns a claude subprocess per `query()` and reads credentials onc
 - `stopHookCheck` re-runs the decision at turn boundaries; a swap it lands takes effect on the next spawn. It catches its own errors (logging to stderr and the log) rather than rethrowing, because an unhandled hook exception can interrupt the agent, and aborting a turn over a broken switch check costs more than riding out the current account.
 
 `sdk.ts` imports nothing from the Agent SDK itself; its values spread structurally into the SDK's options.
+
+## Build and distribution
+
+The npm package ships TypeScript source, not a build: the `tokenmaxxing` bin points straight at `src/main.ts` with a Bun shebang, and Bun 1.2.6 or newer runs it as-is. That is why Bun is a hard requirement. There are no compiled binaries by design: an early release shipped a single 61 MB macOS binary to every platform and failed on Linux with `exec format error`, and per-platform compiled packages would each need their own release pipeline, so source-run-by-Bun became the distribution model.
+
+The package's `exports` map exposes `src/sdk.ts` as the programmatic entry described above. Releases are tagged `v<version>` on GitHub; CI publishes to npm via trusted publishing (OIDC, with provenance), and the publish gate runs the typecheck and the full test suite first.
 
 ## Personal use and terms of service
 
