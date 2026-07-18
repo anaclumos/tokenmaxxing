@@ -1,0 +1,28 @@
+docs/content/docs/index.mdx
+  s_36700e42083764::t_53d35054f13a6e 2-3,6,8,11-12
+docs/content/docs/tokenmaxxing.mdx
+  s_36700e42083764::t_45ee2b297e3cd9 6
+  s_36700e42083764::t_629a4cae41a2ff 155
+  s_36700e42083764::t_d95d228ab857b7 37,43
+  s_36700e42083764::t_1a63eb48d431a8 261
+  s_36700e42083764::t_f3c0ea86127845 221
+  s_36700e42083764::t_b031908ba3d8a8 252
+  s_36700e42083764::t_f43e014df98042 1-5,7-36,38-42,44-154,156-220,222-251,253-260,262-314,316-359
+  s_36700e42083764::t_b289670adff4c3 315
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "e22e1165da8febd37cc69b2df352e22e6ab31a5c",
+  "prompts": {},
+  "sessions": {
+    "s_36700e42083764": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ceac3c73-063c-4280-a339-82888d1d952a",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    }
+  }
+}
