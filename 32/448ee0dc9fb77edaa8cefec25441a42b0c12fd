@@ -1,0 +1,29 @@
+test/slack.test.ts
+  s_3a3a56cbda3ae5::t_967d8e22050411 91-99
+DESIGN.md
+  s_3a3a56cbda3ae5::t_f414fa38576a4d 98
+.memory/serve-slackbot-decisions.md
+  s_3a3a56cbda3ae5::t_39f4cc273bb3f0 28-34
+src/lib/slackstream.ts
+  s_3a3a56cbda3ae5::t_7030f555ed0540 179-192
+test/slackstream.test.ts
+  s_3a3a56cbda3ae5::t_ea5b817c14462a 116-136
+AGENTS.md
+  s_3a3a56cbda3ae5::t_09907c2ec547b6 209
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "32448ee0dc9fb77edaa8cefec25441a42b0c12fd",
+  "prompts": {},
+  "sessions": {
+    "s_3a3a56cbda3ae5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b504de14-a0c0-4c3d-ba34-28ad3d0f7aa5",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    }
+  }
+}
