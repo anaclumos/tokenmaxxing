@@ -10,7 +10,7 @@ bun add -g tokenmaxxing
 tokenmaxxing init
 ```
 
-`init` は5つのことを行います。
+`init` は次の5つを行います。
 
 1. すでにログイン済みのアカウントをアカウント #1 としてインポートします (別途 `adopt` コマンドはありません)。
 2. `claude` スーパーバイザーのシムをインストールします。
@@ -18,7 +18,7 @@ tokenmaxxing init
 4. スーパーバイザーの bin ディレクトリをシェル rc の PATH に追記します (冪等で、`# tokenmaxxing PATH` コメントで印を付けます)。本物の `claude` より前に PATH 上に置いてインターセプトする必要があります。
 5. `tokenmaxxing check` を180秒ごとに実行する定期チェックタイマーをインストールします (macOS では launchd エージェント、Linux では systemd ユーザータイマー)。
 
-シェルを再起動し、それからアカウントを追加して開始します。
+シェルを再起動してから、アカウントを追加して始めます。
 
 ```sh
 tokenmaxxing add        # もう1つのアカウントを分離環境でログインしてプールに追加する

@@ -11,6 +11,6 @@ description: "macOS 搭 Linux 勒存储、采用搭定时器高头哪能勿一�
 | 定期检查 | launchd agent，每 180 秒 | systemd 用户定时器，每 180 秒 |
 | 隔离登录存储 | 每个配置目录一个哈希命名空间嗰 keychain 服务 | 隔离配置目录里向嗰一个文件 |
 
-两个值得晓得嗰 Linux 专有细节：claude 先从 `CLAUDE_SECURESTORAGE_CONFIG_DIR` 来定伊嗰凭据目录（再是 `CLAUDE_CONFIG_DIR`，再是 `~/.claude`），tokenmaxxing 一模一样地照搬搿套解析，畀两边永远勿会失步。还有，同一个 claude 版本嗰两种操作系统构建，格式化 `/usage` 复位时钟嗰方式勿一样（一种用 ` at ` 来粘，另一种用逗号）；tokenmaxxing 嗰解析器只认搿两种形式，碰着第三种就记日志，勿去瞎猜。
+两个值得晓得嗰 Linux 专有细节：claude 定凭据目录嗰辰光，先看 `CLAUDE_SECURESTORAGE_CONFIG_DIR`（再看 `CLAUDE_CONFIG_DIR`，再看 `~/.claude`），tokenmaxxing 一模一样地照搬搿套解析，畀两边永远勿会失步。还有，同一个 claude 版本嗰两种操作系统构建，格式化 `/usage` 复位时钟嗰方式勿一样（一种用 ` at ` 来粘，另一种用逗号）；tokenmaxxing 嗰解析器只认搿两种形式，碰着第三种就记日志，勿去瞎猜。
 
-勒 macOS 高头，有一个老实嗰局限：`init` 搭 `add` 是特为交互式地去碰 keychain 嗰，搿能保证第一趟 `security` 访问勿是勒一个无头 hook 里向冷冰冰地发生嗰。
+勒 macOS 高头，有桩局限要老实讲：`init` 搭 `add` 是特为交互式地去碰 keychain 嗰，搿么头一趟 `security` 访问就勿是勒无头 hook 里向冷冰冰地发生嗰。

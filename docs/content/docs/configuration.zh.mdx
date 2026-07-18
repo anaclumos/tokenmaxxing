@@ -3,7 +3,7 @@ title: 配置
 description: "config.json 的结构、阈值与策略旋钮"
 ---
 
-配置是位于 `~/.config/tokenmaxxing/config.json` 的 JSON。每个字段都是可选的；默认值逐字段应用。
+配置文件是位于 `~/.config/tokenmaxxing/config.json` 的 JSON。每个字段都是可选的；默认值按字段分别应用。
 
 ```json
 {
@@ -18,11 +18,11 @@ description: "config.json 的结构、阈值与策略旋钮"
 }
 ```
 
-- `thresholds.session` / `thresholds.weekly`：上文所述的筛选阈值条。
-- `policy.projectionMargin`：从两个阈值条中减去以形成有效阈值条。
-- `policy.greedySessionFloor`：贪心收敛开始参与时的会话已用百分比。
-- `policy.switchModels`：其按模型周上限会为切换设门槛的模型家族（加载时条目会被转为小写）。
-- `policy.usagePollTtlMs`：一次 `/usage` 按模型轮询保持新鲜的时长。
-- `policy.maxWaitMs`：账户池耗尽自动等待的上限。
+- `thresholds.session` / `thresholds.weekly`：上文所述的筛选阈值。
+- `policy.projectionMargin`：从两个阈值中减去后得到有效阈值。
+- `policy.greedySessionFloor`：贪心收敛开始介入时的会话已用百分比。
+- `policy.switchModels`：单模型周上限会为切换设定门槛的模型家族（加载时条目转为小写）。
+- `policy.usagePollTtlMs`：`/usage` 按模型轮询保持新鲜的时长。
+- `policy.maxWaitMs`：账户池耗尽后自动等待的上限。
 
-`tokenmaxxing config` 显示带来源的有效配置；`config set`/`unset` 编辑点分键；`config tidy` 清除未知键。
+`tokenmaxxing config` 显示有效配置及其来源；`config set`/`unset` 编辑点分键；`config tidy` 清除未知键。

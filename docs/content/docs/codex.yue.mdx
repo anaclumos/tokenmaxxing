@@ -1,9 +1,9 @@
 ---
 title: Codex 支援
-description: "為 Codex CLI 集合 ChatGPT 訂閱帳戶，基於重新啟動"
+description: "為 Codex CLI 集合 ChatGPT 訂閱帳戶，靠重新啟動"
 ---
 
-相同嘅集合方式適用於 OpenAI 嘅 Codex CLI，對住你自己嘅 ChatGPT 訂閱帳戶：
+同一套集合方式一樣用得喺 OpenAI 嘅 Codex CLI，對住你自己嘅 ChatGPT 訂閱帳戶：
 
 ```sh
 tokenmaxxing init --codex   # 匯入你當前嘅 codex 登入 + 安裝 codex 監督者同 Stop hook
@@ -11,17 +11,17 @@ tokenmaxxing add --codex    # 用隔離方式登入另一個帳戶 - 你嘅主�
 codex                       # 照舊咁用 codex
 ```
 
-Codex 帳戶池係完全並行嘅狀態：佢自己嘅帳戶索引、佢自己嘅泊存憑證檔案（兩個平台上面都係 0600 檔案，因為 codex 自己嘅儲存係一個明文檔案）、佢自己嘅鎖、佢自己嘅上次切換時間戳。除咗決策策略嘅程式碼之外,無嘢同 Claude 帳戶池共用。
+Codex 帳戶池係完全並行嘅狀態：自己嘅帳戶索引、自己嘅泊存憑證檔案（兩個平台上面都係 0600 檔案，因為 codex 自己嘅儲存本身就係明文檔案）、自己嘅鎖、自己嘅上次切換時間戳。除咗決策策略嘅程式碼之外，冇任何嘢同 Claude 帳戶池共用。
 
-## 點解 Codex 上面熱切換係不可能
+## 點解 Codex 做唔到熱切換
 
-一個正在運行嘅 codex 進程持有一個記憶體內嘅 auth manager，並且喺 `auth.json` 而家指向一個唔同帳戶嗰時明確拒絕重新載入佢。無檔案監視者亦都無每請求嘅憑證輪詢，所以喺一個正在運行嘅 codex 下面換咗嘅憑證對推理嚟講根本唔會生效。重新啟動就係切換：`codex resume <session-id>` 會喺 `auth.json` 而家持有嘅任何帳戶上面繼續本地嘅轉錄稿。
+一個行緊嘅 codex 進程會喺記憶體度揸住一個 auth manager，而當 `auth.json` 而家指向另一個帳戶嗰陣，佢就會明確拒絕重新載入。冇檔案監視器，亦都冇逐個請求嘅憑證輪詢，所以就算喺一個行緊嘅 codex 下面換咗憑證，對推理嚟講都根本唔會生效。重新啟動就係切換：`codex resume <session-id>` 會喺 `auth.json` 而家持有嘅任何帳戶度繼續本地嘅轉錄稿。
 
-tokenmaxxing 用一個 codex 監督者 shim 處理呢個：Stop hook 喺每個回合邊界行相同嘅貪婪步伐壓力決定，而當佢切換時，佢會寫一個標記令監督者喺已提交嘅邊界 SIGTERM 個 session，並喺新鮮帳戶上面重新啟動 `codex resume <session-id>`，轉錄稿完好無缺。因為每次 codex 切換都係一次睇得到嘅重新啟動，所以 codex 貪婪路徑帶有一個 1.2 倍嘅改善邊際：一個挑戰者必須將當前帳戶嘅步伐壓力勝過 20%，唔可以係差一啲啲。強硬路徑（一條被跨越嘅界線）忽略嗰個邊際。codex 亦都無帳戶池耗盡倒數 - 無嘢可以暫停一個 codex session - 所以一個完全耗盡嘅 codex 帳戶池會留喺度。
+tokenmaxxing 用一個 codex 監督者 shim 嚟處理呢樣嘢：Stop hook 會喺每個回合邊界做同一套貪婪步伐壓力決策，一旦要切換，就會寫個標記，令監督者喺已提交嘅邊界 SIGTERM 個 session，再喺新帳戶上面重新啟動 `codex resume <session-id>`，轉錄稿完好無缺。因為每次 codex 切換都係一次睇得到嘅重新啟動，所以 codex 貪婪路徑會有 1.2 倍嘅改善邊際：挑戰者要贏過當前帳戶嘅步伐壓力 20%，唔可以淨係贏少少。強硬路徑（即係跨過咗界線嗰種）就唔會理呢個邊際。codex 亦都冇帳戶池耗盡倒數（冇嘢可以暫停一個 codex session），所以完全耗盡咗嘅 codex 帳戶池就會留喺度。
 
 其他 codex 專屬機制：
 
-- 用量係由一個對住 codex 自己嘅速率限制端點嘅免費已認證 GET 讀取（同 CLI 嘅 `/status` 所做嘅同一個呼叫）：百分比加上絕對 epoch 重設時間，總量窗口同每模型上限都一樣。窗口分類係按持續時間，永遠唔係按位置，因為當前計劃可能根本無 5 小時窗口，而每週窗口坐喺主要位置。
-- Codex 刷新 token 會輪換,而重用一個已被取代嘅就會殺死成個授權系列。每次輪換都會喺佢返嚟嗰一刻保存，活躍帳戶永遠只會透過活躍 blob 採樣（永遠唔會係一個過時嘅泊存副本），而每 session 嘅存在檔案確保一個喺活躍兄弟 session 運行嘅帳戶永遠唔會係一個切換目標亦都永遠唔會令佢嘅泊存 token 被刷新。
-- Codex 需要檔案憑證儲存：如果 keyring 儲存被固定，`init --codex` 會快速失敗，而 `add --codex` 會將檔案模式設定寫入隔離嘅入職 home 令個登入落喺可收集嘅狀態。
-- 一個手動步驟：codex 會跳過佢未被告知去信任嘅 hook。喺 `init --codex` 之後,開一次 codex 並透過 `/hooks` 信任 tokenmaxxing Stop hook，否則自動切換會靜靜哋保持無效。`init --codex` 會列印呢個提醒。
+- 用量係用一個免費、已認證嘅 GET，對住 codex 自己嘅速率限制端點讀返嚟（同 CLI 個 `/status` 打嘅係同一個呼叫）：會攞到百分比同絕對 epoch 重設時間，總量窗口同逐個模型嘅上限一樣咁攞。窗口分類係按持續時間，永遠唔係按位置，因為當前計劃可能根本冇 5 小時窗口，而每週窗口坐喺主要位置。
+- Codex 刷新 token 會輪換，而一旦重用咗一個已經被取代嘅，就會殺死成個授權系列。每次輪換一返到就即刻保存；活躍帳戶淨係會透過 live blob 採樣（絕對唔會用過時嘅泊存副本）；而逐 session 嘅存在檔案就確保一個喺活躍兄弟 session 行緊嘅帳戶永遠唔會成為切換目標，個泊存 token 亦都唔會俾人刷新。
+- Codex 需要用檔案憑證儲存：如果 keyring 儲存俾人固定咗，`init --codex` 就會快速失敗；而 `add --codex` 會將檔案模式設定寫入隔離嘅入職 home，令個登入落到可以收集嘅狀態。
+- 一個手動步驟：codex 會跳過啲未叫佢信任嘅 hook。行完 `init --codex` 之後，開一次 codex，用 `/hooks` 信任 tokenmaxxing Stop hook，否則自動切換就會靜靜哋一直都唔生效。`init --codex` 會印呢個提醒出嚟。

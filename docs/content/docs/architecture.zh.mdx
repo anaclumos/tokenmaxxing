@@ -3,29 +3,29 @@ title: 架构
 description: "监督进程 shim、statusline 分流、Stop hook 切换与采用模型"
 ---
 
-tokenmaxxing 是一个多重调用入口点（`src/main.ts`）：当以 `claude` 这个名字被调用时，它表现为 `claude` 监督进程；通过内部子命令提供 hook 和 statusline 的 shim；其余情况下则分派 CLI。它直接运行在 Bun 之上；npm 包发布的是 TypeScript 源码，而非构建产物。
+tokenmaxxing 是一个多重调用入口点（`src/main.ts`）：当以 `claude` 这个名字调用时，便充当 `claude` 监督进程；通过内部子命令提供 hook 和 statusline 的 shim；其余情况下则分派 CLI。它直接运行在 Bun 之上；npm 包发布的是 TypeScript 源码，而非构建产物。
 
 其组成部分：
 
 ## 监督进程 shim
 
-`init` 会写入一个名为 `claude` 的两行 shell shim 到 `~/.config/tokenmaxxing/bin/`，并把该目录放到 PATH 最前面。当你输入 `claude` 时，shim 运行监督进程，后者以继承的 stdio 和一份保存的 `stty -g` 终端快照来 spawn 真正的 claude 二进制。它只是一个进程与终端管理器：从不代理 API 流量，也从不触碰传输中的 token。
+`init` 会在 `~/.config/tokenmaxxing/bin/` 写入一个名为 `claude` 的两行 shell shim，并把该目录放到 PATH 最前面。当你输入 `claude` 时，shim 运行监督进程，后者以继承的 stdio 和一份保存的 `stty -g` 终端快照来 spawn 真正的 claude 二进制。它只是一个进程与终端管理器：从不代理 API 流量，也从不触碰传输中的 token。
 
-打印模式调用（`claude -p`、`--version`、`--help`）、非交互式子命令（`claude mcp`、`claude config` 等等）以及 tokenmaxxing 自己的探测，都会直接透传，不做任何会话管理。对于交互式会话，监督进程会固定一个会话 id（生成一个，或复用你通过 `--session-id` / `-r` / `-c` 传入的那个），持久化你的启动标志以便之后重新启动时能回放，然后监视一个绑定到该会话的 respawn 标记文件。
+打印模式调用（`claude -p`、`--version`、`--help`）、非交互式子命令（`claude mcp`、`claude config` 等等）以及 tokenmaxxing 自己的探测，都会直接透传，不做任何会话管理。对于交互式会话，监督进程会固定一个会话 id（生成一个，或复用通过 `--session-id` / `-r` / `-c` 传入的那个），持久化启动标志，以便之后重新启动时能回放，然后监视一个绑定到该会话的 respawn 标记文件。
 
 ## statusline 分流
 
-Claude Code 每个回合都会把速率限制数据（`rate_limits.five_hour` 和 `rate_limits.seven_day`）推送到 statusline 的 stdin。tokenmaxxing 掌管着 statusline 槽位，因此它的渲染器兼作一个免费的、基于推送的用量数据源：每一次心跳它都把汇总窗口加上活动模型分流写入 `usage.json`。按模型上限不在 statusline stdin 中；它们只来自 `claude -p '/usage'`（免费、零 token），当活动模型受容量约束时会带 TTL 轮询并缓存到 `model-usage.json`。
+Claude Code 每个回合都会把速率限制数据（`rate_limits.five_hour` 和 `rate_limits.seven_day`）推送到 statusline 的 stdin。tokenmaxxing 掌管着 statusline 槽位，因此其渲染器兼作免费的、基于推送的用量数据源：每次心跳都把汇总窗口连同活动模型一起分流写入 `usage.json`。按模型上限不在 statusline stdin 中，只来自 `claude -p '/usage'`（免费、零 token），当活动模型受容量约束时会带 TTL 轮询并缓存到 `model-usage.json`。
 
-分流是按变更写入：当数据未变化时它只更新文件的 mtime，作为数据源的存活心跳。新鲜度始终以 mtime 判断，而非以内嵌的时间戳判断。
+分流是按变更写入：当数据未变化时只更新文件的 mtime，作为数据源的存活心跳。新鲜度始终以 mtime 判断，而非以内嵌的时间戳判断。
 
 ## Stop hook 与切换
 
-在每个回合边界，Stop hook 运行切换决策（参见[切换如何决策](/zh/switching)）。当需要切换时，它会在一个 `flock(2)` 独占锁下发生（通过 `bun:ffi` 获取，因为 macOS 不自带 `flock(1)` 二进制），且凭证写入还会额外与 Claude Code 自身的刷新锁互锁。在临界区内，一次切换会：
+在每个回合边界，Stop hook 运行切换决策（参见[切换如何决策](/zh/switching)）。当需要切换时，会在 `flock(2)` 独占锁下进行（通过 `bun:ffi` 获取，因为 macOS 不自带 `flock(1)` 二进制），且凭证写入还会额外与 Claude Code 自身的刷新锁互锁。在临界区内，一次切换会：
 
 1. 把当前活动凭证收集到其真正所有者的停放备份中。
 2. 把目标账户刚刷新的凭证安装为活动凭证，并合并进现有活动数据块中，让兄弟状态（例如各 MCP 服务器的 OAuth token）得以保留。
-3. 把目标账户轮换后的 token 持久化到它自己的备份中。
+3. 把目标账户轮换后的 token 持久化到自己的备份中。
 4. 原子地重写 `~/.claude.json` 中的 `oauthAccount` 字段。
 5. 提交新的活动标签并清除过期的用量快照，这些全部在锁释放之前完成，因此崩溃绝不会留下已安装凭证与活动标签指向不同账户的情况。
 
@@ -33,11 +33,11 @@ Claude Code 每个回合都会把速率限制数据（`rate_limits.five_hour` �
 
 ## 就地采用
 
-正在运行的 claude 会话会在两次请求之间轮询它的凭证存储：在 macOS 上，它通过一个短缓存重新读取钥匙串并比较访问 token；在 Linux 上，它 stat 凭证文件的 mtime，并在变化时刷新它的 token 缓存。最终效果是，被切换的凭证会被每个正在运行的会话采用 - 在 macOS 上约 30 秒内，在 Linux 上就在紧接着的下一次请求时 - 无需任何重启。这就是普通切换不写标记、不触发任何 respawn 的原因 - 会话只是在新账户上继续。会话内的 `/usage` 共享相同的 token 缓存，因此它的账户显示会随着采用一起翻转。
+正在运行的 claude 会话会在两次请求之间轮询凭证存储：在 macOS 上通过一个短缓存重新读取钥匙串并比较访问 token；在 Linux 上则 stat 凭证文件的 mtime，并在变化时刷新 token 缓存。最终效果是，每个正在运行的会话都会采用换入的凭证 - 在 macOS 上约 30 秒内，在 Linux 上就在紧接着的下一次请求时 - 无需任何重启。这就是普通切换不写标记、不触发任何 respawn 的原因 - 会话只是在新账户上继续。会话内的 `/usage` 共享相同的 token 缓存，因此其账户显示会随采用一起翻转。
 
 ## 账户池耗尽的等待与自动恢复
 
-只有当池中每个账户都超过其阈值条时，Stop hook 才会写入一个 respawn 标记（标记 schema 要求一个 `waitUntil` 时间戳；普通切换永远无法产出这样的标记）。监督进程看到该标记后，会在已提交的回合边界 SIGTERM 它的子进程（Stop hook 在转录写入磁盘且 claude 空闲之后才运行，因此不会丢失任何内容），恢复终端，显示一个到最近重置的倒计时，然后在已恢复的账户上重新启动 `claude --resume <session-id>`。倒计时期间按 Ctrl-C 会立即恢复。自动等待受 `policy.maxWaitMs`（默认 1 小时）限制；超过之后，决策会将账户池报告为耗尽而不再等待。
+只有当池中每个账户都超过其阈值条时，Stop hook 才会写入一个 respawn 标记（标记 schema 要求一个 `waitUntil` 时间戳；普通切换永远无法产出这样的标记）。监督进程看到该标记后，会在已提交的回合边界 SIGTERM 其子进程（Stop hook 在转录写入磁盘且 claude 空闲之后才运行，因此不会丢失任何内容），恢复终端，显示一个到最近重置的倒计时，然后在已恢复的账户上重新启动 `claude --resume <session-id>`。倒计时期间按 Ctrl-C 会立即恢复。自动等待受 `policy.maxWaitMs`（默认 1 小时）限制；超过之后，决策会将账户池报告为耗尽而不再等待。
 
 ## 周期性检查定时器
 

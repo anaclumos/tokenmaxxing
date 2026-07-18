@@ -1,11 +1,11 @@
 ---
 title: 建置同分發
-description: "npm 上面嘅 TypeScript 原始碼，由 Bun 運行，帶來源證明發布"
+description: "npm 上嘅 TypeScript 原始碼，由 Bun 運行，帶來源證明發布"
 ---
 
-npm 套件發布嘅係 TypeScript 原始碼，唔係一個 build：`tokenmaxxing` bin 用一個 Bun shebang 直接指向 `src/main.ts`，而 Bun 1.2.6 或者更新版本會原封不動咁行佢。呢個就係點解 Bun 係一個硬性要求。刻意無任何編譯二進位檔：一個早期版本將一個單一嘅 61 MB macOS 二進位檔發布去每個平台，喺 Linux 上面以 `exec format error` 失敗，而每平台嘅編譯套件各自需要佢自己嘅發布流水線，所以由 Bun 運行原始碼就成為咗分發模型。
+npm 套件發布嘅係 TypeScript 原始碼，而唔係 build：`tokenmaxxing` bin 用 Bun shebang 直接指向 `src/main.ts`，而 Bun 1.2.6 或以上版本會原封不動咁行。呢個就係點解 Bun 係硬性要求。刻意冇編譯二進位檔：早期有個版本將同一個 61 MB 嘅 macOS 二進位檔發布到每個平台，喺 Linux 上就報 `exec format error` 失敗咗，而每個平台嘅編譯套件各自都要有自己嘅發布流水線，所以由 Bun 運行原始碼就成為咗分發模型。
 
-套件嘅 `exports` 映射將 `src/sdk.ts` 公開做上面描述嘅程式化入口。發布版本喺 GitHub 上面標籤做 `v<version>`;CI 透過受信任發布（OIDC，連同來源證明）發布去 npm，而發布閘門會先行類型檢查同完整嘅測試套件。
+套件嘅 `exports` 映射將 `src/sdk.ts` 公開成上面描述嘅程式化入口。發布版本喺 GitHub 上會標記做 `v<version>`。CI 會透過受信任發布（OIDC，連同來源證明）發布到 npm，而發布閘門會先跑類型檢查同完整嘅測試套件。
 
 ## 授權
 

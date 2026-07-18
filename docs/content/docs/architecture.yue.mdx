@@ -3,46 +3,46 @@ title: 架構
 description: "監督者 shim、statusline tee、Stop hook 切換，同就地採用模型"
 ---
 
-tokenmaxxing 係一個多重呼叫嘅入口點（`src/main.ts`），當佢用嗰個名字被呼叫嗰時就充當 `claude` 監督者，透過內部子指令提供 hook 同 statusline shim，其他情況就派發 CLI。佢直接喺 Bun 下面運行；npm 套件發布嘅係 TypeScript 原始碼，唔係一個 build。
+tokenmaxxing 係一個多重呼叫嘅入口點（`src/main.ts`），當佢用嗰個名行嗰陣就充當 `claude` 監督者，用內部子指令做 hook 同 statusline shim，其他情況就派發 CLI。佢直接喺 Bun 上面行；npm 套件發布嘅係 TypeScript 原始碼，唔係 build。
 
 各個運作部件：
 
 ## 監督者 shim
 
-`init` 會寫一個 2 行嘅 shell shim 叫 `claude` 入去 `~/.config/tokenmaxxing/bin/`，並將嗰個目錄放喺 PATH 最前面。當你打 `claude`，個 shim 會行監督者，佢會用繼承嘅 stdio 同一個儲存咗嘅 `stty -g` 終端快照去生成真正嘅 claude 二進位檔。佢淨係一個進程同終端管理者：佢永遠唔會代理 API 流量，亦都永遠唔會掂正在傳輸中嘅 token。
+`init` 會寫一個 2 行嘅 shell shim 叫 `claude` 入去 `~/.config/tokenmaxxing/bin/`，再將嗰個目錄擺喺 PATH 最前面。當你打 `claude`，個 shim 會行監督者，用繼承落嚟嘅 stdio 同儲存咗嘅 `stty -g` 終端快照去生成真正嘅 claude 二進位檔。佢淨係一個進程同終端管理者：永遠唔會代理 API 流量，亦都唔會掂傳輸緊嘅 token。
 
-列印模式嘅呼叫（`claude -p`、`--version`、`--help`）、非互動式子指令（`claude mcp`、`claude config` 等等）同埋 tokenmaxxing 自己嘅探測都會直接通過而無 session 管理。對於一個互動式 session，監督者會固定一個 session id（生成一個，或者重用你透過 `--session-id` / `-r` / `-c` 傳入嗰個），保存你嘅啟動旗標令之後重新啟動時可以重播佢哋，然後監視一個對應嗰個 session 嘅重生標記檔案。
+列印模式嘅呼叫（`claude -p`、`--version`、`--help`）、非互動式子指令（`claude mcp`、`claude config` 等等）同埋 tokenmaxxing 自己嘅探測都會直接通過，冇 session 管理。至於互動式 session，監督者會固定一個 session id（生成一個，或者重用你透過 `--session-id` / `-r` / `-c` 傳入嗰個），保存你嘅啟動旗標，等之後重新啟動可以重播，然後監視對應嗰個 session 嘅重生標記檔案。
 
 ## statusline tee
 
-Claude Code 每個回合都會將速率限制數據（`rate_limits.five_hour` 同 `rate_limits.seven_day`）推送去 statusline 嘅 stdin。tokenmaxxing 擁有 statusline 嗰個位，所以佢嘅渲染器兼任一個免費、基於推送嘅用量資訊來源：每一下 tick 佢都會將總量窗口加上活躍模型 tee 入去 `usage.json`。每模型上限唔喺 statusline stdin 入面；佢哋只嚟自 `claude -p '/usage'`（免費、零 token），呢個會用一個 TTL 輪詢，並喺活躍模型受容量限制時快取入去 `model-usage.json`。
+Claude Code 每個回合都會將速率限制數據（`rate_limits.five_hour` 同 `rate_limits.seven_day`）推送去 statusline 嘅 stdin。tokenmaxxing 擁有 statusline 嗰個位，所以佢個渲染器就兼做一個免費、靠推送嘅用量資訊來源：每一下 tick 都會將總量窗口加上活躍模型 tee 入去 `usage.json`。每模型上限唔喺 statusline stdin 入面，只係嚟自 `claude -p '/usage'`（免費、零 token），呢個會用 TTL 輪詢，喺活躍模型受容量限制嗰陣就快取入去 `model-usage.json`。
 
-個 tee 係改變時先寫：當數字無變佢淨係更新個檔案嘅 mtime，呢個充當資訊來源嘅活躍度心跳。新鮮度永遠用 mtime 判斷，永遠唔會用內嵌嘅時間戳。
+個 tee 係改變時先寫：當數字冇變就淨係更新個檔案嘅 mtime，而呢個就做咗資訊來源嘅活躍度心跳。新鮮度一律睇 mtime，唔會睇內嵌嘅時間戳。
 
 ## Stop hook 同切換
 
-喺每個回合邊界，Stop hook 會行切換決定（睇[切換點樣決定](/yue/switching)）。當一次切換有理由時，佢會喺一個 `flock(2)` 獨佔鎖之下發生（透過 `bun:ffi` 取得，因為 macOS 無附帶 `flock(1)` 二進位檔），而憑證寫入額外同 Claude Code 自己嘅刷新鎖互鎖。喺臨界區入面，一次切換：
+喺每個回合邊界，Stop hook 會行切換決定（睇[切換點樣決定](/yue/switching)）。當一次切換有需要嗰陣，就會喺一個 `flock(2)` 獨佔鎖之下發生（透過 `bun:ffi` 取得，因為 macOS 冇附帶 `flock(1)` 二進位檔），另外，憑證寫入仲會同 Claude Code 自己嘅刷新鎖互鎖。喺臨界區入面，一次切換：
 
-1. 將當前活躍憑證收集入去佢真正擁有者嘅泊存備份。
-2. 將目標帳戶啱啱刷新好嘅憑證安裝做活躍嗰個，合併入去現有嘅活躍 blob 令兄弟狀態（例如每 MCP 伺服器嘅 OAuth token）得以保留。
+1. 將目前活躍嘅憑證收集入佢真正擁有者嘅泊存備份。
+2. 將目標帳戶啱啱刷新好嘅憑證安裝做活躍嗰個，合併入現有嘅活躍 blob，令兄弟狀態（例如每個 MCP 伺服器嘅 OAuth token）得以保留。
 3. 將目標嘅輪換 token 保存去佢自己嘅備份。
 4. 原子性咁重寫 `~/.claude.json` 入面嘅 `oauthAccount` 欄位。
-5. 提交新嘅活躍標籤並清除過時嘅用量快照，全部喺個鎖釋放之前，所以一次崩潰永遠唔會令已安裝嘅憑證同活躍標籤指向唔同嘅帳戶。
+5. 提交新嘅活躍標籤，同埋清除過時嘅用量快照，全部喺個鎖釋放之前做，所以一次崩潰永遠唔會令已安裝嘅憑證同活躍標籤指向唔同嘅帳戶。
 
-因為所有預設 profile 嘅 session 共用嗰一個活躍憑證，一次切換會即刻遷移每個 session，而個 flock 加上喺鎖之下嘅重新檢查會阻止競爭中嘅 hook 燒毀兩個帳戶。
+因為所有預設 profile 嘅 session 共用同一個活躍憑證，一次切換會即刻遷移每個 session，而個 flock 加埋喺鎖之下嘅重新檢查，就阻止到競爭緊嘅 hook 燒毀兩個帳戶。
 
 ## 就地採用
 
-一個正在運行嘅 claude session 會喺請求之間輪詢佢嘅憑證儲存：喺 macOS 佢會透過一個短快取重新讀取 keychain 並比較存取 token；喺 Linux 佢會 stat 憑證檔案嘅 mtime 並喺改變時清空佢嘅 token 快取。淨效果就係一個換咗嘅憑證會喺 macOS 大約 30 秒之內、喺 Linux 就喺下一次請求時被每個正在運行嘅 session 採用，而唔使任何重新啟動。呢個就係點解一次普通切換唔會寫任何標記亦都唔會觸發重生 - 個 session 淨係喺新帳戶上面繼續。session 內嘅 `/usage` 共用相同嘅 token 快取，所以佢嘅帳戶顯示會隨住採用一齊翻轉。
+一個行緊嘅 claude session 會喺請求之間輪詢憑證儲存：喺 macOS 就會透過一個短快取重新讀 keychain，再比較存取 token；喺 Linux 就會 stat 憑證檔案嘅 mtime，一有改變就清空 token 快取。淨效果就係，每個行緊嘅 session 都會採用換咗嘅憑證：喺 macOS 大約 30 秒之內，喺 Linux 就喺下一次請求嗰陣，唔使任何重新啟動。呢個就係點解一次普通切換唔會寫任何標記，亦都唔會觸發重生 - 個 session 淨係喺新帳戶上面繼續。session 內嘅 `/usage` 共用相同嘅 token 快取，所以佢個帳戶顯示都會跟住採用一齊變。
 
 ## 帳戶池耗盡等待同自動繼續
 
-只有當帳戶池入面每個帳戶都超咗佢嘅界線時，Stop hook 先會寫一個重生標記（個標記 schema 需要一個 `waitUntil` 時間戳；一次普通切換永遠無法產生一個）。監督者見到個標記，就會喺已經提交嘅回合邊界 SIGTERM 佢個仔進程（Stop hook 喺轉錄稿寫落磁碟並且 claude 閒置之後先行，所以無嘢會失去），復原終端，顯示一個去到最快重設嘅倒數，然後喺復原咗嘅帳戶上面重新啟動 `claude --resume <session-id>`。倒數期間撳 Ctrl-C 會即刻繼續。呢個自動等待受 `policy.maxWaitMs`（預設 1 小時）約束；超過嗰個之後,個決定會將帳戶池報告做耗盡而唔會等待。
+只有當帳戶池入面每個帳戶都超咗自己嘅界線嗰陣，Stop hook 先至會寫一個重生標記（個標記 schema 需要一個 `waitUntil` 時間戳；一次普通切換永遠產生唔到）。監督者見到個標記，就會喺已經提交嘅回合邊界 SIGTERM 佢個仔進程（Stop hook 喺轉錄稿寫落磁碟、claude 又閒置咗之後先行，所以唔會失去任何嘢），復原終端，顯示去到最快重設嘅倒數，然後喺復原咗嘅帳戶上面重新啟動 `claude --resume <session-id>`。倒數期間撳 Ctrl-C 會即刻繼續。呢個自動等待受 `policy.maxWaitMs`（預設 1 小時）約束；超過之後，個決定就會將帳戶池報告做耗盡，唔會再等待。
 
 ## 定期檢查計時器
 
-Hook 只會喺回合邊界觸發，而一個長嘅 agentic 回合可以喺無一個邊界嘅情況下將一個窗口由健康燒到耗盡。所以 `init` 亦都會安裝一個定期計時器 - macOS 上面係一個 launchd agent，Linux 上面係一個 systemd user timer - 每 180 秒行一次 `tokenmaxxing check`，唔理回合有無活動。
+Hook 只會喺回合邊界觸發，而一個長嘅 agentic 回合可以一個邊界都冇，就將個窗口由健康燒到耗盡。所以 `init` 亦都會安裝一個定期計時器 - macOS 上面係一個 launchd agent，Linux 上面係一個 systemd user timer - 每 180 秒行一次 `tokenmaxxing check`，唔理回合有冇活動。
 
 ## 一個 SessionStart hook
 
-當一個 session 開始或者繼續時行相同嘅評估，令一個新嘅 session 喺啱嘅帳戶上面開始。切換後嘅冷卻令佢喺一次重生之後就啱啱好變成一個正確嘅無操作。
+一個 session 開始或者繼續嗰陣就行相同嘅評估，令一個新 session 喺啱嘅帳戶上面開始。切換後嘅冷卻令佢喺一次重生之後啱啱好變成一個正確嘅無操作。

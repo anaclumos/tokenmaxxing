@@ -1,6 +1,6 @@
 ---
 title: 設定
-description: "config.json のスキーマ、しきい値、そしてポリシーの調整項目"
+description: "config.json のスキーマ、しきい値、ポリシーの調整項目"
 ---
 
 設定は `~/.config/tokenmaxxing/config.json` の JSON です。すべてのフィールドは任意で、デフォルトはフィールドごとに適用されます。
@@ -19,10 +19,10 @@ description: "config.json のスキーマ、しきい値、そしてポリシー
 ```
 
 - `thresholds.session` / `thresholds.weekly`: 上で説明したスクリーニングバー。
-- `policy.projectionMargin`: 有効バーを形成するために両方のバーから引かれる値。
-- `policy.greedySessionFloor`: グリーディ収束がエンゲージするセッション使用パーセント。
-- `policy.switchModels`: モデルごとの週次上限が切り替えをゲートするモデルファミリー (エントリは読み込み時に小文字化されます)。
-- `policy.usagePollTtlMs`: `/usage` のモデルごとポーリングが新鮮なまま保たれる期間。
+- `policy.projectionMargin`: 両方のバーから差し引いて有効バーを求める値。
+- `policy.greedySessionFloor`: グリーディ収束が作動するセッション使用率。
+- `policy.switchModels`: モデルごとの週次上限が切り替えの条件となるモデルファミリー (エントリは読み込み時に小文字化されます)。
+- `policy.usagePollTtlMs`: `/usage` のモデルごとのポーリングが有効なまま保たれる期間。
 - `policy.maxWaitMs`: プール枯渇時の自動待機の上限。
 
-`tokenmaxxing config` は有効な設定とそのソースを表示します。`config set` / `unset` はドット区切りキーを編集します。`config tidy` は不明なキーを削除します。
+`tokenmaxxing config` は有効な設定をソースとともに表示します。`config set` / `unset` はドット区切りのキーを編集し、`config tidy` は不明なキーを削除します。

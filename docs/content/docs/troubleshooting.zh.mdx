@@ -4,31 +4,31 @@ description: "常见问题及其背后的诊断"
 ---
 
 **`claude` 似乎没有被监督。**
-运行 `tokenmaxxing doctor`。shim 必须赢得 PATH 解析；检查你 shell rc 中的 `# tokenmaxxing PATH` 那行是否指向当前的 bin 目录，并排在真正的 claude 之前。`doctor` 还会对 `alias claude=...` 或一个遮蔽包装器的 `claude()` shell 函数发出警告，以及对以绝对路径启动 claude 二进制的别名发出警告（那些会完全绕过监督进程）。
+运行 `tokenmaxxing doctor`。shim 必须在 PATH 解析中胜出；检查 shell rc 中的 `# tokenmaxxing PATH` 那行是否指向当前的 bin 目录，并排在真正的 claude 之前。`doctor` 还会提醒你注意遮蔽包装器的 `alias claude=...` 或 `claude()` shell 函数，以及以绝对路径启动 claude 二进制的别名（这类别名会完全绕过监督进程）。
 
 **Codex 上自动切换从不触发。**
-Codex 会跳过它未被告知要信任的 hooks。打开 codex，运行 `/hooks`，并信任 tokenmaxxing 的 Stop hook。信任是按 hook 的哈希记录的，因此如果 hook 曾被编辑，就必须重新授予。
+Codex 会跳过尚未信任的 hook。打开 codex，运行 `/hooks`，信任 tokenmaxxing 的 Stop hook。信任是按 hook 的哈希记录的，因此只要 hook 被改动过，就必须重新授予。
 
-**某个账户在 statusline 中显示一个红色 `✗`。**
-它的刷新 token 已失效（被吊销，或在其备份底层被轮换掉）。运行 `tokenmaxxing auth <sel>` 来就地重新认证它；该命令会告诉你该用哪个邮箱登录，并拒绝一个落在不同账户上的登录。
+**某个账户在 statusline 中显示红色 `✗`。**
+它的刷新 token 已失效（被吊销，或在备份未察觉的情况下被轮换掉）。运行 `tokenmaxxing auth <sel>` 就地重新认证；该命令会告诉你该用哪个邮箱登录，若登录落到了其他账户上就会拒绝。
 
-**为什么它不切换到剩余配额最多的账户？**
+**为什么不切换到剩余配额最多的账户？**
 因为那不是最有可能作废配额的账户。目标是最落后于自身周进度的账户：剩余百分比除以到其周重置的时间。在剩余量相等时，这就归结为最近到期者优先；在到期时间相等时，则归结为剩余最多者优先。
 
 **它刚切换过，而 statusline 仍显示旧账户。**
-在 macOS 上最多约 30 秒内这是预期的：正在运行的会话会在它下一次凭证缓存刷新时采用被切换的凭证。切换后 usage 分流会被抑制 45 秒，正是出于这个原因。
+在 macOS 上，这在最多约 30 秒内都属正常：正在运行的会话会在下一次凭证缓存刷新时采用切换后的凭证。usage 分流在切换后会抑制 45 秒，正是为此。
 
 **`status --force` 有代价吗？**
-有，是刻意的：它对每个账户发送一个极小的、会计量的 haiku 请求，让每个 5 小时会话窗口在那一刻开始，而非静静休眠，然后重新采样。普通的 `status` 和 `watch` 从不 ping；`/usage` 读取是免费的。请注意服务器用量数据源对一个刚打开的窗口可能有数秒到数分钟的延迟，因此在 ping 之后立即探测可能仍显示 ping 之前的状态 - `status` 会渲染一条说明，而非假装 ping 失败了。
+有，是刻意的：它会向每个账户发送一次极小的计量 haiku 请求，让每个 5 小时会话窗口在那一刻开始，而非静静休眠，然后重新采样。普通的 `status` 和 `watch` 从不 ping；`/usage` 读取是免费的。请注意，服务器用量数据源对刚打开的窗口可能有数秒到数分钟的延迟，因此在 ping 之后立即探测可能仍显示 ping 之前的状态 - `status` 会渲染一条说明，而非假装 ping 失败了。
 
-**`/usage` 探测对活动账户没有返回任何内容。**
-这是一个已知的 claude 行为：当它内部的用量获取失败或被限流时，`/usage` 只打印本地会话统计，没有百分比行。tokenmaxxing 从 statusline 推送对活动账户采样，只探测停放账户，正是为了避免这种情况。
+**`/usage` 探测活动账户时没有返回任何内容。**
+这是已知的 claude 行为：当它内部的用量获取失败或被限流时，`/usage` 只打印本地会话统计，没有百分比行。tokenmaxxing 从 statusline 推送中采样活动账户，只探测停放账户，正是为了避免这种情况。
 
 **后台 claude 会话。**
-Claude 的后台守护进程以绝对路径 spawn 真正的带版本二进制，绕过 PATH shim，因此后台会话不受监督。Hooks 仍会通过 `settings.json` 触发，凭证采用加上周期性定时器也能覆盖切换，但对它们没有基于标记的 respawn。
+Claude 的后台守护进程以绝对路径 spawn 真正的带版本号二进制，绕过 PATH shim，因此后台会话不受监督。Hooks 仍会通过 `settings.json` 触发，凭证采用和周期性定时器也足以覆盖切换，但它们没有基于标记的 respawn。
 
 **曾经有东西 spawn 了很多进程。这现在还可能发生吗？**
-监督进程带有分层的递归防护，专门针对那个历史上的故障（一个陈旧包装器被固定为"真正的" claude）：环境中一个在 5 层时中止的深度哨兵、一个磁盘上的 spawn 速率限制器、拒绝任何解析回 tokenmaxxing 自己 bin 目录的候选的 realpath 身份检查，以及当一个配置的 claude 路径不再存在时的硬失败（绝非一次悄无声息的 PATH 扫描）。`init` 和 `doctor` 会在固定一个候选之前，通过运行 `--version` 来核实它确实是 claude。
+监督进程带有分层的递归防护，专门针对那个历史故障（陈旧包装器被固定为"真正的" claude）：环境中一道在 5 层时中止的深度哨兵、磁盘上的一个 spawn 速率限制器、会拒绝任何解析回 tokenmaxxing 自身 bin 目录的候选项的 realpath 身份检查，以及配置的 claude 路径不再存在时的硬失败（绝不做悄无声息的 PATH 扫描）。`init` 和 `doctor` 会在固定某个候选之前运行 `--version`，核实它确实是 claude。
 
 **卸载。**
-`tokenmaxxing uninstall` 会移除监督进程 shim、设置条目和周期性定时器，并保留你的账户和停放凭证完好无损。它只移除它识别为自己所属的 statusline 条目。
+`tokenmaxxing uninstall` 会移除监督进程 shim、设置条目和周期性定时器，并保留账户和停放凭证完好无损。它只会移除自己识别为自有的 statusline 条目。

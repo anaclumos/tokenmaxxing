@@ -5,8 +5,8 @@ description: "모든 tokenmaxxing 명령어와 그 기능"
 
 | 명령어 | 기능 |
 |---|---|
-| `tokenmaxxing init` | 현재 계정을 가져오고, supervisor, 훅, statusline을 설치합니다 |
-| `tokenmaxxing init --codex` | Codex에 대해 동일하게 수행합니다: 로그인을 가져오고 codex supervisor와 Stop 훅을 설치합니다 |
+| `tokenmaxxing init` | 현재 계정을 가져오고 supervisor와 훅, statusline을 설치합니다 |
+| `tokenmaxxing init --codex` | Codex도 마찬가지입니다. 로그인을 가져오고 codex supervisor와 Stop 훅을 설치합니다 |
 | `tokenmaxxing add` | 추가 계정을 등록합니다(격리된 로그인, 풀로 수확됨) |
 | `tokenmaxxing add --codex` | 추가 Codex 계정을 등록합니다(격리된 로그인) |
 | `tokenmaxxing auth [sel \| --all]` | 풀에 등록된 계정을 그 자리에서 재인증합니다. 인자 없이 실행하면 풀 목록을 보여주고 어느 계정인지 묻습니다. 선택자를 주면 한 계정을 대상으로 하고 어느 이메일로 로그인해야 하는지 알려줍니다. `--all`은 재인증이 필요한 모든 계정을 하나씩 순회합니다 |
@@ -14,10 +14,10 @@ description: "모든 tokenmaxxing 명령어와 그 기능"
 | `tokenmaxxing switch --codex [sel]` | Codex 풀을 전환합니다(다음 codex 시작 시 적용됨) |
 | `tokenmaxxing ls` | 풀에 등록된 계정을 나열합니다 |
 | `tokenmaxxing status` | 5시간 / 주간 / 모델별 사용량 막대, 활성 상태, 초기화까지 소진된 상태를 포함한 계정 목록 |
-| `tokenmaxxing status --force` | 추가로 모든 계정을 핑합니다(계정마다 아주 작은 haiku 요청 하나씩). 그러면 모든 5시간 세션 타이머가 지금 시작되고, 이후 새로 샘플링합니다 |
+| `tokenmaxxing status --force` | 추가로 모든 계정을 핑합니다(계정마다 아주 작은 haiku 요청 하나씩). 그러면 모든 5시간 세션 타이머가 지금 시작되고 이후 새로 샘플링합니다 |
 | `tokenmaxxing watch [seconds]` | N초마다 다시 렌더링되는 실시간 상태(기본 120, 최소 30, 핑은 절대 하지 않음) |
-| `tokenmaxxing config [get\|set\|unset\|tidy]` | 출처와 함께 유효 설정을 표시하고, 점 표기 키를 편집하며, `tidy`는 알 수 없는 키를 정리합니다 |
-| `tokenmaxxing check` | 전환 결정을 한 번 평가합니다(주기적 타이머가 실행하는 것이 이것입니다) |
+| `tokenmaxxing config [get\|set\|unset\|tidy]` | 출처와 함께 유효 설정을 표시하고 점 표기 키를 편집하며 `tidy`는 알 수 없는 키를 정리합니다 |
+| `tokenmaxxing check` | 전환 결정을 한 번 평가합니다(주기적 타이머가 실행하는 명령입니다) |
 | `tokenmaxxing serve [setup\|link\|unlink\|links]` | Slack 브리지 데몬(Socket Mode, 공개 URL 불필요) |
 | `tokenmaxxing doctor` | supervisor와 설정 항목이 살아남았는지 확인합니다 |
 | `tokenmaxxing rename [--codex] <sel> <label>` | 풀에 등록된 계정의 라벨을 변경합니다 |

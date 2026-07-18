@@ -1,9 +1,9 @@
 ---
 title: Agent SDK 界面
-description: "在你自己运行的 agent 中，把账户池与 Claude Agent SDK 配对"
+description: "在自己运行的 agent 中，把账户池与 Claude Agent SDK 配对"
 ---
 
-该包的编程入口（`exports["."]` 指向 `src/sdk.ts`）把 tokenmaxxing 与 Claude Agent SDK 配对，用于你针对自己汇集的账户构建的 agent。你的应用必须运行在 Bun 之上（tokenmaxxing 发布 TypeScript 源码并使用 `bun:ffi`）。
+该包的编程入口（`exports["."]` 指向 `src/sdk.ts`）把 tokenmaxxing 与 Claude Agent SDK 配对，让你构建的 agent 使用自己汇集的账户。你的应用必须运行在 Bun 之上（tokenmaxxing 发布 TypeScript 源码并使用 `bun:ffi`）。
 
 ```ts
 import { query } from "@anthropic-ai/claude-agent-sdk";
@@ -22,10 +22,10 @@ for await (const message of query({
 }
 ```
 
-Agent SDK 每次 `query()` 都 spawn 一个 claude 子进程，并在 spawn 时读取一次凭证 - 没有 statusline，没有 query 中途的热切换 - 因此这套集成是边界驱动的：
+Agent SDK 每次 `query()` 都会 spawn 一个 claude 子进程，并在 spawn 时读取一次凭证（没有 statusline，也没有 query 中途的热切换），因此这套集成是边界驱动的：
 
-- `ensureBestAccount()` 就是 CLI hooks 和定时器运行的那个确切决策（阈值条、进度压力、冷却期，全是共享代码），绝非预判式：一个 SDK 会话永远无法为了一个耗尽倒计时而被暂停。
-- `pooledOptions()` 把 `pathToClaudeCodeExecutable` 固定到真正的 claude 二进制（绝非监督进程包装器），并提供一个完整替换的 `env`，其中每一个环境中的凭证覆盖都已被清除。如果你的应用环境中设置了 `CLAUDE_CONFIG_DIR` 或 `CLAUDE_SECURESTORAGE_CONFIG_DIR`，它会快速失败：在 Linux 上，一次切换会把活动凭证写到那些变量指向的位置，而被清除的子进程读取的却是默认存储，这是一个悄无声息的错误账户失步。
-- `stopHookCheck` 在回合边界重新运行决策；它落定的一次切换会在下一次 spawn 时生效。它会捕获自己的错误（记录到 stderr 和日志），而非重新抛出，因为一个未处理的 hook 异常可能打断 agent，而为一个坏掉的切换检查而中止一个回合，代价比继续用当前账户更大。
+- `ensureBestAccount()` 就是 CLI hooks 和定时器所运行的同一套决策（阈值条、进度压力、冷却期，全是共享代码），绝非预判式：SDK 会话永远不会为了某个耗尽倒计时而暂停。
+- `pooledOptions()` 把 `pathToClaudeCodeExecutable` 固定到真正的 claude 二进制（绝非监督进程包装器），并提供一份完整替换的 `env`，其中所有来自环境的凭证覆盖都已清除。如果应用环境中设置了 `CLAUDE_CONFIG_DIR` 或 `CLAUDE_SECURESTORAGE_CONFIG_DIR`，就会快速失败：在 Linux 上，一次切换会把活动凭证写到那些变量指向的位置，而环境已清除的子进程读取的却是默认存储，造成悄无声息的错误账户失步。
+- `stopHookCheck` 在回合边界重新运行决策；它落定的切换会在下一次 spawn 时生效。它会捕获自身的错误（记录到 stderr 和日志）而非重新抛出，因为未处理的 hook 异常可能打断 agent，而为了一个出错的切换检查中止整个回合，代价比继续沿用当前账户更大。
 
-`sdk.ts` 本身不从 Agent SDK 导入任何东西；它的值会结构化地散布进 SDK 的选项中。
+`sdk.ts` 本身不从 Agent SDK 导入任何内容；其值会结构化地展开进 SDK 的选项中。
