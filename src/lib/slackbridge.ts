@@ -65,27 +65,60 @@ function pushableStream(): {
   };
 }
 
+/** Live detached process-group leader pids: one process-exit hook SIGTERMs
+ *  them all, so a forced daemon exit (second signal, drain timeout) cannot
+ *  leak claude's tool subprocesses. */
+const liveGroups = new Set<number>();
+let groupExitHookArmed = false;
+
+function killGroup(pid: number): void {
+  try {
+    process.kill(-pid, "SIGTERM");
+  } catch (e) {
+    // ESRCH = the group is already gone, which is the state we wanted;
+    // anything else (EPERM, a bad pid) must surface, not silently leak.
+    if (!(e instanceof Error && "code" in e && e.code === "ESRCH")) throw e;
+  }
+}
+
 /**
  * Spawns the claude child in its OWN process group (post-0.19.1 review catch):
  * a terminal Ctrl-C delivers SIGINT to the whole foreground group, so a
  * non-detached child died at the same instant the daemon's drain started and
  * the drain could never preserve the in-flight turn. Detached, only the daemon
- * receives the terminal signal; the SDK's kill/abort paths target the PID
- * directly and its process-exit handler SIGTERMs surviving children, so
- * neither cleanup path is affected. Mirrors the SDK's default local spawn
- * (pipes + forwarded signal, which the SDK documents as safe to pass through)
- * minus its stderr-tail collection: exit errors lose the stderr suffix, an
- * accepted cost of turn survival.
+ * receives the terminal signal. Two consequences the review on PR #16 caught:
+ * the SDK's SpawnedProcess contract consumes only stdin/stdout, so stderr must
+ * be ignored outright (a piped-but-never-read stderr fills and blocks a chatty
+ * child; exit errors lose the stderr tail, an accepted cost of turn survival),
+ * and the SDK's abort path kills the lone PID, so the forwarded abort signal
+ * and a process-exit hook SIGTERM the whole detached group instead - claude's
+ * tool subprocesses must not outlive the daemon or the turn.
  */
 export function detachedClaudeSpawn(options: SpawnOptions) {
-  const stdio: ["pipe", "pipe", "pipe"] = ["pipe", "pipe", "pipe"];
-  return spawn(options.command, options.args, {
+  const stdio: ["pipe", "pipe", "ignore"] = ["pipe", "pipe", "ignore"];
+  const child = spawn(options.command, options.args, {
     cwd: options.cwd,
     env: options.env,
     stdio,
-    signal: options.signal,
     detached: true,
   });
+  if (!groupExitHookArmed) {
+    groupExitHookArmed = true;
+    process.once("exit", () => {
+      for (const pid of liveGroups) killGroup(pid);
+    });
+  }
+  if (child.pid !== undefined) {
+    const pid = child.pid;
+    liveGroups.add(pid);
+    const onAbort = () => killGroup(pid);
+    options.signal?.addEventListener("abort", onAbort, { once: true });
+    child.once("exit", () => {
+      liveGroups.delete(pid);
+      options.signal?.removeEventListener("abort", onAbort);
+    });
+  }
+  return child;
 }
 
 /**
