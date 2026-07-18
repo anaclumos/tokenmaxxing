@@ -1,21 +1,28 @@
 import { docs } from 'collections/server';
 import { loader } from 'fumadocs-core/source';
 import { lucideIconsPlugin } from 'fumadocs-core/source/lucide-icons';
+import { i18n, localePath } from './i18n';
 import { docsContentRoute, docsImageRoute, docsRoute } from './shared';
 
 // See https://fumadocs.dev/docs/headless/source-api for more info
 export const source = loader({
   baseUrl: docsRoute,
+  i18n,
   source: docs.toFumadocsSource(),
   plugins: [lucideIconsPlugin()],
 });
+
+function pageRoutePrefix(page: (typeof source)['$inferPage']) {
+  const locale = page.locale ?? i18n.defaultLanguage;
+  return localePath({ locale, path: '' }) === '/' ? '' : `/${locale}`;
+}
 
 export function getPageImage(page: (typeof source)['$inferPage']) {
   const segments = [...page.slugs, 'image.png'];
 
   return {
     segments,
-    url: `${docsImageRoute}/${segments.join('/')}`,
+    url: `${pageRoutePrefix(page)}${docsImageRoute}/${segments.join('/')}`,
   };
 }
 
@@ -24,7 +31,7 @@ export function getPageMarkdownUrl(page: (typeof source)['$inferPage']) {
 
   return {
     segments,
-    url: `${docsContentRoute}/${segments.join('/')}`,
+    url: `${pageRoutePrefix(page)}${docsContentRoute}/${segments.join('/')}`,
   };
 }
 
