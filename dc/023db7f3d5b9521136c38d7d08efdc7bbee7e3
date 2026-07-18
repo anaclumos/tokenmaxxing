@@ -1,0 +1,19 @@
+.memory/git-show-not-checkout-for-reads.md
+  s_08338c5aab50f8::t_274eb9367217f8 1-7
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "dc023db7f3d5b9521136c38d7d08efdc7bbee7e3",
+  "prompts": {},
+  "sessions": {
+    "s_08338c5aab50f8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "449abe10-aeff-477a-adc0-732212d69713",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    }
+  }
+}
