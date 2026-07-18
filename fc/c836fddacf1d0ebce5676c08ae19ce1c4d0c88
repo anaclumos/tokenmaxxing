@@ -1,0 +1,1033 @@
+docs/content/docs/switching.wuu.mdx
+  s_36700e42083764::t_54e925b98e82a8 1-41
+docs/content/docs/terms.sw.mdx
+  s_36700e42083764::t_435a2128e0bf8e 1-6
+docs/content/docs/credentials.hi.mdx
+  s_36700e42083764::t_7ee3298159eee2 1-19
+docs/content/docs/serve.pnb.mdx
+  s_36700e42083764::t_2e78894859398e 1-23
+docs/content/docs/serve.vi.mdx
+  s_36700e42083764::t_6725554c85544f 1-23
+docs/content/docs/configuration.mr.mdx
+  s_36700e42083764::t_0a35baffb053c0 1-28
+docs/content/docs/statusline.fa.mdx
+  s_36700e42083764::t_5a003921c61706 1-21
+docs/content/docs/sdk.mr.mdx
+  s_36700e42083764::t_2da1555cb487e7 1-31
+docs/content/docs/platforms.pnb.mdx
+  s_36700e42083764::t_fdb9b50eaadbbf 1-16
+docs/content/docs/terms.ja.mdx
+  s_36700e42083764::t_c3e9a95b19d64e 1-6
+docs/content/docs/troubleshooting.sw.mdx
+  s_36700e42083764::t_b055ddb1c6917f 1-34
+docs/content/docs/platforms.mr.mdx
+  s_36700e42083764::t_4495beb2121286 1-16
+docs/content/docs/limitations.id.mdx
+  s_36700e42083764::t_dca7dc474a4cc8 1-10
+docs/content/docs/codex.sw.mdx
+  s_36700e42083764::t_a18d84a8aa4c39 1-27
+docs/content/docs/configuration.am.mdx
+  s_36700e42083764::t_b97d9ea944d31f 1-28
+docs/content/docs/state-directory.vi.mdx
+  s_36700e42083764::t_078ae58ee8d928 1-25
+docs/content/docs/state-directory.de.mdx
+  s_36700e42083764::t_81ec1ad72c2595 1-25
+docs/content/docs/statusline.arz.mdx
+  s_36700e42083764::t_14d1abd0e308f6 1-21
+docs/content/docs/state-directory.yue.mdx
+  s_36700e42083764::t_ce410da9ca093e 1-25
+docs/content/docs/credentials.pnb.mdx
+  s_36700e42083764::t_a83bb1288f91c9 1-19
+docs/content/docs/index.de.mdx
+  s_36700e42083764::t_7dec971f143920 2-3,6-26,31-34
+docs/content/docs/index.ar.mdx
+  s_36700e42083764::t_efca0e384bf793 2-3,6-26,31-34
+docs/content/docs/switching.th.mdx
+  s_36700e42083764::t_fc22617c6832e9 1-41
+docs/content/docs/terms.tl.mdx
+  s_36700e42083764::t_7e6444f11ad1e7 1-6
+docs/content/docs/terms.hi.mdx
+  s_36700e42083764::t_ab18599da6be47 1-6
+docs/content/docs/quickstart.pcm.mdx
+  s_36700e42083764::t_97af6cab8f8703 1-28
+docs/content/docs/terms.es.mdx
+  s_36700e42083764::t_757a2f21f14482 1-6
+docs/content/docs/terms.ar.mdx
+  s_36700e42083764::t_2fa022a7015f1c 1-6
+docs/content/docs/architecture.vi.mdx
+  s_36700e42083764::t_17b3bf80053e13 1-48
+docs/content/docs/serve.pcm.mdx
+  s_36700e42083764::t_a26fce55296b74 1-23
+docs/content/docs/statusline.ar.mdx
+  s_36700e42083764::t_bfff1704793333 1-21
+docs/content/docs/sdk.fr.mdx
+  s_36700e42083764::t_290f65549e7180 1-31
+docs/content/docs/limitations.yue.mdx
+  s_36700e42083764::t_937837635addf7 1-10
+docs/content/docs/state-directory.ru.mdx
+  s_36700e42083764::t_eca2991c1f731d 1-25
+docs/content/docs/architecture.hi.mdx
+  s_36700e42083764::t_62f0e5b8063468 40
+  s_36700e42083764::t_6e587c85a8a92b 1-5,7-29,31-39,41-48
+  s_36700e42083764::t_8e79a9ccca0dbc 6
+  s_36700e42083764::t_20b29a2732c10c 30
+docs/content/docs/credentials.tr.mdx
+  s_36700e42083764::t_a9e43124135202 1-19
+docs/content/docs/commands.wuu.mdx
+  s_36700e42083764::t_a23ea792e93931 1-25
+docs/content/docs/configuration.ja.mdx
+  s_36700e42083764::t_b7c08799cb7592 1-28
+docs/content/docs/commands.id.mdx
+  s_36700e42083764::t_db88a493a50244 1-25
+docs/content/docs/credentials.fa.mdx
+  s_36700e42083764::t_4c5580a751fbf2 1-19
+docs/content/docs/statusline.id.mdx
+  s_36700e42083764::t_f5bb4c5bc06f1a 1-21
+docs/content/docs/quickstart.yue.mdx
+  s_36700e42083764::t_9d8a6599987750 1-28
+docs/content/docs/codex.es.mdx
+  s_36700e42083764::t_458fe8d0d54dfa 1-27
+docs/content/docs/serve.pt.mdx
+  s_36700e42083764::t_a8e69900ce5d66 1-23
+docs/content/docs/architecture.te.mdx
+  s_36700e42083764::t_beef79168af3fc 1-48
+docs/content/docs/codex.tr.mdx
+  s_36700e42083764::t_a18b2beae96e2d 1-27
+docs/content/docs/architecture.wuu.mdx
+  s_36700e42083764::t_ffb529754d86c3 1-48
+docs/content/docs/state-directory.ar.mdx
+  s_36700e42083764::t_d824926f281cc8 1-25
+docs/content/docs/switching.pt.mdx
+  s_36700e42083764::t_1e5047a69ca12c 1-41
+docs/content/docs/configuration.hi.mdx
+  s_36700e42083764::t_3de8ef0569a46b 1-28
+docs/content/docs/serve.de.mdx
+  s_36700e42083764::t_2af023c39bb1dd 1-23
+docs/content/docs/architecture.ko.mdx
+  s_36700e42083764::t_d458c252c226e4 1-48
+docs/content/docs/switching.pnb.mdx
+  s_36700e42083764::t_ac0ece45435c55 1-41
+docs/content/docs/configuration.pt.mdx
+  s_36700e42083764::t_b110d1d5effc9c 1-28
+docs/content/docs/serve.id.mdx
+  s_36700e42083764::t_f3842713b9af6c 1,3-23
+  s_36700e42083764::t_9f47c3d0fc3f85 2
+docs/content/docs/serve.ja.mdx
+  s_36700e42083764::t_26330d49cafa59 1-23
+docs/content/docs/credentials.id.mdx
+  s_36700e42083764::t_ce20afce9402a6 1-19
+docs/content/docs/quickstart.arz.mdx
+  s_36700e42083764::t_b9f798ea28d45f 1-28
+docs/content/docs/commands.vi.mdx
+  s_36700e42083764::t_ac2650876cff7b 1-25
+docs/content/docs/statusline.ko.mdx
+  s_36700e42083764::t_98775b0bc3d241 1-21
+docs/content/docs/limitations.tr.mdx
+  s_36700e42083764::t_29d40d805b3b25 1-10
+docs/content/docs/commands.mr.mdx
+  s_36700e42083764::t_4c29bb5fa90766 1-25
+docs/content/docs/credentials.ko.mdx
+  s_36700e42083764::t_5504ea7b1ca8d6 1-19
+docs/content/docs/sdk.ta.mdx
+  s_36700e42083764::t_731654fb014094 1-31
+docs/content/docs/sdk.am.mdx
+  s_36700e42083764::t_9b1c0d030e11d1 1-31
+docs/content/docs/distribution.fr.mdx
+  s_36700e42083764::t_735d510d11b91e 1-12
+docs/content/docs/quickstart.zh.mdx
+  s_36700e42083764::t_2c978388b9517c 1-28
+docs/content/docs/switching.arz.mdx
+  s_36700e42083764::t_96ffc2be59b984 1-41
+docs/content/docs/distribution.ko.mdx
+  s_36700e42083764::t_95100c213f8fc5 1-12
+docs/content/docs/terms.fr.mdx
+  s_36700e42083764::t_c4eda098124a0f 1-6
+docs/content/docs/serve.arz.mdx
+  s_36700e42083764::t_dfd2fbc309a333 1-23
+docs/content/docs/serve.ha.mdx
+  s_36700e42083764::t_33a2de34ba8144 1-23
+docs/content/docs/sdk.vi.mdx
+  s_36700e42083764::t_54c204694e6d55 1-31
+docs/content/docs/limitations.fa.mdx
+  s_36700e42083764::t_c26aad54d07c7f 1-10
+docs/content/docs/platforms.arz.mdx
+  s_36700e42083764::t_13bc8530c73773 1-16
+docs/content/docs/limitations.ja.mdx
+  s_36700e42083764::t_9c941e6bac290b 1-10
+docs/content/docs/statusline.wuu.mdx
+  s_36700e42083764::t_14b33cb7441909 1-21
+docs/content/docs/configuration.arz.mdx
+  s_36700e42083764::t_548d6f3bb35ab3 1-28
+docs/content/docs/troubleshooting.hi.mdx
+  s_36700e42083764::t_7ae3023318199e 1-34
+docs/content/docs/platforms.yue.mdx
+  s_36700e42083764::t_81d76f647c5643 1-16
+docs/content/docs/commands.te.mdx
+  s_36700e42083764::t_dd2ee5ec9afb5d 1-25
+docs/content/docs/configuration.sw.mdx
+  s_36700e42083764::t_0a93888734ba0b 1-28
+docs/content/docs/serve.tr.mdx
+  s_36700e42083764::t_b35b54a7d92665 1-23
+docs/content/docs/platforms.te.mdx
+  s_36700e42083764::t_14cb4a9a2133cd 1-16
+docs/content/docs/sdk.tl.mdx
+  s_36700e42083764::t_2c20fcd6b53f92 1-31
+docs/content/docs/architecture.tl.mdx
+  s_36700e42083764::t_0ebfe00dfcf53b 1-48
+docs/content/docs/architecture.fa.mdx
+  s_36700e42083764::t_f17c88f22269e3 1-48
+docs/content/docs/state-directory.pcm.mdx
+  s_36700e42083764::t_a3b6185a2e3772 1-25
+docs/content/docs/credentials.pcm.mdx
+  s_36700e42083764::t_2d8e1144a66f0b 1-19
+docs/content/docs/configuration.th.mdx
+  s_36700e42083764::t_3a62df148ad84a 1-28
+docs/content/docs/commands.de.mdx
+  s_36700e42083764::t_a526b27c51f459 1-25
+docs/content/docs/commands.ja.mdx
+  s_36700e42083764::t_e2b183134d0fff 1-25
+docs/content/docs/statusline.hi.mdx
+  s_36700e42083764::t_70155cb61ce09c 1-21
+docs/content/docs/terms.vi.mdx
+  s_36700e42083764::t_878a01671938f6 1-6
+docs/content/docs/commands.ur.mdx
+  s_36700e42083764::t_3fecb5ea6bb9c7 1-25
+docs/content/docs/troubleshooting.fr.mdx
+  s_36700e42083764::t_f8b72b710e6a4e 1-34
+docs/content/docs/sdk.ha.mdx
+  s_36700e42083764::t_aaa7f2310096ad 1-31
+docs/content/docs/terms.yue.mdx
+  s_36700e42083764::t_ab2f8cf1e7ab01 1-6
+docs/content/docs/limitations.ha.mdx
+  s_36700e42083764::t_04385c38455dcc 1-10
+docs/content/docs/codex.de.mdx
+  s_36700e42083764::t_c7fda21d9567b2 1-27
+docs/content/docs/commands.arz.mdx
+  s_36700e42083764::t_581aadc70869c0 1-25
+docs/content/docs/serve.te.mdx
+  s_36700e42083764::t_4f4999395b4448 1-23
+docs/content/docs/troubleshooting.fa.mdx
+  s_36700e42083764::t_5e35552e55954f 1-34
+docs/content/docs/distribution.id.mdx
+  s_36700e42083764::t_c45bf7e885b6e6 1-12
+docs/content/docs/sdk.ja.mdx
+  s_36700e42083764::t_d60fd31fe8ffe6 1-31
+docs/content/docs/limitations.vi.mdx
+  s_36700e42083764::t_5235f72c0f09ae 1-10
+docs/content/docs/limitations.pnb.mdx
+  s_36700e42083764::t_a38c7234af4d55 1-10
+docs/content/docs/commands.am.mdx
+  s_36700e42083764::t_31d67a2e2c3848 1-25
+docs/content/docs/statusline.mr.mdx
+  s_36700e42083764::t_bfc3c3e1c0b111 1-21
+docs/content/docs/serve.sw.mdx
+  s_36700e42083764::t_2368042a9c44aa 1-23
+docs/content/docs/statusline.te.mdx
+  s_36700e42083764::t_b918e86d88fc0d 1-21
+docs/content/docs/state-directory.bn.mdx
+  s_36700e42083764::t_d1897a84b20dd8 1-25
+docs/content/docs/troubleshooting.ko.mdx
+  s_36700e42083764::t_83a902341db0d0 1-34
+docs/content/docs/troubleshooting.tr.mdx
+  s_36700e42083764::t_64af2c017d5ea1 1-34
+docs/content/docs/quickstart.ur.mdx
+  s_36700e42083764::t_6bab902f20f62d 1-28
+docs/content/docs/credentials.yue.mdx
+  s_36700e42083764::t_152de32821c42c 1-19
+docs/content/docs/index.tl.mdx
+  s_36700e42083764::t_114d7068167de5 2-3,6-26,31-34
+docs/content/docs/configuration.pnb.mdx
+  s_36700e42083764::t_50f9d100187f56 1-28
+docs/content/docs/codex.pcm.mdx
+  s_36700e42083764::t_ba727b93617a88 1-27
+docs/content/docs/platforms.tl.mdx
+  s_36700e42083764::t_52f50f364388e1 2
+  s_36700e42083764::t_bb0da410f94b8e 1,3-16
+docs/content/docs/terms.ur.mdx
+  s_36700e42083764::t_0d546ddf217426 1-6
+docs/content/docs/terms.tr.mdx
+  s_36700e42083764::t_f3bf804bb7b2c7 1-6
+docs/content/docs/credentials.arz.mdx
+  s_36700e42083764::t_94116c281b555f 1-19
+docs/content/docs/configuration.ta.mdx
+  s_36700e42083764::t_8657dd1a6ccb2e 1-28
+docs/content/docs/terms.ha.mdx
+  s_36700e42083764::t_1b4d6af9063e6a 1-6
+docs/content/docs/distribution.pt.mdx
+  s_36700e42083764::t_cd70eab3c36081 1-12
+docs/content/docs/quickstart.pt.mdx
+  s_36700e42083764::t_6ecac0df1ff3e1 1-28
+docs/content/docs/serve.fr.mdx
+  s_36700e42083764::t_a076f48ac8e18b 1-23
+docs/content/docs/architecture.th.mdx
+  s_36700e42083764::t_a1531b0f8dc761 1-48
+docs/content/docs/statusline.ha.mdx
+  s_36700e42083764::t_a2c9fc622035cc 1-21
+docs/content/docs/switching.bn.mdx
+  s_36700e42083764::t_7680f13d58f473 1-41
+docs/content/docs/quickstart.fr.mdx
+  s_36700e42083764::t_72094526ba8e74 1-28
+docs/content/docs/commands.pnb.mdx
+  s_36700e42083764::t_232df09df0a214 1-25
+docs/content/docs/sdk.id.mdx
+  s_36700e42083764::t_d694ec6bdea171 1-31
+docs/content/docs/distribution.ha.mdx
+  s_36700e42083764::t_f9ce9a45665a84 1-12
+docs/content/docs/configuration.ur.mdx
+  s_36700e42083764::t_1e350894da0160 1-28
+docs/content/docs/switching.id.mdx
+  s_36700e42083764::t_0205d738ecb6b5 1-41
+docs/content/docs/troubleshooting.pcm.mdx
+  s_36700e42083764::t_2193af4cb1ca3a 1-34
+docs/content/docs/sdk.bn.mdx
+  s_36700e42083764::t_df8194730bd754 1-31
+docs/content/docs/index.yue.mdx
+  s_36700e42083764::t_e37a56c9f02296 2-3,6-26,31-34
+docs/content/docs/index.arz.mdx
+  s_36700e42083764::t_b6a2d37e890bfa 2-3,6-26,31-34
+docs/content/docs/state-directory.zh.mdx
+  s_36700e42083764::t_3b84526bd3c20e 1-25
+docs/content/docs/commands.ar.mdx
+  s_36700e42083764::t_3cdf60c885ef99 1-25
+docs/content/docs/switching.vi.mdx
+  s_36700e42083764::t_083ded0f869d08 1-41
+docs/content/docs/distribution.pnb.mdx
+  s_36700e42083764::t_4b0a2acb586dc7 1-12
+docs/content/docs/codex.vi.mdx
+  s_36700e42083764::t_1db36abdbbf1e9 1-27
+docs/content/docs/platforms.tr.mdx
+  s_36700e42083764::t_aabd746cfc9595 1-16
+docs/content/docs/codex.am.mdx
+  s_36700e42083764::t_1f52bdb9891e68 1-27
+docs/content/docs/serve.ar.mdx
+  s_36700e42083764::t_ba9b64eb4845a4 1-23
+docs/content/docs/codex.wuu.mdx
+  s_36700e42083764::t_a8da41d0baca77 1-27
+docs/content/docs/credentials.vi.mdx
+  s_36700e42083764::t_adbe5efbaa88a8 1-19
+docs/content/docs/quickstart.ta.mdx
+  s_36700e42083764::t_3da2c8d7f3be00 1-28
+docs/content/docs/terms.zh.mdx
+  s_36700e42083764::t_991b99b6757f8b 1-6
+docs/content/docs/credentials.pt.mdx
+  s_36700e42083764::t_e25ad34aa1339f 1-19
+docs/content/docs/quickstart.pnb.mdx
+  s_36700e42083764::t_49a286e7e2ab10 1-28
+docs/content/docs/terms.te.mdx
+  s_36700e42083764::t_7531f8f81b7e5c 1-6
+docs/content/docs/codex.pnb.mdx
+  s_36700e42083764::t_b4150eefc50d7b 1-27
+docs/content/docs/state-directory.fr.mdx
+  s_36700e42083764::t_8f0861a34bce00 1-25
+docs/content/docs/serve.bn.mdx
+  s_36700e42083764::t_81339510c43856 1-23
+docs/content/docs/distribution.tl.mdx
+  s_36700e42083764::t_2aa494b41a68ce 1-12
+docs/content/docs/limitations.zh.mdx
+  s_36700e42083764::t_c90a361539121b 1-10
+docs/content/docs/statusline.am.mdx
+  s_36700e42083764::t_28a9dab683d307 1-21
+docs/content/docs/troubleshooting.ta.mdx
+  s_36700e42083764::t_65c18214f5c1b6 1-34
+docs/content/docs/switching.hi.mdx
+  s_36700e42083764::t_90f71e1f056a2b 1-41
+docs/content/docs/limitations.mr.mdx
+  s_36700e42083764::t_d3b4d24d7f8b59 1-10
+docs/content/docs/codex.th.mdx
+  s_36700e42083764::t_9b1b010346649a 1-27
+docs/content/docs/commands.tr.mdx
+  s_36700e42083764::t_7eaab6107d9513 1-25
+docs/content/docs/troubleshooting.vi.mdx
+  s_36700e42083764::t_983e9379f50a8f 1-34
+docs/content/docs/limitations.es.mdx
+  s_36700e42083764::t_da8cf3b4103ba9 1-10
+docs/content/docs/statusline.sw.mdx
+  s_36700e42083764::t_b1b716c6355393 1-21
+docs/content/docs/sdk.ko.mdx
+  s_36700e42083764::t_64e13abe3e99cb 1-31
+docs/content/docs/terms.wuu.mdx
+  s_36700e42083764::t_37da7a57a32ddd 1-6
+docs/content/docs/index.bn.mdx
+  s_36700e42083764::t_6c418f49f47f5a 2-3,6-26,31-34
+docs/content/docs/sdk.arz.mdx
+  s_36700e42083764::t_71ebcd22d3ba04 1-31
+docs/content/docs/distribution.am.mdx
+  s_36700e42083764::t_c2189774ad05cc 1-12
+docs/content/docs/terms.th.mdx
+  s_36700e42083764::t_38069c95fc71e5 1-6
+docs/content/docs/quickstart.am.mdx
+  s_36700e42083764::t_0d6de5e4c2fa38 1-28
+docs/content/docs/platforms.zh.mdx
+  s_36700e42083764::t_bc3271ad9967c7 1-16
+docs/content/docs/troubleshooting.ja.mdx
+  s_36700e42083764::t_71935102bdac8c 1-34
+docs/content/docs/platforms.pt.mdx
+  s_36700e42083764::t_fe22ee7be6c0d1 1-16
+docs/content/docs/statusline.ru.mdx
+  s_36700e42083764::t_0f4a4d6886ebe2 1-21
+docs/content/docs/configuration.fa.mdx
+  s_36700e42083764::t_1e077d9ca1f942 1-28
+docs/content/docs/platforms.wuu.mdx
+  s_36700e42083764::t_3f0b602a1df5c8 1-16
+docs/content/docs/serve.ta.mdx
+  s_36700e42083764::t_ba814e3c39adf9 1-23
+docs/content/docs/commands.fr.mdx
+  s_36700e42083764::t_a352a085297c37 1-25
+docs/content/docs/limitations.ta.mdx
+  s_36700e42083764::t_811722d1ef2268 1-10
+docs/content/docs/codex.pt.mdx
+  s_36700e42083764::t_82814de0ef17aa 1-27
+docs/content/docs/index.ta.mdx
+  s_36700e42083764::t_053372286eb894 2-3,6-26,31-34
+docs/content/docs/architecture.pt.mdx
+  s_36700e42083764::t_04b9c2cf845fc0 1-48
+docs/content/docs/codex.ar.mdx
+  s_36700e42083764::t_bfd1243e67c72c 1-27
+docs/content/docs/configuration.wuu.mdx
+  s_36700e42083764::t_7a3bd535b142af 1-28
+docs/content/docs/limitations.wuu.mdx
+  s_36700e42083764::t_509c78b5d91a13 1-10
+docs/content/docs/architecture.ar.mdx
+  s_36700e42083764::t_f0fa03b40b30a9 1-48
+docs/content/docs/switching.sw.mdx
+  s_36700e42083764::t_56364a4c1227c1 1-41
+docs/content/docs/state-directory.fa.mdx
+  s_36700e42083764::t_7be5cd78266951 1-25
+docs/content/docs/distribution.zh.mdx
+  s_36700e42083764::t_311cb30f690488 1-12
+docs/content/docs/architecture.de.mdx
+  s_36700e42083764::t_233805df0824be 1-48
+docs/content/docs/platforms.bn.mdx
+  s_36700e42083764::t_9a781224b6a2a8 1-16
+docs/content/docs/switching.ta.mdx
+  s_36700e42083764::t_c11b88202ebacf 1-41
+docs/content/docs/distribution.te.mdx
+  s_36700e42083764::t_c0d0386638cae4 1-12
+docs/content/docs/distribution.tr.mdx
+  s_36700e42083764::t_a64d0ff620da89 1-12
+docs/content/docs/sdk.ru.mdx
+  s_36700e42083764::t_f18752210e3e94 1-31
+docs/content/docs/commands.ha.mdx
+  s_36700e42083764::t_396eca1b2ea051 1-25
+docs/content/docs/troubleshooting.am.mdx
+  s_36700e42083764::t_7b0b08466a2357 1-34
+docs/content/docs/architecture.am.mdx
+  s_36700e42083764::t_264d8e1e37b1bc 1-48
+docs/content/docs/index.es.mdx
+  s_36700e42083764::t_39fe14cb7ca970 3
+  s_36700e42083764::t_eb4d2845d399c2 2,6-26,31-34
+docs/content/docs/state-directory.ta.mdx
+  s_36700e42083764::t_a504938c19eff2 1-25
+docs/content/docs/quickstart.de.mdx
+  s_36700e42083764::t_33e03b6cfe95a4 1-28
+docs/content/docs/serve.th.mdx
+  s_36700e42083764::t_9ab59bfe7fab4e 2
+  s_36700e42083764::t_56286bc94018ee 1,3-23
+docs/content/docs/troubleshooting.mr.mdx
+  s_36700e42083764::t_7d0c6cfe30c360 1-34
+docs/content/docs/sdk.es.mdx
+  s_36700e42083764::t_11e177588228b1 1-31
+docs/content/docs/switching.pcm.mdx
+  s_36700e42083764::t_0e5e06110aa969 1-41
+docs/content/docs/state-directory.th.mdx
+  s_36700e42083764::t_86f491cf966879 1-25
+docs/content/docs/statusline.th.mdx
+  s_36700e42083764::t_3ef0fe5aec83a4 1-21
+docs/content/docs/state-directory.pt.mdx
+  s_36700e42083764::t_bea5ad38a59abc 1-25
+docs/content/docs/codex.mr.mdx
+  s_36700e42083764::t_d773418cfc11db 1-27
+docs/content/docs/sdk.tr.mdx
+  s_36700e42083764::t_ca0bf864acf555 1-31
+docs/content/docs/platforms.de.mdx
+  s_36700e42083764::t_6ecc467ec326ad 1-16
+docs/content/docs/serve.ur.mdx
+  s_36700e42083764::t_e5b547f3057ba3 1,3-23
+  s_36700e42083764::t_baeba784b6fa03 2
+docs/content/docs/index.vi.mdx
+  s_36700e42083764::t_5f15a78ab5bc04 2-3,6,8-28,31-34
+docs/content/docs/statusline.fr.mdx
+  s_36700e42083764::t_2be4f5290118d8 1-21
+docs/content/docs/architecture.pcm.mdx
+  s_36700e42083764::t_31f6187c05c710 1-48
+docs/content/docs/serve.am.mdx
+  s_36700e42083764::t_2a00ed1627e69b 1-23
+docs/content/docs/troubleshooting.zh.mdx
+  s_36700e42083764::t_56fb61f91dfe14 1-34
+docs/content/docs/state-directory.te.mdx
+  s_36700e42083764::t_7a7dde238365b3 1-25
+docs/content/docs/credentials.te.mdx
+  s_36700e42083764::t_bc4cb7a1325e9e 1-19
+docs/content/docs/platforms.ur.mdx
+  s_36700e42083764::t_e6b871f1c5c1b9 2
+  s_36700e42083764::t_b617644b557b03 1,3-16
+docs/content/docs/codex.ja.mdx
+  s_36700e42083764::t_138feae0f1b412 1-27
+docs/content/docs/quickstart.ja.mdx
+  s_36700e42083764::t_c41da516c1aad7 1-28
+docs/content/docs/commands.es.mdx
+  s_36700e42083764::t_276bf0fcadebea 1-25
+docs/content/docs/statusline.de.mdx
+  s_36700e42083764::t_380ec00a937802 1-21
+docs/content/docs/distribution.es.mdx
+  s_36700e42083764::t_9c5ddccfae3692 1-12
+docs/content/docs/serve.mr.mdx
+  s_36700e42083764::t_921690b12092ac 1-23
+docs/content/docs/architecture.ha.mdx
+  s_36700e42083764::t_a878aaf65e18a1 1-48
+docs/content/docs/serve.ko.mdx
+  s_36700e42083764::t_fd3227c7c39963 1-23
+docs/content/docs/state-directory.ja.mdx
+  s_36700e42083764::t_7389c2f12e882b 1-25
+docs/content/docs/statusline.pt.mdx
+  s_36700e42083764::t_65532a85ddd72d 1-21
+docs/content/docs/limitations.pcm.mdx
+  s_36700e42083764::t_f6269d3d91e16f 1-10
+docs/content/docs/commands.sw.mdx
+  s_36700e42083764::t_36eb6493648356 1-25
+docs/content/docs/serve.zh.mdx
+  s_36700e42083764::t_1f4cd1fd6bcd1f 1-23
+docs/content/docs/statusline.yue.mdx
+  s_36700e42083764::t_707c2ff36cfc6c 1-21
+docs/content/docs/distribution.th.mdx
+  s_36700e42083764::t_a0f684a30d5dca 1-12
+docs/content/docs/credentials.ur.mdx
+  s_36700e42083764::t_84c71f64b9a4bf 1-19
+docs/content/docs/quickstart.wuu.mdx
+  s_36700e42083764::t_592217d4e25c3e 1-28
+docs/content/docs/codex.ha.mdx
+  s_36700e42083764::t_8793e782a28e4a 1-27
+docs/content/docs/distribution.vi.mdx
+  s_36700e42083764::t_e8b6b513d3b5d3 1-12
+docs/content/docs/troubleshooting.ar.mdx
+  s_36700e42083764::t_f18daacbf3d267 1-34
+docs/content/docs/switching.te.mdx
+  s_36700e42083764::t_e2016ab8f68f16 1-41
+docs/content/docs/platforms.ko.mdx
+  s_36700e42083764::t_da6ce9a642c802 1-16
+docs/content/docs/platforms.th.mdx
+  s_36700e42083764::t_18ecb1ae419d02 1,3-16
+  s_36700e42083764::t_30b5dc174235c7 2
+docs/content/docs/state-directory.wuu.mdx
+  s_36700e42083764::t_0f209742d8670b 1-25
+docs/content/docs/terms.fa.mdx
+  s_36700e42083764::t_18b96561483fc8 1-6
+docs/content/docs/state-directory.am.mdx
+  s_36700e42083764::t_38d2d10529abeb 1-25
+docs/content/docs/index.wuu.mdx
+  s_36700e42083764::t_170fc3c1ed4ddd 2-3,6,8-28,31-34
+docs/content/docs/configuration.es.mdx
+  s_36700e42083764::t_1259365461d2e5 1-28
+docs/content/docs/platforms.ha.mdx
+  s_36700e42083764::t_e39b2a95981b3d 2
+  s_36700e42083764::t_ce6fb472ee6933 1,3-16
+docs/content/docs/terms.am.mdx
+  s_36700e42083764::t_5efff905e40810 1-6
+docs/content/docs/commands.ta.mdx
+  s_36700e42083764::t_5f7b50e40d6213 1-25
+docs/content/docs/commands.hi.mdx
+  s_36700e42083764::t_ebb91ebff3c8b0 1-25
+docs/content/docs/index.hi.mdx
+  s_36700e42083764::t_b36cc518ccdbe2 2-3,6-26,31-34
+docs/content/docs/state-directory.mr.mdx
+  s_36700e42083764::t_9fc38345f201ad 1-25
+docs/content/docs/configuration.ko.mdx
+  s_36700e42083764::t_2cbd9f2ae1ec50 1-28
+docs/content/docs/statusline.ta.mdx
+  s_36700e42083764::t_fd138a77538aa1 1-21
+docs/content/docs/distribution.ur.mdx
+  s_36700e42083764::t_99b01c71d55393 1-12
+docs/content/docs/troubleshooting.ur.mdx
+  s_36700e42083764::t_a5e63adcc142af 1-34
+docs/content/docs/switching.ko.mdx
+  s_36700e42083764::t_25e4411b95238f 1-41
+docs/content/docs/configuration.pcm.mdx
+  s_36700e42083764::t_5c8e85971a6722 1-28
+docs/content/docs/index.mr.mdx
+  s_36700e42083764::t_84dbc58f2f2e61 2-3,6-26,31-34
+docs/content/docs/index.am.mdx
+  s_36700e42083764::t_7f8a9ef5ab3800 2-3,6-26,31-34
+docs/content/docs/credentials.th.mdx
+  s_36700e42083764::t_7321fd353bf4d1 1-19
+docs/content/docs/quickstart.fa.mdx
+  s_36700e42083764::t_5d07fac4793b91 1-28
+docs/content/docs/codex.fr.mdx
+  s_36700e42083764::t_a113f27ad90922 1-27
+docs/content/docs/codex.ko.mdx
+  s_36700e42083764::t_aa3c5c816b2bab 1-27
+docs/content/docs/credentials.de.mdx
+  s_36700e42083764::t_e5f3208381e3cf 1-19
+docs/content/docs/configuration.de.mdx
+  s_36700e42083764::t_27d32a5ac0e330 1-28
+docs/content/docs/serve.es.mdx
+  s_36700e42083764::t_7b61cedcb183b3 2
+  s_36700e42083764::t_e9dbd4c48bd827 1,3-23
+docs/content/docs/credentials.ru.mdx
+  s_36700e42083764::t_671de3d9825c28 1-19
+docs/content/docs/architecture.es.mdx
+  s_36700e42083764::t_ee59ab1f65c9d8 1-48
+docs/content/docs/limitations.arz.mdx
+  s_36700e42083764::t_4e79f8d798166b 1-10
+docs/content/docs/state-directory.pnb.mdx
+  s_36700e42083764::t_eb0ce17d3f9d83 1-25
+docs/content/docs/credentials.am.mdx
+  s_36700e42083764::t_68d0a2ecb81f7c 1-19
+docs/content/docs/state-directory.id.mdx
+  s_36700e42083764::t_df9a5b888c905d 1-25
+docs/content/docs/index.ja.mdx
+  s_36700e42083764::t_248243c9109584 2-3,6,8-28,31-34
+docs/content/docs/platforms.id.mdx
+  s_36700e42083764::t_a4311ad3e0f889 2
+  s_36700e42083764::t_b53ccdb84aab53 1,3-16
+docs/content/docs/index.pt.mdx
+  s_36700e42083764::t_c37028975f12d0 2-3,6-26,31-34
+docs/content/docs/statusline.pcm.mdx
+  s_36700e42083764::t_92c4d06a51bf45 1-21
+docs/content/docs/sdk.zh.mdx
+  s_36700e42083764::t_4169a49a594361 1-31
+docs/content/docs/terms.ru.mdx
+  s_36700e42083764::t_e25896de887468 1-6
+docs/content/docs/index.ru.mdx
+  s_36700e42083764::t_dcc48fc993c061 2-3,6-26,31-34
+docs/content/docs/switching.ur.mdx
+  s_36700e42083764::t_ef66f8a0ff3326 1-41
+docs/content/docs/codex.ur.mdx
+  s_36700e42083764::t_88fd4114f7caff 1-27
+docs/content/docs/troubleshooting.tl.mdx
+  s_36700e42083764::t_148b3518d3e2d0 1-34
+docs/content/docs/sdk.pnb.mdx
+  s_36700e42083764::t_55f344c9c901e2 1-31
+docs/content/docs/terms.pt.mdx
+  s_36700e42083764::t_6797c1e1987bac 1-6
+docs/content/docs/distribution.mr.mdx
+  s_36700e42083764::t_c163bfbe172e2c 1-12
+docs/content/docs/configuration.id.mdx
+  s_36700e42083764::t_5aad7aa7ab918b 1-28
+docs/content/docs/switching.ar.mdx
+  s_36700e42083764::t_6c10a213d3a388 34
+  s_36700e42083764::t_b236f950cde80a 1-33,35-41
+docs/content/docs/platforms.ru.mdx
+  s_36700e42083764::t_ea0084893384b1 2
+  s_36700e42083764::t_5d68849dff1855 1,3-16
+docs/content/docs/troubleshooting.te.mdx
+  s_36700e42083764::t_cf4c82d8c09cef 1-34
+docs/content/docs/quickstart.tr.mdx
+  s_36700e42083764::t_9847588a100444 1-28
+docs/content/docs/platforms.sw.mdx
+  s_36700e42083764::t_eaec53af488ee0 1-16
+docs/content/docs/commands.zh.mdx
+  s_36700e42083764::t_50528d961e17d1 1-25
+docs/content/docs/switching.yue.mdx
+  s_36700e42083764::t_bad73da8500c99 1-41
+docs/content/docs/codex.yue.mdx
+  s_36700e42083764::t_18fbd7e5cfc837 1-27
+docs/content/docs/index.fr.mdx
+  s_36700e42083764::t_dfebe6b72e28d7 2-3,6-26,31-34
+docs/content/docs/configuration.ru.mdx
+  s_36700e42083764::t_15c827f4b752fd 1-28
+docs/content/docs/statusline.ur.mdx
+  s_36700e42083764::t_8fb74b6a3ebce7 1-21
+docs/content/docs/credentials.ta.mdx
+  s_36700e42083764::t_1ec4b7e623ea1f 1-19
+docs/content/docs/codex.zh.mdx
+  s_36700e42083764::t_0fbfd8be43b5d4 1-27
+docs/content/docs/architecture.sw.mdx
+  s_36700e42083764::t_9ffd6475c1e8a4 1-48
+docs/content/docs/codex.hi.mdx
+  s_36700e42083764::t_c6436156362a55 1-27
+docs/content/docs/sdk.ar.mdx
+  s_36700e42083764::t_ec39c537254cc1 1-31
+docs/content/docs/limitations.tl.mdx
+  s_36700e42083764::t_8d5ff3223f92b1 1-10
+docs/content/docs/configuration.ar.mdx
+  s_36700e42083764::t_ec82c8ab794701 1-28
+docs/content/docs/credentials.fr.mdx
+  s_36700e42083764::t_e25cdcdee88173 1-19
+docs/content/docs/codex.bn.mdx
+  s_36700e42083764::t_5039d379e0e7f5 1-27
+docs/content/docs/switching.fa.mdx
+  s_36700e42083764::t_8d75341205e912 1-41
+docs/content/docs/commands.fa.mdx
+  s_36700e42083764::t_419904519e2527 1-25
+docs/content/docs/limitations.pt.mdx
+  s_36700e42083764::t_5adc0fa21f1add 1-10
+docs/content/docs/index.pcm.mdx
+  s_36700e42083764::t_b7c09158bdceda 2-3,6-26,31-34
+docs/content/docs/distribution.ja.mdx
+  s_36700e42083764::t_64d3b1b209edb1 1-12
+docs/content/docs/distribution.yue.mdx
+  s_36700e42083764::t_03d1a1703515a9 1-12
+docs/content/docs/terms.de.mdx
+  s_36700e42083764::t_4370fa80c24996 1-6
+docs/content/docs/quickstart.es.mdx
+  s_36700e42083764::t_d4f68d8e08f62b 1-28
+docs/content/docs/statusline.pnb.mdx
+  s_36700e42083764::t_78a0b629e229d1 1-21
+docs/content/docs/quickstart.ha.mdx
+  s_36700e42083764::t_26a8b9a49fed4b 1-28
+docs/content/docs/architecture.bn.mdx
+  s_36700e42083764::t_04e6ecdb09f5a9 1-48
+docs/content/docs/quickstart.th.mdx
+  s_36700e42083764::t_09e7fabb0d5877 1-28
+docs/content/docs/index.te.mdx
+  s_36700e42083764::t_2d2192b18ad808 2-3,6,8-28,31-34
+docs/content/docs/troubleshooting.wuu.mdx
+  s_36700e42083764::t_d9f006f6658e85 1-34
+docs/content/docs/terms.ko.mdx
+  s_36700e42083764::t_6229058caafc9d 1-6
+docs/content/docs/platforms.ja.mdx
+  s_36700e42083764::t_9a133461553e34 1-16
+docs/content/docs/quickstart.mr.mdx
+  s_36700e42083764::t_239a21889835bf 1-28
+docs/content/docs/troubleshooting.pt.mdx
+  s_36700e42083764::t_246713cdfc0970 1-34
+docs/content/docs/credentials.zh.mdx
+  s_36700e42083764::t_58e46d71b5ddcf 1-19
+docs/content/docs/credentials.tl.mdx
+  s_36700e42083764::t_8df98a7e99fbf9 1-19
+docs/content/docs/configuration.tr.mdx
+  s_36700e42083764::t_f0bb01d98c8960 1-28
+docs/content/docs/sdk.fa.mdx
+  s_36700e42083764::t_4fd222eb6fe5d2 1-31
+docs/content/docs/commands.pt.mdx
+  s_36700e42083764::t_04d659e1b7009e 1-25
+docs/content/docs/distribution.ru.mdx
+  s_36700e42083764::t_9e5829cfd6e2f8 1-12
+docs/content/docs/limitations.am.mdx
+  s_36700e42083764::t_57e476c45cac28 1-10
+docs/content/docs/limitations.fr.mdx
+  s_36700e42083764::t_6b8a2701e85110 1-10
+docs/content/docs/switching.tr.mdx
+  s_36700e42083764::t_7682c46daf8658 1-41
+docs/content/docs/index.ko.mdx
+  s_36700e42083764::t_35dfbf7199a735 2-3,6-26,31-34
+docs/content/docs/credentials.ha.mdx
+  s_36700e42083764::t_b56647b8619d24 1-19
+docs/content/docs/terms.pnb.mdx
+  s_36700e42083764::t_aa1132ec40cb55 1-6
+docs/content/docs/architecture.pnb.mdx
+  s_36700e42083764::t_75b0f1b6de3dc9 1-48
+docs/content/docs/limitations.te.mdx
+  s_36700e42083764::t_fccf2264b1b6df 1-10
+docs/content/docs/index.tr.mdx
+  s_36700e42083764::t_3aac523ea11576 2-3,6-26,31-34
+docs/content/docs/state-directory.ko.mdx
+  s_36700e42083764::t_15fd2c46f47cea 1-25
+docs/content/docs/platforms.am.mdx
+  s_36700e42083764::t_9ed257d5f5f8ec 1-16
+docs/content/docs/platforms.vi.mdx
+  s_36700e42083764::t_79fdb2bffa6b3c 1-16
+docs/content/docs/sdk.te.mdx
+  s_36700e42083764::t_2a182b5c40d4d5 1-31
+docs/content/docs/troubleshooting.ru.mdx
+  s_36700e42083764::t_58271da917155f 1-34
+docs/content/docs/platforms.hi.mdx
+  s_36700e42083764::t_d54a1da44b1706 1-16
+docs/content/docs/platforms.es.mdx
+  s_36700e42083764::t_415b089e145cbe 2
+  s_36700e42083764::t_d9c70b68cc89d0 1,3-16
+docs/content/docs/sdk.hi.mdx
+  s_36700e42083764::t_25d24c2335498e 1-31
+docs/content/docs/statusline.bn.mdx
+  s_36700e42083764::t_f0c311e8c99218 1-21
+docs/content/docs/architecture.yue.mdx
+  s_36700e42083764::t_80648639615399 1-48
+docs/content/docs/sdk.de.mdx
+  s_36700e42083764::t_59a45bfd3b5a3d 1-31
+docs/content/docs/sdk.pcm.mdx
+  s_36700e42083764::t_dde611fbed990a 1-31
+docs/content/docs/quickstart.ar.mdx
+  s_36700e42083764::t_e134a8de0842b0 1-28
+docs/content/docs/troubleshooting.arz.mdx
+  s_36700e42083764::t_e0d66de8ef12c7 1-34
+docs/content/docs/switching.fr.mdx
+  s_36700e42083764::t_7b9418f4e1d090 1-41
+docs/content/docs/state-directory.hi.mdx
+  s_36700e42083764::t_652010c2bd05e3 1-25
+docs/content/docs/state-directory.sw.mdx
+  s_36700e42083764::t_042cba022f950e 1-25
+docs/content/docs/sdk.pt.mdx
+  s_36700e42083764::t_6d7eb9e678aea4 1-31
+docs/content/docs/architecture.ta.mdx
+  s_36700e42083764::t_a59b2fa718eff7 1-48
+docs/content/docs/platforms.pcm.mdx
+  s_36700e42083764::t_ee7c3a1caa0671 1-16
+docs/content/docs/platforms.ar.mdx
+  s_36700e42083764::t_7a3d93488190b2 1-16
+docs/content/docs/troubleshooting.th.mdx
+  s_36700e42083764::t_ca60da09f5166b 1-34
+docs/content/docs/configuration.vi.mdx
+  s_36700e42083764::t_ac308004fa774d 1-28
+docs/content/docs/switching.mr.mdx
+  s_36700e42083764::t_cc3e997875cf82 1-41
+docs/content/docs/sdk.sw.mdx
+  s_36700e42083764::t_6693fb6dbd47fd 1-31
+docs/content/docs/troubleshooting.es.mdx
+  s_36700e42083764::t_7968a083634e64 1-34
+docs/content/docs/troubleshooting.ha.mdx
+  s_36700e42083764::t_444b9fbf09b81d 1-34
+docs/content/docs/platforms.ta.mdx
+  s_36700e42083764::t_162a465e1c12a4 1,3-16
+  s_36700e42083764::t_fcc3d57ca507bf 2
+docs/content/docs/terms.id.mdx
+  s_36700e42083764::t_aa5abc6d334973 1-6
+docs/content/docs/limitations.bn.mdx
+  s_36700e42083764::t_1db4009fe5b0f0 1-10
+docs/content/docs/configuration.te.mdx
+  s_36700e42083764::t_0e744880a923dc 1-28
+docs/content/docs/codex.fa.mdx
+  s_36700e42083764::t_d353cfef65dfe8 1-27
+docs/content/docs/switching.zh.mdx
+  s_36700e42083764::t_9b612b691b13d0 1-41
+docs/content/docs/commands.th.mdx
+  s_36700e42083764::t_34dd4d2369f536 1-25
+docs/content/docs/quickstart.ko.mdx
+  s_36700e42083764::t_e21c2e3039dec7 1-28
+docs/content/docs/distribution.ar.mdx
+  s_36700e42083764::t_6aec3939a1f23a 1-12
+docs/content/docs/quickstart.id.mdx
+  s_36700e42083764::t_4f293c006ec785 1-28
+docs/content/docs/distribution.fa.mdx
+  s_36700e42083764::t_a16f8ea4c85ec5 1-12
+docs/content/docs/troubleshooting.id.mdx
+  s_36700e42083764::t_402e16a6c97b2b 1-34
+docs/content/docs/configuration.fr.mdx
+  s_36700e42083764::t_a0dee1e44077b1 1-28
+docs/content/docs/state-directory.es.mdx
+  s_36700e42083764::t_1b505275d7ec06 1-25
+docs/content/docs/serve.hi.mdx
+  s_36700e42083764::t_d102d504c8ae0b 1-23
+docs/content/docs/troubleshooting.de.mdx
+  s_36700e42083764::t_844c21b8edfac5 1-34
+docs/content/docs/limitations.de.mdx
+  s_36700e42083764::t_e38e61890a3fef 1-10
+docs/content/docs/terms.arz.mdx
+  s_36700e42083764::t_25239154a27dc4 1-6
+docs/content/docs/codex.ru.mdx
+  s_36700e42083764::t_f950b24dae2f4c 1-27
+docs/content/docs/distribution.arz.mdx
+  s_36700e42083764::t_88cfb9f28459b3 1-12
+docs/content/docs/configuration.yue.mdx
+  s_36700e42083764::t_8145115386de83 1-28
+docs/content/docs/commands.ko.mdx
+  s_36700e42083764::t_d705bec3f28b64 1-25
+docs/content/docs/switching.tl.mdx
+  s_36700e42083764::t_fd247b7ece933f 1-41
+docs/content/docs/architecture.id.mdx
+  s_36700e42083764::t_90bb9c00333660 1-48
+docs/content/docs/switching.am.mdx
+  s_36700e42083764::t_b53e952da82c5b 1-41
+docs/content/docs/platforms.fa.mdx
+  s_36700e42083764::t_0c9f2369762a80 1,3-16
+  s_36700e42083764::t_3228dd3f2e44e7 2
+docs/content/docs/troubleshooting.bn.mdx
+  s_36700e42083764::t_1cf76c0a0485b2 1-34
+docs/content/docs/distribution.bn.mdx
+  s_36700e42083764::t_cc56a48a29caa5 1-12
+docs/content/docs/quickstart.ru.mdx
+  s_36700e42083764::t_e813eeeb6e080a 1-28
+docs/content/docs/terms.mr.mdx
+  s_36700e42083764::t_cfcf02e09d2e5d 1-6
+docs/content/docs/limitations.sw.mdx
+  s_36700e42083764::t_ff4eb4c87a3ba6 1-10
+docs/content/docs/statusline.tl.mdx
+  s_36700e42083764::t_f497e3e971b26d 1-21
+docs/content/docs/architecture.ru.mdx
+  s_36700e42083764::t_03f5560d9ea6af 1-48
+docs/content/docs/terms.pcm.mdx
+  s_36700e42083764::t_e1d9ac2e24f6e8 1-6
+docs/content/docs/index.zh.mdx
+  s_36700e42083764::t_c50ced6d43cbff 2-3,6-26,31-34
+docs/content/docs/architecture.ja.mdx
+  s_36700e42083764::t_984dd3f09789da 1-48
+docs/content/docs/configuration.bn.mdx
+  s_36700e42083764::t_9cd66eb643e984 1-28
+docs/content/docs/state-directory.ur.mdx
+  s_36700e42083764::t_1c6045fdde6187 1-25
+docs/content/docs/codex.te.mdx
+  s_36700e42083764::t_2936a77ea978f9 1-27
+docs/content/docs/serve.tl.mdx
+  s_36700e42083764::t_3f815e09f09072 1,3-23
+  s_36700e42083764::t_9ef0c121f4b561 2
+docs/content/docs/limitations.th.mdx
+  s_36700e42083764::t_e352c9d05a4acd 1-10
+docs/content/docs/quickstart.vi.mdx
+  s_36700e42083764::t_aa5aef6afb4cf7 1-28
+docs/content/docs/architecture.tr.mdx
+  s_36700e42083764::t_aea35ee565b035 1-48
+docs/content/docs/configuration.ha.mdx
+  s_36700e42083764::t_eb5c3c87690610 1-28
+docs/content/docs/statusline.es.mdx
+  s_36700e42083764::t_f107fe48853cd1 1-21
+docs/content/docs/distribution.sw.mdx
+  s_36700e42083764::t_a9e713acfce7b2 1-12
+docs/content/docs/platforms.fr.mdx
+  s_36700e42083764::t_40c85616ebf1db 1-16
+docs/content/docs/index.ha.mdx
+  s_36700e42083764::t_8ca9ee19d445d6 3
+  s_36700e42083764::t_2dbd3e92e9f1ed 2,6-26,31-34
+docs/content/docs/distribution.ta.mdx
+  s_36700e42083764::t_a6e2f0e3c0fdca 1-12
+docs/content/docs/credentials.ja.mdx
+  s_36700e42083764::t_502e8973b26416 1-19
+docs/content/docs/distribution.pcm.mdx
+  s_36700e42083764::t_bb7ab002db13dd 1-12
+docs/content/docs/commands.ru.mdx
+  s_36700e42083764::t_a5a2ffa3b789f3 1-25
+docs/content/docs/switching.ja.mdx
+  s_36700e42083764::t_e1bf83e4c6a295 1-41
+docs/content/docs/switching.es.mdx
+  s_36700e42083764::t_bc6948a1e49aef 1-41
+docs/content/docs/credentials.es.mdx
+  s_36700e42083764::t_406341f749859e 1-19
+docs/content/docs/statusline.vi.mdx
+  s_36700e42083764::t_a8b4982717d7c6 1-21
+docs/content/docs/serve.fa.mdx
+  s_36700e42083764::t_09cb0172375219 1,3-23
+  s_36700e42083764::t_9428fa9123f6a1 2
+docs/content/docs/architecture.mr.mdx
+  s_36700e42083764::t_e501f1a71fc04d 1-48
+docs/content/docs/distribution.wuu.mdx
+  s_36700e42083764::t_258d9a030fb0a3 1-12
+docs/content/docs/architecture.arz.mdx
+  s_36700e42083764::t_3c350d015a8c5f 1-48
+docs/content/docs/index.id.mdx
+  s_36700e42083764::t_346f089a8259e9 2-3,6-26,31-34
+docs/content/docs/commands.pcm.mdx
+  s_36700e42083764::t_2bf6df871f6c04 1-25
+docs/content/docs/commands.bn.mdx
+  s_36700e42083764::t_0b8c7107ed5faf 1-25
+docs/content/docs/codex.id.mdx
+  s_36700e42083764::t_c79982103fb7f8 1-27
+docs/content/docs/credentials.mr.mdx
+  s_36700e42083764::t_d36aeea0e5fe1e 1-19
+docs/content/docs/credentials.sw.mdx
+  s_36700e42083764::t_e138662ce305a4 1-19
+docs/content/docs/index.pnb.mdx
+  s_36700e42083764::t_35b27803c4288e 2-3,6-26,31-34
+docs/content/docs/credentials.ar.mdx
+  s_36700e42083764::t_e1a70674f7d5a4 1-19
+docs/content/docs/limitations.ur.mdx
+  s_36700e42083764::t_1e4509c956b4f4 1-10
+docs/content/docs/quickstart.sw.mdx
+  s_36700e42083764::t_da55e6aa6c6c6b 1-28
+docs/content/docs/codex.tl.mdx
+  s_36700e42083764::t_847fbeac6e9503 1-27
+docs/content/docs/sdk.ur.mdx
+  s_36700e42083764::t_d212d4cdf4ace0 1-31
+docs/content/docs/switching.ru.mdx
+  s_36700e42083764::t_9c1edef4445911 1-41
+docs/content/docs/state-directory.ha.mdx
+  s_36700e42083764::t_792731f5f47cd5 1-25
+docs/content/docs/credentials.bn.mdx
+  s_36700e42083764::t_52f39835252302 1-19
+docs/content/docs/limitations.ar.mdx
+  s_36700e42083764::t_5b5c7f4defc57b 1-10
+docs/content/docs/distribution.de.mdx
+  s_36700e42083764::t_f89132b3db893e 1-12
+docs/content/docs/index.sw.mdx
+  s_36700e42083764::t_2965172f2048a4 2-3,6,8-28,31-34
+docs/content/docs/statusline.tr.mdx
+  s_36700e42083764::t_dc39d6c5501e48 1-21
+docs/content/docs/serve.wuu.mdx
+  s_36700e42083764::t_27c0dadc527421 1-23
+docs/content/docs/quickstart.hi.mdx
+  s_36700e42083764::t_2bea766e06bd50 1-28
+docs/content/docs/quickstart.te.mdx
+  s_36700e42083764::t_5a391278ce0f28 1-28
+docs/content/docs/codex.ta.mdx
+  s_36700e42083764::t_d8cb13f701ac77 1-27
+docs/content/docs/terms.ta.mdx
+  s_36700e42083764::t_108bf07fc4d2d6 1-6
+docs/content/docs/serve.ru.mdx
+  s_36700e42083764::t_e28d4c39bc7476 1,3-23
+  s_36700e42083764::t_24f2cdefdfa325 2
+docs/content/docs/state-directory.arz.mdx
+  s_36700e42083764::t_e7e12da8d68416 1-25
+docs/content/docs/distribution.hi.mdx
+  s_36700e42083764::t_160932d5ce1d23 1-12
+docs/content/docs/statusline.ja.mdx
+  s_36700e42083764::t_7be51e53f0faba 1-21
+docs/content/docs/codex.arz.mdx
+  s_36700e42083764::t_5e22c724432a82 1-27
+docs/content/docs/index.fa.mdx
+  s_36700e42083764::t_081bebb9ec74dd 2-3,6,8-28,31-34
+docs/content/docs/switching.ha.mdx
+  s_36700e42083764::t_d7ddfdbe73bfb0 1-41
+docs/content/docs/index.th.mdx
+  s_36700e42083764::t_73320c5624e530 2-3,6-26,31-34
+docs/content/docs/credentials.wuu.mdx
+  s_36700e42083764::t_2fc38bbc512dc5 1-19
+docs/content/docs/limitations.ko.mdx
+  s_36700e42083764::t_31e0717da46867 1-10
+docs/content/docs/architecture.zh.mdx
+  s_36700e42083764::t_40b6d48ee80373 1-48
+docs/content/docs/limitations.hi.mdx
+  s_36700e42083764::t_6e43ad54579947 1-10
+docs/content/docs/limitations.ru.mdx
+  s_36700e42083764::t_06f108c6574f1b 1-10
+docs/content/docs/quickstart.bn.mdx
+  s_36700e42083764::t_a4296e0ad38cc1 1-28
+docs/content/docs/architecture.ur.mdx
+  s_36700e42083764::t_054e440515cec8 1-48
+docs/content/docs/configuration.tl.mdx
+  s_36700e42083764::t_439bba8c73baf1 1-28
+docs/content/docs/index.ur.mdx
+  s_36700e42083764::t_34b88dd652324e 2-3,6-26,31-34
+docs/content/docs/switching.de.mdx
+  s_36700e42083764::t_902883e5620558 1-41
+docs/content/docs/commands.tl.mdx
+  s_36700e42083764::t_80597c66c34edd 1-25
+docs/content/docs/state-directory.tr.mdx
+  s_36700e42083764::t_87c049bfad0eca 1-25
+docs/content/docs/architecture.fr.mdx
+  s_36700e42083764::t_9d912662e692cb 1-48
+docs/content/docs/troubleshooting.pnb.mdx
+  s_36700e42083764::t_1f7836249ad758 1-34
+docs/content/docs/terms.bn.mdx
+  s_36700e42083764::t_a7662867d9445f 1-6
+docs/content/docs/configuration.zh.mdx
+  s_36700e42083764::t_aebb0a68ff89f4 1-28
+docs/content/docs/statusline.zh.mdx
+  s_36700e42083764::t_bd6b8ec4fc9c2a 1-21
+docs/content/docs/commands.yue.mdx
+  s_36700e42083764::t_6e18470553df45 1-25
+docs/content/docs/troubleshooting.yue.mdx
+  s_36700e42083764::t_6f58ccf0a3aaef 1-34
+docs/content/docs/sdk.wuu.mdx
+  s_36700e42083764::t_1bb8244cbf1dd9 1-31
+docs/content/docs/sdk.th.mdx
+  s_36700e42083764::t_db59f09ff858fd 1-31
+docs/content/docs/sdk.yue.mdx
+  s_36700e42083764::t_0f5d414158325e 1-31
+docs/content/docs/serve.yue.mdx
+  s_36700e42083764::t_385f3291453115 1-23
+docs/content/docs/quickstart.tl.mdx
+  s_36700e42083764::t_c3302d1d171c2e 1-28
+docs/content/docs/state-directory.tl.mdx
+  s_cb7dad50cca6d4::t_ee402de13935db 1-25
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "fcc836fddacf1d0ebce5676c08ae19ce1c4d0c88",
+  "prompts": {},
+  "sessions": {
+    "s_36700e42083764": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ceac3c73-063c-4280-a339-82888d1d952a",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    },
+    "s_cb7dad50cca6d4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a45a7a2b5bc5e0b5f",
+        "model": "unknown"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    }
+  }
+}
