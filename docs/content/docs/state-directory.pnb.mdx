@@ -1,0 +1,25 @@
+---
+title: حالت ڈائریکٹری خاکہ
+description: "~/.config/tokenmaxxing تھلے ہر فائل تے ڈائریکٹری"
+---
+
+سب کجھ `~/.config/tokenmaxxing/` تھلے رہندا اے (`TOKENMAXXING_HOME` نال بدلیا جا سکدا اے؛ ہر باہروں نظر آن والی راہ دا اک env اووَر رائیڈ اے تاں جو سارا اوزار ٹیسٹاں وچ الگ تھلگ چل سکے)۔
+
+| راہ | ایہہ کیہ رکھدی اے |
+|---|---|
+| `config.json` | تہاڈی ترتیب (ٹکویں؛ طے شدہ قدراں فی فیلڈ لاگو ہندیاں نیں) |
+| `accounts.json` | اکٹھے کیتے Claude اکاؤنٹاں دا غیر خفیہ اِنڈیکس: لیبل، آئی ڈی، کیش کیتیاں ورتوں ونڈواں۔ کدے ٹوکن نئیں |
+| `usage.json` | statusline ٹی دا کُل جوڑ ونڈو سنیپ شاٹ؛ ایہدا mtime فیڈ دی زندگی دی دھڑکن اے |
+| `model-usage.json` | `/usage` توں TTL کیش کیتیاں فی ماڈل ہفتہ وار حداں |
+| `lastswap.json` | چھیکڑلے بدلاؤ دا ایپاک ٹائم سٹیمپ؛ 45 سیکنڈ دا کول ڈاؤن چلاندا اے |
+| `lock` | `flock` فائل جیہڑی بدلاؤاں نوں وارو واری کردی اے |
+| `tokenmaxxing.log` | صرف نال جوڑن والا ایونٹ لاگ |
+| `bin/` | PATH شِم: `claude`، `codex`، تے `tokenmaxxing` / `xx` داخلہ نقطے |
+| `respawn/<session-id>` | مُکن دی اڈیک دے respawn مارکر جنہاں نوں سُپروائزر ویکھدا اے |
+| `creds/` | صرف Linux: پارک کیتیاں کریڈینشل فائلاں، اک 0700 ڈائریکٹری وچ 0600 (macOS اوہدی بجائے کریڈینشل نوں فی اکاؤنٹ کی چین آئٹماں وانگوں پارک کردا اے) |
+| `onboard/`، `sample/` | `add`/`auth` لاگ اِناں تے پارک کیتے اکاؤنٹ دیاں `/usage` پروباں لئی سُٹن جوگے الگ تھلگ config ہوم؛ سادہ لکھت کریڈینشل رکھن والے onboard ہوم سمیٹن توں بعد مِٹا دِتے جاندے نیں |
+| `slack.json` | `xx serve` ٹوکن تے چینل لنک (0600) |
+| `slack-threads/` | `xx serve` لئی فی تھریڈ سیشن ریکارڈ |
+| `codex-*` | نال نال چلدی Codex پول: `codex-accounts.json`، `codex-lastswap.json`، `codex-lock`، `codex-creds/`، `codex-onboard/`، `codex-respawn/`، تے `codex-live/` (ہر چلدے نگرانی ہیٹھلے codex سیشن لئی اک PID تصدیق شدہ موجودگی فائل، سو اک لائیو اکاؤنٹ کدے بدلاؤ دا نشانہ نئیں) |
+
+اپنی ڈائریکٹری توں باہر، tokenmaxxing بالکل ایہو چیزاں نوں چھیندا اے: `~/.claude.json` (`oauthAccount` بدلاؤ)، Claude Code دی `settings.json` (ہُک تے statusline اِندراج)، لائیو کریڈینشل سٹور (macOS تے `Claude Code-credentials` کی چین آئٹم، Linux تے `.credentials.json`)، `~/.claude.lock` (claude دا refresh لاک، بدلاؤاں دوران لیا جاندا)، codex دیاں `auth.json` تے `hooks.json`، تے launchd یا systemd وچلا وقفے وار جانچ یونٹ۔

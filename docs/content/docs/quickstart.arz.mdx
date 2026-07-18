@@ -1,0 +1,28 @@
+---
+title: البداية السريعة
+description: "ثبّت tokenmaxxing، استورد حسابك الحالي، وضمّ حسابات أكتر"
+---
+
+بيحتاج [Bun](https://bun.sh) و Claude Code، على macOS أو Linux.
+
+```sh
+bun add -g tokenmaxxing
+tokenmaxxing init
+```
+
+`init` بيعمل خمس حاجات:
+
+1. بيستورد الحساب اللي انت أصلاً مسجّل دخول بيه كحساب رقم 1 (مفيش أمر `adopt` منفصل).
+2. بيثبّت الـ `claude` supervisor shim.
+3. بيثبّت تلات مدخلات في الـ `settings.json` بتاع Claude Code: statusLine، و Stop hook، و SessionStart hook (بالإضافة لمدخل subagentStatusLine).
+4. بيضيف مجلد الـ bin بتاع الـ supervisor لـ PATH في الـ shell rc بتاعك (idempotent، ومتعلّم عليه بتعليق `# tokenmaxxing PATH`). لازم يبقى قدّام الـ `claude` الحقيقي في الـ PATH عشان يعترضه.
+5. بيثبّت timer للفحص الدوري (launchd agent على macOS، و systemd user timer على Linux) بيشغّل `tokenmaxxing check` كل 180 ثانية.
+
+اعمل restart للـ shell بتاعك، وبعدين ضيف حسابات أكتر واتفضّل:
+
+```sh
+tokenmaxxing add        # بيسجّل دخول حساب زيادة، بمعزل، وبيضمّه للـ pool
+claude                  # استخدم claude زي العادة
+```
+
+`tokenmaxxing` كمان ليه اسم مختصر `xx`. `tokenmaxxing` (أو `xx`) لوحده بيشغّل `status`؛ و `switch` بيفضل صريح.

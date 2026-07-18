@@ -1,0 +1,27 @@
+---
+title: Compatibilidad con Codex
+description: "Agrupamiento de cuentas de suscripción de ChatGPT para la CLI de Codex, basado en reinicio"
+---
+
+El mismo agrupamiento funciona para la CLI de Codex de OpenAI, contra tus propias cuentas de suscripción de ChatGPT:
+
+```sh
+tokenmaxxing init --codex   # importa tu inicio de sesión actual de codex + instala el supervisor de codex y el hook Stop
+tokenmaxxing add --codex    # inicia sesión con otra cuenta, aislada - tu inicio de sesión principal no se toca
+codex                       # usa codex como siempre
+```
+
+El grupo de Codex es un estado totalmente paralelo: su propio índice de cuentas, sus propios archivos de credenciales estacionados (archivos 0600 en ambas plataformas, ya que el propio almacén de codex es un archivo de texto plano), su propio bloqueo, su propia marca de tiempo del último cambio. Nada se comparte con el grupo de Claude excepto el código de la política de decisión.
+
+## Por qué el intercambio en caliente es imposible en Codex
+
+Un proceso codex en ejecución mantiene un único gestor de autenticación en memoria y se niega explícitamente a recargar `auth.json` cuando ahora nombra una cuenta distinta. No hay vigilante de archivos ni sondeo de credenciales por solicitud, así que una credencial cambiada por debajo de un codex en ejecución simplemente nunca surte efecto para la inferencia. El reinicio es el cambio: `codex resume <session-id>` continúa la transcripción local en la cuenta que `auth.json` ahora contenga.
+
+tokenmaxxing maneja esto con un shim supervisor de codex: el hook Stop ejecuta la misma decisión voraz de presión de ritmo en cada límite de turno, y cuando cambia, escribe un marcador que hace que el supervisor envíe SIGTERM a la sesión en el límite confirmado y relance `codex resume <session-id>` en la cuenta fresca, con la transcripción intacta. Como cada cambio de codex es un reinicio visible, el camino voraz de codex lleva un margen de mejora de 1.2x: una retadora debe superar la presión de ritmo de la cuenta actual en un 20%, no por un pelo. El camino duro (una barra cruzada) ignora el margen. Tampoco hay cuenta atrás por grupo agotado para codex - nada puede pausar una sesión de codex - así que un grupo de codex totalmente agotado se queda quieto.
+
+Otras mecánicas específicas de codex:
+
+- El uso se lee de un GET autenticado gratuito contra el propio endpoint de límite de tasa de codex (la misma llamada que hace el `/status` de la CLI): porcentajes más tiempos de restablecimiento en epoch absoluto, ventanas agregadas y topes por modelo por igual. La clasificación de ventanas está impulsada por la duración, nunca por la posición, porque los planes actuales pueden no tener ninguna ventana de 5 horas y la ventana semanal ocupa el espacio primario.
+- Los tokens de refresco de codex rotan, y reutilizar uno reemplazado mata toda la familia de grant. Cada rotación se persiste en el instante en que vuelve, la cuenta activa solo se muestrea a través del blob en vivo (nunca una copia estacionada obsoleta), y los archivos de presencia por sesión aseguran que una cuenta en ejecución en una sesión hermana en vivo nunca sea un destino de cambio y nunca se le refresque su token estacionado.
+- Codex requiere el almacén de credenciales de archivo: `init --codex` falla rápido si el almacén de llavero está fijado, y `add --codex` escribe el ajuste de modo archivo en el home de incorporación aislado para que el inicio de sesión aterrice recolectable.
+- Un paso manual: codex omite los hooks en los que no se le ha dicho que confíe. Tras `init --codex`, abre codex una vez y confía en el hook Stop de tokenmaxxing mediante `/hooks`, o el cambio automático se queda silenciosamente inerte. `init --codex` imprime este recordatorio.

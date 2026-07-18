@@ -1,0 +1,31 @@
+---
+title: واجهة الـ Agent SDK
+description: "اربط الـ pool مع Claude Agent SDK في agents بتشغّلها بنفسك"
+---
+
+نقطة الدخول البرمجية للباكدج (`exports["."]` بيأشّر على `src/sdk.ts`) بتربط tokenmaxxing مع الـ Claude Agent SDK للـ agents اللي بتبنيها على حساباتك المجمّعة. تطبيقك لازم يشتغل تحت Bun (tokenmaxxing بيشحن كود TypeScript وبيستخدم `bun:ffi`).
+
+```ts
+import { query } from "@anthropic-ai/claude-agent-sdk";
+import { ensureBestAccount, pooledOptions, stopHookCheck } from "tokenmaxxing";
+
+await ensureBestAccount(); // run the switch decision before the spawn
+
+for await (const message of query({
+  prompt: "...",
+  options: {
+    ...pooledOptions(), // pinned real claude + scrubbed env
+    hooks: { Stop: [{ hooks: [stopHookCheck] }] }, // re-decide at every turn boundary
+  },
+})) {
+  // capture the session id from the init message for `resume` across swaps
+}
+```
+
+الـ Agent SDK بيطلّع claude subprocess لكل `query()` وبيقرا الـ credentials مرة واحدة عند الإطلاق. مفيش statusline، مفيش hot-swap في نص الـ query، فالتكامل بيتحدّد بالحدود:
+
+- `ensureBestAccount()` هو نفس القرار بالظبط اللي الـ CLI hooks والـ timer بيشغّلوه (الشرايط، ضغط الإيقاع، فترة التهدئة، كله كود مشترك)، عمره ما استباقي: الـ SDK session عمرها ما تقدر تتوقّف لعدّاد تنازلي بسبب الاستنفاد.
+- `pooledOptions()` بيثبّت `pathToClaudeCodeExecutable` على الـ claude binary الحقيقي (عمره ما الـ supervisor wrapper) وبيوفّر `env` بديل كامل مع تنضيف كل تجاوز credential محيطي. بيفشل بسرعة لو `CLAUDE_CONFIG_DIR` أو `CLAUDE_SECURESTORAGE_CONFIG_DIR` متضبط في بيئة تطبيقك: على Linux التبديل هيكتب الـ credential الحي في المكان اللي دول بيأشّروا عليه بينما الـ subprocess المنضّف بيقرا المخزن الافتراضي، وده عدم تزامن صامت لحساب غلط.
+- `stopHookCheck` بيعيد تشغيل القرار عند حدود الـ turn؛ أي تبديل بيوقّعه بيسري مفعوله في الإطلاق اللي بعده. بيمسك أخطاءه بنفسه (وبيسجّلها في stderr واللوج) بدل ما يرميها تاني، لأن استثناء hook مش متعامَل معاه ممكن يقطع الـ agent، وإجهاض turn بسبب فحص تبديل باظ بيكلّف أكتر من إنك تكمّل على الحساب الحالي.
+
+`sdk.ts` مابيستوردش أي حاجة من الـ Agent SDK نفسه؛ قيمه بتنتشر هيكليًا في خيارات الـ SDK.

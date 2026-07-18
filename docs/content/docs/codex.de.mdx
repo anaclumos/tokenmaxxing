@@ -1,0 +1,27 @@
+---
+title: Codex-Unterstützung
+description: "ChatGPT-Abonnementkonten für die Codex CLI bündeln, neustartbasiert"
+---
+
+Dieselbe Bündelung funktioniert für OpenAIs Codex CLI, gegen Ihre eigenen ChatGPT-Abonnementkonten:
+
+```sh
+tokenmaxxing init --codex   # aktuelle codex-Anmeldung importieren + codex-Supervisor & Stop-Hook installieren
+tokenmaxxing add --codex    # ein weiteres Konto isoliert anmelden - Ihre primäre Anmeldung bleibt unberührt
+codex                       # verwenden Sie codex wie gewohnt
+```
+
+Der Codex-Pool ist vollständig paralleler Zustand: eigener Kontenindex, eigene geparkte Anmeldeinformationsdateien (0600-Dateien auf beiden Plattformen, da codex' eigener Speicher eine Klartextdatei ist), eigene Sperre, eigener Zeitstempel des letzten Wechsels. Nichts wird mit dem Claude-Pool geteilt außer dem Code der Entscheidungsrichtlinie.
+
+## Warum der Hot-Swap bei Codex unmöglich ist
+
+Ein laufender codex-Prozess hält einen im Speicher liegenden Auth-Manager und verweigert ausdrücklich, `auth.json` neu zu laden, wenn sie nun ein anderes Konto benennt. Es gibt keinen Datei-Beobachter und keine Pro-Anfrage-Anmeldeinformationsabfrage, sodass eine unter einem laufenden codex ausgetauschte Anmeldeinformation für die Inferenz schlicht nie wirksam wird. Der Neustart ist der Wechsel: `codex resume <session-id>` setzt das lokale Transkript auf dem Konto fort, das `auth.json` nun hält.
+
+tokenmaxxing löst dies mit einem codex-Supervisor-Shim: Der Stop-Hook führt an jeder Zuggrenze dieselbe greedy-Tempodruck-Entscheidung aus, und wenn er wechselt, schreibt er einen Marker, der den Supervisor veranlasst, der Sitzung an der committeten Grenze ein SIGTERM zu senden und `codex resume <session-id>` auf dem frischen Konto neu zu starten, mit intaktem Transkript. Da jeder codex-Wechsel ein sichtbarer Neustart ist, trägt der greedy-Pfad von codex einen Verbesserungsspielraum von 1,2x: Ein Herausforderer muss den Tempodruck des aktuellen Kontos um 20 % schlagen, nicht um Haaresbreite. Der harte Pfad (eine überschrittene Schranke) ignoriert den Spielraum. Es gibt auch keinen Erschöpft-Pool-Countdown für codex - nichts kann eine codex-Sitzung pausieren - sodass ein vollständig erschöpfter codex-Pool an Ort und Stelle bleibt.
+
+Weitere codex-spezifische Mechanismen:
+
+- Die Nutzung wird aus einem kostenlosen authentifizierten GET gegen codex' eigenen Ratenbegrenzungsendpunkt gelesen (derselbe Aufruf, den das `/status` des CLI macht): Prozentsätze plus absolute Epochen-Zurücksetzungszeiten, Aggregatfenster und Pro-Modell-Obergrenzen gleichermaßen. Die Fensterklassifizierung ist dauergesteuert, nie positionsgesteuert, weil aktuelle Pläne womöglich gar kein 5-Stunden-Fenster haben und das Wochenfenster im primären Slot sitzt.
+- Codex-Refresh-Tokens rotieren, und die Wiederverwendung eines überholten tötet die gesamte Grant-Familie. Jede Rotation wird sofort bei ihrer Rückkehr persistiert, das aktive Konto wird immer nur über das Live-Blob abgetastet (nie eine veraltete geparkte Kopie), und Pro-Sitzung-Präsenzdateien stellen sicher, dass ein Konto, das in einer Live-Geschwistersitzung läuft, nie ein Wechselziel ist und nie seinen geparkten Token aufgefrischt bekommt.
+- Codex erfordert den Datei-Anmeldeinformationsspeicher: `init --codex` schlägt schnell fehl, wenn der Keyring-Speicher fixiert ist, und `add --codex` schreibt die Datei-Modus-Einstellung in das isolierte Onboarding-Home, sodass die Anmeldung erntbar landet.
+- Ein manueller Schritt: codex überspringt Hooks, denen zu vertrauen ihm nicht mitgeteilt wurde. Öffnen Sie nach `init --codex` codex einmal und vertrauen Sie dem tokenmaxxing-Stop-Hook über `/hooks`, sonst bleibt das Auto-Switching stillschweigend inaktiv. `init --codex` gibt diese Erinnerung aus.

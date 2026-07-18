@@ -1,0 +1,31 @@
+---
+title: واجهة Agent SDK
+description: "اقرن التجمّع مع Claude Agent SDK في وكلاء تشغّلها بنفسك"
+---
+
+تقرن نقطة الدخول البرمجية للحزمة (`exports["."]` تشير إلى `src/sdk.ts`) tokenmaxxing مع Claude Agent SDK للوكلاء الذين تبنيهم مقابل حساباتك المُجمَّعة الخاصة. ويجب أن يعمل تطبيقك تحت Bun (تشحن tokenmaxxing شيفرة TypeScript المصدرية وتستخدم `bun:ffi`).
+
+```ts
+import { query } from "@anthropic-ai/claude-agent-sdk";
+import { ensureBestAccount, pooledOptions, stopHookCheck } from "tokenmaxxing";
+
+await ensureBestAccount(); // run the switch decision before the spawn
+
+for await (const message of query({
+  prompt: "...",
+  options: {
+    ...pooledOptions(), // pinned real claude + scrubbed env
+    hooks: { Stop: [{ hooks: [stopHookCheck] }] }, // re-decide at every turn boundary
+  },
+})) {
+  // capture the session id from the init message for `resume` across swaps
+}
+```
+
+يولّد Agent SDK عملية claude فرعية لكل `query()` ويقرأ بيانات الاعتماد مرّة واحدة عند التوليد (لا سطر حالة، ولا تبديل فوري في منتصف الاستعلام)، لذا فإن التكامل مدفوع بالحدود:
+
+- `ensureBestAccount()` هو القرار ذاته الذي تشغّله خطّافات أداة سطر الأوامر ومؤقّتها (الأشرطة، وضغط الوتيرة، وفترة التهدئة، كلها شيفرة مشتركة)، وليس استباقيًا أبدًا: إذ لا يمكن أبدًا إيقاف جلسة SDK مؤقّتًا لأجل عدّ تنازلي للاستنفاد.
+- `pooledOptions()` يثبّت `pathToClaudeCodeExecutable` على ملف claude الثنائي الحقيقي (لا غلاف المشرف أبدًا) ويوفّر `env` بديلة كاملة مع مسح كل تجاوز بيئي لبيانات الاعتماد. ويفشل سريعًا إن كان `CLAUDE_CONFIG_DIR` أو `CLAUDE_SECURESTORAGE_CONFIG_DIR` مضبوطًا في بيئة تطبيقك: فعلى Linux سيكتب التبديل بيانات الاعتماد الحيّة حيث يشيران بينما تقرأ العملية الفرعية الممسوحة المخزن الافتراضي، وهو افتراق حساب خاطئ صامت.
+- `stopHookCheck` يعيد تشغيل القرار عند حدود الأدوار؛ وأي تبديل يوقعه يسري مفعوله عند التوليد التالي. وهو يلتقط أخطاءه الخاصة (مسجّلًا إلى الإخراج القياسي للأخطاء وإلى السجلّ) بدلًا من إعادة رميها، لأن استثناء خطّاف غير مُعالَج قد يقاطع الوكيل، ولأن إجهاض دور بسبب فحص تبديل معطوب يكلّف أكثر من مواصلة الحساب الحالي.
+
+لا يستورد `sdk.ts` أي شيء من Agent SDK نفسها؛ إذ تنتشر قيمه بنيويًا في خيارات SDK.

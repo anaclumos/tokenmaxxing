@@ -1,0 +1,10 @@
+---
+title: Keterbatasan yang jujur
+description: "Kompromi yang muncul dengan hot-swap tergabung"
+---
+
+- **Satu giliran dingin.** Cache prompt bercakupan-org, sehingga giliran pertama di akun baru mengunggah ulang konteks sekali.
+- **Cegukan jeda-habis.** Hanya gabungan yang benar-benar habis yang menghentikan sesi untuk hitung mundur; apa pun yang diketik dalam sepersekian detik itu hilang.
+- **Keterlambatan adopsi.** Di macOS giliran pertama dalam ~30 detik dari sebuah pertukaran masih bisa memetakan akun lama; ruang tersisa pada bilah menyerapnya.
+- **Radius ledakan bersama.** Semua sesi profil-default berbagi satu kredensial langsung, jadi sebuah pertukaran memindahkan semuanya bersama (masing-masing mengadopsi di tempat).
+- **Kredensial teks polos di Linux.** Claude Code sendiri menyimpan kredensial Linux sebagai berkas teks polos 0600; salinan terparkir tokenmaxxing mengikuti model yang sama.

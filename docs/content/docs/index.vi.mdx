@@ -1,13 +1,35 @@
 ---
-title: Chào mừng
-description: Gộp chung các tài khoản CLI agent của riêng bạn và giữ cho mọi phiên làm việc luôn tiếp diễn
+title: tokenmaxxing
+description: "Tự động chuyển đổi tài khoản Claude Code: gộp chung các tài khoản đăng ký của riêng bạn và hoán đổi nóng thông tin xác thực khi hạn ngạch đầy, giữ cho mọi phiên làm việc có thể tiếp tục."
 ---
 
-tokenmaxxing là một CLI dành cho những người chạy Claude Code (và Codex) trên nhiều tài khoản của riêng họ. Nó theo dõi hạn ngạch sử dụng, chuyển thông tin xác thực đang hoạt động sang tài khoản còn nhiều dung lượng nhất trước khi chạm giới hạn, và giữ cho các phiên làm việc của bạn có thể tiếp tục qua mỗi lần chuyển đổi.
+tokenmaxxing là một CLI để tự động chuyển đổi tài khoản Claude Code. Nó gộp chung nhiều tài khoản đăng ký (Pro/Max) mà bạn sở hữu và hoán đổi nóng thông tin xác thực đang hoạt động sang một tài khoản còn tươi hơn khi tài khoản đang dùng gần chạm giới hạn sử dụng. Bạn chạy `claude` đúng như bạn vẫn luôn làm; việc hoán đổi diễn ra tại một ranh giới lượt an toàn và phiên làm việc đang chạy của bạn tiếp tục cùng cuộc hội thoại đó trên tài khoản mới mà không cần khởi động lại. Nó hoạt động trên nhiều phiên làm việc đồng thời cùng một lúc.
 
-## Nên đi đâu
+Hành vi duy nhất mà bạn thấy được là trường hợp xấu nhất: khi toàn bộ nhóm tài khoản đều đã chạm giới hạn, phiên làm việc tạm dừng với một bộ đếm ngược và tự động tiếp tục trên tài khoản tiếp theo được đặt lại (Ctrl-C tiếp tục ngay lập tức).
+
+<Callout>
+Phạm vi: Claude Code trên macOS và Linux, cùng với Codex CLI của OpenAI như một nhóm tài khoản song song thứ hai. Nó gộp chung các tài khoản đăng ký, không phải khóa API. Đây là một công cụ dùng cho mục đích cá nhân để gộp chung các tài khoản bạn sở hữu, trong các phiên làm việc và agent mà chính bạn chạy: xem [Sử dụng cá nhân và điều khoản dịch vụ](/vi/terms).
+</Callout>
+
+## Vấn đề
+
+Một gói đăng ký Claude đo lường ba giới hạn cùng một lúc (tất cả đều được xác nhận qua `/usage`):
+
+- **Phiên hiện tại**: một cửa sổ trượt 5 giờ.
+- **Tuần hiện tại (tất cả các mô hình)**: tổng hợp trong 7 ngày.
+- **Tuần hiện tại, theo từng mô hình**: các mức trần hàng tuần riêng cho từng họ mô hình. Hiện tại các mức này chỉ tồn tại cho Sonnet và Fable, và chỉ có mức trần của Fable là đủ chặt để đáng quan tâm: nó ràng buộc từ rất lâu trước khi mức tổng hợp làm điều đó. Một máy có thể ở mức 50% tuần-tất-cả trong khi đã ở mức 80% tuần-Fable.
+
+Hạn ngạch hàng tuần theo kiểu dùng-hoặc-mất: bất cứ phần nào một tài khoản chưa tiêu thụ trước thời điểm đặt lại hàng tuần cố định của nó đều bị mất. Nếu bạn sở hữu nhiều tài khoản, chiến lược hợp lý là tiếp tục tiêu hạn ngạch trên bất kỳ tài khoản nào đang tụt lại xa nhất so với nhịp độ hàng tuần của chính nó, và chuyển đi trước khi bất kỳ giới hạn đơn lẻ nào chạm tường giữa phiên làm việc.
+
+Làm điều đó bằng tay có nghĩa là đăng xuất, đăng nhập, và mất cuộc hội thoại của bạn. tokenmaxxing tự động hóa việc này: một `claude` đang chạy kiểm tra lại kho thông tin xác thực của nó giữa các yêu cầu, nên một thông tin xác thực được hoán đổi bên dưới nó sẽ được tiếp nhận tại chỗ (trong khoảng 30 giây trên macOS, ở yêu cầu tiếp theo trên Linux). Một lần hoán đổi thông thường không bao giờ khởi động lại phiên làm việc của bạn. Trường hợp duy nhất vẫn cần quản lý tiến trình là khi cả nhóm tài khoản đã cạn kiệt hoàn toàn: một phiên làm việc không thể tự tạm dừng chính nó, và đó là lý do bộ giám sát mỏng tồn tại.
+
+Mọi thứ khác về `claude` đều không thay đổi: tất cả các cờ, máy chủ MCP, hook, và skill đều được truyền qua.
+
+## Đi đâu tiếp theo
 
 <Cards>
-  <Card title="Hướng dẫn đầy đủ" href="/vi/docs/tokenmaxxing" />
-  <Card title="Mã nguồn trên GitHub" href="https://github.com/anaclumos/tokenmaxxing" />
+  <Card title="Bắt đầu nhanh" href="/vi/quickstart" />
+  <Card title="Các lệnh" href="/vi/commands" />
+  <Card title="Kiến trúc" href="/vi/architecture" />
+  <Card title="Cách chuyển đổi được quyết định" href="/vi/switching" />
 </Cards>

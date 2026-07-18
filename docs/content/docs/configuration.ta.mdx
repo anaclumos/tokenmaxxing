@@ -1,0 +1,28 @@
+---
+title: கட்டமைப்பு (Configuration)
+description: "config.json ஸ்கீமா, வரம்புகள், மற்றும் கொள்கை அமைப்புகள்"
+---
+
+கட்டமைப்பு `~/.config/tokenmaxxing/config.json` இல் JSON ஆக உள்ளது. ஒவ்வொரு புலமும் விருப்பமானது; இயல்புகள் ஒவ்வொரு புலத்திற்கும் பொருந்தும்.
+
+```json
+{
+  "thresholds": { "session": 95, "weekly": 98 },
+  "policy": {
+    "projectionMargin": 0,
+    "greedySessionFloor": 50,
+    "switchModels": ["fable"],
+    "usagePollTtlMs": 90000,
+    "maxWaitMs": 3600000
+  }
+}
+```
+
+- `thresholds.session` / `thresholds.weekly`: மேலே விவரிக்கப்பட்ட திரையிடல் பட்டைகள்.
+- `policy.projectionMargin`: செயலில் உள்ள பட்டைகளை உருவாக்க இரண்டு பட்டைகளிலிருந்தும் கழிக்கப்படுகிறது.
+- `policy.greedySessionFloor`: பேராசை ஒன்றுசேர்தல் ஈடுபடும் அமர்வு-பயன்படுத்தப்பட்ட சதவீதம்.
+- `policy.switchModels`: ஒரு மாற்றத்தை வாயிலிடும் ஒவ்வொரு-மாதிரி வாராந்திர வரம்பைக் கொண்ட மாதிரி குடும்பங்கள் (உள்ளீடுகள் ஏற்றப்படும்போது சிறிய எழுத்துக்களாக்கப்படுகின்றன).
+- `policy.usagePollTtlMs`: ஒரு `/usage` ஒவ்வொரு-மாதிரி poll எவ்வளவு காலம் புத்துணர்ச்சியாக இருக்கிறது.
+- `policy.maxWaitMs`: தீர்ந்துபோன-தொகுப்பு தானியங்கி-காத்திருப்பு வரம்பு.
+
+`tokenmaxxing config` மூலங்களுடன் செயலில் உள்ள கட்டமைப்பைக் காட்டுகிறது; `config set`/`unset` புள்ளியிட்ட சாவிகளைத் திருத்துகிறது; `config tidy` தெரியாத சாவிகளை நீக்குகிறது.

@@ -1,0 +1,41 @@
+---
+title: Geçişe nasıl karar verilir
+description: "Devreye girme, eleme çubukları, tempo baskısı ve açgözlü ile sert yol karşılaştırması"
+---
+
+Kararın iki katmanı vardır: bir devreye girme kapısı ve ardından açgözlü veya sert bir yol.
+
+## Devreye girme
+
+`policy.greedySessionFloor` altında (varsayılan 50, 5 saatlik oturum penceresinin yüzdesi olarak) karar hiç çalışmaz - taze bir oturum kendi hesabında ilerler. Aktif oturum penceresi %50 kullanıldığında veya herhangi bir sert çubuk aşıldığında karar devreye girer.
+
+## Eleme çubukları
+
+Eşikler panik tetikleyicisi değil, eleme çubuklarıdır:
+
+- `thresholds.session`: 95. Bir 5 saatlik sıfırlamayı beklemek ucuzdur, bu nedenle oturum penceresi daha erken başka bir hesaba geçer.
+- `thresholds.weekly`: 98. Bu tek çubuk hem 7 günlük toplamı hem de her model başına haftalık üst sınırı kapsar. Haftalık kota kullan ya da kaybet ilkesine tabidir, bu yüzden duvara yakın tükenir.
+
+Her ikisi de kasıtlı olarak 100'ün altındadır: boşluk, hesap gerçekten limitine ulaşmadan önce temiz bir tur sınırına ulaşma bütçesidir (artı macOS'ta bir tura kadar benimseme gecikmesi). Aynı çubuklar geçiş adaylarını eler: çubuklarından herhangi birinin üzerinde olan bir hesap geçerli bir hedef değildir. Tetikleyici ve eleme her zaman aynı etkin çubukları kullanır (eşikler eksi `policy.projectionMargin`), çünkü tetikleyiciden daha gevşek bir eleme, geçişleri tetikleyicinin hemen yeniden işaretlediği hesaplara indirir ve havuzu ileri geri sektirir.
+
+## Hedef: tempo baskısı
+
+Kullanılabilir hesaplar arasında hedef, kendi haftalık temposunun en gerisinde kalandır: en yüksek **tempo baskısı**, kalan haftalık yüzdenin o hesabın haftalık sıfırlamasına kalan süreye bölümü olarak tanımlanır. Kaybedilmek üzere en fazla kotaya sahip hesap kazanır. Beraberlikler önce en yakın haftalık sona erme, ardından en düşük 7 günlük kullanımla çözülür.
+
+Her şey mutlak UTC epoch'ları olarak saklanan önbelleğe alınmış pencereler üzerinden çalışır, bu yüzden bayat bir anlık görüntü bile doğru çözülür: geçmiş bir haftalık sıfırlama tam 7 günlük adımlarla ileriye doğru dışdeğerlenir ve önbelleğe alınmış sıfırlamasını geçmiş herhangi bir pencere taze boş sayılır (asla geçiş nedeni değil, asla bir hesabı yedekte tutma nedeni değil).
+
+## Açgözlü ve sert yol karşılaştırması
+
+- **Açgözlü yol** (devrede, ancak her çubuğun altında): mevcut dahil her hesabı sıralar. Mevcut hesap zaten kazanıyor veya berabere kalıyorsa hiçbir şey yapmaz. Aksi halde kesinlikle daha iyi hesaba geçer. Asla beklemez ve asla önceden park etmez - kullanılabilir bir mevcut hesap bir bekleme karşılığında takas edilmez. Mevcut hesap da sıralandığından, hem otomatik yol hem de sade `tokenmaxxing switch` idempotenttir: periyodik değerlendirme doğru hesapta yakınsar ve ardından yerinde kalır.
+- **Sert yol** (bir çubuk aşıldı): en iyi kullanılabilir adaya geçer. Bir adayın yenileme token'ı ölü çıkarsa, yeniden kimlik doğrulama gerekli olarak işaretlenir ve bir sonraki aday denenir. Hiçbir şey kullanılabilir değilse, tükenmiş bekleme mantığı çalışır; yalnızca oturumu gerçekten duraklatabilen bir çağırıcının (gözetimli Stop hook) hâlâ engellenmiş ancak en yakında kurtulacak bir hesaba önceden park etmesine izin verilir.
+
+## Model başına üst sınırlar
+
+`policy.switchModels` (varsayılan `["fable"]`), model başına haftalık üst sınırı bir geçişi tetikleyebilen model ailelerini adlandırır. Eşleştirme, kesin görünen dizeyle değil, aile token'ıyla yapılır: model görünen adları kayar ("Fable", "Fable 5" oldu) ve kesin dize eşleştirmesi bir keresinde model başına geçişi sessizce tamamen devre dışı bıraktı. İlgili iki güvenlik kuralı:
+
+- Bilinmeyen bir aktif model, yapılandırılmış her aileyi kapar. Bir geçişin anlık görüntüleri temizlemesinin hemen ardından, başsız bir makine model körü çalışabilir; bilinmeyeni kısıtsız olarak ele almak bir keresinde bir hesabın saatlerce fark edilmeden Fable üst sınırında kalmasına neden oldu.
+- Aday elemesi kapatılmış model başına üst sınırları da sayar, bu nedenle her hesabın Fable üst sınırını yaktığı bir havuz sırayla dönüş yapmaz.
+
+## Bekleme süresi
+
+Otomatik yolu, geçiş sonrası 45 saniyelik bir bekleme süresi kapar. Statusline tee'si bir geçişten sonra aynı 45 saniye boyunca bastırılır (benimseme macOS'ta 30 saniyeye kadar sürer), böylece daha erken bir değerlendirme, geçişin kendisinin geçersiz kıldığı veriler üzerinde çalışırdı - tam olarak o senaryo bir keresinde A'dan B'ye ve geri bir yeniden başlatma döngüsü üretti. Manuel `tokenmaxxing switch` bekleme süresinden etkilenmez.

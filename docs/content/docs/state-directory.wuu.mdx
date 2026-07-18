@@ -1,0 +1,25 @@
+---
+title: 状态目录布局
+description: "~/.config/tokenmaxxing 底下嗰每一个文件搭目录。"
+---
+
+所有物事侪勒 `~/.config/tokenmaxxing/` 底下（好用 `TOKENMAXXING_HOME` 覆盖；每一条外头看得着嗰路径侪有一个环境变量覆盖，畀整个工具好勒测试里向密封地跑）。
+
+| 路径 | 存啥个 |
+|---|---|
+| `config.json` | 侬嗰配置（稀疏嗰；默认值一个字段一个字段生效） |
+| `accounts.json` | 汇拢嗰 Claude 账户嗰非机密索引：标签、id、缓存嗰用量窗口。从来勿存 token |
+| `usage.json` | statusline 分流嗰汇总窗口快照；伊嗰 mtime 就是数据源活着嗰心跳 |
+| `model-usage.json` | 从 `/usage` 来嗰、带 TTL 缓存嗰分模型礼拜上限 |
+| `lastswap.json` | 顶末一趟切换嗰纪元时间戳；驱动 45 秒嗰冷却 |
+| `lock` | 拿切换串行化嗰 `flock` 文件 |
+| `tokenmaxxing.log` | 只追加嗰事件日志 |
+| `bin/` | PATH 垫片：`claude`、`codex`，搭 `tokenmaxxing` / `xx` 嗰入口点 |
+| `respawn/<session-id>` | supervisor 盯牢嗰耗光等待重生标记 |
+| `creds/` | 只 Linux：停放嗰凭据文件，0700 目录里向嗰 0600（macOS 改成拿凭据当作每个账户各自嗰 keychain 条目停放） |
+| `onboard/`、`sample/` | 畀 `add`/`auth` 登录搭停放账户 `/usage` 探测用嗰一次性隔离配置 home；拿牢明文凭据嗰 onboard home 采集之后就删脱 |
+| `slack.json` | `xx serve` 嗰 token 搭频道链接（0600） |
+| `slack-threads/` | `xx serve` 每条 thread 各自嗰会话记录 |
+| `codex-*` | 并行嗰 Codex 池子：`codex-accounts.json`、`codex-lastswap.json`、`codex-lock`、`codex-creds/`、`codex-onboard/`、`codex-respawn/`，搭 `codex-live/`（每个跑牢嗰受监管 codex 会话各自一个 PID 校验过嗰在场文件，所以一个活跃账户永远勿是切换目标） |
+
+勒伊自家嗰目录外头，tokenmaxxing 碰嗰恰恰是搿眼：`~/.claude.json`（`oauthAccount` 切换）、Claude Code 嗰 `settings.json`（hook 搭 statusline 条目）、活跃凭据存储（macOS 高头是 `Claude Code-credentials` keychain 条目，Linux 高头是 `.credentials.json`）、`~/.claude.lock`（claude 嗰刷新锁，切换当中拿嗰）、codex 嗰 `auth.json` 搭 `hooks.json`，还有 launchd 或者 systemd 里向嗰定期检查单元。

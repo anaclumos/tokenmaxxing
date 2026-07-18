@@ -1,0 +1,25 @@
+---
+title: اسٹیٹ ڈائرکٹری کی ترتیب
+description: "~/.config/tokenmaxxing کے تحت ہر فائل اور ڈائرکٹری"
+---
+
+ہر چیز `~/.config/tokenmaxxing/` کے تحت رہتی ہے (`TOKENMAXXING_HOME` سے اووررائیڈ کیا جا سکتا ہے؛ ہر خارجی طور پر قابلِ مشاہدہ پاتھ کے پاس ایک env اووررائیڈ ہے تاکہ پورا ٹول ٹیسٹوں میں مکمل طور پر الگ تھلگ چل سکے)۔
+
+| پاتھ | یہ کیا رکھتا ہے |
+|---|---|
+| `config.json` | آپ کی کنفیگریشن (کم گنجان؛ ڈیفالٹس فی فیلڈ لاگو ہوتے ہیں) |
+| `accounts.json` | پول شدہ Claude اکاؤنٹس کا غیر خفیہ انڈیکس: لیبلز، ids، کیش شدہ استعمال ونڈوز۔ کبھی ٹوکنز نہیں |
+| `usage.json` | statusline ٹی کا مجموعی ونڈو سنیپ شاٹ؛ اس کا mtime فیڈ کا liveness heartbeat ہے |
+| `model-usage.json` | `/usage` سے TTL-کیش شدہ فی ماڈل ہفتہ وار حدیں |
+| `lastswap.json` | آخری سوئپ کا epoch ٹائم اسٹیمپ؛ 45 سیکنڈ کے کولڈاؤن کو چلاتا ہے |
+| `lock` | `flock` فائل جو سوئپس کو سلسلہ وار کرتی ہے |
+| `tokenmaxxing.log` | صرف-اضافہ ایونٹ لاگ |
+| `bin/` | PATH شِمز: `claude`، `codex`، اور `tokenmaxxing` / `xx` انٹری پوائنٹس |
+| `respawn/<session-id>` | ختم شدہ-انتظار ری اسپان مارکرز جن پر سپروائزر نظر رکھتا ہے |
+| `creds/` | صرف Linux: پارک شدہ کریڈنشل فائلیں، ایک 0700 ڈائرکٹری میں 0600 (macOS اس کے بجائے کریڈنشلز کو فی اکاؤنٹ کی چین آئٹمز کے طور پر پارک کرتا ہے) |
+| `onboard/`، `sample/` | `add`/`auth` لاگ اِنز اور پارک شدہ-اکاؤنٹ `/usage` پروبز کے لیے پھینک دینے والے الگ تھلگ config ہومز؛ پلین ٹیکسٹ کریڈنشلز رکھنے والے onboard ہومز سمیٹنے کے بعد حذف کر دیے جاتے ہیں |
+| `slack.json` | `xx serve` ٹوکنز اور چینل لنکس (0600) |
+| `slack-threads/` | `xx serve` کے لیے فی تھریڈ سیشن ریکارڈز |
+| `codex-*` | متوازی Codex پول: `codex-accounts.json`، `codex-lastswap.json`، `codex-lock`، `codex-creds/`، `codex-onboard/`، `codex-respawn/`، اور `codex-live/` (ہر رواں زیرِ نگرانی codex سیشن کے لیے ایک PID-تصدیق شدہ موجودگی فائل، تاکہ ایک لائیو اکاؤنٹ کبھی سوئپ ہدف نہ ہو) |
+
+اپنی ڈائرکٹری سے باہر، tokenmaxxing بالکل ان کو چھوتا ہے: `~/.claude.json` (`oauthAccount` سوئپ)، Claude Code کی `settings.json` (ہک اور statusline اندراجات)، لائیو کریڈنشل اسٹور (macOS پر `Claude Code-credentials` کی چین آئٹم، Linux پر `.credentials.json`)، `~/.claude.lock` (claude کا ری فریش لاک، سوئپس کے دوران لیا گیا)، codex کی `auth.json` اور `hooks.json`، اور launchd یا systemd میں وقفہ وار-چیک یونٹ۔

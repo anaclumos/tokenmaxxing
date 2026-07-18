@@ -1,0 +1,31 @@
+---
+title: Agent SDK surface ው
+description: "pool ን በራስዎ በሚያሄዷቸው agentዎች ውስጥ ከ Claude Agent SDK ጋር ያጣምሩ"
+---
+
+የጥቅሉ programmatic entry (`exports["."]` ወደ `src/sdk.ts` ያመለክታል) በራስዎ የተሰበሰቡ መለያዎች ላይ ለሚገነቧቸው agentዎች tokenmaxxing ን ከ Claude Agent SDK ጋር ያጣምራል። መተግበሪያዎ በ Bun ስር መሄድ አለበት (tokenmaxxing የ TypeScript ምንጭ ኮድ ይልካል እና `bun:ffi` ን ይጠቀማል)።
+
+```ts
+import { query } from "@anthropic-ai/claude-agent-sdk";
+import { ensureBestAccount, pooledOptions, stopHookCheck } from "tokenmaxxing";
+
+await ensureBestAccount(); // run the switch decision before the spawn
+
+for await (const message of query({
+  prompt: "...",
+  options: {
+    ...pooledOptions(), // pinned real claude + scrubbed env
+    hooks: { Stop: [{ hooks: [stopHookCheck] }] }, // re-decide at every turn boundary
+  },
+})) {
+  // capture the session id from the init message for `resume` across swaps
+}
+```
+
+Agent SDK በ `query()` አንድ claude subprocess ያስነሳል እና credentialዎችን በ spawn አንድ ጊዜ ያነባል - ምንም statusline የለም፣ ምንም mid-query hot-swap የለም - ስለዚህ ውህደቱ boundary-driven ነው፦
+
+- `ensureBestAccount()` CLI hookዎች እና timer የሚያሄዱት ትክክለኛው ውሳኔ ነው (barዎች፣ pace pressure፣ cooldown፣ ሁሉም የተጋራ ኮድ)፣ በጭራሽ anticipatory አይደለም፦ SDK session በጭራሽ ለተሟጠጠ countdown ሊቆም አይችልም።
+- `pooledOptions()` `pathToClaudeCodeExecutable` ን ወደ ትክክለኛው claude binary ይይዛል (በጭራሽ supervisor wrapper አይደለም) እና እያንዳንዱ ambient credential override የተጸዳ ሙሉ ምትክ `env` ያቀርባል። በመተግበሪያዎ environment ውስጥ `CLAUDE_CONFIG_DIR` ወይም `CLAUDE_SECURESTORAGE_CONFIG_DIR` ከተዋቀረ በፍጥነት ይወድቃል፦ በ Linux ላይ መቀያየር ቀጥታውን credential እነዚያ ወደሚያመለክቱበት ይጽፋል የተጸዳው subprocess ደግሞ ነባሪውን store ያነባል፣ የጸጥታ የተሳሳተ-መለያ desync።
+- `stopHookCheck` ውሳኔውን በ turn ወሰኖች ላይ እንደገና ያሄዳል፤ የሚያሳርፈው መቀያየር በሚቀጥለው spawn ላይ ተግባራዊ ይሆናል። ከመድገም ይልቅ የራሱን ስህተቶች ይይዛል (ወደ stderr እና log በመመዝገብ)፣ ምክንያቱም ያልተያዘ hook exception agent ን ሊያቋርጥ ስለሚችል፣ እና በተሰበረ switch check ላይ turn ን ማቋረጥ አሁን ያለውን መለያ ከመቀጠል የበለጠ ዋጋ ስለሚያስከፍል።
+
+`sdk.ts` ከ Agent SDK ራሱ ምንም አያስገባም፤ እሴቶቹ በ structural ወደ SDK options ይሰራጫሉ።

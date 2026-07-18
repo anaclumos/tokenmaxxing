@@ -1,13 +1,35 @@
 ---
-title: Welcome
-description: Put your own agent CLI accounts together and make sure say every session dey move
+title: tokenmaxxing
+description: Automatic Claude Code account switching - put your own subscription accounts together and hot-swap credentials when quota fill up, so every session fit continue.
 ---
 
-tokenmaxxing na CLI for people wey dey run Claude Code (and Codex) for plenty of dia own accounts. E dey watch usage quota, e dey swap the active credential go the account wey get the most headroom before any limit go hit, and e dey make sure say your sessions fit continue across swaps.
+tokenmaxxing na CLI for automatic Claude Code account switching. E dey pool plenty subscription (Pro/Max) accounts wey you own and e dey hot-swap the active credential go one fresher account when the one wey dey use near im usage limit. You go run `claude` exactly as you dey always run am; the swap dey happen for one safe turn boundary and your session wey dey run go continue the same conversation for the new account without restart. E dey work across plenty concurrent sessions all at once.
+
+The only behavior wey you go see na the worst case: when the whole pool don reach im limit, the session go pause with countdown and e go auto-resume for the next account wey go reset (Ctrl-C dey resume immediately).
+
+<Callout>
+Scope: Claude Code for macOS and Linux, plus OpenAI im Codex CLI as second, parallel pool. E dey pool subscription accounts, no be API keys. Na personal-use tool for pooling accounts wey you own, for sessions and agents wey you your own dey run - check [How you fit use am for yourself and terms of service](/pcm/terms).
+</Callout>
+
+## The wahala
+
+One Claude subscription dey meter three limits all at once (all confirm via `/usage`):
+
+- **Current session**: rolling 5-hour window.
+- **Current week (all models)**: 7-day aggregate.
+- **Current week, per model**: separate weekly caps for individual model families. Right now dis one dey exist only for Sonnet and Fable, and na only the Fable cap tight reach make e matter - e dey bind well before the aggregate go bind. Machine fit dey sit for 50% week-all while e don already reach 80% week-Fable.
+
+Weekly quota na use-am-or-lose-am: whatever account no consume before im fixed weekly reset, e go lose am. If you own plenty accounts, the sensible strategy na to keep dey burn quota for whichever account dey furthest behind im own weekly pace, and to switch comot before any single limit go hit the wall for middle of session.
+
+To dey do dat one by hand mean say you go logout, login, and lose your conversation. tokenmaxxing dey automate am: one `claude` wey dey run dey re-check im credential store between requests, so a credential wey dem swap under am go get adopted for the same place (within about 30 seconds for macOS, for the next request for Linux). One plain swap no dey restart your session at all. The one case wey still need process management na when the pool fully finish - a session no fit pause imself - and na for dat one the thin supervisor dey exist.
+
+Everything else about `claude` no change: all flags, MCP servers, hooks, and skills dey pass through.
 
 ## Wia you fit go
 
 <Cards>
-  <Card title="The full guide" href="/pcm/docs/tokenmaxxing" />
-  <Card title="Source for GitHub" href="https://github.com/anaclumos/tokenmaxxing" />
+  <Card title="Quickstart" href="/pcm/quickstart" />
+  <Card title="Commands" href="/pcm/commands" />
+  <Card title="Architecture" href="/pcm/architecture" />
+  <Card title="How switching dey decide" href="/pcm/switching" />
 </Cards>

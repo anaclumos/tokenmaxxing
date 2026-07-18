@@ -1,13 +1,35 @@
 ---
-title: Karibu
-description: Kusanya akaunti zako mwenyewe za agent CLI na uendeleze kila kikao
+title: tokenmaxxing
+description: "Ubadilishaji otomatiki wa akaunti za Claude Code - kusanya akaunti zako mwenyewe za usajili na ubadilishe vitambulisho papo hapo mgao unapojaa, ukiweka kila kikao kikiweza kuendelea."
 ---
 
-tokenmaxxing ni CLI kwa watu wanaotumia Claude Code (na Codex) kwenye akaunti zao kadhaa. Inafuatilia mgao wa matumizi, inabadilisha kitambulisho kinachotumika hadi akaunti yenye nafasi zaidi kabla ya kikomo kufikwa, na inahakikisha vikao vyako vinaweza kuendelea baada ya mabadilisho.
+tokenmaxxing ni CLI kwa ubadilishaji otomatiki wa akaunti za Claude Code. Inakusanya akaunti nyingi za usajili (Pro/Max) unazomiliki na inabadilisha kitambulisho kinachotumika papo hapo hadi akaunti mpya wakati kile kinachotumika kinapokaribia kikomo cha matumizi. Unaendesha `claude` sawasawa kama unavyofanya kila mara; ubadilishaji hutokea kwenye mpaka salama wa zamu na kikao chako kinachoendeshwa kinaendeleza mazungumzo yale yale kwenye akaunti mpya bila kuanzisha upya. Inafanya kazi kwenye vikao vingi vinavyoendeshwa kwa wakati mmoja.
 
-## Pa kwenda
+Tabia pekee inayoonekana ni hali mbaya zaidi: mkusanyiko wote unapofikia kikomo chake, kikao husimama kwa muda na kihesabu cha kurudi nyuma na kuendelea otomatiki kwenye akaunti inayofuata kujiweka upya (Ctrl-C huendelea mara moja).
+
+<Callout>
+Wigo: Claude Code kwenye macOS na Linux, pamoja na Codex CLI ya OpenAI kama mkusanyiko wa pili, sambamba. Inakusanya akaunti za usajili, si funguo za API. Hili ni zana ya matumizi ya binafsi kwa kukusanya akaunti unazomiliki, katika vikao na agents unavyoendesha mwenyewe - angalia [Matumizi ya binafsi na masharti ya huduma](/sw/terms).
+</Callout>
+
+## Tatizo
+
+Usajili wa Claude hupima vikomo vitatu kwa wakati mmoja (vyote vimethibitishwa kupitia `/usage`):
+
+- **Kikao cha sasa**: dirisha linalozunguka la saa 5.
+- **Wiki ya sasa (miundo yote)**: jumla ya siku 7.
+- **Wiki ya sasa, kwa kila muundo**: vikomo tofauti vya kila wiki kwa familia za miundo binafsi. Hivi kwa sasa vipo kwa Sonnet na Fable pekee, na kikomo cha Fable pekee ndicho kigumu vya kutosha kuwa na maana - kinafunga muda mrefu kabla ya jumla kufanya hivyo. Mashine inaweza kukaa katika 50% ya wiki-yote wakati tayari iko katika 80% ya wiki-Fable.
+
+Mgao wa kila wiki ni tumia-au-poteza: chochote ambacho akaunti haijatumia kufikia kujiweka upya kwake kwa wiki husika hupotea. Ikiwa unamiliki akaunti kadhaa, mkakati wenye busara ni kuendelea kutumia mgao kwenye akaunti yoyote iliyo nyuma zaidi ya mwendo wake wa kila wiki, na kubadilisha kabla ya kikomo chochote kimoja kufikia ukuta katikati ya kikao.
+
+Kufanya hivyo kwa mkono kunamaanisha kutoka, kuingia, na kupoteza mazungumzo yako. tokenmaxxing hufanya hivi otomatiki: `claude` inayoendeshwa hukagua tena hifadhi yake ya vitambulisho kati ya maombi, hivyo kitambulisho kilichobadilishwa chini yake hupokewa papo hapo (ndani ya sekunde 30 hivi kwenye macOS, kwenye ombi linalofuata kwenye Linux). Ubadilishaji wa kawaida haujaanzishi upya kikao chako kamwe. Hali pekee inayohitaji usimamizi wa mchakato ni mkusanyiko uliokwisha kabisa - kikao hakiwezi kujisimamisha chenyewe - na hilo ndilo lengo la msimamizi mwembamba.
+
+Kila kitu kingine kuhusu `claude` hakijabadilika: bendera zote, seva za MCP, hooks, na skills hupita moja kwa moja.
+
+## Wapi kwenda
 
 <Cards>
-  <Card title="Mwongozo kamili" href="/sw/docs/tokenmaxxing" />
-  <Card title="Chanzo kwenye GitHub" href="https://github.com/anaclumos/tokenmaxxing" />
+  <Card title="Anza Haraka" href="/sw/quickstart" />
+  <Card title="Amri" href="/sw/commands" />
+  <Card title="Muundo" href="/sw/architecture" />
+  <Card title="Jinsi kubadilisha kunavyoamua" href="/sw/switching" />
 </Cards>

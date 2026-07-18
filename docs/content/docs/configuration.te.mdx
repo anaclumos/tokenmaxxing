@@ -1,0 +1,28 @@
+---
+title: కాన్ఫిగరేషన్
+description: "config.json స్కీమా, థ్రెషోల్డ్‌లు, మరియు పాలసీ నాబ్‌లు"
+---
+
+కాన్ఫిగ్ `~/.config/tokenmaxxing/config.json` వద్ద JSON. ప్రతి ఫీల్డ్ ఐచ్ఛికం; డిఫాల్ట్‌లు ప్రతి-ఫీల్డ్‌కు వర్తిస్తాయి.
+
+```json
+{
+  "thresholds": { "session": 95, "weekly": 98 },
+  "policy": {
+    "projectionMargin": 0,
+    "greedySessionFloor": 50,
+    "switchModels": ["fable"],
+    "usagePollTtlMs": 90000,
+    "maxWaitMs": 3600000
+  }
+}
+```
+
+- `thresholds.session` / `thresholds.weekly`: పైన వివరించిన స్క్రీనింగ్ బార్‌లు.
+- `policy.projectionMargin`: అమలు బార్‌లను ఏర్పరచడానికి రెండు బార్‌ల నుండి తీసివేయబడుతుంది.
+- `policy.greedySessionFloor`: అత్యాశ కేంద్రీకరణ ఎంగేజ్ అయ్యే సెషన్-వాడిన శాతం.
+- `policy.switchModels`: ప్రతి-మోడల్ వారపు పరిమితి మార్పిడిని గేట్ చేసే మోడల్ కుటుంబాలు (లోడ్ అయ్యేటప్పుడు ఎంట్రీలు చిన్న అక్షరాలుగా మార్చబడతాయి).
+- `policy.usagePollTtlMs`: `/usage` ప్రతి-మోడల్ పోల్ ఎంతసేపు తాజాగా ఉంటుంది.
+- `policy.maxWaitMs`: ఖాళీ-పూల్ స్వయంచాలక-నిరీక్షణ పరిమితి.
+
+`tokenmaxxing config` మూలాలతో అమలు కాన్ఫిగ్‌ను చూపుతుంది; `config set`/`unset` డాట్ చేసిన కీలను సవరిస్తాయి; `config tidy` తెలియని కీలను తొలగిస్తుంది.

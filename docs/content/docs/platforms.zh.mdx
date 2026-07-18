@@ -1,0 +1,16 @@
+---
+title: 平台说明：macOS vs Linux
+description: "macOS 与 Linux 在存储、采用与定时器上的差异"
+---
+
+| | macOS | Linux |
+|---|---|---|
+| 活动凭证 | 登录钥匙串 generic-password 条目 | 0600 `.credentials.json` 文件 |
+| 停放凭证 | 每账户各一个钥匙串条目 | 一个 0700 目录下的 0600 文件 |
+| 切换后的采用 | 约 30 秒内（钥匙串读缓存） | 下一次请求（文件 mtime 轮询） |
+| 周期性检查 | launchd agent，每 180 秒 | systemd 用户定时器，每 180 秒 |
+| 隔离登录存储 | 按配置目录哈希命名空间化的钥匙串服务 | 隔离配置目录内的一个文件 |
+
+两个值得了解的 Linux 特有细节：claude 从 `CLAUDE_SECURESTORAGE_CONFIG_DIR` 起解析它的凭证目录（然后是 `CLAUDE_CONFIG_DIR`，再然后是 `~/.claude`），而 tokenmaxxing 精确地镜像了这套解析，因此两者绝不会失步。此外，同一版本 claude 的两个操作系统构建，对 `/usage` 重置时钟的格式化方式不同（一个用 " at " 粘连，另一个用逗号）；tokenmaxxing 的解析器恰好接受这两种形式，遇到任何第三种时记录日志，而非猜测。
+
+在 macOS 上有一个诚实的限制：`init` 和 `add` 会刻意以交互方式触碰钥匙串，这样第一次 `security` 访问就不会在一个无头 hook 内冷启动。

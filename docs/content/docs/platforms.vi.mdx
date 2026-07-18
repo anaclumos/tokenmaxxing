@@ -1,0 +1,16 @@
+---
+title: "Ghi chú nền tảng: macOS so với Linux"
+description: "macOS và Linux khác nhau thế nào về lưu trữ, tiếp nhận, và bộ hẹn giờ"
+---
+
+| | macOS | Linux |
+|---|---|---|
+| Thông tin xác thực đang hoạt động | Mục generic-password trong login keychain | Tệp `.credentials.json` 0600 |
+| Thông tin xác thực dự trữ | Các mục keychain theo từng tài khoản | Các tệp 0600 trong một thư mục 0700 |
+| Tiếp nhận sau một lần hoán đổi | Trong khoảng 30 giây (bộ nhớ đệm đọc keychain) | Yêu cầu tiếp theo (thăm dò mtime tệp) |
+| Kiểm tra định kỳ | launchd agent, mỗi 180s | systemd user timer, mỗi 180s |
+| Kho đăng nhập biệt lập | Dịch vụ keychain đặt tên theo hash cho mỗi thư mục cấu hình | Một tệp bên trong thư mục cấu hình biệt lập |
+
+Hai chi tiết riêng của Linux đáng biết: claude phân giải thư mục thông tin xác thực của nó từ `CLAUDE_SECURESTORAGE_CONFIG_DIR` trước (rồi `CLAUDE_CONFIG_DIR`, rồi `~/.claude`), và tokenmaxxing phản chiếu chính xác cách phân giải đó để hai bên không bao giờ mất đồng bộ. Và hai bản dựng hệ điều hành của cùng một phiên bản claude định dạng đồng hồ đặt lại `/usage` khác nhau (một bản dùng chuỗi nối " at ", bản kia dùng dấu phẩy); trình phân tích của tokenmaxxing chấp nhận chính xác hai dạng đó và ghi nhật ký, thay vì đoán, khi gặp bất kỳ dạng thứ ba nào.
+
+Trên macOS, một hạn chế thành thật: `init` và `add` cố ý chạm vào keychain một cách tương tác, để lần truy cập `security` đầu tiên không bị nguội lạnh bên trong một hook không đầu.

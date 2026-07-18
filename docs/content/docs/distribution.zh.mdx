@@ -1,0 +1,12 @@
+---
+title: 构建与分发
+description: "npm 上发布 TypeScript 源码，由 Bun 运行，带来源证明发布"
+---
+
+npm 包发布的是 TypeScript 源码，而非构建产物：`tokenmaxxing` bin 直接指向带 Bun shebang 的 `src/main.ts`，Bun 1.2.6 或更新版本会原样运行它。这就是 Bun 是硬性要求的原因。按设计没有任何编译好的二进制：一个早期版本曾向每个平台都发布了单个 61 MB 的 macOS 二进制，在 Linux 上以 `exec format error` 失败，而按平台编译的包各自都需要自己的发布流水线，因此由 Bun 运行源码成了分发模式。
+
+该包的 `exports` 映射把 `src/sdk.ts` 暴露为上文所述的编程入口。发布版本在 GitHub 上以 `v<version>` 打标签；CI 通过可信发布（OIDC，带来源证明）发布到 npm，且发布关卡会先运行类型检查和完整的测试套件。
+
+## 许可证
+
+MIT。源码在 [anaclumos/tokenmaxxing](https://github.com/anaclumos/tokenmaxxing)。

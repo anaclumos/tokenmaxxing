@@ -1,0 +1,21 @@
+---
+title: La statusline
+description: "La cuota transmitida en color, una línea, cada cuenta visible"
+---
+
+tokenmaxxing renderiza la statusline de Claude Code de forma nativa (mientras hace tee del feed de uso). El principio de diseño: la cuota se transmite en color, no en números. Una línea, por ejemplo:
+
+```
+tm-wt-demo Fable 5 (high) +156/-23  ◆ 𝒇 2h 1d  ◇ 19h  ◇ 𝒇 2d  ◇ full  ✗ ?
+```
+
+- Cada token de ventana es su tiempo hasta el restablecimiento, pintado en una rampa continua de verde a amarillo a rojo según el porcentaje usado (color verdadero cuando la terminal lo admite, escalonado sobre el cubo de 256 colores en caso contrario). La rampa se ancla en verde puro para 0, amarillo en 75, y rojo en 95 y superior, de modo que las viejas bandas de severidad sobreviven como anclas de la rampa.
+- El nombre del modelo se pinta según el llenado de la ventana de contexto en la misma rampa.
+- Un `◆` verde encabeza las ventanas de la cuenta activa; cada cuenta estacionada obtiene su propio `◇` cian (`✗` rojo si necesita reautenticación). Las cuentas se ordenan por el restablecimiento próximo más temprano.
+- El por modelo va primero en cada bloque como una inicial pintada a secas: Fable renderiza `𝒇`; otras familias usan la primera letra en mayúscula, siempre con coincidencia de familia.
+- Una cuenta estacionada intacta renderiza un `full` verde. El uso medido con un restablecimiento desconocido renderiza un `?` pintado, y un tope por modelo sin medir en un modelo bajo compuerta renderiza un `𝒇?` sin pintar - lo no medido nunca debe parecer seguro.
+- Las cuentas atrás de restablecimiento muestran solo la unidad más grande, nunca "now" ni "0m"; una ventana sin restablecimiento próximo renderiza un `0` verde (vacía de nuevo).
+- El nombre base de un worktree de git enlazado encabeza la línea; un checkout principal no renderiza nada ahí. La detección lee el sistema de archivos en busca de un archivo `.git` y nunca lanza un subproceso de git.
+- Con `NO_COLOR` puesto, la línea recurre a un formato numérico pegado (`2h5` significa se restablece en 2 horas, 5% usado; `ctx 42` para el llenado de contexto) - sin color, una ventana agotada no debe parecer fresca.
+
+Las tareas de subagente obtienen sus propias filas de panel mediante la superficie subagentStatusLine de claude: una fila por tarea activa, nombre de familia pintado según el llenado de contexto de esa tarea.

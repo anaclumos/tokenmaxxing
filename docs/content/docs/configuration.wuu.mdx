@@ -1,0 +1,28 @@
+---
+title: 配置
+description: "config.json 嗰结构、阈值搭策略旋钮。"
+---
+
+配置是 `~/.config/tokenmaxxing/config.json` 高头嗰 JSON。每个字段侪是可选嗰；默认值一个字段一个字段生效。
+
+```json
+{
+  "thresholds": { "session": 95, "weekly": 98 },
+  "policy": {
+    "projectionMargin": 0,
+    "greedySessionFloor": 50,
+    "switchModels": ["fable"],
+    "usagePollTtlMs": 90000,
+    "maxWaitMs": 3600000
+  }
+}
+```
+
+- `thresholds.session` / `thresholds.weekly`：上头讲过嗰筛选阈值。
+- `policy.projectionMargin`：从两条阈值里向减脱，得出有效阈值。
+- `policy.greedySessionFloor`：贪心收敛开始参与嗰会话已用百分比。
+- `policy.switchModels`：哪几个模型系列嗰分模型礼拜上限会给切换设门（条目加载嗰辰光会转成小写）。
+- `policy.usagePollTtlMs`：一趟 `/usage` 分模型轮询保持新鲜多少辰光。
+- `policy.maxWaitMs`：耗光池子自动等待嗰上限。
+
+`tokenmaxxing config` 显示带来源嗰有效配置；`config set`/`unset` 编辑带点嗰键；`config tidy` 剪脱勿认得嗰键。

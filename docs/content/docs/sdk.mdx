@@ -1,0 +1,31 @@
+---
+title: The Agent SDK surface
+description: Pair the pool with the Claude Agent SDK in agents you run yourself
+---
+
+The package's programmatic entry (`exports["."]` points at `src/sdk.ts`) pairs tokenmaxxing with the Claude Agent SDK for agents you build against your own pooled accounts. Your app must run under Bun (tokenmaxxing ships TypeScript source and uses `bun:ffi`).
+
+```ts
+import { query } from "@anthropic-ai/claude-agent-sdk";
+import { ensureBestAccount, pooledOptions, stopHookCheck } from "tokenmaxxing";
+
+await ensureBestAccount(); // run the switch decision before the spawn
+
+for await (const message of query({
+  prompt: "...",
+  options: {
+    ...pooledOptions(), // pinned real claude + scrubbed env
+    hooks: { Stop: [{ hooks: [stopHookCheck] }] }, // re-decide at every turn boundary
+  },
+})) {
+  // capture the session id from the init message for `resume` across swaps
+}
+```
+
+The Agent SDK spawns a claude subprocess per `query()` and reads credentials once at spawn - no statusline, no mid-query hot-swap - so the integration is boundary-driven:
+
+- `ensureBestAccount()` is the exact decision the CLI hooks and timer run (bars, pace pressure, cooldown, all shared code), never anticipatory: an SDK session can never be paused for a depleted countdown.
+- `pooledOptions()` pins `pathToClaudeCodeExecutable` to the real claude binary (never the supervisor wrapper) and supplies a full replacement `env` with every ambient credential override scrubbed. It fails fast if `CLAUDE_CONFIG_DIR` or `CLAUDE_SECURESTORAGE_CONFIG_DIR` is set in your app's environment: on Linux a swap would write the live credential where those point while the scrubbed subprocess reads the default store, a silent wrong-account desync.
+- `stopHookCheck` re-runs the decision at turn boundaries; a swap it lands takes effect on the next spawn. It catches its own errors (logging to stderr and the log) rather than rethrowing, because an unhandled hook exception can interrupt the agent, and aborting a turn over a broken switch check costs more than riding out the current account.
+
+`sdk.ts` imports nothing from the Agent SDK itself; its values spread structurally into the SDK's options.

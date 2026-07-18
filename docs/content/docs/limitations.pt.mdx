@@ -1,0 +1,10 @@
+---
+title: Limitações honestas
+description: "As compensações que acompanham a troca a quente em grupo"
+---
+
+- **Um turno frio.** O cache de prompt tem escopo por organização, então o primeiro turno em uma nova conta reenvia o contexto uma vez.
+- **Soluço de pausa por esgotamento.** Apenas um grupo totalmente esgotado interrompe a sessão para a contagem regressiva; qualquer coisa digitada nesse instante fugaz é perdida.
+- **Atraso de adoção.** No macOS o primeiro turno dentro de ~30 segundos de uma troca ainda pode medir na conta antiga; a folga das barras absorve isso.
+- **Raio de impacto compartilhado.** Todas as sessões do perfil padrão compartilham uma credencial ativa, então uma troca as move todas juntas (cada uma adota no lugar).
+- **Credenciais em texto simples no Linux.** O próprio Claude Code armazena as credenciais do Linux como um arquivo em texto simples 0600; as cópias estacionadas do tokenmaxxing seguem o mesmo modelo.

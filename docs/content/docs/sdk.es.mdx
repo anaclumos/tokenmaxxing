@@ -1,0 +1,31 @@
+---
+title: La superficie del Agent SDK
+description: "Empareja el grupo con el Claude Agent SDK en agentes que ejecutas tú mismo"
+---
+
+El punto de entrada programático del paquete (`exports["."]` apunta a `src/sdk.ts`) empareja tokenmaxxing con el Claude Agent SDK para agentes que construyas contra tus propias cuentas agrupadas. Tu app debe ejecutarse bajo Bun (tokenmaxxing distribuye código fuente de TypeScript y usa `bun:ffi`).
+
+```ts
+import { query } from "@anthropic-ai/claude-agent-sdk";
+import { ensureBestAccount, pooledOptions, stopHookCheck } from "tokenmaxxing";
+
+await ensureBestAccount(); // run the switch decision before the spawn
+
+for await (const message of query({
+  prompt: "...",
+  options: {
+    ...pooledOptions(), // pinned real claude + scrubbed env
+    hooks: { Stop: [{ hooks: [stopHookCheck] }] }, // re-decide at every turn boundary
+  },
+})) {
+  // capture the session id from the init message for `resume` across swaps
+}
+```
+
+El Agent SDK lanza un subproceso claude por `query()` y lee las credenciales una vez al lanzar - sin statusline, sin intercambio en caliente a mitad de consulta - así que la integración está impulsada por los límites:
+
+- `ensureBestAccount()` es la decisión exacta que ejecutan los hooks y el temporizador de la CLI (barras, presión de ritmo, enfriamiento, todo código compartido), nunca anticipatoria: una sesión del SDK nunca puede pausarse para una cuenta atrás por agotamiento.
+- `pooledOptions()` fija `pathToClaudeCodeExecutable` al binario real de claude (nunca el envoltorio supervisor) y suministra un `env` de reemplazo completo con toda sobrescritura de credencial ambiental limpiada. Falla rápido si `CLAUDE_CONFIG_DIR` o `CLAUDE_SECURESTORAGE_CONFIG_DIR` está puesto en el entorno de tu app: en Linux un cambio escribiría la credencial en vivo donde esos apuntan mientras el subproceso limpiado lee el almacén por defecto, una desincronización silenciosa de cuenta equivocada.
+- `stopHookCheck` vuelve a ejecutar la decisión en los límites de turno; un cambio que aterrice surte efecto en el siguiente lanzamiento. Captura sus propios errores (registrando en stderr y en el log) en vez de relanzarlos, porque una excepción de hook no manejada puede interrumpir al agente, y abortar un turno por una comprobación de cambio rota cuesta más que aguantar la cuenta actual.
+
+`sdk.ts` no importa nada del propio Agent SDK; sus valores se esparcen estructuralmente en las opciones del SDK.

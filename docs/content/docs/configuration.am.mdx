@@ -1,0 +1,28 @@
+---
+title: ውቅር
+description: "የ config.json schema፣ thresholdዎች፣ እና የ policy መቆጣጠሪያዎች"
+---
+
+Config በ `~/.config/tokenmaxxing/config.json` JSON ነው። እያንዳንዱ field አማራጭ ነው፤ ነባሪዎች በ-field ይተገበራሉ።
+
+```json
+{
+  "thresholds": { "session": 95, "weekly": 98 },
+  "policy": {
+    "projectionMargin": 0,
+    "greedySessionFloor": 50,
+    "switchModels": ["fable"],
+    "usagePollTtlMs": 90000,
+    "maxWaitMs": 3600000
+  }
+}
+```
+
+- `thresholds.session` / `thresholds.weekly`፦ ከላይ የተገለጹት screening barዎች።
+- `policy.projectionMargin`፦ ተግባራዊ barዎችን ለመፍጠር ከሁለቱም barዎች ይቀነሳል።
+- `policy.greedySessionFloor`፦ greedy convergence የሚሳተፍበት session-የተጠቀመ መቶኛ።
+- `policy.switchModels`፦ በ-ሞዴል ሳምንታዊ ገደባቸው መቀያየርን የሚገድብ የሞዴል ቤተሰቦች (ግቤቶች በ load ጊዜ ወደ ትንንሽ ፊደላት ይቀየራሉ)።
+- `policy.usagePollTtlMs`፦ የ `/usage` በ-ሞዴል poll ምን ያህል ጊዜ ትኩስ ሆኖ እንደሚቆይ።
+- `policy.maxWaitMs`፦ የተሟጠጠ-pool በራስ-ሰር ጥበቃ ገደብ።
+
+`tokenmaxxing config` ተግባራዊ config ን ከምንጮች ጋር ያሳያል፤ `config set`/`unset` በነጥብ የተለዩ keyዎችን ያርትዑ፤ `config tidy` የማይታወቁ keyዎችን ያስወግዳል።

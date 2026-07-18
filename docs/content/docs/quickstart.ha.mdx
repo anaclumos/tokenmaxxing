@@ -1,0 +1,28 @@
+---
+title: Farawa da sauri
+description: "Shigar da tokenmaxxing, shigo da asusun ka na yanzu, kuma ka haɗa ƙari"
+---
+
+Yana buƙatar [Bun](https://bun.sh) da Claude Code, a kan macOS ko Linux.
+
+```sh
+bun add -g tokenmaxxing
+tokenmaxxing init
+```
+
+`init` yana yin abubuwa biyar:
+
+1. Yana shigo da asusun da kake ciki tuni a matsayin asusu na #1 (babu umarnin `adopt` na daban).
+2. Yana shigar da shim na mai kula na `claude`.
+3. Yana shigar da shigarwa guda uku a cikin `settings.json` na Claude Code: statusLine, Stop hook, da SessionStart hook (tare da shigarwar subagentStatusLine).
+4. Yana ƙara babban shirin (bin directory) na mai kula zuwa PATH na shell rc ɗinka (idempotent, an yiwa alama da sharhin `# tokenmaxxing PATH`). Dole ne ya kasance gaban ainihin `claude` a kan PATH domin ya tsare shi.
+5. Yana shigar da agogon dubawa na lokaci-lokaci (launchd agent a kan macOS, systemd user timer a kan Linux) da ke gudanar da `tokenmaxxing check` kowace daƙiƙa 180.
+
+Sake fara shell ɗinka, sannan ka ƙara ƙarin asusu ka ci gaba:
+
+```sh
+tokenmaxxing add        # yana shigar da ƙarin asusu ɗaya, cikin ware, kuma yana haɗa shi
+claude                  # yi amfani da claude kamar koyaushe
+```
+
+Har ila yau ana kiran `tokenmaxxing` da sunan `xx`. `tokenmaxxing` (ko `xx`) shi kaɗai yana gudanar da `status`; `switch` yana kasancewa a bayyane.

@@ -1,0 +1,25 @@
+---
+title: คำสั่ง
+description: "ทุกคำสั่งของ tokenmaxxing และหน้าที่ของแต่ละคำสั่ง"
+---
+
+| คำสั่ง | ทำอะไร |
+|---|---|
+| `tokenmaxxing init` | นำเข้าบัญชีปัจจุบัน ติดตั้ง supervisor, ฮุก และ statusline |
+| `tokenmaxxing init --codex` | เหมือนกันสำหรับ Codex คือนำเข้าล็อกอิน ติดตั้ง codex supervisor และ Stop hook |
+| `tokenmaxxing add` | ลงทะเบียนบัญชีเพิ่มเติม (ล็อกอินแบบแยกส่วน แล้วเก็บเข้าพูล) |
+| `tokenmaxxing add --codex` | ลงทะเบียนบัญชี Codex เพิ่มเติม (ล็อกอินแบบแยกส่วน) |
+| `tokenmaxxing auth [sel \| --all]` | ยืนยันตัวตนใหม่ให้บัญชีในพูล ณ ที่เดิม คำสั่งเปล่าจะแสดงรายการพูลและถามว่าจะเลือกบัญชีไหน ตัวเลือก (selector) จะเจาะจงหนึ่งบัญชีและบอกว่าต้องเข้าสู่ระบบด้วยอีเมลใด `--all` จะไล่ทีละบัญชีที่ต้องยืนยันตัวตนใหม่ |
+| `tokenmaxxing switch [sel]` | สลับไปยังบัญชีที่ดีที่สุด (แบบ greedy และ idempotent) หรือบังคับเลือกบัญชีที่เจาะจง |
+| `tokenmaxxing switch --codex [sel]` | สลับพูลของ Codex (มีผลเมื่อเริ่ม codex ครั้งถัดไป) |
+| `tokenmaxxing ls` | แสดงรายการบัญชีในพูล |
+| `tokenmaxxing status` | บัญชีพร้อมแถบการใช้งาน 5 ชม. / รายสัปดาห์ / แยกตามโมเดล ทั้งที่ใช้งานอยู่และที่หมดโควตาจนกว่าจะรีเซ็ต |
+| `tokenmaxxing status --force` | เพิ่มเติมคือ ping ทุกบัญชี (คำขอ haiku เล็กๆ บัญชีละหนึ่งครั้ง) เพื่อให้ตัวจับเวลาเซสชัน 5 ชม. ทั้งหมดเริ่มนับตอนนี้ แล้วเก็บตัวอย่างข้อมูลใหม่ |
+| `tokenmaxxing watch [seconds]` | สถานะแบบเรียลไทม์ เรนเดอร์ใหม่ทุก N วินาที (ค่าเริ่มต้น 120 ต่ำสุด 30 ไม่มีการ ping) |
+| `tokenmaxxing config [get\|set\|unset\|tidy]` | config ที่มีผลจริงพร้อมแหล่งที่มา แก้ไขคีย์แบบจุด (dotted keys) `tidy` จะตัดคีย์ที่ไม่รู้จักออก |
+| `tokenmaxxing check` | ประเมินการตัดสินใจสลับหนึ่งครั้ง (นี่คือสิ่งที่ตัวจับเวลาเป็นระยะรัน) |
+| `tokenmaxxing serve [setup\|link\|unlink\|links]` | เดมอนสะพานเชื่อม Slack (Socket Mode ไม่ต้องมี URL สาธารณะ) |
+| `tokenmaxxing doctor` | ตรวจสอบว่า supervisor และรายการการตั้งค่ายังอยู่ครบ |
+| `tokenmaxxing rename [--codex] <sel> <label>` | เปลี่ยนป้ายชื่อบัญชีในพูล |
+| `tokenmaxxing rm <sel>` | ลบบัญชีออกจากพูล |
+| `tokenmaxxing uninstall` | ลบ supervisor และรายการการตั้งค่า (บัญชีและ credential จะถูกเก็บไว้) |

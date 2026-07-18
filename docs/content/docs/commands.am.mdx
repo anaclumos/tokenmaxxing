@@ -1,0 +1,25 @@
+---
+title: Commandዎች
+description: "እያንዳንዱ የ tokenmaxxing command እና ምን እንደሚያደርግ"
+---
+
+| Command | ምን እንደሚያደርግ |
+|---|---|
+| `tokenmaxxing init` | አሁን ያለውን መለያ ያስገባል፣ supervisor፣ hookዎች እና statusline ን ይጭናል |
+| `tokenmaxxing init --codex` | ለ Codex ተመሳሳይ፦ login ን ያስገባል፣ codex supervisor እና Stop hook ን ይጭናል |
+| `tokenmaxxing add` | ተጨማሪ መለያ ይመዘግባል (የተነጠለ login፣ ወደ pool የተሰበሰበ) |
+| `tokenmaxxing add --codex` | ተጨማሪ የ Codex መለያ ይመዘግባል (የተነጠለ login) |
+| `tokenmaxxing auth [sel \| --all]` | የተሰበሰበ መለያን በቦታው እንደገና ያረጋግጣል። ባዶ pool ን ዘርዝሮ የትኛውን እንደሆነ ይጠይቃል፤ selector አንድ መለያ ላይ ያነጣጥራል እና በየትኛው email መግባት እንዳለብዎ ይነግርዎታል፤ `--all` reauth-የሚያስፈልገውን እያንዳንዱን መለያ አንድ በአንድ ያልፋል |
+| `tokenmaxxing switch [sel]` | ወደ ምርጡ መለያ ይቀይራል (greedy፣ idempotent) ወይም የተወሰነን በግድ ያደርጋል |
+| `tokenmaxxing switch --codex [sel]` | የ Codex pool ን ይቀይራል (በሚቀጥለው codex ጅምር ላይ ተግባራዊ ይሆናል) |
+| `tokenmaxxing ls` | የተሰበሰቡ መለያዎችን ይዘረዝራል |
+| `tokenmaxxing status` | መለያዎችን ከ5ሰ / ሳምንታዊ / በሞዴል የአጠቃቀም barዎች ጋር፣ ንቁ እና እስከ-ዳግም-ማስጀመሪያ-የተሟጠጠ |
+| `tokenmaxxing status --force` | በተጨማሪም እያንዳንዱን መለያ ping ያደርጋል (ለእያንዳንዱ አንድ ትንሽ haiku request) ሁሉም የ5ሰ session timerዎች አሁን እንዲጀምሩ፣ ከዚያ በአዲስ ናሙና ይወስዳል |
+| `tokenmaxxing watch [seconds]` | ቀጥታ status፣ በየ N ሰከንዱ እንደገና የሚቀርብ (ነባሪ 120፣ ዝቅተኛ 30፤ በጭራሽ ping አያደርግም) |
+| `tokenmaxxing config [get\|set\|unset\|tidy]` | ተግባራዊ config ከምንጮች ጋር፤ በነጥብ የተለዩ keyዎችን ያርትዑ፤ `tidy` የማይታወቁ keyዎችን ያስወግዳል |
+| `tokenmaxxing check` | የመቀያየር ውሳኔን አንድ ጊዜ ይገመግማል (ወቅታዊው timer የሚያሄደው ይህ ነው) |
+| `tokenmaxxing serve [setup\|link\|unlink\|links]` | የ Slack bridge daemon (Socket Mode፣ ይፋዊ URL የለም) |
+| `tokenmaxxing doctor` | supervisor እና የ settings ግቤቶች መቆየታቸውን ያረጋግጣል |
+| `tokenmaxxing rename [--codex] <sel> <label>` | የተሰበሰበ መለያን እንደገና ይሰይማል |
+| `tokenmaxxing rm <sel>` | መለያን ከ pool ያስወግዳል |
+| `tokenmaxxing uninstall` | supervisor እና የ settings ግቤቶችን ያስወግዳል (መለያዎች እና credentialዎች ይቀመጣሉ) |

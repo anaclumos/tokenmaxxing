@@ -1,0 +1,28 @@
+---
+title: Quickstart
+description: Install tokenmaxxing, import your current account, and pool more
+---
+
+Requires [Bun](https://bun.sh) and Claude Code, on macOS or Linux.
+
+```sh
+bun add -g tokenmaxxing
+tokenmaxxing init
+```
+
+`init` does five things:
+
+1. Imports the account you are already logged in with as account #1 (there is no separate `adopt` command).
+2. Installs the `claude` supervisor shim.
+3. Installs three entries in Claude Code's `settings.json`: a statusLine, a Stop hook, and a SessionStart hook (plus a subagentStatusLine entry).
+4. Appends the supervisor's bin directory to your shell rc's PATH (idempotent, marked with a `# tokenmaxxing PATH` comment). It has to sit ahead of the real `claude` on PATH to intercept it.
+5. Installs a periodic check timer (a launchd agent on macOS, a systemd user timer on Linux) that runs `tokenmaxxing check` every 180 seconds.
+
+Restart your shell, then add more accounts and go:
+
+```sh
+tokenmaxxing add        # logs one more account in, in isolation, and pools it
+claude                  # use claude as always
+```
+
+`tokenmaxxing` is also aliased as `xx`. Bare `tokenmaxxing` (or `xx`) runs `status`; `switch` stays explicit.

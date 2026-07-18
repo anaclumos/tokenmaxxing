@@ -1,0 +1,28 @@
+---
+title: 快速上手
+description: "装好 tokenmaxxing，拿侬当前嗰账户导进来，再汇拢更多账户。"
+---
+
+需要 [Bun](https://bun.sh) 搭 Claude Code，勒 macOS 或者 Linux 高头。
+
+```sh
+bun add -g tokenmaxxing
+tokenmaxxing init
+```
+
+`init` 会做五桩事体：
+
+1. 拿侬已经登进嗰账户当作 1 号账户导入（呒没另外嗰 `adopt` 命令）。
+2. 装好 `claude` supervisor 垫片。
+3. 勒 Claude Code 嗰 `settings.json` 里向装三条条目：一条 statusLine、一条 Stop hook、搭一条 SessionStart hook（另外还有一条 subagentStatusLine 条目）。
+4. 拿 supervisor 嗰 bin 目录加到侬 shell rc 嗰 PATH 高头（幂等嗰，用 `# tokenmaxxing PATH` 注释标牢）。伊必须勒 PATH 高头排勒真嗰 `claude` 前头，先拦得牢伊。
+5. 装一个定期检查嗰定时器（macOS 高头是一个 launchd agent，Linux 高头是一个 systemd 用户定时器），每 180 秒跑一趟 `tokenmaxxing check`。
+
+重启侬嗰 shell，然后再添几个账户就好开跑：
+
+```sh
+tokenmaxxing add        # 隔离登进多一个账户，再汇拢进池子
+claude                  # 照常用 claude
+```
+
+`tokenmaxxing` 还有一个别名叫 `xx`。单独嗰 `tokenmaxxing`（或者 `xx`）跑嗰是 `status`；`switch` 一直要写清爽。

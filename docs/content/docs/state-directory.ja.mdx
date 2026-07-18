@@ -1,0 +1,25 @@
+---
+title: 状態ディレクトリのレイアウト
+description: "~/.config/tokenmaxxing 以下のすべてのファイルとディレクトリ"
+---
+
+すべては `~/.config/tokenmaxxing/` の下に存在します (`TOKENMAXXING_HOME` で上書き可能。外部から観測可能なパスにはそれぞれ env オーバーライドがあるため、ツール全体をテストで密閉的に実行できます)。
+
+| パス | 保持内容 |
+|---|---|
+| `config.json` | あなたの設定 (疎で、デフォルトはフィールドごとに適用される) |
+| `accounts.json` | プールされた Claude アカウントの非機密インデックス。ラベル、ID、キャッシュ済み使用量ウィンドウ。トークンは決して含まない |
+| `usage.json` | statusline の tee による集計ウィンドウのスナップショット。その mtime がフィードの生存ハートビート |
+| `model-usage.json` | `/usage` からの TTL キャッシュ済みのモデルごとの週次上限 |
+| `lastswap.json` | 直近の切り替えのエポックタイムスタンプ。45秒のクールダウンを駆動する |
+| `lock` | 切り替えを直列化する `flock` ファイル |
+| `tokenmaxxing.log` | 追記のみのイベントログ |
+| `bin/` | PATH シム。`claude`、`codex`、および `tokenmaxxing` / `xx` のエントリポイント |
+| `respawn/<session-id>` | スーパーバイザーが監視する枯渇待機の再起動マーカー |
+| `creds/` | Linux のみ。0700ディレクトリ内の0600のパーク済み認証情報ファイル (macOS は代わりにアカウントごとのキーチェーンアイテムとして認証情報をパークする) |
+| `onboard/`, `sample/` | `add` / `auth` のログインとパーク済みアカウントの `/usage` プローブのための使い捨ての分離設定ホーム。平文の認証情報を保持する onboard ホームは取り込み後に削除される |
+| `slack.json` | `xx serve` のトークンとチャンネルリンク (0600) |
+| `slack-threads/` | `xx serve` のスレッドごとのセッションレコード |
+| `codex-*` | 並列した Codex プール。`codex-accounts.json`、`codex-lastswap.json`、`codex-lock`、`codex-creds/`、`codex-onboard/`、`codex-respawn/`、および `codex-live/` (実行中のスーパーバイズされた codex セッションごとに1つの PID 検証済みプレゼンスファイル。そのためライブアカウントが切り替えターゲットになることは決してない) |
+
+自身のディレクトリの外で、tokenmaxxing が触れるのは正確に次のものだけです。`~/.claude.json` (`oauthAccount` の切り替え)、Claude Code の `settings.json` (フックと statusline のエントリ)、ライブ認証情報ストア (macOS では `Claude Code-credentials` キーチェーンアイテム、Linux では `.credentials.json`)、`~/.claude.lock` (切り替え中に取得する claude のリフレッシュロック)、codex の `auth.json` と `hooks.json`、そして launchd または systemd の定期チェックユニット。

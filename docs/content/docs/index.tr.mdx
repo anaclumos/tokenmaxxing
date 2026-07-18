@@ -1,13 +1,35 @@
 ---
-title: Hoş geldiniz
-description: Kendi agent CLI hesaplarınızı havuzlayın ve her oturumu hareket halinde tutun
+title: tokenmaxxing
+description: "Otomatik Claude Code hesap değiştirme - kendi abonelik hesaplarınızı havuzlayın ve kota dolduğunda kimlik bilgilerini anında değiştirin, böylece her oturum devam ettirilebilir kalır."
 ---
 
-tokenmaxxing, Claude Code'u (ve Codex'i) kendilerine ait birkaç hesap üzerinde çalıştıran kişiler için bir CLI'dir. Kullanım kotalarını izler, bir limite ulaşılmadan önce aktif kimlik bilgisini en fazla boşluğa sahip hesaba geçirir ve oturumlarınızı geçişler arasında devam ettirilebilir tutar.
+tokenmaxxing, otomatik Claude Code hesap değiştirme için bir CLI'dir. Sahip olduğunuz birden fazla abonelik (Pro/Max) hesabını havuzlar ve kullanımdaki hesap bir kullanım limitine yaklaştığında aktif kimlik bilgisini daha taze bir hesaba anında değiştirir. `claude` komutunu her zaman yaptığınız gibi çalıştırırsınız; geçiş güvenli bir tur sınırında gerçekleşir ve çalışan oturumunuz yeni hesapta aynı konuşmayı yeniden başlatmadan sürdürür. Aynı anda birçok eşzamanlı oturumda birden çalışır.
+
+Görünür tek davranış en kötü durumdur: tüm havuz limitine ulaştığında, oturum bir geri sayımla duraklar ve sıfırlanan ilk hesapta otomatik olarak devam eder (Ctrl-C anında devam ettirir).
+
+<Callout>
+Kapsam: macOS ve Linux üzerinde Claude Code, ayrıca ikinci ve paralel bir havuz olarak OpenAI'nin Codex CLI'si. API anahtarlarını değil, abonelik hesaplarını havuzlar. Bu, kendi sahip olduğunuz hesapları, kendi çalıştırdığınız oturum ve agent'larda havuzlamaya yönelik kişisel kullanım amaçlı bir araçtır - bkz. [Kişisel kullanım ve hizmet şartları](/tr/terms).
+</Callout>
+
+## Sorun
+
+Bir Claude aboneliği aynı anda üç limiti ölçer (hepsi `/usage` ile doğrulanmıştır):
+
+- **Mevcut oturum**: kayan 5 saatlik bir pencere.
+- **Mevcut hafta (tüm modeller)**: 7 günlük bir toplam.
+- **Mevcut hafta, model başına**: her bir model ailesi için ayrı haftalık üst sınırlar. Bunlar şu anda yalnızca Sonnet ve Fable için mevcuttur ve yalnızca Fable üst sınırı önemli olacak kadar sıkıdır - toplam limitten çok önce devreye girer. Bir makine hafta-Fable'da halihazırda %80'de iken hafta-tümü'nde %50'de kalabilir.
+
+Haftalık kota kullan ya da kaybet ilkesine tabidir: bir hesabın sabit haftalık sıfırlamasına kadar tüketmediği ne varsa kaybedilir. Birden fazla hesabınız varsa, rasyonel strateji kotayı kendi haftalık temposunun en gerisinde kalan hangi hesapsa onda tüketmeye devam etmek ve herhangi bir tek limit oturumun ortasında duvara çarpmadan önce başka bir hesaba geçmektir.
+
+Bunu elle yapmak oturumu kapatmak, oturum açmak ve konuşmanızı kaybetmek anlamına gelir. tokenmaxxing bunu otomatikleştirir: çalışan bir `claude`, istekler arasında kimlik bilgisi deposunu yeniden denetler, böylece altından değiştirilen bir kimlik bilgisi yerinde benimsenir (macOS'ta yaklaşık 30 saniye içinde, Linux'ta bir sonraki istekte). Sade bir geçiş oturumunuzu asla yeniden başlatmaz. Hâlâ süreç yönetimi gerektiren tek durum tamamen tükenmiş bir havuzdur - bir oturum kendini duraklatamaz - ve ince gözetmenin var olma nedeni de tam olarak budur.
+
+`claude` ile ilgili diğer her şey değişmeden kalır: tüm bayraklar, MCP sunucuları, hook'lar ve skill'ler doğrudan geçer.
 
 ## Nereye gidilir
 
 <Cards>
-  <Card title="Eksiksiz kılavuz" href="/tr/docs/tokenmaxxing" />
-  <Card title="GitHub'daki kaynak" href="https://github.com/anaclumos/tokenmaxxing" />
+  <Card title="Hızlı başlangıç" href="/tr/quickstart" />
+  <Card title="Komutlar" href="/tr/commands" />
+  <Card title="Mimari" href="/tr/architecture" />
+  <Card title="Geçişe nasıl karar verilir" href="/tr/switching" />
 </Cards>

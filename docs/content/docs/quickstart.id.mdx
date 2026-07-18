@@ -1,0 +1,28 @@
+---
+title: Mulai cepat
+description: "Pasang tokenmaxxing, impor akun Anda saat ini, dan gabungkan lebih banyak"
+---
+
+Membutuhkan [Bun](https://bun.sh) dan Claude Code, di macOS atau Linux.
+
+```sh
+bun add -g tokenmaxxing
+tokenmaxxing init
+```
+
+`init` melakukan lima hal:
+
+1. Mengimpor akun yang sudah Anda login sebagai akun #1 (tidak ada perintah `adopt` terpisah).
+2. Memasang shim supervisor `claude`.
+3. Memasang tiga entri di `settings.json` milik Claude Code: sebuah statusLine, sebuah hook Stop, dan sebuah hook SessionStart (ditambah sebuah entri subagentStatusLine).
+4. Menambahkan direktori bin supervisor ke PATH pada shell rc Anda (idempoten, ditandai dengan komentar `# tokenmaxxing PATH`). Ia harus berada di depan `claude` yang asli di PATH agar dapat mencegatnya.
+5. Memasang pengatur waktu pemeriksaan berkala (agen launchd di macOS, pengatur waktu pengguna systemd di Linux) yang menjalankan `tokenmaxxing check` setiap 180 detik.
+
+Mulai ulang shell Anda, lalu tambahkan lebih banyak akun dan mulai:
+
+```sh
+tokenmaxxing add        # login satu akun lagi, secara terisolasi, dan menggabungkannya
+claude                  # gunakan claude seperti biasa
+```
+
+`tokenmaxxing` juga memiliki alias `xx`. Menjalankan `tokenmaxxing` (atau `xx`) tanpa argumen menjalankan `status`; `switch` tetap eksplisit.

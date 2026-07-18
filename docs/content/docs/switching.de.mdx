@@ -1,0 +1,41 @@
+---
+title: Wie der Wechsel entschieden wird
+description: "Aktivierung, Screening-Schranken, Tempodruck und der greedy- vs. harte Pfad"
+---
+
+Die Entscheidung hat zwei Ebenen: ein Aktivierungstor und dann einen greedy- oder harten Pfad.
+
+## Aktivierung
+
+Unterhalb von `policy.greedySessionFloor` (Standard 50, in Prozent des 5-Stunden-Sitzungsfensters) läuft die Entscheidung gar nicht - eine frische Sitzung reitet auf ihrem Konto. Sobald das aktive Sitzungsfenster zu 50 % genutzt ist oder eine harte Schranke überschritten wird, greift die Entscheidung.
+
+## Screening-Schranken
+
+Die Schwellenwerte sind Screening-Schranken, nicht der Auslöser für Panik:
+
+- `thresholds.session`: 95. Eine 5-Stunden-Zurücksetzung ist billig auszusitzen, daher wechselt das Sitzungsfenster früher weg.
+- `thresholds.weekly`: 98. Diese eine Schranke deckt sowohl das 7-Tage-Aggregat als auch jede wöchentliche Pro-Modell-Obergrenze ab. Das Wochenkontingent ist use-it-or-lose-it, daher wird es nah an die Wand ausgeschöpft.
+
+Beide liegen bewusst unter 100: Der Spielraum ist das Budget, um eine saubere Zuggrenze zu erreichen (plus bis zu einen Zug Übernahmeverzögerung auf macOS), bevor das Konto tatsächlich sein Limit erreicht. Dieselben Schranken screenen Wechselkandidaten: Ein Konto über einer seiner Schranken ist kein gültiges Ziel. Auslöser und Screening verwenden immer dieselben effektiven Schranken (Schwellenwerte minus `policy.projectionMargin`), denn ein Screening, das laxer als der Auslöser ist, würde Wechsel auf Konten landen lassen, die der Auslöser sofort wieder markiert, und den Pool hin- und herpendeln lassen.
+
+## Das Ziel: Tempodruck
+
+Unter den nutzbaren Konten ist das Ziel dasjenige, das seinem eigenen Wochentempo am weitesten hinterherhinkt: höchster **Tempodruck**, definiert als verbleibender Wochenprozentsatz geteilt durch die Zeit bis zur wöchentlichen Zurücksetzung dieses Kontos. Das Konto, dessen meistes Kontingent kurz vor dem Verfall steht, gewinnt. Gleichstände werden zur nächstgelegenen wöchentlichen Zurücksetzung aufgelöst, dann zur niedrigsten 7-Tage-Nutzung.
+
+Alles läuft über zwischengespeicherte Fenster, die als absolute UTC-Epochen gespeichert sind, sodass ein veralteter Snapshot dennoch korrekt aufgelöst wird: Eine bereits vergangene wöchentliche Zurücksetzung wird in exakten 7-Tage-Schritten nach vorne extrapoliert, und jedes Fenster jenseits seiner zwischengespeicherten Zurücksetzung zählt als frisch leer (nie ein Grund zu wechseln, nie ein Grund, ein Konto auf der Bank zu halten).
+
+## Greedy- vs. harter Pfad
+
+- **Greedy-Pfad** (aktiviert, aber unter jeder Schranke): Alle Konten ranken, das aktuelle inklusive. Wenn das aktuelle Konto bereits gewinnt oder gleichauf liegt, nichts tun. Andernfalls auf das strikt bessere Konto wechseln. Er wartet nie und parkt nie vorab - ein nutzbares aktuelles Konto wird nicht gegen ein Warten eingetauscht. Da das aktuelle Konto ebenfalls gerankt wird, sind sowohl der automatische Pfad als auch ein bloßes `tokenmaxxing switch` idempotent: periodisches Auswerten konvergiert auf das richtige Konto und bleibt dann dort.
+- **Harter Pfad** (eine Schranke überschritten): Weg zum besten nutzbaren Kandidaten wechseln. Stellt sich der Refresh-Token eines Kandidaten als tot heraus, wird er als neuauthentifizierungsbedürftig markiert und der nächste Kandidat versucht. Ist nichts nutzbar, läuft die Erschöpft-Warten-Logik; nur ein Aufrufer, der die Sitzung tatsächlich pausieren kann (der überwachte Stop-Hook), darf auf ein noch blockiertes, aber am nächstgelegen sich erholendes Konto vorab parken.
+
+## Pro-Modell-Obergrenzen
+
+`policy.switchModels` (Standard `["fable"]`) benennt die Modellfamilien, deren wöchentliche Pro-Modell-Obergrenze einen Wechsel auslösen kann. Der Abgleich erfolgt über das Familien-Token, nie über die exakte Anzeigezeichenkette: Modell-Anzeigenamen driften ("Fable" wurde zu "Fable 5"), und ein Gate auf exakte Zeichenketten hat einmal den Pro-Modell-Wechsel stillschweigend vollständig deaktiviert. Zwei zugehörige Sicherheitsregeln:
+
+- Ein unbekanntes aktives Modell gated jede konfigurierte Familie. Direkt nach einem Wechsel, der Snapshots löscht, kann eine kopflose Maschine modellblind laufen; Unbekanntes einmal als unbeschränkt zu behandeln, ließ ein Konto stundenlang unbemerkt an seiner Fable-Obergrenze sitzen.
+- Das Kandidaten-Screening zählt auch gegatete Pro-Modell-Obergrenzen mit, sodass ein Pool, in dem jedes Konto seine Fable-Obergrenze verbrannt hat, nicht im Round-Robin rotiert.
+
+## Abkühlzeit
+
+Eine 45-sekündige Abkühlzeit nach dem Wechsel gated den automatischen Pfad. Der Statusline-Tee wird für dieselben 45 Sekunden nach einem Wechsel unterdrückt (die Übernahme dauert auf macOS bis zu 30 Sekunden), da eine frühere Auswertung sonst auf Daten liefe, die der Wechsel selbst ungültig gemacht hat - genau dieses Szenario erzeugte einmal eine A-nach-B-und-zurück-Respawn-Schleife. Ein manuelles `tokenmaxxing switch` ist von der Abkühlzeit nicht betroffen.

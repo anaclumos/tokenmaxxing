@@ -1,0 +1,48 @@
+---
+title: Architecture
+description: "የ supervisor shim፣ statusline tee፣ Stop hook መቀያየር፣ እና የመቀበል ሞዴል"
+---
+
+tokenmaxxing በዚያ ስም ሲጠራ እንደ `claude` supervisor የሚሰራ፣ hook እና statusline shimዎችን በውስጣዊ subcommandዎች የሚያገለግል፣ አለበለዚያ ደግሞ CLI ን የሚያከፋፍል አንድ ባለ-ብዙ-ጥሪ መግቢያ ነጥብ (`src/main.ts`) ነው። በቀጥታ በ Bun ስር ይሄዳል፤ የ npm ጥቅሉ የ TypeScript ምንጭ ኮድ እንጂ build አይልክም።
+
+የሚንቀሳቀሱ ክፍሎች፦
+
+## የ supervisor shim
+
+`init` `claude` የተሰኘ ባለ2-መስመር shell shim ወደ `~/.config/tokenmaxxing/bin/` ይጽፋል እና ያንን directory በ PATH ላይ አንደኛ ያደርገዋል። `claude` ብለው ሲተይቡ፣ shim ው supervisor ን ያሄዳል፣ እሱም ትክክለኛውን claude binary በተወረሰ stdio እና በተቀመጠ `stty -g` የterminal snapshot ያስነሳል። እሱ የ process እና terminal አስተዳዳሪ ብቻ ነው፦ የ API ትራፊክን በጭራሽ proxy አያደርግም እና በበረራ ላይ ያሉ tokenዎችን በጭራሽ አይነካም።
+
+Print-mode ጥሪዎች (`claude -p`፣ `--version`፣ `--help`)፣ interactive-ያልሆኑ subcommandዎች (`claude mcp`፣ `claude config`፣ ወዘተ)፣ እና የ tokenmaxxing የራሱ probeዎች ያለ session አስተዳደር በቀጥታ ያልፋሉ። ለ interactive session፣ supervisor ው session id ይይዛል (አዲስ በማመንጨት፣ ወይም በ `--session-id` / `-r` / `-c` ያስተላለፉትን እንደገና በመጠቀም)፣ የ launch flagዎችዎን ያስቀምጣል ስለዚህ በኋላ ዳግም ማስጀመር እነሱን መልሶ ማጫወት ይችላል፣ ከዚያም ለዚያ session የተያዘ የ respawn marker ፋይል ይጠብቃል።
+
+## የ statusline tee
+
+Claude Code በእያንዳንዱ turn የ rate-limit ውሂብ (`rate_limits.five_hour` እና `rate_limits.seven_day`) ወደ statusline ው stdin ይገፋል። tokenmaxxing የ statusline ቦታውን ስለሚይዝ፣ renderer ው እንደ ነጻ፣ በ push-ላይ የተመሰረተ የአጠቃቀም feed ሆኖ ያገለግላል፦ በእያንዳንዱ tick ጥቅል መስኮቶቹን ከንቁ ሞዴሉ ጋር ወደ `usage.json` ይtee ያደርጋል። በሞዴል ገደቦች በ statusline stdin ውስጥ የሉም፤ የሚመጡት ከ `claude -p '/usage'` ብቻ ነው (ነጻ፣ ዜሮ tokenዎች)፣ እሱም በ TTL የሚጠየቅ እና ንቁ ሞዴሉ በአቅም ሲገደብ ወደ `model-usage.json` cache የሚደረግ።
+
+tee ው በለውጥ-ላይ-ይጽፋል፦ ቁጥሮች ሳይለወጡ ሲቀሩ የፋይሉን mtime ብቻ ያስተካክላል፣ ይህም እንደ feed ው የህያውነት heartbeat ሆኖ ይሰራል። ትኩስነት ሁልጊዜ በ mtime ይፈረዳል እንጂ በተካተተው timestamp በጭራሽ አይደለም።
+
+## የ Stop hook እና መቀያየሩ
+
+በእያንዳንዱ turn ወሰን፣ Stop hook ው የመቀያየር ውሳኔን ያሄዳል ([መቀያየር እንዴት እንደሚወስን](/am/switching) ይመልከቱ)። መቀያየር ሲያስፈልግ፣ በ `flock(2)` ብቸኛ lock ስር ይከሰታል (macOS የ `flock(1)` binary ስለማይልክ በ `bun:ffi` የተወሰደ)፣ እና የ credential ጽሁፎች በተጨማሪም ከ Claude Code የራሱ refresh lock ጋር ይተሳሰራሉ። በወሳኙ ክፍል ውስጥ፣ አንድ መቀያየር፦
+
+1. አሁን ያለውን ቀጥታ credential ወደ ትክክለኛ ባለቤቱ የተያዘ backup ይሰበስባል።
+2. የታለመውን መለያ አዲስ የተታደሰ credential እንደ ቀጥታ ይጭናል፣ ወደ ነባሩ ቀጥታ blob በማዋሃድ ስለዚህ ተጓዳኝ ሁኔታ (እንደ በ-MCP-server OAuth tokenዎች ያሉ) ይተርፋል።
+3. የታለመውን የተሽከረከረ token ወደ ራሱ backup ያስቀምጣል።
+4. በ `~/.claude.json` ውስጥ ያለውን `oauthAccount` field በ atomic መንገድ እንደገና ይጽፋል።
+5. አዲሱን ንቁ label ያረጋግጣል እና ያረጁ የአጠቃቀም snapshotዎችን ያጸዳል፣ ሁሉም lock ከመለቀቁ በፊት፣ ስለዚህ crash በጭራሽ የተጫነውን credential እና ንቁ label ን የተለያዩ መለያዎችን እያመለከቱ አይተውም።
+
+ሁሉም default-profile sessionዎች አንዱን ቀጥታ credential ስለሚጋሩ፣ አንድ መቀያየር እያንዳንዱን session በአንድ ጊዜ ያዛውራል፣ እና flock ው በተጨማሪም lock ስር እንደገና-ማረጋገጥ የሚሽቀዳደሙ hookዎች ሁለት መለያዎችን ከማቃጠል ይከለክላል።
+
+## በቦታው መቀበል
+
+እየሄደ ያለ claude session በ request መካከል የ credential store ውን ይጠይቃል፦ በ macOS ላይ keychain ን በአጭር cache እንደገና ያነባል እና access tokenዎችን ያነጻጽራል፤ በ Linux ላይ የ credentials ፋይሉን mtime ይመረምራል እና በለውጥ ላይ token cacheዎቹን ያጸዳል። የመጨረሻው ውጤት የተቀየረ credential በ macOS ላይ በ30 ሰከንድ ገደማ ውስጥ እና በ Linux ላይ በሚቀጥለው request በእያንዳንዱ እየሄደ ባለ session፣ ያለ ምንም ዳግም ማስጀመር ይወሰዳል። ተራ መቀያየር ምንም marker የማይጽፍ እና ምንም respawn የማያስነሳ ለዚህ ነው - session በአዲሱ መለያ ላይ ብቻ ይቀጥላል። በ session ውስጥ ያለ `/usage` ተመሳሳይ token cacheዎችን ስለሚጋራ፣ የመለያ ማሳያው ከመቀበል ጋር አብሮ ይገለበጣል።
+
+## የተሟጠጠ-pool ጥበቃ እና በራስ-ሰር መቀጠል
+
+በ pool ውስጥ ያለ እያንዳንዱ መለያ ከ barዎቹ በላይ ሲሆን ብቻ Stop hook ው respawn marker ይጽፋል (marker schema ው `waitUntil` timestamp ይፈልጋል፤ ተራ መቀያየር በጭራሽ ማምረት አይችልም)። supervisor ው marker ውን ያያል፣ child ውን አስቀድሞ-በተረጋገጠው turn ወሰን ላይ SIGTERM ያደርገዋል (Stop hook ው transcript ው disk ላይ ከሆነ እና claude idle ከሆነ በኋላ ስለሚሄድ፣ ምንም አይጠፋም)፣ terminal ን ይመልሳል፣ ወደ ቀጣዩ ዳግም ማስጀመሪያ countdown ያሳያል፣ ከዚያም `claude --resume <session-id>` ን በተመለሰው መለያ ላይ እንደገና ያስነሳል። በ countdown ጊዜ Ctrl-C ወዲያውኑ ይቀጥላል። በራስ-ሰር ጥበቃ በ `policy.maxWaitMs` የተገደበ ነው (ነባሪ 1 ሰዓት)፤ ከዚያ ባሻገር ውሳኔው ከመጠበቅ ይልቅ pool ን እንደተሟጠጠ ያሳውቃል።
+
+## ወቅታዊው የፍተሻ timer
+
+Hookዎች የሚቀሰቀሱት በ turn ወሰኖች ላይ ብቻ ነው፣ እና አንድ ረጅም agentic turn መስኮትን ያለ አንድ ወሰን ከጤናማ ወደ የተሟጠጠ ማቃጠል ይችላል። ስለዚህ `init` በተጨማሪም ወቅታዊ timer ይጭናል - በ macOS ላይ launchd agent፣ በ Linux ላይ systemd user timer - እሱም ከ turn እንቅስቃሴ ውጭ በየ180 ሰከንዱ `tokenmaxxing check` ን ያሄዳል።
+
+## SessionStart hook
+
+session ሲጀምር ወይም ሲቀጥል ተመሳሳዩን ግምገማ ያሄዳል፣ ስለዚህ አዲስ session በትክክለኛው መለያ ላይ ይጀምራል። post-swap cooldown ው ከ respawn በኋላ ወዲያውኑ ትክክለኛ no-op ያደርገዋል።

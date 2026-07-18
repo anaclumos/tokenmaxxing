@@ -1,0 +1,31 @@
+---
+title: Agent SDK yüzeyi
+description: "Havuzu, kendi çalıştırdığınız agent'larda Claude Agent SDK ile eşleştirin"
+---
+
+Paketin programatik giriş noktası (`exports["."]` `src/sdk.ts`'i işaret eder), tokenmaxxing'i kendi havuzlanmış hesaplarınıza karşı oluşturduğunuz agent'lar için Claude Agent SDK ile eşleştirir. Uygulamanız Bun altında çalışmalıdır (tokenmaxxing TypeScript kaynağı gönderir ve `bun:ffi` kullanır).
+
+```ts
+import { query } from "@anthropic-ai/claude-agent-sdk";
+import { ensureBestAccount, pooledOptions, stopHookCheck } from "tokenmaxxing";
+
+await ensureBestAccount(); // run the switch decision before the spawn
+
+for await (const message of query({
+  prompt: "...",
+  options: {
+    ...pooledOptions(), // pinned real claude + scrubbed env
+    hooks: { Stop: [{ hooks: [stopHookCheck] }] }, // re-decide at every turn boundary
+  },
+})) {
+  // capture the session id from the init message for `resume` across swaps
+}
+```
+
+Agent SDK, `query()` başına bir claude alt süreci başlatır ve kimlik bilgilerini başlatmada bir kez okur - statusline yok, query ortası anında geçiş yok - bu nedenle entegrasyon sınır güdümlüdür:
+
+- `ensureBestAccount()`, CLI hook'larının ve zamanlayıcının çalıştırdığı kararın aynısıdır (çubuklar, tempo baskısı, bekleme süresi, hepsi paylaşılan kod), asla öngörücü değil: bir SDK oturumu asla tükenmiş bir geri sayım için duraklatılamaz.
+- `pooledOptions()`, `pathToClaudeCodeExecutable`'ı gerçek claude ikili dosyasına sabitler (asla gözetmen sarmalayıcısına değil) ve her ortam kimlik bilgisi geçersiz kılmasının temizlendiği tam bir değiştirme `env`'i sağlar. Uygulamanızın ortamında `CLAUDE_CONFIG_DIR` veya `CLAUDE_SECURESTORAGE_CONFIG_DIR` ayarlıysa hızla başarısız olur: Linux'ta bir geçiş, canlı kimlik bilgisini bunların işaret ettiği yere yazarken temizlenmiş alt süreç varsayılan depoyu okur; sessiz bir yanlış hesap senkronizasyon kaybı.
+- `stopHookCheck` kararı tur sınırlarında yeniden çalıştırır; indirdiği bir geçiş bir sonraki başlatmada etkin olur. Yeniden fırlatmak yerine kendi hatalarını yakalar (stderr'e ve günlüğe kaydeder), çünkü ele alınmamış bir hook istisnası agent'ı kesintiye uğratabilir ve bozuk bir geçiş denetimi yüzünden bir turu iptal etmek, mevcut hesapta ilerlemekten daha pahalıya mal olur.
+
+`sdk.ts` Agent SDK'nın kendisinden hiçbir şey içe aktarmaz; değerleri SDK'nın seçeneklerine yapısal olarak yayılır.

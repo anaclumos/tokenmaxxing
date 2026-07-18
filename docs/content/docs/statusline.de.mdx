@@ -1,0 +1,21 @@
+---
+title: Die Statusline
+description: "Kontingent in Farbe getragen, eine Zeile, jedes Konto sichtbar"
+---
+
+tokenmaxxing rendert die Statusline von Claude Code nativ (während es die Nutzungszufuhr teet). Das Gestaltungsprinzip: Das Kontingent wird in Farbe getragen, nicht in Zahlen. Eine Zeile, zum Beispiel:
+
+```
+tm-wt-demo Fable 5 (high) +156/-23  ◆ 𝒇 2h 1d  ◇ 19h  ◇ 𝒇 2d  ◇ full  ✗ ?
+```
+
+- Jedes Fenster-Token ist seine Zeit-bis-zur-Zurücksetzung, gemalt auf einer kontinuierlichen Grün-zu-Gelb-zu-Rot-Rampe nach Nutzungsprozentsatz (Truecolor, wenn das Terminal es unterstützt, andernfalls auf den 256-Farben-Würfel abgestuft). Die Rampe verankert sich bei reinem Grün für 0, Gelb bei 75 und Rot bei 95 und darüber, sodass die alten Schweregrad-Bänder als Rampenanker fortbestehen.
+- Der Modellname wird durch die Füllung des Kontextfensters auf derselben Rampe gemalt.
+- Ein grünes `◆` leitet die Fenster des aktiven Kontos an; jedes geparkte Konto erhält sein eigenes cyanfarbenes `◇` (rotes `✗`, wenn es eine Neuauthentifizierung benötigt). Konten sortieren nach der nächstgelegenen bevorstehenden Zurücksetzung.
+- Das Pro-Modell steht in jedem Block zuerst als bloße gemalte Initiale: Fable rendert `𝒇`; andere Familien verwenden ihren großgeschriebenen ersten Buchstaben, immer familienabgeglichen.
+- Ein unberührtes geparktes Konto rendert ein grünes `full`. Gemessene Nutzung mit unbekannter Zurücksetzung rendert ein gemaltes `?`, und eine ungemessene Pro-Modell-Obergrenze auf einem gegateten Modell rendert ein ungemaltes `𝒇?` - Ungemessenes darf nie sicher aussehen.
+- Zurücksetzungs-Countdowns zeigen nur die größte Einheit, nie "now" oder "0m"; ein Fenster ohne bevorstehende Zurücksetzung rendert ein grünes `0` (wieder leer).
+- Der Basisname eines verlinkten git-Worktrees leitet die Zeile an; ein Haupt-Checkout rendert dort nichts. Die Erkennung liest das Dateisystem nach einer `.git`-Datei ab und startet nie einen git-Unterprozess.
+- Mit gesetztem `NO_COLOR` fällt die Zeile auf ein zusammengeklebtes numerisches Format zurück (`2h5` bedeutet Zurücksetzung in 2 Stunden, 5 % genutzt; `ctx 42` für die Kontextfüllung) - ohne Farbe darf ein ausgeschöpftes Fenster nicht frisch aussehen.
+
+Subagent-Aufgaben erhalten ihre eigenen Panel-Zeilen über claudes subagentStatusLine-Oberfläche: eine Zeile pro aktiver Aufgabe, der Familienname gemalt durch die Kontextfüllung dieser Aufgabe.

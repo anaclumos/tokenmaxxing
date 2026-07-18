@@ -1,0 +1,31 @@
+---
+title: Saman Agent SDK
+description: "Haɗa tafkin da Claude Agent SDK a cikin agent ɗin da kai kanka kake gudanarwa"
+---
+
+Wurin shigar shirye-shirye na kunshin (`exports["."]` yana nuni ga `src/sdk.ts`) yana haɗa tokenmaxxing da Claude Agent SDK ga agent ɗin da kake ginawa a kan asusunka da ke cikin tafki. Aikace-aikacenka dole ne ya gudana ƙarƙashin Bun (tokenmaxxing yana aika lambar tushe ta TypeScript kuma yana amfani da `bun:ffi`).
+
+```ts
+import { query } from "@anthropic-ai/claude-agent-sdk";
+import { ensureBestAccount, pooledOptions, stopHookCheck } from "tokenmaxxing";
+
+await ensureBestAccount(); // run the switch decision before the spawn
+
+for await (const message of query({
+  prompt: "...",
+  options: {
+    ...pooledOptions(), // pinned real claude + scrubbed env
+    hooks: { Stop: [{ hooks: [stopHookCheck] }] }, // re-decide at every turn boundary
+  },
+})) {
+  // capture the session id from the init message for `resume` across swaps
+}
+```
+
+Agent SDK yana ƙirƙirar subprocess na claude ga kowane `query()` kuma yana karanta tantancewa sau ɗaya lokacin ƙirƙira - babu statusline, babu hot-swap tsakiyar-tambaya - don haka haɗin yana bisa iyaka:
+
+- `ensureBestAccount()` ita ce ainihin shawarar da hooks na CLI da agogo ke gudanarwa (sandunan, matsin sauri, sanyaya, dukkan lambar da ake rabawa), ba ta hangen nesa ba: zaman SDK ba zai taɓa dakatar da shi domin ƙirgar baya na ƙarewa ba.
+- `pooledOptions()` yana ƙayyade `pathToClaudeCodeExecutable` zuwa ainihin binary na claude (ba wrapper na mai kula ba) kuma yana samar da cikakken `env` na maye gurbi tare da share kowane sauya-tantancewa na muhalli. Yana gazawa da sauri idan an saita `CLAUDE_CONFIG_DIR` ko `CLAUDE_SECURESTORAGE_CONFIG_DIR` a cikin muhallin aikace-aikacenka: a kan Linux musanya za ta rubuta tantancewar da ke aiki inda waɗannan suke nuni yayin da subprocess da aka share ke karanta ma'ajin tsohuwa, wani raunin-asusu-marar-daidai a shiru.
+- `stopHookCheck` yana sake gudanar da shawarar a iyakokin zagaye; musanya da ya sauka tana aiki a ƙirƙira ta gaba. Yana kama kuskurorinsa (yana rubutawa zuwa stderr da log) maimakon sake jefawa, domin banda hook da ba a sarrafa ba na iya katse agent, kuma dakatar da zagaye saboda dubawar musanya da ta karye yana da tsada fiye da ci gaba a kan asusun yanzu.
+
+`sdk.ts` ba ya shigo da komai daga Agent SDK da kansa; ƙimominsa suna yaɗuwa cikin tsari zuwa cikin zaɓuɓɓukan SDK.

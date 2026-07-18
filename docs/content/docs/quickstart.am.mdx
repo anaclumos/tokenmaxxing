@@ -1,0 +1,28 @@
+---
+title: ፈጣን ጅምር
+description: "tokenmaxxing ን ይጫኑ፣ አሁን ያለውን መለያዎን ያስገቡ፣ እና ተጨማሪ ያሰባስቡ"
+---
+
+[Bun](https://bun.sh) እና Claude Code ን ይፈልጋል፣ በ macOS ወይም Linux ላይ።
+
+```sh
+bun add -g tokenmaxxing
+tokenmaxxing init
+```
+
+`init` አምስት ነገሮችን ያደርጋል፦
+
+1. አስቀድመው የገቡበትን መለያ እንደ መለያ #1 ያስገባል (የተለየ `adopt` command የለም)።
+2. የ `claude` supervisor shim ን ይጭናል።
+3. በ Claude Code `settings.json` ውስጥ ሦስት ግቤቶችን ይጭናል፦ statusLine፣ Stop hook፣ እና SessionStart hook (በተጨማሪም subagentStatusLine ግቤት)።
+4. የ supervisor ን bin directory ወደ shell rc ዎ PATH ላይ ያክላል (idempotent፣ በ `# tokenmaxxing PATH` አስተያየት ምልክት የተደረገበት)። ትክክለኛውን `claude` ለመጥለፍ በ PATH ላይ ከሱ ፊት መቀመጥ አለበት።
+5. በየ180 ሰከንዱ `tokenmaxxing check` ን የሚያሄድ ወቅታዊ የፍተሻ timer (በ macOS ላይ launchd agent፣ በ Linux ላይ systemd user timer) ይጭናል።
+
+shell ዎን ዳግም ያስጀምሩ፣ ከዚያ ተጨማሪ መለያዎችን ይጨምሩ እና ይቀጥሉ፦
+
+```sh
+tokenmaxxing add        # አንድ ተጨማሪ መለያ በተናጠል ያስገባል እና ያሰባስበዋል
+claude                  # claude ን እንደ ሁልጊዜው ይጠቀሙ
+```
+
+`tokenmaxxing` እንደ `xx` ተለዋጭ ስም አለው። ባዶ `tokenmaxxing` (ወይም `xx`) `status` ን ያሄዳል፤ `switch` ግልጽ ሆኖ ይቆያል።

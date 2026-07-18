@@ -1,0 +1,31 @@
+---
+title: سطح Agent SDK
+description: "استخر را با Claude Agent SDK در عامل‌هایی که خودتان اجرا می‌کنید جفت کنید"
+---
+
+نقطه ورود برنامه‌نویسی‌شده بسته (`exports["."]` به `src/sdk.ts` اشاره می‌کند) tokenmaxxing را با Claude Agent SDK جفت می‌کند، برای عامل‌هایی که در برابر حساب‌های استخرشده خودتان می‌سازید. برنامه شما باید زیر Bun اجرا شود (tokenmaxxing کد منبع TypeScript را عرضه می‌کند و از `bun:ffi` استفاده می‌کند).
+
+```ts
+import { query } from "@anthropic-ai/claude-agent-sdk";
+import { ensureBestAccount, pooledOptions, stopHookCheck } from "tokenmaxxing";
+
+await ensureBestAccount(); // run the switch decision before the spawn
+
+for await (const message of query({
+  prompt: "...",
+  options: {
+    ...pooledOptions(), // pinned real claude + scrubbed env
+    hooks: { Stop: [{ hooks: [stopHookCheck] }] }, // re-decide at every turn boundary
+  },
+})) {
+  // capture the session id from the init message for `resume` across swaps
+}
+```
+
+Agent SDK یک زیرفرایند claude به‌ازای هر `query()` فرا می‌خواند و اعتبارنامه‌ها را یک‌بار هنگام فراخوانی می‌خواند - بدون statusline، بدون جابه‌جایی داغ در میانه پرس‌وجو - بنابراین این یکپارچگی بر پایه مرز است:
+
+- `ensureBestAccount()` دقیقاً همان تصمیمی است که قلاب‌ها و زمان‌سنج CLI اجرا می‌کنند (نوارها، فشار سرعت، دوره خنک‌شدن، همه کد مشترک)، هرگز پیش‌بینانه: یک نشست SDK هرگز نمی‌تواند برای یک شمارش معکوس تهی متوقف شود.
+- `pooledOptions()` مقدار `pathToClaudeCodeExecutable` را به باینری claude واقعی پین می‌کند (هرگز پوشش‌دهنده ناظر) و یک `env` جایگزین کامل با هر پوشش اعتبارنامه محیطی پاکسازی‌شده فراهم می‌کند. اگر `CLAUDE_CONFIG_DIR` یا `CLAUDE_SECURESTORAGE_CONFIG_DIR` در محیط برنامه شما تنظیم شده باشد سریع شکست می‌خورد: روی Linux یک جابه‌جایی، اعتبارنامه زنده را جایی که آن‌ها اشاره می‌کنند می‌نویسد در حالی که زیرفرایند پاکسازی‌شده مخزن پیش‌فرض را می‌خواند، یک واگرایی خاموش حساب اشتباه.
+- `stopHookCheck` تصمیم را در مرزهای نوبت دوباره اجرا می‌کند؛ یک جابه‌جایی که این می‌نشاند در فراخوانی بعدی اعمال می‌شود. این خطاهای خودش را می‌گیرد (به stderr و گزارش ثبت می‌کند) به‌جای آنکه دوباره پرتاب کند، چون یک استثنای قلاب مدیریت‌نشده می‌تواند عامل را قطع کند، و لغو یک نوبت به‌خاطر یک بررسی جابه‌جایی خراب، بیش از سوار ماندن روی حساب جاری هزینه دارد.
+
+`sdk.ts` هیچ چیز از خود Agent SDK وارد نمی‌کند؛ مقادیرش به‌صورت ساختاری به داخل گزینه‌های SDK پخش می‌شوند.

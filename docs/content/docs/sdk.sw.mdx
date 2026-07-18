@@ -1,0 +1,31 @@
+---
+title: Uso wa Agent SDK
+description: "Unganisha mkusanyiko na Claude Agent SDK katika agents unaozoendesha mwenyewe"
+---
+
+Kiingilio cha programu cha kifurushi (`exports["."]` kinaelekeza kwenye `src/sdk.ts`) huunganisha tokenmaxxing na Claude Agent SDK kwa agents unaozijenga dhidi ya akaunti zako mwenyewe zilizokusanywa. Programu yako ni lazima iendeshwe chini ya Bun (tokenmaxxing hutuma chanzo cha TypeScript na hutumia `bun:ffi`).
+
+```ts
+import { query } from "@anthropic-ai/claude-agent-sdk";
+import { ensureBestAccount, pooledOptions, stopHookCheck } from "tokenmaxxing";
+
+await ensureBestAccount(); // run the switch decision before the spawn
+
+for await (const message of query({
+  prompt: "...",
+  options: {
+    ...pooledOptions(), // pinned real claude + scrubbed env
+    hooks: { Stop: [{ hooks: [stopHookCheck] }] }, // re-decide at every turn boundary
+  },
+})) {
+  // capture the session id from the init message for `resume` across swaps
+}
+```
+
+Agent SDK huzalisha mchakato-mdogo wa claude kwa kila `query()` na husoma vitambulisho mara moja wakati wa kuzalisha - hakuna statusline, hakuna ubadilishaji papo hapo katikati ya uchunguzi - hivyo muunganisho huendeshwa kwa mipaka:
+
+- `ensureBestAccount()` ndio uamuzi hasa ambao hooks za CLI na kipima muda huendesha (baa, shinikizo la mwendo, kipindi cha kupoa, msimbo wote unaoshirikishwa), kamwe si wa kutarajia mapema: kikao cha SDK hakiwezi kamwe kusimamishwa kwa kihesabu cha kurudi nyuma cha kukwisha.
+- `pooledOptions()` hubandika `pathToClaudeCodeExecutable` kwenye binary halisi ya claude (kamwe si kifuniko cha msimamizi) na hutoa `env` mbadala kamili yenye kila ubatilishaji wa kitambulisho wa mazingira uliosafishwa. Hushindwa haraka ikiwa `CLAUDE_CONFIG_DIR` au `CLAUDE_SECURESTORAGE_CONFIG_DIR` imewekwa katika mazingira ya programu yako: kwenye Linux ubadilishaji ungeandika kitambulisho hai pale ambapo hizo zinaelekeza wakati mchakato-mdogo uliosafishwa unasoma hifadhi ya chaguo-msingi, kutopatana kwa akaunti-isiyo-sahihi kwa kimya.
+- `stopHookCheck` huendesha upya uamuzi kwenye mipaka ya zamu; ubadilishaji unaotua huanza kufanya kazi kwenye kuzalisha kunakofuata. Hukamata makosa yake yenyewe (huku ikiweka kumbukumbu kwenye stderr na kumbukumbu) badala ya kutupa tena, kwa sababu kosa la hook lisiloshughulikiwa linaweza kukatiza agent, na kuahirisha zamu kwa sababu ya ukaguzi wa ubadilishaji uliovunjika kunagharimu zaidi kuliko kuendelea na akaunti ya sasa.
+
+`sdk.ts` haiingizi chochote kutoka Agent SDK yenyewe; thamani zake huenea kimuundo ndani ya chaguo za SDK.

@@ -1,0 +1,41 @@
+---
+title: Cómo se decide el cambio
+description: "Participación, barras de cribado, presión de ritmo y los caminos voraz frente a duro"
+---
+
+La decisión tiene dos capas: una compuerta de participación, y luego un camino voraz o duro.
+
+## Participación
+
+Por debajo de `policy.greedySessionFloor` (por defecto 50, en porcentaje de la ventana de sesión de 5 horas), la decisión no se ejecuta en absoluto - una sesión fresca cabalga su cuenta. Una vez que la ventana de sesión activa está usada al 50%, o se cruza cualquier barra dura, la decisión entra en juego.
+
+## Barras de cribado
+
+Los umbrales son barras de cribado, no el disparador del pánico:
+
+- `thresholds.session`: 95. Un restablecimiento de 5 horas es barato de esperar sentado, así que la ventana de sesión se cambia antes.
+- `thresholds.weekly`: 98. Esta única barra cubre tanto el agregado de 7 días como cada tope semanal por modelo. La cuota semanal es de usar o perder, así que se agota cerca del muro.
+
+Ambas están deliberadamente por debajo de 100: el margen es el presupuesto para alcanzar un límite de turno limpio (más hasta un turno de retraso de adopción en macOS) antes de que la cuenta realmente alcance su límite. Las mismas barras criban a las cuentas candidatas: una cuenta por encima de cualquiera de sus barras no es un destino válido. El disparador y el cribado siempre usan las mismas barras efectivas (umbrales menos `policy.projectionMargin`), porque un cribado más laxo que el disparador aterrizaría cambios en cuentas que el disparador vuelve a marcar de inmediato, haciendo rebotar el grupo.
+
+## El destino: presión de ritmo
+
+Entre las cuentas utilizables, el destino es la que está más atrasada respecto a su propio ritmo semanal: la mayor **presión de ritmo**, definida como el porcentaje semanal restante dividido por el tiempo hasta el restablecimiento semanal de esa cuenta. Gana la cuenta con más cuota a punto de perderse. Los empates se rompen por el vencimiento semanal más próximo, luego por el menor uso de 7 días.
+
+Todo funciona sobre ventanas cacheadas almacenadas como epochs UTC absolutos, así que una instantánea obsoleta aún se resuelve correctamente: un restablecimiento semanal que ya ha pasado se extrapola hacia adelante en pasos exactos de 7 días, y cualquier ventana pasada su restablecimiento cacheado cuenta como recién vacía (nunca un motivo para cambiar, nunca un motivo para mantener una cuenta en el banquillo).
+
+## Camino voraz frente a camino duro
+
+- **Camino voraz** (en juego, pero por debajo de todas las barras): clasifica cada cuenta, la actual incluida. Si la cuenta actual ya gana o empata, no hace nada. De lo contrario cambia a la cuenta estrictamente mejor. Nunca espera y nunca preestaciona - una cuenta actual utilizable no se cambia por una espera. Como la cuenta actual también se clasifica, tanto el camino automático como `tokenmaxxing switch` a secas son idempotentes: evaluar periódicamente converge en la cuenta correcta y luego se queda quieto.
+- **Camino duro** (una barra cruzada): cambia a la mejor cuenta candidata utilizable. Si resulta que el token de refresco de una candidata está muerto, se marca como necesita reautenticación y se prueba la siguiente candidata. Si nada es utilizable, se ejecuta la lógica de espera por agotamiento; solo un invocador que realmente pueda pausar la sesión (el hook Stop supervisado) tiene permitido preestacionarse en una cuenta aún bloqueada pero de recuperación más próxima.
+
+## Topes por modelo
+
+`policy.switchModels` (por defecto `["fable"]`) nombra las familias de modelos cuyo tope semanal por modelo puede disparar un cambio. La coincidencia es por token de familia, nunca por cadena de visualización exacta: los nombres de visualización de los modelos derivan ("Fable" pasó a ser "Fable 5"), y una compuerta de cadena exacta una vez deshabilitó silenciosamente el cambio por modelo por completo. Dos reglas de seguridad relacionadas:
+
+- Un modelo activo desconocido activa la compuerta de cada familia configurada. Justo después de que un cambio borra instantáneas, una máquina sin cabeza puede ejecutarse a ciegas de modelo; tratar lo desconocido como sin restricciones una vez dejó una cuenta en su tope de Fable durante horas sin advertencia.
+- El cribado de candidatas cuenta también los topes por modelo bajo compuerta, así que un grupo donde cada cuenta ha quemado su tope de Fable no hace round-robin.
+
+## Enfriamiento
+
+Un enfriamiento de 45 segundos posterior al cambio pone compuerta al camino automático. El tee de la statusline se suprime durante esos mismos 45 segundos tras un cambio (la adopción tarda hasta 30 segundos en macOS), así que una evaluación anterior se ejecutaría sobre datos que el propio cambio invalidó - ese escenario exacto una vez produjo un bucle de reaparición A-a-B-y-vuelta. `tokenmaxxing switch` manual no se ve afectado por el enfriamiento.

@@ -1,13 +1,35 @@
 ---
-title: Bienvenido
-description: Agrupa tus propias cuentas de CLI de agentes y mantén cada sesión en marcha
+title: tokenmaxxing
+description: "Cambio automático de cuenta de Claude Code - agrupa tus propias cuentas de suscripción e intercambia credenciales en caliente cuando se llena la cuota, manteniendo cada sesión continuable."
 ---
 
-tokenmaxxing es una CLI para quienes ejecutan Claude Code (y Codex) en varias de sus propias cuentas. Vigila las cuotas de uso, cambia la credencial activa a la cuenta con más margen antes de que se alcance un límite y mantiene tus sesiones continuables entre cambios.
+tokenmaxxing es una CLI para el cambio automático de cuenta de Claude Code. Agrupa varias cuentas de suscripción (Pro/Max) de tu propiedad e intercambia en caliente la credencial activa por una cuenta más fresca cuando la que está en uso se acerca a un límite de uso. Ejecutas `claude` exactamente como siempre lo haces; el cambio ocurre en un límite de turno seguro y tu sesión en curso continúa la misma conversación en la nueva cuenta sin reiniciarse. Funciona en muchas sesiones concurrentes a la vez.
+
+El único comportamiento visible es el peor caso: cuando todo el grupo está en su límite, la sesión se pausa con una cuenta atrás y se reanuda automáticamente en la siguiente cuenta que se restablezca (Ctrl-C reanuda de inmediato).
+
+<Callout>
+Alcance: Claude Code en macOS y Linux, más la CLI de Codex de OpenAI como un segundo grupo paralelo. Agrupa cuentas de suscripción, no claves de API. Esta es una herramienta de uso personal para agrupar cuentas de tu propiedad, en sesiones y agentes que ejecutas tú mismo - consulta [Uso personal y términos de servicio](/es/terms).
+</Callout>
+
+## El problema
+
+Una suscripción de Claude mide tres límites a la vez (todos confirmados mediante `/usage`):
+
+- **Sesión actual**: una ventana móvil de 5 horas.
+- **Semana actual (todos los modelos)**: un agregado de 7 días.
+- **Semana actual, por modelo**: topes semanales separados para familias de modelos individuales. Actualmente solo existen para Sonnet y Fable, y solo el tope de Fable es lo bastante ajustado como para importar - se alcanza mucho antes que el agregado. Una máquina puede estar al 50% de la semana total mientras ya está al 80% de la semana de Fable.
+
+La cuota semanal es de usar o perder: todo lo que una cuenta no haya consumido para su restablecimiento semanal fijo se pierde. Si posees varias cuentas, la estrategia racional es seguir quemando cuota en la cuenta que esté más atrasada respecto a su propio ritmo semanal, y cambiar antes de que un solo límite choque contra el muro a mitad de sesión.
+
+Hacer eso a mano significa cerrar sesión, iniciar sesión y perder tu conversación. tokenmaxxing lo automatiza: un `claude` en ejecución vuelve a comprobar su almacén de credenciales entre solicitudes, de modo que una credencial cambiada por debajo se adopta en su lugar (en unos 30 segundos en macOS, en la siguiente solicitud en Linux). Un cambio simple nunca reinicia tu sesión. El único caso que aún necesita gestión de procesos es un grupo totalmente agotado - una sesión no puede pausarse a sí misma - y para eso existe el supervisor ligero.
+
+Todo lo demás sobre `claude` queda igual: todos los flags, servidores MCP, hooks y skills pasan sin cambios.
 
 ## A dónde ir
 
 <Cards>
-  <Card title="La guía completa" href="/es/docs/tokenmaxxing" />
-  <Card title="Código fuente en GitHub" href="https://github.com/anaclumos/tokenmaxxing" />
+  <Card title="Inicio rápido" href="/es/quickstart" />
+  <Card title="Comandos" href="/es/commands" />
+  <Card title="Arquitectura" href="/es/architecture" />
+  <Card title="Cómo se decide el cambio" href="/es/switching" />
 </Cards>

@@ -1,0 +1,21 @@
+---
+title: Statusline
+description: "Renkte taşınan kota, tek satır, görünür her hesap"
+---
+
+tokenmaxxing, Claude Code'un statusline'ını yerel olarak işler (kullanım beslemesini tee'lerken). Tasarım ilkesi: kota sayılarda değil, renkte taşınır. Bir satır, örneğin:
+
+```
+tm-wt-demo Fable 5 (high) +156/-23  ◆ 𝒇 2h 1d  ◇ 19h  ◇ 𝒇 2d  ◇ full  ✗ ?
+```
+
+- Her pencere token'ı sıfırlanma süresidir, kullanılan yüzdeye göre sürekli bir yeşil-sarı-kırmızı rampasında boyanır (terminal desteklediğinde truecolor, aksi halde 256 renkli küpe basamaklanmış). Rampa 0 için saf yeşilde, 75'te sarıda ve 95 ve üzerinde kırmızıda sabitlenir, böylece eski önem bantları rampa çıpaları olarak hayatta kalır.
+- Model adı aynı rampada bağlam penceresi doluluğuyla boyanır.
+- Yeşil bir `◆` aktif hesabın pencerelerine öncülük eder; her park edilmiş hesap kendi camgöbeği `◇`'sini alır (yeniden kimlik doğrulama gerekiyorsa kırmızı `✗`). Hesaplar en yakın gelecek sıfırlamaya göre sıralanır.
+- Model başına, her blokta çıplak boyanmış bir baş harf olarak ilk gelir: Fable `𝒇` olarak işlenir; diğer aileler her zaman aile eşleştirmeli olarak büyük harfe çevrilmiş ilk harflerini kullanır.
+- Dokunulmamış bir park edilmiş hesap yeşil bir `full` işler. Bilinmeyen sıfırlamalı ölçülmüş kullanım boyanmış bir `?` işler ve kapatılmış bir modeldeki ölçülmemiş bir model başına üst sınır boyanmamış bir `𝒇?` işler - ölçülmemiş olan asla güvenli görünmemelidir.
+- Sıfırlama geri sayımları yalnızca en büyük birimi gösterir, asla "now" veya "0m" değil; gelecek sıfırlaması olmayan bir pencere yeşil bir `0` işler (tekrar boş).
+- Bağlı bir git worktree'sinin base adı satıra öncülük eder; ana bir checkout orada hiçbir şey işlemez. Algılama dosya sistemini bir `.git` dosyası için okur ve asla bir git alt süreci başlatmaz.
+- `NO_COLOR` ayarlı olduğunda satır, birleştirilmiş sayısal bir biçime geri döner (`2h5`, 2 saatte sıfırlanır, %5 kullanılmış demektir; bağlam doluluğu için `ctx 42`) - renk olmadan, tükenmiş bir pencere taze görünmemelidir.
+
+Alt agent görevleri, claude'un subagentStatusLine yüzeyi aracılığıyla kendi panel satırlarını alır: aktif görev başına bir satır, o görevin bağlam doluluğuyla boyanmış aile adı.

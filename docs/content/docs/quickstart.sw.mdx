@@ -1,0 +1,28 @@
+---
+title: Anza Haraka
+description: "Sakinisha tokenmaxxing, ingiza akaunti yako ya sasa, na kusanya zaidi"
+---
+
+Inahitaji [Bun](https://bun.sh) na Claude Code, kwenye macOS au Linux.
+
+```sh
+bun add -g tokenmaxxing
+tokenmaxxing init
+```
+
+`init` hufanya mambo matano:
+
+1. Inaingiza akaunti ambayo tayari umeingia nayo kama akaunti #1 (hakuna amri tofauti ya `adopt`).
+2. Inasakinisha shim ya msimamizi ya `claude`.
+3. Inasakinisha viingizo vitatu katika `settings.json` ya Claude Code: statusLine, Stop hook, na SessionStart hook (pamoja na kiingizo cha subagentStatusLine).
+4. Inaongeza saraka ya bin ya msimamizi kwenye PATH ya rc ya shell yako (idempotent, iliyowekwa alama na maoni ya `# tokenmaxxing PATH`). Ni lazima ikae mbele ya `claude` halisi kwenye PATH ili kuikamata.
+5. Inasakinisha kipima muda cha ukaguzi wa mara kwa mara (launchd agent kwenye macOS, systemd user timer kwenye Linux) kinachoendesha `tokenmaxxing check` kila sekunde 180.
+
+Anzisha upya shell yako, kisha ongeza akaunti zaidi na uendelee:
+
+```sh
+tokenmaxxing add        # inaingiza akaunti moja zaidi, kwa kujitenga, na kuikusanya
+claude                  # tumia claude kama kawaida
+```
+
+`tokenmaxxing` pia ina lakabu ya `xx`. `tokenmaxxing` peke yake (au `xx`) huendesha `status`; `switch` inabaki wazi.

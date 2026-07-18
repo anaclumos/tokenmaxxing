@@ -1,0 +1,27 @@
+---
+title: Hỗ trợ Codex
+description: "Gộp chung các tài khoản đăng ký ChatGPT cho Codex CLI, dựa trên khởi động lại"
+---
+
+Cùng cơ chế gộp chung đó hoạt động với Codex CLI của OpenAI, dựa trên các tài khoản đăng ký ChatGPT của riêng bạn:
+
+```sh
+tokenmaxxing init --codex   # nhập thông tin đăng nhập codex hiện tại của bạn + cài đặt bộ giám sát codex & Stop hook
+tokenmaxxing add --codex    # đăng nhập một tài khoản khác, biệt lập; thông tin đăng nhập chính của bạn không bị đụng đến
+codex                       # dùng codex như mọi khi
+```
+
+Nhóm Codex là trạng thái hoàn toàn song song: chỉ mục tài khoản riêng của nó, các tệp thông tin xác thực dự trữ riêng của nó (các tệp 0600 trên cả hai nền tảng, vì kho lưu trữ của chính codex là một tệp văn bản thuần), khóa riêng của nó, dấu thời gian hoán đổi gần nhất riêng của nó. Không có gì được chia sẻ với nhóm Claude ngoại trừ mã chính sách quyết định.
+
+## Vì sao không thể hoán đổi nóng trên Codex
+
+Một tiến trình codex đang chạy giữ một trình quản lý xác thực trong bộ nhớ và từ chối một cách tường minh việc tải lại `auth.json` khi nó lúc này nêu tên một tài khoản khác. Không có trình theo dõi tệp và không có phép thăm dò thông tin xác thực theo từng yêu cầu, nên một thông tin xác thực được hoán đổi bên dưới một codex đang chạy đơn giản là không bao giờ có hiệu lực cho suy luận. Khởi động lại chính là việc chuyển đổi: `codex resume <session-id>` tiếp tục bản ghi hội thoại cục bộ trên bất kỳ tài khoản nào mà `auth.json` đang giữ.
+
+tokenmaxxing xử lý việc này bằng một shim giám sát codex: Stop hook chạy cùng quyết định áp lực nhịp độ tham lam tại mỗi ranh giới lượt, và khi nó hoán đổi, nó ghi một tệp đánh dấu khiến bộ giám sát gửi SIGTERM cho phiên tại ranh giới đã được xác nhận và khởi động lại `codex resume <session-id>` trên tài khoản mới, bản ghi hội thoại còn nguyên vẹn. Vì mỗi lần chuyển đổi codex là một lần khởi động lại có thể thấy được, lối tham lam của codex mang một biên cải thiện 1,2 lần: một ứng viên thách thức phải vượt áp lực nhịp độ của tài khoản hiện tại 20%, không phải chỉ hơn một chút. Lối cứng (một ngưỡng bị vượt qua) bỏ qua biên này. Cũng không có bộ đếm ngược khi nhóm cạn kiệt cho codex, vì không gì có thể tạm dừng một phiên codex, nên một nhóm codex đã cạn kiệt hoàn toàn sẽ giữ nguyên tại chỗ.
+
+Các cơ chế riêng khác của codex:
+
+- Mức sử dụng được đọc từ một GET đã xác thực miễn phí tới điểm cuối giới hạn tốc độ của chính codex (cùng lệnh gọi mà `/status` của CLI thực hiện): các phần trăm cùng với thời gian đặt lại dạng epoch tuyệt đối, cả cửa sổ tổng hợp lẫn mức trần theo từng mô hình. Việc phân loại cửa sổ dựa trên thời lượng, không bao giờ dựa trên vị trí, vì các gói hiện tại có thể hoàn toàn không có cửa sổ 5 giờ và cửa sổ hàng tuần nằm ở vị trí chính.
+- Các refresh token của codex xoay vòng, và việc tái sử dụng một token đã bị thay thế sẽ giết chết cả họ cấp phép. Mỗi lần xoay vòng được lưu bền ngay khoảnh khắc nó trả về, tài khoản đang hoạt động chỉ bao giờ được lấy mẫu qua blob đang hoạt động (không bao giờ qua một bản dự trữ cũ), và các tệp hiện diện theo từng phiên bảo đảm một tài khoản đang chạy trong một phiên đồng cấp còn sống không bao giờ là mục tiêu hoán đổi và không bao giờ bị làm mới token dự trữ của nó.
+- Codex yêu cầu kho thông tin xác thực dạng tệp: `init --codex` thất bại nhanh nếu kho keyring bị ghim, và `add --codex` ghi thiết lập chế độ tệp vào thư mục khởi tạo biệt lập để thông tin đăng nhập rơi vào trạng thái có thể thu hoạch được.
+- Một bước thủ công: codex bỏ qua các hook mà nó chưa được yêu cầu tin tưởng. Sau `init --codex`, mở codex một lần và tin tưởng Stop hook của tokenmaxxing qua `/hooks`, nếu không việc tự động chuyển đổi sẽ âm thầm bất động. `init --codex` in ra lời nhắc này.

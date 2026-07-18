@@ -1,0 +1,21 @@
+---
+title: Statusline
+description: "Mgao unaobebwa kwa rangi, mstari mmoja, kila akaunti inaonekana"
+---
+
+tokenmaxxing hurenda statusline ya Claude Code kwa asili (huku ikitee malisho ya matumizi). Kanuni ya muundo: mgao hubebwa kwa rangi, si namba. Mstari mmoja, kwa mfano:
+
+```
+tm-wt-demo Fable 5 (high) +156/-23  ◆ 𝒇 2h 1d  ◇ 19h  ◇ 𝒇 2d  ◇ full  ✗ ?
+```
+
+- Kila tokeni ya dirisha ni muda-wake-hadi-kujiweka-upya, iliyopakwa rangi kwenye njia inayoendelea ya kijani-hadi-njano-hadi-nyekundu kulingana na asilimia iliyotumika (truecolor terminal inapoiunga mkono, ikipangwa kwenye mchemraba wa rangi 256 vinginevyo). Njia hujikita kwenye kijani halisi kwa 0, njano kwa 75, na nyekundu kwa 95 na zaidi, hivyo mikanda ya zamani ya ukali husalia kama nanga za njia.
+- Jina la muundo hupakwa rangi kwa ujazo wa dirisha la muktadha kwenye njia ile ile.
+- Kijani `◆` huongoza madirisha ya akaunti inayotumika; kila akaunti iliyoegeshwa hupata cyan `◇` yake yenyewe (nyekundu `✗` ikiwa inahitaji uthibitishaji upya). Akaunti hupangwa kwa kujiweka upya kunakokuja mapema zaidi.
+- Kila muundo huja kwanza katika kila kizuizi kama herufi ya kwanza iliyopakwa rangi bila kitu: Fable hurenda `𝒇`; familia nyingine hutumia herufi yao ya kwanza kubwa, kila mara ikilinganishwa kwa familia.
+- Akaunti iliyoegeshwa isiyoguswa hurenda `full` ya kijani. Matumizi yaliyopimwa yenye kujiweka upya kusikojulikana hurenda `?` iliyopakwa rangi, na kikomo cha kila muundo kisichopimwa kwenye muundo uliolindwa hurenda `𝒇?` isiyopakwa rangi - kisichopimwa hakipaswi kamwe kuonekana salama.
+- Vihesabu vya kurudi nyuma vya kujiweka upya huonyesha kizio kikubwa zaidi pekee, kamwe si "sasa" au "0m"; dirisha lisilo na kujiweka upya kunakokuja hurenda `0` ya kijani (tupu tena).
+- Jina la msingi la git worktree iliyounganishwa huongoza mstari; checkout kuu haitoi kitu hapo. Ugunduzi husoma mfumo wa faili kwa faili ya `.git` na kamwe hauzalishi mchakato-mdogo wa git.
+- Ikiwa `NO_COLOR` imewekwa, mstari hurejea kwenye fomati ya namba iliyogandanishwa (`2h5` inamaanisha inajiweka upya baada ya saa 2, 5% imetumika; `ctx 42` kwa ujazo wa muktadha) - bila rangi, dirisha lililokauka halipaswi kuonekana bichi.
+
+Kazi za subagent hupata safu zao za paneli kupitia uso wa subagentStatusLine wa claude: safu moja kwa kila kazi inayotumika, jina la familia lililopakwa rangi na ujazo wa muktadha wa kazi hiyo.

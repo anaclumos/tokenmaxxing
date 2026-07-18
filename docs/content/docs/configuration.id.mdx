@@ -1,0 +1,28 @@
+---
+title: Konfigurasi
+description: "Skema config.json, ambang batas, dan tombol kebijakan"
+---
+
+Konfigurasi berupa JSON di `~/.config/tokenmaxxing/config.json`. Setiap bidang opsional; default berlaku per-bidang.
+
+```json
+{
+  "thresholds": { "session": 95, "weekly": 98 },
+  "policy": {
+    "projectionMargin": 0,
+    "greedySessionFloor": 50,
+    "switchModels": ["fable"],
+    "usagePollTtlMs": 90000,
+    "maxWaitMs": 3600000
+  }
+}
+```
+
+- `thresholds.session` / `thresholds.weekly`: bilah penyaringan yang dijelaskan di atas.
+- `policy.projectionMargin`: dikurangkan dari kedua bilah untuk membentuk bilah efektif.
+- `policy.greedySessionFloor`: persen sesi-terpakai saat konvergensi rakus terlibat.
+- `policy.switchModels`: keluarga model yang batas mingguan per-model-nya menggerbangi sebuah pertukaran (entri dijadikan huruf kecil saat dimuat).
+- `policy.usagePollTtlMs`: berapa lama sebuah poll `/usage` per-model tetap segar.
+- `policy.maxWaitMs`: batas penungguan-otomatis gabungan-habis.
+
+`tokenmaxxing config` menampilkan konfigurasi efektif beserta sumbernya; `config set`/`unset` menyunting kunci bertitik; `config tidy` memangkas kunci yang tidak dikenal.

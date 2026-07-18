@@ -1,0 +1,25 @@
+---
+title: Tata letak direktori status
+description: "Setiap berkas dan direktori di bawah ~/.config/tokenmaxxing"
+---
+
+Semua hal berada di bawah `~/.config/tokenmaxxing/` (dapat ditimpa dengan `TOKENMAXXING_HOME`; setiap jalur yang dapat diamati secara eksternal memiliki penggantian env sehingga seluruh alat dapat berjalan secara hermetis dalam pengujian).
+
+| Jalur | Apa yang disimpannya |
+|---|---|
+| `config.json` | Konfigurasi Anda (jarang; default berlaku per bidang) |
+| `accounts.json` | Indeks non-rahasia akun Claude yang tergabung: label, id, jendela penggunaan yang di-cache. Tidak pernah token |
+| `usage.json` | Snapshot jendela agregat dari tee statusline; mtime-nya adalah denyut kehidupan umpan |
+| `model-usage.json` | Batas mingguan per-model yang di-cache-TTL dari `/usage` |
+| `lastswap.json` | Cap waktu epoch dari pertukaran terakhir; menggerakkan cooldown 45 detik |
+| `lock` | Berkas `flock` yang menserialisasi pertukaran |
+| `tokenmaxxing.log` | Log peristiwa hanya-tambah |
+| `bin/` | Shim PATH: `claude`, `codex`, dan titik masuk `tokenmaxxing` / `xx` |
+| `respawn/<session-id>` | Penanda respawn tunggu-habis yang diawasi supervisor |
+| `creds/` | Linux saja: berkas kredensial terparkir, 0600 dalam direktori 0700 (macOS memarkir kredensial sebagai item keychain per-akun sebagai gantinya) |
+| `onboard/`, `sample/` | Home config terisolasi sekali-pakai untuk login `add`/`auth` dan probe `/usage` akun terparkir; home onboard yang menyimpan kredensial teks polos dihapus setelah panen |
+| `slack.json` | Token `xx serve` dan tautan channel (0600) |
+| `slack-threads/` | Rekaman sesi per-thread untuk `xx serve` |
+| `codex-*` | Gabungan Codex paralel: `codex-accounts.json`, `codex-lastswap.json`, `codex-lock`, `codex-creds/`, `codex-onboard/`, `codex-respawn/`, dan `codex-live/` (satu berkas kehadiran yang divalidasi-PID per sesi codex tersupervisi yang berjalan, sehingga akun langsung tidak pernah menjadi target pertukaran) |
+
+Di luar direktorinya sendiri, tokenmaxxing menyentuh persis: `~/.claude.json` (pertukaran `oauthAccount`), `settings.json` milik Claude Code (entri hook dan statusline), penyimpanan kredensial langsung (item keychain `Claude Code-credentials` di macOS, `.credentials.json` di Linux), `~/.claude.lock` (kunci refresh claude, diambil saat pertukaran), `auth.json` dan `hooks.json` milik codex, dan unit pemeriksaan-berkala di launchd atau systemd.

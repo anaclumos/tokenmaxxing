@@ -1,0 +1,25 @@
+---
+title: الأوامر
+description: "كل أوامر tokenmaxxing وكل واحد بيعمل إيه"
+---
+
+| الأمر | بيعمل إيه |
+|---|---|
+| `tokenmaxxing init` | استورد الحساب الحالي، وثبّت الـ supervisor والـ hooks والـ statusline |
+| `tokenmaxxing init --codex` | نفس الحاجة لـ Codex: استورد تسجيل الدخول، وثبّت الـ codex supervisor و Stop hook |
+| `tokenmaxxing add` | سجّل حساب إضافي (تسجيل دخول معزول، بيتم ضمّه للـ pool) |
+| `tokenmaxxing add --codex` | سجّل حساب Codex إضافي (تسجيل دخول معزول) |
+| `tokenmaxxing auth [sel \| --all]` | أعد المصادقة لحساب في الـ pool في مكانه. من غير خيارات بيعرض الـ pool وبيسألك أنهي؛ الـ selector بيستهدف حساب واحد وبيقولك تسجّل دخول بأنهي إيميل؛ `--all` بيمشي على كل حساب محتاج إعادة مصادقة واحد ورا التاني |
+| `tokenmaxxing switch [sel]` | بدّل لأحسن حساب (greedy، idempotent) أو افرض حساب معيّن |
+| `tokenmaxxing switch --codex [sel]` | بدّل الـ Codex pool (بيسري مفعوله في أول تشغيل codex جاي) |
+| `tokenmaxxing ls` | اعرض الحسابات اللي في الـ pool |
+| `tokenmaxxing status` | الحسابات مع شرايط استخدام لـ 5 ساعات / أسبوعي / لكل موديل، النشط والمستنفد لحد الـ reset |
+| `tokenmaxxing status --force` | كمان بيعمل ping لكل حساب (طلب haiku صغيّر لكل واحد) عشان كل تايمرات الـ session بتاعت الـ 5 ساعات تبدأ دلوقتي، وبعدين ياخد عيّنة جديدة |
+| `tokenmaxxing watch [seconds]` | حالة مباشرة، بيتعاد رسمها كل N ثانية (الافتراضي 120، الحد الأدنى 30؛ عمره ما بيعمل ping) |
+| `tokenmaxxing config [get\|set\|unset\|tidy]` | الإعدادات الفعّالة مع مصادرها؛ عدّل المفاتيح المنقّطة؛ `tidy` بيشيل المفاتيح المجهولة |
+| `tokenmaxxing check` | قيّم قرار التبديل مرة واحدة (ده اللي الـ timer الدوري بيشغّله) |
+| `tokenmaxxing serve [setup\|link\|unlink\|links]` | daemon جسر Slack (Socket Mode، من غير URL عام) |
+| `tokenmaxxing doctor` | اتأكد إن الـ supervisor ومدخلات الإعدادات لسه موجودين |
+| `tokenmaxxing rename [--codex] <sel> <label>` | غيّر اسم حساب في الـ pool |
+| `tokenmaxxing rm <sel>` | شيل حساب من الـ pool |
+| `tokenmaxxing uninstall` | شيل الـ supervisor ومدخلات الإعدادات (الحسابات والـ credentials بتفضل موجودة) |

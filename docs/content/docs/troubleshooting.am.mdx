@@ -1,0 +1,34 @@
+---
+title: ችግር መፍታት እና FAQ
+description: "የተለመዱ ጥያቄዎች እና ከኋላቸው ያሉ diagnosticዎች"
+---
+
+**`claude` የተቆጣጠረ አይመስልም።**
+`tokenmaxxing doctor` ን ያሂዱ። shim ው የ PATH አፈታት ማሸነፍ አለበት፤ በ shell rc ዎ ውስጥ ያለው የ `# tokenmaxxing PATH` መስመር አሁን ያለውን bin directory እንደሚያመለክት እና ከትክክለኛው claude ፊት እንደሚቀመጥ ያረጋግጡ። `doctor` በተጨማሪም wrapper ን ስለሚሸፍኑ `alias claude=...` ወይም `claude()` shell function፣ እና claude binary ን በ absolute path ስለሚያስነሱ ተለዋጭ ስሞች (እነዚያ supervisor ን ሙሉ በሙሉ ያልፋሉ) ያስጠነቅቃል።
+
+**Auto-switching በ Codex ላይ በጭራሽ አይቀሰቀስም።**
+Codex እንዲያምናቸው ያልተነገሩትን hookዎች ይዘላል። codex ን ይክፈቱ፣ `/hooks` ን ያሂዱ፣ እና የ tokenmaxxing Stop hook ን ያመኑ። እምነት በ hook hash ላይ ይመዘገባል፣ ስለዚህ hook ከተስተካከለ እንደገና መሰጠት አለበት።
+
+**አንድ መለያ በ statusline ውስጥ ቀይ `✗` ያሳያል።**
+የ refresh token ው ሞቷል (የተሻረ ወይም ከ backup ው ስር የተሽከረከረ)። በቦታው እንደገና ለማረጋገጥ `tokenmaxxing auth <sel>` ን ያሂዱ፤ command ው በየትኛው email መግባት እንዳለብዎ ይነግርዎታል እና በተለየ መለያ ላይ የሚያርፍ login ን እምቢ ይላል።
+
+**ለምን ወደ በጣም ብዙ ቀሪ ኮታ ወዳለው መለያ አይቀይርም?**
+ምክንያቱም ያ ኮታ የማጣት አደጋ ላይ በጣም ያለው መለያ አይደለም። ኢላማው ከራሱ ሳምንታዊ ፍጥነት ወደኋላ በጣም የቀረው መለያ ነው፦ ቀሪ መቶኛ ተከፍሎ ለሳምንታዊ ዳግም ማስጀመሪያው ባለው ጊዜ። እኩል መጠን በሚቀርበት ጊዜ ወደ ቀጣይ ማብቂያ በመጀመሪያ ይቀንሳል፣ እና በእኩል ማብቂያ ወደ በጣም ብዙ ቀሪ በመጀመሪያ።
+
+**አሁን ተቀየረ እና statusline አሁንም አሮጌውን መለያ ያሳያል።**
+በ macOS ላይ እስከ ~30 ሰከንድ ድረስ የሚጠበቅ ነው፦ እየሄደ ያለው session የተቀየረውን credential በሚቀጥለው credential-cache refresh ላይ ይቀበላል። የ usage tee ው ከመቀያየር በኋላ ለ45 ሰከንድ የሚታፈነው በትክክል ለዚህ ምክንያት ነው።
+
+**`status --force` ማንኛውንም ወጪ አለው?**
+አዎ፣ ሆን ተብሎ፦ ለእያንዳንዱ መለያ አንድ አነስተኛ የተለካ haiku request ይልካል ስለዚህ እያንዳንዱ የ5-ሰዓት session መስኮት ዝም ብሎ ከመተኛት ይልቅ በዚያ ቅጽበት ይጀምራል፣ ከዚያ በአዲስ ናሙና ይወስዳል። ተራ `status` እና `watch` በጭራሽ ping አያደርጉም፤ የ `/usage` ንባቦች ነጻ ናቸው። የ server usage feed አዲስ የተከፈተ መስኮትን በሰከንዶች እስከ ደቂቃዎች ሊያዘገይ እንደሚችል ልብ ይበሉ፣ ስለዚህ ከ ping በኋላ ወዲያውኑ ያለ probe አሁንም pre-ping ሁኔታን ሊያሳይ ይችላል - `status` ping አልተሳካም ብሎ ከማስመሰል ይልቅ ማስታወሻ ያቀርባል።
+
+**የ `/usage` probe ለንቁ መለያ ምንም አልመለሰም።**
+ያ የታወቀ የ claude ባህሪ ነው፦ ውስጣዊ የ usage fetch ው ሲወድቅ ወይም rate-limited ሲሆን፣ `/usage` ያለ መቶኛ መስመሮች local session stats ብቻ ያትማል። tokenmaxxing ንቁ መለያውን ከ statusline push ናሙና ይወስዳል እና የተያዙ መለያዎችን ብቻ probe ያደርጋል፣ በትክክል ይህን ለማስወገድ።
+
+**የ background claude sessionዎች።**
+የ Claude background daemon ትክክለኛውን versioned binary በ absolute path ያስነሳል፣ የ PATH shimዎችን በማለፍ፣ ስለዚህ background sessionዎች ያልተቆጣጠሩ ናቸው። Hookዎች አሁንም በ `settings.json` በኩል ይቀሰቀሳሉ፣ እና credential መቀበል በተጨማሪም ወቅታዊ timer መቀያየርን ይሸፍናሉ፣ ግን ለእነሱ marker-driven respawn የለም።
+
+**አንድ ነገር በአንድ ወቅት ብዙ processዎችን አስነስቷል። ያ አሁንም ይቻላል?**
+supervisor ው በትክክል ያንን ታሪካዊ ውድቀት ላይ (እንደ "ትክክለኛ" claude የተያዘ ያረጀ wrapper) የተደራረቡ recursion ጠባቂዎችን ይይዛል፦ በ environment ውስጥ በ5 ደረጃ የሚያቋርጥ depth sentinel፣ on-disk spawn-rate limiter፣ ወደ tokenmaxxing የራሱ bin directory ተመልሶ የሚፈታ ማንኛውንም እጩ የሚክዱ realpath identity checkዎች፣ እና የተዋቀረ claude path ሲጠፋ hard failure (በጭራሽ የጸጥታ PATH scan አይደለም)። `init` እና `doctor` እጩ በእውነት claude መሆኑን ከመያዙ በፊት `--version` ን በማሄድ ያረጋግጣሉ።
+
+**ማራገፍ።**
+`tokenmaxxing uninstall` supervisor shimዎችን፣ የ settings ግቤቶችን እና ወቅታዊ timer ን ያስወግዳል፣ እና መለያዎችዎን እና የተያዙ credentialዎችን ሳይነካ ይተዋል። እንደ ራሱ የሚያውቃቸውን statusline ግቤቶች ብቻ ያስወግዳል።

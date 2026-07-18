@@ -1,0 +1,6 @@
+---
+title: 个人使用与服务条款
+description: "汇集你拥有的账户，在你自己运行的会话与 agent 中使用"
+---
+
+tokenmaxxing 汇集的是你拥有的账户，在你自己运行的会话与 agent 中使用。这个措辞是刻意的：Anthropic 不允许第三方产品提供 claude.ai 登录或 claude.ai 速率限制，其中也包括基于 Agent SDK 构建的 agent。不要把汇集的 SDK 界面，或任何基于它构建的东西，交付给第三方。tokenmaxxing 也刻意坚持走 CLI 中介的 `/usage` 路径来获取配额数据，而非重新实现 OAuth 或代理 API 流量：它不是一个代理，它触碰的唯一 OAuth 端点是切换期间使用的标准刷新授权，以及一个只读的身份检查（roles 端点），用来核实一个 token 实际属于哪个账户。

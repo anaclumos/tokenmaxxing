@@ -1,0 +1,31 @@
+---
+title: Agent SDK 표면
+description: "직접 실행하는 에이전트에서 풀을 Claude Agent SDK와 짝지으세요"
+---
+
+패키지의 프로그래밍 진입점(`exports["."]`이 `src/sdk.ts`를 가리킴)은 직접 보유한 풀 계정을 상대로 만드는 에이전트를 위해 tokenmaxxing을 Claude Agent SDK와 짝지웁니다. 당신의 앱은 Bun 위에서 실행되어야 합니다(tokenmaxxing은 TypeScript 소스를 배포하고 `bun:ffi`를 사용합니다).
+
+```ts
+import { query } from "@anthropic-ai/claude-agent-sdk";
+import { ensureBestAccount, pooledOptions, stopHookCheck } from "tokenmaxxing";
+
+await ensureBestAccount(); // run the switch decision before the spawn
+
+for await (const message of query({
+  prompt: "...",
+  options: {
+    ...pooledOptions(), // pinned real claude + scrubbed env
+    hooks: { Stop: [{ hooks: [stopHookCheck] }] }, // re-decide at every turn boundary
+  },
+})) {
+  // capture the session id from the init message for `resume` across swaps
+}
+```
+
+Agent SDK는 `query()`마다 claude 서브프로세스를 생성하고 생성 시점에 자격 증명을 한 번 읽습니다. statusline도, 쿼리 도중 hot-swap도 없습니다. 그래서 이 통합은 경계 기반입니다:
+
+- `ensureBestAccount()`는 CLI 훅과 타이머가 실행하는 바로 그 결정입니다(기준선, 진행 압력, 쿨다운, 모두 공유 코드). 결코 선제적이지 않습니다. SDK 세션은 소진 카운트다운을 위해 일시 정지될 수 없습니다.
+- `pooledOptions()`는 `pathToClaudeCodeExecutable`를 실제 claude 바이너리로 고정하고(supervisor 래퍼가 결코 아님) 주변의 모든 자격 증명 재정의를 제거한 완전한 대체 `env`를 제공합니다. 당신의 앱 환경에 `CLAUDE_CONFIG_DIR`나 `CLAUDE_SECURESTORAGE_CONFIG_DIR`가 설정되어 있으면 즉시 실패합니다. Linux에서는 교체가 라이브 자격 증명을 그 변수들이 가리키는 곳에 쓰는 반면 제거된 서브프로세스는 기본 저장소를 읽어, 조용한 잘못된 계정 불일치가 생기기 때문입니다.
+- `stopHookCheck`는 턴 경계에서 결정을 다시 실행합니다. 그것이 성사시킨 교체는 다음 생성 시 적용됩니다. 이것은 다시 던지는 대신 자체 오류를 잡습니다(stderr와 로그에 기록). 처리되지 않은 훅 예외가 에이전트를 중단시킬 수 있고, 망가진 전환 확인 때문에 턴을 중단하는 것이 현재 계정을 계속 쓰는 것보다 비용이 더 크기 때문입니다.
+
+`sdk.ts`는 Agent SDK 자체에서 아무것도 임포트하지 않습니다. 그 값들은 SDK의 옵션으로 구조적으로 펼쳐집니다.

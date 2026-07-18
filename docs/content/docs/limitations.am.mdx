@@ -1,0 +1,10 @@
+---
+title: ግልጽ ገደቦች
+description: "ከተሰባሰበ hot-swapping ጋር የሚመጡ ማካካሻዎች"
+---
+
+- **አንድ ቀዝቃዛ turn።** Prompt cache org-scoped ነው፣ ስለዚህ በአዲስ መለያ ላይ የመጀመሪያው turn context ን አንድ ጊዜ እንደገና ይሰቅላል።
+- **የተሟጠጠ-ማቆም መሰናከል።** ሙሉ በሙሉ የተሟጠጠ pool ብቻ session ን ለ countdown ያቆማል፤ በዚያ ቅጽበት የተተየበ ማንኛውም ነገር ይጠፋል።
+- **የመቀበል መዘግየት።** በ macOS ላይ ከመቀያየር በ~30 ሰከንድ ውስጥ ያለው የመጀመሪያ turn አሁንም አሮጌውን መለያ ሊለካ ይችላል፤ የ barዎቹ ክፍተት ይይዘዋል።
+- **የተጋራ የፍንዳታ ራዲየስ።** ሁሉም default-profile sessionዎች አንድ ቀጥታ credential ይጋራሉ፣ ስለዚህ መቀያየር ሁሉንም አብሮ ያንቀሳቅሳል (እያንዳንዱ በቦታው ይቀበላል)።
+- **በ Linux ላይ plaintext credentialዎች።** Claude Code ራሱ የ Linux credentialዎችን እንደ 0600 plaintext ፋይል ያከማቻል፤ የ tokenmaxxing የተያዙ ቅጂዎች ተመሳሳዩን ሞዴል ይከተላሉ።

@@ -1,0 +1,10 @@
+---
+title: Limitaciones honestas
+description: "Las contrapartidas que conlleva el intercambio en caliente agrupado"
+---
+
+- **Un turno en frío.** La caché de prompts tiene alcance de organización, así que el primer turno en una cuenta nueva vuelve a subir el contexto una vez.
+- **Hipo de pausa por agotamiento.** Solo un grupo totalmente agotado detiene la sesión para la cuenta atrás; cualquier cosa tecleada en esa fracción de segundo se pierde.
+- **Retraso de adopción.** En macOS el primer turno dentro de ~30 segundos de un cambio aún puede medir la cuenta vieja; el margen de las barras lo absorbe.
+- **Radio de impacto compartido.** Todas las sesiones del perfil por defecto comparten una credencial en vivo, así que un cambio las mueve todas juntas (cada una adopta en su sitio).
+- **Credenciales en texto plano en Linux.** El propio Claude Code almacena las credenciales de Linux como un archivo de texto plano 0600; las copias estacionadas de tokenmaxxing siguen el mismo modelo.

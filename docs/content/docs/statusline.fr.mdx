@@ -1,0 +1,21 @@
+---
+title: La statusline
+description: "Le quota porté par la couleur, une seule ligne, chaque compte visible"
+---
+
+tokenmaxxing rend nativement la statusline de Claude Code (tout en dupliquant le flux d'utilisation). Le principe de conception : le quota est porté par la couleur, pas par les nombres. Une seule ligne, par exemple :
+
+```
+tm-wt-demo Fable 5 (high) +156/-23  ◆ 𝒇 2h 1d  ◇ 19h  ◇ 𝒇 2d  ◇ full  ✗ ?
+```
+
+- Chaque jeton de fenêtre correspond à son temps avant réinitialisation, peint sur une rampe continue du vert au jaune au rouge selon le pourcentage utilisé (truecolor lorsque le terminal le prend en charge, sinon transposé sur le cube de 256 couleurs). La rampe s'ancre au vert pur à 0, au jaune à 75, et au rouge à 95 et au-delà, de sorte que les anciennes bandes de gravité survivent comme ancres de rampe.
+- Le nom du modèle est peint selon le remplissage de la fenêtre de contexte sur la même rampe.
+- Un `◆` vert précède les fenêtres du compte actif ; chaque compte parqué reçoit son propre `◇` cyan (`✗` rouge s'il nécessite une réauthentification). Les comptes sont triés par réinitialisation à venir la plus proche.
+- Le par-modèle vient en premier dans chaque bloc sous la forme d'une initiale peinte nue : Fable rend `𝒇` ; les autres familles utilisent leur première lettre en majuscule, toujours par correspondance de famille.
+- Un compte parqué intact rend un `full` vert. Une utilisation mesurée avec une réinitialisation inconnue rend un `?` peint, et un plafond par modèle non mesuré sur un modèle verrouillé rend un `𝒇?` non peint : ce qui n'est pas mesuré ne doit jamais paraître sûr.
+- Les comptes à rebours de réinitialisation n'affichent que la plus grande unité, jamais « now » ni « 0m » ; une fenêtre sans réinitialisation à venir rend un `0` vert (de nouveau vide).
+- Le nom de base d'un worktree git lié précède la ligne ; un checkout principal n'y rend rien. La détection lit le système de fichiers à la recherche d'un fichier `.git` et ne lance jamais de sous-processus git.
+- Avec `NO_COLOR` défini, la ligne se rabat sur un format numérique collé (`2h5` signifie réinitialisation dans 2 heures, 5 % utilisé ; `ctx 42` pour le remplissage de contexte) : sans couleur, une fenêtre vidée ne doit pas paraître fraîche.
+
+Les tâches de sous-agents obtiennent leurs propres lignes de panneau via la surface subagentStatusLine de claude : une ligne par tâche active, le nom de la famille peint selon le remplissage de contexte de cette tâche.

@@ -1,0 +1,23 @@
+---
+title: "جسر Slack: xx serve"
+description: "xx serve بيشغّل sessions بتاعت Claude Code من threads بتاعت Slack عبر Socket Mode"
+---
+
+`tokenmaxxing serve` بيشغّل daemon محلي لـ Slack عن طريق Socket Mode، من غير حاجة لـ URL عام. الإعداد:
+
+```sh
+tokenmaxxing serve setup                    # بيطبع manifest التطبيق، وبيطلب الـ token الاتنين
+tokenmaxxing serve link <channel-id> <repo> # اربط قناة بـ checkout لريبو
+tokenmaxxing serve                          # شغّل الـ daemon
+```
+
+منشِن البوت في قناة مربوطة وهيفتح Claude Code session للـ thread ده، في الـ repo checkout المربوط. كل رسالة thread بتشغّل `query()` واحدة من الـ Agent SDK مع `resume`، عمره ما query بث مستمر، عشان `ensureBestAccount()` بيعيد تقييم الـ pool في كل turn لوحده والـ daemon يقدر يعمل restart من غير ما يخسر الـ threads (سجلات الـ thread دايمة؛ الـ daemon بيعيد الاشتراك فيها عند الإقلاع).
+
+سلوك ملحوظ:
+
+- **البث**: الردود بتتبثّ بشكل أصلي في Slack، مع task cards للتفكير وتشغيل الأدوات، وكود محاط برندره بتظليل، وكارت "Turn" ختامي بالتكلفة والمدة، ورسالة Slack جديدة بتتفتح كل ما تشغيل أداة يقطع النص المبثوث، عشان الـ turn يتقرا كرسايل منفصلة حوالين تشغيل الأدوات. استدعاءات TodoWrite بتحدّث كارت checklist ثابت واحد في مكانه.
+- **الصلاحيات**: `permissionMode` لكل رابط بيكون الافتراضي `acceptEdits`؛ `--yolo` (الاسم المختصر `--dangerous`) بيخلّي الرابط يختار `bypassPermissions`. الحوارات التفاعلية ممنوعة في الـ turns المُمرَّرة. مفيش حد يقدر يجاوب واحدة عن طريق Slack، فالموديل بيسأل بالكلام وردّك في الـ thread هو الـ turn اللي بعده. فيه skill إضافي مدمج بيعلّمه إنه يعمل tag للطالب وينهي الـ turn لما يحتاج قرار.
+- **أوامر السلاش**: رسالة thread نصها بعد التجريد بيبدأ بـ `/` بتشتغل كـ claude slash command. الـ composer بتاع Slack بياكل الرسايل اللي بتبدأ بـ `/`، فاستخدم صيغة المنشِن الأول (`@bot /usage`) أو مسافة في الأول.
+- **الإغلاق السلس**: SIGTERM/SIGINT بيصرّف: الـ turns الجديدة بتتشال بصوت عالي، والـ turns اللي شغّالة بتاخد لغاية 5 دقايق، والـ claude child بيشتغل منفصل في مجموعة العمليات الخاصة بيه عشان Ctrl-C من التيرمينال مايقدرش يقتله قبل ما التصريف يحافظ على الـ turn.
+- **تنظيف الـ thread**: لما تقوله الشغل خلص، الموديل بينادي أداة `finish_thread` جوّا العملية؛ بعد ما الـ turn يخلص تمامًا، الـ daemon بيشيل سجل الـ thread، وبيلغي الاشتراك، وبيبعت تأكيد واحد. أي منشِن جديد بيبدأ session جديدة.
+- **نظافة الأخطاء**: أخطاء الـ turn بتبعت نص مقصوص رسالة بس، عمره ما أجسام أخطاء خام.

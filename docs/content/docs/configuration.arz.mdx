@@ -1,0 +1,28 @@
+---
+title: الإعدادات
+description: "schema بتاع config.json، والعتبات، ومفاتيح السياسة"
+---
+
+الإعدادات JSON في `~/.config/tokenmaxxing/config.json`. كل حقل اختياري؛ القيم الافتراضية بتتطبّق لكل حقل.
+
+```json
+{
+  "thresholds": { "session": 95, "weekly": 98 },
+  "policy": {
+    "projectionMargin": 0,
+    "greedySessionFloor": 50,
+    "switchModels": ["fable"],
+    "usagePollTtlMs": 90000,
+    "maxWaitMs": 3600000
+  }
+}
+```
+
+- `thresholds.session` / `thresholds.weekly`: شرايط الفرز الموصوفة فوق.
+- `policy.projectionMargin`: بيتطرح من الشرطين عشان يكوّن الشرايط الفعّالة.
+- `policy.greedySessionFloor`: نسبة استخدام الـ session اللي عندها التقارب الـ greedy بينخرط.
+- `policy.switchModels`: عيلات الموديلات اللي حدها الأسبوعي لكل موديل بيبوّب التبديل (المدخلات بتتحول لحروف صغيرة عند التحميل).
+- `policy.usagePollTtlMs`: قد إيه الـ poll بتاع `/usage` لكل موديل بيفضل حديث.
+- `policy.maxWaitMs`: حد الانتظار التلقائي للـ pool المستنفد.
+
+`tokenmaxxing config` بيوريّك الإعدادات الفعّالة مع مصادرها؛ `config set`/`unset` بيعدّلوا المفاتيح المنقّطة؛ `config tidy` بيشيل المفاتيح المجهولة.

@@ -1,0 +1,31 @@
+---
+title: Agent SDK পৃষ্ঠতল
+description: "আপনার নিজের চালানো এজেন্টে পুলটিকে Claude Agent SDK-এর সঙ্গে জোড়া দিন"
+---
+
+প্যাকেজের প্রোগ্রাম্যাটিক এন্ট্রি (`exports["."]` `src/sdk.ts`-কে নির্দেশ করে) tokenmaxxing-কে Claude Agent SDK-এর সঙ্গে জোড়া দেয়, আপনার নিজের পুলড অ্যাকাউন্টের বিপরীতে আপনি যে এজেন্ট তৈরি করেন তার জন্য। আপনার অ্যাপ অবশ্যই Bun-এর অধীনে চলবে (tokenmaxxing TypeScript সোর্স পাঠায় এবং `bun:ffi` ব্যবহার করে)।
+
+```ts
+import { query } from "@anthropic-ai/claude-agent-sdk";
+import { ensureBestAccount, pooledOptions, stopHookCheck } from "tokenmaxxing";
+
+await ensureBestAccount(); // run the switch decision before the spawn
+
+for await (const message of query({
+  prompt: "...",
+  options: {
+    ...pooledOptions(), // pinned real claude + scrubbed env
+    hooks: { Stop: [{ hooks: [stopHookCheck] }] }, // re-decide at every turn boundary
+  },
+})) {
+  // capture the session id from the init message for `resume` across swaps
+}
+```
+
+Agent SDK প্রতি `query()`-এ একটি claude সাবপ্রসেস স্পন করে এবং স্পনের সময় একবার ক্রেডেনশিয়াল পড়ে (কোনো statusline নয়, কোনো কোয়েরি-মধ্যবর্তী হট-সোয়াপ নয়), তাই ইন্টিগ্রেশনটি সীমানা-চালিত:
+
+- `ensureBestAccount()` হলো ঠিক সেই সিদ্ধান্ত যা CLI হুক ও টাইমার চালায় (বার, গতি চাপ, কুলডাউন, সব ভাগ করা কোড), কখনো প্রত্যাশামূলক নয়: একটি SDK সেশন কখনো একটি নিঃশেষিত কাউন্টডাউনের জন্য থামানো যায় না।
+- `pooledOptions()` `pathToClaudeCodeExecutable`-কে আসল claude বাইনারিতে পিন করে (কখনো সুপারভাইজর র‍্যাপার নয়) এবং প্রতিটি পারিপার্শ্বিক ক্রেডেনশিয়াল ওভাররাইড মুছে ফেলা একটি সম্পূর্ণ প্রতিস্থাপন `env` সরবরাহ করে। আপনার অ্যাপের এনভায়রনমেন্টে `CLAUDE_CONFIG_DIR` বা `CLAUDE_SECURESTORAGE_CONFIG_DIR` সেট থাকলে এটি দ্রুত ব্যর্থ হয়: Linux-এ একটি বদল লাইভ ক্রেডেনশিয়ালটি সেগুলো যেখানে নির্দেশ করে সেখানে লিখবে যখন মুছে ফেলা সাবপ্রসেস ডিফল্ট স্টোর পড়ে, একটি নীরব ভুল-অ্যাকাউন্ট ডিসিঙ্ক।
+- `stopHookCheck` টার্ন সীমানায় সিদ্ধান্তটি পুনরায় চালায়; এটি যে বদল অবতরণ করায় তা পরবর্তী স্পনে কার্যকর হয়। এটি পুনরায় ছুঁড়ে দেওয়ার পরিবর্তে তার নিজের ত্রুটি ধরে (stderr ও লগে লগিং করে), কারণ একটি অপরিচালিত হুক ব্যতিক্রম এজেন্টকে বাধা দিতে পারে, এবং একটি ভাঙা সুইচ চেকের জন্য একটি টার্ন বাতিল করার খরচ বর্তমান অ্যাকাউন্টে চালিয়ে যাওয়ার চেয়ে বেশি।
+
+`sdk.ts` Agent SDK নিজে থেকে কিছুই ইমপোর্ট করে না; এর মানগুলো কাঠামোগতভাবে SDK-এর অপশনে ছড়িয়ে যায়।

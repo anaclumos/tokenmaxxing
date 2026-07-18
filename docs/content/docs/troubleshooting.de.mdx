@@ -1,0 +1,34 @@
+---
+title: Fehlerbehebung und FAQ
+description: "Häufige Fragen und die Diagnostik dahinter"
+---
+
+**`claude` scheint nicht überwacht zu werden.**
+Führen Sie `tokenmaxxing doctor` aus. Der Shim muss die PATH-Auflösung gewinnen; prüfen Sie, dass die `# tokenmaxxing PATH`-Zeile in Ihrer Shell-rc auf das aktuelle bin-Verzeichnis zeigt und vor dem echten claude steht. `doctor` warnt auch vor einem `alias claude=...` oder einer `claude()`-Shell-Funktion, die den Wrapper überschattet, und vor Aliassen, die ein claude-Binary über einen absoluten Pfad starten (diese umgehen den Supervisor vollständig).
+
+**Auto-Switching feuert bei Codex nie.**
+Codex überspringt Hooks, denen zu vertrauen ihm nicht mitgeteilt wurde. Öffnen Sie codex, führen Sie `/hooks` aus und vertrauen Sie dem tokenmaxxing-Stop-Hook. Das Vertrauen wird gegen den Hash des Hooks aufgezeichnet, sodass es neu gewährt werden muss, falls der Hook jemals bearbeitet wird.
+
+**Ein Konto zeigt ein rotes `✗` in der Statusline.**
+Sein Refresh-Token ist tot (widerrufen oder unter seiner Sicherung wegrotiert). Führen Sie `tokenmaxxing auth <sel>` aus, um es an Ort und Stelle neu zu authentifizieren; der Befehl teilt Ihnen mit, mit welcher E-Mail Sie sich anmelden sollen, und verweigert eine Anmeldung, die auf einem anderen Konto landet.
+
+**Warum wechselt es nicht zum Konto mit dem meisten verbleibenden Kontingent?**
+Weil das nicht das Konto ist, dessen Kontingent am meisten vom Verfall bedroht ist. Das Ziel ist das Konto, das seinem eigenen Wochentempo am weitesten hinterherhinkt: verbleibender Prozentsatz geteilt durch die Zeit bis zu seiner wöchentlichen Zurücksetzung. Bei gleichen verbleibenden Mengen reduziert sich das auf die nächstgelegene Ablauf zuerst, und bei gleichem Ablauf auf das meiste verbleibende zuerst.
+
+**Es hat gerade gewechselt und die Statusline zeigt noch das alte Konto.**
+Zu erwarten für bis zu ~30 Sekunden auf macOS: Die laufende Sitzung übernimmt die ausgetauschte Anmeldeinformation bei ihrer nächsten Anmeldeinformations-Cache-Auffrischung. Der Nutzungs-Tee wird nach einem Wechsel genau aus diesem Grund für 45 Sekunden unterdrückt.
+
+**Kostet `status --force` etwas?**
+Ja, absichtlich: Es sendet eine minimale gemessene haiku-Anfrage pro Konto, sodass jedes 5-Stunden-Sitzungsfenster in diesem Augenblick startet, statt untätig zu ruhen, und tastet dann frisch ab. Ein einfaches `status` und `watch` pingen nie; `/usage`-Lesevorgänge sind kostenlos. Beachten Sie, dass die Server-Nutzungszufuhr ein frisch geöffnetes Fenster um Sekunden bis Minuten hinterherhinken kann, sodass eine Probe unmittelbar nach dem Ping noch den Vor-Ping-Zustand zeigen kann - `status` rendert einen Hinweis, statt so zu tun, als sei der Ping fehlgeschlagen.
+
+**Die `/usage`-Probe hat für das aktive Konto nichts zurückgegeben.**
+Das ist ein bekanntes claude-Verhalten: Wenn sein interner Nutzungsabruf fehlschlägt oder ratenbegrenzt ist, druckt `/usage` nur lokale Sitzungsstatistiken ohne Prozentzeilen. tokenmaxxing tastet das aktive Konto aus dem Statusline-Push ab und probt nur geparkte Konten, genau um dies zu vermeiden.
+
+**Claude-Hintergrundsitzungen.**
+Claudes Hintergrund-Daemon startet das echte versionierte Binary über einen absoluten Pfad und umgeht PATH-Shims, sodass Hintergrundsitzungen unbeaufsichtigt sind. Hooks feuern weiterhin über `settings.json`, und die Anmeldeinformationsübernahme plus der periodische Timer decken das Wechseln ab, aber es gibt für sie kein markergesteuertes Respawn.
+
+**Etwas hat einmal viele Prozesse gestartet. Ist das noch möglich?**
+Der Supervisor trägt geschichtete Rekursionswächter gegen genau dieses historische Versagen (ein veralteter Wrapper, der als das "echte" claude fixiert war): ein Tiefen-Sentinel in der Umgebung, das bei 5 Ebenen abbricht, ein On-Disk-Spawn-Ratenbegrenzer, realpath-Identitätsprüfungen, die jeden Kandidaten zurückweisen, der wieder in tokenmaxxings eigenes bin-Verzeichnis auflöst, und ein hartes Fehlschlagen (nie ein stiller PATH-Scan), wenn ein konfigurierter claude-Pfad nicht mehr existiert. `init` und `doctor` verifizieren, dass ein Kandidat tatsächlich claude ist, indem sie `--version` ausführen, bevor sie ihn fixieren.
+
+**Deinstallieren.**
+`tokenmaxxing uninstall` entfernt die Supervisor-Shims, Einstellungseinträge und den periodischen Timer und lässt Ihre Konten und geparkten Anmeldeinformationen intakt. Es entfernt nur Statusline-Einträge, die es als seine eigenen erkennt.

@@ -1,0 +1,21 @@
+---
+title: O statusline
+description: "Cota carregada em cor, uma linha, cada conta visível"
+---
+
+tokenmaxxing renderiza nativamente o statusline do Claude Code (enquanto faz o tee do feed de uso). O princípio de design: a cota é carregada em cor, não em números. Uma linha, por exemplo:
+
+```
+tm-wt-demo Fable 5 (high) +156/-23  ◆ 𝒇 2h 1d  ◇ 19h  ◇ 𝒇 2d  ◇ full  ✗ ?
+```
+
+- Cada token de janela é seu tempo até a redefinição, pintado em uma rampa contínua de verde para amarelo para vermelho conforme a porcentagem usada (truecolor quando o terminal suporta, escalonado no cubo de 256 cores caso contrário). A rampa se ancora em verde puro para 0, amarelo em 75 e vermelho em 95 ou acima, então as antigas faixas de severidade sobrevivem como âncoras da rampa.
+- O nome do modelo é pintado pelo preenchimento da janela de contexto na mesma rampa.
+- Um `◆` verde lidera as janelas da conta ativa; cada conta estacionada recebe seu próprio `◇` ciano (`✗` vermelho se precisa de reautenticação). As contas são ordenadas pela redefinição mais próxima que se aproxima.
+- O por modelo vem primeiro em cada bloco como uma inicial pintada e nua: o Fable renderiza `𝒇`; outras famílias usam a primeira letra maiúscula, sempre com correspondência por família.
+- Uma conta estacionada intocada renderiza um `full` verde. Uso medido com uma redefinição desconhecida renderiza um `?` pintado, e um limite por modelo não medido em um modelo bloqueado renderiza um `𝒇?` não pintado - o não medido nunca deve parecer seguro.
+- As contagens regressivas de redefinição mostram apenas a maior unidade, nunca "now" ou "0m"; uma janela sem redefinição a caminho renderiza um `0` verde (vazia de novo).
+- O basename de um worktree git vinculado lidera a linha; um checkout principal não renderiza nada ali. A detecção lê o sistema de arquivos em busca de um arquivo `.git` e nunca gera um subprocesso git.
+- Com `NO_COLOR` definido, a linha recorre a um formato numérico colado (`2h5` significa redefine em 2 horas, 5% usado; `ctx 42` para preenchimento de contexto) - sem cor, uma janela drenada não deve parecer fresca.
+
+As tarefas de subagente recebem suas próprias linhas de painel via a superfície subagentStatusLine do claude: uma linha por tarefa ativa, com o nome da família pintado pelo preenchimento de contexto daquela tarefa.

@@ -1,0 +1,28 @@
+---
+title: 빠른 시작
+description: "tokenmaxxing을 설치하고, 현재 계정을 가져오고, 계정을 더 모아 관리하세요"
+---
+
+macOS 또는 Linux에서 [Bun](https://bun.sh)과 Claude Code가 필요합니다.
+
+```sh
+bun add -g tokenmaxxing
+tokenmaxxing init
+```
+
+`init`은 다섯 가지 일을 합니다:
+
+1. 이미 로그인되어 있는 계정을 계정 #1로 가져옵니다(별도의 `adopt` 명령은 없습니다).
+2. `claude` supervisor shim을 설치합니다.
+3. Claude Code의 `settings.json`에 세 개의 항목을 설치합니다: statusLine, Stop 훅, SessionStart 훅(그리고 subagentStatusLine 항목).
+4. supervisor의 bin 디렉터리를 셸 rc의 PATH에 추가합니다(멱등적이며, `# tokenmaxxing PATH` 주석으로 표시됩니다). 실제 `claude`를 가로채려면 PATH에서 그보다 앞에 있어야 합니다.
+5. 180초마다 `tokenmaxxing check`를 실행하는 주기적 확인 타이머(macOS에서는 launchd 에이전트, Linux에서는 systemd 사용자 타이머)를 설치합니다.
+
+셸을 재시작한 다음, 계정을 더 추가하고 시작하세요:
+
+```sh
+tokenmaxxing add        # 계정을 하나 더 격리된 상태로 로그인해 풀에 추가합니다
+claude                  # 늘 하던 대로 claude를 사용합니다
+```
+
+`tokenmaxxing`은 `xx`로도 별칭이 설정되어 있습니다. 아무 인자 없이 `tokenmaxxing`(또는 `xx`)을 실행하면 `status`가 실행됩니다. `switch`는 명시적으로만 실행됩니다.

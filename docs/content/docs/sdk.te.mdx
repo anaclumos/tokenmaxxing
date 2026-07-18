@@ -1,0 +1,31 @@
+---
+title: Agent SDK ఉపరితలం
+description: "మీరే నడిపే ఏజెంట్‌లలో పూల్‌ను Claude Agent SDKతో జతచేయండి"
+---
+
+ప్యాకేజ్ యొక్క ప్రోగ్రామాటిక్ ఎంట్రీ (`exports["."]` `src/sdk.ts` వద్ద చూపుతుంది) మీ స్వంత పూల్ చేసిన ఖాతాలపై మీరు నిర్మించే ఏజెంట్‌ల కోసం tokenmaxxingను Claude Agent SDKతో జతచేస్తుంది. మీ యాప్ Bun కింద నడవాలి (tokenmaxxing TypeScript సోర్స్‌ను రవాణా చేస్తుంది మరియు `bun:ffi`ను ఉపయోగిస్తుంది).
+
+```ts
+import { query } from "@anthropic-ai/claude-agent-sdk";
+import { ensureBestAccount, pooledOptions, stopHookCheck } from "tokenmaxxing";
+
+await ensureBestAccount(); // run the switch decision before the spawn
+
+for await (const message of query({
+  prompt: "...",
+  options: {
+    ...pooledOptions(), // pinned real claude + scrubbed env
+    hooks: { Stop: [{ hooks: [stopHookCheck] }] }, // re-decide at every turn boundary
+  },
+})) {
+  // capture the session id from the init message for `resume` across swaps
+}
+```
+
+Agent SDK ప్రతి `query()`కు ఒక claude సబ్‌ప్రాసెస్‌ను స్పాన్ చేస్తుంది మరియు స్పాన్ వద్ద ఒకసారి క్రెడెన్షియల్‌లను చదువుతుంది - statusline లేదు, క్వెరీ-మధ్య హాట్-స్వాప్ లేదు - కాబట్టి ఏకీకరణ సరిహద్దు-ఆధారితం:
+
+- `ensureBestAccount()` CLI హుక్‌లు మరియు టైమర్ నడిపే ఖచ్చితమైన నిర్ణయం (బార్‌లు, వేగ ఒత్తిడి, కూల్‌డౌన్, అన్నీ షేర్ చేసిన కోడ్), ఎప్పుడూ ముందస్తుగా కాదు: ఒక SDK సెషన్‌ను ఖాళీ కౌంట్‌డౌన్ కోసం ఎప్పుడూ నిలిపివేయలేము.
+- `pooledOptions()` `pathToClaudeCodeExecutable`ను అసలైన claude బైనరీకి పిన్ చేస్తుంది (సూపర్‌వైజర్ ర్యాపర్‌కు ఎప్పుడూ కాదు) మరియు ప్రతి పరిసర క్రెడెన్షియల్ ఓవర్‌రైడ్ శుభ్రం చేయబడిన పూర్తి భర్తీ `env`ను అందిస్తుంది. మీ యాప్ ఎన్విరాన్‌మెంట్‌లో `CLAUDE_CONFIG_DIR` లేదా `CLAUDE_SECURESTORAGE_CONFIG_DIR` సెట్ చేయబడితే అది వేగంగా విఫలమవుతుంది: Linux పై ఒక మార్పిడి అవి చూపే చోట లైవ్ క్రెడెన్షియల్‌ను రాస్తుంది, అదే సమయంలో శుభ్రం చేసిన సబ్‌ప్రాసెస్ డిఫాల్ట్ స్టోర్‌ను చదువుతుంది, ఒక నిశ్శబ్ద తప్పు-ఖాతా డీసింక్.
+- `stopHookCheck` టర్న్ సరిహద్దుల వద్ద నిర్ణయాన్ని తిరిగి నడుపుతుంది; అది దింపే మార్పిడి తదుపరి స్పాన్‌లో అమలులోకి వస్తుంది. ఇది తిరిగి విసిరే బదులు తన స్వంత లోపాలను పట్టుకుంటుంది (stderr మరియు లాగ్‌కు లాగింగ్ చేస్తూ), ఎందుకంటే నిర్వహించని హుక్ మినహాయింపు ఏజెంట్‌ను అడ్డగించగలదు, మరియు విరిగిన మార్పిడి తనిఖీ కారణంగా ఒక టర్న్‌ను రద్దు చేయడం ప్రస్తుత ఖాతాను కొనసాగించడం కంటే ఎక్కువ ఖర్చవుతుంది.
+
+`sdk.ts` Agent SDK నుండి ఏదీ దిగుమతి చేయదు; దాని విలువలు SDK యొక్క ఆప్షన్‌లలోకి నిర్మాణాత్మకంగా విస్తరిస్తాయి.

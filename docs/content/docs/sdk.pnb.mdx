@@ -1,0 +1,31 @@
+---
+title: Agent SDK سطح
+description: "اپنے چلائے ایجنٹاں وچ پول نوں Claude Agent SDK نال جوڑو"
+---
+
+پیکج دا پروگرامی داخلہ (`exports["."]` `src/sdk.ts` ول اشارہ کردا اے) tokenmaxxing نوں Claude Agent SDK نال جوڑدا اے اوہناں ایجنٹاں لئی جیہڑے تُسیں اپنے اکٹھے کیتے اکاؤنٹاں خلاف بناندے او۔ تہاڈی ایپ نوں Bun تھلے چلنا پیندا اے (tokenmaxxing TypeScript سورس بھیجدا اے تے `bun:ffi` ورتدا اے)۔
+
+```ts
+import { query } from "@anthropic-ai/claude-agent-sdk";
+import { ensureBestAccount, pooledOptions, stopHookCheck } from "tokenmaxxing";
+
+await ensureBestAccount(); // run the switch decision before the spawn
+
+for await (const message of query({
+  prompt: "...",
+  options: {
+    ...pooledOptions(), // pinned real claude + scrubbed env
+    hooks: { Stop: [{ hooks: [stopHookCheck] }] }, // re-decide at every turn boundary
+  },
+})) {
+  // capture the session id from the init message for `resume` across swaps
+}
+```
+
+Agent SDK ہر `query()` لئی اک claude سب پروسیس شروع کردا اے تے شروعات تے اک وار کریڈینشل پڑھدا اے - کوئی statusline نئیں، کوئی کوئری دے وچالے ہاٹ سویپ نئیں - سو انضمام حد تے مبنی اے:
+
+- `ensureBestAccount()` بالکل اوہو فیصلہ اے جیہڑا CLI ہُک تے ٹائمر چلاندے نیں (باراں، رفتار دباؤ، کول ڈاؤن، سارا ساجھا کوڈ)، کدے پیشگی نئیں: اک SDK سیشن نوں کدے وی مُکے پول دی اُلٹی گنتی لئی نئیں روکیا جا سکدا۔
+- `pooledOptions()` `pathToClaudeCodeExecutable` نوں اصل claude بائنری تے پِن کردا اے (کدے سُپروائزر ریپر تے نئیں) تے اک پورا بدل `env` دیندا اے جیہدے وچ ہر ماحولی کریڈینشل اووَر رائیڈ صاف کیتا ہویا ہووے۔ جے تہاڈی ایپ دے ماحول وچ `CLAUDE_CONFIG_DIR` یا `CLAUDE_SECURESTORAGE_CONFIG_DIR` سیٹ ہووے تاں ایہہ چھیتی ناکام ہو جاندا اے: Linux تے اک بدلاؤ لائیو کریڈینشل اوتھے لکھوے گا جِتھے اوہ اشارہ کردے نیں جدوں کہ صاف کیتا سب پروسیس طے شدہ سٹور پڑھدا اے، اک چُپ چاپ غلط اکاؤنٹ بے میل۔
+- `stopHookCheck` ٹرن حداں تے فیصلہ مُڑ چلاندا اے؛ جیہڑا بدلاؤ اوہ کردا اے اوہ اگلی شروعات تے لاگو ہندا اے۔ ایہہ اپنیاں غلطیاں آپ پھڑدا اے (stderr تے تے لاگ وچ لاگ کردے ہوئے) بجائے مُڑ سُٹن دے، کیوں جو اک اَن سنبھلیا ہُک استثنا ایجنٹ نوں وچالے روک سکدا اے، تے اک ٹُٹے بدلاؤ جانچ اُتے اک ٹرن روکنا موجودہ اکاؤنٹ تے چلدے رہن نالوں مہنگا پیندا اے۔
+
+`sdk.ts` Agent SDK توں آپ کجھ وی درآمد نئیں کردا؛ ایہدیاں قدراں ڈھانچے وانگوں SDK دیاں آپشناں وچ پھیل جاندیاں نیں۔

@@ -1,0 +1,6 @@
+---
+title: 個人用途同服務條款
+description: "集合你擁有嘅帳戶，喺你自己運行嘅 session 同 agent 入面使用"
+---
+
+tokenmaxxing 集合你擁有嘅帳戶，喺你自己運行嘅 session 同 agent 入面使用。嗰個措辭係刻意嘅：Anthropic 唔容許第三方產品提供 claude.ai 登入或者 claude.ai 速率限制，而嗰個包括建基於 Agent SDK 嘅 agent。唔好將集合嘅 SDK 表面，或者任何建基於佢嘅嘢，發布俾第三方。tokenmaxxing 亦都刻意保持喺 CLI 中介嘅 `/usage` 路徑攞配額數據，而唔係重新實作 OAuth 或者代理 API 流量：佢唔係一個代理，而佢唯一掂嘅 OAuth 端點就係切換期間用嘅標準刷新授權，同一個唯讀嘅身分檢查（roles 端點）去驗證一個 token 實際上屬於邊個帳戶。

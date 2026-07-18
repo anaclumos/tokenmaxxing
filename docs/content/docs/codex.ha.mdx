@@ -1,0 +1,27 @@
+---
+title: Goyon bayan Codex
+description: "Haɗa asusun biyan-kuɗin ChatGPT ga Codex CLI, bisa sake-farawa"
+---
+
+Haɗe iri ɗaya yana aiki ga Codex CLI na OpenAI, a kan asusun biyan-kuɗin ChatGPT naka:
+
+```sh
+tokenmaxxing init --codex   # shigo da shigar codex ɗinka na yanzu + shigar da mai kula na codex & Stop hook
+tokenmaxxing add --codex    # shiga wani asusu, a ware - ba a taɓa shigar farko ba
+codex                       # yi amfani da codex kamar koyaushe
+```
+
+Tafkin Codex cikakken yanayi ne mai gudana a layi ɗaya: fihirisar asusunsa, fayilolin tantancewarsa da aka ajiye (fayilolin 0600 a kan dandali biyu, tunda ma'ajin codex da kanta fayil ne na rubutu bayyananne), makullinsa, hatimin lokacin musanya-ta-ƙarshe nasa. Babu abin da ake rabawa da tafkin Claude sai lambar-manufar-shawara.
+
+## Dalilin da ya sa hot-swap ba zai yiwu ba a Codex
+
+Tsarin codex da ke gudana yana riƙe manajan tantancewa guda a ƙwaƙwalwa kuma a fili yana ƙin sake lodin `auth.json` lokacin da yanzu yake ambaton asusu daban. Babu mai kallon fayil kuma babu dubawar tantancewa ta kowace buƙata, don haka tantancewar da aka musanya ƙarƙashin codex da ke gudana kawai ba ta taɓa yin tasiri ga inference. Sake farawa shi ne musanya: `codex resume <session-id>` yana ci gaba da rubutun gida a kan duk asusun da `auth.json` yake riƙe yanzu.
+
+tokenmaxxing yana sarrafa wannan da shim na mai kula na codex: Stop hook yana gudanar da shawarar matsin-sauri ta greedy iri ɗaya a kowace iyakar zagaye, kuma lokacin da ya yi musanya, yana rubuta alama da ke sa mai kula ya yi SIGTERM ga zaman a iyakar da aka tabbatar kuma ya sake ƙaddamar da `codex resume <session-id>` a kan sabon asusu, tare da rubutu cikakke. Domin kowace musanyar codex sake farawa ce da ake iya gani, hanyar greedy ta codex tana ɗauke da gefen ci gaba na 1.2x: ɗan takara dole ne ya doke matsin sauri na asusun yanzu da 20%, ba da kaɗan ba. Hanya mai wuya (sanda da aka ƙetare) tana yin watsi da gefen. Har ila yau babu ƙirgar baya na tafki da ya ƙare ga codex - babu abin da zai iya dakatar da zaman codex - don haka tafkin codex da ya ƙare gaba ɗaya yana tsayawa.
+
+Sauran hanyoyin aiki na musamman ga codex:
+
+- Ana karanta amfani daga GET da aka tantance na kyauta a kan rate-limit endpoint na codex (kira iri ɗaya da `/status` na CLI ke yi): kaso tare da cikakkun lokutan sake saiti na epoch, tagogin tarin da iyakoki na kowane-model duka. Rarrabuwar taga tana bisa tsawon lokaci, ba bisa matsayi ba, domin tsare-tsaren yanzu na iya rashin tagar awa 5 kwata-kwata kuma tagar mako tana zaune a slot ɗin farko.
+- Tokens na sabuntawa na Codex suna juyawa, kuma sake amfani da wanda aka maye gurbinsa yana kashe dukan iyalin grant. Ana adana kowace juyi nan take da ta dawo, ana ɗaukar samfurin asusun da ke aiki ne kawai ta blob ɗin da ke aiki (ba tsohon kwafin da aka ajiye ba), kuma fayilolin kasancewa na kowane zama suna tabbatar da cewa asusun da ke gudana a cikin zaman 'yan'uwa mai aiki ba ya taɓa zama abin nufi na musanya kuma ba a taɓa sabunta token ɗinsa da aka ajiye.
+- Codex yana buƙatar ma'ajin tantancewa na fayil: `init --codex` yana gazawa da sauri idan an ƙayyade ma'ajin keyring, kuma `add --codex` yana rubuta saitin yanayin-fayil cikin gidan shiga da aka ware don shigar ya sauka mai iya tattarawa.
+- Mataki guda na hannu: codex yana tsallake hooks da ba a gaya masa ya amince da su ba. Bayan `init --codex`, buɗe codex sau ɗaya kuma ka amince da Stop hook na tokenmaxxing ta `/hooks`, ko kuwa musanya-ta-atomatik za ta kasance babu aiki a shiru. `init --codex` yana buga wannan tunatarwa.

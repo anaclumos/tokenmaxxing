@@ -1,0 +1,21 @@
+---
+title: The statusline
+description: "Quota wey color dey carry, one line, every account dey show"
+---
+
+tokenmaxxing dey render Claude Code im statusline natively (while e dey tee the usage feed). The design principle: quota dey carried for color, no be numbers. One line, for example:
+
+```
+tm-wt-demo Fable 5 (high) +156/-23  ◆ 𝒇 2h 1d  ◇ 19h  ◇ 𝒇 2d  ◇ full  ✗ ?
+```
+
+- Each window token na im time-to-reset, wey dem paint on one continuous green-to-yellow-to-red ramp by used percent (truecolor when the terminal support am, stepped go the 256-color cube otherwise). The ramp dey anchor for pure green for 0, yellow for 75, and red for 95 and above, so the old severity bands go survive as ramp anchors.
+- Dem dey paint the model name by context-window fill on the same ramp.
+- One green `◆` dey lead the active account im windows; every parked account dey get im own cyan `◇` (red `✗` if e need reauth). Accounts dey sort by earliest upcoming reset.
+- Per-model dey come first for each block as one bare painted initial: Fable dey render `𝒇`; other families dey use dia uppercased first letter, always family-matched.
+- One untouched parked account dey render one green `full`. Measured usage with one unknown reset dey render one painted `?`, and one unmeasured per-model cap on one gated model dey render one unpainted `𝒇?` - unmeasured no fit ever look safe.
+- Reset countdowns dey show the largest unit only, never "now" or "0m"; one window with no upcoming reset dey render one green `0` (empty again).
+- One linked git worktree im basename dey lead the line; one main checkout no dey render anything for dia. The detection dey read the filesystem for one `.git` file and e no dey ever spawn one git subprocess.
+- With `NO_COLOR` set, the line dey fall back to one glued numeric format (`2h5` mean e go reset in 2 hours, 5% used; `ctx 42` for context fill) - without color, a drained window no fit look fresh.
+
+Subagent tasks dey get dia own panel rows via claude im subagentStatusLine surface: one row per active task, family name wey the task im context fill dey paint.

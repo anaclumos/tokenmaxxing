@@ -1,0 +1,6 @@
+---
+title: የግል አጠቃቀም እና የአገልግሎት ውሎች
+description: "የራስዎ የሆኑ መለያዎችን፣ በራስዎ በሚያሄዷቸው sessionዎች እና agentዎች ውስጥ ያሰባስቡ"
+---
+
+tokenmaxxing የራስዎ የሆኑ መለያዎችን፣ በራስዎ በሚያሄዷቸው sessionዎች እና agentዎች ውስጥ ያሰባስባል። ያ አገላለጽ ሆን ተብሎ ነው፦ Anthropic third-party ምርቶች የ claude.ai login ወይም claude.ai rate limits እንዲያቀርቡ አይፈቅድም፣ እና ያም በ Agent SDK ላይ የተገነቡ agentዎችን ያካትታል። የተሰበሰበውን SDK surface ን ወይም በሱ ላይ የተገነባውን ማንኛውንም ነገር ለ third-party አይላኩ። tokenmaxxing እንዲሁ ለ quota ውሂብ OAuth ን ከመድገም ወይም የ API ትራፊክን ከ proxy ከማድረግ ይልቅ ሆን ብሎ በ CLI-አማካኝ `/usage` path ላይ ይቆያል፦ proxy አይደለም፣ እና የሚነካቸው ብቸኛ OAuth endpointዎች በመቀያየር ጊዜ የሚያገለግለው መደበኛ refresh grant እና token በትክክል የትኛው መለያ እንደሆነ የሚያረጋግጥ read-only identity check (roles endpoint) ናቸው።

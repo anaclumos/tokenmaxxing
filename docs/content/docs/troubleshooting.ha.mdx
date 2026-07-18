@@ -1,0 +1,34 @@
+---
+title: Warware matsala da FAQ
+description: "Tambayoyi na gama-gari da bincike a bayansu"
+---
+
+**`claude` bai kama kamar ana kula da shi ba.**
+Gudanar da `tokenmaxxing doctor`. Shim ɗin dole ne ya lashe warware PATH; duba cewa layin `# tokenmaxxing PATH` a cikin shell rc ɗinka yana nuni ga babban shirin bin na yanzu kuma yana gaban ainihin claude. `doctor` yana kuma yin gargaɗi game da `alias claude=...` ko aikin shell na `claude()` da ke inuwar wrapper, da game da laƙabai da ke ƙaddamar da binary na claude ta cikakkiyar hanya (waɗannan suna zagaye mai kula gaba ɗaya).
+
+**Musanya-ta-atomatik ba ya taɓa aiki a Codex.**
+Codex yana tsallake hooks da ba a gaya masa ya amince da su ba. Buɗe codex, gudanar da `/hooks`, kuma ka amince da Stop hook na tokenmaxxing. Ana yin rikodin amana bisa hash na hook, don haka dole ne a sake bayar da ita idan aka gyara hook.
+
+**Asusu yana nuna ja `✗` a cikin statusline.**
+Token ɗin sabuntawarsa matacce ne (an soke shi ko an juya shi daga ƙarƙashin ajiyarsa). Gudanar da `tokenmaxxing auth <sel>` don sake tantance shi a wurinsa; umarnin yana gaya maka wace imel za ka shiga da ita kuma yana ƙin shigar da ta sauka a kan asusu daban.
+
+**Me ya sa ba ya musanya zuwa asusun da ke da ƙayyadaddu mafi yawa da suka rage?**
+Domin wannan ba shi ne asusu da ke cikin haɗarin rasa ƙayyadaddu mafi girma ba. Abin nufi shi ne asusun da ya fi bin baya ga saurin makonsa: kason da ya rage da aka raba da lokaci zuwa sake saitinsa na mako. Da adadin da suka rage daidai wannan yana raguwa zuwa ƙarewa mafi kusa da farko, kuma da ƙarewa daidai zuwa mafi yawa da suka rage da farko.
+
+**Ya kawai musanya kuma statusline har yanzu yana nuna tsohon asusu.**
+Ana sa ran haka har zuwa kusan daƙiƙa 30 a kan macOS: zaman da ke gudana yana amincewa da tantancewar da aka musanya a sabuntawar ajiyar-tantancewarsa ta gaba. Ana danne tee na amfani na daƙiƙa 45 bayan musanya saboda wannan dalili.
+
+**Shin `status --force` yana da farashi?**
+Eh, da gangan: yana aika ƙaramar buƙatar haiku da aka auna guda ga kowane asusu don kowace tagar zaman awa 5 ta fara a wannan lokaci maimakon ta kwanta ba tare da aiki ba, sannan ya ɗauki sabon samfur. `status` da `watch` na yau da kullum ba sa taɓa ping; karatun `/usage` na kyauta ne. Lura cewa abincin amfani na sabar na iya jinkirta taga da aka buɗe sabo da daƙiƙu zuwa mintuna, don haka probe nan da nan bayan ping na iya har yanzu nuna yanayin kafin-ping - `status` yana nuna bayanin kula maimakon yin kamar ping ya gaza.
+
+**Probe na `/usage` bai dawo da komai ba ga asusun da ke aiki.**
+Wannan hali ne da aka sani na claude: lokacin da ɗaukar amfaninsa na cikin gida ya gaza ko aka iyakance ƙima, `/usage` yana buga ƙididdigar zaman gida kawai ba tare da layukan kaso ba. tokenmaxxing yana ɗaukar samfurin asusun da ke aiki daga turawar statusline kuma yana probe asusun da aka ajiye kawai, daidai don guje wa wannan.
+
+**Zaman claude na baya.**
+Daemon na baya na Claude yana ƙirƙirar ainihin binary da aka sanya sigar ta cikakkiyar hanya, yana zagaye shims na PATH, don haka ba a kula da zaman baya. Hooks har yanzu suna aiki ta `settings.json`, kuma amincewa da tantancewa tare da agogon lokaci-lokaci suna rufe musanya, amma babu sake-farawa da alama ke jagoranta a gare su.
+
+**Wani abu ya ƙirƙiri tsare-tsare da yawa a wani lokaci. Shin har yanzu wannan yana yiwuwa?**
+Mai kula yana ɗauke da masu tsaron sake-maimaitawa masu yadudduka a kan wannan gazawar tarihi daidai (wrapper tsohon da aka ƙayyade a matsayin "ainihin" claude): mai tsaron zurfi a cikin muhalli da ke dakatarwa a matakai 5, mai iyakance ƙimar-ƙirƙira a diski, dubawar shaidar realpath da ke ƙin duk ɗan takara da ke warwarewa komawa cikin babban shirin bin na tokenmaxxing, da gazawa mai wuya (ba binciken PATH a shiru ba) lokacin da hanyar claude da aka tsara ba ta wanzu. `init` da `doctor` suna tabbatar da cewa ɗan takara da gaske claude ne ta hanyar gudanar da `--version` kafin ƙayyade shi.
+
+**Cirewa.**
+`tokenmaxxing uninstall` yana cire shims na mai kula, shigarwar saituna, da agogon lokaci-lokaci, kuma yana barin asusunka da tantancewar da aka ajiye cikakke. Yana cire shigarwar statusline da yake gane a matsayin nasa kawai.

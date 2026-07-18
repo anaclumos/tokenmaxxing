@@ -1,0 +1,23 @@
+---
+title: "Jembatan Slack: xx serve"
+description: "xx serve menjalankan sesi Claude Code dari thread Slack melalui Socket Mode"
+---
+
+`tokenmaxxing serve` menjalankan sebuah daemon Slack lokal melalui Socket Mode - tidak butuh URL publik. Penyiapan:
+
+```sh
+tokenmaxxing serve setup                    # cetak manifest aplikasi, minta dua token
+tokenmaxxing serve link <channel-id> <repo> # kaitkan sebuah channel ke checkout repo
+tokenmaxxing serve                          # jalankan daemon
+```
+
+Sebut bot di channel yang tertaut dan ia membuka sesi Claude Code untuk thread itu, di checkout repo yang tertaut. Setiap pesan thread menjalankan satu `query()` Agent SDK dengan `resume` - tidak pernah query streaming yang persisten - sehingga `ensureBestAccount()` mengevaluasi ulang gabungan di setiap giliran dan daemon dapat memulai ulang tanpa kehilangan thread (rekaman thread bersifat tahan lama; daemon berlangganan ulang saat startup).
+
+Perilaku yang perlu dicatat:
+
+- **Streaming**: balasan mengalir secara native ke Slack, dengan kartu tugas untuk pemikiran dan menjalankan tool, kode berpagar dirender dengan penyorotan, kartu "Turn" penutup dengan biaya dan durasi, dan pesan Slack baru dibuka setiap kali sebuah tool run menyela teks yang mengalir, sehingga sebuah giliran terbaca sebagai pesan-pesan terpisah di sekitar tool run. Panggilan TodoWrite memperbarui satu kartu daftar-periksa yang stabil di tempat.
+- **Izin**: `permissionMode` per-tautan default ke `acceptEdits`; `--yolo` (alias `--dangerous`) memilih sebuah tautan ke dalam `bypassPermissions`. Dialog interaktif tidak diizinkan dalam giliran yang direlai - tidak ada yang bisa menjawabnya melalui Slack - jadi model bertanya dalam prosa dan balasan thread Anda adalah giliran berikutnya. Sebuah skill plugin yang disertakan mengajarinya untuk menandai peminta dan mengakhiri giliran ketika ia membutuhkan sebuah keputusan.
+- **Perintah garis miring**: sebuah pesan thread yang teks-terkupasnya diawali `/` berjalan sebagai perintah garis miring claude. Composer Slack memakan pesan yang diawali `/`, jadi gunakan bentuk sebut-dulu (`@bot /usage`) atau spasi di depan.
+- **Matikan dengan anggun**: SIGTERM/SIGINT menguras - giliran baru dijatuhkan dengan lantang, giliran yang sedang berjalan mendapat hingga 5 menit, dan anak claude berjalan terlepas di grup prosesnya sendiri sehingga sebuah Ctrl-C terminal tidak bisa mematikannya sebelum penungguan mempertahankan giliran.
+- **Pembersihan thread**: ketika Anda memberitahunya pekerjaan selesai, model memanggil sebuah tool `finish_thread` dalam-proses; setelah giliran benar-benar berakhir, daemon menjatuhkan rekaman thread, berhenti berlangganan, dan memasang satu konfirmasi. Sebuah sebutan baru memulai sesi baru.
+- **Kebersihan error**: error giliran memasang teks pesan-saja yang dipangkas, tidak pernah badan error mentah.

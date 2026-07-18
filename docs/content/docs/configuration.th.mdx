@@ -1,0 +1,28 @@
+---
+title: การตั้งค่า
+description: "สคีมาของ config.json ค่าเกณฑ์ และปุ่มปรับนโยบาย"
+---
+
+การตั้งค่าเป็น JSON อยู่ที่ `~/.config/tokenmaxxing/config.json` ทุกฟิลด์เป็นทางเลือก และค่าเริ่มต้นจะถูกใช้เป็นรายฟิลด์
+
+```json
+{
+  "thresholds": { "session": 95, "weekly": 98 },
+  "policy": {
+    "projectionMargin": 0,
+    "greedySessionFloor": 50,
+    "switchModels": ["fable"],
+    "usagePollTtlMs": 90000,
+    "maxWaitMs": 3600000
+  }
+}
+```
+
+- `thresholds.session` / `thresholds.weekly`: แถบคัดกรองที่อธิบายไว้ข้างต้น
+- `policy.projectionMargin`: ค่าที่ถูกลบออกจากทั้งสองแถบเพื่อสร้างแถบที่มีผลจริง
+- `policy.greedySessionFloor`: เปอร์เซ็นต์การใช้เซสชันที่การลู่เข้าแบบ greedy จะเริ่มทำงาน
+- `policy.switchModels`: ตระกูลโมเดลที่ลิมิตรายสัปดาห์แยกตามโมเดลจะเปิดประตูให้สลับ (รายการจะถูกแปลงเป็นตัวพิมพ์เล็กเมื่อโหลด)
+- `policy.usagePollTtlMs`: การ poll `/usage` แยกตามโมเดลจะคงความสดใหม่นานเท่าใด
+- `policy.maxWaitMs`: ขอบเขตการรออัตโนมัติเมื่อพูลหมด
+
+`tokenmaxxing config` แสดงการตั้งค่าที่มีผลจริงพร้อมแหล่งที่มา `config set`/`unset` แก้ไขคีย์แบบจุด `config tidy` ตัดคีย์ที่ไม่รู้จักออก

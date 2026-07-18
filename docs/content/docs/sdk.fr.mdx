@@ -1,0 +1,31 @@
+---
+title: La surface de l'Agent SDK
+description: "Associez le pool à l'Agent SDK de Claude dans des agents que vous exécutez vous-même"
+---
+
+Le point d'entrée programmatique du paquet (`exports["."]` pointe vers `src/sdk.ts`) associe tokenmaxxing à l'Agent SDK de Claude pour les agents que vous construisez contre vos propres comptes regroupés. Votre application doit s'exécuter sous Bun (tokenmaxxing livre du code source TypeScript et utilise `bun:ffi`).
+
+```ts
+import { query } from "@anthropic-ai/claude-agent-sdk";
+import { ensureBestAccount, pooledOptions, stopHookCheck } from "tokenmaxxing";
+
+await ensureBestAccount(); // run the switch decision before the spawn
+
+for await (const message of query({
+  prompt: "...",
+  options: {
+    ...pooledOptions(), // pinned real claude + scrubbed env
+    hooks: { Stop: [{ hooks: [stopHookCheck] }] }, // re-decide at every turn boundary
+  },
+})) {
+  // capture the session id from the init message for `resume` across swaps
+}
+```
+
+L'Agent SDK lance un sous-processus claude par `query()` et lit les identifiants une seule fois au lancement (pas de statusline, pas de bascule à chaud en cours de requête), de sorte que l'intégration est pilotée par les frontières :
+
+- `ensureBestAccount()` est exactement la décision qu'exécutent les hooks et la minuterie du CLI (barres, pression de rythme, délai de récupération, tout du code partagé), jamais anticipatoire : une session SDK ne peut jamais être mise en pause pour un compte à rebours d'épuisement.
+- `pooledOptions()` fixe `pathToClaudeCodeExecutable` sur le vrai binaire claude (jamais le wrapper superviseur) et fournit un `env` de remplacement complet avec chaque surcharge d'identifiant ambiante nettoyée. Il échoue rapidement si `CLAUDE_CONFIG_DIR` ou `CLAUDE_SECURESTORAGE_CONFIG_DIR` est défini dans l'environnement de votre application : sur Linux, une bascule écrirait l'identifiant actif là où ces variables pointent tandis que le sous-processus nettoyé lit le magasin par défaut, une désynchronisation silencieuse de mauvais compte.
+- `stopHookCheck` réexécute la décision aux frontières de tour ; une bascule qu'il réalise prend effet au lancement suivant. Il attrape ses propres erreurs (en les journalisant sur stderr et dans le journal) plutôt que de les relancer, car une exception de hook non gérée peut interrompre l'agent, et avorter un tour à cause d'une vérification de bascule défaillante coûte plus cher que de rester sur le compte actuel.
+
+`sdk.ts` n'importe rien de l'Agent SDK lui-même ; ses valeurs se répandent structurellement dans les options du SDK.

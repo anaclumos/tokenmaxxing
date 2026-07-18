@@ -1,0 +1,48 @@
+---
+title: 架构
+description: "supervisor 垫片、statusline 分流、Stop hook 切换搭就地采用模型。"
+---
+
+tokenmaxxing 是一个多重调用嗰入口点（`src/main.ts`）：拿伊用 `claude` 搿个名字调用嗰辰光，伊就充当 `claude` supervisor；通过内部子命令提供 hook 搭 statusline 垫片；其余情况就分派 CLI。伊直接勒 Bun 底下跑；npm 包发嗰是 TypeScript 源码，勿是编译产物。
+
+各个组成部分：
+
+## supervisor 垫片
+
+`init` 会写一个两行嗰 shell 垫片，取名 `claude`，放勒 `~/.config/tokenmaxxing/bin/` 里向，还拿搿个目录摆勒 PATH 顶前头。侬敲 `claude` 嗰辰光，垫片跑起 supervisor，伊拿真嗰 claude 二进制生出来，继承 stdio，还带一份存牢嗰 `stty -g` 终端快照。伊只是一个进程搭终端嗰管理器：从来勿代理 API 流量，也从来勿碰传输当中嗰 token。
+
+打印模式嗰调用（`claude -p`、`--version`、`--help`）、非交互嗰子命令（`claude mcp`、`claude config` 等等），搭 tokenmaxxing 自家嗰探测，侪直接通过，勿做会话管理。碰着交互会话，supervisor 会钉牢一个会话 id（生一个出来，或者复用侬通过 `--session-id` / `-r` / `-c` 传进来嗰埃个），拿侬嗰启动 flag 存牢，畀后头重启嗰辰光好重放，然后盯牢一个跟埃个会话挂钩嗰重生标记文件。
+
+## statusline 分流
+
+Claude Code 每一个回合侪拿限速数据（`rate_limits.five_hour` 搭 `rate_limits.seven_day`）推到 statusline 嗰 stdin 里向。tokenmaxxing 占牢 statusline 搿个位置，所以伊嗰渲染器还兼做一个免费嗰、推送式嗰用量数据源：每一跳伊拿汇总窗口搭当前活跃模型分流到 `usage.json`。分模型嗰上限勿勒 statusline stdin 里向；伊只从 `claude -p '/usage'`（免费、零 token）来，等当前活跃模型受容量限制嗰辰光，伊会带一个 TTL 轮询，缓存到 `model-usage.json` 里向。
+
+分流是变了才写嗰：数字呒没变嗰辰光伊只碰一碰文件嗰 mtime，搿就当作数据源活着嗰心跳。新鲜度一直看 mtime 来判断，从来勿看嵌勒里向嗰时间戳。
+
+## Stop hook 搭切换
+
+每一个回合边界高头，Stop hook 侪跑切换决策（看[切换是哪能决定嗰](/wuu/switching)）。等一趟切换有必要嗰辰光，伊勒一把 `flock(2)` 独占锁底下发生（通过 `bun:ffi` 拿锁，因为 macOS 呒没带 `flock(1)` 二进制），而且凭据写入还额外搭 Claude Code 自家嗰刷新锁互锁。勒临界区里向，一趟切换会：
+
+1. 拿当前活跃嗰凭据采集到伊真正主人嗰停放备份里向。
+2. 拿目标账户刚刷新过嗰凭据装成活跃凭据，合并进现有嗰活跃 blob 里向，畀同伴状态（比方讲每个 MCP server 各自嗰 OAuth token）保得牢。
+3. 拿目标嗰轮换过嗰 token 持久化到伊自家嗰备份里向。
+4. 原子式地重写 `~/.claude.json` 里向嗰 `oauthAccount` 字段。
+5. 提交新嗰活跃标签，还清脱过时嗰用量快照，统统勒锁释放之前做好，搿能够保证崩溃勿会让装好嗰凭据搭活跃标签指向勿一样嗰账户。
+
+因为所有默认 profile 嗰会话侪共用搿一份活跃凭据，一趟切换就一记头拿每个会话侪迁移过去，flock 再加上勒锁底下嗰重新检查，好挡牢竞争嗰 hook 勿去烧脱两个账户。
+
+## 就地采用
+
+跑牢嗰 claude 会话勒两趟请求当中轮询伊嗰凭据存储：macOS 高头伊通过一个短缓存重读 keychain，比对 access token；Linux 高头伊查凭据文件嗰 mtime，一有变化就冲脱伊嗰 token 缓存。总嗰结果是，换脱嗰凭据会畀每个跑牢嗰会话采用，macOS 高头大约 30 秒之内，Linux 高头下一趟请求就采用，勿用啥重启。搿也就是普通切换勿写标记、勿触发重生嗰道理，会话就直接勒新账户高头接牢跑。会话里向嗰 `/usage` 共用同一批 token 缓存，所以伊嗰账户显示会跟牢采用一道翻过去。
+
+## 账户池耗光嗰等待搭自动接续
+
+只有等池子里每个账户侪超过伊嗰各条阈值嗰辰光，Stop hook 才会写一个重生标记（标记嗰 schema 需要一个 `waitUntil` 时间戳；普通切换永远生勿出搿种标记）。supervisor 看到标记，勒早就提交好嗰回合边界高头对伊嗰子进程发 SIGTERM（Stop hook 是勒记录写到磁盘、claude 空下来之后才跑嗰，所以啥也勿会丢），恢复终端，显一个到最早复位嗰倒计时，然后勒恢复过来嗰账户高头重启 `claude --resume <session-id>`。倒计时当中揿 Ctrl-C 就立刻接续。自动等待受 `policy.maxWaitMs`（默认 1 钟头）限牢；超过之后决策会报告池子耗光，勿再等下去。
+
+## 定期检查定时器
+
+Hook 只勒回合边界高头触发，而一个长嗰 agentic 回合好一个边界侪呒没就拿一个窗口从健康烧到耗光。所以 `init` 还装一个定期定时器（macOS 高头是一个 launchd agent，Linux 高头是一个 systemd 用户定时器），勿管回合活动哪能，每 180 秒跑一趟 `tokenmaxxing check`。
+
+## 一个 SessionStart hook
+
+会话起头或者接续嗰辰光跑同一套评估，畀新会话勒对嗰账户高头起头。切换之后嗰冷却让伊勒重生之后立刻变成一个正确嗰空操作。

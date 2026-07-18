@@ -1,0 +1,25 @@
+---
+title: Befehle
+description: "Jeder tokenmaxxing-Befehl und was er tut"
+---
+
+| Befehl | Was er tut |
+|---|---|
+| `tokenmaxxing init` | Das aktuelle Konto importieren, den Supervisor, die Hooks und die Statusline installieren |
+| `tokenmaxxing init --codex` | Dasselbe für Codex: die Anmeldung importieren, den Codex-Supervisor und Stop-Hook installieren |
+| `tokenmaxxing add` | Ein zusätzliches Konto registrieren (isolierte Anmeldung, in den Pool aufgenommen) |
+| `tokenmaxxing add --codex` | Ein zusätzliches Codex-Konto registrieren (isolierte Anmeldung) |
+| `tokenmaxxing auth [sel \| --all]` | Ein gebündeltes Konto an Ort und Stelle neu authentifizieren. Bloß aufgerufen listet es den Pool auf und fragt, welches; ein Selektor zielt auf ein Konto und teilt Ihnen mit, mit welcher E-Mail Sie sich anmelden sollen; `--all` geht jedes Konto, das eine Neuauthentifizierung benötigt, nacheinander durch |
+| `tokenmaxxing switch [sel]` | Zum besten Konto wechseln (greedy, idempotent) oder ein bestimmtes erzwingen |
+| `tokenmaxxing switch --codex [sel]` | Den Codex-Pool wechseln (wird beim nächsten Start von codex wirksam) |
+| `tokenmaxxing ls` | Gebündelte Konten auflisten |
+| `tokenmaxxing status` | Konten mit 5h-/Wochen-/Pro-Modell-Nutzungsbalken, aktiv und erschöpft-bis-Zurücksetzung |
+| `tokenmaxxing status --force` | Zusätzlich jedes Konto anpingen (je eine winzige haiku-Anfrage), sodass alle 5h-Sitzungs-Timer jetzt starten, dann frisch abtasten |
+| `tokenmaxxing watch [seconds]` | Live-Status, alle N Sekunden neu gerendert (Standard 120, Untergrenze 30; pingt nie) |
+| `tokenmaxxing config [get\|set\|unset\|tidy]` | Effektive Konfiguration mit Quellen; punktierte Schlüssel bearbeiten; `tidy` entfernt unbekannte Schlüssel |
+| `tokenmaxxing check` | Die Wechselentscheidung einmal auswerten (das führt der periodische Timer aus) |
+| `tokenmaxxing serve [setup\|link\|unlink\|links]` | Slack-Bridge-Daemon (Socket Mode, keine öffentliche URL) |
+| `tokenmaxxing doctor` | Prüfen, ob der Supervisor und die Einstellungseinträge erhalten geblieben sind |
+| `tokenmaxxing rename [--codex] <sel> <label>` | Ein gebündeltes Konto umbenennen |
+| `tokenmaxxing rm <sel>` | Ein Konto aus dem Pool entfernen |
+| `tokenmaxxing uninstall` | Den Supervisor und die Einstellungseinträge entfernen (Konten und Anmeldeinformationen bleiben erhalten) |

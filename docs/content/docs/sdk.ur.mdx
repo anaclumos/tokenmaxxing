@@ -1,0 +1,31 @@
+---
+title: Agent SDK سطح
+description: "پول کو Claude Agent SDK کے ساتھ ان ایجنٹس میں جوڑیں جنہیں آپ خود چلاتے ہیں"
+---
+
+پیکج کا پروگرامی انٹری پوائنٹ (`exports["."]` `src/sdk.ts` کی طرف اشارہ کرتا ہے) tokenmaxxing کو Claude Agent SDK کے ساتھ ان ایجنٹس کے لیے جوڑتا ہے جو آپ اپنے ذاتی پول شدہ اکاؤنٹس کے خلاف بناتے ہیں۔ آپ کی ایپ کو Bun کے تحت چلنا چاہیے (tokenmaxxing TypeScript سورس بھیجتا ہے اور `bun:ffi` استعمال کرتا ہے)۔
+
+```ts
+import { query } from "@anthropic-ai/claude-agent-sdk";
+import { ensureBestAccount, pooledOptions, stopHookCheck } from "tokenmaxxing";
+
+await ensureBestAccount(); // run the switch decision before the spawn
+
+for await (const message of query({
+  prompt: "...",
+  options: {
+    ...pooledOptions(), // pinned real claude + scrubbed env
+    hooks: { Stop: [{ hooks: [stopHookCheck] }] }, // re-decide at every turn boundary
+  },
+})) {
+  // capture the session id from the init message for `resume` across swaps
+}
+```
+
+Agent SDK ہر `query()` پر ایک claude سب پروسیس اسپان کرتا ہے اور اسپان پر ایک بار کریڈنشلز پڑھتا ہے - کوئی statusline نہیں، کوئی کوئری کے دوران ہاٹ سوئپ نہیں - لہٰذا انضمام باؤنڈری-محرک ہے:
+
+- `ensureBestAccount()` بالکل وہی فیصلہ ہے جو CLI ہکس اور ٹائمر چلاتے ہیں (بارز، رفتار دباؤ، کولڈاؤن، سب مشترکہ کوڈ)، کبھی توقعاتی نہیں: ایک SDK سیشن کو کبھی ختم شدہ کاؤنٹ ڈاؤن کے لیے روکا نہیں جا سکتا۔
+- `pooledOptions()` `pathToClaudeCodeExecutable` کو اصل claude بائنری پر پن کرتا ہے (کبھی سپروائزر ریپر پر نہیں) اور ہر محیطی کریڈنشل اووررائیڈ کو صاف کر کے ایک مکمل متبادل `env` فراہم کرتا ہے۔ یہ تیزی سے ناکام ہو جاتا ہے اگر آپ کی ایپ کے ماحول میں `CLAUDE_CONFIG_DIR` یا `CLAUDE_SECURESTORAGE_CONFIG_DIR` سیٹ ہو: Linux پر ایک سوئپ لائیو کریڈنشل کو وہاں لکھے گا جہاں وہ اشارہ کرتے ہیں جبکہ صاف کیا گیا سب پروسیس ڈیفالٹ اسٹور پڑھتا ہے، ایک خاموش غلط-اکاؤنٹ غیر ہم آہنگی۔
+- `stopHookCheck` فیصلے کو ٹرن باؤنڈریز پر دوبارہ چلاتا ہے؛ ایک سوئپ جو یہ اتارے وہ اگلے اسپان پر مؤثر ہوتا ہے۔ یہ اپنی خرابیاں خود پکڑتا ہے (stderr اور لاگ میں لاگ کرتے ہوئے) بجائے دوبارہ اچھالنے کے، کیونکہ ایک غیر سنبھالی ہک استثنا ایجنٹ میں خلل ڈال سکتی ہے، اور ایک ٹوٹے سوئچ چیک پر ایک ٹرن منسوخ کرنا موجودہ اکاؤنٹ پر سوار رہنے سے زیادہ مہنگا پڑتا ہے۔
+
+`sdk.ts` خود Agent SDK سے کچھ بھی امپورٹ نہیں کرتا؛ اس کی اقدار ساختی طور پر SDK کے آپشنز میں پھیلتی ہیں۔

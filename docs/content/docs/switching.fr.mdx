@@ -1,0 +1,41 @@
+---
+title: Comment la bascule décide
+description: "Engagement, barres de filtrage, pression de rythme, et les chemins glouton et dur"
+---
+
+La décision comporte deux couches : une porte d'engagement, puis un chemin glouton ou dur.
+
+## Engagement
+
+En dessous de `policy.greedySessionFloor` (par défaut 50, en pourcentage de la fenêtre de session de 5 heures), la décision ne s'exécute pas du tout : une nouvelle session reste sur son compte. Dès que la fenêtre de session active est utilisée à 50 %, ou qu'une barre dure est franchie, la décision s'engage.
+
+## Barres de filtrage
+
+Les seuils sont des barres de filtrage, pas le déclencheur d'une panique :
+
+- `thresholds.session` : 95. Une réinitialisation de 5 heures est peu coûteuse à attendre, donc la fenêtre de session bascule plus tôt.
+- `thresholds.weekly` : 98. Cette seule barre couvre à la fois l'agrégat sur 7 jours et chaque plafond hebdomadaire par modèle. Le quota hebdomadaire fonctionne selon le principe du tout ou rien, il se vide donc au plus près du mur.
+
+Les deux sont délibérément en dessous de 100 : la marge est le budget permettant d'atteindre une frontière de tour propre (plus jusqu'à un tour de latence d'adoption sur macOS) avant que le compte n'atteigne réellement sa limite. Les mêmes barres filtrent les candidats à la bascule : un compte dépassant l'une de ses barres n'est pas une cible valide. Le déclenchement et le filtrage utilisent toujours les mêmes barres effectives (les seuils moins `policy.projectionMargin`), car un filtrage plus laxiste que le déclenchement ferait atterrir des bascules sur des comptes que le déclenchement re-signale immédiatement, faisant faire du ping-pong au pool.
+
+## La cible : la pression de rythme
+
+Parmi les comptes utilisables, la cible est celui le plus en retard sur son propre rythme hebdomadaire : la plus haute **pression de rythme**, définie comme le pourcentage hebdomadaire restant divisé par le temps restant jusqu'à la réinitialisation hebdomadaire de ce compte. Le compte dont le plus de quota est sur le point d'être perdu l'emporte. Les égalités se départagent par l'expiration hebdomadaire la plus proche, puis par la plus faible utilisation sur 7 jours.
+
+Tout fonctionne à partir de fenêtres mises en cache, stockées sous forme d'epochs UTC absolus, de sorte qu'un instantané périmé se résout tout de même correctement : une réinitialisation hebdomadaire déjà passée est extrapolée vers l'avant par pas exacts de 7 jours, et toute fenêtre au-delà de sa réinitialisation mise en cache compte comme fraîchement vide (jamais une raison de basculer, jamais une raison de garder un compte sur le banc).
+
+## Chemin glouton contre chemin dur
+
+- **Chemin glouton** (engagé, mais sous chaque barre) : classe chaque compte, le compte actuel compris. Si le compte actuel l'emporte déjà ou est à égalité, ne rien faire. Sinon, basculer vers le compte strictement meilleur. Il n'attend jamais et ne pré-parque jamais : un compte actuel utilisable n'est pas échangé contre une attente. Comme le compte actuel est lui aussi classé, le chemin automatique et `tokenmaxxing switch` seul sont tous deux idempotents : une évaluation périodique converge vers le bon compte puis s'y maintient.
+- **Chemin dur** (une barre franchie) : basculer vers le meilleur candidat utilisable. Si le jeton de rafraîchissement d'un candidat s'avère mort, il est signalé comme nécessitant une réauthentification et le candidat suivant est essayé. Si rien n'est utilisable, la logique d'attente sur épuisement s'exécute ; seul un appelant capable de réellement mettre la session en pause (le hook Stop supervisé) est autorisé à pré-parquer sur un compte encore bloqué mais dont le rétablissement est le plus proche.
+
+## Plafonds par modèle
+
+`policy.switchModels` (par défaut `["fable"]`) nomme les familles de modèles dont le plafond hebdomadaire par modèle peut déclencher une bascule. La correspondance se fait par jeton de famille, jamais par chaîne d'affichage exacte : les noms d'affichage des modèles dérivent (« Fable » est devenu « Fable 5 »), et un filtre à chaîne exacte a une fois désactivé silencieusement toute la bascule par modèle. Deux règles de sécurité connexes :
+
+- Un modèle actif inconnu verrouille chaque famille configurée. Juste après qu'une bascule a effacé les instantanés, une machine sans interface peut fonctionner sans connaître le modèle ; traiter l'inconnu comme non contraint a une fois laissé un compte rester à son plafond Fable pendant des heures sans être remarqué.
+- Le filtrage des candidats compte aussi les plafonds par modèle verrouillés, de sorte qu'un pool où chaque compte a consommé son plafond Fable ne fait pas de tourniquet (round-robin).
+
+## Délai de récupération
+
+Un délai de récupération de 45 secondes après une bascule verrouille le chemin automatique. Le tee de la statusline est suspendu pendant ces mêmes 45 secondes après une bascule (l'adoption prend jusqu'à 30 secondes sur macOS), sans quoi une évaluation trop précoce s'exécuterait sur des données que la bascule elle-même a invalidées : ce scénario précis a une fois produit une boucle de respawn A vers B et retour. Le `tokenmaxxing switch` manuel n'est pas affecté par le délai de récupération.

@@ -1,0 +1,48 @@
+---
+title: Architektur
+description: "Der Supervisor-Shim, der Statusline-Tee, der Stop-Hook-Wechsel und das Übernahmemodell"
+---
+
+tokenmaxxing ist ein einziger Multi-Call-Einstiegspunkt (`src/main.ts`), der sich wie der `claude`-Supervisor verhält, wenn er unter diesem Namen aufgerufen wird, die Hook- und Statusline-Shims über interne Unterbefehle bereitstellt und ansonsten das CLI verteilt. Es läuft direkt unter Bun; das npm-Paket liefert TypeScript-Quellcode aus, keinen Build.
+
+Die beweglichen Teile:
+
+## Der Supervisor-Shim
+
+`init` schreibt einen 2-zeiligen Shell-Shim namens `claude` in `~/.config/tokenmaxxing/bin/` und stellt dieses Verzeichnis an den Anfang des PATH. Wenn Sie `claude` eingeben, führt der Shim den Supervisor aus, der das echte claude-Binary mit geerbtem stdio und einem gespeicherten `stty -g`-Terminal-Snapshot startet. Es ist ausschließlich ein Prozess- und Terminal-Manager: Er leitet nie API-Verkehr weiter und berührt nie Tokens während der Übertragung.
+
+Aufrufe im Print-Modus (`claude -p`, `--version`, `--help`), nicht-interaktive Unterbefehle (`claude mcp`, `claude config` und so weiter) sowie tokenmaxxings eigene Proben werden ohne Sitzungsverwaltung direkt durchgereicht. Für eine interaktive Sitzung fixiert der Supervisor eine Sitzungs-ID (er erzeugt eine oder verwendet die von Ihnen per `--session-id` / `-r` / `-c` übergebene wieder), speichert Ihre Start-Flags, damit ein späterer Neustart sie wiederholen kann, und wacht dann über eine an diese Sitzung gebundene Respawn-Marker-Datei.
+
+## Der Statusline-Tee
+
+Claude Code schiebt bei jedem Zug Ratenbegrenzungsdaten (`rate_limits.five_hour` und `rate_limits.seven_day`) in die stdin der Statusline. tokenmaxxing besitzt den Statusline-Slot, sodass sein Renderer zugleich als kostenlose, push-basierte Nutzungszufuhr dient: Bei jedem Takt teet er die Aggregatfenster plus das aktive Modell in `usage.json`. Pro-Modell-Obergrenzen sind nicht in der Statusline-stdin enthalten; sie kommen nur von `claude -p '/usage'` (kostenlos, null Tokens), das mit einer TTL abgefragt und in `model-usage.json` gecacht wird, wenn das aktive Modell kapazitätsbeschränkt ist.
+
+Der Tee ist write-on-change: Wenn sich die Zahlen nicht ändern, aktualisiert er nur die mtime der Datei, die als Lebenszeichen der Zufuhr dient. Die Aktualität wird stets an der mtime beurteilt, nie am eingebetteten Zeitstempel.
+
+## Der Stop-Hook und der Wechsel
+
+An jeder Zuggrenze führt der Stop-Hook die Wechselentscheidung aus (siehe [Wie der Wechsel entschieden wird](/de/switching)). Wenn ein Wechsel gerechtfertigt ist, geschieht er unter einer exklusiven `flock(2)`-Sperre (via `bun:ffi` genommen, da macOS kein `flock(1)`-Binary mitliefert), und die Anmeldeinformationsschreibvorgänge verzahnen sich zusätzlich mit Claude Codes eigener Refresh-Sperre. Innerhalb des kritischen Abschnitts erledigt ein Wechsel:
+
+1. Erntet die aktuelle Live-Anmeldeinformation in die geparkte Sicherung ihres wahren Eigentümers.
+2. Installiert die frisch aufgefrischte Anmeldeinformation des Zielkontos als die Live-Anmeldeinformation und führt sie in das bestehende Live-Blob zusammen, sodass Geschwisterzustände (etwa Pro-MCP-Server-OAuth-Tokens) erhalten bleiben.
+3. Persistiert den rotierten Token des Ziels in seiner eigenen Sicherung.
+4. Schreibt atomar das Feld `oauthAccount` in `~/.claude.json` neu.
+5. Committet das neue aktive Label und löscht veraltete Nutzungs-Snapshots, alles bevor die Sperre freigegeben wird, sodass ein Absturz nie die installierte Anmeldeinformation und das aktive Label auf verschiedene Konten zeigen lassen kann.
+
+Da alle Sitzungen des Standardprofils die eine Live-Anmeldeinformation teilen, migriert ein einziger Wechsel jede Sitzung auf einmal, und das flock plus eine erneute Prüfung unter der Sperre verhindert, dass konkurrierende Hooks zwei Konten verbrennen.
+
+## Übernahme an Ort und Stelle
+
+Eine laufende claude-Sitzung fragt zwischen den Anfragen ihren Anmeldeinformationsspeicher ab: Auf macOS liest sie den Keychain über einen kurzen Cache erneut und vergleicht Zugriffstokens; auf Linux statet sie die mtime der Anmeldeinformationsdatei und leert ihre Token-Caches bei Änderung. Der Nettoeffekt ist, dass eine ausgetauschte Anmeldeinformation von jeder laufenden Sitzung innerhalb von etwa 30 Sekunden auf macOS und bei der allernächsten Anfrage auf Linux übernommen wird, ohne jeden Neustart. Deshalb schreibt ein einfacher Wechsel keinen Marker und löst kein Respawn aus - die Sitzung läuft einfach auf dem neuen Konto weiter. Das `/usage` innerhalb der Sitzung teilt sich dieselben Token-Caches, sodass seine Kontoanzeige zusammen mit der Übernahme umschlägt.
+
+## Warten bei erschöpftem Pool und automatisches Fortsetzen
+
+Nur wenn jedes Konto im Pool über seinen Schranken liegt, schreibt der Stop-Hook einen Respawn-Marker (das Marker-Schema erfordert einen `waitUntil`-Zeitstempel; ein einfacher Wechsel kann nie einen erzeugen). Der Supervisor sieht den Marker, sendet seinem Kindprozess an der bereits committeten Zuggrenze ein SIGTERM (der Stop-Hook läuft, nachdem das Transkript auf der Platte liegt und claude im Leerlauf ist, sodass nichts verloren geht), stellt das Terminal wieder her, zeigt einen Countdown bis zur nächstgelegenen Zurücksetzung an und startet dann `claude --resume <session-id>` auf dem wiederhergestellten Konto neu. Ctrl-C während des Countdowns setzt sofort fort. Das automatische Warten ist durch `policy.maxWaitMs` begrenzt (Standard 1 Stunde); darüber hinaus meldet die Entscheidung den Pool als erschöpft, statt zu warten.
+
+## Der periodische Prüf-Timer
+
+Hooks feuern nur an Zuggrenzen, und ein langer agentischer Zug kann ein Fenster von gesund bis erschöpft verbrennen, ohne eine einzige Grenze. `init` installiert daher auch einen periodischen Timer - ein launchd-Agent auf macOS, ein systemd-Benutzer-Timer auf Linux - der `tokenmaxxing check` alle 180 Sekunden ausführt, unabhängig von der Zugaktivität.
+
+## Ein SessionStart-Hook
+
+Führt dieselbe Auswertung aus, wenn eine Sitzung startet oder fortgesetzt wird, sodass eine frische Sitzung auf dem richtigen Konto beginnt. Die Abkühlzeit nach dem Wechsel macht ihn direkt nach einem Respawn zu einem korrekten No-op.

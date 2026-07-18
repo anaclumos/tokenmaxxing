@@ -1,0 +1,28 @@
+---
+title: クイックスタート
+description: "tokenmaxxing をインストールし、現在のアカウントをインポートして、さらにプールする"
+---
+
+macOS または Linux 上で [Bun](https://bun.sh) と Claude Code が必要です。
+
+```sh
+bun add -g tokenmaxxing
+tokenmaxxing init
+```
+
+`init` は5つのことを行います。
+
+1. すでにログイン済みのアカウントをアカウント #1 としてインポートします (別途 `adopt` コマンドはありません)。
+2. `claude` スーパーバイザーのシムをインストールします。
+3. Claude Code の `settings.json` に3つのエントリをインストールします。statusLine、Stop フック、SessionStart フック (加えて subagentStatusLine エントリ)。
+4. スーパーバイザーの bin ディレクトリをシェル rc の PATH に追記します (冪等で、`# tokenmaxxing PATH` コメントで印を付けます)。本物の `claude` より前に PATH 上に置いてインターセプトする必要があります。
+5. `tokenmaxxing check` を180秒ごとに実行する定期チェックタイマーをインストールします (macOS では launchd エージェント、Linux では systemd ユーザータイマー)。
+
+シェルを再起動し、それからアカウントを追加して開始します。
+
+```sh
+tokenmaxxing add        # もう1つのアカウントを分離環境でログインしてプールに追加する
+claude                  # これまでどおり claude を使う
+```
+
+`tokenmaxxing` には `xx` というエイリアスもあります。引数なしの `tokenmaxxing` (または `xx`) は `status` を実行します。`switch` は明示的に指定する必要があります。

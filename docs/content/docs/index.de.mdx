@@ -1,13 +1,35 @@
 ---
-title: Willkommen
-description: Bündeln Sie Ihre eigenen Agent-CLI-Konten und halten Sie jede Sitzung in Bewegung
+title: tokenmaxxing
+description: "Automatischer Kontowechsel für Claude Code - bündeln Sie Ihre eigenen Abonnementkonten und tauschen Sie Anmeldeinformationen im laufenden Betrieb, wenn das Kontingent voll ist, sodass jede Sitzung fortsetzbar bleibt."
 ---
 
-tokenmaxxing ist ein CLI für Menschen, die Claude Code (und Codex) über mehrere eigene Konten betreiben. Es überwacht die Nutzungskontingente, wechselt die aktive Anmeldeinformation vor Erreichen eines Limits zu dem Konto mit dem meisten Spielraum und hält Ihre Sitzungen über Wechsel hinweg fortsetzbar.
+tokenmaxxing ist ein CLI für den automatischen Kontowechsel bei Claude Code. Es bündelt mehrere Abonnementkonten (Pro/Max), die Ihnen gehören, und tauscht die aktive Anmeldeinformation im laufenden Betrieb gegen ein frischeres Konto aus, wenn das gerade genutzte Konto sich einem Nutzungslimit nähert. Sie verwenden `claude` genau so, wie Sie es immer tun; der Wechsel geschieht an einer sicheren Zuggrenze, und Ihre laufende Sitzung setzt dieselbe Unterhaltung auf dem neuen Konto fort, ohne neu zu starten. Es funktioniert über viele gleichzeitige Sitzungen hinweg.
+
+Das einzige sichtbare Verhalten ist der schlimmste Fall: Wenn der gesamte Pool an seinem Limit ist, pausiert die Sitzung mit einem Countdown und setzt automatisch auf dem nächsten zurückgesetzten Konto fort (Ctrl-C setzt sofort fort).
+
+<Callout>
+Umfang: Claude Code auf macOS und Linux, dazu OpenAIs Codex CLI als zweiter, paralleler Pool. Es bündelt Abonnementkonten, keine API-Schlüssel. Dies ist ein Werkzeug für den persönlichen Gebrauch, um Konten zu bündeln, die Ihnen gehören, in Sitzungen und Agenten, die Sie selbst betreiben - siehe [Persönlicher Gebrauch und Nutzungsbedingungen](/de/terms).
+</Callout>
+
+## Das Problem
+
+Ein Claude-Abonnement misst drei Limits gleichzeitig (alle über `/usage` bestätigt):
+
+- **Aktuelle Sitzung**: ein rollierendes 5-Stunden-Fenster.
+- **Aktuelle Woche (alle Modelle)**: ein 7-Tage-Aggregat.
+- **Aktuelle Woche, pro Modell**: getrennte Wochenobergrenzen für einzelne Modellfamilien. Diese existieren derzeit nur für Sonnet und Fable, und nur die Fable-Obergrenze ist eng genug, um ins Gewicht zu fallen - sie greift deutlich vor dem Aggregat. Eine Maschine kann bei 50 % Woche-gesamt liegen und gleichzeitig schon bei 80 % Woche-Fable.
+
+Das Wochenkontingent ist nach dem Prinzip use-it-or-lose-it: Was ein Konto bis zu seinem festen wöchentlichen Zurücksetzen nicht verbraucht hat, verfällt. Wenn Ihnen mehrere Konten gehören, besteht die rationale Strategie darin, das Kontingent weiter auf dem Konto zu verbrennen, das seinem eigenen Wochentempo am weitesten hinterherhinkt, und rechtzeitig zu wechseln, bevor ein einzelnes Limit mitten in der Sitzung an die Wand fährt.
+
+Das von Hand zu tun bedeutet: abmelden, anmelden und Ihre Unterhaltung verlieren. tokenmaxxing automatisiert es: Ein laufendes `claude` überprüft zwischen den Anfragen erneut seinen Anmeldeinformationsspeicher, sodass eine darunter ausgetauschte Anmeldeinformation an Ort und Stelle übernommen wird (innerhalb von etwa 30 Sekunden auf macOS, bei der nächsten Anfrage auf Linux). Ein einfacher Wechsel startet Ihre Sitzung nie neu. Der einzige Fall, der weiterhin Prozessverwaltung erfordert, ist ein vollständig erschöpfter Pool - eine Sitzung kann sich nicht selbst pausieren - und genau dafür existiert der schlanke Supervisor.
+
+Alles andere an `claude` bleibt unverändert: alle Flags, MCP-Server, Hooks und Skills werden durchgereicht.
 
 ## Wohin als Nächstes
 
 <Cards>
-  <Card title="Die vollständige Anleitung" href="/de/docs/tokenmaxxing" />
-  <Card title="Quellcode auf GitHub" href="https://github.com/anaclumos/tokenmaxxing" />
+  <Card title="Schnellstart" href="/de/quickstart" />
+  <Card title="Befehle" href="/de/commands" />
+  <Card title="Architektur" href="/de/architecture" />
+  <Card title="Wie der Wechsel entschieden wird" href="/de/switching" />
 </Cards>

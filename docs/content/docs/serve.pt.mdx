@@ -1,0 +1,23 @@
+---
+title: "A ponte com o Slack: xx serve"
+description: "xx serve executa sessões do Claude Code a partir de threads do Slack via Socket Mode"
+---
+
+`tokenmaxxing serve` executa um daemon local do Slack sobre Socket Mode - nenhuma URL pública necessária. Configuração:
+
+```sh
+tokenmaxxing serve setup                    # imprime o manifesto do app, solicita os dois tokens
+tokenmaxxing serve link <channel-id> <repo> # vincula um canal a um checkout de repositório
+tokenmaxxing serve                          # executa o daemon
+```
+
+Mencione o bot em um canal vinculado e ele abre uma sessão do Claude Code para aquela thread, no checkout do repositório vinculado. Cada mensagem de thread executa um `query()` do Agent SDK com `resume` - nunca uma query de streaming persistente - então `ensureBestAccount()` reavalia o grupo a cada turno e o daemon pode reiniciar sem perder threads (os registros de thread são duráveis; o daemon os reassina na inicialização).
+
+Comportamento notável:
+
+- **Streaming**: as respostas transmitem nativamente para o Slack, com cards de tarefa para pensamento e execuções de ferramenta, código em blocos renderizado com destaque, um card "Turn" de encerramento com custo e duração, e uma nova mensagem do Slack aberta sempre que uma execução de ferramenta interrompe o texto transmitido, para que um turno se leia como mensagens separadas em torno das execuções de ferramenta. As chamadas TodoWrite atualizam um único card de checklist estável no lugar.
+- **Permissões**: o `permissionMode` por vínculo tem `acceptEdits` como padrão; `--yolo` (alias `--dangerous`) coloca um vínculo em `bypassPermissions`. Diálogos interativos são proibidos em turnos relançados - ninguém pode responder um pelo Slack - então o modelo pergunta em prosa e sua resposta na thread é o próximo turno. Uma skill de plugin empacotada ensina o modelo a marcar o solicitante e encerrar o turno quando precisa de uma decisão.
+- **Comandos de barra**: uma mensagem de thread cujo texto sem prefixo começa com `/` é executada como um comando de barra do claude. O compositor do Slack engole mensagens que começam com `/`, então use a forma com menção primeiro (`@bot /usage`) ou um espaço inicial.
+- **Encerramento gracioso**: SIGTERM/SIGINT esvazia - novos turnos são descartados ruidosamente, os turnos em andamento recebem até 5 minutos, e o filho claude roda destacado em seu próprio grupo de processos para que um Ctrl-C do terminal não possa matá-lo antes de o esvaziamento preservar o turno.
+- **Limpeza de thread**: quando você diz que o trabalho está concluído, o modelo chama uma ferramenta `finish_thread` em processo; depois que o turno termina por completo, o daemon descarta o registro da thread, cancela a assinatura e posta uma confirmação. Uma nova menção inicia uma nova sessão.
+- **Higiene de erro**: os erros de turno postam texto aparado somente com a mensagem, nunca corpos de erro crus.

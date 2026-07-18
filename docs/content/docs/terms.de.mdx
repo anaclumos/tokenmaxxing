@@ -1,0 +1,6 @@
+---
+title: Persönlicher Gebrauch und Nutzungsbedingungen
+description: "Bündeln Sie Konten, die Ihnen gehören, in Sitzungen und Agenten, die Sie selbst betreiben"
+---
+
+tokenmaxxing bündelt Konten, die Ihnen gehören, in Sitzungen und Agenten, die Sie selbst betreiben. Diese Formulierung ist bewusst gewählt: Anthropic erlaubt Drittanbieterprodukten nicht, claude.ai-Anmeldung oder claude.ai-Ratenbegrenzungen anzubieten, und das schließt Agenten ein, die auf dem Agent SDK aufbauen. Liefern Sie die gebündelte SDK-Oberfläche oder irgendetwas darauf Aufgebautes nicht an Dritte aus. tokenmaxxing bleibt zudem bewusst auf dem CLI-vermittelten `/usage`-Pfad für Kontingentdaten, statt OAuth neu zu implementieren oder API-Verkehr weiterzuleiten: Es ist kein Proxy, und die einzigen OAuth-Endpunkte, die es berührt, sind der standardmäßige Refresh-Grant, der während eines Wechsels verwendet wird, und eine reine Identitätsprüfung (der Rollen-Endpunkt), die verifiziert, welchem Konto ein Token tatsächlich gehört.

@@ -1,0 +1,41 @@
+---
+title: Yadda musanya ke yanke shawara
+description: "Shiga, sandunan tantancewa, matsin sauri, da hanyar greedy da hanya mai wuya"
+---
+
+Shawarar tana da yadudduka biyu: ƙofar shiga (engagement gate), sannan hanyar greedy ko hanya mai wuya (hard).
+
+## Shiga (Engagement)
+
+Ƙasa da `policy.greedySessionFloor` (tsohuwa 50, cikin kaso na tagar zaman awa 5), shawarar ba ta gudana kwata-kwata - sabon zama yana hawa asusunsa. Da zarar tagar zaman da ke aiki ta yi amfani 50%, ko an ƙetare wata sandar tsauri, shawarar tana shiga.
+
+## Sandunan tantancewa
+
+Ƙofofin (thresholds) sandunan tantancewa ne, ba abin da ke jawo firgita ba:
+
+- `thresholds.session`: 95. Sake saiti na awa 5 mai arha ne a jira, don haka tagar zaman tana musanya da wuri.
+- `thresholds.weekly`: 98. Wannan sanda guda tana rufe tarin kwanaki 7 da kowane iyakar mako na kowane-model. Ƙayyadaddun mako na "yi amfani da shi ko ka rasa shi" ne, don haka yana zubewa kusa da bango.
+
+Dukansu suna ƙasa da 100 da gangan: sararin shi ne kasafin da za a iso wurin iyakar zagaye mai tsafta (tare da har zuwa zagaye guda na jinkirin amincewa a kan macOS) kafin asusu ya bugi iyakarsa da gaske. Sandunan iri ɗaya suna tantance 'yan takarar musanya: asusun da ya wuce kowace sandarsa ba abin nufi ba ne mai inganci. Jawowa da tantancewa koyaushe suna amfani da sandunan da ke aiki iri ɗaya (thresholds ban da `policy.projectionMargin`), domin tantancewa mai sassauci fiye da jawowa zai sa musanya su sauka a kan asusun da jawowar za ta sake yiwa alama nan take, tana sa tafkin ping-pong.
+
+## Abin nufi: matsin sauri (pace pressure)
+
+Daga cikin asusun da za a iya amfani da su, abin nufi shi ne wanda ya fi bin baya ga saurin makonsa: mafi girman **matsin sauri**, wanda aka ayyana a matsayin sauran kason mako da aka raba da lokaci har zuwa sake saitin mako na wancan asusu. Asusun da ƙayyadaddu mafi yawa za su ɓace wa yana lashe. Daidaici yana warware zuwa ƙarewar mako mafi kusa, sannan mafi ƙarancin amfani na kwanaki 7.
+
+Komai yana gudana daga tagogin da aka ajiye a matsayin cikakkun UTC epochs, don haka tsohon samfur har yanzu yana warwarewa daidai: sake saitin mako da ya wuce yana ci gaba gaba a matakan kwanaki 7 daidai, kuma duk tagar da ta wuce sake saitinta da aka ajiye ana ƙidaya ta a matsayin sabuwa mai fanko (ba dalilin musanya ba ne, ba dalilin ajiye asusu a gefe ba ne).
+
+## Hanyar greedy da hanya mai wuya
+
+- **Hanyar greedy** (an shiga, amma ƙasa da kowace sanda): ka jera kowane asusu, tare da na yanzu. Idan asusun yanzu ya riga ya lashe ko ya daidaita, kada ka yi komai. In ba haka ba ka musanya zuwa asusun da ya fi kyau a fili. Ba ya taɓa jira kuma ba ya taɓa ajiyewa a gaba - ba a musanya asusu na yanzu mai amfani domin jira ba. Domin ana jera asusun yanzu ma, hanyar atomatik da `tokenmaxxing switch` shi kaɗai duk idempotent ne: auna lokaci-lokaci yana haɗuwa a kan asusun da ya dace sannan ya tsaya.
+- **Hanya mai wuya** (an ƙetare sanda): a musanya zuwa ɗan takara mafi kyau da za a iya amfani da shi. Idan refresh token na ɗan takara ya zama matacce, ana yiwa alama cewa yana buƙatar sake-tantancewa kuma ana gwada ɗan takara na gaba. Idan babu abin da za a iya amfani da shi, dabarar jira-ƙarewa tana gudana; kawai mai kira da zai iya dakatar da zaman da gaske (Stop hook da ake kula da shi) aka ba shi izinin ajiyewa a gaba zuwa asusu da har yanzu aka toshe amma zai fi kusa da dawowa.
+
+## Iyakoki na kowane-model
+
+`policy.switchModels` (tsohuwa `["fable"]`) yana ambaton iyalan model waɗanda iyakar mako na kowane-model ɗinsu zai iya jawo musanya. Daidaitawa tana ta hanyar token na iyali, ba ta ainihin kirtanin nunawa ba: sunayen nunin model suna canzawa ("Fable" ya zama "Fable 5"), kuma ƙofar-kirtani-daidai ta taɓa kashe musanyar kowane-model gaba ɗaya a shiru. Dokoki biyu na aminci masu alaƙa:
+
+- Model mai aiki da ba a sani ba yana toshe kowace iyali da aka tsara. Nan da nan bayan musanya ta share samfura, na'ura mara kai na iya gudana ba tare da sanin model ba; ɗaukar wanda ba a sani ba a matsayin mara ƙayyadewa ya taɓa bar asusu ya zauna a iyakar Fable ɗinsa na sa'o'i ba tare da a lura ba.
+- Tantance 'yan takara yana ƙidaya iyakoki na kowane-model da aka toshe ma, don haka tafki inda kowane asusu ya ƙona iyakar Fable ɗinsa ba ya round-robin.
+
+## Sanyaya (Cooldown)
+
+Sanyaya na daƙiƙa 45 bayan-musanya yana toshe hanyar atomatik. Ana danne tee na statusline na daƙiƙa 45 iri ɗaya bayan musanya (amincewa tana ɗaukar har zuwa daƙiƙa 30 a kan macOS), don haka auna na baya zai gudana a kan bayanan da musanyar da kanta ta ɓata - wannan takamaiman yanayi ya taɓa haifar da madauki na sake-farawa na A-zuwa-B-da-baya. `tokenmaxxing switch` na hannu ba a shafa shi da sanyaya.

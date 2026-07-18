@@ -1,0 +1,28 @@
+---
+title: البدء السريع
+description: "ثبّت tokenmaxxing، واستورد حسابك الحالي، واجمع مزيدًا من الحسابات"
+---
+
+يتطلّب [Bun](https://bun.sh) و Claude Code، على macOS أو Linux.
+
+```sh
+bun add -g tokenmaxxing
+tokenmaxxing init
+```
+
+يقوم `init` بخمسة أشياء:
+
+1. يستورد الحساب المُسجَّل دخولك به بالفعل بوصفه الحساب رقم 1 (لا يوجد أمر `adopt` منفصل).
+2. يثبّت وسيط (shim) المشرف الخاص بـ `claude`.
+3. يثبّت ثلاثة مدخلات في ملف `settings.json` الخاص بـ Claude Code: سطر حالة (statusLine)، وخطّاف Stop، وخطّاف SessionStart (إضافةً إلى مدخل subagentStatusLine).
+4. يُلحق دليل bin الخاص بالمشرف بمسار PATH في ملف تهيئة الصدفة لديك (عملية عديمة الأثر عند التكرار، معلّمة بتعليق `# tokenmaxxing PATH`). ويجب أن يسبق `claude` الحقيقي في PATH لكي يعترضه.
+5. يثبّت مؤقّت فحص دوري (عميل launchd على macOS، ومؤقّت مستخدم systemd على Linux) يُشغّل `tokenmaxxing check` كل 180 ثانية.
+
+أعد تشغيل الصدفة، ثم أضف مزيدًا من الحسابات وانطلق:
+
+```sh
+tokenmaxxing add        # يسجّل دخول حساب إضافي واحد بمعزل ويضمّه إلى التجمّع
+claude                  # استخدم claude كالمعتاد
+```
+
+`tokenmaxxing` له أيضًا اسم مستعار `xx`. تشغيل `tokenmaxxing` (أو `xx`) وحده يُنفّذ `status`؛ أمّا `switch` فيبقى صريحًا.

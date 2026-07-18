@@ -1,0 +1,10 @@
+---
+title: Mga tapat na limitasyon
+description: "Ang mga tradeoff na kaakibat ng pooled hot-swapping"
+---
+
+- **Isang malamig na turn.** Ang prompt cache ay org-scoped, kaya't ang unang turn sa isang bagong account ay muling nag-a-upload ng konteksto nang minsan.
+- **Depleted-pause na aberya.** Tanging ang isang ganap na naubos na pool ang humihinto sa session para sa countdown; anumang na-type sa split-second na iyon ay nawawala.
+- **Adoption lag.** Sa macOS ang unang turn sa loob ng ~30 segundo ng isang pagpapalit ay maaari pa ring mag-meter sa lumang account; sinisipsip ito ng headroom ng mga bar.
+- **Shared na blast radius.** Ibinabahagi ng lahat ng default-profile na session ang isang live credential, kaya't inililipat silang lahat nang sabay ng isang pagpapalit (bawat isa ay ina-adopt sa lugar).
+- **Mga plaintext na credential sa Linux.** Ang Claude Code mismo ay nag-iimbak ng mga Linux credential bilang isang 0600 plaintext file; sinusunod ng mga naka-park na kopya ng tokenmaxxing ang parehong modelo.

@@ -1,0 +1,21 @@
+{
+  "pages": [
+    "index",
+    "quickstart",
+    "commands",
+    "architecture",
+    "switching",
+    "configuration",
+    "state-directory",
+    "credentials",
+    "platforms",
+    "statusline",
+    "codex",
+    "serve",
+    "sdk",
+    "distribution",
+    "terms",
+    "limitations",
+    "troubleshooting"
+  ]
+}

@@ -1,13 +1,35 @@
 ---
-title: Bienvenue
-description: Regroupez vos propres comptes CLI d'agents et gardez chaque session en mouvement
+title: tokenmaxxing
+description: "Bascule automatique de comptes Claude Code : regroupez vos propres comptes d'abonnement et échangez les identifiants à chaud lorsque le quota se remplit, en gardant chaque session continuable."
 ---
 
-tokenmaxxing est un CLI destiné aux personnes qui utilisent Claude Code (et Codex) sur plusieurs de leurs propres comptes. Il surveille les quotas d'utilisation, bascule les identifiants actifs vers le compte disposant de la plus grande marge avant qu'une limite ne soit atteinte, et permet à vos sessions de rester continuables au fil des basculements.
+tokenmaxxing est un CLI pour la bascule automatique de comptes Claude Code. Il regroupe plusieurs comptes d'abonnement (Pro/Max) que vous possédez et échange à chaud les identifiants actifs vers un compte plus frais lorsque celui en cours d'utilisation approche d'une limite d'utilisation. Vous lancez `claude` exactement comme d'habitude ; la bascule se produit à une frontière de tour sûre et votre session en cours poursuit la même conversation sur le nouveau compte sans redémarrage. Cela fonctionne sur de nombreuses sessions simultanées à la fois.
+
+Le seul comportement visible correspond au pire des cas : lorsque tout le pool est à sa limite, la session se met en pause avec un compte à rebours et reprend automatiquement sur le prochain compte qui se réinitialise (Ctrl-C reprend immédiatement).
+
+<Callout>
+Périmètre : Claude Code sur macOS et Linux, ainsi que le CLI Codex d'OpenAI comme second pool parallèle. Il regroupe des comptes d'abonnement, pas des clés d'API. C'est un outil à usage personnel pour regrouper des comptes que vous possédez, dans des sessions et des agents que vous exécutez vous-même (voir [Usage personnel et conditions d'utilisation](/fr/terms)).
+</Callout>
+
+## Le problème
+
+Un abonnement Claude mesure trois limites à la fois (toutes confirmées via `/usage`) :
+
+- **Session en cours** : une fenêtre glissante de 5 heures.
+- **Semaine en cours (tous modèles)** : un agrégat sur 7 jours.
+- **Semaine en cours, par modèle** : des plafonds hebdomadaires distincts pour chaque famille de modèles. Ils n'existent actuellement que pour Sonnet et Fable, et seul le plafond de Fable est assez serré pour compter : il se déclenche bien avant l'agrégat. Une machine peut être à 50 % du plafond hebdomadaire global tout en étant déjà à 80 % du plafond hebdomadaire de Fable.
+
+Le quota hebdomadaire fonctionne selon le principe du tout ou rien : ce qu'un compte n'a pas consommé avant sa réinitialisation hebdomadaire fixe est perdu. Si vous possédez plusieurs comptes, la stratégie rationnelle consiste à continuer de consommer le quota du compte le plus en retard sur son propre rythme hebdomadaire, et à basculer avant qu'une seule limite ne touche le mur en pleine session.
+
+Le faire à la main implique de se déconnecter, de se reconnecter et de perdre votre conversation. tokenmaxxing l'automatise : un `claude` en cours d'exécution revérifie son magasin d'identifiants entre les requêtes, de sorte qu'un identifiant échangé sous ses pieds est adopté sur place (en environ 30 secondes sur macOS, à la requête suivante sur Linux). Une bascule simple ne redémarre jamais votre session. Le seul cas qui nécessite encore une gestion de processus est un pool entièrement épuisé (une session ne peut pas se mettre en pause elle-même), et c'est la raison d'être du fin superviseur.
+
+Tout le reste concernant `claude` est inchangé : toutes les options en ligne de commande, les serveurs MCP, les hooks et les skills sont transmis tels quels.
 
 ## Où aller
 
 <Cards>
-  <Card title="Le guide complet" href="/fr/docs/tokenmaxxing" />
-  <Card title="Le code source sur GitHub" href="https://github.com/anaclumos/tokenmaxxing" />
+  <Card title="Démarrage rapide" href="/fr/quickstart" />
+  <Card title="Commandes" href="/fr/commands" />
+  <Card title="Architecture" href="/fr/architecture" />
+  <Card title="Comment la bascule décide" href="/fr/switching" />
 </Cards>

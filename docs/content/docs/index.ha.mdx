@@ -1,13 +1,35 @@
 ---
-title: Barka da zuwa
-description: Haɗa asusun agent CLI naka kuma ka ci gaba da kowane zama
+title: tokenmaxxing
+description: "Musanya asusun Claude Code ta atomatik - haɗa asusun biyan kuɗi (subscription) naka kuma ka yi hot-swap na tantancewa lokacin da ƙayyadaddu suka cika, tare da kiyaye kowane zama domin ci gaba."
 ---
 
-tokenmaxxing wani CLI ne ga mutanen da suke gudanar da Claude Code (da Codex) a kan asusunsu daban-daban. Yana lura da ƙayyadaddun amfani (usage quota), yana musanya tantancewar da ke aiki zuwa asusun da ke da sarari mafi girma kafin iyaka ta cika, kuma yana kiyaye zaman ka domin ci gaba a duk lokacin musanya.
+tokenmaxxing wani CLI ne domin musanya asusun Claude Code ta atomatik. Yana haɗa asusun biyan kuɗi (Pro/Max) da yawa da kake mallaka kuma yana yin hot-swap na tantancewar da ke aiki zuwa wani sabon asusu lokacin da wanda ake amfani da shi ke kusa da iyakar amfani. Kana gudanar da `claude` daidai kamar yadda kake yi koyaushe; musanyar tana faruwa ne a wurin iyaka mai aminci na zagaye (turn boundary) kuma zaman ka da ke gudana yana ci gaba da tattaunawa iri ɗaya a kan sabon asusu ba tare da sake farawa ba. Yana aiki a kan zama da yawa a lokaci guda.
+
+Halayen da kawai ake iya gani su ne mafi munin yanayi: lokacin da dukkan tafkin (pool) ya kai iyakarsa, zaman zai tsaya tare da ƙirgar baya (countdown) kuma zai ci gaba ta atomatik a kan asusu na gaba da zai sake saitawa (Ctrl-C yana ci gaba nan take).
+
+<Callout>
+Iyaka: Claude Code a kan macOS da Linux, tare da Codex CLI na OpenAI a matsayin tafki na biyu, mai gudana a layi ɗaya. Yana haɗa asusun biyan kuɗi, ba maɓallan API ba. Wannan kayan aiki ne na amfanin kai domin haɗa asusun da kake mallaka, a cikin zama da agent ɗin da kai da kanka kake gudanarwa - duba [Amfanin kai da sharuɗɗan sabis](/ha/terms).
+</Callout>
+
+## Matsalar
+
+Biyan kuɗin Claude yana auna iyaka guda uku a lokaci ɗaya (duka an tabbatar da su ta hanyar `/usage`):
+
+- **Zaman yanzu**: taga mai jujjuyawa na awa 5.
+- **Makon yanzu (dukkan model)**: tarin kwanaki 7.
+- **Makon yanzu, ga kowane model**: iyakoki na mako daban-daban ga kowace iyali ta model. A yanzu waɗannan suna nan ne kawai ga Sonnet da Fable, kuma iyakar Fable kaɗai ce ta yi tsauri sosai da za ta yi tasiri - tana ɗaure kafin tarin ya yi. Na'ura na iya kasancewa a 50% na mako-duka yayin da take a 80% na mako-Fable.
+
+Ƙayyadaddun mako na "yi amfani da shi ko ka rasa shi" ne: duk abin da asusu bai cinye ba kafin sake saitawarsa na mako da aka ƙayyade zai ɓace. Idan kana mallakar asusu da yawa, dabarar da ta dace ita ce ci gaba da ƙona ƙayyadaddu a kan duk asusun da ya fi bin baya ga saurin makonsa, kuma a musanya kafin wata iyaka ta bugi bango a tsakiyar zama.
+
+Yin hakan da hannu na nufin fita, shiga, da rasa tattaunawarka. tokenmaxxing yana yin sa ta atomatik: `claude` da ke gudana yana sake duba ma'ajin tantancewarsa tsakanin buƙatu, don haka tantancewar da aka musanya ƙarƙashinsa ana amincewa da ita a wurinta (a cikin kusan daƙiƙa 30 a kan macOS, a buƙata ta gaba a kan Linux). Musanya na yau da kullum ba ya taɓa sake fara zaman ka. Yanayi guda da har yanzu yake buƙatar sarrafa tsari shi ne tafki da ya ƙare gaba ɗaya - zama ba zai iya dakatar da kansa ba - kuma wannan shi ne dalilin da ya sa mai kula (supervisor) mai sirara ke wanzuwa.
+
+Duk sauran abubuwa game da `claude` ba a canza su ba: duk flags, MCP servers, hooks, da skills suna ratsawa.
 
 ## Inda za a je
 
 <Cards>
-  <Card title="Cikakken jagora" href="/ha/docs/tokenmaxxing" />
-  <Card title="Lambar tushe a GitHub" href="https://github.com/anaclumos/tokenmaxxing" />
+  <Card title="Farawa da sauri" href="/ha/quickstart" />
+  <Card title="Umarni" href="/ha/commands" />
+  <Card title="Gine-gine" href="/ha/architecture" />
+  <Card title="Yadda musanya ke yanke shawara" href="/ha/switching" />
 </Cards>

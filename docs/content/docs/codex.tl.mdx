@@ -1,0 +1,27 @@
+---
+title: Suporta sa Codex
+description: "Pagpo-pool ng mga ChatGPT-subscription account para sa Codex CLI, batay sa restart"
+---
+
+Gumagana ang parehong pooling para sa Codex CLI ng OpenAI, laban sa iyong sariling mga ChatGPT-subscription account:
+
+```sh
+tokenmaxxing init --codex   # i-import ang iyong kasalukuyang codex login + i-install ang codex supervisor at Stop hook
+tokenmaxxing add --codex    # mag-log in ng ibang account, nakahiwalay - hindi nagagalaw ang iyong pangunahing login
+codex                       # gamitin ang codex tulad ng dati
+```
+
+Ang Codex pool ay ganap na parallel na state: sarili nitong accounts index, sarili nitong mga naka-park na credential file (0600 na file sa parehong platform, dahil ang sariling store ng codex ay isang plaintext file), sarili nitong lock, sarili nitong last-swap timestamp. Walang ibinabahagi sa Claude pool maliban sa decision-policy code.
+
+## Bakit imposible ang hot-swap sa Codex
+
+Ang isang tumatakbong codex process ay humahawak ng isang in-memory auth manager at tahasang tumatanggi na i-reload ang `auth.json` kapag ito ay nagngangalan na ng ibang account. Walang file watcher at walang per-request credential poll, kaya't ang isang credential na ipinalit sa ilalim ng isang tumatakbong codex ay basta hindi nagkakabisa para sa inference. Ang restart ang pagpapalit: ipinagpapatuloy ng `codex resume <session-id>` ang lokal na transcript sa alinmang account na hawak na ngayon ng `auth.json`.
+
+Hinahawakan ito ng tokenmaxxing gamit ang isang codex supervisor shim: pinapatakbo ng Stop hook ang parehong greedy pace-pressure na desisyon sa bawat turn boundary, at kapag lumipat ito, nagsusulat ito ng isang marker na nagpapa-SIGTERM sa supervisor sa session sa naka-commit na boundary at muling naglulunsad ng `codex resume <session-id>` sa sariwang account, buo ang transcript. Dahil ang bawat codex switch ay isang nakikitang restart, ang codex greedy path ay may dalang 1.2x na improvement margin: dapat talunin ng isang challenger ang pace pressure ng kasalukuyang account nang 20%, hindi lamang nang kaunti. Binabalewala ng hard path (isang na-cross na bar) ang margin. Wala ring depleted-pool countdown para sa codex - walang makakapagpa-pause sa isang codex session - kaya't ang isang ganap na naubos na codex pool ay nananatili.
+
+Iba pang codex-specific na mekanika:
+
+- Ang paggamit ay binabasa mula sa isang libreng authenticated GET laban sa sariling rate-limit endpoint ng codex (ang parehong tawag na ginagawa ng `/status` ng CLI): mga porsyento kasama ang absolute epoch reset time, parehong aggregate window at per-model cap. Ang pag-uuri ng window ay duration-driven, hindi kailanman position-driven, dahil ang mga kasalukuyang plano ay maaaring walang 5-oras na window at ang lingguhang window ay nasa primary slot.
+- Nagro-rotate ang mga Codex refresh token, at ang muling paggamit ng isang napalitan na ay pumapatay sa buong grant family. Ang bawat rotation ay pinananatili sa sandaling bumalik ito, ang aktibong account ay sinasample lamang sa pamamagitan ng live blob (hindi kailanman isang lipas na naka-park na kopya), at tinitiyak ng per-session presence file na ang isang account na tumatakbo sa isang live sibling session ay hindi kailanman isang swap target at hindi kailanman nare-refresh ang naka-park nitong token.
+- Nangangailangan ang Codex ng file credential store: mabilis na nabibigo ang `init --codex` kung naka-pin ang keyring store, at isinusulat ng `add --codex` ang file-mode setting sa isolated onboarding home upang ang login ay mapunta nang maaani.
+- Isang manu-manong hakbang: nilalaktawan ng codex ang mga hook na hindi pa nito sinabihang pagkatiwalaan. Pagkatapos ng `init --codex`, buksan ang codex nang minsan at pagkatiwalaan ang tokenmaxxing Stop hook sa pamamagitan ng `/hooks`, o mananatiling tahimik na hindi gumagana ang auto-switching. Ipinipirinta ng `init --codex` ang paalalang ito.

@@ -1,0 +1,16 @@
+---
+title: "Notas de plataforma: macOS frente a Linux"
+description: "En qué se diferencian macOS y Linux en almacenamiento, adopción y temporizadores"
+---
+
+| | macOS | Linux |
+|---|---|---|
+| Credencial en vivo | Elemento de contraseña genérica del llavero de inicio de sesión | Archivo `.credentials.json` 0600 |
+| Credenciales estacionadas | Elementos de llavero por cuenta | Archivos 0600 en un directorio 0700 |
+| Adopción tras un cambio | En ~30 segundos (caché de lectura del llavero) | Siguiente solicitud (sondeo de mtime del archivo) |
+| Comprobación periódica | Agente launchd, cada 180s | Temporizador de usuario systemd, cada 180s |
+| Almacén de inicio de sesión aislado | Servicio de llavero con espacio de nombres por hash por directorio de configuración | Un archivo dentro del directorio de configuración aislado |
+
+Dos detalles específicos de Linux que conviene conocer: claude resuelve su directorio de credenciales desde `CLAUDE_SECURESTORAGE_CONFIG_DIR` primero (luego `CLAUDE_CONFIG_DIR`, luego `~/.claude`), y tokenmaxxing refleja esa resolución exactamente para que las dos nunca se desincronicen. Y los dos builds de SO de la misma versión de claude formatean los relojes de restablecimiento de `/usage` de forma distinta (uno usa el pegamento " at ", el otro una coma); el parser de tokenmaxxing acepta exactamente esas dos formas y registra, en vez de adivinar, ante cualquier tercera.
+
+En macOS, una limitación honesta: `init` y `add` tocan el llavero de forma interactiva a propósito, para que el primer acceso a `security` no sea en frío dentro de un hook sin cabeza.

@@ -1,0 +1,12 @@
+---
+title: Build und Verteilung
+description: "TypeScript-Quellcode auf npm, von Bun ausgeführt, mit Provenance veröffentlicht"
+---
+
+Das npm-Paket liefert TypeScript-Quellcode aus, keinen Build: Der `tokenmaxxing`-Bin-Eintrag zeigt direkt auf `src/main.ts` mit einem Bun-Shebang, und Bun 1.2.6 oder neuer führt es unverändert aus. Deshalb ist Bun eine harte Voraussetzung. Es gibt bewusst keine kompilierten Binaries: Ein frühes Release lieferte ein einziges 61 MB großes macOS-Binary an jede Plattform und scheiterte auf Linux mit `exec format error`, und pro Plattform kompilierte Pakete bräuchten jeweils ihre eigene Release-Pipeline, sodass die Ausführung des Quellcodes durch Bun zum Verteilungsmodell wurde.
+
+Die `exports`-Map des Pakets stellt `src/sdk.ts` als den oben beschriebenen programmatischen Einstiegspunkt bereit. Releases werden auf GitHub mit `v<version>` getaggt; CI veröffentlicht via Trusted Publishing (OIDC, mit Provenance) auf npm, und das Veröffentlichungsgate führt zuerst den Typecheck und die vollständige Testsuite aus.
+
+## Lizenz
+
+MIT. Quellcode unter [anaclumos/tokenmaxxing](https://github.com/anaclumos/tokenmaxxing).

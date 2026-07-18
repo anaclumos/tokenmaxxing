@@ -1,0 +1,23 @@
+---
+title: "Slack köprüsü: xx serve"
+description: "xx serve, Slack thread'lerinden Socket Mode üzerinden Claude Code oturumları çalıştırır"
+---
+
+`tokenmaxxing serve`, Socket Mode üzerinden yerel bir Slack daemon'u çalıştırır - genel URL gerekmez. Kurulum:
+
+```sh
+tokenmaxxing serve setup                    # uygulama manifest'ini yazdırır, iki token'ı ister
+tokenmaxxing serve link <channel-id> <repo> # bir kanalı bir repo checkout'una bağlar
+tokenmaxxing serve                          # daemon'u çalıştırır
+```
+
+Bağlı bir kanalda bot'tan bahsedin (mention) ve o thread için, bağlı repo checkout'unda bir Claude Code oturumu açar. Her thread mesajı `resume` ile bir Agent SDK `query()` çalıştırır - asla kalıcı bir streaming query değil - böylece `ensureBestAccount()` havuzu her tek turda yeniden değerlendirir ve daemon thread'leri kaybetmeden yeniden başlatabilir (thread kayıtları kalıcıdır; daemon başlangıçta onlara yeniden abone olur).
+
+Dikkat çekici davranış:
+
+- **Streaming**: yanıtlar Slack'e yerel olarak akar; düşünme ve araç çalıştırmaları için görev kartları, vurgulamayla işlenmiş çitli kod, maliyet ve süreyle bir kapanış "Turn" kartı ve bir araç çalıştırması akan metni kesintiye uğrattığında açılan yeni bir Slack mesajı ile, böylece bir tur araç çalıştırmalarının etrafında ayrı mesajlar olarak okunur. TodoWrite çağrıları tek bir kararlı kontrol listesi kartını yerinde günceller.
+- **İzinler**: bağlantı başına `permissionMode` varsayılan olarak `acceptEdits`'tir; `--yolo` (takma ad `--dangerous`) bir bağlantıyı `bypassPermissions`'a dahil eder. Etkileşimli diyaloglar aktarılan turlarda izin verilmez - kimse birini Slack üzerinden yanıtlayamaz - bu yüzden model düzyazıyla sorar ve thread yanıtınız bir sonraki turdur. Paketlenmiş bir plugin skill'i, bir karara ihtiyaç duyduğunda talep edeni etiketlemeyi ve turu bitirmeyi ona öğretir.
+- **Slash komutları**: kırpılmış metni `/` ile başlayan bir thread mesajı bir claude slash komutu olarak çalışır. Slack'in besteleyicisi `/` ile başlayan mesajları yer, bu yüzden mention-önce formunu (`@bot /usage`) veya öndeki bir boşluğu kullanın.
+- **Nazik kapatma**: SIGTERM/SIGINT boşaltır - yeni turlar yüksek sesle düşürülür, uçuş halindeki turlar 5 dakikaya kadar alır ve claude çocuğu kendi süreç grubunda ayrık (detached) çalışır, böylece bir terminal Ctrl-C boşaltma turu korumadan önce onu öldüremez.
+- **Thread temizliği**: işin bittiğini söylediğinizde, model süreç içi bir `finish_thread` aracını çağırır; tur tamamen bittikten sonra daemon thread kaydını düşürür, aboneliği iptal eder ve bir onay gönderir. Taze bir mention yeni bir oturum başlatır.
+- **Hata hijyeni**: tur hataları asla ham hata gövdeleri değil, kırpılmış yalnızca-mesaj metni gönderir.

@@ -1,0 +1,48 @@
+---
+title: Architecture
+description: "The supervisor shim, statusline tee, Stop hook swap, and how adoption dey work"
+---
+
+tokenmaxxing na one multi-call entry point (`src/main.ts`) wey dey behave as the `claude` supervisor when dem invoke am under dat name, e dey serve the hook and statusline shims via internal subcommands, and otherwise e dey dispatch the CLI. E dey run directly under Bun; the npm package dey ship TypeScript source, no be build.
+
+The moving parts:
+
+## The supervisor shim
+
+`init` dey write one 2-line shell shim wey dem name `claude` go inside `~/.config/tokenmaxxing/bin/` and e dey put dat directory first for PATH. When you type `claude`, the shim dey run the supervisor, wey dey spawn the real claude binary with inherited stdio and one saved `stty -g` terminal snapshot. Na process and terminal manager only: e no dey proxy API traffic at all and e no dey touch tokens wey dey flight.
+
+Print-mode invocations (`claude -p`, `--version`, `--help`), non-interactive subcommands (`claude mcp`, `claude config`, and so on), and tokenmaxxing im own probes dey pass straight through with no session management. For interactive session, the supervisor dey pin one session id (e go generate one, or reuse the one wey you pass via `--session-id` / `-r` / `-c`), e dey persist your launch flags so say a later relaunch fit replay dem, and then e dey watch for one respawn marker file wey key go dat session.
+
+## The statusline tee
+
+Claude Code dey push rate-limit data (`rate_limits.five_hour` and `rate_limits.seven_day`) go inside the statusline im stdin every turn. tokenmaxxing dey own the statusline slot, so im renderer dey double as free, push-based usage feed: every tick e dey tee the aggregate windows plus the active model go inside `usage.json`. Per-model caps no dey inside statusline stdin; dem dey come only from `claude -p '/usage'` (free, zero tokens), wey dem dey poll with TTL and cache go inside `model-usage.json` when the active model dey capacity-constrained.
+
+The tee na write-on-change: when figures no change e dey only bump the file im mtime, wey dey act as the feed im liveness heartbeat. Freshness dey always judge by mtime, never by the embedded timestamp.
+
+## The Stop hook and the swap
+
+For every turn boundary, the Stop hook dey run the switch decision (check [How switching dey decide](/pcm/switching)). When a swap dey warranted, e dey happen under one `flock(2)` exclusive lock (dem take am via `bun:ffi`, since macOS no dey ship any `flock(1)` binary), and the credential writes dey interlock extra with Claude Code im own refresh lock. Inside the critical section, one swap:
+
+1. E dey harvest the current live credential go im true owner im parked backup.
+2. E dey install the target account im freshly refreshed credential as the live one, e dey merge am go inside the existing live blob so sibling state (like per-MCP-server OAuth tokens) go survive.
+3. E dey persist the target im rotated token go im own backup.
+4. E dey atomically rewrite the `oauthAccount` field for `~/.claude.json`.
+5. E dey commit the new active label and clear stale usage snapshots, all before the lock release, so a crash no fit ever leave the installed credential and the active label dey point at different accounts.
+
+Because all default-profile sessions dey share the one live credential, one single swap dey migrate every session all at once, and the flock plus one re-check under the lock dey keep racing hooks from burning two accounts.
+
+## In-place adoption
+
+One claude session wey dey run dey poll im credential store between requests: for macOS e dey re-read the keychain through short cache and compare access tokens; for Linux e dey stat the credentials file im mtime and flush im token caches when e change. The net effect na say a swapped credential go get adopted by every session wey dey run within about 30 seconds for macOS and for the very next request for Linux, without any restart. Na why one plain swap no dey write any marker and no dey trigger any respawn - the session just dey continue for the new account. In-session `/usage` dey share the same token caches, so im account display dey flip along with the adoption.
+
+## Depleted-pool wait and auto-resume
+
+Only when every account for the pool don pass im bars the Stop hook go write one respawn marker (the marker schema need one `waitUntil` timestamp; a plain swap no fit ever produce one). The supervisor go see the marker, e go SIGTERM im child for the already-committed turn boundary (the Stop hook dey run after the transcript don land for disk and claude dey idle, so nothing dey lost), e go restore the terminal, show one countdown to the soonest reset, and then relaunch `claude --resume <session-id>` for the recovered account. Ctrl-C during the countdown go resume immediately. The auto-wait dey bounded by `policy.maxWaitMs` (default 1 hour); beyond dat the decision dey report the pool as depleted instead of to wait.
+
+## The periodic check timer
+
+Hooks dey only fire for turn boundaries, and one long agentic turn fit burn one window from healthy go depleted without one single boundary. Na why `init` dey also install one periodic timer - launchd agent for macOS, systemd user timer for Linux - wey dey run `tokenmaxxing check` every 180 seconds regardless of turn activity.
+
+## A SessionStart hook
+
+E dey run the same evaluation when one session start or resume, so a fresh session go begin for the right account. The post-swap cooldown dey make am one correct no-op right after a respawn.

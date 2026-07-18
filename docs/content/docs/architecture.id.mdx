@@ -1,0 +1,48 @@
+---
+title: Arsitektur
+description: "Shim supervisor, tee statusline, pertukaran hook Stop, dan model adopsi"
+---
+
+tokenmaxxing adalah satu titik masuk multi-panggilan (`src/main.ts`) yang berperilaku sebagai supervisor `claude` ketika dipanggil dengan nama itu, menyajikan shim hook dan statusline melalui subperintah internal, dan sisanya menjalankan CLI. Ia berjalan langsung di bawah Bun; paket npm mengirimkan kode sumber TypeScript, bukan hasil build.
+
+Bagian-bagian yang bergerak:
+
+## Shim supervisor
+
+`init` menulis sebuah shim shell 2 baris bernama `claude` ke dalam `~/.config/tokenmaxxing/bin/` dan menempatkan direktori itu pertama di PATH. Ketika Anda mengetik `claude`, shim menjalankan supervisor, yang menelurkan biner claude asli dengan stdio yang diwarisi dan snapshot terminal `stty -g` yang tersimpan. Ia hanya manajer proses dan terminal: ia tidak pernah menjadi proksi lalu lintas API dan tidak pernah menyentuh token yang sedang berjalan.
+
+Pemanggilan mode cetak (`claude -p`, `--version`, `--help`), subperintah non-interaktif (`claude mcp`, `claude config`, dan seterusnya), serta probe milik tokenmaxxing sendiri lewat langsung tanpa manajemen sesi. Untuk sesi interaktif, supervisor menyematkan sebuah id sesi (membuatnya, atau menggunakan kembali yang Anda berikan melalui `--session-id` / `-r` / `-c`), menyimpan flag peluncuran Anda agar peluncuran ulang nanti dapat memutarnya kembali, lalu mengawasi berkas penanda respawn yang terkait dengan sesi itu.
+
+## Tee statusline
+
+Claude Code mendorong data batas-laju (`rate_limits.five_hour` dan `rate_limits.seven_day`) ke dalam stdin statusline setiap giliran. tokenmaxxing memiliki slot statusline, sehingga penyaji-nya juga berfungsi sebagai umpan penggunaan gratis berbasis dorongan: setiap detak ia mengalirkan (tee) jendela agregat ditambah model aktif ke dalam `usage.json`. Batas per-model tidak ada di stdin statusline; keduanya hanya berasal dari `claude -p '/usage'` (gratis, nol token), yang di-poll dengan TTL dan di-cache ke dalam `model-usage.json` ketika model aktif dibatasi kapasitas.
+
+Tee bersifat tulis-saat-berubah: ketika angka tidak berubah ia hanya memutakhirkan mtime berkas, yang berfungsi sebagai denyut kehidupan umpan. Kesegaran selalu dinilai berdasarkan mtime, tidak pernah berdasarkan cap waktu yang tertanam.
+
+## Hook Stop dan pertukaran
+
+Pada setiap batas giliran, hook Stop menjalankan keputusan pertukaran (lihat [Cara pertukaran diputuskan](/id/switching)). Ketika sebuah pertukaran dibenarkan, ia terjadi di bawah kunci eksklusif `flock(2)` (diambil melalui `bun:ffi`, karena macOS tidak menyertakan biner `flock(1)`), dan penulisan kredensial selain itu saling mengunci dengan kunci refresh milik Claude Code sendiri. Di dalam bagian kritis, satu pertukaran:
+
+1. Memanen kredensial langsung saat ini ke dalam cadangan terparkir milik pemilik sejatinya.
+2. Memasang kredensial akun target yang baru saja disegarkan sebagai kredensial langsung, digabungkan ke dalam blob langsung yang ada sehingga status pendamping (seperti token OAuth per-server-MCP) tetap bertahan.
+3. Menyimpan token akun target yang telah dirotasi ke cadangannya sendiri.
+4. Menulis ulang secara atomik bidang `oauthAccount` di `~/.claude.json`.
+5. Menetapkan label aktif baru dan menghapus snapshot penggunaan yang usang, semuanya sebelum kunci dilepas, sehingga sebuah crash tidak pernah bisa membuat kredensial terpasang dan label aktif menunjuk ke akun yang berbeda.
+
+Karena semua sesi profil-default berbagi satu kredensial langsung, satu pertukaran memindahkan setiap sesi sekaligus, dan flock ditambah pemeriksaan-ulang di bawah kunci mencegah hook yang berlomba membakar dua akun.
+
+## Adopsi di tempat
+
+Sebuah sesi claude yang berjalan memeriksa penyimpanan kredensialnya di antara permintaan: di macOS ia membaca ulang keychain melalui cache singkat dan membandingkan token akses; di Linux ia memeriksa mtime berkas kredensial dan membersihkan cache tokennya saat berubah. Efek bersihnya adalah kredensial yang ditukar diadopsi oleh setiap sesi yang berjalan dalam sekitar 30 detik di macOS dan pada permintaan berikutnya di Linux, tanpa memulai ulang apa pun. Inilah sebabnya pertukaran biasa tidak menulis penanda dan tidak memicu respawn - sesi hanya melanjutkan di akun baru. `/usage` dalam-sesi berbagi cache token yang sama, sehingga tampilan akunnya berganti seiring adopsi.
+
+## Menunggu gabungan-habis dan lanjut-otomatis
+
+Hanya ketika setiap akun dalam gabungan melewati bilahnya, hook Stop menulis penanda respawn (skema penanda membutuhkan cap waktu `waitUntil`; sebuah pertukaran biasa tidak pernah bisa menghasilkannya). Supervisor melihat penanda itu, mengirim SIGTERM ke anaknya pada batas giliran yang sudah ter-commit (hook Stop berjalan setelah transkrip ada di disk dan claude idle, jadi tidak ada yang hilang), memulihkan terminal, menampilkan hitung mundur ke reset paling cepat, lalu meluncurkan ulang `claude --resume <session-id>` di akun yang telah pulih. Ctrl-C selama hitung mundur melanjutkan dengan segera. Penungguan-otomatis dibatasi oleh `policy.maxWaitMs` (default 1 jam); di luar itu keputusan melaporkan gabungan sebagai habis alih-alih menunggu.
+
+## Pengatur waktu pemeriksaan berkala
+
+Hook hanya menyala di batas giliran, dan satu giliran agentic yang panjang bisa membakar sebuah jendela dari sehat menjadi habis tanpa satu batas pun. Karena itu `init` juga memasang pengatur waktu berkala - agen launchd di macOS, pengatur waktu pengguna systemd di Linux - yang menjalankan `tokenmaxxing check` setiap 180 detik tanpa memandang aktivitas giliran.
+
+## Sebuah hook SessionStart
+
+Menjalankan evaluasi yang sama ketika sebuah sesi dimulai atau dilanjutkan, sehingga sesi segar dimulai di akun yang tepat. Cooldown pasca-pertukaran menjadikannya no-op yang benar tepat setelah sebuah respawn.

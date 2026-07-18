@@ -1,0 +1,28 @@
+---
+title: কনফিগারেশন
+description: "config.json স্কিমা, থ্রেশহোল্ড, এবং পলিসি নব"
+---
+
+কনফিগ হলো `~/.config/tokenmaxxing/config.json`-এ JSON। প্রতিটি ফিল্ড ঐচ্ছিক; ডিফল্টগুলো প্রতি-ফিল্ডে প্রযোজ্য।
+
+```json
+{
+  "thresholds": { "session": 95, "weekly": 98 },
+  "policy": {
+    "projectionMargin": 0,
+    "greedySessionFloor": 50,
+    "switchModels": ["fable"],
+    "usagePollTtlMs": 90000,
+    "maxWaitMs": 3600000
+  }
+}
+```
+
+- `thresholds.session` / `thresholds.weekly`: উপরে বর্ণিত স্ক্রিনিং বার।
+- `policy.projectionMargin`: কার্যকর বার তৈরি করতে উভয় বার থেকে বিয়োগ করা হয়।
+- `policy.greedySessionFloor`: সেশন-ব্যবহৃত শতাংশ যেখানে greedy অভিসরণ সক্রিয় হয়।
+- `policy.switchModels`: সেই মডেল ফ্যামিলি যাদের প্রতি-মডেল সাপ্তাহিক সীমা একটি বদলকে গেট করে (এন্ট্রিগুলো লোড করার সময় ছোট হাতের অক্ষরে রূপান্তরিত হয়)।
+- `policy.usagePollTtlMs`: একটি `/usage` প্রতি-মডেল পোল কতক্ষণ তাজা থাকে।
+- `policy.maxWaitMs`: নিঃশেষিত-পুল স্বয়ংক্রিয়-অপেক্ষার সীমা।
+
+`tokenmaxxing config` উৎসসহ কার্যকর কনফিগ দেখায়; `config set`/`unset` ডটেড কী সম্পাদনা করে; `config tidy` অজানা কী ছেঁটে ফেলে।
