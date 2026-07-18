@@ -10,6 +10,7 @@ import { runStopHook } from "./entries/stophook.ts";
 import { runSessionStart } from "./entries/sessionstart.ts";
 import { cmdInit } from "./cli/init.ts";
 import { cmdAdd } from "./cli/add.ts";
+import { cmdAuth } from "./cli/auth.ts";
 import { cmdCodexAdd } from "./cli/codexadd.ts";
 import { cmdCodexInit } from "./cli/codexinit.ts";
 import { cmdCodexSwitch } from "./cli/codexswitch.ts";
@@ -37,6 +38,7 @@ function printHelp(): void {
   ${c.cyan("tokenmaxxing init --codex")}  same for codex: import login, install codex supervisor + Stop hook (trust it via /hooks)
   ${c.cyan("tokenmaxxing add")}        register an additional account (isolated login)
   ${c.cyan("tokenmaxxing add --codex")}   register an additional codex account (isolated login)
+  ${c.cyan("tokenmaxxing auth")} [sel | --all]  reauthenticate a pooled account in place (bare = pick from a list; --all = every needs-reauth account, one by one)
   ${c.cyan("tokenmaxxing switch --codex")} [sel]  switch the codex pool (takes effect on next codex start)
   ${c.cyan("tokenmaxxing ls")}         list pooled accounts
   ${c.cyan("tokenmaxxing status")}     accounts with 5h / weekly / per-model usage bars
@@ -80,6 +82,7 @@ async function main(): Promise<number> {
     case "config": return cmdConfig(args.slice(1));
     case "init": return args.includes("--codex") ? cmdCodexInit() : cmdInit();
     case "add": return args.includes("--codex") ? cmdCodexAdd() : cmdAdd();
+    case "auth": return cmdAuth(args.slice(1));
     case "ls": return cmdLs();
     case "status": return cmdStatus(args.includes("--force"));
     case "watch": return cmdWatch(args[1]);

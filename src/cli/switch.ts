@@ -43,7 +43,7 @@ export async function cmdSwitch(selector?: string): Promise<number> {
       try {
         await performSwap(target);
       } catch (e) {
-        if (e instanceof InvalidGrantError) { console.error(c.red(`${target.label}'s refresh token is dead - re-add it`)); return 1; }
+        if (e instanceof InvalidGrantError) { console.error(c.red(`${target.label}'s refresh token is dead - run \`tokenmaxxing auth ${target.label}\``)); return 1; }
         throw e;
       }
       console.log(`${c.green("↻")} switched to ${c.bold(target.label)}`);
@@ -86,7 +86,7 @@ export async function cmdSwitch(selector?: string): Promise<number> {
       // Either every account needs re-auth, or every account is blocked with no
       // recoverable bound (unparsed reset clocks AND no sample time - see log).
       const reauth = fresh.accounts.filter((a) => a.needsReauth).map((a) => a.label);
-      if (reauth.length > 0) { console.error(c.yellow(`no switchable account - re-auth needed: ${reauth.join(", ")}`)); return 1; }
+      if (reauth.length > 0) { console.error(c.yellow(`no switchable account - reauth needed (run \`tokenmaxxing auth --all\`): ${reauth.join(", ")}`)); return 1; }
       // never freeze a label drift behind a no-op (see header).
       if (drifted && active) return swapTo(active);
       console.log(c.yellow("all accounts at their limit with unknown reset times (unparsed reset clocks? see tokenmaxxing.log) - staying put"));

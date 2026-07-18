@@ -60,17 +60,17 @@ export async function cmdDoctor(): Promise<number> {
 
   for (const a of idx.accounts) {
     const parked = await readItem(parkedTarget(a.keychainItem));
-    check(!!parked, `parked credential present for ${a.email}`, "re-run `tokenmaxxing init`/`add`");
+    check(!!parked, `parked credential present for ${a.email}`, `run \`tokenmaxxing auth ${a.label}\``);
     if (parked) {
       try {
         const org = await blobOrg(parked);
-        if (org) check(org.organization_uuid === a.organizationUuid, `parked credential identity matches ${a.email}`, `token belongs to ${org.organization_name} - re-auth with \`tokenmaxxing add\``);
+        if (org) check(org.organization_uuid === a.organizationUuid, `parked credential identity matches ${a.email}`, `token belongs to ${org.organization_name} - run \`tokenmaxxing auth ${a.label}\``);
         else console.log(c.dim(`  - ${a.email} identity unverifiable (access token expired)`));
       } catch (e) {
         check(false, `parked credential identity matches ${a.email}`, String((e as Error).message ?? e).slice(0, 100));
       }
     }
-    if (a.needsReauth) check(false, `${a.email} needs re-auth`, "run `tokenmaxxing add` to re-login");
+    if (a.needsReauth) check(false, `${a.email} needs re-auth`, `run \`tokenmaxxing auth ${a.label}\` to re-login`);
   }
 
   const cfg = loadConfig();

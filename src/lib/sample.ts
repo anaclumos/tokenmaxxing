@@ -68,13 +68,13 @@ function refreshPlanFields(account: Account, creds: OAuthCreds): void {
 export async function probeParkedUsage(account: Account, opts: { ping?: boolean } = {}): Promise<SampleOutcome> {
   const backup = parkedTarget(account.keychainItem);
   const parkedRaw = await readItem(backup);
-  if (!parkedRaw) return { ok: false, reason: "no parked credential - re-add with `tokenmaxxing add`" };
+  if (!parkedRaw) return { ok: false, reason: "no parked credential - run `tokenmaxxing auth`" };
 
   let creds: OAuthCreds;
   try {
     creds = CredentialBlobSchema.parse(JSON.parse(parkedRaw)).claudeAiOauth;
   } catch (e) {
-    return { ok: false, reason: `parked credential unreadable (${String((e as Error).message ?? e).slice(0, 80)}) - re-add with \`tokenmaxxing add\`` };
+    return { ok: false, reason: `parked credential unreadable (${String((e as Error).message ?? e).slice(0, 80)}) - run \`tokenmaxxing auth\`` };
   }
 
   // Hand claude a token with comfortable headroom so it won't run its own refresh
