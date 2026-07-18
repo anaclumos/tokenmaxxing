@@ -36,7 +36,7 @@ import {
   type SlackConfig,
 } from "../lib/slackstate.ts";
 import { relayThread } from "../lib/slackbridge.ts";
-import { log } from "../lib/log.ts";
+import { log, setLogEcho } from "../lib/log.ts";
 import { c, count } from "./render.ts";
 
 const SERVE_USAGE = "usage: tokenmaxxing serve [setup | link <channel-id> <repo> [--yolo | --dangerous] [--model <m>] | unlink <channel-id> | links]";
@@ -185,6 +185,26 @@ function cmdServeLinks(): number {
   return 0;
 }
 
+/** Event-name endings that pick the terminal paint: red for failures, yellow
+ *  for degraded-but-continuing conditions, cyan otherwise. Structural endsWith
+ *  checks so new events inherit sensible colors from their naming. */
+const RED_EVENT_ENDINGS = ["error", "failed", "invalid_grant"];
+const YELLOW_EVENT_ENDINGS = ["_dropped", "_drift", "_unparsed", "_gave_up", "_abort", "forced_exit", "proceed_without"];
+
+function eventPaint(event: string): (s: string) => string {
+  if (RED_EVENT_ENDINGS.some((ending) => event.endsWith(ending))) return c.red;
+  if (YELLOW_EVENT_ENDINGS.some((ending) => event.endsWith(ending))) return c.yellow;
+  return c.cyan;
+}
+
+/** One terminal line per log() event while the daemon runs: the file log stays
+ *  canonical; this makes `xx serve` observable without tailing tokenmaxxing.log.
+ *  Exported for tests. */
+export function formatLogLine(input: { event: string; parts: string }): string {
+  const time = new Date().toLocaleTimeString("en-GB");
+  return `${c.dim(time)} ${eventPaint(input.event)(input.event)}${input.parts ? ` ${input.parts}` : ""}`;
+}
+
 async function runDaemon(): Promise<number> {
   const cfg = loadSlackConfig();
   if (!cfg) {
@@ -195,6 +215,11 @@ async function runDaemon(): Promise<number> {
     console.error(c.red("no channel links - run `tokenmaxxing serve link <channel-id> <repo>` first"));
     return 1;
   }
+
+  // every log() event from here on (serve.* plus the in-process swap/decision
+  // events fired by ensureBestAccount/stopHookCheck) also prints to the
+  // terminal, so a foreground `xx serve` shows what it is doing live.
+  setLogEcho({ printer: (entry) => console.log(formatLogLine(entry)) });
 
   const slack = createSlackAdapter({
     mode: "socket",
@@ -278,12 +303,17 @@ async function runDaemon(): Promise<number> {
     // "is working..." assistant status; a no-op until the Slack app has the
     // agent feature + assistant:write (the adapter warns instead of throwing).
     await thread.startTyping();
+    const startedAt = Date.now();
     const outcome = await relayThread({
       cwd: record.cwd,
       sessionId: record.sessionId,
       prompt,
       link,
       post: (m) => thread.post(m),
+    });
+    log(outcome.failed ? "serve.turn_failed" : "serve.turn_done", {
+      thread: thread.id,
+      seconds: Math.round((Date.now() - startedAt) / 1000),
     });
     if (outcome.sessionId !== record.sessionId) {
       saveSlackThread({ ...record, sessionId: outcome.sessionId });

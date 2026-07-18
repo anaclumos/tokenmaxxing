@@ -14,6 +14,16 @@ export function redact(s: string): string {
     .replace(/\b([A-Za-z0-9_-]{40,})\b/g, (m) => `${m.slice(0, 4)}...(${m.length})`);
 }
 
+let echo: ((input: { event: string; parts: string }) => void) | null = null;
+
+/** Tee every subsequent log() line to a terminal printer. Only the serve
+ *  daemon opts in: hooks and the statusline own their stdout protocol, so the
+ *  echo stays off by default. The printer receives the same redacted parts the
+ *  file line gets. */
+export function setLogEcho(input: { printer: (input: { event: string; parts: string }) => void }): void {
+  echo = input.printer;
+}
+
 export function log(event: string, fields: Record<string, unknown> = {}): void {
   try {
     mkdirSync(dirname(paths.logFile), { recursive: true });
@@ -21,7 +31,9 @@ export function log(event: string, fields: Record<string, unknown> = {}): void {
       const str = z.string().safeParse(v);
       return `${k}=${redact(str.success ? str.data : JSON.stringify(v))}`;
     });
-    appendFileSync(paths.logFile, `${new Date().toISOString()} ${event} ${parts.join(" ")}\n`);
+    const line = parts.join(" ");
+    appendFileSync(paths.logFile, `${new Date().toISOString()} ${event} ${line}\n`);
+    echo?.({ event, parts: line });
   } catch {
     // logging must never throw into a hook / supervisor path
   }
