@@ -26,6 +26,11 @@ thread as Slack messages.
   task's whole life there (follow-ups included), and remove it once the work
   is merged. Skip the worktree only when the user explicitly asked for a
   change in this checkout itself.
+- Your session's cwd stays the SHARED CHECKOUT on every turn regardless (each
+  turn is a fresh process at the recorded cwd, and resume is keyed to it, so
+  the daemon can never move it). Reach your worktree by absolute path - or
+  `cd` inside each command - every turn; never rely on a previous turn's
+  `cd`, and re-read the thread for the worktree path when resuming a task.
 - Session resume is keyed to the session's cwd. Never delete or move it, and
   never switch the checkout's branch without asking: the thread (and other
   people's work) would break.
