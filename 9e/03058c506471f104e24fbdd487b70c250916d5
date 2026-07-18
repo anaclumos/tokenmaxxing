@@ -1,0 +1,23 @@
+src/lib/slackstream.ts
+  s_ed0ed0d85004e1::t_89b3b2cae3bc77 99-104,109,112-113,116,121,124,133,135,144-145,147
+test/slackstream.test.ts
+  s_ed0ed0d85004e1::t_cacd6452047efb 83,85,87-98
+AGENTS.md
+  s_ed0ed0d85004e1::t_3d9c56f1a958c7 206
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "9e03058c506471f104e24fbdd487b70c250916d5",
+  "prompts": {},
+  "sessions": {
+    "s_ed0ed0d85004e1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "98fc7c12-0e4d-422f-aea0-2a37bfb68ffb",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    }
+  }
+}
