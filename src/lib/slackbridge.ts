@@ -5,14 +5,12 @@
 // without losing threads). Verified against @anthropic-ai/claude-agent-sdk
 // 0.3.214 and code.claude.com/docs 2026-07-18; both change monthly.
 
-import { existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
 import { createSdkMcpServer, query, tool } from "@anthropic-ai/claude-agent-sdk";
 import type { StreamChunk } from "chat";
 import { ensureBestAccount, pooledOptions, stopHookCheck } from "../sdk.ts";
-import { paths } from "./paths.ts";
-import { deleteSlackThread, threadKey, type SlackLink } from "./slackstate.ts";
+import { deleteSlackThread, type SlackLink } from "./slackstate.ts";
 import { agentEventChunks, newStreamMapState, SegmentBreakSchema } from "./slackstream.ts";
 import { log } from "./log.ts";
 
@@ -31,6 +29,32 @@ export const TurnOutcomeSchema = z.object({
   finish: z.boolean(),
 });
 export type TurnOutcome = z.infer<typeof TurnOutcomeSchema>;
+
+/** The serve plugin shipped inside the package (src/serve-plugin/): skills
+ *  that teach a relayed session how to behave in a Slack thread, loaded per
+ *  turn via the SDK's local-plugin option and namespaced `tokenmaxxing:...`. */
+const SERVE_PLUGIN_DIR = join(import.meta.dir, "..", "serve-plugin");
+
+/**
+ * The per-turn context a UserPromptSubmit hook injects. The skills are static
+ * files, so the one dynamic fact they cannot carry - WHO asked - rides in
+ * here as the requester's raw mention token (`<@U...>` passes verbatim
+ * through the streamed markdown_text path, and the post-and-edit fallback's
+ * finalize leaves an already-formed mention intact). Wording is load-bearing:
+ * the ask-the-user skill points at the "Slack relay context" note.
+ */
+export function serveTurnContext(input: { requesterIds: string[] }): string {
+  const tokens = input.requesterIds.map((id) => `<@${id}>`);
+  let requester = "The requesting user is unknown this turn, so no mention token is available.";
+  if (tokens.length === 1) requester = `The requesting user's Slack mention token is ${tokens[0]}; include it literally in reply text to notify them.`;
+  if (tokens.length > 1) requester = `This turn folds messages from several users; their Slack mention tokens are ${tokens.join(" ")}. Include the relevant user's token literally in reply text to notify them.`;
+  return [
+    "Slack relay context: this session is relayed into a Slack thread by tokenmaxxing serve, and your reply posts back into the thread.",
+    requester,
+    "When you need the user's decision, approval, or input, follow the tokenmaxxing:ask-the-user skill (tag them, ask, end the turn).",
+    "The tokenmaxxing:serve-session skill explains how this session runs.",
+  ].join(" ");
+}
 
 const SegmentChunkSchema = z.union([z.string(), z.custom<StreamChunk>()]);
 type SegmentChunk = z.infer<typeof SegmentChunkSchema>;
@@ -69,37 +93,6 @@ function pushableStream(): {
   };
 }
 
-/** Run one git command against a repo; throws with trimmed stderr on failure. */
-function git(repo: string, args: string[]): string {
-  const r = Bun.spawnSync(["git", "-C", repo, ...args], { stdout: "pipe", stderr: "pipe" });
-  const stderr = new TextDecoder().decode(r.stderr).trim();
-  if (r.exitCode !== 0) throw new Error(`git ${args[0]} failed: ${stderr.slice(0, 200)}`);
-  return new TextDecoder().decode(r.stdout).trim();
-}
-
-/**
- * The stable cwd a thread's turns run in. Worktree mode (default) creates
- * `slack-worktrees/<threadKey>` on branch `tm-slack-<threadKey>` cut from the
- * repo's current HEAD, once; both survive daemon restarts because resume is
- * cwd-keyed. Worktrees are deleted only when the user finishes the thread
- * (finish_thread -> cleanupThread below) or by hand with `git worktree remove`.
- */
-export function ensureThreadCwd(input: { link: SlackLink; threadId: string }): string {
-  if (!input.link.worktree) return input.link.repo;
-  const key = threadKey(input.threadId);
-  const dir = join(paths.slackWorktreesDir, key);
-  if (existsSync(dir)) return dir;
-  mkdirSync(paths.slackWorktreesDir, { recursive: true });
-  const branch = `tm-slack-${key}`;
-  const branchExists = Bun.spawnSync(["git", "-C", input.link.repo, "rev-parse", "--verify", "--quiet", branch]).exitCode === 0;
-  // a crash between branch creation and worktree add leaves the branch behind;
-  // reattach instead of failing on -b collision.
-  if (branchExists) git(input.link.repo, ["worktree", "add", dir, branch]);
-  else git(input.link.repo, ["worktree", "add", dir, "-b", branch]);
-  log("serve.worktree_created", { dir, branch });
-  return dir;
-}
-
 /** Full permission name of the finish_thread tool (mcp__<server>__<tool>):
  *  it must be in allowedTools, because no one can answer a permission prompt
  *  through Slack. */
@@ -107,11 +100,11 @@ export const FINISH_THREAD_TOOL = "mcp__tokenmaxxing__finish_thread";
 
 /** The per-turn in-process MCP server exposing finish_thread. The handler runs
  *  in the daemon process, but it must NOT delete anything inline: the claude
- *  subprocess is still mid-turn with its cwd inside the worktree and segments
- *  are still streaming to Slack, so it only records the request and the daemon
- *  garbage-collects after the turn ends (serve.ts). alwaysLoad keeps the tool
- *  visible in the prompt instead of deferred behind tool search: it has to be
- *  in view at the exact moment the user says the work is done. */
+ *  subprocess is still mid-turn and segments are still streaming to Slack, so
+ *  it only records the request and the daemon closes the thread after the
+ *  turn ends (serve.ts). alwaysLoad keeps the tool visible in the prompt
+ *  instead of deferred behind tool search: it has to be in view at the exact
+ *  moment the user says the work is done. */
 function finishToolServer(onFinish: () => void) {
   return createSdkMcpServer({
     name: "tokenmaxxing",
@@ -119,11 +112,11 @@ function finishToolServer(onFinish: () => void) {
     tools: [
       tool(
         "finish_thread",
-        "Wrap up this Slack thread when the user clearly states the work is finished (shipped, done, clean this up) and wants the thread closed out. After this turn ends the daemon removes the thread's git worktree and branch and drops its session record, then posts a confirmation. Nothing outside git is ever discarded: any modified, untracked, or ignored files (node_modules, .env) make the cleanup refuse, and the confirmation lists them so they can be committed, pushed, or deleted before finishing again. An unmerged branch is preserved under a -kept-<sha> name. Do not call this for a merely answered question - only for an explicit wrap-up.",
+        "Close out this Slack thread when the user clearly states the work is finished (shipped, done, clean this up) and wants the thread closed. After this turn ends the daemon drops the thread's session record, unsubscribes, and posts a confirmation; the repo checkout and everything in it are untouched. Do not call this for a merely answered question - only for an explicit wrap-up.",
         {},
         async () => {
           onFinish();
-          return { content: [{ type: "text", text: "cleanup scheduled - it runs right after this turn ends and posts its own confirmation; just acknowledge the wrap-up now" }] };
+          return { content: [{ type: "text", text: "close-out scheduled - it runs right after this turn ends and posts its own confirmation; just acknowledge the wrap-up now" }] };
         },
       ),
     ],
@@ -138,83 +131,15 @@ export const CleanupOutcomeSchema = z.object({
 export type CleanupOutcome = z.infer<typeof CleanupOutcomeSchema>;
 
 /**
- * Garbage-collect a finished thread. The bot NEVER discards work (repo
- * safeguard): any worktree residue - modified, untracked, or IGNORED files -
- * refuses the removal with the offenders listed (a stricter gate than git's
- * own, which would happily delete ignored .env or scratch files), and an
- * unmerged branch refuses `git branch -d` and survives under an archive name
- * (`-kept-<sha>`; the branch is a cheap pointer to real work; the worktree is
- * the disk hog, so its refusal aborts the whole cleanup while an archived
- * branch does not - and archiving off the canonical name keeps a revived
- * thread genuinely fresh instead of reattaching the stale tip). Cleanup is
- * keyed entirely on the thread RECORD (its cwd and repo), never the current
- * link config: a channel re-linked `--no-worktree` or onto another repo must
- * still collect its older worktree threads, and a thread that ran in-place
- * (cwd = the repo, which can never equal the worktree path) only drops its
- * record - the repo itself is never touched. A refusal keeps the record and
- * the subscription so the thread stays live for a retry after the user
- * commits.
+ * Close out a finished thread. Threads run IN the linked repo checkout (no
+ * per-thread worktree or branch since #14), so there is nothing on disk to
+ * collect: dropping the slack-threads record is the whole cleanup, and the
+ * shared checkout is never touched. The worktree-era residue gate and branch
+ * archiving died with the worktrees themselves.
  */
-export function cleanupThread(input: { threadId: string; cwd: string; repo: string }): CleanupOutcome {
-  const notes: string[] = [];
-  const key = threadKey(input.threadId);
-  const worktreeDir = join(paths.slackWorktreesDir, key);
-  if (input.cwd === worktreeDir) {
-    const branch = `tm-slack-${key}`;
-    if (existsSync(worktreeDir)) {
-      // stricter than git's own gate: `git worktree remove` ignores IGNORED
-      // files, but "finished" must not silently destroy anything (.env,
-      // scratch dumps), so ANY residue - modified, untracked, or ignored -
-      // refuses, and the refusal lists what is in the way.
-      const residue = git(worktreeDir, ["status", "--porcelain", "--ignored"]).split("\n").filter((line) => line !== "");
-      if (residue.length > 0) {
-        const shown = residue.slice(0, 10).map((line) => line.slice(3)).join(", ");
-        const more = residue.length > 10 ? ` and ${residue.length - 10} more` : "";
-        return {
-          removed: false,
-          message: `not cleaned up - the worktree still holds: ${shown}${more}. commit, push, or delete them in ${worktreeDir}, then say finish again`,
-        };
-      }
-      git(input.repo, ["worktree", "remove", worktreeDir]);
-      notes.push("worktree removed");
-    } else {
-      // the dir was deleted by hand; prune the stale registration, else the
-      // branch below still counts as checked out there.
-      git(input.repo, ["worktree", "prune"]);
-      notes.push("worktree was already gone");
-    }
-    try {
-      git(input.repo, ["branch", "-d", branch]);
-      notes.push(`branch ${branch} deleted`);
-    } catch (e) {
-      const detail = e instanceof Error ? e.message : String(e);
-      // the one expected refusal ("error: the branch 'x' is not fully merged",
-      // capitalized on older gits); anything else is a real error and must not
-      // be mislabeled as unmerged. The worktree is already gone by now, so the
-      // cleanup still completes either way - the note carries the diagnosis.
-      if (detail.toLowerCase().includes("not fully merged")) {
-        // unmerged: the work must survive, but under an ARCHIVE name - left on
-        // the canonical name, the next mention's ensureThreadCwd would
-        // reattach the stale tip and silently resurrect old work into a
-        // session the user was told is fresh.
-        const archive = `${branch}-kept-${git(input.repo, ["rev-parse", "--short", branch])}`;
-        try {
-          git(input.repo, ["branch", "-m", branch, archive]);
-          notes.push(`unmerged branch archived as ${archive} - merge or delete it by hand`);
-        } catch (renameErr) {
-          // a collision means this exact tip is already archived; the
-          // canonical branch stays and the note says so.
-          const renameDetail = renameErr instanceof Error ? renameErr.message : String(renameErr);
-          notes.push(`branch ${branch} kept (unmerged, archive failed: ${renameDetail})`);
-        }
-      } else {
-        notes.push(`branch ${branch} not deleted (${detail})`);
-      }
-    }
-  }
+export function cleanupThread(input: { threadId: string }): CleanupOutcome {
   deleteSlackThread(input.threadId);
-  notes.push("session closed - a fresh @mention here starts a new one");
-  return { removed: true, message: `thread finished: ${notes.join("; ")}` };
+  return { removed: true, message: "thread finished - session closed; a fresh @mention here starts a new one" };
 }
 
 /**
@@ -232,6 +157,8 @@ export async function relayThread(input: {
   cwd: string;
   sessionId: string | null;
   prompt: string;
+  /** bare Slack user id (U...) of the triggering message's author. */
+  requesterIds: string[];
   link: SlackLink;
   post: (m: AsyncIterable<SegmentChunk>) => Promise<unknown>;
 }): Promise<TurnOutcome> {
@@ -279,11 +206,24 @@ export async function relayThread(input: {
         // without the tool the model asks in prose and the user's thread
         // reply becomes the next turn.
         disallowedTools: ["AskUserQuestion"],
-        // the user saying "we're done" garbage-collects the thread: the model
-        // flags it via this in-process tool, the daemon cleans up post-turn.
+        // the user saying "we're done" closes the thread: the model flags it
+        // via this in-process tool, the daemon drops the record post-turn.
         mcpServers: { tokenmaxxing: finishToolServer(() => { outcome.finish = true; }) },
         allowedTools: [FINISH_THREAD_TOOL],
-        hooks: { Stop: [{ hooks: [stopHookCheck] }] },
+        // serve skills (ask-the-user, serve-session); discovered skills are
+        // enabled by default, so no `skills` option is needed.
+        plugins: [{ type: "local", path: SERVE_PLUGIN_DIR }],
+        hooks: {
+          UserPromptSubmit: [{
+            hooks: [async () => ({
+              hookSpecificOutput: {
+                hookEventName: "UserPromptSubmit",
+                additionalContext: serveTurnContext({ requesterIds: input.requesterIds }),
+              },
+            })],
+          }],
+          Stop: [{ hooks: [stopHookCheck] }],
+        },
         ...(input.link.model ? { model: input.link.model } : {}),
         ...(input.sessionId ? { resume: input.sessionId } : {}),
       },

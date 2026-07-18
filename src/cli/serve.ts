@@ -1,20 +1,22 @@
 // `tokenmaxxing serve` - the Slack bridge daemon. Socket Mode (no public URL):
-// a mention in a linked channel opens a claude session for that thread (in its
-// own git worktree by default), and every further thread message becomes one
-// claude turn whose streamed output posts back into the thread. Stack chosen by
-// the user 2026-07-18: Vercel Chat SDK (`chat` + `@chat-adapter/slack`) for
-// Slack, the Claude Agent SDK driven through src/sdk.ts for claude (EVE was
-// researched and dropped: it owns its own model loop instead of driving
-// Claude Code).
+// a mention in a linked channel opens a claude session for that thread IN the
+// linked repo checkout (normal mode, user decision 2026-07-18 superseding the
+// same-day worktree-per-thread default: a thread's agent cuts its own worktree
+// only when a task needs isolation, guidance in `.memory`), and every further
+// thread message becomes one claude turn whose streamed output posts back into
+// the thread. Stack chosen by the user 2026-07-18: Vercel Chat SDK (`chat` +
+// `@chat-adapter/slack`) for Slack, the Claude Agent SDK driven through
+// src/sdk.ts for claude (EVE was researched and dropped: it owns its own model
+// loop instead of driving Claude Code).
 //
 //   serve setup            print the app manifest + prompt for the two tokens
-//   serve link <ch> <repo> [--no-worktree] [--dangerous] [--model <m>]
+//   serve link <ch> <repo> [--dangerous] [--model <m>]
 //   serve unlink <ch>      remove a link
 //   serve links            list links
 //   serve                  run the daemon
 
 import { existsSync, realpathSync } from "node:fs";
-import { delay } from "es-toolkit";
+import { delay, uniq } from "es-toolkit";
 import { Chat, type StreamChunk } from "chat";
 import { createSlackAdapter } from "@chat-adapter/slack";
 import { createMemoryState } from "@chat-adapter/state-memory";
@@ -33,11 +35,11 @@ import {
   SlackLinkSchema,
   type SlackConfig,
 } from "../lib/slackstate.ts";
-import { cleanupThread, ensureThreadCwd, relayThread, type CleanupOutcome } from "../lib/slackbridge.ts";
-import { log } from "../lib/log.ts";
+import { cleanupThread, relayThread, type CleanupOutcome } from "../lib/slackbridge.ts";
+import { log, setLogEcho } from "../lib/log.ts";
 import { c, count } from "./render.ts";
 
-const SERVE_USAGE = "usage: tokenmaxxing serve [setup | link <channel-id> <repo> [--no-worktree] [--yolo | --dangerous] [--model <m>] | unlink <channel-id> | links]";
+const SERVE_USAGE = "usage: tokenmaxxing serve [setup | link <channel-id> <repo> [--yolo | --dangerous] [--model <m>] | unlink <channel-id> | links]";
 
 /** The manifest the user pastes at api.slack.com/apps > From an app manifest.
  *  Scopes/events verified against docs.slack.dev 2026-07-18: a channel-thread
@@ -114,7 +116,6 @@ function cmdServeSetup(): number {
 }
 
 function cmdServeLink(argv: string[]): number {
-  const worktree = !argv.includes("--no-worktree");
   // yolo mode = the SDK's bypassPermissions; --dangerous is the same switch.
   const dangerous = argv.includes("--yolo") || argv.includes("--dangerous");
   const modelIdx = argv.indexOf("--model");
@@ -135,7 +136,7 @@ function cmdServeLink(argv: string[]): number {
   }
   const repoReal = realpathSync(repo);
   if (!existsSync(`${repoReal}/.git`)) {
-    console.error(c.red(`${repoReal} is not a git repository (worktree mode needs one)`));
+    console.error(c.red(`${repoReal} is not a git repository`));
     return 1;
   }
   const cfg = loadSlackConfig();
@@ -146,12 +147,11 @@ function cmdServeLink(argv: string[]): number {
   const link = SlackLinkSchema.parse({
     channel,
     repo: repoReal,
-    worktree,
     permissionMode: dangerous ? "bypassPermissions" : "acceptEdits",
     ...(model ? { model } : {}),
   });
   saveSlackConfig(upsertLink(cfg, link));
-  const flags = [worktree ? "worktree" : "in-place", link.permissionMode, ...(model ? [model] : [])].join(", ");
+  const flags = [link.permissionMode, ...(model ? [model] : [])].join(", ");
   console.log(`${c.green("✓")} linked ${c.bold(channel)} → ${repoReal} (${flags})`);
   return 0;
 }
@@ -179,10 +179,33 @@ function cmdServeLinks(): number {
     return 0;
   }
   for (const l of cfg.links) {
-    const flags = [l.worktree ? "worktree" : "in-place", l.permissionMode, ...(l.model ? [l.model] : [])].join(", ");
+    const flags = [l.permissionMode, ...(l.model ? [l.model] : [])].join(", ");
     console.log(`${c.bold(l.channel)} → ${l.repo} ${c.dim(`(${flags})`)}`);
   }
   return 0;
+}
+
+/** Event-name endings that pick the terminal paint: red for failures, yellow
+ *  for degraded-but-continuing conditions, cyan otherwise. Structural endsWith
+ *  checks so new events inherit sensible colors from their naming. */
+const RED_EVENT_ENDINGS = ["error", "failed", "invalid_grant"];
+const YELLOW_EVENT_ENDINGS = ["_dropped", "_drift", "_unparsed", "_gave_up", "_abort", "forced_exit", "proceed_without", "draining"];
+
+function eventPaint(event: string): (s: string) => string {
+  if (RED_EVENT_ENDINGS.some((ending) => event.endsWith(ending))) return c.red;
+  if (YELLOW_EVENT_ENDINGS.some((ending) => event.endsWith(ending))) return c.yellow;
+  return c.cyan;
+}
+
+/** One terminal line per log() event while the daemon runs: the file log stays
+ *  canonical; this makes `xx serve` observable without tailing tokenmaxxing.log.
+ *  Field values can carry newlines (e.g. usage.probe_failed's stderr excerpt),
+ *  so they are escaped to keep the one-line-per-event contract. Exported for
+ *  tests. */
+export function formatLogLine(input: { event: string; parts: string }): string {
+  const time = new Date().toLocaleTimeString("en-GB");
+  const parts = input.parts.replaceAll("\r", "\\r").replaceAll("\n", "\\n");
+  return `${c.dim(time)} ${eventPaint(input.event)(input.event)}${parts ? ` ${parts}` : ""}`;
 }
 
 async function runDaemon(): Promise<number> {
@@ -195,6 +218,11 @@ async function runDaemon(): Promise<number> {
     console.error(c.red("no channel links - run `tokenmaxxing serve link <channel-id> <repo>` first"));
     return 1;
   }
+
+  // every log() event from here on (serve.* plus the in-process swap/decision
+  // events fired by ensureBestAccount/stopHookCheck) also prints to the
+  // terminal, so a foreground `xx serve` shows what it is doing live.
+  setLogEcho({ printer: (entry) => console.log(formatLogLine(entry)) });
 
   const slack = createSlackAdapter({
     mode: "socket",
@@ -240,10 +268,15 @@ async function runDaemon(): Promise<number> {
 
   const handleTurn = async (input: {
     thread: { id: string; channelId: string; post: (m: string | AsyncIterable<string | StreamChunk>) => Promise<unknown>; subscribe: () => Promise<void>; unsubscribe: () => Promise<void>; startTyping: () => Promise<void> };
-    texts: string[];
+    /** every relayed message this turn (queue-skipped + triggering), text
+     *  paired with its author id: a decision may be owed to an earlier
+     *  folded sender, and a sender whose whole message was the bot mention
+     *  contributes no prompt text, so text and author filter together
+     *  (review catches 2026-07-18). */
+    relayed: { text: string; authorId: string }[];
     isMention: boolean;
   }) => {
-    const { thread, texts, isMention } = input;
+    const { thread, isMention } = input;
     if (draining) {
       // the socket stays connected until the drain finishes; anything landing
       // in that window is dropped loudly rather than spawning an unwaitable
@@ -256,22 +289,24 @@ async function runDaemon(): Promise<number> {
       log("serve.unlinked_channel", { channel: thread.channelId });
       return; // not a linked channel - stay silent in Slack
     }
-    log("serve.message", { thread: thread.id, isMention, texts: texts.length });
-    // texts carries queue-skipped messages plus the triggering one: the queue
-    // strategy hands a turn only the LATEST message and the rest via
-    // context.skipped, so they are folded into one prompt here.
-    const prompt = texts
-      .map((t) => stripLeadingMention(t))
-      .filter((t) => t !== "")
-      .join("\n\n");
+    log("serve.message", { thread: thread.id, isMention, texts: input.relayed.length });
+    // relayed carries queue-skipped messages plus the triggering one: the
+    // queue strategy hands a turn only the LATEST message and the rest via
+    // context.skipped, so they are folded into one prompt here. A message
+    // that is empty once its bot mention is stripped contributes neither
+    // prompt text nor a requester id (cursor review catch 2026-07-18).
+    const stripped = input.relayed
+      .map((m) => ({ text: stripLeadingMention({ text: m.text, botUserId: slack.botUserId ?? null }), authorId: m.authorId }))
+      .filter((m) => m.text !== "");
+    const prompt = stripped.map((m) => m.text).join("\n\n");
+    const requesterIds = uniq(stripped.map((m) => m.authorId));
     if (!prompt) return;
     let record = loadSlackThread(thread.id);
     if (!record) {
       if (!isMention) return; // only a mention opens a session
-      const cwd = ensureThreadCwd({ link, threadId: thread.id });
-      record = { threadId: thread.id, repo: link.repo, cwd, sessionId: null, createdAt: new Date().toISOString() };
+      record = { threadId: thread.id, repo: link.repo, cwd: link.repo, sessionId: null, createdAt: new Date().toISOString() };
       saveSlackThread(record);
-      log("serve.thread_opened", { thread: thread.id, cwd });
+      log("serve.thread_opened", { thread: thread.id, cwd: record.cwd });
     }
     // subscriptions live in the memory state, so a daemon restart forgets
     // them; every mention re-subscribes to keep follow-up replies flowing.
@@ -279,23 +314,29 @@ async function runDaemon(): Promise<number> {
     // "is working..." assistant status; a no-op until the Slack app has the
     // agent feature + assistant:write (the adapter warns instead of throwing).
     await thread.startTyping();
+    const startedAt = Date.now();
     const outcome = await relayThread({
       cwd: record.cwd,
       sessionId: record.sessionId,
       prompt,
+      requesterIds,
       link,
       post: (m) => thread.post(m),
+    });
+    log(outcome.failed ? "serve.turn_failed" : "serve.turn_done", {
+      thread: thread.id,
+      seconds: Math.round((Date.now() - startedAt) / 1000),
     });
     if (outcome.sessionId !== record.sessionId) {
       saveSlackThread({ ...record, sessionId: outcome.sessionId });
     }
-    // the user declared the work finished: garbage-collect the thread now that
-    // the turn (and its claude subprocess) is over. Never throw into the Chat
+    // the user declared the work finished: close the thread now that the
+    // turn (and its claude subprocess) is over. Never throw into the Chat
     // SDK handler - the daemon must keep serving other threads.
     if (outcome.finish) {
       let result: CleanupOutcome;
       try {
-        result = cleanupThread({ threadId: thread.id, cwd: record.cwd, repo: record.repo });
+        result = cleanupThread({ threadId: thread.id });
       } catch (e) {
         const detail = (e instanceof Error ? e.message : String(e)).slice(0, 300);
         log("serve.cleanup_error", { thread: thread.id, err: detail });
@@ -321,13 +362,13 @@ async function runDaemon(): Promise<number> {
   };
 
   bot.onNewMention(async (thread, message, context) => {
-    const texts = [...(context?.skipped ?? []).filter(relayable), message].map((m) => m.text);
-    await tracked(handleTurn({ thread, texts, isMention: true }));
+    const relayed = [...(context?.skipped ?? []).filter(relayable), message].map((m) => ({ text: m.text, authorId: m.author.userId }));
+    await tracked(handleTurn({ thread, relayed, isMention: true }));
   });
   bot.onSubscribedMessage(async (thread, message, context) => {
     if (!relayable(message)) return; // never relay our own posts
-    const texts = [...(context?.skipped ?? []).filter(relayable), message].map((m) => m.text);
-    await tracked(handleTurn({ thread, texts, isMention: false }));
+    const relayed = [...(context?.skipped ?? []).filter(relayable), message].map((m) => ({ text: m.text, authorId: m.author.userId }));
+    await tracked(handleTurn({ thread, relayed, isMention: false }));
   });
 
   // initialize() starts the PERSISTENT Socket Mode client (auto-reconnecting)
