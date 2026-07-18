@@ -1,0 +1,63 @@
+src/lib/slackstate.ts
+  s_0de5a2f5ec0bbf::t_65aceadbf9066a 8,108-113,200-232
+test/slackstream.test.ts
+  s_0de5a2f5ec0bbf::t_65aceadbf9066a 5,14-28,39-80,114-127,187-264
+  s_0de5a2f5ec0bbf::t_26f8f0ff959fd3 265
+src/serve-plugin/skills/serve-session/SKILL.md
+  s_0de5a2f5ec0bbf::t_65aceadbf9066a 1-39
+test/slack.test.ts
+  s_0de5a2f5ec0bbf::t_65aceadbf9066a 87-120
+AGENTS.md
+  s_0de5a2f5ec0bbf::t_65aceadbf9066a 206,210-211,213-215,269-272
+  s_0de5a2f5ec0bbf::t_c345d07e992680 212
+.memory/serve-slackbot-decisions.md
+  s_0de5a2f5ec0bbf::t_65aceadbf9066a 30-53
+src/lib/slackstream.ts
+  s_0de5a2f5ec0bbf::t_65aceadbf9066a 4-8,10,17-36,42,55-59,67,91,94-135,158,186-199,228-233,247-253,267-280
+src/serve-plugin/.claude-plugin/plugin.json
+  s_0de5a2f5ec0bbf::t_65aceadbf9066a 1-4
+src/cli/serve.ts
+  s_0de5a2f5ec0bbf::t_65aceadbf9066a 45,194-216,344-350,353,366-376,549-550,554-555,558-586
+  s_0de5a2f5ec0bbf::t_1472d64657504d 19
+  s_0de5a2f5ec0bbf::t_0079f5b1b2c915 397-398,402,407,412-442,449-455,460,469,472-473,488,526-528
+  s_0de5a2f5ec0bbf::t_199fac11ce6bb0 308,312,315,317,321,330,332-339
+  s_0de5a2f5ec0bbf::t_ec6fc460bfe756 228-232
+  s_0de5a2f5ec0bbf::t_a3ef15a3c410b1 42
+  s_0de5a2f5ec0bbf::t_886d9cb7818f2b 587
+test/log.test.ts
+  s_0de5a2f5ec0bbf::t_65aceadbf9066a 1-72
+test/serveplugin.test.ts
+  s_0de5a2f5ec0bbf::t_65aceadbf9066a 1-80
+DESIGN.md
+  s_0de5a2f5ec0bbf::t_65aceadbf9066a 92,95,98,101,103-104
+  s_0de5a2f5ec0bbf::t_768e161e58a842 99
+src/lib/log.ts
+  s_0de5a2f5ec0bbf::t_65aceadbf9066a 17-26,28,30-35,37,41-46
+  s_0de5a2f5ec0bbf::t_c5bc19a0e5931c 47
+src/lib/slackbridge.ts
+  s_0de5a2f5ec0bbf::t_65aceadbf9066a 8-9,11,14,29-30,34-59,97-204,220-221,230,260,264-271,282-300
+.memory/MEMORY.md
+  s_0de5a2f5ec0bbf::t_65aceadbf9066a 5,9
+package.json
+  s_0de5a2f5ec0bbf::t_65aceadbf9066a 3
+src/serve-plugin/skills/ask-the-user/SKILL.md
+  s_0de5a2f5ec0bbf::t_65aceadbf9066a 1-36
+test/slackbridge.test.ts
+  s_0de5a2f5ec0bbf::t_65aceadbf9066a 1-79
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "68902b9eb541fcc991abbb0e1dee2fa6d514e3e4",
+  "prompts": {},
+  "sessions": {
+    "s_0de5a2f5ec0bbf": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "64dfd01b-80fd-4d43-a405-f9132fb102e5",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    }
+  }
+}
