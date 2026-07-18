@@ -1,0 +1,388 @@
+---
+title: tokenmaxxing
+description: Automatic Claude Code account switching - pool your own subscription accounts and hot-swap credentials when quota fills, keeping every session continuable.
+---
+
+tokenmaxxing is a CLI for automatic Claude Code account switching. It pools multiple subscription (Pro/Max) accounts that you own and hot-swaps the active credential to a fresher account when the one in use nears a usage limit. You run `claude` exactly as you always do; the swap happens at a safe turn boundary and your running session continues the same conversation on the new account without restarting. It works across many concurrent sessions at once.
+
+The only visible behavior is the worst case: when the whole pool is at its limit, the session pauses with a countdown and auto-resumes on the next account to reset (Ctrl-C resumes immediately).
+
+<Callout>
+Scope: Claude Code on macOS and Linux, plus OpenAI's Codex CLI as a second, parallel pool. It pools subscription accounts, not API keys. This is a personal-use tool for pooling accounts you own, in sessions and agents you run yourself - see [Personal use and terms of service](#personal-use-and-terms-of-service).
+</Callout>
+
+## The problem
+
+A Claude subscription meters three limits at once (all confirmed via `/usage`):
+
+- **Current session**: a rolling 5-hour window.
+- **Current week (all models)**: a 7-day aggregate.
+- **Current week, per model**: separate weekly caps for individual model families. These currently exist only for Sonnet and Fable, and only the Fable cap is tight enough to matter - it binds well before the aggregate does. A machine can sit at 50% week-all while already at 80% week-Fable.
+
+Weekly quota is use-it-or-lose-it: whatever an account has not consumed by its fixed weekly reset is forfeited. If you own several accounts, the rational strategy is to keep burning quota on whichever account is furthest behind its own weekly pace, and to switch away before any single limit hits the wall mid-session.
+
+Doing that by hand means logging out, logging in, and losing your conversation. tokenmaxxing automates it: a running `claude` re-checks its credential store between requests, so a credential swapped underneath it is adopted in place (within about 30 seconds on macOS, on the next request on Linux). A plain swap never restarts your session. The one case that still needs process management is a fully depleted pool - a session cannot pause itself - and that is what the thin supervisor exists for.
+
+Everything else about `claude` is unchanged: all flags, MCP servers, hooks, and skills pass through.
+
+## Quickstart
+
+Requires [Bun](https://bun.sh) and Claude Code, on macOS or Linux.
+
+```sh
+bun add -g tokenmaxxing
+tokenmaxxing init
+```
+
+`init` does five things:
+
+1. Imports the account you are already logged in with as account #1 (there is no separate `adopt` command).
+2. Installs the `claude` supervisor shim.
+3. Installs three entries in Claude Code's `settings.json`: a statusLine, a Stop hook, and a SessionStart hook (plus a subagentStatusLine entry).
+4. Appends the supervisor's bin directory to your shell rc's PATH (idempotent, marked with a `# tokenmaxxing PATH` comment). It has to sit ahead of the real `claude` on PATH to intercept it.
+5. Installs a periodic check timer (a launchd agent on macOS, a systemd user timer on Linux) that runs `tokenmaxxing check` every 180 seconds.
+
+Restart your shell, then add more accounts and go:
+
+```sh
+tokenmaxxing add        # logs one more account in, in isolation, and pools it
+claude                  # use claude as always
+```
+
+`tokenmaxxing` is also aliased as `xx`. Bare `tokenmaxxing` (or `xx`) runs `status`; `switch` stays explicit.
+
+## Commands
+
+| Command | What it does |
+|---|---|
+| `tokenmaxxing init` | Import the current account, install the supervisor, hooks, and statusline |
+| `tokenmaxxing init --codex` | Same for Codex: import the login, install the codex supervisor and Stop hook |
+| `tokenmaxxing add` | Register an additional account (isolated login, harvested into the pool) |
+| `tokenmaxxing add --codex` | Register an additional Codex account (isolated login) |
+| `tokenmaxxing auth [sel \| --all]` | Reauthenticate a pooled account in place. Bare lists the pool and asks which; a selector targets one account and tells you which email to sign in with; `--all` walks every needs-reauth account one by one |
+| `tokenmaxxing switch [sel]` | Switch to the best account (greedy, idempotent) or force a specific one |
+| `tokenmaxxing switch --codex [sel]` | Switch the Codex pool (takes effect on the next codex start) |
+| `tokenmaxxing ls` | List pooled accounts |
+| `tokenmaxxing status` | Accounts with 5h / weekly / per-model usage bars, active and exhausted-until-reset |
+| `tokenmaxxing status --force` | Additionally ping every account (one tiny haiku request each) so all 5h session timers start now, then sample fresh |
+| `tokenmaxxing watch [seconds]` | Live status, re-rendered every N seconds (default 120, floor 30; never pings) |
+| `tokenmaxxing config [get\|set\|unset\|tidy]` | Effective config with sources; edit dotted keys; `tidy` prunes unknown keys |
+| `tokenmaxxing check` | Evaluate the switch decision once (this is what the periodic timer runs) |
+| `tokenmaxxing serve [setup\|link\|unlink\|links]` | Slack bridge daemon (Socket Mode, no public URL) |
+| `tokenmaxxing doctor` | Verify the supervisor and settings entries survived |
+| `tokenmaxxing rename [--codex] <sel> <label>` | Relabel a pooled account |
+| `tokenmaxxing rm <sel>` | Remove an account from the pool |
+| `tokenmaxxing uninstall` | Remove the supervisor and settings entries (accounts and credentials are kept) |
+
+## Architecture
+
+tokenmaxxing is one multi-call entry point (`src/main.ts`) that behaves as the `claude` supervisor when invoked under that name, serves the hook and statusline shims via internal subcommands, and otherwise dispatches the CLI. It runs directly under Bun; the npm package ships TypeScript source, not a build.
+
+The moving parts:
+
+### The supervisor shim
+
+`init` writes a 2-line shell shim named `claude` into `~/.config/tokenmaxxing/bin/` and puts that directory first on PATH. When you type `claude`, the shim runs the supervisor, which spawns the real claude binary with inherited stdio and a saved `stty -g` terminal snapshot. It is a process and terminal manager only: it never proxies API traffic and never touches tokens in flight.
+
+Print-mode invocations (`claude -p`, `--version`, `--help`), non-interactive subcommands (`claude mcp`, `claude config`, and so on), and tokenmaxxing's own probes pass straight through with no session management. For an interactive session, the supervisor pins a session id (generating one, or reusing the one you passed via `--session-id` / `-r` / `-c`), persists your launch flags so a later relaunch can replay them, and then watches for a respawn marker file keyed to that session.
+
+### The statusline tee
+
+Claude Code pushes rate-limit data (`rate_limits.five_hour` and `rate_limits.seven_day`) into the statusline's stdin every turn. tokenmaxxing owns the statusline slot, so its renderer doubles as a free, push-based usage feed: each tick it tees the aggregate windows plus the active model into `usage.json`. Per-model caps are not in statusline stdin; they come only from `claude -p '/usage'` (free, zero tokens), which is polled with a TTL and cached into `model-usage.json` when the active model is capacity-constrained.
+
+The tee is write-on-change: when figures are unchanged it only bumps the file's mtime, which acts as the feed's liveness heartbeat. Freshness is always judged by mtime, never by the embedded timestamp.
+
+### The Stop hook and the swap
+
+At every turn boundary, the Stop hook runs the switch decision (see [How switching decides](#how-switching-decides)). When a swap is warranted, it happens under a `flock(2)` exclusive lock (taken via `bun:ffi`, since macOS ships no `flock(1)` binary), and the credential writes additionally interlock with Claude Code's own refresh lock. Inside the critical section, one swap:
+
+1. Harvests the current live credential into its true owner's parked backup.
+2. Installs the target account's freshly refreshed credential as the live one, merging into the existing live blob so sibling state (such as per-MCP-server OAuth tokens) survives.
+3. Persists the target's rotated token to its own backup.
+4. Atomically rewrites the `oauthAccount` field in `~/.claude.json`.
+5. Commits the new active label and clears stale usage snapshots, all before the lock releases, so a crash can never leave the installed credential and the active label pointing at different accounts.
+
+Because all default-profile sessions share the one live credential, a single swap migrates every session at once, and the flock plus a re-check under the lock keeps racing hooks from burning two accounts.
+
+### In-place adoption
+
+A running claude session polls its credential store between requests: on macOS it re-reads the keychain through a short cache and compares access tokens; on Linux it stats the credentials file's mtime and flushes its token caches on change. The net effect is that a swapped credential is adopted by every running session within about 30 seconds on macOS and on the very next request on Linux, without any restart. This is why a plain swap writes no marker and triggers no respawn - the session just continues on the new account. In-session `/usage` shares the same token caches, so its account display flips along with adoption.
+
+### Depleted-pool wait and auto-resume
+
+Only when every account in the pool is over its bars does the Stop hook write a respawn marker (the marker schema requires a `waitUntil` timestamp; a plain swap can never produce one). The supervisor sees the marker, SIGTERMs its child at the already-committed turn boundary (the Stop hook runs after the transcript is on disk and claude is idle, so nothing is lost), restores the terminal, shows a countdown to the soonest reset, and then relaunches `claude --resume <session-id>` on the recovered account. Ctrl-C during the countdown resumes immediately. The auto-wait is bounded by `policy.maxWaitMs` (default 1 hour); beyond that the decision reports the pool as depleted instead of waiting.
+
+### The periodic check timer
+
+Hooks only fire at turn boundaries, and one long agentic turn can burn a window from healthy to depleted without a single boundary. `init` therefore also installs a periodic timer - a launchd agent on macOS, a systemd user timer on Linux - that runs `tokenmaxxing check` every 180 seconds regardless of turn activity.
+
+### A SessionStart hook
+
+Runs the same evaluation when a session starts or resumes, so a fresh session begins on the right account. The post-swap cooldown makes it a correct no-op right after a respawn.
+
+## How switching decides
+
+The decision has two layers: an engagement gate, and then a greedy or hard path.
+
+### Engagement
+
+Below `policy.greedySessionFloor` (default 50, in percent of the 5-hour session window), the decision does not run at all - a fresh session rides its account. Once the active session window is 50% used, or any hard bar is crossed, the decision engages.
+
+### Screening bars
+
+The thresholds are screening bars, not the trigger for panic:
+
+- `thresholds.session`: 95. A 5-hour reset is cheap to sit out, so the session window swaps away earlier.
+- `thresholds.weekly`: 98. This one bar covers both the 7-day aggregate and every per-model weekly cap. Weekly quota is use-it-or-lose-it, so it drains close to the wall.
+
+Both are deliberately below 100: the headroom is the budget to reach a clean turn boundary (plus up to one turn of adoption lag on macOS) before the account actually hits its limit. The same bars screen swap candidates: an account over any of its bars is not a valid target. Trigger and screening always use the same effective bars (thresholds minus `policy.projectionMargin`), because a screen laxer than the trigger would land swaps on accounts the trigger immediately re-flags, ping-ponging the pool.
+
+### The target: pace pressure
+
+Among usable accounts, the target is the one furthest behind its own weekly pace: highest **pace pressure**, defined as remaining weekly percent divided by time until that account's weekly reset. The account with the most quota about to be forfeited wins. Ties break to soonest weekly expiry, then lowest 7-day usage.
+
+Everything runs off cached windows stored as absolute UTC epochs, so a stale snapshot still resolves correctly: a weekly reset that has passed extrapolates forward in exact 7-day steps, and any window past its cached reset counts as freshly empty (never a reason to switch, never a reason to keep an account benched).
+
+### Greedy vs hard path
+
+- **Greedy path** (engaged, but under every bar): rank every account, current included. If the current account already wins or ties, do nothing. Otherwise swap onto the strictly better account. It never waits and never pre-parks - a usable current account is not traded for a wait. Because the current account is ranked too, both the automatic path and bare `tokenmaxxing switch` are idempotent: evaluating periodically converges on the right account and then stays put.
+- **Hard path** (a bar crossed): swap away to the best usable candidate. If a candidate's refresh token turns out to be dead, it is flagged needs-reauth and the next candidate is tried. If nothing is usable, the depleted-wait logic runs; only a caller that can actually pause the session (the supervised Stop hook) is allowed to pre-park onto a still-blocked but soonest-recovering account.
+
+### Per-model caps
+
+`policy.switchModels` (default `["fable"]`) names the model families whose per-model weekly cap can trigger a switch. Matching is by family token, never by exact display string: model display names drift ("Fable" became "Fable 5"), and an exact-string gate once silently disabled per-model switching entirely. Two related safety rules:
+
+- An unknown active model gates every configured family. Right after a swap clears snapshots, a headless machine can run model-blind; treating unknown as unconstrained once let an account sit at its Fable cap for hours unnoticed.
+- Candidate screening counts gated per-model caps too, so a pool where every account has burnt its Fable cap does not round-robin.
+
+### Cooldown
+
+A 45-second post-swap cooldown gates the automatic path. The statusline tee is suppressed for the same 45 seconds after a swap (adoption takes up to 30 seconds on macOS), so an earlier evaluation would run on data the swap itself invalidated - that exact scenario once produced an A-to-B-and-back respawn loop. Manual `tokenmaxxing switch` is unaffected by the cooldown.
+
+## Configuration
+
+Config is JSON at `~/.config/tokenmaxxing/config.json`. Every field is optional; defaults apply per-field.
+
+```json
+{
+  "thresholds": { "session": 95, "weekly": 98 },
+  "policy": {
+    "projectionMargin": 0,
+    "greedySessionFloor": 50,
+    "switchModels": ["fable"],
+    "usagePollTtlMs": 90000,
+    "maxWaitMs": 3600000
+  }
+}
+```
+
+- `thresholds.session` / `thresholds.weekly`: the screening bars described above.
+- `policy.projectionMargin`: subtracted from both bars to form the effective bars.
+- `policy.greedySessionFloor`: session-used percent at which the greedy convergence engages.
+- `policy.switchModels`: model families whose per-model weekly cap gates a switch (entries are lowercased on load).
+- `policy.usagePollTtlMs`: how long a `/usage` per-model poll stays fresh.
+- `policy.maxWaitMs`: the depleted-pool auto-wait bound.
+
+`tokenmaxxing config` shows the effective config with sources; `config set`/`unset` edit dotted keys; `config tidy` prunes unknown keys.
+
+## State directory layout
+
+Everything lives under `~/.config/tokenmaxxing/` (overridable with `TOKENMAXXING_HOME`; every externally observable path has an env override so the whole tool can run hermetically in tests).
+
+| Path | What it holds |
+|---|---|
+| `config.json` | Your configuration (sparse; defaults apply per field) |
+| `accounts.json` | Non-secret index of pooled Claude accounts: labels, ids, cached usage windows. Never tokens |
+| `usage.json` | The statusline tee's aggregate window snapshot; its mtime is the feed's liveness heartbeat |
+| `model-usage.json` | TTL-cached per-model weekly caps from `/usage` |
+| `lastswap.json` | Epoch timestamp of the last swap; drives the 45-second cooldown |
+| `lock` | The `flock` file that serializes swaps |
+| `tokenmaxxing.log` | Append-only event log |
+| `bin/` | The PATH shims: `claude`, `codex`, and the `tokenmaxxing` / `xx` entry points |
+| `respawn/<session-id>` | Depleted-wait respawn markers the supervisor watches |
+| `creds/` | Linux only: parked credential files, 0600 in a 0700 directory (macOS parks credentials as per-account keychain items instead) |
+| `onboard/`, `sample/` | Throwaway isolated config homes for `add`/`auth` logins and parked-account `/usage` probes; onboard homes holding plaintext credentials are deleted after harvest |
+| `slack.json` | `xx serve` tokens and channel links (0600) |
+| `slack-threads/` | Per-thread session records for `xx serve` |
+| `codex-*` | The parallel Codex pool: `codex-accounts.json`, `codex-lastswap.json`, `codex-lock`, `codex-creds/`, `codex-onboard/`, `codex-respawn/`, and `codex-live/` (one PID-validated presence file per running supervised codex session, so a live account is never a swap target) |
+
+Outside its own directory, tokenmaxxing touches exactly: `~/.claude.json` (the `oauthAccount` swap), Claude Code's `settings.json` (the hook and statusline entries), the live credential store (the `Claude Code-credentials` keychain item on macOS, `.credentials.json` on Linux), `~/.claude.lock` (claude's refresh lock, taken during swaps), codex's `auth.json` and `hooks.json`, and the periodic-check unit in launchd or systemd.
+
+## Credential storage and safety model
+
+All state lives in `~/.config/tokenmaxxing/`. Credential I/O goes through a single platform-selected store facade; call sites never branch on platform.
+
+**macOS**: credentials live in the login keychain as generic-password items, matching where Claude Code itself keeps them. The live item is the one claude reads; each pooled account's backup is parked as its own `tokenmaxxing-cred-<uuid8>` keychain item. Nothing is plaintext on disk. Reads use `security find-generic-password -w` (the secret only ever appears on stdout); writes pipe an `add-generic-password` line into `security -i` over stdin so the secret never appears in any process's argv. The interactive mode has a roughly 4 KB line buffer, so oversized blobs fall back to an argv write - one reason parked items store only the minimal OAuth object.
+
+**Linux**: Claude Code stores credentials as a 0600 plaintext file, and tokenmaxxing follows the same model: the live file is claude's own `.credentials.json`, and parked backups are atomic 0600 files under `~/.config/tokenmaxxing/creds/` in a 0700 directory. Atomic here means write-to-temp, fsync, then rename: a concurrent reader always sees a whole old or whole new file, never a partial one.
+
+The safety rules the swap enforces:
+
+- **Harvest by true owner.** Before a swap, the live credential's actual owner is resolved by asking the API which organization the token belongs to (`fetchTokenOrg` against the OAuth roles endpoint) - never by trusting the stored active label, which can drift. A drifted label once caused one account's harvest to overwrite another account's only backup. If the live credential belongs to an account outside the pool, the swap refuses outright rather than clobber it.
+- **One critical section.** The harvest, the install of the new credential, the backup of its rotated token, the `~/.claude.json` account swap, and the active-label commit all happen inside the same locked section.
+- **Interlock with claude's own refresh.** A near-expiry session can rotate its own token at any moment, so credential writes also take Claude Code's refresh lock (best-effort, with a stale-lock reclaim and a bounded timeout).
+- **Dead grants degrade cleanly.** A refresh that comes back `invalid_grant` flags that account as needs-reauth and persists the flag before the error propagates, so retry loops shrink the candidate set and terminate. `tokenmaxxing auth` fixes a flagged account in place, and it refuses a login that lands on a different account than the one being repaired.
+- **No token logging.** Tokens never appear in logs, errors, or output. Error bodies from token and usage endpoints are never surfaced raw; only an allowlisted set of fields survives, because a token endpoint's failure body can echo request material.
+- **Probe hygiene.** Any spawned `claude` probe scrubs the eight environment variables claude honors before its keychain lookup (`ANTHROPIC_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN`, `CLAUDE_SECURESTORAGE_CONFIG_DIR`, and so on), so a probe can never be attributed to the wrong account.
+
+## Platform notes: macOS vs Linux
+
+| | macOS | Linux |
+|---|---|---|
+| Live credential | Login keychain generic-password item | 0600 `.credentials.json` file |
+| Parked credentials | Per-account keychain items | 0600 files in a 0700 directory |
+| Adoption after a swap | Within ~30 seconds (keychain read cache) | Next request (file mtime poll) |
+| Periodic check | launchd agent, every 180s | systemd user timer, every 180s |
+| Isolated-login store | Hash-namespaced keychain service per config dir | A file inside the isolated config dir |
+
+Two Linux-specific details worth knowing: claude resolves its credential directory from `CLAUDE_SECURESTORAGE_CONFIG_DIR` first (then `CLAUDE_CONFIG_DIR`, then `~/.claude`), and tokenmaxxing mirrors that resolution exactly so the two never desync. And the two OS builds of the same claude version format `/usage` reset clocks differently (one uses " at " glue, the other a comma); tokenmaxxing's parser accepts exactly those two forms and logs, rather than guesses, on any third.
+
+On macOS, one honest limitation: `init` and `add` touch the keychain interactively on purpose, so the first `security` access is not cold inside a headless hook.
+
+## The statusline
+
+tokenmaxxing renders Claude Code's statusline natively (while teeing the usage feed). The design principle: quota is carried in color, not numbers. One line, for example:
+
+```
+tm-wt-demo Fable 5 (high) +156/-23  ◆ 𝒇 2h 1d  ◇ 19h  ◇ 𝒇 2d  ◇ full  ✗ ?
+```
+
+- Each window token is its time-to-reset, painted on a continuous green-to-yellow-to-red ramp by used percent (truecolor when the terminal supports it, stepped onto the 256-color cube otherwise). The ramp anchors at pure green for 0, yellow at 75, and red at 95 and above, so the old severity bands survive as ramp anchors.
+- The model name is painted by context-window fill on the same ramp.
+- A green `◆` leads the active account's windows; every parked account gets its own cyan `◇` (red `✗` if it needs reauth). Accounts sort by earliest upcoming reset.
+- Per-model comes first in each block as a bare painted initial: Fable renders `𝒇`; other families use their uppercased first letter, always family-matched.
+- An untouched parked account renders a green `full`. Measured usage with an unknown reset renders a painted `?`, and an unmeasured per-model cap on a gated model renders an unpainted `𝒇?` - unmeasured must never look safe.
+- Reset countdowns show the largest unit only, never "now" or "0m"; a window with no upcoming reset renders a green `0` (empty again).
+- A linked git worktree's basename leads the line; a main checkout renders nothing there. The detection reads the filesystem for a `.git` file and never spawns a git subprocess.
+- With `NO_COLOR` set, the line falls back to a glued numeric format (`2h5` means resets in 2 hours, 5% used; `ctx 42` for context fill) - without color, a drained window must not look fresh.
+
+Subagent tasks get their own panel rows via claude's subagentStatusLine surface: one row per active task, family name painted by that task's context fill.
+
+## Codex support
+
+The same pooling works for OpenAI's Codex CLI, against your own ChatGPT-subscription accounts:
+
+```sh
+tokenmaxxing init --codex   # import your current codex login + install the codex supervisor & Stop hook
+tokenmaxxing add --codex    # log in another account, isolated - your primary login is untouched
+codex                       # use codex as always
+```
+
+The Codex pool is fully parallel state: its own accounts index, its own parked credential files (0600 files on both platforms, since codex's own store is a plaintext file), its own lock, its own last-swap timestamp. Nothing is shared with the Claude pool except the decision-policy code.
+
+### Why hot-swap is impossible on Codex
+
+A running codex process holds one in-memory auth manager and explicitly refuses to reload `auth.json` when it now names a different account. There is no file watcher and no per-request credential poll, so a credential swapped underneath a running codex simply never takes effect for inference. Restart is the switch: `codex resume <session-id>` continues the local transcript on whatever account `auth.json` now holds.
+
+tokenmaxxing handles this with a codex supervisor shim: the Stop hook runs the same greedy pace-pressure decision at each turn boundary, and when it swaps, it writes a marker that makes the supervisor SIGTERM the session at the committed boundary and relaunch `codex resume <session-id>` on the fresh account, transcript intact. Because every codex switch is a visible restart, the codex greedy path carries a 1.2x improvement margin: a challenger must beat the current account's pace pressure by 20%, not by a hair. The hard path (a crossed bar) ignores the margin. There is also no depleted-pool countdown for codex - nothing can pause a codex session - so a fully depleted codex pool stays put.
+
+Other codex-specific mechanics:
+
+- Usage is read from a free authenticated GET against codex's own rate-limit endpoint (the same call the CLI's `/status` makes): percentages plus absolute epoch reset times, aggregate windows and per-model caps alike. Window classification is duration-driven, never position-driven, because current plans may have no 5-hour window at all and the weekly window sits in the primary slot.
+- Codex refresh tokens rotate, and reusing a superseded one kills the whole grant family. Every rotation is persisted the instant it returns, the active account is only ever sampled through the live blob (never a stale parked copy), and per-session presence files ensure an account running in a live sibling session is never a swap target and never gets its parked token refreshed.
+- Codex requires the file credential store: `init --codex` fails fast if the keyring store is pinned, and `add --codex` writes the file-mode setting into the isolated onboarding home so the login lands harvestable.
+- One manual step: codex skips hooks it has not been told to trust. After `init --codex`, open codex once and trust the tokenmaxxing Stop hook via `/hooks`, or auto-switching stays silently inert. `init --codex` prints this reminder.
+
+## The Slack bridge: xx serve
+
+`tokenmaxxing serve` runs a local Slack daemon over Socket Mode - no public URL required. Setup:
+
+```sh
+tokenmaxxing serve setup                    # prints the app manifest, prompts for the two tokens
+tokenmaxxing serve link <channel-id> <repo> # tie a channel to a repo checkout
+tokenmaxxing serve                          # run the daemon
+```
+
+Mention the bot in a linked channel and it opens a Claude Code session for that thread, in the linked repo checkout. Every thread message runs one Agent SDK `query()` with `resume` - never a persistent streaming query - so `ensureBestAccount()` re-evaluates the pool on every single turn and the daemon can restart without losing threads (thread records are durable; the daemon re-subscribes them on startup).
+
+Notable behavior:
+
+- **Streaming**: replies stream natively into Slack, with task cards for thinking and tool runs, fenced code rendered with highlighting, a closing "Turn" card with cost and duration, and a new Slack message opened whenever a tool run interrupts streamed text, so a turn reads as separate messages around tool runs. TodoWrite calls update one stable checklist card in place.
+- **Permissions**: per-link `permissionMode` defaults to `acceptEdits`; `--yolo` (alias `--dangerous`) opts a link into `bypassPermissions`. Interactive dialogs are disallowed in relayed turns - nobody can answer one through Slack - so the model asks in prose and your thread reply is the next turn. A bundled plugin skill teaches it to tag the requester and end the turn when it needs a decision.
+- **Slash commands**: a thread message whose stripped text starts with `/` runs as a claude slash command. Slack's composer eats messages starting with `/`, so use the mention-first form (`@bot /usage`) or a leading space.
+- **Graceful shutdown**: SIGTERM/SIGINT drains - new turns are dropped loudly, in-flight turns get up to 5 minutes, and the claude child runs detached in its own process group so a terminal Ctrl-C cannot kill it before the drain preserves the turn.
+- **Thread cleanup**: when you tell it the work is done, the model calls an in-process `finish_thread` tool; after the turn fully ends, the daemon drops the thread record, unsubscribes, and posts one confirmation. A fresh mention starts a new session.
+- **Error hygiene**: turn errors post trimmed message-only text, never raw error bodies.
+
+## The Agent SDK surface
+
+The package's programmatic entry (`exports["."]` points at `src/sdk.ts`) pairs tokenmaxxing with the Claude Agent SDK for agents you build against your own pooled accounts. Your app must run under Bun (tokenmaxxing ships TypeScript source and uses `bun:ffi`).
+
+```ts
+import { query } from "@anthropic-ai/claude-agent-sdk";
+import { ensureBestAccount, pooledOptions, stopHookCheck } from "tokenmaxxing";
+
+await ensureBestAccount(); // run the switch decision before the spawn
+
+for await (const message of query({
+  prompt: "...",
+  options: {
+    ...pooledOptions(), // pinned real claude + scrubbed env
+    hooks: { Stop: [{ hooks: [stopHookCheck] }] }, // re-decide at every turn boundary
+  },
+})) {
+  // capture the session id from the init message for `resume` across swaps
+}
+```
+
+The Agent SDK spawns a claude subprocess per `query()` and reads credentials once at spawn - no statusline, no mid-query hot-swap - so the integration is boundary-driven:
+
+- `ensureBestAccount()` is the exact decision the CLI hooks and timer run (bars, pace pressure, cooldown, all shared code), never anticipatory: an SDK session can never be paused for a depleted countdown.
+- `pooledOptions()` pins `pathToClaudeCodeExecutable` to the real claude binary (never the supervisor wrapper) and supplies a full replacement `env` with every ambient credential override scrubbed. It fails fast if `CLAUDE_CONFIG_DIR` or `CLAUDE_SECURESTORAGE_CONFIG_DIR` is set in your app's environment: on Linux a swap would write the live credential where those point while the scrubbed subprocess reads the default store, a silent wrong-account desync.
+- `stopHookCheck` re-runs the decision at turn boundaries; a swap it lands takes effect on the next spawn. It catches its own errors (logging to stderr and the log) rather than rethrowing, because an unhandled hook exception can interrupt the agent, and aborting a turn over a broken switch check costs more than riding out the current account.
+
+`sdk.ts` imports nothing from the Agent SDK itself; its values spread structurally into the SDK's options.
+
+## Build and distribution
+
+The npm package ships TypeScript source, not a build: the `tokenmaxxing` bin points straight at `src/main.ts` with a Bun shebang, and Bun 1.2.6 or newer runs it as-is. That is why Bun is a hard requirement. There are no compiled binaries by design: an early release shipped a single 61 MB macOS binary to every platform and failed on Linux with `exec format error`, and per-platform compiled packages would each need their own release pipeline, so source-run-by-Bun became the distribution model.
+
+The package's `exports` map exposes `src/sdk.ts` as the programmatic entry described above. Releases are tagged `v<version>` on GitHub; CI publishes to npm via trusted publishing (OIDC, with provenance), and the publish gate runs the typecheck and the full test suite first.
+
+## Personal use and terms of service
+
+tokenmaxxing pools accounts you own, in sessions and agents you run yourself. That wording is deliberate: Anthropic does not allow third-party products to offer claude.ai login or claude.ai rate limits, and that includes agents built on the Agent SDK. Do not ship the pooled SDK surface, or anything built on it, to third parties. tokenmaxxing also deliberately stays on the CLI-mediated `/usage` path for quota data rather than reimplementing OAuth or proxying API traffic: it is not a proxy, and the only OAuth endpoints it touches are the standard refresh grant used during a swap and a read-only identity check (the roles endpoint) that verifies which account a token actually belongs to.
+
+## Honest limitations
+
+- **One cold turn.** Prompt cache is org-scoped, so the first turn on a new account re-uploads context once.
+- **Depleted-pause hiccup.** Only a fully depleted pool stops the session for the countdown; anything typed in that split second is lost.
+- **Adoption lag.** On macOS the first turn within ~30 seconds of a swap can still meter the old account; the bars' headroom absorbs it.
+- **Shared blast radius.** All default-profile sessions share one live credential, so a swap moves them all together (each adopts in place).
+- **Plaintext credentials on Linux.** Claude Code itself stores Linux credentials as a 0600 plaintext file; tokenmaxxing's parked copies follow the same model.
+
+## Troubleshooting and FAQ
+
+**`claude` doesn't seem to be supervised.**
+Run `tokenmaxxing doctor`. The shim must win PATH resolution; check that the `# tokenmaxxing PATH` line in your shell rc points at the current bin directory and sits ahead of the real claude. `doctor` also warns about `alias claude=...` or a `claude()` shell function shadowing the wrapper, and about aliases that launch a claude binary by absolute path (those bypass the supervisor entirely).
+
+**Auto-switching never fires on Codex.**
+Codex skips hooks it has not been told to trust. Open codex, run `/hooks`, and trust the tokenmaxxing Stop hook. Trust is recorded against the hook's hash, so it must be re-granted if the hook is ever edited.
+
+**An account shows a red `✗` in the statusline.**
+Its refresh token is dead (revoked or rotated out from under its backup). Run `tokenmaxxing auth <sel>` to reauthenticate it in place; the command tells you which email to sign in with and refuses a login that lands on a different account.
+
+**Why doesn't it switch to the account with the most remaining quota?**
+Because that is not the account most at risk of forfeiting quota. The target is the account furthest behind its own weekly pace: remaining percent divided by time to its weekly reset. With equal amounts remaining that reduces to soonest expiry first, and with equal expiry to most remaining first.
+
+**It just switched and the statusline still shows the old account.**
+Expected for up to ~30 seconds on macOS: the running session adopts the swapped credential on its next credential-cache refresh. The usage tee is suppressed for 45 seconds after a swap for exactly this reason.
+
+**Does `status --force` cost anything?**
+Yes, deliberately: it sends one minimal metered haiku request per account so every 5-hour session window starts at that instant instead of lying dormant, then samples fresh. Plain `status` and `watch` never ping; `/usage` reads are free. Note the server usage feed can lag a freshly opened window by seconds to minutes, so a probe immediately after the ping may still show the pre-ping state - `status` renders a note instead of pretending the ping failed.
+
+**The `/usage` probe returned nothing for the active account.**
+That is a known claude behavior: when its internal usage fetch fails or is rate-limited, `/usage` prints only local session stats with no percentage lines. tokenmaxxing samples the active account from the statusline push and only probes parked accounts, precisely to avoid this.
+
+**Background claude sessions.**
+Claude's background daemon spawns the real versioned binary by absolute path, bypassing PATH shims, so background sessions are unsupervised. Hooks still fire via `settings.json`, and credential adoption plus the periodic timer cover switching, but there is no marker-driven respawn for them.
+
+**Something spawned a lot of processes once. Is that still possible?**
+The supervisor carries layered recursion guards against exactly that historical failure (a stale wrapper pinned as the "real" claude): a depth sentinel in the environment that aborts at 5 levels, an on-disk spawn-rate limiter, realpath identity checks that reject any candidate resolving back into tokenmaxxing's own bin directory, and a hard failure (never a silent PATH scan) when a configured claude path no longer exists. `init` and `doctor` verify a candidate actually is claude by running `--version` before pinning it.
+
+**Uninstalling.**
+`tokenmaxxing uninstall` removes the supervisor shims, settings entries, and the periodic timer, and leaves your accounts and parked credentials intact. It only removes statusline entries it recognizes as its own.
+
+## License
+
+MIT. Source at [anaclumos/tokenmaxxing](https://github.com/anaclumos/tokenmaxxing).

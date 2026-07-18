@@ -1,0 +1,388 @@
+---
+title: tokenmaxxing
+description: Automatic Claude Code account switching - put your own subscription accounts together and hot-swap credentials when quota fill up, so every session fit continue.
+---
+
+tokenmaxxing na CLI for automatic Claude Code account switching. E dey pool plenty subscription (Pro/Max) accounts wey you own and e dey hot-swap the active credential go one fresher account when the one wey dey use near im usage limit. You go run `claude` exactly as you dey always run am; the swap dey happen for one safe turn boundary and your session wey dey run go continue the same conversation for the new account without restart. E dey work across plenty concurrent sessions all at once.
+
+The only behavior wey you go see na the worst case: when the whole pool don reach im limit, the session go pause with countdown and e go auto-resume for the next account wey go reset (Ctrl-C dey resume immediately).
+
+<Callout>
+Scope: Claude Code for macOS and Linux, plus OpenAI im Codex CLI as second, parallel pool. E dey pool subscription accounts, no be API keys. Na personal-use tool for pooling accounts wey you own, for sessions and agents wey you your own dey run - check [How you fit use am for yourself and terms of service](#personal-use-and-terms-of-service).
+</Callout>
+
+## The wahala
+
+One Claude subscription dey meter three limits all at once (all confirm via `/usage`):
+
+- **Current session**: rolling 5-hour window.
+- **Current week (all models)**: 7-day aggregate.
+- **Current week, per model**: separate weekly caps for individual model families. Right now dis one dey exist only for Sonnet and Fable, and na only the Fable cap tight reach make e matter - e dey bind well before the aggregate go bind. Machine fit dey sit for 50% week-all while e don already reach 80% week-Fable.
+
+Weekly quota na use-am-or-lose-am: whatever account no consume before im fixed weekly reset, e go lose am. If you own plenty accounts, the sensible strategy na to keep dey burn quota for whichever account dey furthest behind im own weekly pace, and to switch comot before any single limit go hit the wall for middle of session.
+
+To dey do dat one by hand mean say you go logout, login, and lose your conversation. tokenmaxxing dey automate am: one `claude` wey dey run dey re-check im credential store between requests, so a credential wey dem swap under am go get adopted for the same place (within about 30 seconds for macOS, for the next request for Linux). One plain swap no dey restart your session at all. The one case wey still need process management na when the pool fully finish - a session no fit pause imself - and na for dat one the thin supervisor dey exist.
+
+Everything else about `claude` no change: all flags, MCP servers, hooks, and skills dey pass through.
+
+## Quickstart
+
+E need [Bun](https://bun.sh) and Claude Code, for macOS or Linux.
+
+```sh
+bun add -g tokenmaxxing
+tokenmaxxing init
+```
+
+`init` dey do five things:
+
+1. E dey import the account wey you don already login with as account #1 (no separate `adopt` command dey).
+2. E dey install the `claude` supervisor shim.
+3. E dey install three entries for Claude Code im `settings.json`: one statusLine, one Stop hook, and one SessionStart hook (plus one subagentStatusLine entry).
+4. E dey append the supervisor im bin directory go your shell rc im PATH (idempotent, wey dem mark with `# tokenmaxxing PATH` comment). E must sit ahead of the real `claude` for PATH make e fit intercept am.
+5. E dey install one periodic check timer (launchd agent for macOS, systemd user timer for Linux) wey dey run `tokenmaxxing check` every 180 seconds.
+
+Restart your shell, then add more accounts and go:
+
+```sh
+tokenmaxxing add        # dey login one more account, for isolation, and pool am
+claude                  # use claude as you dey always use am
+```
+
+`tokenmaxxing` get alias too as `xx`. Bare `tokenmaxxing` (or `xx`) dey run `status`; `switch` still dey explicit.
+
+## Commands
+
+| Command | Wetin e dey do |
+|---|---|
+| `tokenmaxxing init` | Import the current account, install the supervisor, hooks, and statusline |
+| `tokenmaxxing init --codex` | Same thing for Codex: import the login, install the codex supervisor and Stop hook |
+| `tokenmaxxing add` | Register additional account (isolated login, harvest am go the pool) |
+| `tokenmaxxing add --codex` | Register additional Codex account (isolated login) |
+| `tokenmaxxing auth [sel \| --all]` | Reauthenticate a pooled account for the same place. Bare go list the pool and ask you which one; a selector go target one account and tell you which email make you sign in with; `--all` go waka through every needs-reauth account one by one |
+| `tokenmaxxing switch [sel]` | Switch go the best account (greedy, idempotent) or force one specific one |
+| `tokenmaxxing switch --codex [sel]` | Switch the Codex pool (e go take effect for the next codex start) |
+| `tokenmaxxing ls` | List pooled accounts |
+| `tokenmaxxing status` | Accounts with 5h / weekly / per-model usage bars, active and exhausted-until-reset |
+| `tokenmaxxing status --force` | E go ping every account extra (one tiny haiku request each) so all 5h session timers go start now, then sample fresh |
+| `tokenmaxxing watch [seconds]` | Live status, wey dey re-render every N seconds (default 120, floor 30; e no dey ping at all) |
+| `tokenmaxxing config [get\|set\|unset\|tidy]` | Effective config with sources; edit dotted keys; `tidy` go prune unknown keys |
+| `tokenmaxxing check` | Evaluate the switch decision one time (na dis one the periodic timer dey run) |
+| `tokenmaxxing serve [setup\|link\|unlink\|links]` | Slack bridge daemon (Socket Mode, no public URL) |
+| `tokenmaxxing doctor` | Verify say the supervisor and settings entries survive |
+| `tokenmaxxing rename [--codex] <sel> <label>` | Relabel a pooled account |
+| `tokenmaxxing rm <sel>` | Remove an account from the pool |
+| `tokenmaxxing uninstall` | Remove the supervisor and settings entries (accounts and credentials dey kept) |
+
+## Architecture
+
+tokenmaxxing na one multi-call entry point (`src/main.ts`) wey dey behave as the `claude` supervisor when dem invoke am under dat name, e dey serve the hook and statusline shims via internal subcommands, and otherwise e dey dispatch the CLI. E dey run directly under Bun; the npm package dey ship TypeScript source, no be build.
+
+The moving parts:
+
+### The supervisor shim
+
+`init` dey write one 2-line shell shim wey dem name `claude` go inside `~/.config/tokenmaxxing/bin/` and e dey put dat directory first for PATH. When you type `claude`, the shim dey run the supervisor, wey dey spawn the real claude binary with inherited stdio and one saved `stty -g` terminal snapshot. Na process and terminal manager only: e no dey proxy API traffic at all and e no dey touch tokens wey dey flight.
+
+Print-mode invocations (`claude -p`, `--version`, `--help`), non-interactive subcommands (`claude mcp`, `claude config`, and so on), and tokenmaxxing im own probes dey pass straight through with no session management. For interactive session, the supervisor dey pin one session id (e go generate one, or reuse the one wey you pass via `--session-id` / `-r` / `-c`), e dey persist your launch flags so say a later relaunch fit replay dem, and then e dey watch for one respawn marker file wey key go dat session.
+
+### The statusline tee
+
+Claude Code dey push rate-limit data (`rate_limits.five_hour` and `rate_limits.seven_day`) go inside the statusline im stdin every turn. tokenmaxxing dey own the statusline slot, so im renderer dey double as free, push-based usage feed: every tick e dey tee the aggregate windows plus the active model go inside `usage.json`. Per-model caps no dey inside statusline stdin; dem dey come only from `claude -p '/usage'` (free, zero tokens), wey dem dey poll with TTL and cache go inside `model-usage.json` when the active model dey capacity-constrained.
+
+The tee na write-on-change: when figures no change e dey only bump the file im mtime, wey dey act as the feed im liveness heartbeat. Freshness dey always judge by mtime, never by the embedded timestamp.
+
+### The Stop hook and the swap
+
+For every turn boundary, the Stop hook dey run the switch decision (check [How switching dey decide](#how-switching-decides)). When a swap dey warranted, e dey happen under one `flock(2)` exclusive lock (dem take am via `bun:ffi`, since macOS no dey ship any `flock(1)` binary), and the credential writes dey interlock extra with Claude Code im own refresh lock. Inside the critical section, one swap:
+
+1. E dey harvest the current live credential go im true owner im parked backup.
+2. E dey install the target account im freshly refreshed credential as the live one, e dey merge am go inside the existing live blob so sibling state (like per-MCP-server OAuth tokens) go survive.
+3. E dey persist the target im rotated token go im own backup.
+4. E dey atomically rewrite the `oauthAccount` field for `~/.claude.json`.
+5. E dey commit the new active label and clear stale usage snapshots, all before the lock release, so a crash no fit ever leave the installed credential and the active label dey point at different accounts.
+
+Because all default-profile sessions dey share the one live credential, one single swap dey migrate every session all at once, and the flock plus one re-check under the lock dey keep racing hooks from burning two accounts.
+
+### In-place adoption
+
+One claude session wey dey run dey poll im credential store between requests: for macOS e dey re-read the keychain through short cache and compare access tokens; for Linux e dey stat the credentials file im mtime and flush im token caches when e change. The net effect na say a swapped credential go get adopted by every session wey dey run within about 30 seconds for macOS and for the very next request for Linux, without any restart. Na why one plain swap no dey write any marker and no dey trigger any respawn - the session just dey continue for the new account. In-session `/usage` dey share the same token caches, so im account display dey flip along with the adoption.
+
+### Depleted-pool wait and auto-resume
+
+Only when every account for the pool don pass im bars the Stop hook go write one respawn marker (the marker schema need one `waitUntil` timestamp; a plain swap no fit ever produce one). The supervisor go see the marker, e go SIGTERM im child for the already-committed turn boundary (the Stop hook dey run after the transcript don land for disk and claude dey idle, so nothing dey lost), e go restore the terminal, show one countdown to the soonest reset, and then relaunch `claude --resume <session-id>` for the recovered account. Ctrl-C during the countdown go resume immediately. The auto-wait dey bounded by `policy.maxWaitMs` (default 1 hour); beyond dat the decision dey report the pool as depleted instead of to wait.
+
+### The periodic check timer
+
+Hooks dey only fire for turn boundaries, and one long agentic turn fit burn one window from healthy go depleted without one single boundary. Na why `init` dey also install one periodic timer - launchd agent for macOS, systemd user timer for Linux - wey dey run `tokenmaxxing check` every 180 seconds regardless of turn activity.
+
+### A SessionStart hook
+
+E dey run the same evaluation when one session start or resume, so a fresh session go begin for the right account. The post-swap cooldown dey make am one correct no-op right after a respawn.
+
+## How switching dey decide [#how-switching-decides]
+
+The decision get two layers: one engagement gate, and then one greedy or hard path.
+
+### Engagement
+
+Below `policy.greedySessionFloor` (default 50, for percent of the 5-hour session window), the decision no dey run at all - a fresh session dey ride im account. Once the active session window don use 50%, or any hard bar don cross, the decision dey engage.
+
+### Screening bars
+
+The thresholds na screening bars, no be the trigger for panic:
+
+- `thresholds.session`: 95. One 5-hour reset cheap make you sit am out, so the session window dey swap comot earlier.
+- `thresholds.weekly`: 98. Dis one bar dey cover both the 7-day aggregate and every per-model weekly cap. Weekly quota na use-am-or-lose-am, so e dey drain close to the wall.
+
+The two of dem dey deliberately below 100: the headroom na the budget to reach one clean turn boundary (plus up to one turn of adoption lag for macOS) before the account go actually hit im limit. The same bars dey screen swap candidates: an account wey pass any of im bars no be valid target. Trigger and screening dey always use the same effective bars (thresholds minus `policy.projectionMargin`), because one screen wey laxer pass the trigger go land swaps for accounts wey the trigger go immediately re-flag, and e go ping-pong the pool.
+
+### The target: pace pressure
+
+Among usable accounts, the target na the one wey dey furthest behind im own weekly pace: highest **pace pressure**, wey dem define as remaining weekly percent divide by time until dat account im weekly reset. The account with the most quota wey dey about to lose na im go win. Ties dey break to soonest weekly expiry, then lowest 7-day usage.
+
+Everything dey run off cached windows wey dem store as absolute UTC epochs, so even one stale snapshot still dey resolve correctly: a weekly reset wey don pass dey extrapolate forward for exact 7-day steps, and any window wey pass im cached reset dey count as freshly empty (never a reason to switch, never a reason to keep an account benched).
+
+### Greedy vs hard path
+
+- **Greedy path** (engaged, but under every bar): rank every account, current one included. If the current account don already win or tie, do nothing. Otherwise swap go the strictly better account. E no dey wait at all and e no dey pre-park at all - a usable current account no be something wey you go trade for a wait. Because the current account dey ranked too, both the automatic path and bare `tokenmaxxing switch` dey idempotent: to evaluate periodically dey converge for the right account and then e dey stay put.
+- **Hard path** (a bar cross): swap comot go the best usable candidate. If one candidate im refresh token turn out to dey dead, dem go flag am needs-reauth and dem go try the next candidate. If nothing dey usable, the depleted-wait logic go run; only a caller wey fit actually pause the session (the supervised Stop hook) dey allowed to pre-park go one still-blocked but soonest-recovering account.
+
+### Per-model caps
+
+`policy.switchModels` (default `["fable"]`) dey name the model families wey dia per-model weekly cap fit trigger a switch. Matching dey by family token, never by exact display string: model display names dey drift ("Fable" become "Fable 5"), and one exact-string gate one time silently disable per-model switching entirely. Two related safety rules:
+
+- One unknown active model dey gate every configured family. Right after a swap clear snapshots, a headless machine fit run model-blind; to treat unknown as unconstrained one time let one account sit for im Fable cap for hours without anybody notice am.
+- Candidate screening dey count gated per-model caps too, so a pool wey every account don burn im Fable cap no dey round-robin.
+
+### Cooldown
+
+One 45-second post-swap cooldown dey gate the automatic path. Dem dey suppress the statusline tee for the same 45 seconds after a swap (adoption dey take up to 30 seconds for macOS), so an earlier evaluation for run for data wey the swap imself don invalidate - na dat exact scenario one time produce one A-to-B-and-back respawn loop. Manual `tokenmaxxing switch` no dey affected by the cooldown.
+
+## Configuration
+
+Config na JSON for `~/.config/tokenmaxxing/config.json`. Every field na optional; defaults dey apply per-field.
+
+```json
+{
+  "thresholds": { "session": 95, "weekly": 98 },
+  "policy": {
+    "projectionMargin": 0,
+    "greedySessionFloor": 50,
+    "switchModels": ["fable"],
+    "usagePollTtlMs": 90000,
+    "maxWaitMs": 3600000
+  }
+}
+```
+
+- `thresholds.session` / `thresholds.weekly`: the screening bars wey we describe above.
+- `policy.projectionMargin`: dem dey subtract am from both bars to form the effective bars.
+- `policy.greedySessionFloor`: session-used percent wey the greedy convergence go engage.
+- `policy.switchModels`: model families wey dia per-model weekly cap dey gate a switch (dem dey lowercase the entries on load).
+- `policy.usagePollTtlMs`: how long one `/usage` per-model poll go stay fresh.
+- `policy.maxWaitMs`: the depleted-pool auto-wait bound.
+
+`tokenmaxxing config` dey show the effective config with sources; `config set`/`unset` dey edit dotted keys; `config tidy` dey prune unknown keys.
+
+## How the state directory dey arrange
+
+Everything dey live under `~/.config/tokenmaxxing/` (you fit override am with `TOKENMAXXING_HOME`; every path wey person fit observe from outside get one env override so the whole tool fit run hermetically for tests).
+
+| Path | Wetin e dey hold |
+|---|---|
+| `config.json` | Your configuration (sparse; defaults dey apply per field) |
+| `accounts.json` | Index wey no be secret of pooled Claude accounts: labels, ids, cached usage windows. No tokens at all |
+| `usage.json` | The statusline tee im aggregate window snapshot; im mtime na the feed im liveness heartbeat |
+| `model-usage.json` | TTL-cached per-model weekly caps from `/usage` |
+| `lastswap.json` | Epoch timestamp of the last swap; e dey drive the 45-second cooldown |
+| `lock` | The `flock` file wey dey serialize swaps |
+| `tokenmaxxing.log` | Append-only event log |
+| `bin/` | The PATH shims: `claude`, `codex`, and the `tokenmaxxing` / `xx` entry points |
+| `respawn/<session-id>` | Depleted-wait respawn markers wey the supervisor dey watch |
+| `creds/` | Linux only: parked credential files, 0600 inside one 0700 directory (macOS dey park credentials as per-account keychain items instead) |
+| `onboard/`, `sample/` | Throwaway isolated config homes for `add`/`auth` logins and parked-account `/usage` probes; onboard homes wey dey hold plaintext credentials dem dey delete after harvest |
+| `slack.json` | `xx serve` tokens and channel links (0600) |
+| `slack-threads/` | Per-thread session records for `xx serve` |
+| `codex-*` | The parallel Codex pool: `codex-accounts.json`, `codex-lastswap.json`, `codex-lock`, `codex-creds/`, `codex-onboard/`, `codex-respawn/`, and `codex-live/` (one PID-validated presence file per running supervised codex session, so a live account no be ever swap target) |
+
+Outside im own directory, tokenmaxxing dey touch exactly: `~/.claude.json` (the `oauthAccount` swap), Claude Code im `settings.json` (the hook and statusline entries), the live credential store (the `Claude Code-credentials` keychain item for macOS, `.credentials.json` for Linux), `~/.claude.lock` (claude im refresh lock, wey dem take during swaps), codex im `auth.json` and `hooks.json`, and the periodic-check unit for launchd or systemd.
+
+## Credential storage and safety model
+
+All state dey live for `~/.config/tokenmaxxing/`. Credential I/O dey pass through one single platform-selected store facade; call sites no dey branch on platform.
+
+**macOS**: credentials dey live for the login keychain as generic-password items, e match wia Claude Code imself dey keep dem. The live item na the one claude dey read; each pooled account im backup dey parked as im own `tokenmaxxing-cred-<uuid8>` keychain item. Nothing dey plaintext for disk. Reads dey use `security find-generic-password -w` (the secret dey only ever appear on stdout); writes dey pipe one `add-generic-password` line go inside `security -i` over stdin so the secret no dey ever appear for any process im argv. The interactive mode get roughly 4 KB line buffer, so oversized blobs dey fall back to argv write - one reason parked items dey store only the minimal OAuth object.
+
+**Linux**: Claude Code dey store credentials as one 0600 plaintext file, and tokenmaxxing dey follow the same model: the live file na claude im own `.credentials.json`, and parked backups na atomic 0600 files under `~/.config/tokenmaxxing/creds/` inside one 0700 directory. Atomic for here mean write-to-temp, fsync, then rename: one concurrent reader dey always see one whole old or one whole new file, never a partial one.
+
+The safety rules wey the swap dey enforce:
+
+- **Harvest by true owner.** Before a swap, dem dey resolve the live credential im actual owner by asking the API which organization the token belong to (`fetchTokenOrg` against the OAuth roles endpoint) - never by trusting the stored active label, wey fit drift. One drifted label one time cause say one account im harvest overwrite another account im only backup. If the live credential belong to one account outside the pool, the swap go refuse outright rather than clobber am.
+- **One critical section.** The harvest, the install of the new credential, the backup of im rotated token, the `~/.claude.json` account swap, and the active-label commit all dey happen inside the same locked section.
+- **Interlock with claude im own refresh.** One near-expiry session fit rotate im own token any moment, so credential writes dey also take Claude Code im refresh lock (best-effort, with stale-lock reclaim and bounded timeout).
+- **Dead grants dey degrade cleanly.** One refresh wey come back `invalid_grant` dey flag dat account as needs-reauth and dey persist the flag before the error propagate, so retry loops dey shrink the candidate set and terminate. `tokenmaxxing auth` dey fix one flagged account for the same place, and e dey refuse a login wey land for one different account from the one wey dem dey repair.
+- **No token logging.** Tokens no dey ever appear for logs, errors, or output. Error bodies from token and usage endpoints no dey ever surface raw; only one allowlisted set of fields dey survive, because one token endpoint im failure body fit echo request material.
+- **Probe hygiene.** Any spawned `claude` probe dey scrub the eight environment variables wey claude dey honor before im keychain lookup (`ANTHROPIC_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN`, `CLAUDE_SECURESTORAGE_CONFIG_DIR`, and so on), so a probe no fit ever get attributed to the wrong account.
+
+## Platform notes: macOS vs Linux
+
+| | macOS | Linux |
+|---|---|---|
+| Live credential | Login keychain generic-password item | 0600 `.credentials.json` file |
+| Parked credentials | Per-account keychain items | 0600 files inside 0700 directory |
+| Adoption after a swap | Within ~30 seconds (keychain read cache) | Next request (file mtime poll) |
+| Periodic check | launchd agent, every 180s | systemd user timer, every 180s |
+| Isolated-login store | Hash-namespaced keychain service per config dir | One file inside the isolated config dir |
+
+Two Linux-specific details wey worth to know: claude dey resolve im credential directory from `CLAUDE_SECURESTORAGE_CONFIG_DIR` first (then `CLAUDE_CONFIG_DIR`, then `~/.claude`), and tokenmaxxing dey mirror dat resolution exactly so the two no dey ever desync. And the two OS builds of the same claude version dey format `/usage` reset clocks differently (one dey use " at " glue, the other one comma); tokenmaxxing im parser dey accept exactly those two forms and dey log, rather than guess, on any third one.
+
+For macOS, one honest limitation: `init` and `add` dey touch the keychain interactively on purpose, so the first `security` access no dey cold inside one headless hook.
+
+## The statusline
+
+tokenmaxxing dey render Claude Code im statusline natively (while e dey tee the usage feed). The design principle: quota dey carried for color, no be numbers. One line, for example:
+
+```
+tm-wt-demo Fable 5 (high) +156/-23  ◆ 𝒇 2h 1d  ◇ 19h  ◇ 𝒇 2d  ◇ full  ✗ ?
+```
+
+- Each window token na im time-to-reset, wey dem paint on one continuous green-to-yellow-to-red ramp by used percent (truecolor when the terminal support am, stepped go the 256-color cube otherwise). The ramp dey anchor for pure green for 0, yellow for 75, and red for 95 and above, so the old severity bands go survive as ramp anchors.
+- Dem dey paint the model name by context-window fill on the same ramp.
+- One green `◆` dey lead the active account im windows; every parked account dey get im own cyan `◇` (red `✗` if e need reauth). Accounts dey sort by earliest upcoming reset.
+- Per-model dey come first for each block as one bare painted initial: Fable dey render `𝒇`; other families dey use dia uppercased first letter, always family-matched.
+- One untouched parked account dey render one green `full`. Measured usage with one unknown reset dey render one painted `?`, and one unmeasured per-model cap on one gated model dey render one unpainted `𝒇?` - unmeasured no fit ever look safe.
+- Reset countdowns dey show the largest unit only, never "now" or "0m"; one window with no upcoming reset dey render one green `0` (empty again).
+- One linked git worktree im basename dey lead the line; one main checkout no dey render anything for dia. The detection dey read the filesystem for one `.git` file and e no dey ever spawn one git subprocess.
+- With `NO_COLOR` set, the line dey fall back to one glued numeric format (`2h5` mean e go reset in 2 hours, 5% used; `ctx 42` for context fill) - without color, a drained window no fit look fresh.
+
+Subagent tasks dey get dia own panel rows via claude im subagentStatusLine surface: one row per active task, family name wey the task im context fill dey paint.
+
+## Codex support
+
+The same pooling dey work for OpenAI im Codex CLI, against your own ChatGPT-subscription accounts:
+
+```sh
+tokenmaxxing init --codex   # import the codex login wey you dey use now + install the codex supervisor & Stop hook
+tokenmaxxing add --codex    # login another account, for isolation - your primary login no dey touched
+codex                       # use codex as you dey always use am
+```
+
+The Codex pool na fully parallel state: im own accounts index, im own parked credential files (0600 files on both platforms, since codex im own store na plaintext file), im own lock, im own last-swap timestamp. Nothing dey shared with the Claude pool except the decision-policy code.
+
+### Why hot-swap no dey possible on Codex
+
+One codex process wey dey run dey hold one in-memory auth manager and e dey explicitly refuse to reload `auth.json` when e now name one different account. No file watcher dey and no per-request credential poll, so a credential wey dem swap under one running codex simply no dey ever take effect for inference. Restart na the switch: `codex resume <session-id>` dey continue the local transcript for whatever account `auth.json` now dey hold.
+
+tokenmaxxing dey handle dis one with one codex supervisor shim: the Stop hook dey run the same greedy pace-pressure decision for each turn boundary, and when e swap, e dey write one marker wey dey make the supervisor SIGTERM the session for the committed boundary and relaunch `codex resume <session-id>` for the fresh account, transcript intact. Because every codex switch na visible restart, the codex greedy path dey carry one 1.2x improvement margin: a challenger must beat the current account im pace pressure by 20%, no be by small small thing. The hard path (a crossed bar) dey ignore the margin. Also no depleted-pool countdown dey for codex - nothing fit pause one codex session - so one fully depleted codex pool dey stay put.
+
+Other codex-specific mechanics:
+
+- Dem dey read usage from one free authenticated GET against codex im own rate-limit endpoint (the same call the CLI im `/status` dey make): percentages plus absolute epoch reset times, aggregate windows and per-model caps alike. Window classification dey duration-driven, never position-driven, because current plans fit no get 5-hour window at all and the weekly window dey sit for the primary slot.
+- Codex refresh tokens dey rotate, and to reuse one superseded one dey kill the whole grant family. Every rotation dey persisted the instant e return, dem dey only ever sample the active account through the live blob (never a stale parked copy), and per-session presence files dey ensure say one account wey dey run for one live sibling session no be ever swap target and e no dey ever get im parked token refreshed.
+- Codex require the file credential store: `init --codex` dey fail fast if the keyring store dey pinned, and `add --codex` dey write the file-mode setting go inside the isolated onboarding home so the login go land harvestable.
+- One manual step: codex dey skip hooks wey dem never tell am to trust. After `init --codex`, open codex one time and trust the tokenmaxxing Stop hook via `/hooks`, or auto-switching go stay silently inert. `init --codex` dey print dis reminder.
+
+## The Slack bridge: xx serve
+
+`tokenmaxxing serve` dey run one local Slack daemon over Socket Mode - no public URL required. Setup:
+
+```sh
+tokenmaxxing serve setup                    # e go print the app manifest, prompt for the two tokens
+tokenmaxxing serve link <channel-id> <repo> # tie one channel to one repo checkout
+tokenmaxxing serve                          # run the daemon
+```
+
+Mention the bot for one linked channel and e go open one Claude Code session for dat thread, for the linked repo checkout. Every thread message dey run one Agent SDK `query()` with `resume` - never a persistent streaming query - so `ensureBestAccount()` dey re-evaluate the pool for every single turn and the daemon fit restart without losing threads (thread records dey durable; the daemon dey re-subscribe dem for startup).
+
+Notable behavior:
+
+- **Streaming**: replies dey stream natively go inside Slack, with task cards for thinking and tool runs, fenced code wey dem render with highlighting, one closing "Turn" card with cost and duration, and one new Slack message wey dem open whenever one tool run interrupt streamed text, so one turn dey read as separate messages around tool runs. TodoWrite calls dey update one stable checklist card for the same place.
+- **Permissions**: per-link `permissionMode` dey default to `acceptEdits`; `--yolo` (alias `--dangerous`) dey opt one link go inside `bypassPermissions`. Interactive dialogs no dey allowed for relayed turns - nobody fit answer one through Slack - so the model dey ask for prose and your thread reply na the next turn. One bundled plugin skill dey teach am to tag the requester and end the turn when e need a decision.
+- **Slash commands**: one thread message wey im stripped text start with `/` dey run as one claude slash command. Slack im composer dey chop messages wey start with `/`, so use the mention-first form (`@bot /usage`) or one leading space.
+- **Graceful shutdown**: SIGTERM/SIGINT dey drain - dem dey drop new turns loudly, in-flight turns dey get up to 5 minutes, and the claude child dey run detached for im own process group so one terminal Ctrl-C no fit kill am before the drain preserve the turn.
+- **Thread cleanup**: when you tell am say the work don finish, the model dey call one in-process `finish_thread` tool; after the turn fully end, the daemon dey drop the thread record, unsubscribe, and post one confirmation. One fresh mention dey start one new session.
+- **Error hygiene**: turn errors dey post trimmed message-only text, never raw error bodies.
+
+## The Agent SDK surface
+
+The package im programmatic entry (`exports["."]` dey point at `src/sdk.ts`) dey pair tokenmaxxing with the Claude Agent SDK for agents wey you build against your own pooled accounts. Your app must run under Bun (tokenmaxxing dey ship TypeScript source and e dey use `bun:ffi`).
+
+```ts
+import { query } from "@anthropic-ai/claude-agent-sdk";
+import { ensureBestAccount, pooledOptions, stopHookCheck } from "tokenmaxxing";
+
+await ensureBestAccount(); // run the switch decision before the spawn
+
+for await (const message of query({
+  prompt: "...",
+  options: {
+    ...pooledOptions(), // pinned real claude + scrubbed env
+    hooks: { Stop: [{ hooks: [stopHookCheck] }] }, // re-decide at every turn boundary
+  },
+})) {
+  // capture the session id from the init message for `resume` across swaps
+}
+```
+
+The Agent SDK dey spawn one claude subprocess per `query()` and e dey read credentials one time for the spawn - no statusline, no mid-query hot-swap - so the integration na boundary-driven:
+
+- `ensureBestAccount()` na the exact decision wey the CLI hooks and timer dey run (bars, pace pressure, cooldown, all shared code), never anticipatory: one SDK session no fit ever get paused for one depleted countdown.
+- `pooledOptions()` dey pin `pathToClaudeCodeExecutable` to the real claude binary (never the supervisor wrapper) and e dey supply one full replacement `env` with every ambient credential override wey dem scrub. E dey fail fast if `CLAUDE_CONFIG_DIR` or `CLAUDE_SECURESTORAGE_CONFIG_DIR` dey set for your app im environment: for Linux one swap go write the live credential wia those dey point while the scrubbed subprocess dey read the default store, one silent wrong-account desync.
+- `stopHookCheck` dey re-run the decision for turn boundaries; one swap wey e land go take effect for the next spawn. E dey catch im own errors (e dey log go stderr and the log) rather than to rethrow am, because one unhandled hook exception fit interrupt the agent, and to abort one turn over one broken switch check dey cost more than to ride out the current account.
+
+`sdk.ts` no dey import anything from the Agent SDK imself; im values dey spread structurally go inside the SDK im options.
+
+## How dem dey build am and share am
+
+The npm package dey ship TypeScript source, no be build: the `tokenmaxxing` bin dey point straight at `src/main.ts` with one Bun shebang, and Bun 1.2.6 or newer dey run am as-is. Na why Bun na hard requirement. No compiled binaries dey by design: one early release ship one single 61 MB macOS binary go every platform and e fail for Linux with `exec format error`, and per-platform compiled packages go each need dia own release pipeline, so source-run-by-Bun become the distribution model.
+
+The package im `exports` map dey expose `src/sdk.ts` as the programmatic entry wey we describe above. Dem dey tag releases `v<version>` for GitHub; CI dey publish to npm via trusted publishing (OIDC, with provenance), and the publish gate dey run the typecheck and the full test suite first.
+
+## How you fit use am for yourself and terms of service [#personal-use-and-terms-of-service]
+
+tokenmaxxing dey pool accounts wey you own, for sessions and agents wey you your own dey run. Dat wording na deliberate: Anthropic no dey allow third-party products to offer claude.ai login or claude.ai rate limits, and dat one include agents wey dem build on the Agent SDK. No ship the pooled SDK surface, or anything wey dem build on am, go third parties. tokenmaxxing dey also deliberately stay on the CLI-mediated `/usage` path for quota data rather than to reimplement OAuth or proxy API traffic: e no be proxy, and the only OAuth endpoints wey e dey touch na the standard refresh grant wey dem dey use during a swap and one read-only identity check (the roles endpoint) wey dey verify which account one token actually belong to.
+
+## Honest limitations
+
+- **One cold turn.** Prompt cache na org-scoped, so the first turn for one new account go re-upload context one time.
+- **Depleted-pause hiccup.** Only one fully depleted pool dey stop the session for the countdown; anything wey you type for dat split second na loss.
+- **Adoption lag.** For macOS the first turn within ~30 seconds of one swap fit still meter the old account; the bars im headroom dey absorb am.
+- **Shared blast radius.** All default-profile sessions dey share one live credential, so one swap dey move dem all together (each dey adopt for the same place).
+- **Plaintext credentials for Linux.** Claude Code imself dey store Linux credentials as one 0600 plaintext file; tokenmaxxing im parked copies dey follow the same model.
+
+## Troubleshooting and FAQ
+
+**`claude` no dey look like say dem dey supervise am.**
+Run `tokenmaxxing doctor`. The shim must win PATH resolution; check say the `# tokenmaxxing PATH` line for your shell rc dey point at the current bin directory and e dey sit ahead of the real claude. `doctor` dey also warn about `alias claude=...` or one `claude()` shell function wey dey shadow the wrapper, and about aliases wey dey launch one claude binary by absolute path (those dey bypass the supervisor entirely).
+
+**Auto-switching no dey ever fire on Codex.**
+Codex dey skip hooks wey dem never tell am to trust. Open codex, run `/hooks`, and trust the tokenmaxxing Stop hook. Dem dey record trust against the hook im hash, so dem must re-grant am if dem ever edit the hook.
+
+**One account dey show one red `✗` for the statusline.**
+Im refresh token don die (dem revoke am or rotate am comot under im backup). Run `tokenmaxxing auth <sel>` to reauthenticate am for the same place; the command dey tell you which email make you sign in with and e dey refuse a login wey land for one different account.
+
+**Why e no dey switch to the account with the most remaining quota?**
+Because dat one no be the account wey dey most at risk to forfeit quota. The target na the account wey dey furthest behind im own weekly pace: remaining percent divide by time to im weekly reset. With equal amounts remaining dat one dey reduce to soonest expiry first, and with equal expiry to most remaining first.
+
+**E just switch and the statusline still dey show the old account.**
+Na wetin we expect for up to ~30 seconds for macOS: the session wey dey run dey adopt the swapped credential for im next credential-cache refresh. Dem dey suppress the usage tee for 45 seconds after a swap for exactly dis reason.
+
+**E `status --force` dey cost anything?**
+Yes, deliberately: e dey send one minimal metered haiku request per account so every 5-hour session window go start for dat instant instead of to lie dormant, then e dey sample fresh. Plain `status` and `watch` no dey ever ping; `/usage` reads na free. Note say the server usage feed fit lag one freshly opened window by seconds to minutes, so one probe immediately after the ping fit still show the pre-ping state - `status` dey render one note instead of to pretend say the ping fail.
+
+**The `/usage` probe return nothing for the active account.**
+Na one known claude behavior: when im internal usage fetch fail or dem rate-limit am, `/usage` dey print only local session stats with no percentage lines. tokenmaxxing dey sample the active account from the statusline push and e dey only probe parked accounts, precisely to avoid dis one.
+
+**Background claude sessions.**
+Claude im background daemon dey spawn the real versioned binary by absolute path, e dey bypass PATH shims, so background sessions no dey supervised. Hooks still dey fire via `settings.json`, and credential adoption plus the periodic timer dey cover switching, but no marker-driven respawn dey for dem.
+
+**Something spawn plenty processes one time. E still possible?**
+The supervisor dey carry layered recursion guards against exactly dat historical failure (one stale wrapper wey dem pin as the "real" claude): one depth sentinel for the environment wey dey abort at 5 levels, one on-disk spawn-rate limiter, realpath identity checks wey dey reject any candidate wey dey resolve back into tokenmaxxing im own bin directory, and one hard failure (never a silent PATH scan) when one configured claude path no dey exist again. `init` and `doctor` dey verify say one candidate actually na claude by running `--version` before to pin am.
+
+**Uninstalling.**
+`tokenmaxxing uninstall` dey remove the supervisor shims, settings entries, and the periodic timer, and e dey leave your accounts and parked credentials intact. E dey only remove statusline entries wey e recognize as im own.
+
+## License
+
+MIT. Source for [anaclumos/tokenmaxxing](https://github.com/anaclumos/tokenmaxxing).
