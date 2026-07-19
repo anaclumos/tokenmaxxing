@@ -1,0 +1,44 @@
+src/entries/codexstophook.ts
+  s_eaf36da1edfe18::t_b17c3fc9c009e3 14,19-21,23
+  s_eaf36da1edfe18::t_d3137b89bcd3fe 119-123
+  s_eaf36da1edfe18::t_ecaabf26aeb70a 28-87
+AGENTS.md
+  s_eaf36da1edfe18::t_27bb955b8148b9 158
+  s_eaf36da1edfe18::t_6b17de5f45be82 147
+DESIGN.md
+  s_eaf36da1edfe18::t_8f83eb88d557e2 134
+src/entries/codexsupervisor.ts
+  s_eaf36da1edfe18::t_0ecdcdded04ab0 147-149
+src/lib/types.ts
+  s_eaf36da1edfe18::t_d894b264846877 331-342
+src/lib/paths.ts
+  s_eaf36da1edfe18::t_a779426ce8d616 89-94
+test/codex.test.ts
+  s_eaf36da1edfe18::t_16c39b17263bdc 122
+  s_eaf36da1edfe18::t_37587fa9cf0d73 597-705
+src/lib/codexpresence.ts
+  s_eaf36da1edfe18::t_a34bc0b09feb13 42-54
+  s_eaf36da1edfe18::t_744db7e3545b7f 88,90-95
+src/lib/codexdecide.ts
+  s_eaf36da1edfe18::t_6379e985a9b095 89-140
+  s_eaf36da1edfe18::t_62601c7b60aac4 26
+  s_eaf36da1edfe18::t_399d6e7f2dec34 23
+  s_eaf36da1edfe18::t_40626895b2f040 177-182
+  s_eaf36da1edfe18::t_f7c9e57fc45da3 9-10,13
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "52297f66651ca40a736b58b6d4131182b4045c17",
+  "prompts": {},
+  "sessions": {
+    "s_eaf36da1edfe18": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "085f0c3d-1bd0-4a58-8930-8dfdcf1a0376",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    }
+  }
+}
