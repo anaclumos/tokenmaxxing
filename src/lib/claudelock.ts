@@ -69,7 +69,7 @@ export async function withClaudeRefreshLock<T>(
         }
       } catch (e) {
         // claude proceeds on a legacy acquire ERROR; only contention aborts.
-        log("claudelock.legacy_error", { err: String((e as Error).message ?? e) });
+        log("claudelock.legacy_error", { err: e instanceof Error ? e.message : String(e) });
         held.push(primary);
         break;
       }

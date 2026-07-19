@@ -48,7 +48,7 @@ export async function runStopHook(): Promise<number> {
       }
     }
   } catch (e) {
-    log("stop.error", { err: String((e as Error).message ?? e) });
+    log("stop.error", { err: e instanceof Error ? e.message : String(e) });
   }
   return 0; // never block the stop
 }

@@ -6,26 +6,32 @@
 // installing it as live would yank the running session's grant. Supervisors
 // therefore declare their session's account in a presence file at every
 // (re)spawn; the picker refuses to target present accounts and the sampler
-// refuses to refresh their parked blobs. Staleness is PID-based: a presence
-// whose supervisor died is ignored and cleaned up.
+// refuses to refresh their parked blobs. Staleness is checked by process
+// IDENTITY (pid + ps lstart), not bare pid-aliveness: after a supervisor
+// crash a recycled pid would otherwise keep its account benched forever.
 
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
 import { codexPaths } from "./paths.ts";
 import { writeFileAtomic } from "./atomic.ts";
+import { pidStartTime } from "./proc.ts";
 
 const PresenceSchema = z.object({
   accountId: z.string(),
   pid: z.number(),
-  ts: z.number(),
+  startedAt: z.string(),
 });
 
 export function writeCodexPresence(input: { supervisorId: string; accountId: string }): void {
+  const startedAt = pidStartTime(process.pid);
+  // Our own pid must exist; a null here means ps itself broke - corrupt state
+  // to fail loudly on, never a masked placeholder.
+  if (startedAt == null) throw new Error("could not read this process's own start time (ps lstart) - refusing to write an unverifiable presence file");
   mkdirSync(codexPaths.presenceDir, { recursive: true });
   writeFileAtomic(
     join(codexPaths.presenceDir, input.supervisorId),
-    JSON.stringify(PresenceSchema.parse({ accountId: input.accountId, pid: process.pid, ts: Date.now() })),
+    JSON.stringify(PresenceSchema.parse({ accountId: input.accountId, pid: process.pid, startedAt })),
   );
 }
 
@@ -33,16 +39,8 @@ export function clearCodexPresence(input: { supervisorId: string }): void {
   rmSync(join(codexPaths.presenceDir, input.supervisorId), { force: true });
 }
 
-function pidAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-/** Account ids with a LIVING supervisor. Dead supervisors' files are removed. */
+/** Account ids with a LIVING supervisor (pid + start-time identity match).
+ *  Dead or recycled-pid presences are removed. */
 export function presentCodexAccountIds(): Set<string> {
   const present = new Set<string>();
   if (!existsSync(codexPaths.presenceDir)) return present;
@@ -55,7 +53,7 @@ export function presentCodexAccountIds(): Set<string> {
         return null;
       }
     })());
-    if (!parsed.success || !pidAlive(parsed.data.pid)) {
+    if (!parsed.success || pidStartTime(parsed.data.pid) !== parsed.data.startedAt) {
       rmSync(file, { force: true });
       continue;
     }

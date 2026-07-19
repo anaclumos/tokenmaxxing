@@ -32,17 +32,19 @@ export function normalizeResetsAt(v: unknown): number | null {
   return null;
 }
 
-const win = (w?: { used_percentage: number; resets_at?: number | null }): UsageWindow => ({
-  usedPercentage: w?.used_percentage ?? 0,
-  resetsAt: normalizeResetsAt(w?.resets_at),
+const win = (w: { used_percentage: number; resets_at?: number | null }): UsageWindow => ({
+  usedPercentage: w.used_percentage,
+  resetsAt: normalizeResetsAt(w.resets_at),
 });
 
-/** Extract the two AGGREGATE windows from statusLine stdin. null if absent. */
+/** Extract the two AGGREGATE windows from statusLine stdin. null if absent.
+ *  All-or-nothing on the aggregates (mirrors the /usage parser): fabricating
+ *  0% for a missing window would make unmeasured read as safe. */
 export function parseStatusLineStdin(obj: unknown): UsageWindows | null {
   const parsed = RateLimitsStdinSchema.safeParse(obj);
   if (!parsed.success) return null;
   const rl = parsed.data.rate_limits;
-  if (!rl || (!rl.five_hour && !rl.seven_day)) return null;
+  if (!rl?.five_hour || !rl.seven_day) return null;
   return { fiveHour: win(rl.five_hour), sevenDay: win(rl.seven_day) };
 }
 
@@ -356,7 +358,7 @@ async function probeUsageOnce(env: Record<string, string>, now: number): Promise
     }
     out = r.stdout;
   } catch (e) {
-    log("usage.probe_failed", { err: String((e as Error).message ?? e) });
+    log("usage.probe_failed", { err: e instanceof Error ? e.message : String(e) });
     return null;
   }
 
@@ -455,7 +457,7 @@ export async function pingSession(configDir?: string): Promise<string | null> {
     mkdirSync(cwd, { recursive: true });
     r = await spawnClaudeBounded([resolveRealClaude(), ...PING_ARGS], probeEnv(configDir), cwd);
   } catch (e) {
-    return fail(String((e as Error).message ?? e));
+    return fail(e instanceof Error ? e.message : String(e));
   }
   if (r === null) return fail("output pipes still open after child exit (leaked descendant)");
   if (r.exitCode !== 0) return fail(`claude exited ${r.exitCode ?? "on signal"}: ${(r.stderr.trim() || r.stdout.trim()).slice(0, 160)}`);

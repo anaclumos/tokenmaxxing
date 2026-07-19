@@ -42,6 +42,7 @@ import {
   type SlackThread,
 } from "../lib/slackstate.ts";
 import { cleanupThread, fetchWorkspaceTeamId, killGroup, relayThread, type CleanupOutcome, type TurnOutcome } from "../lib/slackbridge.ts";
+import { pidStartTime } from "../lib/proc.ts";
 import { acquireLock } from "../lib/lock.ts";
 import { paths } from "../lib/paths.ts";
 import { log, setLogEcho } from "../lib/log.ts";
@@ -249,19 +250,6 @@ const ServeMessageSchema = z.custom<{
 }>();
 type ServeMessage = z.infer<typeof ServeMessageSchema>;
 
-/** The ps lstart token for a pid, or null when no such process. pid + start
- *  time is the standard process identity: equality with the token captured
- *  at spawn proves this is still OUR child, never a recycled pid. LC_ALL=C
- *  pins the lstart rendering (cubic review catch): the capturing and the
- *  comparing daemon generation can run under different locales (terminal vs
- *  launchd), and a formatting mismatch would silently skip a needed reap. */
-function pidStartTime(pid: number): string | null {
-  const res = Bun.spawnSync(["ps", "-p", String(pid), "-o", "lstart="], { env: { ...process.env, LC_ALL: "C" } });
-  if (res.exitCode !== 0) return null;
-  const lstart = res.stdout.toString().trim();
-  return lstart === "" ? null : lstart;
-}
-
 /** Reap a previous generation's detached claude child that survived an
  *  uncatchable daemon death (SIGKILL, crash: the "exit" event never fires
  *  on those, so the hook that kills the group never ran) - resuming beside
@@ -372,7 +360,11 @@ export function buildServeRuntime(seam: {
       // the daemon is still draining - codex review catch): keep the marker so
       // the next generation auto-resumes, exactly the killed-turn state it
       // exists to detect. Outside a drain, or on success, clear it.
-      const presumedKilled = draining && (outcome?.failed ?? true);
+      // An announced drop is TERMINAL: relayThread told the user to resend, so
+      // retaining the marker would replay work the drop notice disclaimed
+      // (duplicate turns, quota, side effects). null outcome = relay threw =
+      // still presumed killed.
+      const presumedKilled = draining && (outcome === null || (outcome.failed && !outcome.announcedDrop));
       saveSlackThread(presumedKilled ? record : omit(record, ["activeTurn"]));
     }
   };

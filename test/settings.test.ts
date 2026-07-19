@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, test } from "bun:test";
-import { readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { installSettings, uninstallSettings, checkSettings } from "../src/lib/settings.ts";
 
 const settingsPath = process.env.TOKENMAXXING_CLAUDE_SETTINGS!;
@@ -71,5 +71,26 @@ describe("settings merge", () => {
   test("uninstall leaves a foreign statusLine alone", () => {
     uninstallSettings(); // never installed: seed statusLine is not ours
     expect(read().statusLine.command).toBe("my-existing-statusline --fancy");
+  });
+
+  test("install preserves the file's mode; a new file starts 0600", () => {
+    chmodSync(settingsPath, 0o600);
+    installSettings();
+    expect(statSync(settingsPath).mode & 0o777).toBe(0o600); // never widened
+    rmSync(settingsPath, { force: true });
+    installSettings();
+    expect(statSync(settingsPath).mode & 0o777).toBe(0o600); // safe default
+  });
+
+  test("a stale-path hook is rewritten to the current install and reads unhealthy until then", () => {
+    const stale = { ...seed(), hooks: { Stop: [{ hooks: [{ type: "command", command: '"/old/home/bin/tokenmaxxing" __stop-hook' }] }] } };
+    writeFileSync(settingsPath, JSON.stringify(stale, null, 2));
+    expect(checkSettings().stopOk).toBe(false); // old path = broken, not installed
+    installSettings();
+    const cmds: string[] = read().hooks.Stop.flatMap((g: { hooks: { command: string }[] }) => g.hooks.map((h) => h.command));
+    const ours = cmds.filter((cmd) => cmd.includes("__stop-hook"));
+    expect(ours.length).toBe(1); // stale entry replaced, not accumulated
+    expect(ours[0]).not.toContain("/old/home");
+    expect(checkSettings().stopOk).toBe(true);
   });
 });

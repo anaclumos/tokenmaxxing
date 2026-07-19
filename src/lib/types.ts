@@ -119,9 +119,9 @@ export type AccountsIndex = z.infer<typeof AccountsIndexSchema>;
  *  trigger is the greedy pace-pressure convergence (policy.greedySessionFloor). */
 export const ThresholdsSchema = z.object({
   /** 5h session window. */
-  session: z.number(),
+  session: z.number().min(0).max(100),
   /** 7-day aggregate AND per-model weekly caps. */
-  weekly: z.number(),
+  weekly: z.number().min(0).max(100),
 });
 export type Thresholds = z.infer<typeof ThresholdsSchema>;
 
@@ -131,18 +131,20 @@ export const ConfigSchema = z.object({
   /** the real codex binary (empty = resolve from PATH); pinned by `init --codex`. */
   codexBin: z.string(),
   policy: z.object({
-    projectionMargin: z.number(),
+    /** percent margin subtracted from every bar (effectiveBars); above 100 the
+     *  effective bars go negative and everything reads exhausted, so bounded. */
+    projectionMargin: z.number().min(0).max(100),
     /** session-used % at which the greedy convergence engages: from here on,
      *  every evaluation swaps to the usable account furthest behind its weekly
      *  pace whenever that beats the current one (idempotent; current keeps its
      *  seat on ties). Below the floor a fresh session rides its account. */
-    greedySessionFloor: z.number(),
+    greedySessionFloor: z.number().min(0).max(100),
     /** models whose PER-MODEL weekly cap should trigger a switch (display names, lowercased). */
     switchModels: z.array(z.string()),
     /** how long a `/usage` per-model poll stays fresh before we re-poll (ms). */
-    usagePollTtlMs: z.number(),
+    usagePollTtlMs: z.number().int().positive(),
     /** when every account is depleted, auto-wait for a reset only if it is within this window (ms). */
-    maxWaitMs: z.number(),
+    maxWaitMs: z.number().int().positive(),
   }),
 });
 export type Config = z.infer<typeof ConfigSchema>;

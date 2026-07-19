@@ -27,7 +27,7 @@ import { maxBy } from "es-toolkit";
 import { z } from "zod";
 import { withLock } from "./lock.ts";
 import { paths } from "./paths.ts";
-import { loadAccounts, loadConfig, loadLastSwapAt, loadUsage, loadModelUsage, saveAccounts, saveModelUsage, usageTeeAt, writeUsage } from "./state.ts";
+import { loadAccounts, loadConfig, loadDepletedWait, loadLastSwapAt, loadUsage, loadModelUsage, saveAccounts, saveDepletedWait, saveModelUsage, usageTeeAt, writeUsage } from "./state.ts";
 import { readOAuthAccount } from "./claudejson.ts";
 import { chooseAndSwap, performSwap } from "./swap.ts";
 import { currentWins, effectiveBars, pickBest, pickEarliestReset, usableAt } from "./picker.ts";
@@ -173,7 +173,7 @@ export const POST_SWAP_COOLDOWN_MS = 45_000;
 export async function evaluateAndMaybeSwap(now = Date.now(), anticipatory = false): Promise<SwapDecision> {
   const lastSwapAt = loadLastSwapAt();
   if (lastSwapAt != null && now - lastSwapAt < POST_SWAP_COOLDOWN_MS) {
-    return { swapped: false, account: null, reason: "post-swap-cooldown" };
+    return depletedReplay(now) ?? { swapped: false, account: null, reason: "post-swap-cooldown" };
   }
 
   const cfg = loadConfig();
@@ -181,8 +181,16 @@ export async function evaluateAndMaybeSwap(now = Date.now(), anticipatory = fals
 
   const { u: usage, mu } = await loadFreshSnapshots(cfg, activeOrg, now);
 
-  // cheap pre-check off the lock - the common case exits here.
+  // cheap pre-check off the lock - the common case exits here. When there is
+  // NO measurement for the live org (a pre-park just cleared the snapshots),
+  // a recorded depleted-wait still replays; a fresh measurement that reads
+  // under-threshold never does - measured-healthy must win over a stale wait.
   if (!isEngaged(usage, mu, activeOrg, cfg, now)) {
+    const measured = usage != null && activeOrg != null && usage.org === activeOrg;
+    if (!measured) {
+      const replay = depletedReplay(now);
+      if (replay) return replay;
+    }
     return { swapped: false, account: null, reason: "under-threshold-or-stale" };
   }
 
@@ -207,7 +215,7 @@ export async function evaluateAndMaybeSwap(now = Date.now(), anticipatory = fals
     }
 
     if (!isEngaged(u2, mu2, org2, cfg, now)) {
-      return { swapped: false, account: null, reason: "raced-already-swapped" };
+      return depletedReplay(now) ?? { swapped: false, account: null, reason: "raced-already-swapped" };
     }
 
     // Candidates are screened by the same families that drove this decision, so
@@ -247,39 +255,59 @@ export async function evaluateAndMaybeSwap(now = Date.now(), anticipatory = fals
     const landed = await chooseAndSwap({ now, thresholds: effectiveBars(cfg), switchFamilies });
     if (landed) return { swapped: true, account: landed, reason: "swapped" };
 
-    // Every account is depleted. Wait for whichever recovers soonest (including the
-    // current one), if that reset is within the auto-wait window.
-    const fresh = loadAccounts();
-    const ctx = { now, thresholds: effectiveBars(cfg), currentAccountUuid: fresh.activeAccountUuid, switchFamilies };
-    const current = fresh.accounts.find((a) => a.accountUuid === fresh.activeAccountUuid);
-    const currentAt = current ? usableAt(current, ctx) : Number.POSITIVE_INFINITY;
-    const other = pickEarliestReset(fresh.accounts, ctx);
+    // Every account is depleted. Wait for whichever recovers soonest (including
+    // the current one), if that reset is within the auto-wait window. A dead
+    // grant on the chosen pre-park target must not abort the wait: performSwap
+    // persists needs-reauth before throwing, so each retry re-ranks without the
+    // dead account and the loop terminates (mirrors the greedy loop above).
+    while (true) {
+      const fresh = loadAccounts();
+      const ctx = { now, thresholds: effectiveBars(cfg), currentAccountUuid: fresh.activeAccountUuid, switchFamilies };
+      const current = fresh.accounts.find((a) => a.accountUuid === fresh.activeAccountUuid);
+      const currentAt = current ? usableAt(current, ctx) : Number.POSITIVE_INFINITY;
+      const other = pickEarliestReset(fresh.accounts, ctx);
 
-    let target: Account | null = null;
-    let waitUntil = Number.POSITIVE_INFINITY;
-    if (other && other.availableAt < currentAt) { target = other.account; waitUntil = other.availableAt; }
-    else if (current) { target = current; waitUntil = currentAt; }
-    else if (other) { target = other.account; waitUntil = other.availableAt; }
+      let target: Account | null = null;
+      let waitUntil = Number.POSITIVE_INFINITY;
+      if (other && other.availableAt < currentAt) { target = other.account; waitUntil = other.availableAt; }
+      else if (current) { target = current; waitUntil = currentAt; }
+      else if (other) { target = other.account; waitUntil = other.availableAt; }
 
-    if (!target || waitUntil - now > cfg.policy.maxWaitMs) {
-      log("decide.depleted", { waitUntil: Number.isFinite(waitUntil) ? waitUntil : 0 });
-      return { swapped: false, account: null, reason: "all-depleted", ...(Number.isFinite(waitUntil) ? { waitUntil } : {}) };
-    }
-
-    const isCurrent = target.accountUuid === fresh.activeAccountUuid;
-    if (!isCurrent && !anticipatory) {
-      log("decide.depleted_no_park", { account: target.accountUuid.slice(0, 8), waitUntil });
-      return { swapped: false, account: null, reason: "all-depleted", waitUntil };
-    }
-    if (!isCurrent) {
-      try {
-        await performSwap(target);
-      } catch (e) {
-        if (e instanceof InvalidGrantError) return { swapped: false, account: null, reason: "all-depleted" };
-        throw e;
+      if (!target || waitUntil - now > cfg.policy.maxWaitMs) {
+        log("decide.depleted", { waitUntil: Number.isFinite(waitUntil) ? waitUntil : 0 });
+        return { swapped: false, account: null, reason: "all-depleted", ...(Number.isFinite(waitUntil) ? { waitUntil } : {}) };
       }
+
+      const isCurrent = target.accountUuid === fresh.activeAccountUuid;
+      if (!isCurrent && !anticipatory) {
+        log("decide.depleted_no_park", { account: target.accountUuid.slice(0, 8), waitUntil });
+        return { swapped: false, account: null, reason: "all-depleted", waitUntil };
+      }
+      if (!isCurrent) {
+        try {
+          await performSwap(target);
+        } catch (e) {
+          if (e instanceof InvalidGrantError) continue; // dead grant - re-rank without it
+          throw e;
+        }
+      }
+      // Persist the wait so sibling hooks arriving through the cooldown / raced
+      // / cleared-snapshot exits replay it and write their OWN respawn markers.
+      saveDepletedWait({ waitUntil, accountUuid: target.accountUuid, ts: now });
+      log("decide.depleted_wait", { account: target.accountUuid.slice(0, 8), waitUntil });
+      return { swapped: !isCurrent, account: target, reason: "depleted-wait", waitUntil };
     }
-    log("decide.depleted_wait", { account: target.accountUuid.slice(0, 8), waitUntil });
-    return { swapped: !isCurrent, account: target, reason: "depleted-wait", waitUntil };
   });
+}
+
+/** The recorded depleted-wait, iff still standing: unexpired and still naming
+ *  the active account (a real swap elsewhere, or the reset passing, kills it). */
+function depletedReplay(now: number): SwapDecision | null {
+  const rec = loadDepletedWait();
+  if (!rec || rec.waitUntil <= now) return null;
+  const idx = loadAccounts();
+  if (rec.accountUuid !== idx.activeAccountUuid) return null;
+  const account = idx.accounts.find((a) => a.accountUuid === rec.accountUuid) ?? null;
+  if (!account) return null;
+  return { swapped: false, account, reason: "depleted-wait", waitUntil: rec.waitUntil };
 }

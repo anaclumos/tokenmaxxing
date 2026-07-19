@@ -25,6 +25,8 @@ export const paths = {
   usageJson: join(TM_HOME, "usage.json"),
   modelUsageJson: join(TM_HOME, "model-usage.json"),
   lastSwapJson: join(TM_HOME, "lastswap.json"),
+  /** the last depleted-wait decision, replayed to sibling hooks (self-expiring). */
+  depletedJson: join(TM_HOME, "depleted.json"),
   respawnDir: join(TM_HOME, "respawn"),
   binDir: join(TM_HOME, "bin"),
   supervisorLink: join(TM_HOME, "bin", "claude"),

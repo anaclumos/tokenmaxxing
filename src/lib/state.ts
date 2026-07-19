@@ -31,20 +31,25 @@ const DEFAULT_CONFIG: Config = {
   policy: { projectionMargin: 0, greedySessionFloor: 50, switchModels: ["fable"], usagePollTtlMs: 90_000, maxWaitMs: 3_600_000 },
 };
 
+/** Percent-of-window values: out-of-range bars make every account read as
+ *  exhausted (a projectionMargin above the threshold yields a negative
+ *  effective bar), so the schema rejects them at the config gate. */
+const PercentSchema = z.number().min(0).max(100);
+
 /** On-disk shape (all optional); validated via Zod, merged over defaults.
  *  Exported for `xx config`, which edits and housekeeps the sparse file. */
 export const ConfigFileSchema = z
   .object({
-    thresholds: z.object({ session: z.number(), weekly: z.number() }).partial(),
+    thresholds: z.object({ session: PercentSchema, weekly: PercentSchema }).partial(),
     claudeBin: z.string(),
     codexBin: z.string(),
     policy: z
       .object({
-        projectionMargin: z.number(),
-        greedySessionFloor: z.number(),
+        projectionMargin: PercentSchema,
+        greedySessionFloor: PercentSchema,
         switchModels: z.array(z.string()),
-        usagePollTtlMs: z.number(),
-        maxWaitMs: z.number(),
+        usagePollTtlMs: z.number().int().positive(),
+        maxWaitMs: z.number().int().positive(),
       })
       .partial(),
   })
@@ -140,20 +145,49 @@ export function clearUsageSnapshots(): void {
   rmSync(paths.modelUsageJson, { force: true });
 }
 
-// ---- lastswap.json (epoch ms of the last swap; absent = never swapped) ----
+// ---- lastswap.json (epoch ms of the last swap; absent = never swapped;
+// present-but-corrupt THROWS - silently reading a damaged swap clock as
+// never-swapped would bypass the post-swap cooldown) ----
 
 export function loadLastSwapAt(): number | null {
   if (!existsSync(paths.lastSwapJson)) return null;
+  let json: unknown;
   try {
-    const parsed = LastSwapSchema.safeParse(JSON.parse(readFileSync(paths.lastSwapJson, "utf8")));
-    return parsed.success ? parsed.data.ts : null;
+    json = JSON.parse(readFileSync(paths.lastSwapJson, "utf8"));
   } catch {
-    return null;
+    throw new Error(`${paths.lastSwapJson} is corrupt (unparsable JSON) - refusing to treat a damaged swap clock as never-swapped; repair or remove the file`);
   }
+  return LastSwapSchema.parse(json).ts;
 }
 
 export function saveLastSwapAt(ts: number): void {
   writeFileAtomic(paths.lastSwapJson, JSON.stringify(LastSwapSchema.parse({ ts })));
+}
+
+// ---- depleted.json (the last depleted-wait decision; absent = none) ----
+// Written on every depleted-wait so hooks that hit an early exit (post-swap
+// cooldown, raced re-check, cleared snapshots) can REPLAY the wait to their
+// own supervisor: without the replay only the first session's Stop hook ever
+// saw a marker-writable decision and sibling sessions never paused (DESIGN.md
+// 3.5's fan-out). The record self-expires: past waitUntil, or an active label
+// that moved on, makes it dead - no cleanup path needed.
+
+const DepletedWaitSchema = z.object({ waitUntil: z.number(), accountUuid: z.string(), ts: z.number() });
+export type DepletedWait = z.infer<typeof DepletedWaitSchema>;
+
+export function loadDepletedWait(): DepletedWait | null {
+  if (!existsSync(paths.depletedJson)) return null;
+  let json: unknown;
+  try {
+    json = JSON.parse(readFileSync(paths.depletedJson, "utf8"));
+  } catch {
+    throw new Error(`${paths.depletedJson} is corrupt (unparsable JSON) - repair or remove the file`);
+  }
+  return DepletedWaitSchema.parse(json);
+}
+
+export function saveDepletedWait(rec: DepletedWait): void {
+  writeFileAtomic(paths.depletedJson, JSON.stringify(DepletedWaitSchema.parse(rec)));
 }
 
 /** An alive feed re-proving unchanged figures still refreshes `ts` this often,

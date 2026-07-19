@@ -54,7 +54,13 @@ describe("target resolution", () => {
   });
 
   darwinOnly("live/parked/isolated resolve to keychain services", () => {
-    expect(liveTarget()).toEqual({ kind: "keychain", service: "Claude Code-credentials", account: process.env.USER ?? "unknown" });
+    // setup.ts sandboxes the service/account (the suite must never touch the
+    // real `Claude Code-credentials` item); the target follows those knobs.
+    expect(liveTarget()).toEqual({
+      kind: "keychain",
+      service: `tokenmaxxing-test-${process.pid}`,
+      account: "tokenmaxxing-test",
+    });
     expect(parkedTarget("tokenmaxxing-cred-abcd1234")).toMatchObject({ kind: "keychain", service: "tokenmaxxing-cred-abcd1234" });
     expect(isolatedTarget("/tmp/onboard-x")).toMatchObject({ kind: "keychain" });
     const iso = isolatedTarget("/tmp/onboard-x");

@@ -22,8 +22,9 @@ import { c } from "./render.ts";
  *  parser, and this single key is the only one we ever inspect). The real key
  *  is `cli_auth_credentials_store` (binary-verified 0.144.5; an earlier
  *  verification misread the enum TYPE name as a `_mode` key). An ABSENT key is
- *  allowed: the default (`auto`) resolves to the plain file on every machine
- *  this pool runs on, and init separately verifies a harvestable auth.json.
+ *  allowed: the DEFAULT at 0.144.5 is `file` itself (source-verified:
+ *  AuthCredentialsStoreMode derives Default on the File variant), and init
+ *  separately verifies a harvestable auth.json.
  *  Any EXPLICIT non-file pin (keyring, auto, ephemeral) is a deliberate store
  *  choice tokenmaxxing cannot honor. */
 function storePinnedAwayFromFile(): boolean {

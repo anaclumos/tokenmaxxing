@@ -104,6 +104,15 @@ describe("config invariants", () => {
     }
     expect([...derived].sort()).toEqual([...KNOWN_KEYS].sort());
   });
+  test("numeric bounds reject engine-breaking values and accept sane ones", () => {
+    expect(ConfigFileSchema.safeParse({ thresholds: { session: 200 } }).success).toBe(false);
+    expect(ConfigFileSchema.safeParse({ policy: { projectionMargin: 200 } }).success).toBe(false);
+    expect(ConfigFileSchema.safeParse({ policy: { usagePollTtlMs: -1 } }).success).toBe(false);
+    expect(ConfigFileSchema.safeParse({ policy: { maxWaitMs: 0 } }).success).toBe(false);
+    expect(
+      ConfigFileSchema.safeParse({ thresholds: { session: 95 }, policy: { projectionMargin: 0, usagePollTtlMs: 90_000 } }).success,
+    ).toBe(true);
+  });
 });
 
 describe("config env-source display", () => {

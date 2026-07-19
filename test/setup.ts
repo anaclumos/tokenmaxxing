@@ -15,6 +15,12 @@ process.env.CLAUDE_CONFIG_DIR = join(base, "claudedir");
 process.env.TOKENMAXXING_CLAUDE_JSON = join(base, "claude.json");
 process.env.TOKENMAXXING_CLAUDE_SETTINGS = join(base, "settings.json");
 process.env.TOKENMAXXING_OAUTH_TOKEN_URL = "http://127.0.0.1:8791/token";
+process.env.TOKENMAXXING_OAUTH_ROLES_URL = "http://127.0.0.1:8791/roles";
+// Sandbox the darwin keychain identifiers too: performSwap resolves the LIVE
+// credential's owner first, and without this the suite would read the user's
+// real `Claude Code-credentials` item (and hit the real roles endpoint).
+process.env.TOKENMAXXING_KEYCHAIN_SERVICE = `tokenmaxxing-test-${process.pid}`;
+process.env.TOKENMAXXING_KEYCHAIN_ACCOUNT = "tokenmaxxing-test";
 process.env.TOKENMAXXING_SHELL_RC = join(base, "shellrc");
 process.env.TOKENMAXXING_CODEX_HOME = join(base, "codexhome");
 process.env.TOKENMAXXING_CODEX_TOKEN_URL = "http://127.0.0.1:8792/codex-token";

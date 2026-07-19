@@ -4,7 +4,7 @@
 // are ours outright - tokenmaxxing renders them natively, so any other
 // statusLine command is replaced.
 
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
 import { paths } from "./paths.ts";
@@ -39,7 +39,11 @@ function readSettings(): Settings {
 }
 
 function writeSettings(s: Settings): void {
-  writeFileAtomic(paths.claudeSettings, JSON.stringify(s, null, 2) + "\n", 0o644);
+  // Preserve the user's mode: settings.json can carry an env block with
+  // credentials, and the atomic rename would otherwise widen a 0600 file to
+  // world-readable. A brand-new file starts at the conservative 0600.
+  const mode = existsSync(paths.claudeSettings) ? statSync(paths.claudeSettings).mode & 0o777 : 0o600;
+  writeFileAtomic(paths.claudeSettings, JSON.stringify(s, null, 2) + "\n", mode);
 }
 
 /** True if a hook/statusline command string is one tokenmaxxing installed. */
@@ -74,7 +78,11 @@ function removeHook(s: Settings, event: string, sub: string): void {
   if (s.hooks![event]!.length === 0) delete s.hooks![event];
 }
 
-/** Install the entries: take both statusLine slots, append our hooks. */
+/** Install the entries: take both statusLine slots, append our hooks. Stale
+ *  same-subcommand hooks from an OLD install path are dropped first, so a
+ *  TOKENMAXXING_HOME relocation rewrites the entries instead of leaving dead
+ *  paths that read as installed (relocation residue is how the supervisor
+ *  recursion incident started). Foreign hooks are untouched. */
 export function installSettings(): void {
   const s = readSettings();
   s.statusLine = {
@@ -85,6 +93,8 @@ export function installSettings(): void {
     type: "command",
     command: `${JSON.stringify(installedBin())} ${SUBCMD.subagentStatusline}`,
   };
+  removeHook(s, "Stop", SUBCMD.stop);
+  removeHook(s, "SessionStart", SUBCMD.sessionStart);
   appendHook(s, "Stop", SUBCMD.stop);
   appendHook(s, "SessionStart", SUBCMD.sessionStart);
   writeSettings(s);
@@ -110,11 +120,13 @@ export type SettingsCheck = z.infer<typeof SettingsCheckSchema>;
 
 export function checkSettings(): SettingsCheck {
   const s = readSettings();
+  // Freshness, not mere ownership: a hook pointing at an OLD install path
+  // (pre-relocation) must read as broken, or doctor green-lights dead hooks.
   const has = (event: string, sub: string) =>
-    !!s.hooks?.[event]?.some((g) => g.hooks?.some((h) => h.command?.includes(sub)));
+    !!s.hooks?.[event]?.some((g) => g.hooks?.some((h) => h.command?.includes(sub) && h.command?.includes(installedBin())));
   return {
-    statusLineOk: isOurCommand(s.statusLine?.command),
-    subagentStatusLineOk: isOurCommand(s.subagentStatusLine?.command),
+    statusLineOk: !!s.statusLine?.command?.includes(installedBin()),
+    subagentStatusLineOk: !!s.subagentStatusLine?.command?.includes(installedBin()),
     stopOk: has("Stop", SUBCMD.stop),
     sessionStartOk: has("SessionStart", SUBCMD.sessionStart),
   };

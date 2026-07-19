@@ -37,16 +37,26 @@ const SampleOutcomeSchema = z.discriminatedUnion("ok", [
 ]);
 export type SampleOutcome = z.infer<typeof SampleOutcomeSchema>;
 
-/** Verify `creds` belongs to `account`; null on match, else the mismatch reason. */
-async function identityMismatch(creds: OAuthCreds, account: Account): Promise<string | null> {
+const IdentityCheckSchema = z.discriminatedUnion("status", [
+  z.object({ status: z.literal("match") }),
+  z.object({ status: z.literal("mismatch"), reason: z.string() }),
+  z.object({ status: z.literal("unavailable"), reason: z.string() }),
+]);
+type IdentityCheck = z.infer<typeof IdentityCheckSchema>;
+
+/** Verify `creds` belongs to `account`. Only a definitive org DISAGREEMENT is
+ *  a mismatch; an unreachable roles endpoint is "unavailable" and must never
+ *  bench the account - a transient outage is not a dead credential, and
+ *  flagging on it once removed every parked account from switching. */
+async function checkIdentity(creds: OAuthCreds, account: Account): Promise<IdentityCheck> {
   let org: RolesResponse;
   try {
     org = await fetchTokenOrg(creds.accessToken);
   } catch (e) {
-    return `credential identity check failed: ${String((e as Error).message ?? e)}`;
+    return { status: "unavailable", reason: `credential identity check failed: ${e instanceof Error ? e.message : String(e)}` };
   }
-  if (org.organization_uuid === account.organizationUuid) return null;
-  return `credential actually belongs to ${org.organization_name} (org ${org.organization_uuid.slice(0, 8)})`;
+  if (org.organization_uuid === account.organizationUuid) return { status: "match" };
+  return { status: "mismatch", reason: `credential actually belongs to ${org.organization_name} (org ${org.organization_uuid.slice(0, 8)})` };
 }
 
 /** Stamp the blob's plan fields onto the account (caller persists). Runs only
@@ -74,7 +84,7 @@ export async function probeParkedUsage(account: Account, opts: { ping?: boolean 
   try {
     creds = CredentialBlobSchema.parse(JSON.parse(parkedRaw)).claudeAiOauth;
   } catch (e) {
-    return { ok: false, reason: `parked credential unreadable (${String((e as Error).message ?? e).slice(0, 80)}) - run \`tokenmaxxing auth\`` };
+    return { ok: false, reason: `parked credential unreadable (${(e instanceof Error ? e.message : String(e)).slice(0, 80)}) - run \`tokenmaxxing auth\`` };
   }
 
   // Hand claude a token with comfortable headroom so it won't run its own refresh
@@ -86,16 +96,19 @@ export async function probeParkedUsage(account: Account, opts: { ping?: boolean 
     } catch (e) {
       if (e instanceof InvalidGrantError) {
         account.needsReauth = true;
-        return { ok: false, reason: "refresh token dead - re-auth with `tokenmaxxing add`" };
+        return { ok: false, reason: "refresh token dead - re-auth with `tokenmaxxing auth`" };
       }
-      return { ok: false, reason: `token refresh failed: ${String((e as Error).message ?? e)}` };
+      return { ok: false, reason: `token refresh failed: ${e instanceof Error ? e.message : String(e)}` };
     }
   }
 
-  const mismatch = await identityMismatch(creds, account);
-  if (mismatch) {
+  const identity = await checkIdentity(creds, account);
+  if (identity.status === "mismatch") {
     account.needsReauth = true;
-    return { ok: false, reason: `${mismatch} - this account's own credential is gone; re-auth with \`tokenmaxxing add\`` };
+    return { ok: false, reason: `${identity.reason} - this account's own credential is gone; re-auth with \`tokenmaxxing auth\`` };
+  }
+  if (identity.status === "unavailable") {
+    return { ok: false, reason: identity.reason };
   }
   refreshPlanFields(account, creds);
 
@@ -138,7 +151,7 @@ export async function probeActiveUsage(account: Account, opts: { ping?: boolean 
   try {
     creds = CredentialBlobSchema.parse(JSON.parse(liveRaw)).claudeAiOauth;
   } catch (e) {
-    return { ok: false, reason: `live credential blob unreadable (${String((e as Error).message ?? e).slice(0, 80)})` };
+    return { ok: false, reason: `live credential blob unreadable (${(e instanceof Error ? e.message : String(e)).slice(0, 80)})` };
   }
 
   // A running claude keeps the live token fresh; after long idle it may not have.
@@ -155,12 +168,13 @@ export async function probeActiveUsage(account: Account, opts: { ping?: boolean 
       });
     } catch (e) {
       if (e instanceof InvalidGrantError) return { ok: false, reason: "live refresh token dead - run `claude` and `/login`" };
-      return { ok: false, reason: `token refresh failed: ${String((e as Error).message ?? e)}` };
+      return { ok: false, reason: `token refresh failed: ${e instanceof Error ? e.message : String(e)}` };
     }
   }
 
-  const mismatch = await identityMismatch(creds, account);
-  if (mismatch) return { ok: false, reason: `live ${mismatch} - active label drifted; run \`tokenmaxxing switch\`` };
+  const identity = await checkIdentity(creds, account);
+  if (identity.status === "mismatch") return { ok: false, reason: `live ${identity.reason} - active label drifted; run \`tokenmaxxing switch\`` };
+  if (identity.status === "unavailable") return { ok: false, reason: identity.reason };
   refreshPlanFields(account, creds);
 
   const pingError = opts.ping ? await pingSession() : null;

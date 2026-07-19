@@ -147,9 +147,12 @@ describe("isRateLimitText", () => {
 });
 
 describe("TurnOutcomeSchema", () => {
-  test("rateLimited is required and defaults nowhere", () => {
-    expect(() => TurnOutcomeSchema.parse({ sessionId: null, failed: true, finish: false })).toThrow();
-    expect(TurnOutcomeSchema.parse({ sessionId: "s", failed: true, rateLimited: true, finish: false }).rateLimited).toBe(true);
+  test("rateLimited and announcedDrop are required and default nowhere", () => {
+    expect(() => TurnOutcomeSchema.parse({ sessionId: null, failed: true, finish: false, announcedDrop: false })).toThrow();
+    expect(() => TurnOutcomeSchema.parse({ sessionId: null, failed: true, rateLimited: true, finish: false })).toThrow();
+    const full = TurnOutcomeSchema.parse({ sessionId: "s", failed: true, rateLimited: true, finish: false, announcedDrop: true });
+    expect(full.rateLimited).toBe(true);
+    expect(full.announcedDrop).toBe(true);
   });
 });
 

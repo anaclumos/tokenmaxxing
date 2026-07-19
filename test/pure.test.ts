@@ -37,7 +37,18 @@ describe("supervisor argument analysis", () => {
     expect(stripSessionFlags(["--session-id", UUID, "--model", "opus"])).toEqual(["--model", "opus"]);
     expect(stripSessionFlags(["--resume", UUID, "foo"])).toEqual(["foo"]);
     expect(stripSessionFlags(["-c", "--add-dir", "/x"])).toEqual(["--add-dir", "/x"]);
-    expect(stripSessionFlags(["-r"])).toEqual([]); // bare -r (picker) also stripped
+  });
+  test("picker-mode resume passes through unmanaged (claude owns the sid choice)", () => {
+    // Bare -r opens claude's interactive picker; -r <term> is a picker SEARCH
+    // TERM (binary-verified 2.1.214). Both choose the sid inside claude, so
+    // the supervisor cannot pin marker paths - it must not convert them into
+    // fresh --session-id launches.
+    expect(analyzeArgs(["-r"]).manage).toBe(false);
+    expect(analyzeArgs(["-r"]).resumeId).toBe(null);
+    expect(analyzeArgs(["--resume"]).manage).toBe(false);
+    expect(analyzeArgs(["-r", "my-session-name"]).manage).toBe(false);
+    expect(analyzeArgs(["--resume", UUID]).manage).toBe(true);
+    expect(analyzeArgs(["--resume", UUID]).resumeId).toBe(UUID);
   });
 });
 
@@ -261,6 +272,11 @@ describe("usage parsing", () => {
   test("parseStatusLineStdin returns null when rate_limits absent", () => {
     expect(parseStatusLineStdin({ model: { id: "x" } })).toBe(null);
     expect(parseStatusLineStdin("garbage")).toBe(null);
+  });
+  test("a partial statusLine payload is rejected, never zero-filled", () => {
+    // Fabricating 0% for the missing aggregate would make unmeasured look safe.
+    expect(parseStatusLineStdin({ rate_limits: { five_hour: { used_percentage: 40, resets_at: 1738425600 } } })).toBe(null);
+    expect(parseStatusLineStdin({ rate_limits: { seven_day: { used_percentage: 40, resets_at: 1738857600 } } })).toBe(null);
   });
   test("parseUsageText best-effort", () => {
     const w = parseUsageText("Current session: 14% used · resets Jul 8. Current week (all models): 63% used");

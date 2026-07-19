@@ -55,7 +55,7 @@ export async function cmdDoctor(): Promise<number> {
       if (org) check(org.organization_uuid === active.organizationUuid, `live credential identity matches active (${active.email})`, `token belongs to ${org.organization_name} - run \`tokenmaxxing switch\``);
       else console.log(c.dim(`  - live credential identity unverifiable (access token expired)`));
     } catch (e) {
-      check(false, `live credential identity matches active (${active.email})`, String((e as Error).message ?? e).slice(0, 100));
+      check(false, `live credential identity matches active (${active.email})`, (e instanceof Error ? e.message : String(e)).slice(0, 100));
     }
   }
 
@@ -68,7 +68,7 @@ export async function cmdDoctor(): Promise<number> {
         if (org) check(org.organization_uuid === a.organizationUuid, `parked credential identity matches ${a.email}`, `token belongs to ${org.organization_name} - run \`tokenmaxxing auth ${a.label}\``);
         else console.log(c.dim(`  - ${a.email} identity unverifiable (access token expired)`));
       } catch (e) {
-        check(false, `parked credential identity matches ${a.email}`, String((e as Error).message ?? e).slice(0, 100));
+        check(false, `parked credential identity matches ${a.email}`, (e instanceof Error ? e.message : String(e)).slice(0, 100));
       }
     }
     if (a.needsReauth) check(false, `${a.email} needs re-auth`, `run \`tokenmaxxing auth ${a.label}\` to re-login`);

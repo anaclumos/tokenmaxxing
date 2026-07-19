@@ -18,7 +18,7 @@ const cfg = SlackConfigSchema.parse({
   links: [{ channel: "C0DAEMON", repo: "/tmp/serve-daemon-repo" }],
 });
 
-const okOutcome: TurnOutcome = { sessionId: "s-ok", failed: false, rateLimited: false, finish: false };
+const okOutcome: TurnOutcome = { sessionId: "s-ok", failed: false, rateLimited: false, finish: false, announcedDrop: false };
 
 function runtimeWith(relay: Parameters<typeof buildServeRuntime>[0]["relay"]) {
   return buildServeRuntime({
@@ -166,6 +166,34 @@ describe("buildServeRuntime drain", () => {
     await flushTurns(rt);
     expect(t.calls.posts).toBe(1);
     expect(rt.activeTurns.size).toBe(0);
+  });
+
+  test("an ANNOUNCED drop during drain never leaves a resume marker (no double delivery)", async () => {
+    // relayThread told the user to resend; replaying the turn at startup would
+    // duplicate work, quota, and side effects on top of the user's resend.
+    let beginDrain = () => {};
+    const rt = runtimeWith(async () => {
+      beginDrain(); // the drain lands mid-turn
+      return { sessionId: null, failed: true, rateLimited: true, finish: false, announcedDrop: true };
+    });
+    beginDrain = rt.beginDrain;
+    const t = fakeThread({ id: "slack:C0DAEMON:700.1" });
+    await rt.onMessage({ thread: t.thread, message: home("@UBOT long job"), skipped: [], isMention: true });
+    await flushTurns(rt);
+    expect(loadSlackThread("slack:C0DAEMON:700.1")?.activeTurn).toBeUndefined();
+  });
+
+  test("an UNANNOUNCED drain failure keeps the marker: real kills still auto-resume", async () => {
+    let beginDrain = () => {};
+    const rt = runtimeWith(async () => {
+      beginDrain();
+      return { sessionId: null, failed: true, rateLimited: false, finish: false, announcedDrop: false };
+    });
+    beginDrain = rt.beginDrain;
+    const t = fakeThread({ id: "slack:C0DAEMON:701.1" });
+    await rt.onMessage({ thread: t.thread, message: home("@UBOT long job"), skipped: [], isMention: true });
+    await flushTurns(rt);
+    expect(loadSlackThread("slack:C0DAEMON:701.1")?.activeTurn?.prompt).toContain("long job");
   });
 });
 
