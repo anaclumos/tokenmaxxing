@@ -87,4 +87,11 @@ describe("rm live-identity guard", () => {
     expect(await cmdRm("B")).toBe(0);
     expect(loadAccounts().accounts.map((a) => a.accountUuid)).toEqual(["A"]);
   });
+
+  test("an unparsable live blob refuses via the same controlled path, not a crash", async () => {
+    await writeItem(liveTarget(), "not json at all");
+    expect(await cmdRm("B")).toBe(1);
+    expect(loadAccounts().accounts.map((a) => a.accountUuid)).toEqual(["A", "B"]);
+    expect(await readItem(parkedTarget("tokenmaxxing-cred-B"))).not.toBeNull();
+  });
 });

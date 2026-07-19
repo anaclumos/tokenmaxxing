@@ -301,13 +301,17 @@ export async function evaluateAndMaybeSwap(now = Date.now(), anticipatory = fals
 }
 
 /** The recorded depleted-wait, iff still standing: unexpired and still naming
- *  the active account (a real swap elsewhere, or the reset passing, kills it). */
+ *  the LIVE seat. The check reads claude's own oauthAccount, not the
+ *  accounts.json label: a tokenmaxxing swap rewrites oauthAccount inside its
+ *  critical section and a manual /login rewrites it too, while the label lags
+ *  a manual /login and would replay a wait for an account no longer live
+ *  (review catch, PR #31). A real swap elsewhere, a manual /login, or the
+ *  reset passing all kill the record. */
 function depletedReplay(now: number): SwapDecision | null {
   const rec = loadDepletedWait();
   if (!rec || rec.waitUntil <= now) return null;
-  const idx = loadAccounts();
-  if (rec.accountUuid !== idx.activeAccountUuid) return null;
-  const account = idx.accounts.find((a) => a.accountUuid === rec.accountUuid) ?? null;
+  const account = loadAccounts().accounts.find((a) => a.accountUuid === rec.accountUuid) ?? null;
   if (!account) return null;
+  if (account.organizationUuid !== (readOAuthAccount()?.organizationUuid ?? null)) return null;
   return { swapped: false, account, reason: "depleted-wait", waitUntil: rec.waitUntil };
 }

@@ -319,6 +319,13 @@ describe("evaluateAndMaybeSwap headless snapshot handling", () => {
 
     saveDepletedWait({ waitUntil: now + 10 * 60_000, accountUuid: "B", ts: now }); // superseded
     expect((await evaluateAndMaybeSwap(now, true)).reason).toBe("post-swap-cooldown");
+
+    // a manual /login moved the live seat: claude.json oauthAccount is the
+    // fresh signal, and the stale accounts.json label (still "A") must not
+    // resurrect a wait for an account no longer live.
+    saveDepletedWait({ waitUntil: now + 10 * 60_000, accountUuid: "A", ts: now });
+    writeFileSync(paths.claudeJson, JSON.stringify({ oauthAccount: { accountUuid: "F", emailAddress: "F@e.com", organizationUuid: "org-F" } }));
+    expect((await evaluateAndMaybeSwap(now, true)).reason).toBe("post-swap-cooldown");
   });
 
   test("a dead grant on the earliest-reset pre-park target falls through to the next account", async () => {

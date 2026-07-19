@@ -30,17 +30,17 @@ export async function cmdRm(selector?: string): Promise<number> {
     // account whose credential is actually LIVE would destroy its only backup
     // and leave the next swap refusing over an unpooled credential. Fail
     // CLOSED (review catch, PR #31): when the live owner cannot be verified -
-    // expired token, roles outage - refuse rather than trust the stale label;
-    // rm is destructive and can wait. The check is read-only: an expired
-    // bearer simply fails the roles call, nothing is ever rotated.
+    // unparsable blob, expired token, roles outage - refuse rather than trust
+    // the stale label; rm is destructive and can wait. The check is read-only:
+    // an expired bearer simply fails the roles call, nothing is ever rotated.
     const live = await readItem(liveTarget());
     if (live != null) {
-      const liveCreds = CredentialBlobSchema.parse(JSON.parse(live)).claudeAiOauth;
       let liveOrg: string;
       try {
+        const liveCreds = CredentialBlobSchema.parse(JSON.parse(live)).claudeAiOauth;
         liveOrg = (await fetchTokenOrg(liveCreds.accessToken)).organization_uuid;
       } catch (e) {
-        console.error(c.red(`cannot verify which account the LIVE credential belongs to (${e instanceof Error ? e.message : String(e)}) - refusing to remove while the live owner is unknown; retry once the roles endpoint is reachable.`));
+        console.error(c.red(`cannot verify which account the LIVE credential belongs to (${e instanceof Error ? e.message : String(e)}) - refusing to remove while the live owner is unknown; repair the live credential or retry once the roles endpoint is reachable.`));
         return 1;
       }
       if (liveOrg === a.organizationUuid) {
