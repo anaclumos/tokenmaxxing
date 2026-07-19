@@ -8,7 +8,7 @@ import { codexLimitLabel, fetchCodexUsage, isSessionWindow, weeklyWindowOf } fro
 import { CODEX_SWAP_IMPROVEMENT, codexCurrentWins, codexPacePressure, isCodexEngaged, isCodexExhausted, pickBestCodex } from "../src/lib/codexpick.ts";
 import { performCodexSwap } from "../src/lib/codexswap.ts";
 import { evaluateAndMaybeSwapCodex } from "../src/lib/codexdecide.ts";
-import { loadCodexAccounts, loadCodexLastSwapAt, saveCodexAccounts } from "../src/lib/codexstate.ts";
+import { loadCodexAccounts, loadCodexLastSwapAt, saveCodexAccounts, saveCodexLastSwapAt } from "../src/lib/codexstate.ts";
 import { writeCodexPresence, presentCodexAccountIds, targetableCodexAccounts } from "../src/lib/codexpresence.ts";
 import { codexSupervisorLink, installCodexStopHook, installCodexSupervisor, uninstallCodexStopHook, uninstallCodexSupervisor } from "../src/lib/install.ts";
 import { CODEX_SUPERVISOR_ID_ENV, shouldManageCodex } from "../src/entries/codexsupervisor.ts";
@@ -612,7 +612,7 @@ describe("codex sibling reconcile", () => {
     expect(marker.accountId).toBe("acct-A");
   });
 
-  test("no signal for a healthy sibling, the deciding session itself, or onto a blocked live seat", async () => {
+  test("no signal for a healthy sibling or onto a blocked live seat", async () => {
     const healthyA = account("A", { weekly: window({ used: 50, resetInMs: 24 * 3600_000 }) });
     const freshB = account("B", { weekly: window({ used: 5, resetInMs: 24 * 3600_000 }) });
     seedPool({ accounts: [healthyA, freshB], activeId: "acct-B" });
@@ -621,19 +621,47 @@ describe("codex sibling reconcile", () => {
     await evaluateAndMaybeSwapCodex({});
     expect(existsSync(join(codexPaths.reconcileDir, "sup-healthy"))).toBe(false);
 
-    // the deciding session's own seat is the normal decision's job
-    const burntA = account("A", { weekly: window({ used: 99, resetInMs: 24 * 3600_000 }) });
-    seedPool({ accounts: [burntA, freshB], activeId: "acct-B" });
-    writeCodexPresence({ supervisorId: "sup-self", accountId: "acct-A" });
-    await evaluateAndMaybeSwapCodex({ selfSupervisorId: "sup-self" });
-    expect(existsSync(join(codexPaths.reconcileDir, "sup-self"))).toBe(false);
-
     // a blocked LIVE seat must never receive a session (no-depleted-pre-park analog)
+    const burntA = account("A", { weekly: window({ used: 99, resetInMs: 24 * 3600_000 }) });
     const burntB = account("B", { weekly: window({ used: 99, resetInMs: 24 * 3600_000 }) });
     seedPool({ accounts: [burntA, burntB], activeId: "acct-B" });
     writeCodexPresence({ supervisorId: "sup-blocked", accountId: "acct-A" });
     await evaluateAndMaybeSwapCodex({});
     expect(existsSync(join(codexPaths.reconcileDir, "sup-blocked"))).toBe(false);
+  });
+
+  test("the sweep runs even inside the post-swap cooldown", async () => {
+    // a swap strands siblings at exactly the moment the cooldown starts, so
+    // the cooldown return must not gate the sweep (review catch, PR #34).
+    const accountA = account("A", { weekly: window({ used: 99, resetInMs: 24 * 3600_000 }) });
+    const accountB = account("B", { weekly: window({ used: 5, resetInMs: 24 * 3600_000 }) });
+    seedPool({ accounts: [accountA, accountB], activeId: "acct-B" });
+    writeLiveCodexAuth({ auth: authBlob("B") });
+    writeCodexPresence({ supervisorId: "sup-cooldown", accountId: "acct-A" });
+    saveCodexLastSwapAt({ ts: nowMs() });
+
+    const decision = await evaluateAndMaybeSwapCodex({});
+    expect(decision.reason).toBe("post-swap-cooldown");
+    expect(existsSync(join(codexPaths.reconcileDir, "sup-cooldown"))).toBe(true);
+  });
+
+  test("a hard swap re-sweeps: siblings on the departed account are signaled immediately", async () => {
+    // While A is live its siblings are invisible to the entry sweep (their
+    // account IS the live seat); the post-swap re-sweep signals them the
+    // moment the seat moves (pullfrog review catch, PR #34).
+    const accountA = account("A", { weekly: window({ used: 99, resetInMs: 24 * 3600_000 }) });
+    const accountB = account("B", { weekly: window({ used: 5, resetInMs: 24 * 3600_000 }) });
+    seedPool({ accounts: [accountA, accountB], activeId: "acct-A" });
+    writeLiveCodexAuth({ auth: authBlob("A") });
+    writeParkedCodexAuth({ credFile: accountA.credFile, auth: authBlob("A") });
+    writeParkedCodexAuth({ credFile: accountB.credFile, auth: authBlob("B") });
+    writeCodexPresence({ supervisorId: "sup-departed", accountId: "acct-A" });
+
+    const decision = await evaluateAndMaybeSwapCodex({});
+    expect(decision.swapped).toBe(true);
+    expect(decision.account?.accountId).toBe("acct-B");
+    const marker = JSON.parse(readFileSync(join(codexPaths.reconcileDir, "sup-departed"), "utf8"));
+    expect(marker.accountId).toBe("acct-A");
   });
 
   test("a signal addressed to a dead supervisor is garbage-collected", async () => {
@@ -681,6 +709,83 @@ describe("codex sibling reconcile", () => {
     }
     expect(existsSync(join(codexPaths.respawnDir, "sup-stale"))).toBe(false);
     expect(existsSync(join(codexPaths.reconcileDir, "sup-stale"))).toBe(false); // dropped, not retained
+  });
+
+  test("a lone stranded session rescues ITSELF at one boundary: sweep signals it, the post-evaluation promote consumes it", async () => {
+    // The removed self-skip lost exactly this session: presence names
+    // exhausted A while the live seat is healthy B, and no other actor ever
+    // evaluates (bugbot/pullfrog/cubic HIGH catch, PR #34). Its own hook now
+    // signals during the evaluation and promotes right after, same boundary.
+    const accountA = account("A", { weekly: window({ used: 99, resetInMs: 24 * 3600_000 }) });
+    const accountB = account("B", { weekly: window({ used: 5, resetInMs: 24 * 3600_000 }) });
+    seedPool({ accounts: [accountA, accountB], activeId: "acct-B" });
+    writeLiveCodexAuth({ auth: authBlob("B") });
+    writeCodexPresence({ supervisorId: "sup-lone", accountId: "acct-A" });
+
+    process.env[CODEX_SUPERVISOR_ID_ENV] = "sup-lone";
+    try {
+      await handleCodexStop({ rawStdin: JSON.stringify({ session_id: "sess-99", hook_event_name: "Stop" }) });
+    } finally {
+      delete process.env[CODEX_SUPERVISOR_ID_ENV];
+    }
+    const respawn = JSON.parse(readFileSync(join(codexPaths.respawnDir, "sup-lone"), "utf8"));
+    expect(respawn.sessionId).toBe("sess-99");
+    expect(respawn.account).toBe("B");
+    expect(existsSync(join(codexPaths.reconcileDir, "sup-lone"))).toBe(false);
+  });
+
+  test("promotion revalidates usability: a recovered seat or a blocked live target drops the signal", async () => {
+    // A signal can sit across resets and usage changes; identity checks alone
+    // would force-respawn a recovered session or move one onto a now-blocked
+    // seat (bugbot/pullfrog/vercel/cubic catches, PR #34).
+    const recoveredA = account("A", { weekly: window({ used: 10, resetInMs: 24 * 3600_000 }) });
+    const freshB = account("B", { weekly: window({ used: 5, resetInMs: 24 * 3600_000 }) });
+    seedPool({ accounts: [recoveredA, freshB], activeId: "acct-B" });
+    writeLiveCodexAuth({ auth: authBlob("B") });
+    writeCodexPresence({ supervisorId: "sup-recovered", accountId: "acct-A" });
+    mkdirSync(codexPaths.reconcileDir, { recursive: true });
+    writeFileSync(join(codexPaths.reconcileDir, "sup-recovered"), JSON.stringify({ accountId: "acct-A", ts: nowMs() }));
+    process.env[CODEX_SUPERVISOR_ID_ENV] = "sup-recovered";
+    try {
+      await handleCodexStop({ rawStdin: JSON.stringify({ session_id: "sess-1" }) });
+    } finally {
+      delete process.env[CODEX_SUPERVISOR_ID_ENV];
+    }
+    expect(existsSync(join(codexPaths.respawnDir, "sup-recovered"))).toBe(false);
+    expect(existsSync(join(codexPaths.reconcileDir, "sup-recovered"))).toBe(false); // dropped
+
+    const burntA = account("A", { weekly: window({ used: 99, resetInMs: 24 * 3600_000 }) });
+    const burntB = account("B", { weekly: window({ used: 99, resetInMs: 24 * 3600_000 }) });
+    seedPool({ accounts: [burntA, burntB], activeId: "acct-B" });
+    writeCodexPresence({ supervisorId: "sup-target-blocked", accountId: "acct-A" });
+    writeFileSync(join(codexPaths.reconcileDir, "sup-target-blocked"), JSON.stringify({ accountId: "acct-A", ts: nowMs() }));
+    process.env[CODEX_SUPERVISOR_ID_ENV] = "sup-target-blocked";
+    try {
+      await handleCodexStop({ rawStdin: JSON.stringify({ session_id: "sess-2" }) });
+    } finally {
+      delete process.env[CODEX_SUPERVISOR_ID_ENV];
+    }
+    expect(existsSync(join(codexPaths.respawnDir, "sup-target-blocked"))).toBe(false);
+    expect(existsSync(join(codexPaths.reconcileDir, "sup-target-blocked"))).toBe(false); // dropped
+  });
+
+  test("a blank stdin session id is treated as missing (never resume --last)", async () => {
+    const accountA = account("A", { weekly: window({ used: 99, resetInMs: 24 * 3600_000 }) });
+    const accountB = account("B", { weekly: window({ used: 5, resetInMs: 24 * 3600_000 }) });
+    seedPool({ accounts: [accountA, accountB], activeId: "acct-B" });
+    writeLiveCodexAuth({ auth: authBlob("B") });
+    writeCodexPresence({ supervisorId: "sup-blank", accountId: "acct-A" });
+    mkdirSync(codexPaths.reconcileDir, { recursive: true });
+    writeFileSync(join(codexPaths.reconcileDir, "sup-blank"), JSON.stringify({ accountId: "acct-A", ts: nowMs() }));
+
+    process.env[CODEX_SUPERVISOR_ID_ENV] = "sup-blank";
+    try {
+      await handleCodexStop({ rawStdin: JSON.stringify({ session_id: "  " }) });
+    } finally {
+      delete process.env[CODEX_SUPERVISOR_ID_ENV];
+    }
+    expect(existsSync(join(codexPaths.respawnDir, "sup-blank"))).toBe(false);
+    expect(existsSync(join(codexPaths.reconcileDir, "sup-blank"))).toBe(true); // retained for a real id
   });
 
   test("a boundary without a stdin session id keeps the signal for the next one", async () => {

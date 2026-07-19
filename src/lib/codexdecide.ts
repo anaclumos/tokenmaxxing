@@ -102,15 +102,23 @@ async function sampleLiveOntoOwner(input: { now: number }): Promise<string | nul
  * move a session onto a blocked account). Orphaned markers (their supervisor
  * exited before promoting) are garbage-collected here. Idempotent per
  * supervisor: an existing marker is left alone.
+ *
+ * There is deliberately NO self-exclusion (bugbot/pullfrog/cubic review
+ * catches, PR #34): a session whose presence names a non-live account IS the
+ * stranded sibling even inside its own hook - its "normal decision" evaluates
+ * only the live seat and would never rescue it. A signal the sweep writes for
+ * the calling session is consumed by the promote pass its own hook runs right
+ * after the evaluation, same boundary. The deciding session that just swapped
+ * away leaves a self-addressed signal behind too; the promote staleness guard
+ * (presence rewritten at respawn) drops it as moot.
  */
 function reconcileExhaustedSiblings(input: {
   index: { accounts: CodexAccount[] };
   liveAccountId: string;
   bars: { session: number; weekly: number };
   now: number;
-  selfSupervisorId: string | null;
 }): void {
-  const { index, liveAccountId, bars, now, selfSupervisorId } = input;
+  const { index, liveAccountId, bars, now } = input;
   const unusable = (account: CodexAccount): boolean =>
     account.needsReauth === true || isCodexExhausted({ account, thresholds: bars, now });
   const liveAccount = index.accounts.find((account) => account.accountId === liveAccountId);
@@ -125,7 +133,6 @@ function reconcileExhaustedSiblings(input: {
     }
   }
   for (const presence of living) {
-    if (presence.supervisorId === selfSupervisorId) continue; // own seat: the normal decision handles it
     if (presence.accountId === liveAccountId) continue; // riding the live seat: fine
     const seated = index.accounts.find((account) => account.accountId === presence.accountId);
     if (!seated || !unusable(seated)) continue; // unpooled or still healthy: not ours to move
@@ -137,13 +144,8 @@ function reconcileExhaustedSiblings(input: {
   }
 }
 
-export async function evaluateAndMaybeSwapCodex(input: { now?: number; selfSupervisorId?: string }): Promise<CodexSwapDecision> {
+export async function evaluateAndMaybeSwapCodex(input: { now?: number }): Promise<CodexSwapDecision> {
   const now = input.now ?? Date.now();
-  const lastSwapAt = loadCodexLastSwapAt();
-  if (lastSwapAt != null && now - lastSwapAt < POST_SWAP_COOLDOWN_MS) {
-    return { swapped: false, account: null, reason: "post-swap-cooldown" };
-  }
-
   const cfg = loadConfig();
   const bars = effectiveBars(cfg);
 
@@ -162,6 +164,19 @@ export async function evaluateAndMaybeSwapCodex(input: { now?: number; selfSuper
       return { swapped: false, account: null, reason: "live-credential-not-in-pool" };
     }
 
+    // Cross-session sibling reconcile runs on EVERY evaluation, BEFORE both
+    // the cooldown return and the engagement gate: a swap strands siblings at
+    // exactly the moment the cooldown starts (bugbot/cubic review catch,
+    // PR #34), and a sibling can be dead while the live seat is healthy and
+    // disengaged. Cached windows are enough here - the promote pass
+    // revalidates both accounts' usability at consumption time.
+    reconcileExhaustedSiblings({ index, liveAccountId: activeId, bars, now });
+
+    const lastSwapAt = loadCodexLastSwapAt();
+    if (lastSwapAt != null && now - lastSwapAt < POST_SWAP_COOLDOWN_MS) {
+      return { swapped: false, account: null, reason: "post-swap-cooldown" };
+    }
+
     // Freshness: re-sample the live credential once its owner's cached
     // snapshot ages past the poll TTL (there is no push feed in between).
     const activeEntry = index.accounts.find((account) => account.accountId === activeId);
@@ -173,12 +188,6 @@ export async function evaluateAndMaybeSwapCodex(input: { now?: number; selfSuper
       }
       index = loadCodexAccounts();
     }
-
-    // Cross-session sibling reconcile runs on EVERY evaluation, before the
-    // engagement gate: a sibling can be dead while the live seat is healthy
-    // and disengaged - exactly the case where the early returns below would
-    // otherwise skip it forever.
-    reconcileExhaustedSiblings({ index, liveAccountId: activeId, bars, now, selfSupervisorId: input.selfSupervisorId ?? null });
 
     const active = index.accounts.find((account) => account.accountId === activeId) ?? null;
     if (!active) return { swapped: false, account: null, reason: "no-active-account" };
@@ -214,6 +223,11 @@ export async function evaluateAndMaybeSwapCodex(input: { now?: number; selfSuper
           throw e;
         }
         log("codexdecide.greedy_swap", { account: best.accountId.slice(0, 8) });
+        // Re-sweep with the NEW live seat: siblings on the account this swap
+        // just departed were invisible to the entry sweep (their account WAS
+        // the live seat then), and the cooldown blocks the next evaluation's
+        // sweep-entry for 45s (pullfrog review catch, PR #34).
+        reconcileExhaustedSiblings({ index: loadCodexAccounts(), liveAccountId: best.accountId, bars, now });
         return { swapped: true, account: best, reason: "swapped" };
       }
     }
@@ -237,6 +251,9 @@ export async function evaluateAndMaybeSwapCodex(input: { now?: number; selfSuper
         throw e;
       }
       log("codexdecide.hard_swap", { account: best.accountId.slice(0, 8) });
+      // Same post-swap re-sweep as the greedy branch: the departed account's
+      // siblings become signalable only once it stops being the live seat.
+      reconcileExhaustedSiblings({ index: loadCodexAccounts(), liveAccountId: best.accountId, bars, now });
       return { swapped: true, account: best, reason: "swapped" };
     }
   });

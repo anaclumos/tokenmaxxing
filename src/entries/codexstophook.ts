@@ -16,11 +16,14 @@ import { z } from "zod";
 import { codexPaths } from "../lib/paths.ts";
 import { writeFileAtomic } from "../lib/atomic.ts";
 import { evaluateAndMaybeSwapCodex } from "../lib/codexdecide.ts";
+import { isCodexExhausted } from "../lib/codexpick.ts";
 import { livingCodexPresences } from "../lib/codexpresence.ts";
 import { liveCodexAccountId } from "../lib/codexsample.ts";
 import { loadCodexAccounts } from "../lib/codexstate.ts";
+import { loadConfig } from "../lib/state.ts";
+import { effectiveBars } from "../lib/picker.ts";
 import { CODEX_SUPERVISOR_ID_ENV } from "./codexsupervisor.ts";
-import { CodexReconcileMarkerSchema, CodexRespawnMarkerSchema, CodexStopStdinSchema } from "../lib/types.ts";
+import { CodexReconcileMarkerSchema, CodexRespawnMarkerSchema, CodexStopStdinSchema, type CodexAccount } from "../lib/types.ts";
 import { log } from "../lib/log.ts";
 
 const SupervisorIdSchema = z.string().min(1).optional().catch(undefined);
@@ -67,18 +70,42 @@ function promoteReconcile(input: { supervisorId: string; sessionId: string | nul
     log("codexstop.reconcile_moot", {});
     return false;
   }
-  if (input.sessionId == null) {
-    // no session id on this stdin: keep the signal for the next boundary,
-    // whose stdin will carry one - a resume without a sid could revive the
-    // wrong transcript.
+  // Revalidate BOTH accounts at consumption time (bugbot/pullfrog/vercel/
+  // cubic review catches, PR #34): a signal can sit across resets and usage
+  // changes, and identity checks alone would still force-respawn a session
+  // whose seat has RECOVERED, or move one onto a live seat that has since
+  // become exhausted, needs-reauth, or left the pool entirely - each a
+  // violation the signal-side guards only enforced at signal time. Dropped
+  // signals are cheap: the sweep re-signals the moment conditions hold again.
+  const now = Date.now();
+  const bars = effectiveBars(loadConfig());
+  const index = loadCodexAccounts();
+  const unusable = (account: CodexAccount): boolean =>
+    account.needsReauth === true || isCodexExhausted({ account, thresholds: bars, now });
+  const seated = index.accounts.find((a) => a.accountId === presence.accountId);
+  if (!seated || !unusable(seated)) {
+    rmSync(markerPath, { force: true });
+    log("codexstop.reconcile_recovered", {});
+    return false;
+  }
+  const liveAccount = index.accounts.find((a) => a.accountId === liveId);
+  if (!liveAccount || unusable(liveAccount)) {
+    rmSync(markerPath, { force: true });
+    log("codexstop.reconcile_blocked_target", {});
+    return false;
+  }
+  // blank counts as missing: the supervisor treats a falsy sessionId as
+  // "resume --last", the exact fallback this guard exists to avoid.
+  if (input.sessionId == null || input.sessionId.trim() === "") {
+    // keep the signal for the next boundary, whose stdin will carry a real
+    // id - a resume without one could revive the wrong transcript.
     log("codexstop.reconcile_no_session", {});
     return false;
   }
-  const label = loadCodexAccounts().accounts.find((a) => a.accountId === liveId)?.label ?? "the live account";
   mkdirSync(codexPaths.respawnDir, { recursive: true });
   writeFileAtomic(
     join(codexPaths.respawnDir, input.supervisorId),
-    JSON.stringify(CodexRespawnMarkerSchema.parse({ account: label, sessionId: input.sessionId, ts: Date.now() })),
+    JSON.stringify(CodexRespawnMarkerSchema.parse({ account: liveAccount.label, sessionId: input.sessionId, ts: now })),
   );
   rmSync(markerPath, { force: true });
   log("codexstop.reconcile_respawn", { supervisorId: input.supervisorId.slice(0, 8), account: liveId.slice(0, 8) });
@@ -120,7 +147,7 @@ export async function handleCodexStop(input: { rawStdin: string }): Promise<void
     // is about to respawn onto the live seat, so evaluating it would waste a
     // sample (and could even swap the seat out from under the respawn).
     if (promoteReconcile({ supervisorId, sessionId })) return;
-    const decision = await evaluateAndMaybeSwapCodex({ selfSupervisorId: supervisorId });
+    const decision = await evaluateAndMaybeSwapCodex({});
     if (decision.swapped && decision.account) {
       mkdirSync(codexPaths.respawnDir, { recursive: true });
       const payload = CodexRespawnMarkerSchema.parse({
@@ -130,7 +157,14 @@ export async function handleCodexStop(input: { rawStdin: string }): Promise<void
       });
       writeFileAtomic(join(codexPaths.respawnDir, supervisorId), JSON.stringify(payload));
       log("codexstop.marker", { supervisorId: supervisorId.slice(0, 8) });
+      return;
     }
+    // The evaluation's sweep may have signaled THIS session (its own account
+    // is the wedged one while the live seat is healthy - the lone-stranded
+    // case the removed self-skip used to lose, bugbot/cubic review catch,
+    // PR #34): consume it at this very boundary instead of burning one more
+    // turn on the dead account.
+    promoteReconcile({ supervisorId, sessionId });
   } catch (e) {
     log("codexstop.error", { err: e instanceof Error ? e.message : String(e) });
   }
