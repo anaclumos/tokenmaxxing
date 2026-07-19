@@ -144,6 +144,17 @@ function reconcileExhaustedSiblings(input: {
   }
 }
 
+/** The re-sweep after a PERSISTED swap: failures are logged, never thrown -
+ *  the caller must still report swapped:true so the Stop hook writes the
+ *  deciding session's own respawn marker. */
+function postSwapResweep(input: { liveAccountId: string; bars: { session: number; weekly: number }; now: number }): void {
+  try {
+    reconcileExhaustedSiblings({ index: loadCodexAccounts(), liveAccountId: input.liveAccountId, bars: input.bars, now: input.now });
+  } catch (e) {
+    log("codexdecide.resweep_failed", { err: e instanceof Error ? e.message : String(e) });
+  }
+}
+
 export async function evaluateAndMaybeSwapCodex(input: { now?: number }): Promise<CodexSwapDecision> {
   const now = input.now ?? Date.now();
   const cfg = loadConfig();
@@ -226,8 +237,14 @@ export async function evaluateAndMaybeSwapCodex(input: { now?: number }): Promis
         // Re-sweep with the NEW live seat: siblings on the account this swap
         // just departed were invisible to the entry sweep (their account WAS
         // the live seat then), and the cooldown blocks the next evaluation's
-        // sweep-entry for 45s (pullfrog review catch, PR #34).
-        reconcileExhaustedSiblings({ index: loadCodexAccounts(), liveAccountId: best.accountId, bars, now });
+        // sweep-entry for 45s (pullfrog review catch, PR #34). GUARDED: the
+        // swap is already persisted, so a sweep failure (e.g. a corrupt
+        // presence file, which livingCodexPresences throws on by design) must
+        // not eat the swapped:true return - the Stop hook needs it to write
+        // THIS session's respawn marker (bugbot/cubic P0 catch, PR #34). The
+        // entry sweep stays fail-loud: there nothing irreversible has
+        // happened yet.
+        postSwapResweep({ liveAccountId: best.accountId, bars, now });
         return { swapped: true, account: best, reason: "swapped" };
       }
     }
@@ -251,9 +268,10 @@ export async function evaluateAndMaybeSwapCodex(input: { now?: number }): Promis
         throw e;
       }
       log("codexdecide.hard_swap", { account: best.accountId.slice(0, 8) });
-      // Same post-swap re-sweep as the greedy branch: the departed account's
-      // siblings become signalable only once it stops being the live seat.
-      reconcileExhaustedSiblings({ index: loadCodexAccounts(), liveAccountId: best.accountId, bars, now });
+      // Same guarded post-swap re-sweep as the greedy branch: the departed
+      // account's siblings become signalable only once it stops being the
+      // live seat, and a sweep failure must not eat the swapped:true return.
+      postSwapResweep({ liveAccountId: best.accountId, bars, now });
       return { swapped: true, account: best, reason: "swapped" };
     }
   });

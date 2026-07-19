@@ -14,6 +14,7 @@ import { join } from "node:path";
 import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { z } from "zod";
 import { codexPaths } from "../lib/paths.ts";
+import { withLock } from "../lib/lock.ts";
 import { writeFileAtomic } from "../lib/atomic.ts";
 import { evaluateAndMaybeSwapCodex } from "../lib/codexdecide.ts";
 import { isCodexExhausted } from "../lib/codexpick.ts";
@@ -35,12 +36,23 @@ const SupervisorIdSchema = z.string().min(1).optional().catch(undefined);
  *  hook's stdin carries the session id a resume needs, so promotion happens
  *  here: the signal becomes a normal respawn marker the supervisor already
  *  consumes. Returns true when the respawn marker was written (the session is
- *  about to die - skip the normal decision). Runs UNLOCKED on purpose: it
- *  writes only this supervisor's own markers, and the staleness guards make a
- *  raced read merely drop the signal for the next boundary. */
-function promoteReconcile(input: { supervisorId: string; sessionId: string | null }): boolean {
+ *  about to die - skip the normal decision). Everything past the cheap
+ *  no-marker fast path runs under the codex FLOCK (pullfrog review catch,
+ *  PR #34): the usability revalidation is only as good as its atomicity with
+ *  the marker write - unlocked, a concurrent `xx switch --codex` could move
+ *  the live seat onto a blocked account between the check and the write. The
+ *  flock serializes promotion against every tokenmaxxing actor (codex's own
+ *  actions are unserialized as ever); no nesting occurs because the hook
+ *  calls promote strictly before or after the evaluation's own lock. */
+async function promoteReconcile(input: { supervisorId: string; sessionId: string | null }): Promise<boolean> {
   const markerPath = join(codexPaths.reconcileDir, input.supervisorId);
   if (!existsSync(markerPath)) return false;
+  return withLock(codexPaths.lockFile, async () => promoteReconcileLocked(input));
+}
+
+function promoteReconcileLocked(input: { supervisorId: string; sessionId: string | null }): boolean {
+  const markerPath = join(codexPaths.reconcileDir, input.supervisorId);
+  if (!existsSync(markerPath)) return false; // re-checked under the lock: a raced consumer may have taken it
   const parsed = CodexReconcileMarkerSchema.safeParse((() => {
     try {
       return JSON.parse(readFileSync(markerPath, "utf8"));
@@ -146,7 +158,7 @@ export async function handleCodexStop(input: { rawStdin: string }): Promise<void
     // A pending reconcile signal outranks the normal decision: this session
     // is about to respawn onto the live seat, so evaluating it would waste a
     // sample (and could even swap the seat out from under the respawn).
-    if (promoteReconcile({ supervisorId, sessionId })) return;
+    if (await promoteReconcile({ supervisorId, sessionId })) return;
     const decision = await evaluateAndMaybeSwapCodex({});
     if (decision.swapped && decision.account) {
       mkdirSync(codexPaths.respawnDir, { recursive: true });
@@ -164,7 +176,7 @@ export async function handleCodexStop(input: { rawStdin: string }): Promise<void
     // case the removed self-skip used to lose, bugbot/cubic review catch,
     // PR #34): consume it at this very boundary instead of burning one more
     // turn on the dead account.
-    promoteReconcile({ supervisorId, sessionId });
+    await promoteReconcile({ supervisorId, sessionId });
   } catch (e) {
     log("codexstop.error", { err: e instanceof Error ? e.message : String(e) });
   }
