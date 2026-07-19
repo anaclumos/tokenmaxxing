@@ -31,7 +31,10 @@ jobs:
           tar tvf tokenmaxxing-*.tgz > /tmp/tarlist.txt
           grep -F "package/src/serve-plugin/.claude-plugin/plugin.json" /tmp/tarlist.txt
           grep -E "^-rwx[-rwx]+ .* package/src/main.ts$" /tmp/tarlist.txt
-          bun add -g ./tokenmaxxing-*.tgz
+          # absolute path on purpose: bun resolves a RELATIVE tarball path
+          # against the global install dir, not cwd (reproduced locally:
+          # "ENOENT extracting tarball" - the first CI run of this step).
+          bun add -g "$PWD"/tokenmaxxing-*.tgz
           tokenmaxxing help
 
   publish:
