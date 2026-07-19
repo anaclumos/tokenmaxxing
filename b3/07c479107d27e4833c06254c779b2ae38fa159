@@ -1,0 +1,19 @@
+src/main.ts
+  s_eaf36da1edfe18::t_8022f7a188b29a 107-116
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "b307c479107d27e4833c06254c779b2ae38fa159",
+  "prompts": {},
+  "sessions": {
+    "s_eaf36da1edfe18": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "085f0c3d-1bd0-4a58-8930-8dfdcf1a0376",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    }
+  }
+}
