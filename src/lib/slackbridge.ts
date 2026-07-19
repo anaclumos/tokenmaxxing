@@ -391,6 +391,12 @@ export async function relayThread(input: {
   // Reply TEXT that was pushed into a rejected segment and never re-delivered
   // by a later text-bearing segment: the user has not seen the answer. A lost
   // card-only segment never sets this (decoration, not the answer).
+  // Tradeoff (flagged and accepted): a later delivered text segment clears the
+  // flag even though it is a continuation, because the dominant rejection is
+  // Slack finalizing an idle stream - the streamed text WAS delivered, only
+  // the append failed - and sticky loss would fail every long turn with a
+  // spurious diagnostic; chat 4.34.0 exposes no per-chunk delivery acks to
+  // tell that apart from a swallowed first post.
   let textLost = false;
   let textLostDetail: string | null = null;
   let postedText = false;

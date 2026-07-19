@@ -59,22 +59,50 @@ function isOurCommand(cmd: string | undefined): boolean {
   );
 }
 
+/** The exact command string installSettings writes for a subcommand; doctor
+ *  compares against it verbatim, so a green check proves the canonical entry. */
+function ourCommand(sub: string): string {
+  return `${JSON.stringify(installedBin())} ${sub}`;
+}
+
 function ourHookGroup(sub: string): HookGroup {
-  return { hooks: [{ type: "command", command: `${JSON.stringify(installedBin())} ${sub}` }] };
+  return { hooks: [{ type: "command", command: ourCommand(sub) }] };
 }
 
 function appendHook(s: Settings, event: string, sub: string): void {
   s.hooks ??= {};
   s.hooks[event] ??= [];
   const arr = s.hooks[event]!;
-  const present = arr.some((g) => g.hooks?.some((h) => h.command?.includes(sub)));
+  const present = arr.some((g) => g.hooks.some((h) => h.command === ourCommand(sub)));
   if (!present) arr.push(ourHookGroup(sub));
+}
+
+/** True only for a command tokenmaxxing itself wrote - the exact historical
+ *  shape `"<...>/tokenmaxxing" <sub>` at ANY install path (so stale
+ *  pre-relocation entries match too). A foreign command that merely mentions
+ *  the subcommand or the path as text is NOT ours and must survive removal. */
+function isOurHookCommand(cmd: string, sub: string): boolean {
+  if (!cmd.endsWith(` ${sub}`)) return false;
+  const quotedPath = cmd.slice(0, cmd.length - (sub.length + 1));
+  if (!quotedPath.startsWith('"') || !quotedPath.endsWith('"')) return false;
+  let path: unknown;
+  try {
+    path = JSON.parse(quotedPath);
+  } catch {
+    return false;
+  }
+  const parsed = z.string().safeParse(path);
+  return parsed.success && parsed.data.endsWith("/tokenmaxxing");
 }
 
 function removeHook(s: Settings, event: string, sub: string): void {
   const arr = s.hooks?.[event];
   if (!arr) return;
-  s.hooks![event] = arr.filter((g) => !g.hooks?.some((h) => h.command?.includes(sub)));
+  // Strip only VERIFIED tokenmaxxing-owned entries from WITHIN each group:
+  // foreign hooks sharing a group - or merely mentioning our strings - survive
+  // (review catches, PR #31), and a group is dropped only once it is empty.
+  for (const g of arr) g.hooks = g.hooks.filter((h) => !isOurHookCommand(h.command, sub));
+  s.hooks![event] = arr.filter((g) => g.hooks.length > 0);
   if (s.hooks![event]!.length === 0) delete s.hooks![event];
 }
 
@@ -85,14 +113,8 @@ function removeHook(s: Settings, event: string, sub: string): void {
  *  recursion incident started). Foreign hooks are untouched. */
 export function installSettings(): void {
   const s = readSettings();
-  s.statusLine = {
-    type: "command",
-    command: `${JSON.stringify(installedBin())} ${SUBCMD.statusline}`,
-  };
-  s.subagentStatusLine = {
-    type: "command",
-    command: `${JSON.stringify(installedBin())} ${SUBCMD.subagentStatusline}`,
-  };
+  s.statusLine = { type: "command", command: ourCommand(SUBCMD.statusline) };
+  s.subagentStatusLine = { type: "command", command: ourCommand(SUBCMD.subagentStatusline) };
   removeHook(s, "Stop", SUBCMD.stop);
   removeHook(s, "SessionStart", SUBCMD.sessionStart);
   appendHook(s, "Stop", SUBCMD.stop);
@@ -120,13 +142,15 @@ export type SettingsCheck = z.infer<typeof SettingsCheckSchema>;
 
 export function checkSettings(): SettingsCheck {
   const s = readSettings();
-  // Freshness, not mere ownership: a hook pointing at an OLD install path
-  // (pre-relocation) must read as broken, or doctor green-lights dead hooks.
+  // Exact-command identity (review catch, PR #31): only the verbatim string
+  // installSettings writes counts as installed. A hook pointing at an OLD
+  // install path reads as broken, and a foreign command that merely mentions
+  // the path or subcommand as text never green-lights.
   const has = (event: string, sub: string) =>
-    !!s.hooks?.[event]?.some((g) => g.hooks?.some((h) => h.command?.includes(sub) && h.command?.includes(installedBin())));
+    !!s.hooks?.[event]?.some((g) => g.hooks.some((h) => h.command === ourCommand(sub)));
   return {
-    statusLineOk: !!s.statusLine?.command?.includes(installedBin()),
-    subagentStatusLineOk: !!s.subagentStatusLine?.command?.includes(installedBin()),
+    statusLineOk: s.statusLine?.command === ourCommand(SUBCMD.statusline),
+    subagentStatusLineOk: s.subagentStatusLine?.command === ourCommand(SUBCMD.subagentStatusline),
     stopOk: has("Stop", SUBCMD.stop),
     sessionStartOk: has("SessionStart", SUBCMD.sessionStart),
   };

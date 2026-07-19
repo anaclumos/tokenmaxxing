@@ -15,7 +15,7 @@ import { join } from "node:path";
 import { z } from "zod";
 import { codexPaths } from "./paths.ts";
 import { writeFileAtomic } from "./atomic.ts";
-import { pidStartTime } from "./proc.ts";
+import { pidExists, pidStartTime } from "./proc.ts";
 
 const PresenceSchema = z.object({
   accountId: z.string(),
@@ -68,7 +68,15 @@ export function presentCodexAccountIds(): Set<string> {
     if (!parsed.success) {
       throw new Error(`${file} is not a readable presence record - it may belong to a RUNNING codex session, refusing to treat it as absent; remove the file (or respawn that session) to proceed`);
     }
-    if (pidStartTime(parsed.data.pid) !== parsed.data.startedAt) {
+    const observed = pidStartTime(parsed.data.pid);
+    if (observed !== parsed.data.startedAt) {
+      // A null lstart is ambiguous: dead pid, or ps itself failing. Deleting
+      // on a ps failure would silently unbench a RUNNING session's account
+      // (review catch, PR #31), so only a confirmed-dead pid - or a live pid
+      // with a DIFFERENT start time, a recycle - may clear the file.
+      if (observed == null && pidExists(parsed.data.pid)) {
+        throw new Error(`ps could not read the start time of live pid ${parsed.data.pid} (${file}) - refusing to clear a presence file that may guard a RUNNING codex session`);
+      }
       rmSync(file, { force: true });
       continue;
     }

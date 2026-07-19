@@ -62,26 +62,30 @@ export async function harvestIsolatedLogin(): Promise<HarvestedLogin | null> {
     env,
   });
 
-  // Auto-exit (#17): watch for a completed login - identity written AND the
-  // isolated credential present - then SIGTERM claude. No manual /exit.
-  let exited = false;
-  const onExit = p.exited.then(() => { exited = true; });
-  while (!exited) {
-    await Bun.sleep(400);
-    if (identityReady(cjPath) && (await readItem(iso))) {
-      p.kill();
-      break;
-    }
-  }
-  await p.exited;
-  await onExit;
-  restoreTermios(savedTermios);
-
   // The finally makes the "always destroyed before returning" header true for
-  // every non-signal exit: an exception mid-harvest must not strand a
-  // plaintext credential on disk. (An interactive Ctrl-C is reaped by the
-  // next run's rmSync-first.)
+  // every non-signal exit - INCLUDING a failure while the login session is
+  // still being polled (review catch, PR #31): an exception must not strand a
+  // plaintext credential on disk or leave the spawned claude running. (An
+  // interactive Ctrl-C is reaped by the next run's rmSync-first.)
   try {
+    // Auto-exit (#17): watch for a completed login - identity written AND the
+    // isolated credential present - then SIGTERM claude. No manual /exit.
+    let exited = false;
+    const onExit = p.exited.then(() => { exited = true; });
+    while (!exited) {
+      await Bun.sleep(400);
+      if (identityReady(cjPath) && (await readItem(iso))) {
+        p.kill();
+        break;
+      }
+    }
+    await p.exited;
+    await onExit;
+    // restore promptly so the harvest's own output renders on a sane terminal;
+    // the finally's second restore is an idempotent stty and covers the
+    // thrown-mid-poll path.
+    restoreTermios(savedTermios);
+
     const blobRaw = await readItem(iso);
     if (!blobRaw || !identityReady(cjPath)) {
       console.error(c.red("no login detected in the isolated session - nothing changed."));
@@ -104,6 +108,11 @@ export async function harvestIsolatedLogin(): Promise<HarvestedLogin | null> {
 
     return { blobRaw, blob, oauthAccount, sampled };
   } finally {
+    if (p.exitCode === null) {
+      p.kill();
+      await p.exited;
+    }
+    restoreTermios(savedTermios);
     await deleteItem(iso);
     rmSync(onboardDir, { recursive: true, force: true });
   }
