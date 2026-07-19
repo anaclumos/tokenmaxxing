@@ -36,8 +36,13 @@ export async function cmdSwitch(selector?: string): Promise<number> {
 
   return withLock(paths.lockFile, async () => {
     const idx = loadAccounts();
-    const claimed = readOAuthAccount()?.accountUuid ?? null;
-    const claimedOrg = readOAuthAccount()?.organizationUuid ?? null;
+    // ONE claude.json read for both identity fields: two reads could straddle
+    // a concurrent /login and describe two different live identities - the
+    // drift check and the seat must come from the same snapshot (cubic review
+    // catch, PR #33).
+    const liveClaim = readOAuthAccount();
+    const claimed = liveClaim?.accountUuid ?? null;
+    const claimedOrg = liveClaim?.organizationUuid ?? null;
     const drifted = claimed != null && claimed !== idx.activeAccountUuid;
 
     const swapTo = async (target: Account): Promise<number> => {
