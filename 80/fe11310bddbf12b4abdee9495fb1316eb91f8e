@@ -1,0 +1,22 @@
+src/lib/decide.ts
+  s_eaf36da1edfe18::t_3fc89ccd475288 203-213
+test/decide.test.ts
+  s_eaf36da1edfe18::t_5f6de70db55176 16
+  s_eaf36da1edfe18::t_fb68a33b8dcdbe 267-286
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "80fe11310bddbf12b4abdee9495fb1316eb91f8e",
+  "prompts": {},
+  "sessions": {
+    "s_eaf36da1edfe18": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "085f0c3d-1bd0-4a58-8930-8dfdcf1a0376",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    }
+  }
+}
