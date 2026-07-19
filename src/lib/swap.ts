@@ -184,12 +184,17 @@ export async function performSwap(target: Account): Promise<void> {
  * Assumes the caller holds the flock (does NOT lock - avoids same-process
  * flock self-deadlock). Returns the account landed on, or null if none usable.
  */
-export async function chooseAndSwap(ctx: Omit<PickCtx, "currentAccountUuid">): Promise<Account | null> {
+export async function chooseAndSwap(ctx: PickCtx): Promise<Account | null> {
+  // ctx.currentAccountUuid is the caller-resolved SEAT (decide.ts resolves it
+  // by the live org, label fallback): resolving here off activeAccountUuid
+  // re-imported the label drift the caller just resolved away, and under
+  // drift the LIVE account could be picked as its own swap target (bugbot
+  // review catch, PR #33).
   const tried = new Set<string>();
   while (true) {
     const idx = loadAccounts();
     const candidates = idx.accounts.filter((a) => !tried.has(a.accountUuid));
-    const best = pickBest(candidates, { ...ctx, currentAccountUuid: idx.activeAccountUuid });
+    const best = pickBest(candidates, ctx);
     if (!best) return null;
     tried.add(best.accountUuid);
     try {

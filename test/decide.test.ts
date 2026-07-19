@@ -245,21 +245,20 @@ describe("evaluateAndMaybeSwap headless snapshot handling", () => {
     expect(d.reason).toBe("under-threshold-or-stale");
   });
 
-  test("the locked-section usage stamp lands on the LIVE org's account, never the drifted label", async () => {
+  test("under label drift both the usage stamp AND the greedy seat resolve by the LIVE org", async () => {
     // accounts.json's activeAccountUuid still names B (manual /login drift,
     // the surviving drift source) while claude.json and the tee say org-A.
-    // Stamping by label wrote A's windows into B: the picker then screened
-    // and ranked B on A's numbers (closing-review catch). The greedy pick
-    // afterwards fails loudly on A's missing parked credential - expected,
-    // the stamp is persisted before it.
+    // Stamping by label wrote A's windows into B, and the label-resolved seat
+    // then judged B as "current" - ranking on the wrong cached windows and
+    // offering the LIVE account as a swap target (closing-review + bugbot
+    // catches). With both resolved by live org: A gets the stamp, A wins its
+    // own seat, and the decision is a clean no-swap current-best.
     installFakeClaude(10, Date.now() + 2 * D);
     installFixtures([poolAccount("B")]);
     saveAccounts({ version: 1, activeAccountUuid: "B", accounts: [poolAccount("A"), poolAccount("B")] });
     writeUsageJson({ fiveHour: { usedPercentage: 60, resetsAt: Date.now() + 3_600_000 } });
-    // the specific expected failure, nothing else: the greedy pick reaches
-    // performSwap(A) and dies on A's absent parked credential - any OTHER
-    // rejection (or none) means the decision took an unexpected path.
-    await expect(evaluateAndMaybeSwap(Date.now(), false)).rejects.toThrow("no parked credential for A@e.com");
+    const d = await evaluateAndMaybeSwap(Date.now(), false);
+    expect(d.reason).toBe("current-best"); // the live account holds the seat; never-sampled B ranks last
     const after = loadAccounts();
     expect(after.accounts.find((x) => x.accountUuid === "A")!.lastUsage?.fiveHour.usedPercentage).toBe(60);
     expect(after.accounts.find((x) => x.accountUuid === "B")!.lastUsage).toBeUndefined();

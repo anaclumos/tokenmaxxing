@@ -223,6 +223,18 @@ export async function evaluateAndMaybeSwap(now = Date.now(), anticipatory = fals
       return depletedReplay(now) ?? { swapped: false, account: null, reason: "raced-already-swapped" };
     }
 
+    // The SEAT every path below evaluates and excludes: the live org's pooled
+    // account when resolvable, the stored label only as fallback - the same
+    // identity rule as the usage stamp above and depletedReplay. Trusting the
+    // label here let the greedy convergence judge a stale account as "the
+    // seat" after a manual /login, ranking against the wrong cached windows
+    // and even offering the LIVE account as a swap target (bugbot review
+    // catch, PR #33).
+    const seatOf = (idx2: { activeAccountUuid: string | null; accounts: Account[] }): Account | null =>
+      idx2.accounts.find((a) => a.organizationUuid === org2) ??
+      idx2.accounts.find((a) => a.accountUuid === idx2.activeAccountUuid) ??
+      null;
+
     // Candidates are screened by the same families that drove this decision, so
     // the pool cannot ping-pong onto an account the gate would immediately flag.
     const switchFamilies = gatedFamilies(u2?.model ?? null, cfg.policy.switchModels);
@@ -240,11 +252,11 @@ export async function evaluateAndMaybeSwap(now = Date.now(), anticipatory = fals
       const ctxAll = { now, thresholds: effectiveBars(cfg), currentAccountUuid: null, switchFamilies };
       while (true) {
         const cur = loadAccounts();
-        const active = cur.accounts.find((a) => a.accountUuid === cur.activeAccountUuid) ?? null;
+        const active = seatOf(cur);
         if (currentWins(active, cur.accounts, ctxAll)) {
           return { swapped: false, account: null, reason: "current-best" };
         }
-        const best = pickBest(cur.accounts, { ...ctxAll, currentAccountUuid: cur.activeAccountUuid });
+        const best = pickBest(cur.accounts, { ...ctxAll, currentAccountUuid: active?.accountUuid ?? null });
         if (!best) return { swapped: false, account: null, reason: "no-usable-target" };
         try {
           await performSwap(best);
@@ -257,7 +269,7 @@ export async function evaluateAndMaybeSwap(now = Date.now(), anticipatory = fals
       }
     }
 
-    const landed = await chooseAndSwap({ now, thresholds: effectiveBars(cfg), switchFamilies });
+    const landed = await chooseAndSwap({ now, thresholds: effectiveBars(cfg), switchFamilies, currentAccountUuid: seatOf(loadAccounts())?.accountUuid ?? null });
     if (landed) return { swapped: true, account: landed, reason: "swapped" };
 
     // Every account is depleted. Wait for whichever recovers soonest (including
@@ -267,8 +279,8 @@ export async function evaluateAndMaybeSwap(now = Date.now(), anticipatory = fals
     // dead account and the loop terminates (mirrors the greedy loop above).
     while (true) {
       const fresh = loadAccounts();
-      const ctx = { now, thresholds: effectiveBars(cfg), currentAccountUuid: fresh.activeAccountUuid, switchFamilies };
-      const current = fresh.accounts.find((a) => a.accountUuid === fresh.activeAccountUuid);
+      const current = seatOf(fresh);
+      const ctx = { now, thresholds: effectiveBars(cfg), currentAccountUuid: current?.accountUuid ?? null, switchFamilies };
       const currentAt = current ? usableAt(current, ctx) : Number.POSITIVE_INFINITY;
       const other = pickEarliestReset(fresh.accounts, ctx);
 
@@ -283,7 +295,7 @@ export async function evaluateAndMaybeSwap(now = Date.now(), anticipatory = fals
         return { swapped: false, account: null, reason: "all-depleted", ...(Number.isFinite(waitUntil) ? { waitUntil } : {}) };
       }
 
-      const isCurrent = target.accountUuid === fresh.activeAccountUuid;
+      const isCurrent = target.accountUuid === (current?.accountUuid ?? null);
       if (!isCurrent && !anticipatory) {
         log("decide.depleted_no_park", { account: target.accountUuid.slice(0, 8), waitUntil });
         return { swapped: false, account: null, reason: "all-depleted", waitUntil };
