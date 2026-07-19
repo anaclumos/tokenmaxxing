@@ -1,0 +1,35 @@
+src/lib/codexdecide.ts
+  s_eaf36da1edfe18::t_4ba921dc452123 147,167-177
+  s_eaf36da1edfe18::t_fbde5a44031317 254-256
+  s_eaf36da1edfe18::t_9e8877d6e1d20e 226-230
+  s_eaf36da1edfe18::t_e5830d2a22d072 105-113,121
+  s_eaf36da1edfe18::t_fe7408e0894fea 178-179
+AGENTS.md
+  s_eaf36da1edfe18::t_201839485fcc97 147
+src/entries/codexstophook.ts
+  s_eaf36da1edfe18::t_59ab4372de82b0 150,160,162-167
+  s_eaf36da1edfe18::t_af27479a9c08bb 26
+  s_eaf36da1edfe18::t_efb14fbfe8d2f3 73-101,108
+  s_eaf36da1edfe18::t_129846430a23f9 19,23-24
+test/codex.test.ts
+  s_eaf36da1edfe18::t_24f87a806c56f8 11
+  s_eaf36da1edfe18::t_da7e37beef3077 615,625,633-664
+  s_eaf36da1edfe18::t_3bb9b587454de7 665,714-790
+  s_eaf36da1edfe18::t_53f63c05ac7117 666
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "9d7864bbe3f72e8ab4db3844ae897caab39737b5",
+  "prompts": {},
+  "sessions": {
+    "s_eaf36da1edfe18": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "085f0c3d-1bd0-4a58-8930-8dfdcf1a0376",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    }
+  }
+}
