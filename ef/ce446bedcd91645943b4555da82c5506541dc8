@@ -1,0 +1,26 @@
+src/entries/codexstophook.ts
+  s_eaf36da1edfe18::t_f74e19efa13839 17
+  s_eaf36da1edfe18::t_7a3cabeb63d9c0 179
+  s_eaf36da1edfe18::t_27676eaf161b23 39-47,50-55
+  s_eaf36da1edfe18::t_55e9b1a41d872b 161
+src/lib/codexdecide.ts
+  s_eaf36da1edfe18::t_e84082622717dc 240-247
+  s_eaf36da1edfe18::t_d6d614d63212bf 271-274
+  s_eaf36da1edfe18::t_b9ecba49bce1e1 147-157
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "efce446bedcd91645943b4555da82c5506541dc8",
+  "prompts": {},
+  "sessions": {
+    "s_eaf36da1edfe18": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "085f0c3d-1bd0-4a58-8930-8dfdcf1a0376",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    }
+  }
+}
