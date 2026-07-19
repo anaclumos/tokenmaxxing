@@ -1,0 +1,46 @@
+src/lib/codexpresence.ts
+  s_eaf36da1edfe18::t_2b746f94b494ff 57-58
+  s_eaf36da1edfe18::t_2f13e7785f277b 43-46,52-56,59-60,63,68-71
+test/codex.test.ts
+  s_eaf36da1edfe18::t_db4a89b9b4c766 303
+  s_eaf36da1edfe18::t_6e478264f2c17b 298-302,304-305
+test/swap.test.ts
+  s_eaf36da1edfe18::t_fafcf1ac41201f 123-141
+  s_eaf36da1edfe18::t_927ba19057f091 37-40,53-57
+  s_eaf36da1edfe18::t_2550224a2852bc 81
+src/lib/slackbridge.ts
+  s_eaf36da1edfe18::t_fa9b12d2981619 639-651
+src/lib/swap.ts
+  s_eaf36da1edfe18::t_12ce64715fe526 130-139
+  s_eaf36da1edfe18::t_a713a5dc75d901 11-12
+  s_eaf36da1edfe18::t_7fae92526149cb 52-55,58,68,76-77
+src/cli/rm.ts
+  s_eaf36da1edfe18::t_fd70588754a5e0 31-35,39-48
+  s_eaf36da1edfe18::t_f4164df7596dbd 4
+src/lib/state.ts
+  s_eaf36da1edfe18::t_22e438235c933d 35-37
+  s_eaf36da1edfe18::t_ea218535556aa0 96-103
+src/lib/types.ts
+  s_eaf36da1edfe18::t_e9f17d39644f99 128-157
+test/config.test.ts
+  s_eaf36da1edfe18::t_81a3f592370767 120,122
+  s_eaf36da1edfe18::t_a2db8dc9ea5cbc 116-119,121,123-125
+test/rm.test.ts
+  s_eaf36da1edfe18::t_5c73d60ecb6591 1-90
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "c445251d75c01fba62bea18ea18cd0ffecf90201",
+  "prompts": {},
+  "sessions": {
+    "s_eaf36da1edfe18": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "085f0c3d-1bd0-4a58-8930-8dfdcf1a0376",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    }
+  }
+}
