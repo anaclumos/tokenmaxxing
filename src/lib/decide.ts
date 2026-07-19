@@ -200,6 +200,17 @@ export async function evaluateAndMaybeSwap(now = Date.now(), anticipatory = fals
     const u2 = loadUsage() ?? usage;
     const mu2 = needsPerModel(u2, cfg) ? loadModelUsage() ?? mu : null;
 
+    // A live login whose org is KNOWN but outside the pool: do nothing - the
+    // codex org-guard analog. performSwap would refuse any swap over it (an
+    // unpooled credential's only copy must never be overwritten), and the
+    // seat fallback below must not stand in a stale pooled label for it: the
+    // depleted path could then park a supervised session against the LABELED
+    // account's reset while the running login is someone else entirely
+    // (pullfrog review catch, PR #33).
+    if (org2 != null && !idx.accounts.some((a) => a.organizationUuid === org2)) {
+      return { swapped: false, account: null, reason: "live-credential-not-in-pool" };
+    }
+
     // record the active account's aggregate usage so the picker + `status` see it.
     // Resolved by the LIVE org the guard just verified, never the
     // activeAccountUuid label: after a manual /login the label drifts (the

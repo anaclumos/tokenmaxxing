@@ -13,7 +13,7 @@ import { join } from "node:path";
 import { afterAll, beforeEach, describe, expect, test } from "bun:test";
 import { evaluateAndMaybeSwap } from "../src/lib/decide.ts";
 import { paths } from "../src/lib/paths.ts";
-import { loadAccounts, loadModelUsage, loadUsage, saveAccounts, saveDepletedWait, saveLastSwapAt } from "../src/lib/state.ts";
+import { loadAccounts, loadDepletedWait, loadModelUsage, loadUsage, saveAccounts, saveDepletedWait, saveLastSwapAt } from "../src/lib/state.ts";
 import { writeItem, parkedTarget, liveTarget, deleteItem } from "../src/lib/credstore.ts";
 import type { Account } from "../src/lib/types.ts";
 
@@ -262,6 +262,26 @@ describe("evaluateAndMaybeSwap headless snapshot handling", () => {
     const after = loadAccounts();
     expect(after.accounts.find((x) => x.accountUuid === "A")!.lastUsage?.fiveHour.usedPercentage).toBe(60);
     expect(after.accounts.find((x) => x.accountUuid === "B")!.lastUsage).toBeUndefined();
+  });
+
+  test("a KNOWN live org outside the pool stands down instead of seating the stale label", async () => {
+    // The user /login'd an account that was never pooled. The seat fallback
+    // must not stand in the stale labeled account: the depleted path could
+    // park a supervised session against the LABEL's reset while the running
+    // login is someone else entirely (pullfrog review catch, PR #33 - the
+    // codex live-credential-not-in-pool guard, mirrored).
+    installFakeClaude(10, Date.now() + 2 * D);
+    installFixtures();
+    writeFileSync(
+      paths.claudeJson,
+      JSON.stringify({ oauthAccount: { accountUuid: "X", emailAddress: "x@e.com", organizationUuid: "org-X" } }),
+    );
+    writeUsageJson({ org: "org-X", fiveHour: { usedPercentage: 97, resetsAt: Date.now() + 3_600_000 } });
+    const d = await evaluateAndMaybeSwap(Date.now(), true);
+    expect(d.reason).toBe("live-credential-not-in-pool");
+    expect(d.swapped).toBe(false);
+    // no depleted-wait was recorded against the stale label
+    expect(loadDepletedWait()).toBeNull();
   });
 
   test("split thresholds: a session window over its own bar triggers below the weekly bar", async () => {
