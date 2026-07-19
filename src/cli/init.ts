@@ -1,5 +1,5 @@
 // `tokenmaxxing init` - import the account you're already on (no prompts), then
-// install the supervisor + the three settings entries.
+// install the supervisor + the four settings entries.
 
 import { mkdirSync } from "node:fs";
 import { isApiKeyMode, readOAuthAccount } from "../lib/claudejson.ts";

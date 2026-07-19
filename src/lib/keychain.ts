@@ -11,8 +11,15 @@ const KeychainTargetSchema = z.object({ service: z.string(), account: z.string()
 export type KeychainTarget = z.infer<typeof KeychainTargetSchema>;
 
 const SECURITY = "/usr/bin/security";
-// security(1) interactive mode has a ~4KB line buffer; above this we must use argv.
-const INTERACTIVE_MAX = 3800;
+// security(1) interactive mode has a 4096-byte line buffer. The gate below
+// measures the ASSEMBLED line against this (with margin), never the raw
+// secret: quoteDouble expansion (one byte per `"`/`\` when the blob contains
+// an apostrophe) once pushed a raw-length-passing line over the buffer, which
+// SPLITS the line - the write exits 1 ("unknown command" for the spilled
+// remainder) AND the item is left holding a TRUNCATED secret (empirically
+// verified 2026-07-20: a 3667-byte secret assembling to a 5574-byte line
+// corrupted the item to its first 2682 bytes before the error surfaced).
+const INTERACTIVE_MAX_LINE = 4000;
 
 /** Double-quote + backslash-escape for security(1)'s interactive tokenizer. */
 function quoteDouble(s: string): string {
@@ -24,24 +31,38 @@ function quoteValue(s: string): string {
   return s.includes("'") ? quoteDouble(s) : `'${s}'`;
 }
 
-/** Read an item's password blob. Returns null if the item does not exist. */
+/** Read an item's password blob. Returns null ONLY when the item verifiably
+ *  does not exist (exit 44, errSecItemNotFound - empirically pinned on this
+ *  Mac 2026-07-20). Every other failure THROWS: a locked keychain or denied
+ *  ACL prompt reading as "absent" silently disarmed every fail-closed
+ *  live-owner guard and the mandatory pre-swap harvest, all of which key off
+ *  a null read (closing-review catch). stderr never carries the secret. */
 export async function readItem(t: KeychainTarget): Promise<string | null> {
   const p = Bun.spawn([SECURITY, "find-generic-password", "-s", t.service, "-a", t.account, "-w"], {
     stdout: "pipe",
-    stderr: "ignore",
+    stderr: "pipe",
   });
-  const out = await new Response(p.stdout).text();
+  const [out, err] = await Promise.all([new Response(p.stdout).text(), new Response(p.stderr).text()]);
   await p.exited;
-  if (p.exitCode !== 0) return null; // 44 = not found
+  if (p.exitCode === 44) return null;
+  if (p.exitCode !== 0) {
+    throw new Error(`keychain read failed (exit ${p.exitCode}): ${err.trim().slice(0, 200)} - a locked keychain or denied ACL must fail loudly, never read as absent`);
+  }
   return out.replace(/\n$/, ""); // security appends exactly one trailing newline
 }
 
-/** ps-safe write: the command line + secret arrive on stdin, never in argv.
- *  Bounded by security(1)'s ~4KB interactive line buffer. */
-async function writeViaInteractive(t: KeychainTarget, secret: string): Promise<void> {
-  const line =
+/** The full `security -i` line for a write; its LENGTH is the argv-fallback
+ *  gate, so it is assembled once, here. */
+function interactiveLine(t: KeychainTarget, secret: string): string {
+  return (
     `add-generic-password -U -a ${quoteDouble(t.account)} -s ${quoteDouble(t.service)} ` +
-    `-w ${quoteValue(secret)}\n`;
+    `-w ${quoteValue(secret)}\n`
+  );
+}
+
+/** ps-safe write: the command line + secret arrive on stdin, never in argv.
+ *  The caller guarantees `line` fits the interactive buffer. */
+async function writeViaInteractive(line: string): Promise<void> {
   const p = Bun.spawn([SECURITY, "-i"], {
     stdin: new TextEncoder().encode(line),
     stdout: "ignore",
@@ -66,10 +87,12 @@ async function writeViaArgv(t: KeychainTarget, secret: string): Promise<void> {
 }
 
 /** Create-or-update an item (`-U`) with `secret` as its password. Prefers the
- *  ps-safe stdin path; falls back to argv only when the blob exceeds the ~4KB
- *  interactive line limit. Throws on failure. */
+ *  ps-safe stdin path; falls back to argv when the ASSEMBLED interactive line
+ *  would exceed the buffer (see INTERACTIVE_MAX_LINE - gating on the raw
+ *  secret length let quote expansion corrupt the item). Throws on failure. */
 export async function writeItem(t: KeychainTarget, secret: string): Promise<void> {
-  if (secret.length <= INTERACTIVE_MAX) return writeViaInteractive(t, secret);
+  const line = interactiveLine(t, secret);
+  if (line.length <= INTERACTIVE_MAX_LINE) return writeViaInteractive(line);
   return writeViaArgv(t, secret);
 }
 

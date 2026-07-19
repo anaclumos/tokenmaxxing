@@ -42,7 +42,7 @@ let server: ReturnType<typeof Bun.serve>;
 
 beforeAll(() => {
   server = Bun.serve({
-    port: 8791,
+    port: Number(new URL(process.env.TOKENMAXXING_OAUTH_ROLES_URL!).port),
     hostname: "127.0.0.1",
     async fetch(req) {
       const url = new URL(req.url);

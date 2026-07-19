@@ -48,6 +48,11 @@ const RenderCtxSchema = z.object({
   switchModels: z.array(z.string()),
   /** linked-worktree basename, null in a main checkout. */
   worktree: z.string().nullable(),
+  /** the LIVE login's org from claude.json, the seat's identity - the
+   *  activeAccountUuid label drifts after a manual /login (the same rule as
+   *  decide.ts's seatOf; closing-review catch: the label-keyed split rendered
+   *  the live account twice and hid the stale-labeled one). */
+  liveOrg: z.string().nullable(),
   now: z.number(),
   color: z.boolean(),
   /** terminal advertises 24-bit color (COLORTERM); false steps the ramp to the 256-color cube. */
@@ -116,16 +121,20 @@ export function renderStatusline(stdinObj: unknown, ctx: RenderCtx): string {
     windows.push(seg("", wins.fiveHour, wins.fiveHour.resetsAt));
     windows.push(seg("", wins.sevenDay, wins.sevenDay.resetsAt));
   }
+  // The seat: live-org first, stored label fallback (unknown live identity).
+  const seatUuid =
+    (ctx.liveOrg != null ? ctx.accounts.accounts.find((a) => a.organizationUuid === ctx.liveOrg)?.accountUuid : undefined) ??
+    ctx.accounts.activeAccountUuid;
   const active =
     windows.length > 0
       ? `${col.green("◆")} ${windows.join(" ")}`
-      : ctx.accounts.activeAccountUuid != null
+      : seatUuid != null
         ? `${col.green("◆")} ?`
         : "";
 
   // ---- parked accounts, earliest upcoming reset first (needs-reauth last)
   const parked = sortBy(
-    ctx.accounts.accounts.filter((a) => a.accountUuid !== ctx.accounts.activeAccountUuid),
+    ctx.accounts.accounts.filter((a) => a.accountUuid !== seatUuid),
     [(a) => (a.needsReauth ? 1 : 0), (a) => earliestReset(a, ctx.now)],
   );
   // Every parked account renders its own marker (user rule 2026-07-18: the
@@ -186,6 +195,7 @@ export async function runStatusline(): Promise<number> {
       perModel: modelUsage && modelUsage.org === org ? modelUsage.perModel : {},
       switchModels: cfg.policy.switchModels,
       worktree: dir == null ? null : worktreeName(dir),
+      liveOrg: org,
       now,
       color: !process.env.NO_COLOR,
       truecolor: colorterm != null && (colorterm.includes("truecolor") || colorterm.includes("24bit")),

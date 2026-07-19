@@ -75,7 +75,10 @@ function blockingUntil(a: Account, ctx: PickCtx): number[] {
           blockedUntil(u.sevenDay, WEEK_MS, a.lastUsageAt, ctx.thresholds.weekly),
         ]
       : []),
-    ...gatedPerModelWindows(a, ctx.switchFamilies).map((w) => blockedUntil(w, WEEK_MS, a.lastUsageAt, ctx.thresholds.weekly)),
+    // per-model rows date by their OWN sample time when known: lastUsageAt
+    // advances on every engaged evaluation while the rows may be days older,
+    // which inflated the null-reset self-bound (closing-review catch).
+    ...gatedPerModelWindows(a, ctx.switchFamilies).map((w) => blockedUntil(w, WEEK_MS, a.lastPerModelAt ?? a.lastUsageAt, ctx.thresholds.weekly)),
   ];
 }
 
@@ -130,7 +133,12 @@ export function pacePressure(a: Account, now: number): number {
 const swapPreference = (now: number) => [
   (a: Account) => -pacePressure(a, now),
   (a: Account) => weeklyExpiry(a, now),
-  (a: Account) => a.lastUsage?.sevenDay.usedPercentage ?? 0,
+  // unmeasured ranks LAST in this tiebreak (101 > any real percentage):
+  // `?? 0` made a never-sampled account look maximally safe and beat any
+  // measured one, swapping a healthy measured seat onto a complete unknown -
+  // the exact unmeasured-must-not-look-safe rule (closing-review catch);
+  // pacePressure already ranks unmeasured last by the same principle.
+  (a: Account) => a.lastUsage?.sevenDay.usedPercentage ?? 101,
 ];
 
 export function pickBest(accounts: Account[], ctx: PickCtx): Account | null {

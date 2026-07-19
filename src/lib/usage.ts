@@ -214,6 +214,15 @@ export function parseUsageLimitEpoch(input: { text: string }): number | null {
  * value would flow into `account.lastUsage` and poison the picker's ranking;
  * unmeasured must not look fresh), so the observation is dropped and the
  * retry stays merely bounded.
+ *
+ * INTENTIONAL TRADEOFF (closing-review critic gap, 2026-07-20): the statusline
+ * tee (writeUsage) is deliberately UNLOCKED - the shim stays off flock/oauth -
+ * so it can interleave with this locked check-then-write. Last-writer-wins is
+ * semantically safe in both orderings: a tee landing after this stamp replaces
+ * it with a FRESHER live measurement (truth wins), and this stamp landing
+ * after a tee replaces pre-limit figures with the observed limit the server
+ * just enforced (also truth). Neither writer can write a stale fabrication
+ * over the other; locking the shim to close the interleave would buy nothing.
  */
 export async function recordObservedLimit(input: { text: string; now: number; org: string | null }): Promise<void> {
   if (!input.org) return;

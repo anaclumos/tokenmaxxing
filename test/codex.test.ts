@@ -73,7 +73,7 @@ const RefreshGrantSchema = z.looseObject({ refresh_token: z.string() });
 
 beforeAll(() => {
   server = Bun.serve({
-    port: 8792,
+    port: Number(new URL(process.env.TOKENMAXXING_CODEX_USAGE_URL!).port),
     hostname: "127.0.0.1",
     async fetch(req) {
       const url = new URL(req.url);

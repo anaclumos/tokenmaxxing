@@ -25,8 +25,11 @@ process.env.TOKENMAXXING_HOME = join(base, "home");
 process.env.CLAUDE_CONFIG_DIR = join(base, "claudedir");
 process.env.TOKENMAXXING_CLAUDE_JSON = join(base, "claude.json");
 process.env.TOKENMAXXING_KEYCHAIN_SERVICE = LIVE_SVC;
-process.env.TOKENMAXXING_OAUTH_TOKEN_URL = "http://127.0.0.1:8792/token";
-process.env.TOKENMAXXING_OAUTH_ROLES_URL = "http://127.0.0.1:8792/roles";
+// pid-derived like test/setup.ts: a fixed port once collided with a
+// concurrent `bun test` run's mock server.
+const MOCK_PORT = 20000 + (process.pid % 20000);
+process.env.TOKENMAXXING_OAUTH_TOKEN_URL = `http://127.0.0.1:${MOCK_PORT}/token`;
+process.env.TOKENMAXXING_OAUTH_ROLES_URL = `http://127.0.0.1:${MOCK_PORT}/roles`;
 process.env.NO_COLOR = "1";
 
 const { writeItem, readItem, deleteItem, liveTarget, parkedTarget } = await import("../../src/lib/credstore.ts");
@@ -38,7 +41,7 @@ const RefreshGrantSchema = z.looseObject({ refresh_token: z.string() });
 
 let refreshCalls = 0;
 const server = Bun.serve({
-  port: 8792,
+  port: MOCK_PORT,
   hostname: "127.0.0.1",
   async fetch(req) {
     const url = new URL(req.url);

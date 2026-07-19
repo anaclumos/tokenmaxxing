@@ -86,6 +86,13 @@ export const AccountSchema = z.object({
   addedAt: z.string(),
   lastUsage: UsageWindowsSchema.optional(),
   lastPerModel: z.record(z.string(), UsageWindowSchema).optional(),
+  /** epoch ms of the sample behind lastPerModel SPECIFICALLY: the aggregate
+   *  stamp (lastUsageAt) advances on every engaged evaluation while the
+   *  per-model rows refresh only when a gated family is measured, so dating
+   *  the rows by lastUsageAt inflated the null-reset self-bound by days
+   *  (closing-review catch). Absent on records predating this field: readers
+   *  fall back to lastUsageAt, the previous (over-)approximation. */
+  lastPerModelAt: z.number().optional(),
   /** epoch ms of the sample behind lastUsage/lastPerModel. Their resetsAt
    *  values are absolute epochs (UTC-anchored), so even an old snapshot still
    *  resolves to correct resets - display it as a dated cache, never discard. */

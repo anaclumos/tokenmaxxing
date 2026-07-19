@@ -48,7 +48,7 @@ export const paths = {
 
   /** ~/.claude.json - holds the active `oauthAccount` identity object. */
   claudeJson: env("TOKENMAXXING_CLAUDE_JSON", join(HOME, ".claude.json")),
-  /** ~/.claude/settings.json - user-owned; we merge three entries into it. */
+  /** ~/.claude/settings.json - user-owned; we merge four entries into it. */
   claudeSettings: env(
     "TOKENMAXXING_CLAUDE_SETTINGS",
     join(env("CLAUDE_CONFIG_DIR", join(HOME, ".claude")), "settings.json"),

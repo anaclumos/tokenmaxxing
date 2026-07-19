@@ -135,6 +135,17 @@ function reconcileExhaustedSiblings(input: {
   for (const presence of living) {
     if (presence.accountId === liveAccountId) continue; // riding the live seat: fine
     const seated = index.accounts.find((account) => account.accountId === presence.accountId);
+    // INTENTIONAL TRADEOFF, PENDING OWNER RULING (closing-review HIGH,
+    // 2026-07-20): a sibling riding a departed-but-HEALTHY account is not
+    // signaled, even though codex's guarded reload refuses a cross-account
+    // auth.json refresh, so that session wedges with "Please sign in again"
+    // once its in-memory access token expires (hours). The owner approved
+    // respawning EXHAUSTED siblings only (option b, 2026-07-20); extending
+    // forced respawns to healthy working sessions - or suppressing greedy
+    // swaps while siblings ride the seat - is a policy widening the owner has
+    // not made. Until ruled, healthy-but-non-live siblings are the documented
+    // gap: they keep working on their current token and fail loudly at its
+    // expiry.
     if (!seated || !unusable(seated)) continue; // unpooled or still healthy: not ours to move
     const markerPath = join(codexPaths.reconcileDir, presence.supervisorId);
     if (existsSync(markerPath)) continue;

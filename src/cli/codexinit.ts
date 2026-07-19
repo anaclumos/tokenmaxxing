@@ -79,9 +79,20 @@ export async function cmdCodexInit(): Promise<number> {
   }
 
   const credFile = codexCredItemFor(identity.accountId);
-  writeParkedCodexAuth({ credFile, auth: live });
 
   const account = await withLock(codexPaths.lockFile, () => {
+    // Park INSIDE the flock, from a blob RE-READ inside it (closing-review
+    // catch): the pre-lock snapshot is seconds stale (a network usage GET sits
+    // in between), and parking it unlocked could clobber a concurrent swap's
+    // just-harvested newest rotation with a superseded refresh token - whose
+    // next refresh is reuse-punished into a dead grant family. An identity
+    // that changed since the pre-lock read means a swap landed mid-init:
+    // abort rather than file the wrong account.
+    const fresh2 = readLiveCodexAuth();
+    if (!fresh2 || codexIdentityOf({ auth: fresh2 }).accountId !== identity.accountId) {
+      throw new Error("the live codex login changed while init was running (a concurrent swap?) - re-run `tokenmaxxing init --codex`");
+    }
+    writeParkedCodexAuth({ credFile, auth: fresh2 });
     const index = loadCodexAccounts();
     const existing = index.accounts.find((entry) => entry.accountId === identity.accountId);
     const fresh: CodexAccount = {

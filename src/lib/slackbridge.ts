@@ -447,10 +447,17 @@ export async function relayThread(input: {
     breakSegment();
   };
   /** notify + confirm the post actually landed in Slack. A drop notice that
-   *  never reached the user must NOT count as announced (announcedDrop clears
-   *  the resume marker; an undelivered notice would silently lose the turn -
-   *  an unconfirmed drop keeps the marker so startup replays instead). The
-   *  notice is text, so its own delivery resets textLost. */
+   *  never reached the user must NOT count as announced. DURING A DRAIN an
+   *  unannounced drop keeps the resume marker so startup replays instead;
+   *  outside a drain the marker is still cleared ON PURPOSE (closing-review
+   *  catch corrected this doc, not the behavior): a non-drain drop happens
+   *  after the turn's spawn decisions ran, and retaining its marker would
+   *  make the next daemon restart RE-EXECUTE a possibly-metered turn whose
+   *  outcome the user may already have seen - duplicate execution is worse
+   *  than a lost message behind an already-broken Slack surface. The
+   *  unannounced non-drain loss is logged loudly (serve.drop_unannounced) by
+   *  the caller so it is at least operator-visible. The notice is text, so
+   *  its own delivery resets textLost. */
   const notifyDelivered = async (text: string) => {
     await notify(text);
     await lastPost;

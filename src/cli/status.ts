@@ -25,7 +25,7 @@ import { isCodexExhausted } from "../lib/codexpick.ts";
 import { codexLimitLabel, isSessionWindow } from "../lib/codexusage.ts";
 import { bar, c, claudeTierLabel, count, fmtAgo, fmtReset } from "./render.ts";
 import type { FullUsage } from "../lib/usage.ts";
-import type { Config, CodexWindow, UsageWindow } from "../lib/types.ts";
+import type { Account, Config, CodexWindow, UsageWindow } from "../lib/types.ts";
 
 /** `preRender` runs after sampling, right before the first output line: `watch`
  *  keeps the previous frame on screen through the multi-second sample and
@@ -51,8 +51,7 @@ export async function cmdStatus(force = false, preRender?: () => void): Promise<
     const modelUsage = loadModelUsage();
     const liveOAuth = readOAuthAccount();
     const activeOrg = liveOAuth?.organizationUuid ?? null;
-    await Promise.all(
-      idx.accounts.map(async (a) => {
+    const probeOne = async (a: Account) => {
         // Active = the org claude's own oauthAccount names, NOT the stored
         // label conjunction: after a manual /login the label lags, and routing
         // the genuinely-live account through the parked prober would refresh
@@ -98,12 +97,23 @@ export async function cmdStatus(force = false, preRender?: () => void): Promise<
         outcomes.set(a.accountUuid, outcome);
         if (!outcome.ok) return;
         a.lastUsage = { fiveHour: outcome.usage.session, sevenDay: outcome.usage.weekAll };
-        if (Object.keys(outcome.usage.perModel).length > 0) a.lastPerModel = outcome.usage.perModel;
         // stamp when the figures were actually measured: the statusLine tee's
         // own write time for the push-fed active account, else the probe time.
         a.lastUsageAt = viaTee && live ? live.ts : Date.now();
-      }),
-    );
+        if (Object.keys(outcome.usage.perModel).length > 0) {
+          a.lastPerModel = outcome.usage.perModel;
+          a.lastPerModelAt = a.lastUsageAt;
+        }
+    };
+    // The ACTIVE probe runs FIRST, alone: it refreshes an expired live access
+    // token under claude's refresh lock, and every parked probe's fail-closed
+    // live-owner check reads that same live token - run concurrently they
+    // raced the refresh and, after the machine idled past the token lifetime,
+    // every parked sample 401'd on the first `xx status` (closing-review
+    // catch). Parked probes then run concurrently as before.
+    const activeAccount = idx.accounts.find((a) => activeOrg != null && activeOrg === a.organizationUuid) ?? null;
+    if (activeAccount) await probeOne(activeAccount);
+    await Promise.all(idx.accounts.filter((a) => a !== activeAccount).map(probeOne));
     saveAccounts(idx);
   });
 

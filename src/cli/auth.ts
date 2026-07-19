@@ -105,25 +105,36 @@ async function reauthOne(target: Account): Promise<boolean> {
   // land in one critical section (else a swap-away harvest of the live blob
   // could overwrite this fresh backup right before it is marked healthy).
   const isActive = await withLock(paths.lockFile, async () => {
-    await writeItem(parkedTarget(target.keychainItem), claudeAiOauthOnly(blobRaw));
+    // The account must still be pooled BEFORE anything is written: the
+    // interactive login can sit open for minutes, and a concurrent `xx rm`
+    // completing in that window used to get its parked item recreated as an
+    // orphan no pool entry tracks - plus a false "reauthed" success
+    // (closing-review catch).
     const idx = loadAccounts();
     const account = idx.accounts.find((a) => a.accountUuid === target.accountUuid);
-    if (account) {
-      account.email = oauthAccount.emailAddress;
-      account.organizationUuid = oauthAccount.organizationUuid;
-      account.oauthAccount = oauthAccount;
-      account.subscriptionType = blob.claudeAiOauth.subscriptionType;
-      account.rateLimitTier = blob.claudeAiOauth.rateLimitTier;
-      account.needsReauth = false;
-      if (sampled) {
-        account.lastUsage = { fiveHour: sampled.session, sevenDay: sampled.weekAll };
-        if (Object.keys(sampled.perModel).length > 0) account.lastPerModel = sampled.perModel;
-        account.lastUsageAt = Date.now();
-      }
-      saveAccounts(idx);
+    if (!account) {
+      console.error(c.red(`${target.label} was removed from the pool while the login was open - nothing written; re-add it with \`tokenmaxxing add\` if wanted`));
+      return null;
     }
+    await writeItem(parkedTarget(target.keychainItem), claudeAiOauthOnly(blobRaw));
+    account.email = oauthAccount.emailAddress;
+    account.organizationUuid = oauthAccount.organizationUuid;
+    account.oauthAccount = oauthAccount;
+    account.subscriptionType = blob.claudeAiOauth.subscriptionType;
+    account.rateLimitTier = blob.claudeAiOauth.rateLimitTier;
+    account.needsReauth = false;
+    if (sampled) {
+      account.lastUsage = { fiveHour: sampled.session, sevenDay: sampled.weekAll };
+      account.lastUsageAt = Date.now();
+      if (Object.keys(sampled.perModel).length > 0) {
+        account.lastPerModel = sampled.perModel;
+        account.lastPerModelAt = account.lastUsageAt;
+      }
+    }
+    saveAccounts(idx);
     return idx.activeAccountUuid === target.accountUuid;
   });
+  if (isActive === null) return false;
 
   const usageNote = sampled ? ` (session ${sampled.session.usedPercentage}% / week ${sampled.weekAll.usedPercentage}%)` : "";
   const tier = claudeTierLabel(blob.claudeAiOauth) ?? "?";

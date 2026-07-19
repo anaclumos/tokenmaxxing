@@ -49,7 +49,21 @@ export async function cmdCodexSwitch(sel?: string): Promise<number> {
         console.error(c.red(`${target.label} is running in a live codex session - swapping onto it would break that session's credential`));
         return 1;
       }
-      await performCodexSwap({ target });
+      if (target.needsReauth) {
+        console.error(c.red(`${target.label} needs re-auth - run \`codex login\` in an isolated home and \`tokenmaxxing add --codex\``));
+        return 1;
+      }
+      try {
+        await performCodexSwap({ target });
+      } catch (e) {
+        // a dead grant is an expected operational state, not a stack trace
+        // (closing-review catch; mirrors the claude selector path).
+        if (e instanceof CodexInvalidGrantError) {
+          console.error(c.red(`${target.label}'s refresh token is dead - re-add it with \`tokenmaxxing add --codex\``));
+          return 1;
+        }
+        throw e;
+      }
       console.log(`${c.green("✓")} switched codex to ${c.bold(target.label)} (takes effect on the next codex start)`);
       return 0;
     }

@@ -1,6 +1,6 @@
 # tokenmaxxing
 
-**Automatic Claude Code account switching.** Run `claude` exactly as you always do; when the active account nears its usage limit, tokenmaxxing swaps the credential to a fresher account at a safe turn boundary and your session keeps running on it - no restart, same conversation. Works across many concurrent sessions. Only when the whole pool is at its limit does anything visible happen: a countdown that auto-resumes at the soonest reset.
+**Automatic Claude Code account switching.** Run `claude` exactly as you always do; when the active account nears its usage limit, tokenmaxxing swaps the credential to a fresher account at a safe turn boundary and your session keeps running on it - no restart, same conversation. Works across many concurrent sessions. Only when the whole pool is at its limit does anything visible happen: a countdown that auto-resumes at the soonest reset, when that reset falls within `policy.maxWaitMs` (default 1h - a longer wait stays put rather than parking your terminal for hours).
 
 > **Scope:** Claude Code only, macOS and Linux. It pools **subscription** accounts (Pro/Max), not API keys.
 
@@ -77,7 +77,7 @@ The **target** is chosen greedily off each account's cached windows: among usabl
 }
 ```
 
-`projectionMargin` is a fixed safety margin subtracted from each threshold bar (effective bar = threshold - margin), so a large turn is less likely to blow past a bar between checks; `greedySessionFloor` is the session-used % at which the greedy convergence engages; `switchModels` names the models whose per-model cap triggers a switch; `usagePollTtlMs` is how long a `/usage` per-model poll stays fresh.
+`projectionMargin` is a fixed safety margin subtracted from each threshold bar (effective bar = threshold - margin), so a large turn is less likely to blow past a bar between checks; `greedySessionFloor` is the session-used % at which the greedy convergence engages; `switchModels` names the models whose per-model cap triggers a switch; `usagePollTtlMs` is how long a `/usage` per-model poll stays fresh; `maxWaitMs` bounds the depleted-pool countdown - a soonest reset further out than this does not pause the session (no respawn marker is written and the session simply keeps hitting its limit until an account recovers).
 
 State lives entirely in `~/.config/tokenmaxxing/`. Per-account credentials follow the platform's Claude Code store: the login keychain on macOS (`tokenmaxxing-cred-<uuid8>` items, never plaintext on disk), 0600 files under `~/.config/tokenmaxxing/creds/` on Linux (the same plaintext model claude itself uses for `~/.claude/.credentials.json`).
 
