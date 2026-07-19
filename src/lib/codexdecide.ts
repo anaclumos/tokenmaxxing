@@ -6,8 +6,11 @@
 // depleted pre-park (a swap only lands where a window is usable NOW; a
 // depleted pool stays put and recovers when a cached reset passes).
 
+import { existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
+import { join } from "node:path";
 import { z } from "zod";
 import { withLock } from "./lock.ts";
+import { writeFileAtomic } from "./atomic.ts";
 import { codexPaths } from "./paths.ts";
 import { loadConfig } from "./state.ts";
 import { loadCodexAccounts, loadCodexLastSwapAt, saveCodexAccounts } from "./codexstate.ts";
@@ -17,10 +20,10 @@ import { CodexInvalidGrantError, refreshCodexAuth } from "./codexoauth.ts";
 import { fetchCodexUsage } from "./codexusage.ts";
 import { codexIdentityOf, isCodexAccessExpiring, readLiveCodexAuth, writeLiveCodexAuth, writeParkedCodexAuth } from "./codexauth.ts";
 import { liveCodexAccountId } from "./codexsample.ts";
-import { presentCodexAccountIds, targetableCodexAccounts } from "./codexpresence.ts";
+import { livingCodexPresences, presentCodexAccountIds, targetableCodexAccounts } from "./codexpresence.ts";
 import { effectiveBars } from "./picker.ts";
 import { log } from "./log.ts";
-import { CodexAccountSchema } from "./types.ts";
+import { CodexAccountSchema, CodexReconcileMarkerSchema, type CodexAccount } from "./types.ts";
 
 const CodexSwapDecisionSchema = z.object({
   swapped: z.boolean(),
@@ -83,13 +86,77 @@ async function sampleLiveOntoOwner(input: { now: number }): Promise<string | nul
   return owner.accountId;
 }
 
+/**
+ * OWNER-APPROVED sibling reconcile (2026-07-20, option b): codex cannot
+ * hot-swap, so a pool swap respawns only the deciding session - siblings keep
+ * running whatever account they started on, and once that account is
+ * exhausted or its grant dies they have no automated escape (their own
+ * decision evaluates only the live seat). The deciding actor therefore
+ * SIGNALS each such supervisor cross-session: a reconcile marker addressed by
+ * supervisorId (presence filenames carry it). The signal is a marker, never a
+ * kill: the only safe respawn point is the sibling's own turn boundary, so
+ * its Stop hook promotes the marker into a respawn marker there, adding the
+ * session id its stdin alone knows. No respawn-cost margin applies - a dead
+ * or exhausted seat is the hard-path class - and no signal is ever sent while
+ * the LIVE seat is itself unusable (the no-depleted-pre-park analog: never
+ * move a session onto a blocked account). Orphaned markers (their supervisor
+ * exited before promoting) are garbage-collected here. Idempotent per
+ * supervisor: an existing marker is left alone.
+ *
+ * There is deliberately NO self-exclusion (bugbot/pullfrog/cubic review
+ * catches, PR #34): a session whose presence names a non-live account IS the
+ * stranded sibling even inside its own hook - its "normal decision" evaluates
+ * only the live seat and would never rescue it. A signal the sweep writes for
+ * the calling session is consumed by the promote pass its own hook runs right
+ * after the evaluation, same boundary. The deciding session that just swapped
+ * away leaves a self-addressed signal behind too; the promote staleness guard
+ * (presence rewritten at respawn) drops it as moot.
+ */
+function reconcileExhaustedSiblings(input: {
+  index: { accounts: CodexAccount[] };
+  liveAccountId: string;
+  bars: { session: number; weekly: number };
+  now: number;
+}): void {
+  const { index, liveAccountId, bars, now } = input;
+  const unusable = (account: CodexAccount): boolean =>
+    account.needsReauth === true || isCodexExhausted({ account, thresholds: bars, now });
+  const liveAccount = index.accounts.find((account) => account.accountId === liveAccountId);
+  if (!liveAccount || unusable(liveAccount)) return;
+  const living = livingCodexPresences();
+  // gc signals addressed to supervisors that no longer live (exited before
+  // promoting): nothing would ever consume them.
+  if (existsSync(codexPaths.reconcileDir)) {
+    const alive = new Set(living.map((presence) => presence.supervisorId));
+    for (const name of readdirSync(codexPaths.reconcileDir)) {
+      if (!alive.has(name)) rmSync(join(codexPaths.reconcileDir, name), { force: true });
+    }
+  }
+  for (const presence of living) {
+    if (presence.accountId === liveAccountId) continue; // riding the live seat: fine
+    const seated = index.accounts.find((account) => account.accountId === presence.accountId);
+    if (!seated || !unusable(seated)) continue; // unpooled or still healthy: not ours to move
+    const markerPath = join(codexPaths.reconcileDir, presence.supervisorId);
+    if (existsSync(markerPath)) continue;
+    mkdirSync(codexPaths.reconcileDir, { recursive: true });
+    writeFileAtomic(markerPath, JSON.stringify(CodexReconcileMarkerSchema.parse({ accountId: presence.accountId, ts: now })));
+    log("codexdecide.reconcile_signal", { supervisorId: presence.supervisorId.slice(0, 8), account: presence.accountId.slice(0, 8) });
+  }
+}
+
+/** The re-sweep after a PERSISTED swap: failures are logged, never thrown -
+ *  the caller must still report swapped:true so the Stop hook writes the
+ *  deciding session's own respawn marker. */
+function postSwapResweep(input: { liveAccountId: string; bars: { session: number; weekly: number }; now: number }): void {
+  try {
+    reconcileExhaustedSiblings({ index: loadCodexAccounts(), liveAccountId: input.liveAccountId, bars: input.bars, now: input.now });
+  } catch (e) {
+    log("codexdecide.resweep_failed", { err: e instanceof Error ? e.message : String(e) });
+  }
+}
+
 export async function evaluateAndMaybeSwapCodex(input: { now?: number }): Promise<CodexSwapDecision> {
   const now = input.now ?? Date.now();
-  const lastSwapAt = loadCodexLastSwapAt();
-  if (lastSwapAt != null && now - lastSwapAt < POST_SWAP_COOLDOWN_MS) {
-    return { swapped: false, account: null, reason: "post-swap-cooldown" };
-  }
-
   const cfg = loadConfig();
   const bars = effectiveBars(cfg);
 
@@ -106,6 +173,19 @@ export async function evaluateAndMaybeSwapCodex(input: { now?: number }): Promis
     const activeId = liveCodexAccountId();
     if (activeId == null || !index.accounts.some((account) => account.accountId === activeId)) {
       return { swapped: false, account: null, reason: "live-credential-not-in-pool" };
+    }
+
+    // Cross-session sibling reconcile runs on EVERY evaluation, BEFORE both
+    // the cooldown return and the engagement gate: a swap strands siblings at
+    // exactly the moment the cooldown starts (bugbot/cubic review catch,
+    // PR #34), and a sibling can be dead while the live seat is healthy and
+    // disengaged. Cached windows are enough here - the promote pass
+    // revalidates both accounts' usability at consumption time.
+    reconcileExhaustedSiblings({ index, liveAccountId: activeId, bars, now });
+
+    const lastSwapAt = loadCodexLastSwapAt();
+    if (lastSwapAt != null && now - lastSwapAt < POST_SWAP_COOLDOWN_MS) {
+      return { swapped: false, account: null, reason: "post-swap-cooldown" };
     }
 
     // Freshness: re-sample the live credential once its owner's cached
@@ -154,6 +234,17 @@ export async function evaluateAndMaybeSwapCodex(input: { now?: number }): Promis
           throw e;
         }
         log("codexdecide.greedy_swap", { account: best.accountId.slice(0, 8) });
+        // Re-sweep with the NEW live seat: siblings on the account this swap
+        // just departed were invisible to the entry sweep (their account WAS
+        // the live seat then), and the cooldown blocks the next evaluation's
+        // sweep-entry for 45s (pullfrog review catch, PR #34). GUARDED: the
+        // swap is already persisted, so a sweep failure (e.g. a corrupt
+        // presence file, which livingCodexPresences throws on by design) must
+        // not eat the swapped:true return - the Stop hook needs it to write
+        // THIS session's respawn marker (bugbot/cubic P0 catch, PR #34). The
+        // entry sweep stays fail-loud: there nothing irreversible has
+        // happened yet.
+        postSwapResweep({ liveAccountId: best.accountId, bars, now });
         return { swapped: true, account: best, reason: "swapped" };
       }
     }
@@ -177,6 +268,10 @@ export async function evaluateAndMaybeSwapCodex(input: { now?: number }): Promis
         throw e;
       }
       log("codexdecide.hard_swap", { account: best.accountId.slice(0, 8) });
+      // Same guarded post-swap re-sweep as the greedy branch: the departed
+      // account's siblings become signalable only once it stops being the
+      // live seat, and a sweep failure must not eat the swapped:true return.
+      postSwapResweep({ liveAccountId: best.accountId, bars, now });
       return { swapped: true, account: best, reason: "swapped" };
     }
   });

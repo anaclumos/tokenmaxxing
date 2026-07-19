@@ -39,14 +39,19 @@ export function clearCodexPresence(input: { supervisorId: string }): void {
   rmSync(join(codexPaths.presenceDir, input.supervisorId), { force: true });
 }
 
-/** Account ids with a LIVING supervisor (pid + start-time identity match).
- *  Dead or recycled-pid presences are removed. A file that exists but fails to
- *  parse THROWS (review catch, PR #31): a presence file is what keeps a
- *  RUNNING session's account from being swapped out from under it, so damaged
- *  state must fail the decision loudly, never silently drop the protection. */
-export function presentCodexAccountIds(): Set<string> {
-  const present = new Set<string>();
-  if (!existsSync(codexPaths.presenceDir)) return present;
+const LivingPresenceSchema = z.object({ supervisorId: z.string(), accountId: z.string() });
+export type LivingPresence = z.infer<typeof LivingPresenceSchema>;
+
+/** Every LIVING supervised session (pid + start-time identity match), as
+ *  {supervisorId, accountId} pairs - the reconcile sweep needs to address a
+ *  specific supervisor, not just know which accounts are busy. Dead or
+ *  recycled-pid presences are removed. A file that exists but fails to parse
+ *  THROWS (review catch, PR #31): a presence file is what keeps a RUNNING
+ *  session's account from being swapped out from under it, so damaged state
+ *  must fail the decision loudly, never silently drop the protection. */
+export function livingCodexPresences(): LivingPresence[] {
+  const living: LivingPresence[] = [];
+  if (!existsSync(codexPaths.presenceDir)) return living;
   for (const name of readdirSync(codexPaths.presenceDir)) {
     const file = join(codexPaths.presenceDir, name);
     let raw: string;
@@ -80,9 +85,14 @@ export function presentCodexAccountIds(): Set<string> {
       rmSync(file, { force: true });
       continue;
     }
-    present.add(parsed.data.accountId);
+    living.push(LivingPresenceSchema.parse({ supervisorId: name, accountId: parsed.data.accountId }));
   }
-  return present;
+  return living;
+}
+
+/** Account ids with a LIVING supervisor - the picker/sampler exclusion view. */
+export function presentCodexAccountIds(): Set<string> {
+  return new Set(livingCodexPresences().map((presence) => presence.accountId));
 }
 
 /** The accounts a swap may target: running accounts are off limits, except the
