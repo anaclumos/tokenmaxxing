@@ -8,7 +8,7 @@ import { rmSync, writeFileSync } from "node:fs";
 import { performSwap } from "../src/lib/swap.ts";
 import { InvalidGrantError } from "../src/lib/oauth.ts";
 import { deleteItem, liveTarget, parkedTarget, readItem, writeItem } from "../src/lib/credstore.ts";
-import { loadAccounts, saveAccounts } from "../src/lib/state.ts";
+import { loadAccounts, loadDepletedWait, saveAccounts, saveDepletedWait } from "../src/lib/state.ts";
 import { paths } from "../src/lib/paths.ts";
 import { CredentialBlobSchema, type Account } from "../src/lib/types.ts";
 
@@ -82,6 +82,7 @@ describe("performSwap owner-first ordering", () => {
     await clearItems();
     rmSync(paths.lastSwapJson, { force: true });
     rmSync(paths.usageJson, { force: true });
+    rmSync(paths.depletedJson, { force: true });
     writeFileSync(paths.claudeJson, JSON.stringify({ oauthAccount: poolAccount("A").oauthAccount }));
     saveAccounts({ version: 1, activeAccountUuid: "A", accounts: [poolAccount("A"), poolAccount("B")] });
   });
@@ -137,6 +138,18 @@ describe("performSwap owner-first ordering", () => {
     expect(live.claudeAiOauth.refreshToken).toBe("rt-C"); // the intruder was not installed over
     expect(await readItem(parkedTarget("tokenmaxxing-cred-A"))).toBeNull(); // no harvest under the stale owner
     expect(loadAccounts().activeAccountUuid).toBe("A"); // label untouched
+  });
+
+  test("a completed swap clears a recorded depleted-wait (the decision moved on)", async () => {
+    // An unexpired stale record would otherwise replay through this swap's own
+    // cooldown and pause the fresh seat for a long-gone decision.
+    await writeItem(liveTarget(), JSON.stringify({ claudeAiOauth: creds("A") }));
+    await writeItem(parkedTarget("tokenmaxxing-cred-B"), JSON.stringify({ claudeAiOauth: creds("B") }));
+    saveDepletedWait({ waitUntil: Date.now() + 10 * 60_000, accountUuid: "A", ts: Date.now() });
+
+    await performSwap(poolAccount("B"));
+
+    expect(loadDepletedWait()).toBeNull();
   });
 
   test("a genuinely dead parked target still throws and flags needs-reauth", async () => {

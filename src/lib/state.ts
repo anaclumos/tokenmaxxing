@@ -177,8 +177,10 @@ export function saveLastSwapAt(ts: number): void {
 // cooldown, raced re-check, cleared snapshots) can REPLAY the wait to their
 // own supervisor: without the replay only the first session's Stop hook ever
 // saw a marker-writable decision and sibling sessions never paused (DESIGN.md
-// 3.5's fan-out). The record self-expires: past waitUntil, or an active label
-// that moved on, makes it dead - no cleanup path needed.
+// 3.5's fan-out). The record dies three ways: waitUntil passing, the live
+// seat (claude's oauthAccount) moving off the recorded account, and ANY
+// completed swap clearing it outright (performSwap - the depleted path
+// re-records its own wait right after its pre-park swap returns).
 
 const DepletedWaitSchema = z.object({ waitUntil: z.number(), accountUuid: z.string(), ts: z.number() });
 export type DepletedWait = z.infer<typeof DepletedWaitSchema>;
@@ -196,6 +198,10 @@ export function loadDepletedWait(): DepletedWait | null {
 
 export function saveDepletedWait(rec: DepletedWait): void {
   writeFileAtomic(paths.depletedJson, JSON.stringify(DepletedWaitSchema.parse(rec)));
+}
+
+export function clearDepletedWait(): void {
+  rmSync(paths.depletedJson, { force: true });
 }
 
 /** An alive feed re-proving unchanged figures still refreshes `ts` this often,
