@@ -1,0 +1,117 @@
+src/lib/paths.ts
+  s_eaf36da1edfe18::t_bc9577b87f300c 51
+test/decide.test.ts
+  s_eaf36da1edfe18::t_8711f25ed9e5d8 375
+src/cli/codexswitch.ts
+  s_eaf36da1edfe18::t_79580146eb5940 52-66
+src/lib/keychain.ts
+  s_eaf36da1edfe18::t_129f4295dfb840 54-57,59-65
+  s_eaf36da1edfe18::t_4245b51c22c08f 90-92,94-95
+  s_eaf36da1edfe18::t_86a0eaac554371 14-22
+  s_eaf36da1edfe18::t_c96c1adf1580cc 34-39,43,45,47-50
+src/lib/slackbridge.ts
+  s_eaf36da1edfe18::t_a4ad8fbe4adf8d 450-460
+test/servedaemon.test.ts
+  s_eaf36da1edfe18::t_fb026bcc9d61d5 257-318
+test/credstore.test.ts
+  s_eaf36da1edfe18::t_4c3c893316b38e 62-64
+src/lib/types.ts
+  s_eaf36da1edfe18::t_36ade15b7b4a61 89-95
+src/lib/codexpick.ts
+  s_eaf36da1edfe18::t_c7b4c463d8354a 56
+  s_eaf36da1edfe18::t_2bb542fb6ec0d6 115-116
+  s_eaf36da1edfe18::t_eebb196d375e75 14-25,41,43
+src/cli/init.ts
+  s_eaf36da1edfe18::t_fbc2dc1b7e8d34 2
+src/cli/auth.ts
+  s_eaf36da1edfe18::t_48997313dc4b16 129-131
+  s_eaf36da1edfe18::t_55d8f86e349706 108-112,115-119
+  s_eaf36da1edfe18::t_52008f9bac2b3f 120-128,134,137
+DESIGN.md
+  s_eaf36da1edfe18::t_f3c65b13c96f15 3
+  s_eaf36da1edfe18::t_2ff1ca9ffeef6a 73
+test/swap.test.ts
+  s_eaf36da1edfe18::t_2ca807ab329766 45
+test/setup.ts
+  s_eaf36da1edfe18::t_05048ce3d7a5d0 17-25,29-31,33
+  s_eaf36da1edfe18::t_49647b323b7053 36-37
+src/cli/doctor.ts
+  s_eaf36da1edfe18::t_eae0349018b7d0 1
+src/cli/switch.ts
+  s_eaf36da1edfe18::t_6292f838ae051a 114-116
+  s_eaf36da1edfe18::t_11c6c971a549be 63
+src/cli/serve.ts
+  s_eaf36da1edfe18::t_125f2e9fc0347f 663
+  s_eaf36da1edfe18::t_224fc01639ab1a 579-644
+  s_eaf36da1edfe18::t_7f4eb442ed0f46 368-373
+  s_eaf36da1edfe18::t_be395b1134af0c 862
+src/lib/codexdecide.ts
+  s_eaf36da1edfe18::t_3d978bea1a02d5 138-148
+test/keychain.test.ts
+  s_eaf36da1edfe18::t_3baed738f72d4d 55-69
+src/entries/codexsupervisor.ts
+  s_eaf36da1edfe18::t_acbe0613ed0834 80-88,90-91
+  s_eaf36da1edfe18::t_5ea0a5ef2ff75e 14
+  s_eaf36da1edfe18::t_b68eb6ed98ce7e 89
+  s_eaf36da1edfe18::t_f34b3fcfb4a52d 118-134
+src/cli/status.ts
+  s_eaf36da1edfe18::t_406388d2ec2483 107-116
+  s_eaf36da1edfe18::t_214f4b404c6f9f 28
+  s_eaf36da1edfe18::t_98af6c2dbfcc8f 54
+  s_eaf36da1edfe18::t_07c547196365f4 103-106
+src/entries/statusline.ts
+  s_eaf36da1edfe18::t_0470354b4e7e61 198
+  s_eaf36da1edfe18::t_70109a29c6fee8 51-55
+  s_eaf36da1edfe18::t_735d1efaef72b0 124-127,131,137
+src/lib/decide.ts
+  s_eaf36da1edfe18::t_556a8687091821 228-231
+src/entries/supervisor.ts
+  s_eaf36da1edfe18::t_95a74767fa9da7 131-136
+README.md
+  s_eaf36da1edfe18::t_92f5a5a0faa95a 80
+  s_eaf36da1edfe18::t_e3de685998388d 3
+src/lib/picker.ts
+  s_eaf36da1edfe18::t_7e264c100d8fb3 136-141
+  s_eaf36da1edfe18::t_e6ba263f51ca2d 78-81
+test/sample.test.ts
+  s_eaf36da1edfe18::t_e856475bb9c674 28-30,32
+  s_eaf36da1edfe18::t_8b0539c4695ef1 34
+  s_eaf36da1edfe18::t_96dff090414db9 74
+test/oauth.test.ts
+  s_eaf36da1edfe18::t_74d8a348cd659a 10
+test/e2e/swap-concurrency.ts
+  s_eaf36da1edfe18::t_a570fe5e3f5f7e 28-32
+  s_eaf36da1edfe18::t_ddf1c24c56c028 44
+AGENTS.md
+  s_eaf36da1edfe18::t_0687ec99be5005 166
+src/lib/usage.ts
+  s_eaf36da1edfe18::t_02746d3a246783 217-225
+src/cli/codexinit.ts
+  s_eaf36da1edfe18::t_c7516b53c7cd0f 84-95
+test/rm.test.ts
+  s_eaf36da1edfe18::t_a86985b20e3257 36
+  s_eaf36da1edfe18::t_84b7d6bb5bf3ab 85
+  s_eaf36da1edfe18::t_dc2fc04754bc4f 29-32,34
+test/statusline.test.ts
+  s_eaf36da1edfe18::t_8ac81235ce374b 33
+test/codex.test.ts
+  s_eaf36da1edfe18::t_3caede7f0cd506 76
+src/main.ts
+  s_eaf36da1edfe18::t_07e72b969274e7 78-95
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "87285b62147281943bf3dced2416c03110a1d0f3",
+  "prompts": {},
+  "sessions": {
+    "s_eaf36da1edfe18": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "085f0c3d-1bd0-4a58-8930-8dfdcf1a0376",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    }
+  }
+}
