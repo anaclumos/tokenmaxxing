@@ -1,0 +1,157 @@
+src/lib/codexdecide.ts
+  s_eaf36da1edfe18::t_1d824702fb6925 36-43,49-52,55-65,67
+  s_eaf36da1edfe18::t_b2f2f6bd96fed2 118-120,122
+  s_eaf36da1edfe18::t_745cbfa9415e01 18
+src/cli/rm.ts
+  s_eaf36da1edfe18::t_675426e41eb784 3-4,8,29-43
+  s_eaf36da1edfe18::t_6722763aa195c5 44
+src/cli/serve.ts
+  s_eaf36da1edfe18::t_ae70e88bb91e2f 363-367
+  s_eaf36da1edfe18::t_ceb9767e9d2932 45
+src/lib/claudelock.ts
+  s_eaf36da1edfe18::t_0c2c1e6ea4fceb 72
+src/entries/supervisor.ts
+  s_eaf36da1edfe18::t_6ccbf007abf889 60,70,77,81-83,90,96
+  s_eaf36da1edfe18::t_35c07f6a8186d2 42
+  s_eaf36da1edfe18::t_0fa3e718bf8eb1 61-67
+test/slackrelay.test.ts
+  s_eaf36da1edfe18::t_24b7ff1fdee628 308,313-323,327-337,339-342
+  s_eaf36da1edfe18::t_12dedbbd77b885 309-312,324-326,338
+src/cli/onboard.ts
+  s_eaf36da1edfe18::t_591c6f1fc75680 57
+  s_eaf36da1edfe18::t_19ac667d7d0d6a 80-83,85-98,100-103,105-106
+  s_eaf36da1edfe18::t_2df935cabb6cff 13
+  s_eaf36da1edfe18::t_08c276f81f403b 107-109
+src/lib/claudebin.ts
+  s_eaf36da1edfe18::t_65c0ee35deda2b 136
+src/cli/status.ts
+  s_eaf36da1edfe18::t_d861a4067293a7 56-61
+  s_eaf36da1edfe18::t_42cf25ea58c8fe 128-130,132
+test/sample.test.ts
+  s_eaf36da1edfe18::t_91e7bc03865aeb 1-76
+src/lib/swap.ts
+  s_eaf36da1edfe18::t_3bf3f1e139549b 124-128
+  s_eaf36da1edfe18::t_e2664f3bada474 90-99
+  s_eaf36da1edfe18::t_8cbbb4dc69f6cd 120-123,136-140
+  s_eaf36da1edfe18::t_83a9e13b02d9eb 40-46,49,51,59-61,63,68,72,89,100-112
+  s_eaf36da1edfe18::t_0fe076af5def2d 5-9,11-12
+  s_eaf36da1edfe18::t_187ac4fc1bca8c 113-114
+src/lib/paths.ts
+  s_eaf36da1edfe18::t_4eb2a826acc187 28-29
+src/entries/stophook.ts
+  s_eaf36da1edfe18::t_27f8c5f4458031 51
+test/setup.ts
+  s_eaf36da1edfe18::t_63297db59651d5 18-23
+test/state.test.ts
+  s_eaf36da1edfe18::t_433d3f4f8a86c2 75-88
+  s_eaf36da1edfe18::t_98185e7636cf44 3
+test/settings.test.ts
+  s_eaf36da1edfe18::t_f26dadd5c413a2 2
+  s_eaf36da1edfe18::t_88f7b01c681fcd 75-95
+src/lib/codexpresence.ts
+  s_eaf36da1edfe18::t_fd3e2ddd95a4f3 9-11,18,23,27-30,34,42-43,56
+test/codex.test.ts
+  s_eaf36da1edfe18::t_122a3af51925fc 308,475-507,509-515
+  s_eaf36da1edfe18::t_995e80b12c8d02 289-292,298-307
+  s_eaf36da1edfe18::t_7e55606af34ec8 508
+  s_eaf36da1edfe18::t_fc3dfbbc6d9690 309
+src/lib/usage.ts
+  s_eaf36da1edfe18::t_39e9f8d9ea2432 460
+  s_eaf36da1edfe18::t_673a2ba851ad20 35-37,40-42,47
+  s_eaf36da1edfe18::t_0aeb9db10e3569 361
+test/servedaemon.test.ts
+  s_eaf36da1edfe18::t_598d73f6e8f18c 21
+  s_eaf36da1edfe18::t_e414db56662883 174-176,179
+  s_eaf36da1edfe18::t_fa8fdc76e3b323 170-173,177-178,180-186,190-191,193-197
+  s_eaf36da1edfe18::t_666d7cf037fda6 187-189,192
+src/cli/codexinit.ts
+  s_eaf36da1edfe18::t_2e24d54afa8157 25-27
+AGENTS.md
+  s_eaf36da1edfe18::t_da939a333a1b0c 135
+src/lib/settings.ts
+  s_eaf36da1edfe18::t_e4fea4e7bff391 7
+  s_eaf36da1edfe18::t_ed5e22f579251c 123-124,126
+  s_eaf36da1edfe18::t_8155f96217b216 81-85,96-97
+  s_eaf36da1edfe18::t_c6829e84b0f46d 128-129
+  s_eaf36da1edfe18::t_053c112c2e6791 42-46
+src/lib/slackbridge.ts
+  s_eaf36da1edfe18::t_e60e18c63c81d0 387
+  s_eaf36da1edfe18::t_167c84e4a1f7e1 648-652,654
+  s_eaf36da1edfe18::t_c9cfe2538876b6 446-447,451
+  s_eaf36da1edfe18::t_e739005528a521 653,655-660
+  s_eaf36da1edfe18::t_2bc12d69eff369 606
+  s_eaf36da1edfe18::t_4e1b42caf94a7a 443-445,448-450,452
+  s_eaf36da1edfe18::t_290fd27317e5d4 615
+  s_eaf36da1edfe18::t_84cb0493f1a4a3 642
+  s_eaf36da1edfe18::t_60e1a7942d7bf3 40-43
+  s_eaf36da1edfe18::t_d1f3572f4f6945 389,391-395,404-428
+  s_eaf36da1edfe18::t_3024948c22a306 624
+src/lib/sample.ts
+  s_eaf36da1edfe18::t_ac8f0c1a30cb58 40-51,56,58-59
+  s_eaf36da1edfe18::t_ac094791738cb6 87
+  s_eaf36da1edfe18::t_00b21550aea21a 175-177
+  s_eaf36da1edfe18::t_2492a0dfb48a07 105-106,108-111
+  s_eaf36da1edfe18::t_7e43e74fad478b 101,171
+  s_eaf36da1edfe18::t_2ddd4df7c109a0 154
+  s_eaf36da1edfe18::t_f6f8b0d51aecfc 99
+test/slackbridge.test.ts
+  s_eaf36da1edfe18::t_ec4ee8aba4ada7 150-155
+src/cli/check.ts
+  s_eaf36da1edfe18::t_22e950af559972 17-19
+test/credstore.test.ts
+  s_eaf36da1edfe18::t_ec650ef9acea4a 57-63
+.memory/cc-codex-auth-mechanics.md
+  s_eaf36da1edfe18::t_adc74d017088f8 24
+src/lib/types.ts
+  s_eaf36da1edfe18::t_6094206477d0c2 122,124,134-136,141,145,147
+test/pure.test.ts
+  s_eaf36da1edfe18::t_78e71e6228b6c1 40-41,46-51
+  s_eaf36da1edfe18::t_08c9f47be0e6d9 276-280
+  s_eaf36da1edfe18::t_350bae386607c0 42-45
+src/lib/proc.ts
+  s_eaf36da1edfe18::t_204800acd45d47 1-16
+test/config.test.ts
+  s_eaf36da1edfe18::t_53d06bddba8563 107-115
+test/decide.test.ts
+  s_eaf36da1edfe18::t_0fe2a86e2975b2 75
+  s_eaf36da1edfe18::t_1487cd4a102c48 303-372
+  s_eaf36da1edfe18::t_727ce473546f1c 16-17
+test/swap.test.ts
+  s_eaf36da1edfe18::t_46bc0a3d5e40a4 1-120
+src/lib/decide.ts
+  s_eaf36da1edfe18::t_1c13395394fdae 218
+  s_eaf36da1edfe18::t_598f1be4fbeeed 258-268,270-274,276-279,281-284,286-298,302-312
+  s_eaf36da1edfe18::t_b903c93c31d8e2 30
+  s_eaf36da1edfe18::t_c18d3b70200113 176,184-187,189-193
+  s_eaf36da1edfe18::t_92fe910ad94f2c 313
+src/cli/codexadd.ts
+  s_eaf36da1edfe18::t_0b5dc7d4699444 52-56,58-62,64-72,74-75,77-98
+src/lib/state.ts
+  s_eaf36da1edfe18::t_bb276034f8f8b2 34-38,43,48-49,51-52
+  s_eaf36da1edfe18::t_51fe02ffa79a12 148-150,154,156,158,160,167-191
+  s_eaf36da1edfe18::t_1bbf146ab5cdfe 192
+src/cli/doctor.ts
+  s_eaf36da1edfe18::t_1e39c50fdaef6f 58
+  s_eaf36da1edfe18::t_607f03ef0065c7 71
+src/entries/sessionstart.ts
+  s_eaf36da1edfe18::t_371155e4add077 36
+src/lib/oauth.ts
+  s_eaf36da1edfe18::t_d9dd1591d4ad2e 56
+  s_eaf36da1edfe18::t_4b9570b1bc51bf 111
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "b25a0f7c3ae57820c4106f0d1e6db05c8652f208",
+  "prompts": {},
+  "sessions": {
+    "s_eaf36da1edfe18": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "085f0c3d-1bd0-4a58-8930-8dfdcf1a0376",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    }
+  }
+}
