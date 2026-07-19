@@ -32,8 +32,9 @@ const DEFAULT_CONFIG: Config = {
 };
 
 /** Percent-of-window values: out-of-range bars make every account read as
- *  exhausted (a projectionMargin above the threshold yields a negative
- *  effective bar), so the schema rejects them at the config gate. */
+ *  exhausted, so the schema rejects them at the config gate. The cross-field
+ *  case (a projectionMargin at or above a threshold zeroes the effective bar)
+ *  is caught by ConfigSchema's refine on the merged result. */
 const PercentSchema = z.number().min(0).max(100);
 
 /** On-disk shape (all optional); validated via Zod, merged over defaults.
@@ -92,7 +93,14 @@ export function loadConfig(): Config {
   if (envBin) cfg.claudeBin = envBin;
   const envCodexBin = realCodexBinFromEnv();
   if (envCodexBin) cfg.codexBin = envCodexBin;
-  return ConfigSchema.parse(cfg);
+  const merged = ConfigSchema.safeParse(cfg);
+  if (!merged.success) {
+    // per-field values passed but the merged whole is unusable (the
+    // projectionMargin-vs-thresholds refine); name the reason, not a zod dump.
+    const detail = merged.error.issues.map((issue) => issue.message).join("; ");
+    throw new Error(`${paths.configJson} is invalid: ${detail} - fix or remove the offending values`);
+  }
+  return merged.data;
 }
 
 export function saveConfig(c: Config): void {

@@ -113,6 +113,16 @@ describe("config invariants", () => {
       ConfigFileSchema.safeParse({ thresholds: { session: 95 }, policy: { projectionMargin: 0, usagePollTtlMs: 90_000 } }).success,
     ).toBe(true);
   });
+  test("a projectionMargin at or above a threshold fails the merged config loudly", () => {
+    // per-field bounds pass; the merged whole would zero the effective bar and
+    // read every account as exhausted, so loadConfig refuses it by name.
+    writeFileSync(paths.configJson, JSON.stringify({ thresholds: { session: 5 }, policy: { projectionMargin: 10 } }));
+    expect(() => loadConfig()).toThrow("projectionMargin");
+    writeFileSync(paths.configJson, JSON.stringify({ policy: { projectionMargin: 95 } }));
+    expect(() => loadConfig()).toThrow("projectionMargin");
+    writeFileSync(paths.configJson, JSON.stringify({ policy: { projectionMargin: 94 } }));
+    expect(loadConfig().policy.projectionMargin).toBe(94);
+  });
 });
 
 describe("config env-source display", () => {

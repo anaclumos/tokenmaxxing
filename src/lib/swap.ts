@@ -8,6 +8,8 @@
 //     at once - UNLESS B IS the live owner (label drift): then the live blob is
 //     already the newest rotation and the parked copy must not be refreshed
 //   ── under claude refresh lock ──
+//     verify the live item still holds the token the owner was resolved from
+//     (a concurrent /login or refresh in the unlocked gap aborts the swap)
 //     harvest live → its OWNER's backup (mandatory: refresh token rotates in
 //     place; when the owner IS the target this repairs its stale backup)
 //     install B into the live item
@@ -47,8 +49,13 @@ export async function performSwap(target: Account): Promise<void> {
   const preLive = await readItem(liveTarget());
   let liveOwner: Account | null = null;
   let liveCreds: OAuthCreds | null = null;
+  // What the live item's accessToken must still be when the critical section
+  // below re-reads it: the owner resolution here happens UNLOCKED, so a change
+  // in between means the resolved owner may describe a different credential.
+  let expectedLiveToken: string | null = null;
   if (preLive) {
     liveCreds = parseBlob(preLive).claudeAiOauth;
+    expectedLiveToken = liveCreds.accessToken;
     if (isAccessTokenExpiring(liveCreds, 60_000)) {
       try {
         await withClaudeRefreshLock(async (lock) => {
@@ -58,6 +65,7 @@ export async function performSwap(target: Account): Promise<void> {
           const current = parseBlob(raw2).claudeAiOauth;
           const next = isAccessTokenExpiring(current, 60_000) ? await refreshCredential(current) : current;
           liveCreds = next;
+          expectedLiveToken = next.accessToken;
           if (next === current) return;
           if (lock.compromised()) throw new Error("refresh lock compromised mid-refresh - discarding the live rewrite");
           await writeItem(liveTarget(), mergeIntoLive(raw2, next));
@@ -65,6 +73,8 @@ export async function performSwap(target: Account): Promise<void> {
       } catch (e) {
         if (!(e instanceof InvalidGrantError)) throw e;
         // dead credential family: nothing worth preserving, skip the harvest.
+        // expectedLiveToken keeps the on-disk token - the failed refresh wrote
+        // nothing, so the blob is unchanged until someone else changes it.
         liveCreds = null;
         log("swap.harvest_skipped_dead_live", {});
       }
@@ -117,8 +127,16 @@ export async function performSwap(target: Account): Promise<void> {
     const currentLive = await readItem(liveTarget());
     if (lock.compromised()) throw new Error("refresh lock compromised - aborting the swap before any write");
 
-    if (selfSwap && currentLive == null) {
-      throw new Error("live credential vanished mid-swap - nothing to repair the drifted label onto; retry");
+    // The owner above was resolved UNLOCKED (network calls must not sit inside
+    // claude's refresh lock), so a manual /login or a claude refresh can have
+    // replaced the live item since. Harvesting the replaced blob under the
+    // stale owner would corrupt that owner's only backup - the exact incident
+    // class the owner-first order exists to prevent (review catch, PR #31).
+    // Any change aborts before a single write; the next check re-resolves the
+    // true owner and retries.
+    const currentToken = currentLive == null ? null : parseBlob(currentLive).claudeAiOauth.accessToken;
+    if (currentToken !== expectedLiveToken) {
+      throw new Error("live credential changed while unlocked (concurrent /login or refresh) - aborting this swap; the next check re-resolves the owner and retries");
     }
 
     // harvest the live claudeAiOauth into its OWNER's (small) backup item.

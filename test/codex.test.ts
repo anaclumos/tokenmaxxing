@@ -295,6 +295,14 @@ describe("codex presence", () => {
     expect(existsSync(join(codexPaths.presenceDir, "sup-dead"))).toBe(false);
   });
 
+  test("a corrupt presence file fails the read loudly instead of dropping protection", () => {
+    // a presence file guards a RUNNING session's account from being swapped
+    // out from under it; unreadable state must never silently read as absent.
+    mkdirSync(codexPaths.presenceDir, { recursive: true });
+    writeFileSync(join(codexPaths.presenceDir, "sup-corrupt"), "not json");
+    expect(() => presentCodexAccountIds()).toThrow("refusing to treat it as absent");
+  });
+
   test("an ALIVE pid with the wrong start-time identity is treated as dead (pid reuse)", () => {
     // A recycled pid after a supervisor crash must not bench the account
     // forever: identity is pid + ps lstart, not bare aliveness.

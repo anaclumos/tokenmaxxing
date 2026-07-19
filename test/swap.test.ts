@@ -34,6 +34,10 @@ function poolAccount(id: string): Account {
 }
 
 let tokenCalls: string[] = [];
+// one-shot side effect run inside the /token handler: simulates a concurrent
+// actor (manual /login) mutating the live item while performSwap is between
+// its unlocked owner resolution and the locked critical section.
+let onTokenCall: (() => Promise<void>) | null = null;
 let server: ReturnType<typeof Bun.serve>;
 
 beforeAll(() => {
@@ -46,6 +50,11 @@ beforeAll(() => {
         const body = await req.json();
         const rt = body != null && body instanceof Object && "refresh_token" in body ? String(body.refresh_token) : "";
         tokenCalls.push(rt);
+        if (onTokenCall) {
+          const effect = onTokenCall;
+          onTokenCall = null;
+          await effect();
+        }
         if (rt.startsWith("DEAD")) return new Response(JSON.stringify({ error: "invalid_grant" }), { status: 400 });
         return Response.json({ access_token: `fresh-${rt}|org-${rt.split("-")[1]}`, refresh_token: `${rt}-rot`, expires_in: 3600 });
       }
@@ -69,6 +78,7 @@ async function clearItems(): Promise<void> {
 describe("performSwap owner-first ordering", () => {
   beforeEach(async () => {
     tokenCalls = [];
+    onTokenCall = null;
     await clearItems();
     rmSync(paths.lastSwapJson, { force: true });
     rmSync(paths.usageJson, { force: true });
@@ -108,6 +118,25 @@ describe("performSwap owner-first ordering", () => {
     expect(parkedA.claudeAiOauth.refreshToken).toBe("rt-A"); // harvested
     const live = CredentialBlobSchema.parse(JSON.parse((await readItem(liveTarget()))!));
     expect(live.claudeAiOauth.refreshToken).toBe("rt-B-rot"); // installed fresh rotation
+  });
+
+  test("a live credential replaced while unlocked aborts before any harvest or install", async () => {
+    // Owner resolution saw A live; during B's parked refresh (unlocked, network)
+    // a manual /login lands a THIRD credential in the live item. Harvesting it
+    // under A's identity would corrupt A's only backup - the swap must abort
+    // with nothing written to the live item or A's parked slot.
+    await writeItem(liveTarget(), JSON.stringify({ claudeAiOauth: creds("A") }));
+    await writeItem(parkedTarget("tokenmaxxing-cred-B"), JSON.stringify({ claudeAiOauth: creds("B") }));
+    onTokenCall = async () => {
+      await writeItem(liveTarget(), JSON.stringify({ claudeAiOauth: creds("C") }));
+    };
+
+    await expect(performSwap(poolAccount("B"))).rejects.toThrow("changed while unlocked");
+
+    const live = CredentialBlobSchema.parse(JSON.parse((await readItem(liveTarget()))!));
+    expect(live.claudeAiOauth.refreshToken).toBe("rt-C"); // the intruder was not installed over
+    expect(await readItem(parkedTarget("tokenmaxxing-cred-A"))).toBeNull(); // no harvest under the stale owner
+    expect(loadAccounts().activeAccountUuid).toBe("A"); // label untouched
   });
 
   test("a genuinely dead parked target still throws and flags needs-reauth", async () => {

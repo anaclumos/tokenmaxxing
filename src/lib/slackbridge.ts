@@ -636,7 +636,19 @@ export async function relayThread(input: {
     // decision refuses to re-evaluate, respawning the same limited account
     // (review catch, PR #18). The persisted observation then makes the
     // post-cooldown decision see the depleted account immediately.
-    const cooldownUntil = (loadLastSwapAt() ?? 0) + POST_SWAP_COOLDOWN_MS + 1_000;
+    // loadLastSwapAt throws on a corrupt swap clock; every failure in this
+    // loop must settle the turn in-thread (announced, never a bare throw),
+    // same as the ensureBestAccount guard above (review catch, PR #31).
+    let cooldownUntil: number;
+    try {
+      cooldownUntil = (loadLastSwapAt() ?? 0) + POST_SWAP_COOLDOWN_MS + 1_000;
+    } catch (e) {
+      outcome.failed = true;
+      const detail = (e instanceof Error ? e.message : String(e)).slice(0, 300);
+      log("serve.turn_error", { err: detail });
+      await push(`tokenmaxxing: turn failed: ${detail}`);
+      break;
+    }
     if (!(await sleep(Math.max(RETRY_DELAY_MS, cooldownUntil - Date.now())))) {
       outcome.failed = true;
       outcome.announcedDrop = await notifyDelivered("tokenmaxxing is restarting - this message was dropped; please re-send it.");

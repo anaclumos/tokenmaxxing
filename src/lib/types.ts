@@ -125,28 +125,36 @@ export const ThresholdsSchema = z.object({
 });
 export type Thresholds = z.infer<typeof ThresholdsSchema>;
 
-export const ConfigSchema = z.object({
-  thresholds: ThresholdsSchema,
-  claudeBin: z.string(),
-  /** the real codex binary (empty = resolve from PATH); pinned by `init --codex`. */
-  codexBin: z.string(),
-  policy: z.object({
-    /** percent margin subtracted from every bar (effectiveBars); above 100 the
-     *  effective bars go negative and everything reads exhausted, so bounded. */
-    projectionMargin: z.number().min(0).max(100),
-    /** session-used % at which the greedy convergence engages: from here on,
-     *  every evaluation swaps to the usable account furthest behind its weekly
-     *  pace whenever that beats the current one (idempotent; current keeps its
-     *  seat on ties). Below the floor a fresh session rides its account. */
-    greedySessionFloor: z.number().min(0).max(100),
-    /** models whose PER-MODEL weekly cap should trigger a switch (display names, lowercased). */
-    switchModels: z.array(z.string()),
-    /** how long a `/usage` per-model poll stays fresh before we re-poll (ms). */
-    usagePollTtlMs: z.number().int().positive(),
-    /** when every account is depleted, auto-wait for a reset only if it is within this window (ms). */
-    maxWaitMs: z.number().int().positive(),
-  }),
-});
+export const ConfigSchema = z
+  .object({
+    thresholds: ThresholdsSchema,
+    claudeBin: z.string(),
+    /** the real codex binary (empty = resolve from PATH); pinned by `init --codex`. */
+    codexBin: z.string(),
+    policy: z.object({
+      /** percent margin subtracted from every bar (effectiveBars); above 100 the
+       *  effective bars go negative and everything reads exhausted, so bounded. */
+      projectionMargin: z.number().min(0).max(100),
+      /** session-used % at which the greedy convergence engages: from here on,
+       *  every evaluation swaps to the usable account furthest behind its weekly
+       *  pace whenever that beats the current one (idempotent; current keeps its
+       *  seat on ties). Below the floor a fresh session rides its account. */
+      greedySessionFloor: z.number().min(0).max(100),
+      /** models whose PER-MODEL weekly cap should trigger a switch (display names, lowercased). */
+      switchModels: z.array(z.string()),
+      /** how long a `/usage` per-model poll stays fresh before we re-poll (ms). */
+      usagePollTtlMs: z.number().int().positive(),
+      /** when every account is depleted, auto-wait for a reset only if it is within this window (ms). */
+      maxWaitMs: z.number().int().positive(),
+    }),
+  })
+  // Cross-field (review catch, PR #31): effectiveBars subtracts the margin
+  // from each threshold, and a bar at or below zero makes EVERY nonnegative
+  // usage percentage read as exhausted - the whole pool looks depleted and the
+  // switch path churns. Per-field bounds alone cannot see this.
+  .refine((cfg) => cfg.policy.projectionMargin < Math.min(cfg.thresholds.session, cfg.thresholds.weekly), {
+    message: "policy.projectionMargin must be strictly below both thresholds (effectiveBars would hit zero and every account would read as exhausted)",
+  });
 export type Config = z.infer<typeof ConfigSchema>;
 
 /** The hook -> supervisor respawn marker at respawn/<session-id>. Written only

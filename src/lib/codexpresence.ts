@@ -40,20 +40,35 @@ export function clearCodexPresence(input: { supervisorId: string }): void {
 }
 
 /** Account ids with a LIVING supervisor (pid + start-time identity match).
- *  Dead or recycled-pid presences are removed. */
+ *  Dead or recycled-pid presences are removed. A file that exists but fails to
+ *  parse THROWS (review catch, PR #31): a presence file is what keeps a
+ *  RUNNING session's account from being swapped out from under it, so damaged
+ *  state must fail the decision loudly, never silently drop the protection. */
 export function presentCodexAccountIds(): Set<string> {
   const present = new Set<string>();
   if (!existsSync(codexPaths.presenceDir)) return present;
   for (const name of readdirSync(codexPaths.presenceDir)) {
     const file = join(codexPaths.presenceDir, name);
+    let raw: string;
+    try {
+      raw = readFileSync(file, "utf8");
+    } catch (e) {
+      // a supervisor exiting between readdir and read clears its own file
+      const errno = z.object({ code: z.string() }).safeParse(e);
+      if (errno.success && errno.data.code === "ENOENT") continue;
+      throw e;
+    }
     const parsed = PresenceSchema.safeParse((() => {
       try {
-        return JSON.parse(readFileSync(file, "utf8"));
+        return JSON.parse(raw);
       } catch {
         return null;
       }
     })());
-    if (!parsed.success || pidStartTime(parsed.data.pid) !== parsed.data.startedAt) {
+    if (!parsed.success) {
+      throw new Error(`${file} is not a readable presence record - it may belong to a RUNNING codex session, refusing to treat it as absent; remove the file (or respawn that session) to proceed`);
+    }
+    if (pidStartTime(parsed.data.pid) !== parsed.data.startedAt) {
       rmSync(file, { force: true });
       continue;
     }

@@ -1,7 +1,7 @@
 // `tokenmaxxing rm <selector>` - remove a pooled account (not the active one).
 
 import { deleteItem, liveTarget, parkedTarget, readItem } from "../lib/credstore.ts";
-import { isAccessTokenExpiring, fetchTokenOrg } from "../lib/oauth.ts";
+import { fetchTokenOrg } from "../lib/oauth.ts";
 import { withLock } from "../lib/lock.ts";
 import { paths } from "../lib/paths.ts";
 import { loadAccounts, saveAccounts } from "../lib/state.ts";
@@ -28,18 +28,24 @@ export async function cmdRm(selector?: string): Promise<number> {
     }
     // The label drifts (manual /login); the token cannot lie. Removing the
     // account whose credential is actually LIVE would destroy its only backup
-    // and leave the next swap refusing over an unpooled credential. Read-only:
-    // rm must never rotate anything, so an expiring token skips the check (the
-    // active-label guard above still covers the common case).
+    // and leave the next swap refusing over an unpooled credential. Fail
+    // CLOSED (review catch, PR #31): when the live owner cannot be verified -
+    // expired token, roles outage - refuse rather than trust the stale label;
+    // rm is destructive and can wait. The check is read-only: an expired
+    // bearer simply fails the roles call, nothing is ever rotated.
     const live = await readItem(liveTarget());
     if (live != null) {
       const liveCreds = CredentialBlobSchema.parse(JSON.parse(live)).claudeAiOauth;
-      if (!isAccessTokenExpiring(liveCreds)) {
-        const org = await fetchTokenOrg(liveCreds.accessToken);
-        if (org.organization_uuid === a.organizationUuid) {
-          console.error(c.red(`${a.email}'s credential is currently LIVE (the active label is stale - a manual /login drifted it); run \`tokenmaxxing switch\` to move off it first.`));
-          return 1;
-        }
+      let liveOrg: string;
+      try {
+        liveOrg = (await fetchTokenOrg(liveCreds.accessToken)).organization_uuid;
+      } catch (e) {
+        console.error(c.red(`cannot verify which account the LIVE credential belongs to (${e instanceof Error ? e.message : String(e)}) - refusing to remove while the live owner is unknown; retry once the roles endpoint is reachable.`));
+        return 1;
+      }
+      if (liveOrg === a.organizationUuid) {
+        console.error(c.red(`${a.email}'s credential is currently LIVE (the active label is stale - a manual /login drifted it); run \`tokenmaxxing switch\` to move off it first.`));
+        return 1;
       }
     }
     await deleteItem(parkedTarget(a.keychainItem));
