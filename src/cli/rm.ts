@@ -1,9 +1,11 @@
 // `tokenmaxxing rm <selector>` - remove a pooled account (not the active one).
 
-import { deleteItem, liveTarget, parkedTarget, readItem } from "../lib/credstore.ts";
+import { rmSync } from "node:fs";
+import { join } from "node:path";
+import { deleteItem, isolatedTarget, liveTarget, parkedTarget, readItem } from "../lib/credstore.ts";
 import { fetchTokenOrg } from "../lib/oauth.ts";
 import { withLock } from "../lib/lock.ts";
-import { paths } from "../lib/paths.ts";
+import { credItemFor, paths } from "../lib/paths.ts";
 import { loadAccounts, saveAccounts } from "../lib/state.ts";
 import { CredentialBlobSchema } from "../lib/types.ts";
 import { findAccount } from "./rename.ts";
@@ -49,6 +51,18 @@ export async function cmdRm(selector?: string): Promise<number> {
       }
     }
     await deleteItem(parkedTarget(a.keychainItem));
+    // Sweep sample-probe residue too: a probe killed mid-run strands the
+    // account's isolated credential (macOS: a namespaced keychain item), and
+    // once the account leaves the pool nothing would ever probe-and-heal it
+    // again (closing-review critic gap). deleteItem on a missing item is a
+    // no-op. Hard delete, not trash, on purpose: the sample dir is a
+    // throwaway CLAUDE_CONFIG_DIR that can hold PLAINTEXT credential material
+    // on Linux - the credential-dir cleanup exception (owner 2026-07-16, same
+    // rule sample.ts and onboard.ts follow); trashing would move credentials
+    // into the Trash folder.
+    const sampleDir = join(paths.sampleDir, credItemFor(a.accountUuid));
+    await deleteItem(isolatedTarget(sampleDir));
+    rmSync(sampleDir, { recursive: true, force: true });
     idx.accounts = idx.accounts.filter((x) => x.accountUuid !== a.accountUuid);
     saveAccounts(idx);
     console.log(`removed ${c.bold(a.label)} from the pool (${idx.accounts.length} left)`);

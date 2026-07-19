@@ -20,6 +20,7 @@
 import { mkdirSync, realpathSync, rmdirSync, statSync, utimesSync } from "node:fs";
 import { join } from "node:path";
 import { delay } from "es-toolkit";
+import { z } from "zod";
 import { credDir } from "./paths.ts";
 import { log } from "./log.ts";
 
@@ -34,7 +35,8 @@ function tryAcquire(lockDir: string): boolean {
     mkdirSync(lockDir);
     return true;
   } catch (e) {
-    if ((e as { code?: string }).code !== "EEXIST") throw e;
+    const errno = z.object({ code: z.string() }).safeParse(e);
+    if (!errno.success || errno.data.code !== "EEXIST") throw e;
   }
   try {
     if (Date.now() - statSync(lockDir).mtimeMs > STALE_MS) {

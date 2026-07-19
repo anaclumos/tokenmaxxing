@@ -4,14 +4,14 @@ import { claudeExecutablePath, ensureBestAccount, pooledOptions, pooledSpawnEnv,
 import { MAX_WRAP_DEPTH, WRAP_DEPTH_ENV } from "../src/lib/claudebin.ts";
 import { CRED_ENV_OVERRIDES } from "../src/lib/usage.ts";
 import { paths } from "../src/lib/paths.ts";
-import { saveConfig } from "../src/lib/state.ts";
-
 const cfg = (claudeBin: string) => ({
   thresholds: { session: 95, weekly: 98 },
   claudeBin,
   codexBin: "",
   policy: { projectionMargin: 0, greedySessionFloor: 50, switchModels: ["fable"], usagePollTtlMs: 90_000, maxWaitMs: 3_600_000 },
 });
+
+const writeConfig = (config: unknown) => writeFileSync(paths.configJson, JSON.stringify(config));
 
 const MUTATED = [...CRED_ENV_OVERRIDES, "CLAUDE_CONFIG_DIR", WRAP_DEPTH_ENV, "TOKENMAXXING_SDK_TEST_PASSTHROUGH"];
 const saved: Record<string, string | undefined> = {};
@@ -63,7 +63,7 @@ describe("pooledSpawnEnv", () => {
 
 describe("pooledOptions", () => {
   test("pins pathToClaudeCodeExecutable to the resolved real claude", () => {
-    saveConfig(cfg("/usr/bin/true"));
+    writeConfig(cfg("/usr/bin/true"));
     expect(claudeExecutablePath()).toBe("/usr/bin/true");
     const opts = pooledOptions();
     expect(opts.pathToClaudeCodeExecutable).toBe("/usr/bin/true");
@@ -71,7 +71,7 @@ describe("pooledOptions", () => {
   });
 
   test("a configured-but-missing claudeBin fails fast instead of PATH-scanning", () => {
-    saveConfig(cfg("/nonexistent/claude"));
+    writeConfig(cfg("/nonexistent/claude"));
     expect(() => pooledOptions()).toThrow(/does not exist/);
   });
 });

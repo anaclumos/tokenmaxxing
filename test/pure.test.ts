@@ -33,6 +33,24 @@ describe("supervisor argument analysis", () => {
     expect(bad.sessionId).toBe(null);
     expect(bad.manage).toBe(false); // pass through unmanaged; real claude rejects the id
   });
+  test("value-taking root flag values never read as the subcommand", () => {
+    // `--settings config` once flipped manage off because the VALUE token was
+    // mistaken for a subcommand and the session silently ran unmanaged
+    // (closing-review catch; the hardening shouldManageCodex already had).
+    expect(analyzeArgs(["--settings", "config"]).manage).toBe(true);
+    expect(analyzeArgs(["--append-system-prompt", "help"]).manage).toBe(true);
+    expect(analyzeArgs(["--add-dir", "agents", "mcp"]).manage).toBe(true); // variadic eats every non-dash follower
+    expect(analyzeArgs(["-d", "config"]).manage).toBe(true); // optional-value consumes a non-flag follower
+    expect(analyzeArgs(["--settings", "x", "mcp"]).manage).toBe(false); // a real subcommand still passes through
+  });
+  test("a forked resume passes through unmanaged (the fork mints a new sid)", () => {
+    // Managing it would pin marker paths to the stale pre-fork sid, and a
+    // respawn would fork yet another session off the old transcript
+    // (closing-review catch).
+    expect(analyzeArgs(["--resume", UUID, "--fork-session"]).manage).toBe(false);
+    expect(analyzeArgs(["-c", "--fork-session"]).manage).toBe(false);
+    expect(analyzeArgs(["--fork-session"]).manage).toBe(true); // inert without a resume
+  });
   test("stripSessionFlags removes only session selectors", () => {
     expect(stripSessionFlags(["--session-id", UUID, "--model", "opus"])).toEqual(["--model", "opus"]);
     expect(stripSessionFlags(["--resume", UUID, "foo"])).toEqual(["foo"]);

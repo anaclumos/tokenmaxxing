@@ -56,8 +56,47 @@ export const ConfigFileSchema = z
   })
   .partial();
 
-export function loadConfig(): Config {
+const MergeOutcomeSchema = z.union([
+  z.object({ ok: z.literal(true), config: ConfigSchema }),
+  z.object({ ok: z.literal(false), detail: z.string() }),
+]);
+export type MergeOutcome = z.infer<typeof MergeOutcomeSchema>;
+
+/** Merge a validated sparse file over the defaults, apply the env binary
+ *  overrides, and validate the merged WHOLE (the projectionMargin-vs-
+ *  thresholds refine). Shared by loadConfig and `xx config set`: set must
+ *  reject a value whose merged result would make every later loadConfig
+ *  throw, silently disabling status/switch/hooks/statusline until the file is
+ *  hand-repaired (closing-review catch). */
+export function mergeConfigFile(p: z.infer<typeof ConfigFileSchema>): MergeOutcome {
   const cfg: Config = { ...DEFAULT_CONFIG, thresholds: { ...DEFAULT_CONFIG.thresholds }, policy: { ...DEFAULT_CONFIG.policy } };
+  cfg.thresholds.session = p.thresholds?.session ?? cfg.thresholds.session;
+  cfg.thresholds.weekly = p.thresholds?.weekly ?? cfg.thresholds.weekly;
+  cfg.claudeBin = p.claudeBin ?? cfg.claudeBin;
+  cfg.codexBin = p.codexBin ?? cfg.codexBin;
+  cfg.policy.projectionMargin = p.policy?.projectionMargin ?? cfg.policy.projectionMargin;
+  cfg.policy.greedySessionFloor = p.policy?.greedySessionFloor ?? cfg.policy.greedySessionFloor;
+  cfg.policy.usagePollTtlMs = p.policy?.usagePollTtlMs ?? cfg.policy.usagePollTtlMs;
+  cfg.policy.maxWaitMs = p.policy?.maxWaitMs ?? cfg.policy.maxWaitMs;
+  if (p.policy?.switchModels) {
+    cfg.policy.switchModels = p.policy.switchModels.map((s) => s.toLowerCase());
+  }
+  // env overrides win for the real binaries (tests / relocation)
+  const envBin = realClaudeBinFromEnv();
+  if (envBin) cfg.claudeBin = envBin;
+  const envCodexBin = realCodexBinFromEnv();
+  if (envCodexBin) cfg.codexBin = envCodexBin;
+  const merged = ConfigSchema.safeParse(cfg);
+  if (!merged.success) {
+    // per-field values passed but the merged whole is unusable (the
+    // projectionMargin-vs-thresholds refine); name the reason, not a zod dump.
+    return { ok: false, detail: merged.error.issues.map((issue) => issue.message).join("; ") };
+  }
+  return { ok: true, config: merged.data };
+}
+
+export function loadConfig(): Config {
+  let fileData: z.infer<typeof ConfigFileSchema> = {};
   if (existsSync(paths.configJson)) {
     let raw: unknown;
     try {
@@ -75,36 +114,26 @@ export function loadConfig(): Config {
       const fields = parsed.error.issues.map((issue) => issue.path.join(".")).join(", ");
       throw new Error(`${paths.configJson} has wrong-typed values (${fields}) - fix or remove them`);
     }
-    const p = parsed.data;
-    cfg.thresholds.session = p.thresholds?.session ?? cfg.thresholds.session;
-    cfg.thresholds.weekly = p.thresholds?.weekly ?? cfg.thresholds.weekly;
-    cfg.claudeBin = p.claudeBin ?? cfg.claudeBin;
-    cfg.codexBin = p.codexBin ?? cfg.codexBin;
-    cfg.policy.projectionMargin = p.policy?.projectionMargin ?? cfg.policy.projectionMargin;
-    cfg.policy.greedySessionFloor = p.policy?.greedySessionFloor ?? cfg.policy.greedySessionFloor;
-    cfg.policy.usagePollTtlMs = p.policy?.usagePollTtlMs ?? cfg.policy.usagePollTtlMs;
-    cfg.policy.maxWaitMs = p.policy?.maxWaitMs ?? cfg.policy.maxWaitMs;
-    if (p.policy?.switchModels) {
-      cfg.policy.switchModels = p.policy.switchModels.map((s) => s.toLowerCase());
-    }
+    fileData = parsed.data;
   }
-  // env overrides win for the real binaries (tests / relocation)
-  const envBin = realClaudeBinFromEnv();
-  if (envBin) cfg.claudeBin = envBin;
-  const envCodexBin = realCodexBinFromEnv();
-  if (envCodexBin) cfg.codexBin = envCodexBin;
-  const merged = ConfigSchema.safeParse(cfg);
-  if (!merged.success) {
-    // per-field values passed but the merged whole is unusable (the
-    // projectionMargin-vs-thresholds refine); name the reason, not a zod dump.
-    const detail = merged.error.issues.map((issue) => issue.message).join("; ");
-    throw new Error(`${paths.configJson} is invalid: ${detail} - fix or remove the offending values`);
-  }
-  return merged.data;
+  const outcome = mergeConfigFile(fileData);
+  if (!outcome.ok) throw new Error(`${paths.configJson} is invalid: ${outcome.detail} - fix or remove the offending values`);
+  return outcome.config;
 }
 
-export function saveConfig(c: Config): void {
-  writeFileAtomic(paths.configJson, JSON.stringify(ConfigSchema.parse(c), null, 2) + "\n");
+/** Pin one binary path into the SPARSE config file, preserving every other
+ *  override verbatim. Never write the merged config here: baking defaults (or
+ *  an ambient TOKENMAXXING_*_BIN env override) into the file freezes future
+ *  default changes as stale explicit values and misreports every `xx config`
+ *  source as "file" (closing-review catch; the sparse-overrides contract is
+ *  config.ts's header). Throws on a corrupt file, like loadConfig. */
+export function pinBinOverride(input: { key: "claudeBin" | "codexBin"; bin: string }): void {
+  let raw: Record<string, unknown> = {};
+  if (existsSync(paths.configJson)) {
+    raw = z.record(z.string(), z.unknown()).parse(JSON.parse(readFileSync(paths.configJson, "utf8")));
+  }
+  raw[input.key] = input.bin;
+  writeFileAtomic(paths.configJson, JSON.stringify(raw, null, 2) + "\n");
 }
 
 // ---- accounts.json -------------------------------------------------------
@@ -221,7 +250,8 @@ export function writeUsage(next: UsageState): boolean {
     } catch (e) {
       // The file vanished mid-race: a concurrent swap just invalidated these
       // figures. Suppressing stays correct; a write would resurrect them.
-      if ((e as { code?: string }).code !== "ENOENT") throw e;
+      const errno = z.object({ code: z.string() }).safeParse(e);
+      if (!errno.success || errno.data.code !== "ENOENT") throw e;
     }
     return false;
   }

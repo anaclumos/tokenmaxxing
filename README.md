@@ -23,7 +23,7 @@ bun add -g tokenmaxxing
 tokenmaxxing init
 ```
 
-`init` imports the account you're already on, installs the `claude` supervisor + three `settings.json` entries (the tokenmaxxing statusLine, a Stop hook, a SessionStart hook), and adds the supervisor's bin dir to PATH in your shell rc (idempotent; it must sit ahead of the real `claude` to intercept it). Restart your shell, then add more accounts and go:
+`init` imports the account you're already on, installs the `claude` supervisor + four `settings.json` entries (the tokenmaxxing statusLine, a subagentStatusLine, a Stop hook, a SessionStart hook), and adds the supervisor's bin dir to PATH in your shell rc (idempotent; it must sit ahead of the real `claude` to intercept it). Restart your shell, then add more accounts and go:
 
 ```sh
 tokenmaxxing add        # logs one in, in isolation, and pools it
@@ -77,7 +77,7 @@ The **target** is chosen greedily off each account's cached windows: among usabl
 }
 ```
 
-`projectionMargin` subtracts an EMA of per-turn Δ% for pre-emption; `greedySessionFloor` is the session-used % at which the greedy convergence engages; `switchModels` names the models whose per-model cap triggers a switch; `usagePollTtlMs` is how long a `/usage` per-model poll stays fresh.
+`projectionMargin` is a fixed safety margin subtracted from each threshold bar (effective bar = threshold - margin), so a large turn is less likely to blow past a bar between checks; `greedySessionFloor` is the session-used % at which the greedy convergence engages; `switchModels` names the models whose per-model cap triggers a switch; `usagePollTtlMs` is how long a `/usage` per-model poll stays fresh.
 
 State lives entirely in `~/.config/tokenmaxxing/`. Per-account credentials follow the platform's Claude Code store: the login keychain on macOS (`tokenmaxxing-cred-<uuid8>` items, never plaintext on disk), 0600 files under `~/.config/tokenmaxxing/creds/` on Linux (the same plaintext model claude itself uses for `~/.claude/.credentials.json`).
 

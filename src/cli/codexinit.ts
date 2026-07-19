@@ -10,7 +10,7 @@ import { resolveRealCodex, verifyRealCodex } from "../lib/codexbin.ts";
 import { codexIdentityOf, readLiveCodexAuth, writeParkedCodexAuth } from "../lib/codexauth.ts";
 import { CodexUsageReadError, fetchCodexUsage } from "../lib/codexusage.ts";
 import { loadCodexAccounts, saveCodexAccounts } from "../lib/codexstate.ts";
-import { loadConfig, saveConfig } from "../lib/state.ts";
+import { loadConfig, pinBinOverride } from "../lib/state.ts";
 import { installCodexSupervisor, codexSupervisorLink, ensurePathInRc, shellRcPath } from "../lib/install.ts";
 import { withLock } from "../lib/lock.ts";
 import { codexCredItemFor, codexPaths } from "../lib/paths.ts";
@@ -45,15 +45,16 @@ function storePinnedAwayFromFile(): boolean {
 }
 
 export async function cmdCodexInit(): Promise<number> {
+  // Fail fast on a broken merged config before installing (see cmdInit).
+  loadConfig();
   const real = resolveRealCodex();
   const fail = verifyRealCodex({ bin: real });
   if (fail !== null) {
     console.error(c.red(`codex binary failed verification: ${real}: ${fail}`));
     return 1;
   }
-  const cfg = loadConfig();
-  cfg.codexBin = real;
-  saveConfig(cfg);
+  // Sparse write: only the pin lands in the file, never the merged config.
+  pinBinOverride({ key: "codexBin", bin: real });
 
   if (storePinnedAwayFromFile()) {
     console.error(c.red("codex config.toml pins cli_auth_credentials_store away from the plain auth.json file tokenmaxxing swaps."));

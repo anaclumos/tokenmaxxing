@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { ensurePathInRc, findClaudeShadowers, shellRcPath } from "../src/lib/install.ts";
+import { ensurePathInRc, findClaudeShadowers, removePathFromRc, shellRcPath } from "../src/lib/install.ts";
 import { paths } from "../src/lib/paths.ts";
 
 const base = globalThis.__TM_TEST_BASE__!;
@@ -44,6 +44,22 @@ describe("shell rc PATH line", () => {
     const lines = readFileSync(rc, "utf8").split("\n");
     expect(lines[0]).toBe("alias ll='ls -la'");
     expect(lines[1]).toContain("# tokenmaxxing PATH");
+  });
+
+  test("removePathFromRc removes ONLY the marked line and reports honestly", () => {
+    // A stale marked line pointing at an emptied binDir is the recursion-
+    // incident vector uninstall must not leave behind; a hand-added PATH line
+    // without the marker is the user's own (deletion scope is literal).
+    const rc = join(base, "rc-remove");
+    writeFileSync(rc, `alias ll='ls -la'\nexport PATH="/user/own/bin:$PATH"\n`);
+    ensurePathInRc(rc);
+    expect(removePathFromRc(rc)).toBe(true);
+    const after = readFileSync(rc, "utf8");
+    expect(after).not.toContain("# tokenmaxxing PATH");
+    expect(after).toContain("alias ll='ls -la'");
+    expect(after).toContain(`export PATH="/user/own/bin:$PATH"`);
+    expect(removePathFromRc(rc)).toBe(false); // nothing left to remove
+    expect(removePathFromRc(join(base, "rc-never-existed"))).toBe(false);
   });
 });
 

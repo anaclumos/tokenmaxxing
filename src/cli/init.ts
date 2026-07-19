@@ -6,7 +6,8 @@ import { isApiKeyMode, readOAuthAccount } from "../lib/claudejson.ts";
 import { readItem, writeItem, liveTarget, parkedTarget, mergeIntoLive } from "../lib/credstore.ts";
 import { refreshCredential, isAccessTokenExpiring, fetchTokenOrg } from "../lib/oauth.ts";
 import { withClaudeRefreshLock } from "../lib/claudelock.ts";
-import { loadAccounts, saveAccounts, loadConfig, saveConfig } from "../lib/state.ts";
+import { loadAccounts, saveAccounts, loadConfig, pinBinOverride } from "../lib/state.ts";
+import { withLock } from "../lib/lock.ts";
 import { installSupervisor, shellRcPath, ensurePathInRc, timerActivationHint, type InstallOutcome } from "../lib/install.ts";
 import { resolveVerifiedClaude } from "../lib/claudebin.ts";
 import { credItemFor, paths } from "../lib/paths.ts";
@@ -47,6 +48,13 @@ export function printUsage(): void {
 
 export async function cmdInit(): Promise<number> {
   mkdirSync(paths.home, { recursive: true });
+  // Fail fast on a broken merged config BEFORE installing or claiming a
+  // successful repair: pinBinOverride writes sparsely without validating, so
+  // without this gate a re-init printed success while hooks, switching, and
+  // the statusline kept throwing on every loadConfig until the file was
+  // hand-repaired (bugbot review catch, PR #33). The throw carries the
+  // fix-or-remove recovery message.
+  loadConfig();
 
   // Already initialized → repair install ONLY. Never re-import: ~/.claude.json's
   // oauthAccount can drift from the live keychain cred (after swaps / concurrent
@@ -57,10 +65,9 @@ export async function cmdInit(): Promise<number> {
     // repair the claudeBin pin too - hooks run with claude's PATH and must
     // never have to guess which binary is the real claude. Verified pinning:
     // a pin that fails --version (or loops back into the wrapper) is replaced
-    // by a fresh PATH scan instead of being re-saved.
-    const cfg = loadConfig();
-    cfg.claudeBin = resolveVerifiedClaude();
-    saveConfig(cfg);
+    // by a fresh PATH scan instead of being re-saved. Sparse write: only the
+    // pin lands in the file, never the merged config.
+    pinBinOverride({ key: "claudeBin", bin: resolveVerifiedClaude() });
     const active = existingIdx.accounts.find((a) => a.accountUuid === existingIdx.activeAccountUuid);
     console.log(`${c.green("✓")} re-installed supervisor + hooks (pool already has ${existingIdx.accounts.length} account${existingIdx.accounts.length === 1 ? "" : "s"} - not re-importing)`);
     reportTimer(out);
@@ -117,30 +124,35 @@ export async function cmdInit(): Promise<number> {
 
   const uuid = oauthAccount.accountUuid;
   const keychainItem = credItemFor(uuid);
-  await writeItem(parkedTarget(keychainItem), JSON.stringify({ claudeAiOauth: creds })); // park a small backup
+  // Park + index update under the tokenmaxxing flock, like every sibling
+  // index writer (add/auth/rm/status/rename): unlocked, a concurrent `xx add`
+  // completing between this path's load and save had its just-registered
+  // account silently clobbered out of the index (closing-review catch).
+  const account = await withLock(paths.lockFile, async () => {
+    await writeItem(parkedTarget(keychainItem), JSON.stringify({ claudeAiOauth: creds })); // park a small backup
+    const idx = loadAccounts();
+    const existing = idx.accounts.find((a) => a.accountUuid === uuid);
+    const imported: Account = {
+      accountUuid: uuid,
+      email: oauthAccount.emailAddress,
+      organizationUuid: oauthAccount.organizationUuid,
+      label: existing?.label ?? oauthAccount.emailAddress,
+      keychainItem,
+      oauthAccount,
+      addedAt: existing?.addedAt ?? new Date().toISOString(),
+      subscriptionType: blob.claudeAiOauth.subscriptionType,
+      rateLimitTier: blob.claudeAiOauth.rateLimitTier,
+      needsReauth: false,
+    };
+    if (existing) Object.assign(existing, imported);
+    else idx.accounts.push(imported);
+    idx.activeAccountUuid = uuid;
+    saveAccounts(idx);
+    return imported;
+  });
 
-  const idx = loadAccounts();
-  const existing = idx.accounts.find((a) => a.accountUuid === uuid);
-  const account: Account = {
-    accountUuid: uuid,
-    email: oauthAccount.emailAddress,
-    organizationUuid: oauthAccount.organizationUuid,
-    label: existing?.label ?? oauthAccount.emailAddress,
-    keychainItem,
-    oauthAccount,
-    addedAt: existing?.addedAt ?? new Date().toISOString(),
-    subscriptionType: blob.claudeAiOauth.subscriptionType,
-    rateLimitTier: blob.claudeAiOauth.rateLimitTier,
-    needsReauth: false,
-  };
-  if (existing) Object.assign(existing, account);
-  else idx.accounts.push(account);
-  idx.activeAccountUuid = uuid;
-  saveAccounts(idx);
-
-  const cfg = loadConfig();
-  cfg.claudeBin = resolveVerifiedClaude();
-  saveConfig(cfg);
+  // Sparse write: only the pin lands in the file, never the merged config.
+  pinBinOverride({ key: "claudeBin", bin: resolveVerifiedClaude() });
 
   const out = installSupervisor();
 
@@ -151,8 +163,9 @@ export async function cmdInit(): Promise<number> {
     console.log();
     ensurePathAhead();
   }
+  const poolSize = loadAccounts().accounts.length;
   console.log();
-  console.log(`  pool ready (${idx.accounts.length} account${idx.accounts.length === 1 ? "" : "s"})`);
+  console.log(`  pool ready (${poolSize} account${poolSize === 1 ? "" : "s"})`);
   printUsage();
   return 0;
 }

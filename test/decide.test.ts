@@ -13,7 +13,7 @@ import { join } from "node:path";
 import { afterAll, beforeEach, describe, expect, test } from "bun:test";
 import { evaluateAndMaybeSwap } from "../src/lib/decide.ts";
 import { paths } from "../src/lib/paths.ts";
-import { loadAccounts, loadModelUsage, loadUsage, saveAccounts, saveDepletedWait, saveLastSwapAt } from "../src/lib/state.ts";
+import { loadAccounts, loadDepletedWait, loadModelUsage, loadUsage, saveAccounts, saveDepletedWait, saveLastSwapAt } from "../src/lib/state.ts";
 import { writeItem, parkedTarget, liveTarget, deleteItem } from "../src/lib/credstore.ts";
 import type { Account } from "../src/lib/types.ts";
 
@@ -243,6 +243,45 @@ describe("evaluateAndMaybeSwap headless snapshot handling", () => {
     });
     const d = await evaluateAndMaybeSwap();
     expect(d.reason).toBe("under-threshold-or-stale");
+  });
+
+  test("under label drift both the usage stamp AND the greedy seat resolve by the LIVE org", async () => {
+    // accounts.json's activeAccountUuid still names B (manual /login drift,
+    // the surviving drift source) while claude.json and the tee say org-A.
+    // Stamping by label wrote A's windows into B, and the label-resolved seat
+    // then judged B as "current" - ranking on the wrong cached windows and
+    // offering the LIVE account as a swap target (closing-review + bugbot
+    // catches). With both resolved by live org: A gets the stamp, A wins its
+    // own seat, and the decision is a clean no-swap current-best.
+    installFakeClaude(10, Date.now() + 2 * D);
+    installFixtures([poolAccount("B")]);
+    saveAccounts({ version: 1, activeAccountUuid: "B", accounts: [poolAccount("A"), poolAccount("B")] });
+    writeUsageJson({ fiveHour: { usedPercentage: 60, resetsAt: Date.now() + 3_600_000 } });
+    const d = await evaluateAndMaybeSwap(Date.now(), false);
+    expect(d.reason).toBe("current-best"); // the live account holds the seat; never-sampled B ranks last
+    const after = loadAccounts();
+    expect(after.accounts.find((x) => x.accountUuid === "A")!.lastUsage?.fiveHour.usedPercentage).toBe(60);
+    expect(after.accounts.find((x) => x.accountUuid === "B")!.lastUsage).toBeUndefined();
+  });
+
+  test("a KNOWN live org outside the pool stands down instead of seating the stale label", async () => {
+    // The user /login'd an account that was never pooled. The seat fallback
+    // must not stand in the stale labeled account: the depleted path could
+    // park a supervised session against the LABEL's reset while the running
+    // login is someone else entirely (pullfrog review catch, PR #33 - the
+    // codex live-credential-not-in-pool guard, mirrored).
+    installFakeClaude(10, Date.now() + 2 * D);
+    installFixtures();
+    writeFileSync(
+      paths.claudeJson,
+      JSON.stringify({ oauthAccount: { accountUuid: "X", emailAddress: "x@e.com", organizationUuid: "org-X" } }),
+    );
+    writeUsageJson({ org: "org-X", fiveHour: { usedPercentage: 97, resetsAt: Date.now() + 3_600_000 } });
+    const d = await evaluateAndMaybeSwap(Date.now(), true);
+    expect(d.reason).toBe("live-credential-not-in-pool");
+    expect(d.swapped).toBe(false);
+    // no depleted-wait was recorded against the stale label
+    expect(loadDepletedWait()).toBeNull();
   });
 
   test("split thresholds: a session window over its own bar triggers below the weekly bar", async () => {

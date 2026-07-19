@@ -3,7 +3,9 @@
 // `claude` (or `__supervise`), routes hook/statusLine subcommands, and otherwise
 // dispatches the `tokenmaxxing` CLI.
 
+import { existsSync } from "node:fs";
 import { basename } from "node:path";
+import { paths } from "./lib/paths.ts";
 import { runSupervisor } from "./entries/supervisor.ts";
 import { runStatusline } from "./entries/statusline.ts";
 import { runSubagentStatusline } from "./entries/subagentstatusline.ts";
@@ -27,7 +29,7 @@ import { cmdSwitch } from "./cli/switch.ts";
 import { cmdCheck } from "./cli/check.ts";
 import { cmdConfig } from "./cli/config.ts";
 import { cmdServe } from "./cli/serve.ts";
-import { uninstallSupervisor } from "./lib/install.ts";
+import { timerDeactivationHint, uninstallSupervisor } from "./lib/install.ts";
 import { c } from "./cli/render.ts";
 
 function printHelp(): void {
@@ -81,7 +83,13 @@ async function main(): Promise<number> {
     case "__codex-stop-hook": return runCodexStopHook();
     case undefined: return cmdStatus(); // bare `tokenmaxxing` / `xx` → status
     case "--force": return cmdStatus(true); // bare `xx --force` → status --force
-    case "switch": return args[1] === "--codex" ? cmdCodexSwitch(args[2]) : cmdSwitch(args[1]);
+    // --codex accepted anywhere, like init/add/status: the old args[1]-only
+    // check made `xx switch <sel> --codex` silently run a real CLAUDE swap
+    // (one email can hold both pools' accounts - closing-review catch).
+    case "switch": {
+      const rest = args.slice(1).filter((a) => a !== "--codex");
+      return args.includes("--codex") ? cmdCodexSwitch(rest[0]) : cmdSwitch(rest[0]);
+    }
     case "check": return cmdCheck();
     case "config": return cmdConfig(args.slice(1));
     case "serve": return cmdServe(args.slice(1));
@@ -94,10 +102,23 @@ async function main(): Promise<number> {
     case "doctor": return cmdDoctor();
     case "rm": return cmdRm(args[1]);
     case "rename": return cmdRename(args.slice(1));
-    case "uninstall":
-      uninstallSupervisor();
-      console.log("removed supervisor wrapper + settings entries (accounts/credentials kept)");
+    case "uninstall": {
+      const out = uninstallSupervisor();
+      // the headline lists only what verifiably happened - claiming the timer
+      // or PATH line gone while the outcome flags say otherwise would
+      // contradict the warnings below (bugbot review catch, PR #33).
+      const removed = [
+        "supervisor wrapper",
+        "settings entries",
+        ...(out.timerDeactivated ? ["check timer"] : []),
+        ...(out.pathLineRemoved ? ["rc PATH line"] : []),
+      ];
+      console.log(`removed ${removed.join(", ")}`);
+      if (!out.timerDeactivated) console.log(c.yellow(`⚠ the check job may still be loaded - run: ${timerDeactivationHint()}`));
+      if (!out.pathLineRemoved) console.log(c.dim("(no tokenmaxxing PATH line found in the shell rc)"));
+      console.log(`kept: accounts.json, config.json${existsSync(paths.slackJson) ? ", slack.json (Slack tokens)" : ""}, and every parked credential (macOS: keychain items, Linux: creds/) - remove accounts with \`xx rm\` to delete their credentials`);
       return 0;
+    }
     case "help":
     case "-h":
     case "--help":

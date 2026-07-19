@@ -245,17 +245,71 @@ export function checkTimerHealthy(): boolean {
   );
 }
 
-function uninstallCheckTimer(): void {
+/** The manual deactivation command for a still-loaded timer, per platform. */
+export function timerDeactivationHint(): string {
+  if (process.platform === "darwin") {
+    return `launchctl bootout gui/$(id -u)/${LAUNCHD_LABEL}`;
+  }
+  return "systemctl --user disable --now tokenmaxxing-check.timer";
+}
+
+/** Is the launchd check job loaded? Exit contract verified on this machine
+ *  (macOS 26, 2026-07-20): `launchctl print` exits 0 for a loaded job and 113
+ *  for a missing one. Anything else - including a spawn failure or timeout -
+ *  is "unavailable": an unanswerable probe must never read as "not loaded". */
+function launchdJobLoaded(): "loaded" | "not-loaded" | "unavailable" {
+  const domain = launchdDomain();
+  if (domain == null) return "unavailable";
+  try {
+    const { exitCode } = Bun.spawnSync(["launchctl", "print", `${domain}/${LAUNCHD_LABEL}`], { stdout: "ignore", stderr: "ignore", timeout: 10_000 });
+    if (exitCode === 0) return "loaded";
+    return exitCode === 113 ? "not-loaded" : "unavailable";
+  } catch {
+    return "unavailable";
+  }
+}
+
+/** Is the systemd check timer active? Classification goes by the state
+ *  string, never the exit code: systemctl(1) documents only "0 if at least
+ *  one is active, non-zero otherwise" for is-active, but guarantees "unless
+ *  --quiet is specified, this will also print the current unit state to
+ *  standard output" (verified against the systemd manpage 2026-07-20). The
+ *  failure mode is container-verified (ubuntu:24.04 systemd, no user bus,
+ *  2026-07-20): a dead session bus prints NOTHING to stdout ("Failed to
+ *  connect to bus" goes to stderr, exit 1), so an empty or unrecognized
+ *  stdout is "unavailable" - "cannot ask" never reads as "inactive". */
+function systemdTimerActive(): "active" | "not-active" | "unavailable" {
+  try {
+    const proc = Bun.spawnSync(["systemctl", "--user", "is-active", "tokenmaxxing-check.timer"], { stdout: "pipe", stderr: "ignore", timeout: 10_000 });
+    const state = proc.stdout.toString().trim();
+    if (state === "active" || state === "activating" || state === "reloading") return "active";
+    if (state === "inactive" || state === "failed" || state === "deactivating" || state === "unknown" || state === "maintenance") return "not-active";
+    return "unavailable";
+  } catch {
+    return "unavailable";
+  }
+}
+
+/** True when the job is verifiably no longer loaded. A swallowed bootout
+ *  failure once meant a half-uninstalled state kept firing `tokenmaxxing
+ *  check` every 180s against a package that may be gone, silently
+ *  (closing-review catch): deactivation is checked, not assumed - a job seen
+ *  loaded must deactivate successfully, and an unanswerable probe (service
+ *  manager unusable) reports false rather than pretending it is gone. */
+function uninstallCheckTimer(): boolean {
   if (process.platform === "darwin") {
     const domain = launchdDomain();
-    if (domain != null) run(["launchctl", "bootout", `${domain}/${LAUNCHD_LABEL}`]);
+    const loaded = launchdJobLoaded();
+    const deactivated = loaded === "loaded" && domain != null ? run(["launchctl", "bootout", `${domain}/${LAUNCHD_LABEL}`]) : loaded === "not-loaded";
     rmSync(launchdPlist(), { force: true });
-    return;
+    return deactivated;
   }
-  run(["systemctl", "--user", "disable", "--now", "tokenmaxxing-check.timer"]);
+  const active = systemdTimerActive();
+  const deactivated = active === "active" ? run(["systemctl", "--user", "disable", "--now", "tokenmaxxing-check.timer"]) : active === "not-active";
   rmSync(join(paths.systemdUserDir, "tokenmaxxing-check.timer"), { force: true });
   rmSync(join(paths.systemdUserDir, "tokenmaxxing-check.service"), { force: true });
   run(["systemctl", "--user", "daemon-reload"]);
+  return deactivated;
 }
 
 /** The rc file of the user's login shell, or null when the shell is unknown.
@@ -318,11 +372,31 @@ export function findClaudeShadowers(rcText: string): ShellShadower[] {
   return out;
 }
 
-export function uninstallSupervisor(): void {
+/** Remove ONLY the marker-tagged PATH line this tool added; a hand-added
+ *  PATH entry without the marker is the user's own. A stale `# tokenmaxxing
+ *  PATH` line pointing at an emptied binDir is exactly how the supervisor
+ *  recursion incident started (see AGENTS.md), so uninstall must not leave
+ *  one behind (closing-review catch). Returns true when a line was removed. */
+export function removePathFromRc(rc: string): boolean {
+  if (!existsSync(rc)) return false;
+  const lines = readFileSync(rc, "utf8").split("\n");
+  const kept = lines.filter((line) => !line.includes(PATH_LINE_MARK));
+  if (kept.length === lines.length) return false;
+  writeFileAtomic(rc, kept.join("\n"));
+  return true;
+}
+
+const UninstallOutcomeSchema = z.object({ timerDeactivated: z.boolean(), pathLineRemoved: z.boolean() });
+export type UninstallOutcome = z.infer<typeof UninstallOutcomeSchema>;
+
+export function uninstallSupervisor(): UninstallOutcome {
   uninstallSettings();
-  uninstallCheckTimer();
+  const timerDeactivated = uninstallCheckTimer();
   uninstallCodexSupervisor();
   for (const f of [paths.supervisorLink, join(paths.binDir, "xx"), installedBin()]) {
     if (existsSync(f)) rmSync(f, { force: true });
   }
+  const rc = shellRcPath();
+  const pathLineRemoved = rc != null && removePathFromRc(rc);
+  return { timerDeactivated, pathLineRemoved };
 }

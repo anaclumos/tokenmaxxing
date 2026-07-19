@@ -87,8 +87,33 @@ export async function probeParkedUsage(account: Account, opts: { ping?: boolean 
     return { ok: false, reason: `parked credential unreadable (${(e instanceof Error ? e.message : String(e)).slice(0, 80)}) - run \`tokenmaxxing auth\`` };
   }
 
+  // The parked copy must never be refreshed (or probed - the probe can rotate
+  // it too) while its account secretly owns the LIVE login: after a crash
+  // between performSwap's live install and the oauthAccount rewrite, status
+  // still routes the live account here, and a parked-side rotation would
+  // supersede the live item's single-use refresh token out from under the
+  // running session - or, if claude rotated first, falsely flag the healthy
+  // live account needsReauth (closing-review catch; mirrors the codex
+  // sampler's present-account invariant). Verified against the live blob's
+  // TRUE org, fail-closed like the rm guard: an unverifiable live owner
+  // refuses the sample rather than risking the live grant.
+  const liveRaw = await readItem(liveTarget());
+  if (liveRaw != null) {
+    let liveOrg: string;
+    try {
+      const liveCreds = CredentialBlobSchema.parse(JSON.parse(liveRaw)).claudeAiOauth;
+      liveOrg = (await fetchTokenOrg(liveCreds.accessToken)).organization_uuid;
+    } catch (e) {
+      return { ok: false, reason: `cannot verify the live credential's owner (${(e instanceof Error ? e.message : String(e)).slice(0, 80)}) - refusing to sample a possibly-live account` };
+    }
+    if (liveOrg === account.organizationUuid) {
+      return { ok: false, reason: "this account holds the LIVE login (active label drifted) - run `tokenmaxxing switch` to reconcile" };
+    }
+  }
+
   // Hand claude a token with comfortable headroom so it won't run its own refresh
-  // (which claude does within 120s of expiry). Refresh + persist ourselves first.
+  // (which claude does within 300s of expiry - the same margin checked here).
+  // Refresh + persist ourselves first.
   if (isAccessTokenExpiring(creds, 300_000)) {
     try {
       creds = await refreshCredential(creds);

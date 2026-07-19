@@ -123,6 +123,22 @@ describe("config invariants", () => {
     writeFileSync(paths.configJson, JSON.stringify({ policy: { projectionMargin: 94 } }));
     expect(loadConfig().policy.projectionMargin).toBe(94);
   });
+  test("config set rejects a value whose MERGED config would brick loadConfig", () => {
+    // The per-field 0-100 bound passes 96, but merged against the default
+    // session threshold 95 the refine fails - without the merged gate this
+    // write made every later loadConfig throw, silently disabling
+    // status/switch/hooks until hand-repaired (closing-review catch).
+    writeFileSync(paths.configJson, JSON.stringify({}));
+    const errs: string[] = [];
+    const spy = spyOn(console, "error").mockImplementation((line: string) => { errs.push(line); });
+    try {
+      expect(cmdConfig(["set", "policy.projectionMargin", "96"])).toBe(1);
+    } finally {
+      spy.mockRestore();
+    }
+    expect(errs.join(" ")).toContain("projectionMargin");
+    expect(loadConfig().policy.projectionMargin).toBe(0); // the file write never happened
+  });
 });
 
 describe("config env-source display", () => {

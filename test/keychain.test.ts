@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, test } from "bun:test";
 import { readItem, writeItem, deleteItem } from "../src/lib/keychain.ts";
 
 // keychain is macOS-only; skip elsewhere. Uses a throwaway service, never the
@@ -7,6 +7,17 @@ const it = process.platform === "darwin" ? test : test.skip;
 
 describe("keychain ps-safe I/O", () => {
   const target = { service: `tokenmaxxing-test-${process.pid}`, account: process.env.USER ?? "unknown" };
+  const bigTarget = { service: `tokenmaxxing-test-big-${process.pid}`, account: process.env.USER ?? "unknown" };
+
+  // The items live in the REAL login keychain, and the pid-unique names mean
+  // no later run ever reaps them: an assertion failing before the inline
+  // deleteItem would strand them forever (closing-review catch). afterAll
+  // deletes unconditionally; deleteItem on an already-removed item is a no-op.
+  afterAll(async () => {
+    if (process.platform !== "darwin") return;
+    await deleteItem(target);
+    await deleteItem(bigTarget);
+  });
   const blob = JSON.stringify({
     claudeAiOauth: {
       accessToken: "sk-ant-oat01_AbC-dEf_12/34+xyz==",
@@ -37,9 +48,8 @@ describe("keychain ps-safe I/O", () => {
       mcpOAuth: Object.fromEntries(Array.from({ length: 20 }, (_, i) => [`srv${i}`, { accessToken: "t".repeat(300), redirectUri: "http://localhost:3118/callback?utm_source=plugin" }])),
     });
     expect(big.length).toBeGreaterThan(4096);
-    const t2 = { service: `tokenmaxxing-test-big-${process.pid}`, account: process.env.USER ?? "unknown" };
-    await writeItem(t2, big);
-    expect(await readItem(t2)).toBe(big);
-    await deleteItem(t2);
+    await writeItem(bigTarget, big);
+    expect(await readItem(bigTarget)).toBe(big);
+    await deleteItem(bigTarget);
   });
 });

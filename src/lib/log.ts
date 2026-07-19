@@ -1,10 +1,12 @@
 // Append-only logging. NEVER logs secret material - callers must pass only
 // non-secret context (account uuids/emails, percentages, status strings).
 
-import { appendFileSync, mkdirSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, renameSync, statSync } from "node:fs";
 import { dirname } from "node:path";
 import { z } from "zod";
 import { paths } from "./paths.ts";
+
+const LOG_MAX_BYTES = 5_000_000;
 
 /** Redact anything that looks like a token so an accidental pass-through can't leak. */
 function redact(s: string): string {
@@ -34,6 +36,13 @@ export function log(event: string, fields: Record<string, unknown> = {}): void {
       })
       .join(" ");
     mkdirSync(dirname(paths.logFile), { recursive: true });
+    // Rotation cap: the check timer logs every 180s and the serve daemon
+    // echoes every event, so an uncapped append-only file grows forever on a
+    // live install (closing-review critic gap). One .old generation bounds
+    // total disk at ~2x the cap; older history is disposable diagnostics.
+    if (existsSync(paths.logFile) && statSync(paths.logFile).size > LOG_MAX_BYTES) {
+      renameSync(paths.logFile, `${paths.logFile}.old`);
+    }
     appendFileSync(paths.logFile, `${new Date().toISOString()} ${event} ${line}\n`);
   } catch {
     // logging must never throw into a hook / supervisor path

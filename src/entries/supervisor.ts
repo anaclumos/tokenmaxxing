@@ -23,6 +23,31 @@ const NONINTERACTIVE_SUBCMDS = new Set([
   "setup-token", "plugin", "agents", "completion", "help",
 ]);
 
+// Root flags whose VALUE tokens must never be read as the subcommand (e.g.
+// `--settings config` is an interactive session, not `claude config`): the
+// same hardening class shouldManageCodex got. Split by arity, mirroring
+// claude's own commander declarations (--help-verified 2.1.215; claude changes
+// monthly - a newly added value-taking flag regresses only that flag's
+// collision case). `--session-id` / `-r` / `--resume` consume their values in
+// dedicated branches below.
+const VALUE_TAKING_ROOT_FLAGS = new Set([
+  "--agent", "--agents", "--append-system-prompt", "--append-system-prompt-file",
+  "--debug-file", "--effort", "--fallback-model", "--input-format",
+  "--json-schema", "--max-budget-usd", "--model", "-n", "--name",
+  "--output-format", "--permission-mode", "--plugin-dir", "--plugin-url",
+  "--remote-control-session-name-prefix", "--setting-sources", "--settings",
+  "--system-prompt",
+]);
+// Variadic (`<x...>`): commander consumes EVERY following non-dash token.
+const VARIADIC_ROOT_FLAGS = new Set([
+  "--add-dir", "--allowedTools", "--allowed-tools", "--betas",
+  "--disallowedTools", "--disallowed-tools", "--file", "--mcp-config", "--tools",
+]);
+// Optional value (`[x]`): commander consumes the next token unless it is a flag.
+const OPTIONAL_VALUE_ROOT_FLAGS = new Set([
+  "-d", "--debug", "--from-pr", "--prompt-suggestions", "--remote-control", "-w", "--worktree",
+]);
+
 const isUuid = (s: string) => z.uuid().safeParse(s).success;
 
 const AnalysisSchema = z.object({
@@ -40,6 +65,7 @@ export function analyzeArgs(argv: string[]): Analysis {
   let printMode = false;
   let invalidSessionArg = false;
   let pickerResume = false;
+  let forkSession = false;
   let firstPositional: string | null = null;
 
   for (let i = 0; i < argv.length; i++) {
@@ -68,13 +94,27 @@ export function analyzeArgs(argv: string[]): Analysis {
       const next = argv[i + 1];
       if (next && !next.startsWith("-") && isUuid(next)) { resumeId = next; i++; }
       else pickerResume = true;
-    } else if (!a.startsWith("-") && firstPositional === null) {
+    }
+    else if (a === "--fork-session") forkSession = true;
+    else if (VALUE_TAKING_ROOT_FLAGS.has(a)) i++;
+    else if (VARIADIC_ROOT_FLAGS.has(a)) {
+      while (i + 1 < argv.length && !argv[i + 1]!.startsWith("-")) i++;
+    }
+    else if (OPTIONAL_VALUE_ROOT_FLAGS.has(a)) {
+      if (argv[i + 1] !== undefined && !argv[i + 1]!.startsWith("-")) i++;
+    }
+    else if (!a.startsWith("-") && firstPositional === null) {
       firstPositional = a;
     }
   }
 
   const isSubcmd = firstPositional !== null && NONINTERACTIVE_SUBCMDS.has(firstPositional);
-  const manage = !printMode && !isSubcmd && !invalidSessionArg && !pickerResume && !process.env.TOKENMAXXING_PROBE;
+  // A forked resume gets a NEW session id chosen inside claude, so the
+  // supervisor cannot pin marker paths - pass through unmanaged like
+  // picker-mode resume (closing-review catch: managing it paired the marker
+  // to the stale pre-fork sid, and a respawn would fork yet another session).
+  const forkResume = forkSession && (resumeId !== null || continueLatest);
+  const manage = !printMode && !isSubcmd && !invalidSessionArg && !pickerResume && !forkResume && !process.env.TOKENMAXXING_PROBE;
   return { manage, sessionId, resumeId, continueLatest };
 }
 
@@ -93,9 +133,14 @@ export function stripSessionFlags(argv: string[]): string[] {
   return out;
 }
 
-/** Newest transcript session id for the current cwd (for `-c`). */
+/** Newest transcript session id for the current cwd (for `-c`). claude's
+ *  project-dir slug maps EVERY non-alphanumeric char to "-": the regex below
+ *  mirrors claude's own, byte for byte (binary-verified 2.1.215, the external-
+ *  contract regex exception). The old [/.]-only mapping missed underscores
+ *  etc., so `-c` in such a cwd silently opened a brand-new session instead of
+ *  continuing (closing-review catch). */
 function latestSessionForCwd(): string | null {
-  const slug = process.cwd().replace(/[/.]/g, "-");
+  const slug = process.cwd().replace(/[^a-zA-Z0-9]/g, "-");
   const projDir = join(paths.claudeDir, "projects", slug);
   if (!existsSync(projDir)) return null;
   try {

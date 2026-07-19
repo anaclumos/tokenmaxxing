@@ -18,8 +18,8 @@ import { withLock } from "../lib/lock.ts";
 import { paths } from "../lib/paths.ts";
 import { loadAccounts, loadConfig } from "../lib/state.ts";
 import { readOAuthAccount } from "../lib/claudejson.ts";
-import { performSwap, chooseAndSwap } from "../lib/swap.ts";
-import { currentWins, effectiveBars, pickEarliestReset, weeklyExpiry, type PickCtx } from "../lib/picker.ts";
+import { performSwap } from "../lib/swap.ts";
+import { currentWins, effectiveBars, pickBest, pickEarliestReset, weeklyExpiry, type PickCtx } from "../lib/picker.ts";
 import { InvalidGrantError } from "../lib/oauth.ts";
 import { findAccount } from "./rename.ts";
 import { c, fmtReset } from "./render.ts";
@@ -36,7 +36,13 @@ export async function cmdSwitch(selector?: string): Promise<number> {
 
   return withLock(paths.lockFile, async () => {
     const idx = loadAccounts();
-    const claimed = readOAuthAccount()?.accountUuid ?? null;
+    // ONE claude.json read for both identity fields: two reads could straddle
+    // a concurrent /login and describe two different live identities - the
+    // drift check and the seat must come from the same snapshot (cubic review
+    // catch, PR #33).
+    const liveClaim = readOAuthAccount();
+    const claimed = liveClaim?.accountUuid ?? null;
+    const claimedOrg = liveClaim?.organizationUuid ?? null;
     const drifted = claimed != null && claimed !== idx.activeAccountUuid;
 
     const swapTo = async (target: Account): Promise<number> => {
@@ -60,21 +66,48 @@ export async function cmdSwitch(selector?: string): Promise<number> {
 
     // auto: greedy over everyone, current included - a no-op when current wins.
     // No session context here, so every configured per-model family gates.
+    // Dead-token fallback mirrors decide.ts's greedy loop, NOT chooseAndSwap:
+    // its fallback lands on the next usable candidate unconditionally, which
+    // is right when over a bar but wrong here - a dead grant on the pace
+    // winner must re-check the seat, or a healthy current account gets a real
+    // swap onto a pace-WORSE account and the next periodic check bounces it
+    // straight back (closing-review catch). performSwap persists needs-reauth
+    // before throwing, so each reload shrinks the candidate set and the loop
+    // terminates.
     const everyone: PickCtx = { now, thresholds: effectiveBars(cfg), currentAccountUuid: null, switchFamilies: cfg.policy.switchModels };
-    const active = idx.accounts.find((a) => a.accountUuid === idx.activeAccountUuid) ?? null;
-    if (active != null && currentWins(active, idx.accounts, everyone)) {
-      if (drifted) return swapTo(active);
-      const expiry = weeklyExpiry(active, now);
-      const why = Number.isFinite(expiry) ? ` (weekly ${fmtReset(expiry, now)})` : "";
-      console.log(`already on the best account: ${c.bold(active.label)}${why}`);
-      return 0;
-    }
-    {
-      const landed = await chooseAndSwap({ now, thresholds: effectiveBars(cfg), switchFamilies: cfg.policy.switchModels });
-      if (landed) {
-        console.log(`${c.green("↻")} switched to ${c.bold(landed.label)}`);
+    while (true) {
+      const cur = loadAccounts();
+      // The seat is the LIVE login's pooled account when resolvable, the
+      // stored label only as fallback - the same identity rule AND the same
+      // identity KEY as decide.ts's seatOf: the organizationUuid, since quota
+      // is metered per org and the org is what the roles endpoint verifies
+      // (bugbot review catches, PR #33). Under drift this also makes ties
+      // favor the live account: the realign swap then keeps the same
+      // credential instead of hopping accounts on a tie.
+      const active =
+        (claimedOrg != null ? cur.accounts.find((a) => a.organizationUuid === claimedOrg) : null) ??
+        cur.accounts.find((a) => a.accountUuid === cur.activeAccountUuid) ??
+        null;
+      if (active != null && currentWins(active, cur.accounts, everyone)) {
+        if (drifted) return swapTo(active);
+        const expiry = weeklyExpiry(active, now);
+        const why = Number.isFinite(expiry) ? ` (weekly ${fmtReset(expiry, now)})` : "";
+        console.log(`already on the best account: ${c.bold(active.label)}${why}`);
         return 0;
       }
+      const best = pickBest(cur.accounts, { ...everyone, currentAccountUuid: active?.accountUuid ?? null });
+      if (!best) break; // no usable target: the depleted path below decides
+      try {
+        await performSwap(best);
+      } catch (e) {
+        if (e instanceof InvalidGrantError) {
+          console.error(c.red(`${best.label}'s refresh token is dead - run \`tokenmaxxing auth ${best.label}\``));
+          continue;
+        }
+        throw e;
+      }
+      console.log(`${c.green("↻")} switched to ${c.bold(best.label)}`);
+      return 0;
     }
 
     // No usable target swapped in: everything is depleted, or the remaining
@@ -88,7 +121,8 @@ export async function cmdSwitch(selector?: string): Promise<number> {
       const reauth = fresh.accounts.filter((a) => a.needsReauth).map((a) => a.label);
       if (reauth.length > 0) { console.error(c.yellow(`no switchable account - reauth needed (run \`tokenmaxxing auth --all\`): ${reauth.join(", ")}`)); return 1; }
       // never freeze a label drift behind a no-op (see header).
-      if (drifted && active) return swapTo(active);
+      const freshActive = fresh.accounts.find((a) => a.accountUuid === fresh.activeAccountUuid) ?? null;
+      if (drifted && freshActive) return swapTo(freshActive);
       console.log(c.yellow("all accounts at their limit with unknown reset times (unparsed reset clocks? see tokenmaxxing.log) - staying put"));
       return 0;
     }

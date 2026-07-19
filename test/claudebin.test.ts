@@ -14,7 +14,6 @@ import {
   wrapperEntryRateTripped,
 } from "../src/lib/claudebin.ts";
 import { paths } from "../src/lib/paths.ts";
-import { saveConfig } from "../src/lib/state.ts";
 
 const cfg = (claudeBin: string) => ({
   thresholds: { session: 95, weekly: 98 },
@@ -22,6 +21,8 @@ const cfg = (claudeBin: string) => ({
   codexBin: "",
   policy: { projectionMargin: 0, greedySessionFloor: 50, switchModels: ["fable"], usagePollTtlMs: 90_000, maxWaitMs: 3_600_000 },
 });
+
+const writeConfig = (config: unknown) => writeFileSync(paths.configJson, JSON.stringify(config));
 
 function writeExecutable(path: string, body: string): void {
   writeFileSync(path, body);
@@ -55,7 +56,7 @@ describe("pointsBackAtUs / resolveRealClaude identity guard", () => {
   test("a claudeBin pinned to the installed wrapper throws instead of recursing", () => {
     mkdirSync(paths.binDir, { recursive: true });
     writeExecutable(paths.supervisorLink, "#!/bin/sh\nexit 0\n");
-    saveConfig(cfg(paths.supervisorLink));
+    writeConfig(cfg(paths.supervisorLink));
     expect(pointsBackAtUs(paths.supervisorLink)).toBe(true);
     expect(() => resolveRealClaude()).toThrow(/own wrapper/);
   });
@@ -66,13 +67,13 @@ describe("pointsBackAtUs / resolveRealClaude identity guard", () => {
     writeExecutable(paths.supervisorLink, "#!/bin/sh\nexit 0\n");
     const link = join(scratch, "claude");
     symlinkSync(paths.supervisorLink, link);
-    saveConfig(cfg(link));
+    writeConfig(cfg(link));
     expect(pointsBackAtUs(link)).toBe(true);
     expect(() => resolveRealClaude()).toThrow(/own wrapper/);
   });
 
   test("a real binary outside binDir resolves", () => {
-    saveConfig(cfg("/usr/bin/true"));
+    writeConfig(cfg("/usr/bin/true"));
     expect(pointsBackAtUs("/usr/bin/true")).toBe(false);
     expect(resolveRealClaude()).toBe("/usr/bin/true");
   });
@@ -152,7 +153,7 @@ describe("resolveVerifiedClaude", () => {
     mkdirSync(goodDir, { recursive: true });
     writeExecutable(paths.supervisorLink, "#!/bin/sh\nexit 0\n");
     writeExecutable(join(goodDir, "claude"), `#!/bin/sh\necho "2.1.207 (Claude Code)"\n`);
-    saveConfig(cfg(paths.supervisorLink));
+    writeConfig(cfg(paths.supervisorLink));
     process.env.PATH = goodDir;
     expect(resolveVerifiedClaude()).toBe(join(goodDir, "claude"));
   });

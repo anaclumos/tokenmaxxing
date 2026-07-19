@@ -17,7 +17,7 @@ import { CodexInvalidGrantError, refreshCodexAuth } from "./codexoauth.ts";
 import { fetchCodexUsage } from "./codexusage.ts";
 import { codexIdentityOf, isCodexAccessExpiring, readLiveCodexAuth, writeLiveCodexAuth, writeParkedCodexAuth } from "./codexauth.ts";
 import { liveCodexAccountId } from "./codexsample.ts";
-import { targetableCodexAccounts } from "./codexpresence.ts";
+import { presentCodexAccountIds, targetableCodexAccounts } from "./codexpresence.ts";
 import { effectiveBars } from "./picker.ts";
 import { log } from "./log.ts";
 import { CodexAccountSchema } from "./types.ts";
@@ -34,7 +34,8 @@ const POST_SWAP_COOLDOWN_MS = 45_000;
 /**
  * Sample the LIVE credential's usage and stamp it onto its TRUE owner in the
  * pool (the id_token's own identity: labels drift, the token cannot lie).
- * Refreshes the live blob first when it is near expiry, persisting the
+ * Refreshes the live blob first when it is near expiry (and no supervised
+ * session is running it - see the presence guard below), persisting the
  * rotation to the live file AND the owner's parked copy in the same step -
  * before the usage fetch, so a failed fetch can never strand the parked copy
  * on the reuse-punished superseded refresh token. A dead live grant marks the
@@ -51,7 +52,14 @@ async function sampleLiveOntoOwner(input: { now: number }): Promise<string | nul
   const owner = index.accounts.find((account) => account.accountId === identity.accountId);
   if (!owner) return null;
 
-  if (isCodexAccessExpiring({ auth: live, now })) {
+  // The near-expiry refresh is skipped while any supervised session RUNS the
+  // live account: a sibling's Stop hook (or the timer) can land mid-turn of
+  // that session, and two concurrent POSTs of the same rotating refresh token
+  // reuse-punish the loser into a dead grant family (closing-review catch).
+  // The unrotated token stays valid within the margin, so the fetch below
+  // still samples; once expired it fails loudly and the next cycle, after the
+  // running session's own refresh, recovers.
+  if (isCodexAccessExpiring({ auth: live, now }) && !presentCodexAccountIds().has(identity.accountId)) {
     try {
       live = await refreshCodexAuth({ auth: live, now });
     } catch (e) {

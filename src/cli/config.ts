@@ -10,7 +10,7 @@ import { isPlainObject } from "es-toolkit";
 import { get, set, unset } from "es-toolkit/compat";
 import { z } from "zod";
 import { paths, realClaudeBinFromEnv, realCodexBinFromEnv } from "../lib/paths.ts";
-import { ConfigFileSchema, loadConfig } from "../lib/state.ts";
+import { ConfigFileSchema, loadConfig, mergeConfigFile } from "../lib/state.ts";
 import { writeFileAtomic } from "../lib/atomic.ts";
 import { c } from "./render.ts";
 
@@ -113,6 +113,15 @@ function cmdSet(key: string, valueText: string): number {
   const validated = ConfigFileSchema.safeParse(next);
   if (!validated.success) {
     console.error(c.red(`rejected: ${validated.error.issues.map((issue) => `${issue.path.join(".")}: ${issue.message}`).join("; ")}`));
+    return 1;
+  }
+  // The per-field gate passed; the MERGED whole must too, or this write makes
+  // every later loadConfig throw (the projectionMargin-vs-thresholds refine),
+  // silently disabling status/switch/hooks/statusline until the file is
+  // hand-repaired (closing-review catch).
+  const mergedCheck = mergeConfigFile(validated.data);
+  if (!mergedCheck.ok) {
+    console.error(c.red(`rejected: ${mergedCheck.detail}`));
     return 1;
   }
   writeRawFile({ raw: next });

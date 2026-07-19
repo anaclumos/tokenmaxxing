@@ -380,6 +380,15 @@ export function buildServeRuntime(seam: {
     isMention: boolean;
   }) => {
     const { thread, isMention } = input;
+    const link = linkForChannel(cfg, bareChannelId(thread.channelId));
+    if (!link) {
+      // checked BEFORE the draining branch: unlinked channels are
+      // contractually log-only silent, and a drain-window drop notice posted
+      // into one would tell a user to resend a message that will never be
+      // served (closing-review catch).
+      log("serve.unlinked_channel", { channel: thread.channelId });
+      return; // not a linked channel - stay silent in Slack
+    }
     if (draining) {
       // the socket stays connected until the drain finishes; anything landing
       // in that window is dropped loudly rather than spawning an unwaitable
@@ -405,11 +414,6 @@ export function buildServeRuntime(seam: {
       );
       return;
     }
-    const link = linkForChannel(cfg, bareChannelId(thread.channelId));
-    if (!link) {
-      log("serve.unlinked_channel", { channel: thread.channelId });
-      return; // not a linked channel - stay silent in Slack
-    }
     log("serve.message", { thread: thread.id, isMention, texts: input.relayed.length });
     // relayed carries queue-skipped messages plus the triggering one: the
     // queue strategy hands a turn only the LATEST message and the rest via
@@ -433,6 +437,15 @@ export function buildServeRuntime(seam: {
       saveSlackThread(record);
       log("serve.thread_opened", { thread: thread.id, cwd: link.repo });
     }
+    // Inside the serialized chain a marker can only be a PREVIOUS
+    // generation's killed turn (this generation's turns clear theirs before
+    // releasing the chain, and the serve-lock keeps generations exclusive):
+    // an inbound message can win the chain ahead of startup recovery (e.g.
+    // Slack redelivering the killed turn's unacked mention), and runTurn's
+    // fresh marker would silently discard the orphan's pid identity - reap it
+    // here so two claude processes never share the thread's cwd and session
+    // (closing-review catch, the recovery-path reap alone loses this race).
+    if (record.activeTurn) await reapOrphan(record.activeTurn);
     // subscriptions live in the memory state, so a daemon restart forgets
     // them; every mention re-subscribes to keep follow-up replies flowing.
     if (isMention) await thread.subscribe();

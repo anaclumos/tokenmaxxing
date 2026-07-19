@@ -4,6 +4,13 @@
 // claude session id + cwd a Slack thread resumes into (resume is cwd-keyed, so
 // the cwd must stay byte-stable for the thread's whole life). A present but
 // unparseable slack.json THROWS (no silent empty config); absent = null.
+//
+// Retention tradeoff (intentional, closing-review critic gap): thread records
+// have NO age-out - the only GC is the model-invoked finish_thread close-out.
+// An abandoned thread's record persists indefinitely, ON PURPOSE: records are
+// tiny JSON, every record is a resumable conversation, and a time-based
+// reaper would silently kill threads the user still expects to revive with
+// one @mention. Revisit only if slack-threads/ ever measurably bloats.
 
 import { existsSync, readFileSync, readdirSync, unlinkSync } from "node:fs";
 import { join } from "node:path";

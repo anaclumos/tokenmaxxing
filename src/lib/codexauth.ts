@@ -17,7 +17,12 @@ function isEnoent(e: unknown): boolean {
 
 /** auth.json at an explicit path (the live file, or an onboard dir's), or null
  *  when absent. Throws on a present-but-unparsable file: that is drift to
- *  surface, not to paper over. */
+ *  surface, not to paper over. One valid-but-unpoolable state maps to null
+ *  instead of throwing: `codex login --with-api-key` writes auth.json with
+ *  `tokens` OMITTED (serde skip_serializing_if, verified rust-v0.144.5) - the
+ *  real binary runs fine on it, so the shim and status must too, and with no
+ *  ChatGPT tokens there is nothing tokenmaxxing can pool (closing-review
+ *  catch). */
 export function readCodexAuthAt(input: { path: string }): CodexAuthJson | null {
   let raw: string;
   try {
@@ -26,7 +31,10 @@ export function readCodexAuthAt(input: { path: string }): CodexAuthJson | null {
     if (isEnoent(e)) return null;
     throw e;
   }
-  return CodexAuthJsonSchema.parse(JSON.parse(raw));
+  const parsed = JSON.parse(raw);
+  const probe = z.looseObject({ tokens: z.unknown().optional() }).parse(parsed);
+  if (probe.tokens === undefined || probe.tokens === null) return null;
+  return CodexAuthJsonSchema.parse(parsed);
 }
 
 /** The live auth.json, or null when codex has no login here. */
