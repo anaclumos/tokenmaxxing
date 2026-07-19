@@ -104,7 +104,16 @@ async function main(): Promise<number> {
     case "rename": return cmdRename(args.slice(1));
     case "uninstall": {
       const out = uninstallSupervisor();
-      console.log("removed supervisor wrapper, settings entries, check timer, and the rc PATH line");
+      // the headline lists only what verifiably happened - claiming the timer
+      // or PATH line gone while the outcome flags say otherwise would
+      // contradict the warnings below (bugbot review catch, PR #33).
+      const removed = [
+        "supervisor wrapper",
+        "settings entries",
+        ...(out.timerDeactivated ? ["check timer"] : []),
+        ...(out.pathLineRemoved ? ["rc PATH line"] : []),
+      ];
+      console.log(`removed ${removed.join(", ")}`);
       if (!out.timerDeactivated) console.log(c.yellow(`⚠ the check job may still be loaded - run: ${timerDeactivationHint()}`));
       if (!out.pathLineRemoved) console.log(c.dim("(no tokenmaxxing PATH line found in the shell rc)"));
       console.log(`kept: accounts.json, config.json${existsSync(paths.slackJson) ? ", slack.json (Slack tokens)" : ""}, and every parked credential (macOS: keychain items, Linux: creds/) - remove accounts with \`xx rm\` to delete their credentials`);
