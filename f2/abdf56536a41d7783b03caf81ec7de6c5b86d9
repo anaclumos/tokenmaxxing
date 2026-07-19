@@ -1,0 +1,20 @@
+src/cli/switch.ts
+  s_eaf36da1edfe18::t_caf8f3beb3a542 76-81,83
+  s_eaf36da1edfe18::t_f150a7a752dbe0 40
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "f2abdf56536a41d7783b03caf81ec7de6c5b86d9",
+  "prompts": {},
+  "sessions": {
+    "s_eaf36da1edfe18": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "085f0c3d-1bd0-4a58-8930-8dfdcf1a0376",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    }
+  }
+}
