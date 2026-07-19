@@ -37,6 +37,7 @@ export async function cmdSwitch(selector?: string): Promise<number> {
   return withLock(paths.lockFile, async () => {
     const idx = loadAccounts();
     const claimed = readOAuthAccount()?.accountUuid ?? null;
+    const claimedOrg = readOAuthAccount()?.organizationUuid ?? null;
     const drifted = claimed != null && claimed !== idx.activeAccountUuid;
 
     const swapTo = async (target: Account): Promise<number> => {
@@ -72,12 +73,14 @@ export async function cmdSwitch(selector?: string): Promise<number> {
     while (true) {
       const cur = loadAccounts();
       // The seat is the LIVE login's pooled account when resolvable, the
-      // stored label only as fallback - the same identity rule decide.ts's
-      // seatOf applies (bugbot review catch, PR #33). Under drift this also
-      // makes ties favor the live account: the realign swap then keeps the
-      // same credential instead of hopping accounts on a tie.
+      // stored label only as fallback - the same identity rule AND the same
+      // identity KEY as decide.ts's seatOf: the organizationUuid, since quota
+      // is metered per org and the org is what the roles endpoint verifies
+      // (bugbot review catches, PR #33). Under drift this also makes ties
+      // favor the live account: the realign swap then keeps the same
+      // credential instead of hopping accounts on a tie.
       const active =
-        (claimed != null ? cur.accounts.find((a) => a.accountUuid === claimed) : null) ??
+        (claimedOrg != null ? cur.accounts.find((a) => a.organizationUuid === claimedOrg) : null) ??
         cur.accounts.find((a) => a.accountUuid === cur.activeAccountUuid) ??
         null;
       if (active != null && currentWins(active, cur.accounts, everyone)) {
