@@ -14,8 +14,9 @@ export async function cmdCheck(): Promise<number> {
     d = await evaluateAndMaybeSwap();
   } catch (e) {
     // unattended under the timer: the log is the only place anyone will look.
-    log("check.error", { err: String((e as Error).message ?? e) });
-    console.error(c.red(`check failed: ${String((e as Error).message ?? e)}`));
+    const detail = e instanceof Error ? e.message : String(e);
+    log("check.error", { err: detail });
+    console.error(c.red(`check failed: ${detail}`));
     return 1;
   }
   if (d.swapped && d.account) {

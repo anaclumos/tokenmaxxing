@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { loadAccounts, saveAccounts, loadConfig, saveConfig, loadUsage, usageTeeAt, writeUsage } from "../src/lib/state.ts";
+import { loadAccounts, saveAccounts, loadConfig, saveConfig, loadDepletedWait, loadLastSwapAt, loadUsage, saveDepletedWait, usageTeeAt, writeUsage } from "../src/lib/state.ts";
 import { paths } from "../src/lib/paths.ts";
 import type { Account, UsageState } from "../src/lib/types.ts";
 
@@ -71,6 +71,20 @@ describe("corrupt state fails loud", () => {
     withReplaced(paths.configJson, "not json either", () => {
       expect(() => loadConfig()).toThrow("corrupt");
     });
+  });
+  test("corrupt lastswap.json throws instead of silently disabling the cooldown", () => {
+    withReplaced(paths.lastSwapJson, "{ not json", () => {
+      expect(() => loadLastSwapAt()).toThrow("corrupt");
+    });
+    rmSync(paths.lastSwapJson, { force: true });
+    expect(loadLastSwapAt()).toBe(null); // absent = genuinely never swapped
+  });
+  test("depleted-wait record round-trips; absent reads null", () => {
+    rmSync(paths.depletedJson, { force: true });
+    expect(loadDepletedWait()).toBe(null);
+    saveDepletedWait({ waitUntil: 123456, accountUuid: "acct-a", ts: 100 });
+    expect(loadDepletedWait()).toEqual({ waitUntil: 123456, accountUuid: "acct-a", ts: 100 });
+    rmSync(paths.depletedJson, { force: true });
   });
   test("wrong-typed known config keys throw; unknown keys stay tolerated", () => {
     withReplaced(paths.configJson, JSON.stringify({ claudeBin: 42 }), () => {

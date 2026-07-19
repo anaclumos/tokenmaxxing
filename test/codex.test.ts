@@ -285,13 +285,34 @@ describe("codex presence", () => {
   test("a living supervisor's account is present; a dead pid is cleaned up", () => {
     writeCodexPresence({ supervisorId: "sup-1", accountId: "acct-A" });
     expect(presentCodexAccountIds().has("acct-A")).toBe(true);
-    // fabricate a dead-supervisor presence: pid 1 is init (alive but not ours)
-    // so use an impossible pid instead
     mkdirSync(codexPaths.presenceDir, { recursive: true });
-    writeFileSync(join(codexPaths.presenceDir, "sup-dead"), JSON.stringify({ accountId: "acct-B", pid: 2_147_483_646, ts: Date.now() }));
+    writeFileSync(
+      join(codexPaths.presenceDir, "sup-dead"),
+      JSON.stringify({ accountId: "acct-B", pid: 2_147_483_646, startedAt: "Wed Jan  1 00:00:00 2020" }),
+    );
     const present = presentCodexAccountIds();
     expect(present.has("acct-B")).toBe(false);
     expect(existsSync(join(codexPaths.presenceDir, "sup-dead"))).toBe(false);
+  });
+
+  test("a corrupt presence file fails the read loudly instead of dropping protection", () => {
+    // a presence file guards a RUNNING session's account from being swapped
+    // out from under it; unreadable state must never silently read as absent.
+    mkdirSync(codexPaths.presenceDir, { recursive: true });
+    writeFileSync(join(codexPaths.presenceDir, "sup-corrupt"), "not json");
+    expect(() => presentCodexAccountIds()).toThrow("refusing to treat it as absent");
+  });
+
+  test("an ALIVE pid with the wrong start-time identity is treated as dead (pid reuse)", () => {
+    // A recycled pid after a supervisor crash must not bench the account
+    // forever: identity is pid + ps lstart, not bare aliveness.
+    mkdirSync(codexPaths.presenceDir, { recursive: true });
+    writeFileSync(
+      join(codexPaths.presenceDir, "sup-reused"),
+      JSON.stringify({ accountId: "acct-R", pid: process.pid, startedAt: "Wed Jan  1 00:00:00 2020" }),
+    );
+    expect(presentCodexAccountIds().has("acct-R")).toBe(false);
+    expect(existsSync(join(codexPaths.presenceDir, "sup-reused"))).toBe(false);
   });
 
   test("targetable accounts exclude running accounts but keep the seat itself", () => {
@@ -457,6 +478,47 @@ describe("codex decide", () => {
     const sampled = loadCodexAccounts().accounts.find((entry) => entry.accountId === "acct-A");
     expect(sampled?.lastUsage?.aggregate[0]?.usedPercentage).toBe(42);
     expect(sampled?.lastUsageAt).toBeGreaterThan(old);
+  });
+
+  test("a dead LIVE grant marks its owner and still swaps onto a healthy account", async () => {
+    // The live refresh throwing CodexInvalidGrantError used to escape to the
+    // hook's generic catch: no mark, no swap, the session stuck on a dead seat.
+    const accountA = account("A", { weekly: window({ used: 99, resetInMs: 24 * 3600_000 }), sampledAt: nowMs() - 10 * 60_000 });
+    const accountB = account("B", { weekly: window({ used: 5, resetInMs: 24 * 3600_000 }) });
+    seedPool({ accounts: [accountA, accountB], activeId: "acct-A" });
+    writeLiveCodexAuth({ auth: authBlob("A", { refreshToken: "DEAD-A", accessExpSecondsFromNow: -60 }) });
+    writeParkedCodexAuth({ credFile: accountB.credFile, auth: authBlob("B") });
+
+    const decision = await evaluateAndMaybeSwapCodex({});
+    expect(decision.swapped).toBe(true);
+    expect(decision.account?.accountId).toBe("acct-B");
+    expect(loadCodexAccounts().accounts.find((entry) => entry.accountId === "acct-A")?.needsReauth).toBe(true);
+  });
+
+  test("a dead live grant forces engagement even when cached usage sits under the floor", async () => {
+    const accountA = account("A", { weekly: window({ used: 20, resetInMs: 24 * 3600_000 }), sampledAt: nowMs() - 10 * 60_000 });
+    const accountB = account("B", { weekly: window({ used: 5, resetInMs: 24 * 3600_000 }) });
+    seedPool({ accounts: [accountA, accountB], activeId: "acct-A" });
+    writeLiveCodexAuth({ auth: authBlob("A", { refreshToken: "DEAD-A", accessExpSecondsFromNow: -60 }) });
+    writeParkedCodexAuth({ credFile: accountB.credFile, auth: authBlob("B") });
+
+    const decision = await evaluateAndMaybeSwapCodex({});
+    expect(decision.swapped).toBe(true);
+    expect(decision.account?.accountId).toBe("acct-B");
+    expect(loadCodexAccounts().accounts.find((entry) => entry.accountId === "acct-A")?.needsReauth).toBe(true);
+  });
+
+  test("a live rotation persists to the parked copy BEFORE the usage fetch can fail", async () => {
+    const accountA = account("A", { weekly: window({ used: 10, resetInMs: 24 * 3600_000 }), sampledAt: nowMs() - 10 * 60_000 });
+    seedPool({ accounts: [accountA], activeId: "acct-A" });
+    writeLiveCodexAuth({ auth: authBlob("A", { accessExpSecondsFromNow: 30 }) });
+    writeParkedCodexAuth({ credFile: accountA.credFile, auth: authBlob("A") }); // pre-rotation rt-A
+    usageBody = () => ({ error: "boom" }); // schema-invalid: the usage read fails after the refresh
+
+    await expect(evaluateAndMaybeSwapCodex({})).rejects.toThrow();
+    // the rotation exists server-side; a stranded pre-rotation parked copy
+    // would be reuse-punished on its next refresh.
+    expect(readParkedCodexAuth({ credFile: accountA.credFile })?.tokens.refresh_token).toBe("rt-A-rot");
   });
 
   test("a present (running) sibling is never targeted even when it ranks best", async () => {

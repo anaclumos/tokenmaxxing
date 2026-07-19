@@ -133,7 +133,7 @@ export function verifyRealClaude(bin: string): string | null {
     // loop-abort diagnostic points the user at.
     p = Bun.spawnSync([bin, "--version"], { env, stdout: "pipe", stderr: "pipe", timeout: 15_000, killSignal: "SIGKILL" });
   } catch (e) {
-    return String((e as Error).message ?? e);
+    return e instanceof Error ? e.message : String(e);
   }
   const outText = (p.stdout?.toString() ?? "").trim();
   const err = (p.stderr?.toString() ?? "").trim();

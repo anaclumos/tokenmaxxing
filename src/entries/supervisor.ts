@@ -39,6 +39,7 @@ export function analyzeArgs(argv: string[]): Analysis {
   let continueLatest = false;
   let printMode = false;
   let invalidSessionArg = false;
+  let pickerResume = false;
   let firstPositional: string | null = null;
 
   for (let i = 0; i < argv.length; i++) {
@@ -56,36 +57,43 @@ export function analyzeArgs(argv: string[]): Analysis {
     }
     else if (a === "-c" || a === "--continue") continueLatest = true;
     else if (a === "-r" || a === "--resume") {
+      // A UUID resume is managed (the sid is known, marker paths can be
+      // pinned). Bare `-r`, or `-r <term>` (binary-verified 2.1.214: a non-id
+      // value is an interactive-picker SEARCH TERM), choose the sid INSIDE
+      // claude - the supervisor cannot pin marker paths for an unknown sid, so
+      // those pass through unmanaged and claude behaves exactly as without the
+      // wrapper (same accepted state as claude's bg-daemon sessions: swaps
+      // still adopt in place, hooks still fire; only the depleted-pool
+      // countdown is absent).
       const next = argv[i + 1];
       if (next && !next.startsWith("-") && isUuid(next)) { resumeId = next; i++; }
+      else pickerResume = true;
     } else if (!a.startsWith("-") && firstPositional === null) {
       firstPositional = a;
     }
   }
 
   const isSubcmd = firstPositional !== null && NONINTERACTIVE_SUBCMDS.has(firstPositional);
-  const manage = !printMode && !isSubcmd && !invalidSessionArg && !process.env.TOKENMAXXING_PROBE;
+  const manage = !printMode && !isSubcmd && !invalidSessionArg && !pickerResume && !process.env.TOKENMAXXING_PROBE;
   return { manage, sessionId, resumeId, continueLatest };
 }
 
-/** Remove session-selecting flags so we can inject our own on respawn. */
+/** Remove session-selecting flags so we can inject our own on respawn. Managed
+ *  argv can only carry a UUID-valued resume (picker-mode passes through
+ *  unmanaged), so the value is always consumed with its flag. */
 export function stripSessionFlags(argv: string[]): string[] {
   const out: string[] = [];
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]!;
     if (a === "--session-id") { i++; continue; }
     if (a === "-c" || a === "--continue") continue;
-    if (a === "-r" || a === "--resume") {
-      const next = argv[i + 1];
-      if (next && !next.startsWith("-") && isUuid(next)) i++;
-      continue;
-    }
+    if (a === "-r" || a === "--resume") { i++; continue; }
     out.push(a);
   }
   return out;
 }
 
-/** Newest transcript session id for the current cwd (for `-c`/`-r`-without-id). */
+/** Newest transcript session id for the current cwd (for `-c`). */
 function latestSessionForCwd(): string | null {
   const slug = process.cwd().replace(/[/.]/g, "-");
   const projDir = join(paths.claudeDir, "projects", slug);

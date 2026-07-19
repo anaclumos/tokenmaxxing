@@ -31,20 +31,26 @@ const DEFAULT_CONFIG: Config = {
   policy: { projectionMargin: 0, greedySessionFloor: 50, switchModels: ["fable"], usagePollTtlMs: 90_000, maxWaitMs: 3_600_000 },
 };
 
+/** Percent-of-window values: out-of-range bars make every account read as
+ *  exhausted, so the schema rejects them at the config gate. The cross-field
+ *  case (a projectionMargin at or above a threshold zeroes the effective bar)
+ *  is caught by ConfigSchema's refine on the merged result. */
+const PercentSchema = z.number().min(0).max(100);
+
 /** On-disk shape (all optional); validated via Zod, merged over defaults.
  *  Exported for `xx config`, which edits and housekeeps the sparse file. */
 export const ConfigFileSchema = z
   .object({
-    thresholds: z.object({ session: z.number(), weekly: z.number() }).partial(),
+    thresholds: z.object({ session: PercentSchema, weekly: PercentSchema }).partial(),
     claudeBin: z.string(),
     codexBin: z.string(),
     policy: z
       .object({
-        projectionMargin: z.number(),
-        greedySessionFloor: z.number(),
+        projectionMargin: PercentSchema,
+        greedySessionFloor: PercentSchema,
         switchModels: z.array(z.string()),
-        usagePollTtlMs: z.number(),
-        maxWaitMs: z.number(),
+        usagePollTtlMs: z.number().int().positive(),
+        maxWaitMs: z.number().int().positive(),
       })
       .partial(),
   })
@@ -87,7 +93,14 @@ export function loadConfig(): Config {
   if (envBin) cfg.claudeBin = envBin;
   const envCodexBin = realCodexBinFromEnv();
   if (envCodexBin) cfg.codexBin = envCodexBin;
-  return ConfigSchema.parse(cfg);
+  const merged = ConfigSchema.safeParse(cfg);
+  if (!merged.success) {
+    // per-field values passed but the merged whole is unusable (the
+    // projectionMargin-vs-thresholds refine); name the reason, not a zod dump.
+    const detail = merged.error.issues.map((issue) => issue.message).join("; ");
+    throw new Error(`${paths.configJson} is invalid: ${detail} - fix or remove the offending values`);
+  }
+  return merged.data;
 }
 
 export function saveConfig(c: Config): void {
@@ -140,20 +153,55 @@ export function clearUsageSnapshots(): void {
   rmSync(paths.modelUsageJson, { force: true });
 }
 
-// ---- lastswap.json (epoch ms of the last swap; absent = never swapped) ----
+// ---- lastswap.json (epoch ms of the last swap; absent = never swapped;
+// present-but-corrupt THROWS - silently reading a damaged swap clock as
+// never-swapped would bypass the post-swap cooldown) ----
 
 export function loadLastSwapAt(): number | null {
   if (!existsSync(paths.lastSwapJson)) return null;
+  let json: unknown;
   try {
-    const parsed = LastSwapSchema.safeParse(JSON.parse(readFileSync(paths.lastSwapJson, "utf8")));
-    return parsed.success ? parsed.data.ts : null;
+    json = JSON.parse(readFileSync(paths.lastSwapJson, "utf8"));
   } catch {
-    return null;
+    throw new Error(`${paths.lastSwapJson} is corrupt (unparsable JSON) - refusing to treat a damaged swap clock as never-swapped; repair or remove the file`);
   }
+  return LastSwapSchema.parse(json).ts;
 }
 
 export function saveLastSwapAt(ts: number): void {
   writeFileAtomic(paths.lastSwapJson, JSON.stringify(LastSwapSchema.parse({ ts })));
+}
+
+// ---- depleted.json (the last depleted-wait decision; absent = none) ----
+// Written on every depleted-wait so hooks that hit an early exit (post-swap
+// cooldown, raced re-check, cleared snapshots) can REPLAY the wait to their
+// own supervisor: without the replay only the first session's Stop hook ever
+// saw a marker-writable decision and sibling sessions never paused (DESIGN.md
+// 3.5's fan-out). The record dies three ways: waitUntil passing, the live
+// seat (claude's oauthAccount) moving off the recorded account, and ANY
+// completed swap clearing it outright (performSwap - the depleted path
+// re-records its own wait right after its pre-park swap returns).
+
+const DepletedWaitSchema = z.object({ waitUntil: z.number(), accountUuid: z.string(), ts: z.number() });
+export type DepletedWait = z.infer<typeof DepletedWaitSchema>;
+
+export function loadDepletedWait(): DepletedWait | null {
+  if (!existsSync(paths.depletedJson)) return null;
+  let json: unknown;
+  try {
+    json = JSON.parse(readFileSync(paths.depletedJson, "utf8"));
+  } catch {
+    throw new Error(`${paths.depletedJson} is corrupt (unparsable JSON) - repair or remove the file`);
+  }
+  return DepletedWaitSchema.parse(json);
+}
+
+export function saveDepletedWait(rec: DepletedWait): void {
+  writeFileAtomic(paths.depletedJson, JSON.stringify(DepletedWaitSchema.parse(rec)));
+}
+
+export function clearDepletedWait(): void {
+  rmSync(paths.depletedJson, { force: true });
 }
 
 /** An alive feed re-proving unchanged figures still refreshes `ts` this often,

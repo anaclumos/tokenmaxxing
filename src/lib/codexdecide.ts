@@ -15,7 +15,7 @@ import { codexCurrentWins, isCodexEngaged, isCodexExhausted, pickBestCodex } fro
 import { performCodexSwap } from "./codexswap.ts";
 import { CodexInvalidGrantError, refreshCodexAuth } from "./codexoauth.ts";
 import { fetchCodexUsage } from "./codexusage.ts";
-import { isCodexAccessExpiring, readLiveCodexAuth, writeLiveCodexAuth, writeParkedCodexAuth } from "./codexauth.ts";
+import { codexIdentityOf, isCodexAccessExpiring, readLiveCodexAuth, writeLiveCodexAuth, writeParkedCodexAuth } from "./codexauth.ts";
 import { liveCodexAccountId } from "./codexsample.ts";
 import { targetableCodexAccounts } from "./codexpresence.ts";
 import { effectiveBars } from "./picker.ts";
@@ -33,26 +33,40 @@ const POST_SWAP_COOLDOWN_MS = 45_000;
 
 /**
  * Sample the LIVE credential's usage and stamp it onto its TRUE owner in the
- * pool (the usage read echoes the token's own account id: labels drift, the
- * token cannot lie). Refreshes the live blob first when it is near expiry,
- * persisting the rotation to both the live file and the owner's parked copy.
- * Returns the owner, or null when the live credential is absent or unpooled.
+ * pool (the id_token's own identity: labels drift, the token cannot lie).
+ * Refreshes the live blob first when it is near expiry, persisting the
+ * rotation to the live file AND the owner's parked copy in the same step -
+ * before the usage fetch, so a failed fetch can never strand the parked copy
+ * on the reuse-punished superseded refresh token. A dead live grant marks the
+ * owner needs-reauth and keeps the cached snapshot, so the decision below can
+ * still swap AWAY from it. Returns the owner id, or null when the live
+ * credential is absent or unpooled.
  */
 async function sampleLiveOntoOwner(input: { now: number }): Promise<string | null> {
   const { now } = input;
   let live = readLiveCodexAuth();
   if (!live) return null;
+  const index = loadCodexAccounts();
+  const identity = codexIdentityOf({ auth: live });
+  const owner = index.accounts.find((account) => account.accountId === identity.accountId);
+  if (!owner) return null;
 
   if (isCodexAccessExpiring({ auth: live, now })) {
-    live = await refreshCodexAuth({ auth: live, now });
+    try {
+      live = await refreshCodexAuth({ auth: live, now });
+    } catch (e) {
+      if (e instanceof CodexInvalidGrantError) {
+        owner.needsReauth = true;
+        saveCodexAccounts({ index });
+        log("codexdecide.live_invalid_grant", { account: owner.accountId.slice(0, 8) });
+        return owner.accountId;
+      }
+      throw e;
+    }
     writeLiveCodexAuth({ auth: live });
+    writeParkedCodexAuth({ credFile: owner.credFile, auth: live });
   }
   const usage = await fetchCodexUsage({ auth: live });
-
-  const index = loadCodexAccounts();
-  const owner = index.accounts.find((account) => account.accountId === usage.accountId);
-  if (!owner) return null;
-  writeParkedCodexAuth({ credFile: owner.credFile, auth: live });
   owner.lastUsage = { aggregate: usage.aggregate, perLimit: usage.perLimit };
   owner.lastUsageAt = now;
   if (usage.email != null) owner.email = usage.email;
@@ -101,7 +115,11 @@ export async function evaluateAndMaybeSwapCodex(input: { now?: number }): Promis
     const active = index.accounts.find((account) => account.accountId === activeId) ?? null;
     if (!active) return { swapped: false, account: null, reason: "no-active-account" };
 
+    // A dead live grant always engages: the seat is unusable regardless of
+    // cached usage, and codexCurrentWins/pickBestCodex already exclude
+    // needs-reauth accounts, so both branches route onto a healthy target.
     const engaged =
+      active.needsReauth === true ||
       isCodexEngaged({ account: active, floor: cfg.policy.greedySessionFloor, now }) ||
       isCodexExhausted({ account: active, thresholds: bars, now });
     if (!engaged) return { swapped: false, account: null, reason: "under-threshold-or-stale" };

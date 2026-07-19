@@ -33,7 +33,7 @@ export async function runSessionStart(): Promise<number> {
       log("sessionstart.swapped", { source, account: decision.account.accountUuid.slice(0, 8) });
     }
   } catch (e) {
-    log("sessionstart.error", { err: String((e as Error).message ?? e) });
+    log("sessionstart.error", { err: e instanceof Error ? e.message : String(e) });
   }
   return 0;
 }

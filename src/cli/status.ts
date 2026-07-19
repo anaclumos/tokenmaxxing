@@ -53,7 +53,12 @@ export async function cmdStatus(force = false, preRender?: () => void): Promise<
     const activeOrg = liveOAuth?.organizationUuid ?? null;
     await Promise.all(
       idx.accounts.map(async (a) => {
-        const isActive = a.accountUuid === idx.activeAccountUuid && activeOrg === a.organizationUuid;
+        // Active = the org claude's own oauthAccount names, NOT the stored
+        // label conjunction: after a manual /login the label lags, and routing
+        // the genuinely-live account through the parked prober would refresh
+        // its stale parked grant and could flag a healthy account needs-reauth.
+        // probeActiveUsage's own roles check still fail-fasts on residual drift.
+        const isActive = activeOrg != null && activeOrg === a.organizationUuid;
         // The tee path never opens the credential blob, so the active account's
         // tier comes from the live oauthAccount instead - it names this very org
         // (uuid-matched above), so the tier is attributed to its own identity.
@@ -120,8 +125,11 @@ export async function cmdStatus(force = false, preRender?: () => void): Promise<
   // (5h or extrapolated weekly, from the just-refreshed samples), needs-reauth
   // last; the ● marker identifies the active account wherever it sorts.
   const displayAccounts = sortBy(idx.accounts, [(a) => (a.needsReauth ? 1 : 0), (a) => earliestReset(a, now)]);
+  // The marker matches the probe routing above: active = the org claude's own
+  // oauthAccount names (the swap label can lag after a manual /login).
+  const displayActiveOrg = readOAuthAccount()?.organizationUuid ?? null;
   for (const a of displayAccounts) {
-    const active = a.accountUuid === idx.activeAccountUuid;
+    const active = displayActiveOrg != null && a.organizationUuid === displayActiveOrg;
     const outcome = outcomes.get(a.accountUuid);
     const failed = outcome ? !outcome.ok : false;
     // On a failed sample, fall back to the last-known values (with a note below).

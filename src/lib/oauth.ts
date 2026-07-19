@@ -53,7 +53,7 @@ export async function refreshCredential(creds: OAuthCreds, now = Date.now()): Pr
       body: JSON.stringify(body),
     });
   } catch (e) {
-    throw new Error(`token endpoint unreachable: ${String((e as Error).message ?? e)}`);
+    throw new Error(`token endpoint unreachable: ${e instanceof Error ? e.message : String(e)}`);
   }
 
   const text = await res.text();
@@ -108,7 +108,7 @@ export async function fetchTokenOrg(accessToken: string): Promise<RolesResponse>
       headers: { Authorization: `Bearer ${accessToken}`, "anthropic-beta": "oauth-2025-04-20" },
     });
   } catch (e) {
-    throw new Error(`roles endpoint unreachable: ${String((e as Error).message ?? e)}`);
+    throw new Error(`roles endpoint unreachable: ${e instanceof Error ? e.message : String(e)}`);
   }
   const text = await res.text();
   if (!res.ok) throw new Error(`roles check failed (HTTP ${res.status}): ${safeErrorDetail({ text })}`);

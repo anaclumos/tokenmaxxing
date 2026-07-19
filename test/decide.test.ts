@@ -13,7 +13,8 @@ import { join } from "node:path";
 import { afterAll, beforeEach, describe, expect, test } from "bun:test";
 import { evaluateAndMaybeSwap } from "../src/lib/decide.ts";
 import { paths } from "../src/lib/paths.ts";
-import { loadAccounts, loadModelUsage, loadUsage, saveAccounts } from "../src/lib/state.ts";
+import { loadAccounts, loadModelUsage, loadUsage, saveAccounts, saveDepletedWait, saveLastSwapAt } from "../src/lib/state.ts";
+import { writeItem, parkedTarget, liveTarget, deleteItem } from "../src/lib/credstore.ts";
 import type { Account } from "../src/lib/types.ts";
 
 const D = 86_400_000;
@@ -71,7 +72,7 @@ function installFixtures(extraAccounts: Account[] = [], thresholds = { session: 
 function clearState(): void {
   const files = [
     paths.usageJson, paths.modelUsageJson, paths.lastSwapJson, paths.accountsJson,
-    paths.configJson, paths.claudeJson, probeMarker, fakeClaude,
+    paths.configJson, paths.claudeJson, paths.depletedJson, probeMarker, fakeClaude,
   ];
   for (const f of files) rmSync(f, { force: true });
 }
@@ -297,6 +298,83 @@ describe("evaluateAndMaybeSwap headless snapshot handling", () => {
     expect(d.reason).toBe("all-depleted");
     expect(loadAccounts().activeAccountUuid).toBe("A");
     await expect(evaluateAndMaybeSwap(Date.now(), true)).rejects.toThrow(/no parked credential/);
+  });
+
+  test("a recorded depleted-wait replays through the cooldown so sibling hooks get their marker", async () => {
+    // The first hook's pre-park starts the cooldown; without the replay every
+    // sibling Stop hook returned account:null and only ONE session ever paused
+    // (DESIGN.md 3.5's fan-out). The record must also die on expiry and when a
+    // real swap moved the active label elsewhere.
+    const now = Date.now();
+    installFakeClaude(96, now + 2 * D);
+    saveLastSwapAt(now - 1_000); // inside the 45s cooldown
+    saveDepletedWait({ waitUntil: now + 10 * 60_000, accountUuid: "A", ts: now });
+    const replay = await evaluateAndMaybeSwap(now, true);
+    expect(replay.reason).toBe("depleted-wait");
+    expect(replay.account?.accountUuid).toBe("A");
+    expect(replay.waitUntil).toBe(now + 10 * 60_000);
+
+    saveDepletedWait({ waitUntil: now - 1, accountUuid: "A", ts: now }); // expired
+    expect((await evaluateAndMaybeSwap(now, true)).reason).toBe("post-swap-cooldown");
+
+    saveDepletedWait({ waitUntil: now + 10 * 60_000, accountUuid: "B", ts: now }); // superseded
+    expect((await evaluateAndMaybeSwap(now, true)).reason).toBe("post-swap-cooldown");
+
+    // a manual /login moved the live seat: claude.json oauthAccount is the
+    // fresh signal, and the stale accounts.json label (still "A") must not
+    // resurrect a wait for an account no longer live.
+    saveDepletedWait({ waitUntil: now + 10 * 60_000, accountUuid: "A", ts: now });
+    writeFileSync(paths.claudeJson, JSON.stringify({ oauthAccount: { accountUuid: "F", emailAddress: "F@e.com", organizationUuid: "org-F" } }));
+    expect((await evaluateAndMaybeSwap(now, true)).reason).toBe("post-swap-cooldown");
+  });
+
+  test("a dead grant on the earliest-reset pre-park target falls through to the next account", async () => {
+    // B recovers soonest but its refresh token is dead: the depleted loop must
+    // mark B needs-reauth and pre-park onto C, never abort into all-depleted.
+    const now = Date.now();
+    const server = Bun.serve({
+      port: 8791,
+      fetch: async (req) => {
+        const body = await req.json();
+        const rt = body != null && body instanceof Object && "refresh_token" in body ? body.refresh_token : null;
+        if (rt === "DEAD-B") return new Response(JSON.stringify({ error: "invalid_grant" }), { status: 400 });
+        return Response.json({ access_token: "at-C-fresh", refresh_token: "rt-C-2", expires_in: 3600 });
+      },
+    });
+    try {
+      installFakeClaude(96, now + 2 * D);
+      installFixtures([
+        poolAccount("B", {
+          lastUsage: {
+            fiveHour: { usedPercentage: 99, resetsAt: now + 20 * 60_000 },
+            sevenDay: { usedPercentage: 30, resetsAt: now + 3 * D },
+          },
+          lastUsageAt: now,
+        }),
+        poolAccount("C", {
+          lastUsage: {
+            fiveHour: { usedPercentage: 99, resetsAt: now + 40 * 60_000 },
+            sevenDay: { usedPercentage: 30, resetsAt: now + 3 * D },
+          },
+          lastUsageAt: now,
+        }),
+      ]);
+      await writeItem(parkedTarget("tokenmaxxing-cred-B"), JSON.stringify({ claudeAiOauth: { accessToken: "at-B", refreshToken: "DEAD-B", expiresAt: 0 } }));
+      await writeItem(parkedTarget("tokenmaxxing-cred-C"), JSON.stringify({ claudeAiOauth: { accessToken: "at-C", refreshToken: "OK-C", expiresAt: 0 } }));
+
+      const d = await evaluateAndMaybeSwap(now, true);
+      expect(d.reason).toBe("depleted-wait");
+      expect(d.account?.accountUuid).toBe("C");
+      expect(d.waitUntil).toBe(now + 40 * 60_000);
+      const idx = loadAccounts();
+      expect(idx.activeAccountUuid).toBe("C");
+      expect(idx.accounts.find((a) => a.accountUuid === "B")?.needsReauth).toBe(true);
+    } finally {
+      server.stop(true);
+      await deleteItem(parkedTarget("tokenmaxxing-cred-B"));
+      await deleteItem(parkedTarget("tokenmaxxing-cred-C"));
+      await deleteItem(liveTarget());
+    }
   });
 
   test("candidates whose gated cap is burnt are screened out down the whole chain", async () => {

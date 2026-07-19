@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, test } from "bun:test";
-import { readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { installSettings, uninstallSettings, checkSettings } from "../src/lib/settings.ts";
 
 const settingsPath = process.env.TOKENMAXXING_CLAUDE_SETTINGS!;
@@ -71,5 +71,54 @@ describe("settings merge", () => {
   test("uninstall leaves a foreign statusLine alone", () => {
     uninstallSettings(); // never installed: seed statusLine is not ours
     expect(read().statusLine.command).toBe("my-existing-statusline --fancy");
+  });
+
+  test("install preserves the file's mode; a new file starts 0600", () => {
+    chmodSync(settingsPath, 0o600);
+    installSettings();
+    expect(statSync(settingsPath).mode & 0o777).toBe(0o600); // never widened
+    rmSync(settingsPath, { force: true });
+    installSettings();
+    expect(statSync(settingsPath).mode & 0o777).toBe(0o600); // safe default
+  });
+
+  test("a stale-path hook is rewritten to the current install and reads unhealthy until then", () => {
+    const stale = { ...seed(), hooks: { Stop: [{ hooks: [{ type: "command", command: '"/old/home/bin/tokenmaxxing" __stop-hook' }] }] } };
+    writeFileSync(settingsPath, JSON.stringify(stale, null, 2));
+    expect(checkSettings().stopOk).toBe(false); // old path = broken, not installed
+    installSettings();
+    const cmds: string[] = read().hooks.Stop.flatMap((g: { hooks: { command: string }[] }) => g.hooks.map((h) => h.command));
+    const ours = cmds.filter((cmd) => cmd.includes("__stop-hook"));
+    expect(ours.length).toBe(1); // stale entry replaced, not accumulated
+    expect(ours[0]).not.toContain("/old/home");
+    expect(checkSettings().stopOk).toBe(true);
+  });
+
+  test("a foreign hook sharing our group, or merely mentioning our strings, survives reinstall", () => {
+    const shared = {
+      ...seed(),
+      hooks: {
+        Stop: [
+          // our stale entry sharing a group with a foreign hook
+          { hooks: [{ type: "command", command: '"/old/home/bin/tokenmaxxing" __stop-hook' }, { type: "command", command: "/orca/other.sh" }] },
+          // a foreign wrapper that only MENTIONS our subcommand text
+          { hooks: [{ type: "command", command: "sh -c 'log __stop-hook ran'" }] },
+        ],
+      },
+    };
+    writeFileSync(settingsPath, JSON.stringify(shared, null, 2));
+    installSettings();
+    const cmds: string[] = read().hooks.Stop.flatMap((g: { hooks: { command: string }[] }) => g.hooks.map((h) => h.command));
+    expect(cmds).toContain("/orca/other.sh"); // group-mate survived
+    expect(cmds).toContain("sh -c 'log __stop-hook ran'"); // mention-only survived
+    expect(cmds.filter((cmd) => cmd.startsWith('"'))).toHaveLength(1); // exactly one canonical entry
+    expect(cmds).not.toContain('"/old/home/bin/tokenmaxxing" __stop-hook'); // stale ours replaced
+  });
+
+  test("a foreign command mentioning the path and subcommand as text never green-lights doctor", () => {
+    const decoyCmd = "echo tokenmaxxing __stop-hook seen";
+    const decoy = { ...seed(), hooks: { Stop: [{ hooks: [{ type: "command", command: decoyCmd }] }] } };
+    writeFileSync(settingsPath, JSON.stringify(decoy, null, 2));
+    expect(checkSettings().stopOk).toBe(false);
   });
 });

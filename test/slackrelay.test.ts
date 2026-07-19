@@ -305,4 +305,39 @@ describe("relayThread segment ordering", () => {
     expect(strings(col.posts[0])).toContain("fresh text");
     expect(strings(col.posts[0])).not.toContain("lost text");
   });
+
+  test("lost reply text with no re-delivery fails the turn and posts a diagnostic", async () => {
+    // The closing Turn card opens its own (successful) post after the rejected
+    // text segment - the stream "recovers" but the ANSWER is gone. Card-only
+    // recovery must not read as success.
+    decisionQueue.push(usable);
+    queryScripts.push(() =>
+      (async function* () {
+        yield init("s-tail");
+        yield textDelta("final answer");
+        yield success("s-tail");
+      })(),
+    );
+    const col = collector({ rejectTimes: 1 });
+    const out = await relay({ post: col.post });
+    expect(out.failed).toBe(true);
+    const delivered = col.posts.map((p) => strings(p));
+    expect(delivered.some((s) => s.includes("could not be posted"))).toBe(true);
+    expect(delivered.some((s) => s.includes("final answer"))).toBe(false);
+  });
+
+  test("a rejecting diagnostic never escapes relayThread", async () => {
+    decisionQueue.push(usable);
+    queryScripts.push(() =>
+      (async function* () {
+        yield init("s-tail2");
+        yield textDelta("final answer");
+        yield success("s-tail2");
+      })(),
+    );
+    const col = collector({ rejectTimes: 3 }); // text, card, and the diagnostic all reject
+    const out = await relay({ post: col.post }); // resolving IS the assertion
+    expect(out.failed).toBe(true);
+    expect(col.posts.length).toBe(0);
+  });
 });

@@ -37,6 +37,10 @@ export const TurnOutcomeSchema = z.object({
   rateLimited: z.boolean(),
   /** the model called finish_thread this turn: garbage-collect after the turn. */
   finish: z.boolean(),
+  /** relayThread posted a TERMINAL drop notice for this message ("dropped;
+   *  re-send it"): a drain must NOT presume a killed child and retain the
+   *  resume marker, or startup replays work the user was told to resend. */
+  announcedDrop: z.boolean(),
 });
 export type TurnOutcome = z.infer<typeof TurnOutcomeSchema>;
 
@@ -380,9 +384,21 @@ export async function relayThread(input: {
    *  out a depleted-pool countdown. */
   drainSignal?: AbortSignal;
 }): Promise<TurnOutcome> {
-  const outcome: TurnOutcome = { sessionId: input.sessionId, failed: false, rateLimited: false, finish: false };
+  const outcome: TurnOutcome = { sessionId: input.sessionId, failed: false, rateLimited: false, finish: false, announcedDrop: false };
   let segment: ReturnType<typeof pushableStream> | null = null;
+  let segmentMeta: { text: boolean } | null = null;
   let lastPost: Promise<unknown> = Promise.resolve();
+  // Reply TEXT that was pushed into a rejected segment and never re-delivered
+  // by a later text-bearing segment: the user has not seen the answer. A lost
+  // card-only segment never sets this (decoration, not the answer).
+  // Tradeoff (flagged and accepted): a later delivered text segment clears the
+  // flag even though it is a continuation, because the dominant rejection is
+  // Slack finalizing an idle stream - the streamed text WAS delivered, only
+  // the append failed - and sticky loss would fail every long turn with a
+  // spurious diagnostic; chat 4.34.0 exposes no per-chunk delivery acks to
+  // tell that apart from a swallowed first post.
+  let textLost = false;
+  let textLostDetail: string | null = null;
   let postedText = false;
   const push = async (chunk: SegmentChunk) => {
     let seg = segment;
@@ -391,16 +407,32 @@ export async function relayThread(input: {
       seg = pushableStream();
       segment = seg;
       const posted = seg;
-      lastPost = input.post(seg.iterable).catch((e: unknown) => {
-        const detail = (e instanceof Error ? e.message : String(e)).slice(0, 300);
-        log("serve.post_error", { err: detail });
-        // the consumer is gone (e.g. Slack finalized an idle stream:
-        // message_not_in_streaming_state) - drop the dead segment so the
-        // next chunk opens a fresh message instead of vanishing into it.
-        if (segment === posted) segment = null;
-      });
+      const meta = { text: false };
+      segmentMeta = meta;
+      lastPost = input.post(seg.iterable).then(
+        () => {
+          // segments settle in order (push awaits lastPost before opening the
+          // next), so delivered text supersedes an earlier loss.
+          if (meta.text) textLost = false;
+        },
+        (e: unknown) => {
+          const detail = (e instanceof Error ? e.message : String(e)).slice(0, 300);
+          log("serve.post_error", { err: detail });
+          if (meta.text) {
+            textLost = true;
+            textLostDetail = detail;
+          }
+          // the consumer is gone (e.g. Slack finalized an idle stream:
+          // message_not_in_streaming_state) - drop the dead segment so the
+          // next chunk opens a fresh message instead of vanishing into it.
+          if (segment === posted) segment = null;
+        },
+      );
     }
-    if (!postedText && !(chunk instanceof Object)) postedText = true;
+    if (!(chunk instanceof Object)) {
+      postedText = true;
+      segmentMeta!.text = true;
+    }
     seg.push(chunk);
   };
   const breakSegment = () => {
@@ -413,6 +445,16 @@ export async function relayThread(input: {
     breakSegment();
     await push(text);
     breakSegment();
+  };
+  /** notify + confirm the post actually landed in Slack. A drop notice that
+   *  never reached the user must NOT count as announced (announcedDrop clears
+   *  the resume marker; an undelivered notice would silently lose the turn -
+   *  an unconfirmed drop keeps the marker so startup replays instead). The
+   *  notice is text, so its own delivery resets textLost. */
+  const notifyDelivered = async (text: string) => {
+    await notify(text);
+    await lastPost;
+    return !textLost;
   };
   // false when the daemon started draining mid-sleep.
   const sleep = async (ms: number) => {
@@ -567,7 +609,7 @@ export async function relayThread(input: {
       outcome.failed = true;
       outcome.rateLimited = true;
       log("serve.pool_depleted_drop", { recoversAt: plan.recoversAt });
-      await notify(`every pooled account is at its usage limit (recovers in ${inWord(plan.recoversAt)}) - this message was dropped; re-send it once the pool recovers.`);
+      outcome.announcedDrop = await notifyDelivered(`every pooled account is at its usage limit (recovers in ${inWord(plan.recoversAt)}) - this message was dropped; re-send it once the pool recovers.`);
       break;
     }
     if (plan.kind === "park") {
@@ -576,7 +618,7 @@ export async function relayThread(input: {
       await notify(`every pooled account is at its usage limit - holding this message and retrying in ${inWord(plan.wakeAt)}.`);
       if (!(await sleep(plan.wakeAt - Date.now()))) {
         outcome.failed = true;
-        await notify("tokenmaxxing is restarting - this message was dropped; please re-send it.");
+        outcome.announcedDrop = await notifyDelivered("tokenmaxxing is restarting - this message was dropped; please re-send it.");
         break;
       }
       continue;
@@ -585,7 +627,7 @@ export async function relayThread(input: {
     if (!outcome.failed || !outcome.rateLimited) break;
     if (recoveries >= MAX_RECOVERIES) {
       log("serve.rate_limited_drop", { recoveries });
-      await notify("still at a usage limit after retries - this message was dropped; reply when you want to try again.");
+      outcome.announcedDrop = await notifyDelivered("still at a usage limit after retries - this message was dropped; reply when you want to try again.");
       break;
     }
     // a limit the cached pool state did not predict: give the pool one beat
@@ -600,14 +642,39 @@ export async function relayThread(input: {
     // decision refuses to re-evaluate, respawning the same limited account
     // (review catch, PR #18). The persisted observation then makes the
     // post-cooldown decision see the depleted account immediately.
-    const cooldownUntil = (loadLastSwapAt() ?? 0) + POST_SWAP_COOLDOWN_MS + 1_000;
+    // loadLastSwapAt throws on a corrupt swap clock; every failure in this
+    // loop must settle the turn in-thread (announced, never a bare throw),
+    // same as the ensureBestAccount guard above (review catch, PR #31).
+    let cooldownUntil: number;
+    try {
+      cooldownUntil = (loadLastSwapAt() ?? 0) + POST_SWAP_COOLDOWN_MS + 1_000;
+    } catch (e) {
+      outcome.failed = true;
+      const detail = (e instanceof Error ? e.message : String(e)).slice(0, 300);
+      log("serve.turn_error", { err: detail });
+      await push(`tokenmaxxing: turn failed: ${detail}`);
+      break;
+    }
     if (!(await sleep(Math.max(RETRY_DELAY_MS, cooldownUntil - Date.now())))) {
       outcome.failed = true;
-      await notify("tokenmaxxing is restarting - this message was dropped; please re-send it.");
+      outcome.announcedDrop = await notifyDelivered("tokenmaxxing is restarting - this message was dropped; please re-send it.");
       break;
     }
   }
   breakSegment();
   await lastPost;
+  // Reply text died with a rejected segment and nothing later re-delivered it:
+  // the answer silently vanished while the outcome would report success. Fail
+  // the turn and make one best-effort fresh-message diagnostic (a fresh post
+  // is exactly what the mid-stream recovery relies on succeeding).
+  if (textLost) {
+    outcome.failed = true;
+    const detail = textLostDetail ?? "unknown error";
+    await input
+      .post((async function* () {
+        yield `tokenmaxxing: the reply could not be posted to Slack: ${detail}`;
+      })())
+      .catch((e: unknown) => log("serve.post_error", { err: (e instanceof Error ? e.message : String(e)).slice(0, 300) }));
+  }
   return outcome;
 }

@@ -49,49 +49,53 @@ export async function cmdCodexAdd(): Promise<number> {
   await p.exited;
   restoreTermios(savedTermios);
 
-  const cleanup = () => rmSync(onboardDir, { recursive: true, force: true });
-
-  const auth = readCodexAuthAt({ path: join(onboardDir, "auth.json") });
-  if (p.exitCode !== 0 || !auth) {
-    console.error(c.red("no codex login landed in the isolated home - nothing added."));
-    cleanup();
-    return 1;
-  }
-
-  const identity = codexIdentityOf({ auth });
-  console.log(c.dim("sampling usage..."));
-  let usage: CodexUsage | null = null;
+  // The finally guarantees the plaintext onboard home is destroyed on every
+  // non-signal exit; an exception mid-registration must not strand it. (An
+  // interactive Ctrl-C is reaped by the next run's rmSync-first.)
+  let account: CodexAccount;
+  let poolSize: number;
   try {
-    usage = await fetchCodexUsage({ auth });
-  } catch (e) {
-    if (!(e instanceof CodexUsageReadError)) throw e;
-    console.log(c.yellow("could not sample usage now - it will fill in on first use."));
+    const auth = readCodexAuthAt({ path: join(onboardDir, "auth.json") });
+    if (p.exitCode !== 0 || !auth) {
+      console.error(c.red("no codex login landed in the isolated home - nothing added."));
+      return 1;
+    }
+
+    const identity = codexIdentityOf({ auth });
+    console.log(c.dim("sampling usage..."));
+    let usage: CodexUsage | null = null;
+    try {
+      usage = await fetchCodexUsage({ auth });
+    } catch (e) {
+      if (!(e instanceof CodexUsageReadError)) throw e;
+      console.log(c.yellow("could not sample usage now - it will fill in on first use."));
+    }
+
+    const credFile = codexCredItemFor(identity.accountId);
+    writeParkedCodexAuth({ credFile, auth });
+
+    ({ account, poolSize } = await withLock(codexPaths.lockFile, () => {
+      const index = loadCodexAccounts();
+      const existing = index.accounts.find((entry) => entry.accountId === identity.accountId);
+      const fresh: CodexAccount = {
+        accountId: identity.accountId,
+        email: usage?.email ?? identity.email,
+        label: existing?.label ?? usage?.email ?? identity.email ?? identity.accountId.slice(0, 8),
+        planType: usage?.planType ?? identity.planType,
+        credFile,
+        addedAt: existing?.addedAt ?? new Date().toISOString(),
+        needsReauth: false,
+        lastUsage: usage ? { aggregate: usage.aggregate, perLimit: usage.perLimit } : existing?.lastUsage,
+        lastUsageAt: usage ? Date.now() : existing?.lastUsageAt,
+      };
+      if (existing) Object.assign(existing, fresh);
+      else index.accounts.push(fresh);
+      saveCodexAccounts({ index });
+      return { account: fresh, poolSize: index.accounts.length };
+    }));
+  } finally {
+    rmSync(onboardDir, { recursive: true, force: true });
   }
-
-  const credFile = codexCredItemFor(identity.accountId);
-  writeParkedCodexAuth({ credFile, auth });
-
-  const { account, poolSize } = await withLock(codexPaths.lockFile, () => {
-    const index = loadCodexAccounts();
-    const existing = index.accounts.find((entry) => entry.accountId === identity.accountId);
-    const fresh: CodexAccount = {
-      accountId: identity.accountId,
-      email: usage?.email ?? identity.email,
-      label: existing?.label ?? usage?.email ?? identity.email ?? identity.accountId.slice(0, 8),
-      planType: usage?.planType ?? identity.planType,
-      credFile,
-      addedAt: existing?.addedAt ?? new Date().toISOString(),
-      needsReauth: false,
-      lastUsage: usage ? { aggregate: usage.aggregate, perLimit: usage.perLimit } : existing?.lastUsage,
-      lastUsageAt: usage ? Date.now() : existing?.lastUsageAt,
-    };
-    if (existing) Object.assign(existing, fresh);
-    else index.accounts.push(fresh);
-    saveCodexAccounts({ index });
-    return { account: fresh, poolSize: index.accounts.length };
-  });
-
-  cleanup();
 
   console.log();
   console.log(`${c.green("✓")} added codex account ${c.bold(account.label)} (${account.planType ?? "?"}) - codex pool now has ${count({ n: poolSize, noun: "account" })}`);
