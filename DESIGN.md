@@ -28,7 +28,7 @@ It is a process manager only - spawn with inherited stdio plus saved `stty -g` t
 ## 2. What tokenmaxxing installs
 
 - A `claude` **supervisor** on your PATH ahead of the real binary (`~/.config/tokenmaxxing/bin/claude`), or a shell function - you invoke it identically.
-- Four `~/.claude/settings.json` entries (merged, preserving anything you already have): a transparent `statusLine` shim, a `subagentStatusLine` shim (per-subagent rows in the agents panel), a `Stop` hook, a `SessionStart` hook.
+- Four `~/.claude/settings.json` entries (merged - other settings keys are preserved, but the `statusLine` slot is taken over): the tokenmaxxing `statusLine` renderer (native since 2026-07-11; it also tees usage), a `subagentStatusLine` (per-subagent rows in the agents panel), a `Stop` hook, a `SessionStart` hook.
 - **`~/.config/tokenmaxxing/`** - the single home for config and state:
   - `config.json` - threshold, account order/policy.
   - `accounts.json` - non-secret index `{email, organizationUuid, accountUuid, lastUsage, resetsAt, needs_reauth}`.
@@ -37,17 +37,19 @@ It is a process manager only - spawn with inherited stdio plus saved `stty -g` t
   - `bin/claude` - the supervisor.
 - Per-account **credentials** follow the platform's Claude Code store: macOS = login-keychain items `tokenmaxxing-cred-<accountUuid[:8]>` (never plaintext on disk); Linux = 0600 files `creds/tokenmaxxing-cred-<accountUuid[:8]>.json` (the same plaintext model claude itself uses - its Linux build has no keyring path at all, binary-verified 2.1.205). One `credstore` facade dispatches on a `{kind: keychain|file}` target; call sites never branch on platform.
 
-No background daemon - it's event-driven (statusline pushes usage; hooks + supervisor react). The `claude` binary and `~/.claude` layout are untouched.
+- A periodic check job (`com.tokenmaxxing.check` launchd agent on macOS, `tokenmaxxing-check.timer` systemd user timer on Linux) running `tokenmaxxing check` every 180s: hooks alone miss long agentic turns, so the timer is the backstop that keeps switching engaged mid-turn.
+
+The switching path runs no long-lived daemon - the statusline pushes usage and hooks + supervisor react, with the periodic check job above as its only recurring process (`xx serve`, the opt-in Slack bridge, is a separate long-lived daemon). The `claude` binary and `~/.claude` layout are untouched.
 
 ---
 
 ## 3. How a switch happens
 
 ### 3.1 Usage feed (free, push-based)
-The Stop hook's stdin has no usage data, but the **statusLine does** (`rate_limits.{five_hour,seven_day}.{used_percentage,resets_at}`, after every turn, 300ms debounce, zero cost). tokenmaxxing's statusLine shim tees that to `usage.json` (write-on-change, O(ms)) and passes your real statusline through unchanged. Cold-start fallback if `usage.json` is absent: `TOKENMAXXING_PROBE=1 claude -p '/usage'`, with `[ -n "$TOKENMAXXING_PROBE" ] && exit 0` as the hook's first line to stop the nested process recursing (hooks fire in `-p` too). The probe scrubs every ambient credential override claude reads before the keychain (`CLAUDE_CODE_OAUTH_TOKEN`, `CLAUDE_SECURESTORAGE_CONFIG_DIR`, etc.) so it can only meter the credential in the keychain item, and retries the transient empty-footer case (claude prints local stats with no percentages when its own usage fetch throttles).
+The Stop hook's stdin has no usage data, but the **statusLine does** (`rate_limits.{five_hour,seven_day}.{used_percentage,resets_at}`, after every turn, 300ms debounce, zero cost). tokenmaxxing's statusLine tees that to `usage.json` (write-on-change, O(ms)) and renders its own native line (it replaced the earlier pass-through delegation on 2026-07-11: install takes the statusLine slot outright, so a pre-existing custom statusline command is overwritten). Cold-start fallback if `usage.json` is absent: `TOKENMAXXING_PROBE=1 claude -p '/usage'`, with `[ -n "$TOKENMAXXING_PROBE" ] && exit 0` as the hook's first line to stop the nested process recursing (hooks fire in `-p` too). The probe scrubs every ambient credential override claude reads before the keychain (`CLAUDE_CODE_OAUTH_TOKEN`, `CLAUDE_SECURESTORAGE_CONFIG_DIR`, etc.) so it can only meter the credential in the keychain item, and retries the transient empty-footer case (claude prints local stats with no percentages when its own usage fetch throttles).
 
 ### 3.2 Detect + swap + signal (Stop hook, per turn)
-1. Read `usage.json`; `exit 0` fast if every window is under its threshold (metered per `organizationUuid`).
+1. Read `usage.json`; `exit 0` fast below the engagement floor (`policy.greedySessionFloor`, default 50% of the 5h window) unless a screening bar is already crossed. Engaged-but-under-every-bar runs the GREEDY convergence: stay when the current account wins or ties, else swap onto the strictly better account. A crossed bar forces the hard path (metered per `organizationUuid`).
 2. Else take a `flock` on `~/.config/tokenmaxxing/lock`, re-check under it (parallel sessions race - first winner already swapped), pick the best parked account (not rate-limited, furthest behind its own weekly pace first: highest remaining% / time-to-weekly-reset, since unused allowance is forfeited at the fixed per-account reset; tiebreak soonest expiry then lowest 7-day usage), and **swap the credential** (§3.4).
 3. Done - the running session adopts the new credential on its own within a request or two. Only when the pool is depleted (the decision returned a `waitUntil`: pre-parked on the soonest-recovering account, or staying on the current one when it recovers first) does the hook write `respawn/<session_id>` (atomic temp+rename).
 
@@ -77,7 +79,7 @@ Each terminal ran the supervisor, so each has its own child `claude` and its own
 ---
 
 ## 5. Rotation policy
-The decision engages at `five_hour >= 50%` (policy.greedySessionFloor): from there it greedily converges on the usable account furthest behind its weekly pace, staying put whenever the current account wins or ties. The hard bars - `five_hour >= 95%` OR `seven_day >= 98%`, per org - always force a switch and also screen candidates. "Exhausted" is a **timestamped state** (`resets_at`), not a flag - an account is a candidate again after it resets. Optional projected threshold (`bar - EMA(per-turn Δ%)`) so a single large turn can't blow past 100% before the next Stop hook.
+The decision engages at `five_hour >= 50%` (policy.greedySessionFloor): from there it greedily converges on the usable account furthest behind its weekly pace, staying put whenever the current account wins or ties. The hard bars - `five_hour >= 95%` OR `seven_day >= 98%`, per org - always force a switch and also screen candidates. "Exhausted" is a **timestamped state** (`resets_at`), not a flag - an account is a candidate again after it resets. Optional projected threshold (`bar - policy.projectionMargin`, a fixed configured margin) so a single large turn is less likely to blow past 100% before the next Stop hook.
 
 **Model-aware trigger.** Claude subscriptions also enforce **per-model weekly caps** - currently only for Sonnet and Fable (there is no Opus-only quota), and Fable's tighter limit binds *before* the aggregate (e.g. 80% week-Fable at only 50% week-all-models). This cap isn't in statusLine stdin, so when the active model is in `policy.switchModels` we read it from `claude -p '/usage'` (free, 0 tokens, TTL-cached) and add `week(<activeModel>) >= threshold` to the trigger. A Fable session switches on the Fable cap; a Sonnet session rides the aggregate.
 
@@ -114,9 +116,9 @@ A local Socket Mode daemon (no public URL) that turns Slack threads into Claude 
 - **Single-turn overshoot.** If one turn jumps from under the threshold straight past the wall, that turn can end rate-limited before the Stop hook swaps; the swap then still recovers the session (its next turn adopts the fresh account). Projected threshold reduces this.
 - **Shared blast radius.** All default-profile sessions share one keychain item, so a swap moves them all (each adopts in place). The `flock` + re-check is mandatory or racing hooks burn two accounts at once.
 - **Refresh-token rotation / parked-token rot.** Step 1 re-harvest is mandatory; a parked refresh token can be invalidated by logging in elsewhere → picker must catch `invalid_grant`, mark `needs_reauth`, fall through.
-- **statusLine fragility.** The shim is the most visible surface - a bug flickers or breaks your real status line. Keep it O(ms), write-on-change.
+- **statusLine fragility.** The native statusline is the most visible surface - a bug flickers or blanks the line for every session (and install takes the slot outright, replacing any custom statusline you had). Keep it O(ms), write-on-change.
 - **Keychain blob size & ps-safety.** The live `Claude Code-credentials` item also holds per-MCP-server OAuth state, so it can exceed `security -i`'s ~4KB interactive line buffer (verified on a real machine - a 4.3KB blob truncated). tokenmaxxing therefore stores parked backups as **`claudeAiOauth`-only** (small → always the ps-safe stdin write) and, on a swap, **merges** the fresh `claudeAiOauth` into the *current* live blob so MCP tokens survive the switch - using the argv write path (secret briefly visible in `ps` on your own machine) only for that one oversized live write.
-- **settings.json is user-owned.** Install by merge; ship `tokenmaxxing doctor` to verify the supervisor + 3 entries survive a `/config` edit or update.
+- **settings.json is user-owned.** Install by merge; ship `tokenmaxxing doctor` to verify the supervisor + 4 entries survive a `/config` edit or update.
 
 ---
 

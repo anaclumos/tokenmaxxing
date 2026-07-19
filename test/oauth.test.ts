@@ -17,6 +17,16 @@ beforeAll(() => {
       if (lastBody.refresh_token === "BOOM") {
         return new Response("upstream exploded", { status: 500 });
       }
+      if (lastBody.refresh_token === "OMIT") {
+        // rotation omitted: the schema allows it, and the client must keep
+        // the previous refresh token instead of persisting undefined.
+        return Response.json({
+          access_token: "fresh-access-OMIT",
+          expires_in: 3600,
+          scope: "user:inference user:profile",
+          token_type: "Bearer",
+        });
+      }
       return Response.json({
         access_token: "fresh-access-" + lastBody.refresh_token,
         refresh_token: "rotated-" + lastBody.refresh_token,
@@ -56,10 +66,15 @@ describe("oauth refresh grant", () => {
   });
 
   test("reuses previous refresh token when server omits it", async () => {
-    // server always returns one; simulate omit by checking the fallback path directly
-    const creds = { ...base, refreshToken: "keep" };
+    // the OMIT sentinel makes the mock answer WITHOUT refresh_token: the old
+    // version of this test always got a rotation back, so the fallback at
+    // oauth.ts had zero coverage despite a test named for it (closing-review
+    // catch) - losing the fallback persists refreshToken: undefined over the
+    // account's parked backup and destroys its only grant.
+    const creds = { ...base, refreshToken: "OMIT" };
     const out = await refreshCredential(creds, 0);
-    expect(out.refreshToken).toBe("rotated-keep");
+    expect(out.accessToken).toBe("fresh-access-OMIT");
+    expect(out.refreshToken).toBe("OMIT");
   });
 
   test("invalid_grant throws InvalidGrantError", async () => {

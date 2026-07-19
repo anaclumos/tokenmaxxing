@@ -41,9 +41,20 @@ export async function handleCodexStop(input: { rawStdin: string }): Promise<void
   const sessionId = parsed.success ? (parsed.data.session_id ?? null) : null;
 
   try {
-    const decision = await evaluateAndMaybeSwapCodex({});
+    // No supervisor = no decision AT ALL, checked before evaluate can swap:
+    // hooks.json is global, so this hook also fires in sessions launched
+    // around the PATH shim (IDE extension, absolute path), and a swap with
+    // nobody to respawn strands that session - codex cannot hot-adopt, and
+    // its guarded reload refuses a cross-account auth.json, so the session
+    // dies on its stale token with "Please sign in again" (closing-review
+    // catch). Restart IS the switch; without a restarter, do not switch.
     const supervisorId = SupervisorIdSchema.parse(process.env[CODEX_SUPERVISOR_ID_ENV]);
-    if (decision.swapped && decision.account && supervisorId) {
+    if (supervisorId === undefined) {
+      log("codexstop.unsupervised_skip", {});
+      return;
+    }
+    const decision = await evaluateAndMaybeSwapCodex({});
+    if (decision.swapped && decision.account) {
       mkdirSync(codexPaths.respawnDir, { recursive: true });
       const payload = CodexRespawnMarkerSchema.parse({
         account: decision.account.label,

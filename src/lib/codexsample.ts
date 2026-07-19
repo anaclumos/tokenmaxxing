@@ -35,16 +35,25 @@ export async function sampleCodexAccount(input: { account: CodexAccount; liveAcc
     let auth = isLive ? readLiveCodexAuth() : readParkedCodexAuth({ credFile: account.credFile });
     if (!auth) return { ok: false, reason: isLive ? "live auth.json vanished" : "no parked credential", deadGrant: false };
     if (isCodexAccessExpiring({ auth, now })) {
-      // A parked blob whose account is RUNNING in another supervised session
-      // is superseded by that session's live rotations: refreshing it would
-      // trip the server's reuse punishment and kill the running session's
-      // grant family. Skip the refresh and report a miss instead.
-      if (!isLive && presentCodexAccountIds().has(account.accountId)) {
+      // NEVER refresh a PRESENT account's token, live or parked. A parked
+      // blob whose account is RUNNING in another supervised session is
+      // superseded by that session's live rotations, and the LIVE blob's
+      // running session can be mid-turn refreshing the same rotating token
+      // concurrently (both actors share the 300s margin): either way the
+      // loser of the race is reuse-punished into a dead grant family
+      // (closing-review catch; the idle-turn-boundary safety argument covers
+      // only the invoking session's own account). Parked reports a miss; live
+      // fetches on the unrotated token, still valid within the margin, and
+      // degrades to an honest miss once it expires.
+      const running = presentCodexAccountIds().has(account.accountId);
+      if (running && !isLive) {
         return { ok: false, reason: "running in a live codex session (parked token refresh unsafe)", deadGrant: false };
       }
-      auth = await refreshCodexAuth({ auth, now });
-      if (isLive) writeLiveCodexAuth({ auth });
-      writeParkedCodexAuth({ credFile: account.credFile, auth });
+      if (!running) {
+        auth = await refreshCodexAuth({ auth, now });
+        if (isLive) writeLiveCodexAuth({ auth });
+        writeParkedCodexAuth({ credFile: account.credFile, auth });
+      }
     }
     const usage = await fetchCodexUsage({ auth });
     return { ok: true, usage };

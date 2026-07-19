@@ -8,7 +8,6 @@ import { afterAll, expect, test } from "bun:test";
 import { chmodSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { paths } from "../src/lib/paths.ts";
-import { saveConfig } from "../src/lib/state.ts";
 import { probeUsage } from "../src/lib/usage.ts";
 
 const scratch = join(paths.home, "probe-hang-test");
@@ -41,7 +40,7 @@ test(
     // exits immediately but leaves a background child holding the pipes open
     writeFileSync(fake, `#!/bin/sh\nsleep 30 &\necho $! >> ${JSON.stringify(sleeperPids)}\necho '{"result":"Current session: 10% used"}'\nexit 0\n`);
     chmodSync(fake, 0o755);
-    saveConfig({ thresholds: { session: 95, weekly: 98 }, claudeBin: fake, codexBin: "", policy: { projectionMargin: 0, greedySessionFloor: 50, switchModels: ["fable"], usagePollTtlMs: 90_000, maxWaitMs: 3_600_000 } });
+    writeFileSync(paths.configJson, JSON.stringify({ thresholds: { session: 95, weekly: 98 }, claudeBin: fake, codexBin: "", policy: { projectionMargin: 0, greedySessionFloor: 50, switchModels: ["fable"], usagePollTtlMs: 90_000, maxWaitMs: 3_600_000 } }));
 
     const started = Date.now();
     const result = await probeUsage();

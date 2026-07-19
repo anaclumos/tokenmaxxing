@@ -142,6 +142,20 @@ describe("codex identity + auth blobs", () => {
     expect(() => codexIdentityOf({ auth })).toThrow(/no account id/);
   });
 
+  test("an api-key auth.json (tokens omitted or null) reads as no poolable login; corrupt still throws", () => {
+    // `codex login --with-api-key` writes `tokens` OMITTED (serde
+    // skip_serializing_if on Option<TokenData>, source-verified at
+    // rust-v0.144.5): a valid codex state the real binary runs on, so the
+    // shim and `xx status` must not crash on it - there is just nothing to
+    // pool (closing-review catch). Genuine corruption keeps throwing.
+    writeFileSync(codexPaths.authJson, JSON.stringify({ OPENAI_API_KEY: "sk-test" }));
+    expect(readLiveCodexAuth()).toBeNull();
+    writeFileSync(codexPaths.authJson, JSON.stringify({ OPENAI_API_KEY: "sk-test", tokens: null }));
+    expect(readLiveCodexAuth()).toBeNull();
+    writeFileSync(codexPaths.authJson, "{ not json");
+    expect(() => readLiveCodexAuth()).toThrow();
+  });
+
   test("parked round-trip preserves unknown siblings verbatim", () => {
     const auth = authBlob("A");
     writeParkedCodexAuth({ credFile: "tokenmaxxing-codex-test", auth });

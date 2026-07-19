@@ -10,7 +10,6 @@ import { chmodSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync
 import { join } from "node:path";
 import { MAX_WRAP_DEPTH } from "../src/lib/claudebin.ts";
 import { paths } from "../src/lib/paths.ts";
-import { saveConfig } from "../src/lib/state.ts";
 import { pingSession } from "../src/lib/usage.ts";
 
 const scratch = join(paths.home, "ping-test");
@@ -23,7 +22,7 @@ function installFakeClaude(body: string): void {
   const fake = join(scratch, "claude");
   writeFileSync(fake, `#!/bin/sh\nprintf '%s\\n' "$@" > ${JSON.stringify(argsFile)}\nenv > ${JSON.stringify(envFile)}\npwd > ${JSON.stringify(cwdFile)}\n${body}\n`);
   chmodSync(fake, 0o755);
-  saveConfig({ thresholds: { session: 95, weekly: 98 }, claudeBin: fake, codexBin: "", policy: { projectionMargin: 0, greedySessionFloor: 50, switchModels: ["fable"], usagePollTtlMs: 90_000, maxWaitMs: 3_600_000 } });
+  writeFileSync(paths.configJson, JSON.stringify({ thresholds: { session: 95, weekly: 98 }, claudeBin: fake, codexBin: "", policy: { projectionMargin: 0, greedySessionFloor: 50, switchModels: ["fable"], usagePollTtlMs: 90_000, maxWaitMs: 3_600_000 } }));
 }
 
 afterEach(() => {

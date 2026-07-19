@@ -201,8 +201,13 @@ export async function evaluateAndMaybeSwap(now = Date.now(), anticipatory = fals
     const mu2 = needsPerModel(u2, cfg) ? loadModelUsage() ?? mu : null;
 
     // record the active account's aggregate usage so the picker + `status` see it.
+    // Resolved by the LIVE org the guard just verified, never the
+    // activeAccountUuid label: after a manual /login the label drifts (the
+    // surviving drift source, see cli/switch.ts), and a label-keyed write
+    // would stamp the live account's windows onto whichever account the label
+    // still names (closing-review catch, mirrors the codex live-identity rule).
     if (u2 && org2 && u2.org === org2) {
-      const active = idx.accounts.find((a) => a.accountUuid === idx.activeAccountUuid);
+      const active = idx.accounts.find((a) => a.organizationUuid === org2);
       if (active) {
         active.lastUsage = { fiveHour: u2.fiveHour, sevenDay: u2.sevenDay };
         active.lastUsageAt = u2.ts;

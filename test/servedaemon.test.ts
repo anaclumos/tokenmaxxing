@@ -5,11 +5,13 @@
 // deps as inputs, so nothing here can bleed into other test files.
 
 import { describe, expect, test } from "bun:test";
+import { spawn } from "node:child_process";
 import { delay } from "es-toolkit";
 import type { StreamChunk } from "chat";
 import { buildServeRuntime } from "../src/cli/serve.ts";
 import { cleanupThread, type TurnOutcome } from "../src/lib/slackbridge.ts";
-import { SlackConfigSchema, loadSlackThread } from "../src/lib/slackstate.ts";
+import { pidStartTime } from "../src/lib/proc.ts";
+import { SlackConfigSchema, loadSlackThread, saveSlackThread } from "../src/lib/slackstate.ts";
 
 const cfg = SlackConfigSchema.parse({
   botToken: "xoxb-test",
@@ -30,12 +32,12 @@ function runtimeWith(relay: Parameters<typeof buildServeRuntime>[0]["relay"]) {
   });
 }
 
-function fakeThread(input: { id: string; rejectPosts?: boolean }) {
+function fakeThread(input: { id: string; rejectPosts?: boolean; channelId?: string }) {
   const posted: string[] = [];
   const calls = { posts: 0, subscribe: 0, unsubscribe: 0, startTyping: 0 };
   const thread = {
     id: input.id,
-    channelId: "slack:C0DAEMON",
+    channelId: input.channelId ?? "slack:C0DAEMON",
     post: async (m: string | AsyncIterable<string | StreamChunk>) => {
       calls.posts += 1;
       if (input.rejectPosts) throw new Error("slack said no");
@@ -168,6 +170,23 @@ describe("buildServeRuntime drain", () => {
     expect(rt.activeTurns.size).toBe(0);
   });
 
+  test("an unlinked channel stays silent even while draining", async () => {
+    // the unlinked check runs BEFORE the drain branch: a drop notice posted
+    // into a log-only-silent channel would tell a user to resend a message
+    // that will never be served (closing-review catch).
+    let relayCalls = 0;
+    const rt = runtimeWith(async () => {
+      relayCalls += 1;
+      return okOutcome;
+    });
+    rt.beginDrain();
+    const t = fakeThread({ id: "slack:C0OTHER:402.1", channelId: "slack:C0OTHER" });
+    await rt.onMessage({ thread: t.thread, message: home("@UBOT hello"), skipped: [], isMention: true });
+    await flushTurns(rt);
+    expect(relayCalls).toBe(0);
+    expect(t.calls.posts).toBe(0);
+  });
+
   test("an ANNOUNCED drop during drain never leaves a resume marker (no double delivery)", async () => {
     // relayThread told the user to resend; replaying the turn at startup would
     // duplicate work, quota, and side effects on top of the user's resend.
@@ -194,6 +213,44 @@ describe("buildServeRuntime drain", () => {
     await rt.onMessage({ thread: t.thread, message: home("@UBOT long job"), skipped: [], isMention: true });
     await flushTurns(rt);
     expect(loadSlackThread("slack:C0DAEMON:701.1")?.activeTurn?.prompt).toContain("long job");
+  });
+});
+
+describe("buildServeRuntime crash-orphan reap", () => {
+  test("an inbound turn reaps a previous generation's surviving orphan before running", async () => {
+    // A real detached sleeper (its own process group, like the daemon's
+    // detached claude child) stands in for a SIGKILLed generation's orphan.
+    // Without the handleTurn reap, an inbound message winning the serialized
+    // chain ahead of startup recovery overwrote the marker and stranded the
+    // orphan's pid forever (closing-review HIGH catch).
+    const orphan = spawn("sleep", ["30"], { detached: true, stdio: "ignore" });
+    orphan.unref();
+    const pid = orphan.pid!;
+    let started: string | null = null;
+    for (let i = 0; i < 40 && started === null; i++) {
+      started = pidStartTime(pid);
+      if (started === null) await delay(50);
+    }
+    expect(started).not.toBeNull();
+    const threadId = "slack:C0DAEMON:800.1";
+    saveSlackThread({
+      threadId,
+      repo: "/tmp/serve-daemon-repo",
+      cwd: "/tmp/serve-daemon-repo",
+      sessionId: "s-orphan",
+      createdAt: new Date().toISOString(),
+      activeTurn: { prompt: "killed turn", startedAt: new Date().toISOString(), resumeCount: 0, pid, pidStartedAt: started! },
+    });
+    let relayCalls = 0;
+    const rt = runtimeWith(async () => {
+      relayCalls += 1;
+      return okOutcome;
+    });
+    const t = fakeThread({ id: threadId });
+    await rt.onMessage({ thread: t.thread, message: home("@UBOT follow-up"), skipped: [], isMention: true });
+    expect(relayCalls).toBe(1);
+    // the orphan was identity-verified and signaled before the new turn ran
+    expect(pidStartTime(pid)).not.toBe(started);
   });
 });
 

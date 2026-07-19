@@ -74,7 +74,7 @@ export type ParkPlan = z.infer<typeof ParkPlanSchema>;
  *  will-resume promise - slaude's recorded rationale). The deadline is fixed
  *  when the message's relay starts, so chained parks can never hold the queue
  *  slot longer than PARK_MAX_MS in total. */
-export function parkPlan(input: { decision: SwapDecision; now: number; recoveries: number; deadline: number }): ParkPlan {
+export function parkPlan(input: { decision: SwapDecision; recoveries: number; deadline: number }): ParkPlan {
   const depleted = input.decision.reason === "all-depleted" || input.decision.reason === "depleted-wait";
   if (!depleted) return { kind: "proceed" };
   const wake = input.decision.waitUntil ?? null;
@@ -604,7 +604,7 @@ export async function relayThread(input: {
       await push(`tokenmaxxing: turn failed: ${detail}`);
       break;
     }
-    const plan = parkPlan({ decision, now: Date.now(), recoveries, deadline: parkDeadline });
+    const plan = parkPlan({ decision, recoveries, deadline: parkDeadline });
     if (plan.kind === "drop") {
       outcome.failed = true;
       outcome.rateLimited = true;

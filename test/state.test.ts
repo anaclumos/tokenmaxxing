@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { loadAccounts, saveAccounts, loadConfig, saveConfig, loadDepletedWait, loadLastSwapAt, loadUsage, saveDepletedWait, usageTeeAt, writeUsage } from "../src/lib/state.ts";
+import { z } from "zod";
+import { loadAccounts, saveAccounts, loadConfig, loadDepletedWait, loadLastSwapAt, loadUsage, saveDepletedWait, usageTeeAt, writeUsage } from "../src/lib/state.ts";
 import { paths } from "../src/lib/paths.ts";
 import type { Account, UsageState } from "../src/lib/types.ts";
 
@@ -18,8 +19,8 @@ function acct(): Account {
 }
 
 describe("config round-trip", () => {
-  test("save/load preserves thresholds + policy", () => {
-    saveConfig({ thresholds: { session: 90, weekly: 93 }, claudeBin: "/bin/claude", codexBin: "", policy: { projectionMargin: 3, greedySessionFloor: 40, switchModels: ["fable", "opus"], usagePollTtlMs: 60_000, maxWaitMs: 3_600_000 } });
+  test("a fully overridden file loads verbatim", () => {
+    writeFileSync(paths.configJson, JSON.stringify({ thresholds: { session: 90, weekly: 93 }, claudeBin: "/bin/claude", codexBin: "", policy: { projectionMargin: 3, greedySessionFloor: 40, switchModels: ["fable", "opus"], usagePollTtlMs: 60_000, maxWaitMs: 3_600_000 } }));
     const c = loadConfig();
     expect(c.thresholds).toEqual({ session: 90, weekly: 93 });
     expect(c.policy.projectionMargin).toBe(3);
@@ -42,7 +43,7 @@ describe("accounts round-trip", () => {
     const idx = loadAccounts();
     expect(idx.accounts.length).toBe(1);
     expect(idx.activeAccountUuid).toBe(acct().accountUuid);
-    expect((idx.accounts[0]!.oauthAccount as any).extra).toBe("kept");
+    expect(z.looseObject({ extra: z.string() }).parse(idx.accounts[0]!.oauthAccount).extra).toBe("kept");
   });
 });
 
