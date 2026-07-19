@@ -1,0 +1,27 @@
+src/lib/swap.ts
+  s_eaf36da1edfe18::t_0438d5fdacfac0 21
+  s_eaf36da1edfe18::t_84beb33efaf654 171-176
+src/lib/state.ts
+  s_eaf36da1edfe18::t_70b86c130881fc 203-206
+  s_eaf36da1edfe18::t_4437dd0c579384 180-183
+test/swap.test.ts
+  s_eaf36da1edfe18::t_0bd5f3f4337496 11
+  s_eaf36da1edfe18::t_a587babefe9194 85
+  s_eaf36da1edfe18::t_c8fc8e33de3bc0 143-154
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "cd61f3d2050652e7155084908d257bc4281e3940",
+  "prompts": {},
+  "sessions": {
+    "s_eaf36da1edfe18": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "085f0c3d-1bd0-4a58-8930-8dfdcf1a0376",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    }
+  }
+}
