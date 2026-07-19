@@ -71,7 +71,15 @@ export async function cmdSwitch(selector?: string): Promise<number> {
     const everyone: PickCtx = { now, thresholds: effectiveBars(cfg), currentAccountUuid: null, switchFamilies: cfg.policy.switchModels };
     while (true) {
       const cur = loadAccounts();
-      const active = cur.accounts.find((a) => a.accountUuid === cur.activeAccountUuid) ?? null;
+      // The seat is the LIVE login's pooled account when resolvable, the
+      // stored label only as fallback - the same identity rule decide.ts's
+      // seatOf applies (bugbot review catch, PR #33). Under drift this also
+      // makes ties favor the live account: the realign swap then keeps the
+      // same credential instead of hopping accounts on a tie.
+      const active =
+        (claimed != null ? cur.accounts.find((a) => a.accountUuid === claimed) : null) ??
+        cur.accounts.find((a) => a.accountUuid === cur.activeAccountUuid) ??
+        null;
       if (active != null && currentWins(active, cur.accounts, everyone)) {
         if (drifted) return swapTo(active);
         const expiry = weeklyExpiry(active, now);
@@ -79,7 +87,7 @@ export async function cmdSwitch(selector?: string): Promise<number> {
         console.log(`already on the best account: ${c.bold(active.label)}${why}`);
         return 0;
       }
-      const best = pickBest(cur.accounts, { ...everyone, currentAccountUuid: cur.activeAccountUuid });
+      const best = pickBest(cur.accounts, { ...everyone, currentAccountUuid: active?.accountUuid ?? null });
       if (!best) break; // no usable target: the depleted path below decides
       try {
         await performSwap(best);

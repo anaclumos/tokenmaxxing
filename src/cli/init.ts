@@ -6,7 +6,7 @@ import { isApiKeyMode, readOAuthAccount } from "../lib/claudejson.ts";
 import { readItem, writeItem, liveTarget, parkedTarget, mergeIntoLive } from "../lib/credstore.ts";
 import { refreshCredential, isAccessTokenExpiring, fetchTokenOrg } from "../lib/oauth.ts";
 import { withClaudeRefreshLock } from "../lib/claudelock.ts";
-import { loadAccounts, saveAccounts, pinBinOverride } from "../lib/state.ts";
+import { loadAccounts, saveAccounts, loadConfig, pinBinOverride } from "../lib/state.ts";
 import { withLock } from "../lib/lock.ts";
 import { installSupervisor, shellRcPath, ensurePathInRc, timerActivationHint, type InstallOutcome } from "../lib/install.ts";
 import { resolveVerifiedClaude } from "../lib/claudebin.ts";
@@ -48,6 +48,13 @@ export function printUsage(): void {
 
 export async function cmdInit(): Promise<number> {
   mkdirSync(paths.home, { recursive: true });
+  // Fail fast on a broken merged config BEFORE installing or claiming a
+  // successful repair: pinBinOverride writes sparsely without validating, so
+  // without this gate a re-init printed success while hooks, switching, and
+  // the statusline kept throwing on every loadConfig until the file was
+  // hand-repaired (bugbot review catch, PR #33). The throw carries the
+  // fix-or-remove recovery message.
+  loadConfig();
 
   // Already initialized → repair install ONLY. Never re-import: ~/.claude.json's
   // oauthAccount can drift from the live keychain cred (after swaps / concurrent
