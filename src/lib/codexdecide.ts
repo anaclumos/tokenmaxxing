@@ -6,8 +6,11 @@
 // depleted pre-park (a swap only lands where a window is usable NOW; a
 // depleted pool stays put and recovers when a cached reset passes).
 
+import { existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
+import { join } from "node:path";
 import { z } from "zod";
 import { withLock } from "./lock.ts";
+import { writeFileAtomic } from "./atomic.ts";
 import { codexPaths } from "./paths.ts";
 import { loadConfig } from "./state.ts";
 import { loadCodexAccounts, loadCodexLastSwapAt, saveCodexAccounts } from "./codexstate.ts";
@@ -17,10 +20,10 @@ import { CodexInvalidGrantError, refreshCodexAuth } from "./codexoauth.ts";
 import { fetchCodexUsage } from "./codexusage.ts";
 import { codexIdentityOf, isCodexAccessExpiring, readLiveCodexAuth, writeLiveCodexAuth, writeParkedCodexAuth } from "./codexauth.ts";
 import { liveCodexAccountId } from "./codexsample.ts";
-import { presentCodexAccountIds, targetableCodexAccounts } from "./codexpresence.ts";
+import { livingCodexPresences, presentCodexAccountIds, targetableCodexAccounts } from "./codexpresence.ts";
 import { effectiveBars } from "./picker.ts";
 import { log } from "./log.ts";
-import { CodexAccountSchema } from "./types.ts";
+import { CodexAccountSchema, CodexReconcileMarkerSchema, type CodexAccount } from "./types.ts";
 
 const CodexSwapDecisionSchema = z.object({
   swapped: z.boolean(),
@@ -83,7 +86,58 @@ async function sampleLiveOntoOwner(input: { now: number }): Promise<string | nul
   return owner.accountId;
 }
 
-export async function evaluateAndMaybeSwapCodex(input: { now?: number }): Promise<CodexSwapDecision> {
+/**
+ * OWNER-APPROVED sibling reconcile (2026-07-20, option b): codex cannot
+ * hot-swap, so a pool swap respawns only the deciding session - siblings keep
+ * running whatever account they started on, and once that account is
+ * exhausted or its grant dies they have no automated escape (their own
+ * decision evaluates only the live seat). The deciding actor therefore
+ * SIGNALS each such supervisor cross-session: a reconcile marker addressed by
+ * supervisorId (presence filenames carry it). The signal is a marker, never a
+ * kill: the only safe respawn point is the sibling's own turn boundary, so
+ * its Stop hook promotes the marker into a respawn marker there, adding the
+ * session id its stdin alone knows. No respawn-cost margin applies - a dead
+ * or exhausted seat is the hard-path class - and no signal is ever sent while
+ * the LIVE seat is itself unusable (the no-depleted-pre-park analog: never
+ * move a session onto a blocked account). Orphaned markers (their supervisor
+ * exited before promoting) are garbage-collected here. Idempotent per
+ * supervisor: an existing marker is left alone.
+ */
+function reconcileExhaustedSiblings(input: {
+  index: { accounts: CodexAccount[] };
+  liveAccountId: string;
+  bars: { session: number; weekly: number };
+  now: number;
+  selfSupervisorId: string | null;
+}): void {
+  const { index, liveAccountId, bars, now, selfSupervisorId } = input;
+  const unusable = (account: CodexAccount): boolean =>
+    account.needsReauth === true || isCodexExhausted({ account, thresholds: bars, now });
+  const liveAccount = index.accounts.find((account) => account.accountId === liveAccountId);
+  if (!liveAccount || unusable(liveAccount)) return;
+  const living = livingCodexPresences();
+  // gc signals addressed to supervisors that no longer live (exited before
+  // promoting): nothing would ever consume them.
+  if (existsSync(codexPaths.reconcileDir)) {
+    const alive = new Set(living.map((presence) => presence.supervisorId));
+    for (const name of readdirSync(codexPaths.reconcileDir)) {
+      if (!alive.has(name)) rmSync(join(codexPaths.reconcileDir, name), { force: true });
+    }
+  }
+  for (const presence of living) {
+    if (presence.supervisorId === selfSupervisorId) continue; // own seat: the normal decision handles it
+    if (presence.accountId === liveAccountId) continue; // riding the live seat: fine
+    const seated = index.accounts.find((account) => account.accountId === presence.accountId);
+    if (!seated || !unusable(seated)) continue; // unpooled or still healthy: not ours to move
+    const markerPath = join(codexPaths.reconcileDir, presence.supervisorId);
+    if (existsSync(markerPath)) continue;
+    mkdirSync(codexPaths.reconcileDir, { recursive: true });
+    writeFileAtomic(markerPath, JSON.stringify(CodexReconcileMarkerSchema.parse({ accountId: presence.accountId, ts: now })));
+    log("codexdecide.reconcile_signal", { supervisorId: presence.supervisorId.slice(0, 8), account: presence.accountId.slice(0, 8) });
+  }
+}
+
+export async function evaluateAndMaybeSwapCodex(input: { now?: number; selfSupervisorId?: string }): Promise<CodexSwapDecision> {
   const now = input.now ?? Date.now();
   const lastSwapAt = loadCodexLastSwapAt();
   if (lastSwapAt != null && now - lastSwapAt < POST_SWAP_COOLDOWN_MS) {
@@ -119,6 +173,12 @@ export async function evaluateAndMaybeSwapCodex(input: { now?: number }): Promis
       }
       index = loadCodexAccounts();
     }
+
+    // Cross-session sibling reconcile runs on EVERY evaluation, before the
+    // engagement gate: a sibling can be dead while the live seat is healthy
+    // and disengaged - exactly the case where the early returns below would
+    // otherwise skip it forever.
+    reconcileExhaustedSiblings({ index, liveAccountId: activeId, bars, now, selfSupervisorId: input.selfSupervisorId ?? null });
 
     const active = index.accounts.find((account) => account.accountId === activeId) ?? null;
     if (!active) return { swapped: false, account: null, reason: "no-active-account" };

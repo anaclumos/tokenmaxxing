@@ -11,16 +11,79 @@
 // a hook failure must never block the stop - errors are logged, not thrown.
 
 import { join } from "node:path";
-import { mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { z } from "zod";
 import { codexPaths } from "../lib/paths.ts";
 import { writeFileAtomic } from "../lib/atomic.ts";
 import { evaluateAndMaybeSwapCodex } from "../lib/codexdecide.ts";
+import { livingCodexPresences } from "../lib/codexpresence.ts";
+import { liveCodexAccountId } from "../lib/codexsample.ts";
+import { loadCodexAccounts } from "../lib/codexstate.ts";
 import { CODEX_SUPERVISOR_ID_ENV } from "./codexsupervisor.ts";
-import { CodexRespawnMarkerSchema, CodexStopStdinSchema } from "../lib/types.ts";
+import { CodexReconcileMarkerSchema, CodexRespawnMarkerSchema, CodexStopStdinSchema } from "../lib/types.ts";
 import { log } from "../lib/log.ts";
 
 const SupervisorIdSchema = z.string().min(1).optional().catch(undefined);
+
+/** Consume a cross-session reconcile signal addressed to THIS supervisor
+ *  (owner-approved option b, 2026-07-20): a deciding actor saw this session
+ *  running on an exhausted/dead account and asked it to respawn onto the live
+ *  seat. The Stop boundary is the only safe respawn point, and only THIS
+ *  hook's stdin carries the session id a resume needs, so promotion happens
+ *  here: the signal becomes a normal respawn marker the supervisor already
+ *  consumes. Returns true when the respawn marker was written (the session is
+ *  about to die - skip the normal decision). Runs UNLOCKED on purpose: it
+ *  writes only this supervisor's own markers, and the staleness guards make a
+ *  raced read merely drop the signal for the next boundary. */
+function promoteReconcile(input: { supervisorId: string; sessionId: string | null }): boolean {
+  const markerPath = join(codexPaths.reconcileDir, input.supervisorId);
+  if (!existsSync(markerPath)) return false;
+  const parsed = CodexReconcileMarkerSchema.safeParse((() => {
+    try {
+      return JSON.parse(readFileSync(markerPath, "utf8"));
+    } catch {
+      return null;
+    }
+  })());
+  if (!parsed.success) {
+    // unlike a presence file, a broken signal guards nothing: drop it loudly.
+    rmSync(markerPath, { force: true });
+    log("codexstop.reconcile_unparsable", {});
+    return false;
+  }
+  // Staleness guard: the signal names the account this session was seen on;
+  // if the session has since respawned onto another account the signal is
+  // moot. Same when the live seat changed to (or still is) our own account -
+  // a respawn would land right back where we are.
+  const presence = livingCodexPresences().find((p) => p.supervisorId === input.supervisorId) ?? null;
+  if (presence == null || presence.accountId !== parsed.data.accountId) {
+    rmSync(markerPath, { force: true });
+    log("codexstop.reconcile_stale", {});
+    return false;
+  }
+  const liveId = liveCodexAccountId();
+  if (liveId == null || liveId === presence.accountId) {
+    rmSync(markerPath, { force: true });
+    log("codexstop.reconcile_moot", {});
+    return false;
+  }
+  if (input.sessionId == null) {
+    // no session id on this stdin: keep the signal for the next boundary,
+    // whose stdin will carry one - a resume without a sid could revive the
+    // wrong transcript.
+    log("codexstop.reconcile_no_session", {});
+    return false;
+  }
+  const label = loadCodexAccounts().accounts.find((a) => a.accountId === liveId)?.label ?? "the live account";
+  mkdirSync(codexPaths.respawnDir, { recursive: true });
+  writeFileAtomic(
+    join(codexPaths.respawnDir, input.supervisorId),
+    JSON.stringify(CodexRespawnMarkerSchema.parse({ account: label, sessionId: input.sessionId, ts: Date.now() })),
+  );
+  rmSync(markerPath, { force: true });
+  log("codexstop.reconcile_respawn", { supervisorId: input.supervisorId.slice(0, 8), account: liveId.slice(0, 8) });
+  return true;
+}
 
 async function readStdin(): Promise<string> {
   const chunks: Uint8Array[] = [];
@@ -53,7 +116,11 @@ export async function handleCodexStop(input: { rawStdin: string }): Promise<void
       log("codexstop.unsupervised_skip", {});
       return;
     }
-    const decision = await evaluateAndMaybeSwapCodex({});
+    // A pending reconcile signal outranks the normal decision: this session
+    // is about to respawn onto the live seat, so evaluating it would waste a
+    // sample (and could even swap the seat out from under the respawn).
+    if (promoteReconcile({ supervisorId, sessionId })) return;
+    const decision = await evaluateAndMaybeSwapCodex({ selfSupervisorId: supervisorId });
     if (decision.swapped && decision.account) {
       mkdirSync(codexPaths.respawnDir, { recursive: true });
       const payload = CodexRespawnMarkerSchema.parse({

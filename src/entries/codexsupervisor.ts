@@ -144,6 +144,9 @@ export async function runCodexSupervisor(input: { argv: string[] }): Promise<num
       continue;
     }
     clearCodexPresence({ supervisorId });
+    // a reconcile signal addressed to this now-gone session is moot; the
+    // deciding actor's sweep would gc it eventually, this is just prompt.
+    rmSync(join(codexPaths.reconcileDir, supervisorId), { force: true });
     log("codexsupervisor.exit", { supervisorId: supervisorId.slice(0, 8), respawns, code: child.exitCode, signal: child.signalCode });
     return child.exitCode ?? (child.signalCode ? 1 : 0);
   }

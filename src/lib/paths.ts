@@ -86,6 +86,12 @@ export const codexPaths = {
    *  running account's parked token must never be refreshed or targeted (its
    *  live rotations supersede the parked copy, and reuse is punished). */
   presenceDir: join(TM_HOME, "codex-live"),
+  /** cross-session reconcile signals, one file per supervisorId: a deciding
+   *  actor saw that supervisor's session running on an exhausted/dead account
+   *  while the live seat is usable; the session's OWN Stop hook promotes the
+   *  signal into a respawn marker at its next turn boundary (owner-approved
+   *  option b, 2026-07-20). */
+  reconcileDir: join(TM_HOME, "codex-reconcile"),
 } as const;
 
 /** Per-account parked codex credential file name: tokenmaxxing-codex-<id8>. */

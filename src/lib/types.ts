@@ -328,3 +328,15 @@ export const CodexRespawnMarkerSchema = z.object({
   sessionId: z.string().nullable(),
   ts: z.number(),
 });
+
+/** A cross-session reconcile signal (owner-approved option b, 2026-07-20):
+ *  the deciding actor saw the addressed supervisor's session running on this
+ *  exhausted/dead account while the live seat is usable. The session's OWN
+ *  Stop hook consumes it at its next turn boundary - the only safe respawn
+ *  point - promoting it into a respawn marker with the session id its stdin
+ *  alone carries. `accountId` doubles as the staleness guard: a session that
+ *  already moved accounts drops the signal instead of respawning. */
+export const CodexReconcileMarkerSchema = z.object({
+  accountId: z.string(),
+  ts: z.number(),
+});
