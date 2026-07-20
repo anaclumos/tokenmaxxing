@@ -612,16 +612,20 @@ describe("codex sibling reconcile", () => {
     expect(marker.accountId).toBe("acct-A");
   });
 
-  test("no signal for a healthy sibling or onto a blocked live seat", async () => {
+  test("a HEALTHY non-live sibling is signaled too; a blocked live seat still gets nothing", async () => {
+    // Owner ruling 2026-07-20 (superseding the exhausted-only scope): every
+    // pooled non-live sibling follows the seat - codex refuses cross-account
+    // refreshes, so a healthy non-live session wedges at token expiry anyway.
     const healthyA = account("A", { weekly: window({ used: 50, resetInMs: 24 * 3600_000 }) });
     const freshB = account("B", { weekly: window({ used: 5, resetInMs: 24 * 3600_000 }) });
     seedPool({ accounts: [healthyA, freshB], activeId: "acct-B" });
     writeLiveCodexAuth({ auth: authBlob("B") });
     writeCodexPresence({ supervisorId: "sup-healthy", accountId: "acct-A" });
     await evaluateAndMaybeSwapCodex({});
-    expect(existsSync(join(codexPaths.reconcileDir, "sup-healthy"))).toBe(false);
+    expect(existsSync(join(codexPaths.reconcileDir, "sup-healthy"))).toBe(true);
 
     // a blocked LIVE seat must never receive a session (no-depleted-pre-park analog)
+    rmSync(codexPaths.reconcileDir, { recursive: true, force: true });
     const burntA = account("A", { weekly: window({ used: 99, resetInMs: 24 * 3600_000 }) });
     const burntB = account("B", { weekly: window({ used: 99, resetInMs: 24 * 3600_000 }) });
     seedPool({ accounts: [burntA, burntB], activeId: "acct-B" });
@@ -734,10 +738,11 @@ describe("codex sibling reconcile", () => {
     expect(existsSync(join(codexPaths.reconcileDir, "sup-lone"))).toBe(false);
   });
 
-  test("promotion revalidates usability: a recovered seat or a blocked live target drops the signal", async () => {
-    // A signal can sit across resets and usage changes; identity checks alone
-    // would force-respawn a recovered session or move one onto a now-blocked
-    // seat (bugbot/pullfrog/vercel/cubic catches, PR #34).
+  test("promotion revalidates the DESTINATION: a healthy source still respawns, a blocked live target drops", async () => {
+    // Owner ruling 2026-07-20: the source seat's state no longer matters (a
+    // non-live session wedges at token expiry regardless of quota), so a
+    // healthy/recovered source STILL promotes; the destination guard stays -
+    // never move a session onto a blocked live seat (PR #34 catches).
     const recoveredA = account("A", { weekly: window({ used: 10, resetInMs: 24 * 3600_000 }) });
     const freshB = account("B", { weekly: window({ used: 5, resetInMs: 24 * 3600_000 }) });
     seedPool({ accounts: [recoveredA, freshB], activeId: "acct-B" });
@@ -751,8 +756,9 @@ describe("codex sibling reconcile", () => {
     } finally {
       delete process.env[CODEX_SUPERVISOR_ID_ENV];
     }
-    expect(existsSync(join(codexPaths.respawnDir, "sup-recovered"))).toBe(false);
-    expect(existsSync(join(codexPaths.reconcileDir, "sup-recovered"))).toBe(false); // dropped
+    const respawn = JSON.parse(readFileSync(join(codexPaths.respawnDir, "sup-recovered"), "utf8"));
+    expect(respawn.sessionId).toBe("sess-1"); // healthy source: promoted anyway
+    expect(existsSync(join(codexPaths.reconcileDir, "sup-recovered"))).toBe(false);
 
     const burntA = account("A", { weekly: window({ used: 99, resetInMs: 24 * 3600_000 }) });
     const burntB = account("B", { weekly: window({ used: 99, resetInMs: 24 * 3600_000 }) });

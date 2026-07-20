@@ -93,9 +93,10 @@ export const AccountSchema = z.object({
    *  (closing-review catch). Absent on records predating this field: readers
    *  fall back to lastUsageAt, the previous (over-)approximation. */
   lastPerModelAt: z.number().optional(),
-  /** epoch ms of the sample behind lastUsage/lastPerModel. Their resetsAt
-   *  values are absolute epochs (UTC-anchored), so even an old snapshot still
-   *  resolves to correct resets - display it as a dated cache, never discard. */
+  /** epoch ms of the sample behind the AGGREGATE lastUsage windows (per-model
+   *  rows date by lastPerModelAt above). resetsAt values are absolute epochs
+   *  (UTC-anchored), so even an old snapshot still resolves to correct
+   *  resets - display it as a dated cache, never discard. */
   lastUsageAt: z.number().optional(),
   needsReauth: z.boolean().optional(),
   subscriptionType: z.string().optional(),

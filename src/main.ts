@@ -86,8 +86,12 @@ async function main(): Promise<number> {
   // with that env - sessions run under an ambient override are outside the
   // managed envelope, like claude's bg-daemon bypass.
   if (!(sub != null && sub.startsWith("__")) && !process.env.TOKENMAXXING_PROBE) {
-    const ambient = process.env.CLAUDE_CONFIG_DIR ?? process.env.CLAUDE_SECURESTORAGE_CONFIG_DIR;
-    if (ambient != null && ambient !== "") {
+    // first NONEMPTY value, secure-storage first (claude's own precedence):
+    // `??` alone let an empty CLAUDE_CONFIG_DIR mask a set SECURESTORAGE
+    // override (cubic review catch, PR #35).
+    const nonEmpty = (v: string | undefined) => (v != null && v !== "" ? v : null);
+    const ambient = nonEmpty(process.env.CLAUDE_SECURESTORAGE_CONFIG_DIR) ?? nonEmpty(process.env.CLAUDE_CONFIG_DIR);
+    if (ambient != null) {
       console.error(c.red(`CLAUDE_CONFIG_DIR / CLAUDE_SECURESTORAGE_CONFIG_DIR is set (${ambient}): claude uses a namespaced credential store there that tokenmaxxing does not manage - unset it (or run from a clean shell) and retry.`));
       return 1;
     }

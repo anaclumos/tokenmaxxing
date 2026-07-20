@@ -13,6 +13,7 @@ import { loadCodexAccounts, saveCodexAccounts } from "../lib/codexstate.ts";
 import { loadConfig, pinBinOverride } from "../lib/state.ts";
 import { installCodexSupervisor, codexSupervisorLink, ensurePathInRc, shellRcPath } from "../lib/install.ts";
 import { withLock } from "../lib/lock.ts";
+import { presentCodexAccountIds } from "../lib/codexpresence.ts";
 import { codexCredItemFor, codexPaths } from "../lib/paths.ts";
 import type { CodexAccount, CodexUsage } from "../lib/types.ts";
 import { c } from "./render.ts";
@@ -79,6 +80,19 @@ export async function cmdCodexInit(): Promise<number> {
   }
 
   const credFile = codexCredItemFor(identity.accountId);
+
+  // A RUNNING supervised session on this account can rotate auth.json at any
+  // moment (codex persists rotations instantly, and the flock serializes only
+  // tokenmaxxing actors) - a snapshot parked now could hold an already-
+  // superseded refresh token whose next refresh is reuse-punished (cubic
+  // review catch, PR #35). Refuse loudly, like the sampler's present-account
+  // rule; sessions launched around the shim are the same accepted gap as
+  // everywhere presence is the signal.
+  if (presentCodexAccountIds().has(identity.accountId)) {
+    console.error(c.red("a live supervised codex session is running this account - its token rotates under us, so parking a snapshot now could poison the backup."));
+    console.error(c.dim("close that codex session (or let it exit) and re-run `tokenmaxxing init --codex`."));
+    return 1;
+  }
 
   const account = await withLock(codexPaths.lockFile, () => {
     // Park INSIDE the flock, from a blob RE-READ inside it (closing-review

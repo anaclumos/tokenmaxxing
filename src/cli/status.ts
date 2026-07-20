@@ -15,7 +15,7 @@
 import { sortBy } from "es-toolkit";
 import { loadAccounts, loadConfig, loadUsage, loadModelUsage, saveAccounts } from "../lib/state.ts";
 import { readOAuthAccount } from "../lib/claudejson.ts";
-import { probeActiveUsage, probeParkedUsage, type SampleOutcome } from "../lib/sample.ts";
+import { ensureLiveTokenFresh, probeActiveUsage, probeParkedUsage, type SampleOutcome } from "../lib/sample.ts";
 import { withLock } from "../lib/lock.ts";
 import { codexPaths, paths } from "../lib/paths.ts";
 import { earliestReset, effectiveBars, isExhausted, nextWeeklyReset } from "../lib/picker.ts";
@@ -113,6 +113,16 @@ export async function cmdStatus(force = false, preRender?: () => void): Promise<
     // catch). Parked probes then run concurrently as before.
     const activeAccount = idx.accounts.find((a) => activeOrg != null && activeOrg === a.organizationUuid) ?? null;
     if (activeAccount) await probeOne(activeAccount);
+    // even when the active account's usage came from the TEE (no active
+    // probe, no refresh side effect), the parked probes still need a fresh
+    // live token for their fail-closed live-owner checks (cubic review
+    // catch, PR #35). A dead live grant is deliberately not fatal here: each
+    // parked probe reports its own honest failure reason.
+    try {
+      await ensureLiveTokenFresh();
+    } catch {
+      // per-account guards surface the failure per probe
+    }
     await Promise.all(idx.accounts.filter((a) => a !== activeAccount).map(probeOne));
     saveAccounts(idx);
   });

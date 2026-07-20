@@ -162,6 +162,35 @@ export async function probeParkedUsage(account: Account, opts: { ping?: boolean 
   }
 }
 
+/** Refresh the LIVE access token when near expiry, under claude's own refresh
+ *  lock. Exported for `xx status`: every parked probe's fail-closed live-owner
+ *  check reads this token, so it must be fresh BEFORE those probes run - even
+ *  when the active account's own usage comes from the statusline tee and no
+ *  active probe happens (cubic review catch, PR #35: the tee short-circuit
+ *  skipped the refresh and every parked sample 401'd on the first post-idle
+ *  status). No live item, or an unparsable one, is a no-op here: the callers'
+ *  own guards surface those loudly. InvalidGrantError propagates. */
+export async function ensureLiveTokenFresh(): Promise<void> {
+  const liveRaw = await readItem(liveTarget());
+  if (!liveRaw) return;
+  let creds: OAuthCreds;
+  try {
+    creds = CredentialBlobSchema.parse(JSON.parse(liveRaw)).claudeAiOauth;
+  } catch {
+    return;
+  }
+  if (!isAccessTokenExpiring(creds, 300_000)) return;
+  await withClaudeRefreshLock(async (lock) => {
+    const raw2 = await readItem(liveTarget());
+    if (raw2 == null) throw new Error("live credential vanished while waiting for the refresh lock");
+    const current = CredentialBlobSchema.parse(JSON.parse(raw2)).claudeAiOauth;
+    const next = isAccessTokenExpiring(current, 300_000) ? await refreshCredential(current) : current;
+    if (next === current) return;
+    if (lock.compromised()) throw new Error("refresh lock compromised mid-refresh - discarding the live rewrite");
+    await writeItem(liveTarget(), mergeIntoLive(raw2, next));
+  });
+}
+
 /**
  * Live-sample the ACTIVE account off the live login, verifying the live
  * credential belongs to it. `/usage` with no CLAUDE_CONFIG_DIR meters the live
@@ -170,6 +199,13 @@ export async function probeParkedUsage(account: Account, opts: { ping?: boolean 
  * the identity check - never spend quota on a drifted credential).
  */
 export async function probeActiveUsage(account: Account, opts: { ping?: boolean } = {}): Promise<SampleOutcome> {
+  // A running claude keeps the live token fresh; after long idle it may not have.
+  try {
+    await ensureLiveTokenFresh();
+  } catch (e) {
+    if (e instanceof InvalidGrantError) return { ok: false, reason: "live refresh token dead - run `claude` and `/login`" };
+    return { ok: false, reason: `token refresh failed: ${e instanceof Error ? e.message : String(e)}` };
+  }
   const liveRaw = await readItem(liveTarget());
   if (!liveRaw) return { ok: false, reason: "no live credential - run `claude` and `/login`" };
   let creds: OAuthCreds;
@@ -177,24 +213,6 @@ export async function probeActiveUsage(account: Account, opts: { ping?: boolean 
     creds = CredentialBlobSchema.parse(JSON.parse(liveRaw)).claudeAiOauth;
   } catch (e) {
     return { ok: false, reason: `live credential blob unreadable (${(e instanceof Error ? e.message : String(e)).slice(0, 80)})` };
-  }
-
-  // A running claude keeps the live token fresh; after long idle it may not have.
-  if (isAccessTokenExpiring(creds, 300_000)) {
-    try {
-      await withClaudeRefreshLock(async (lock) => {
-        const raw2 = await readItem(liveTarget());
-        if (raw2 == null) throw new Error("live credential vanished while waiting for the refresh lock");
-        const current = CredentialBlobSchema.parse(JSON.parse(raw2)).claudeAiOauth;
-        creds = isAccessTokenExpiring(current, 300_000) ? await refreshCredential(current) : current;
-        if (creds === current) return;
-        if (lock.compromised()) throw new Error("refresh lock compromised mid-refresh - discarding the live rewrite");
-        await writeItem(liveTarget(), mergeIntoLive(raw2, creds));
-      });
-    } catch (e) {
-      if (e instanceof InvalidGrantError) return { ok: false, reason: "live refresh token dead - run `claude` and `/login`" };
-      return { ok: false, reason: `token refresh failed: ${e instanceof Error ? e.message : String(e)}` };
-    }
   }
 
   const identity = await checkIdentity(creds, account);

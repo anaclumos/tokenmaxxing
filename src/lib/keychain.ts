@@ -61,10 +61,10 @@ function interactiveLine(t: KeychainTarget, secret: string): string {
 }
 
 /** ps-safe write: the command line + secret arrive on stdin, never in argv.
- *  The caller guarantees `line` fits the interactive buffer. */
-async function writeViaInteractive(line: string): Promise<void> {
+ *  The caller guarantees the encoded line fits the interactive buffer. */
+async function writeViaInteractive(encodedLine: Uint8Array): Promise<void> {
   const p = Bun.spawn([SECURITY, "-i"], {
-    stdin: new TextEncoder().encode(line),
+    stdin: encodedLine,
     stdout: "ignore",
     stderr: "pipe",
   });
@@ -91,8 +91,11 @@ async function writeViaArgv(t: KeychainTarget, secret: string): Promise<void> {
  *  would exceed the buffer (see INTERACTIVE_MAX_LINE - gating on the raw
  *  secret length let quote expansion corrupt the item). Throws on failure. */
 export async function writeItem(t: KeychainTarget, secret: string): Promise<void> {
-  const line = interactiveLine(t, secret);
-  if (line.length <= INTERACTIVE_MAX_LINE) return writeViaInteractive(line);
+  // measured in UTF-8 BYTES, the unit the stdin buffer actually consumes:
+  // String.length counts UTF-16 code units and under-counts multibyte
+  // characters (cubic review catch, PR #35).
+  const encoded = new TextEncoder().encode(interactiveLine(t, secret));
+  if (encoded.length <= INTERACTIVE_MAX_LINE) return writeViaInteractive(encoded);
   return writeViaArgv(t, secret);
 }
 
