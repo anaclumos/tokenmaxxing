@@ -160,7 +160,18 @@ export function stripSessionFlags(argv: string[]): string[] {
  *  persisting or replaying it on a respawn / later `--resume` re-injects the
  *  original instruction into an already-progressed session (adversarial-review
  *  HIGH catch) - only real flags like --model belong in sessions/ files and
- *  respawn args. */
+ *  respawn args.
+ *
+ *  TRADEOFF (WONTFIX, flagged PR #37): when claude adds a value-taking root
+ *  flag before the sets above are updated, that value reads as a positional
+ *  and is dropped, so the respawn launches without it and claude errors on the
+ *  missing argument - loud, and the user relaunches. The alternative default
+ *  (treat a bare token after an UNRECOGNIZED flag as that flag's value) turns
+ *  the same staleness silent: a newly added BOOLEAN flag sitting before the
+ *  prompt would make the prompt look like a value and replay a submit-once
+ *  turn, which is the exact harm this function exists to prevent. The
+ *  ambiguity is irreducible without claude's own option table, and a loud
+ *  broken launch beats a silent re-submit. */
 export function stripPositionals(argv: string[]): string[] {
   const out: string[] = [];
   for (let i = 0; i < argv.length; i++) {
