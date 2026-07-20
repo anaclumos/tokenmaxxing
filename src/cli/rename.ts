@@ -42,7 +42,9 @@ async function renameCodexAccount(input: { selector: string; newLabel: string })
     // labels resolve selectors first-match: a duplicate would make the other
     // account unreachable by label and misdirect destructive commands like
     // `rm` onto the wrong one (adversarial-review catch)
-    const taken = index.accounts.find((x) => x.accountId !== account.accountId && x.label === input.newLabel);
+    // case-insensitive, matching how findCodexAccount resolves selectors (PR
+    // #37 review catch: a casing-only duplicate slipped the === guard)
+    const taken = index.accounts.find((x) => x.accountId !== account.accountId && x.label.toLowerCase() === input.newLabel.toLowerCase());
     if (taken) {
       console.error(c.red(`label "${input.newLabel}" is already used by ${taken.accountId.slice(0, 8)} - labels must be unique within the pool`));
       return 1;
@@ -74,7 +76,9 @@ export async function cmdRename(argv: string[]): Promise<number> {
     // labels resolve selectors first-match: a duplicate would make the other
     // account unreachable by label and misdirect destructive commands like
     // `rm` onto the wrong one (adversarial-review catch)
-    const taken = idx.accounts.find((x) => x.accountUuid !== a.accountUuid && x.label === newLabel);
+    // case-insensitive, matching how findAccount resolves selectors (PR #37
+    // review catch: a casing-only duplicate slipped the === guard)
+    const taken = idx.accounts.find((x) => x.accountUuid !== a.accountUuid && x.label.toLowerCase() === newLabel.toLowerCase());
     if (taken) {
       console.error(c.red(`label "${newLabel}" is already used by ${taken.email} - labels must be unique within the pool`));
       return 1;

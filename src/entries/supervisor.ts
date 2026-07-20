@@ -295,7 +295,12 @@ export async function runSupervisor(argv: string[]): Promise<number> {
   // this time (a bare `claude --resume <id>`, or the depleted-pool recovery).
   if (resuming && base.length === 0) {
     const persisted = loadSessionFlags(sid);
-    if (persisted) base = persisted;
+    // enforce the flags-only contract at the trust boundary, not just at
+    // write: a sessions/ file written before stripPositionals existed can
+    // still carry the original prompt, and restoring it verbatim would
+    // re-submit that prompt on a bare `claude --resume` (PR #37 review
+    // catch). Idempotent on well-formed files.
+    if (persisted) base = stripPositionals(persisted);
   }
   // The FIRST launch keeps a positional prompt (the user just typed it);
   // everything persisted or respawned carries flags only.

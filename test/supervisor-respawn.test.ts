@@ -122,3 +122,27 @@ test(
   },
   30_000,
 );
+
+test(
+  "restored session flags are sanitized: a pre-fix stored positional never rides a bare --resume",
+  () => {
+    // a sessions/ file written before stripPositionals existed can carry the
+    // original prompt in `flags`; the restore path must enforce the
+    // flags-only contract at read (PR #37 review catch)
+    const sid = "55555555-5555-4555-8555-555555555555";
+    const setup = buildInstall("restore", JSON.stringify({ account: "x", ts: 1, waitUntil: 1, sessionId: sid }));
+    mkdirSync(join(setup.tmHome, "sessions"), { recursive: true });
+    writeFileSync(
+      join(setup.tmHome, "sessions", `${sid}.json`),
+      JSON.stringify({ flags: ["--model", "opus", "do the thing"], cwd: "/some/cwd" }),
+    );
+    // pre-create the counter past 0 so the shim never writes a marker
+    writeFileSync(join(setup.tmHome, "..", "count"), "1");
+    const p = runManaged(setup, ["--resume", sid]);
+    expect(p.exitCode).toBe(0);
+
+    const lines = readFileSync(setup.argsLog, "utf8").trim().split("\n");
+    expect(lines).toEqual([`--resume ${sid} --model opus`]);
+  },
+  30_000,
+);
