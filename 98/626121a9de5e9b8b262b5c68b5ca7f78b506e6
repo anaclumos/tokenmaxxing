@@ -1,0 +1,50 @@
+src/lib/sample.ts
+  s_eaf36da1edfe18::t_a145d30d3f7fe4 165-193,202-208
+test/pure.test.ts
+  s_eaf36da1edfe18::t_ce4333bf72b651 124-127,129-131
+  s_eaf36da1edfe18::t_fcca55a59726fe 128
+src/lib/types.ts
+  s_eaf36da1edfe18::t_c9e9603e1a2c31 96-99
+src/lib/keychain.ts
+  s_eaf36da1edfe18::t_20e700c73859f8 94-98
+  s_eaf36da1edfe18::t_0ee83fe6adf366 64-65,67
+src/main.ts
+  s_eaf36da1edfe18::t_ae60a532e67e68 89-94
+DESIGN.md
+  s_eaf36da1edfe18::t_02bd207c94ce88 134
+test/codex.test.ts
+  s_eaf36da1edfe18::t_8157f6f619db26 615-618,625,628
+  s_eaf36da1edfe18::t_e27df29e7493ef 741-745,759-761
+AGENTS.md
+  s_eaf36da1edfe18::t_ef05072cbc3851 147
+src/cli/codexinit.ts
+  s_eaf36da1edfe18::t_05a383d6f8e6d1 16
+  s_eaf36da1edfe18::t_361d6b7dc21e9f 84-96
+src/entries/codexstophook.ts
+  s_eaf36da1edfe18::t_50d883c48de8ba 85,87-92
+src/lib/codexdecide.ts
+  s_eaf36da1edfe18::t_55efb5b4d24d2d 90-105
+  s_eaf36da1edfe18::t_d55d9cbd25cf60 116,161,193
+  s_eaf36da1edfe18::t_38ff4d88313377 139-147
+src/cli/status.ts
+  s_eaf36da1edfe18::t_1f692f1900fbb4 116-125
+  s_eaf36da1edfe18::t_a81c72aeb4eb2e 18
+src/cli/add.ts
+  s_eaf36da1edfe18::t_664f063cc5d6b5 45
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "98626121a9de5e9b8b262b5c68b5ca7f78b506e6",
+  "prompts": {},
+  "sessions": {
+    "s_eaf36da1edfe18": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "085f0c3d-1bd0-4a58-8930-8dfdcf1a0376",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    }
+  }
+}
