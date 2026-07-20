@@ -1,0 +1,21 @@
+src/lib/types.ts
+  s_eaf36da1edfe18::t_9d8be401b0ef65 340-348
+src/lib/paths.ts
+  s_eaf36da1edfe18::t_171c9da28519cb 90-93
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "ab829f35ab124e8908a834bfba42f37258fbfb59",
+  "prompts": {},
+  "sessions": {
+    "s_eaf36da1edfe18": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "085f0c3d-1bd0-4a58-8930-8dfdcf1a0376",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    }
+  }
+}
