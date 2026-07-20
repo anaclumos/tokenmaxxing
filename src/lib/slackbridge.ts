@@ -37,6 +37,11 @@ export const TurnOutcomeSchema = z.object({
   rateLimited: z.boolean(),
   /** the model called finish_thread this turn: garbage-collect after the turn. */
   finish: z.boolean(),
+  /** the model called need_attention this turn (it asked the user for a
+   *  decision): the daemon marks the thread waiting - question-mark status
+   *  reaction, a one-time nudge if the user stays quiet, and an asked user's
+   *  reaction relays as their answer. */
+  attention: z.boolean(),
   /** relayThread posted a TERMINAL drop notice for this message ("dropped;
    *  re-send it"): a drain must NOT presume a killed child and retain the
    *  resume marker, or startup replays work the user was told to resend. */
@@ -232,19 +237,20 @@ function pushableStream(): {
   };
 }
 
-/** Full permission name of the finish_thread tool (mcp__<server>__<tool>):
- *  it must be in allowedTools, because no one can answer a permission prompt
- *  through Slack. */
+/** Full permission names of the in-process tools (mcp__<server>__<tool>):
+ *  they must be in allowedTools, because no one can answer a permission
+ *  prompt through Slack. */
 const FINISH_THREAD_TOOL = "mcp__tokenmaxxing__finish_thread";
+const NEED_ATTENTION_TOOL = "mcp__tokenmaxxing__need_attention";
 
-/** The per-turn in-process MCP server exposing finish_thread. The handler runs
- *  in the daemon process, but it must NOT delete anything inline: the claude
- *  subprocess is still mid-turn and segments are still streaming to Slack, so
- *  it only records the request and the daemon closes the thread after the
- *  turn ends (serve.ts). alwaysLoad keeps the tool visible in the prompt
- *  instead of deferred behind tool search: it has to be in view at the exact
- *  moment the user says the work is done. */
-function finishToolServer(onFinish: () => void) {
+/** The per-turn in-process MCP server exposing finish_thread and
+ *  need_attention. The handlers run in the daemon process, but they must NOT
+ *  act inline: the claude subprocess is still mid-turn and segments are still
+ *  streaming to Slack, so each only records the request and the daemon acts
+ *  after the turn ends (serve.ts). alwaysLoad keeps the tools visible in the
+ *  prompt instead of deferred behind tool search: they have to be in view at
+ *  the exact moment the user says the work is done or the model hits a fork. */
+function serveToolServer(input: { onFinish: () => void; onAttention: () => void }) {
   return createSdkMcpServer({
     name: "tokenmaxxing",
     alwaysLoad: true,
@@ -254,8 +260,17 @@ function finishToolServer(onFinish: () => void) {
         "Close out this Slack thread when the user clearly states the work is finished (shipped, done, clean this up) and wants the thread closed. After this turn ends the daemon drops the thread's session record, unsubscribes, and posts a confirmation; the repo checkout and everything in it are untouched. Do not call this for a merely answered question - only for an explicit wrap-up.",
         {},
         async () => {
-          onFinish();
+          input.onFinish();
           return { content: [{ type: "text", text: "close-out scheduled - it runs right after this turn ends and posts its own confirmation; just acknowledge the wrap-up now" }] };
+        },
+      ),
+      tool(
+        "need_attention",
+        "Flag this Slack thread as waiting on the requesting user. Call it in the same turn in which you ask them for a decision, approval, or missing information (the ask-the-user skill), then ask in your reply text with their mention token and end the turn. After the turn ends the daemon marks the thread attention-needed (a question-mark reaction on the triggering message) and tags the user once more if they stay quiet; a reaction from them, such as a thumbs up, relays back to you as their answer. Do not call this for rhetorical questions or ordinary replies.",
+        {},
+        async () => {
+          input.onAttention();
+          return { content: [{ type: "text", text: "attention flagged - after this turn ends the daemon marks the thread as waiting on the user and nudges them if they stay quiet; ask your question in the reply text with their mention token, then end the turn" }] };
         },
       ),
     ],
@@ -389,7 +404,7 @@ export async function relayThread(input: {
    *  out a depleted-pool countdown. */
   drainSignal?: AbortSignal;
 }): Promise<TurnOutcome> {
-  const outcome: TurnOutcome = { sessionId: input.sessionId, failed: false, rateLimited: false, finish: false, announcedDrop: false, resultReceived: false };
+  const outcome: TurnOutcome = { sessionId: input.sessionId, failed: false, rateLimited: false, finish: false, attention: false, announcedDrop: false, resultReceived: false };
   let segment: ReturnType<typeof pushableStream> | null = null;
   let segmentMeta: { text: boolean } | null = null;
   let lastPost: Promise<unknown> = Promise.resolve();
@@ -484,9 +499,9 @@ export async function relayThread(input: {
     outcome.failed = false;
     outcome.rateLimited = false;
     outcome.resultReceived = false;
-    // outcome.finish stays sticky across retries: the tool call already
-    // happened in this session, and a limit right after it must not unfinish
-    // the thread.
+    // outcome.finish and outcome.attention stay sticky across retries: the
+    // tool calls already happened in this session, and a limit right after
+    // one must not unfinish the thread or drop the pending ask.
     // the identity this spawn meters: a limit observation is attributed to it,
     // never to whatever account a concurrent thread swaps live mid-turn. Read
     // inside the try: a malformed claude.json must fail the TURN, not the
@@ -531,10 +546,18 @@ export async function relayThread(input: {
             }
             return child;
           },
-          // the user saying "we're done" closes the thread: the model flags it
-          // via this in-process tool, the daemon drops the record post-turn.
-          mcpServers: { tokenmaxxing: finishToolServer(() => { outcome.finish = true; }) },
-          allowedTools: [FINISH_THREAD_TOOL],
+          // the user saying "we're done" closes the thread, and the model
+          // asking the user for a decision marks it waiting: both flagged via
+          // in-process tools, both acted on by the daemon post-turn. Like
+          // finish, attention stays sticky across retries: the tool call
+          // already happened in this session.
+          mcpServers: {
+            tokenmaxxing: serveToolServer({
+              onFinish: () => { outcome.finish = true; },
+              onAttention: () => { outcome.attention = true; },
+            }),
+          },
+          allowedTools: [FINISH_THREAD_TOOL, NEED_ATTENTION_TOOL],
           // serve skills (ask-the-user, serve-session); discovered skills are
           // enabled by default, so no `skills` option is needed.
           plugins: [{ type: "local", path: SERVE_PLUGIN_DIR }],
