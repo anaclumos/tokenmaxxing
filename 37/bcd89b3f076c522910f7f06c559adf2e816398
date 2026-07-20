@@ -1,0 +1,128 @@
+test/probe-hang.test.ts
+  s_eaf36da1edfe18::t_7d20eb86471ec7 25,29
+test/supervisor-respawn.test.ts
+  s_eaf36da1edfe18::t_0847476b871a32 1-124
+src/main.ts
+  s_eaf36da1edfe18::t_56ea3b5d50adf5 56
+  s_eaf36da1edfe18::t_9b7f717a515bdc 27
+  s_eaf36da1edfe18::t_ee70a25407cfce 126-132
+docs/content/docs/commands.de.mdx
+  s_eaf36da1edfe18::t_ef16844f605eae 24
+src/cli/config.ts
+  s_eaf36da1edfe18::t_81bbbee84804c4 163-177
+docs/content/docs/commands.sw.mdx
+  s_eaf36da1edfe18::t_033a9eafde6eeb 24
+README.md
+  s_eaf36da1edfe18::t_7ac84f668734ba 42
+docs/content/docs/commands.te.mdx
+  s_eaf36da1edfe18::t_278f2b3558a795 24
+docs/content/docs/commands.am.mdx
+  s_eaf36da1edfe18::t_1013fac6644ec1 24
+package.json
+  s_eaf36da1edfe18::t_bdbcf9dab52038 3
+docs/content/docs/commands.ar.mdx
+  s_eaf36da1edfe18::t_5728d1d05cb6aa 24
+docs/content/docs/commands.fa.mdx
+  s_eaf36da1edfe18::t_3eddc353684a01 24
+docs/content/docs/commands.ko.mdx
+  s_eaf36da1edfe18::t_11899efd2c12dd 24
+docs/content/docs/commands.pnb.mdx
+  s_eaf36da1edfe18::t_a764d264190382 24
+docs/content/docs/commands.ja.mdx
+  s_eaf36da1edfe18::t_536be511ddf554 24
+docs/content/docs/commands.tr.mdx
+  s_eaf36da1edfe18::t_2f6b524e194ffe 24
+docs/content/docs/commands.ur.mdx
+  s_eaf36da1edfe18::t_492c6e75ae1063 24
+docs/content/docs/commands.arz.mdx
+  s_eaf36da1edfe18::t_896be5bdd03cc8 24
+src/entries/supervisor.ts
+  s_eaf36da1edfe18::t_a70fefa3825395 300-303
+  s_eaf36da1edfe18::t_d96b682fab7b8a 359-363
+  s_eaf36da1edfe18::t_fd6ffc8ec38b19 158-180
+docs/content/docs/commands.th.mdx
+  s_eaf36da1edfe18::t_490f93c50c933a 24
+docs/content/docs/commands.pt.mdx
+  s_eaf36da1edfe18::t_80e4a6f327419a 24
+docs/content/docs/commands.vi.mdx
+  s_eaf36da1edfe18::t_7de0a96c64448b 24
+test/slackbridge.test.ts
+  s_eaf36da1edfe18::t_07643080c2dc00 150-154,157
+docs/content/docs/commands.mdx
+  s_eaf36da1edfe18::t_c2a5b4fd40ca8f 24
+docs/content/docs/commands.ha.mdx
+  s_eaf36da1edfe18::t_5c4b2bacc311ae 24
+src/cli/rename.ts
+  s_eaf36da1edfe18::t_328b91aa605617 74-81
+  s_eaf36da1edfe18::t_cc36465b75b93f 42-49
+src/cli/codexswitch.ts
+  s_eaf36da1edfe18::t_4437da715efa62 35-39
+docs/content/docs/commands.ta.mdx
+  s_eaf36da1edfe18::t_790e887704efc4 24
+test/e2e/swap-concurrency.ts
+  s_eaf36da1edfe18::t_f2ee1709ae96d7 150
+test/servedaemon.test.ts
+  s_eaf36da1edfe18::t_0207d2ed9914e1 209
+  s_eaf36da1edfe18::t_0d1b67d7a434c0 217-232
+  s_eaf36da1edfe18::t_1465a1893d898e 196
+  s_eaf36da1edfe18::t_cee3f3a6b20773 23
+docs/content/docs/commands.es.mdx
+  s_eaf36da1edfe18::t_71abb1742f092e 24
+DESIGN.md
+  s_eaf36da1edfe18::t_0a0f9c75b3f3b6 75
+docs/content/docs/commands.tl.mdx
+  s_eaf36da1edfe18::t_9b1caab4bd6821 24
+docs/content/docs/commands.hi.mdx
+  s_eaf36da1edfe18::t_65b95f959cd31d 24
+docs/content/docs/commands.zh.mdx
+  s_eaf36da1edfe18::t_78ad2cb0bd74c2 24
+docs/content/docs/commands.yue.mdx
+  s_eaf36da1edfe18::t_96fe1a4bb9ba82 24
+docs/content/docs/commands.pcm.mdx
+  s_eaf36da1edfe18::t_37626951062aab 24
+docs/content/docs/commands.mr.mdx
+  s_eaf36da1edfe18::t_400f14c65e896b 24
+docs/content/docs/commands.bn.mdx
+  s_eaf36da1edfe18::t_c3b6ba1de55f9d 24
+docs/content/docs/commands.fr.mdx
+  s_eaf36da1edfe18::t_cdd8681dac3bd3 24
+src/cli/serve.ts
+  s_eaf36da1edfe18::t_37ecdf23088a0c 366-369,371
+  s_eaf36da1edfe18::t_5e50f4e6dcb4d1 736-743
+test/stophook.test.ts
+  s_eaf36da1edfe18::t_5de3cee922a86a 1-68,70-116
+  s_eaf36da1edfe18::t_7b823864036a2c 69
+docs/content/docs/commands.wuu.mdx
+  s_eaf36da1edfe18::t_80cb8d5add4a25 24
+docs/content/docs/commands.ru.mdx
+  s_eaf36da1edfe18::t_2363e66f628c63 24
+src/lib/slackbridge.ts
+  s_eaf36da1edfe18::t_63ca3542b4f4ed 486
+  s_eaf36da1edfe18::t_bf3844e3cc0d97 44-48
+  s_eaf36da1edfe18::t_4e7b956a41ef69 584
+  s_eaf36da1edfe18::t_68dd7be97c998e 392
+src/cli/codexrm.ts
+  s_eaf36da1edfe18::t_870d0c5f88473e 1-50
+src/lib/decide.ts
+  s_eaf36da1edfe18::t_c1fcf1f337e544 51-53,55-66,76
+  s_eaf36da1edfe18::t_973f1d06ae6a35 86-89,93
+  s_eaf36da1edfe18::t_ab377ba69ff56f 109
+docs/content/docs/commands.id.mdx
+  s_eaf36da1edfe18::t_2588120405ee57 24
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "37bcd89b3f076c522910f7f06c559adf2e816398",
+  "prompts": {},
+  "sessions": {
+    "s_eaf36da1edfe18": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "085f0c3d-1bd0-4a58-8930-8dfdcf1a0376",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    }
+  }
+}
