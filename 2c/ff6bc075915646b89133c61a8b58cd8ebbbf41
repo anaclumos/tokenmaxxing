@@ -1,0 +1,21 @@
+.memory/MEMORY.md
+  s_a114124e020854::t_878f6509e1e118 24
+.memory/tokenmaxxing-project.md
+  s_a114124e020854::t_8d1ed271e76c2f 37-38
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "2cff6bc075915646b89133c61a8b58cd8ebbbf41",
+  "prompts": {},
+  "sessions": {
+    "s_a114124e020854": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "86c84b56-b4ae-44d3-82c3-08305a625cdb",
+        "model": "unknown"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    }
+  }
+}
