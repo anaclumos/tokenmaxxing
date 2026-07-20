@@ -1,0 +1,21 @@
+AGENTS.md
+  s_a114124e020854::t_411f61e0e4299b 140
+src/cli/codexadd.ts
+  s_a114124e020854::t_8642aa419b8c61 2-8,37,41
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "453f8510dc84e561d57a4f08cf7da2ec10d2d14f",
+  "prompts": {},
+  "sessions": {
+    "s_a114124e020854": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "86c84b56-b4ae-44d3-82c3-08305a625cdb",
+        "model": "unknown"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    }
+  }
+}
