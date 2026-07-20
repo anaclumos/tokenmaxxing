@@ -34,8 +34,13 @@ export function writeFileAtomic(file: string, data: string | Uint8Array, mode = 
     renameSync(tmp, file);
   } catch (e) {
     // a failed write must not strand the partial temp file - it can hold a
-    // truncated credential (PR #36 review catch)
-    rmSync(tmp, { force: true });
+    // truncated credential (PR #36 review catch) - and a failed CLEANUP must
+    // not mask the write error the caller needs (second-round catch)
+    try {
+      rmSync(tmp, { force: true });
+    } catch {
+      // the original write error below is the one that matters
+    }
     throw e;
   }
 }

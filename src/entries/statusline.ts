@@ -179,8 +179,10 @@ export async function runStatusline(): Promise<number> {
   // catch: a stale-window tee labeled with the new org could hard-swap a
   // healthy account and stamp foreign usage into it). The render below uses
   // the same preference so the active ◆ seat matches the windows painted
-  // beside it (PR #36 review catch).
-  const stdinOrg = RateLimitsStdinSchema.safeParse(obj).data?.organizationUuid ?? null;
+  // beside it (PR #36 review catch). Trusted ONLY when the payload's windows
+  // parsed too: an org label without windows would re-label state the payload
+  // did not carry (second-round catch).
+  let stdinOrg: string | null = null;
 
   // tee usage for the Stop hook / status - best effort, never blocks rendering.
   let org: string | null = null;
@@ -188,6 +190,7 @@ export async function runStatusline(): Promise<number> {
     org = readOAuthAccount()?.organizationUuid ?? null;
     const windows = obj == null ? null : parseStatusLineStdin(obj);
     const lastSwapAt = loadLastSwapAt();
+    stdinOrg = windows != null ? (RateLimitsStdinSchema.safeParse(obj).data?.organizationUuid ?? null) : null;
     const teeOrg = stdinOrg ?? org;
     if (windows && (stdinOrg != null || lastSwapAt == null || now - lastSwapAt >= ADOPTION_GRACE_MS)) {
       const state: UsageState = { ...windows, org: teeOrg, ts: now, model: parseStatusLineModel(obj) };

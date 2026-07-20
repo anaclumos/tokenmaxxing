@@ -163,9 +163,18 @@ export async function runCodexSupervisor(input: { argv: string[] }): Promise<num
             writeCodexPresence({ supervisorId, accountId: spawnAccountId, pid: spawned.pid });
             break;
           } catch (e) {
+            // a child that already exited needs no presence (its absence is
+            // correct) and must keep its own exit result - the normal exit
+            // path below handles it (PR #36 second-round catch)
+            if (spawned.exitCode !== null || spawned.signalCode !== null) break;
             if (attempt === 9) {
               log("codexsupervisor.presence_failed", { err: e instanceof Error ? e.message : String(e) });
               spawned.kill();
+              // the child may have entered raw mode during the retries: await
+              // its death and restore the terminal before surfacing (PR #36
+              // second-round catch)
+              await spawned.exited;
+              restoreTermios(savedTermios);
               throw new Error("could not write the codex presence file - refusing to run an unprotected session (its account would look like a swap target)");
             }
             await Bun.sleep(100);

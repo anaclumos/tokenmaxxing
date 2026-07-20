@@ -337,23 +337,33 @@ const PATH_LINE_MARK = "# tokenmaxxing PATH";
  *  A pre-existing hand-added line for the bin dir also counts as present. */
 export function ensurePathInRc(rc: string): "added" | "present" {
   const dir = paths.binDir.startsWith(`${HOME}/`) ? `$HOME${paths.binDir.slice(HOME.length)}` : paths.binDir;
-  const current = existsSync(rc) ? readFileSync(rc, "utf8") : "";
-  // present only when the CURRENT binDir is what's exported: a bare marker
-  // check kept a stale line after a TOKENMAXXING_HOME relocation, so the new
-  // install's binDir never reached PATH and the OLD wrapper kept winning -
-  // the recursion incident's exact vector (closing-review catch). A marked
-  // line for a DIFFERENT dir is replaced in place.
-  if (current.includes(`${paths.binDir}:`) || current.includes(`${dir}:`)) return "present";
-  if (current.includes(PATH_LINE_MARK)) {
-    const kept = current.split("\n").filter((line) => !line.includes(PATH_LINE_MARK));
-    const sep0 = kept.length === 0 || kept[kept.length - 1] === "" ? "" : "\n";
+  // Write through a dotfile-managed symlink, never over it: writeFileAtomic
+  // renames a sibling temp over its target, which would replace the link with
+  // a plain file while the dotfiles target keeps the stale line (PR #36
+  // second-round catch).
+  const target = existsSync(rc) ? realpathSync(rc) : rc;
+  const current = existsSync(target) ? readFileSync(target, "utf8") : "";
+  const isCurrentExport = (line: string) => line.includes(`${paths.binDir}:`) || line.includes(`${dir}:`);
+  const lines = current === "" ? [] : current.split("\n");
+  // A marked line for a DIFFERENT dir is removed even when the current dir is
+  // also exported: PATH prepends stack, so a stale marked line BELOW the
+  // current one would still win resolution - the recursion incident's exact
+  // vector (closing-review catch + PR #36 second-round catch). A bare marker
+  // check alone once kept such a line alive after a TOKENMAXXING_HOME
+  // relocation.
+  const kept = lines.filter((line) => isCurrentExport(line) || !line.includes(PATH_LINE_MARK));
+  if (kept.length !== lines.length) {
+    const body = kept.join("\n");
+    const sep0 = body === "" || body.endsWith("\n") ? "" : "\n";
+    const addition = kept.some(isCurrentExport) ? "" : `export PATH="${dir}:$PATH" ${PATH_LINE_MARK}\n`;
     // preserve the rc's own mode: writeFileAtomic defaults to 0600, which
     // would silently tighten a normally 0644 shell rc (PR #36 review catch)
-    writeFileAtomic(rc, `${kept.join("\n")}${sep0}export PATH="${dir}:$PATH" ${PATH_LINE_MARK}\n`, statSync(rc).mode & 0o777);
+    writeFileAtomic(target, `${body}${sep0}${addition}`, statSync(target).mode & 0o777);
     return "added";
   }
+  if (lines.some(isCurrentExport)) return "present";
   const sep = current === "" || current.endsWith("\n") ? "" : "\n";
-  appendFileSync(rc, `${sep}export PATH="${dir}:$PATH" ${PATH_LINE_MARK}\n`);
+  appendFileSync(target, `${sep}export PATH="${dir}:$PATH" ${PATH_LINE_MARK}\n`);
   return "added";
 }
 
