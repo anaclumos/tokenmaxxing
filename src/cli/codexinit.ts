@@ -95,6 +95,14 @@ export async function cmdCodexInit(): Promise<number> {
   }
 
   const account = await withLock(codexPaths.lockFile, () => {
+    // Re-check presence INSIDE the critical section (pullfrog review catch,
+    // PR #35): supervisor spawns are flock-serialized too, so one can start -
+    // check passed, presence written, session live - entirely between the
+    // friendly pre-lock check above and this lock acquisition. The throw
+    // routes through the CLI error boundary as a clean failure.
+    if (presentCodexAccountIds().has(identity.accountId)) {
+      throw new Error("a live supervised codex session started running this account mid-init - close it and re-run `tokenmaxxing init --codex`");
+    }
     // Park INSIDE the flock, from a blob RE-READ inside it (closing-review
     // catch): the pre-lock snapshot is seconds stale (a network usage GET sits
     // in between), and parking it unlocked could clobber a concurrent swap's
