@@ -54,14 +54,18 @@ const SERVE_USAGE = "usage: tokenmaxxing serve [setup | link <channel-id> <repo>
  *  Scopes/events verified against docs.slack.dev 2026-07-18: a channel-thread
  *  relay plus Slack's Agent messaging experience (agent_view + assistant:write
  *  power the DM assistant surface and typing status; channel-thread streaming
- *  works without them, verified live). Changing scopes on an existing app
- *  requires reinstalling it to the workspace. */
+ *  works without them, verified live). agent_view is an OBJECT whose required
+ *  field is agent_description (max 300 chars; docs.slack.dev app-manifest
+ *  reference, re-verified 2026-07-20) - a bare `agent_view: true` is rejected
+ *  with "Must provide an object". Changing scopes on an existing app requires
+ *  reinstalling it to the workspace. */
 const APP_MANIFEST = `display_information:
   name: tokenmaxxing
   description: bridges Slack threads to Claude Code sessions
 
 features:
-  agent_view: true
+  agent_view:
+    agent_description: bridges Slack threads to Claude Code sessions
   bot_user:
     display_name: tokenmaxxing
     always_online: true
