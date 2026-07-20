@@ -1,7 +1,15 @@
 # Memory index
 
-- [1Password vault-lock blocks commit signing](1password-signing-lock-blocks-commits.md) - "failed to fill whole buffer" = locked vault; staged work survives, only the user's unlock (or their explicit --no-gpg-sign say-so) unblocks; slow retry + Slack ping, never bypass unilaterally
+- [Auto-compact 50% override](autocompact-pct-override.md) - CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=50 in ~/.claude/settings.json env (2026-07-19); undocumented, binary-verified 2.1.215, re-verify after claude updates
+- [Review window is mandatory full-length](review-window-is-mandatory-full-length.md) - hook correction 2026-07-19: the 10-min PR window runs its FULL length from the last push; "all reviewer checks pass" never shortens it (cubic posts findings after its check greens); early merge = compensating late-review watch + fix-forward
+- [Silence is not approval for design forks](silence-is-not-approval-for-design-forks.md) - hook correction 2026-07-19: a surfaced fork holds until the owner picks; an unanswered ping never authorizes the stated lean; only in-plan actions (retry same mechanism, cancel dead tasks, watch) continue meanwhile
+- [Slack suspended until new setup](slack-suspended-until-new-setup.md) - user 2026-07-20: no posts to the old #tokenmaxxing-dogfooding; ask in-session via AskUserQuestion (+ push notification) until the new channel and computer exist
+- [Codex sibling reconcile approved](codex-sibling-reconcile-approved.md) - owner 2026-07-20 via AskUserQuestion x2: option (b) shipped in PR #34, then WIDENED to ALL pooled non-live siblings (healthy included) during round 7; every sibling follows the live seat via signal + boundary promote
+- [Scheduled wakeups for ship monitoring](scheduled-wakeups-for-ship-monitoring.md) - user 2026-07-19: during review-window/CI waits, schedule periodic wakeups to manually check state; never rely only on background shells and monitors
+
+- [1Password vault-lock blocks commit signing](1password-signing-lock-blocks-commits.md) - "failed to fill whole buffer" = locked vault; --no-gpg-sign fallback has STANDING owner authorization (2026-07-19, re-confirmed 2026-07-20 "remember this"): signed attempt first, fallback noted in the commit body, no per-incident ask
 - [PR review replies must be threaded](pr-review-replies-threaded.md) - user 2026-07-18: answer each inline review finding as a threaded reply on that comment (gh api .../comments/<id>/replies), never only a separate PR-level comment
+- [Collect reviews unfiltered](collect-reviews-unfiltered.md) - self-caught 2026-07-20: list ALL inline comments + review bodies per round, filter only by timestamp; a reviewer-name filter hid a pullfrog finding for a full cycle
 - [Source moves are editor-only too](source-moves-editor-only.md) - hook correction 2026-07-18: the editor-only rule covers file moves; never `git mv`/`mv` source files via Bash - Write the new path, delete the old separately
 - [Pre-commit full-diff inspection](pre-commit-full-diff-inspection.md) - hook correction 2026-07-19: a diffstat + greps is not the required untruncated `git diff --cached` read; bulk agent-generated commits get the full read too, before the commit (or before the ship advances if caught late)
 - [Deletion scope is literal](deletion-scope-is-literal.md) - user correction 2026-07-18: "delete all stale worktrees" authorizes worktrees ONLY; the 40 associated branches I also deleted were scope creep (restored at exact tips); before a deletion pass, list targets by artifact kind and touch only the named kind
@@ -13,7 +21,7 @@
 
 - [Live pool runs need permission](live-pool-runs-need-permission.md) - ask before any run that meters quota or starts a session window on real accounts; hermetic tests + free /usage reads only by default
 
-- [tokenmaxxing project goal](tokenmaxxing-project.md) - CLI pooling Claude Code/Codex accounts, hot-swap on quota; npm name owned by user (anaclumos); latest ships: 0.19.0 RELEASED 2026-07-18 (serve live fixes + native streaming + subagent tool cards; first PR-based ship, PR #6), 0.19.1 2026-07-18 (serve restart resilience: startup re-subscribe, drain, dead-segment recovery, PR #8), five natural card titles merged unreleased (PR #7); .memory git-tracked since 2026-07-18
+- [tokenmaxxing project goal](tokenmaxxing-project.md) - CLI pooling Claude Code/Codex accounts, hot-swap on quota; npm name owned by user (anaclumos); latest ship: 1.0.0 RELEASED 2026-07-20 (PR #37, npm-verified; closes the 14 confirmed unhinted-adversarial-review findings - Codex-RUNTIME review still owed after Jul 25), after 0.21.0 the same day; .memory git-tracked since 2026-07-18
 - [CC/Codex auth mechanics](cc-codex-auth-mechanics.md) - verified keychain/CODEX_HOME/quota internals both CLIs depend on; see DESIGN.md §2
 - [Per-model weekly caps](cc-per-model-limits.md) - per-model weekly limits exist only for Sonnet and Fable, no Opus-only quota (user 2026-07-12); only Fable gates a switch ("fable=switch, sonnet=ok")
 - [ARM Linux host](linux-arm-host.md) - the owner's Pi: the Linux test box; claude 2.1.207, 4-account pool, tokenmaxxing 0.6.1
