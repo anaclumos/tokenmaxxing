@@ -48,10 +48,22 @@ const SwapDecisionSchema = z.object({
 });
 export type SwapDecision = z.infer<typeof SwapDecisionSchema>;
 
+const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+const FIVE_HOURS_MS = 5 * 60 * 60 * 1000;
+
 /** A window's usable-against percentage NOW: one whose cached reset has passed
- *  is empty again, never a switch reason. */
-function liveUsed(w: UsageWindow, now: number): number {
-  return w.resetsAt != null && w.resetsAt <= now ? 0 : w.usedPercentage;
+ *  is empty again, never a switch reason. A NULL-reset window (reset clock
+ *  failed to parse) self-bounds at sampledAt + the window's own duration,
+ *  mirroring the picker's blockedUntil and the codex liveUsed: without the
+ *  bound the trigger side kept reading a long-stale over-bar row as live while
+ *  the screening side had already released it - the two halves of one decision
+ *  disagreed, forcing hard-path swaps (or waitUntil=now respawn churn) off a
+ *  healthy account (adversarial-review catch). */
+function liveUsed(input: { window: UsageWindow; windowMs: number; sampledAt: number; now: number }): number {
+  const { window: w, windowMs, sampledAt, now } = input;
+  if (w.resetsAt != null) return w.resetsAt <= now ? 0 : w.usedPercentage;
+  if (now >= sampledAt + windowMs) return 0;
+  return w.usedPercentage;
 }
 
 /** The family's weekly cap among the `/usage` rows; when several rows match the
@@ -61,7 +73,7 @@ function capForFamily(mu: ModelUsageState, family: string, now: number): UsageWi
   const rows = Object.entries(mu.perModel)
     .filter(([k]) => familyTokens(k).includes(family))
     .map(([, w]) => w);
-  return maxBy(rows, (w) => liveUsed(w, now));
+  return maxBy(rows, (w) => liveUsed({ window: w, windowMs: WEEK_MS, sampledAt: mu.sampledAt ?? mu.ts, now }));
 }
 
 /** True if the active account is over its floor on ANY screening bar: the 5h
@@ -71,11 +83,14 @@ function capForFamily(mu: ModelUsageState, family: string, now: number): UsageWi
 function isOver(u: UsageState | null, mu: ModelUsageState | null, org: string | null, cfg: Config, now: number): boolean {
   if (!u || !org || u.org !== org) return false;
   const bars = effectiveBars(cfg);
-  if (liveUsed(u.fiveHour, now) >= bars.session || liveUsed(u.sevenDay, now) >= bars.weekly) return true;
+  if (
+    liveUsed({ window: u.fiveHour, windowMs: FIVE_HOURS_MS, sampledAt: u.ts, now }) >= bars.session ||
+    liveUsed({ window: u.sevenDay, windowMs: WEEK_MS, sampledAt: u.ts, now }) >= bars.weekly
+  ) return true;
   if (mu && mu.org === org) {
     for (const family of gatedFamilies(u.model, cfg.policy.switchModels)) {
       const cap = capForFamily(mu, family, now);
-      if (cap && liveUsed(cap, now) >= bars.weekly) return true;
+      if (cap && liveUsed({ window: cap, windowMs: WEEK_MS, sampledAt: mu.sampledAt ?? mu.ts, now }) >= bars.weekly) return true;
     }
   }
   return false;
@@ -91,7 +106,7 @@ function needsPerModel(u: UsageState | null, cfg: Config): boolean {
  *  a fresh session rides its account - no churn. */
 function isEngaged(u: UsageState | null, mu: ModelUsageState | null, org: string | null, cfg: Config, now: number): boolean {
   if (!u || !org || u.org !== org) return false;
-  return liveUsed(u.fiveHour, now) >= cfg.policy.greedySessionFloor || isOver(u, mu, org, cfg, now);
+  return liveUsed({ window: u.fiveHour, windowMs: FIVE_HOURS_MS, sampledAt: u.ts, now }) >= cfg.policy.greedySessionFloor || isOver(u, mu, org, cfg, now);
 }
 
 const SnapshotsSchema = z.object({

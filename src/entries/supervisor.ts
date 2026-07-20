@@ -155,6 +155,44 @@ export function stripSessionFlags(argv: string[]): string[] {
   return out;
 }
 
+/** Remove positional tokens (the one-shot initial prompt) while keeping every
+ *  flag and its consumed value(s). A positional is a submit-once user turn:
+ *  persisting or replaying it on a respawn / later `--resume` re-injects the
+ *  original instruction into an already-progressed session (adversarial-review
+ *  HIGH catch) - only real flags like --model belong in sessions/ files and
+ *  respawn args.
+ *
+ *  TRADEOFF (WONTFIX, flagged PR #37): when claude adds a value-taking root
+ *  flag before the sets above are updated, that value reads as a positional
+ *  and is dropped, so the respawn launches without it and claude errors on the
+ *  missing argument - loud, and the user relaunches. The alternative default
+ *  (treat a bare token after an UNRECOGNIZED flag as that flag's value) turns
+ *  the same staleness silent: a newly added BOOLEAN flag sitting before the
+ *  prompt would make the prompt look like a value and replay a submit-once
+ *  turn, which is the exact harm this function exists to prevent. The
+ *  ambiguity is irreducible without claude's own option table, and a loud
+ *  broken launch beats a silent re-submit. */
+export function stripPositionals(argv: string[]): string[] {
+  const out: string[] = [];
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i]!;
+    // `--` ends option parsing: everything after it is positional (a prompt
+    // deliberately starting with "-"), never a flag to persist (PR #37
+    // review catch). The delimiter itself is dropped with them.
+    if (a === "--") break;
+    if (!a.startsWith("-")) continue;
+    out.push(a);
+    if (VALUE_TAKING_ROOT_FLAGS.has(a)) {
+      if (i + 1 < argv.length) out.push(argv[++i]!);
+    } else if (VARIADIC_ROOT_FLAGS.has(a)) {
+      while (i + 1 < argv.length && !argv[i + 1]!.startsWith("-")) out.push(argv[++i]!);
+    } else if (OPTIONAL_VALUE_ROOT_FLAGS.has(a)) {
+      if (i + 1 < argv.length && !argv[i + 1]!.startsWith("-")) out.push(argv[++i]!);
+    }
+  }
+  return out;
+}
+
 /** Newest transcript session id for the current cwd (for `-c`). claude's
  *  project-dir slug maps EVERY non-alphanumeric char to "-": the regex below
  *  mirrors claude's own, byte for byte (binary-verified 2.1.215, the external-
@@ -272,9 +310,17 @@ export async function runSupervisor(argv: string[]): Promise<number> {
   // this time (a bare `claude --resume <id>`, or the depleted-pool recovery).
   if (resuming && base.length === 0) {
     const persisted = loadSessionFlags(sid);
-    if (persisted) base = persisted;
+    // enforce the flags-only contract at the trust boundary, not just at
+    // write: a sessions/ file written before stripPositionals existed can
+    // still carry the original prompt, and restoring it verbatim would
+    // re-submit that prompt on a bare `claude --resume` (PR #37 review
+    // catch). Idempotent on well-formed files.
+    if (persisted) base = stripPositionals(persisted);
   }
-  saveSessionFlags(sid, base, process.cwd());
+  // The FIRST launch keeps a positional prompt (the user just typed it);
+  // everything persisted or respawned carries flags only.
+  const persistable = stripPositionals(base);
+  saveSessionFlags(sid, persistable, process.cwd());
   pruneStaleSessions(Date.now());
 
   let launchArgs = resuming ? ["--resume", sid, ...base] : ["--session-id", sid, ...base];
@@ -330,9 +376,11 @@ export async function runSupervisor(argv: string[]): Promise<number> {
       // /clear they differ, and resuming the pinned id would revive the
       // pre-/clear conversation (closing-review HIGH catch). Persist the
       // flags under that transcript id too, so a later bare
-      // `claude --resume <id>` restores them (PR #36 review catch).
-      saveSessionFlags(m.sessionId, base, process.cwd());
-      launchArgs = ["--resume", m.sessionId, ...base];
+      // `claude --resume <id>` restores them (PR #36 review catch). FLAGS
+      // only: replaying a positional prompt would re-submit it as a fresh
+      // turn on the progressed session (adversarial-review HIGH catch).
+      saveSessionFlags(m.sessionId, persistable, process.cwd());
+      launchArgs = ["--resume", m.sessionId, ...persistable];
       continue;
     }
     // No marker: claude exited on its own (quit, crash, resume refused). Log it -

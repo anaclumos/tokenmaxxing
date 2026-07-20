@@ -4,7 +4,7 @@ import { currentWins, pacePressure, pickBest, isExhausted, nextWeeklyReset, pick
 import { familyTokens, gatedFamilies, matchedFamily, normalizeResetsAt, parseStatusLineStdin, parseStatusLineModel, parseUsageText, parseUsageTextFull, parseResetClock } from "../src/lib/usage.ts";
 import { claudeTierLabel, fmtAgo } from "../src/cli/render.ts";
 import { findAccount, findCodexAccount } from "../src/cli/rename.ts";
-import { RespawnMarkerSchema } from "../src/lib/types.ts";
+import { CodexAccountSchema, RespawnMarkerSchema } from "../src/lib/types.ts";
 import type { Account, CodexAccount } from "../src/lib/types.ts";
 
 const UUID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e";
@@ -283,6 +283,19 @@ describe("respawn marker contract", () => {
     expect(RespawnMarkerSchema.safeParse({ account: "a", ts: 1 }).success).toBe(false);
     expect(RespawnMarkerSchema.safeParse({ account: "a", ts: 1, waitUntil: 2 }).success).toBe(false);
     expect(RespawnMarkerSchema.safeParse({ account: "a", ts: 1, waitUntil: 2, sessionId: "s" }).success).toBe(true);
+  });
+});
+
+describe("codex account contract", () => {
+  test("credFile is a bare file name: a traversal in the index fails to parse", () => {
+    // `rm --codex` unlinks join(credsDir, credFile + ".json"), and join()
+    // normalizes `../` straight out of codex-creds, so a corrupted index must
+    // throw at load rather than delete somebody else's file (review catch).
+    const base = { accountId: "a", email: null, label: "l", planType: null, addedAt: "t" };
+    expect(CodexAccountSchema.safeParse({ ...base, credFile: "tokenmaxxing-codex-abc12345" }).success).toBe(true);
+    for (const credFile of ["../../.claude/settings", "creds/x", "..", "", "a\\b"]) {
+      expect(CodexAccountSchema.safeParse({ ...base, credFile }).success).toBe(false);
+    }
   });
 });
 

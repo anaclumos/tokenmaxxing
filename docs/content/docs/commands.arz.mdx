@@ -21,5 +21,5 @@ description: "كل أوامر tokenmaxxing وكل واحد بيعمل إيه"
 | `tokenmaxxing serve [setup\|link\|unlink\|links]` | daemon جسر Slack (Socket Mode، من غير URL عام) |
 | `tokenmaxxing doctor` | اتأكد إن الـ supervisor ومدخلات الإعدادات لسه موجودين |
 | `tokenmaxxing rename [--codex] <sel> <label>` | غيّر اسم حساب في الـ pool |
-| `tokenmaxxing rm <sel>` | شيل حساب من الـ pool |
+| `tokenmaxxing rm [--codex] <sel>` | شيل حساب (والـ credential المخزون بتاعه) من الـ pool بتاع claude أو codex |
 | `tokenmaxxing uninstall` | شيل الـ supervisor ومدخلات الإعدادات (الحسابات والـ credentials بتفضل موجودة) |

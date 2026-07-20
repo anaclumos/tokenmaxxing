@@ -22,11 +22,11 @@ afterAll(() => {
       try {
         process.kill(Number(pid), "SIGKILL");
       } catch (e) {
-        if ((e as { code?: string }).code !== "ESRCH") throw e;
+        if (!(e instanceof Error && "code" in e && e.code === "ESRCH")) throw e;
       }
     }
   } catch (e) {
-    if ((e as { code?: string }).code !== "ENOENT") throw e;
+    if (!(e instanceof Error && "code" in e && e.code === "ENOENT")) throw e;
   }
   rmSync(scratch, { recursive: true, force: true });
   rmSync(paths.configJson, { force: true });

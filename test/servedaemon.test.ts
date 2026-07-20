@@ -20,7 +20,7 @@ const cfg = SlackConfigSchema.parse({
   links: [{ channel: "C0DAEMON", repo: "/tmp/serve-daemon-repo" }],
 });
 
-const okOutcome: TurnOutcome = { sessionId: "s-ok", failed: false, rateLimited: false, finish: false, announcedDrop: false };
+const okOutcome: TurnOutcome = { sessionId: "s-ok", failed: false, rateLimited: false, finish: false, announcedDrop: false, resultReceived: true };
 
 function runtimeWith(relay: Parameters<typeof buildServeRuntime>[0]["relay"]) {
   return buildServeRuntime({
@@ -193,7 +193,7 @@ describe("buildServeRuntime drain", () => {
     let beginDrain = () => {};
     const rt = runtimeWith(async () => {
       beginDrain(); // the drain lands mid-turn
-      return { sessionId: null, failed: true, rateLimited: true, finish: false, announcedDrop: true };
+      return { sessionId: null, failed: true, rateLimited: true, finish: false, announcedDrop: true, resultReceived: false };
     });
     beginDrain = rt.beginDrain;
     const t = fakeThread({ id: "slack:C0DAEMON:700.1" });
@@ -206,13 +206,29 @@ describe("buildServeRuntime drain", () => {
     let beginDrain = () => {};
     const rt = runtimeWith(async () => {
       beginDrain();
-      return { sessionId: null, failed: true, rateLimited: false, finish: false, announcedDrop: false };
+      return { sessionId: null, failed: true, rateLimited: false, finish: false, announcedDrop: false, resultReceived: false };
     });
     beginDrain = rt.beginDrain;
     const t = fakeThread({ id: "slack:C0DAEMON:701.1" });
     await rt.onMessage({ thread: t.thread, message: home("@UBOT long job"), skipped: [], isMention: true });
     await flushTurns(rt);
     expect(loadSlackThread("slack:C0DAEMON:701.1")?.activeTurn?.prompt).toContain("long job");
+  });
+
+  test("a delivered-result drain failure clears the marker: Slack post loss is not a killed child", async () => {
+    // the child reached a SUCCESSFUL result and only the final Slack append
+    // failed (textLost sets failed): resuming would re-run completed work
+    // (adversarial-review catch)
+    let beginDrain = () => {};
+    const rt = runtimeWith(async () => {
+      beginDrain();
+      return { sessionId: "s-done", failed: true, rateLimited: false, finish: false, announcedDrop: false, resultReceived: true };
+    });
+    beginDrain = rt.beginDrain;
+    const t = fakeThread({ id: "slack:C0DAEMON:702.1" });
+    await rt.onMessage({ thread: t.thread, message: home("@UBOT quick job"), skipped: [], isMention: true });
+    await flushTurns(rt);
+    expect(loadSlackThread("slack:C0DAEMON:702.1")?.activeTurn).toBeUndefined();
   });
 });
 

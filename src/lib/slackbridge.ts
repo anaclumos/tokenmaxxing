@@ -41,6 +41,11 @@ export const TurnOutcomeSchema = z.object({
    *  re-send it"): a drain must NOT presume a killed child and retain the
    *  resume marker, or startup replays work the user was told to resend. */
   announcedDrop: z.boolean(),
+  /** the LAST attempt's claude child ran to a SUCCESSFUL result: the work is
+   *  done even if Slack delivery later failed (textLost sets failed for the
+   *  operator's benefit). A drain must not read that delivery failure as a
+   *  killed child and re-run completed work (adversarial-review catch). */
+  resultReceived: z.boolean(),
 });
 export type TurnOutcome = z.infer<typeof TurnOutcomeSchema>;
 
@@ -384,7 +389,7 @@ export async function relayThread(input: {
    *  out a depleted-pool countdown. */
   drainSignal?: AbortSignal;
 }): Promise<TurnOutcome> {
-  const outcome: TurnOutcome = { sessionId: input.sessionId, failed: false, rateLimited: false, finish: false, announcedDrop: false };
+  const outcome: TurnOutcome = { sessionId: input.sessionId, failed: false, rateLimited: false, finish: false, announcedDrop: false, resultReceived: false };
   let segment: ReturnType<typeof pushableStream> | null = null;
   let segmentMeta: { text: boolean } | null = null;
   let lastPost: Promise<unknown> = Promise.resolve();
@@ -478,6 +483,7 @@ export async function relayThread(input: {
     postedText = false;
     outcome.failed = false;
     outcome.rateLimited = false;
+    outcome.resultReceived = false;
     // outcome.finish stays sticky across retries: the tool call already
     // happened in this session, and a limit right after it must not unfinish
     // the thread.
@@ -575,6 +581,7 @@ export async function relayThread(input: {
             if (outcome.rateLimited) await recordObservedLimit({ text, now: Date.now(), org: spawnOrg });
           } else {
             result = message.result;
+            outcome.resultReceived = true;
           }
         }
         for (const part of agentEventChunks({ state: mapState, message })) {

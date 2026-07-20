@@ -147,9 +147,7 @@ try {
     const d = await evaluateAndMaybeSwap();
     console.log(d.swapped ? "SWAPPED" : "noop");
   `;
-  const env = {
-    ...process.env,
-  } as Record<string, string>;
+  const env: Record<string, string | undefined> = { ...process.env };
   const procs = Array.from({ length: 4 }, () =>
     Bun.spawn([process.execPath, "-e", runner], { env, stdout: "pipe", stderr: "pipe" }),
   );

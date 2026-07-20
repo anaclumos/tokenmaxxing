@@ -24,6 +24,7 @@ import { cmdStatus } from "./cli/status.ts";
 import { cmdWatch } from "./cli/watch.ts";
 import { cmdDoctor } from "./cli/doctor.ts";
 import { cmdRm } from "./cli/rm.ts";
+import { cmdCodexRm } from "./cli/codexrm.ts";
 import { cmdRename } from "./cli/rename.ts";
 import { cmdSwitch } from "./cli/switch.ts";
 import { cmdCheck } from "./cli/check.ts";
@@ -52,7 +53,7 @@ function printHelp(): void {
   ${c.cyan("tokenmaxxing serve")} [setup|link|unlink|links]  Slack bridge daemon: mention the bot in a linked channel to open a claude session per thread in the repo checkout
   ${c.cyan("tokenmaxxing doctor")}     verify the install is intact
   ${c.cyan("tokenmaxxing rename")} [--codex] <sel> <label>
-  ${c.cyan("tokenmaxxing rm")} <sel>
+  ${c.cyan("tokenmaxxing rm")} [--codex] <sel>
   ${c.cyan("tokenmaxxing uninstall")}  remove supervisor + settings entries
 
   ${c.dim("(aliased as")} ${c.cyan("xx")}${c.dim(")")} - then just run ${c.bold("claude")} as always; it switches accounts near quota automatically.`);
@@ -122,7 +123,13 @@ async function main(): Promise<number> {
     case "status": return cmdStatus(args.includes("--force"));
     case "watch": return cmdWatch(args[1]);
     case "doctor": return cmdDoctor();
-    case "rm": return cmdRm(args[1]);
+    // --codex accepted anywhere, like switch/rename: the two pools are
+    // separate namespaces and codex accounts were otherwise unremovable
+    // (adversarial-review catch).
+    case "rm": {
+      const rest = args.slice(1).filter((a) => a !== "--codex");
+      return args.includes("--codex") ? cmdCodexRm(rest[0]) : cmdRm(rest[0]);
+    }
     case "rename": return cmdRename(args.slice(1));
     case "uninstall": {
       const out = uninstallSupervisor();

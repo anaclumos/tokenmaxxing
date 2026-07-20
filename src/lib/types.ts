@@ -311,13 +311,25 @@ export const CodexUsageSchema = z.object({
 });
 export type CodexUsage = z.infer<typeof CodexUsageSchema>;
 
+/** A parked-credential file NAME, never a path. These are machine-written
+ *  (`tokenmaxxing-codex-<id8>`), so a separator here means the index is
+ *  corrupted - and `join(credsDir, credFile)` would normalize `../` right out
+ *  of codex-creds, letting `rm --codex` unlink another file (review catch).
+ *  Refusing at parse time matches the codex loaders' throw-on-unparsable
+ *  contract and covers the read/write paths with the delete. */
+const BareFileNameSchema = z
+  .string()
+  .refine((s) => s.length > 0 && s !== "." && s !== ".." && !s.includes("/") && !s.includes("\\"), {
+    message: "credFile must be a bare file name, not a path",
+  });
+
 /** A pooled codex account (codex-accounts.json - NON-secret). */
 export const CodexAccountSchema = z.object({
   accountId: z.string(),
   email: z.string().nullable(),
   label: z.string(),
   planType: z.string().nullable(),
-  credFile: z.string(),
+  credFile: BareFileNameSchema,
   addedAt: z.string(),
   needsReauth: z.boolean().optional(),
   lastUsage: z
