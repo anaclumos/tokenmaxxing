@@ -51,7 +51,7 @@ mock.module("es-toolkit", () => ({
   delay: (ms: number, opts?: { signal?: AbortSignal }) => realEsToolkit.delay(Math.min(Math.max(ms, 0), DELAY_CAP_MS), opts),
 }));
 
-const { relayThread, MAX_RECOVERIES, PARK_MAX_MS } = await import("../src/lib/slackbridge.ts");
+const { relayThread, MAX_RECOVERIES, PARK_MAX_MS, SEGMENT_TEXT_MAX } = await import("../src/lib/slackbridge.ts");
 const { SlackLinkSchema } = await import("../src/lib/slackstate.ts");
 const { loadUsage, writeUsage } = await import("../src/lib/state.ts");
 
@@ -324,6 +324,72 @@ describe("relayThread segment ordering", () => {
     const delivered = col.posts.map((p) => strings(p));
     expect(delivered.some((s) => s.includes("could not be posted"))).toBe(true);
     expect(delivered.some((s) => s.includes("final answer"))).toBe(false);
+  });
+
+  test("reply text past the per-message cap splits into ordered Slack messages", async () => {
+    // one 100-char line repeated 250x = 25,000 chars: Slack rejects a single
+    // message that long with msg_too_long, so the relay must split BEFORE
+    // the cap (live incident 2026-07-20).
+    const line = `${"x".repeat(99)}\n`;
+    const long = line.repeat(250);
+    decisionQueue.push(usable);
+    queryScripts.push(script([init("s-split"), textDelta(long), success("s-split")]));
+    const col = collector();
+    const out = await relay({ post: col.post });
+    expect(out.failed).toBe(false);
+    expect(col.posts.length).toBe(3);
+    for (const [i, p] of col.posts.entries()) {
+      expect(strings(p).length).toBeLessThanOrEqual(SEGMENT_TEXT_MAX);
+      expect(col.timeline).toContain(`open:${i + 1}`);
+    }
+    // strict order and no content lost or reordered
+    expect(col.timeline).toEqual(["open:1", "close:1", "open:2", "close:2", "open:3", "close:3"]);
+    expect(col.posts.map(strings).join("")).toBe(long);
+    // the preferred cut is a line boundary, not mid-line
+    expect(strings(col.posts[0]).endsWith("\n")).toBe(true);
+  });
+
+  test("small deltas accumulating past the cap split without losing content", async () => {
+    const delta = "y".repeat(400);
+    const deltas = Array.from({ length: 60 }, () => textDelta(delta));
+    decisionQueue.push(usable);
+    queryScripts.push(script([init("s-acc"), ...deltas, success("s-acc")]));
+    const col = collector();
+    const out = await relay({ post: col.post });
+    expect(out.failed).toBe(false);
+    expect(col.posts.length).toBeGreaterThan(1);
+    for (const p of col.posts) expect(strings(p).length).toBeLessThanOrEqual(SEGMENT_TEXT_MAX);
+    expect(col.posts.map(strings).join("")).toBe(delta.repeat(60));
+  });
+
+  test("a break forced inside a code fence closes and reopens it", async () => {
+    const long = `intro\n\`\`\`\n${"z".repeat(SEGMENT_TEXT_MAX + 500)}\n\`\`\`\nafter`;
+    decisionQueue.push(usable);
+    queryScripts.push(script([init("s-fence"), textDelta(long), success("s-fence")]));
+    const col = collector();
+    const out = await relay({ post: col.post });
+    expect(out.failed).toBe(false);
+    expect(col.posts.length).toBe(2);
+    // both halves render as code: the first closes the fence, the next reopens
+    expect(strings(col.posts[0]).endsWith("\n```")).toBe(true);
+    expect(strings(col.posts[1]).startsWith("```\n")).toBe(true);
+    expect(strings(col.posts[1]).endsWith("after")).toBe(true);
+    // stripping the inserted markers restores the original text
+    const first = strings(col.posts[0]);
+    const second = strings(col.posts[1]);
+    expect(first.slice(0, -4) + second.slice(4)).toBe(long);
+  });
+
+  test("a huge no-stream result still splits instead of dying on one post", async () => {
+    const result = `${"r".repeat(150)}\n`.repeat(100); // 15,100 chars, no streamed text
+    decisionQueue.push(usable);
+    queryScripts.push(script([init("s-res"), success("s-res", result)]));
+    const col = collector();
+    const out = await relay({ post: col.post });
+    expect(out.failed).toBe(false);
+    expect(col.posts.length).toBe(2);
+    for (const p of col.posts) expect(strings(p).length).toBeLessThanOrEqual(SEGMENT_TEXT_MAX);
+    expect(col.posts.map(strings).join("")).toBe(result);
   });
 
   test("a rejecting diagnostic never escapes relayThread", async () => {

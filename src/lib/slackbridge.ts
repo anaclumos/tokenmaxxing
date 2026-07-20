@@ -232,6 +232,23 @@ function pushableStream(): {
   };
 }
 
+/** Slack rejects an over-long message with msg_too_long, and NOTHING in chat
+ *  4.34.0 or the Slack adapter bounds, truncates, or splits reply text
+ *  (verified in-source 2026-07-20): a natively streamed message accumulates
+ *  server-side toward the 12,000-char markdown_text envelope (docs.slack.dev
+ *  documents that limit on chat.postMessage/update and all three streaming
+ *  methods), the post-and-edit fallback re-sends the FULL accumulated text as
+ *  markdown_text on every edit, and once anything rendered natively a failed
+ *  append REJECTS the whole thread.post - the reply dies (live incident
+ *  2026-07-20, three failed turns). relayThread therefore splits reply text
+ *  across Slack messages BEFORE the cap; the 2,000-char margin absorbs the
+ *  renderer's markdown normalization and mention-linkification expansion.
+ *  Tradeoff (accepted): the adapter-internal plain-text fallback edits via
+ *  chat.update `text` (hard 4,000-char cap), but it only engages when the
+ *  workspace refused native streaming outright - splitting every normal reply
+ *  3x tighter to cover that never-hit path is worse than the residual risk. */
+export const SEGMENT_TEXT_MAX = 10_000;
+
 /** Full permission name of the finish_thread tool (mcp__<server>__<tool>):
  *  it must be in allowedTools, because no one can answer a permission prompt
  *  through Slack. */
@@ -391,7 +408,7 @@ export async function relayThread(input: {
 }): Promise<TurnOutcome> {
   const outcome: TurnOutcome = { sessionId: input.sessionId, failed: false, rateLimited: false, finish: false, announcedDrop: false, resultReceived: false };
   let segment: ReturnType<typeof pushableStream> | null = null;
-  let segmentMeta: { text: boolean } | null = null;
+  let segmentMeta: { text: boolean; chars: number; fenceOpen: boolean } | null = null;
   let lastPost: Promise<unknown> = Promise.resolve();
   // Reply TEXT that was pushed into a rejected segment and never re-delivered
   // by a later text-bearing segment: the user has not seen the answer. A lost
@@ -412,7 +429,7 @@ export async function relayThread(input: {
       seg = pushableStream();
       segment = seg;
       const posted = seg;
-      const meta = { text: false };
+      const meta = { text: false, chars: 0, fenceOpen: false };
       segmentMeta = meta;
       lastPost = input.post(seg.iterable).then(
         () => {
@@ -437,12 +454,45 @@ export async function relayThread(input: {
     if (!(chunk instanceof Object)) {
       postedText = true;
       segmentMeta!.text = true;
+      segmentMeta!.chars += chunk.length;
+      // fence parity by occurrence count: an odd number of ``` markers in this
+      // chunk flips whether the segment currently sits inside a code fence.
+      if ((chunk.split("```").length - 1) % 2 === 1) segmentMeta!.fenceOpen = !segmentMeta!.fenceOpen;
     }
     seg.push(chunk);
   };
   const breakSegment = () => {
     segment?.end();
     segment = null;
+  };
+  /** Reply text routed through here splits across Slack messages before the
+   *  msg_too_long cap (see SEGMENT_TEXT_MAX): a break prefers the last newline
+   *  inside the remaining room, and a break forced inside a code fence closes
+   *  it and reopens it in the next message so both halves render as code. */
+  const pushText = async (text: string) => {
+    for (let rest = text; rest !== "";) {
+      const room = SEGMENT_TEXT_MAX - (segment === null ? 0 : segmentMeta!.chars);
+      // a fence-close suffix can nudge a segment a few chars past the cap;
+      // a full segment just breaks and the loop re-measures a fresh one.
+      if (room <= 0) {
+        breakSegment();
+        continue;
+      }
+      if (rest.length <= room) {
+        await push(rest);
+        return;
+      }
+      // prefer a newline cut only when it lands in the back half of the room:
+      // an early newline followed by one giant unbroken run would otherwise
+      // make no progress and (with the fence-reopen prefix) loop forever.
+      const nl = rest.lastIndexOf("\n", room - 1);
+      const head = rest.slice(0, nl >= Math.floor(room / 2) ? nl + 1 : room);
+      await push(head);
+      const reopen = segmentMeta!.fenceOpen;
+      if (reopen) await push("\n```");
+      breakSegment();
+      rest = (reopen ? "```\n" : "") + rest.slice(head.length);
+    }
   };
   // a recovery status line reads as its own Slack message, not part of a
   // streamed segment.
@@ -586,11 +636,15 @@ export async function relayThread(input: {
         }
         for (const part of agentEventChunks({ state: mapState, message })) {
           if (SegmentBreakSchema.safeParse(part).success) breakSegment();
-          else await push(SegmentChunkSchema.parse(part));
+          else {
+            const chunk = SegmentChunkSchema.parse(part);
+            if (chunk instanceof Object) await push(chunk);
+            else await pushText(chunk);
+          }
         }
       }
       // a turn that produced no streamed text (tool-only turns) still reports.
-      if (!postedText && result) await push(result);
+      if (!postedText && result) await pushText(result);
       if (!postedText && !result && outcome.failed && !outcome.rateLimited) {
         await push("the turn ended without a result - trying again may help");
       }
