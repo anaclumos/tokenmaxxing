@@ -1,0 +1,155 @@
+docs/content/docs/configuration.ar.mdx
+  s_eaf36da1edfe18::t_d89c56bb1a2ba5 23
+docs/content/docs/distribution.ar.mdx
+  s_eaf36da1edfe18::t_6f12cae99f3920 8
+docs/content/docs/distribution.fa.mdx
+  s_eaf36da1edfe18::t_e5a0183f5c22c8 8
+docs/content/docs/configuration.tr.mdx
+  s_eaf36da1edfe18::t_cbf2d87d1e9da6 23
+src/lib/install.ts
+  s_eaf36da1edfe18::t_1a9d2d03b69605 5
+  s_eaf36da1edfe18::t_da2f9fd6547bfd 350-352
+docs/content/docs/distribution.sw.mdx
+  s_eaf36da1edfe18::t_a6e3d549c2f90c 8
+docs/content/docs/distribution.bn.mdx
+  s_eaf36da1edfe18::t_6aa5d074ece655 8
+docs/content/docs/configuration.es.mdx
+  s_eaf36da1edfe18::t_b34f84f3edc4f7 23
+docs/content/docs/configuration.ja.mdx
+  s_eaf36da1edfe18::t_df1ffe5437ac45 23
+docs/content/docs/distribution.ur.mdx
+  s_eaf36da1edfe18::t_d97ad16f603e00 8
+docs/content/docs/configuration.zh.mdx
+  s_eaf36da1edfe18::t_a727ba833823a2 23
+docs/content/docs/configuration.yue.mdx
+  s_eaf36da1edfe18::t_63de965b983c37 23
+docs/content/docs/configuration.vi.mdx
+  s_eaf36da1edfe18::t_44c304909881f7 23
+docs/content/docs/configuration.am.mdx
+  s_eaf36da1edfe18::t_92ebdb69bbc6d2 23
+docs/content/docs/distribution.es.mdx
+  s_eaf36da1edfe18::t_fd4c09441303a8 8
+docs/content/docs/distribution.mr.mdx
+  s_eaf36da1edfe18::t_286fa4a824b47b 8
+docs/content/docs/distribution.te.mdx
+  s_eaf36da1edfe18::t_ebfc666f33bf77 8
+docs/content/docs/distribution.pnb.mdx
+  s_eaf36da1edfe18::t_caf65aeaa7e234 8
+docs/content/docs/configuration.tl.mdx
+  s_eaf36da1edfe18::t_4a4a2d071b148e 23
+docs/content/docs/distribution.am.mdx
+  s_eaf36da1edfe18::t_fa880b12c5bc06 8
+docs/content/docs/distribution.fr.mdx
+  s_eaf36da1edfe18::t_826e3e40696ae6 8
+docs/content/docs/configuration.arz.mdx
+  s_eaf36da1edfe18::t_82e9418e8008c7 23
+docs/content/docs/configuration.hi.mdx
+  s_eaf36da1edfe18::t_005c6648bd525c 23
+docs/content/docs/configuration.mr.mdx
+  s_eaf36da1edfe18::t_aca2632211a671 23
+docs/content/docs/distribution.yue.mdx
+  s_eaf36da1edfe18::t_457f6d38d5ccbe 8
+docs/content/docs/distribution.pcm.mdx
+  s_eaf36da1edfe18::t_27063f04b45027 8
+src/lib/atomic.ts
+  s_eaf36da1edfe18::t_2e11679e75e7d2 18-32,34-39
+  s_eaf36da1edfe18::t_95c5fc53792930 3
+docs/content/docs/configuration.ta.mdx
+  s_eaf36da1edfe18::t_8a815157de1660 23
+docs/content/docs/distribution.tl.mdx
+  s_eaf36da1edfe18::t_9b94cd334b3501 8
+docs/content/docs/configuration.bn.mdx
+  s_eaf36da1edfe18::t_cb50094c563f42 23
+docs/content/docs/configuration.pnb.mdx
+  s_eaf36da1edfe18::t_8b41c3bef22426 23
+docs/content/docs/distribution.id.mdx
+  s_eaf36da1edfe18::t_77bb346b7f5a4c 8
+docs/content/docs/distribution.wuu.mdx
+  s_eaf36da1edfe18::t_2024841518812c 8
+docs/content/docs/distribution.ha.mdx
+  s_eaf36da1edfe18::t_9435ccf95eadd5 8
+docs/content/docs/configuration.id.mdx
+  s_eaf36da1edfe18::t_0df184d23076c7 23
+docs/content/docs/distribution.de.mdx
+  s_eaf36da1edfe18::t_92c6c3387f2245 8
+docs/content/docs/configuration.fa.mdx
+  s_eaf36da1edfe18::t_3d96ebc9e2d749 23
+docs/content/docs/configuration.pt.mdx
+  s_eaf36da1edfe18::t_de9c7e71996b76 23
+docs/content/docs/distribution.ko.mdx
+  s_eaf36da1edfe18::t_a4d364e3c00649 8
+docs/content/docs/configuration.ha.mdx
+  s_eaf36da1edfe18::t_29c22d8af21956 23
+docs/content/docs/distribution.arz.mdx
+  s_eaf36da1edfe18::t_2b23b9a325dce9 8
+docs/content/docs/state-directory.th.mdx
+  s_eaf36da1edfe18::t_d674cf0183498f 18
+docs/content/docs/distribution.ja.mdx
+  s_eaf36da1edfe18::t_4bc05a3eb033a3 8
+src/entries/stophook.ts
+  s_eaf36da1edfe18::t_855ade51384443 17-21
+docs/content/docs/configuration.wuu.mdx
+  s_eaf36da1edfe18::t_51b3562e5b4122 23
+docs/content/docs/configuration.de.mdx
+  s_eaf36da1edfe18::t_7493e899d64a3a 23
+docs/content/docs/distribution.ru.mdx
+  s_eaf36da1edfe18::t_08b818f54e3d52 8
+src/entries/statusline.ts
+  s_eaf36da1edfe18::t_d59462ded329c2 209,212
+  s_eaf36da1edfe18::t_6916473bb39d94 173-184
+docs/content/docs/distribution.hi.mdx
+  s_eaf36da1edfe18::t_ca2d8b22a62f20 8
+docs/content/docs/configuration.ko.mdx
+  s_eaf36da1edfe18::t_6b950262fee668 23
+docs/content/docs/distribution.th.mdx
+  s_eaf36da1edfe18::t_c5f89a4b94429e 8
+docs/content/docs/configuration.ur.mdx
+  s_eaf36da1edfe18::t_a4bda149a5b461 23
+docs/content/docs/configuration.sw.mdx
+  s_eaf36da1edfe18::t_0aab6731702eb9 23
+docs/content/docs/distribution.pt.mdx
+  s_eaf36da1edfe18::t_26635844b71b2d 8
+docs/content/docs/distribution.tr.mdx
+  s_eaf36da1edfe18::t_42adb19e5cf2f5 8
+docs/content/docs/configuration.th.mdx
+  s_eaf36da1edfe18::t_0f995ad4dfbd86 23
+docs/content/docs/configuration.pcm.mdx
+  s_eaf36da1edfe18::t_5fa866eae0e764 23
+docs/content/docs/distribution.zh.mdx
+  s_eaf36da1edfe18::t_d7fe8b604944ad 8
+docs/content/docs/configuration.te.mdx
+  s_eaf36da1edfe18::t_d017e06f042f18 23
+docs/content/docs/distribution.vi.mdx
+  s_eaf36da1edfe18::t_e8b5bfe2338db0 8
+src/entries/codexsupervisor.ts
+  s_eaf36da1edfe18::t_6a89a22cc14d14 11,13
+  s_eaf36da1edfe18::t_574aae0cc2bde7 181,200-201
+  s_eaf36da1edfe18::t_f37e45c729990e 35-49
+  s_eaf36da1edfe18::t_0d969cec1fe19f 154-159,166-171
+docs/content/docs/distribution.ta.mdx
+  s_eaf36da1edfe18::t_b91ac9bff52b57 8
+docs/content/docs/configuration.fr.mdx
+  s_eaf36da1edfe18::t_7d4cc052a6ddfa 23
+docs/content/docs/configuration.ru.mdx
+  s_eaf36da1edfe18::t_98103a19d70c98 23
+src/entries/supervisor.ts
+  s_eaf36da1edfe18::t_1cad0767da7bfe 10
+  s_eaf36da1edfe18::t_e1fd301b7d74ac 179-193
+  s_eaf36da1edfe18::t_b9dd0f97857f94 307,323-324,331-334
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "00934269b4d0d337d89bdc36f0f0463bc936b19c",
+  "prompts": {},
+  "sessions": {
+    "s_eaf36da1edfe18": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "085f0c3d-1bd0-4a58-8930-8dfdcf1a0376",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    }
+  }
+}
