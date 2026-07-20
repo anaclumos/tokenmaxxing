@@ -3,11 +3,10 @@
 // `xx rm` for every parked credential while codex blobs were unremovable
 // (adversarial-review catch).
 
-import { rmSync } from "node:fs";
-import { join } from "node:path";
 import { withLock } from "../lib/lock.ts";
 import { codexPaths } from "../lib/paths.ts";
 import { loadCodexAccounts, saveCodexAccounts } from "../lib/codexstate.ts";
+import { deleteParkedCodexAuth } from "../lib/codexauth.ts";
 import { liveCodexAccountId } from "../lib/codexsample.ts";
 import { presentCodexAccountIds } from "../lib/codexpresence.ts";
 import { findCodexAccount } from "./rename.ts";
@@ -41,7 +40,7 @@ export async function cmdCodexRm(selector?: string): Promise<number> {
     // Parked codex blobs are plain 0600 files; hard delete on purpose (the
     // credential-dir cleanup exception - trashing would move a credential
     // into the Trash folder).
-    rmSync(join(codexPaths.credsDir, account.credFile), { force: true });
+    deleteParkedCodexAuth({ credFile: account.credFile });
     index.accounts = index.accounts.filter((x) => x.accountId !== account.accountId);
     saveCodexAccounts({ index });
     console.log(`removed codex account ${c.bold(account.label)} from the pool (${index.accounts.length} left)`);

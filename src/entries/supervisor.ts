@@ -165,6 +165,10 @@ export function stripPositionals(argv: string[]): string[] {
   const out: string[] = [];
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]!;
+    // `--` ends option parsing: everything after it is positional (a prompt
+    // deliberately starting with "-"), never a flag to persist (PR #37
+    // review catch). The delimiter itself is dropped with them.
+    if (a === "--") break;
     if (!a.startsWith("-")) continue;
     out.push(a);
     if (VALUE_TAKING_ROOT_FLAGS.has(a)) {

@@ -48,7 +48,7 @@ claude                  # use claude as always
 | `tokenmaxxing config` | effective config with sources; `get`/`set`/`unset` dotted keys, `tidy` prunes unknown keys |
 | `tokenmaxxing serve` | Slack bridge daemon (Socket Mode, no public URL): `setup` prints the app manifest and stores the two tokens, `link <channel-id> <repo>` ties a channel to a repo (`--yolo` for full-autonomy bypassPermissions sessions), then mentioning the bot in that channel opens a Claude Code session per thread in the repo checkout (the session cuts its own git worktree only when a task needs isolation) and thread messages relay in and out |
 | `tokenmaxxing doctor` | verify the supervisor + settings entries survived |
-| `tokenmaxxing rename [--codex] <sel> <label>` / `rm <sel>` | manage the pool (`--codex` targets the codex pool: one email can hold both a claude and a codex account) |
+| `tokenmaxxing rename [--codex] <sel> <label>` / `rm [--codex] <sel>` | manage the pool (`--codex` targets the codex pool: one email can hold both a claude and a codex account) |
 | `tokenmaxxing uninstall` | remove supervisor + settings entries (accounts/credentials kept) |
 
 ## How switching decides

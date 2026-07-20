@@ -4,7 +4,7 @@
 // rust-v0.144.5 manager.rs), so every mutation here runs under tokenmaxxing's
 // own codex flock, held by the caller.
 
-import { readFileSync } from "node:fs";
+import { readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
 import { writeFileAtomic } from "./atomic.ts";
@@ -63,6 +63,13 @@ export function readParkedCodexAuth(input: { credFile: string }): CodexAuthJson 
 
 export function writeParkedCodexAuth(input: { credFile: string; auth: CodexAuthJson }): void {
   writeFileAtomic(parkedPath(input), JSON.stringify(CodexAuthJsonSchema.parse(input.auth), null, 2), 0o600);
+}
+
+/** `rm --codex` uses this so the path shape (.json suffix) has one owner:
+ *  a hand-built path without the suffix silently missed the real file under
+ *  rmSync force (PR #37 review catch). */
+export function deleteParkedCodexAuth(input: { credFile: string }): void {
+  rmSync(parkedPath(input), { force: true });
 }
 
 /** Identity claims inside the id_token JWT payload (verified against a live
