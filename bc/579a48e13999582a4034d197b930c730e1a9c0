@@ -1,0 +1,60 @@
+.memory/tokenmaxxing-project.md
+  s_eaf36da1edfe18::t_50fa1434411e08 36
+  s_eaf36da1edfe18::t_06c5e77c840af9 33-35
+.memory/review-window-is-mandatory-full-length.md
+  s_bc7c26bc5a8af4::t_bb16e1a31c5ae0 1-15
+.memory/1password-signing-lock-blocks-commits.md
+  s_eaf36da1edfe18::t_ee5123d020f767 3-5,7-8,15
+.memory/autocompact-pct-override.md
+  s_943f2004337d51::t_6eaef9209d9c09 1-13
+.memory/codex-sibling-reconcile-approved.md
+  s_eaf36da1edfe18::t_7628a8a0a9ced9 1-17
+.memory/collect-reviews-unfiltered.md
+  s_eaf36da1edfe18::t_8e1603352c7bbb 1-15
+.memory/scheduled-wakeups-for-ship-monitoring.md
+  s_eaf36da1edfe18::t_91c94eaed788a1 1-15
+.memory/silence-is-not-approval-for-design-forks.md
+  s_eaf36da1edfe18::t_cbd652fd120460 1-15
+.memory/slack-suspended-until-new-setup.md
+  s_8eb10d405252ba::t_920f886f502a5a 1-15
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "bc579a48e13999582a4034d197b930c730e1a9c0",
+  "prompts": {},
+  "sessions": {
+    "s_8eb10d405252ba": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a710dd7d9ab59ad04",
+        "model": "unknown"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    },
+    "s_943f2004337d51": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5a1044fc-1b59-4313-912c-d0a2297d303a",
+        "model": "unknown"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    },
+    "s_bc7c26bc5a8af4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e6161196-ffed-4404-b211-230e32819ac2",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    },
+    "s_eaf36da1edfe18": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "085f0c3d-1bd0-4a58-8930-8dfdcf1a0376",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    }
+  }
+}
