@@ -12,7 +12,10 @@ description: "~/.config/tokenmaxxing کے تحت ہر فائل اور ڈائرک
 | `usage.json` | statusline ٹی کا مجموعی ونڈو سنیپ شاٹ؛ اس کا mtime فیڈ کا liveness heartbeat ہے |
 | `model-usage.json` | `/usage` سے TTL-کیش شدہ فی ماڈل ہفتہ وار حدیں |
 | `lastswap.json` | آخری سوئپ کا epoch ٹائم اسٹیمپ؛ 45 سیکنڈ کے کولڈاؤن کو چلاتا ہے |
+| `depleted.json` | ختم شدہ پول کا درج شدہ انتظار، جسے سبلنگ ہکس اس وقت تک دہراتے ہیں جب تک ری سیٹ نہ گزر جائے، لائیو نشست منتقل نہ ہو، یا کوئی سوئپ مکمل نہ ہو جائے |
 | `lock` | `flock` فائل جو سوئپس کو سلسلہ وار کرتی ہے |
+| `serve-lock` | `xx serve` کی سنگل-انسٹینس flock: ایک نئی ڈیمن نسل یہاں اس وقت تک بلاک رہتی ہے جب تک پچھلی نسل مکمل طور پر ختم نہ ہو جائے |
+| `sessions/<session-id>.json` | فی-منظم-سیشن لانچ فلیگز جنہیں سپروائزر ری اسپان کے لیے محفوظ رکھتا ہے؛ 30 دن غیرفعال رہنے کے بعد صاف کر دیے جاتے ہیں (claude کے اپنے ٹرانسکرپٹ ریٹینشن سے مطابقت رکھتے ہوئے) |
 | `tokenmaxxing.log` | صرف-اضافہ ایونٹ لاگ |
 | `bin/` | PATH شِمز: `claude`، `codex`، اور `tokenmaxxing` / `xx` انٹری پوائنٹس |
 | `respawn/<session-id>` | ختم شدہ-انتظار ری اسپان مارکرز جن پر سپروائزر نظر رکھتا ہے |
@@ -20,6 +23,6 @@ description: "~/.config/tokenmaxxing کے تحت ہر فائل اور ڈائرک
 | `onboard/`، `sample/` | `add`/`auth` لاگ اِنز اور پارک شدہ-اکاؤنٹ `/usage` پروبز کے لیے پھینک دینے والے الگ تھلگ config ہومز؛ پلین ٹیکسٹ کریڈنشلز رکھنے والے onboard ہومز سمیٹنے کے بعد حذف کر دیے جاتے ہیں |
 | `slack.json` | `xx serve` ٹوکنز اور چینل لنکس (0600) |
 | `slack-threads/` | `xx serve` کے لیے فی تھریڈ سیشن ریکارڈز |
-| `codex-*` | متوازی Codex پول: `codex-accounts.json`، `codex-lastswap.json`، `codex-lock`، `codex-creds/`، `codex-onboard/`، `codex-respawn/`، اور `codex-live/` (ہر رواں زیرِ نگرانی codex سیشن کے لیے ایک PID-تصدیق شدہ موجودگی فائل، تاکہ ایک لائیو اکاؤنٹ کبھی سوئپ ہدف نہ ہو) |
+| `codex-*` | متوازی Codex پول: `codex-accounts.json`، `codex-lastswap.json`، `codex-lock`، `codex-creds/`، `codex-onboard/`، `codex-respawn/`، `codex-reconcile/` (کراس-سیشن سگنلز جو کسی سبلنگ سیشن کے سپروائزر سے لائیو اکاؤنٹ پر ری اسپان کرنے کی درخواست کرتے ہیں)، اور `codex-live/` (ہر رواں زیرِ نگرانی codex سیشن کے لیے ایک PID-تصدیق شدہ موجودگی فائل، تاکہ ایک لائیو اکاؤنٹ کبھی سوئپ ہدف نہ ہو) |
 
-اپنی ڈائرکٹری سے باہر، tokenmaxxing بالکل ان کو چھوتا ہے: `~/.claude.json` (`oauthAccount` سوئپ)، Claude Code کی `settings.json` (ہک اور statusline اندراجات)، لائیو کریڈنشل اسٹور (macOS پر `Claude Code-credentials` کی چین آئٹم، Linux پر `.credentials.json`)، `~/.claude.lock` (claude کا ری فریش لاک، سوئپس کے دوران لیا گیا)، codex کی `auth.json` اور `hooks.json`، اور launchd یا systemd میں وقفہ وار-چیک یونٹ۔
+اپنی ڈائرکٹری سے باہر، tokenmaxxing بالکل ان کو چھوتا ہے: `~/.claude.json` (`oauthAccount` سوئپ)، Claude Code کی `settings.json` (ہک اور statusline اندراجات)، لائیو کریڈنشل اسٹور (macOS پر `Claude Code-credentials` کی چین آئٹم، Linux پر `.credentials.json`)، claude کے اپنے ری فریش لاکس جو سوئپس کے دوران لیے جاتے ہیں (بنیادی `.oauth_refresh.lock` claude کے config ڈائرکٹری کے اندر، اس کے علاوہ لیگیسی `~/.claude.lock` سبلنگ کے ساتھ)، codex کی `auth.json` اور `hooks.json`، اور launchd یا systemd میں وقفہ وار-چیک یونٹ۔

@@ -143,10 +143,14 @@ async function loadFreshSnapshots(cfg: Config, org: string | null, now: number):
           u = { fiveHour: full.session, sevenDay: full.weekAll, org, ts, model: null };
           writeUsage(u);
         }
-        mu = { perModel: full.perModel, org, ts };
+        mu = { perModel: full.perModel, org, ts, sampledAt: ts };
         saveModelUsage(mu);
       } else {
-        mu = { perModel: mu?.org === org ? (mu?.perModel ?? {}) : {}, org, ts };
+        // the anti-storm stamp: ts=now suppresses re-probing, but the carried
+        // rows keep their ORIGINAL sample time - dating them by ts rolled the
+        // null-reset self-bound forward on every failed probe (closing-review
+        // catch).
+        mu = { perModel: mu?.org === org ? (mu?.perModel ?? {}) : {}, org, ts, sampledAt: mu?.org === org ? (mu?.sampledAt ?? mu?.ts) : undefined };
         saveModelUsage(mu);
       }
     }
@@ -227,7 +231,9 @@ export async function evaluateAndMaybeSwap(now = Date.now(), anticipatory = fals
         // it must not erase the burnt-cap snapshot the picker screens on.
         if (mu2 && mu2.org === org2 && Object.keys(mu2.perModel).length > 0) {
           active.lastPerModel = mu2.perModel;
-          active.lastPerModelAt = mu2.ts;
+          // the rows' TRUE sample time, not the write time: an anti-storm
+          // stamp re-writes ts while carrying old rows (closing-review catch).
+          active.lastPerModelAt = mu2.sampledAt ?? mu2.ts;
         }
         saveAccounts(idx);
       }

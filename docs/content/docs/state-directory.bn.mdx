@@ -12,7 +12,10 @@ description: "~/.config/tokenmaxxing-এর অধীনে প্রতিট�
 | `usage.json` | statusline টি-এর সমষ্টিগত উইন্ডো স্ন্যাপশট; এর mtime হলো ফিডের সজীবতার হার্টবিট |
 | `model-usage.json` | `/usage` থেকে TTL-ক্যাশ করা প্রতি-মডেল সাপ্তাহিক সীমা |
 | `lastswap.json` | শেষ বদলের এপক টাইমস্ট্যাম্প; 45-সেকেন্ডের কুলডাউন চালায় |
+| `depleted.json` | রেকর্ড করা নিঃশেষিত-পুল অপেক্ষা, যা সিবলিং হুকগুলো রিসেট পার না হওয়া, লাইভ সিট না সরা, বা কোনো বদল সম্পূর্ণ না হওয়া পর্যন্ত পুনরায় চালায় |
 | `lock` | `flock` ফাইল যা বদলগুলোকে ক্রমিক করে |
+| `serve-lock` | `xx serve` একক-ইনস্ট্যান্স flock: একটি নতুন ডিমন জেনারেশন এখানে ব্লক হয় যতক্ষণ না আগেরটি সম্পূর্ণভাবে প্রস্থান করে |
+| `sessions/<session-id>.json` | প্রতি-তত্ত্বাবধানকৃত-সেশন লঞ্চ ফ্ল্যাগ যা সুপারভাইজর রিস্পনের জন্য সংরক্ষণ করে; 30 দিন নিষ্ক্রিয় থাকার পর ছেঁটে ফেলা হয় (claude-এর নিজস্ব ট্রান্সক্রিপ্ট ধরে রাখার সাথে মিলিয়ে) |
 | `tokenmaxxing.log` | কেবল-যোগ করা ইভেন্ট লগ |
 | `bin/` | PATH শিমগুলো: `claude`, `codex`, এবং `tokenmaxxing` / `xx` এন্ট্রি পয়েন্ট |
 | `respawn/<session-id>` | নিঃশেষিত-অপেক্ষার রিস্পন মার্কার যা সুপারভাইজর নজরে রাখে |
@@ -20,6 +23,6 @@ description: "~/.config/tokenmaxxing-এর অধীনে প্রতিট�
 | `onboard/`, `sample/` | `add`/`auth` লগইন এবং পার্ক-করা-অ্যাকাউন্টের `/usage` প্রোবের জন্য একবার-ব্যবহার্য বিচ্ছিন্ন কনফিগ হোম; প্লেইনটেক্সট ক্রেডেনশিয়াল ধারণকারী অনবোর্ড হোমগুলো সংগ্রহের পরে মুছে ফেলা হয় |
 | `slack.json` | `xx serve` টোকেন এবং চ্যানেল লিঙ্ক (0600) |
 | `slack-threads/` | `xx serve`-এর জন্য প্রতি-থ্রেড সেশন রেকর্ড |
-| `codex-*` | সমান্তরাল Codex পুল: `codex-accounts.json`, `codex-lastswap.json`, `codex-lock`, `codex-creds/`, `codex-onboard/`, `codex-respawn/`, এবং `codex-live/` (প্রতিটি চলমান তত্ত্বাবধানকৃত codex সেশনের জন্য একটি PID-যাচাইকৃত উপস্থিতি ফাইল, তাই একটি লাইভ অ্যাকাউন্ট কখনো বদলের টার্গেট নয়) |
+| `codex-*` | সমান্তরাল Codex পুল: `codex-accounts.json`, `codex-lastswap.json`, `codex-lock`, `codex-creds/`, `codex-onboard/`, `codex-respawn/`, `codex-reconcile/` (একটি সিবলিং সেশনের সুপারভাইজরকে লাইভ অ্যাকাউন্টে রিস্পন করার অনুরোধ জানানো ক্রস-সেশন সিগন্যাল), এবং `codex-live/` (প্রতিটি চলমান তত্ত্বাবধানকৃত codex সেশনের জন্য একটি PID-যাচাইকৃত উপস্থিতি ফাইল, তাই একটি লাইভ অ্যাকাউন্ট কখনো বদলের টার্গেট নয়) |
 
-এর নিজের ডিরেক্টরির বাইরে, tokenmaxxing ঠিক এগুলোই স্পর্শ করে: `~/.claude.json` (`oauthAccount` বদল), Claude Code-এর `settings.json` (হুক ও statusline এন্ট্রি), লাইভ ক্রেডেনশিয়াল স্টোর (macOS-এ `Claude Code-credentials` কীচেইন আইটেম, Linux-এ `.credentials.json`), `~/.claude.lock` (claude-এর রিফ্রেশ লক, বদলের সময় নেওয়া হয়), codex-এর `auth.json` ও `hooks.json`, এবং launchd বা systemd-এ পর্যায়ক্রমিক-চেক ইউনিট।
+এর নিজের ডিরেক্টরির বাইরে, tokenmaxxing ঠিক এগুলোই স্পর্শ করে: `~/.claude.json` (`oauthAccount` বদল), Claude Code-এর `settings.json` (হুক ও statusline এন্ট্রি), লাইভ ক্রেডেনশিয়াল স্টোর (macOS-এ `Claude Code-credentials` কীচেইন আইটেম, Linux-এ `.credentials.json`), claude-এর নিজস্ব রিফ্রেশ লক যা বদলের সময় নেওয়া হয় (প্রাথমিক `.oauth_refresh.lock`, claude-এর কনফিগ ডিরেক্টরির ভেতরে, এবং সেইসাথে লিগ্যাসি `~/.claude.lock` সিবলিং), codex-এর `auth.json` ও `hooks.json`, এবং launchd বা systemd-এ পর্যায়ক্রমিক-চেক ইউনিট।

@@ -274,11 +274,15 @@ describe("account picker", () => {
 });
 
 describe("respawn marker contract", () => {
-  test("a marker IS a depleted wait: waitUntil is required", () => {
+  test("a marker IS a depleted wait: waitUntil AND the resume sessionId are required", () => {
     // Plain swaps adopt in place and write no marker (0.15.0); a marker that
-    // parses without waitUntil would respawn a session for nothing.
+    // parses without waitUntil would respawn a session for nothing. The
+    // sessionId names the CURRENT transcript to resume - after /clear it
+    // drifts from the pinned id keying the marker FILE, and a marker without
+    // it would resume the pre-/clear conversation (closing-review HIGH).
     expect(RespawnMarkerSchema.safeParse({ account: "a", ts: 1 }).success).toBe(false);
-    expect(RespawnMarkerSchema.safeParse({ account: "a", ts: 1, waitUntil: 2 }).success).toBe(true);
+    expect(RespawnMarkerSchema.safeParse({ account: "a", ts: 1, waitUntil: 2 }).success).toBe(false);
+    expect(RespawnMarkerSchema.safeParse({ account: "a", ts: 1, waitUntil: 2, sessionId: "s" }).success).toBe(true);
   });
 });
 

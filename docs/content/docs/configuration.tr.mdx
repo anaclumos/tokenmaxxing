@@ -8,6 +8,8 @@ Yapılandırma `~/.config/tokenmaxxing/config.json` konumunda JSON'dur. Her alan
 ```json
 {
   "thresholds": { "session": 95, "weekly": 98 },
+  "claudeBin": "/path/to/real/claude",
+  "codexBin": "/path/to/real/codex",
   "policy": {
     "projectionMargin": 0,
     "greedySessionFloor": 50,
@@ -18,7 +20,8 @@ Yapılandırma `~/.config/tokenmaxxing/config.json` konumunda JSON'dur. Her alan
 }
 ```
 
-- `thresholds.session` / `thresholds.weekly`: yukarıda açıklanan eleme çubukları.
+- `thresholds.session` / `thresholds.weekly`: [Geçiş nasıl karar verir](/switching) sayfasında açıklanan eleme çubukları.
+- `claudeBin` / `codexBin`: gözetmenlerin başlattığı GERÇEK ikili dosyalara sabitler (`init` / `init --codex` tarafından yazılır; recursion-guard tanısı, `claudeBin` gerçek Claude ikili dosyasını göstermemeye başladığında bunu burada düzeltmenizi söyler).
 - `policy.projectionMargin`: etkin çubukları oluşturmak için her iki çubuktan çıkarılır.
 - `policy.greedySessionFloor`: açgözlü yakınsamanın devreye girdiği oturum-kullanılmış yüzdesi.
 - `policy.switchModels`: model başına haftalık üst sınırı bir geçişi kapatan model aileleri (girişler yüklemede küçük harfe çevrilir).

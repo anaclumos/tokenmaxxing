@@ -138,7 +138,7 @@ async function main(): Promise<number> {
       console.log(`removed ${removed.join(", ")}`);
       if (!out.timerDeactivated) console.log(c.yellow(`⚠ the check job may still be loaded - run: ${timerDeactivationHint()}`));
       if (!out.pathLineRemoved) console.log(c.dim("(no tokenmaxxing PATH line found in the shell rc)"));
-      console.log(`kept: accounts.json, config.json${existsSync(paths.slackJson) ? ", slack.json (Slack tokens)" : ""}, and every parked credential (macOS: keychain items, Linux: creds/) - remove accounts with \`xx rm\` to delete their credentials`);
+      console.log(`kept: accounts.json, config.json${existsSync(paths.slackJson) ? ", slack.json (Slack tokens)" : ""}, and every parked credential (claude - macOS: keychain items, Linux: creds/; codex: codex-creds/) - remove accounts with \`xx rm\` to delete their credentials`);
       return 0;
     }
     case "help":

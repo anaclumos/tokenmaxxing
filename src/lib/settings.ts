@@ -81,7 +81,12 @@ function appendHook(s: Settings, event: string, sub: string): void {
  *  shape `"<...>/tokenmaxxing" <sub>` at ANY install path (so stale
  *  pre-relocation entries match too). A foreign command that merely mentions
  *  the subcommand or the path as text is NOT ours and must survive removal. */
-function isOurHookCommand(cmd: string, sub: string): boolean {
+/** Structural ownership: exactly `"<path>/tokenmaxxing" <sub>`. Exported for
+ *  the codex hooks.json installer, whose old includes()-based match deleted
+ *  foreign hooks sharing a group and misclassified commands merely mentioning
+ *  the subcommand (closing-review catch; the same class settings.ts's own
+ *  removeHook was fixed for in PR #31). */
+export function isOurHookCommand(cmd: string, sub: string): boolean {
   if (!cmd.endsWith(` ${sub}`)) return false;
   const quotedPath = cmd.slice(0, cmd.length - (sub.length + 1));
   if (!quotedPath.startsWith('"') || !quotedPath.endsWith('"')) return false;

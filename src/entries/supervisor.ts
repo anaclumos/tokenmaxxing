@@ -14,7 +14,7 @@ import { z } from "zod";
 import { paths } from "../lib/paths.ts";
 import { LOOP_DIAGNOSIS, MAX_WRAP_DEPTH, WRAP_DEPTH_ENV, WRAP_RATE_MAX, WRAP_RATE_WINDOW_MS, resolveRealClaude, wrapDepth, wrapperEntryRateTripped } from "../lib/claudebin.ts";
 import { saveTermios, restoreTermios } from "../lib/tty.ts";
-import { loadSessionFlags, saveSessionFlags } from "../lib/sessions.ts";
+import { loadSessionFlags, pruneStaleSessions, saveSessionFlags } from "../lib/sessions.ts";
 import { RespawnMarkerSchema } from "../lib/types.ts";
 import { log } from "../lib/log.ts";
 
@@ -96,6 +96,20 @@ export function analyzeArgs(argv: string[]): Analysis {
       else pickerResume = true;
     }
     else if (a === "--fork-session") forkSession = true;
+    // commander's `--flag=value` forms (closing-review catch: unrecognized,
+    // they were skipped as unknown dash-args, so the supervisor pinned a
+    // fresh random sid while claude ran the flag-selected session - markers
+    // and session flags landed under an id nothing was running).
+    else if (a.startsWith("--session-id=")) {
+      const value = a.slice("--session-id=".length);
+      if (isUuid(value)) sessionId = value;
+      else invalidSessionArg = true;
+    }
+    else if (a.startsWith("--resume=")) {
+      const value = a.slice("--resume=".length);
+      if (isUuid(value)) resumeId = value;
+      else pickerResume = true;
+    }
     else if (VALUE_TAKING_ROOT_FLAGS.has(a)) i++;
     else if (VARIADIC_ROOT_FLAGS.has(a)) {
       while (i + 1 < argv.length && !argv[i + 1]!.startsWith("-")) i++;
@@ -128,6 +142,8 @@ export function stripSessionFlags(argv: string[]): string[] {
     if (a === "--session-id") { i++; continue; }
     if (a === "-c" || a === "--continue") continue;
     if (a === "-r" || a === "--resume") { i++; continue; }
+    // the commander `=` forms carry their value in the same token
+    if (a.startsWith("--session-id=") || a.startsWith("--resume=")) continue;
     // --fork-session must not survive into respawn args: bare `--fork-session`
     // is inert and stays managed, but a depleted-pool respawn injects
     // `--resume <sid>` - with the flag still present claude would FORK to a
@@ -206,7 +222,17 @@ export async function runSupervisor(argv: string[]): Promise<number> {
 
   // Pass-through: no session management, no respawn - exact stock behavior.
   if (!info.manage) {
-    const p = Bun.spawn([real, ...argv], { stdin: "inherit", stdout: "inherit", stderr: "inherit", env: childEnv });
+    // STRIP the supervision pairing env (mirrors the codex shim's passthrough
+    // arm, closing-review catch): a nested unmanaged claude inside a
+    // supervised session (e.g. the agent running `claude -p ...`) would
+    // otherwise inherit TOKENMAXXING_SUPERVISED/TOKENMAXXING_SESSION_ID, and
+    // its Stop hooks - which DO fire in print mode - would compute
+    // canPause=true and could anticipatorily pre-park the pool against a
+    // marker path the OUTER supervisor owns.
+    const passthroughEnv: Record<string, string | undefined> = { ...childEnv };
+    delete passthroughEnv.TOKENMAXXING_SUPERVISED;
+    delete passthroughEnv.TOKENMAXXING_SESSION_ID;
+    const p = Bun.spawn([real, ...argv], { stdin: "inherit", stdout: "inherit", stderr: "inherit", env: passthroughEnv });
     await p.exited;
     return p.exitCode ?? (p.signalCode ? 1 : 0);
   }
@@ -234,6 +260,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
     if (persisted) base = persisted;
   }
   saveSessionFlags(sid, base, process.cwd());
+  pruneStaleSessions(Date.now());
 
   let launchArgs = resuming ? ["--resume", sid, ...base] : ["--session-id", sid, ...base];
 
@@ -284,7 +311,10 @@ export async function runSupervisor(argv: string[]): Promise<number> {
       respawns++;
       if (m.waitUntil > Date.now()) await countdownWait(m.account, m.waitUntil);
       else process.stdout.write(`\n\x1b[36m↻ tokenmaxxing: switched to ${m.account} - resuming...\x1b[0m\n`);
-      launchArgs = ["--resume", sid, ...base];
+      // resume the marker's CURRENT transcript, not the pinned id: after
+      // /clear they differ, and resuming the pinned id would revive the
+      // pre-/clear conversation (closing-review HIGH catch).
+      launchArgs = ["--resume", m.sessionId, ...base];
       continue;
     }
     // No marker: claude exited on its own (quit, crash, resume refused). Log it -

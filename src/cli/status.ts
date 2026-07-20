@@ -35,8 +35,28 @@ export async function cmdStatus(force = false, preRender?: () => void): Promise<
   const cfg = loadConfig();
   const now = Date.now();
 
+  // A window whose cached reset has passed is empty again; weekly windows recur
+  // on a fixed per-account anchor, so a stale weekly reset extrapolates forward.
+  // Fresh samples pass through unchanged (their resets are in the future).
+  const row = (name: string, w: UsageWindow, weekly: boolean) => {
+    const passed = w.resetsAt != null && w.resetsAt <= now;
+    const pct = passed ? 0 : w.usedPercentage;
+    const resetsAt = weekly ? nextWeeklyReset(w.resetsAt, now) : passed ? null : w.resetsAt;
+    console.log(`    ${name.padEnd(5)} ${bar(pct)}  ${c.dim(fmtReset(resetsAt, now))}`);
+  };
+
   if (idx.accounts.length === 0) {
-    console.log(c.dim("no accounts yet, run `tokenmaxxing init`"));
+    // A codex-only pool is a documented standalone flow: the empty-claude
+    // early return must still render it, and only a fully empty install gets
+    // the init hint (closing-review catch: bare `xx` claimed "no accounts"
+    // over a populated codex pool and pointed at the wrong init).
+    if (loadCodexAccounts().accounts.length > 0) {
+      console.log(c.dim("no claude accounts (run `tokenmaxxing init` to pool claude too)"));
+      console.log();
+      await renderCodexSection({ cfg, now, row });
+      return 0;
+    }
+    console.log(c.dim("no accounts yet, run `tokenmaxxing init` (or `tokenmaxxing init --codex`)"));
     return 0;
   }
 
@@ -77,10 +97,14 @@ export async function cmdStatus(force = false, preRender?: () => void): Promise<
         let outcome: SampleOutcome;
         if (force) {
           // Force: ping + live probe for everyone. The tee predates the ping,
-          // so it serves only as the active account's fallback when its own
-          // `/usage` fail-silents (a running session's tee is still fresh).
+          // so it serves ONLY as the fallback for the fail-silent `/usage`
+          // case (the probe got past every guard and claude printed no limit
+          // lines). Any other failure - identity mismatch, dead refresh, a
+          // refused ping - must stay VISIBLE: the old unconditional fallback
+          // masked pre-ping failures as healthy tee data, silently skipping
+          // the ping with no warning (closing-review catch).
           outcome = isActive ? await probeActiveUsage(a, { ping: true }) : await probeParkedUsage(a, { ping: true });
-          if (!outcome.ok && fromStatusLine) {
+          if (!outcome.ok && fromStatusLine && outcome.reason.includes("no limit data")) {
             const failed = outcome;
             outcome = { ok: true, usage: fromStatusLine };
             if (failed.pingError != null) outcome.pingError = failed.pingError;
@@ -102,7 +126,11 @@ export async function cmdStatus(force = false, preRender?: () => void): Promise<
         a.lastUsageAt = viaTee && live ? live.ts : Date.now();
         if (Object.keys(outcome.usage.perModel).length > 0) {
           a.lastPerModel = outcome.usage.perModel;
-          a.lastPerModelAt = a.lastUsageAt;
+          // via the tee, the per-model rows come from model-usage.json whose
+          // own sample time may be DAYS older than the aggregate tee - dating
+          // them by the tee's timestamp inflated the null-reset self-bound
+          // (closing-review catch). A fresh probe's rows date by the probe.
+          a.lastPerModelAt = viaTee && modelUsage ? (modelUsage.sampledAt ?? modelUsage.ts) : a.lastUsageAt;
         }
     };
     // The ACTIVE probe runs FIRST, alone: it refreshes an expired live access
@@ -130,16 +158,6 @@ export async function cmdStatus(force = false, preRender?: () => void): Promise<
   preRender?.();
   console.log(c.dim(`thresholds 5h ${cfg.thresholds.session}% weekly ${cfg.thresholds.weekly}%  (${count({ n: idx.accounts.length, noun: "claude account" })})`));
   console.log();
-
-  // A window whose cached reset has passed is empty again; weekly windows recur
-  // on a fixed per-account anchor, so a stale weekly reset extrapolates forward.
-  // Fresh samples pass through unchanged (their resets are in the future).
-  const row = (name: string, w: UsageWindow, weekly: boolean) => {
-    const passed = w.resetsAt != null && w.resetsAt <= now;
-    const pct = passed ? 0 : w.usedPercentage;
-    const resetsAt = weekly ? nextWeeklyReset(w.resetsAt, now) : passed ? null : w.resetsAt;
-    console.log(`    ${name.padEnd(5)} ${bar(pct)}  ${c.dim(fmtReset(resetsAt, now))}`);
-  };
 
   // Display order (user decision 2026-07-18): earliest upcoming reset first
   // (5h or extrapolated weekly, from the just-refreshed samples), needs-reauth

@@ -5,7 +5,7 @@ description: "Código fuente de TypeScript en npm, ejecutado por Bun, publicado 
 
 El paquete npm distribuye código fuente de TypeScript, no un build: el bin `tokenmaxxing` apunta directamente a `src/main.ts` con un shebang de Bun, y Bun 1.2.6 o más reciente lo ejecuta tal cual. Por eso Bun es un requisito estricto. No hay binarios compilados por diseño: un lanzamiento temprano distribuyó un único binario de macOS de 61 MB a todas las plataformas y falló en Linux con `exec format error`, y los paquetes compilados por plataforma necesitarían cada uno su propia canalización de lanzamiento, así que el código fuente ejecutado por Bun se convirtió en el modelo de distribución.
 
-El mapa `exports` del paquete expone `src/sdk.ts` como el punto de entrada programático descrito arriba. Los lanzamientos se etiquetan como `v<version>` en GitHub; CI publica en npm mediante publicación de confianza (OIDC, con procedencia), y la compuerta de publicación ejecuta primero la comprobación de tipos y la suite de pruebas completa.
+El mapa `exports` del paquete expone `src/sdk.ts` como el punto de entrada programático descrito en [La superficie del SDK de agentes](/sdk). Los lanzamientos se etiquetan como `v<version>` en GitHub; CI publica en npm mediante publicación de confianza (OIDC, con procedencia), y la compuerta de publicación ejecuta primero la comprobación de tipos y la suite de pruebas completa.
 
 ## Licencia
 

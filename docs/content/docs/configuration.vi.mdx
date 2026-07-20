@@ -8,6 +8,8 @@ Cấu hình là JSON tại `~/.config/tokenmaxxing/config.json`. Mọi trường
 ```json
 {
   "thresholds": { "session": 95, "weekly": 98 },
+  "claudeBin": "/path/to/real/claude",
+  "codexBin": "/path/to/real/codex",
   "policy": {
     "projectionMargin": 0,
     "greedySessionFloor": 50,
@@ -18,7 +20,8 @@ Cấu hình là JSON tại `~/.config/tokenmaxxing/config.json`. Mọi trường
 }
 ```
 
-- `thresholds.session` / `thresholds.weekly`: các ngưỡng sàng lọc được mô tả ở trên.
+- `thresholds.session` / `thresholds.weekly`: các ngưỡng sàng lọc được mô tả trong [Cách chuyển đổi được quyết định](/switching).
+- `claudeBin` / `codexBin`: ghim vào các tệp nhị phân THẬT mà các bộ giám sát khởi chạy (được ghi bởi `init` / `init --codex`; chẩn đoán bảo vệ-đệ-quy sẽ bảo bạn sửa `claudeBin` ở đây khi nó không còn trỏ vào tệp nhị phân Claude thật).
 - `policy.projectionMargin`: được trừ khỏi cả hai ngưỡng để tạo thành các ngưỡng hiệu lực.
 - `policy.greedySessionFloor`: phần trăm phiên đã dùng mà tại đó sự hội tụ tham lam kích hoạt.
 - `policy.switchModels`: các họ mô hình mà mức trần hàng tuần theo từng mô hình của chúng kiểm soát một lần chuyển đổi (các mục được chuyển thành chữ thường khi tải).

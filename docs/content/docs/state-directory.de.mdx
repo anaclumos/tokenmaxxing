@@ -12,7 +12,10 @@ Alles liegt unter `~/.config/tokenmaxxing/` (überschreibbar mit `TOKENMAXXING_H
 | `usage.json` | Der Aggregatfenster-Snapshot des Statusline-Tees; seine mtime ist das Lebenszeichen der Zufuhr |
 | `model-usage.json` | TTL-gecachte wöchentliche Pro-Modell-Obergrenzen aus `/usage` |
 | `lastswap.json` | Epochen-Zeitstempel des letzten Wechsels; treibt die 45-Sekunden-Abkühlzeit an |
+| `depleted.json` | Das aufgezeichnete Erschöpft-Pool-Warten, das von Sibling-Hooks wiederholt wird, bis der Reset eintritt, sich der Live-Sitz bewegt oder irgendein Wechsel abgeschlossen ist |
 | `lock` | Die `flock`-Datei, die Wechsel serialisiert |
+| `serve-lock` | Der Single-Instance-Flock von `xx serve`: eine neue Daemon-Generation blockiert hier, bis die vorherige vollständig beendet ist |
+| `sessions/<session-id>.json` | Pro-verwalteter-Sitzung Start-Flags, die der Supervisor für Respawns persistiert; werden nach 30 Tagen Inaktivität bereinigt (passend zu claudes eigener Transkript-Aufbewahrung) |
 | `tokenmaxxing.log` | Append-only-Ereignislog |
 | `bin/` | Die PATH-Shims: `claude`, `codex` und die `tokenmaxxing` / `xx`-Einstiegspunkte |
 | `respawn/<session-id>` | Erschöpft-Warten-Respawn-Marker, die der Supervisor beobachtet |
@@ -20,6 +23,6 @@ Alles liegt unter `~/.config/tokenmaxxing/` (überschreibbar mit `TOKENMAXXING_H
 | `onboard/`, `sample/` | Wegwerf-isolierte Konfigurations-Homes für `add`/`auth`-Anmeldungen und `/usage`-Proben geparkter Konten; Onboarding-Homes, die Klartext-Anmeldeinformationen enthalten, werden nach der Ernte gelöscht |
 | `slack.json` | `xx serve`-Tokens und Kanalverknüpfungen (0600) |
 | `slack-threads/` | Pro-Thread-Sitzungsdatensätze für `xx serve` |
-| `codex-*` | Der parallele Codex-Pool: `codex-accounts.json`, `codex-lastswap.json`, `codex-lock`, `codex-creds/`, `codex-onboard/`, `codex-respawn/` und `codex-live/` (eine PID-validierte Präsenzdatei pro laufender überwachter codex-Sitzung, sodass ein Live-Konto nie ein Wechselziel ist) |
+| `codex-*` | Der parallele Codex-Pool: `codex-accounts.json`, `codex-lastswap.json`, `codex-lock`, `codex-creds/`, `codex-onboard/`, `codex-respawn/`, `codex-reconcile/` (Cross-Session-Signale, die den Supervisor einer Sibling-Sitzung bitten, auf das Live-Konto neu zu starten), und `codex-live/` (eine PID-validierte Präsenzdatei pro laufender überwachter codex-Sitzung, sodass ein Live-Konto nie ein Wechselziel ist) |
 
-Außerhalb seines eigenen Verzeichnisses berührt tokenmaxxing genau: `~/.claude.json` (den `oauthAccount`-Wechsel), die `settings.json` von Claude Code (die Hook- und Statusline-Einträge), den Live-Anmeldeinformationsspeicher (das `Claude Code-credentials`-Keychain-Element auf macOS, `.credentials.json` auf Linux), `~/.claude.lock` (claudes Refresh-Sperre, die während Wechseln genommen wird), codex' `auth.json` und `hooks.json` sowie die Einheit der periodischen Prüfung in launchd oder systemd.
+Außerhalb seines eigenen Verzeichnisses berührt tokenmaxxing genau: `~/.claude.json` (den `oauthAccount`-Wechsel), die `settings.json` von Claude Code (die Hook- und Statusline-Einträge), den Live-Anmeldeinformationsspeicher (das `Claude Code-credentials`-Keychain-Element auf macOS, `.credentials.json` auf Linux), claudes eigene Refresh-Sperren, die während Wechseln genommen werden (die primäre `.oauth_refresh.lock` innerhalb von claudes Konfigurationsverzeichnis, plus das Legacy-Geschwister `~/.claude.lock`), codex' `auth.json` und `hooks.json` sowie die Einheit der periodischen Prüfung in launchd oder systemd.

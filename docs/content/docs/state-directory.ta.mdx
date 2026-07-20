@@ -12,7 +12,10 @@ description: "~/.config/tokenmaxxing இன் கீழ் உள்ள ஒவ�
 | `usage.json` | statusline tee இன் மொத்த சாளர snapshot; அதன் mtime அந்த feed இன் உயிர்ப்பு இதயத்துடிப்பு |
 | `model-usage.json` | `/usage` இலிருந்து TTL-cache செய்யப்பட்ட ஒவ்வொரு-மாதிரி வாராந்திர வரம்புகள் |
 | `lastswap.json` | கடைசி மாற்றத்தின் epoch நேரமுத்திரை; 45-வினாடி cooldown ஐ இயக்குகிறது |
+| `depleted.json` | பதிவு செய்யப்பட்ட தீர்ந்துபோன-தொகுப்பு காத்திருப்பு, reset கடந்து செல்லும் வரை, நேரடி இருக்கை நகரும் வரை, அல்லது ஏதேனும் மாற்றம் நிறைவடையும் வரை sibling hooks ஆல் மீண்டும் இயக்கப்படுகிறது |
 | `lock` | மாற்றங்களை வரிசைப்படுத்தும் `flock` கோப்பு |
+| `serve-lock` | `xx serve` இன் ஒற்றை-நிகழ்வு flock: முந்தையது முழுமையாக வெளியேறும் வரை புதிய daemon தலைமுறை இங்கே தடுக்கப்படும் |
+| `sessions/<session-id>.json` | மறுஉருவாக்கங்களுக்காக மேற்பார்வையாளர் தக்கவைக்கும் ஒவ்வொரு-மேற்பார்வை-செய்யப்பட்ட-அமர்வு launch flags; 30 நாட்கள் செயலற்று இருந்தால் நீக்கப்படும் (claude இன் சொந்த transcript retention ஐ ஒத்தது) |
 | `tokenmaxxing.log` | பின்னிணைப்பு-மட்டும் நிகழ்வுப் பதிவு |
 | `bin/` | PATH shims: `claude`, `codex`, மற்றும் `tokenmaxxing` / `xx` நுழைவுப் புள்ளிகள் |
 | `respawn/<session-id>` | மேற்பார்வையாளர் கண்காணிக்கும் தீர்ந்துபோன-காத்திருப்பு மறுஉருவாக்க குறிப்பான்கள் |
@@ -20,6 +23,6 @@ description: "~/.config/tokenmaxxing இன் கீழ் உள்ள ஒவ�
 | `onboard/`, `sample/` | `add`/`auth` உள்நுழைவுகள் மற்றும் நிறுத்தப்பட்ட-கணக்கு `/usage` probes க்கான தூக்கியெறியும் தனிமைப்படுத்தப்பட்ட கட்டமைப்பு homes; plaintext சான்றுதல்களை வைத்திருக்கும் onboard homes அறுவடைக்குப் பிறகு நீக்கப்படுகின்றன |
 | `slack.json` | `xx serve` டோக்கன்கள் மற்றும் சேனல் இணைப்புகள் (0600) |
 | `slack-threads/` | `xx serve` க்கான ஒவ்வொரு-த்ரெட் அமர்வுப் பதிவுகள் |
-| `codex-*` | இணையான Codex தொகுப்பு: `codex-accounts.json`, `codex-lastswap.json`, `codex-lock`, `codex-creds/`, `codex-onboard/`, `codex-respawn/`, மற்றும் `codex-live/` (இயங்கும் ஒவ்வொரு மேற்பார்வை செய்யப்பட்ட codex அமர்வுக்கும் ஒரு PID-சரிபார்க்கப்பட்ட இருப்புக் கோப்பு, எனவே ஒரு நேரடிக் கணக்கு ஒருபோதும் மாற்று இலக்கு அல்ல) |
+| `codex-*` | இணையான Codex தொகுப்பு: `codex-accounts.json`, `codex-lastswap.json`, `codex-lock`, `codex-creds/`, `codex-onboard/`, `codex-respawn/`, `codex-reconcile/` (ஒரு sibling அமர்வின் மேற்பார்வையாளரை நேரடிக் கணக்கிற்கு மறுஉருவாக்கம் செய்யக் கேட்கும் ஒவ்வொரு-அமர்வு-குறுக்கு சிக்னல்கள்), மற்றும் `codex-live/` (இயங்கும் ஒவ்வொரு மேற்பார்வை செய்யப்பட்ட codex அமர்வுக்கும் ஒரு PID-சரிபார்க்கப்பட்ட இருப்புக் கோப்பு, எனவே ஒரு நேரடிக் கணக்கு ஒருபோதும் மாற்று இலக்கு அல்ல) |
 
-அதன் சொந்த அடைவுக்கு வெளியே, tokenmaxxing சரியாக இவற்றை மட்டும் தொடுகிறது: `~/.claude.json` (`oauthAccount` மாற்றம்), Claude Code இன் `settings.json` (hook மற்றும் statusline உள்ளீடுகள்), நேரடி சான்றுதல் சேமிப்பு (macOS இல் `Claude Code-credentials` keychain உருப்படி, Linux இல் `.credentials.json`), `~/.claude.lock` (claude இன் புதுப்பிப்பு lock, மாற்றங்களின் போது எடுக்கப்படுகிறது), codex இன் `auth.json` மற்றும் `hooks.json`, மற்றும் launchd அல்லது systemd இல் உள்ள காலமுறை-சரிபார்ப்பு அலகு.
+அதன் சொந்த அடைவுக்கு வெளியே, tokenmaxxing சரியாக இவற்றை மட்டும் தொடுகிறது: `~/.claude.json` (`oauthAccount` மாற்றம்), Claude Code இன் `settings.json` (hook மற்றும் statusline உள்ளீடுகள்), நேரடி சான்றுதல் சேமிப்பு (macOS இல் `Claude Code-credentials` keychain உருப்படி, Linux இல் `.credentials.json`), மாற்றங்களின் போது எடுக்கப்படும் claude இன் சொந்த புதுப்பிப்பு locks (முதன்மையான `.oauth_refresh.lock`, claude இன் கட்டமைப்பு அடைவுக்குள்; மற்றும் legacy `~/.claude.lock` sibling), codex இன் `auth.json` மற்றும் `hooks.json`, மற்றும் launchd அல்லது systemd இல் உள்ள காலமுறை-சரிபார்ப்பு அலகு.

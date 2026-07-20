@@ -125,13 +125,30 @@ export async function runCodexSupervisor(input: { argv: string[] }): Promise<num
     // practice against a swap's network-bound critical section.
     const child = await withLock(codexPaths.lockFile, async () => {
       const spawnAccountId = liveCodexAccountId();
-      if (spawnAccountId) writeCodexPresence({ supervisorId, accountId: spawnAccountId });
-      return Bun.spawn([real, ...launchArgs], {
+      const spawned = Bun.spawn([real, ...launchArgs], {
         stdin: "inherit",
         stdout: "inherit",
         stderr: "inherit",
         env: { ...childEnv, [CODEX_SUPERVISOR_ID_ENV]: supervisorId },
       });
+      // Presence pins the CHILD's pid, written after the spawn (still inside
+      // the flock): the session IS the codex process, and pinning this
+      // supervisor's pid let a SIGKILLed supervisor prune the presence while
+      // its orphaned codex kept rotating the account's token (closing-review
+      // catch). Brief retries cover ps visibility lag on a just-spawned pid;
+      // a child that died instantly leaves no presence, which is correct.
+      if (spawnAccountId) {
+        for (let attempt = 0; attempt < 10; attempt++) {
+          try {
+            writeCodexPresence({ supervisorId, accountId: spawnAccountId, pid: spawned.pid });
+            break;
+          } catch (e) {
+            if (attempt === 9) log("codexsupervisor.presence_failed", { err: e instanceof Error ? e.message : String(e) });
+            else await Bun.sleep(100);
+          }
+        }
+      }
+      return spawned;
     });
 
     let done = false;

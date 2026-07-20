@@ -8,6 +8,8 @@ description: "config.json స్కీమా, థ్రెషోల్డ్‌�
 ```json
 {
   "thresholds": { "session": 95, "weekly": 98 },
+  "claudeBin": "/path/to/real/claude",
+  "codexBin": "/path/to/real/codex",
   "policy": {
     "projectionMargin": 0,
     "greedySessionFloor": 50,
@@ -18,7 +20,8 @@ description: "config.json స్కీమా, థ్రెషోల్డ్‌�
 }
 ```
 
-- `thresholds.session` / `thresholds.weekly`: పైన వివరించిన స్క్రీనింగ్ బార్‌లు.
+- `thresholds.session` / `thresholds.weekly`: [స్విచింగ్ ఎలా నిర్ణయిస్తుంది](/switching)లో వివరించిన స్క్రీనింగ్ బార్‌లు.
+- `claudeBin` / `codexBin`: సూపర్‌వైజర్‌లు స్పాన్ చేసే నిజమైన బైనరీలకు పిన్ చేస్తుంది (`init` / `init --codex` ద్వారా వ్రాయబడుతుంది; `claudeBin` ఇక్కడ నిజమైన Claude బైనరీని సూచించడం మానేసినప్పుడు దాన్ని సరిచేయమని రికర్షన్-గార్డ్ డయాగ్నస్టిక్ మీకు చెబుతుంది).
 - `policy.projectionMargin`: అమలు బార్‌లను ఏర్పరచడానికి రెండు బార్‌ల నుండి తీసివేయబడుతుంది.
 - `policy.greedySessionFloor`: అత్యాశ కేంద్రీకరణ ఎంగేజ్ అయ్యే సెషన్-వాడిన శాతం.
 - `policy.switchModels`: ప్రతి-మోడల్ వారపు పరిమితి మార్పిడిని గేట్ చేసే మోడల్ కుటుంబాలు (లోడ్ అయ్యేటప్పుడు ఎంట్రీలు చిన్న అక్షరాలుగా మార్చబడతాయి).

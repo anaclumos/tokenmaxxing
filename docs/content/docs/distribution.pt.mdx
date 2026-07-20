@@ -5,7 +5,7 @@ description: "Código-fonte TypeScript no npm, executado pelo Bun, publicado com
 
 O pacote npm entrega o código-fonte TypeScript, não uma build: o bin `tokenmaxxing` aponta direto para `src/main.ts` com um shebang do Bun, e o Bun 1.2.6 ou mais novo o executa como está. É por isso que o Bun é um requisito obrigatório. Não há binários compilados por design: um lançamento inicial entregou um único binário macOS de 61 MB para todas as plataformas e falhou no Linux com `exec format error`, e pacotes compilados por plataforma precisariam cada um de seu próprio pipeline de lançamento, então rodar o código-fonte via Bun se tornou o modelo de distribuição.
 
-O mapa `exports` do pacote expõe `src/sdk.ts` como o ponto de entrada programático descrito acima. Os lançamentos são marcados como `v<version>` no GitHub; a CI publica no npm via trusted publishing (OIDC, com procedência), e o portão de publicação executa o typecheck e a suíte de testes completa primeiro.
+O mapa `exports` do pacote expõe `src/sdk.ts` como o ponto de entrada programático descrito em [A superfície do Agent SDK](/sdk). Os lançamentos são marcados como `v<version>` no GitHub; a CI publica no npm via trusted publishing (OIDC, com procedência), e o portão de publicação executa o typecheck e a suíte de testes completa primeiro.
 
 ## Licença
 

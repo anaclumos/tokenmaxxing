@@ -28,6 +28,7 @@ import { makeColors, makeUsagePaint } from "../cli/render.ts";
 import { fmtResetShort } from "../lib/usage.ts";
 import {
   AccountsIndexSchema,
+  RateLimitsStdinSchema,
   StatusLineStdinSchema,
   UsageWindowSchema,
   type Account,
@@ -175,8 +176,18 @@ export async function runStatusline(): Promise<number> {
     org = readOAuthAccount()?.organizationUuid ?? null;
     const windows = obj == null ? null : parseStatusLineStdin(obj);
     const lastSwapAt = loadLastSwapAt();
-    if (windows && (lastSwapAt == null || now - lastSwapAt >= ADOPTION_GRACE_MS)) {
-      const state: UsageState = { ...windows, org, ts: now, model: parseStatusLineModel(obj) };
+    // The tee's label comes from the STDIN payload when present: those
+    // rate_limits and that organizationUuid ride the SAME API response, so the
+    // label can never lie about whose windows these are. claude.json's org is
+    // only the fallback - it flips at the swap while a session that has made
+    // no post-swap request keeps rendering the OLD account's windows
+    // indefinitely, and the 45s ADOPTION_GRACE_MS bounds nothing for such a
+    // session (closing-review catch: a stale-window tee labeled with the new
+    // org could hard-swap a healthy account and stamp foreign usage into it).
+    const stdinOrg = RateLimitsStdinSchema.safeParse(obj).data?.organizationUuid ?? null;
+    const teeOrg = stdinOrg ?? org;
+    if (windows && (stdinOrg != null || lastSwapAt == null || now - lastSwapAt >= ADOPTION_GRACE_MS)) {
+      const state: UsageState = { ...windows, org: teeOrg, ts: now, model: parseStatusLineModel(obj) };
       writeUsage(state);
     }
   } catch {

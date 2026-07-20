@@ -8,6 +8,8 @@ description: "สคีมาของ config.json ค่าเกณฑ์ แ�
 ```json
 {
   "thresholds": { "session": 95, "weekly": 98 },
+  "claudeBin": "/path/to/real/claude",
+  "codexBin": "/path/to/real/codex",
   "policy": {
     "projectionMargin": 0,
     "greedySessionFloor": 50,
@@ -18,7 +20,8 @@ description: "สคีมาของ config.json ค่าเกณฑ์ แ�
 }
 ```
 
-- `thresholds.session` / `thresholds.weekly`: แถบคัดกรองที่อธิบายไว้ข้างต้น
+- `thresholds.session` / `thresholds.weekly`: แถบคัดกรองที่อธิบายไว้ใน [การตัดสินใจสลับบัญชีทำงานอย่างไร](/switching)
+- `claudeBin` / `codexBin`: ตรึงไว้กับไบนารีจริงที่ supervisor เป็นผู้สั่งรัน (เขียนโดย `init` / `init --codex`; ข้อความวินิจฉัยของตัวป้องกันการเรียกซ้ำจะบอกให้คุณมาแก้ `claudeBin` ตรงนี้เมื่อมันไม่ชี้ไปยังไบนารี Claude จริงอีกต่อไป)
 - `policy.projectionMargin`: ค่าที่ถูกลบออกจากทั้งสองแถบเพื่อสร้างแถบที่มีผลจริง
 - `policy.greedySessionFloor`: เปอร์เซ็นต์การใช้เซสชันที่การลู่เข้าแบบ greedy จะเริ่มทำงาน
 - `policy.switchModels`: ตระกูลโมเดลที่ลิมิตรายสัปดาห์แยกตามโมเดลจะเปิดประตูให้สลับ (รายการจะถูกแปลงเป็นตัวพิมพ์เล็กเมื่อโหลด)

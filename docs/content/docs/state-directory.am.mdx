@@ -12,7 +12,10 @@ description: "በ ~/.config/tokenmaxxing ስር ያለ እያንዳንዱ ፋይ
 | `usage.json` | የ statusline tee ው ጥቅል መስኮት snapshot፤ mtime ው የ feed ው የህያውነት heartbeat ነው |
 | `model-usage.json` | ከ `/usage` የ TTL-cache የተደረጉ በ-ሞዴል ሳምንታዊ ገደቦች |
 | `lastswap.json` | የመጨረሻው መቀያየር epoch timestamp፤ የ45-ሰከንድ cooldown ን ይነዳል |
+| `depleted.json` | የተመዘገበው የተሟጠጠ-pool ጥበቃ፣ reset እስኪያልፍ፣ ቀጥታው ወንበር እስኪንቀሳቀስ፣ ወይም ማንኛውም መቀያየር እስኪጠናቀቅ ድረስ በ sibling hookዎች ተደግሞ የሚጫወት |
 | `lock` | መቀያየሮችን serialize የሚያደርግ የ `flock` ፋይል |
+| `serve-lock` | የ `xx serve` ነጠላ-instance flock፦ አዲስ daemon ትውልድ ቀዳሚው ሙሉ በሙሉ እስኪወጣ ድረስ እዚህ ይታገዳል |
+| `sessions/<session-id>.json` | supervisor ው ለ respawnዎች የሚያቆይ በ-managed-session launch flagዎች፤ ለ30 ቀናት ካልተንቀሳቀሰ ይጸዳል (ከ claude ራሱ transcript retention ጋር የሚመሳሰል) |
 | `tokenmaxxing.log` | Append-only የ event log |
 | `bin/` | የ PATH shimዎች፦ `claude`፣ `codex`፣ እና የ `tokenmaxxing` / `xx` entry pointዎች |
 | `respawn/<session-id>` | supervisor ው የሚከታተላቸው የተሟጠጠ-ጥበቃ respawn markerዎች |
@@ -20,6 +23,6 @@ description: "በ ~/.config/tokenmaxxing ስር ያለ እያንዳንዱ ፋይ
 | `onboard/`, `sample/` | ለ `add`/`auth` loginዎች እና የተያዙ-መለያ `/usage` probeዎች የሚጣሉ የተነጠሉ config homeዎች፤ plaintext credentialዎችን የያዙ onboard homeዎች ከመሰብሰብ በኋላ ይሰረዛሉ |
 | `slack.json` | የ `xx serve` tokenዎች እና channel linkዎች (0600) |
 | `slack-threads/` | ለ `xx serve` በ-thread session መዝገቦች |
-| `codex-*` | ትይዩ የ Codex pool፦ `codex-accounts.json`፣ `codex-lastswap.json`፣ `codex-lock`፣ `codex-creds/`፣ `codex-onboard/`፣ `codex-respawn/`፣ እና `codex-live/` (በእያንዳንዱ የሚሄድ የተቆጣጠረ codex session አንድ በ PID-የተረጋገጠ presence ፋይል፣ ስለዚህ ቀጥታ መለያ በጭራሽ የመቀያየር ኢላማ አይሆንም) |
+| `codex-*` | ትይዩ የ Codex pool፦ `codex-accounts.json`፣ `codex-lastswap.json`፣ `codex-lock`፣ `codex-creds/`፣ `codex-onboard/`፣ `codex-respawn/`፣ `codex-reconcile/` (የ sibling session supervisor ወደ ቀጥታው መለያ እንደገና እንዲነሳ የሚጠይቁ cross-session signalዎች)፣ እና `codex-live/` (በእያንዳንዱ የሚሄድ የተቆጣጠረ codex session አንድ በ PID-የተረጋገጠ presence ፋይል፣ ስለዚህ ቀጥታ መለያ በጭራሽ የመቀያየር ኢላማ አይሆንም) |
 
-ከራሱ directory ውጭ፣ tokenmaxxing በትክክል የሚነካቸው፦ `~/.claude.json` (የ `oauthAccount` መቀያየር)፣ የ Claude Code `settings.json` (የ hook እና statusline ግቤቶች)፣ ቀጥታው credential store (በ macOS ላይ የ `Claude Code-credentials` keychain ንጥል፣ በ Linux ላይ `.credentials.json`)፣ `~/.claude.lock` (የ claude refresh lock፣ በመቀያየር ጊዜ የተወሰደ)፣ የ codex `auth.json` እና `hooks.json`፣ እና በ launchd ወይም systemd ውስጥ ያለው ወቅታዊ-ፍተሻ unit ናቸው።
+ከራሱ directory ውጭ፣ tokenmaxxing በትክክል የሚነካቸው፦ `~/.claude.json` (የ `oauthAccount` መቀያየር)፣ የ Claude Code `settings.json` (የ hook እና statusline ግቤቶች)፣ ቀጥታው credential store (በ macOS ላይ የ `Claude Code-credentials` keychain ንጥል፣ በ Linux ላይ `.credentials.json`)፣ በመቀያየር ጊዜ የተወሰዱ የ claude ራሱ refresh lockዎች (ዋናው `.oauth_refresh.lock` በ claude ውቅር directory ውስጥ፣ ከዚያም legacy `~/.claude.lock` ወንድም)፣ የ codex `auth.json` እና `hooks.json`፣ እና በ launchd ወይም systemd ውስጥ ያለው ወቅታዊ-ፍተሻ unit ናቸው።

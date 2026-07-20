@@ -15,7 +15,17 @@ export function writeFileAtomic(file: string, data: string | Uint8Array, mode = 
   const bytes = data instanceof Uint8Array ? data : new TextEncoder().encode(data);
   const fd = openSync(tmp, "wx", mode);
   try {
-    writeSync(fd, bytes);
+    // write(2) may write FEWER bytes than asked without throwing (ENOSPC mid-
+    // write, signal interruption): loop until done and fail loudly on a stuck
+    // fd, or a truncated temp file gets fsynced and renamed over the target
+    // as a successful-looking corrupt file (closing-review catch - for a
+    // parked credential that silently loses a just-rotated refresh token).
+    let offset = 0;
+    while (offset < bytes.length) {
+      const written = writeSync(fd, bytes, offset);
+      if (written <= 0) throw new Error(`short write on ${tmp}: ${offset}/${bytes.length} bytes (disk full?)`);
+      offset += written;
+    }
     fsyncSync(fd);
   } finally {
     closeSync(fd);

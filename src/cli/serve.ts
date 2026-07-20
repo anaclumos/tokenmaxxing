@@ -75,6 +75,7 @@ oauth_config:
       - groups:history
       - chat:write
       - files:write
+      - im:history
       - users:read
 
 settings:

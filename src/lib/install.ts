@@ -8,7 +8,7 @@ import { escape } from "es-toolkit";
 import { z } from "zod";
 import { codexPaths, HOME, paths } from "./paths.ts";
 import { writeFileAtomic } from "./atomic.ts";
-import { installedBin, installSettings, uninstallSettings } from "./settings.ts";
+import { installedBin, installSettings, isOurHookCommand, uninstallSettings } from "./settings.ts";
 import { resolveRealClaude } from "./claudebin.ts";
 
 const InstallOutcomeSchema = z.object({
@@ -84,19 +84,27 @@ function codexStopHookCommand(): string {
  *  preserving every other declaration. Codex skips new hooks until the user
  *  trusts them via /hooks (trust is recorded against the hook's hash), so the
  *  caller must surface that step. */
+/** Surgical WITHIN groups, ownership verified structurally (closing-review
+ *  catch, mirroring settings.ts's removeHook fix): the old whole-group filter
+ *  deleted a foreign hook the user had appended into our group - the natural
+ *  edit, since install writes exactly one group - and its includes() match
+ *  claimed any command merely mentioning the subcommand. */
+function withoutOurCodexStopHooks(groups: { hooks: { type?: string; command?: string }[] }[]): typeof groups {
+  return groups
+    .map((group) => ({ ...group, hooks: group.hooks.filter((hook) => !isOurHookCommand(hook.command ?? "", CODEX_STOP_HOOK_SUBCOMMAND)) }))
+    .filter((group) => group.hooks.length > 0);
+}
+
 export function installCodexStopHook(): void {
   const current = existsSync(codexPaths.hooksJson)
     ? CodexHooksFileSchema.parse(JSON.parse(readFileSync(codexPaths.hooksJson, "utf8")))
     : CodexHooksFileSchema.parse({});
-  const foreign = current.hooks.Stop.filter(
-    (group) => !group.hooks.some((hook) => hook.command?.includes(CODEX_STOP_HOOK_SUBCOMMAND)),
-  );
   const next = {
     ...current,
     hooks: {
       ...current.hooks,
       Stop: [
-        ...foreign,
+        ...withoutOurCodexStopHooks(current.hooks.Stop),
         { hooks: [{ type: "command", command: codexStopHookCommand(), timeout: 120, statusMessage: "tokenmaxxing switch check" }] },
       ],
     },
@@ -112,7 +120,7 @@ export function uninstallCodexStopHook(): void {
     ...current,
     hooks: {
       ...current.hooks,
-      Stop: current.hooks.Stop.filter((group) => !group.hooks.some((hook) => hook.command?.includes(CODEX_STOP_HOOK_SUBCOMMAND))),
+      Stop: withoutOurCodexStopHooks(current.hooks.Stop),
     },
   };
   writeFileAtomic(codexPaths.hooksJson, JSON.stringify(next, null, 2) + "\n");
@@ -330,7 +338,18 @@ const PATH_LINE_MARK = "# tokenmaxxing PATH";
 export function ensurePathInRc(rc: string): "added" | "present" {
   const dir = paths.binDir.startsWith(`${HOME}/`) ? `$HOME${paths.binDir.slice(HOME.length)}` : paths.binDir;
   const current = existsSync(rc) ? readFileSync(rc, "utf8") : "";
-  if (current.includes(PATH_LINE_MARK) || current.includes(`${paths.binDir}:`) || current.includes(`${dir}:`)) return "present";
+  // present only when the CURRENT binDir is what's exported: a bare marker
+  // check kept a stale line after a TOKENMAXXING_HOME relocation, so the new
+  // install's binDir never reached PATH and the OLD wrapper kept winning -
+  // the recursion incident's exact vector (closing-review catch). A marked
+  // line for a DIFFERENT dir is replaced in place.
+  if (current.includes(`${paths.binDir}:`) || current.includes(`${dir}:`)) return "present";
+  if (current.includes(PATH_LINE_MARK)) {
+    const kept = current.split("\n").filter((line) => !line.includes(PATH_LINE_MARK));
+    const sep0 = kept.length === 0 || kept[kept.length - 1] === "" ? "" : "\n";
+    writeFileAtomic(rc, `${kept.join("\n")}${sep0}export PATH="${dir}:$PATH" ${PATH_LINE_MARK}\n`);
+    return "added";
+  }
   const sep = current === "" || current.endsWith("\n") ? "" : "\n";
   appendFileSync(rc, `${sep}export PATH="${dir}:$PATH" ${PATH_LINE_MARK}\n`);
   return "added";

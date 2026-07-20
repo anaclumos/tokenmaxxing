@@ -12,7 +12,10 @@ Tudo fica sob `~/.config/tokenmaxxing/` (substituível por `TOKENMAXXING_HOME`; 
 | `usage.json` | O instantâneo de janela agregada do tee do statusline; seu mtime é o batimento de vitalidade do feed |
 | `model-usage.json` | Limites semanais por modelo do `/usage`, armazenados em cache com TTL |
 | `lastswap.json` | Carimbo de data/hora em época da última troca; controla o cooldown de 45 segundos |
+| `depleted.json` | A espera por grupo esgotado registrada, reproduzida pelos hooks das sessões irmãs até o reset passar, a vaga ativa mudar, ou qualquer troca se completar |
 | `lock` | O arquivo `flock` que serializa as trocas |
+| `serve-lock` | O flock de instância única do `xx serve`: uma nova geração do daemon bloqueia aqui até a anterior sair completamente |
+| `sessions/<session-id>.json` | Flags de lançamento por sessão gerenciada que o supervisor persiste para respawns; removidas após 30 dias de inatividade (espelhando a própria retenção de transcrições do claude) |
 | `tokenmaxxing.log` | Log de eventos somente de anexação |
 | `bin/` | Os shims de PATH: `claude`, `codex` e os pontos de entrada `tokenmaxxing` / `xx` |
 | `respawn/<session-id>` | Marcadores de respawn de espera por esgotamento que o supervisor observa |
@@ -20,6 +23,6 @@ Tudo fica sob `~/.config/tokenmaxxing/` (substituível por `TOKENMAXXING_HOME`; 
 | `onboard/`, `sample/` | Homes de config isolados e descartáveis para logins de `add`/`auth` e probes de `/usage` de contas estacionadas; homes de onboard que contêm credenciais em texto simples são excluídos após a colheita |
 | `slack.json` | Tokens e vínculos de canal do `xx serve` (0600) |
 | `slack-threads/` | Registros de sessão por thread do `xx serve` |
-| `codex-*` | O grupo Codex paralelo: `codex-accounts.json`, `codex-lastswap.json`, `codex-lock`, `codex-creds/`, `codex-onboard/`, `codex-respawn/` e `codex-live/` (um arquivo de presença validado por PID por sessão codex supervisionada em execução, então uma conta ativa nunca é um destino de troca) |
+| `codex-*` | O grupo Codex paralelo: `codex-accounts.json`, `codex-lastswap.json`, `codex-lock`, `codex-creds/`, `codex-onboard/`, `codex-respawn/`, `codex-reconcile/` (sinais entre sessões pedindo ao supervisor de uma sessão irmã que reinicie na conta ativa), e `codex-live/` (um arquivo de presença validado por PID por sessão codex supervisionada em execução, então uma conta ativa nunca é um destino de troca) |
 
-Fora de seu próprio diretório, o tokenmaxxing toca exatamente: `~/.claude.json` (a troca de `oauthAccount`), o `settings.json` do Claude Code (as entradas de hook e statusline), o armazenamento de credenciais ativo (o item de keychain `Claude Code-credentials` no macOS, `.credentials.json` no Linux), `~/.claude.lock` (o bloqueio de atualização do claude, obtido durante as trocas), o `auth.json` e o `hooks.json` do codex, e a unidade de verificação periódica no launchd ou systemd.
+Fora de seu próprio diretório, o tokenmaxxing toca exatamente: `~/.claude.json` (a troca de `oauthAccount`), o `settings.json` do Claude Code (as entradas de hook e statusline), o armazenamento de credenciais ativo (o item de keychain `Claude Code-credentials` no macOS, `.credentials.json` no Linux), os próprios bloqueios de atualização do claude obtidos durante as trocas (o `.oauth_refresh.lock` primário dentro do diretório de config do claude, mais o irmão legado `~/.claude.lock`), o `auth.json` e o `hooks.json` do codex, e a unidade de verificação periódica no launchd ou systemd.

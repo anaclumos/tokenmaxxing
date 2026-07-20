@@ -12,7 +12,10 @@ description: "~/.config/tokenmaxxing تھلے ہر فائل تے ڈائریکٹ�
 | `usage.json` | statusline ٹی دا کُل جوڑ ونڈو سنیپ شاٹ؛ ایہدا mtime فیڈ دی زندگی دی دھڑکن اے |
 | `model-usage.json` | `/usage` توں TTL کیش کیتیاں فی ماڈل ہفتہ وار حداں |
 | `lastswap.json` | چھیکڑلے بدلاؤ دا ایپاک ٹائم سٹیمپ؛ 45 سیکنڈ دا کول ڈاؤن چلاندا اے |
+| `depleted.json` | مُکے پول دی درج شدہ اڈیک، جیہڑی سائیبلنگ ہُکاں ولوں اُدوں تیک دُہرائی جاندی اے جدوں تیک ری سیٹ نہ لنگھے، لائیو سیٹ نہ ہلے، یا کوئی بدلاؤ مُکمل نہ ہووے |
 | `lock` | `flock` فائل جیہڑی بدلاؤاں نوں وارو واری کردی اے |
+| `serve-lock` | `xx serve` دا اکلا-مثال flock: نویں ڈیمن نسل ایتھے اُدوں تیک رُکدی اے جدوں تیک پہلی والی مکمل طور تے ختم نہ ہووے |
+| `sessions/<session-id>.json` | ہر منظم سیشن دے لانچ فلیگ جیہڑے سُپروائزر respawn لئی محفوظ رکھدا اے؛ 30 دن ویلے تک ہونے بعد صاف کر دِتے جاندے نیں (claude دی اپنی transcript رکھوَٹ نال میل کھاندے) |
 | `tokenmaxxing.log` | صرف نال جوڑن والا ایونٹ لاگ |
 | `bin/` | PATH شِم: `claude`، `codex`، تے `tokenmaxxing` / `xx` داخلہ نقطے |
 | `respawn/<session-id>` | مُکن دی اڈیک دے respawn مارکر جنہاں نوں سُپروائزر ویکھدا اے |
@@ -20,6 +23,6 @@ description: "~/.config/tokenmaxxing تھلے ہر فائل تے ڈائریکٹ�
 | `onboard/`، `sample/` | `add`/`auth` لاگ اِناں تے پارک کیتے اکاؤنٹ دیاں `/usage` پروباں لئی سُٹن جوگے الگ تھلگ config ہوم؛ سادہ لکھت کریڈینشل رکھن والے onboard ہوم سمیٹن توں بعد مِٹا دِتے جاندے نیں |
 | `slack.json` | `xx serve` ٹوکن تے چینل لنک (0600) |
 | `slack-threads/` | `xx serve` لئی فی تھریڈ سیشن ریکارڈ |
-| `codex-*` | نال نال چلدی Codex پول: `codex-accounts.json`، `codex-lastswap.json`، `codex-lock`، `codex-creds/`، `codex-onboard/`، `codex-respawn/`، تے `codex-live/` (ہر چلدے نگرانی ہیٹھلے codex سیشن لئی اک PID تصدیق شدہ موجودگی فائل، سو اک لائیو اکاؤنٹ کدے بدلاؤ دا نشانہ نئیں) |
+| `codex-*` | نال نال چلدی Codex پول: `codex-accounts.json`، `codex-lastswap.json`، `codex-lock`، `codex-creds/`، `codex-onboard/`، `codex-respawn/`، `codex-reconcile/` (سائیبلنگ سیشن دے سُپروائزر نوں لائیو اکاؤنٹ تے respawn کرن دی درخواست کرن والے کراس-سیشن سگنل)، تے `codex-live/` (ہر چلدے نگرانی ہیٹھلے codex سیشن لئی اک PID تصدیق شدہ موجودگی فائل، سو اک لائیو اکاؤنٹ کدے بدلاؤ دا نشانہ نئیں) |
 
-اپنی ڈائریکٹری توں باہر، tokenmaxxing بالکل ایہو چیزاں نوں چھیندا اے: `~/.claude.json` (`oauthAccount` بدلاؤ)، Claude Code دی `settings.json` (ہُک تے statusline اِندراج)، لائیو کریڈینشل سٹور (macOS تے `Claude Code-credentials` کی چین آئٹم، Linux تے `.credentials.json`)، `~/.claude.lock` (claude دا refresh لاک، بدلاؤاں دوران لیا جاندا)، codex دیاں `auth.json` تے `hooks.json`، تے launchd یا systemd وچلا وقفے وار جانچ یونٹ۔
+اپنی ڈائریکٹری توں باہر، tokenmaxxing بالکل ایہو چیزاں نوں چھیندا اے: `~/.claude.json` (`oauthAccount` بدلاؤ)، Claude Code دی `settings.json` (ہُک تے statusline اِندراج)، لائیو کریڈینشل سٹور (macOS تے `Claude Code-credentials` کی چین آئٹم، Linux تے `.credentials.json`)، claude دے اپنے refresh لاک جیہڑے بدلاؤاں دوران لئے جاندے نیں (اصل `.oauth_refresh.lock` claude دی config ڈائریکٹری اندر، نال ای پرانا `~/.claude.lock` سائیبلنگ)، codex دیاں `auth.json` تے `hooks.json`، تے launchd یا systemd وچلا وقفے وار جانچ یونٹ۔
