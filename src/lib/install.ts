@@ -410,10 +410,13 @@ export function findClaudeShadowers(rcText: string): ShellShadower[] {
  *  one behind (closing-review catch). Returns true when a line was removed. */
 export function removePathFromRc(rc: string): boolean {
   if (!existsSync(rc)) return false;
-  const lines = readFileSync(rc, "utf8").split("\n");
+  // same symlink + mode treatment as ensurePathInRc: write through a
+  // dotfile-managed link, keep the rc's own permissions (PR #36 catches)
+  const target = realpathSync(rc);
+  const lines = readFileSync(target, "utf8").split("\n");
   const kept = lines.filter((line) => !line.includes(PATH_LINE_MARK));
   if (kept.length === lines.length) return false;
-  writeFileAtomic(rc, kept.join("\n"));
+  writeFileAtomic(target, kept.join("\n"), statSync(target).mode & 0o777);
   return true;
 }
 
