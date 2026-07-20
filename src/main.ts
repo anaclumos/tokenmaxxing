@@ -153,4 +153,15 @@ async function main(): Promise<number> {
   }
 }
 
-process.exit(await main());
+// The CLI's error boundary: operational failures that deliberately THROW deep
+// in the libs (a locked keychain failing readItem loudly, codexinit's
+// changed-mid-init abort, corrupt state files) must reach the user as one
+// clean red line with the recovery hint the throw site wrote - not a raw
+// stack trace (bugbot review catch, PR #35). The __-entry subcommands keep
+// their own never-throw contracts and normally never reach this.
+try {
+  process.exit(await main());
+} catch (e) {
+  console.error(c.red(e instanceof Error ? e.message : String(e)));
+  process.exit(1);
+}

@@ -189,7 +189,7 @@ export async function evaluateAndMaybeSwapCodex(input: { now?: number }): Promis
     // exactly the moment the cooldown starts (bugbot/cubic review catch,
     // PR #34), and a sibling can be dead while the live seat is healthy and
     // disengaged. Cached windows are enough here - the promote pass
-    // revalidates both accounts' usability at consumption time.
+    // revalidates the destination's usability at consumption time.
     reconcileNonLiveSiblings({ index, liveAccountId: activeId, bars, now });
 
     const lastSwapAt = loadCodexLastSwapAt();
