@@ -1,8 +1,11 @@
 // `tokenmaxxing add --codex` - register an ADDITIONAL codex account. Runs
-// `codex login` inside a throwaway CODEX_HOME pinned to file-mode credential
-// storage (auto mode would keyring-namespace the login on macOS and leave
-// nothing harvestable), then parks the resulting auth.json under the token's
-// OWN identity and indexes it. The primary login is never touched.
+// `codex login --device-auth` inside a throwaway CODEX_HOME pinned to
+// file-mode credential storage (auto mode would keyring-namespace the login on
+// macOS and leave nothing harvestable), then parks the resulting auth.json
+// under the token's OWN identity and indexes it. The primary login is never
+// touched. Device auth is the default (user decision 2026-07-20): the browser
+// flow binds localhost on the machine running the command, so it dead-ends
+// over ssh; the device code works from any browser.
 
 import { mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
@@ -31,11 +34,11 @@ export async function cmdCodexAdd(): Promise<number> {
   writeFileAtomic(join(onboardDir, "config.toml"), 'cli_auth_credentials_store = "file"\n');
 
   console.log(c.cyan("Opening an isolated codex login - your primary login is untouched."));
-  console.log(c.dim("Complete the browser sign-in with the account to add; the command exits once you're in."));
+  console.log(c.dim("Open the URL codex prints, enter the code, and sign in with the account to add; the command exits once you're in."));
   console.log();
 
   const savedTermios = saveTermios();
-  const p = Bun.spawn([real, "login"], {
+  const p = Bun.spawn([real, "login", "--device-auth"], {
     stdin: "inherit",
     stdout: "inherit",
     stderr: "inherit",
