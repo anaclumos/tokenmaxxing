@@ -1,0 +1,24 @@
+src/lib/types.ts
+  s_eaf36da1edfe18::t_8fa136fbb576e9 314-325,332
+src/entries/supervisor.ts
+  s_eaf36da1edfe18::t_16b33aeea170a6 163-174
+test/pure.test.ts
+  s_eaf36da1edfe18::t_8a1948a181bc1d 289-301
+  s_eaf36da1edfe18::t_7e3513d7d9a2f3 7
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "932fb419685953699e95615a5133c74b2b9ead04",
+  "prompts": {},
+  "sessions": {
+    "s_eaf36da1edfe18": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "085f0c3d-1bd0-4a58-8930-8dfdcf1a0376",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    }
+  }
+}
