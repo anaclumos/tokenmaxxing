@@ -18,7 +18,7 @@
 import { existsSync, realpathSync } from "node:fs";
 import { delay, omit, uniq } from "es-toolkit";
 import { z } from "zod";
-import { Chat, ThreadImpl, type StreamChunk } from "chat";
+import { Chat, StreamingPlan, ThreadImpl, type StreamChunk } from "chat";
 import { createSlackAdapter } from "@chat-adapter/slack";
 import { createMemoryState } from "@chat-adapter/state-memory";
 import {
@@ -240,7 +240,7 @@ export function formatLogLine(input: { event: string; parts: string }): string {
 const ServeThreadSchema = z.custom<{
   id: string;
   channelId: string;
-  post: (m: string | AsyncIterable<string | StreamChunk>) => Promise<unknown>;
+  post: (m: string | AsyncIterable<string | StreamChunk> | StreamingPlan) => Promise<unknown>;
   subscribe: () => Promise<void>;
   unsubscribe: () => Promise<void>;
   startTyping: () => Promise<void>;
@@ -323,7 +323,7 @@ export function buildServeRuntime(seam: {
    *  The session id persists the moment init assigns it - a first-turn kill
    *  must stay resumable. */
   const runTurn = async (input: {
-    thread: { id: string; post: (m: AsyncIterable<string | StreamChunk>) => Promise<unknown> };
+    thread: { id: string; post: (m: StreamingPlan) => Promise<unknown> };
     record: SlackThread;
     prompt: string;
     requesterIds: string[];
@@ -341,7 +341,12 @@ export function buildServeRuntime(seam: {
         prompt: input.prompt,
         requesterIds: input.requesterIds,
         link: input.link,
-        post: (m) => input.thread.post(m),
+        // every posted segment groups its task cards into one collapsible
+        // Slack plan block (task_display_mode "plan"; user ask 2026-07-20:
+        // "squash them into one dropdown") instead of a card-per-task
+        // timeline. Text-only segments (notices, plain replies) carry no
+        // tasks, so the wrap is a no-op for them.
+        post: (m) => input.thread.post(new StreamingPlan(m, { groupTasks: "plan" })),
         onSpawn: (pid) => {
           // the lstart token makes the pid a verifiable identity for the
           // orphan reaper; a child dead before ps sees it persists without

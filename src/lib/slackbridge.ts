@@ -18,7 +18,7 @@ import { http, safeErrorDetail } from "./http.ts";
 import { loadLastSwapAt } from "./state.ts";
 import { fmtResetShort, recordObservedLimit } from "./usage.ts";
 import { deleteSlackThread, type SlackLink } from "./slackstate.ts";
-import { agentEventChunks, newStreamMapState, SegmentBreakSchema } from "./slackstream.ts";
+import { agentEventChunks, newStreamMapState } from "./slackstream.ts";
 import { log } from "./log.ts";
 
 /** With systemPrompt omitted the SDK runs a MINIMAL system prompt (the
@@ -344,15 +344,20 @@ export function detachedClaudeSpawn(options: SpawnOptions) {
 }
 
 /**
- * One claude turn relayed into a Slack thread as a SEQUENCE of messages: reply
- * text streams natively, thinking and tool calls stream as task_update cards
- * (see slackstream.ts), and a segment_break (a tool starting after streamed
- * text) closes the current Slack message and opens the next one, so a turn
- * reads as separate messages around its tool runs (user ask 2026-07-18).
- * Segments post strictly in order: the next opens only after the previous
- * post resolves. Never throws: a failure posts a short diagnostic line and
- * sets outcome.failed (the daemon must keep serving other threads). Error
- * text is message-only - a raw error body could echo request material.
+ * One claude turn relayed into a Slack thread as ONE streamed message: reply
+ * text streams natively and thinking/tool calls stream as task_update cards
+ * (see slackstream.ts) that Slack groups into a single collapsible plan block
+ * (user ask 2026-07-20: "squash them into one dropdown"; the serve edge wraps
+ * each posted segment in a StreamingPlan with groupTasks "plan", superseding
+ * the 2026-07-18 separate-messages-around-tool-runs shape). Segments still
+ * exist as the posting machinery: recovery notices post as their own
+ * messages, a rejected post opens a fresh one (so an over-long turn that
+ * trips Slack's message cap degrades to a follow-on message instead of
+ * vanishing), and segments post strictly in order: the next opens only after
+ * the previous post resolves. Never throws: a failure posts a short
+ * diagnostic line and sets outcome.failed (the daemon must keep serving other
+ * threads). Error text is message-only - a raw error body could echo request
+ * material.
  *
  * Depleted-pool recovery (ported from slaude at its shutdown, reshaped around
  * the pool): the spawn-boundary switch decision is CONSUMED, not discarded -
@@ -584,10 +589,7 @@ export async function relayThread(input: {
             outcome.resultReceived = true;
           }
         }
-        for (const part of agentEventChunks({ state: mapState, message })) {
-          if (SegmentBreakSchema.safeParse(part).success) breakSegment();
-          else await push(SegmentChunkSchema.parse(part));
-        }
+        for (const part of agentEventChunks({ state: mapState, message })) await push(part);
       }
       // a turn that produced no streamed text (tool-only turns) still reports.
       if (!postedText && result) await push(result);

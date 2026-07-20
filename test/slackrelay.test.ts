@@ -259,7 +259,7 @@ describe("relayThread depleted-pool recovery", () => {
 });
 
 describe("relayThread segment ordering", () => {
-  test("a tool call after streamed text splits the turn into ordered Slack messages", async () => {
+  test("a tool call after streamed text stays in ONE Slack message: cards group into the turn's plan block", async () => {
     decisionQueue.push(usable);
     queryScripts.push(script([
       init("s-seg"),
@@ -272,12 +272,10 @@ describe("relayThread segment ordering", () => {
     const col = collector();
     const out = await relay({ post: col.post });
     expect(out.failed).toBe(false);
-    expect(col.posts.length).toBe(2);
-    // strict order: the previous message fully posted before the next opened
-    expect(col.timeline).toEqual(["open:1", "close:1", "open:2", "close:2"]);
-    expect(strings(col.posts[0])).toBe("before tools");
-    expect(strings(col.posts[1])).toBe("after tools");
-    const cardIds = (col.posts[1] ?? []).flatMap((c) => {
+    expect(col.posts.length).toBe(1);
+    expect(col.timeline).toEqual(["open:1", "close:1"]);
+    expect(strings(col.posts[0])).toBe("before toolsafter tools");
+    const cardIds = (col.posts[0] ?? []).flatMap((c) => {
       const card = TaskCardSchema.safeParse(c);
       return card.success ? [card.data.id] : [];
     });

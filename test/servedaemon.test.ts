@@ -7,7 +7,7 @@
 import { describe, expect, test } from "bun:test";
 import { spawn } from "node:child_process";
 import { delay } from "es-toolkit";
-import type { StreamChunk } from "chat";
+import { StreamingPlan, type StreamChunk } from "chat";
 import { buildServeRuntime } from "../src/cli/serve.ts";
 import { cleanupThread, type TurnOutcome } from "../src/lib/slackbridge.ts";
 import { pidStartTime } from "../src/lib/proc.ts";
@@ -38,12 +38,16 @@ function fakeThread(input: { id: string; rejectPosts?: boolean; channelId?: stri
   const thread = {
     id: input.id,
     channelId: input.channelId ?? "slack:C0DAEMON",
-    post: async (m: string | AsyncIterable<string | StreamChunk>) => {
+    post: async (m: string | AsyncIterable<string | StreamChunk> | StreamingPlan) => {
       calls.posts += 1;
       if (input.rejectPosts) throw new Error("slack said no");
       if (m instanceof Object) {
+        // runTurn wraps every relayed segment in a StreamingPlan (groupTasks
+        // "plan"); the fake drains the wrapped iterable like the real
+        // Thread.post would.
+        const iterable = m instanceof StreamingPlan ? m.stream : m;
         let acc = "";
-        for await (const chunk of m) {
+        for await (const chunk of iterable) {
           if (!(chunk instanceof Object)) acc += chunk;
         }
         posted.push(acc);

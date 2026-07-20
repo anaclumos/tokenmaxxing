@@ -1,11 +1,16 @@
 // Maps Claude Agent SDK messages onto Chat SDK stream chunks so a relayed
 // Slack turn shows the agent's process natively: task cards for thinking and
 // tool calls (pending -> in_progress -> complete/error), streamed text via
-// markdown_text, and a closing turn card with model/cost/duration. TodoWrite
-// is special-cased into one stable "Todos" checklist card per stream that
-// updates in place as items progress. Structured chunks render only when the
-// Slack app has the agent feature + assistant:write (the adapter drops them
-// gracefully otherwise); plain text streams either way.
+// markdown_text, and a closing turn card with model/cost/duration. All task
+// cards in a turn group into ONE collapsible Slack plan block (user ask
+// 2026-07-20: "squash them into one dropdown"; the serve edge posts each turn
+// as a StreamingPlan with groupTasks "plan", superseding the 2026-07-18
+// separate-messages-around-tool-runs shape), so this mapper emits no segment
+// breaks: a turn is one streamed message. TodoWrite is special-cased into one
+// stable "Todos" checklist card per stream that updates in place as items
+// progress. Structured chunks render only when the Slack app has the agent
+// feature + assistant:write (the adapter drops them gracefully otherwise);
+// plain text streams either way.
 
 import { truncate } from "es-toolkit/compat";
 import { z } from "zod";
@@ -58,21 +63,14 @@ const StreamMapStateSchema = z.object({
    *  effect). */
   todoCards: z.record(z.string(), z.string()),
   thinkingCount: z.number(),
-  /** reply text streamed since the last segment break. */
-  textSinceBreak: z.boolean(),
 });
 export type StreamMapState = z.infer<typeof StreamMapStateSchema>;
 
 export function newStreamMapState(): StreamMapState {
-  return { open: {}, toolTitles: {}, todoCards: {}, thinkingCount: 0, textSinceBreak: false };
+  return { open: {}, toolTitles: {}, todoCards: {}, thinkingCount: 0 };
 }
 
-/** Emitted when a tool starts after streamed reply text: the bridge closes the
- *  current Slack message there and posts the rest as a new one, mirroring how
- *  an agent turn reads as separate messages around its tool runs. */
-export const SegmentBreakSchema = z.object({ type: z.literal("segment_break") });
-
-const StreamPartSchema = z.union([z.string(), z.custom<StreamChunk>(), SegmentBreakSchema]);
+const StreamPartSchema = z.union([z.string(), z.custom<StreamChunk>()]);
 export type StreamPart = z.infer<typeof StreamPartSchema>;
 
 /** One human line out of a tool-input JSON blob; null when nothing fits. */
@@ -159,13 +157,14 @@ function resultText(content: z.infer<typeof ToolResultBlockSchema>["content"]): 
 
 /**
  * Consume one SDK message, mutating state, and return the stream chunks it
- * produces (strings are streamed reply text; objects are native task cards).
- * Subagent events (parent_tool_use_id set) contribute their TOOL cards to the
- * timeline (user ask 2026-07-18: subagent activity shows as accordions like
- * tool calls) but never reply text, thinking cards, or segment breaks: a
- * subagent runs inside a top-level Task tool, so its churn decorates the
- * current message rather than reshaping it. Open blocks are keyed per stream
- * (parent + index) because concurrent subagent streams reuse index space.
+ * produces (strings are streamed reply text; objects are native task cards,
+ * all of which Slack folds into the turn's single plan block). Subagent
+ * events (parent_tool_use_id set) contribute their TOOL cards to that plan
+ * (user ask 2026-07-18: subagent activity shows alongside tool calls) but
+ * never reply text or thinking cards: a subagent runs inside a top-level Task
+ * tool, so its churn decorates the turn rather than reshaping it. Open blocks
+ * are keyed per stream (parent + index) because concurrent subagent streams
+ * reuse index space.
  */
 export function agentEventChunks(input: { state: StreamMapState; message: SDKMessage }): StreamPart[] {
   const { state, message } = input;
@@ -184,9 +183,8 @@ export function agentEventChunks(input: { state: StreamMapState; message: SDKMes
         const { id, name } = event.content_block;
         if (name === "TodoWrite") {
           // bookkeeping, not a real tool run: no card until the list arrives,
-          // no segment break, and no toolTitles entry (its "Todos have been
-          // modified" success result is noise; failures still surface via
-          // todoCards below).
+          // and no toolTitles entry (its "Todos have been modified" success
+          // result is noise; failures still surface via todoCards below).
           const cardId = todoCardId(message.parent_tool_use_id);
           state.open[key] = { kind: "todo", id: cardId, title: "Todos", acc: "" };
           state.todoCards[id] = cardId;
@@ -195,12 +193,7 @@ export function agentEventChunks(input: { state: StreamMapState; message: SDKMes
         const title = toolCardTitle(name);
         state.open[key] = { kind: "tool", id, title, acc: "" };
         state.toolTitles[id] = title;
-        const card: StreamPart = { type: "task_update", id, title, status: "in_progress" };
-        if (isMain && state.textSinceBreak) {
-          state.textSinceBreak = false;
-          return [{ type: "segment_break" }, card];
-        }
-        return [card];
+        return [{ type: "task_update", id, title, status: "in_progress" }];
       }
       return [];
     }
@@ -208,10 +201,6 @@ export function agentEventChunks(input: { state: StreamMapState; message: SDKMes
       const open = state.open[`${message.parent_tool_use_id ?? "main"}:${event.index}`];
       if (event.delta.type === "text_delta") {
         if (!isMain) return [];
-        // whitespace-only deltas must not count as reply text: a "\n\n"
-        // before a tool call would otherwise break the segment and strand a
-        // near-blank Slack message.
-        if (event.delta.text.trim() !== "") state.textSinceBreak = true;
         return [event.delta.text];
       }
       if (event.delta.type === "thinking_delta" && open) open.acc += event.delta.thinking;
@@ -274,7 +263,6 @@ export function agentEventChunks(input: { state: StreamMapState; message: SDKMes
     // emitting it, the output still posts, and having posted text suppresses
     // the result fallback so it never double-posts.
     if (message.content.trim() === "") return [];
-    state.textSinceBreak = true;
     return [message.content];
   }
   if (message.type === "result") {
