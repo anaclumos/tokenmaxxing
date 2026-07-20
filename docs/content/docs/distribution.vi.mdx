@@ -5,7 +5,7 @@ description: "Mã nguồn TypeScript trên npm, chạy bằng Bun, được xu�
 
 Gói npm phân phối mã nguồn TypeScript, không phải bản dựng: bin `tokenmaxxing` trỏ thẳng tới `src/main.ts` với một shebang Bun, và Bun 1.2.6 trở lên chạy nó nguyên trạng. Đó là lý do Bun là một yêu cầu bắt buộc. Không có tệp nhị phân biên dịch nào theo thiết kế: một bản phát hành ban đầu đã phân phối một tệp nhị phân macOS 61 MB duy nhất cho mọi nền tảng và thất bại trên Linux với `exec format error`, và các gói biên dịch theo từng nền tảng sẽ mỗi gói cần một quy trình phát hành riêng, nên chạy-mã-nguồn-bằng-Bun đã trở thành mô hình phân phối.
 
-Ánh xạ `exports` của gói công khai `src/sdk.ts` làm điểm vào lập trình được mô tả ở trên. Các bản phát hành được gắn thẻ `v<version>` trên GitHub; CI xuất bản lên npm qua trusted publishing (OIDC, kèm provenance), và cổng xuất bản chạy phép kiểm tra kiểu và toàn bộ bộ kiểm thử trước tiên.
+Ánh xạ `exports` của gói công khai `src/sdk.ts` làm điểm vào lập trình được mô tả trong [Bề mặt Agent SDK](/vi/sdk). Các bản phát hành được gắn thẻ `v<version>` trên GitHub; CI xuất bản lên npm qua trusted publishing (OIDC, kèm provenance), và cổng xuất bản chạy phép kiểm tra kiểu và toàn bộ bộ kiểm thử trước tiên.
 
 ## Giấy phép
 

@@ -18,7 +18,10 @@ process.env.TOKENMAXXING_CLAUDE_SETTINGS = join(base, "settings.json");
 // worktrees are this repo's standard flow) once collided on fixed 8791/8792
 // (closing-review catch). Test files must read these ports from the env URLs,
 // never hardcode them.
-const mockPort = 20000 + (process.pid % 20000);
+// stride 2 so adjacent pids cannot collide: with +1 alone, run A's codex
+// port equaled run B's oauth port whenever pidB = pidA + 1 (closing-review
+// catch reopening the very collision this scheme fixes).
+const mockPort = 20000 + ((process.pid * 2) % 30000);
 export const MOCK_OAUTH_PORT = mockPort;
 export const MOCK_CODEX_PORT = mockPort + 1;
 process.env.TOKENMAXXING_OAUTH_TOKEN_URL = `http://127.0.0.1:${MOCK_OAUTH_PORT}/token`;

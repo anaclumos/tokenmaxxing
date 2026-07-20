@@ -8,6 +8,8 @@ description: "مخطط config.json، والعتبات، ومقابض السيا�
 ```json
 {
   "thresholds": { "session": 95, "weekly": 98 },
+  "claudeBin": "/path/to/real/claude",
+  "codexBin": "/path/to/real/codex",
   "policy": {
     "projectionMargin": 0,
     "greedySessionFloor": 50,
@@ -18,7 +20,8 @@ description: "مخطط config.json، والعتبات، ومقابض السيا�
 }
 ```
 
-- `thresholds.session` / `thresholds.weekly`: أشرطة الفرز الموصوفة أعلاه.
+- `thresholds.session` / `thresholds.weekly`: أشرطة الفرز الموصوفة في [كيف يقرّر التبديل](/ar/switching).
+- `claudeBin` / `codexBin`: يثبّتان على الثنائيّات الحقيقية التي يشغّلها المشرفون (يكتبهما `init` / `init --codex`؛ ويخبرك تشخيص حارس التكرار بإصلاح `claudeBin` هنا عندما يتوقّف عن الإشارة إلى ثنائي Claude الحقيقي).
 - `policy.projectionMargin`: يُطرَح من كلا الشريطين لتكوين الأشرطة الفعّالة.
 - `policy.greedySessionFloor`: النسبة المئوية لاستخدام الجلسة التي يُفعَّل عندها التقارب الجشِع.
 - `policy.switchModels`: عائلات النماذج التي يحجب حدّها الأسبوعي لكل نموذج التبديلَ (تُحوَّل المدخلات إلى أحرف صغيرة عند التحميل).

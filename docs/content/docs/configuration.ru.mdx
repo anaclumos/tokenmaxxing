@@ -8,6 +8,8 @@ description: "Схема config.json, пороги и параметры пол�
 ```json
 {
   "thresholds": { "session": 95, "weekly": 98 },
+  "claudeBin": "/path/to/real/claude",
+  "codexBin": "/path/to/real/codex",
   "policy": {
     "projectionMargin": 0,
     "greedySessionFloor": 50,
@@ -18,7 +20,8 @@ description: "Схема config.json, пороги и параметры пол�
 }
 ```
 
-- `thresholds.session` / `thresholds.weekly`: барьеры отсева, описанные выше.
+- `thresholds.session` / `thresholds.weekly`: барьеры отсева, описанные в разделе [Как принимается решение о переключении](/ru/switching).
+- `claudeBin` / `codexBin`: закрепляет РЕАЛЬНЫЕ бинарники, которые запускают супервизоры (записываются командами `init` / `init --codex`; диагностика защиты от рекурсии подсказывает исправить здесь `claudeBin`, когда он перестаёт указывать на настоящий бинарник Claude).
 - `policy.projectionMargin`: вычитается из обоих порогов для формирования действующих порогов.
 - `policy.greedySessionFloor`: процент использования сессии, при котором вовлекается жадное схождение.
 - `policy.switchModels`: семейства моделей, чей недельный лимит по модели блокирует переключение (записи приводятся к нижнему регистру при загрузке).

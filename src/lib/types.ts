@@ -72,6 +72,12 @@ export const ModelUsageStateSchema = z.object({
   perModel: z.record(z.string(), UsageWindowSchema).default({}),
   org: z.string().nullable(),
   ts: z.number(),
+  /** when the rows were actually MEASURED. `ts` is the write time and drives
+   *  the probe-TTL anti-storm, so a failed probe re-stamps it while carrying
+   *  the OLD rows forward - dating those rows by ts rolled the null-reset
+   *  self-bound forward on every failed probe (closing-review catch). Absent
+   *  on records predating this field: readers fall back to ts. */
+  sampledAt: z.number().optional(),
 });
 export type ModelUsageState = z.infer<typeof ModelUsageStateSchema>;
 
@@ -165,13 +171,22 @@ export const ConfigSchema = z
   });
 export type Config = z.infer<typeof ConfigSchema>;
 
-/** The hook -> supervisor respawn marker at respawn/<session-id>. Written only
- *  for a depleted-pool wait (plain swaps adopt in place, no respawn). */
+/** The hook -> supervisor respawn marker. Written only for a depleted-pool
+ *  wait (plain swaps adopt in place, no respawn). The marker FILE is keyed by
+ *  the supervisor's PINNED session id (the path it watches - stable for the
+ *  process's whole life), while `sessionId` carries the CURRENT transcript to
+ *  resume: after /clear claude mints a new session id, and keying the file by
+ *  the stdin sid orphaned every marker while the anticipatory pre-park still
+ *  fired (closing-review HIGH catch; the codex marker was immune by exactly
+ *  this construction). */
 export const RespawnMarkerSchema = z.object({
   account: z.string(),
   ts: z.number(),
   /** the supervisor waits until this epoch ms before relaunching. */
   waitUntil: z.number(),
+  /** the transcript to `--resume`: the hook-stdin session id, which drifts
+   *  from the pinned id after /clear. */
+  sessionId: z.string(),
 });
 
 /** rate_limits + model as they appear in statusLine stdin (epoch-seconds resets). */

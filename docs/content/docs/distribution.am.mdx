@@ -5,7 +5,7 @@ description: "በ npm ላይ የ TypeScript ምንጭ፣ በ Bun የሚሄድ፣
 
 የ npm ጥቅሉ የ TypeScript ምንጭ ኮድ ይልካል እንጂ build አይደለም፦ የ `tokenmaxxing` bin በ Bun shebang በቀጥታ ወደ `src/main.ts` ያመለክታል፣ እና Bun 1.2.6 ወይም ከዚያ በኋላ እንዳለ ያሄደዋል። Bun ጠንካራ መስፈርት የሆነው ለዚህ ነው። በ design ምንም compiled binaryዎች የሉም፦ አንድ ቀደምት release አንድ ነጠላ 61 MB የ macOS binary ወደ እያንዳንዱ platform ልኮ በ Linux ላይ በ `exec format error` ወደቀ፣ እና በ-platform compiled ጥቅሎች እያንዳንዳቸው የራሳቸው release pipeline ያስፈልጋቸዋል፣ ስለዚህ በ-Bun-የሚሄድ-ምንጭ የስርጭት ሞዴል ሆነ።
 
-የጥቅሉ `exports` map ከላይ የተገለጸውን programmatic entry `src/sdk.ts` ን ያጋልጣል። Releaseዎች በ GitHub ላይ `v<version>` ተብለው ይሰየማሉ፤ CI በ trusted publishing (OIDC፣ ከ provenance ጋር) ወደ npm ያትማል፣ እና የ publish gate መጀመሪያ typecheck ን እና ሙሉ test suite ን ያሄዳል።
+የጥቅሉ `exports` map በ[የ Agent SDK surface](/am/sdk) የተገለጸውን programmatic entry `src/sdk.ts` ን ያጋልጣል። Releaseዎች በ GitHub ላይ `v<version>` ተብለው ይሰየማሉ፤ CI በ trusted publishing (OIDC፣ ከ provenance ጋር) ወደ npm ያትማል፣ እና የ publish gate መጀመሪያ typecheck ን እና ሙሉ test suite ን ያሄዳል።
 
 ## ፈቃድ
 

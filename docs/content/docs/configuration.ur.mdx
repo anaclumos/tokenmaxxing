@@ -8,6 +8,8 @@ Config ایک JSON ہے `~/.config/tokenmaxxing/config.json` پر۔ ہر فیل�
 ```json
 {
   "thresholds": { "session": 95, "weekly": 98 },
+  "claudeBin": "/path/to/real/claude",
+  "codexBin": "/path/to/real/codex",
   "policy": {
     "projectionMargin": 0,
     "greedySessionFloor": 50,
@@ -18,7 +20,8 @@ Config ایک JSON ہے `~/.config/tokenmaxxing/config.json` پر۔ ہر فیل�
 }
 ```
 
-- `thresholds.session` / `thresholds.weekly`: اوپر بیان کردہ اسکریننگ بارز۔
+- `thresholds.session` / `thresholds.weekly`: [سوئچنگ کیسے فیصلہ کرتی ہے](/ur/switching) میں بیان کردہ اسکریننگ بارز۔
+- `claudeBin` / `codexBin`: ان اصل بائنریز پر پن کرتا ہے جنہیں سپروائزرز اسپان کرتے ہیں (`init` / `init --codex` کے ذریعے لکھا جاتا ہے؛ ری کرژن-گارڈ تشخیص آپ کو یہاں `claudeBin` ٹھیک کرنے کو کہتی ہے جب یہ اصل Claude بائنری کی طرف اشارہ کرنا چھوڑ دے)۔
 - `policy.projectionMargin`: مؤثر بارز بنانے کے لیے دونوں بارز سے تفریق کیا جاتا ہے۔
 - `policy.greedySessionFloor`: سیشن-استعمال فیصد جس پر لالچی یکجائی مصروف ہوتی ہے۔
 - `policy.switchModels`: ماڈل فیملیز جن کی فی ماڈل ہفتہ وار حد ایک سوئچ کو گیٹ کرتی ہے (لوڈ ہونے پر اندراجات لوئر کیس کر دیے جاتے ہیں)۔

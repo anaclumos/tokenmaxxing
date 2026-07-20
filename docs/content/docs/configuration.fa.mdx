@@ -8,6 +8,8 @@ description: "شمای config.json، آستانه‌ها، و کلیدهای س�
 ```json
 {
   "thresholds": { "session": 95, "weekly": 98 },
+  "claudeBin": "/path/to/real/claude",
+  "codexBin": "/path/to/real/codex",
   "policy": {
     "projectionMargin": 0,
     "greedySessionFloor": 50,
@@ -18,7 +20,8 @@ description: "شمای config.json، آستانه‌ها، و کلیدهای س�
 }
 ```
 
-- `thresholds.session` / `thresholds.weekly`: نوارهای غربالگری توصیف‌شده در بالا.
+- `thresholds.session` / `thresholds.weekly`: نوارهای غربالگری توصیف‌شده در [نحوه تصمیم‌گیری جابه‌جایی](/fa/switching).
+- `claudeBin` / `codexBin`: به باینری‌های واقعی که ناظرها اجرا می‌کنند سنجاق می‌شود (توسط `init` / `init --codex` نوشته می‌شود؛ تشخیص نگهبان بازگشتی به شما می‌گوید وقتی `claudeBin` دیگر به باینری واقعی Claude اشاره نمی‌کند، همین‌جا آن را اصلاح کنید).
 - `policy.projectionMargin`: از هر دو نوار کم می‌شود تا نوارهای مؤثر شکل بگیرند.
 - `policy.greedySessionFloor`: درصد استفاده نشست که در آن همگرایی حریصانه درگیر می‌شود.
 - `policy.switchModels`: خانواده‌های مدلی که سقف هفتگی به‌ازای هر مدلشان یک جابه‌جایی را دروازه‌بندی می‌کند (ورودی‌ها هنگام بارگذاری کوچک‌حروف می‌شوند).

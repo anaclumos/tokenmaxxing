@@ -28,6 +28,7 @@ import { makeColors, makeUsagePaint } from "../cli/render.ts";
 import { fmtResetShort } from "../lib/usage.ts";
 import {
   AccountsIndexSchema,
+  RateLimitsStdinSchema,
   StatusLineStdinSchema,
   UsageWindowSchema,
   type Account,
@@ -169,14 +170,30 @@ export async function runStatusline(): Promise<number> {
   }
   const now = Date.now();
 
+  // The stdin payload's own org label: those rate_limits and that
+  // organizationUuid ride the SAME API response, so the label can never lie
+  // about whose windows these are. claude.json's org is only the fallback -
+  // it flips at the swap while a session that has made no post-swap request
+  // keeps rendering the OLD account's windows indefinitely, and the 45s
+  // ADOPTION_GRACE_MS bounds nothing for such a session (closing-review
+  // catch: a stale-window tee labeled with the new org could hard-swap a
+  // healthy account and stamp foreign usage into it). The render below uses
+  // the same preference so the active ◆ seat matches the windows painted
+  // beside it (PR #36 review catch). Trusted ONLY when the payload's windows
+  // parsed too: an org label without windows would re-label state the payload
+  // did not carry (second-round catch).
+  let stdinOrg: string | null = null;
+
   // tee usage for the Stop hook / status - best effort, never blocks rendering.
   let org: string | null = null;
   try {
     org = readOAuthAccount()?.organizationUuid ?? null;
     const windows = obj == null ? null : parseStatusLineStdin(obj);
     const lastSwapAt = loadLastSwapAt();
-    if (windows && (lastSwapAt == null || now - lastSwapAt >= ADOPTION_GRACE_MS)) {
-      const state: UsageState = { ...windows, org, ts: now, model: parseStatusLineModel(obj) };
+    stdinOrg = windows != null ? (RateLimitsStdinSchema.safeParse(obj).data?.organizationUuid ?? null) : null;
+    const teeOrg = stdinOrg ?? org;
+    if (windows && (stdinOrg != null || lastSwapAt == null || now - lastSwapAt >= ADOPTION_GRACE_MS)) {
+      const state: UsageState = { ...windows, org: teeOrg, ts: now, model: parseStatusLineModel(obj) };
       writeUsage(state);
     }
   } catch {
@@ -192,10 +209,10 @@ export async function runStatusline(): Promise<number> {
     const colorterm = z.string().optional().parse(process.env.COLORTERM);
     const ctx: RenderCtx = {
       accounts: loadAccounts(),
-      perModel: modelUsage && modelUsage.org === org ? modelUsage.perModel : {},
+      perModel: modelUsage && modelUsage.org === (stdinOrg ?? org) ? modelUsage.perModel : {},
       switchModels: cfg.policy.switchModels,
       worktree: dir == null ? null : worktreeName(dir),
-      liveOrg: org,
+      liveOrg: stdinOrg ?? org,
       now,
       color: !process.env.NO_COLOR,
       truecolor: colorterm != null && (colorterm.includes("truecolor") || colorterm.includes("24bit")),

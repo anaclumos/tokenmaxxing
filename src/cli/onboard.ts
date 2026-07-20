@@ -46,6 +46,15 @@ export async function harvestIsolatedLogin(): Promise<HarvestedLogin | null> {
   rmSync(onboardDir, { recursive: true, force: true });
   mkdirSync(onboardDir, { recursive: true });
   const iso = isolatedTarget(onboardDir);
+  // Reap a PREVIOUS run's stranded isolated credential too: on macOS the
+  // isolated store is a namespaced KEYCHAIN item, not a file in onboardDir,
+  // so the rmSync above never touched it - a signal-killed harvest (Ctrl-C
+  // after /login, before the ~400ms poll) left a live credential in the
+  // keychain that the next run's spawned claude would silently reuse as an
+  // already-authenticated session (closing-review catch). deleteItem on a
+  // missing item is a no-op; on Linux iso is a file inside onboardDir and the
+  // rmSync already covered it.
+  await deleteItem(iso);
   const cjPath = join(onboardDir, ".claude.json");
   const real = resolveRealClaude();
 
@@ -66,7 +75,8 @@ export async function harvestIsolatedLogin(): Promise<HarvestedLogin | null> {
   // every non-signal exit - INCLUDING a failure while the login session is
   // still being polled (review catch, PR #31): an exception must not strand a
   // plaintext credential on disk or leave the spawned claude running. (An
-  // interactive Ctrl-C is reaped by the next run's rmSync-first.)
+  // interactive Ctrl-C is reaped by the next run's cleanup-first, which
+  // deletes the isolated keychain item as well as the dir.)
   try {
     // Auto-exit (#17): watch for a completed login - identity written AND the
     // isolated credential present - then SIGTERM claude. No manual /exit.

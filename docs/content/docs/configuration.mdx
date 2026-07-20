@@ -8,6 +8,8 @@ Config is JSON at `~/.config/tokenmaxxing/config.json`. Every field is optional;
 ```json
 {
   "thresholds": { "session": 95, "weekly": 98 },
+  "claudeBin": "/path/to/real/claude",
+  "codexBin": "/path/to/real/codex",
   "policy": {
     "projectionMargin": 0,
     "greedySessionFloor": 50,
@@ -19,6 +21,7 @@ Config is JSON at `~/.config/tokenmaxxing/config.json`. Every field is optional;
 ```
 
 - `thresholds.session` / `thresholds.weekly`: the screening bars described in [How switching decides](/switching).
+- `claudeBin` / `codexBin`: pins to the REAL binaries the supervisors spawn (written by `init` / `init --codex`; the recursion-guard diagnostic tells you to fix `claudeBin` here when it stops pointing at the real Claude binary).
 - `policy.projectionMargin`: subtracted from both bars to form the effective bars.
 - `policy.greedySessionFloor`: session-used percent at which the greedy convergence engages.
 - `policy.switchModels`: model families whose per-model weekly cap gates a switch (entries are lowercased on load).

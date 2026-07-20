@@ -12,7 +12,10 @@ description: "كل ملف ومجلد تحت ~/.config/tokenmaxxing"
 | `usage.json` | لقطة النوافذ الإجمالية بتاعت الـ statusline tee؛ الـ mtime بتاعه هو نبضة حياة الـ feed |
 | `model-usage.json` | الحدود الأسبوعية لكل موديل المخزّنة في الكاش بـ TTL من `/usage` |
 | `lastswap.json` | timestamp بالـ epoch لآخر تبديل؛ بيحرّك فترة التهدئة بتاعت الـ 45 ثانية |
+| `depleted.json` | انتظار الـ pool المستنفد المسجّل، بيتعاد تشغيله من hooks الأشقاء لحد ما الـ reset يعدي، أو المقعد الحي يتحرّك، أو أي تبديل يخلص |
 | `lock` | ملف الـ `flock` اللي بيسلسل التبديلات |
+| `serve-lock` | الـ flock بتاع النسخة الوحيدة لـ `xx serve`: جيل daemon جديد بيتوقّف هنا لحد ما اللي قبله يخرج خالص |
+| `sessions/<session-id>.json` | أعلام الإطلاق لكل session مُدارة، بيحفظها الـ supervisor عشان الـ respawns؛ بتتمسح بعد 30 يوم من غير نشاط (زي فترة الاحتفاظ بترانسكريبت claude نفسه) |
 | `tokenmaxxing.log` | لوج أحداث بيتكتب عليه بس (append-only) |
 | `bin/` | الـ PATH shims: `claude`، و `codex`، ونقاط دخول `tokenmaxxing` / `xx` |
 | `respawn/<session-id>` | markers الـ respawn بتاعت انتظار الاستنفاد اللي الـ supervisor بيراقبها |
@@ -20,6 +23,6 @@ description: "كل ملف ومجلد تحت ~/.config/tokenmaxxing"
 | `onboard/`، `sample/` | homes إعدادات معزولة للرمي لتسجيلات دخول `add`/`auth` وبروبات `/usage` للحسابات المركونة؛ الـ onboard homes اللي فيها credentials نص عادي بتتمسح بعد الحصاد |
 | `slack.json` | tokens و روابط قنوات `xx serve` (0600) |
 | `slack-threads/` | سجلات session لكل thread لـ `xx serve` |
-| `codex-*` | الـ Codex pool المتوازي: `codex-accounts.json`، و `codex-lastswap.json`، و `codex-lock`، و `codex-creds/`، و `codex-onboard/`، و `codex-respawn/`، و `codex-live/` (ملف حضور واحد متحقّق منه بالـ PID لكل codex session مُشرَف عليها وشغّالة، عشان الحساب الحي عمره ما يبقى هدف تبديل) |
+| `codex-*` | الـ Codex pool المتوازي: `codex-accounts.json`، و `codex-lastswap.json`، و `codex-lock`، و `codex-creds/`، و `codex-onboard/`، و `codex-respawn/`، و `codex-reconcile/` (إشارات cross-session بتطلب من supervisor بتاع session شقيقة إنه يعمل respawn على الحساب الحي)، و `codex-live/` (ملف حضور واحد متحقّق منه بالـ PID لكل codex session مُشرَف عليها وشغّالة، عشان الحساب الحي عمره ما يبقى هدف تبديل) |
 
-برّه مجلده الخاص، tokenmaxxing بيلمس بالظبط: `~/.claude.json` (تبديل `oauthAccount`)، و `settings.json` بتاع Claude Code (مدخلات الـ hook والـ statusline)، ومخزن الـ credential الحي (عنصر keychain `Claude Code-credentials` على macOS، و `.credentials.json` على Linux)، و `~/.claude.lock` (قفل التحديث بتاع claude، اللي بيتاخد أثناء التبديلات)، و `auth.json` و `hooks.json` بتوع codex، ووحدة الفحص الدوري في launchd أو systemd.
+برّه مجلده الخاص، tokenmaxxing بيلمس بالظبط: `~/.claude.json` (تبديل `oauthAccount`)، و `settings.json` بتاع Claude Code (مدخلات الـ hook والـ statusline)، ومخزن الـ credential الحي (عنصر keychain `Claude Code-credentials` على macOS، و `.credentials.json` على Linux)، وأقفال الـ refresh الخاصة بـ claude نفسه اللي بتتاخد أثناء التبديلات (القفل الأساسي `.oauth_refresh.lock` جوّه مجلد إعدادات claude، زائد الشقيق القديم `~/.claude.lock`)، و `auth.json` و `hooks.json` بتوع codex، ووحدة الفحص الدوري في launchd أو systemd.

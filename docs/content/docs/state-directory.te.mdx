@@ -12,7 +12,10 @@ description: "~/.config/tokenmaxxing కింద ఉన్న ప్రతి �
 | `usage.json` | statusline టీ యొక్క సమగ్ర విండో స్నాప్‌షాట్; దాని mtime ఫీడ్ యొక్క సజీవత హార్ట్‌బీట్ |
 | `model-usage.json` | `/usage` నుండి TTL-కాష్ చేసిన ప్రతి-మోడల్ వారపు పరిమితులు |
 | `lastswap.json` | చివరి మార్పిడి యొక్క ఎపోక్ టైమ్‌స్టాంప్; 45-సెకన్ల కూల్‌డౌన్‌ను నడిపిస్తుంది |
+| `depleted.json` | రికార్డు చేయబడిన ఖాళీ-పూల్ నిరీక్షణ, రీసెట్ దాటే వరకు, లైవ్ సీట్ కదిలే వరకు, లేదా ఏదైనా మార్పిడి పూర్తయ్యే వరకు సోదర హుక్‌లు దాన్ని మళ్లీ ప్లే చేస్తాయి |
 | `lock` | మార్పిడులను క్రమీకరించే `flock` ఫైల్ |
+| `serve-lock` | `xx serve` సింగిల్-ఇన్‌స్టాన్స్ ఫ్లాక్: మునుపటిది పూర్తిగా బయటకు వెళ్లే వరకు కొత్త డెమోన్ జనరేషన్ ఇక్కడ బ్లాక్ అవుతుంది |
+| `sessions/<session-id>.json` | సూపర్‌వైజర్ రీస్పాన్‌ల కోసం నిలిపి ఉంచే ప్రతి-నిర్వహిత-సెషన్ లాంచ్ ఫ్లాగ్‌లు; 30 రోజుల నిష్క్రియత తర్వాత తొలగించబడతాయి (claude స్వంత ట్రాన్‌స్క్రిప్ట్ నిలుపుదలతో సరిపోలుతుంది) |
 | `tokenmaxxing.log` | జోడించడం-మాత్రమే ఈవెంట్ లాగ్ |
 | `bin/` | PATH షిమ్‌లు: `claude`, `codex`, మరియు `tokenmaxxing` / `xx` ఎంట్రీ పాయింట్‌లు |
 | `respawn/<session-id>` | సూపర్‌వైజర్ గమనించే ఖాళీ-నిరీక్షణ రీస్పాన్ మార్కర్‌లు |
@@ -20,6 +23,6 @@ description: "~/.config/tokenmaxxing కింద ఉన్న ప్రతి �
 | `onboard/`, `sample/` | `add`/`auth` లాగిన్‌ల కోసం మరియు పార్క్ చేసిన-ఖాతా `/usage` ప్రోబ్‌ల కోసం విసిరివేయదగిన వేరుచేసిన కాన్ఫిగ్ హోమ్‌లు; ప్లెయిన్‌టెక్స్ట్ క్రెడెన్షియల్‌లను కలిగి ఉన్న onboard హోమ్‌లు సేకరణ తర్వాత తొలగించబడతాయి |
 | `slack.json` | `xx serve` టోకెన్‌లు మరియు ఛానెల్ లింక్‌లు (0600) |
 | `slack-threads/` | `xx serve` కోసం ప్రతి-థ్రెడ్ సెషన్ రికార్డులు |
-| `codex-*` | సమాంతర Codex పూల్: `codex-accounts.json`, `codex-lastswap.json`, `codex-lock`, `codex-creds/`, `codex-onboard/`, `codex-respawn/`, మరియు `codex-live/` (ప్రతి నడుస్తున్న సూపర్‌వైజ్డ్ codex సెషన్‌కు ఒక PID-ధృవీకరించిన ఉనికి ఫైల్, తద్వారా లైవ్ ఖాతా ఎప్పుడూ మార్పిడి లక్ష్యం కాదు) |
+| `codex-*` | సమాంతర Codex పూల్: `codex-accounts.json`, `codex-lastswap.json`, `codex-lock`, `codex-creds/`, `codex-onboard/`, `codex-respawn/`, `codex-reconcile/` (సోదర సెషన్ యొక్క సూపర్‌వైజర్‌ను లైవ్ ఖాతాపైకి రీస్పాన్ చేయమని అడిగే క్రాస్-సెషన్ సిగ్నల్‌లు), మరియు `codex-live/` (ప్రతి నడుస్తున్న సూపర్‌వైజ్డ్ codex సెషన్‌కు ఒక PID-ధృవీకరించిన ఉనికి ఫైల్, తద్వారా లైవ్ ఖాతా ఎప్పుడూ మార్పిడి లక్ష్యం కాదు) |
 
-తన స్వంత డైరెక్టరీ వెలుపల, tokenmaxxing సరిగ్గా వీటిని మాత్రమే తాకుతుంది: `~/.claude.json` (`oauthAccount` మార్పిడి), Claude Code యొక్క `settings.json` (హుక్ మరియు statusline ఎంట్రీలు), లైవ్ క్రెడెన్షియల్ స్టోర్ (macOS పై `Claude Code-credentials` కీచైన్ అంశం, Linux పై `.credentials.json`), `~/.claude.lock` (claude యొక్క రిఫ్రెష్ లాక్, మార్పిడుల సమయంలో తీసుకోబడుతుంది), codex యొక్క `auth.json` మరియు `hooks.json`, మరియు launchd లేదా systemdలో ఆవర్తన-తనిఖీ యూనిట్.
+తన స్వంత డైరెక్టరీ వెలుపల, tokenmaxxing సరిగ్గా వీటిని మాత్రమే తాకుతుంది: `~/.claude.json` (`oauthAccount` మార్పిడి), Claude Code యొక్క `settings.json` (హుక్ మరియు statusline ఎంట్రీలు), లైవ్ క్రెడెన్షియల్ స్టోర్ (macOS పై `Claude Code-credentials` కీచైన్ అంశం, Linux పై `.credentials.json`), మార్పిడుల సమయంలో తీసుకోబడే claude స్వంత రిఫ్రెష్ లాక్‌లు (claude కాన్ఫిగ్ డైరెక్టరీ లోపల ఉన్న ప్రాథమిక `.oauth_refresh.lock`, మరియు లెగసీ `~/.claude.lock` సోదరుడు), codex యొక్క `auth.json` మరియు `hooks.json`, మరియు launchd లేదా systemdలో ఆవర్తన-తనిఖీ యూనిట్.

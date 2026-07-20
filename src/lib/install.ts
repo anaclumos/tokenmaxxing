@@ -2,13 +2,13 @@
 // The wrapper is a 2-line `exec ... __supervise "$@"` shim so dispatch never
 // depends on argv0 semantics.
 
-import { appendFileSync, existsSync, mkdirSync, readFileSync, realpathSync, rmSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, realpathSync, rmSync, statSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { escape } from "es-toolkit";
 import { z } from "zod";
 import { codexPaths, HOME, paths } from "./paths.ts";
 import { writeFileAtomic } from "./atomic.ts";
-import { installedBin, installSettings, uninstallSettings } from "./settings.ts";
+import { installedBin, installSettings, isOurHookCommand, uninstallSettings } from "./settings.ts";
 import { resolveRealClaude } from "./claudebin.ts";
 
 const InstallOutcomeSchema = z.object({
@@ -84,19 +84,27 @@ function codexStopHookCommand(): string {
  *  preserving every other declaration. Codex skips new hooks until the user
  *  trusts them via /hooks (trust is recorded against the hook's hash), so the
  *  caller must surface that step. */
+/** Surgical WITHIN groups, ownership verified structurally (closing-review
+ *  catch, mirroring settings.ts's removeHook fix): the old whole-group filter
+ *  deleted a foreign hook the user had appended into our group - the natural
+ *  edit, since install writes exactly one group - and its includes() match
+ *  claimed any command merely mentioning the subcommand. */
+function withoutOurCodexStopHooks(groups: { hooks: { type?: string; command?: string }[] }[]): typeof groups {
+  return groups
+    .map((group) => ({ ...group, hooks: group.hooks.filter((hook) => !isOurHookCommand(hook.command ?? "", CODEX_STOP_HOOK_SUBCOMMAND)) }))
+    .filter((group) => group.hooks.length > 0);
+}
+
 export function installCodexStopHook(): void {
   const current = existsSync(codexPaths.hooksJson)
     ? CodexHooksFileSchema.parse(JSON.parse(readFileSync(codexPaths.hooksJson, "utf8")))
     : CodexHooksFileSchema.parse({});
-  const foreign = current.hooks.Stop.filter(
-    (group) => !group.hooks.some((hook) => hook.command?.includes(CODEX_STOP_HOOK_SUBCOMMAND)),
-  );
   const next = {
     ...current,
     hooks: {
       ...current.hooks,
       Stop: [
-        ...foreign,
+        ...withoutOurCodexStopHooks(current.hooks.Stop),
         { hooks: [{ type: "command", command: codexStopHookCommand(), timeout: 120, statusMessage: "tokenmaxxing switch check" }] },
       ],
     },
@@ -112,7 +120,7 @@ export function uninstallCodexStopHook(): void {
     ...current,
     hooks: {
       ...current.hooks,
-      Stop: current.hooks.Stop.filter((group) => !group.hooks.some((hook) => hook.command?.includes(CODEX_STOP_HOOK_SUBCOMMAND))),
+      Stop: withoutOurCodexStopHooks(current.hooks.Stop),
     },
   };
   writeFileAtomic(codexPaths.hooksJson, JSON.stringify(next, null, 2) + "\n");
@@ -329,10 +337,33 @@ const PATH_LINE_MARK = "# tokenmaxxing PATH";
  *  A pre-existing hand-added line for the bin dir also counts as present. */
 export function ensurePathInRc(rc: string): "added" | "present" {
   const dir = paths.binDir.startsWith(`${HOME}/`) ? `$HOME${paths.binDir.slice(HOME.length)}` : paths.binDir;
-  const current = existsSync(rc) ? readFileSync(rc, "utf8") : "";
-  if (current.includes(PATH_LINE_MARK) || current.includes(`${paths.binDir}:`) || current.includes(`${dir}:`)) return "present";
+  // Write through a dotfile-managed symlink, never over it: writeFileAtomic
+  // renames a sibling temp over its target, which would replace the link with
+  // a plain file while the dotfiles target keeps the stale line (PR #36
+  // second-round catch).
+  const target = existsSync(rc) ? realpathSync(rc) : rc;
+  const current = existsSync(target) ? readFileSync(target, "utf8") : "";
+  const isCurrentExport = (line: string) => line.includes(`${paths.binDir}:`) || line.includes(`${dir}:`);
+  const lines = current === "" ? [] : current.split("\n");
+  // A marked line for a DIFFERENT dir is removed even when the current dir is
+  // also exported: PATH prepends stack, so a stale marked line BELOW the
+  // current one would still win resolution - the recursion incident's exact
+  // vector (closing-review catch + PR #36 second-round catch). A bare marker
+  // check alone once kept such a line alive after a TOKENMAXXING_HOME
+  // relocation.
+  const kept = lines.filter((line) => isCurrentExport(line) || !line.includes(PATH_LINE_MARK));
+  if (kept.length !== lines.length) {
+    const body = kept.join("\n");
+    const sep0 = body === "" || body.endsWith("\n") ? "" : "\n";
+    const addition = kept.some(isCurrentExport) ? "" : `export PATH="${dir}:$PATH" ${PATH_LINE_MARK}\n`;
+    // preserve the rc's own mode: writeFileAtomic defaults to 0600, which
+    // would silently tighten a normally 0644 shell rc (PR #36 review catch)
+    writeFileAtomic(target, `${body}${sep0}${addition}`, statSync(target).mode & 0o777);
+    return "added";
+  }
+  if (lines.some(isCurrentExport)) return "present";
   const sep = current === "" || current.endsWith("\n") ? "" : "\n";
-  appendFileSync(rc, `${sep}export PATH="${dir}:$PATH" ${PATH_LINE_MARK}\n`);
+  appendFileSync(target, `${sep}export PATH="${dir}:$PATH" ${PATH_LINE_MARK}\n`);
   return "added";
 }
 
@@ -379,10 +410,13 @@ export function findClaudeShadowers(rcText: string): ShellShadower[] {
  *  one behind (closing-review catch). Returns true when a line was removed. */
 export function removePathFromRc(rc: string): boolean {
   if (!existsSync(rc)) return false;
-  const lines = readFileSync(rc, "utf8").split("\n");
+  // same symlink + mode treatment as ensurePathInRc: write through a
+  // dotfile-managed link, keep the rc's own permissions (PR #36 catches)
+  const target = realpathSync(rc);
+  const lines = readFileSync(target, "utf8").split("\n");
   const kept = lines.filter((line) => !line.includes(PATH_LINE_MARK));
   if (kept.length === lines.length) return false;
-  writeFileAtomic(rc, kept.join("\n"));
+  writeFileAtomic(target, kept.join("\n"), statSync(target).mode & 0o777);
   return true;
 }
 

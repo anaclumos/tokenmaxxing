@@ -25,9 +25,10 @@ process.env.TOKENMAXXING_HOME = join(base, "home");
 process.env.CLAUDE_CONFIG_DIR = join(base, "claudedir");
 process.env.TOKENMAXXING_CLAUDE_JSON = join(base, "claude.json");
 process.env.TOKENMAXXING_KEYCHAIN_SERVICE = LIVE_SVC;
-// pid-derived like test/setup.ts: a fixed port once collided with a
-// concurrent `bun test` run's mock server.
-const MOCK_PORT = 20000 + (process.pid % 20000);
+// pid-derived like test/setup.ts but in a DISJOINT range (50000+): the suite
+// occupies 20000-49999 (stride-2 pairs), so an e2e run can never collide with
+// any concurrent suite run's ports.
+const MOCK_PORT = 50000 + (process.pid % 15000);
 process.env.TOKENMAXXING_OAUTH_TOKEN_URL = `http://127.0.0.1:${MOCK_PORT}/token`;
 process.env.TOKENMAXXING_OAUTH_ROLES_URL = `http://127.0.0.1:${MOCK_PORT}/roles`;
 process.env.NO_COLOR = "1";

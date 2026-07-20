@@ -8,6 +8,8 @@ description: "config.json 嗰结构、阈值搭策略旋钮。"
 ```json
 {
   "thresholds": { "session": 95, "weekly": 98 },
+  "claudeBin": "/path/to/real/claude",
+  "codexBin": "/path/to/real/codex",
   "policy": {
     "projectionMargin": 0,
     "greedySessionFloor": 50,
@@ -18,7 +20,8 @@ description: "config.json 嗰结构、阈值搭策略旋钮。"
 }
 ```
 
-- `thresholds.session` / `thresholds.weekly`：上头讲过嗰筛选阈值。
+- `thresholds.session` / `thresholds.weekly`：[切换是哪能决定嗰](/wuu/switching)里向讲过嗰筛选阈值。
+- `claudeBin` / `codexBin`：钉牢 supervisor 起动嗰真身二进制（勒 `init` / `init --codex` 辰光写落嗰；辰光递归防护嗰诊断讲侬去修 `claudeBin`，就是伊勿再指牢真嗰 Claude 二进制嗰辰光）。
 - `policy.projectionMargin`：从两条阈值里向减脱，得出有效阈值。
 - `policy.greedySessionFloor`：贪心收敛开始运作嗰会话已用百分比。
 - `policy.switchModels`：哪几个模型系列嗰分模型礼拜上限会给切换把关（条目加载嗰辰光会转成小写）。

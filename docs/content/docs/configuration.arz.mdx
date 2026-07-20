@@ -8,6 +8,8 @@ description: "schema بتاع config.json، والعتبات، ومفاتيح ا
 ```json
 {
   "thresholds": { "session": 95, "weekly": 98 },
+  "claudeBin": "/path/to/real/claude",
+  "codexBin": "/path/to/real/codex",
   "policy": {
     "projectionMargin": 0,
     "greedySessionFloor": 50,
@@ -18,7 +20,8 @@ description: "schema بتاع config.json، والعتبات، ومفاتيح ا
 }
 ```
 
-- `thresholds.session` / `thresholds.weekly`: شرايط الفرز الموصوفة فوق.
+- `thresholds.session` / `thresholds.weekly`: شرايط الفرز الموصوفة في [إزاي التبديل بيتقرر](/arz/switching).
+- `claudeBin` / `codexBin`: بيثبّتوا على الـ binaries الحقيقية اللي الـ supervisors بتشغّلها (بتتكتب من `init` / `init --codex`؛ تشخيص حارس التكرار بيقولك تصلّح `claudeBin` هنا لما يبطّل يشاور على الـ Claude binary الحقيقي).
 - `policy.projectionMargin`: بيتطرح من الشرطين عشان يكوّن الشرايط الفعّالة.
 - `policy.greedySessionFloor`: نسبة استخدام الـ session اللي عندها التقارب الـ greedy بينخرط.
 - `policy.switchModels`: عيلات الموديلات اللي حدها الأسبوعي لكل موديل بيبوّب التبديل (المدخلات بتتحول لحروف صغيرة عند التحميل).

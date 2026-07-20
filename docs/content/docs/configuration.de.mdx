@@ -8,6 +8,8 @@ Die Konfiguration ist JSON unter `~/.config/tokenmaxxing/config.json`. Jedes Fel
 ```json
 {
   "thresholds": { "session": 95, "weekly": 98 },
+  "claudeBin": "/path/to/real/claude",
+  "codexBin": "/path/to/real/codex",
   "policy": {
     "projectionMargin": 0,
     "greedySessionFloor": 50,
@@ -18,7 +20,8 @@ Die Konfiguration ist JSON unter `~/.config/tokenmaxxing/config.json`. Jedes Fel
 }
 ```
 
-- `thresholds.session` / `thresholds.weekly`: die oben beschriebenen Screening-Schranken.
+- `thresholds.session` / `thresholds.weekly`: die in [Wie der Wechsel entscheidet](/de/switching) beschriebenen Screening-Schranken.
+- `claudeBin` / `codexBin`: pinnt auf die ECHTEN Binaries, die die Supervisoren starten (geschrieben von `init` / `init --codex`; die Rekursionsschutz-Diagnose weist Sie darauf hin, hier `claudeBin` zu korrigieren, wenn es nicht mehr auf die echte Claude-Binary zeigt).
 - `policy.projectionMargin`: von beiden Schranken abgezogen, um die effektiven Schranken zu bilden.
 - `policy.greedySessionFloor`: der Sitzungsnutzungsprozentsatz, bei dem die greedy-Konvergenz greift.
 - `policy.switchModels`: Modellfamilien, deren wöchentliche Pro-Modell-Obergrenze einen Wechsel gated (Einträge werden beim Laden kleingeschrieben).

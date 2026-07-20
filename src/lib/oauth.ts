@@ -8,12 +8,16 @@
 //      live to answer HTTP 200 with plain Bearer auth (with or without the
 //      oauth beta header - we send it to match the CLI's OAuth convention).
 
+import { z } from "zod";
 import { http, safeErrorDetail } from "./http.ts";
 import { RefreshResponseSchema, RolesResponseSchema, type OAuthCreds, type RolesResponse } from "./types.ts";
 
-const TOKEN_URL = process.env.TOKENMAXXING_OAUTH_TOKEN_URL ?? "https://platform.claude.com/v1/oauth/token";
-const CLIENT_ID = process.env.TOKENMAXXING_OAUTH_CLIENT_ID ?? "9d1c250a-e61b-44d9-88ed-5944d1962f5e";
-const ROLES_URL = process.env.TOKENMAXXING_OAUTH_ROLES_URL ?? "https://api.anthropic.com/api/oauth/claude_cli/roles";
+// zod-parsed like every other env override (repo rule): a set-but-EMPTY value
+// parses to undefined and the default applies, instead of posting to "".
+const EnvOverrideSchema = z.string().min(1).optional().catch(undefined);
+const TOKEN_URL = EnvOverrideSchema.parse(process.env.TOKENMAXXING_OAUTH_TOKEN_URL) ?? "https://platform.claude.com/v1/oauth/token";
+const CLIENT_ID = EnvOverrideSchema.parse(process.env.TOKENMAXXING_OAUTH_CLIENT_ID) ?? "9d1c250a-e61b-44d9-88ed-5944d1962f5e";
+const ROLES_URL = EnvOverrideSchema.parse(process.env.TOKENMAXXING_OAUTH_ROLES_URL) ?? "https://api.anthropic.com/api/oauth/claude_cli/roles";
 
 const DEFAULT_SCOPES = [
   "user:profile",

@@ -8,3 +8,4 @@ description: "ከተሰባሰበ hot-swapping ጋር የሚመጡ ማካካሻ�
 - **የመቀበል መዘግየት።** በ macOS ላይ ከመቀያየር በ~30 ሰከንድ ውስጥ ያለው የመጀመሪያ turn አሁንም አሮጌውን መለያ ሊለካ ይችላል፤ የ barዎቹ ክፍተት ይይዘዋል።
 - **የተጋራ የፍንዳታ ራዲየስ።** ሁሉም default-profile sessionዎች አንድ ቀጥታ credential ይጋራሉ፣ ስለዚህ መቀያየር ሁሉንም አብሮ ያንቀሳቅሳል (እያንዳንዱ በቦታው ይቀበላል)።
 - **በ Linux ላይ plaintext credentialዎች።** Claude Code ራሱ የ Linux credentialዎችን እንደ 0600 plaintext ፋይል ያከማቻል፤ የ tokenmaxxing የተያዙ ቅጂዎች ተመሳሳዩን ሞዴል ይከተላሉ።
+- **በ-host አንድ pool ብቻ።** በበርካታ ማሽኖች ላይ ተመሳሳይ መለያዎችን pool ማድረግ ይሰራል፣ ነገር ግን እያንዳንዱ host tokenዎችን በተናጠል ይይዛል እና ያሽከረክራል፣ cross-host lock ሳይኖር፦ ሁለት hostዎች የተመሳሳይ መለያ token ን በተመሳሳይ ጊዜ ሲያድሱ ይወዳደራሉ፣ እና ለ Codex ከአሮጌ የተያዘ ቅጂ ማደስ ለዚያ login ገዳይ ነው (OpenAI በ refresh-token ድጋሚ አጠቃቀም ጊዜ ሙሉውን grant family ውድቅ ያደርጋል፣ በእያንዳንዱ host ላይ `auth` ን አስገዳጅ ያደርጋል)። አንድን መለያ በአንድ በላይ ማሽን ላይ pool ካደረግህ፣ በ Claude ላይ አልፎ አልፎ የ re-auth መንቀጥቀጥ ጠብቅ እና ለ Codex ደግሞ ሙሉ በሙሉ አስወግደው።

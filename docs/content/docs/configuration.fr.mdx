@@ -8,6 +8,8 @@ La configuration est du JSON dans `~/.config/tokenmaxxing/config.json`. Chaque c
 ```json
 {
   "thresholds": { "session": 95, "weekly": 98 },
+  "claudeBin": "/path/to/real/claude",
+  "codexBin": "/path/to/real/codex",
   "policy": {
     "projectionMargin": 0,
     "greedySessionFloor": 50,
@@ -18,7 +20,8 @@ La configuration est du JSON dans `~/.config/tokenmaxxing/config.json`. Chaque c
 }
 ```
 
-- `thresholds.session` / `thresholds.weekly` : les barres de filtrage décrites ci-dessus.
+- `thresholds.session` / `thresholds.weekly` : les barres de filtrage décrites dans [Comment la bascule décide](/fr/switching).
+- `claudeBin` / `codexBin` : épingle les VRAIS binaires que les superviseurs lancent (écrit par `init` / `init --codex` ; le diagnostic du garde-fou anti-récursion vous dit de corriger `claudeBin` ici quand il ne pointe plus vers le vrai binaire Claude).
 - `policy.projectionMargin` : soustrait des deux barres pour former les barres effectives.
 - `policy.greedySessionFloor` : pourcentage de session utilisé auquel la convergence gloutonne s'engage.
 - `policy.switchModels` : familles de modèles dont le plafond hebdomadaire par modèle verrouille une bascule (les entrées sont mises en minuscules au chargement).

@@ -8,6 +8,8 @@ Usanidi ni JSON katika `~/.config/tokenmaxxing/config.json`. Kila uga ni wa hiar
 ```json
 {
   "thresholds": { "session": 95, "weekly": 98 },
+  "claudeBin": "/path/to/real/claude",
+  "codexBin": "/path/to/real/codex",
   "policy": {
     "projectionMargin": 0,
     "greedySessionFloor": 50,
@@ -18,7 +20,8 @@ Usanidi ni JSON katika `~/.config/tokenmaxxing/config.json`. Kila uga ni wa hiar
 }
 ```
 
-- `thresholds.session` / `thresholds.weekly`: baa za uchujaji zilizoelezwa hapo juu.
+- `thresholds.session` / `thresholds.weekly`: baa za uchujaji zilizoelezwa katika [Jinsi ubadilishaji unavyoamua](/sw/switching).
+- `claudeBin` / `codexBin`: hupachika kwenye faili za kutekeleza HALISI ambazo wasimamizi huzalisha (huandikwa na `init` / `init --codex`; utambuzi wa kinga ya urejeleaji hukuambia urekebishe `claudeBin` hapa pale isipoelekeza tena kwenye faili halisi ya Claude).
 - `policy.projectionMargin`: hutolewa kutoka kwa baa zote mbili kuunda baa zinazotumika.
 - `policy.greedySessionFloor`: asilimia ya kikao kilichotumika ambapo muungano wa greedy hujihusisha.
 - `policy.switchModels`: familia za miundo ambazo kikomo chao cha kila wiki cha kila muundo hulinda ubadilishaji (viingizo hufanywa herufi ndogo wakati wa kupakia).

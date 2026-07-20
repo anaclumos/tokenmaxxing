@@ -12,7 +12,10 @@ Everything dey live under `~/.config/tokenmaxxing/` (you fit override am with `T
 | `usage.json` | The statusline tee im aggregate window snapshot; im mtime na the feed im liveness heartbeat |
 | `model-usage.json` | TTL-cached per-model weekly caps from `/usage` |
 | `lastswap.json` | Epoch timestamp of the last swap; e dey drive the 45-second cooldown |
+| `depleted.json` | The depleted-pool wait wey dem record, wey sibling hooks dey replay until the reset pass, the live seat move, or any swap complete |
 | `lock` | The `flock` file wey dey serialize swaps |
+| `serve-lock` | The `xx serve` single-instance flock: one new daemon generation go block for here until the previous one don finish exit well well |
+| `sessions/<session-id>.json` | Per-managed-session launch flags wey the supervisor dey persist for respawns; dem dey prune am after 30 days idle (e dey match claude im own transcript retention) |
 | `tokenmaxxing.log` | Append-only event log |
 | `bin/` | The PATH shims: `claude`, `codex`, and the `tokenmaxxing` / `xx` entry points |
 | `respawn/<session-id>` | Depleted-wait respawn markers wey the supervisor dey watch |
@@ -20,6 +23,6 @@ Everything dey live under `~/.config/tokenmaxxing/` (you fit override am with `T
 | `onboard/`, `sample/` | Throwaway isolated config homes for `add`/`auth` logins and parked-account `/usage` probes; onboard homes wey dey hold plaintext credentials dem dey delete after harvest |
 | `slack.json` | `xx serve` tokens and channel links (0600) |
 | `slack-threads/` | Per-thread session records for `xx serve` |
-| `codex-*` | The parallel Codex pool: `codex-accounts.json`, `codex-lastswap.json`, `codex-lock`, `codex-creds/`, `codex-onboard/`, `codex-respawn/`, and `codex-live/` (one PID-validated presence file per running supervised codex session, so a live account no be ever swap target) |
+| `codex-*` | The parallel Codex pool: `codex-accounts.json`, `codex-lastswap.json`, `codex-lock`, `codex-creds/`, `codex-onboard/`, `codex-respawn/`, `codex-reconcile/` (cross-session signals wey dey ask one sibling session im supervisor make e respawn go land for the live account), and `codex-live/` (one PID-validated presence file per running supervised codex session, so a live account no be ever swap target) |
 
-Outside im own directory, tokenmaxxing dey touch exactly: `~/.claude.json` (the `oauthAccount` swap), Claude Code im `settings.json` (the hook and statusline entries), the live credential store (the `Claude Code-credentials` keychain item for macOS, `.credentials.json` for Linux), `~/.claude.lock` (claude im refresh lock, wey dem take during swaps), codex im `auth.json` and `hooks.json`, and the periodic-check unit for launchd or systemd.
+Outside im own directory, tokenmaxxing dey touch exactly: `~/.claude.json` (the `oauthAccount` swap), Claude Code im `settings.json` (the hook and statusline entries), the live credential store (the `Claude Code-credentials` keychain item for macOS, `.credentials.json` for Linux), claude im own refresh locks wey dem take during swaps (the primary `.oauth_refresh.lock` wey dey inside claude im config dir, plus the legacy `~/.claude.lock` sibling), codex im `auth.json` and `hooks.json`, and the periodic-check unit for launchd or systemd.

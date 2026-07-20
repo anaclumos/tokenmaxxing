@@ -8,6 +8,8 @@ Config በ `~/.config/tokenmaxxing/config.json` JSON ነው። እያንዳን�
 ```json
 {
   "thresholds": { "session": 95, "weekly": 98 },
+  "claudeBin": "/path/to/real/claude",
+  "codexBin": "/path/to/real/codex",
   "policy": {
     "projectionMargin": 0,
     "greedySessionFloor": 50,
@@ -18,7 +20,8 @@ Config በ `~/.config/tokenmaxxing/config.json` JSON ነው። እያንዳን�
 }
 ```
 
-- `thresholds.session` / `thresholds.weekly`፦ ከላይ የተገለጹት screening barዎች።
+- `thresholds.session` / `thresholds.weekly`፦ በ[መቀያየር እንዴት እንደሚወሰን](/am/switching) የተገለጹት screening barዎች።
+- `claudeBin` / `codexBin`፦ supervisorዎቹ የሚያስነሱትን ትክክለኛ binaryዎች ይሰካል (በ `init` / `init --codex` የተጻፈ፤ `claudeBin` እዚህ ወደ እውነተኛው Claude binary ማመልከቱን ሲያቆም recursion-guard ምርመራው እዚህ እንድታስተካክለው ይነግርሃል)።
 - `policy.projectionMargin`፦ ተግባራዊ barዎችን ለመፍጠር ከሁለቱም barዎች ይቀነሳል።
 - `policy.greedySessionFloor`፦ greedy convergence የሚሳተፍበት session-የተጠቀመ መቶኛ።
 - `policy.switchModels`፦ በ-ሞዴል ሳምንታዊ ገደባቸው መቀያየርን የሚገድብ የሞዴል ቤተሰቦች (ግቤቶች በ load ጊዜ ወደ ትንንሽ ፊደላት ይቀየራሉ)።

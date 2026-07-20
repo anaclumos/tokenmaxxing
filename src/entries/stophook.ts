@@ -14,7 +14,11 @@ import { evaluateAndMaybeSwap } from "../lib/decide.ts";
 import { RespawnMarkerSchema } from "../lib/types.ts";
 import { log } from "../lib/log.ts";
 
-const StopStdin = z.looseObject({ session_id: z.string().optional() });
+// session_id must be a real transcript UUID: a malformed value would ride the
+// respawn marker into `--resume <garbage>`, which claude treats as a picker
+// search term (PR #36 review catch); non-UUID input drops to undefined and the
+// marker falls back to the pinned sid.
+const StopStdin = z.looseObject({ session_id: z.uuid().optional().catch(undefined) });
 
 async function readStdin(): Promise<string> {
   const chunks: Uint8Array[] = [];
@@ -28,23 +32,33 @@ export async function runStopHook(): Promise<number> {
 
   const raw = await readStdin();
   const parsed = StopStdin.safeParse((() => { try { return JSON.parse(raw); } catch { return {}; } })());
-  const sessionId =
-    (parsed.success ? parsed.data.session_id : undefined) ?? process.env.TOKENMAXXING_SESSION_ID;
+  // TWO session ids with different jobs (closing-review HIGH catch): the
+  // PINNED id (env, set once by the supervisor) names the marker file the
+  // supervisor actually watches and survives /clear; the STDIN id names the
+  // CURRENT transcript to resume and drifts to a new value after /clear.
+  // Keying the file by the stdin id orphaned every post-/clear marker.
+  const stdinSid = parsed.success ? parsed.data.session_id : undefined;
+  const pinnedSid = process.env.TOKENMAXXING_SESSION_ID;
 
   try {
     // Anticipatory depleted swaps are only sane when the respawn marker below
     // will actually pause the session until the reset.
-    const canPause = process.env.TOKENMAXXING_SUPERVISED === "1" && sessionId != null;
+    const canPause = process.env.TOKENMAXXING_SUPERVISED === "1" && pinnedSid != null;
     const decision = await evaluateAndMaybeSwap(Date.now(), canPause);
     if (decision.account && (decision.swapped || decision.waitUntil !== undefined)) {
       log(decision.swapped ? "stop.swapped" : "stop.wait", { account: decision.account.accountUuid.slice(0, 8), waitUntil: decision.waitUntil });
       // Respawn only for a depleted-pool wait: pausing until the reset requires
       // killing the child. A plain swap leaves the session running to adopt.
-      if (decision.waitUntil !== undefined && process.env.TOKENMAXXING_SUPERVISED === "1" && sessionId) {
-        const marker = join(paths.respawnDir, sessionId);
-        const payload = RespawnMarkerSchema.parse({ account: decision.account.label, ts: Date.now(), waitUntil: decision.waitUntil });
+      if (decision.waitUntil !== undefined && canPause && pinnedSid) {
+        const marker = join(paths.respawnDir, pinnedSid);
+        const payload = RespawnMarkerSchema.parse({
+          account: decision.account.label,
+          ts: Date.now(),
+          waitUntil: decision.waitUntil,
+          sessionId: stdinSid ?? pinnedSid,
+        });
         writeFileAtomic(marker, JSON.stringify(payload));
-        log("stop.marker", { session: sessionId.slice(0, 8) });
+        log("stop.marker", { session: (stdinSid ?? pinnedSid).slice(0, 8) });
       }
     }
   } catch (e) {

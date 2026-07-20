@@ -23,15 +23,22 @@ const PresenceSchema = z.object({
   startedAt: z.string(),
 });
 
-export function writeCodexPresence(input: { supervisorId: string; accountId: string }): void {
-  const startedAt = pidStartTime(process.pid);
-  // Our own pid must exist; a null here means ps itself broke - corrupt state
-  // to fail loudly on, never a masked placeholder.
-  if (startedAt == null) throw new Error("could not read this process's own start time (ps lstart) - refusing to write an unverifiable presence file");
+/** `pid` should be the CODEX CHILD's pid when known (the supervisor passes
+ *  it): the session IS the child, and pinning the supervisor's own pid let a
+ *  SIGKILLed supervisor prune the presence while its orphaned codex kept
+ *  running and rotating the account's token - un-benching a live account for
+ *  samplers and the picker (closing-review catch). Defaults to process.pid
+ *  for callers that ARE the session-owning process (tests, future uses). */
+export function writeCodexPresence(input: { supervisorId: string; accountId: string; pid?: number }): void {
+  const pid = input.pid ?? process.pid;
+  const startedAt = pidStartTime(pid);
+  // The pid must be ps-visible; a null here means ps broke or the process
+  // already died - corrupt state to fail loudly on, never a masked placeholder.
+  if (startedAt == null) throw new Error(`could not read pid ${pid}'s start time (ps lstart) - refusing to write an unverifiable presence file`);
   mkdirSync(codexPaths.presenceDir, { recursive: true });
   writeFileAtomic(
     join(codexPaths.presenceDir, input.supervisorId),
-    JSON.stringify(PresenceSchema.parse({ accountId: input.accountId, pid: process.pid, startedAt })),
+    JSON.stringify(PresenceSchema.parse({ accountId: input.accountId, pid, startedAt })),
   );
 }
 
