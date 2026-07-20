@@ -1,0 +1,27 @@
+README.md
+  s_eaf36da1edfe18::t_c0a9d1e3f1c73f 51
+src/cli/codexrm.ts
+  s_eaf36da1edfe18::t_7691674329e218 9
+  s_eaf36da1edfe18::t_e17671a529158c 43
+src/entries/supervisor.ts
+  s_eaf36da1edfe18::t_b48cae9bc7b7df 168-171
+src/lib/codexauth.ts
+  s_eaf36da1edfe18::t_2e2734aa7ce82c 7
+  s_eaf36da1edfe18::t_228078f1028aad 68-74
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "6bda40855912e416b6fa2b6c29c4db36ea520b7a",
+  "prompts": {},
+  "sessions": {
+    "s_eaf36da1edfe18": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "085f0c3d-1bd0-4a58-8930-8dfdcf1a0376",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    }
+  }
+}
