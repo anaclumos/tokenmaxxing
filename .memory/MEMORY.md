@@ -21,7 +21,7 @@
 
 - [Live pool runs need permission](live-pool-runs-need-permission.md) - ask before any run that meters quota or starts a session window on real accounts; hermetic tests + free /usage reads only by default
 
-- [tokenmaxxing project goal](tokenmaxxing-project.md) - CLI pooling Claude Code/Codex accounts, hot-swap on quota; npm name owned by user (anaclumos); latest ship: 1.0.0 RELEASED 2026-07-20 (PR #37, npm-verified; closes the 14 confirmed unhinted-adversarial-review findings - Codex-RUNTIME review still owed after Jul 25), after 0.21.0 the same day; .memory git-tracked since 2026-07-18
+- [tokenmaxxing project goal](tokenmaxxing-project.md) - CLI pooling Claude Code/Codex accounts, hot-swap on quota; npm name owned by user (anaclumos); latest ship: 1.0.1 RELEASED 2026-07-20 (PRs #38+#39, npm-verified; Slack manifest agent_view object shape + codex device-auth login default - Codex-RUNTIME review still owed after Jul 25); .memory git-tracked since 2026-07-18
 - [CC/Codex auth mechanics](cc-codex-auth-mechanics.md) - verified keychain/CODEX_HOME/quota internals both CLIs depend on; see DESIGN.md §2
 - [Per-model weekly caps](cc-per-model-limits.md) - per-model weekly limits exist only for Sonnet and Fable, no Opus-only quota (user 2026-07-12); only Fable gates a switch ("fable=switch, sonnet=ok")
 - [ARM Linux host](linux-arm-host.md) - the owner's Pi: the Linux test box; claude 2.1.207, 4-account pool, tokenmaxxing 0.6.1
