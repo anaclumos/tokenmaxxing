@@ -363,9 +363,12 @@ export function buildServeRuntime(seam: {
       // exists to detect. Outside a drain, or on success, clear it.
       // An announced drop is TERMINAL: relayThread told the user to resend, so
       // retaining the marker would replay work the drop notice disclaimed
-      // (duplicate turns, quota, side effects). null outcome = relay threw =
+      // (duplicate turns, quota, side effects). A turn whose child reached a
+      // SUCCESSFUL result is also terminal even when failed (that failure is
+      // Slack delivery, not a killed child - resuming would re-run completed
+      // work; adversarial-review catch). null outcome = relay threw =
       // still presumed killed.
-      const presumedKilled = draining && (outcome === null || (outcome.failed && !outcome.announcedDrop));
+      const presumedKilled = draining && (outcome === null || (outcome.failed && !outcome.announcedDrop && !outcome.resultReceived));
       // An unannounced drop OUTSIDE a drain still clears the marker on
       // purpose (retention would re-execute the turn at the next restart; see
       // notifyDelivered's doc) - but the loss must be operator-visible.
@@ -730,8 +733,14 @@ async function runDaemon(): Promise<number> {
     // expiry is SILENT (chat 4.34.0 has no app callback for it), so the TTL
     // must outlast the longest legitimate hold: a depleted-pool park
     // (PARK_MAX_MS 14min) plus a long claude turn. Expired-and-folded beats
-    // silently-vanished, hence a full hour.
-    concurrency: { strategy: "queue", queueEntryTtlMs: 3_600_000 },
+    // silently-vanished, hence a full hour. maxQueueSize matters for the same
+    // reason: the SDK default is 10 with a LOG-LESS drop-oldest trim
+    // (@chat-adapter/state-memory enqueue splices the front, and the SDK's
+    // message-dropped log only fires for drop-newest), so a >10-message burst
+    // behind one long turn silently ate the oldest instructions
+    // (adversarial-review catch). 100 outlasts any legitimate burst; the TTL
+    // stays the real bound.
+    concurrency: { strategy: "queue", queueEntryTtlMs: 3_600_000, maxQueueSize: 100 },
     // without this a cards-only segment in post-and-edit fallback would
     // strand a bare "..." placeholder message.
     fallbackStreamingPlaceholderText: null,

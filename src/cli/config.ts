@@ -160,6 +160,21 @@ function cmdUnset(key: string): number {
   const next = structuredClone(raw);
   unset(next, key);
   pruneEmptyParents(next);
+  // Same merged-whole gate as `set` (adversarial-review catch): removing one
+  // override shifts the merged value back to its default, and the
+  // projectionMargin-vs-thresholds refine can fail on the RESULT even though
+  // every remaining field is individually valid - writing that file would make
+  // every later loadConfig throw, bricking status/switch/hooks/statusline.
+  const validated = ConfigFileSchema.safeParse(next);
+  if (!validated.success) {
+    console.error(c.red(`rejected: ${validated.error.issues.map((issue) => `${issue.path.join(".")}: ${issue.message}`).join("; ")}`));
+    return 1;
+  }
+  const mergedCheck = mergeConfigFile(validated.data);
+  if (!mergedCheck.ok) {
+    console.error(c.red(`rejected: ${mergedCheck.detail} (adjust the conflicting override before unsetting ${key})`));
+    return 1;
+  }
   writeRawFile({ raw: next });
   console.log(`${key} unset -> ${JSON.stringify(get(loadConfig(), key))} (default)`);
   return 0;

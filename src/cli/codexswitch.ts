@@ -32,7 +32,11 @@ export async function cmdCodexSwitch(sel?: string): Promise<number> {
     }
     const currentId = liveCodexAccountId();
 
-    if (sel !== undefined) {
+    // truthiness on purpose, mirroring the claude switch: an EMPTY selector
+    // must mean "no selector" - `startsWith("")` matches every account, so
+    // `sel !== undefined` let `xx switch --codex ""` swap onto the first
+    // account (adversarial-review catch)
+    if (sel) {
       const target = index.accounts.find(
         (account) => account.label === sel || account.email === sel || account.accountId.startsWith(sel),
       );

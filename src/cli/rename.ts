@@ -39,6 +39,14 @@ async function renameCodexAccount(input: { selector: string; newLabel: string })
       console.error(c.red(`no codex account matches "${input.selector}"`));
       return 1;
     }
+    // labels resolve selectors first-match: a duplicate would make the other
+    // account unreachable by label and misdirect destructive commands like
+    // `rm` onto the wrong one (adversarial-review catch)
+    const taken = index.accounts.find((x) => x.accountId !== account.accountId && x.label === input.newLabel);
+    if (taken) {
+      console.error(c.red(`label "${input.newLabel}" is already used by ${taken.accountId.slice(0, 8)} - labels must be unique within the pool`));
+      return 1;
+    }
     const old = account.label;
     account.label = input.newLabel;
     saveCodexAccounts({ index });
@@ -61,6 +69,14 @@ export async function cmdRename(argv: string[]): Promise<number> {
     const a = findAccount(idx.accounts, selector);
     if (!a) {
       console.error(c.red(`no claude account matches "${selector}" (codex accounts rename via --codex)`));
+      return 1;
+    }
+    // labels resolve selectors first-match: a duplicate would make the other
+    // account unreachable by label and misdirect destructive commands like
+    // `rm` onto the wrong one (adversarial-review catch)
+    const taken = idx.accounts.find((x) => x.accountUuid !== a.accountUuid && x.label === newLabel);
+    if (taken) {
+      console.error(c.red(`label "${newLabel}" is already used by ${taken.email} - labels must be unique within the pool`));
       return 1;
     }
     const old = a.label;

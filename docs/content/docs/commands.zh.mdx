@@ -21,5 +21,5 @@ description: "每一个 tokenmaxxing 命令及其作用"
 | `tokenmaxxing serve [setup\|link\|unlink\|links]` | Slack 桥接守护进程（Socket Mode，无需公网 URL） |
 | `tokenmaxxing doctor` | 校验监督进程和设置条目是否仍然存在 |
 | `tokenmaxxing rename [--codex] <sel> <label>` | 重新标注池内账户 |
-| `tokenmaxxing rm <sel>` | 从池中移除账户 |
+| `tokenmaxxing rm [--codex] <sel>` | 从 claude 或 codex 池中移除账户（及其已保存的凭证） |
 | `tokenmaxxing uninstall` | 移除监督进程和设置条目（账户与凭证会保留） |
