@@ -372,7 +372,7 @@ describe("evaluateAndMaybeSwap headless snapshot handling", () => {
     // mark B needs-reauth and pre-park onto C, never abort into all-depleted.
     const now = Date.now();
     const server = Bun.serve({
-      port: 8791,
+      port: Number(new URL(process.env.TOKENMAXXING_OAUTH_ROLES_URL!).port),
       fetch: async (req) => {
         const body = await req.json();
         const rt = body != null && body instanceof Object && "refresh_token" in body ? body.refresh_token : null;

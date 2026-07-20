@@ -121,6 +121,14 @@ describe("account picker", () => {
     const b = acct({ accountUuid: "B", lastUsage: { fiveHour: { usedPercentage: 10, resetsAt: null }, sevenDay: { usedPercentage: 20, resetsAt: null } } });
     expect(pickBest([a, b], { now, thresholds: T, currentAccountUuid: null, switchFamilies: [] })?.accountUuid).toBe("B");
   });
+  test("unmeasured ranks LAST in the usage tiebreak: any measured account beats a never-sampled one", () => {
+    // `?? 0` once made a never-sampled account look maximally safe and win
+    // this tiebreak against any measured account (closing-review catch:
+    // unmeasured must not look safe).
+    const measured = acct({ accountUuid: "M", lastUsage: { fiveHour: { usedPercentage: 10, resetsAt: null }, sevenDay: { usedPercentage: 80, resetsAt: null } } });
+    const unmeasured = acct({ accountUuid: "U" });
+    expect(pickBest([unmeasured, measured], { now, thresholds: T, currentAccountUuid: null, switchFamilies: [] })?.accountUuid).toBe("M");
+  });
   test("weeklyExpiry: future passes through, stale past extrapolates by weeks, unknown is Infinity", () => {
     const future = acct({ lastUsage: { fiveHour: { usedPercentage: 0, resetsAt: null }, sevenDay: { usedPercentage: 0, resetsAt: now + 5_000 } } });
     const stale = acct({ lastUsage: { fiveHour: { usedPercentage: 0, resetsAt: null }, sevenDay: { usedPercentage: 0, resetsAt: now - 10_000 } } });

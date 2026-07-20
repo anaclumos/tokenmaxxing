@@ -25,9 +25,13 @@ const blob = (org: string) =>
 let rolesMode: "down" | "mismatch" = "down";
 let server: ReturnType<typeof Bun.serve> | null = null;
 
+/** Idempotent: every test needing the endpoint calls this itself (isolation
+ *  and any-order safety, closing-review catch); the first test needs the
+ *  server ABSENT, hence not beforeAll. */
 function startServer(): void {
+  if (server) return;
   server = Bun.serve({
-    port: 8791,
+    port: Number(new URL(process.env.TOKENMAXXING_OAUTH_ROLES_URL!).port),
     hostname: "127.0.0.1",
     fetch(req) {
       const url = new URL(req.url);
@@ -67,6 +71,7 @@ describe("parked identity check severity", () => {
   });
 
   test("a definitive org disagreement still flags needs-reauth", async () => {
+    startServer();
     rolesMode = "mismatch";
     const a = account();
     const outcome = await probeParkedUsage(a);

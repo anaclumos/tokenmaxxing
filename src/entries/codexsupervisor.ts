@@ -11,6 +11,7 @@
 import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { codexPaths, paths } from "../lib/paths.ts";
+import { withLock } from "../lib/lock.ts";
 import { LOOP_DIAGNOSIS, MAX_WRAP_DEPTH, WRAP_DEPTH_ENV, WRAP_RATE_MAX, WRAP_RATE_WINDOW_MS, wrapDepth, wrapperEntryRateTripped } from "../lib/claudebin.ts";
 import { resolveRealCodex } from "../lib/codexbin.ts";
 import { clearCodexPresence, writeCodexPresence } from "../lib/codexpresence.ts";
@@ -76,7 +77,18 @@ export async function runCodexSupervisor(input: { argv: string[] }): Promise<num
   const childEnv = { ...process.env, [WRAP_DEPTH_ENV]: String(depth + 1) };
 
   if (!shouldManageCodex({ argv })) {
-    const p = Bun.spawn([real, ...argv], { stdin: "inherit", stdout: "inherit", stderr: "inherit", env: childEnv });
+    // STRIP the supervisor pairing env from unmanaged spawns: a nested codex
+    // launched from inside a supervised session (e.g. its agent running
+    // `codex exec ...`) would otherwise inherit the OUTER session's id, and
+    // its global Stop hook could then write a respawn marker that SIGTERMs
+    // the outer session MID-TURN and resumes it onto the nested transcript
+    // (closing-review catch). A managed nested launch is already safe - it
+    // exports its own fresh id below; only a shim-bypassed absolute-path
+    // nested launch keeps the inherited env, the same accepted gap as
+    // claude's bg-daemon bypass.
+    const passthroughEnv: Record<string, string | undefined> = { ...childEnv };
+    delete passthroughEnv[CODEX_SUPERVISOR_ID_ENV];
+    const p = Bun.spawn([real, ...argv], { stdin: "inherit", stdout: "inherit", stderr: "inherit", env: passthroughEnv });
     await p.exited;
     return p.exitCode ?? (p.signalCode ? 1 : 0);
   }
@@ -103,14 +115,23 @@ export async function runCodexSupervisor(input: { argv: string[] }): Promise<num
     // the picker must never target it and the sampler must never rotate its
     // parked token while the session lives. Rewritten every respawn (the swap
     // changed the live identity); cleared on exit; PID-validated by readers.
-    const spawnAccountId = liveCodexAccountId();
-    if (spawnAccountId) writeCodexPresence({ supervisorId, accountId: spawnAccountId });
-
-    const child = Bun.spawn([real, ...launchArgs], {
-      stdin: "inherit",
-      stdout: "inherit",
-      stderr: "inherit",
-      env: { ...childEnv, [CODEX_SUPERVISOR_ID_ENV]: supervisorId },
+    // Read + presence-write + spawn run under the codex FLOCK (closing-review
+    // catch): unlocked, a swap could land between the read and the child's
+    // auth.json read, seating the child on the NEW account while presence
+    // named the old one for the session's whole life - un-benching the
+    // running account for samplers and the picker. Under the flock no swap
+    // can interleave until after the spawn; the residual window (child
+    // startup vs a swap acquiring the lock immediately after) is sub-ms in
+    // practice against a swap's network-bound critical section.
+    const child = await withLock(codexPaths.lockFile, async () => {
+      const spawnAccountId = liveCodexAccountId();
+      if (spawnAccountId) writeCodexPresence({ supervisorId, accountId: spawnAccountId });
+      return Bun.spawn([real, ...launchArgs], {
+        stdin: "inherit",
+        stdout: "inherit",
+        stderr: "inherit",
+        env: { ...childEnv, [CODEX_SUPERVISOR_ID_ENV]: supervisorId },
+      });
     });
 
     let done = false;

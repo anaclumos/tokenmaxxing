@@ -82,24 +82,19 @@ function promoteReconcileLocked(input: { supervisorId: string; sessionId: string
     log("codexstop.reconcile_moot", {});
     return false;
   }
-  // Revalidate BOTH accounts at consumption time (bugbot/pullfrog/vercel/
+  // Revalidate the DESTINATION at consumption time (bugbot/pullfrog/vercel/
   // cubic review catches, PR #34): a signal can sit across resets and usage
-  // changes, and identity checks alone would still force-respawn a session
-  // whose seat has RECOVERED, or move one onto a live seat that has since
-  // become exhausted, needs-reauth, or left the pool entirely - each a
-  // violation the signal-side guards only enforced at signal time. Dropped
-  // signals are cheap: the sweep re-signals the moment conditions hold again.
+  // changes, and identity checks alone would move a session onto a live seat
+  // that has since become exhausted, needs-reauth, or left the pool entirely.
+  // The SOURCE seat's state is deliberately not re-checked (owner ruling
+  // 2026-07-20: every pooled non-live sibling follows the seat, healthy or
+  // not - a non-live session wedges at token expiry regardless of quota).
+  // Dropped signals are cheap: the sweep re-signals next evaluation.
   const now = Date.now();
   const bars = effectiveBars(loadConfig());
   const index = loadCodexAccounts();
   const unusable = (account: CodexAccount): boolean =>
     account.needsReauth === true || isCodexExhausted({ account, thresholds: bars, now });
-  const seated = index.accounts.find((a) => a.accountId === presence.accountId);
-  if (!seated || !unusable(seated)) {
-    rmSync(markerPath, { force: true });
-    log("codexstop.reconcile_recovered", {});
-    return false;
-  }
   const liveAccount = index.accounts.find((a) => a.accountId === liveId);
   if (!liveAccount || unusable(liveAccount)) {
     rmSync(markerPath, { force: true });

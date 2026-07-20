@@ -75,6 +75,28 @@ async function main(): Promise<number> {
     return runCodexSupervisor({ argv: sub === "__supervise-codex" ? args.slice(1) : args });
   }
 
+  // CLI commands refuse an ambient claude store override (closing-review
+  // catch): with CLAUDE_CONFIG_DIR set, claude reads a hash-namespaced
+  // keychain item and a relocated .claude.json while this tool's identity,
+  // swap, and sampling machinery target the default store - `xx init` would
+  // silently import whatever stale login lives in the default location. The
+  // SDK's pooledSpawnEnv fails fast on exactly this; the CLI now matches.
+  // Scoped to COMMANDS only: the __-entries (hooks/statusline) and the
+  // supervisor arms above must never break a session claude itself launched
+  // with that env - sessions run under an ambient override are outside the
+  // managed envelope, like claude's bg-daemon bypass.
+  if (!(sub != null && sub.startsWith("__")) && !process.env.TOKENMAXXING_PROBE) {
+    // first NONEMPTY value, secure-storage first (claude's own precedence):
+    // `??` alone let an empty CLAUDE_CONFIG_DIR mask a set SECURESTORAGE
+    // override (cubic review catch, PR #35).
+    const nonEmpty = (v: string | undefined) => (v != null && v !== "" ? v : null);
+    const ambient = nonEmpty(process.env.CLAUDE_SECURESTORAGE_CONFIG_DIR) ?? nonEmpty(process.env.CLAUDE_CONFIG_DIR);
+    if (ambient != null) {
+      console.error(c.red(`CLAUDE_CONFIG_DIR / CLAUDE_SECURESTORAGE_CONFIG_DIR is set (${ambient}): claude uses a namespaced credential store there that tokenmaxxing does not manage - unset it (or run from a clean shell) and retry.`));
+      return 1;
+    }
+  }
+
   switch (sub) {
     case "__statusline": return runStatusline();
     case "__subagent-statusline": return runSubagentStatusline();
@@ -131,4 +153,15 @@ async function main(): Promise<number> {
   }
 }
 
-process.exit(await main());
+// The CLI's error boundary: operational failures that deliberately THROW deep
+// in the libs (a locked keychain failing readItem loudly, codexinit's
+// changed-mid-init abort, corrupt state files) must reach the user as one
+// clean red line with the recovery hint the throw site wrote - not a raw
+// stack trace (bugbot review catch, PR #35). The __-entry subcommands keep
+// their own never-throw contracts and normally never reach this.
+try {
+  process.exit(await main());
+} catch (e) {
+  console.error(c.red(e instanceof Error ? e.message : String(e)));
+  process.exit(1);
+}

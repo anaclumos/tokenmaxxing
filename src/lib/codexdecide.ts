@@ -87,21 +87,22 @@ async function sampleLiveOntoOwner(input: { now: number }): Promise<string | nul
 }
 
 /**
- * OWNER-APPROVED sibling reconcile (2026-07-20, option b): codex cannot
- * hot-swap, so a pool swap respawns only the deciding session - siblings keep
- * running whatever account they started on, and once that account is
- * exhausted or its grant dies they have no automated escape (their own
- * decision evaluates only the live seat). The deciding actor therefore
- * SIGNALS each such supervisor cross-session: a reconcile marker addressed by
- * supervisorId (presence filenames carry it). The signal is a marker, never a
- * kill: the only safe respawn point is the sibling's own turn boundary, so
- * its Stop hook promotes the marker into a respawn marker there, adding the
- * session id its stdin alone knows. No respawn-cost margin applies - a dead
- * or exhausted seat is the hard-path class - and no signal is ever sent while
- * the LIVE seat is itself unusable (the no-depleted-pre-park analog: never
- * move a session onto a blocked account). Orphaned markers (their supervisor
- * exited before promoting) are garbage-collected here. Idempotent per
- * supervisor: an existing marker is left alone.
+ * OWNER-APPROVED sibling reconcile (option b 2026-07-20, widened to ALL
+ * non-live siblings by the in-session owner ruling later that day): codex
+ * cannot hot-swap, so a pool swap respawns only the deciding session -
+ * siblings keep running whatever account they started on, cannot refresh it
+ * cross-account, and would wedge at token expiry. The deciding actor
+ * therefore SIGNALS every pooled non-live supervisor cross-session: a
+ * reconcile marker addressed by supervisorId (presence filenames carry it).
+ * The signal is a marker, never a kill: the only safe respawn point is the
+ * sibling's own turn boundary, so its Stop hook promotes the marker into a
+ * respawn marker there, adding the session id its stdin alone knows. No
+ * respawn-cost margin applies - the alternative to a respawn is a guaranteed
+ * eventual wedge - and no signal is ever sent while the LIVE seat is itself
+ * unusable (the no-depleted-pre-park analog: never move a session onto a
+ * blocked account). Orphaned markers (their supervisor exited before
+ * promoting) are garbage-collected here. Idempotent per supervisor: an
+ * existing marker is left alone.
  *
  * There is deliberately NO self-exclusion (bugbot/pullfrog/cubic review
  * catches, PR #34): a session whose presence names a non-live account IS the
@@ -112,7 +113,7 @@ async function sampleLiveOntoOwner(input: { now: number }): Promise<string | nul
  * away leaves a self-addressed signal behind too; the promote staleness guard
  * (presence rewritten at respawn) drops it as moot.
  */
-function reconcileExhaustedSiblings(input: {
+function reconcileNonLiveSiblings(input: {
   index: { accounts: CodexAccount[] };
   liveAccountId: string;
   bars: { session: number; weekly: number };
@@ -135,7 +136,15 @@ function reconcileExhaustedSiblings(input: {
   for (const presence of living) {
     if (presence.accountId === liveAccountId) continue; // riding the live seat: fine
     const seated = index.accounts.find((account) => account.accountId === presence.accountId);
-    if (!seated || !unusable(seated)) continue; // unpooled or still healthy: not ours to move
+    // OWNER RULING (2026-07-20, in-session, superseding the exhausted-only
+    // scope of option b): EVERY pooled non-live sibling is signaled, healthy
+    // included. Codex's guarded reload refuses a cross-account auth.json
+    // refresh, so a non-live session WILL wedge with "Please sign in again"
+    // at its access token's expiry (hours) - the safe-boundary respawn onto
+    // the live seat costs one visible restart, keeps the transcript
+    // (`codex resume <sid>`), and makes the whole pool follow the seat.
+    // Unpooled seats stay untouched: not ours to move.
+    if (!seated) continue;
     const markerPath = join(codexPaths.reconcileDir, presence.supervisorId);
     if (existsSync(markerPath)) continue;
     mkdirSync(codexPaths.reconcileDir, { recursive: true });
@@ -149,7 +158,7 @@ function reconcileExhaustedSiblings(input: {
  *  deciding session's own respawn marker. */
 function postSwapResweep(input: { liveAccountId: string; bars: { session: number; weekly: number }; now: number }): void {
   try {
-    reconcileExhaustedSiblings({ index: loadCodexAccounts(), liveAccountId: input.liveAccountId, bars: input.bars, now: input.now });
+    reconcileNonLiveSiblings({ index: loadCodexAccounts(), liveAccountId: input.liveAccountId, bars: input.bars, now: input.now });
   } catch (e) {
     log("codexdecide.resweep_failed", { err: e instanceof Error ? e.message : String(e) });
   }
@@ -180,8 +189,8 @@ export async function evaluateAndMaybeSwapCodex(input: { now?: number }): Promis
     // exactly the moment the cooldown starts (bugbot/cubic review catch,
     // PR #34), and a sibling can be dead while the live seat is healthy and
     // disengaged. Cached windows are enough here - the promote pass
-    // revalidates both accounts' usability at consumption time.
-    reconcileExhaustedSiblings({ index, liveAccountId: activeId, bars, now });
+    // revalidates the destination's usability at consumption time.
+    reconcileNonLiveSiblings({ index, liveAccountId: activeId, bars, now });
 
     const lastSwapAt = loadCodexLastSwapAt();
     if (lastSwapAt != null && now - lastSwapAt < POST_SWAP_COOLDOWN_MS) {

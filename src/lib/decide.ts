@@ -225,7 +225,10 @@ export async function evaluateAndMaybeSwap(now = Date.now(), anticipatory = fals
         // Snapshot per-model caps too, so they still show after we switch away.
         // An empty map is a failed probe's anti-storm stamp, not a measurement -
         // it must not erase the burnt-cap snapshot the picker screens on.
-        if (mu2 && mu2.org === org2 && Object.keys(mu2.perModel).length > 0) active.lastPerModel = mu2.perModel;
+        if (mu2 && mu2.org === org2 && Object.keys(mu2.perModel).length > 0) {
+          active.lastPerModel = mu2.perModel;
+          active.lastPerModelAt = mu2.ts;
+        }
         saveAccounts(idx);
       }
     }

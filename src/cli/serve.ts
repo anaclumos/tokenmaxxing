@@ -365,6 +365,12 @@ export function buildServeRuntime(seam: {
       // (duplicate turns, quota, side effects). null outcome = relay threw =
       // still presumed killed.
       const presumedKilled = draining && (outcome === null || (outcome.failed && !outcome.announcedDrop));
+      // An unannounced drop OUTSIDE a drain still clears the marker on
+      // purpose (retention would re-execute the turn at the next restart; see
+      // notifyDelivered's doc) - but the loss must be operator-visible.
+      if (!draining && outcome !== null && outcome.failed && outcome.rateLimited && !outcome.announcedDrop) {
+        log("serve.drop_unannounced", { thread: input.thread.id });
+      }
       saveSlackThread(presumedKilled ? record : omit(record, ["activeTurn"]));
     }
   };
@@ -570,6 +576,72 @@ export function buildServeRuntime(seam: {
     await tracked(serialized(input.thread.id, () => handleTurn({ thread: input.thread, relayed, isMention: input.isMention })));
   };
 
+  /** Recover one thread whose activeTurn marker survived the previous daemon:
+   *  a restart killed that turn mid-run. Notify the thread, then resume the
+   *  session (or replay the original prompt when the kill landed before init
+   *  assigned a session id); past the retry cap, give up loudly. EVERY branch
+   *  runs inside the shared per-thread `serialized` chain and recomputes the
+   *  decision from a fresh reload there: an inbound turn (or Slack
+   *  redelivering the killed turn's unacked mention) can win the chain first,
+   *  handle the thread, and clear the marker - acting on the startup snapshot
+   *  would then re-run superseded work and write stale record fields over the
+   *  session id that turn persisted (adversarial-review catch). Lives in the
+   *  seam with `streamable` INJECTED (the daemon passes its bot-backed handle
+   *  builder, tests a fake) so that superseded-recovery race is pinnable
+   *  (closing-review catch: the invariant had no test while inline). */
+  const recoverInterrupted = async (
+    record: SlackThread,
+    streamable: (threadId: string) => Promise<{ thread: ServeThread; requesterIds: string[] }>,
+  ) => {
+    try {
+      const { thread, requesterIds } = await streamable(record.threadId);
+      const link = linkForChannel(cfg, bareChannelId(thread.channelId));
+      await serialized(record.threadId, async () => {
+        // a drain signal can land between the scan and this turn; leave the
+        // marker at its previous count so the next start retries.
+        if (draining) return;
+        const fresh = loadSlackThread(record.threadId);
+        const turn = fresh?.activeTurn;
+        const decision = fresh ? resumeDecision(fresh) : null;
+        if (!fresh || !turn || !decision) return; // superseded: an earlier turn already cleared the marker
+        await reapOrphan(turn);
+        if (!link) {
+          // unlinked since the turn started: nothing can run here; drop the
+          // marker and stay silent, like every unlinked-channel path.
+          saveSlackThread(omit(fresh, ["activeTurn"]));
+          log("serve.resume_unlinked", { thread: record.threadId });
+          return;
+        }
+        if (decision.kind === "give-up") {
+          log("serve.resume_gave_up", { thread: record.threadId });
+          // post BEFORE clearing, mirroring the resume branch's ordering: a
+          // kill or post failure here leaves the marker for the next restart
+          // to retry the notice (at-least-once; worst case a duplicate
+          // give-up notice), instead of the thread going permanently dark
+          // with the user never told the daemon gave up.
+          await thread.post(decision.notice);
+          saveSlackThread(omit(fresh, ["activeTurn"]));
+          return;
+        }
+        log("serve.resume_interrupted", { thread: record.threadId, attempt: decision.marker.resumeCount });
+        // the notice posts BEFORE runTurn persists the incremented marker,
+        // on purpose: the cap bounds quota-SPENDING attempts (the spawn),
+        // and a failed notice spends nothing - the marker survives at its
+        // old count for the next restart to retry, at most once per
+        // operator-triggered restart, each logged as serve.resume_error.
+        // A permanently unpostable channel (bot kicked, archived) therefore
+        // retries on every restart; unlinking it clears the marker.
+        await thread.post(decision.notice);
+        const startedAt = Date.now();
+        const outcome = await runTurn({ thread, record: fresh, prompt: decision.prompt, requesterIds, sessionId: decision.sessionId, marker: decision.marker, link });
+        await settleTurn({ thread, outcome, startedAt });
+      });
+    } catch (e) {
+      const detail = (e instanceof Error ? e.message : String(e)).slice(0, 300);
+      log("serve.resume_error", { thread: record.threadId, err: detail });
+    }
+  };
+
   return {
     /** in-flight turn promises; shutdown drains them. */
     activeTurns,
@@ -588,6 +660,7 @@ export function buildServeRuntime(seam: {
     tracked,
     runTurn,
     settleTurn,
+    recoverInterrupted,
   };
 }
 
@@ -709,66 +782,6 @@ async function runDaemon(): Promise<number> {
     return { thread: handle, requesterIds: [] };
   };
 
-  /** Recover one thread whose activeTurn marker survived the previous daemon:
-   *  a restart killed that turn mid-run. Notify the thread, then resume the
-   *  session (or replay the original prompt when the kill landed before init
-   *  assigned a session id); past the retry cap, give up loudly. EVERY branch
-   *  runs inside the shared per-thread `serialized` chain and recomputes the
-   *  decision from a fresh reload there: an inbound turn (or Slack
-   *  redelivering the killed turn's unacked mention) can win the chain first,
-   *  handle the thread, and clear the marker - acting on the startup snapshot
-   *  would then re-run superseded work and write stale record fields over the
-   *  session id that turn persisted (adversarial-review catch). */
-  const recoverInterrupted = async (record: SlackThread) => {
-    try {
-      const { thread, requesterIds } = await streamableThread(record.threadId);
-      const link = linkForChannel(cfg, bareChannelId(thread.channelId));
-      await runtime.serialized(record.threadId, async () => {
-        // a drain signal can land between the scan and this turn; leave the
-        // marker at its previous count so the next start retries.
-        if (runtime.isDraining()) return;
-        const fresh = loadSlackThread(record.threadId);
-        const turn = fresh?.activeTurn;
-        const decision = fresh ? resumeDecision(fresh) : null;
-        if (!fresh || !turn || !decision) return; // superseded: an earlier turn already cleared the marker
-        await reapOrphan(turn);
-        if (!link) {
-          // unlinked since the turn started: nothing can run here; drop the
-          // marker and stay silent, like every unlinked-channel path.
-          saveSlackThread(omit(fresh, ["activeTurn"]));
-          log("serve.resume_unlinked", { thread: record.threadId });
-          return;
-        }
-        if (decision.kind === "give-up") {
-          log("serve.resume_gave_up", { thread: record.threadId });
-          // post BEFORE clearing, mirroring the resume branch's ordering: a
-          // kill or post failure here leaves the marker for the next restart
-          // to retry the notice (at-least-once; worst case a duplicate
-          // give-up notice), instead of the thread going permanently dark
-          // with the user never told the daemon gave up.
-          await thread.post(decision.notice);
-          saveSlackThread(omit(fresh, ["activeTurn"]));
-          return;
-        }
-        log("serve.resume_interrupted", { thread: record.threadId, attempt: decision.marker.resumeCount });
-        // the notice posts BEFORE runTurn persists the incremented marker,
-        // on purpose: the cap bounds quota-SPENDING attempts (the spawn),
-        // and a failed notice spends nothing - the marker survives at its
-        // old count for the next restart to retry, at most once per
-        // operator-triggered restart, each logged as serve.resume_error.
-        // A permanently unpostable channel (bot kicked, archived) therefore
-        // retries on every restart; unlinking it clears the marker.
-        await thread.post(decision.notice);
-        const startedAt = Date.now();
-        const outcome = await runtime.runTurn({ thread, record: fresh, prompt: decision.prompt, requesterIds, sessionId: decision.sessionId, marker: decision.marker, link });
-        await runtime.settleTurn({ thread, outcome, startedAt });
-      });
-    } catch (e) {
-      const detail = (e instanceof Error ? e.message : String(e)).slice(0, 300);
-      log("serve.resume_error", { thread: record.threadId, err: detail });
-    }
-  };
-
   bot.onNewMention(async (thread, message, context) => runtime.onMessage({ thread, message, skipped: context?.skipped ?? [], isMention: true }));
   bot.onSubscribedMessage(async (thread, message, context) => runtime.onMessage({ thread, message, skipped: context?.skipped ?? [], isMention: false }));
 
@@ -846,7 +859,7 @@ async function runDaemon(): Promise<number> {
   // the actionable decision is recomputed under the per-thread lock inside.
   for (const record of records) {
     if (!record.activeTurn) continue;
-    void runtime.tracked(recoverInterrupted(record));
+    void runtime.tracked(runtime.recoverInterrupted(record, streamableThread));
   }
 
   console.log(`${c.green("●")} serving ${count({ n: cfg.links.length, noun: "linked channel" })} over Slack Socket Mode - mention the bot in a linked channel to open a session (Ctrl-C to stop)`);

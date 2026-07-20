@@ -48,7 +48,7 @@ export const paths = {
 
   /** ~/.claude.json - holds the active `oauthAccount` identity object. */
   claudeJson: env("TOKENMAXXING_CLAUDE_JSON", join(HOME, ".claude.json")),
-  /** ~/.claude/settings.json - user-owned; we merge three entries into it. */
+  /** ~/.claude/settings.json - user-owned; we merge four entries into it. */
   claudeSettings: env(
     "TOKENMAXXING_CLAUDE_SETTINGS",
     join(env("CLAUDE_CONFIG_DIR", join(HOME, ".claude")), "settings.json"),
@@ -87,10 +87,10 @@ export const codexPaths = {
    *  live rotations supersede the parked copy, and reuse is punished). */
   presenceDir: join(TM_HOME, "codex-live"),
   /** cross-session reconcile signals, one file per supervisorId: a deciding
-   *  actor saw that supervisor's session running on an exhausted/dead account
-   *  while the live seat is usable; the session's OWN Stop hook promotes the
-   *  signal into a respawn marker at its next turn boundary (owner-approved
-   *  option b, 2026-07-20). */
+   *  actor saw that supervisor's session running on a pooled NON-LIVE account
+   *  (healthy or not - owner decisions 2026-07-20) while the live seat is
+   *  usable; the session's OWN Stop hook promotes the signal into a respawn
+   *  marker at its next turn boundary. */
   reconcileDir: join(TM_HOME, "codex-reconcile"),
 } as const;
 

@@ -26,9 +26,14 @@ const blob = (id: string) =>
 
 let server: ReturnType<typeof Bun.serve> | null = null;
 
+/** Idempotent: every test needing the roles endpoint calls this itself, so
+ *  tests pass in isolation and any order - the old start-inside-test-2 left
+ *  later tests dependent on execution order (closing-review catch). The
+ *  FIRST test needs the server ABSENT, which is why this is not beforeAll. */
 function startServer(): void {
+  if (server) return;
   server = Bun.serve({
-    port: 8791,
+    port: Number(new URL(process.env.TOKENMAXXING_OAUTH_ROLES_URL!).port),
     hostname: "127.0.0.1",
     fetch(req) {
       const url = new URL(req.url);
@@ -77,6 +82,7 @@ describe("rm live-identity guard", () => {
   });
 
   test("a verified non-live account is removed along with its parked credential", async () => {
+    startServer();
     await writeItem(liveTarget(), blob("A"));
     expect(await cmdRm("B")).toBe(0);
     expect(loadAccounts().accounts.map((a) => a.accountUuid)).toEqual(["A"]);

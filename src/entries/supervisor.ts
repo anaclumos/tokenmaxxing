@@ -128,6 +128,12 @@ export function stripSessionFlags(argv: string[]): string[] {
     if (a === "--session-id") { i++; continue; }
     if (a === "-c" || a === "--continue") continue;
     if (a === "-r" || a === "--resume") { i++; continue; }
+    // --fork-session must not survive into respawn args: bare `--fork-session`
+    // is inert and stays managed, but a depleted-pool respawn injects
+    // `--resume <sid>` - with the flag still present claude would FORK to a
+    // NEW session id, permanently unpairing the supervisor's marker path from
+    // the running session (closing-review catch).
+    if (a === "--fork-session") continue;
     out.push(a);
   }
   return out;

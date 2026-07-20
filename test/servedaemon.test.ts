@@ -254,6 +254,68 @@ describe("buildServeRuntime crash-orphan reap", () => {
   });
 });
 
+describe("buildServeRuntime interrupted-turn recovery", () => {
+  const marker = () => ({ prompt: "killed turn", startedAt: new Date().toISOString(), resumeCount: 0 });
+  const record = (threadId: string) => ({
+    threadId,
+    repo: "/tmp/serve-daemon-repo",
+    cwd: "/tmp/serve-daemon-repo",
+    sessionId: "s-old",
+    createdAt: new Date().toISOString(),
+    activeTurn: marker(),
+  });
+
+  test("a superseded recovery no-ops instead of re-running the inbound turn's work", async () => {
+    // The AGENTS invariant, previously untestable while recovery lived inline
+    // in runDaemon (closing-review catch): an inbound turn (Slack redelivering
+    // the killed turn's unacked mention) wins the serialized chain first and
+    // clears the marker; recovery must recompute from a FRESH reload and
+    // no-op - a snapshot-based recovery would duplicate the turn and clobber
+    // the session id the inbound turn persisted.
+    const threadId = "slack:C0DAEMON:900.1";
+    saveSlackThread(record(threadId));
+    const prompts: string[] = [];
+    const rt = runtimeWith(async (input) => {
+      prompts.push(input.prompt);
+      return { ...okOutcome, sessionId: "s-inbound" };
+    });
+    const t = fakeThread({ id: threadId });
+    let releaseStreamable = () => {};
+    const gate = new Promise<void>((resolve) => {
+      releaseStreamable = resolve;
+    });
+    const recovery = rt.recoverInterrupted(record(threadId), async () => {
+      await gate; // recovery is still building its thread handle...
+      return { thread: t.thread, requesterIds: ["U-OWNER"] };
+    });
+    // ...while the redelivered mention wins the chain and handles the thread.
+    await rt.onMessage({ thread: t.thread, message: home("@UBOT killed turn"), skipped: [], isMention: true });
+    expect(prompts).toEqual(["killed turn"]);
+    releaseStreamable();
+    await recovery;
+    expect(prompts).toEqual(["killed turn"]); // no duplicate execution
+    expect(loadSlackThread(threadId)?.sessionId).toBe("s-inbound"); // persisted session id intact
+    expect(loadSlackThread(threadId)?.activeTurn).toBeUndefined();
+  });
+
+  test("an unsuperseded recovery resumes the killed turn: notice, relay, marker consumed", async () => {
+    const threadId = "slack:C0DAEMON:901.1";
+    saveSlackThread(record(threadId));
+    const seen: { prompt: string; sessionId: string | null }[] = [];
+    const rt = runtimeWith(async (input) => {
+      seen.push({ prompt: input.prompt, sessionId: input.sessionId });
+      return { ...okOutcome, sessionId: "s-resumed" };
+    });
+    const t = fakeThread({ id: threadId });
+    await rt.recoverInterrupted(record(threadId), async () => ({ thread: t.thread, requesterIds: ["U-OWNER"] }));
+    expect(seen.length).toBe(1);
+    expect(seen[0]!.sessionId).toBe("s-old"); // resumes the killed session
+    expect(t.posted.length).toBeGreaterThan(0); // the in-thread restart notice
+    expect(loadSlackThread(threadId)?.sessionId).toBe("s-resumed");
+    expect(loadSlackThread(threadId)?.activeTurn).toBeUndefined();
+  });
+});
+
 describe("buildServeRuntime finish close-out", () => {
   test("finish drops the record, unsubscribes, and posts the confirmation", async () => {
     const rt = runtimeWith(async () => ({ ...okOutcome, sessionId: "s-fin", finish: true }));

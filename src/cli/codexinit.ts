@@ -13,6 +13,7 @@ import { loadCodexAccounts, saveCodexAccounts } from "../lib/codexstate.ts";
 import { loadConfig, pinBinOverride } from "../lib/state.ts";
 import { installCodexSupervisor, codexSupervisorLink, ensurePathInRc, shellRcPath } from "../lib/install.ts";
 import { withLock } from "../lib/lock.ts";
+import { presentCodexAccountIds } from "../lib/codexpresence.ts";
 import { codexCredItemFor, codexPaths } from "../lib/paths.ts";
 import type { CodexAccount, CodexUsage } from "../lib/types.ts";
 import { c } from "./render.ts";
@@ -79,9 +80,41 @@ export async function cmdCodexInit(): Promise<number> {
   }
 
   const credFile = codexCredItemFor(identity.accountId);
-  writeParkedCodexAuth({ credFile, auth: live });
+
+  // A RUNNING supervised session on this account can rotate auth.json at any
+  // moment (codex persists rotations instantly, and the flock serializes only
+  // tokenmaxxing actors) - a snapshot parked now could hold an already-
+  // superseded refresh token whose next refresh is reuse-punished (cubic
+  // review catch, PR #35). Refuse loudly, like the sampler's present-account
+  // rule; sessions launched around the shim are the same accepted gap as
+  // everywhere presence is the signal.
+  if (presentCodexAccountIds().has(identity.accountId)) {
+    console.error(c.red("a live supervised codex session is running this account - its token rotates under us, so parking a snapshot now could poison the backup."));
+    console.error(c.dim("close that codex session (or let it exit) and re-run `tokenmaxxing init --codex`."));
+    return 1;
+  }
 
   const account = await withLock(codexPaths.lockFile, () => {
+    // Re-check presence INSIDE the critical section (pullfrog review catch,
+    // PR #35): supervisor spawns are flock-serialized too, so one can start -
+    // check passed, presence written, session live - entirely between the
+    // friendly pre-lock check above and this lock acquisition. The throw
+    // routes through the CLI error boundary as a clean failure.
+    if (presentCodexAccountIds().has(identity.accountId)) {
+      throw new Error("a live supervised codex session started running this account mid-init - close it and re-run `tokenmaxxing init --codex`");
+    }
+    // Park INSIDE the flock, from a blob RE-READ inside it (closing-review
+    // catch): the pre-lock snapshot is seconds stale (a network usage GET sits
+    // in between), and parking it unlocked could clobber a concurrent swap's
+    // just-harvested newest rotation with a superseded refresh token - whose
+    // next refresh is reuse-punished into a dead grant family. An identity
+    // that changed since the pre-lock read means a swap landed mid-init:
+    // abort rather than file the wrong account.
+    const fresh2 = readLiveCodexAuth();
+    if (!fresh2 || codexIdentityOf({ auth: fresh2 }).accountId !== identity.accountId) {
+      throw new Error("the live codex login changed while init was running (a concurrent swap?) - re-run `tokenmaxxing init --codex`");
+    }
+    writeParkedCodexAuth({ credFile, auth: fresh2 });
     const index = loadCodexAccounts();
     const existing = index.accounts.find((entry) => entry.accountId === identity.accountId);
     const fresh: CodexAccount = {

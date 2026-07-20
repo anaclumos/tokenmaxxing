@@ -52,4 +52,19 @@ describe("keychain ps-safe I/O", () => {
     expect(await readItem(bigTarget)).toBe(big);
     await deleteItem(bigTarget);
   });
+
+  it("round-trips a quote-dense apostrophe blob whose EXPANDED line exceeds the interactive buffer", async () => {
+    // Raw length passes the old 3800 gate, but the apostrophe forces
+    // quoteDouble and every `"` gains an escape byte: the assembled line
+    // exceeds security -i's 4096-byte buffer, which SPLITS the line and left
+    // the item holding a truncated secret (empirically verified 2026-07-20;
+    // closing-review catch). The line-length gate must route this to argv.
+    let body = "";
+    while (body.length < 3660) body += '"k":"v",';
+    const dense = `{'${body}}`;
+    expect(dense.length).toBeLessThan(3800);
+    await writeItem(bigTarget, dense);
+    expect(await readItem(bigTarget)).toBe(dense);
+    await deleteItem(bigTarget);
+  });
 });

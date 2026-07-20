@@ -11,9 +11,18 @@ import { nextWeeklyReset } from "./picker.ts";
 import { isSessionWindow, weeklyWindowOf } from "./codexusage.ts";
 import type { CodexAccount, CodexWindow, Thresholds } from "./types.ts";
 
-function liveUsed(input: { window: CodexWindow; now: number }): number {
-  const { window, now } = input;
-  return window.resetsAt != null && window.resetsAt <= now ? 0 : window.usedPercentage;
+/** A window whose reset has passed reads as empty. A NULL reset self-bounds
+ *  at sampledAt + the window's own duration (mirroring the claude picker's
+ *  blockedUntil, closing-review catch): the wire schema allows reset_at null,
+ *  and without the bound an over-bar null-reset window benched the account
+ *  FOREVER on a headless box where nothing re-samples parked accounts - the
+ *  no-permanent-bench invariant. No duration or sample time = trust the
+ *  reading (unmeasured recovery must not look safe). */
+function liveUsed(input: { window: CodexWindow; now: number; sampledAt: number | null }): number {
+  const { window, now, sampledAt } = input;
+  if (window.resetsAt != null) return window.resetsAt <= now ? 0 : window.usedPercentage;
+  if (sampledAt != null && window.windowSeconds != null && now >= sampledAt + window.windowSeconds * 1000) return 0;
+  return window.usedPercentage;
 }
 
 function allWindows(account: CodexAccount): CodexWindow[] {
@@ -29,8 +38,9 @@ function barFor(input: { window: CodexWindow; thresholds: Thresholds }): number 
 /** A window at/over its bar whose reset has not passed blocks the account. */
 export function isCodexExhausted(input: { account: CodexAccount; thresholds: Thresholds; now: number }): boolean {
   const { account, thresholds, now } = input;
+  const sampledAt = account.lastUsageAt ?? null;
   return allWindows(account).some(
-    (window) => liveUsed({ window, now }) >= barFor({ window, thresholds }),
+    (window) => liveUsed({ window, now, sampledAt }) >= barFor({ window, thresholds }),
   );
 }
 
@@ -43,7 +53,7 @@ export function codexPacePressure(input: { account: CodexAccount; now: number })
   if (!weekly) return 0;
   const reset = nextWeeklyReset(weekly.resetsAt, now);
   if (reset == null) return 0;
-  return Math.max(0, 100 - liveUsed({ window: weekly, now })) / Math.max(1, reset - now);
+  return Math.max(0, 100 - liveUsed({ window: weekly, now, sampledAt: account.lastUsageAt ?? null })) / Math.max(1, reset - now);
 }
 
 function weeklyExpiryOf(input: { account: CodexAccount; now: number }): number {
@@ -102,5 +112,6 @@ export function codexCurrentWins(input: {
  *  rather than the session window alone. */
 export function isCodexEngaged(input: { account: CodexAccount; floor: number; now: number }): boolean {
   const { account, floor, now } = input;
-  return allWindows(account).some((window) => liveUsed({ window, now }) >= floor);
+  const sampledAt = account.lastUsageAt ?? null;
+  return allWindows(account).some((window) => liveUsed({ window, now, sampledAt }) >= floor);
 }

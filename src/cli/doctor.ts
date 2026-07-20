@@ -1,4 +1,4 @@
-// `tokenmaxxing doctor` - verify the supervisor + three settings entries survived
+// `tokenmaxxing doctor` - verify the supervisor + four settings entries survived
 // and the pool is healthy.
 
 import { existsSync, readFileSync } from "node:fs";

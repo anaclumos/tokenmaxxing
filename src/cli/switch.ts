@@ -60,7 +60,7 @@ export async function cmdSwitch(selector?: string): Promise<number> {
       const target = findAccount(idx.accounts, selector);
       if (!target) { console.error(c.red(`no account matches "${selector}"`)); return 1; }
       if (target.accountUuid === idx.activeAccountUuid && !drifted) { console.log(`already on ${c.bold(target.label)}`); return 0; }
-      if (target.needsReauth) { console.error(c.red(`${target.label} needs re-auth - \`tokenmaxxing add\``)); return 1; }
+      if (target.needsReauth) { console.error(c.red(`${target.label} needs re-auth - run \`tokenmaxxing auth ${target.label}\``)); return 1; }
       return swapTo(target);
     }
 
@@ -111,8 +111,9 @@ export async function cmdSwitch(selector?: string): Promise<number> {
     }
 
     // No usable target swapped in: everything is depleted, or the remaining
-    // candidates' refresh tokens just died (chooseAndSwap marks needs-reauth,
-    // hence the reload). Stay on / switch to whichever recovers soonest.
+    // candidates' refresh tokens just died (performSwap persists needs-reauth
+    // before throwing, hence the reload). Stay on / switch to whichever
+    // recovers soonest.
     const fresh = loadAccounts();
     const earliest = pickEarliestReset(fresh.accounts, everyone);
     if (!earliest) {

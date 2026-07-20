@@ -7,7 +7,7 @@ let lastBody: any = null;
 
 beforeAll(() => {
   server = Bun.serve({
-    port: 8791,
+    port: Number(new URL(process.env.TOKENMAXXING_OAUTH_TOKEN_URL!).port),
     hostname: "127.0.0.1",
     async fetch(req) {
       lastBody = await req.json();

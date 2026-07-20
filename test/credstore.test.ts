@@ -59,7 +59,9 @@ describe("target resolution", () => {
     expect(liveTarget()).toEqual({
       kind: "keychain",
       service: `tokenmaxxing-test-${process.pid}`,
-      account: "tokenmaxxing-test",
+      // pid-suffixed since the concurrent-suite isolation fix: keychain items
+      // are machine-global, so BOTH halves must be instance-unique.
+      account: `tokenmaxxing-test-${process.pid}`,
     });
     expect(parkedTarget("tokenmaxxing-cred-abcd1234")).toMatchObject({ kind: "keychain", service: "tokenmaxxing-cred-abcd1234" });
     expect(isolatedTarget("/tmp/onboard-x")).toMatchObject({ kind: "keychain" });

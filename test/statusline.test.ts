@@ -30,6 +30,7 @@ function ctx(over: Partial<RenderCtx>): RenderCtx {
     perModel: {},
     switchModels: ["fable", "opus"],
     worktree: null,
+    liveOrg: null,
     now: NOW,
     color: false,
     truecolor: false,

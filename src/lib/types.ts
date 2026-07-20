@@ -86,9 +86,17 @@ export const AccountSchema = z.object({
   addedAt: z.string(),
   lastUsage: UsageWindowsSchema.optional(),
   lastPerModel: z.record(z.string(), UsageWindowSchema).optional(),
-  /** epoch ms of the sample behind lastUsage/lastPerModel. Their resetsAt
-   *  values are absolute epochs (UTC-anchored), so even an old snapshot still
-   *  resolves to correct resets - display it as a dated cache, never discard. */
+  /** epoch ms of the sample behind lastPerModel SPECIFICALLY: the aggregate
+   *  stamp (lastUsageAt) advances on every engaged evaluation while the
+   *  per-model rows refresh only when a gated family is measured, so dating
+   *  the rows by lastUsageAt inflated the null-reset self-bound by days
+   *  (closing-review catch). Absent on records predating this field: readers
+   *  fall back to lastUsageAt, the previous (over-)approximation. */
+  lastPerModelAt: z.number().optional(),
+  /** epoch ms of the sample behind the AGGREGATE lastUsage windows (per-model
+   *  rows date by lastPerModelAt above). resetsAt values are absolute epochs
+   *  (UTC-anchored), so even an old snapshot still resolves to correct
+   *  resets - display it as a dated cache, never discard. */
   lastUsageAt: z.number().optional(),
   needsReauth: z.boolean().optional(),
   subscriptionType: z.string().optional(),
@@ -329,13 +337,15 @@ export const CodexRespawnMarkerSchema = z.object({
   ts: z.number(),
 });
 
-/** A cross-session reconcile signal (owner-approved option b, 2026-07-20):
- *  the deciding actor saw the addressed supervisor's session running on this
- *  exhausted/dead account while the live seat is usable. The session's OWN
- *  Stop hook consumes it at its next turn boundary - the only safe respawn
- *  point - promoting it into a respawn marker with the session id its stdin
- *  alone carries. `accountId` doubles as the staleness guard: a session that
- *  already moved accounts drops the signal instead of respawning. */
+/** A cross-session reconcile signal (owner decisions 2026-07-20): the
+ *  deciding actor saw the addressed supervisor's session running on this
+ *  pooled NON-LIVE account - healthy or not (a non-live session cannot
+ *  refresh cross-account and wedges at token expiry) - while the live seat
+ *  is usable. The session's OWN Stop hook consumes it at its next turn
+ *  boundary - the only safe respawn point - promoting it into a respawn
+ *  marker with the session id its stdin alone carries. `accountId` doubles
+ *  as the staleness guard: a session that already moved accounts drops the
+ *  signal instead of respawning. */
 export const CodexReconcileMarkerSchema = z.object({
   accountId: z.string(),
   ts: z.number(),
