@@ -1,0 +1,424 @@
+src/cli/status.ts
+  s_eaf36da1edfe18::t_bd167a69544933 100-105,107
+  s_eaf36da1edfe18::t_f75f89970d1799 129-133
+  s_eaf36da1edfe18::t_1150a7f0cca01a 38-47
+  s_eaf36da1edfe18::t_5a011cd21e3265 49-55,57-59
+  s_eaf36da1edfe18::t_c0f010b007cca6 56
+docs/content/docs/state-directory.am.mdx
+  s_eaf36da1edfe18::t_e93355f0b9c70f 26,28
+  s_eaf36da1edfe18::t_fa72c2d0600066 15,17-18
+src/entries/stophook.ts
+  s_eaf36da1edfe18::t_4aa7280c51698b 31-37,42,48-55,57
+docs/content/docs/configuration.am.mdx
+  s_eaf36da1edfe18::t_23c25458d29179 11-12
+  s_eaf36da1edfe18::t_4cdced86c3af0f 23
+  s_eaf36da1edfe18::t_48baf5f3b22fb3 24
+src/lib/decide.ts
+  s_eaf36da1edfe18::t_c2303fd7904995 146,149-153
+  s_eaf36da1edfe18::t_a07803d9f85e7e 234-236
+docs/content/docs/distribution.vi.mdx
+  s_eaf36da1edfe18::t_3ae9e76663694e 8
+docs/content/docs/configuration.wuu.mdx
+  s_eaf36da1edfe18::t_ee2f7c636a4eea 23
+  s_eaf36da1edfe18::t_14d1bb38e916bb 24
+  s_eaf36da1edfe18::t_50bcd8fd8678b9 11-12
+docs/content/docs/distribution.ja.mdx
+  s_eaf36da1edfe18::t_62ea63796fd48d 8
+docs/content/docs/state-directory.fa.mdx
+  s_eaf36da1edfe18::t_d61c0a7936f3e7 28
+  s_eaf36da1edfe18::t_dd7aabfa08817e 15,17-18
+  s_eaf36da1edfe18::t_30502516e5bc2c 26
+docs/content/docs/state-directory.ar.mdx
+  s_eaf36da1edfe18::t_747d307a9c44c6 28
+  s_eaf36da1edfe18::t_cbc93535244b65 15,17-18
+  s_eaf36da1edfe18::t_9cce06c35563a6 26
+docs/content/docs/distribution.wuu.mdx
+  s_eaf36da1edfe18::t_eb2cbc03e3e6ae 8
+package.json
+  s_eaf36da1edfe18::t_a01e0281e7d3ff 3
+test/sessions.test.ts
+  s_eaf36da1edfe18::t_e976306f0c98a8 2-5,18-30
+  s_eaf36da1edfe18::t_9d1c5c3a2f1f00 31-32
+docs/content/docs/state-directory.arz.mdx
+  s_eaf36da1edfe18::t_9c2c48d64f7ef5 15,17-18
+  s_eaf36da1edfe18::t_0ca288f2c1be18 26
+  s_eaf36da1edfe18::t_070e0d7bc77098 28
+docs/content/docs/limitations.ru.mdx
+  s_eaf36da1edfe18::t_daa4a1b0ce47c9 11
+docs/content/docs/configuration.sw.mdx
+  s_eaf36da1edfe18::t_e6449ccaa317f5 23
+  s_eaf36da1edfe18::t_fc1847bcfd8052 24
+  s_eaf36da1edfe18::t_1feb7d7d7d4f6f 11-12
+docs/content/docs/limitations.tl.mdx
+  s_eaf36da1edfe18::t_811d90b6aa3337 11
+src/entries/statusline.ts
+  s_eaf36da1edfe18::t_f18b174e40f270 31
+  s_eaf36da1edfe18::t_ddfebd3104be95 179-190
+src/lib/types.ts
+  s_eaf36da1edfe18::t_5bd7da1a687295 174-181,187-189
+  s_eaf36da1edfe18::t_67a6a09f1d183d 75-80
+docs/content/docs/distribution.pcm.mdx
+  s_eaf36da1edfe18::t_4da15e31f399a7 8
+docs/content/docs/distribution.fr.mdx
+  s_eaf36da1edfe18::t_83e03e14701080 8
+docs/content/docs/state-directory.ja.mdx
+  s_eaf36da1edfe18::t_a9ccf5b877e226 26,28
+  s_eaf36da1edfe18::t_6e2d52ac3c0ba2 15,17-18
+docs/content/docs/state-directory.pnb.mdx
+  s_eaf36da1edfe18::t_6b36b01b2dd0b9 15,17-18
+  s_eaf36da1edfe18::t_27693293a71756 26,28
+docs/content/docs/configuration.th.mdx
+  s_eaf36da1edfe18::t_3e8e77c07592ab 11-12
+  s_eaf36da1edfe18::t_f9c92bbff3d623 24
+  s_eaf36da1edfe18::t_d94b9908ac6e41 23
+docs/content/docs/distribution.ur.mdx
+  s_eaf36da1edfe18::t_b08447b2e780b8 8
+docs/content/docs/state-directory.sw.mdx
+  s_eaf36da1edfe18::t_801312228b191d 26,28
+  s_eaf36da1edfe18::t_83e49370dcacbc 15,17-18
+docs/content/docs/distribution.bn.mdx
+  s_eaf36da1edfe18::t_d58548ac9e1f81 8
+docs/content/docs/state-directory.ur.mdx
+  s_eaf36da1edfe18::t_7587adf4d52ab7 28
+  s_eaf36da1edfe18::t_4126642b49ba14 26
+  s_eaf36da1edfe18::t_75bcec91081930 15,17-18
+docs/content/docs/limitations.id.mdx
+  s_eaf36da1edfe18::t_1241e5ee2232fe 11
+docs/content/docs/configuration.ar.mdx
+  s_eaf36da1edfe18::t_b90a0711ff9801 11-12
+  s_eaf36da1edfe18::t_5178a74920ed1f 23
+  s_eaf36da1edfe18::t_32b19264fc2b6c 24
+docs/content/docs/limitations.fa.mdx
+  s_eaf36da1edfe18::t_5c27e0207a1cae 11
+docs/content/docs/limitations.ha.mdx
+  s_eaf36da1edfe18::t_175de606fd77a2 11
+docs/content/docs/limitations.de.mdx
+  s_eaf36da1edfe18::t_e56c61334ada28 11
+docs/content/docs/limitations.ur.mdx
+  s_eaf36da1edfe18::t_91423b376ba4ea 11
+src/main.ts
+  s_eaf36da1edfe18::t_fbcf5768747301 141
+docs/content/docs/state-directory.th.mdx
+  s_eaf36da1edfe18::t_288bf3b38c0d2e 26,28
+  s_eaf36da1edfe18::t_b6f921a13a6601 15,17-18
+docs/content/docs/state-directory.es.mdx
+  s_eaf36da1edfe18::t_dd700ba4448c6e 26
+  s_eaf36da1edfe18::t_a53b707be9f296 15,17-18
+  s_eaf36da1edfe18::t_84f53b061d7e2c 28
+docs/content/docs/configuration.zh.mdx
+  s_eaf36da1edfe18::t_57f02d019ef2e9 24
+  s_eaf36da1edfe18::t_269903d5ed166e 11-12
+  s_eaf36da1edfe18::t_b6470df53b382b 23
+docs/content/docs/configuration.te.mdx
+  s_eaf36da1edfe18::t_8458213f140d05 11-12
+  s_eaf36da1edfe18::t_89d3874608c7d1 23
+  s_eaf36da1edfe18::t_e91a3c00968602 24
+docs/content/docs/state-directory.ko.mdx
+  s_eaf36da1edfe18::t_a09e7154086c4f 15,17-18
+  s_eaf36da1edfe18::t_c245e86ccc32ba 26
+  s_eaf36da1edfe18::t_2f6319c25250ce 28
+src/entries/codexsupervisor.ts
+  s_eaf36da1edfe18::t_849e5922b058eb 128,134-151
+docs/content/docs/limitations.bn.mdx
+  s_eaf36da1edfe18::t_61f16f1dd11f57 11
+docs/content/docs/distribution.id.mdx
+  s_eaf36da1edfe18::t_45d4e941f629b0 8
+docs/content/docs/state-directory.bn.mdx
+  s_eaf36da1edfe18::t_73464336bd01e2 28
+  s_eaf36da1edfe18::t_41d03801f03712 26
+  s_eaf36da1edfe18::t_62c33d6825513a 15,17-18
+docs/content/docs/limitations.am.mdx
+  s_eaf36da1edfe18::t_2db975da5538ed 11
+docs/content/docs/limitations.ja.mdx
+  s_eaf36da1edfe18::t_eb2434eec49e47 11
+docs/content/docs/distribution.ha.mdx
+  s_eaf36da1edfe18::t_18f40b02c8c294 8
+docs/content/docs/limitations.hi.mdx
+  s_eaf36da1edfe18::t_94df10c74f8c68 11
+docs/content/docs/distribution.de.mdx
+  s_eaf36da1edfe18::t_50583e485991e5 8
+docs/content/docs/limitations.es.mdx
+  s_eaf36da1edfe18::t_174a31f0b229d3 11
+docs/content/docs/configuration.pt.mdx
+  s_eaf36da1edfe18::t_1e6c29df64aead 11-12
+  s_eaf36da1edfe18::t_97e820dfeddec1 24
+  s_eaf36da1edfe18::t_5c2bfc66c44d90 23
+docs/content/docs/state-directory.tl.mdx
+  s_eaf36da1edfe18::t_6d8f6a2a305c98 26,28
+  s_eaf36da1edfe18::t_d5aec1d41f0c5c 15,17-18
+docs/content/docs/configuration.de.mdx
+  s_eaf36da1edfe18::t_e08da50d503c6d 24
+  s_eaf36da1edfe18::t_70563b3c665ab9 23
+  s_eaf36da1edfe18::t_799e2081b3ad29 11-12
+src/lib/codexpresence.ts
+  s_eaf36da1edfe18::t_7fb2737d85a803 26-37,41
+docs/content/docs/distribution.te.mdx
+  s_eaf36da1edfe18::t_e46652bd5df618 8
+docs/content/docs/limitations.arz.mdx
+  s_eaf36da1edfe18::t_aada8c08e5fa81 11
+docs/content/docs/limitations.vi.mdx
+  s_eaf36da1edfe18::t_9a6657b4954ec6 11
+docs/content/docs/limitations.ta.mdx
+  s_eaf36da1edfe18::t_ea11896f966471 11
+docs/content/docs/configuration.ja.mdx
+  s_eaf36da1edfe18::t_aedfe42ad7a087 23
+  s_eaf36da1edfe18::t_17a00aa8db4df9 11-12
+  s_eaf36da1edfe18::t_36ae60383b20d5 24
+docs/content/docs/limitations.pnb.mdx
+  s_eaf36da1edfe18::t_2bedf1409539a9 11
+docs/content/docs/configuration.ha.mdx
+  s_eaf36da1edfe18::t_0d109d3034c3b5 11-12
+  s_eaf36da1edfe18::t_9d42832ffa919b 24
+  s_eaf36da1edfe18::t_7b065522b30a44 23
+docs/content/docs/limitations.tr.mdx
+  s_eaf36da1edfe18::t_8030ef9ad3d29f 11
+docs/content/docs/limitations.mdx
+  s_eaf36da1edfe18::t_15bc63d1777485 11
+src/lib/oauth.ts
+  s_eaf36da1edfe18::t_de058ec432418b 11
+  s_eaf36da1edfe18::t_10a61eed008e09 15-20
+docs/content/docs/distribution.ko.mdx
+  s_eaf36da1edfe18::t_d7dd8202f23eee 8
+docs/content/docs/distribution.tl.mdx
+  s_eaf36da1edfe18::t_bb05145f6fe3fc 8
+docs/content/docs/state-directory.pcm.mdx
+  s_eaf36da1edfe18::t_b43f80c385cb6a 28
+  s_eaf36da1edfe18::t_4125698e6b0eb2 15,17-18
+  s_eaf36da1edfe18::t_676ae4ee4b509c 26
+docs/content/docs/configuration.mr.mdx
+  s_eaf36da1edfe18::t_8882435f815e83 24
+  s_eaf36da1edfe18::t_8903c0632feb45 11-12
+  s_eaf36da1edfe18::t_068167365e10fe 23
+docs/content/docs/distribution.mr.mdx
+  s_eaf36da1edfe18::t_a6cfb0e3b2c50b 8
+docs/content/docs/distribution.ar.mdx
+  s_eaf36da1edfe18::t_09ea1b45f7d0ac 8
+docs/content/docs/configuration.ko.mdx
+  s_eaf36da1edfe18::t_082bea83b6d87e 23
+  s_eaf36da1edfe18::t_5789a463d70ff7 11-12
+  s_eaf36da1edfe18::t_b1ed32dbbfe480 24
+docs/content/docs/distribution.zh.mdx
+  s_eaf36da1edfe18::t_9e42e234580fb5 8
+docs/content/docs/configuration.fa.mdx
+  s_eaf36da1edfe18::t_5036c2adcc487c 24
+  s_eaf36da1edfe18::t_8a332b04f4f2d6 23
+  s_eaf36da1edfe18::t_f9608ab36c2182 11-12
+docs/content/docs/configuration.yue.mdx
+  s_eaf36da1edfe18::t_4e79016ba1b254 24
+  s_eaf36da1edfe18::t_24b883401ba5c4 23
+  s_eaf36da1edfe18::t_78ff2dc1205f9e 11-12
+docs/content/docs/distribution.tr.mdx
+  s_eaf36da1edfe18::t_81a11467a6ae03 8
+docs/content/docs/limitations.pcm.mdx
+  s_eaf36da1edfe18::t_c65999fe0aad15 11
+docs/content/docs/state-directory.fr.mdx
+  s_eaf36da1edfe18::t_99d461e6367b3b 26
+  s_eaf36da1edfe18::t_51309478b293aa 28
+  s_eaf36da1edfe18::t_55074de0e6bc18 15,17-18
+docs/content/docs/distribution.pt.mdx
+  s_eaf36da1edfe18::t_95e74f31a02774 8
+docs/content/docs/distribution.ru.mdx
+  s_eaf36da1edfe18::t_5dc4b8956e90da 8
+docs/content/docs/limitations.zh.mdx
+  s_eaf36da1edfe18::t_84b2f903756e85 11
+docs/content/docs/distribution.ta.mdx
+  s_eaf36da1edfe18::t_7e2609d69c6161 8
+docs/content/docs/configuration.hi.mdx
+  s_eaf36da1edfe18::t_b534938cdc0b7d 11-12
+  s_eaf36da1edfe18::t_0b2252df642643 23
+  s_eaf36da1edfe18::t_b344149209909c 24
+docs/content/docs/limitations.wuu.mdx
+  s_eaf36da1edfe18::t_0b638bdb9afa4e 11
+docs/content/docs/limitations.ar.mdx
+  s_eaf36da1edfe18::t_9490293ef36830 11
+docs/content/docs/distribution.sw.mdx
+  s_eaf36da1edfe18::t_1adf87168c6303 8
+src/cli/serve.ts
+  s_eaf36da1edfe18::t_0c0a4a740fa4e7 78
+docs/content/docs/distribution.hi.mdx
+  s_eaf36da1edfe18::t_e6213c09c328f5 8
+docs/content/docs/configuration.ta.mdx
+  s_eaf36da1edfe18::t_e3448807e98673 23
+  s_eaf36da1edfe18::t_169f0e55262e88 24
+  s_eaf36da1edfe18::t_ca34ef0f65d9ba 11-12
+docs/content/docs/limitations.sw.mdx
+  s_eaf36da1edfe18::t_7efa6b54524ee7 11
+docs/content/docs/configuration.bn.mdx
+  s_eaf36da1edfe18::t_1d8d084573fe59 24
+  s_eaf36da1edfe18::t_7646252b06277a 11-12
+  s_eaf36da1edfe18::t_d0b94a9f739456 23
+docs/content/docs/distribution.th.mdx
+  s_eaf36da1edfe18::t_f244361fe084e5 8
+src/lib/atomic.ts
+  s_eaf36da1edfe18::t_10db27de771dfd 18-28
+docs/content/docs/configuration.pcm.mdx
+  s_eaf36da1edfe18::t_5d655af60b1ef0 24
+  s_eaf36da1edfe18::t_3ac30186c0e275 11-12
+  s_eaf36da1edfe18::t_7de5c5c6628b96 23
+test/e2e/swap-concurrency.ts
+  s_eaf36da1edfe18::t_c8039ef8d8993c 28-31
+docs/content/docs/state-directory.de.mdx
+  s_eaf36da1edfe18::t_02ded4d99ab993 15,17-18
+  s_eaf36da1edfe18::t_7dc2a21ea27064 26,28
+docs/content/docs/state-directory.wuu.mdx
+  s_eaf36da1edfe18::t_c24e067397729e 15,17-18
+  s_eaf36da1edfe18::t_dc8ff673374949 26,28
+DESIGN.md
+  s_eaf36da1edfe18::t_d406b03c8c5125 33-34
+  s_eaf36da1edfe18::t_5f545151f6db43 92
+docs/content/docs/distribution.yue.mdx
+  s_eaf36da1edfe18::t_d82c94d66bc9ac 8
+docs/content/docs/state-directory.hi.mdx
+  s_eaf36da1edfe18::t_be5a422e455745 15,17-18
+  s_eaf36da1edfe18::t_1c16951d57bbd8 26,28
+docs/content/docs/state-directory.mr.mdx
+  s_eaf36da1edfe18::t_1ee6d0ba9e3155 15,17-18
+  s_eaf36da1edfe18::t_a6e6c09dc21c46 26,28
+docs/content/docs/state-directory.pt.mdx
+  s_eaf36da1edfe18::t_4794fde3517d42 26,28
+  s_eaf36da1edfe18::t_35fa8897051a62 15,17-18
+docs/content/docs/state-directory.vi.mdx
+  s_eaf36da1edfe18::t_8f3d2102ccb6e7 15,17-18
+  s_eaf36da1edfe18::t_4eed10c220f5d0 26,28
+docs/content/docs/configuration.pnb.mdx
+  s_eaf36da1edfe18::t_ded095eb878bee 11-12
+  s_eaf36da1edfe18::t_825fb1f0c96469 24
+  s_eaf36da1edfe18::t_77d7e41e65a21b 23
+docs/content/docs/configuration.mdx
+  s_eaf36da1edfe18::t_703d04eddbdaa2 11-12,24
+src/cli/onboard.ts
+  s_eaf36da1edfe18::t_cfa9c46838a980 78-79
+  s_eaf36da1edfe18::t_9d83be73819562 49-57
+docs/content/docs/distribution.es.mdx
+  s_eaf36da1edfe18::t_a4c029dbf3fae0 8
+docs/content/docs/limitations.ko.mdx
+  s_eaf36da1edfe18::t_91ad8767d0ae04 11
+docs/content/docs/state-directory.id.mdx
+  s_eaf36da1edfe18::t_87b1a3dc7f2379 15,17-18
+  s_eaf36da1edfe18::t_84dfa87c59a442 26,28
+docs/content/docs/state-directory.ta.mdx
+  s_eaf36da1edfe18::t_14be6af4111e3a 28
+  s_eaf36da1edfe18::t_3a997d31ba7712 26
+  s_eaf36da1edfe18::t_0a1b35d48dcf59 15,17-18
+docs/content/docs/state-directory.yue.mdx
+  s_eaf36da1edfe18::t_07e1212151811f 15,17-18
+  s_eaf36da1edfe18::t_b35d0f7860b4d0 26,28
+docs/content/docs/distribution.fa.mdx
+  s_eaf36da1edfe18::t_6270f559df634b 8
+docs/content/docs/limitations.th.mdx
+  s_eaf36da1edfe18::t_46ef81d5e1d785 11
+docs/content/docs/distribution.arz.mdx
+  s_eaf36da1edfe18::t_1975bb565400ca 8
+src/lib/settings.ts
+  s_eaf36da1edfe18::t_c64a0b359d6964 84-89
+docs/content/docs/configuration.es.mdx
+  s_eaf36da1edfe18::t_6d3e162a63d783 11-12
+  s_eaf36da1edfe18::t_2b31d086fbfc92 23
+  s_eaf36da1edfe18::t_11c711f166a882 24
+docs/content/docs/configuration.arz.mdx
+  s_eaf36da1edfe18::t_c0ddf3e0dead25 23
+  s_eaf36da1edfe18::t_0e0345c2264793 24
+  s_eaf36da1edfe18::t_0b860ff717e574 11-12
+docs/content/docs/limitations.te.mdx
+  s_eaf36da1edfe18::t_59823295cf479e 11
+docs/content/docs/state-directory.mdx
+  s_eaf36da1edfe18::t_777775275282d5 26,28
+  s_eaf36da1edfe18::t_5b36887de1a7ab 15,17
+  s_eaf36da1edfe18::t_5d496a6803d0c1 18
+test/setup.ts
+  s_eaf36da1edfe18::t_8d7b0ba832deeb 21-24
+docs/content/docs/configuration.fr.mdx
+  s_eaf36da1edfe18::t_ac24fd2f04ccf2 11-12
+  s_eaf36da1edfe18::t_fb918af0a8a046 23
+  s_eaf36da1edfe18::t_1978aa0e39aa52 24
+docs/content/docs/configuration.tl.mdx
+  s_eaf36da1edfe18::t_9b796eaa24596a 11-12
+  s_eaf36da1edfe18::t_cbb3b07bd69ccc 23
+  s_eaf36da1edfe18::t_2bd870b3310392 24
+docs/content/docs/configuration.tr.mdx
+  s_eaf36da1edfe18::t_d65a1da4e9492e 23
+  s_eaf36da1edfe18::t_25f3e4e96ed759 24
+  s_eaf36da1edfe18::t_5f1664cd0c5ac0 11-12
+src/entries/supervisor.ts
+  s_eaf36da1edfe18::t_4f488851639b4f 99-112
+  s_eaf36da1edfe18::t_a16e6b28d23a62 225-235
+  s_eaf36da1edfe18::t_a20714fc7ffef3 17
+  s_eaf36da1edfe18::t_6dfc1c88c56af5 314-317
+  s_eaf36da1edfe18::t_20697de92263d6 145-146
+  s_eaf36da1edfe18::t_1ec70f0352dce6 263
+src/lib/install.ts
+  s_eaf36da1edfe18::t_6a8fc6be51a893 11
+  s_eaf36da1edfe18::t_9034ce487ff32d 341-352
+  s_eaf36da1edfe18::t_8c94db2d697b9c 87-97,107,123
+docs/content/docs/limitations.fr.mdx
+  s_eaf36da1edfe18::t_3c4e15fe0f02e2 11
+AGENTS.md
+  s_eaf36da1edfe18::t_3772a1017418c4 232
+  s_eaf36da1edfe18::t_be7f1ba56129b0 73
+docs/content/docs/state-directory.ha.mdx
+  s_eaf36da1edfe18::t_a183d6befa5420 15,17-18
+  s_eaf36da1edfe18::t_924c8c4fd5041b 26
+  s_eaf36da1edfe18::t_02402b6b46ab97 28
+docs/content/docs/state-directory.ru.mdx
+  s_eaf36da1edfe18::t_0d8733633682be 26
+  s_eaf36da1edfe18::t_9913b2c7c55e93 28
+  s_eaf36da1edfe18::t_ed9a27600079ec 15,17-18
+docs/content/docs/configuration.ru.mdx
+  s_eaf36da1edfe18::t_c5dbcd247d835b 24
+  s_eaf36da1edfe18::t_c1b997420d1fc8 11-12
+  s_eaf36da1edfe18::t_6843034c43adde 23
+docs/content/docs/state-directory.zh.mdx
+  s_eaf36da1edfe18::t_4d257cee8a554a 26,28
+  s_eaf36da1edfe18::t_8400ce9d0d76b5 15,17-18
+docs/content/docs/state-directory.te.mdx
+  s_eaf36da1edfe18::t_4c4cb936063d16 26
+  s_eaf36da1edfe18::t_f5244f5d3230ce 28
+  s_eaf36da1edfe18::t_5059fd86440dcf 15,17-18
+docs/content/docs/limitations.yue.mdx
+  s_eaf36da1edfe18::t_ad03d70bfcf24f 11
+docs/content/docs/distribution.pnb.mdx
+  s_eaf36da1edfe18::t_af41f38117b82b 8
+docs/content/docs/configuration.id.mdx
+  s_eaf36da1edfe18::t_de2f1bb473f745 11-12
+  s_eaf36da1edfe18::t_b7615540ff3813 23
+  s_eaf36da1edfe18::t_8b2e50ef786f38 24
+docs/content/docs/limitations.mr.mdx
+  s_eaf36da1edfe18::t_23354d22304f3f 11
+docs/content/docs/state-directory.tr.mdx
+  s_eaf36da1edfe18::t_3bc320bc97d6d9 26,28
+  s_eaf36da1edfe18::t_d72875a04028da 15,17-18
+docs/content/docs/configuration.vi.mdx
+  s_eaf36da1edfe18::t_ed1ccf6c70149d 23
+  s_eaf36da1edfe18::t_8acaeaa94cd8c4 24
+  s_eaf36da1edfe18::t_29c8aa3a7ecadf 11-12
+docs/content/docs/configuration.ur.mdx
+  s_eaf36da1edfe18::t_82dec740bf703f 24
+  s_eaf36da1edfe18::t_7ebaee7bdf4cdf 23
+  s_eaf36da1edfe18::t_35ab41a0054cf0 11-12
+docs/content/docs/limitations.pt.mdx
+  s_eaf36da1edfe18::t_e68c432f5439a4 11
+docs/content/docs/distribution.am.mdx
+  s_eaf36da1edfe18::t_b07c871b203927 8
+test/pure.test.ts
+  s_eaf36da1edfe18::t_ec51562104726a 277,279-282,284-285
+src/lib/sessions.ts
+  s_eaf36da1edfe18::t_0577c71d73068d 34-49
+  s_eaf36da1edfe18::t_072ce338c841f0 6,14-18
+  s_eaf36da1edfe18::t_c8ff66c47e1bd8 19
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "29d175c753d8465995622b4a8e01f836359d1ee6",
+  "prompts": {},
+  "sessions": {
+    "s_eaf36da1edfe18": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "085f0c3d-1bd0-4a58-8930-8dfdcf1a0376",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sunghyun Cho <hey@cho.sh>"
+    }
+  }
+}
