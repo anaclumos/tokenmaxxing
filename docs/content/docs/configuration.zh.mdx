@@ -20,7 +20,7 @@ description: "config.json 的结构、阈值与策略旋钮"
 }
 ```
 
-- `thresholds.session` / `thresholds.weekly`：[切换如何决策](/switching) 中所述的筛选阈值。
+- `thresholds.session` / `thresholds.weekly`：[切换如何决策](/zh/switching) 中所述的筛选阈值。
 - `claudeBin` / `codexBin`：钉定监督进程实际生成的真实二进制文件（由 `init` / `init --codex` 写入；当递归防护诊断提示 `claudeBin` 不再指向真实的 Claude 二进制文件时，就在这里修正它）。
 - `policy.projectionMargin`：从两个阈值中减去后得到有效阈值。
 - `policy.greedySessionFloor`：贪心收敛开始介入时的会话已用百分比。

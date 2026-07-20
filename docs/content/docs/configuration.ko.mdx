@@ -20,7 +20,7 @@ description: "config.json 스키마, 임계값, 정책 옵션"
 }
 ```
 
-- `thresholds.session` / `thresholds.weekly`: [전환 결정 방식](/switching)에서 설명한 선별 기준선.
+- `thresholds.session` / `thresholds.weekly`: [전환 결정 방식](/ko/switching)에서 설명한 선별 기준선.
 - `claudeBin` / `codexBin`: supervisor가 실행하는 실제 바이너리를 고정합니다(`init` / `init --codex`가 기록합니다. 재귀 방지 진단이 `claudeBin`을 여기서 고치라고 안내하는 경우는 이 값이 더 이상 실제 Claude 바이너리를 가리키지 않을 때입니다).
 - `policy.projectionMargin`: 유효 기준선을 만들기 위해 두 기준선에서 빼는 값.
 - `policy.greedySessionFloor`: 그리디 수렴이 관여하는 세션 사용 백분율.

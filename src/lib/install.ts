@@ -2,7 +2,7 @@
 // The wrapper is a 2-line `exec ... __supervise "$@"` shim so dispatch never
 // depends on argv0 semantics.
 
-import { appendFileSync, existsSync, mkdirSync, readFileSync, realpathSync, rmSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, realpathSync, rmSync, statSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { escape } from "es-toolkit";
 import { z } from "zod";
@@ -347,7 +347,9 @@ export function ensurePathInRc(rc: string): "added" | "present" {
   if (current.includes(PATH_LINE_MARK)) {
     const kept = current.split("\n").filter((line) => !line.includes(PATH_LINE_MARK));
     const sep0 = kept.length === 0 || kept[kept.length - 1] === "" ? "" : "\n";
-    writeFileAtomic(rc, `${kept.join("\n")}${sep0}export PATH="${dir}:$PATH" ${PATH_LINE_MARK}\n`);
+    // preserve the rc's own mode: writeFileAtomic defaults to 0600, which
+    // would silently tighten a normally 0644 shell rc (PR #36 review catch)
+    writeFileAtomic(rc, `${kept.join("\n")}${sep0}export PATH="${dir}:$PATH" ${PATH_LINE_MARK}\n`, statSync(rc).mode & 0o777);
     return "added";
   }
   const sep = current === "" || current.endsWith("\n") ? "" : "\n";

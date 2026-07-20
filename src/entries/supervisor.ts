@@ -7,7 +7,7 @@
 // relaunches `claude --resume <id>`. Process/terminal manager only - it never
 // reads or proxies tokens.
 
-import { existsSync, mkdirSync, rmSync, readdirSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { maxBy } from "es-toolkit";
 import { z } from "zod";
@@ -176,6 +176,21 @@ function latestSessionForCwd(): string | null {
   }
 }
 
+/** Read + validate a respawn marker. An unparseable one (a version-skew hook,
+ *  corruption) is dropped loudly and reported as absent: the watcher checks
+ *  validity BEFORE the SIGTERM, so garbage can never kill the session, and the
+ *  post-exit consume can never throw after the child is already dead (PR #36
+ *  review catch). */
+function consumableMarker(marker: string): z.infer<typeof RespawnMarkerSchema> | null {
+  try {
+    return RespawnMarkerSchema.parse(JSON.parse(readFileSync(marker, "utf8")));
+  } catch (e) {
+    rmSync(marker, { force: true });
+    log("supervisor.marker_invalid", { err: e instanceof Error ? e.message : String(e) });
+    return null;
+  }
+}
+
 /** Interruptible countdown until `until`, shown in the terminal (claude is dead,
  *  so the statusLine can't render it). Ctrl-C resumes immediately. */
 async function countdownWait(acct: string, until: number): Promise<void> {
@@ -289,7 +304,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
     let done = false;
     const markerWatch = (async () => {
       while (!done) {
-        if (await Bun.file(marker).exists()) return true;
+        if (existsSync(marker) && consumableMarker(marker) != null) return true;
         await Bun.sleep(150);
       }
       return false;
@@ -305,15 +320,18 @@ export async function runSupervisor(argv: string[]): Promise<number> {
     await markerWatch.catch(() => {});
     restoreTermios(savedTermios);
 
-    if (existsSync(marker)) {
-      const m = RespawnMarkerSchema.parse(await Bun.file(marker).json());
+    const m = existsSync(marker) ? consumableMarker(marker) : null;
+    if (m) {
       rmSync(marker, { force: true });
       respawns++;
       if (m.waitUntil > Date.now()) await countdownWait(m.account, m.waitUntil);
       else process.stdout.write(`\n\x1b[36m↻ tokenmaxxing: switched to ${m.account} - resuming...\x1b[0m\n`);
       // resume the marker's CURRENT transcript, not the pinned id: after
       // /clear they differ, and resuming the pinned id would revive the
-      // pre-/clear conversation (closing-review HIGH catch).
+      // pre-/clear conversation (closing-review HIGH catch). Persist the
+      // flags under that transcript id too, so a later bare
+      // `claude --resume <id>` restores them (PR #36 review catch).
+      saveSessionFlags(m.sessionId, base, process.cwd());
       launchArgs = ["--resume", m.sessionId, ...base];
       continue;
     }

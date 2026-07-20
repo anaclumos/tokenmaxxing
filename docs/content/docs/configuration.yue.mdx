@@ -20,7 +20,7 @@ description: "config.json 嘅 schema、閾值同策略選項"
 }
 ```
 
-- `thresholds.session` / `thresholds.weekly`：[點樣決定切換](/switching)入面描述嘅篩選界線。
+- `thresholds.session` / `thresholds.weekly`：[點樣決定切換](/yue/switching)入面描述嘅篩選界線。
 - `claudeBin` / `codexBin`：釘死監督者實際會 spawn 嘅真身 binary（由 `init` / `init --codex` 寫入;當防遞歸嘅診斷話你知 `claudeBin` 唔再指向真身 Claude binary 嘅時候，就要嚟呢度改）。
 - `policy.projectionMargin`：會喺兩條界線各自減走，得出有效界線。
 - `policy.greedySessionFloor`：session 已用百分比去到幾多，貪婪收斂就會啟動。

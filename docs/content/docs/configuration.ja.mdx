@@ -20,7 +20,7 @@ description: "config.json のスキーマ、しきい値、ポリシーの調整
 }
 ```
 
-- `thresholds.session` / `thresholds.weekly`: [切り替えの判断方法](/switching)で説明したスクリーニングバー。
+- `thresholds.session` / `thresholds.weekly`: [切り替えの判断方法](/ja/switching)で説明したスクリーニングバー。
 - `claudeBin` / `codexBin`: スーパーバイザーが起動する本物のバイナリを固定する設定 (`init` / `init --codex` によって書き込まれる。再帰防止ガードの診断メッセージは、`claudeBin` が本物の Claude バイナリを指さなくなったとき、ここを修正するよう案内する)。
 - `policy.projectionMargin`: 両方のバーから差し引いて有効バーを求める値。
 - `policy.greedySessionFloor`: グリーディ収束が作動するセッション使用率。

@@ -14,7 +14,11 @@ import { evaluateAndMaybeSwap } from "../lib/decide.ts";
 import { RespawnMarkerSchema } from "../lib/types.ts";
 import { log } from "../lib/log.ts";
 
-const StopStdin = z.looseObject({ session_id: z.string().optional() });
+// session_id must be a real transcript UUID: a malformed value would ride the
+// respawn marker into `--resume <garbage>`, which claude treats as a picker
+// search term (PR #36 review catch); non-UUID input drops to undefined and the
+// marker falls back to the pinned sid.
+const StopStdin = z.looseObject({ session_id: z.uuid().optional().catch(undefined) });
 
 async function readStdin(): Promise<string> {
   const chunks: Uint8Array[] = [];
