@@ -576,7 +576,16 @@ export async function relayThread(input: {
         // that enters it - whether a salvaged remainder piece here or a later
         // streamed push joining the segment (a card-only salvage must not
         // skip the reopen, and a text-less segment must not dangle one).
-        const deliveredFenceOpen = (fullRaw.slice(0, deliveredLen).split("```").length - 1) % 2 === 1;
+        // Fold this dying segment's OWN still-armed reopen into the parity:
+        // an armed-but-never-materialized reopenFence means the segment
+        // logically BEGAN inside an open fence (a card-only salvage that
+        // inherited one and died before any text materialized it), so that
+        // open state must propagate to the next salvage or its later text
+        // renders unfenced (vercel + cubic chained-salvage catch, PR #42).
+        // Once materialized, reopenFence is false and the reopen chunk is in
+        // fullRaw, so the XOR is a no-op; a normal segment's flag is false.
+        const deliveredFenceOpen =
+          ((fullRaw.slice(0, deliveredLen).split("```").length - 1) % 2 === 1) !== meta.reopenFence;
         if (lost.length > 0 && salvagesLeft > 0) {
           salvagesLeft -= 1;
           log("serve.post_salvage", { chunks: lost.length, left: salvagesLeft });
