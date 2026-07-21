@@ -46,6 +46,11 @@ export const TurnOutcomeSchema = z.object({
    *  operator's benefit). A drain must not read that delivery failure as a
    *  killed child and re-run completed work (adversarial-review catch). */
   resultReceived: z.boolean(),
+  /** epoch ms when the pool is expected usable again: set when the turn ended
+   *  at a usage limit whose recovery time is known. The caller keeps the
+   *  thread's activeTurn marker with resumeAt and the daemon resumes the turn
+   *  itself, instead of the old "re-send it once the pool recovers" drop. */
+  deferUntil: z.number().nullable(),
 });
 export type TurnOutcome = z.infer<typeof TurnOutcomeSchema>;
 
@@ -69,24 +74,32 @@ export const MAX_RECOVERIES = 3;
 const ParkPlanSchema = z.union([
   z.object({ kind: z.literal("proceed") }),
   z.object({ kind: z.literal("park"), wakeAt: z.number() }),
-  z.object({ kind: z.literal("drop"), recoversAt: z.number().nullable() }),
+  z.object({ kind: z.literal("defer"), resumeAt: z.number() }),
+  z.object({ kind: z.literal("drop") }),
 ]);
 export type ParkPlan = z.infer<typeof ParkPlanSchema>;
 
-/** What to do with a spawn-boundary switch decision: proceed on a usable pool,
- *  park until the soonest recovery when it lands inside the message's one
- *  shared deadline, drop honestly otherwise (dropping beats a false
- *  will-resume promise - slaude's recorded rationale). The deadline is fixed
- *  when the message's relay starts, so chained parks can never hold the queue
- *  slot longer than PARK_MAX_MS in total. */
+/** What to do with a spawn-boundary switch decision: proceed on a usable pool;
+ *  park in-handler until the soonest recovery when it lands inside the
+ *  message's one shared deadline; DEFER when recovery is known but further
+ *  out (or the in-handler recovery budget is spent): the handler releases the
+ *  queue slot and the daemon resumes the turn from its durable marker once
+ *  the pool recovers (2026-07-20 incident: dropped messages sat dead for
+ *  hours after the pool recovered until the user re-sent them by hand -
+ *  superseding the older drop-instead-of-promise rule, whose premise was that
+ *  a will-resume promise could not be kept; the marker + scheduler + startup
+ *  scan make it durable). Only an UNKNOWN recovery time still drops honestly.
+ *  The deadline is fixed when the message's relay starts, so chained parks
+ *  can never hold the queue slot longer than PARK_MAX_MS in total. */
 export function parkPlan(input: { decision: SwapDecision; recoveries: number; deadline: number }): ParkPlan {
   const depleted = input.decision.reason === "all-depleted" || input.decision.reason === "depleted-wait";
   if (!depleted) return { kind: "proceed" };
   const wake = input.decision.waitUntil ?? null;
+  if (wake == null) return { kind: "drop" };
   // the grace counts against the deadline too: the promised total hold is
   // exact, not deadline-plus-grace (review catch, PR #18).
-  if (wake == null || wake + PARK_GRACE_MS > input.deadline || input.recoveries >= MAX_RECOVERIES) {
-    return { kind: "drop", recoversAt: wake };
+  if (wake + PARK_GRACE_MS > input.deadline || input.recoveries >= MAX_RECOVERIES) {
+    return { kind: "defer", resumeAt: wake + PARK_GRACE_MS };
   }
   return { kind: "park", wakeAt: wake + PARK_GRACE_MS };
 }
@@ -364,10 +377,14 @@ export function detachedClaudeSpawn(options: SpawnOptions) {
  * a depleted pool parks BEFORE a doomed spawn burns a failed turn, with an
  * honest in-thread notice either way; a mid-turn limit the cached pool state
  * did not predict is persisted (recordObservedLimit) and retried silently into
- * the same session. Total parking is bounded by one shared PARK_MAX_MS
- * deadline plus MAX_RECOVERIES, and every drop the relay itself performs is
- * announced in-thread (a queue-entry TTL expiry upstream is the one drop it
- * cannot see).
+ * the same session. Total in-handler parking is bounded by one shared
+ * PARK_MAX_MS deadline plus MAX_RECOVERIES; a limit whose recovery lands
+ * beyond that budget DEFERS instead of dropping (outcome.deferUntil): the
+ * caller keeps the thread's durable marker with resumeAt and the daemon
+ * resumes the turn itself once the pool recovers (2026-07-20 incident).
+ * Only an unknown recovery time still drops, and every drop the relay itself
+ * performs is announced in-thread (a queue-entry TTL expiry upstream is the
+ * one drop it cannot see).
  */
 export async function relayThread(input: {
   cwd: string;
@@ -394,7 +411,7 @@ export async function relayThread(input: {
    *  out a depleted-pool countdown. */
   drainSignal?: AbortSignal;
 }): Promise<TurnOutcome> {
-  const outcome: TurnOutcome = { sessionId: input.sessionId, failed: false, rateLimited: false, finish: false, announcedDrop: false, resultReceived: false };
+  const outcome: TurnOutcome = { sessionId: input.sessionId, failed: false, rateLimited: false, finish: false, announcedDrop: false, resultReceived: false, deferUntil: null };
   let segment: ReturnType<typeof pushableStream> | null = null;
   let segmentMeta: { text: boolean } | null = null;
   let lastPost: Promise<unknown> = Promise.resolve();
@@ -484,8 +501,14 @@ export async function relayThread(input: {
   };
   const inWord = (epochMs: number | null) => (epochMs == null ? "an unknown time" : `~${fmtResetShort(epochMs, Date.now()) || "1m"}`);
 
+  // a non-limit failure line held back until the depleted-pool probe rules:
+  // posted verbatim on a plain failure, discarded when the turn defers (the
+  // deferral notice explains the pause; the raw line would invite a manual
+  // re-send of work the daemon resumes itself - cubic catch, PR #44).
+  let pendingFailureLine: string | null = null;
   const runQueryOnce = async () => {
     postedText = false;
+    pendingFailureLine = null;
     outcome.failed = false;
     outcome.rateLimited = false;
     outcome.resultReceived = false;
@@ -594,7 +617,10 @@ export async function relayThread(input: {
       // a turn that produced no streamed text (tool-only turns) still reports.
       if (!postedText && result) await push(result);
       if (!postedText && !result && outcome.failed && !outcome.rateLimited) {
-        await push("the turn ended without a result - trying again may help");
+        // held back until the depleted-pool probe rules: a "trying again may
+        // help" line right before a deferral notice invites a manual re-send
+        // of work the daemon is about to resume itself (cubic catch, PR #44).
+        pendingFailureLine = "the turn ended without a result - trying again may help";
       }
     } catch (e) {
       outcome.failed = true;
@@ -602,7 +628,10 @@ export async function relayThread(input: {
       outcome.rateLimited = isRateLimitText({ text: detail });
       if (outcome.rateLimited) await recordObservedLimit({ text: detail, now: Date.now(), org: spawnOrg });
       log("serve.turn_error", { err: detail });
-      if (!outcome.rateLimited) await push(`tokenmaxxing: turn failed: ${detail}`);
+      // same hold-back: the detail already reached the log above, and a
+      // deferral's own notice explains the pause better than a raw child
+      // error that reads as "please re-send".
+      if (!outcome.rateLimited) pendingFailureLine = `tokenmaxxing: turn failed: ${detail}`;
     }
   };
 
@@ -622,10 +651,23 @@ export async function relayThread(input: {
     }
     const plan = parkPlan({ decision, recoveries, deadline: parkDeadline });
     if (plan.kind === "drop") {
+      // recovery time unknown: an auto-resume promise would be unkeepable,
+      // so the honest drop survives for exactly this case.
       outcome.failed = true;
       outcome.rateLimited = true;
-      log("serve.pool_depleted_drop", { recoversAt: plan.recoversAt });
-      outcome.announcedDrop = await notifyDelivered(`every pooled account is at its usage limit (recovers in ${inWord(plan.recoversAt)}) - this message was dropped; re-send it once the pool recovers.`);
+      log("serve.pool_depleted_drop", {});
+      outcome.announcedDrop = await notifyDelivered("every pooled account is at its usage limit (recovers at an unknown time) - this message was dropped; re-send it once the pool recovers.");
+      break;
+    }
+    if (plan.kind === "defer") {
+      // release the queue slot and let the daemon resume the turn from its
+      // durable marker once the pool recovers (2026-07-20 incident: dropped
+      // messages sat dead for hours after recovery until re-sent by hand).
+      outcome.failed = true;
+      outcome.rateLimited = true;
+      outcome.deferUntil = plan.resumeAt;
+      log("serve.pool_depleted_defer", { resumeAt: plan.resumeAt });
+      await notify(`every pooled account is at its usage limit - holding this message; it will resume automatically in ${inWord(plan.resumeAt)}.`);
       break;
     }
     if (plan.kind === "park") {
@@ -633,15 +675,61 @@ export async function relayThread(input: {
       log("serve.pool_depleted_park", { wakeAt: plan.wakeAt, recoveries });
       await notify(`every pooled account is at its usage limit - holding this message and retrying in ${inWord(plan.wakeAt)}.`);
       if (!(await sleep(plan.wakeAt - Date.now()))) {
+        // a drain aborted the park: the turn never spawned, so the marker
+        // survives (presumedKilled) and the next daemon start replays it.
         outcome.failed = true;
-        outcome.announcedDrop = await notifyDelivered("tokenmaxxing is restarting - this message was dropped; please re-send it.");
+        await notify("tokenmaxxing is restarting - this message resumes after the restart.");
         break;
       }
       continue;
     }
     await runQueryOnce();
-    if (!outcome.failed || !outcome.rateLimited) break;
+    if (!outcome.failed) break;
+    if (!outcome.rateLimited) {
+      // an unclassifiable child failure (e.g. "Claude Code process exited
+      // with code 1" - the 2026-07-20 Fable-cap death carried no limit
+      // phrase) against an exhausted pool IS the limit: the pool state is
+      // the evidence the error text did not carry. A completed result stays
+      // terminal, and a usable pool keeps the plain failure.
+      if (!outcome.resultReceived) {
+        try {
+          const verdict = await ensureBestAccount();
+          const depleted = verdict.reason === "all-depleted" || verdict.reason === "depleted-wait";
+          const wake = depleted ? verdict.waitUntil ?? null : null;
+          if (wake != null) {
+            outcome.rateLimited = true;
+            outcome.deferUntil = wake + PARK_GRACE_MS;
+            pendingFailureLine = null;
+            log("serve.turn_failed_depleted_defer", { resumeAt: outcome.deferUntil });
+            await notify(`the account pool is exhausted - pausing this turn; it will resume automatically in ${inWord(outcome.deferUntil)}.`);
+          }
+        } catch (e) {
+          // keep the original failure; the probe must never mask it.
+          log("serve.defer_probe_error", { err: (e instanceof Error ? e.message : String(e)).slice(0, 300) });
+        }
+      }
+      if (pendingFailureLine !== null) await push(pendingFailureLine);
+      break;
+    }
     if (recoveries >= MAX_RECOVERIES) {
+      // out of in-handler retry budget: defer to the pool's own recovery
+      // clock when it is known, drop honestly when it is not (a stale cache
+      // claiming a usable pool while every retry limits out lands here too,
+      // and deferring on no evidence would just spin the resume cap).
+      let wake: number | null = null;
+      try {
+        const verdict = await ensureBestAccount();
+        const depleted = verdict.reason === "all-depleted" || verdict.reason === "depleted-wait";
+        wake = depleted ? verdict.waitUntil ?? null : null;
+      } catch (e) {
+        log("serve.defer_probe_error", { err: (e instanceof Error ? e.message : String(e)).slice(0, 300) });
+      }
+      if (wake != null) {
+        outcome.deferUntil = wake + PARK_GRACE_MS;
+        log("serve.rate_limited_defer", { recoveries, resumeAt: outcome.deferUntil });
+        await notify(`still at a usage limit after retries - pausing this turn; it will resume automatically in ${inWord(outcome.deferUntil)}.`);
+        break;
+      }
       log("serve.rate_limited_drop", { recoveries });
       outcome.announcedDrop = await notifyDelivered("still at a usage limit after retries - this message was dropped; reply when you want to try again.");
       break;
@@ -672,8 +760,11 @@ export async function relayThread(input: {
       break;
     }
     if (!(await sleep(Math.max(RETRY_DELAY_MS, cooldownUntil - Date.now())))) {
+      // a drain aborted the retry sleep: same as a killed child, the marker
+      // survives (presumedKilled) and the next daemon start resumes the
+      // session where it stopped.
       outcome.failed = true;
-      outcome.announcedDrop = await notifyDelivered("tokenmaxxing is restarting - this message was dropped; please re-send it.");
+      await notify("tokenmaxxing is restarting - this turn resumes after the restart.");
       break;
     }
   }

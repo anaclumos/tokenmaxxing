@@ -202,15 +202,57 @@ describe("relayThread depleted-pool recovery", () => {
     expect(strings(col.posts[0])).toContain("dropped");
   });
 
-  test("drops honestly when recovery lands past the message deadline", async () => {
-    decisionQueue.push(depleted(Date.now() + PARK_MAX_MS + 120_000));
+  test("DEFERS when recovery lands past the message deadline: resume promise, never a re-send ask", async () => {
+    const wake = Date.now() + PARK_MAX_MS + 120_000;
+    decisionQueue.push(depleted(wake));
     const col = collector();
     const out = await relay({ post: col.post });
     expect(out.failed).toBe(true);
     expect(out.rateLimited).toBe(true);
+    expect(out.deferUntil).toBe(wake + 5_000);
+    expect(out.announcedDrop).toBe(false);
     expect(queryCalls.length).toBe(0);
-    expect(strings(col.posts[0])).toContain("recovers in ~");
-    expect(strings(col.posts[0])).toContain("dropped");
+    expect(strings(col.posts[0])).toContain("resume automatically");
+    expect(strings(col.posts[0])).not.toContain("re-send");
+  });
+
+  test("an unclassifiable child failure against an exhausted pool converts to a deferral", async () => {
+    // the 2026-07-20 death: "Claude Code process exited with code 1" carries
+    // no limit phrase, but the pool state is the evidence.
+    const wake = Date.now() + 3_600_000;
+    decisionQueue.push(usable, depleted(wake));
+    queryScripts.push(() =>
+      (async function* () {
+        yield init("s-crash");
+        throw new Error("Claude Code process exited with code 1");
+      })(),
+    );
+    const col = collector();
+    const out = await relay({ post: col.post });
+    expect(out.failed).toBe(true);
+    expect(out.rateLimited).toBe(true);
+    expect(out.deferUntil).toBe(wake + 5_000);
+    const allText = col.posts.map(strings).join(" ");
+    expect(allText).toContain("resume automatically");
+    // the raw failure line is held back on a deferral: it would invite a
+    // manual re-send of work the daemon resumes itself (cubic catch).
+    expect(allText).not.toContain("turn failed");
+  });
+
+  test("an unclassifiable failure with a USABLE pool stays a plain failure", async () => {
+    decisionQueue.push(usable, usable);
+    queryScripts.push(() =>
+      (async function* () {
+        yield init("s-crash2");
+        throw new Error("something unrelated broke");
+      })(),
+    );
+    const col = collector();
+    const out = await relay({ post: col.post });
+    expect(out.failed).toBe(true);
+    expect(out.rateLimited).toBe(false);
+    expect(out.deferUntil).toBeNull();
+    expect(col.posts.map(strings).join(" ")).toContain("turn failed");
   });
 
   test("persists a mid-turn limit and silently retries into the SAME session", async () => {
@@ -236,19 +278,42 @@ describe("relayThread depleted-pool recovery", () => {
     expect(allText).toContain("recovered");
   });
 
-  test("announces the drop once MAX_RECOVERIES limit retries are burnt", async () => {
+  test("burnt retries DEFER when the post-burn probe knows the pool's recovery clock", async () => {
     const now = Date.now();
     seedIdentityAndUsage("org-relay", now);
+    const wake = now + 7_200_000;
     const attempts = MAX_RECOVERIES + 1;
     for (let i = 0; i < attempts; i += 1) {
       decisionQueue.push(usable);
       queryScripts.push(script([init("s-burnt"), limitErrored("s-burnt", "You've hit your weekly limit.")]));
     }
+    decisionQueue.push(depleted(wake)); // the post-burn probe
     const col = collector();
     const out = await relay({ post: col.post });
     expect(out.failed).toBe(true);
     expect(out.rateLimited).toBe(true);
+    expect(out.deferUntil).toBe(wake + 5_000);
     expect(queryCalls.length).toBe(attempts);
+    const allText = col.posts.map(strings).join(" ");
+    expect(allText).toContain("still at a usage limit after retries");
+    expect(allText).toContain("resume automatically");
+    expect(allText).not.toContain("dropped");
+  });
+
+  test("burnt retries still drop honestly when the probe reports no recovery clock", async () => {
+    const now = Date.now();
+    seedIdentityAndUsage("org-relay", now);
+    const attempts = MAX_RECOVERIES + 1;
+    for (let i = 0; i < attempts; i += 1) {
+      decisionQueue.push(usable);
+      queryScripts.push(script([init("s-burnt2"), limitErrored("s-burnt2", "You've hit your weekly limit.")]));
+    }
+    decisionQueue.push(depleted()); // depleted, wake unknown
+    const col = collector();
+    const out = await relay({ post: col.post });
+    expect(out.failed).toBe(true);
+    expect(out.rateLimited).toBe(true);
+    expect(out.deferUntil).toBeNull();
     const allText = col.posts.map(strings).join(" ");
     expect(allText).toContain("still at a usage limit after retries");
     expect(allText).toContain("dropped");
