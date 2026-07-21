@@ -20,15 +20,23 @@ const cfg = SlackConfigSchema.parse({
   links: [{ channel: "C0DAEMON", repo: "/tmp/serve-daemon-repo" }],
 });
 
-const okOutcome: TurnOutcome = { sessionId: "s-ok", failed: false, rateLimited: false, finish: false, announcedDrop: false, resultReceived: true };
+const okOutcome: TurnOutcome = { sessionId: "s-ok", failed: false, rateLimited: false, finish: false, announcedDrop: false, resultReceived: true, deferUntil: null };
 
-function runtimeWith(relay: Parameters<typeof buildServeRuntime>[0]["relay"]) {
+function runtimeWith(
+  relay: Parameters<typeof buildServeRuntime>[0]["relay"],
+  streamable?: Parameters<typeof buildServeRuntime>[0]["streamable"],
+) {
   return buildServeRuntime({
     cfg,
     workspaceTeamId: "T-HOME",
     botUserId: () => "UBOT",
     relay,
     cleanup: cleanupThread,
+    streamable:
+      streamable ??
+      (async () => {
+        throw new Error("streamable not stubbed in this test");
+      }),
   });
 }
 
@@ -221,7 +229,7 @@ describe("buildServeRuntime drain", () => {
     let beginDrain = () => {};
     const rt = runtimeWith(async () => {
       beginDrain(); // the drain lands mid-turn
-      return { sessionId: null, failed: true, rateLimited: true, finish: false, announcedDrop: true, resultReceived: false };
+      return { sessionId: null, failed: true, rateLimited: true, finish: false, announcedDrop: true, resultReceived: false, deferUntil: null };
     });
     beginDrain = rt.beginDrain;
     const t = fakeThread({ id: "slack:C0DAEMON:700.1" });
@@ -234,7 +242,7 @@ describe("buildServeRuntime drain", () => {
     let beginDrain = () => {};
     const rt = runtimeWith(async () => {
       beginDrain();
-      return { sessionId: null, failed: true, rateLimited: false, finish: false, announcedDrop: false, resultReceived: false };
+      return { sessionId: null, failed: true, rateLimited: false, finish: false, announcedDrop: false, resultReceived: false, deferUntil: null };
     });
     beginDrain = rt.beginDrain;
     const t = fakeThread({ id: "slack:C0DAEMON:701.1" });
@@ -250,7 +258,7 @@ describe("buildServeRuntime drain", () => {
     let beginDrain = () => {};
     const rt = runtimeWith(async () => {
       beginDrain();
-      return { sessionId: "s-done", failed: true, rateLimited: false, finish: false, announcedDrop: false, resultReceived: true };
+      return { sessionId: "s-done", failed: true, rateLimited: false, finish: false, announcedDrop: false, resultReceived: true, deferUntil: null };
     });
     beginDrain = rt.beginDrain;
     const t = fakeThread({ id: "slack:C0DAEMON:702.1" });
@@ -319,19 +327,22 @@ describe("buildServeRuntime interrupted-turn recovery", () => {
     const threadId = "slack:C0DAEMON:900.1";
     saveSlackThread(record(threadId));
     const prompts: string[] = [];
-    const rt = runtimeWith(async (input) => {
-      prompts.push(input.prompt);
-      return { ...okOutcome, sessionId: "s-inbound" };
-    });
-    const t = fakeThread({ id: threadId });
     let releaseStreamable = () => {};
     const gate = new Promise<void>((resolve) => {
       releaseStreamable = resolve;
     });
-    const recovery = rt.recoverInterrupted(record(threadId), async () => {
-      await gate; // recovery is still building its thread handle...
-      return { thread: t.thread, requesterIds: ["U-OWNER"] };
-    });
+    const rt = runtimeWith(
+      async (input) => {
+        prompts.push(input.prompt);
+        return { ...okOutcome, sessionId: "s-inbound" };
+      },
+      async () => {
+        await gate; // recovery is still building its thread handle...
+        return { thread: t.thread, requesterIds: ["U-OWNER"] };
+      },
+    );
+    const t = fakeThread({ id: threadId });
+    const recovery = rt.recoverInterrupted(record(threadId));
     // ...while the redelivered mention wins the chain and handles the thread.
     await rt.onMessage({ thread: t.thread, message: home("@UBOT killed turn"), skipped: [], isMention: true });
     expect(prompts).toEqual(["killed turn"]);
@@ -346,17 +357,71 @@ describe("buildServeRuntime interrupted-turn recovery", () => {
     const threadId = "slack:C0DAEMON:901.1";
     saveSlackThread(record(threadId));
     const seen: { prompt: string; sessionId: string | null }[] = [];
-    const rt = runtimeWith(async (input) => {
-      seen.push({ prompt: input.prompt, sessionId: input.sessionId });
-      return { ...okOutcome, sessionId: "s-resumed" };
-    });
+    const rt = runtimeWith(
+      async (input) => {
+        seen.push({ prompt: input.prompt, sessionId: input.sessionId });
+        return { ...okOutcome, sessionId: "s-resumed" };
+      },
+      async () => ({ thread: t.thread, requesterIds: ["U-OWNER"] }),
+    );
     const t = fakeThread({ id: threadId });
-    await rt.recoverInterrupted(record(threadId), async () => ({ thread: t.thread, requesterIds: ["U-OWNER"] }));
+    await rt.recoverInterrupted(record(threadId));
     expect(seen.length).toBe(1);
     expect(seen[0]!.sessionId).toBe("s-old"); // resumes the killed session
     expect(t.posted.length).toBeGreaterThan(0); // the in-thread restart notice
     expect(loadSlackThread(threadId)?.sessionId).toBe("s-resumed");
     expect(loadSlackThread(threadId)?.activeTurn).toBeUndefined();
+  });
+});
+
+describe("buildServeRuntime usage-limit deferral", () => {
+  test("a deferred turn keeps its durable marker with resumeAt and the scheduler resumes it", async () => {
+    const threadId = "slack:C0DAEMON:950.1";
+    const wake = Date.now() + 80;
+    const prompts: string[] = [];
+    let calls = 0;
+    const rt = runtimeWith(
+      async (input) => {
+        calls += 1;
+        prompts.push(input.prompt);
+        if (calls === 1) {
+          return { sessionId: "s-defer", failed: true, rateLimited: true, finish: false, announcedDrop: false, resultReceived: false, deferUntil: wake };
+        }
+        return { ...okOutcome, sessionId: "s-after" };
+      },
+      async () => ({ thread: t.thread, requesterIds: ["U-OWNER"] }),
+    );
+    const t = fakeThread({ id: threadId });
+    await rt.onMessage({ thread: t.thread, message: home("@UBOT run later"), skipped: [], isMention: true });
+    // the deferral persisted durably: a daemon death here still resumes
+    const marker = loadSlackThread(threadId)?.activeTurn;
+    expect(marker?.resumeAt).toBe(wake);
+    expect(marker?.prompt).toContain("run later");
+    // the process-local timer fires and recovery resumes through the chain
+    const deadline = Date.now() + 3_000;
+    while (calls < 2 && Date.now() < deadline) await delay(20);
+    expect(calls).toBe(2);
+    expect(prompts[1]).toContain("run later");
+    await flushTurns(rt);
+    expect(loadSlackThread(threadId)?.activeTurn).toBeUndefined();
+    expect(loadSlackThread(threadId)?.sessionId).toBe("s-after");
+  });
+
+  test("beginDrain cancels pending deferred wakes; the durable marker survives for the next generation", async () => {
+    const threadId = "slack:C0DAEMON:951.1";
+    const wake = Date.now() + 60;
+    let calls = 0;
+    const rt = runtimeWith(async () => {
+      calls += 1;
+      return { sessionId: "s-hold", failed: true, rateLimited: true, finish: false, announcedDrop: false, resultReceived: false, deferUntil: wake };
+    });
+    const t = fakeThread({ id: threadId });
+    await rt.onMessage({ thread: t.thread, message: home("@UBOT held work"), skipped: [], isMention: true });
+    expect(calls).toBe(1);
+    rt.beginDrain();
+    await delay(150); // past the wake: a cancelled timer must not fire
+    expect(calls).toBe(1);
+    expect(loadSlackThread(threadId)?.activeTurn?.resumeAt).toBe(wake);
   });
 });
 
