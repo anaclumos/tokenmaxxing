@@ -10,7 +10,7 @@ import { join } from "node:path";
 import { z } from "zod";
 import { delay } from "es-toolkit";
 import { createSdkMcpServer, query, tool, type SpawnOptions } from "@anthropic-ai/claude-agent-sdk";
-import type { StreamChunk } from "chat";
+import { StreamingMarkdownRenderer, type StreamChunk } from "chat";
 import { ensureBestAccount, pooledOptions, stopHookCheck, type SwapDecision } from "../sdk.ts";
 import { POST_SWAP_COOLDOWN_MS } from "./decide.ts";
 import { readOAuthAccount } from "./claudejson.ts";
@@ -46,6 +46,11 @@ export const TurnOutcomeSchema = z.object({
    *  operator's benefit). A drain must not read that delivery failure as a
    *  killed child and re-run completed work (adversarial-review catch). */
   resultReceived: z.boolean(),
+  /** epoch ms when the pool is expected usable again: set when the turn ended
+   *  at a usage limit whose recovery time is known. The caller keeps the
+   *  thread's activeTurn marker with resumeAt and the daemon resumes the turn
+   *  itself, instead of the old "re-send it once the pool recovers" drop. */
+  deferUntil: z.number().nullable(),
 });
 export type TurnOutcome = z.infer<typeof TurnOutcomeSchema>;
 
@@ -69,24 +74,32 @@ export const MAX_RECOVERIES = 3;
 const ParkPlanSchema = z.union([
   z.object({ kind: z.literal("proceed") }),
   z.object({ kind: z.literal("park"), wakeAt: z.number() }),
-  z.object({ kind: z.literal("drop"), recoversAt: z.number().nullable() }),
+  z.object({ kind: z.literal("defer"), resumeAt: z.number() }),
+  z.object({ kind: z.literal("drop") }),
 ]);
 export type ParkPlan = z.infer<typeof ParkPlanSchema>;
 
-/** What to do with a spawn-boundary switch decision: proceed on a usable pool,
- *  park until the soonest recovery when it lands inside the message's one
- *  shared deadline, drop honestly otherwise (dropping beats a false
- *  will-resume promise - slaude's recorded rationale). The deadline is fixed
- *  when the message's relay starts, so chained parks can never hold the queue
- *  slot longer than PARK_MAX_MS in total. */
+/** What to do with a spawn-boundary switch decision: proceed on a usable pool;
+ *  park in-handler until the soonest recovery when it lands inside the
+ *  message's one shared deadline; DEFER when recovery is known but further
+ *  out (or the in-handler recovery budget is spent): the handler releases the
+ *  queue slot and the daemon resumes the turn from its durable marker once
+ *  the pool recovers (2026-07-20 incident: dropped messages sat dead for
+ *  hours after the pool recovered until the user re-sent them by hand -
+ *  superseding the older drop-instead-of-promise rule, whose premise was that
+ *  a will-resume promise could not be kept; the marker + scheduler + startup
+ *  scan make it durable). Only an UNKNOWN recovery time still drops honestly.
+ *  The deadline is fixed when the message's relay starts, so chained parks
+ *  can never hold the queue slot longer than PARK_MAX_MS in total. */
 export function parkPlan(input: { decision: SwapDecision; recoveries: number; deadline: number }): ParkPlan {
   const depleted = input.decision.reason === "all-depleted" || input.decision.reason === "depleted-wait";
   if (!depleted) return { kind: "proceed" };
   const wake = input.decision.waitUntil ?? null;
+  if (wake == null) return { kind: "drop" };
   // the grace counts against the deadline too: the promised total hold is
   // exact, not deadline-plus-grace (review catch, PR #18).
-  if (wake == null || wake + PARK_GRACE_MS > input.deadline || input.recoveries >= MAX_RECOVERIES) {
-    return { kind: "drop", recoversAt: wake };
+  if (wake + PARK_GRACE_MS > input.deadline || input.recoveries >= MAX_RECOVERIES) {
+    return { kind: "defer", resumeAt: wake + PARK_GRACE_MS };
   }
   return { kind: "park", wakeAt: wake + PARK_GRACE_MS };
 }
@@ -204,23 +217,41 @@ function pushableStream(): {
   iterable: AsyncIterable<SegmentChunk>;
   push: (chunk: SegmentChunk) => void;
   end: () => void;
+  ledger: () => { chunks: SegmentChunk[]; confirmed: number };
 } {
-  const queue: SegmentChunk[] = [];
+  const chunks: SegmentChunk[] = [];
+  let cursor = 0;
+  let confirmed = 0;
   let done = false;
   let notify: (() => void) | null = null;
   return {
     push(chunk) {
-      queue.push(chunk);
+      chunks.push(chunk);
       notify?.();
     },
     end() {
       done = true;
       notify?.();
     },
+    /** Everything ever pushed plus how much of it the consumer PROVED
+     *  delivered. The Slack adapter pulls one chunk, awaits its Slack append,
+     *  then pulls the next (verified in @chat-adapter/slack 4.34.0 stream()),
+     *  so each pull confirms the append for the previous chunk landed; a
+     *  consumer that dies mid-append unwinds the for-await with an implicit
+     *  return() at the yield, leaving that chunk and everything after it
+     *  unconfirmed. */
+    ledger() {
+      return { chunks: [...chunks], confirmed };
+    },
     iterable: {
       async *[Symbol.asyncIterator]() {
         while (true) {
-          for (let next = queue.shift(); next !== undefined; next = queue.shift()) yield next;
+          while (cursor < chunks.length) {
+            const next = chunks[cursor]!;
+            cursor += 1;
+            yield next;
+            confirmed = cursor;
+          }
           if (done) return;
           await new Promise<void>((resolve) => {
             notify = resolve;
@@ -231,6 +262,23 @@ function pushableStream(): {
     },
   };
 }
+
+/** Slack rejects an over-long message with msg_too_long, and NOTHING in chat
+ *  4.34.0 or the Slack adapter bounds, truncates, or splits reply text
+ *  (verified in-source 2026-07-20): a natively streamed message accumulates
+ *  server-side toward the 12,000-char markdown_text envelope (docs.slack.dev
+ *  documents that limit on chat.postMessage/update and all three streaming
+ *  methods), the post-and-edit fallback re-sends the FULL accumulated text as
+ *  markdown_text on every edit, and once anything rendered natively a failed
+ *  append REJECTS the whole thread.post - the reply dies (live incident
+ *  2026-07-20, three failed turns). relayThread therefore splits reply text
+ *  across Slack messages BEFORE the cap; the 2,000-char margin absorbs the
+ *  renderer's markdown normalization and mention-linkification expansion.
+ *  Tradeoff (accepted): the adapter-internal plain-text fallback edits via
+ *  chat.update `text` (hard 4,000-char cap), but it only engages when the
+ *  workspace refused native streaming outright - splitting every normal reply
+ *  3x tighter to cover that never-hit path is worse than the residual risk. */
+export const SEGMENT_TEXT_MAX = 10_000;
 
 /** Full permission name of the finish_thread tool (mcp__<server>__<tool>):
  *  it must be in allowedTools, because no one can answer a permission prompt
@@ -364,10 +412,14 @@ export function detachedClaudeSpawn(options: SpawnOptions) {
  * a depleted pool parks BEFORE a doomed spawn burns a failed turn, with an
  * honest in-thread notice either way; a mid-turn limit the cached pool state
  * did not predict is persisted (recordObservedLimit) and retried silently into
- * the same session. Total parking is bounded by one shared PARK_MAX_MS
- * deadline plus MAX_RECOVERIES, and every drop the relay itself performs is
- * announced in-thread (a queue-entry TTL expiry upstream is the one drop it
- * cannot see).
+ * the same session. Total in-handler parking is bounded by one shared
+ * PARK_MAX_MS deadline plus MAX_RECOVERIES; a limit whose recovery lands
+ * beyond that budget DEFERS instead of dropping (outcome.deferUntil): the
+ * caller keeps the thread's durable marker with resumeAt and the daemon
+ * resumes the turn itself once the pool recovers (2026-07-20 incident).
+ * Only an unknown recovery time still drops, and every drop the relay itself
+ * performs is announced in-thread (a queue-entry TTL expiry upstream is the
+ * one drop it cannot see).
  */
 export async function relayThread(input: {
   cwd: string;
@@ -394,60 +446,263 @@ export async function relayThread(input: {
    *  out a depleted-pool countdown. */
   drainSignal?: AbortSignal;
 }): Promise<TurnOutcome> {
-  const outcome: TurnOutcome = { sessionId: input.sessionId, failed: false, rateLimited: false, finish: false, announcedDrop: false, resultReceived: false };
+  const outcome: TurnOutcome = { sessionId: input.sessionId, failed: false, rateLimited: false, finish: false, announcedDrop: false, resultReceived: false, deferUntil: null };
   let segment: ReturnType<typeof pushableStream> | null = null;
-  let segmentMeta: { text: boolean } | null = null;
+  // acc mirrors the segment's pushed text (bounded by SEGMENT_TEXT_MAX plus a
+  // small overshoot): fence parity must be computed over the ACCUMULATED text,
+  // never per chunk - SDK deltas do not respect markdown token boundaries, so
+  // a ``` split across two deltas would be invisible to per-chunk counting
+  // (pullfrog review catch, PR #42).
+  let segmentMeta: { text: boolean; acc: string; reopenFence: boolean } | null = null;
   let lastPost: Promise<unknown> = Promise.resolve();
-  // Reply TEXT that was pushed into a rejected segment and never re-delivered
-  // by a later text-bearing segment: the user has not seen the answer. A lost
-  // card-only segment never sets this (decoration, not the answer).
-  // Tradeoff (flagged and accepted): a later delivered text segment clears the
-  // flag even though it is a continuation, because the dominant rejection is
-  // Slack finalizing an idle stream - the streamed text WAS delivered, only
-  // the append failed - and sticky loss would fail every long turn with a
-  // spurious diagnostic; chat 4.34.0 exposes no per-chunk delivery acks to
-  // tell that apart from a swallowed first post.
+  // Reply TEXT that died with a rejected segment and was neither salvaged into
+  // a follow-on message nor re-delivered by a later text-bearing segment: the
+  // user has not seen the answer. A lost card-only segment never sets this
+  // (decoration, not the answer). Tradeoff (flagged and accepted): a later
+  // delivered text segment clears the flag even though it is a continuation,
+  // because a rejection whose text chunks were all consumed pre-append-failure
+  // was almost certainly delivered (the adapter appends per chunk) except for
+  // an unobservable renderer-held tail; sticky loss would fail every long turn
+  // with a spurious diagnostic.
   let textLost = false;
   let textLostDetail: string | null = null;
   let postedText = false;
-  const push = async (chunk: SegmentChunk) => {
-    let seg = segment;
-    if (!seg) {
-      await lastPost; // strict message order: previous segment fully posted first
-      seg = pushableStream();
-      segment = seg;
-      const posted = seg;
-      const meta = { text: false };
-      segmentMeta = meta;
-      lastPost = input.post(seg.iterable).then(
-        () => {
-          // segments settle in order (push awaits lastPost before opening the
-          // next), so delivered text supersedes an earlier loss.
-          if (meta.text) textLost = false;
-        },
-        (e: unknown) => {
-          const detail = (e instanceof Error ? e.message : String(e)).slice(0, 300);
-          log("serve.post_error", { err: detail });
-          if (meta.text) {
-            textLost = true;
-            textLostDetail = detail;
+  // Salvage: a rejected post's undelivered chunks re-post as a fresh message
+  // (Slack finalizes an idle stream after an UNDOCUMENTED window - verified
+  // absent from the chat.startStream/appendStream docs 2026-07-21 - so
+  // recovery is reactive on any append failure, never a keepalive tuned to a
+  // guessed constant). The budget bounds FUTILITY, not recovery: a death
+  // after the message delivered something is progress and refills it (a long
+  // turn can outlive any number of idle finalizations, each losing only the
+  // gap tail), while a surface that delivers nothing (revoked channel, hard
+  // cap on the very first append) burns a strike per attempt and stops.
+  const MAX_SEGMENT_SALVAGES = 5;
+  let salvagesLeft = MAX_SEGMENT_SALVAGES;
+  const openSegment = () => {
+    const seg = pushableStream();
+    segment = seg;
+    // reopenFence: the delivered prefix of a REJECTED predecessor left a code
+    // fence open, so the first TEXT entering this salvage segment must be
+    // preceded by a reopen or it renders outside the code block. Pending
+    // rather than pushed eagerly (pullfrog catches, PR #42): a card-only
+    // salvage would otherwise either skip the reopen (later text joining the
+    // segment renders unfenced) or dangle an empty open fence at message end
+    // when no text ever follows. Materialized by BOTH text entry points.
+    const meta = { text: false, acc: "", reopenFence: false };
+    segmentMeta = meta;
+    lastPost = input.post(seg.iterable).then(
+      () => {
+        salvagesLeft = MAX_SEGMENT_SALVAGES;
+        // segments settle in order (push awaits lastPost before opening the
+        // next), so delivered text supersedes an earlier loss.
+        if (meta.text) textLost = false;
+      },
+      (e: unknown) => {
+        const detail = (e instanceof Error ? e.message : String(e)).slice(0, 300);
+        log("serve.post_error", { err: detail });
+        // the consumer is gone (e.g. Slack finalized an idle stream:
+        // message_not_in_streaming_state). Salvage runs in TEXT space, not
+        // chunk space, because the adapter's renderer buffers across chunks
+        // (it holds back the trailing unterminated line, unconfirmed table
+        // headers, and unclosed inline markers until the post-iteration
+        // finish() flush - pullfrog catch on PR #45: a reply whose last line
+        // has no trailing newline dies entirely in that forced flush, with
+        // every chunk already consumed). Proven-delivered text = the mirror
+        // renderer's committable prefix over the CONFIRMED chunks (each pull
+        // proves the previous append landed; the adapter runs the renderer
+        // with wrapTablesForAppend: false, so committable is a raw prefix and
+        // the mirror is chunking-invariant). Renderer drift would break the
+        // prefix check and degrade to a full re-post: duplication, never
+        // loss. Same tradeoff for a stop()-failure after a complete flush:
+        // the held tail re-posts once rather than risking silent loss.
+        const { chunks, confirmed } = seg.ledger();
+        if (segment === seg) segment = null;
+        const confirmedRaw = chunks
+          .slice(0, confirmed)
+          .flatMap((c) => (c instanceof Object ? [] : [c]))
+          .join("");
+        const fullRaw = chunks.flatMap((c) => (c instanceof Object ? [] : [c])).join("");
+        const mirror = new StreamingMarkdownRenderer({ wrapTablesForAppend: false });
+        mirror.push(confirmedRaw);
+        const committed = mirror.getCommittableText();
+        const deliveredLen = confirmedRaw.startsWith(committed) ? committed.length : 0;
+        const textRemainder = fullRaw.slice(deliveredLen);
+        // A confirmed card's append landed (the adapter sends a card inline
+        // in the loop body before the next pull), so unconfirmed cards are
+        // the set it never appended.
+        const deliveredCard = chunks.slice(0, confirmed).some((c) => c instanceof Object);
+        // Delivery progress means this death does not count toward the
+        // futility budget: only a message that delivered nothing burns one.
+        // The key is ACTUAL delivery (committable text or a landed card),
+        // never chunk consumption: a reply whose final line has no trailing
+        // newline is consumed whole (confirmed advances) while its only
+        // append is the post-iteration forced flush, so a consumption key
+        // would refill the budget on every persistently failing flush and
+        // salvage the same held-back text forever (vercel review catch,
+        // PR #45). deliveredLen stays 0 there, the strike is spent, and the
+        // zero-delivery case terminates.
+        if (deliveredLen > 0 || deliveredCard) salvagesLeft = MAX_SEGMENT_SALVAGES;
+        // The salvage sequence preserves STREAM ORDER (cursor review catch,
+        // PR #45: re-posting all remainder text and then all cards showed
+        // task cards after prose that originally followed them): walk the
+        // ledger in order, keeping each text chunk's undelivered suffix and
+        // each unconfirmed card at its original position. Text splits at
+        // line boundaries (rendering is unchanged: chunks concatenate) so a
+        // salvage message that dies too still confirms per line, keeping
+        // progress attribution fine-grained.
+        const lost: SegmentChunk[] = [];
+        let offset = 0;
+        for (const [i, c] of chunks.entries()) {
+          if (c instanceof Object) {
+            if (i >= confirmed) lost.push(c);
+            continue;
           }
-          // the consumer is gone (e.g. Slack finalized an idle stream:
-          // message_not_in_streaming_state) - drop the dead segment so the
-          // next chunk opens a fresh message instead of vanishing into it.
-          if (segment === posted) segment = null;
-        },
-      );
+          const end = offset + c.length;
+          let rest = end > deliveredLen ? c.slice(Math.max(0, deliveredLen - offset)) : "";
+          offset = end;
+          while (rest !== "") {
+            const nl = rest.indexOf("\n");
+            if (nl === -1) {
+              lost.push(rest);
+              break;
+            }
+            lost.push(rest.slice(0, nl + 1));
+            rest = rest.slice(nl + 1);
+          }
+        }
+        // A fence OPENED in the delivered prefix leaves later code fenceless
+        // in the fresh salvage message (pullfrog catches, PR #42): arm the
+        // segment's pending reopen, materialized right before the FIRST text
+        // that enters it - whether a salvaged remainder piece here or a later
+        // streamed push joining the segment (a card-only salvage must not
+        // skip the reopen, and a text-less segment must not dangle one).
+        // Fold this dying segment's OWN still-armed reopen into the parity:
+        // an armed-but-never-materialized reopenFence means the segment
+        // logically BEGAN inside an open fence (a card-only salvage that
+        // inherited one and died before any text materialized it), so that
+        // open state must propagate to the next salvage or its later text
+        // renders unfenced (vercel + cubic chained-salvage catch, PR #42).
+        // Once materialized, reopenFence is false and the reopen chunk is in
+        // fullRaw, so the XOR is a no-op; a normal segment's flag is false.
+        const deliveredFenceOpen =
+          ((fullRaw.slice(0, deliveredLen).split("```").length - 1) % 2 === 1) !== meta.reopenFence;
+        if (lost.length > 0 && salvagesLeft > 0) {
+          salvagesLeft -= 1;
+          log("serve.post_salvage", { chunks: lost.length, left: salvagesLeft });
+          // this handler runs synchronously as the post settles, so opening
+          // the salvage segment here keeps the salvaged content ordered ahead
+          // of any push still awaiting lastPost; the salvage segment's own
+          // settle then decides whether its text counts as delivered.
+          const next = openSegment();
+          next.meta.reopenFence = deliveredFenceOpen;
+          for (const c of lost) next.pushInto(c);
+        } else if (textRemainder !== "") {
+          textLost = true;
+          textLostDetail = detail;
+        }
+      },
+    );
+    const pushInto = (chunk: SegmentChunk) => {
+      // meta.text only, NEVER postedText: salvaged text was already counted
+      // at its original push, and postedText is attempt-scoped - a salvage
+      // landing after a retry reset would otherwise re-arm it and suppress
+      // the retry's `!postedText && result` fallback, silently dropping a
+      // result-only answer (adversarial-review catch on PR #45). acc still
+      // accumulates: it mirrors the segment's FULL text on every entry path,
+      // so pushText's room accounting and fence parity see salvaged text too
+      // (a salvage segment that continued via pushText could otherwise grow
+      // past the msg_too_long cap).
+      if (!(chunk instanceof Object)) {
+        if (meta.reopenFence) {
+          meta.reopenFence = false;
+          meta.acc += "```\n";
+          seg.push("```\n");
+        }
+        meta.text = true;
+        meta.acc += chunk;
+      }
+      seg.push(chunk);
+    };
+    return { seg, meta, pushInto };
+  };
+  const push = async (chunk: SegmentChunk) => {
+    if (segment === null) {
+      await lastPost; // strict message order: previous segment fully posted first
+      // a rejection handler may have opened a salvage segment during the wait;
+      // joining it instead of opening another keeps its post from being
+      // orphaned un-ended.
     }
+    const target = segment ?? openSegment().seg;
     if (!(chunk instanceof Object)) {
+      // materialize a salvage segment's pending fence reopen (see
+      // openSegment) before the first text from this entry point too.
+      if (segmentMeta!.reopenFence) {
+        segmentMeta!.reopenFence = false;
+        segmentMeta!.acc += "```\n";
+        target.push("```\n");
+      }
       postedText = true;
       segmentMeta!.text = true;
+      segmentMeta!.acc += chunk;
     }
-    seg.push(chunk);
+    target.push(chunk);
   };
+  // parity by occurrence count over the segment's accumulated text: an odd
+  // number of ``` markers means the segment currently sits inside a fence.
+  const fenceOpen = () => segmentMeta !== null && (segmentMeta.acc.split("```").length - 1) % 2 === 1;
   const breakSegment = () => {
     segment?.end();
     segment = null;
+  };
+  /** Reply text routed through here splits across Slack messages before the
+   *  msg_too_long cap (see SEGMENT_TEXT_MAX): a break prefers the last newline
+   *  inside the remaining room, and a break forced inside a code fence closes
+   *  it and reopens it in the next message so both halves render as code. */
+  const pushText = async (text: string) => {
+    for (let rest = text; rest !== "";) {
+      const room = SEGMENT_TEXT_MAX - (segment === null ? 0 : segmentMeta!.acc.length);
+      // a fence-close suffix can nudge a segment a few chars past the cap;
+      // a full segment just breaks and the loop re-measures a fresh one.
+      if (room <= 0) {
+        breakSegment();
+        continue;
+      }
+      if (rest.length <= room) {
+        await push(rest);
+        return;
+      }
+      // prefer a newline cut only when it lands in the back half of the room:
+      // an early newline followed by one giant unbroken run would otherwise
+      // make no progress and (with the fence-reopen prefix) loop forever.
+      const nl = rest.lastIndexOf("\n", room - 1);
+      let cut = nl >= Math.floor(room / 2) ? nl + 1 : room;
+      // never slice through a backtick run: a cut inside ``` would strand a
+      // partial delimiter on each side and break both halves' rendering
+      // (cubic review catch, PR #42). Walk the cut left past the run; a run
+      // reaching position 0 keeps the original cut (progress beats rendering
+      // for pathological all-backtick input).
+      if (rest[cut - 1] === "`" && rest[cut] === "`") {
+        let backedUp = cut;
+        while (backedUp > 0 && rest[backedUp - 1] === "`") backedUp -= 1;
+        if (backedUp > 0) cut = backedUp;
+      }
+      const head = rest.slice(0, cut);
+      await push(head);
+      const reopen = fenceOpen();
+      if (reopen) await push("\n```");
+      breakSegment();
+      rest = (reopen ? "```\n" : "") + rest.slice(head.length);
+    }
+  };
+  // settle the whole post chain: a rejection handler may replace lastPost with
+  // a salvage segment's post, which still needs ending and settling.
+  const settlePosts = async () => {
+    while (true) {
+      breakSegment();
+      const settled = lastPost;
+      await settled;
+      if (lastPost === settled) return;
+    }
   };
   // a recovery status line reads as its own Slack message, not part of a
   // streamed segment.
@@ -470,7 +725,7 @@ export async function relayThread(input: {
    *  its own delivery resets textLost. */
   const notifyDelivered = async (text: string) => {
     await notify(text);
-    await lastPost;
+    await settlePosts();
     return !textLost;
   };
   // false when the daemon started draining mid-sleep.
@@ -484,8 +739,14 @@ export async function relayThread(input: {
   };
   const inWord = (epochMs: number | null) => (epochMs == null ? "an unknown time" : `~${fmtResetShort(epochMs, Date.now()) || "1m"}`);
 
+  // a non-limit failure line held back until the depleted-pool probe rules:
+  // posted verbatim on a plain failure, discarded when the turn defers (the
+  // deferral notice explains the pause; the raw line would invite a manual
+  // re-send of work the daemon resumes itself - cubic catch, PR #44).
+  let pendingFailureLine: string | null = null;
   const runQueryOnce = async () => {
     postedText = false;
+    pendingFailureLine = null;
     outcome.failed = false;
     outcome.rateLimited = false;
     outcome.resultReceived = false;
@@ -589,12 +850,18 @@ export async function relayThread(input: {
             outcome.resultReceived = true;
           }
         }
-        for (const part of agentEventChunks({ state: mapState, message })) await push(part);
+        for (const part of agentEventChunks({ state: mapState, message })) {
+          if (part instanceof Object) await push(part);
+          else await pushText(part);
+        }
       }
       // a turn that produced no streamed text (tool-only turns) still reports.
-      if (!postedText && result) await push(result);
+      if (!postedText && result) await pushText(result);
       if (!postedText && !result && outcome.failed && !outcome.rateLimited) {
-        await push("the turn ended without a result - trying again may help");
+        // held back until the depleted-pool probe rules: a "trying again may
+        // help" line right before a deferral notice invites a manual re-send
+        // of work the daemon is about to resume itself (cubic catch, PR #44).
+        pendingFailureLine = "the turn ended without a result - trying again may help";
       }
     } catch (e) {
       outcome.failed = true;
@@ -602,7 +869,10 @@ export async function relayThread(input: {
       outcome.rateLimited = isRateLimitText({ text: detail });
       if (outcome.rateLimited) await recordObservedLimit({ text: detail, now: Date.now(), org: spawnOrg });
       log("serve.turn_error", { err: detail });
-      if (!outcome.rateLimited) await push(`tokenmaxxing: turn failed: ${detail}`);
+      // same hold-back: the detail already reached the log above, and a
+      // deferral's own notice explains the pause better than a raw child
+      // error that reads as "please re-send".
+      if (!outcome.rateLimited) pendingFailureLine = `tokenmaxxing: turn failed: ${detail}`;
     }
   };
 
@@ -622,10 +892,23 @@ export async function relayThread(input: {
     }
     const plan = parkPlan({ decision, recoveries, deadline: parkDeadline });
     if (plan.kind === "drop") {
+      // recovery time unknown: an auto-resume promise would be unkeepable,
+      // so the honest drop survives for exactly this case.
       outcome.failed = true;
       outcome.rateLimited = true;
-      log("serve.pool_depleted_drop", { recoversAt: plan.recoversAt });
-      outcome.announcedDrop = await notifyDelivered(`every pooled account is at its usage limit (recovers in ${inWord(plan.recoversAt)}) - this message was dropped; re-send it once the pool recovers.`);
+      log("serve.pool_depleted_drop", {});
+      outcome.announcedDrop = await notifyDelivered("every pooled account is at its usage limit (recovers at an unknown time) - this message was dropped; re-send it once the pool recovers.");
+      break;
+    }
+    if (plan.kind === "defer") {
+      // release the queue slot and let the daemon resume the turn from its
+      // durable marker once the pool recovers (2026-07-20 incident: dropped
+      // messages sat dead for hours after recovery until re-sent by hand).
+      outcome.failed = true;
+      outcome.rateLimited = true;
+      outcome.deferUntil = plan.resumeAt;
+      log("serve.pool_depleted_defer", { resumeAt: plan.resumeAt });
+      await notify(`every pooled account is at its usage limit - holding this message; it will resume automatically in ${inWord(plan.resumeAt)}.`);
       break;
     }
     if (plan.kind === "park") {
@@ -633,15 +916,61 @@ export async function relayThread(input: {
       log("serve.pool_depleted_park", { wakeAt: plan.wakeAt, recoveries });
       await notify(`every pooled account is at its usage limit - holding this message and retrying in ${inWord(plan.wakeAt)}.`);
       if (!(await sleep(plan.wakeAt - Date.now()))) {
+        // a drain aborted the park: the turn never spawned, so the marker
+        // survives (presumedKilled) and the next daemon start replays it.
         outcome.failed = true;
-        outcome.announcedDrop = await notifyDelivered("tokenmaxxing is restarting - this message was dropped; please re-send it.");
+        await notify("tokenmaxxing is restarting - this message resumes after the restart.");
         break;
       }
       continue;
     }
     await runQueryOnce();
-    if (!outcome.failed || !outcome.rateLimited) break;
+    if (!outcome.failed) break;
+    if (!outcome.rateLimited) {
+      // an unclassifiable child failure (e.g. "Claude Code process exited
+      // with code 1" - the 2026-07-20 Fable-cap death carried no limit
+      // phrase) against an exhausted pool IS the limit: the pool state is
+      // the evidence the error text did not carry. A completed result stays
+      // terminal, and a usable pool keeps the plain failure.
+      if (!outcome.resultReceived) {
+        try {
+          const verdict = await ensureBestAccount();
+          const depleted = verdict.reason === "all-depleted" || verdict.reason === "depleted-wait";
+          const wake = depleted ? verdict.waitUntil ?? null : null;
+          if (wake != null) {
+            outcome.rateLimited = true;
+            outcome.deferUntil = wake + PARK_GRACE_MS;
+            pendingFailureLine = null;
+            log("serve.turn_failed_depleted_defer", { resumeAt: outcome.deferUntil });
+            await notify(`the account pool is exhausted - pausing this turn; it will resume automatically in ${inWord(outcome.deferUntil)}.`);
+          }
+        } catch (e) {
+          // keep the original failure; the probe must never mask it.
+          log("serve.defer_probe_error", { err: (e instanceof Error ? e.message : String(e)).slice(0, 300) });
+        }
+      }
+      if (pendingFailureLine !== null) await push(pendingFailureLine);
+      break;
+    }
     if (recoveries >= MAX_RECOVERIES) {
+      // out of in-handler retry budget: defer to the pool's own recovery
+      // clock when it is known, drop honestly when it is not (a stale cache
+      // claiming a usable pool while every retry limits out lands here too,
+      // and deferring on no evidence would just spin the resume cap).
+      let wake: number | null = null;
+      try {
+        const verdict = await ensureBestAccount();
+        const depleted = verdict.reason === "all-depleted" || verdict.reason === "depleted-wait";
+        wake = depleted ? verdict.waitUntil ?? null : null;
+      } catch (e) {
+        log("serve.defer_probe_error", { err: (e instanceof Error ? e.message : String(e)).slice(0, 300) });
+      }
+      if (wake != null) {
+        outcome.deferUntil = wake + PARK_GRACE_MS;
+        log("serve.rate_limited_defer", { recoveries, resumeAt: outcome.deferUntil });
+        await notify(`still at a usage limit after retries - pausing this turn; it will resume automatically in ${inWord(outcome.deferUntil)}.`);
+        break;
+      }
       log("serve.rate_limited_drop", { recoveries });
       outcome.announcedDrop = await notifyDelivered("still at a usage limit after retries - this message was dropped; reply when you want to try again.");
       break;
@@ -672,17 +1001,20 @@ export async function relayThread(input: {
       break;
     }
     if (!(await sleep(Math.max(RETRY_DELAY_MS, cooldownUntil - Date.now())))) {
+      // a drain aborted the retry sleep: same as a killed child, the marker
+      // survives (presumedKilled) and the next daemon start resumes the
+      // session where it stopped.
       outcome.failed = true;
-      outcome.announcedDrop = await notifyDelivered("tokenmaxxing is restarting - this message was dropped; please re-send it.");
+      await notify("tokenmaxxing is restarting - this turn resumes after the restart.");
       break;
     }
   }
-  breakSegment();
-  await lastPost;
-  // Reply text died with a rejected segment and nothing later re-delivered it:
-  // the answer silently vanished while the outcome would report success. Fail
-  // the turn and make one best-effort fresh-message diagnostic (a fresh post
-  // is exactly what the mid-stream recovery relies on succeeding).
+  await settlePosts();
+  // Reply text died with a rejected segment, salvage could not re-deliver it
+  // (budget exhausted or the salvage posts died too), and nothing later
+  // re-delivered it: the answer silently vanished while the outcome would
+  // report success. Fail the turn and make one best-effort fresh-message
+  // diagnostic.
   if (textLost) {
     outcome.failed = true;
     const detail = textLostDetail ?? "unknown error";

@@ -51,7 +51,8 @@ mock.module("es-toolkit", () => ({
   delay: (ms: number, opts?: { signal?: AbortSignal }) => realEsToolkit.delay(Math.min(Math.max(ms, 0), DELAY_CAP_MS), opts),
 }));
 
-const { relayThread, MAX_RECOVERIES, PARK_MAX_MS } = await import("../src/lib/slackbridge.ts");
+const { relayThread, MAX_RECOVERIES, PARK_MAX_MS, SEGMENT_TEXT_MAX } = await import("../src/lib/slackbridge.ts");
+const { StreamingMarkdownRenderer } = await import("chat");
 const { SlackLinkSchema } = await import("../src/lib/slackstate.ts");
 const { loadUsage, writeUsage } = await import("../src/lib/state.ts");
 
@@ -141,6 +142,54 @@ function collector(input?: { rejectTimes?: number }) {
   return { posts, timeline, post, calls: () => calls };
 }
 
+// Renderer-faithful fake of @chat-adapter/slack 4.34.0 stream(): per pulled
+// text chunk it pushes into the REAL StreamingMarkdownRenderer (same options
+// as the adapter) and appends the committable delta; card chunks flush text
+// first; after the iterable exhausts, finish() + one forced final append flush
+// the renderer-held tail. An append whose delta contains an armed poison fails
+// ONCE (Slack finalizing an idle stream kills one message; the salvage re-send
+// then lands) - so a poison in text the renderer holds back fires at the
+// post-iteration forced flush, exactly like the live incident (pullfrog catch
+// on PR #45).
+function rendererCollector(input?: { poisons?: string[] }) {
+  const remaining = new Set(input?.poisons ?? []);
+  const posts: { deltas: string[]; cards: unknown[] }[] = [];
+  let calls = 0;
+  const post = async (m: AsyncIterable<unknown>) => {
+    calls += 1;
+    const renderer = new StreamingMarkdownRenderer({ wrapTablesForAppend: false });
+    let appended = "";
+    const rec: { deltas: string[]; cards: unknown[] } = { deltas: [], cards: [] };
+    posts.push(rec);
+    const flush = () => {
+      const committable = renderer.getCommittableText();
+      const delta = committable.slice(appended.length);
+      if (delta.length === 0) return;
+      const hit = [...remaining].find((p) => delta.includes(p));
+      if (hit !== undefined) {
+        remaining.delete(hit);
+        throw new Error("An API error occurred: message_not_in_streaming_state");
+      }
+      rec.deltas.push(delta);
+      appended = committable;
+    };
+    for await (const c of m) {
+      const s = z.string().safeParse(c);
+      if (s.success) {
+        renderer.push(s.data);
+        flush();
+      } else {
+        flush();
+        rec.cards.push(c);
+      }
+    }
+    renderer.finish();
+    flush();
+  };
+  const delivered = () => posts.map((p) => p.deltas.join(""));
+  return { posts, post, calls: () => calls, delivered };
+}
+
 const strings = (chunks: unknown[] | undefined) =>
   (chunks ?? [])
     .flatMap((c) => {
@@ -202,15 +251,57 @@ describe("relayThread depleted-pool recovery", () => {
     expect(strings(col.posts[0])).toContain("dropped");
   });
 
-  test("drops honestly when recovery lands past the message deadline", async () => {
-    decisionQueue.push(depleted(Date.now() + PARK_MAX_MS + 120_000));
+  test("DEFERS when recovery lands past the message deadline: resume promise, never a re-send ask", async () => {
+    const wake = Date.now() + PARK_MAX_MS + 120_000;
+    decisionQueue.push(depleted(wake));
     const col = collector();
     const out = await relay({ post: col.post });
     expect(out.failed).toBe(true);
     expect(out.rateLimited).toBe(true);
+    expect(out.deferUntil).toBe(wake + 5_000);
+    expect(out.announcedDrop).toBe(false);
     expect(queryCalls.length).toBe(0);
-    expect(strings(col.posts[0])).toContain("recovers in ~");
-    expect(strings(col.posts[0])).toContain("dropped");
+    expect(strings(col.posts[0])).toContain("resume automatically");
+    expect(strings(col.posts[0])).not.toContain("re-send");
+  });
+
+  test("an unclassifiable child failure against an exhausted pool converts to a deferral", async () => {
+    // the 2026-07-20 death: "Claude Code process exited with code 1" carries
+    // no limit phrase, but the pool state is the evidence.
+    const wake = Date.now() + 3_600_000;
+    decisionQueue.push(usable, depleted(wake));
+    queryScripts.push(() =>
+      (async function* () {
+        yield init("s-crash");
+        throw new Error("Claude Code process exited with code 1");
+      })(),
+    );
+    const col = collector();
+    const out = await relay({ post: col.post });
+    expect(out.failed).toBe(true);
+    expect(out.rateLimited).toBe(true);
+    expect(out.deferUntil).toBe(wake + 5_000);
+    const allText = col.posts.map(strings).join(" ");
+    expect(allText).toContain("resume automatically");
+    // the raw failure line is held back on a deferral: it would invite a
+    // manual re-send of work the daemon resumes itself (cubic catch).
+    expect(allText).not.toContain("turn failed");
+  });
+
+  test("an unclassifiable failure with a USABLE pool stays a plain failure", async () => {
+    decisionQueue.push(usable, usable);
+    queryScripts.push(() =>
+      (async function* () {
+        yield init("s-crash2");
+        throw new Error("something unrelated broke");
+      })(),
+    );
+    const col = collector();
+    const out = await relay({ post: col.post });
+    expect(out.failed).toBe(true);
+    expect(out.rateLimited).toBe(false);
+    expect(out.deferUntil).toBeNull();
+    expect(col.posts.map(strings).join(" ")).toContain("turn failed");
   });
 
   test("persists a mid-turn limit and silently retries into the SAME session", async () => {
@@ -236,19 +327,42 @@ describe("relayThread depleted-pool recovery", () => {
     expect(allText).toContain("recovered");
   });
 
-  test("announces the drop once MAX_RECOVERIES limit retries are burnt", async () => {
+  test("burnt retries DEFER when the post-burn probe knows the pool's recovery clock", async () => {
     const now = Date.now();
     seedIdentityAndUsage("org-relay", now);
+    const wake = now + 7_200_000;
     const attempts = MAX_RECOVERIES + 1;
     for (let i = 0; i < attempts; i += 1) {
       decisionQueue.push(usable);
       queryScripts.push(script([init("s-burnt"), limitErrored("s-burnt", "You've hit your weekly limit.")]));
     }
+    decisionQueue.push(depleted(wake)); // the post-burn probe
     const col = collector();
     const out = await relay({ post: col.post });
     expect(out.failed).toBe(true);
     expect(out.rateLimited).toBe(true);
+    expect(out.deferUntil).toBe(wake + 5_000);
     expect(queryCalls.length).toBe(attempts);
+    const allText = col.posts.map(strings).join(" ");
+    expect(allText).toContain("still at a usage limit after retries");
+    expect(allText).toContain("resume automatically");
+    expect(allText).not.toContain("dropped");
+  });
+
+  test("burnt retries still drop honestly when the probe reports no recovery clock", async () => {
+    const now = Date.now();
+    seedIdentityAndUsage("org-relay", now);
+    const attempts = MAX_RECOVERIES + 1;
+    for (let i = 0; i < attempts; i += 1) {
+      decisionQueue.push(usable);
+      queryScripts.push(script([init("s-burnt2"), limitErrored("s-burnt2", "You've hit your weekly limit.")]));
+    }
+    decisionQueue.push(depleted()); // depleted, wake unknown
+    const col = collector();
+    const out = await relay({ post: col.post });
+    expect(out.failed).toBe(true);
+    expect(out.rateLimited).toBe(true);
+    expect(out.deferUntil).toBeNull();
     const allText = col.posts.map(strings).join(" ");
     expect(allText).toContain("still at a usage limit after retries");
     expect(allText).toContain("dropped");
@@ -293,13 +407,13 @@ describe("relayThread segment ordering", () => {
     expect(cardIds).toContain("tool-1");
   });
 
-  test("a rejected post drops the dead segment and the next chunk opens a fresh message", async () => {
+  test("a rejected post salvages its chunks into the next message instead of dropping them", async () => {
     decisionQueue.push(usable);
     queryScripts.push(() =>
       (async function* () {
         yield init("s-dead");
         yield textDelta("lost text");
-        // give the rejected post's catch a beat to drop the dead segment
+        // give the rejected post's catch a beat to open the salvage segment
         await realEsToolkit.delay(15);
         yield textDelta("fresh text");
         yield success("s-dead");
@@ -309,33 +423,336 @@ describe("relayThread segment ordering", () => {
     const out = await relay({ post: col.post });
     expect(out.failed).toBe(false);
     expect(col.calls()).toBe(2);
-    // only the second post survived; the dead segment's chunks vanished with it
+    // one delivered message carrying BOTH the salvaged and the fresh text
     expect(col.posts.length).toBe(1);
+    expect(strings(col.posts[0])).toContain("lost text");
     expect(strings(col.posts[0])).toContain("fresh text");
-    expect(strings(col.posts[0])).not.toContain("lost text");
   });
 
-  test("lost reply text with no re-delivery fails the turn and posts a diagnostic", async () => {
-    // The closing Turn card opens its own (successful) post after the rejected
-    // text segment - the stream "recovers" but the ANSWER is gone. Card-only
-    // recovery must not read as success.
+  test("an append failure mid-stream salvages exactly the undelivered text, without duplicating the delivered prefix", async () => {
+    decisionQueue.push(usable);
+    queryScripts.push(script([
+      init("s-gap"),
+      textDelta("line one\nheld "),
+      textDelta("line two tail"),
+      success("s-gap"),
+    ]));
+    const col = rendererCollector({ poisons: ["line two"] });
+    const out = await relay({ post: col.post });
+    expect(out.failed).toBe(false);
+    expect(col.calls()).toBe(2);
+    // message 1 delivered exactly the committable prefix before the death
+    expect(col.delivered()[0]).toBe("line one\n");
+    // the salvage message carries the renderer-held text plus the tail, once
+    expect(col.delivered()[1]).toBe("held line two tail");
+  });
+
+  test("salvage reopens a fence the delivered prefix opened, so the remainder still renders as code", async () => {
+    // the dead message committed an open fence; the salvage message must
+    // reopen it before the remainder or the recovered code renders as plain
+    // text (pullfrog catch on PR #42's salvage integration). Whichever side
+    // of the death the opener landed on, the salvage message must begin
+    // inside a fence.
+    decisionQueue.push(usable);
+    queryScripts.push(script([
+      init("s-fensal"),
+      textDelta("intro\n```\ncode line one\n"),
+      textDelta("more code tail"),
+      success("s-fensal"),
+    ]));
+    const col = rendererCollector({ poisons: ["more code"] });
+    const out = await relay({ post: col.post });
+    expect(out.failed).toBe(false);
+    const delivered = col.delivered();
+    // the opener committed in the dead message (open-fence content commits
+    // eagerly: that is why Slack streams code live)
+    expect(delivered[0]).toContain("```");
+    const salvage = delivered.at(-1) ?? "";
+    expect(salvage.startsWith("```")).toBe(true);
+    expect(salvage).toContain("more code tail");
+    // nothing lost or duplicated: every content piece reaches Slack once
+    const all = delivered.join("");
+    for (const piece of ["intro", "code line one", "more code tail"]) {
+      expect(all.split(piece).length - 1).toBe(1);
+    }
+  });
+
+  test("a card-only salvage holds the fence reopen for the first LATER text joining the segment", async () => {
+    // the death loses only a card; streamed text arriving afterward joins
+    // the already-open salvage segment and was authored mid-fence, so the
+    // pending reopen must materialize before IT, not be skipped for lack of
+    // salvaged text (pullfrog catch on PR #42).
     decisionQueue.push(usable);
     queryScripts.push(() =>
       (async function* () {
-        yield init("s-tail");
-        yield textDelta("final answer");
-        yield success("s-tail");
+        yield init("s-cardfence");
+        yield textDelta("intro\n```\ncode line one\n");
+        yield toolStart("tool-cf", "Bash");
+        yield toolStop();
+        // give the doomed post a beat to reject with only cards unconfirmed
+        await realEsToolkit.delay(30);
+        yield textDelta("later code\n");
+        yield success("s-cardfence");
       })(),
     );
-    const col = collector({ rejectTimes: 1 });
-    const out = await relay({ post: col.post });
-    expect(out.failed).toBe(true);
-    const delivered = col.posts.map((p) => strings(p));
-    expect(delivered.some((s) => s.includes("could not be posted"))).toBe(true);
-    expect(delivered.some((s) => s.includes("final answer"))).toBe(false);
+    let calls = 0;
+    const posts: unknown[][] = [];
+    const post = async (m: AsyncIterable<unknown>) => {
+      calls += 1;
+      if (calls === 1) {
+        // consume the text (its append lands), then die holding the card
+        for await (const c of m) {
+          if (z.string().safeParse(c).success === false) {
+            throw new Error("An API error occurred: message_not_in_streaming_state");
+          }
+        }
+        return;
+      }
+      const chunks: unknown[] = [];
+      posts.push(chunks);
+      for await (const c of m) chunks.push(c);
+    };
+    const out = await relay({ post });
+    expect(out.failed).toBe(false);
+    const salvaged = posts[0] ?? [];
+    const texts = salvaged.flatMap((c) => {
+      const s = z.string().safeParse(c);
+      return s.success ? [s.data] : [];
+    });
+    const reopen = texts.indexOf("```\n");
+    const later = texts.findIndex((t) => t.includes("later code"));
+    expect(reopen).not.toBe(-1);
+    expect(later).not.toBe(-1);
+    expect(reopen).toBeLessThan(later);
   });
 
-  test("a rejecting diagnostic never escapes relayThread", async () => {
+  test("a chained card-only salvage death propagates the pending fence to the next salvage", async () => {
+    // salvage 1 inherits an open fence (card-only, reopen armed but never
+    // materialized) and DIES too; salvage 2 must inherit the open state via
+    // the parity fold or its later text renders unfenced (vercel + cubic
+    // chained-salvage catch on PR #42).
+    decisionQueue.push(usable);
+    queryScripts.push(() =>
+      (async function* () {
+        yield init("s-chainfence");
+        yield textDelta("intro\n```\ncode line one\n");
+        yield toolStart("tool-chain", "Bash");
+        yield toolStop();
+        // let BOTH deaths settle before the later text arrives
+        await realEsToolkit.delay(60);
+        yield textDelta("later code\n");
+        yield success("s-chainfence");
+      })(),
+    );
+    let calls = 0;
+    const posts: unknown[][] = [];
+    const post = async (m: AsyncIterable<unknown>) => {
+      calls += 1;
+      if (calls === 1) {
+        for await (const c of m) {
+          if (z.string().safeParse(c).success === false) {
+            throw new Error("An API error occurred: message_not_in_streaming_state");
+          }
+        }
+        return;
+      }
+      if (calls === 2) throw new Error("An API error occurred: message_not_in_streaming_state");
+      const chunks: unknown[] = [];
+      posts.push(chunks);
+      for await (const c of m) chunks.push(c);
+    };
+    const out = await relay({ post });
+    expect(out.failed).toBe(false);
+    const texts = (posts[0] ?? []).flatMap((c) => {
+      const s = z.string().safeParse(c);
+      return s.success ? [s.data] : [];
+    });
+    const reopen = texts.indexOf("```\n");
+    const later = texts.findIndex((t) => t.includes("later code"));
+    expect(reopen).not.toBe(-1);
+    expect(later).not.toBe(-1);
+    expect(reopen).toBeLessThan(later);
+  });
+
+  test("a final reply with no trailing newline dies in the forced final flush and still re-posts (the live incident)", async () => {
+    // the renderer holds back the unterminated last line for the ENTIRE
+    // iteration, so the only append happens after the iterable exhausts, when
+    // every chunk is already consumed - chunk-granular salvage sees nothing
+    // (pullfrog catch on PR #45); text-space salvage must recover it.
+    decisionQueue.push(usable);
+    queryScripts.push(script([init("s-tail"), textDelta("final answer"), success("s-tail")]));
+    const col = rendererCollector({ poisons: ["final answer"] });
+    const out = await relay({ post: col.post });
+    expect(out.failed).toBe(false);
+    const allText = col.delivered().join(" ");
+    expect(allText).toContain("final answer");
+    expect(allText).not.toContain("could not be posted");
+  });
+
+  test("repeated stream deaths with delivery progress between them all salvage (futility budget refills)", async () => {
+    decisionQueue.push(usable);
+    const words = ["alpha", "bravo", "charlie", "delta", "echo", "foxtrot", "golf", "hotel", "india", "juliett", "kilo", "lima"];
+    queryScripts.push(script([init("s-refill"), ...words.map((w) => textDelta(`${w}\n`)), success("s-refill")]));
+    // 6 separate deaths (more than the flat budget of 5), each poisoned word
+    // leading a message that already delivered the previous disarmed word:
+    // delivery progress must refill the budget so every death salvages.
+    const col = rendererCollector({ poisons: ["alpha", "charlie", "echo", "golf", "india", "kilo"] });
+    const out = await relay({ post: col.post });
+    expect(out.failed).toBe(false);
+    const allText = col.delivered().join(" ");
+    for (const w of words) expect(allText.split(w).length - 1).toBe(1);
+  });
+
+  test("a prior attempt's late salvage does not suppress the retry's result fallback", async () => {
+    // attempt 1 streams text and hits a mid-turn limit while its post is
+    // still stalled; the post rejects DURING attempt 2 (after the per-attempt
+    // postedText reset) and the salvage must not re-arm postedText - attempt
+    // 2 answers only via result, and that fallback is its sole delivery path.
+    const now = Date.now();
+    seedIdentityAndUsage("org-relay", now);
+    const resetEpochSec = Math.floor((now + 3_600_000) / 1000);
+    decisionQueue.push(usable, usable);
+    let release = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    queryScripts.push(script([init("s-late"), textDelta("partial before limit"), limitErrored("s-late", `Claude AI usage limit reached|${resetEpochSec}`)]));
+    queryScripts.push(() =>
+      (async function* () {
+        // attempt 2 has begun (postedText already reset): let the stalled
+        // post reject and its salvage land before this attempt streams.
+        release();
+        await realEsToolkit.delay(20);
+        yield init("s-late");
+        yield success("s-late", "command output");
+      })(),
+    );
+    const posts: unknown[][] = [];
+    let calls = 0;
+    const post = async (m: AsyncIterable<unknown>) => {
+      calls += 1;
+      if (calls === 1) {
+        await gate;
+        throw new Error("An API error occurred: message_not_in_streaming_state");
+      }
+      const chunks: unknown[] = [];
+      posts.push(chunks);
+      for await (const c of m) chunks.push(c);
+    };
+    const out = await relay({ post });
+    expect(out.failed).toBe(false);
+    const allText = posts.map(strings).join(" ");
+    expect(allText).toContain("partial before limit");
+    expect(allText).toContain("command output");
+  });
+
+  test("reply text past the per-message cap splits into ordered Slack messages", async () => {
+    // one 100-char line repeated 250x = 25,000 chars: Slack rejects a single
+    // message that long with msg_too_long, so the relay must split BEFORE
+    // the cap (live incident 2026-07-20).
+    const line = `${"x".repeat(99)}\n`;
+    const long = line.repeat(250);
+    decisionQueue.push(usable);
+    queryScripts.push(script([init("s-split"), textDelta(long), success("s-split")]));
+    const col = collector();
+    const out = await relay({ post: col.post });
+    expect(out.failed).toBe(false);
+    expect(col.posts.length).toBe(3);
+    for (const [i, p] of col.posts.entries()) {
+      expect(strings(p).length).toBeLessThanOrEqual(SEGMENT_TEXT_MAX);
+      expect(col.timeline).toContain(`open:${i + 1}`);
+    }
+    // strict order and no content lost or reordered
+    expect(col.timeline).toEqual(["open:1", "close:1", "open:2", "close:2", "open:3", "close:3"]);
+    expect(col.posts.map(strings).join("")).toBe(long);
+    // the preferred cut is a line boundary, not mid-line
+    expect(strings(col.posts[0]).endsWith("\n")).toBe(true);
+  });
+
+  test("small deltas accumulating past the cap split without losing content", async () => {
+    const delta = "y".repeat(400);
+    const deltas = Array.from({ length: 60 }, () => textDelta(delta));
+    decisionQueue.push(usable);
+    queryScripts.push(script([init("s-acc"), ...deltas, success("s-acc")]));
+    const col = collector();
+    const out = await relay({ post: col.post });
+    expect(out.failed).toBe(false);
+    expect(col.posts.length).toBeGreaterThan(1);
+    for (const p of col.posts) expect(strings(p).length).toBeLessThanOrEqual(SEGMENT_TEXT_MAX);
+    expect(col.posts.map(strings).join("")).toBe(delta.repeat(60));
+  });
+
+  test("a break forced inside a code fence closes and reopens it", async () => {
+    const long = `intro\n\`\`\`\n${"z".repeat(SEGMENT_TEXT_MAX + 500)}\n\`\`\`\nafter`;
+    decisionQueue.push(usable);
+    queryScripts.push(script([init("s-fence"), textDelta(long), success("s-fence")]));
+    const col = collector();
+    const out = await relay({ post: col.post });
+    expect(out.failed).toBe(false);
+    expect(col.posts.length).toBe(2);
+    // both halves render as code: the first closes the fence, the next reopens
+    expect(strings(col.posts[0]).endsWith("\n```")).toBe(true);
+    expect(strings(col.posts[1]).startsWith("```\n")).toBe(true);
+    expect(strings(col.posts[1]).endsWith("after")).toBe(true);
+    // stripping the inserted markers restores the original text
+    const first = strings(col.posts[0]);
+    const second = strings(col.posts[1]);
+    expect(first.slice(0, -4) + second.slice(4)).toBe(long);
+  });
+
+  test("a fence delimiter split across SDK deltas still tracks as one fence", async () => {
+    // deltas do not respect markdown token boundaries: ``` can arrive as
+    // "``" + "`\n..." (pullfrog review catch, PR #42) - parity must be
+    // computed over the segment's accumulated text, never per chunk.
+    const z = "z".repeat(SEGMENT_TEXT_MAX);
+    decisionQueue.push(usable);
+    queryScripts.push(script([
+      init("s-splitfence"),
+      textDelta("intro\n``"),
+      textDelta(`\`\n${z}\n\`\`\`\nafter`),
+      success("s-splitfence"),
+    ]));
+    const col = collector();
+    const out = await relay({ post: col.post });
+    expect(out.failed).toBe(false);
+    expect(col.posts.length).toBe(2);
+    expect(strings(col.posts[0]).includes("intro\n```\n")).toBe(true);
+    expect(strings(col.posts[0]).endsWith("\n```")).toBe(true);
+    expect(strings(col.posts[1]).startsWith("```\n")).toBe(true);
+    expect(strings(col.posts[1]).endsWith("after")).toBe(true);
+    const first = strings(col.posts[0]);
+    const second = strings(col.posts[1]);
+    expect(first.slice(0, -4) + second.slice(4)).toBe(`intro\n\`\`\`\n${z}\n\`\`\`\nafter`);
+  });
+
+  test("a hard cut never slices through a backtick run", async () => {
+    // position ``` exactly straddling the cap with no newline to prefer: the
+    // cut must back up past the whole run instead of stranding a partial
+    // delimiter on each side (cubic review catch, PR #42).
+    const long = `${"a".repeat(SEGMENT_TEXT_MAX - 1)}\`\`\`${"b".repeat(50)}`;
+    decisionQueue.push(usable);
+    queryScripts.push(script([init("s-run"), textDelta(long), success("s-run")]));
+    const col = collector();
+    const out = await relay({ post: col.post });
+    expect(out.failed).toBe(false);
+    expect(col.posts.length).toBe(2);
+    expect(strings(col.posts[0])).toBe("a".repeat(SEGMENT_TEXT_MAX - 1));
+    expect(strings(col.posts[1])).toBe(`\`\`\`${"b".repeat(50)}`);
+  });
+
+  test("a huge no-stream result still splits instead of dying on one post", async () => {
+    const result = `${"r".repeat(150)}\n`.repeat(100); // 15,100 chars, no streamed text
+    decisionQueue.push(usable);
+    queryScripts.push(script([init("s-res"), success("s-res", result)]));
+    const col = collector();
+    const out = await relay({ post: col.post });
+    expect(out.failed).toBe(false);
+    expect(col.posts.length).toBe(2);
+    for (const p of col.posts) expect(strings(p).length).toBeLessThanOrEqual(SEGMENT_TEXT_MAX);
+    expect(col.posts.map(strings).join("")).toBe(result);
+  });
+
+  test("a surface that never delivers stays bounded, fails the turn, and the rejecting diagnostic never escapes", async () => {
     decisionQueue.push(usable);
     queryScripts.push(() =>
       (async function* () {
@@ -344,9 +761,78 @@ describe("relayThread segment ordering", () => {
         yield success("s-tail2");
       })(),
     );
-    const col = collector({ rejectTimes: 3 }); // text, card, and the diagnostic all reject
+    const col = collector({ rejectTimes: Number.POSITIVE_INFINITY });
     const out = await relay({ post: col.post }); // resolving IS the assertion
     expect(out.failed).toBe(true);
     expect(col.posts.length).toBe(0);
+    // zero-delivery rejections burn the futility budget instead of looping
+    expect(col.calls()).toBeLessThanOrEqual(10);
+  });
+
+  test("a persistently failing forced flush burns the budget: consumption alone never refills it", async () => {
+    // every chunk is consumed (confirmed advances) but the single
+    // no-trailing-newline line is renderer-held, so its only append is the
+    // post-iteration forced flush - if THAT fails persistently, refilling on
+    // consumption would salvage the same held text forever (vercel review
+    // catch on PR #45).
+    decisionQueue.push(usable);
+    queryScripts.push(() =>
+      (async function* () {
+        yield init("s-flushloop");
+        yield textDelta("single line without newline");
+        yield success("s-flushloop");
+      })(),
+    );
+    let calls = 0;
+    const post = async (m: AsyncIterable<unknown>) => {
+      calls += 1;
+      for await (const c of m) void c;
+      throw new Error("An API error occurred: message_not_in_streaming_state");
+    };
+    const out = await relay({ post }); // resolving IS the assertion
+    expect(out.failed).toBe(true);
+    expect(calls).toBeLessThanOrEqual(10);
+  });
+
+  test("salvage preserves stream order: an unconfirmed card re-posts ahead of the text that followed it", async () => {
+    decisionQueue.push(usable);
+    queryScripts.push(() =>
+      (async function* () {
+        yield init("s-order");
+        yield toolStart("tool-ord", "Bash");
+        yield toolStop();
+        yield textDelta("tail line");
+        // give the doomed post's delay a beat so both chunks queue before it
+        // rejects with nothing confirmed
+        await realEsToolkit.delay(30);
+        yield success("s-order");
+      })(),
+    );
+    let calls = 0;
+    const posts: unknown[][] = [];
+    const post = async (m: AsyncIterable<unknown>) => {
+      calls += 1;
+      if (calls === 1) {
+        await realEsToolkit.delay(15);
+        throw new Error("An API error occurred: message_not_in_streaming_state");
+      }
+      const chunks: unknown[] = [];
+      posts.push(chunks);
+      for await (const c of m) chunks.push(c);
+    };
+    const out = await relay({ post });
+    expect(out.failed).toBe(false);
+    const salvaged = posts[0] ?? [];
+    const firstText = salvaged.findIndex((c) => z.string().safeParse(c).success);
+    // only the tool's own card: the closing Turn card is also a task_update
+    // and legitimately follows the text
+    const cardIndexes = salvaged.flatMap((c, i) => {
+      const card = TaskCardSchema.safeParse(c);
+      return card.success && card.data.id === "tool-ord" ? [i] : [];
+    });
+    expect(strings(salvaged)).toContain("tail line");
+    expect(cardIndexes.length).toBeGreaterThan(0);
+    // the card originally preceded the text; salvage must keep it there
+    for (const i of cardIndexes) expect(i).toBeLessThan(firstText);
   });
 });
