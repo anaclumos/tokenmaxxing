@@ -563,6 +563,18 @@ export async function relayThread(input: {
             rest = rest.slice(nl + 1);
           }
         }
+        // A fence OPENED in the delivered prefix leaves the remainder's code
+        // fenceless in the fresh salvage message (pullfrog catch, PR #42):
+        // reopen it before the first salvaged text piece, exactly like
+        // pushText's reopen at a split boundary. The reopen rides pushInto,
+        // so the salvage segment's acc parity matches what Slack displays.
+        // The DEAD message's own unclosed fence is accepted cosmetic damage:
+        // nothing can append to a rejected stream.
+        const deliveredFenceOpen = (fullRaw.slice(0, deliveredLen).split("```").length - 1) % 2 === 1;
+        if (deliveredFenceOpen) {
+          const firstText = lost.findIndex((c) => !(c instanceof Object));
+          if (firstText !== -1) lost.splice(firstText, 0, "```\n");
+        }
         if (lost.length > 0 && salvagesLeft > 0) {
           salvagesLeft -= 1;
           log("serve.post_salvage", { chunks: lost.length, left: salvagesLeft });

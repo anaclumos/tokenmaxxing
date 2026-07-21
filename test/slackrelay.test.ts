@@ -447,6 +447,36 @@ describe("relayThread segment ordering", () => {
     expect(col.delivered()[1]).toBe("held line two tail");
   });
 
+  test("salvage reopens a fence the delivered prefix opened, so the remainder still renders as code", async () => {
+    // the dead message committed an open fence; the salvage message must
+    // reopen it before the remainder or the recovered code renders as plain
+    // text (pullfrog catch on PR #42's salvage integration). Whichever side
+    // of the death the opener landed on, the salvage message must begin
+    // inside a fence.
+    decisionQueue.push(usable);
+    queryScripts.push(script([
+      init("s-fensal"),
+      textDelta("intro\n```\ncode line one\n"),
+      textDelta("more code tail"),
+      success("s-fensal"),
+    ]));
+    const col = rendererCollector({ poisons: ["more code"] });
+    const out = await relay({ post: col.post });
+    expect(out.failed).toBe(false);
+    const delivered = col.delivered();
+    // the opener committed in the dead message (open-fence content commits
+    // eagerly: that is why Slack streams code live)
+    expect(delivered[0]).toContain("```");
+    const salvage = delivered.at(-1) ?? "";
+    expect(salvage.startsWith("```")).toBe(true);
+    expect(salvage).toContain("more code tail");
+    // nothing lost or duplicated: every content piece reaches Slack once
+    const all = delivered.join("");
+    for (const piece of ["intro", "code line one", "more code tail"]) {
+      expect(all.split(piece).length - 1).toBe(1);
+    }
+  });
+
   test("a final reply with no trailing newline dies in the forced final flush and still re-posts (the live incident)", async () => {
     // the renderer holds back the unterminated last line for the ENTIRE
     // iteration, so the only append happens after the iterable exhausts, when
