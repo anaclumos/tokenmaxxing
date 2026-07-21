@@ -501,8 +501,14 @@ export async function relayThread(input: {
   };
   const inWord = (epochMs: number | null) => (epochMs == null ? "an unknown time" : `~${fmtResetShort(epochMs, Date.now()) || "1m"}`);
 
+  // a non-limit failure line held back until the depleted-pool probe rules:
+  // posted verbatim on a plain failure, discarded when the turn defers (the
+  // deferral notice explains the pause; the raw line would invite a manual
+  // re-send of work the daemon resumes itself - cubic catch, PR #44).
+  let pendingFailureLine: string | null = null;
   const runQueryOnce = async () => {
     postedText = false;
+    pendingFailureLine = null;
     outcome.failed = false;
     outcome.rateLimited = false;
     outcome.resultReceived = false;
@@ -611,7 +617,10 @@ export async function relayThread(input: {
       // a turn that produced no streamed text (tool-only turns) still reports.
       if (!postedText && result) await push(result);
       if (!postedText && !result && outcome.failed && !outcome.rateLimited) {
-        await push("the turn ended without a result - trying again may help");
+        // held back until the depleted-pool probe rules: a "trying again may
+        // help" line right before a deferral notice invites a manual re-send
+        // of work the daemon is about to resume itself (cubic catch, PR #44).
+        pendingFailureLine = "the turn ended without a result - trying again may help";
       }
     } catch (e) {
       outcome.failed = true;
@@ -619,7 +628,10 @@ export async function relayThread(input: {
       outcome.rateLimited = isRateLimitText({ text: detail });
       if (outcome.rateLimited) await recordObservedLimit({ text: detail, now: Date.now(), org: spawnOrg });
       log("serve.turn_error", { err: detail });
-      if (!outcome.rateLimited) await push(`tokenmaxxing: turn failed: ${detail}`);
+      // same hold-back: the detail already reached the log above, and a
+      // deferral's own notice explains the pause better than a raw child
+      // error that reads as "please re-send".
+      if (!outcome.rateLimited) pendingFailureLine = `tokenmaxxing: turn failed: ${detail}`;
     }
   };
 
@@ -687,6 +699,7 @@ export async function relayThread(input: {
           if (wake != null) {
             outcome.rateLimited = true;
             outcome.deferUntil = wake + PARK_GRACE_MS;
+            pendingFailureLine = null;
             log("serve.turn_failed_depleted_defer", { resumeAt: outcome.deferUntil });
             await notify(`the account pool is exhausted - pausing this turn; it will resume automatically in ${inWord(outcome.deferUntil)}.`);
           }
@@ -695,6 +708,7 @@ export async function relayThread(input: {
           log("serve.defer_probe_error", { err: (e instanceof Error ? e.message : String(e)).slice(0, 300) });
         }
       }
+      if (pendingFailureLine !== null) await push(pendingFailureLine);
       break;
     }
     if (recoveries >= MAX_RECOVERIES) {

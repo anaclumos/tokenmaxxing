@@ -234,6 +234,9 @@ describe("relayThread depleted-pool recovery", () => {
     expect(out.deferUntil).toBe(wake + 5_000);
     const allText = col.posts.map(strings).join(" ");
     expect(allText).toContain("resume automatically");
+    // the raw failure line is held back on a deferral: it would invite a
+    // manual re-send of work the daemon resumes itself (cubic catch).
+    expect(allText).not.toContain("turn failed");
   });
 
   test("an unclassifiable failure with a USABLE pool stays a plain failure", async () => {
