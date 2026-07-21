@@ -516,10 +516,12 @@ export async function relayThread(input: {
       },
     );
     const pushInto = (chunk: SegmentChunk) => {
-      if (!(chunk instanceof Object)) {
-        postedText = true;
-        meta.text = true;
-      }
+      // meta.text only, NEVER postedText: salvaged text was already counted
+      // at its original push, and postedText is attempt-scoped - a salvage
+      // landing after a retry reset would otherwise re-arm it and suppress
+      // the retry's `!postedText && result` fallback, silently dropping a
+      // result-only answer (adversarial-review catch on PR #45).
+      if (!(chunk instanceof Object)) meta.text = true;
       seg.push(chunk);
     };
     return { seg, pushInto };

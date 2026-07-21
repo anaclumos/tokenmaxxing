@@ -411,6 +411,49 @@ describe("relayThread segment ordering", () => {
     for (const w of words) expect(allText.split(w).length - 1).toBe(1);
   });
 
+  test("a prior attempt's late salvage does not suppress the retry's result fallback", async () => {
+    // attempt 1 streams text and hits a mid-turn limit while its post is
+    // still stalled; the post rejects DURING attempt 2 (after the per-attempt
+    // postedText reset) and the salvage must not re-arm postedText - attempt
+    // 2 answers only via result, and that fallback is its sole delivery path.
+    const now = Date.now();
+    seedIdentityAndUsage("org-relay", now);
+    const resetEpochSec = Math.floor((now + 3_600_000) / 1000);
+    decisionQueue.push(usable, usable);
+    let release = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    queryScripts.push(script([init("s-late"), textDelta("partial before limit"), limitErrored("s-late", `Claude AI usage limit reached|${resetEpochSec}`)]));
+    queryScripts.push(() =>
+      (async function* () {
+        // attempt 2 has begun (postedText already reset): let the stalled
+        // post reject and its salvage land before this attempt streams.
+        release();
+        await realEsToolkit.delay(20);
+        yield init("s-late");
+        yield success("s-late", "command output");
+      })(),
+    );
+    const posts: unknown[][] = [];
+    let calls = 0;
+    const post = async (m: AsyncIterable<unknown>) => {
+      calls += 1;
+      if (calls === 1) {
+        await gate;
+        throw new Error("An API error occurred: message_not_in_streaming_state");
+      }
+      const chunks: unknown[] = [];
+      posts.push(chunks);
+      for await (const c of m) chunks.push(c);
+    };
+    const out = await relay({ post });
+    expect(out.failed).toBe(false);
+    const allText = posts.map(strings).join(" ");
+    expect(allText).toContain("partial before limit");
+    expect(allText).toContain("command output");
+  });
+
   test("a surface that never delivers stays bounded, fails the turn, and the rejecting diagnostic never escapes", async () => {
     decisionQueue.push(usable);
     queryScripts.push(() =>
