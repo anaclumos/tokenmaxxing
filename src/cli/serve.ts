@@ -18,7 +18,7 @@
 import { existsSync, realpathSync } from "node:fs";
 import { delay, omit, uniq } from "es-toolkit";
 import { z } from "zod";
-import { Chat, StreamingPlan, ThreadImpl, type StreamChunk } from "chat";
+import { Chat, ConsoleLogger, StreamingPlan, ThreadImpl, type StreamChunk } from "chat";
 import { createSlackAdapter } from "@chat-adapter/slack";
 import { createMemoryState } from "@chat-adapter/state-memory";
 import {
@@ -328,6 +328,8 @@ export function buildServeRuntime(seam: {
   // holds the restart hostage.
   const drainAbort = new AbortController();
   let draining = false;
+  // channels already diagnosed as unlinked this run (see handleTurn).
+  const unlinkedLogged = new Set<string>();
 
   /** One relayed turn with the durable activeTurn marker around it: written
    *  before the spawn, cleared when the turn returns, so a marker surviving
@@ -426,8 +428,17 @@ export function buildServeRuntime(seam: {
       // checked BEFORE the draining branch: unlinked channels are
       // contractually log-only silent, and a drain-window drop notice posted
       // into one would tell a user to resend a message that will never be
-      // served (closing-review catch).
-      log("serve.unlinked_channel", { channel: thread.channelId });
+      // served (closing-review catch). Logged once per channel per daemon run:
+      // with several daemons sharing one Slack app this fires on every
+      // load-balanced envelope for a sibling's channel (live incident
+      // 2026-07-20), and the diagnosis needs one line, not a stream.
+      if (!unlinkedLogged.has(thread.channelId)) {
+        unlinkedLogged.add(thread.channelId);
+        log("serve.unlinked_channel", {
+          channel: thread.channelId,
+          note: "not linked on this host; if another tokenmaxxing serve shares this Slack app, Slack delivers each socket event to only ONE of them and thread replies get lost - give every daemon its own Slack app",
+        });
+      }
       return; // not a linked channel - stay silent in Slack
     }
     if (draining) {
@@ -865,6 +876,11 @@ async function runDaemon(): Promise<number> {
     // @slack/web-api's fiveRetriesInFiveMinutes literal (dep not declared,
     // so the values are inlined).
     webClientOptions: { retryConfig: { retries: 5, factor: 3.86 }, timeout: 15_000 },
+    // the adapter's default logger is info-level and prints a line per
+    // redelivered socket envelope ("Processing socket mode retry") - steady
+    // noise during restart catch-up. warn matches the Chat logger below;
+    // real degradations (streaming fallback etc.) are warn-level and survive.
+    logger: new ConsoleLogger("warn", "chat-sdk").child("slack"),
   });
   // held directly (not only via Chat) so startup can re-subscribe recorded
   // threads: subscriptions live in this in-memory state and die with the

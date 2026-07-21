@@ -10,6 +10,7 @@ import { delay } from "es-toolkit";
 import { StreamingPlan, type StreamChunk } from "chat";
 import { buildServeRuntime } from "../src/cli/serve.ts";
 import { cleanupThread, type TurnOutcome } from "../src/lib/slackbridge.ts";
+import { setLogEcho } from "../src/lib/log.ts";
 import { pidStartTime } from "../src/lib/proc.ts";
 import { MAX_TURN_RESUMES, SlackConfigSchema, loadSlackThread, saveSlackThread } from "../src/lib/slackstate.ts";
 
@@ -224,6 +225,30 @@ describe("buildServeRuntime drain", () => {
     await flushTurns(rt);
     expect(relayCalls).toBe(0);
     expect(t.calls.posts).toBe(0);
+  });
+
+  test("unlinked-channel traffic logs once per channel per run, with the shared-app diagnosis", async () => {
+    // several daemons sharing one Slack app load-balance every envelope, so a
+    // sibling's channel fires this constantly (live incident 2026-07-20): one
+    // diagnostic line per channel, not a stream.
+    const events: { event: string; parts: string }[] = [];
+    setLogEcho({ printer: (e) => events.push(e) });
+    try {
+      const rt = runtimeWith(async () => okOutcome);
+      const t1 = fakeThread({ id: "slack:C0OTHER:410.1", channelId: "slack:C0OTHER" });
+      const t2 = fakeThread({ id: "slack:C0OTHER:410.2", channelId: "slack:C0OTHER" });
+      const t3 = fakeThread({ id: "slack:C0THIRD:410.3", channelId: "slack:C0THIRD" });
+      await rt.onMessage({ thread: t1.thread, message: home("@UBOT hello"), skipped: [], isMention: true });
+      await rt.onMessage({ thread: t2.thread, message: home("@UBOT again"), skipped: [], isMention: true });
+      await rt.onMessage({ thread: t3.thread, message: home("@UBOT other"), skipped: [], isMention: true });
+      const unlinked = events.filter((e) => e.event === "serve.unlinked_channel");
+      expect(unlinked.length).toBe(2); // C0OTHER once, C0THIRD once
+      expect(unlinked[0]?.parts).toContain("C0OTHER");
+      expect(unlinked[0]?.parts).toContain("its own Slack app");
+      expect(unlinked[1]?.parts).toContain("C0THIRD");
+    } finally {
+      setLogEcho({ printer: () => {} });
+    }
   });
 
   test("an ANNOUNCED drop during drain never leaves a resume marker (no double delivery)", async () => {

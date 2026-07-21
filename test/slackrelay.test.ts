@@ -51,7 +51,7 @@ mock.module("es-toolkit", () => ({
   delay: (ms: number, opts?: { signal?: AbortSignal }) => realEsToolkit.delay(Math.min(Math.max(ms, 0), DELAY_CAP_MS), opts),
 }));
 
-const { relayThread, MAX_RECOVERIES, PARK_MAX_MS } = await import("../src/lib/slackbridge.ts");
+const { relayThread, MAX_RECOVERIES, PARK_MAX_MS, SEGMENT_TEXT_MAX } = await import("../src/lib/slackbridge.ts");
 const { StreamingMarkdownRenderer } = await import("chat");
 const { SlackLinkSchema } = await import("../src/lib/slackstate.ts");
 const { loadUsage, writeUsage } = await import("../src/lib/state.ts");
@@ -447,6 +447,133 @@ describe("relayThread segment ordering", () => {
     expect(col.delivered()[1]).toBe("held line two tail");
   });
 
+  test("salvage reopens a fence the delivered prefix opened, so the remainder still renders as code", async () => {
+    // the dead message committed an open fence; the salvage message must
+    // reopen it before the remainder or the recovered code renders as plain
+    // text (pullfrog catch on PR #42's salvage integration). Whichever side
+    // of the death the opener landed on, the salvage message must begin
+    // inside a fence.
+    decisionQueue.push(usable);
+    queryScripts.push(script([
+      init("s-fensal"),
+      textDelta("intro\n```\ncode line one\n"),
+      textDelta("more code tail"),
+      success("s-fensal"),
+    ]));
+    const col = rendererCollector({ poisons: ["more code"] });
+    const out = await relay({ post: col.post });
+    expect(out.failed).toBe(false);
+    const delivered = col.delivered();
+    // the opener committed in the dead message (open-fence content commits
+    // eagerly: that is why Slack streams code live)
+    expect(delivered[0]).toContain("```");
+    const salvage = delivered.at(-1) ?? "";
+    expect(salvage.startsWith("```")).toBe(true);
+    expect(salvage).toContain("more code tail");
+    // nothing lost or duplicated: every content piece reaches Slack once
+    const all = delivered.join("");
+    for (const piece of ["intro", "code line one", "more code tail"]) {
+      expect(all.split(piece).length - 1).toBe(1);
+    }
+  });
+
+  test("a card-only salvage holds the fence reopen for the first LATER text joining the segment", async () => {
+    // the death loses only a card; streamed text arriving afterward joins
+    // the already-open salvage segment and was authored mid-fence, so the
+    // pending reopen must materialize before IT, not be skipped for lack of
+    // salvaged text (pullfrog catch on PR #42).
+    decisionQueue.push(usable);
+    queryScripts.push(() =>
+      (async function* () {
+        yield init("s-cardfence");
+        yield textDelta("intro\n```\ncode line one\n");
+        yield toolStart("tool-cf", "Bash");
+        yield toolStop();
+        // give the doomed post a beat to reject with only cards unconfirmed
+        await realEsToolkit.delay(30);
+        yield textDelta("later code\n");
+        yield success("s-cardfence");
+      })(),
+    );
+    let calls = 0;
+    const posts: unknown[][] = [];
+    const post = async (m: AsyncIterable<unknown>) => {
+      calls += 1;
+      if (calls === 1) {
+        // consume the text (its append lands), then die holding the card
+        for await (const c of m) {
+          if (z.string().safeParse(c).success === false) {
+            throw new Error("An API error occurred: message_not_in_streaming_state");
+          }
+        }
+        return;
+      }
+      const chunks: unknown[] = [];
+      posts.push(chunks);
+      for await (const c of m) chunks.push(c);
+    };
+    const out = await relay({ post });
+    expect(out.failed).toBe(false);
+    const salvaged = posts[0] ?? [];
+    const texts = salvaged.flatMap((c) => {
+      const s = z.string().safeParse(c);
+      return s.success ? [s.data] : [];
+    });
+    const reopen = texts.indexOf("```\n");
+    const later = texts.findIndex((t) => t.includes("later code"));
+    expect(reopen).not.toBe(-1);
+    expect(later).not.toBe(-1);
+    expect(reopen).toBeLessThan(later);
+  });
+
+  test("a chained card-only salvage death propagates the pending fence to the next salvage", async () => {
+    // salvage 1 inherits an open fence (card-only, reopen armed but never
+    // materialized) and DIES too; salvage 2 must inherit the open state via
+    // the parity fold or its later text renders unfenced (vercel + cubic
+    // chained-salvage catch on PR #42).
+    decisionQueue.push(usable);
+    queryScripts.push(() =>
+      (async function* () {
+        yield init("s-chainfence");
+        yield textDelta("intro\n```\ncode line one\n");
+        yield toolStart("tool-chain", "Bash");
+        yield toolStop();
+        // let BOTH deaths settle before the later text arrives
+        await realEsToolkit.delay(60);
+        yield textDelta("later code\n");
+        yield success("s-chainfence");
+      })(),
+    );
+    let calls = 0;
+    const posts: unknown[][] = [];
+    const post = async (m: AsyncIterable<unknown>) => {
+      calls += 1;
+      if (calls === 1) {
+        for await (const c of m) {
+          if (z.string().safeParse(c).success === false) {
+            throw new Error("An API error occurred: message_not_in_streaming_state");
+          }
+        }
+        return;
+      }
+      if (calls === 2) throw new Error("An API error occurred: message_not_in_streaming_state");
+      const chunks: unknown[] = [];
+      posts.push(chunks);
+      for await (const c of m) chunks.push(c);
+    };
+    const out = await relay({ post });
+    expect(out.failed).toBe(false);
+    const texts = (posts[0] ?? []).flatMap((c) => {
+      const s = z.string().safeParse(c);
+      return s.success ? [s.data] : [];
+    });
+    const reopen = texts.indexOf("```\n");
+    const later = texts.findIndex((t) => t.includes("later code"));
+    expect(reopen).not.toBe(-1);
+    expect(later).not.toBe(-1);
+    expect(reopen).toBeLessThan(later);
+  });
+
   test("a final reply with no trailing newline dies in the forced final flush and still re-posts (the live incident)", async () => {
     // the renderer holds back the unterminated last line for the ENTIRE
     // iteration, so the only append happens after the iterable exhausts, when
@@ -517,6 +644,112 @@ describe("relayThread segment ordering", () => {
     const allText = posts.map(strings).join(" ");
     expect(allText).toContain("partial before limit");
     expect(allText).toContain("command output");
+  });
+
+  test("reply text past the per-message cap splits into ordered Slack messages", async () => {
+    // one 100-char line repeated 250x = 25,000 chars: Slack rejects a single
+    // message that long with msg_too_long, so the relay must split BEFORE
+    // the cap (live incident 2026-07-20).
+    const line = `${"x".repeat(99)}\n`;
+    const long = line.repeat(250);
+    decisionQueue.push(usable);
+    queryScripts.push(script([init("s-split"), textDelta(long), success("s-split")]));
+    const col = collector();
+    const out = await relay({ post: col.post });
+    expect(out.failed).toBe(false);
+    expect(col.posts.length).toBe(3);
+    for (const [i, p] of col.posts.entries()) {
+      expect(strings(p).length).toBeLessThanOrEqual(SEGMENT_TEXT_MAX);
+      expect(col.timeline).toContain(`open:${i + 1}`);
+    }
+    // strict order and no content lost or reordered
+    expect(col.timeline).toEqual(["open:1", "close:1", "open:2", "close:2", "open:3", "close:3"]);
+    expect(col.posts.map(strings).join("")).toBe(long);
+    // the preferred cut is a line boundary, not mid-line
+    expect(strings(col.posts[0]).endsWith("\n")).toBe(true);
+  });
+
+  test("small deltas accumulating past the cap split without losing content", async () => {
+    const delta = "y".repeat(400);
+    const deltas = Array.from({ length: 60 }, () => textDelta(delta));
+    decisionQueue.push(usable);
+    queryScripts.push(script([init("s-acc"), ...deltas, success("s-acc")]));
+    const col = collector();
+    const out = await relay({ post: col.post });
+    expect(out.failed).toBe(false);
+    expect(col.posts.length).toBeGreaterThan(1);
+    for (const p of col.posts) expect(strings(p).length).toBeLessThanOrEqual(SEGMENT_TEXT_MAX);
+    expect(col.posts.map(strings).join("")).toBe(delta.repeat(60));
+  });
+
+  test("a break forced inside a code fence closes and reopens it", async () => {
+    const long = `intro\n\`\`\`\n${"z".repeat(SEGMENT_TEXT_MAX + 500)}\n\`\`\`\nafter`;
+    decisionQueue.push(usable);
+    queryScripts.push(script([init("s-fence"), textDelta(long), success("s-fence")]));
+    const col = collector();
+    const out = await relay({ post: col.post });
+    expect(out.failed).toBe(false);
+    expect(col.posts.length).toBe(2);
+    // both halves render as code: the first closes the fence, the next reopens
+    expect(strings(col.posts[0]).endsWith("\n```")).toBe(true);
+    expect(strings(col.posts[1]).startsWith("```\n")).toBe(true);
+    expect(strings(col.posts[1]).endsWith("after")).toBe(true);
+    // stripping the inserted markers restores the original text
+    const first = strings(col.posts[0]);
+    const second = strings(col.posts[1]);
+    expect(first.slice(0, -4) + second.slice(4)).toBe(long);
+  });
+
+  test("a fence delimiter split across SDK deltas still tracks as one fence", async () => {
+    // deltas do not respect markdown token boundaries: ``` can arrive as
+    // "``" + "`\n..." (pullfrog review catch, PR #42) - parity must be
+    // computed over the segment's accumulated text, never per chunk.
+    const z = "z".repeat(SEGMENT_TEXT_MAX);
+    decisionQueue.push(usable);
+    queryScripts.push(script([
+      init("s-splitfence"),
+      textDelta("intro\n``"),
+      textDelta(`\`\n${z}\n\`\`\`\nafter`),
+      success("s-splitfence"),
+    ]));
+    const col = collector();
+    const out = await relay({ post: col.post });
+    expect(out.failed).toBe(false);
+    expect(col.posts.length).toBe(2);
+    expect(strings(col.posts[0]).includes("intro\n```\n")).toBe(true);
+    expect(strings(col.posts[0]).endsWith("\n```")).toBe(true);
+    expect(strings(col.posts[1]).startsWith("```\n")).toBe(true);
+    expect(strings(col.posts[1]).endsWith("after")).toBe(true);
+    const first = strings(col.posts[0]);
+    const second = strings(col.posts[1]);
+    expect(first.slice(0, -4) + second.slice(4)).toBe(`intro\n\`\`\`\n${z}\n\`\`\`\nafter`);
+  });
+
+  test("a hard cut never slices through a backtick run", async () => {
+    // position ``` exactly straddling the cap with no newline to prefer: the
+    // cut must back up past the whole run instead of stranding a partial
+    // delimiter on each side (cubic review catch, PR #42).
+    const long = `${"a".repeat(SEGMENT_TEXT_MAX - 1)}\`\`\`${"b".repeat(50)}`;
+    decisionQueue.push(usable);
+    queryScripts.push(script([init("s-run"), textDelta(long), success("s-run")]));
+    const col = collector();
+    const out = await relay({ post: col.post });
+    expect(out.failed).toBe(false);
+    expect(col.posts.length).toBe(2);
+    expect(strings(col.posts[0])).toBe("a".repeat(SEGMENT_TEXT_MAX - 1));
+    expect(strings(col.posts[1])).toBe(`\`\`\`${"b".repeat(50)}`);
+  });
+
+  test("a huge no-stream result still splits instead of dying on one post", async () => {
+    const result = `${"r".repeat(150)}\n`.repeat(100); // 15,100 chars, no streamed text
+    decisionQueue.push(usable);
+    queryScripts.push(script([init("s-res"), success("s-res", result)]));
+    const col = collector();
+    const out = await relay({ post: col.post });
+    expect(out.failed).toBe(false);
+    expect(col.posts.length).toBe(2);
+    for (const p of col.posts) expect(strings(p).length).toBeLessThanOrEqual(SEGMENT_TEXT_MAX);
+    expect(col.posts.map(strings).join("")).toBe(result);
   });
 
   test("a surface that never delivers stays bounded, fails the turn, and the rejecting diagnostic never escapes", async () => {
