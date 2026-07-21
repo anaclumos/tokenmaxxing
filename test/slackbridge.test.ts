@@ -29,8 +29,8 @@ describe("parkPlan", () => {
 
   test("the wake grace counts against the deadline", () => {
     // a reset in the final seconds of the budget would wake past the promised
-    // total hold, so it drops instead of parking.
-    expect(parkPlan({ decision: { ...depleted, waitUntil: DEADLINE - 1_000 }, recoveries: 0, deadline: DEADLINE }).kind).toBe("drop");
+    // total hold, so it defers instead of parking in-handler.
+    expect(parkPlan({ decision: { ...depleted, waitUntil: DEADLINE - 1_000 }, recoveries: 0, deadline: DEADLINE }).kind).toBe("defer");
     expect(parkPlan({ decision: { ...depleted, waitUntil: DEADLINE - 60_000 }, recoveries: 0, deadline: DEADLINE }).kind).toBe("park");
   });
 
@@ -39,27 +39,31 @@ describe("parkPlan", () => {
     expect(plan.kind).toBe("park");
   });
 
-  test("drops honestly on unknown or past-deadline recovery", () => {
-    expect(parkPlan({ decision: depleted, recoveries: 0, deadline: DEADLINE })).toEqual({ kind: "drop", recoversAt: null });
+  test("drops honestly ONLY on an unknown recovery time", () => {
+    expect(parkPlan({ decision: depleted, recoveries: 0, deadline: DEADLINE })).toEqual({ kind: "drop" });
+  });
+
+  test("a known recovery past the deadline DEFERS: the daemon resumes it, never a re-send ask", () => {
     const far = DEADLINE + 60_000;
-    expect(parkPlan({ decision: { ...depleted, waitUntil: far }, recoveries: 0, deadline: DEADLINE })).toEqual({ kind: "drop", recoversAt: far });
+    expect(parkPlan({ decision: { ...depleted, waitUntil: far }, recoveries: 0, deadline: DEADLINE })).toEqual({ kind: "defer", resumeAt: far + 5_000 });
   });
 
   test("the deadline is SHARED across a message's parks, not per park", () => {
     // first park consumed most of the budget; a second wake only 10min out
-    // would pass a per-park cap but exceeds the message's one deadline.
+    // would pass a per-park cap but exceeds the message's one deadline - it
+    // defers instead of holding the queue slot.
     const later = NOW + PARK_MAX_MS - 60_000;
     const secondWake = later + 600_000;
     expect(parkPlan({ decision: { ...depleted, waitUntil: secondWake }, recoveries: 1, deadline: DEADLINE })).toEqual({
-      kind: "drop",
-      recoversAt: secondWake,
+      kind: "defer",
+      resumeAt: secondWake + 5_000,
     });
   });
 
-  test("the recovery budget caps parking even when the wake is near", () => {
+  test("the recovery budget caps in-handler parking even when the wake is near: spent budget defers", () => {
     const soon = NOW + 60_000;
     const plan = parkPlan({ decision: { ...depleted, waitUntil: soon }, recoveries: MAX_RECOVERIES, deadline: DEADLINE });
-    expect(plan).toEqual({ kind: "drop", recoversAt: soon });
+    expect(plan).toEqual({ kind: "defer", resumeAt: soon + 5_000 });
   });
 });
 
@@ -147,14 +151,16 @@ describe("isRateLimitText", () => {
 });
 
 describe("TurnOutcomeSchema", () => {
-  test("rateLimited, announcedDrop, and resultReceived are required and default nowhere", () => {
-    expect(() => TurnOutcomeSchema.parse({ sessionId: null, failed: true, finish: false, announcedDrop: false, resultReceived: false })).toThrow();
-    expect(() => TurnOutcomeSchema.parse({ sessionId: null, failed: true, rateLimited: true, finish: false, resultReceived: false })).toThrow();
-    expect(() => TurnOutcomeSchema.parse({ sessionId: null, failed: true, rateLimited: true, finish: false, announcedDrop: false })).toThrow();
-    const full = TurnOutcomeSchema.parse({ sessionId: "s", failed: true, rateLimited: true, finish: false, announcedDrop: true, resultReceived: false });
+  test("rateLimited, announcedDrop, resultReceived, and deferUntil are required and default nowhere", () => {
+    expect(() => TurnOutcomeSchema.parse({ sessionId: null, failed: true, finish: false, announcedDrop: false, resultReceived: false, deferUntil: null })).toThrow();
+    expect(() => TurnOutcomeSchema.parse({ sessionId: null, failed: true, rateLimited: true, finish: false, resultReceived: false, deferUntil: null })).toThrow();
+    expect(() => TurnOutcomeSchema.parse({ sessionId: null, failed: true, rateLimited: true, finish: false, announcedDrop: false, deferUntil: null })).toThrow();
+    expect(() => TurnOutcomeSchema.parse({ sessionId: null, failed: true, rateLimited: true, finish: false, announcedDrop: false, resultReceived: false })).toThrow();
+    const full = TurnOutcomeSchema.parse({ sessionId: "s", failed: true, rateLimited: true, finish: false, announcedDrop: true, resultReceived: false, deferUntil: 1_784_400_000_000 });
     expect(full.rateLimited).toBe(true);
     expect(full.announcedDrop).toBe(true);
     expect(full.resultReceived).toBe(false);
+    expect(full.deferUntil).toBe(1_784_400_000_000);
   });
 });
 

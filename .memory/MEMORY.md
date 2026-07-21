@@ -1,5 +1,8 @@
 # Memory index
 
+RULES: this folder is git-tracked in a PUBLIC repo. Treat every note as a public Wikipedia page: public knowledge only. Never device info (hostnames, ssh aliases, hardware identity, machine usernames), never Slack info (conversation, user, workspace, or channel details, any Slack IDs), never environment info (.env keys, file information about the owner's environment). See [[memory-is-public]].
+
+- [.memory is public](memory-is-public.md) - user rule 2026-07-20: git-tracked in the public repo, so public knowledge only; no device, Slack, or environment info; Wikipedia-page standard for every note
 - [Auto-compact 50% override](autocompact-pct-override.md) - CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=50 in ~/.claude/settings.json env (2026-07-19); undocumented, binary-verified 2.1.215, re-verify after claude updates
 - [Review window is mandatory full-length](review-window-is-mandatory-full-length.md) - hook correction 2026-07-19: the 10-min PR window runs its FULL length from the last push; "all reviewer checks pass" never shortens it (cubic posts findings after its check greens); early merge = compensating late-review watch + fix-forward
 - [Silence is not approval for design forks](silence-is-not-approval-for-design-forks.md) - hook correction 2026-07-19: a surfaced fork holds until the owner picks; an unanswered ping never authorizes the stated lean; only in-plan actions (retry same mechanism, cancel dead tasks, watch) continue meanwhile

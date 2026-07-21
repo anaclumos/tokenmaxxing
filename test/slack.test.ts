@@ -237,4 +237,23 @@ describe("resumeDecision", () => {
     const atCap = resumeDecision({ ...baseRecord, activeTurn: { ...marker, resumeCount: MAX_TURN_RESUMES } });
     expect(atCap?.kind).toBe("give-up");
   });
+
+  test("a deferred marker (resumeAt) gets pool-recovery wording and the resumed marker consumes the wake", () => {
+    const deferred = { ...marker, resumeAt: 1_784_500_000_000 };
+    const withSession = resumeDecision({ ...baseRecord, sessionId: "sess-d", activeTurn: deferred });
+    if (withSession?.kind !== "resume") throw new Error("expected resume");
+    expect(withSession.notice).toContain("pool has recovered");
+    expect(withSession.notice).not.toContain("restart");
+    expect(withSession.prompt).toContain("usage limit");
+    expect(withSession.marker.resumeAt).toBeUndefined();
+    expect(withSession.marker.resumeCount).toBe(1);
+    const fresh = resumeDecision({ ...baseRecord, activeTurn: deferred });
+    if (fresh?.kind !== "resume") throw new Error("expected resume");
+    expect(fresh.notice).toContain("held message");
+    expect(fresh.prompt).toBe("ship the thing");
+    const gaveUp = resumeDecision({ ...baseRecord, activeTurn: { ...deferred, resumeCount: MAX_TURN_RESUMES } });
+    if (gaveUp?.kind !== "give-up") throw new Error("expected give-up");
+    expect(gaveUp.notice).toContain("usage limits");
+    expect(gaveUp.notice).not.toContain("restart");
+  });
 });
