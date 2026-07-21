@@ -1,6 +1,6 @@
 {
   "name": "tokenmaxxing",
-  "version": "1.0.3",
+  "version": "1.1.1",
   "description": "Automatic Claude Code account switching: pool multiple accounts and hot-swap when quota fills, resuming your session on the fresh account.",
   "type": "module",
   "license": "MIT",
