@@ -1011,6 +1011,14 @@ export function buildServeRuntime(seam: {
               }
               log("serve.resume_dropped_unknown", { thread: record.threadId });
               await thread.post("the pool is still at its usage limit and its recovery time is now unknown - this held message is dropped; re-send it once the pool recovers.");
+              // terminal exit on a linked channel: settle the trigger's status
+              // or its hourglass reads "processing" forever (cubic review
+              // catch on PR #43). The unlinked abandon above stays reactionless
+              // on purpose: unlinked channels are contractually untouchable.
+              if (turn.messageId) {
+                await setStatus({ threadId: thread.id, messageId: turn.messageId, emoji: STATUS_EMOJI.failed, op: "add" });
+                await setStatus({ threadId: thread.id, messageId: turn.messageId, emoji: STATUS_EMOJI.processing, op: "remove" });
+              }
               saveSlackThread(omit(fresh, ["activeTurn"]));
               return;
             }

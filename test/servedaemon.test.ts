@@ -544,7 +544,7 @@ describe("buildServeRuntime usage-limit deferral", () => {
       cwd: "/tmp/serve-daemon-repo",
       sessionId: "s-unk",
       createdAt: new Date().toISOString(),
-      activeTurn: { prompt: "held work", startedAt: new Date().toISOString(), resumeCount: 0, resumeAt: Date.now() - 1_000 },
+      activeTurn: { prompt: "held work", startedAt: new Date().toISOString(), resumeCount: 0, resumeAt: Date.now() - 1_000, messageId: "957.2" },
     });
     let calls = 0;
     const rt = runtimeWith(
@@ -563,6 +563,10 @@ describe("buildServeRuntime usage-limit deferral", () => {
     expect(t.posted.join(" ")).toContain("dropped");
     expect(t.posted.join(" ")).not.toContain("recovered");
     expect(loadSlackThread(threadId)?.activeTurn).toBeUndefined();
+    // the terminal drop settles the trigger's status: no stuck hourglass
+    // (cubic review catch on PR #43)
+    expect(rt.reactions).toContainEqual({ threadId, messageId: "957.2", emoji: "x", op: "add" });
+    expect(rt.reactions).toContainEqual({ threadId, messageId: "957.2", emoji: "hourglass_flowing_sand", op: "remove" });
   });
 
   test("a due wake on a turn at the resume cap gives up honestly instead of re-deferring forever", async () => {
