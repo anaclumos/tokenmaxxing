@@ -380,6 +380,46 @@ describe("relayThread segment ordering", () => {
     expect(first.slice(0, -4) + second.slice(4)).toBe(long);
   });
 
+  test("a fence delimiter split across SDK deltas still tracks as one fence", async () => {
+    // deltas do not respect markdown token boundaries: ``` can arrive as
+    // "``" + "`\n..." (pullfrog review catch, PR #42) - parity must be
+    // computed over the segment's accumulated text, never per chunk.
+    const z = "z".repeat(SEGMENT_TEXT_MAX);
+    decisionQueue.push(usable);
+    queryScripts.push(script([
+      init("s-splitfence"),
+      textDelta("intro\n``"),
+      textDelta(`\`\n${z}\n\`\`\`\nafter`),
+      success("s-splitfence"),
+    ]));
+    const col = collector();
+    const out = await relay({ post: col.post });
+    expect(out.failed).toBe(false);
+    expect(col.posts.length).toBe(2);
+    expect(strings(col.posts[0]).includes("intro\n```\n")).toBe(true);
+    expect(strings(col.posts[0]).endsWith("\n```")).toBe(true);
+    expect(strings(col.posts[1]).startsWith("```\n")).toBe(true);
+    expect(strings(col.posts[1]).endsWith("after")).toBe(true);
+    const first = strings(col.posts[0]);
+    const second = strings(col.posts[1]);
+    expect(first.slice(0, -4) + second.slice(4)).toBe(`intro\n\`\`\`\n${z}\n\`\`\`\nafter`);
+  });
+
+  test("a hard cut never slices through a backtick run", async () => {
+    // position ``` exactly straddling the cap with no newline to prefer: the
+    // cut must back up past the whole run instead of stranding a partial
+    // delimiter on each side (cubic review catch, PR #42).
+    const long = `${"a".repeat(SEGMENT_TEXT_MAX - 1)}\`\`\`${"b".repeat(50)}`;
+    decisionQueue.push(usable);
+    queryScripts.push(script([init("s-run"), textDelta(long), success("s-run")]));
+    const col = collector();
+    const out = await relay({ post: col.post });
+    expect(out.failed).toBe(false);
+    expect(col.posts.length).toBe(2);
+    expect(strings(col.posts[0])).toBe("a".repeat(SEGMENT_TEXT_MAX - 1));
+    expect(strings(col.posts[1])).toBe(`\`\`\`${"b".repeat(50)}`);
+  });
+
   test("a huge no-stream result still splits instead of dying on one post", async () => {
     const result = `${"r".repeat(150)}\n`.repeat(100); // 15,100 chars, no streamed text
     decisionQueue.push(usable);

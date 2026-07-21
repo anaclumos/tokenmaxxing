@@ -408,7 +408,12 @@ export async function relayThread(input: {
 }): Promise<TurnOutcome> {
   const outcome: TurnOutcome = { sessionId: input.sessionId, failed: false, rateLimited: false, finish: false, announcedDrop: false, resultReceived: false };
   let segment: ReturnType<typeof pushableStream> | null = null;
-  let segmentMeta: { text: boolean; chars: number; fenceOpen: boolean } | null = null;
+  // acc mirrors the segment's pushed text (bounded by SEGMENT_TEXT_MAX plus a
+  // small overshoot): fence parity must be computed over the ACCUMULATED text,
+  // never per chunk - SDK deltas do not respect markdown token boundaries, so
+  // a ``` split across two deltas would be invisible to per-chunk counting
+  // (pullfrog review catch, PR #42).
+  let segmentMeta: { text: boolean; acc: string } | null = null;
   let lastPost: Promise<unknown> = Promise.resolve();
   // Reply TEXT that was pushed into a rejected segment and never re-delivered
   // by a later text-bearing segment: the user has not seen the answer. A lost
@@ -429,7 +434,7 @@ export async function relayThread(input: {
       seg = pushableStream();
       segment = seg;
       const posted = seg;
-      const meta = { text: false, chars: 0, fenceOpen: false };
+      const meta = { text: false, acc: "" };
       segmentMeta = meta;
       lastPost = input.post(seg.iterable).then(
         () => {
@@ -454,13 +459,13 @@ export async function relayThread(input: {
     if (!(chunk instanceof Object)) {
       postedText = true;
       segmentMeta!.text = true;
-      segmentMeta!.chars += chunk.length;
-      // fence parity by occurrence count: an odd number of ``` markers in this
-      // chunk flips whether the segment currently sits inside a code fence.
-      if ((chunk.split("```").length - 1) % 2 === 1) segmentMeta!.fenceOpen = !segmentMeta!.fenceOpen;
+      segmentMeta!.acc += chunk;
     }
     seg.push(chunk);
   };
+  // parity by occurrence count over the segment's accumulated text: an odd
+  // number of ``` markers means the segment currently sits inside a fence.
+  const fenceOpen = () => segmentMeta !== null && (segmentMeta.acc.split("```").length - 1) % 2 === 1;
   const breakSegment = () => {
     segment?.end();
     segment = null;
@@ -471,7 +476,7 @@ export async function relayThread(input: {
    *  it and reopens it in the next message so both halves render as code. */
   const pushText = async (text: string) => {
     for (let rest = text; rest !== "";) {
-      const room = SEGMENT_TEXT_MAX - (segment === null ? 0 : segmentMeta!.chars);
+      const room = SEGMENT_TEXT_MAX - (segment === null ? 0 : segmentMeta!.acc.length);
       // a fence-close suffix can nudge a segment a few chars past the cap;
       // a full segment just breaks and the loop re-measures a fresh one.
       if (room <= 0) {
@@ -486,9 +491,20 @@ export async function relayThread(input: {
       // an early newline followed by one giant unbroken run would otherwise
       // make no progress and (with the fence-reopen prefix) loop forever.
       const nl = rest.lastIndexOf("\n", room - 1);
-      const head = rest.slice(0, nl >= Math.floor(room / 2) ? nl + 1 : room);
+      let cut = nl >= Math.floor(room / 2) ? nl + 1 : room;
+      // never slice through a backtick run: a cut inside ``` would strand a
+      // partial delimiter on each side and break both halves' rendering
+      // (cubic review catch, PR #42). Walk the cut left past the run; a run
+      // reaching position 0 keeps the original cut (progress beats rendering
+      // for pathological all-backtick input).
+      if (rest[cut - 1] === "`" && rest[cut] === "`") {
+        let backedUp = cut;
+        while (backedUp > 0 && rest[backedUp - 1] === "`") backedUp -= 1;
+        if (backedUp > 0) cut = backedUp;
+      }
+      const head = rest.slice(0, cut);
       await push(head);
-      const reopen = segmentMeta!.fenceOpen;
+      const reopen = fenceOpen();
       if (reopen) await push("\n```");
       breakSegment();
       rest = (reopen ? "```\n" : "") + rest.slice(head.length);
