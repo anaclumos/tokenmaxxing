@@ -481,25 +481,49 @@ export async function relayThread(input: {
         const committed = mirror.getCommittableText();
         const deliveredLen = confirmedRaw.startsWith(committed) ? committed.length : 0;
         const textRemainder = fullRaw.slice(deliveredLen);
-        const cardSalvage = chunks.slice(confirmed).flatMap((c) => (c instanceof Object ? [c] : []));
-        // delivery progress means this death does not count toward the
+        // A confirmed card's append landed (the adapter sends a card inline
+        // in the loop body before the next pull), so unconfirmed cards are
+        // the set it never appended.
+        const deliveredCard = chunks.slice(0, confirmed).some((c) => c instanceof Object);
+        // Delivery progress means this death does not count toward the
         // futility budget: only a message that delivered nothing burns one.
-        if (confirmed > 0 || deliveredLen > 0) salvagesLeft = MAX_SEGMENT_SALVAGES;
-        // the remainder re-posts split at line boundaries (rendering is
-        // unchanged: chunks concatenate) so a salvage message that dies too
-        // still confirms per line, keeping progress attribution fine-grained.
-        const remainderLines: string[] = [];
-        let rest = textRemainder;
-        while (rest !== "") {
-          const nl = rest.indexOf("\n");
-          if (nl === -1) {
-            remainderLines.push(rest);
-            break;
+        // The key is ACTUAL delivery (committable text or a landed card),
+        // never chunk consumption: a reply whose final line has no trailing
+        // newline is consumed whole (confirmed advances) while its only
+        // append is the post-iteration forced flush, so a consumption key
+        // would refill the budget on every persistently failing flush and
+        // salvage the same held-back text forever (vercel review catch,
+        // PR #45). deliveredLen stays 0 there, the strike is spent, and the
+        // zero-delivery case terminates.
+        if (deliveredLen > 0 || deliveredCard) salvagesLeft = MAX_SEGMENT_SALVAGES;
+        // The salvage sequence preserves STREAM ORDER (cursor review catch,
+        // PR #45: re-posting all remainder text and then all cards showed
+        // task cards after prose that originally followed them): walk the
+        // ledger in order, keeping each text chunk's undelivered suffix and
+        // each unconfirmed card at its original position. Text splits at
+        // line boundaries (rendering is unchanged: chunks concatenate) so a
+        // salvage message that dies too still confirms per line, keeping
+        // progress attribution fine-grained.
+        const lost: SegmentChunk[] = [];
+        let offset = 0;
+        for (const [i, c] of chunks.entries()) {
+          if (c instanceof Object) {
+            if (i >= confirmed) lost.push(c);
+            continue;
           }
-          remainderLines.push(rest.slice(0, nl + 1));
-          rest = rest.slice(nl + 1);
+          const end = offset + c.length;
+          let rest = end > deliveredLen ? c.slice(Math.max(0, deliveredLen - offset)) : "";
+          offset = end;
+          while (rest !== "") {
+            const nl = rest.indexOf("\n");
+            if (nl === -1) {
+              lost.push(rest);
+              break;
+            }
+            lost.push(rest.slice(0, nl + 1));
+            rest = rest.slice(nl + 1);
+          }
         }
-        const lost = [...remainderLines, ...cardSalvage];
         if (lost.length > 0 && salvagesLeft > 0) {
           salvagesLeft -= 1;
           log("serve.post_salvage", { chunks: lost.length, left: salvagesLeft });

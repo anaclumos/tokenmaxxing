@@ -470,4 +470,71 @@ describe("relayThread segment ordering", () => {
     // zero-delivery rejections burn the futility budget instead of looping
     expect(col.calls()).toBeLessThanOrEqual(10);
   });
+
+  test("a persistently failing forced flush burns the budget: consumption alone never refills it", async () => {
+    // every chunk is consumed (confirmed advances) but the single
+    // no-trailing-newline line is renderer-held, so its only append is the
+    // post-iteration forced flush - if THAT fails persistently, refilling on
+    // consumption would salvage the same held text forever (vercel review
+    // catch on PR #45).
+    decisionQueue.push(usable);
+    queryScripts.push(() =>
+      (async function* () {
+        yield init("s-flushloop");
+        yield textDelta("single line without newline");
+        yield success("s-flushloop");
+      })(),
+    );
+    let calls = 0;
+    const post = async (m: AsyncIterable<unknown>) => {
+      calls += 1;
+      for await (const c of m) void c;
+      throw new Error("An API error occurred: message_not_in_streaming_state");
+    };
+    const out = await relay({ post }); // resolving IS the assertion
+    expect(out.failed).toBe(true);
+    expect(calls).toBeLessThanOrEqual(10);
+  });
+
+  test("salvage preserves stream order: an unconfirmed card re-posts ahead of the text that followed it", async () => {
+    decisionQueue.push(usable);
+    queryScripts.push(() =>
+      (async function* () {
+        yield init("s-order");
+        yield toolStart("tool-ord", "Bash");
+        yield toolStop();
+        yield textDelta("tail line");
+        // give the doomed post's delay a beat so both chunks queue before it
+        // rejects with nothing confirmed
+        await realEsToolkit.delay(30);
+        yield success("s-order");
+      })(),
+    );
+    let calls = 0;
+    const posts: unknown[][] = [];
+    const post = async (m: AsyncIterable<unknown>) => {
+      calls += 1;
+      if (calls === 1) {
+        await realEsToolkit.delay(15);
+        throw new Error("An API error occurred: message_not_in_streaming_state");
+      }
+      const chunks: unknown[] = [];
+      posts.push(chunks);
+      for await (const c of m) chunks.push(c);
+    };
+    const out = await relay({ post });
+    expect(out.failed).toBe(false);
+    const salvaged = posts[0] ?? [];
+    const firstText = salvaged.findIndex((c) => z.string().safeParse(c).success);
+    // only the tool's own card: the closing Turn card is also a task_update
+    // and legitimately follows the text
+    const cardIndexes = salvaged.flatMap((c, i) => {
+      const card = TaskCardSchema.safeParse(c);
+      return card.success && card.data.id === "tool-ord" ? [i] : [];
+    });
+    expect(strings(salvaged)).toContain("tail line");
+    expect(cardIndexes.length).toBeGreaterThan(0);
+    // the card originally preceded the text; salvage must keep it there
+    for (const i of cardIndexes) expect(i).toBeLessThan(firstText);
+  });
 });
