@@ -42,6 +42,7 @@ import {
   type SlackThread,
 } from "../lib/slackstate.ts";
 import { cleanupThread, fetchWorkspaceTeamId, killGroup, relayThread, type CleanupOutcome, type TurnOutcome } from "../lib/slackbridge.ts";
+import { ensureBestAccount, type SwapDecision } from "../sdk.ts";
 import { pidStartTime } from "../lib/proc.ts";
 import { acquireLock } from "../lib/lock.ts";
 import { paths } from "../lib/paths.ts";
@@ -310,6 +311,9 @@ export function buildServeRuntime(seam: {
    *  resumes and deferred-turn wakes both need one). runDaemon passes a lazy
    *  closure over its bot-backed streamableThread; tests pass a fake. */
   streamable: (threadId: string) => Promise<{ thread: ServeThread; requesterIds: string[] }>;
+  /** the pool decision a deferred wake pre-probes with before posting the
+   *  recovery notice (production: ensureBestAccount; tests: a stub). */
+  decide: () => Promise<SwapDecision>;
 }) {
   const { cfg, workspaceTeamId } = seam;
   /** short re-arm after a deferred wake fails transiently (Slack hiccup at
@@ -483,26 +487,23 @@ export function buildServeRuntime(seam: {
     // alone loses this race).
     if (record.activeTurn) await reapOrphan(record.activeTurn);
     // An inbound message takes over a deferred thread (its wake timer dies
-    // with the takeover; runTurn's fresh marker replaces the deferred one).
-    // A deferral whose child NEVER SPAWNED (no pid: the spawn-boundary defer)
-    // holds the ONLY copy of the held message, so its prompt folds in front
-    // of the new text - silently discarding it was the adversarial-review
-    // MAJOR catch on PR #44, and it would re-lose exactly the 2026-07-20
-    // two-message shape the deferral exists to save. A deferral that DID
-    // spawn (pid present) is superseded instead: its partial work lives in
-    // the session the new turn resumes, and re-folding its prompt would
-    // re-run completed work.
+    // with the takeover; runTurn's fresh marker replaces the deferred one),
+    // and the held prompt ALWAYS folds in front of the new text: silently
+    // discarding it was the adversarial-review MAJOR catch on PR #44 (it
+    // would re-lose exactly the 2026-07-20 two-message shape the deferral
+    // exists to save), and no spawn-progress signal on the marker can prove
+    // the held prompt ever reached the session (a child can spawn and die
+    // before init - vercel review catch). A completed turn never defers, so
+    // folding can never re-run finished work; at worst a mid-turn deferral's
+    // prompt re-appears alongside the session transcript that already holds
+    // its partial work, and the newer message steers.
     const deferred = record.activeTurn?.resumeAt !== undefined ? record.activeTurn : null;
     if (deferred) {
       const timer = deferredTimers.get(thread.id);
       if (timer !== undefined) clearTimeout(timer);
       deferredTimers.delete(thread.id);
-      if (deferred.pid === undefined) {
-        prompt = `${deferred.prompt}\n\n${prompt}`;
-        log("serve.deferred_folded", { thread: thread.id });
-      } else {
-        log("serve.deferred_superseded", { thread: thread.id });
-      }
+      prompt = `${deferred.prompt}\n\n${prompt}`;
+      log("serve.deferred_folded", { thread: thread.id });
     }
     // subscriptions live in the memory state, so a daemon restart forgets
     // them; every mention re-subscribes to keep follow-up replies flowing.
@@ -698,6 +699,28 @@ export function buildServeRuntime(seam: {
           scheduleDeferred(record.threadId, turn.resumeAt);
           return;
         }
+        if (turn.resumeAt !== undefined) {
+          // the wake arrived, but the reset clock was extrapolated: confirm
+          // the pool ACTUALLY recovered before posting the recovery notice
+          // and spending one of the capped resume attempts - a still-depleted
+          // pool re-defers silently (no quota was spent, so no attempt burns;
+          // cursor review catch on PR #44). A probe failure falls through to
+          // the normal resume, whose own decision path announces honestly.
+          try {
+            const verdict = await seam.decide();
+            const depleted = verdict.reason === "all-depleted" || verdict.reason === "depleted-wait";
+            const wake = depleted ? verdict.waitUntil ?? null : null;
+            if (wake != null) {
+              const resumeAt = wake + 5_000;
+              saveSlackThread({ ...fresh, activeTurn: { ...turn, resumeAt } });
+              scheduleDeferred(record.threadId, resumeAt);
+              log("serve.resume_still_depleted", { thread: record.threadId, resumeAt });
+              return;
+            }
+          } catch (e) {
+            log("serve.resume_probe_error", { thread: record.threadId, err: (e instanceof Error ? e.message : String(e)).slice(0, 300) });
+          }
+        }
         await reapOrphan(turn);
         if (!link) {
           // unlinked since the turn started: nothing can run here; drop the
@@ -868,6 +891,7 @@ async function runDaemon(): Promise<number> {
     // lazy on purpose: streamableThread is declared just below and only ever
     // invoked long after startup (recovery runs and deferred wakes).
     streamable: (threadId) => streamableThread(threadId),
+    decide: ensureBestAccount,
   });
 
   /** A proactive thread handle that can still stream natively. bot.thread()

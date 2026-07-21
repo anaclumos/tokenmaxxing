@@ -25,6 +25,7 @@ const okOutcome: TurnOutcome = { sessionId: "s-ok", failed: false, rateLimited: 
 function runtimeWith(
   relay: Parameters<typeof buildServeRuntime>[0]["relay"],
   streamable?: Parameters<typeof buildServeRuntime>[0]["streamable"],
+  decide?: Parameters<typeof buildServeRuntime>[0]["decide"],
 ) {
   return buildServeRuntime({
     cfg,
@@ -37,6 +38,8 @@ function runtimeWith(
       (async () => {
         throw new Error("streamable not stubbed in this test");
       }),
+    // a usable pool by default, so deferred wakes proceed to the resume
+    decide: decide ?? (async () => ({ swapped: false, account: null, reason: "current-best" })),
   });
 }
 
@@ -432,7 +435,7 @@ describe("buildServeRuntime usage-limit deferral", () => {
     expect(loadSlackThread(threadId)?.activeTurn).toBeUndefined();
   });
 
-  test("an inbound message SUPERSEDES a spawned deferral: its partial work lives in the resumed session", async () => {
+  test("an inbound message takes over a spawned deferral: the held prompt still folds (a child can die before init, so no marker signal proves the prompt reached the session)", async () => {
     const threadId = "slack:C0DAEMON:953.1";
     const wake = Date.now() + 3_600_000;
     saveSlackThread({
@@ -450,8 +453,40 @@ describe("buildServeRuntime usage-limit deferral", () => {
     });
     const t = fakeThread({ id: threadId });
     await rt.onMessage({ thread: t.thread, message: home("actually stop that"), skipped: [], isMention: false });
-    expect(seen).toEqual([{ prompt: "actually stop that", sessionId: "s-partial" }]);
+    expect(seen).toEqual([{ prompt: "long ship job\n\nactually stop that", sessionId: "s-partial" }]);
     expect(loadSlackThread(threadId)?.activeTurn).toBeUndefined();
+  });
+
+  test("a due wake against a still-depleted pool re-defers silently instead of burning a resume attempt", async () => {
+    const threadId = "slack:C0DAEMON:956.1";
+    const past = Date.now() - 1_000;
+    const nextWake = Date.now() + 1_800_000;
+    saveSlackThread({
+      threadId,
+      repo: "/tmp/serve-daemon-repo",
+      cwd: "/tmp/serve-daemon-repo",
+      sessionId: "s-redef",
+      createdAt: new Date().toISOString(),
+      activeTurn: { prompt: "held work", startedAt: new Date().toISOString(), resumeCount: 0, resumeAt: past },
+    });
+    let calls = 0;
+    const rt = runtimeWith(
+      async () => {
+        calls += 1;
+        return okOutcome;
+      },
+      async () => ({ thread: t.thread, requesterIds: ["U-OWNER"] }),
+      async () => ({ swapped: false, account: null, reason: "all-depleted", waitUntil: nextWake }),
+    );
+    const t = fakeThread({ id: threadId });
+    const record = loadSlackThread(threadId);
+    if (!record) throw new Error("record missing");
+    await rt.recoverInterrupted(record);
+    expect(calls).toBe(0); // no spawn, no burnt attempt
+    expect(t.posted.length).toBe(0); // no false recovery notice
+    const marker = loadSlackThread(threadId)?.activeTurn;
+    expect(marker?.resumeAt).toBe(nextWake + 5_000);
+    expect(marker?.resumeCount).toBe(0);
   });
 
   test("a wake against a re-deferred FUTURE marker re-arms instead of resuming early", async () => {
