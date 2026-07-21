@@ -312,6 +312,10 @@ export function buildServeRuntime(seam: {
   streamable: (threadId: string) => Promise<{ thread: ServeThread; requesterIds: string[] }>;
 }) {
   const { cfg, workspaceTeamId } = seam;
+  /** short re-arm after a deferred wake fails transiently (Slack hiccup at
+   *  the resume): the durable marker keeps deferring, so the retry loop ends
+   *  the moment any marker-clearing path runs. */
+  const RESUME_RETRY_MS = 300_000;
   // in-flight turns, tracked so a shutdown signal can drain them instead of
   // killing a half-streamed answer (live incident 2026-07-18: a deploy
   // restart cut a turn mid-sentence and the answer never reached Slack).
@@ -456,7 +460,7 @@ export function buildServeRuntime(seam: {
     const stripped = input.relayed
       .map((m) => ({ text: stripLeadingMention({ text: m.text, botUserId: seam.botUserId() }), authorId: m.authorId }))
       .filter((m) => m.text !== "");
-    const prompt = stripped.map((m) => m.text).join("\n\n");
+    let prompt = stripped.map((m) => m.text).join("\n\n");
     const requesterIds = uniq(stripped.map((m) => m.authorId));
     if (!prompt) return;
     // this whole handler runs inside the per-thread `serialized` chain (call
@@ -470,15 +474,36 @@ export function buildServeRuntime(seam: {
       saveSlackThread(record);
       log("serve.thread_opened", { thread: thread.id, cwd: link.repo });
     }
-    // Inside the serialized chain a marker can only be a PREVIOUS
-    // generation's killed turn (this generation's turns clear theirs before
-    // releasing the chain, and the serve-lock keeps generations exclusive):
-    // an inbound message can win the chain ahead of startup recovery (e.g.
-    // Slack redelivering the killed turn's unacked mention), and runTurn's
-    // fresh marker would silently discard the orphan's pid identity - reap it
-    // here so two claude processes never share the thread's cwd and session
-    // (closing-review catch, the recovery-path reap alone loses this race).
+    // Inside the serialized chain a surviving marker is either a PREVIOUS
+    // generation's killed turn (an inbound message can win the chain ahead of
+    // startup recovery, e.g. Slack redelivering the killed turn's unacked
+    // mention) or a LIMIT-DEFERRED turn holding its resumeAt promise. Reap a
+    // possible orphan either way, so two claude processes never share the
+    // thread's cwd and session (closing-review catch: the recovery-path reap
+    // alone loses this race).
     if (record.activeTurn) await reapOrphan(record.activeTurn);
+    // An inbound message takes over a deferred thread (its wake timer dies
+    // with the takeover; runTurn's fresh marker replaces the deferred one).
+    // A deferral whose child NEVER SPAWNED (no pid: the spawn-boundary defer)
+    // holds the ONLY copy of the held message, so its prompt folds in front
+    // of the new text - silently discarding it was the adversarial-review
+    // MAJOR catch on PR #44, and it would re-lose exactly the 2026-07-20
+    // two-message shape the deferral exists to save. A deferral that DID
+    // spawn (pid present) is superseded instead: its partial work lives in
+    // the session the new turn resumes, and re-folding its prompt would
+    // re-run completed work.
+    const deferred = record.activeTurn?.resumeAt !== undefined ? record.activeTurn : null;
+    if (deferred) {
+      const timer = deferredTimers.get(thread.id);
+      if (timer !== undefined) clearTimeout(timer);
+      deferredTimers.delete(thread.id);
+      if (deferred.pid === undefined) {
+        prompt = `${deferred.prompt}\n\n${prompt}`;
+        log("serve.deferred_folded", { thread: thread.id });
+      } else {
+        log("serve.deferred_superseded", { thread: thread.id });
+      }
+    }
     // subscriptions live in the memory state, so a daemon restart forgets
     // them; every mention re-subscribes to keep follow-up replies flowing.
     if (isMention) await thread.subscribe();
@@ -516,6 +541,15 @@ export function buildServeRuntime(seam: {
     // turn (and its claude subprocess) is over. Never throw into the caller -
     // the daemon must keep serving other threads.
     if (!outcome.finish) return;
+    if (outcome.deferUntil !== null) {
+      // finish is sticky across retries, so it can ride a deferred outcome -
+      // and cleanup would delete the very record the deferral just promised
+      // to resume (adversarial-review catch on PR #44). The deferral wins:
+      // the resumed turn finishes the remaining work, and the user closes
+      // the thread again once it actually lands.
+      log("serve.finish_deferred", { thread: thread.id });
+      return;
+    }
     let result: CleanupOutcome;
     try {
       result = seam.cleanup({ threadId: thread.id });
@@ -655,6 +689,15 @@ export function buildServeRuntime(seam: {
         const turn = fresh?.activeTurn;
         const decision = fresh ? resumeDecision(fresh) : null;
         if (!fresh || !turn || !decision) return; // superseded: an earlier turn already cleared the marker
+        if (turn.resumeAt !== undefined && turn.resumeAt > Date.now()) {
+          // a wake that queued behind an in-flight turn can find a RE-DEFERRED
+          // marker whose new wake is hours out; resuming it now would post a
+          // false "pool has recovered" notice and burn a resume attempt
+          // (adversarial-review catch on PR #44). Re-arm and step aside, the
+          // same guard the startup scan applies.
+          scheduleDeferred(record.threadId, turn.resumeAt);
+          return;
+        }
         await reapOrphan(turn);
         if (!link) {
           // unlinked since the turn started: nothing can run here; drop the
@@ -690,6 +733,19 @@ export function buildServeRuntime(seam: {
     } catch (e) {
       const detail = (e instanceof Error ? e.message : String(e)).slice(0, 300);
       log("serve.resume_error", { thread: record.threadId, err: detail });
+      // a DEFERRED turn's wake must survive a transient failure here (a
+      // Slack hiccup at an unattended 4am wake would otherwise strand the
+      // held turn until the next restart - adversarial-review catch on
+      // PR #44): re-arm a short retry while the marker still defers. The
+      // marker-clearing paths (resume, supersession, unlink, give-up) all
+      // end the loop; killed-turn (no resumeAt) startup semantics keep
+      // their once-per-restart retry.
+      try {
+        const marker = loadSlackThread(record.threadId)?.activeTurn;
+        if (marker?.resumeAt !== undefined && !draining) scheduleDeferred(record.threadId, Date.now() + RESUME_RETRY_MS);
+      } catch {
+        // the record itself is unreadable; the startup scan is the backstop.
+      }
     }
   };
 

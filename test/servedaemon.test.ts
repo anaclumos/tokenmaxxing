@@ -407,6 +407,92 @@ describe("buildServeRuntime usage-limit deferral", () => {
     expect(loadSlackThread(threadId)?.sessionId).toBe("s-after");
   });
 
+  test("an inbound message FOLDS a never-spawned deferral's held prompt instead of clobbering it", async () => {
+    // the adversarial-review MAJOR catch: a spawn-boundary deferral's marker
+    // is the ONLY copy of the held message; a follow-up must not lose it.
+    const threadId = "slack:C0DAEMON:952.1";
+    const wake = Date.now() + 3_600_000;
+    const prompts: string[] = [];
+    let calls = 0;
+    const rt = runtimeWith(async (input) => {
+      calls += 1;
+      prompts.push(input.prompt);
+      if (calls === 1) {
+        // spawn-boundary deferral: no onSpawn fires, so the marker keeps no pid
+        return { sessionId: null, failed: true, rateLimited: true, finish: false, announcedDrop: false, resultReceived: false, deferUntil: wake };
+      }
+      return { ...okOutcome, sessionId: "s-folded" };
+    });
+    const t = fakeThread({ id: threadId });
+    await rt.onMessage({ thread: t.thread, message: home("@UBOT ship the release"), skipped: [], isMention: true });
+    expect(loadSlackThread(threadId)?.activeTurn?.resumeAt).toBe(wake);
+    await rt.onMessage({ thread: t.thread, message: home("are you still there?"), skipped: [], isMention: false });
+    expect(calls).toBe(2);
+    expect(prompts[1]).toBe("ship the release\n\nare you still there?");
+    expect(loadSlackThread(threadId)?.activeTurn).toBeUndefined();
+  });
+
+  test("an inbound message SUPERSEDES a spawned deferral: its partial work lives in the resumed session", async () => {
+    const threadId = "slack:C0DAEMON:953.1";
+    const wake = Date.now() + 3_600_000;
+    saveSlackThread({
+      threadId,
+      repo: "/tmp/serve-daemon-repo",
+      cwd: "/tmp/serve-daemon-repo",
+      sessionId: "s-partial",
+      createdAt: new Date().toISOString(),
+      activeTurn: { prompt: "long ship job", startedAt: new Date().toISOString(), resumeCount: 0, resumeAt: wake, pid: 999_999, pidStartedAt: "never-matches" },
+    });
+    const seen: { prompt: string; sessionId: string | null }[] = [];
+    const rt = runtimeWith(async (input) => {
+      seen.push({ prompt: input.prompt, sessionId: input.sessionId });
+      return { ...okOutcome, sessionId: "s-partial" };
+    });
+    const t = fakeThread({ id: threadId });
+    await rt.onMessage({ thread: t.thread, message: home("actually stop that"), skipped: [], isMention: false });
+    expect(seen).toEqual([{ prompt: "actually stop that", sessionId: "s-partial" }]);
+    expect(loadSlackThread(threadId)?.activeTurn).toBeUndefined();
+  });
+
+  test("a wake against a re-deferred FUTURE marker re-arms instead of resuming early", async () => {
+    const threadId = "slack:C0DAEMON:954.1";
+    const wake = Date.now() + 3_600_000;
+    saveSlackThread({
+      threadId,
+      repo: "/tmp/serve-daemon-repo",
+      cwd: "/tmp/serve-daemon-repo",
+      sessionId: "s-future",
+      createdAt: new Date().toISOString(),
+      activeTurn: { prompt: "held work", startedAt: new Date().toISOString(), resumeCount: 0, resumeAt: wake },
+    });
+    let calls = 0;
+    const rt = runtimeWith(
+      async () => {
+        calls += 1;
+        return okOutcome;
+      },
+      async () => ({ thread: t.thread, requesterIds: ["U-OWNER"] }),
+    );
+    const t = fakeThread({ id: threadId });
+    const record = loadSlackThread(threadId);
+    if (!record) throw new Error("record missing");
+    await rt.recoverInterrupted(record);
+    expect(calls).toBe(0); // no premature resume, no false recovery notice
+    expect(t.posted.length).toBe(0);
+    expect(loadSlackThread(threadId)?.activeTurn?.resumeAt).toBe(wake);
+  });
+
+  test("a sticky finish riding a deferred outcome skips cleanup: the record survives for the resume", async () => {
+    const threadId = "slack:C0DAEMON:955.1";
+    const wake = Date.now() + 3_600_000;
+    const rt = runtimeWith(async () => ({ sessionId: "s-finlim", failed: true, rateLimited: true, finish: true, announcedDrop: false, resultReceived: false, deferUntil: wake }));
+    const t = fakeThread({ id: threadId });
+    await rt.onMessage({ thread: t.thread, message: home("@UBOT wrap it up"), skipped: [], isMention: true });
+    expect(loadSlackThread(threadId)?.activeTurn?.resumeAt).toBe(wake);
+    expect(t.calls.unsubscribe).toBe(0);
+    expect(t.posted.join(" ")).not.toContain("finished");
+  });
+
   test("beginDrain cancels pending deferred wakes; the durable marker survives for the next generation", async () => {
     const threadId = "slack:C0DAEMON:951.1";
     const wake = Date.now() + 60;
