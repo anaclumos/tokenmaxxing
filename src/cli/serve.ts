@@ -341,6 +341,10 @@ export function buildServeRuntime(seam: {
    *  bot.thread(threadId).post) - the nudge path, which runs outside any
    *  turn and needs no streaming. */
   postToThread: (input: { threadId: string; text: string }) => Promise<void>;
+  /** does this user belong to the home workspace? Reaction events carry no
+   *  team-origin fields, so the note path verifies reactors through this
+   *  (production: users.info, cached). null = unverifiable = fail closed. */
+  isHomeUser: (input: { userId: string }) => Promise<boolean | null>;
 }) {
   const { cfg, workspaceTeamId } = seam;
   // in-flight turns, tracked so a shutdown signal can drain them instead of
@@ -580,8 +584,15 @@ export function buildServeRuntime(seam: {
     });
     // settle the status reaction: failed beats attention beats done (a failed
     // ask never reads as a clean question mark), then drop the hourglass.
-    if (input.messageId) {
-      const emoji = outcome.failed ? STATUS_EMOJI.failed : outcome.attention ? STATUS_EMOJI.attention : STATUS_EMOJI.done;
+    // Two review-caught exceptions: a drain-presumed-killed turn (same
+    // predicate as runTurn's marker retention) keeps its hourglass - it will
+    // auto-resume next start, and a terminal x nothing ever removes would
+    // read a later successful resume as failed; and a finished thread settles
+    // as done even when the model also flagged attention, because the record
+    // deletion below makes the question mark unremovable forever.
+    const killedByDrain = draining && outcome.failed && !outcome.announcedDrop && !outcome.resultReceived;
+    if (input.messageId && !killedByDrain) {
+      const emoji = outcome.failed ? STATUS_EMOJI.failed : outcome.attention && !outcome.finish ? STATUS_EMOJI.attention : STATUS_EMOJI.done;
       await setStatus({ threadId: thread.id, messageId: input.messageId, emoji, op: "add" });
       await setStatus({ threadId: thread.id, messageId: input.messageId, emoji: STATUS_EMOJI.processing, op: "remove" });
     }
@@ -697,18 +708,31 @@ export function buildServeRuntime(seam: {
   };
 
   /** A user reaction in a tracked thread. While the thread waits on an asked
-   *  user, THAT user's reaction is their answer: it clears the attention
-   *  state and relays as a normal turn for the model to interpret (thumbs up
-   *  approves, thumbs down declines - the model decides). Any other added
-   *  reaction is recorded and folded into the next turn's prompt instead of
-   *  spending a metered turn. Reactor identity: the answer path only trusts
-   *  ids that already passed the author guard as requesters (reaction events
-   *  carry no team-origin fields, so isOutsideAuthor cannot run here); the
-   *  note path only ever contributes a context line. Removals and untracked
-   *  threads are ignored, as are other bots; our own reactions never arrive
-   *  (chat core drops isMe reaction events before routing). */
+   *  user, THAT user's reaction TO THE ASK is their answer: it relays as a
+   *  normal turn for the model to interpret (thumbs up approves, thumbs down
+   *  declines - the model decides). "To the ask" is enforced structurally
+   *  (review catch: a mid-turn encouragement reaction queued behind the
+   *  asking turn must not auto-approve the question it never saw): the
+   *  reaction must have occurred AFTER askedAt (occurredAt = the Slack
+   *  event_ts) and sit on a message at or after the ask's triggering message
+   *  (Slack ids are timestamps, so >= compares post order). Anything that
+   *  fails a gate degrades to the unmetered note path, which folds into the
+   *  next turn's prompt. The answer path never pre-clears the attention
+   *  state (review catch): handleTurn's own consume step clears it at the
+   *  point the turn is committed, so a failed thread fetch, an unlinked
+   *  channel, or a drain landing mid-await leaves the ask intact for the
+   *  nudge and the next daemon generation.
+   *  Reactor identity: the answer path only trusts ids that already passed
+   *  the author guard as requesters (reaction events carry no team-origin
+   *  fields, so isOutsideAuthor cannot run here); the note path fail-closed
+   *  verifies the reactor against the home workspace via seam.isHomeUser
+   *  and drops non-home or unverifiable reactors loudly (review catch: the
+   *  outsiders-never-reach-claude invariant covers context lines too), and
+   *  only structurally valid emoji names are ever folded. Removals and
+   *  untracked threads are ignored, as are other bots; our own reactions
+   *  never arrive (chat core drops isMe reaction events before routing). */
   const onReaction = async (
-    input: { threadId: string; messageId: string; emoji: string; userId: string; isBot?: boolean | "unknown"; added: boolean },
+    input: { threadId: string; messageId: string; emoji: string; userId: string; isBot?: boolean | "unknown"; added: boolean; occurredAt: number | null },
     streamable: (threadId: string) => Promise<{ thread: ServeThread }>,
   ) => {
     if (!input.added || input.isBot === true) return;
@@ -717,15 +741,14 @@ export function buildServeRuntime(seam: {
       const fresh = loadSlackThread(input.threadId);
       if (!fresh) return; // finished while queued
       const asked = fresh.attention;
+      const afterAsk = asked !== undefined && input.occurredAt !== null && input.occurredAt >= Date.parse(asked.askedAt);
+      const onAskMessage = asked !== undefined
+        && (asked.messageId === undefined || (Number.isFinite(Number(input.messageId)) && Number(input.messageId) >= Number(asked.messageId)));
       // draining takes the durable note path even for an asked user: the
       // answer turn could not run anyway, and a "please re-send" drop notice
       // makes no sense for a reaction - the note survives the restart and
       // folds into the next turn.
-      if (!draining && asked && asked.requesterIds.includes(input.userId)) {
-        saveSlackThread(omit(fresh, ["attention"]));
-        if (asked.messageId) {
-          await setStatus({ threadId: input.threadId, messageId: asked.messageId, emoji: STATUS_EMOJI.attention, op: "remove" });
-        }
+      if (!draining && asked && asked.requesterIds.includes(input.userId) && afterAsk && onAskMessage) {
         log("serve.reaction_answer", { thread: input.threadId, emoji: input.emoji });
         const { thread } = await streamable(input.threadId);
         await handleTurn({
@@ -737,6 +760,17 @@ export function buildServeRuntime(seam: {
           }],
           isMention: false,
         });
+        return;
+      }
+      const home = await seam.isHomeUser({ userId: input.userId });
+      if (home !== true) {
+        log("serve.reaction_dropped", { thread: input.threadId, reason: home === false ? "outside-author" : "unverifiable-author" });
+        return;
+      }
+      const validEmoji = input.emoji.length > 0 && input.emoji.length <= 100
+        && [...input.emoji].every((ch) => (ch >= "a" && ch <= "z") || (ch >= "0" && ch <= "9") || ch === "_" || ch === "-" || ch === "+" || ch === "'");
+      if (!validEmoji) {
+        log("serve.reaction_dropped", { thread: input.threadId, reason: "invalid-emoji-name" });
         return;
       }
       const notes = [...(fresh.pendingReactions ?? []), { userId: input.userId, emoji: input.emoji, at: new Date().toISOString() }].slice(-10);
@@ -758,6 +792,11 @@ export function buildServeRuntime(seam: {
     for (const record of listSlackThreads()) {
       const asked = record.attention;
       if (!asked || asked.nudgedAt !== undefined || now - Date.parse(asked.askedAt) < ATTENTION_NUDGE_MS) continue;
+      // unlinked channels are contractually silent in Slack (review catch:
+      // `serve unlink` leaves thread records behind, and every other outbound
+      // path honors the contract). Skipped without a log line on purpose - a
+      // 60s sweep would otherwise repeat the same warning forever.
+      if (!linkForChannel(cfg, bareChannelId(record.threadId.split(":").slice(0, 2).join(":")))) continue;
       void tracked(serialized(record.threadId, async () => {
         if (draining) return;
         const fresh = loadSlackThread(record.threadId);
@@ -874,7 +913,19 @@ export function buildServeRuntime(seam: {
   };
 }
 
+/** users.info slice the home-workspace reactor check reads. */
+const UsersInfoSchema = z.looseObject({
+  ok: z.boolean(),
+  user: z.looseObject({ team_id: z.string().optional() }).optional(),
+});
+
+/** The raw Slack reaction event slice the daemon reads: event_ts is when the
+ *  reaction happened, the discriminator that keeps a pre-ask reaction from
+ *  answering a question the user never saw. */
+const ReactionRawSchema = z.looseObject({ event_ts: z.string().optional() });
+
 async function runDaemon(): Promise<number> {
+  const homeUserCache = new Map<string, boolean>();
   let cfg = loadSlackConfig();
   if (!cfg) {
     printSetupInstructions();
@@ -974,6 +1025,24 @@ async function runDaemon(): Promise<number> {
     postToThread: async (input) => {
       await bot.thread(input.threadId).post(input.text);
     },
+    // reaction events carry no team-origin fields, so the note path verifies
+    // reactors via users.info (scope users:read, already in the manifest).
+    // Definitive answers cache for the daemon's lifetime; errors return null
+    // (fail closed at the caller) without caching so transient failures heal.
+    isHomeUser: async (input) => {
+      const cached = homeUserCache.get(input.userId);
+      if (cached !== undefined) return cached;
+      try {
+        const resp = UsersInfoSchema.parse(await slack.webClient.users.info({ user: input.userId }));
+        const teamId = resp.user?.team_id;
+        if (!resp.ok || teamId === undefined) return null;
+        const home = teamId === workspaceTeamId;
+        homeUserCache.set(input.userId, home);
+        return home;
+      } catch {
+        return null;
+      }
+    },
   });
 
   /** A proactive thread handle that can still stream natively. bot.thread()
@@ -1014,8 +1083,10 @@ async function runDaemon(): Promise<number> {
   // user reactions: an asked user's reaction answers the pending question,
   // anything else folds into the next turn as context (runtime.onReaction).
   // chat core already drops the bot's own reactions before routing.
-  bot.onReaction(async (event) =>
-    runtime.onReaction(
+  bot.onReaction(async (event) => {
+    const raw = ReactionRawSchema.safeParse(event.raw);
+    const eventTs = raw.success && raw.data.event_ts !== undefined ? Number(raw.data.event_ts) * 1000 : Number.NaN;
+    await runtime.onReaction(
       {
         threadId: event.threadId,
         messageId: event.messageId,
@@ -1023,10 +1094,11 @@ async function runDaemon(): Promise<number> {
         userId: event.user.userId,
         isBot: event.user.isBot,
         added: event.added,
+        occurredAt: Number.isFinite(eventTs) ? eventTs : null,
       },
       streamableThread,
-    ),
-  );
+    );
+  });
 
   // drain instead of dying mid-answer: stop taking new turns, let in-flight
   // ones finish (bounded - a hung claude turn must not block a restart
