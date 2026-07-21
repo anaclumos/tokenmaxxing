@@ -477,6 +477,55 @@ describe("relayThread segment ordering", () => {
     }
   });
 
+  test("a card-only salvage holds the fence reopen for the first LATER text joining the segment", async () => {
+    // the death loses only a card; streamed text arriving afterward joins
+    // the already-open salvage segment and was authored mid-fence, so the
+    // pending reopen must materialize before IT, not be skipped for lack of
+    // salvaged text (pullfrog catch on PR #42).
+    decisionQueue.push(usable);
+    queryScripts.push(() =>
+      (async function* () {
+        yield init("s-cardfence");
+        yield textDelta("intro\n```\ncode line one\n");
+        yield toolStart("tool-cf", "Bash");
+        yield toolStop();
+        // give the doomed post a beat to reject with only cards unconfirmed
+        await realEsToolkit.delay(30);
+        yield textDelta("later code\n");
+        yield success("s-cardfence");
+      })(),
+    );
+    let calls = 0;
+    const posts: unknown[][] = [];
+    const post = async (m: AsyncIterable<unknown>) => {
+      calls += 1;
+      if (calls === 1) {
+        // consume the text (its append lands), then die holding the card
+        for await (const c of m) {
+          if (z.string().safeParse(c).success === false) {
+            throw new Error("An API error occurred: message_not_in_streaming_state");
+          }
+        }
+        return;
+      }
+      const chunks: unknown[] = [];
+      posts.push(chunks);
+      for await (const c of m) chunks.push(c);
+    };
+    const out = await relay({ post });
+    expect(out.failed).toBe(false);
+    const salvaged = posts[0] ?? [];
+    const texts = salvaged.flatMap((c) => {
+      const s = z.string().safeParse(c);
+      return s.success ? [s.data] : [];
+    });
+    const reopen = texts.indexOf("```\n");
+    const later = texts.findIndex((t) => t.includes("later code"));
+    expect(reopen).not.toBe(-1);
+    expect(later).not.toBe(-1);
+    expect(reopen).toBeLessThan(later);
+  });
+
   test("a final reply with no trailing newline dies in the forced final flush and still re-posts (the live incident)", async () => {
     // the renderer holds back the unterminated last line for the ENTIRE
     // iteration, so the only append happens after the iterable exhausts, when

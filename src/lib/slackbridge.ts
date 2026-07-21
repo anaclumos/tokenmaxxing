@@ -453,7 +453,7 @@ export async function relayThread(input: {
   // never per chunk - SDK deltas do not respect markdown token boundaries, so
   // a ``` split across two deltas would be invisible to per-chunk counting
   // (pullfrog review catch, PR #42).
-  let segmentMeta: { text: boolean; acc: string } | null = null;
+  let segmentMeta: { text: boolean; acc: string; reopenFence: boolean } | null = null;
   let lastPost: Promise<unknown> = Promise.resolve();
   // Reply TEXT that died with a rejected segment and was neither salvaged into
   // a follow-on message nor re-delivered by a later text-bearing segment: the
@@ -481,7 +481,14 @@ export async function relayThread(input: {
   const openSegment = () => {
     const seg = pushableStream();
     segment = seg;
-    const meta = { text: false, acc: "" };
+    // reopenFence: the delivered prefix of a REJECTED predecessor left a code
+    // fence open, so the first TEXT entering this salvage segment must be
+    // preceded by a reopen or it renders outside the code block. Pending
+    // rather than pushed eagerly (pullfrog catches, PR #42): a card-only
+    // salvage would otherwise either skip the reopen (later text joining the
+    // segment renders unfenced) or dangle an empty open fence at message end
+    // when no text ever follows. Materialized by BOTH text entry points.
+    const meta = { text: false, acc: "", reopenFence: false };
     segmentMeta = meta;
     lastPost = input.post(seg.iterable).then(
       () => {
@@ -563,18 +570,13 @@ export async function relayThread(input: {
             rest = rest.slice(nl + 1);
           }
         }
-        // A fence OPENED in the delivered prefix leaves the remainder's code
-        // fenceless in the fresh salvage message (pullfrog catch, PR #42):
-        // reopen it before the first salvaged text piece, exactly like
-        // pushText's reopen at a split boundary. The reopen rides pushInto,
-        // so the salvage segment's acc parity matches what Slack displays.
-        // The DEAD message's own unclosed fence is accepted cosmetic damage:
-        // nothing can append to a rejected stream.
+        // A fence OPENED in the delivered prefix leaves later code fenceless
+        // in the fresh salvage message (pullfrog catches, PR #42): arm the
+        // segment's pending reopen, materialized right before the FIRST text
+        // that enters it - whether a salvaged remainder piece here or a later
+        // streamed push joining the segment (a card-only salvage must not
+        // skip the reopen, and a text-less segment must not dangle one).
         const deliveredFenceOpen = (fullRaw.slice(0, deliveredLen).split("```").length - 1) % 2 === 1;
-        if (deliveredFenceOpen) {
-          const firstText = lost.findIndex((c) => !(c instanceof Object));
-          if (firstText !== -1) lost.splice(firstText, 0, "```\n");
-        }
         if (lost.length > 0 && salvagesLeft > 0) {
           salvagesLeft -= 1;
           log("serve.post_salvage", { chunks: lost.length, left: salvagesLeft });
@@ -583,6 +585,7 @@ export async function relayThread(input: {
           // of any push still awaiting lastPost; the salvage segment's own
           // settle then decides whether its text counts as delivered.
           const next = openSegment();
+          next.meta.reopenFence = deliveredFenceOpen;
           for (const c of lost) next.pushInto(c);
         } else if (textRemainder !== "") {
           textLost = true;
@@ -601,12 +604,17 @@ export async function relayThread(input: {
       // (a salvage segment that continued via pushText could otherwise grow
       // past the msg_too_long cap).
       if (!(chunk instanceof Object)) {
+        if (meta.reopenFence) {
+          meta.reopenFence = false;
+          meta.acc += "```\n";
+          seg.push("```\n");
+        }
         meta.text = true;
         meta.acc += chunk;
       }
       seg.push(chunk);
     };
-    return { seg, pushInto };
+    return { seg, meta, pushInto };
   };
   const push = async (chunk: SegmentChunk) => {
     if (segment === null) {
@@ -617,6 +625,13 @@ export async function relayThread(input: {
     }
     const target = segment ?? openSegment().seg;
     if (!(chunk instanceof Object)) {
+      // materialize a salvage segment's pending fence reopen (see
+      // openSegment) before the first text from this entry point too.
+      if (segmentMeta!.reopenFence) {
+        segmentMeta!.reopenFence = false;
+        segmentMeta!.acc += "```\n";
+        target.push("```\n");
+      }
       postedText = true;
       segmentMeta!.text = true;
       segmentMeta!.acc += chunk;
