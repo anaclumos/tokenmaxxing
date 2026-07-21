@@ -310,7 +310,8 @@ export function bareChannelId(id: string): string {
  * Strip a leading Slack mention OF THE BOT from message text. Two forms: raw
  * mrkdwn ("<@U0123> rest") and the bare form the Chat SDK's incoming
  * mrkdwn->markdown normalization produces ("@U0123 rest") - observed live
- * 2026-07-18 when a relayed prompt arrived starting "@U0BHS1YKNSK". Only a
+ * 2026-07-18 when a relayed prompt arrived starting with the bot's bare
+ * "@U..." token. Only a
  * token whose id equals botUserId is stripped (review catch 2026-07-18:
  * handleTurn runs this over every subscribed message, so a follow-up starting
  * with a colleague's mention must keep it - the prompt would otherwise lose

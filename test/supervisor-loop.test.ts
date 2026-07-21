@@ -11,7 +11,7 @@ import { afterAll, expect, test } from "bun:test";
 import { chmodSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { LOOP_DIAGNOSIS, MAX_WRAP_DEPTH, WRAP_RATE_MAX } from "../src/lib/claudebin.ts";
+import { LOOP_DIAGNOSIS, MAX_WRAP_DEPTH, UNMANAGED_ENV, WRAP_RATE_MAX } from "../src/lib/claudebin.ts";
 
 const repo = join(import.meta.dir, "..");
 const scratch = join(tmpdir(), `tm-loop-${process.pid}`);
@@ -57,7 +57,7 @@ ${reexec}
   return { tmHome, binDir, counterFile };
 }
 
-function runLoop(setup: { tmHome: string; binDir: string }, timeoutMs: number) {
+function runLoop(setup: { tmHome: string; binDir: string }, timeoutMs: number, extraEnv: Record<string, string> = {}) {
   return Bun.spawnSync([join(setup.binDir, "claude"), "--version"], {
     env: {
       PATH: `${setup.binDir}:/usr/bin:/bin:${dirname(process.execPath)}`,
@@ -65,6 +65,7 @@ function runLoop(setup: { tmHome: string; binDir: string }, timeoutMs: number) {
       TOKENMAXXING_CLAUDE_JSON: join(setup.tmHome, "claude.json"),
       TOKENMAXXING_CLAUDE_SETTINGS: join(setup.tmHome, "settings.json"),
       NO_COLOR: "1",
+      ...extraEnv,
     },
     stdout: "pipe",
     stderr: "pipe",
@@ -83,6 +84,77 @@ test(
     expect(reentries).toBe(MAX_WRAP_DEPTH); // bounded by the sentinel, not the shim's backstop
     expect(p.exitCode).toBe(1);
     expect(p.stderr.toString()).toContain(LOOP_DIAGNOSIS);
+  },
+  30_000,
+);
+
+test(
+  "a poisoned pin inside the unmanaged zone still aborts at the depth cap",
+  () => {
+    const setup = buildLoop("unmanaged-loop", 12, false);
+    const p = runLoop(setup, 30_000, { [UNMANAGED_ENV]: "1" });
+
+    const reentries = Number(readFileSync(setup.counterFile, "utf8").trim());
+    expect(reentries).toBe(MAX_WRAP_DEPTH);
+    expect(p.exitCode).toBe(1);
+    expect(p.stderr.toString()).toContain(LOOP_DIAGNOSIS);
+  },
+  30_000,
+);
+
+test(
+  "the unmanaged-zone sentinel passes a managed-looking invocation straight through, pairing env stripped",
+  () => {
+    const name = "unmanaged-passthrough";
+    const tmHome = join(scratch, name, "tmhome");
+    const binDir = join(tmHome, "bin");
+    mkdirSync(binDir, { recursive: true });
+    writeExecutable(
+      join(binDir, "claude"),
+      `#!/bin/sh\nexec ${JSON.stringify(process.execPath)} run ${JSON.stringify(join(repo, "src", "main.ts"))} __supervise "$@"\n`,
+    );
+    const argsFile = join(scratch, name, "args");
+    const envFile = join(scratch, name, "env");
+    const fakeClaude = join(scratch, name, "fake-claude");
+    writeExecutable(
+      fakeClaude,
+      `#!/bin/sh
+printf '%s\\n' "$@" > ${JSON.stringify(argsFile)}
+printf 'SUP=%s\\nSID=%s\\nUNM=%s\\nDEPTH=%s\\n' "$TOKENMAXXING_SUPERVISED" "$TOKENMAXXING_SESSION_ID" "$TOKENMAXXING_UNMANAGED" "$TOKENMAXXING_WRAP_DEPTH" > ${JSON.stringify(envFile)}
+`,
+    );
+    writeFileSync(
+      join(tmHome, "config.json"),
+      JSON.stringify({ thresholds: { session: 95, weekly: 98 }, claudeBin: fakeClaude, policy: { switchModels: ["fable"] } }),
+    );
+
+    // No argv at all = the managed interactive shape; only the sentinel forces
+    // passthrough. Simulated inherited pairing env must be stripped.
+    const p = Bun.spawnSync([join(binDir, "claude")], {
+      env: {
+        PATH: `${binDir}:/usr/bin:/bin:${dirname(process.execPath)}`,
+        TOKENMAXXING_HOME: tmHome,
+        TOKENMAXXING_CLAUDE_JSON: join(tmHome, "claude.json"),
+        TOKENMAXXING_CLAUDE_SETTINGS: join(tmHome, "settings.json"),
+        [UNMANAGED_ENV]: "1",
+        TOKENMAXXING_SUPERVISED: "1",
+        TOKENMAXXING_SESSION_ID: "3ce8783c-fc11-4991-8ba4-84c377a1a962",
+        NO_COLOR: "1",
+      },
+      stdout: "pipe",
+      stderr: "pipe",
+      timeout: 30_000,
+      killSignal: "SIGKILL",
+    });
+
+    expect(p.exitCode).toBe(0);
+    // Passthrough: argv untouched, so no injected --session-id/--resume.
+    expect(readFileSync(argsFile, "utf8").trim()).toBe("");
+    const childEnv = readFileSync(envFile, "utf8");
+    expect(childEnv).toContain("SUP=\n");
+    expect(childEnv).toContain("SID=\n");
+    expect(childEnv).toContain("UNM=1\n");
+    expect(childEnv).toContain("DEPTH=1\n");
   },
   30_000,
 );

@@ -125,7 +125,7 @@ describe("stripLeadingMention", () => {
   });
 
   test("strips the bare form the Chat SDK's mrkdwn normalization produces", () => {
-    expect(stripLeadingMention({ text: "@U0BHS1YKNSK add related skills", botUserId: "U0BHS1YKNSK" })).toBe("add related skills");
+    expect(stripLeadingMention({ text: "@U0123456789 add related skills", botUserId: "U0123456789" })).toBe("add related skills");
     expect(stripLeadingMention({ text: "  @W0123ABC\nnext line", botUserId: "W0123ABC" })).toBe("next line");
     expect(stripLeadingMention({ text: "@U0123", botUserId: "U0123" })).toBe("");
     // prose and display-name mentions are not structurally user ids: pass through.

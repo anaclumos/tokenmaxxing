@@ -5,7 +5,7 @@ metadata:
   type: project
 ---
 
-Incident 2026-07-18 ~19:02 KST (thread slack:C0BK1NDNM8Q:1784368435.342889, user report "It gets killed like this"): a daemon restart killed an in-flight "ship when done" turn 8 minutes into implementation, with zero notice in the thread.
+Incident 2026-07-18 ~19:02 KST (a dogfooding-channel thread, user report "It gets killed like this"): a daemon restart killed an in-flight "ship when done" turn 8 minutes into implementation, with zero notice in the thread.
 
 Verified chain of evidence (tokenmaxxing.log, thread record, worktree, SDK source):
 
@@ -15,7 +15,7 @@ Verified chain of evidence (tokenmaxxing.log, thread record, worktree, SDK sourc
   2. `DRAIN_MS` 300s vs ship turns that run 30-60+ min: even a clean drain kills them.
   3. `handleTurn` persists `sessionId` only AFTER `relayThread` returns; a first-turn kill leaves the record `sessionId: null` (confirmed on the incident thread), so a follow-up cannot resume the dead session - it starts fresh with no context.
   4. Nothing notifies or resumes an interrupted thread after restart; `serve.resubscribed` only restores routing for FUTURE messages.
-- The killed turn's work sits uncommitted in `slack-worktrees/slack-C0BK1NDNM8Q-1784368435-342889` (modified `src/lib/slackstate.ts`).
+- The killed turn's work sits uncommitted in its `slack-worktrees/<threadKey>` worktree (modified `src/lib/slackstate.ts`).
 
 **Why:** serve is redeployed constantly during dogfooding; every redeploy is a restart, so long autonomous turns will keep dying until interrupted-turn recovery exists.
 

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { rmSync, writeFileSync } from "node:fs";
 import { claudeExecutablePath, ensureBestAccount, pooledOptions, pooledSpawnEnv, stopHookCheck } from "../src/sdk.ts";
-import { MAX_WRAP_DEPTH, WRAP_DEPTH_ENV } from "../src/lib/claudebin.ts";
+import { UNMANAGED_ENV, WRAP_DEPTH_ENV } from "../src/lib/claudebin.ts";
 import { CRED_ENV_OVERRIDES } from "../src/lib/usage.ts";
 import { paths } from "../src/lib/paths.ts";
 const cfg = (claudeBin: string) => ({
@@ -13,7 +13,7 @@ const cfg = (claudeBin: string) => ({
 
 const writeConfig = (config: unknown) => writeFileSync(paths.configJson, JSON.stringify(config));
 
-const MUTATED = [...CRED_ENV_OVERRIDES, "CLAUDE_CONFIG_DIR", WRAP_DEPTH_ENV, "TOKENMAXXING_SDK_TEST_PASSTHROUGH"];
+const MUTATED = [...CRED_ENV_OVERRIDES, "CLAUDE_CONFIG_DIR", WRAP_DEPTH_ENV, UNMANAGED_ENV, "TOKENMAXXING_SDK_TEST_PASSTHROUGH"];
 const saved: Record<string, string | undefined> = {};
 
 beforeEach(() => {
@@ -38,15 +38,23 @@ afterEach(() => {
 });
 
 describe("pooledSpawnEnv", () => {
-  test("scrubs every credential override, presets the depth cap, passes the rest through", () => {
+  test("scrubs every credential override, marks the unmanaged zone, passes the rest through", () => {
     for (const k of CRED_ENV_OVERRIDES) {
       if (k !== "CLAUDE_SECURESTORAGE_CONFIG_DIR") process.env[k] = "ambient";
     }
     process.env.TOKENMAXXING_SDK_TEST_PASSTHROUGH = "kept";
 
+    // The session running this test may itself sit under the wrapper (ambient
+    // depth); clear it so the assertion pins "not preset" rather than racing
+    // the launcher's env.
+    delete process.env[WRAP_DEPTH_ENV];
     const env = pooledSpawnEnv();
     for (const k of CRED_ENV_OVERRIDES) expect(env[k]).toBeUndefined();
-    expect(env[WRAP_DEPTH_ENV]).toBe(String(MAX_WRAP_DEPTH));
+    expect(env[UNMANAGED_ENV]).toBe("1");
+    // depth is NOT preset: it keeps counting real wrapper entries so a
+    // poisoned pin below the SDK session still dies at the cap, while a
+    // legitimate nested `claude`/`codex` passes through unmanaged.
+    expect(env[WRAP_DEPTH_ENV]).toBeUndefined();
     expect(env.TOKENMAXXING_SDK_TEST_PASSTHROUGH).toBe("kept");
     // the copy is scrubbed, the ambient process env is not
     expect(process.env.CLAUDE_CODE_OAUTH_TOKEN).toBe("ambient");
@@ -67,7 +75,7 @@ describe("pooledOptions", () => {
     expect(claudeExecutablePath()).toBe("/usr/bin/true");
     const opts = pooledOptions();
     expect(opts.pathToClaudeCodeExecutable).toBe("/usr/bin/true");
-    expect(opts.env[WRAP_DEPTH_ENV]).toBe(String(MAX_WRAP_DEPTH));
+    expect(opts.env[UNMANAGED_ENV]).toBe("1");
   });
 
   test("a configured-but-missing claudeBin fails fast instead of PATH-scanning", () => {
