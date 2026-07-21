@@ -120,8 +120,47 @@ const ActiveTurnSchema = z.object({
    *  runs the user's real claude sessions). Absent = identity unverifiable =
    *  never signal. */
   pidStartedAt: z.string().optional(),
+  /** Slack id (message ts) of the turn's triggering message: it carries the
+   *  status reactions (hourglass while running, check/x/question at settle),
+   *  so a recovered turn can finish the lifecycle it started. Absent for
+   *  turns whose trigger had no relayable message id (e.g. a resumed record
+   *  from before this field existed) - status reactions just skip then. */
+  messageId: z.string().optional(),
+  /** the triggering turn's requester ids: a recovered turn that flags
+   *  attention must persist the KILLED turn's actual askers, not whoever
+   *  authored the thread's newest message at recovery time (vercel review
+   *  catch on PR #43 - the wrong user would get nudged and answer-gated).
+   *  Absent on older records: recovery falls back to the streamable
+   *  handle's newest-author derivation. */
+  requesterIds: z.array(z.string()).optional(),
 });
 export type ActiveTurn = z.infer<typeof ActiveTurnSchema>;
+
+/** The thread is waiting on the user: set after a turn in which the model
+ *  called need_attention (the ask-the-user flow), cleared when any relayable
+ *  message or an asked user's reaction arrives. One nudge per ask: nudgedAt
+ *  marks it spent, so the sweep can never mention-spam. */
+const ThreadAttentionSchema = z.object({
+  /** the asked users: only their reactions count as an answer. */
+  requesterIds: z.array(z.string()),
+  askedAt: z.string(),
+  nudgedAt: z.string().optional(),
+  /** the asking turn's triggering message: carries the question-mark status
+   *  reaction, removed once the user responds. */
+  messageId: z.string().optional(),
+});
+export type ThreadAttention = z.infer<typeof ThreadAttentionSchema>;
+
+/** A user reaction observed while no answer was owed: folded into the next
+ *  turn's prompt as context (the model sees it and can respond), then
+ *  cleared. Bounded to the newest few so an emoji burst cannot grow the
+ *  record without bound. */
+const PendingReactionSchema = z.object({
+  userId: z.string(),
+  emoji: z.string(),
+  at: z.string(),
+});
+export type PendingReaction = z.infer<typeof PendingReactionSchema>;
 
 export const SlackThreadSchema = z.object({
   /** chat-sdk thread id, e.g. "slack:C0123:1721300000.123456". */
@@ -136,6 +175,10 @@ export const SlackThreadSchema = z.object({
   createdAt: z.string(),
   /** present only while a turn is running (or was killed mid-run). */
   activeTurn: ActiveTurnSchema.optional(),
+  /** present only while the thread waits on the user's answer. */
+  attention: ThreadAttentionSchema.optional(),
+  /** reactions observed since the last turn, folded into the next prompt. */
+  pendingReactions: z.array(PendingReactionSchema).optional(),
 });
 export type SlackThread = z.infer<typeof SlackThreadSchema>;
 

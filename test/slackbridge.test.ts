@@ -151,13 +151,15 @@ describe("isRateLimitText", () => {
 });
 
 describe("TurnOutcomeSchema", () => {
-  test("rateLimited, announcedDrop, resultReceived, and deferUntil are required and default nowhere", () => {
-    expect(() => TurnOutcomeSchema.parse({ sessionId: null, failed: true, finish: false, announcedDrop: false, resultReceived: false, deferUntil: null })).toThrow();
-    expect(() => TurnOutcomeSchema.parse({ sessionId: null, failed: true, rateLimited: true, finish: false, resultReceived: false, deferUntil: null })).toThrow();
-    expect(() => TurnOutcomeSchema.parse({ sessionId: null, failed: true, rateLimited: true, finish: false, announcedDrop: false, deferUntil: null })).toThrow();
-    expect(() => TurnOutcomeSchema.parse({ sessionId: null, failed: true, rateLimited: true, finish: false, announcedDrop: false, resultReceived: false })).toThrow();
-    const full = TurnOutcomeSchema.parse({ sessionId: "s", failed: true, rateLimited: true, finish: false, announcedDrop: true, resultReceived: false, deferUntil: 1_784_400_000_000 });
+  test("rateLimited, attention, announcedDrop, resultReceived, and deferUntil are required and default nowhere", () => {
+    expect(() => TurnOutcomeSchema.parse({ sessionId: null, failed: true, finish: false, attention: false, announcedDrop: false, resultReceived: false, deferUntil: null })).toThrow();
+    expect(() => TurnOutcomeSchema.parse({ sessionId: null, failed: true, rateLimited: true, finish: false, attention: false, resultReceived: false, deferUntil: null })).toThrow();
+    expect(() => TurnOutcomeSchema.parse({ sessionId: null, failed: true, rateLimited: true, finish: false, attention: false, announcedDrop: false, deferUntil: null })).toThrow();
+    expect(() => TurnOutcomeSchema.parse({ sessionId: null, failed: true, rateLimited: true, finish: false, announcedDrop: false, resultReceived: false, deferUntil: null })).toThrow();
+    expect(() => TurnOutcomeSchema.parse({ sessionId: null, failed: true, rateLimited: true, finish: false, attention: false, announcedDrop: false, resultReceived: false })).toThrow();
+    const full = TurnOutcomeSchema.parse({ sessionId: "s", failed: true, rateLimited: true, finish: false, attention: true, announcedDrop: true, resultReceived: false, deferUntil: 1_784_400_000_000 });
     expect(full.rateLimited).toBe(true);
+    expect(full.attention).toBe(true);
     expect(full.announcedDrop).toBe(true);
     expect(full.resultReceived).toBe(false);
     expect(full.deferUntil).toBe(1_784_400_000_000);
