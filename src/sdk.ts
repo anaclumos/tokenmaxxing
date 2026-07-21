@@ -14,7 +14,7 @@
 // dependency set (zod, es-toolkit, ky).
 
 import { z } from "zod";
-import { MAX_WRAP_DEPTH, WRAP_DEPTH_ENV, resolveRealClaude } from "./lib/claudebin.ts";
+import { UNMANAGED_ENV, resolveRealClaude } from "./lib/claudebin.ts";
 import { evaluateAndMaybeSwap, type SwapDecision } from "./lib/decide.ts";
 import { CRED_ENV_OVERRIDES } from "./lib/usage.ts";
 import { log } from "./lib/log.ts";
@@ -52,9 +52,13 @@ const AMBIENT_STORE_VARS = ["CLAUDE_SECURESTORAGE_CONFIG_DIR", "CLAUDE_CONFIG_DI
  * The env an SDK-spawned claude must run under to meter the POOLED live
  * credential: every ambient credential override is scrubbed (claude honors
  * them BEFORE its keychain/file lookup, so one inherited ANTHROPIC_API_KEY
- * silently meters the wrong account), and the wrap depth is preset to the cap
- * so a poisoned claudeBin pin that leads back into the tokenmaxxing wrapper
- * aborts on first entry instead of fork-bombing.
+ * silently meters the wrong account), and the unmanaged-zone sentinel is set
+ * so a descendant invoking `claude`/`codex` through the on-PATH wrapper gets a
+ * passthrough to the real binary instead of nested supervision (or, before
+ * this sentinel existed, a depth-cap abort that broke legitimate nested runs
+ * like a repo's `bun run validate` invoking `claude -p`). The wrap depth is
+ * NOT preset: it keeps counting real wrapper entries, so a poisoned claudeBin
+ * pin below here still dies at the cap.
  *
  * Returns a FULL environment, not a patch: the Agent SDK's Options.env
  * REPLACES the subprocess env rather than merging over process.env (verified
@@ -69,7 +73,7 @@ export function pooledSpawnEnv(): Record<string, string> {
       );
     }
   }
-  const env: Record<string, string> = { ...process.env, [WRAP_DEPTH_ENV]: String(MAX_WRAP_DEPTH) };
+  const env: Record<string, string> = { ...process.env, [UNMANAGED_ENV]: "1" };
   for (const k of CRED_ENV_OVERRIDES) delete env[k];
   return env;
 }

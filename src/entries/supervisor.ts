@@ -12,7 +12,7 @@ import { join } from "node:path";
 import { maxBy } from "es-toolkit";
 import { z } from "zod";
 import { paths } from "../lib/paths.ts";
-import { LOOP_DIAGNOSIS, MAX_WRAP_DEPTH, WRAP_DEPTH_ENV, WRAP_RATE_MAX, WRAP_RATE_WINDOW_MS, resolveRealClaude, wrapDepth, wrapperEntryRateTripped } from "../lib/claudebin.ts";
+import { LOOP_DIAGNOSIS, MAX_WRAP_DEPTH, UNMANAGED_ENV, WRAP_DEPTH_ENV, WRAP_RATE_MAX, WRAP_RATE_WINDOW_MS, resolveRealClaude, wrapDepth, wrapperEntryRateTripped } from "../lib/claudebin.ts";
 import { saveTermios, restoreTermios } from "../lib/tty.ts";
 import { loadSessionFlags, pruneStaleSessions, saveSessionFlags } from "../lib/sessions.ts";
 import { RespawnMarkerSchema } from "../lib/types.ts";
@@ -274,7 +274,13 @@ export async function runSupervisor(argv: string[]): Promise<number> {
   const childEnv = { ...process.env, [WRAP_DEPTH_ENV]: String(depth + 1) };
 
   // Pass-through: no session management, no respawn - exact stock behavior.
-  if (!info.manage) {
+  // The unmanaged-zone sentinel (pooledSpawnEnv) forces it regardless of argv:
+  // everything below an SDK-driven session runs the real claude unsupervised,
+  // so a repo script invoking `claude` from inside a serve turn works instead
+  // of dying at the depth cap. The sentinel rides childEnv, so the whole
+  // subtree stays unmanaged, and depth still counts wrapper entries toward
+  // the cap above, keeping a poisoned pin inside the zone bounded.
+  if (!info.manage || process.env[UNMANAGED_ENV]) {
     // STRIP the supervision pairing env (mirrors the codex shim's passthrough
     // arm, closing-review catch): a nested unmanaged claude inside a
     // supervised session (e.g. the agent running `claude -p ...`) would

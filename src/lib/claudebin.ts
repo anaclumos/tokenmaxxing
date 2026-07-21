@@ -15,6 +15,14 @@ import { writeFileAtomic } from "./atomic.ts";
  *  fork-bombing the machine (2026-07-12: ~1800 runaway bun processes). */
 export const WRAP_DEPTH_ENV = "TOKENMAXXING_WRAP_DEPTH";
 export const MAX_WRAP_DEPTH = 5;
+/** "No session management anywhere below this env": the wrapper passes a
+ *  `claude`/`codex` invocation straight through to the real binary, unmanaged.
+ *  Set by pooledSpawnEnv so an SDK-driven session's descendants (an agent
+ *  running `bun run validate` whose script invokes `claude -p`) still work
+ *  instead of dying at the depth cap, which is a LOOP diagnostic, not an
+ *  unmanaged-zone marker. Depth keeps incrementing per wrapper entry under
+ *  this sentinel, so a poisoned pin inside the zone still aborts at the cap. */
+export const UNMANAGED_ENV = "TOKENMAXXING_UNMANAGED";
 /** Stable fragment of the loop-abort diagnostic; verifyRealClaude greps a
  *  child's stderr for it to name the failure precisely. */
 export const LOOP_DIAGNOSIS = "wrapper re-entered without reaching the real claude";

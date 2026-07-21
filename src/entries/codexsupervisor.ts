@@ -13,7 +13,7 @@ import { join } from "node:path";
 import { z } from "zod";
 import { codexPaths, paths } from "../lib/paths.ts";
 import { withLock } from "../lib/lock.ts";
-import { LOOP_DIAGNOSIS, MAX_WRAP_DEPTH, WRAP_DEPTH_ENV, WRAP_RATE_MAX, WRAP_RATE_WINDOW_MS, wrapDepth, wrapperEntryRateTripped } from "../lib/claudebin.ts";
+import { LOOP_DIAGNOSIS, MAX_WRAP_DEPTH, UNMANAGED_ENV, WRAP_DEPTH_ENV, WRAP_RATE_MAX, WRAP_RATE_WINDOW_MS, wrapDepth, wrapperEntryRateTripped } from "../lib/claudebin.ts";
 import { resolveRealCodex } from "../lib/codexbin.ts";
 import { clearCodexPresence, writeCodexPresence } from "../lib/codexpresence.ts";
 import { liveCodexAccountId } from "../lib/codexsample.ts";
@@ -92,7 +92,10 @@ export async function runCodexSupervisor(input: { argv: string[] }): Promise<num
   const real = resolveRealCodex();
   const childEnv = { ...process.env, [WRAP_DEPTH_ENV]: String(depth + 1) };
 
-  if (!shouldManageCodex({ argv })) {
+  // The unmanaged-zone sentinel forces passthrough regardless of argv, exactly
+  // like the claude shim: a serve turn's agent running `codex exec` must reach
+  // the real codex instead of dying at the shared depth cap.
+  if (!shouldManageCodex({ argv }) || process.env[UNMANAGED_ENV]) {
     // STRIP the supervisor pairing env from unmanaged spawns: a nested codex
     // launched from inside a supervised session (e.g. its agent running
     // `codex exec ...`) would otherwise inherit the OUTER session's id, and
