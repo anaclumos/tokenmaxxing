@@ -699,28 +699,6 @@ export function buildServeRuntime(seam: {
           scheduleDeferred(record.threadId, turn.resumeAt);
           return;
         }
-        if (turn.resumeAt !== undefined) {
-          // the wake arrived, but the reset clock was extrapolated: confirm
-          // the pool ACTUALLY recovered before posting the recovery notice
-          // and spending one of the capped resume attempts - a still-depleted
-          // pool re-defers silently (no quota was spent, so no attempt burns;
-          // cursor review catch on PR #44). A probe failure falls through to
-          // the normal resume, whose own decision path announces honestly.
-          try {
-            const verdict = await seam.decide();
-            const depleted = verdict.reason === "all-depleted" || verdict.reason === "depleted-wait";
-            const wake = depleted ? verdict.waitUntil ?? null : null;
-            if (wake != null) {
-              const resumeAt = wake + 5_000;
-              saveSlackThread({ ...fresh, activeTurn: { ...turn, resumeAt } });
-              scheduleDeferred(record.threadId, resumeAt);
-              log("serve.resume_still_depleted", { thread: record.threadId, resumeAt });
-              return;
-            }
-          } catch (e) {
-            log("serve.resume_probe_error", { thread: record.threadId, err: (e instanceof Error ? e.message : String(e)).slice(0, 300) });
-          }
-        }
         await reapOrphan(turn);
         if (!link) {
           // unlinked since the turn started: nothing can run here; drop the
@@ -739,6 +717,43 @@ export function buildServeRuntime(seam: {
           await thread.post(decision.notice);
           saveSlackThread(omit(fresh, ["activeTurn"]));
           return;
+        }
+        if (turn.resumeAt !== undefined) {
+          // the wake arrived, but the reset clock was extrapolated: confirm
+          // the pool ACTUALLY recovered before posting the recovery notice
+          // and spending one of the capped resume attempts - a still-depleted
+          // pool with a KNOWN wake re-defers silently (no quota was spent, so
+          // no attempt burns; cursor review catch on PR #44). This runs AFTER
+          // the give-up branch on purpose: a turn at the resume cap gives up
+          // honestly at its due wake instead of re-deferring forever (cubic
+          // review catch). A still-depleted pool with an UNKNOWN wake drops
+          // honestly (vercel + cubic review catch: falling through would post
+          // a false "pool has recovered" notice and burn an attempt on a
+          // spawn-boundary drop) - the drop-beats-false-promise principle
+          // stands for the unknown-wake case, and a short silent re-arm loop
+          // against a never-recovering pool would keep a zombie promise
+          // alive instead. A probe failure falls through to the normal
+          // resume, whose own decision path announces honestly.
+          try {
+            const verdict = await seam.decide();
+            const depleted = verdict.reason === "all-depleted" || verdict.reason === "depleted-wait";
+            if (depleted) {
+              const wake = verdict.waitUntil ?? null;
+              if (wake != null) {
+                const resumeAt = wake + 5_000;
+                saveSlackThread({ ...fresh, activeTurn: { ...turn, resumeAt } });
+                scheduleDeferred(record.threadId, resumeAt);
+                log("serve.resume_still_depleted", { thread: record.threadId, resumeAt });
+                return;
+              }
+              log("serve.resume_dropped_unknown", { thread: record.threadId });
+              await thread.post("the pool is still at its usage limit and its recovery time is now unknown - this held message is dropped; re-send it once the pool recovers.");
+              saveSlackThread(omit(fresh, ["activeTurn"]));
+              return;
+            }
+          } catch (e) {
+            log("serve.resume_probe_error", { thread: record.threadId, err: (e instanceof Error ? e.message : String(e)).slice(0, 300) });
+          }
         }
         log("serve.resume_interrupted", { thread: record.threadId, attempt: decision.marker.resumeCount });
         // the notice posts BEFORE runTurn persists the incremented marker,

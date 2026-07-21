@@ -11,7 +11,7 @@ import { StreamingPlan, type StreamChunk } from "chat";
 import { buildServeRuntime } from "../src/cli/serve.ts";
 import { cleanupThread, type TurnOutcome } from "../src/lib/slackbridge.ts";
 import { pidStartTime } from "../src/lib/proc.ts";
-import { SlackConfigSchema, loadSlackThread, saveSlackThread } from "../src/lib/slackstate.ts";
+import { MAX_TURN_RESUMES, SlackConfigSchema, loadSlackThread, saveSlackThread } from "../src/lib/slackstate.ts";
 
 const cfg = SlackConfigSchema.parse({
   botToken: "xoxb-test",
@@ -487,6 +487,68 @@ describe("buildServeRuntime usage-limit deferral", () => {
     const marker = loadSlackThread(threadId)?.activeTurn;
     expect(marker?.resumeAt).toBe(nextWake + 5_000);
     expect(marker?.resumeCount).toBe(0);
+  });
+
+  test("a due wake against a depleted pool with an UNKNOWN recovery drops honestly instead of resuming falsely", async () => {
+    const threadId = "slack:C0DAEMON:957.1";
+    saveSlackThread({
+      threadId,
+      repo: "/tmp/serve-daemon-repo",
+      cwd: "/tmp/serve-daemon-repo",
+      sessionId: "s-unk",
+      createdAt: new Date().toISOString(),
+      activeTurn: { prompt: "held work", startedAt: new Date().toISOString(), resumeCount: 0, resumeAt: Date.now() - 1_000 },
+    });
+    let calls = 0;
+    const rt = runtimeWith(
+      async () => {
+        calls += 1;
+        return okOutcome;
+      },
+      async () => ({ thread: t.thread, requesterIds: ["U-OWNER"] }),
+      async () => ({ swapped: false, account: null, reason: "all-depleted" }),
+    );
+    const t = fakeThread({ id: threadId });
+    const record = loadSlackThread(threadId);
+    if (!record) throw new Error("record missing");
+    await rt.recoverInterrupted(record);
+    expect(calls).toBe(0); // no spawn: nothing usable to spawn on
+    expect(t.posted.join(" ")).toContain("dropped");
+    expect(t.posted.join(" ")).not.toContain("recovered");
+    expect(loadSlackThread(threadId)?.activeTurn).toBeUndefined();
+  });
+
+  test("a due wake on a turn at the resume cap gives up honestly instead of re-deferring forever", async () => {
+    const threadId = "slack:C0DAEMON:958.1";
+    saveSlackThread({
+      threadId,
+      repo: "/tmp/serve-daemon-repo",
+      cwd: "/tmp/serve-daemon-repo",
+      sessionId: "s-cap",
+      createdAt: new Date().toISOString(),
+      activeTurn: { prompt: "held work", startedAt: new Date().toISOString(), resumeCount: MAX_TURN_RESUMES, resumeAt: Date.now() - 1_000 },
+    });
+    let calls = 0;
+    let probes = 0;
+    const rt = runtimeWith(
+      async () => {
+        calls += 1;
+        return okOutcome;
+      },
+      async () => ({ thread: t.thread, requesterIds: ["U-OWNER"] }),
+      async () => {
+        probes += 1;
+        return { swapped: false, account: null, reason: "all-depleted", waitUntil: Date.now() + 1_800_000 };
+      },
+    );
+    const t = fakeThread({ id: threadId });
+    const record = loadSlackThread(threadId);
+    if (!record) throw new Error("record missing");
+    await rt.recoverInterrupted(record);
+    expect(calls).toBe(0);
+    expect(probes).toBe(0); // give-up outranks the probe: no silent re-defer at the cap
+    expect(t.posted.join(" ")).toContain("giving up");
+    expect(loadSlackThread(threadId)?.activeTurn).toBeUndefined();
   });
 
   test("a wake against a re-deferred FUTURE marker re-arms instead of resuming early", async () => {
