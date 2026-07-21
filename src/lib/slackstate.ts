@@ -126,6 +126,13 @@ const ActiveTurnSchema = z.object({
    *  turns whose trigger had no relayable message id (e.g. a resumed record
    *  from before this field existed) - status reactions just skip then. */
   messageId: z.string().optional(),
+  /** the triggering turn's requester ids: a recovered turn that flags
+   *  attention must persist the KILLED turn's actual askers, not whoever
+   *  authored the thread's newest message at recovery time (vercel review
+   *  catch on PR #43 - the wrong user would get nudged and answer-gated).
+   *  Absent on older records: recovery falls back to the streamable
+   *  handle's newest-author derivation. */
+  requesterIds: z.array(z.string()).optional(),
 });
 export type ActiveTurn = z.infer<typeof ActiveTurnSchema>;
 

@@ -603,7 +603,7 @@ export function buildServeRuntime(seam: {
       prompt,
       requesterIds,
       sessionId: record.sessionId,
-      marker: { prompt, startedAt: new Date().toISOString(), resumeCount: 0, ...(messageId ? { messageId } : {}) },
+      marker: { prompt, startedAt: new Date().toISOString(), resumeCount: 0, ...(messageId ? { messageId } : {}), requesterIds },
       link,
     });
     await settleTurn({ thread, outcome, startedAt, messageId, requesterIds });
@@ -630,14 +630,19 @@ export function buildServeRuntime(seam: {
     });
     // settle the status reaction: failed beats attention beats done (a failed
     // ask never reads as a clean question mark), then drop the hourglass.
-    // Two review-caught exceptions: a drain-presumed-killed turn (same
+    // Three review-caught exceptions: a drain-presumed-killed turn (same
     // predicate as runTurn's marker retention) keeps its hourglass - it will
     // auto-resume next start, and a terminal x nothing ever removes would
-    // read a later successful resume as failed; and a finished thread settles
-    // as done even when the model also flagged attention, because the record
-    // deletion below makes the question mark unremovable forever.
+    // read a later successful resume as failed; a usage-limit DEFERRAL is
+    // the other auto-resume case and keeps its hourglass for the identical
+    // reason (cursor + vercel review catch on PR #43: the durable marker
+    // promises a resume, so the triggering message must not read as failed
+    // for the whole deferral); and a finished thread settles as done even
+    // when the model also flagged attention, because the record deletion
+    // below makes the question mark unremovable forever.
     const killedByDrain = draining && outcome.failed && !outcome.announcedDrop && !outcome.resultReceived;
-    if (input.messageId && !killedByDrain) {
+    const deferredForResume = outcome.deferUntil !== null;
+    if (input.messageId && !killedByDrain && !deferredForResume) {
       const emoji = outcome.failed ? STATUS_EMOJI.failed : outcome.attention && !outcome.finish ? STATUS_EMOJI.attention : STATUS_EMOJI.done;
       await setStatus({ threadId: thread.id, messageId: input.messageId, emoji, op: "add" });
       await setStatus({ threadId: thread.id, messageId: input.messageId, emoji: STATUS_EMOJI.processing, op: "remove" });
@@ -792,6 +797,14 @@ export function buildServeRuntime(seam: {
   ) => {
     if (!input.added || input.isBot === true) return;
     if (!loadSlackThread(input.threadId)) return; // untracked thread
+    // unlinked channels are contractually silent AND inert (vercel review
+    // catch on PR #43): a reaction stored to pendingReactions here would
+    // reach claude after a re-link, the one leak every other unlinked path
+    // already closes.
+    if (!linkForChannel(cfg, bareChannelId(input.threadId.split(":").slice(0, 2).join(":")))) {
+      log("serve.reaction_dropped", { thread: input.threadId, reason: "unlinked-channel" });
+      return;
+    }
     await tracked(serialized(input.threadId, async () => {
       const fresh = loadSlackThread(input.threadId);
       if (!fresh) return; // finished while queued
@@ -1004,8 +1017,13 @@ export function buildServeRuntime(seam: {
         // retries on every restart; unlinking it clears the marker.
         await thread.post(decision.notice);
         const startedAt = Date.now();
-        const outcome = await runTurn({ thread, record: fresh, prompt: decision.prompt, requesterIds, sessionId: decision.sessionId, marker: decision.marker, link });
-        await settleTurn({ thread, outcome, startedAt, messageId: decision.marker.messageId, requesterIds });
+        // the KILLED turn's actual askers outrank the streamable handle's
+        // newest-author derivation: a recovered need_attention turn must
+        // nudge and answer-gate the users who were actually asked (vercel
+        // review catch on PR #43); older markers without the field fall back.
+        const resumedRequesterIds = decision.marker.requesterIds ?? requesterIds;
+        const outcome = await runTurn({ thread, record: fresh, prompt: decision.prompt, requesterIds: resumedRequesterIds, sessionId: decision.sessionId, marker: decision.marker, link });
+        await settleTurn({ thread, outcome, startedAt, messageId: decision.marker.messageId, requesterIds: resumedRequesterIds });
       });
     } catch (e) {
       const detail = (e instanceof Error ? e.message : String(e)).slice(0, 300);

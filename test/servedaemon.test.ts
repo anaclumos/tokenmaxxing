@@ -694,6 +694,52 @@ describe("buildServeRuntime status reactions", () => {
     expect(rt.reactions).toEqual([{ threadId: t.thread.id, messageId: "1004.2", emoji: "hourglass_flowing_sand", op: "add" }]);
   });
 
+  test("a usage-limit deferral keeps its hourglass: the daemon resumes the turn itself", async () => {
+    const wake = Date.now() + 3_600_000;
+    const rt = runtimeWith(async () => ({ sessionId: "s-defhg", failed: true, rateLimited: true, finish: false, attention: false, announcedDrop: false, resultReceived: false, deferUntil: wake }));
+    const t = fakeThread({ id: "slack:C0DAEMON:1005.1" });
+    await rt.onMessage({ thread: t.thread, message: home("@UBOT limited job", "U-OWNER", "1005.2"), skipped: [], isMention: true });
+    // no terminal x and no hourglass removal: the durable marker promises a
+    // resume, and a failed-reading trigger for the whole deferral was the
+    // cursor + vercel review catch on PR #43
+    expect(rt.reactions).toEqual([{ threadId: t.thread.id, messageId: "1005.2", emoji: "hourglass_flowing_sand", op: "add" }]);
+    expect(loadSlackThread("slack:C0DAEMON:1005.1")?.activeTurn?.resumeAt).toBe(wake);
+  });
+
+  test("a recovered attention turn persists the KILLED turn's askers, not the newest author", async () => {
+    const threadId = "slack:C0DAEMON:1006.1";
+    saveSlackThread({
+      threadId,
+      repo: "/tmp/serve-daemon-repo",
+      cwd: "/tmp/serve-daemon-repo",
+      sessionId: "s-askers",
+      createdAt: new Date().toISOString(),
+      activeTurn: { prompt: "ask them", startedAt: new Date().toISOString(), resumeCount: 0, requesterIds: ["U-ASKER"] },
+    });
+    const rt = runtimeWith(
+      async () => ({ ...okOutcome, sessionId: "s-askers", attention: true }),
+      async () => ({ thread: t.thread, requesterIds: ["U-NEWEST"] }),
+    );
+    const t = fakeThread({ id: threadId });
+    const record = loadSlackThread(threadId);
+    if (!record) throw new Error("record missing");
+    await rt.recoverInterrupted(record);
+    expect(loadSlackThread(threadId)?.attention?.requesterIds).toEqual(["U-ASKER"]);
+  });
+
+  test("a reaction in an unlinked channel is dropped, never stored for a future re-link", async () => {
+    const threadId = "slack:C0UNLINKED:1.1";
+    saveSlackThread({ threadId, repo: "/tmp/serve-daemon-repo", cwd: "/tmp/serve-daemon-repo", sessionId: "s-unl", createdAt: new Date().toISOString() });
+    const rt = runtimeWith(async () => okOutcome);
+    await rt.onReaction(
+      { threadId, messageId: "1.2", emoji: "thumbsup", userId: "U-OWNER", added: true, occurredAt: Date.now() },
+      async () => {
+        throw new Error("must not build a thread for an unlinked channel");
+      },
+    );
+    expect(loadSlackThread(threadId)?.pendingReactions).toBeUndefined();
+  });
+
   test("reaction failures are log-only: the turn still runs and settles", async () => {
     let relayCalls = 0;
     const rt = runtimeWith(async () => {
