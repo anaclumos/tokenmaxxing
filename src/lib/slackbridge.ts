@@ -10,7 +10,7 @@ import { join } from "node:path";
 import { z } from "zod";
 import { delay } from "es-toolkit";
 import { createSdkMcpServer, query, tool, type SpawnOptions } from "@anthropic-ai/claude-agent-sdk";
-import type { StreamChunk } from "chat";
+import { StreamingMarkdownRenderer, type StreamChunk } from "chat";
 import { ensureBestAccount, pooledOptions, stopHookCheck, type SwapDecision } from "../sdk.ts";
 import { POST_SWAP_COOLDOWN_MS } from "./decide.ts";
 import { readOAuthAccount } from "./claudejson.ts";
@@ -217,23 +217,41 @@ function pushableStream(): {
   iterable: AsyncIterable<SegmentChunk>;
   push: (chunk: SegmentChunk) => void;
   end: () => void;
+  ledger: () => { chunks: SegmentChunk[]; confirmed: number };
 } {
-  const queue: SegmentChunk[] = [];
+  const chunks: SegmentChunk[] = [];
+  let cursor = 0;
+  let confirmed = 0;
   let done = false;
   let notify: (() => void) | null = null;
   return {
     push(chunk) {
-      queue.push(chunk);
+      chunks.push(chunk);
       notify?.();
     },
     end() {
       done = true;
       notify?.();
     },
+    /** Everything ever pushed plus how much of it the consumer PROVED
+     *  delivered. The Slack adapter pulls one chunk, awaits its Slack append,
+     *  then pulls the next (verified in @chat-adapter/slack 4.34.0 stream()),
+     *  so each pull confirms the append for the previous chunk landed; a
+     *  consumer that dies mid-append unwinds the for-await with an implicit
+     *  return() at the yield, leaving that chunk and everything after it
+     *  unconfirmed. */
+    ledger() {
+      return { chunks: [...chunks], confirmed };
+    },
     iterable: {
       async *[Symbol.asyncIterator]() {
         while (true) {
-          for (let next = queue.shift(); next !== undefined; next = queue.shift()) yield next;
+          while (cursor < chunks.length) {
+            const next = chunks[cursor]!;
+            cursor += 1;
+            yield next;
+            confirmed = cursor;
+          }
           if (done) return;
           await new Promise<void>((resolve) => {
             notify = resolve;
@@ -415,56 +433,167 @@ export async function relayThread(input: {
   let segment: ReturnType<typeof pushableStream> | null = null;
   let segmentMeta: { text: boolean } | null = null;
   let lastPost: Promise<unknown> = Promise.resolve();
-  // Reply TEXT that was pushed into a rejected segment and never re-delivered
-  // by a later text-bearing segment: the user has not seen the answer. A lost
-  // card-only segment never sets this (decoration, not the answer).
-  // Tradeoff (flagged and accepted): a later delivered text segment clears the
-  // flag even though it is a continuation, because the dominant rejection is
-  // Slack finalizing an idle stream - the streamed text WAS delivered, only
-  // the append failed - and sticky loss would fail every long turn with a
-  // spurious diagnostic; chat 4.34.0 exposes no per-chunk delivery acks to
-  // tell that apart from a swallowed first post.
+  // Reply TEXT that died with a rejected segment and was neither salvaged into
+  // a follow-on message nor re-delivered by a later text-bearing segment: the
+  // user has not seen the answer. A lost card-only segment never sets this
+  // (decoration, not the answer). Tradeoff (flagged and accepted): a later
+  // delivered text segment clears the flag even though it is a continuation,
+  // because a rejection whose text chunks were all consumed pre-append-failure
+  // was almost certainly delivered (the adapter appends per chunk) except for
+  // an unobservable renderer-held tail; sticky loss would fail every long turn
+  // with a spurious diagnostic.
   let textLost = false;
   let textLostDetail: string | null = null;
   let postedText = false;
-  const push = async (chunk: SegmentChunk) => {
-    let seg = segment;
-    if (!seg) {
-      await lastPost; // strict message order: previous segment fully posted first
-      seg = pushableStream();
-      segment = seg;
-      const posted = seg;
-      const meta = { text: false };
-      segmentMeta = meta;
-      lastPost = input.post(seg.iterable).then(
-        () => {
-          // segments settle in order (push awaits lastPost before opening the
-          // next), so delivered text supersedes an earlier loss.
-          if (meta.text) textLost = false;
-        },
-        (e: unknown) => {
-          const detail = (e instanceof Error ? e.message : String(e)).slice(0, 300);
-          log("serve.post_error", { err: detail });
-          if (meta.text) {
-            textLost = true;
-            textLostDetail = detail;
+  // Salvage: a rejected post's undelivered chunks re-post as a fresh message
+  // (Slack finalizes an idle stream after an UNDOCUMENTED window - verified
+  // absent from the chat.startStream/appendStream docs 2026-07-21 - so
+  // recovery is reactive on any append failure, never a keepalive tuned to a
+  // guessed constant). The budget bounds FUTILITY, not recovery: a death
+  // after the message delivered something is progress and refills it (a long
+  // turn can outlive any number of idle finalizations, each losing only the
+  // gap tail), while a surface that delivers nothing (revoked channel, hard
+  // cap on the very first append) burns a strike per attempt and stops.
+  const MAX_SEGMENT_SALVAGES = 5;
+  let salvagesLeft = MAX_SEGMENT_SALVAGES;
+  const openSegment = () => {
+    const seg = pushableStream();
+    segment = seg;
+    const meta = { text: false };
+    segmentMeta = meta;
+    lastPost = input.post(seg.iterable).then(
+      () => {
+        salvagesLeft = MAX_SEGMENT_SALVAGES;
+        // segments settle in order (push awaits lastPost before opening the
+        // next), so delivered text supersedes an earlier loss.
+        if (meta.text) textLost = false;
+      },
+      (e: unknown) => {
+        const detail = (e instanceof Error ? e.message : String(e)).slice(0, 300);
+        log("serve.post_error", { err: detail });
+        // the consumer is gone (e.g. Slack finalized an idle stream:
+        // message_not_in_streaming_state). Salvage runs in TEXT space, not
+        // chunk space, because the adapter's renderer buffers across chunks
+        // (it holds back the trailing unterminated line, unconfirmed table
+        // headers, and unclosed inline markers until the post-iteration
+        // finish() flush - pullfrog catch on PR #45: a reply whose last line
+        // has no trailing newline dies entirely in that forced flush, with
+        // every chunk already consumed). Proven-delivered text = the mirror
+        // renderer's committable prefix over the CONFIRMED chunks (each pull
+        // proves the previous append landed; the adapter runs the renderer
+        // with wrapTablesForAppend: false, so committable is a raw prefix and
+        // the mirror is chunking-invariant). Renderer drift would break the
+        // prefix check and degrade to a full re-post: duplication, never
+        // loss. Same tradeoff for a stop()-failure after a complete flush:
+        // the held tail re-posts once rather than risking silent loss.
+        const { chunks, confirmed } = seg.ledger();
+        if (segment === seg) segment = null;
+        const confirmedRaw = chunks
+          .slice(0, confirmed)
+          .flatMap((c) => (c instanceof Object ? [] : [c]))
+          .join("");
+        const fullRaw = chunks.flatMap((c) => (c instanceof Object ? [] : [c])).join("");
+        const mirror = new StreamingMarkdownRenderer({ wrapTablesForAppend: false });
+        mirror.push(confirmedRaw);
+        const committed = mirror.getCommittableText();
+        const deliveredLen = confirmedRaw.startsWith(committed) ? committed.length : 0;
+        const textRemainder = fullRaw.slice(deliveredLen);
+        // A confirmed card's append landed (the adapter sends a card inline
+        // in the loop body before the next pull), so unconfirmed cards are
+        // the set it never appended.
+        const deliveredCard = chunks.slice(0, confirmed).some((c) => c instanceof Object);
+        // Delivery progress means this death does not count toward the
+        // futility budget: only a message that delivered nothing burns one.
+        // The key is ACTUAL delivery (committable text or a landed card),
+        // never chunk consumption: a reply whose final line has no trailing
+        // newline is consumed whole (confirmed advances) while its only
+        // append is the post-iteration forced flush, so a consumption key
+        // would refill the budget on every persistently failing flush and
+        // salvage the same held-back text forever (vercel review catch,
+        // PR #45). deliveredLen stays 0 there, the strike is spent, and the
+        // zero-delivery case terminates.
+        if (deliveredLen > 0 || deliveredCard) salvagesLeft = MAX_SEGMENT_SALVAGES;
+        // The salvage sequence preserves STREAM ORDER (cursor review catch,
+        // PR #45: re-posting all remainder text and then all cards showed
+        // task cards after prose that originally followed them): walk the
+        // ledger in order, keeping each text chunk's undelivered suffix and
+        // each unconfirmed card at its original position. Text splits at
+        // line boundaries (rendering is unchanged: chunks concatenate) so a
+        // salvage message that dies too still confirms per line, keeping
+        // progress attribution fine-grained.
+        const lost: SegmentChunk[] = [];
+        let offset = 0;
+        for (const [i, c] of chunks.entries()) {
+          if (c instanceof Object) {
+            if (i >= confirmed) lost.push(c);
+            continue;
           }
-          // the consumer is gone (e.g. Slack finalized an idle stream:
-          // message_not_in_streaming_state) - drop the dead segment so the
-          // next chunk opens a fresh message instead of vanishing into it.
-          if (segment === posted) segment = null;
-        },
-      );
+          const end = offset + c.length;
+          let rest = end > deliveredLen ? c.slice(Math.max(0, deliveredLen - offset)) : "";
+          offset = end;
+          while (rest !== "") {
+            const nl = rest.indexOf("\n");
+            if (nl === -1) {
+              lost.push(rest);
+              break;
+            }
+            lost.push(rest.slice(0, nl + 1));
+            rest = rest.slice(nl + 1);
+          }
+        }
+        if (lost.length > 0 && salvagesLeft > 0) {
+          salvagesLeft -= 1;
+          log("serve.post_salvage", { chunks: lost.length, left: salvagesLeft });
+          // this handler runs synchronously as the post settles, so opening
+          // the salvage segment here keeps the salvaged content ordered ahead
+          // of any push still awaiting lastPost; the salvage segment's own
+          // settle then decides whether its text counts as delivered.
+          const next = openSegment();
+          for (const c of lost) next.pushInto(c);
+        } else if (textRemainder !== "") {
+          textLost = true;
+          textLostDetail = detail;
+        }
+      },
+    );
+    const pushInto = (chunk: SegmentChunk) => {
+      // meta.text only, NEVER postedText: salvaged text was already counted
+      // at its original push, and postedText is attempt-scoped - a salvage
+      // landing after a retry reset would otherwise re-arm it and suppress
+      // the retry's `!postedText && result` fallback, silently dropping a
+      // result-only answer (adversarial-review catch on PR #45).
+      if (!(chunk instanceof Object)) meta.text = true;
+      seg.push(chunk);
+    };
+    return { seg, pushInto };
+  };
+  const push = async (chunk: SegmentChunk) => {
+    if (segment === null) {
+      await lastPost; // strict message order: previous segment fully posted first
+      // a rejection handler may have opened a salvage segment during the wait;
+      // joining it instead of opening another keeps its post from being
+      // orphaned un-ended.
     }
+    const target = segment ?? openSegment().seg;
     if (!(chunk instanceof Object)) {
       postedText = true;
       segmentMeta!.text = true;
     }
-    seg.push(chunk);
+    target.push(chunk);
   };
   const breakSegment = () => {
     segment?.end();
     segment = null;
+  };
+  // settle the whole post chain: a rejection handler may replace lastPost with
+  // a salvage segment's post, which still needs ending and settling.
+  const settlePosts = async () => {
+    while (true) {
+      breakSegment();
+      const settled = lastPost;
+      await settled;
+      if (lastPost === settled) return;
+    }
   };
   // a recovery status line reads as its own Slack message, not part of a
   // streamed segment.
@@ -487,7 +616,7 @@ export async function relayThread(input: {
    *  its own delivery resets textLost. */
   const notifyDelivered = async (text: string) => {
     await notify(text);
-    await lastPost;
+    await settlePosts();
     return !textLost;
   };
   // false when the daemon started draining mid-sleep.
@@ -768,12 +897,12 @@ export async function relayThread(input: {
       break;
     }
   }
-  breakSegment();
-  await lastPost;
-  // Reply text died with a rejected segment and nothing later re-delivered it:
-  // the answer silently vanished while the outcome would report success. Fail
-  // the turn and make one best-effort fresh-message diagnostic (a fresh post
-  // is exactly what the mid-stream recovery relies on succeeding).
+  await settlePosts();
+  // Reply text died with a rejected segment, salvage could not re-deliver it
+  // (budget exhausted or the salvage posts died too), and nothing later
+  // re-delivered it: the answer silently vanished while the outcome would
+  // report success. Fail the turn and make one best-effort fresh-message
+  // diagnostic.
   if (textLost) {
     outcome.failed = true;
     const detail = textLostDetail ?? "unknown error";
