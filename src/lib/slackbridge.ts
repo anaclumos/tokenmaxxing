@@ -268,6 +268,23 @@ function pushableStream(): {
   };
 }
 
+/** Slack rejects an over-long message with msg_too_long, and NOTHING in chat
+ *  4.34.0 or the Slack adapter bounds, truncates, or splits reply text
+ *  (verified in-source 2026-07-20): a natively streamed message accumulates
+ *  server-side toward the 12,000-char markdown_text envelope (docs.slack.dev
+ *  documents that limit on chat.postMessage/update and all three streaming
+ *  methods), the post-and-edit fallback re-sends the FULL accumulated text as
+ *  markdown_text on every edit, and once anything rendered natively a failed
+ *  append REJECTS the whole thread.post - the reply dies (live incident
+ *  2026-07-20, three failed turns). relayThread therefore splits reply text
+ *  across Slack messages BEFORE the cap; the 2,000-char margin absorbs the
+ *  renderer's markdown normalization and mention-linkification expansion.
+ *  Tradeoff (accepted): the adapter-internal plain-text fallback edits via
+ *  chat.update `text` (hard 4,000-char cap), but it only engages when the
+ *  workspace refused native streaming outright - splitting every normal reply
+ *  3x tighter to cover that never-hit path is worse than the residual risk. */
+export const SEGMENT_TEXT_MAX = 10_000;
+
 /** Full permission names of the in-process tools (mcp__<server>__<tool>):
  *  they must be in allowedTools, because no one can answer a permission
  *  prompt through Slack. */
@@ -446,7 +463,12 @@ export async function relayThread(input: {
 }): Promise<TurnOutcome> {
   const outcome: TurnOutcome = { sessionId: input.sessionId, failed: false, rateLimited: false, finish: false, attention: false, announcedDrop: false, resultReceived: false, deferUntil: null };
   let segment: ReturnType<typeof pushableStream> | null = null;
-  let segmentMeta: { text: boolean } | null = null;
+  // acc mirrors the segment's pushed text (bounded by SEGMENT_TEXT_MAX plus a
+  // small overshoot): fence parity must be computed over the ACCUMULATED text,
+  // never per chunk - SDK deltas do not respect markdown token boundaries, so
+  // a ``` split across two deltas would be invisible to per-chunk counting
+  // (pullfrog review catch, PR #42).
+  let segmentMeta: { text: boolean; acc: string; reopenFence: boolean } | null = null;
   let lastPost: Promise<unknown> = Promise.resolve();
   // Reply TEXT that died with a rejected segment and was neither salvaged into
   // a follow-on message nor re-delivered by a later text-bearing segment: the
@@ -474,7 +496,14 @@ export async function relayThread(input: {
   const openSegment = () => {
     const seg = pushableStream();
     segment = seg;
-    const meta = { text: false };
+    // reopenFence: the delivered prefix of a REJECTED predecessor left a code
+    // fence open, so the first TEXT entering this salvage segment must be
+    // preceded by a reopen or it renders outside the code block. Pending
+    // rather than pushed eagerly (pullfrog catches, PR #42): a card-only
+    // salvage would otherwise either skip the reopen (later text joining the
+    // segment renders unfenced) or dangle an empty open fence at message end
+    // when no text ever follows. Materialized by BOTH text entry points.
+    const meta = { text: false, acc: "", reopenFence: false };
     segmentMeta = meta;
     lastPost = input.post(seg.iterable).then(
       () => {
@@ -556,6 +585,22 @@ export async function relayThread(input: {
             rest = rest.slice(nl + 1);
           }
         }
+        // A fence OPENED in the delivered prefix leaves later code fenceless
+        // in the fresh salvage message (pullfrog catches, PR #42): arm the
+        // segment's pending reopen, materialized right before the FIRST text
+        // that enters it - whether a salvaged remainder piece here or a later
+        // streamed push joining the segment (a card-only salvage must not
+        // skip the reopen, and a text-less segment must not dangle one).
+        // Fold this dying segment's OWN still-armed reopen into the parity:
+        // an armed-but-never-materialized reopenFence means the segment
+        // logically BEGAN inside an open fence (a card-only salvage that
+        // inherited one and died before any text materialized it), so that
+        // open state must propagate to the next salvage or its later text
+        // renders unfenced (vercel + cubic chained-salvage catch, PR #42).
+        // Once materialized, reopenFence is false and the reopen chunk is in
+        // fullRaw, so the XOR is a no-op; a normal segment's flag is false.
+        const deliveredFenceOpen =
+          ((fullRaw.slice(0, deliveredLen).split("```").length - 1) % 2 === 1) !== meta.reopenFence;
         if (lost.length > 0 && salvagesLeft > 0) {
           salvagesLeft -= 1;
           log("serve.post_salvage", { chunks: lost.length, left: salvagesLeft });
@@ -564,6 +609,7 @@ export async function relayThread(input: {
           // of any push still awaiting lastPost; the salvage segment's own
           // settle then decides whether its text counts as delivered.
           const next = openSegment();
+          next.meta.reopenFence = deliveredFenceOpen;
           for (const c of lost) next.pushInto(c);
         } else if (textRemainder !== "") {
           textLost = true;
@@ -576,11 +622,23 @@ export async function relayThread(input: {
       // at its original push, and postedText is attempt-scoped - a salvage
       // landing after a retry reset would otherwise re-arm it and suppress
       // the retry's `!postedText && result` fallback, silently dropping a
-      // result-only answer (adversarial-review catch on PR #45).
-      if (!(chunk instanceof Object)) meta.text = true;
+      // result-only answer (adversarial-review catch on PR #45). acc still
+      // accumulates: it mirrors the segment's FULL text on every entry path,
+      // so pushText's room accounting and fence parity see salvaged text too
+      // (a salvage segment that continued via pushText could otherwise grow
+      // past the msg_too_long cap).
+      if (!(chunk instanceof Object)) {
+        if (meta.reopenFence) {
+          meta.reopenFence = false;
+          meta.acc += "```\n";
+          seg.push("```\n");
+        }
+        meta.text = true;
+        meta.acc += chunk;
+      }
       seg.push(chunk);
     };
-    return { seg, pushInto };
+    return { seg, meta, pushInto };
   };
   const push = async (chunk: SegmentChunk) => {
     if (segment === null) {
@@ -591,14 +649,65 @@ export async function relayThread(input: {
     }
     const target = segment ?? openSegment().seg;
     if (!(chunk instanceof Object)) {
+      // materialize a salvage segment's pending fence reopen (see
+      // openSegment) before the first text from this entry point too.
+      if (segmentMeta!.reopenFence) {
+        segmentMeta!.reopenFence = false;
+        segmentMeta!.acc += "```\n";
+        target.push("```\n");
+      }
       postedText = true;
       segmentMeta!.text = true;
+      segmentMeta!.acc += chunk;
     }
     target.push(chunk);
   };
+  // parity by occurrence count over the segment's accumulated text: an odd
+  // number of ``` markers means the segment currently sits inside a fence.
+  const fenceOpen = () => segmentMeta !== null && (segmentMeta.acc.split("```").length - 1) % 2 === 1;
   const breakSegment = () => {
     segment?.end();
     segment = null;
+  };
+  /** Reply text routed through here splits across Slack messages before the
+   *  msg_too_long cap (see SEGMENT_TEXT_MAX): a break prefers the last newline
+   *  inside the remaining room, and a break forced inside a code fence closes
+   *  it and reopens it in the next message so both halves render as code. */
+  const pushText = async (text: string) => {
+    for (let rest = text; rest !== "";) {
+      const room = SEGMENT_TEXT_MAX - (segment === null ? 0 : segmentMeta!.acc.length);
+      // a fence-close suffix can nudge a segment a few chars past the cap;
+      // a full segment just breaks and the loop re-measures a fresh one.
+      if (room <= 0) {
+        breakSegment();
+        continue;
+      }
+      if (rest.length <= room) {
+        await push(rest);
+        return;
+      }
+      // prefer a newline cut only when it lands in the back half of the room:
+      // an early newline followed by one giant unbroken run would otherwise
+      // make no progress and (with the fence-reopen prefix) loop forever.
+      const nl = rest.lastIndexOf("\n", room - 1);
+      let cut = nl >= Math.floor(room / 2) ? nl + 1 : room;
+      // never slice through a backtick run: a cut inside ``` would strand a
+      // partial delimiter on each side and break both halves' rendering
+      // (cubic review catch, PR #42). Walk the cut left past the run; a run
+      // reaching position 0 keeps the original cut (progress beats rendering
+      // for pathological all-backtick input).
+      if (rest[cut - 1] === "`" && rest[cut] === "`") {
+        let backedUp = cut;
+        while (backedUp > 0 && rest[backedUp - 1] === "`") backedUp -= 1;
+        if (backedUp > 0) cut = backedUp;
+      }
+      const head = rest.slice(0, cut);
+      await push(head);
+      const reopen = fenceOpen();
+      if (reopen) await push("\n```");
+      breakSegment();
+      rest = (reopen ? "```\n" : "") + rest.slice(head.length);
+    }
   };
   // settle the whole post chain: a rejection handler may replace lastPost with
   // a salvage segment's post, which still needs ending and settling.
@@ -764,10 +873,13 @@ export async function relayThread(input: {
             outcome.resultReceived = true;
           }
         }
-        for (const part of agentEventChunks({ state: mapState, message })) await push(part);
+        for (const part of agentEventChunks({ state: mapState, message })) {
+          if (part instanceof Object) await push(part);
+          else await pushText(part);
+        }
       }
       // a turn that produced no streamed text (tool-only turns) still reports.
-      if (!postedText && result) await push(result);
+      if (!postedText && result) await pushText(result);
       if (!postedText && !result && outcome.failed && !outcome.rateLimited) {
         // held back until the depleted-pool probe rules: a "trying again may
         // help" line right before a deferral notice invites a manual re-send
