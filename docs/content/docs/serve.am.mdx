@@ -15,7 +15,7 @@ bot ን በተገናኘ channel ውስጥ ይጥቀሱ እና ለዚያ thread �
 
 ትኩረት የሚሹ ባህሪያት፦
 
-- **Streaming**፦ ምላሾች በnative ወደ Slack ይተላለፋሉ፣ ለ thinking እና tool runዎች የ task cardዎች ጋር፣ fenced code በ highlighting የቀረበ፣ እና ከ cost እና duration ጋር የመዝጊያ "Turn" card፤ የአንድ turn cardዎች ሁሉ ወደ አንድ ሊከፈት የሚችል plan block ይታጠፋሉ፣ ስለዚህ turn እንደ አንድ መልእክት ይነበባል፦ ምላሹ እና እንቅስቃሴውን የያዘ አንድ dropdown። TodoWrite ጥሪዎች አንድ የተረጋጋ checklist card ን በቦታው ያዘምናሉ።
+- **Streaming**፦ ምላሾች በnative ወደ Slack ይተላለፋሉ፣ ለ thinking እና tool runዎች የ task cardዎች ጋር፣ fenced code በ highlighting የቀረበ፣ እና ከ cost እና duration ጋር የመዝጊያ "Turn" card፤ የአንድ turn cardዎች ሁሉ ወደ አንድ ሊከፈት የሚችል plan block ይታጠፋሉ፣ ስለዚህ turn አብዛኛውን ጊዜ እንደ አንድ መልእክት ይነበባል፦ ምላሹ እና እንቅስቃሴውን የያዘ አንድ dropdown (turn መሃል ላይ ያለ retry ወይም ውድቅ የተደረገ append ተከታይ መልእክት ይከፍታል)። TodoWrite ጥሪዎች አንድ የተረጋጋ checklist card ን በቦታው ያዘምናሉ።
 - **Permissions**፦ በ-link `permissionMode` ነባሪው `acceptEdits` ነው፤ `--yolo` (ተለዋጭ ስም `--dangerous`) link ን ወደ `bypassPermissions` ያስገባል። Interactive dialogዎች በተላለፉ turnዎች ውስጥ አይፈቀዱም - ማንም በ Slack በኩል መመለስ አይችልም - ስለዚህ ሞዴሉ በ prose ይጠይቃል እና የ thread ምላሽዎ ቀጣዩ turn ነው። የተጣመረ plugin skill ውሳኔ ሲፈልግ ጠያቂውን እንዲጠቅስ እና turn ን እንዲያጠናቅቅ ያስተምረዋል።
 - **Slash commandዎች**፦ የተከረከመ ጽሁፉ በ `/` የሚጀምር የ thread መልእክት እንደ claude slash command ይሄዳል። የ Slack composer በ `/` የሚጀምሩ መልእክቶችን ይበላል፣ ስለዚህ mention-first ቅጹን (`@bot /usage`) ወይም መጀመሪያ ላይ ክፍተት ይጠቀሙ።
 - **Graceful shutdown**፦ SIGTERM/SIGINT ያፈሳል - አዲስ turnዎች በጩኸት ይጣላሉ፣ በበረራ ላይ ያሉ turnዎች እስከ 5 ደቂቃ ያገኛሉ፣ እና claude child በራሱ process group ውስጥ ተነጥሎ ይሄዳል ስለዚህ terminal Ctrl-C drain ው turn ን ከመጠበቁ በፊት ሊገድለው አይችልም።

@@ -138,6 +138,28 @@ describe("agentEventChunks", () => {
     expect(result).toEqual([{ type: "task_update", id: "toolu_2", title: "Bash", status: "error", output: "boom" }]);
   });
 
+  test("a later main text block opens on a fresh paragraph; the first block, whitespace-only text, and subagent blocks do not", () => {
+    const state = newStreamMapState();
+    // first text block: no separator, nothing streamed yet
+    expect(agentEventChunks({ state, message: streamEvent({ event: { type: "content_block_start", index: 0, content_block: { type: "text", text: "", citations: [] } } }) })).toEqual([]);
+    agentEventChunks({ state, message: streamEvent({ event: { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "first paragraph" } } }) });
+    // a subagent text block never separates the main stream
+    expect(agentEventChunks({ state, message: streamEvent({ event: { type: "content_block_start", index: 0, content_block: { type: "text", text: "", citations: [] } }, parent: "toolu_parent" }) })).toEqual([]);
+    // the next main text block (e.g. after a tool run) gets the break
+    expect(agentEventChunks({ state, message: streamEvent({ event: { type: "content_block_start", index: 2, content_block: { type: "text", text: "", citations: [] } } }) })).toEqual(["\n\n"]);
+    // whitespace-only text does not count as streamed text
+    const ws = newStreamMapState();
+    agentEventChunks({ state: ws, message: streamEvent({ event: { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "\n\n" } } }) });
+    expect(agentEventChunks({ state: ws, message: streamEvent({ event: { type: "content_block_start", index: 1, content_block: { type: "text", text: "", citations: [] } } }) })).toEqual([]);
+  });
+
+  test("local_command_output separates from prior streamed text the same way", () => {
+    const state = newStreamMapState();
+    agentEventChunks({ state, message: streamEvent({ event: { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "running /usage" } } }) });
+    const chunks = agentEventChunks({ state, message: { type: "system", subtype: "local_command_output", content: "Current session: 13% used", uuid: UUID, session_id: SID } });
+    expect(chunks).toEqual(["\n\nCurrent session: 13% used"]);
+  });
+
   test("a tool starting after streamed text emits only its card: tasks group into one plan block, never a new message", () => {
     const state = newStreamMapState();
     agentEventChunks({ state, message: streamEvent({ event: { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "I will check." } } }) });

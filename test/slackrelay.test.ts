@@ -74,10 +74,15 @@ const depleted = (waitUntil?: number) => ({ swapped: false, account: null, reaso
 // ---- fake SDK message stream ----------------------------------------------
 
 const init = (sessionId: string) => ({ type: "system", subtype: "init", session_id: sessionId });
-const textDelta = (text: string) => ({
+const textStart = (index = 0) => ({
   type: "stream_event",
   parent_tool_use_id: null,
-  event: { type: "content_block_delta", index: 0, delta: { type: "text_delta", text } },
+  event: { type: "content_block_start", index, content_block: { type: "text", text: "" } },
+});
+const textDelta = (text: string, index = 0) => ({
+  type: "stream_event",
+  parent_tool_use_id: null,
+  event: { type: "content_block_delta", index, delta: { type: "text_delta", text } },
 });
 const toolStart = (id: string, name: string) => ({
   type: "stream_event",
@@ -180,6 +185,10 @@ describe("relayThread depleted-pool recovery", () => {
     expect(queryCalls.length).toBe(1);
     expect(strings(col.posts[0])).toContain("holding this message");
     expect(strings(col.posts[1])).toContain("hi there");
+    // strict message order across segments: the park notice fully posts
+    // before the turn's message opens (the invariant relayThread's push
+    // pins with `await lastPost`).
+    expect(col.timeline).toEqual(["open:1", "close:1", "open:2", "close:2"]);
   });
 
   test("drops honestly when recovery is unknown, without spawning", async () => {
@@ -259,14 +268,16 @@ describe("relayThread depleted-pool recovery", () => {
 });
 
 describe("relayThread segment ordering", () => {
-  test("a tool call after streamed text stays in ONE Slack message: cards group into the turn's plan block", async () => {
+  test("a tool call after streamed text stays in ONE Slack message: cards group into the turn's plan block, text blocks separated by a paragraph break", async () => {
     decisionQueue.push(usable);
     queryScripts.push(script([
       init("s-seg"),
-      textDelta("before tools"),
+      textStart(0),
+      textDelta("before tools", 0),
       toolStart("tool-1", "Bash"),
       toolStop(),
-      textDelta("after tools"),
+      textStart(2),
+      textDelta("after tools", 2),
       success("s-seg"),
     ]));
     const col = collector();
@@ -274,7 +285,7 @@ describe("relayThread segment ordering", () => {
     expect(out.failed).toBe(false);
     expect(col.posts.length).toBe(1);
     expect(col.timeline).toEqual(["open:1", "close:1"]);
-    expect(strings(col.posts[0])).toBe("before toolsafter tools");
+    expect(strings(col.posts[0])).toBe("before tools\n\nafter tools");
     const cardIds = (col.posts[0] ?? []).flatMap((c) => {
       const card = TaskCardSchema.safeParse(c);
       return card.success ? [card.data.id] : [];

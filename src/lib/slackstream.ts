@@ -63,11 +63,17 @@ const StreamMapStateSchema = z.object({
    *  effect). */
   todoCards: z.record(z.string(), z.string()),
   thinkingCount: z.number(),
+  /** non-whitespace reply text already streamed this turn: a later main text
+   *  block gets a "\n\n" separator, restoring the visual break the removed
+   *  per-tool message split used to provide (without it, post-tool prose
+   *  glues onto pre-tool prose and a block opening with "## " or a ```
+   *  fence loses its line-start position). */
+  textStreamed: z.boolean(),
 });
 export type StreamMapState = z.infer<typeof StreamMapStateSchema>;
 
 export function newStreamMapState(): StreamMapState {
-  return { open: {}, toolTitles: {}, todoCards: {}, thinkingCount: 0 };
+  return { open: {}, toolTitles: {}, todoCards: {}, thinkingCount: 0, textStreamed: false };
 }
 
 const StreamPartSchema = z.union([z.string(), z.custom<StreamChunk>()]);
@@ -173,6 +179,12 @@ export function agentEventChunks(input: { state: StreamMapState; message: SDKMes
     const event = message.event;
     if (event.type === "content_block_start") {
       const key = `${message.parent_tool_use_id ?? "main"}:${event.index}`;
+      if (event.content_block.type === "text" && isMain && state.textStreamed) {
+        // a new text block after streamed text opens on a fresh paragraph:
+        // the whole turn is one Slack message now, and without the break
+        // post-tool prose would glue onto pre-tool prose mid-line.
+        return ["\n\n"];
+      }
       if (event.content_block.type === "thinking" && isMain) {
         state.thinkingCount += 1;
         const id = `thinking-${state.thinkingCount}`;
@@ -201,6 +213,9 @@ export function agentEventChunks(input: { state: StreamMapState; message: SDKMes
       const open = state.open[`${message.parent_tool_use_id ?? "main"}:${event.index}`];
       if (event.delta.type === "text_delta") {
         if (!isMain) return [];
+        // whitespace-only deltas do not count: a text block carrying only
+        // "\n\n" must not earn the next block a doubled separator.
+        if (event.delta.text.trim() !== "") state.textStreamed = true;
         return [event.delta.text];
       }
       if (event.delta.type === "thinking_delta" && open) open.acc += event.delta.thinking;
@@ -263,7 +278,9 @@ export function agentEventChunks(input: { state: StreamMapState; message: SDKMes
     // emitting it, the output still posts, and having posted text suppresses
     // the result fallback so it never double-posts.
     if (message.content.trim() === "") return [];
-    return [message.content];
+    const sep = state.textStreamed ? "\n\n" : "";
+    state.textStreamed = true;
+    return [sep + message.content];
   }
   if (message.type === "result") {
     const models = Object.keys(message.modelUsage).join(" ");

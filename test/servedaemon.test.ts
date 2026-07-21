@@ -34,6 +34,9 @@ function runtimeWith(relay: Parameters<typeof buildServeRuntime>[0]["relay"]) {
 
 function fakeThread(input: { id: string; rejectPosts?: boolean; channelId?: string }) {
   const posted: string[] = [];
+  /** groupTasks value of each StreamingPlan-wrapped post, pinning the
+   *  plan-dropdown wrap runTurn applies to every relayed segment. */
+  const planPosts: (string | undefined)[] = [];
   const calls = { posts: 0, subscribe: 0, unsubscribe: 0, startTyping: 0 };
   const thread = {
     id: input.id,
@@ -45,7 +48,9 @@ function fakeThread(input: { id: string; rejectPosts?: boolean; channelId?: stri
         // runTurn wraps every relayed segment in a StreamingPlan (groupTasks
         // "plan"); the fake drains the wrapped iterable like the real
         // Thread.post would.
-        const iterable = m instanceof StreamingPlan ? m.stream : m;
+        const plan = m instanceof StreamingPlan;
+        if (plan) planPosts.push(m.options.groupTasks);
+        const iterable = plan ? m.stream : m;
         let acc = "";
         for await (const chunk of iterable) {
           if (!(chunk instanceof Object)) acc += chunk;
@@ -65,7 +70,7 @@ function fakeThread(input: { id: string; rejectPosts?: boolean; channelId?: stri
       calls.startTyping += 1;
     },
   };
-  return { thread, posted, calls };
+  return { thread, posted, planPosts, calls };
 }
 
 const home = (text: string, userId = "U-OWNER") => ({ text, author: { userId, isMe: false, isBot: false }, raw: { team: "T-HOME" } });
@@ -118,6 +123,25 @@ describe("buildServeRuntime author guard", () => {
     expect(seen).toEqual([{ prompt: "first thing\n\nsecond thing", requesterIds: ["U-A", "U-B"] }]);
     expect(t.calls.subscribe).toBe(1);
     expect(loadSlackThread("slack:C0DAEMON:200.1")?.sessionId).toBe("s-fold");
+  });
+
+  test("runTurn posts every relayed segment as a StreamingPlan with groupTasks plan", async () => {
+    // the plan-dropdown squash (user ask 2026-07-20) lives entirely in this
+    // wrap; without this pin, regressing groupTasks to "timeline" (the
+    // card-per-task flood) leaves the whole suite green.
+    const rt = runtimeWith(async (input) => {
+      await input.post(
+        (async function* () {
+          yield "streamed reply";
+          yield { type: "task_update", id: "tool-1", title: "Bash", status: "complete" };
+        })(),
+      );
+      return { ...okOutcome, sessionId: "s-plan" };
+    });
+    const t = fakeThread({ id: "slack:C0DAEMON:250.1" });
+    await rt.onMessage({ thread: t.thread, message: home("@UBOT run it"), skipped: [], isMention: true });
+    expect(t.planPosts).toEqual(["plan"]);
+    expect(t.posted).toContain("streamed reply");
   });
 });
 
