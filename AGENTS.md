@@ -64,6 +64,12 @@ On every edit, delete:
 - Never dump a full HTTP error or response that may carry a token; allowlist the fields you need. Scrub request headers from thrown ky errors before they reach logs (a ky error carries its request, Authorization header included), and treat any token visible in an error payload as exposed.
 - Live linked Slack channels are production surfaces (rule harvested from Slaude's incident the day serve went live): never post test or probe messages into a real workspace without in-the-moment approval - a goal statement is not send-by-send approval. Owner-instructed decision pings (the ship-flow Slack tag) remain the standing exception.
 
+## Memory
+
+- `.memory` is git-tracked and this repo is PUBLIC (user rule 2026-07-20): treat the folder as a public Wikipedia page. Only public knowledge goes in.
+- Never add: device info (hostnames, ssh aliases, hardware identity, machine usernames, local paths that identify a specific machine), Slack info (conversation details, user details, workspace details, channel details, any Slack IDs), or environment info (.env keys, file information about the owner's environment, credential locations).
+- Generic technical knowledge stays: CLI internals, protocol details, OS gotchas, verified library behavior. The test is whether the note would be fine on a public Wikipedia page; when a lesson is only useful with an identifying detail, keep the generic lesson and leave the detail out.
+
 ## Project
 
 tokenmaxxing (greenfield 2026-07-08) is the owner's CLI for managing usage quota across their own agent-CLI accounts: pool the owner's Claude Code (and eventually Codex) logins, swap to a fresher one when the active account nears its 5-hour or weekly limit, and keep sessions continuable across swaps. Every design decision serves that goal. Full design lives in `DESIGN.md` (auth/quota internals in its §2).
