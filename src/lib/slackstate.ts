@@ -14,6 +14,7 @@
 
 import { existsSync, readFileSync, readdirSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
+import { omit } from "es-toolkit";
 import { z } from "zod";
 import { paths } from "./paths.ts";
 import { writeFileAtomic } from "./atomic.ts";
@@ -90,14 +91,23 @@ export function isChannelId(s: string): boolean {
  *  when it returns, so a marker that survives into the next daemon start means
  *  a restart killed the turn mid-run - startup then notifies the thread and
  *  auto-resumes it (2026-07-18 incident: a redeploy silently killed a ship
- *  turn 8 minutes in). resumeCount caps the retries: every resumed attempt
- *  spends real quota, so a turn that keeps dying must not retry forever. */
+ *  turn 8 minutes in). A marker can also survive a RETURNED turn on purpose:
+ *  a usage-limit deferral keeps it with resumeAt set, and the daemon resumes
+ *  the turn itself once the pool recovers (2026-07-20 incident: limit-hit
+ *  turns and depleted-pool drops sat dead until the user re-sent by hand).
+ *  resumeCount caps the retries: every resumed attempt spends real quota, so
+ *  a turn that keeps dying must not retry forever. */
 const ActiveTurnSchema = z.object({
   /** the original folded prompt, replayed verbatim when the killed turn never
    *  reached its init message (sessionId still null = nothing to resume). */
   prompt: z.string(),
   startedAt: z.string(),
   resumeCount: z.number().int().nonnegative(),
+  /** epoch ms when the pool is expected usable again: present only on a
+   *  usage-limit deferral. The daemon resumes the turn at this time (or at
+   *  startup once it has passed); a still-depleted pool at the wake simply
+   *  re-defers, bounded by resumeCount. */
+  resumeAt: z.number().int().positive().optional(),
   /** the DETACHED claude child's process-group id, persisted at spawn: an
    *  uncatchable daemon death (SIGKILL, crash) skips the exit hook that kills
    *  the group, so recovery must reap a surviving orphan before resuming -
@@ -224,23 +234,32 @@ const ResumeDecisionSchema = z.union([
 ]);
 export type ResumeDecision = z.infer<typeof ResumeDecisionSchema>;
 
-/** What startup should do with a thread whose activeTurn marker survived the
- *  previous daemon. Returns null for threads with no surviving marker. */
+/** What to do with a thread whose activeTurn marker survived: either the
+ *  previous daemon died mid-turn (no resumeAt - startup recovery) or a
+ *  usage-limit deferral parked the turn (resumeAt set - the scheduler fires
+ *  it once the pool recovers). Returns null for threads with no marker. The
+ *  resumed marker drops resumeAt: the wake is consumed, and a still-depleted
+ *  pool at the resume writes a fresh deferral with a fresh wake. */
 export function resumeDecision(record: SlackThread): ResumeDecision | null {
   const turn = record.activeTurn;
   if (!turn) return null;
+  const deferred = turn.resumeAt !== undefined;
   if (turn.resumeCount >= MAX_TURN_RESUMES) {
     return {
       kind: "give-up",
-      notice: `a daemon restart interrupted this turn, and ${MAX_TURN_RESUMES} resume attempts were interrupted too - giving up. Send a new message to continue.`,
+      notice: deferred
+        ? `this turn kept hitting the pool's usage limits and ${MAX_TURN_RESUMES} resume attempts were spent - giving up. Send a new message to continue.`
+        : `a daemon restart interrupted this turn, and ${MAX_TURN_RESUMES} resume attempts were interrupted too - giving up. Send a new message to continue.`,
     };
   }
-  const marker = { ...turn, resumeCount: turn.resumeCount + 1 };
+  const marker = omit({ ...turn, resumeCount: turn.resumeCount + 1 }, ["resumeAt"]);
   const attempt = marker.resumeCount > 1 ? ` (attempt ${marker.resumeCount}/${MAX_TURN_RESUMES})` : "";
   if (record.sessionId === null) {
     return {
       kind: "resume",
-      notice: `a daemon restart interrupted this turn before its session opened - starting it over${attempt}`,
+      notice: deferred
+        ? `the account pool has recovered - running your held message${attempt}`
+        : `a daemon restart interrupted this turn before its session opened - starting it over${attempt}`,
       prompt: turn.prompt,
       sessionId: null,
       marker,
@@ -248,8 +267,10 @@ export function resumeDecision(record: SlackThread): ResumeDecision | null {
   }
   return {
     kind: "resume",
-    notice: `a daemon restart interrupted this turn - resuming${attempt}`,
-    prompt: `A tokenmaxxing serve daemon restart killed your previous turn mid-run. Pick up exactly where you left off and finish the task. If the work was already complete, just summarize the final state. The original request was:\n\n${turn.prompt}`,
+    notice: deferred ? `the account pool has recovered - resuming this turn${attempt}` : `a daemon restart interrupted this turn - resuming${attempt}`,
+    prompt: deferred
+      ? `Your previous turn stopped early because every pooled account was at its usage limit; the pool has recovered. Pick up exactly where you left off and finish the task. If the work was already complete, just summarize the final state. The original request was:\n\n${turn.prompt}`
+      : `A tokenmaxxing serve daemon restart killed your previous turn mid-run. Pick up exactly where you left off and finish the task. If the work was already complete, just summarize the final state. The original request was:\n\n${turn.prompt}`,
     sessionId: record.sessionId,
     marker,
   };

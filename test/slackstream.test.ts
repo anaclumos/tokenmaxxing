@@ -138,32 +138,42 @@ describe("agentEventChunks", () => {
     expect(result).toEqual([{ type: "task_update", id: "toolu_2", title: "Bash", status: "error", output: "boom" }]);
   });
 
-  test("a tool starting after streamed text emits a segment break first", () => {
+  test("a later main text block opens on a fresh paragraph; the first block, whitespace-only text, and subagent blocks do not", () => {
+    const state = newStreamMapState();
+    // first text block: no separator, nothing streamed yet
+    expect(agentEventChunks({ state, message: streamEvent({ event: { type: "content_block_start", index: 0, content_block: { type: "text", text: "", citations: [] } } }) })).toEqual([]);
+    agentEventChunks({ state, message: streamEvent({ event: { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "first paragraph" } } }) });
+    // a subagent text block never separates the main stream
+    expect(agentEventChunks({ state, message: streamEvent({ event: { type: "content_block_start", index: 0, content_block: { type: "text", text: "", citations: [] } }, parent: "toolu_parent" }) })).toEqual([]);
+    // the next main text block (e.g. after a tool run) gets the break
+    expect(agentEventChunks({ state, message: streamEvent({ event: { type: "content_block_start", index: 2, content_block: { type: "text", text: "", citations: [] } } }) })).toEqual(["\n\n"]);
+    // whitespace-only text does not count as streamed text
+    const ws = newStreamMapState();
+    agentEventChunks({ state: ws, message: streamEvent({ event: { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "\n\n" } } }) });
+    expect(agentEventChunks({ state: ws, message: streamEvent({ event: { type: "content_block_start", index: 1, content_block: { type: "text", text: "", citations: [] } } }) })).toEqual([]);
+  });
+
+  test("local_command_output separates from prior streamed text the same way", () => {
+    const state = newStreamMapState();
+    agentEventChunks({ state, message: streamEvent({ event: { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "running /usage" } } }) });
+    const chunks = agentEventChunks({ state, message: { type: "system", subtype: "local_command_output", content: "Current session: 13% used", uuid: UUID, session_id: SID } });
+    expect(chunks).toEqual(["\n\nCurrent session: 13% used"]);
+  });
+
+  test("a tool starting after streamed text emits only its card: tasks group into one plan block, never a new message", () => {
     const state = newStreamMapState();
     agentEventChunks({ state, message: streamEvent({ event: { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "I will check." } } }) });
     const chunks = agentEventChunks({ state, message: streamEvent({ event: { type: "content_block_start", index: 1, content_block: { type: "tool_use", id: "toolu_3", name: "Bash", input: {} } } }) });
-    expect(chunks).toEqual([
-      { type: "segment_break" },
-      { type: "task_update", id: "toolu_3", title: "Bash", status: "in_progress" },
-    ]);
-    // a second tool with no text in between must NOT break again
+    expect(chunks).toEqual([{ type: "task_update", id: "toolu_3", title: "Bash", status: "in_progress" }]);
     const again = agentEventChunks({ state, message: streamEvent({ event: { type: "content_block_start", index: 2, content_block: { type: "tool_use", id: "toolu_4", name: "Read", input: {} } } }) });
     expect(again).toEqual([{ type: "task_update", id: "toolu_4", title: "Read", status: "in_progress" }]);
   });
 
-  test("whitespace-only text does not trigger a segment break", () => {
-    const state = newStreamMapState();
-    agentEventChunks({ state, message: streamEvent({ event: { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "\n\n" } } }) });
-    const chunks = agentEventChunks({ state, message: streamEvent({ event: { type: "content_block_start", index: 1, content_block: { type: "tool_use", id: "toolu_ws", name: "Bash", input: {} } } }) });
-    expect(chunks).toEqual([{ type: "task_update", id: "toolu_ws", title: "Bash", status: "in_progress" }]);
-  });
-
-  test("subagent text is skipped but subagent tool calls emit cards without breaks", () => {
+  test("subagent text is skipped but subagent tool calls emit cards", () => {
     const state = newStreamMapState();
     agentEventChunks({ state, message: streamEvent({ event: { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "main text" } } }) });
     expect(agentEventChunks({ state, message: streamEvent({ event: { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "sub" } }, parent: "toolu_parent" }) })).toEqual([]);
-    // same index as the main stream: keys must not collide, and no segment
-    // break even though main text already streamed.
+    // same index as the main stream: keys must not collide.
     const card = agentEventChunks({ state, message: streamEvent({ event: { type: "content_block_start", index: 0, content_block: { type: "tool_use", id: "toolu_sub", name: "Grep", input: {} } }, parent: "toolu_parent" }) });
     expect(card).toEqual([{ type: "task_update", id: "toolu_sub", title: "Grep", status: "in_progress" }]);
     const result = agentEventChunks({ state, message: {
@@ -184,10 +194,10 @@ describe("agentEventChunks", () => {
     expect(orphan).toEqual([]);
   });
 
-  test("TodoWrite maps to one stable checklist card: no break, no result card", () => {
+  test("TodoWrite maps to one stable checklist card: no generic card, no result card", () => {
     const state = newStreamMapState();
     agentEventChunks({ state, message: streamEvent({ event: { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "Planning." } } }) });
-    // start emits nothing and does NOT break the segment even after text
+    // start emits nothing: no card until the list arrives
     const start = agentEventChunks({ state, message: streamEvent({ event: { type: "content_block_start", index: 1, content_block: { type: "tool_use", id: "toolu_td1", name: "TodoWrite", input: {} } } }) });
     expect(start).toEqual([]);
     const input = JSON.stringify({ todos: [
@@ -225,12 +235,9 @@ describe("agentEventChunks", () => {
     agentEventChunks({ state, message: streamEvent({ event: { type: "content_block_delta", index: 2, delta: { type: "input_json_delta", partial_json: allDone } } }) });
     const stop2 = agentEventChunks({ state, message: streamEvent({ event: { type: "content_block_stop", index: 2 } }) });
     expect(stop2).toEqual([{ type: "task_update", id: "todos", title: "Todos", status: "complete", details: "✅ Fix parser\n✅ Run tests" }]);
-    // textSinceBreak survived the todo card: the next REAL tool still breaks
+    // a REAL tool after the todo card still gets its own generic card
     const tool = agentEventChunks({ state, message: streamEvent({ event: { type: "content_block_start", index: 3, content_block: { type: "tool_use", id: "toolu_5", name: "Bash", input: {} } } }) });
-    expect(tool).toEqual([
-      { type: "segment_break" },
-      { type: "task_update", id: "toolu_5", title: "Bash", status: "in_progress" },
-    ]);
+    expect(tool).toEqual([{ type: "task_update", id: "toolu_5", title: "Bash", status: "in_progress" }]);
   });
 
   test("a subagent TodoWrite gets its own per-subagent card id", () => {
@@ -252,7 +259,6 @@ describe("agentEventChunks", () => {
       session_id: SID,
     } });
     expect(chunks).toEqual(["Current session: 13% used"]);
-    expect(state.textSinceBreak).toBe(true);
     const empty = agentEventChunks({ state, message: {
       type: "system",
       subtype: "local_command_output",
