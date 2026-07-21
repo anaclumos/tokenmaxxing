@@ -52,6 +52,7 @@ mock.module("es-toolkit", () => ({
 }));
 
 const { relayThread, MAX_RECOVERIES, PARK_MAX_MS } = await import("../src/lib/slackbridge.ts");
+const { StreamingMarkdownRenderer } = await import("chat");
 const { SlackLinkSchema } = await import("../src/lib/slackstate.ts");
 const { loadUsage, writeUsage } = await import("../src/lib/state.ts");
 
@@ -141,30 +142,52 @@ function collector(input?: { rejectTimes?: number }) {
   return { posts, timeline, post, calls: () => calls };
 }
 
-// The real adapter's failure shape (verified @chat-adapter/slack 4.34.0): it
-// pulls a chunk, awaits its Slack append, and a failed append abandons the
-// iterable mid-pull - the failed chunk was consumed but never delivered. Each
-// poison string kills the post holding it ONCE (Slack finalizing an idle
-// stream kills a message once; the salvage re-send then lands).
-function poisonCollector(input: { poisons: string[] }) {
-  const remaining = new Set(input.poisons);
-  const posts: unknown[][] = [];
+// Renderer-faithful fake of @chat-adapter/slack 4.34.0 stream(): per pulled
+// text chunk it pushes into the REAL StreamingMarkdownRenderer (same options
+// as the adapter) and appends the committable delta; card chunks flush text
+// first; after the iterable exhausts, finish() + one forced final append flush
+// the renderer-held tail. An append whose delta contains an armed poison fails
+// ONCE (Slack finalizing an idle stream kills one message; the salvage re-send
+// then lands) - so a poison in text the renderer holds back fires at the
+// post-iteration forced flush, exactly like the live incident (pullfrog catch
+// on PR #45).
+function rendererCollector(input?: { poisons?: string[] }) {
+  const remaining = new Set(input?.poisons ?? []);
+  const posts: { deltas: string[]; cards: unknown[] }[] = [];
   let calls = 0;
   const post = async (m: AsyncIterable<unknown>) => {
     calls += 1;
-    const chunks: unknown[] = [];
-    posts.push(chunks);
-    for await (const c of m) {
-      const s = z.string().safeParse(c);
-      const hit = s.success ? [...remaining].find((p) => s.data.includes(p)) : undefined;
+    const renderer = new StreamingMarkdownRenderer({ wrapTablesForAppend: false });
+    let appended = "";
+    const rec: { deltas: string[]; cards: unknown[] } = { deltas: [], cards: [] };
+    posts.push(rec);
+    const flush = () => {
+      const committable = renderer.getCommittableText();
+      const delta = committable.slice(appended.length);
+      if (delta.length === 0) return;
+      const hit = [...remaining].find((p) => delta.includes(p));
       if (hit !== undefined) {
         remaining.delete(hit);
         throw new Error("An API error occurred: message_not_in_streaming_state");
       }
-      chunks.push(c);
+      rec.deltas.push(delta);
+      appended = committable;
+    };
+    for await (const c of m) {
+      const s = z.string().safeParse(c);
+      if (s.success) {
+        renderer.push(s.data);
+        flush();
+      } else {
+        flush();
+        rec.cards.push(c);
+      }
     }
+    renderer.finish();
+    flush();
   };
-  return { posts, post, calls: () => calls };
+  const delivered = () => posts.map((p) => p.deltas.join(""));
+  return { posts, post, calls: () => calls, delivered };
 }
 
 const strings = (chunks: unknown[] | undefined) =>
@@ -341,47 +364,50 @@ describe("relayThread segment ordering", () => {
     expect(strings(col.posts[0])).toContain("fresh text");
   });
 
-  test("an append failure mid-stream salvages the failed chunk and the queued tail, without duplicating the delivered prefix", async () => {
-    // the exact live incident shape: Slack finalized the stream during an
-    // idle stretch, the next append died, and the tail of the reply vanished.
+  test("an append failure mid-stream salvages exactly the undelivered text, without duplicating the delivered prefix", async () => {
     decisionQueue.push(usable);
     queryScripts.push(script([
       init("s-gap"),
-      textDelta("delivered before the gap. "),
-      textDelta("tail after the gap"),
+      textDelta("line one\nheld "),
+      textDelta("line two tail"),
       success("s-gap"),
     ]));
-    const col = poisonCollector({ poisons: ["tail after the gap"] });
+    const col = rendererCollector({ poisons: ["line two"] });
     const out = await relay({ post: col.post });
     expect(out.failed).toBe(false);
     expect(col.calls()).toBe(2);
-    expect(strings(col.posts[0])).toContain("delivered before the gap");
-    expect(strings(col.posts[0])).not.toContain("tail after the gap");
-    expect(strings(col.posts[1])).toContain("tail after the gap");
-    expect(strings(col.posts[1])).not.toContain("delivered before the gap");
+    // message 1 delivered exactly the committable prefix before the death
+    expect(col.delivered()[0]).toBe("line one\n");
+    // the salvage message carries the renderer-held text plus the tail, once
+    expect(col.delivered()[1]).toBe("held line two tail");
   });
 
-  test("the turn's final reply text lost to a finalized stream re-posts instead of dying with the diagnostic", async () => {
+  test("a final reply with no trailing newline dies in the forced final flush and still re-posts (the live incident)", async () => {
+    // the renderer holds back the unterminated last line for the ENTIRE
+    // iteration, so the only append happens after the iterable exhausts, when
+    // every chunk is already consumed - chunk-granular salvage sees nothing
+    // (pullfrog catch on PR #45); text-space salvage must recover it.
     decisionQueue.push(usable);
     queryScripts.push(script([init("s-tail"), textDelta("final answer"), success("s-tail")]));
-    const col = poisonCollector({ poisons: ["final answer"] });
+    const col = rendererCollector({ poisons: ["final answer"] });
     const out = await relay({ post: col.post });
     expect(out.failed).toBe(false);
-    const allText = col.posts.map(strings).join(" ");
+    const allText = col.delivered().join(" ");
     expect(allText).toContain("final answer");
     expect(allText).not.toContain("could not be posted");
   });
 
   test("repeated stream deaths with delivery progress between them all salvage (futility budget refills)", async () => {
     decisionQueue.push(usable);
-    const words = ["alpha ", "bravo ", "charlie ", "delta ", "echo ", "foxtrot ", "golf"];
-    queryScripts.push(script([init("s-refill"), ...words.map((w) => textDelta(w)), success("s-refill")]));
-    // 7 separate deaths, more than the flat budget; every death after a
-    // delivered chunk is progress and must not burn a strike.
-    const col = poisonCollector({ poisons: words });
+    const words = ["alpha", "bravo", "charlie", "delta", "echo", "foxtrot", "golf", "hotel", "india", "juliett", "kilo", "lima"];
+    queryScripts.push(script([init("s-refill"), ...words.map((w) => textDelta(`${w}\n`)), success("s-refill")]));
+    // 6 separate deaths (more than the flat budget of 5), each poisoned word
+    // leading a message that already delivered the previous disarmed word:
+    // delivery progress must refill the budget so every death salvages.
+    const col = rendererCollector({ poisons: ["alpha", "charlie", "echo", "golf", "india", "kilo"] });
     const out = await relay({ post: col.post });
     expect(out.failed).toBe(false);
-    const allText = col.posts.map(strings).join(" ");
+    const allText = col.delivered().join(" ");
     for (const w of words) expect(allText.split(w).length - 1).toBe(1);
   });
 

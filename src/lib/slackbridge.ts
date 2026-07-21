@@ -10,7 +10,7 @@ import { join } from "node:path";
 import { z } from "zod";
 import { delay } from "es-toolkit";
 import { createSdkMcpServer, query, tool, type SpawnOptions } from "@anthropic-ai/claude-agent-sdk";
-import type { StreamChunk } from "chat";
+import { StreamingMarkdownRenderer, type StreamChunk } from "chat";
 import { ensureBestAccount, pooledOptions, stopHookCheck, type SwapDecision } from "../sdk.ts";
 import { POST_SWAP_COOLDOWN_MS } from "./decide.ts";
 import { readOAuthAccount } from "./claudejson.ts";
@@ -203,49 +203,41 @@ type SegmentChunk = z.infer<typeof SegmentChunkSchema>;
 function pushableStream(): {
   iterable: AsyncIterable<SegmentChunk>;
   push: (chunk: SegmentChunk) => void;
-  pushedCount: () => number;
   end: () => void;
-  salvage: () => SegmentChunk[];
+  ledger: () => { chunks: SegmentChunk[]; confirmed: number };
 } {
-  const queue: SegmentChunk[] = [];
-  let inFlight: SegmentChunk | null = null;
-  let pushed = 0;
+  const chunks: SegmentChunk[] = [];
+  let cursor = 0;
+  let confirmed = 0;
   let done = false;
   let notify: (() => void) | null = null;
   return {
     push(chunk) {
-      pushed += 1;
-      queue.push(chunk);
+      chunks.push(chunk);
       notify?.();
-    },
-    pushedCount() {
-      return pushed;
     },
     end() {
       done = true;
       notify?.();
     },
-    /** Undelivered chunks after the consumer died. The Slack adapter pulls one
-     *  chunk, awaits its Slack append, then pulls the next (verified in
-     *  @chat-adapter/slack 4.34.0 stream()), so when a post rejects, the chunk
-     *  still marked in flight failed its append and everything queued behind
-     *  it was never pulled. Blind spot (accepted): text the adapter's renderer
-     *  held back from chunks it already consumed (its committable-text buffer
-     *  is not observable from here) - that tail is small and the textLost
-     *  diagnostic still covers the no-salvage cases. */
-    salvage() {
-      return inFlight === null ? [...queue] : [inFlight, ...queue];
+    /** Everything ever pushed plus how much of it the consumer PROVED
+     *  delivered. The Slack adapter pulls one chunk, awaits its Slack append,
+     *  then pulls the next (verified in @chat-adapter/slack 4.34.0 stream()),
+     *  so each pull confirms the append for the previous chunk landed; a
+     *  consumer that dies mid-append unwinds the for-await with an implicit
+     *  return() at the yield, leaving that chunk and everything after it
+     *  unconfirmed. */
+    ledger() {
+      return { chunks: [...chunks], confirmed };
     },
     iterable: {
       async *[Symbol.asyncIterator]() {
         while (true) {
-          for (let next = queue.shift(); next !== undefined; next = queue.shift()) {
-            // a consumer that dies instead of pulling again unwinds the
-            // for-await with an implicit return() at this yield, so the
-            // clear below never runs and the failed chunk stays in flight.
-            inFlight = next;
+          while (cursor < chunks.length) {
+            const next = chunks[cursor]!;
+            cursor += 1;
             yield next;
-            inFlight = null;
+            confirmed = cursor;
           }
           if (done) return;
           await new Promise<void>((resolve) => {
@@ -463,34 +455,61 @@ export async function relayThread(input: {
         const detail = (e instanceof Error ? e.message : String(e)).slice(0, 300);
         log("serve.post_error", { err: detail });
         // the consumer is gone (e.g. Slack finalized an idle stream:
-        // message_not_in_streaming_state). This handler runs synchronously as
-        // the post settles, so opening the salvage segment here keeps the
-        // salvaged chunks ordered ahead of any push still awaiting lastPost.
-        const lost = seg.salvage();
+        // message_not_in_streaming_state). Salvage runs in TEXT space, not
+        // chunk space, because the adapter's renderer buffers across chunks
+        // (it holds back the trailing unterminated line, unconfirmed table
+        // headers, and unclosed inline markers until the post-iteration
+        // finish() flush - pullfrog catch on PR #45: a reply whose last line
+        // has no trailing newline dies entirely in that forced flush, with
+        // every chunk already consumed). Proven-delivered text = the mirror
+        // renderer's committable prefix over the CONFIRMED chunks (each pull
+        // proves the previous append landed; the adapter runs the renderer
+        // with wrapTablesForAppend: false, so committable is a raw prefix and
+        // the mirror is chunking-invariant). Renderer drift would break the
+        // prefix check and degrade to a full re-post: duplication, never
+        // loss. Same tradeoff for a stop()-failure after a complete flush:
+        // the held tail re-posts once rather than risking silent loss.
+        const { chunks, confirmed } = seg.ledger();
         if (segment === seg) segment = null;
-        // consumed chunks were appended before the failure: delivery progress,
-        // so this death does not count toward the futility budget. Re-sending
-        // the in-flight chunk trades a rare duplicated delta on an ambiguous
-        // network error for never losing it (a message_not_in_streaming_state
-        // append definitively did not land).
-        if (seg.pushedCount() - lost.length > 0) salvagesLeft = MAX_SEGMENT_SALVAGES;
+        const confirmedRaw = chunks
+          .slice(0, confirmed)
+          .flatMap((c) => (c instanceof Object ? [] : [c]))
+          .join("");
+        const fullRaw = chunks.flatMap((c) => (c instanceof Object ? [] : [c])).join("");
+        const mirror = new StreamingMarkdownRenderer({ wrapTablesForAppend: false });
+        mirror.push(confirmedRaw);
+        const committed = mirror.getCommittableText();
+        const deliveredLen = confirmedRaw.startsWith(committed) ? committed.length : 0;
+        const textRemainder = fullRaw.slice(deliveredLen);
+        const cardSalvage = chunks.slice(confirmed).flatMap((c) => (c instanceof Object ? [c] : []));
+        // delivery progress means this death does not count toward the
+        // futility budget: only a message that delivered nothing burns one.
+        if (confirmed > 0 || deliveredLen > 0) salvagesLeft = MAX_SEGMENT_SALVAGES;
+        // the remainder re-posts split at line boundaries (rendering is
+        // unchanged: chunks concatenate) so a salvage message that dies too
+        // still confirms per line, keeping progress attribution fine-grained.
+        const remainderLines: string[] = [];
+        let rest = textRemainder;
+        while (rest !== "") {
+          const nl = rest.indexOf("\n");
+          if (nl === -1) {
+            remainderLines.push(rest);
+            break;
+          }
+          remainderLines.push(rest.slice(0, nl + 1));
+          rest = rest.slice(nl + 1);
+        }
+        const lost = [...remainderLines, ...cardSalvage];
         if (lost.length > 0 && salvagesLeft > 0) {
           salvagesLeft -= 1;
           log("serve.post_salvage", { chunks: lost.length, left: salvagesLeft });
+          // this handler runs synchronously as the post settles, so opening
+          // the salvage segment here keeps the salvaged content ordered ahead
+          // of any push still awaiting lastPost; the salvage segment's own
+          // settle then decides whether its text counts as delivered.
           const next = openSegment();
-          let lostText = false;
-          for (const c of lost) {
-            if (!(c instanceof Object)) lostText = true;
-            next.pushInto(c);
-          }
-          // text the dead segment DID deliver stays subject to the existing
-          // later-text-supersedes tradeoff; text riding the salvage segment is
-          // decided by that segment's own settle.
-          if (meta.text && !lostText) {
-            textLost = true;
-            textLostDetail = detail;
-          }
-        } else if (meta.text) {
+          for (const c of lost) next.pushInto(c);
+        } else if (textRemainder !== "") {
           textLost = true;
           textLostDetail = detail;
         }
