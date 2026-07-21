@@ -8,7 +8,7 @@ metadata:
   modified: 2026-07-19T16:05:31.107Z
 ---
 
-As of 2026-07-20 the owner does not use Slack for this project: do NOT post decision pings, escalations, or status updates to #tokenmaxxing-dogfooding (C0BK1NDNM8Q) or any other existing channel. A NEW Slack channel and a new computer will be set up later; until then, surface decisions and escalations directly in the session and use a push notification when the owner may be away.
+As of 2026-07-20 the owner does not use Slack for this project: do NOT post decision pings, escalations, or status updates to the old dogfooding channel or any other existing channel. A NEW Slack channel and a new computer will be set up later; until then, surface decisions and escalations directly in the session and use a push notification when the owner may be away.
 
 **Why:** the owner said so explicitly ("FYI we don't use slack anymore, right now. We will set up a new Slack channel and a new computer later") while the session was pinging the old channel for a closing-review decision.
 
