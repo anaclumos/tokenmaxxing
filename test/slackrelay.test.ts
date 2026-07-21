@@ -141,6 +141,32 @@ function collector(input?: { rejectTimes?: number }) {
   return { posts, timeline, post, calls: () => calls };
 }
 
+// The real adapter's failure shape (verified @chat-adapter/slack 4.34.0): it
+// pulls a chunk, awaits its Slack append, and a failed append abandons the
+// iterable mid-pull - the failed chunk was consumed but never delivered. Each
+// poison string kills the post holding it ONCE (Slack finalizing an idle
+// stream kills a message once; the salvage re-send then lands).
+function poisonCollector(input: { poisons: string[] }) {
+  const remaining = new Set(input.poisons);
+  const posts: unknown[][] = [];
+  let calls = 0;
+  const post = async (m: AsyncIterable<unknown>) => {
+    calls += 1;
+    const chunks: unknown[] = [];
+    posts.push(chunks);
+    for await (const c of m) {
+      const s = z.string().safeParse(c);
+      const hit = s.success ? [...remaining].find((p) => s.data.includes(p)) : undefined;
+      if (hit !== undefined) {
+        remaining.delete(hit);
+        throw new Error("An API error occurred: message_not_in_streaming_state");
+      }
+      chunks.push(c);
+    }
+  };
+  return { posts, post, calls: () => calls };
+}
+
 const strings = (chunks: unknown[] | undefined) =>
   (chunks ?? [])
     .flatMap((c) => {
@@ -293,13 +319,13 @@ describe("relayThread segment ordering", () => {
     expect(cardIds).toContain("tool-1");
   });
 
-  test("a rejected post drops the dead segment and the next chunk opens a fresh message", async () => {
+  test("a rejected post salvages its chunks into the next message instead of dropping them", async () => {
     decisionQueue.push(usable);
     queryScripts.push(() =>
       (async function* () {
         yield init("s-dead");
         yield textDelta("lost text");
-        // give the rejected post's catch a beat to drop the dead segment
+        // give the rejected post's catch a beat to open the salvage segment
         await realEsToolkit.delay(15);
         yield textDelta("fresh text");
         yield success("s-dead");
@@ -309,33 +335,57 @@ describe("relayThread segment ordering", () => {
     const out = await relay({ post: col.post });
     expect(out.failed).toBe(false);
     expect(col.calls()).toBe(2);
-    // only the second post survived; the dead segment's chunks vanished with it
+    // one delivered message carrying BOTH the salvaged and the fresh text
     expect(col.posts.length).toBe(1);
+    expect(strings(col.posts[0])).toContain("lost text");
     expect(strings(col.posts[0])).toContain("fresh text");
-    expect(strings(col.posts[0])).not.toContain("lost text");
   });
 
-  test("lost reply text with no re-delivery fails the turn and posts a diagnostic", async () => {
-    // The closing Turn card opens its own (successful) post after the rejected
-    // text segment - the stream "recovers" but the ANSWER is gone. Card-only
-    // recovery must not read as success.
+  test("an append failure mid-stream salvages the failed chunk and the queued tail, without duplicating the delivered prefix", async () => {
+    // the exact live incident shape: Slack finalized the stream during an
+    // idle stretch, the next append died, and the tail of the reply vanished.
     decisionQueue.push(usable);
-    queryScripts.push(() =>
-      (async function* () {
-        yield init("s-tail");
-        yield textDelta("final answer");
-        yield success("s-tail");
-      })(),
-    );
-    const col = collector({ rejectTimes: 1 });
+    queryScripts.push(script([
+      init("s-gap"),
+      textDelta("delivered before the gap. "),
+      textDelta("tail after the gap"),
+      success("s-gap"),
+    ]));
+    const col = poisonCollector({ poisons: ["tail after the gap"] });
     const out = await relay({ post: col.post });
-    expect(out.failed).toBe(true);
-    const delivered = col.posts.map((p) => strings(p));
-    expect(delivered.some((s) => s.includes("could not be posted"))).toBe(true);
-    expect(delivered.some((s) => s.includes("final answer"))).toBe(false);
+    expect(out.failed).toBe(false);
+    expect(col.calls()).toBe(2);
+    expect(strings(col.posts[0])).toContain("delivered before the gap");
+    expect(strings(col.posts[0])).not.toContain("tail after the gap");
+    expect(strings(col.posts[1])).toContain("tail after the gap");
+    expect(strings(col.posts[1])).not.toContain("delivered before the gap");
   });
 
-  test("a rejecting diagnostic never escapes relayThread", async () => {
+  test("the turn's final reply text lost to a finalized stream re-posts instead of dying with the diagnostic", async () => {
+    decisionQueue.push(usable);
+    queryScripts.push(script([init("s-tail"), textDelta("final answer"), success("s-tail")]));
+    const col = poisonCollector({ poisons: ["final answer"] });
+    const out = await relay({ post: col.post });
+    expect(out.failed).toBe(false);
+    const allText = col.posts.map(strings).join(" ");
+    expect(allText).toContain("final answer");
+    expect(allText).not.toContain("could not be posted");
+  });
+
+  test("repeated stream deaths with delivery progress between them all salvage (futility budget refills)", async () => {
+    decisionQueue.push(usable);
+    const words = ["alpha ", "bravo ", "charlie ", "delta ", "echo ", "foxtrot ", "golf"];
+    queryScripts.push(script([init("s-refill"), ...words.map((w) => textDelta(w)), success("s-refill")]));
+    // 7 separate deaths, more than the flat budget; every death after a
+    // delivered chunk is progress and must not burn a strike.
+    const col = poisonCollector({ poisons: words });
+    const out = await relay({ post: col.post });
+    expect(out.failed).toBe(false);
+    const allText = col.posts.map(strings).join(" ");
+    for (const w of words) expect(allText.split(w).length - 1).toBe(1);
+  });
+
+  test("a surface that never delivers stays bounded, fails the turn, and the rejecting diagnostic never escapes", async () => {
     decisionQueue.push(usable);
     queryScripts.push(() =>
       (async function* () {
@@ -344,9 +394,11 @@ describe("relayThread segment ordering", () => {
         yield success("s-tail2");
       })(),
     );
-    const col = collector({ rejectTimes: 3 }); // text, card, and the diagnostic all reject
+    const col = collector({ rejectTimes: Number.POSITIVE_INFINITY });
     const out = await relay({ post: col.post }); // resolving IS the assertion
     expect(out.failed).toBe(true);
     expect(col.posts.length).toBe(0);
+    // zero-delivery rejections burn the futility budget instead of looping
+    expect(col.calls()).toBeLessThanOrEqual(10);
   });
 });

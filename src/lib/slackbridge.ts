@@ -203,24 +203,50 @@ type SegmentChunk = z.infer<typeof SegmentChunkSchema>;
 function pushableStream(): {
   iterable: AsyncIterable<SegmentChunk>;
   push: (chunk: SegmentChunk) => void;
+  pushedCount: () => number;
   end: () => void;
+  salvage: () => SegmentChunk[];
 } {
   const queue: SegmentChunk[] = [];
+  let inFlight: SegmentChunk | null = null;
+  let pushed = 0;
   let done = false;
   let notify: (() => void) | null = null;
   return {
     push(chunk) {
+      pushed += 1;
       queue.push(chunk);
       notify?.();
+    },
+    pushedCount() {
+      return pushed;
     },
     end() {
       done = true;
       notify?.();
     },
+    /** Undelivered chunks after the consumer died. The Slack adapter pulls one
+     *  chunk, awaits its Slack append, then pulls the next (verified in
+     *  @chat-adapter/slack 4.34.0 stream()), so when a post rejects, the chunk
+     *  still marked in flight failed its append and everything queued behind
+     *  it was never pulled. Blind spot (accepted): text the adapter's renderer
+     *  held back from chunks it already consumed (its committable-text buffer
+     *  is not observable from here) - that tail is small and the textLost
+     *  diagnostic still covers the no-salvage cases. */
+    salvage() {
+      return inFlight === null ? [...queue] : [inFlight, ...queue];
+    },
     iterable: {
       async *[Symbol.asyncIterator]() {
         while (true) {
-          for (let next = queue.shift(); next !== undefined; next = queue.shift()) yield next;
+          for (let next = queue.shift(); next !== undefined; next = queue.shift()) {
+            // a consumer that dies instead of pulling again unwinds the
+            // for-await with an implicit return() at this yield, so the
+            // clear below never runs and the failed chunk stays in flight.
+            inFlight = next;
+            yield next;
+            inFlight = null;
+          }
           if (done) return;
           await new Promise<void>((resolve) => {
             notify = resolve;
@@ -398,56 +424,114 @@ export async function relayThread(input: {
   let segment: ReturnType<typeof pushableStream> | null = null;
   let segmentMeta: { text: boolean } | null = null;
   let lastPost: Promise<unknown> = Promise.resolve();
-  // Reply TEXT that was pushed into a rejected segment and never re-delivered
-  // by a later text-bearing segment: the user has not seen the answer. A lost
-  // card-only segment never sets this (decoration, not the answer).
-  // Tradeoff (flagged and accepted): a later delivered text segment clears the
-  // flag even though it is a continuation, because the dominant rejection is
-  // Slack finalizing an idle stream - the streamed text WAS delivered, only
-  // the append failed - and sticky loss would fail every long turn with a
-  // spurious diagnostic; chat 4.34.0 exposes no per-chunk delivery acks to
-  // tell that apart from a swallowed first post.
+  // Reply TEXT that died with a rejected segment and was neither salvaged into
+  // a follow-on message nor re-delivered by a later text-bearing segment: the
+  // user has not seen the answer. A lost card-only segment never sets this
+  // (decoration, not the answer). Tradeoff (flagged and accepted): a later
+  // delivered text segment clears the flag even though it is a continuation,
+  // because a rejection whose text chunks were all consumed pre-append-failure
+  // was almost certainly delivered (the adapter appends per chunk) except for
+  // an unobservable renderer-held tail; sticky loss would fail every long turn
+  // with a spurious diagnostic.
   let textLost = false;
   let textLostDetail: string | null = null;
   let postedText = false;
-  const push = async (chunk: SegmentChunk) => {
-    let seg = segment;
-    if (!seg) {
-      await lastPost; // strict message order: previous segment fully posted first
-      seg = pushableStream();
-      segment = seg;
-      const posted = seg;
-      const meta = { text: false };
-      segmentMeta = meta;
-      lastPost = input.post(seg.iterable).then(
-        () => {
-          // segments settle in order (push awaits lastPost before opening the
-          // next), so delivered text supersedes an earlier loss.
-          if (meta.text) textLost = false;
-        },
-        (e: unknown) => {
-          const detail = (e instanceof Error ? e.message : String(e)).slice(0, 300);
-          log("serve.post_error", { err: detail });
-          if (meta.text) {
+  // Salvage: a rejected post's undelivered chunks re-post as a fresh message
+  // (Slack finalizes an idle stream after an UNDOCUMENTED window - verified
+  // absent from the chat.startStream/appendStream docs 2026-07-21 - so
+  // recovery is reactive on any append failure, never a keepalive tuned to a
+  // guessed constant). The budget bounds FUTILITY, not recovery: a death
+  // after the message delivered something is progress and refills it (a long
+  // turn can outlive any number of idle finalizations, each losing only the
+  // gap tail), while a surface that delivers nothing (revoked channel, hard
+  // cap on the very first append) burns a strike per attempt and stops.
+  const MAX_SEGMENT_SALVAGES = 5;
+  let salvagesLeft = MAX_SEGMENT_SALVAGES;
+  const openSegment = () => {
+    const seg = pushableStream();
+    segment = seg;
+    const meta = { text: false };
+    segmentMeta = meta;
+    lastPost = input.post(seg.iterable).then(
+      () => {
+        salvagesLeft = MAX_SEGMENT_SALVAGES;
+        // segments settle in order (push awaits lastPost before opening the
+        // next), so delivered text supersedes an earlier loss.
+        if (meta.text) textLost = false;
+      },
+      (e: unknown) => {
+        const detail = (e instanceof Error ? e.message : String(e)).slice(0, 300);
+        log("serve.post_error", { err: detail });
+        // the consumer is gone (e.g. Slack finalized an idle stream:
+        // message_not_in_streaming_state). This handler runs synchronously as
+        // the post settles, so opening the salvage segment here keeps the
+        // salvaged chunks ordered ahead of any push still awaiting lastPost.
+        const lost = seg.salvage();
+        if (segment === seg) segment = null;
+        // consumed chunks were appended before the failure: delivery progress,
+        // so this death does not count toward the futility budget. Re-sending
+        // the in-flight chunk trades a rare duplicated delta on an ambiguous
+        // network error for never losing it (a message_not_in_streaming_state
+        // append definitively did not land).
+        if (seg.pushedCount() - lost.length > 0) salvagesLeft = MAX_SEGMENT_SALVAGES;
+        if (lost.length > 0 && salvagesLeft > 0) {
+          salvagesLeft -= 1;
+          log("serve.post_salvage", { chunks: lost.length, left: salvagesLeft });
+          const next = openSegment();
+          let lostText = false;
+          for (const c of lost) {
+            if (!(c instanceof Object)) lostText = true;
+            next.pushInto(c);
+          }
+          // text the dead segment DID deliver stays subject to the existing
+          // later-text-supersedes tradeoff; text riding the salvage segment is
+          // decided by that segment's own settle.
+          if (meta.text && !lostText) {
             textLost = true;
             textLostDetail = detail;
           }
-          // the consumer is gone (e.g. Slack finalized an idle stream:
-          // message_not_in_streaming_state) - drop the dead segment so the
-          // next chunk opens a fresh message instead of vanishing into it.
-          if (segment === posted) segment = null;
-        },
-      );
+        } else if (meta.text) {
+          textLost = true;
+          textLostDetail = detail;
+        }
+      },
+    );
+    const pushInto = (chunk: SegmentChunk) => {
+      if (!(chunk instanceof Object)) {
+        postedText = true;
+        meta.text = true;
+      }
+      seg.push(chunk);
+    };
+    return { seg, pushInto };
+  };
+  const push = async (chunk: SegmentChunk) => {
+    if (segment === null) {
+      await lastPost; // strict message order: previous segment fully posted first
+      // a rejection handler may have opened a salvage segment during the wait;
+      // joining it instead of opening another keeps its post from being
+      // orphaned un-ended.
     }
+    const target = segment ?? openSegment().seg;
     if (!(chunk instanceof Object)) {
       postedText = true;
       segmentMeta!.text = true;
     }
-    seg.push(chunk);
+    target.push(chunk);
   };
   const breakSegment = () => {
     segment?.end();
     segment = null;
+  };
+  // settle the whole post chain: a rejection handler may replace lastPost with
+  // a salvage segment's post, which still needs ending and settling.
+  const settlePosts = async () => {
+    while (true) {
+      breakSegment();
+      const settled = lastPost;
+      await settled;
+      if (lastPost === settled) return;
+    }
   };
   // a recovery status line reads as its own Slack message, not part of a
   // streamed segment.
@@ -470,7 +554,7 @@ export async function relayThread(input: {
    *  its own delivery resets textLost. */
   const notifyDelivered = async (text: string) => {
     await notify(text);
-    await lastPost;
+    await settlePosts();
     return !textLost;
   };
   // false when the daemon started draining mid-sleep.
@@ -677,12 +761,12 @@ export async function relayThread(input: {
       break;
     }
   }
-  breakSegment();
-  await lastPost;
-  // Reply text died with a rejected segment and nothing later re-delivered it:
-  // the answer silently vanished while the outcome would report success. Fail
-  // the turn and make one best-effort fresh-message diagnostic (a fresh post
-  // is exactly what the mid-stream recovery relies on succeeding).
+  await settlePosts();
+  // Reply text died with a rejected segment, salvage could not re-deliver it
+  // (budget exhausted or the salvage posts died too), and nothing later
+  // re-delivered it: the answer silently vanished while the outcome would
+  // report success. Fail the turn and make one best-effort fresh-message
+  // diagnostic.
   if (textLost) {
     outcome.failed = true;
     const detail = textLostDetail ?? "unknown error";
