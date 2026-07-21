@@ -58,8 +58,11 @@ const SERVE_USAGE = "usage: tokenmaxxing serve [setup | link <channel-id> <repo>
  *  works without them, verified live). agent_view is an OBJECT whose required
  *  field is agent_description (max 300 chars; docs.slack.dev app-manifest
  *  reference, re-verified 2026-07-20) - a bare `agent_view: true` is rejected
- *  with "Must provide an object". Changing scopes on an existing app requires
- *  reinstalling it to the workspace. */
+ *  with "Must provide an object". reactions:write powers the status reactions
+ *  the daemon sets on triggering messages; reactions:read + the reaction_added
+ *  event feed user reactions back in (matching @chat-adapter/slack's own
+ *  README manifest). Changing scopes on an existing app requires reinstalling
+ *  it to the workspace. */
 const APP_MANIFEST = `display_information:
   name: tokenmaxxing
   description: bridges Slack threads to Claude Code sessions
@@ -81,6 +84,8 @@ oauth_config:
       - chat:write
       - files:write
       - im:history
+      - reactions:read
+      - reactions:write
       - users:read
 
 settings:
@@ -92,6 +97,7 @@ settings:
       - message.channels
       - message.groups
       - message.im
+      - reaction_added
   socket_mode_enabled: true
   org_deploy_enabled: false
   token_rotation_enabled: false`;
@@ -248,13 +254,34 @@ const ServeThreadSchema = z.custom<{
 }>();
 type ServeThread = z.infer<typeof ServeThreadSchema>;
 
-/** The slice of a Chat SDK message the author guard + folding read. */
+/** The slice of a Chat SDK message the author guard + folding read. id is the
+ *  Slack message ts (verified in @chat-adapter/slack 4.34.0: Message.id =
+ *  event.ts, exactly what reactions.add takes as timestamp), so it is the
+ *  handle status reactions attach to. */
 const ServeMessageSchema = z.custom<{
+  id: string;
   text: string;
   author: { userId: string; isMe: boolean; isBot?: boolean | "unknown" };
   raw?: unknown;
 }>();
 type ServeMessage = z.infer<typeof ServeMessageSchema>;
+
+/** Status reactions on the triggering message: hourglass while the turn runs,
+ *  then exactly one terminal state. Color-of-the-moment for the whole thread
+ *  list: which asks are being worked, which wait on the user, which are done. */
+const STATUS_EMOJI = {
+  processing: "hourglass_flowing_sand",
+  done: "white_check_mark",
+  failed: "x",
+  attention: "question",
+} as const;
+
+/** One nudge per ask, this long after the asking turn settled: enough for a
+ *  present user to answer on their own, short enough that a blocked thread
+ *  does not sit forgotten. */
+export const ATTENTION_NUDGE_MS = 600_000;
+/** How often the daemon sweeps for overdue attention (runDaemon interval). */
+export const NUDGE_SWEEP_MS = 60_000;
 
 /** Reap a previous generation's detached claude child that survived an
  *  uncatchable daemon death (SIGKILL, crash: the "exit" event never fires
@@ -307,6 +334,18 @@ export function buildServeRuntime(seam: {
     drainSignal?: AbortSignal;
   }) => Promise<TurnOutcome>;
   cleanup: (input: { threadId: string }) => CleanupOutcome;
+  /** add/remove a status reaction on a message (production: the Slack
+   *  adapter's reactions.add/remove). Callers never let a rejection escape:
+   *  a missing scope or an already_reacted must not fail a turn. */
+  react: (input: { threadId: string; messageId: string; emoji: string; op: "add" | "remove" }) => Promise<void>;
+  /** post one standalone text message into a thread by id (production:
+   *  bot.thread(threadId).post) - the nudge path, which runs outside any
+   *  turn and needs no streaming. */
+  postToThread: (input: { threadId: string; text: string }) => Promise<void>;
+  /** does this user belong to the home workspace? Reaction events carry no
+   *  team-origin fields, so the note path verifies reactors through this
+   *  (production: users.info, cached). null = unverifiable = fail closed. */
+  isHomeUser: (input: { userId: string }) => Promise<boolean | null>;
   /** builds a streamable proactive thread handle for marker recovery (startup
    *  resumes and deferred-turn wakes both need one). runDaemon passes a lazy
    *  closure over its bot-backed streamableThread; tests pass a fake. */
@@ -331,6 +370,19 @@ export function buildServeRuntime(seam: {
   // channels already diagnosed as unlinked this run (see handleTurn).
   const unlinkedLogged = new Set<string>();
 
+  /** Best-effort status reaction: reaction state is decoration, so every
+   *  failure (missing reactions:write until the app is reinstalled,
+   *  already_reacted, no_reaction on remove) is log-only and can never fail
+   *  the turn it annotates. */
+  const setStatus = async (input: { threadId: string; messageId: string; emoji: string; op: "add" | "remove" }) => {
+    try {
+      await seam.react(input);
+    } catch (e) {
+      const detail = (e instanceof Error ? e.message : String(e)).slice(0, 300);
+      log("serve.reaction_error", { thread: input.threadId, emoji: input.emoji, op: input.op, err: detail });
+    }
+  };
+
   /** One relayed turn with the durable activeTurn marker around it: written
    *  before the spawn, cleared when the turn returns, so a marker surviving
    *  into the next daemon start identifies a turn a restart killed mid-run.
@@ -347,6 +399,10 @@ export function buildServeRuntime(seam: {
   }): Promise<TurnOutcome> => {
     let record: SlackThread = { ...input.record, activeTurn: input.marker };
     saveSlackThread(record);
+    // the whole turn (parks and retries included) reads as "being processed".
+    if (input.marker.messageId) {
+      await setStatus({ threadId: input.thread.id, messageId: input.marker.messageId, emoji: STATUS_EMOJI.processing, op: "add" });
+    }
     let outcome: TurnOutcome | null = null;
     try {
       outcome = await seam.relay({
@@ -418,8 +474,10 @@ export function buildServeRuntime(seam: {
      *  paired with its author id: a decision may be owed to an earlier
      *  folded sender, and a sender whose whole message was the bot mention
      *  contributes no prompt text, so text and author filter together
-     *  (review catches 2026-07-18). */
-    relayed: { text: string; authorId: string }[];
+     *  (review catches 2026-07-18). id is the Slack message ts; the LAST
+     *  entry (the triggering relayable message) carries the status
+     *  reactions. */
+    relayed: { text: string; authorId: string; id: string }[];
     isMention: boolean;
   }) => {
     const { thread, isMention } = input;
@@ -477,6 +535,10 @@ export function buildServeRuntime(seam: {
       .filter((m) => m.text !== "");
     let prompt = stripped.map((m) => m.text).join("\n\n");
     const requesterIds = uniq(stripped.map((m) => m.authorId));
+    // the triggering message (the last relayable one), even when its own text
+    // was just the bot mention: the status reactions belong on the message
+    // the user watched the bot pick up.
+    const messageId = input.relayed.at(-1)?.id;
     if (!prompt) return;
     // this whole handler runs inside the per-thread `serialized` chain (call
     // sites below), which startup resumes share too - so this load already
@@ -516,6 +578,29 @@ export function buildServeRuntime(seam: {
       prompt = `${deferred.prompt}\n\n${prompt}`;
       log("serve.deferred_folded", { thread: thread.id });
     }
+    // the user responded: the thread is no longer waiting on them. Clear the
+    // attention state and its question-mark reaction before the new turn
+    // runs, so a due nudge can never fire about an ask that just got its
+    // answer.
+    if (record.attention) {
+      const asked = record.attention;
+      record = omit(record, ["attention"]);
+      saveSlackThread(record);
+      if (asked.messageId) {
+        await setStatus({ threadId: thread.id, messageId: asked.messageId, emoji: STATUS_EMOJI.attention, op: "remove" });
+      }
+    }
+    // reactions observed since the last turn ride into this prompt as
+    // context, then clear: the model sees them without any metered
+    // reaction-triggered turn.
+    if (record.pendingReactions && record.pendingReactions.length > 0) {
+      const notes = record.pendingReactions
+        .map((r) => `<@${r.userId}> reacted :${r.emoji}: in this thread.`)
+        .join("\n");
+      prompt = `${prompt}\n\nSlack reactions since your last turn:\n${notes}`;
+      record = omit(record, ["pendingReactions"]);
+      saveSlackThread(record);
+    }
     // subscriptions live in the memory state, so a daemon restart forgets
     // them; every mention re-subscribes to keep follow-up replies flowing.
     if (isMention) await thread.subscribe();
@@ -529,19 +614,24 @@ export function buildServeRuntime(seam: {
       prompt,
       requesterIds,
       sessionId: record.sessionId,
-      marker: { prompt, startedAt: new Date().toISOString(), resumeCount: 0 },
+      marker: { prompt, startedAt: new Date().toISOString(), resumeCount: 0, ...(messageId ? { messageId } : {}), requesterIds },
       link,
     });
-    await settleTurn({ thread, outcome, startedAt });
+    await settleTurn({ thread, outcome, startedAt, messageId, requesterIds });
   };
 
   /** Post-turn bookkeeping shared by inbound and resumed turns: the outcome
-   *  log line, and the finish_thread garbage collection when the model called
-   *  it. Never throws into the caller - the daemon must keep serving. */
+   *  log line, the status-reaction settle, the attention marking when the
+   *  model asked the user, and the finish_thread garbage collection. Never
+   *  throws into the caller - the daemon must keep serving. */
   const settleTurn = async (input: {
     thread: { id: string; post: (m: string | AsyncIterable<string | StreamChunk>) => Promise<unknown>; unsubscribe: () => Promise<void> };
     outcome: TurnOutcome;
     startedAt: number;
+    /** the triggering message carrying the status reactions; absent = skip. */
+    messageId?: string;
+    /** the turn's asked users, persisted when the model flagged attention. */
+    requesterIds?: string[];
   }) => {
     const { thread, outcome, startedAt } = input;
     log(outcome.deferUntil !== null ? "serve.turn_deferred" : outcome.failed ? "serve.turn_failed" : "serve.turn_done", {
@@ -549,6 +639,44 @@ export function buildServeRuntime(seam: {
       seconds: Math.round((Date.now() - startedAt) / 1000),
       ...(outcome.deferUntil === null ? {} : { resumeAt: outcome.deferUntil }),
     });
+    // settle the status reaction: failed beats attention beats done (a failed
+    // ask never reads as a clean question mark), then drop the hourglass.
+    // Three review-caught exceptions: a drain-presumed-killed turn (same
+    // predicate as runTurn's marker retention) keeps its hourglass - it will
+    // auto-resume next start, and a terminal x nothing ever removes would
+    // read a later successful resume as failed; a usage-limit DEFERRAL is
+    // the other auto-resume case and keeps its hourglass for the identical
+    // reason (cursor + vercel review catch on PR #43: the durable marker
+    // promises a resume, so the triggering message must not read as failed
+    // for the whole deferral); and a finished thread settles as done even
+    // when the model also flagged attention, because the record deletion
+    // below makes the question mark unremovable forever.
+    const killedByDrain = draining && outcome.failed && !outcome.announcedDrop && !outcome.resultReceived;
+    const deferredForResume = outcome.deferUntil !== null;
+    if (input.messageId && !killedByDrain && !deferredForResume) {
+      const emoji = outcome.failed ? STATUS_EMOJI.failed : outcome.attention && !outcome.finish ? STATUS_EMOJI.attention : STATUS_EMOJI.done;
+      await setStatus({ threadId: thread.id, messageId: input.messageId, emoji, op: "add" });
+      await setStatus({ threadId: thread.id, messageId: input.messageId, emoji: STATUS_EMOJI.processing, op: "remove" });
+    }
+    // the model asked the user for a decision: mark the thread waiting so the
+    // nudge sweep and the reaction-answer path can see it. Persisted even on
+    // a failed turn (the ask may have streamed before the failure; a spurious
+    // nudge beats a silently forgotten ask). Skipped on finish: the record is
+    // about to be deleted.
+    if (outcome.attention && !outcome.finish) {
+      const fresh = loadSlackThread(thread.id);
+      if (fresh) {
+        saveSlackThread({
+          ...fresh,
+          attention: {
+            requesterIds: input.requesterIds ?? [],
+            askedAt: new Date().toISOString(),
+            ...(input.messageId ? { messageId: input.messageId } : {}),
+          },
+        });
+        log("serve.attention_marked", { thread: thread.id });
+      }
+    }
     // the user declared the work finished: close the thread now that the
     // turn (and its claude subprocess) is over. Never throw into the caller -
     // the daemon must keep serving other threads.
@@ -645,9 +773,128 @@ export function buildServeRuntime(seam: {
   // the handler only the latest message and the rest ride context.skipped
   // (review catch, PR #18).
   const onMessage = async (input: { thread: ServeThread; message: ServeMessage; skipped: ServeMessage[]; isMention: boolean }) => {
-    const relayed = [...input.skipped, input.message].filter(relayable).map((m) => ({ text: m.text, authorId: m.author.userId }));
+    const relayed = [...input.skipped, input.message].filter(relayable).map((m) => ({ text: m.text, authorId: m.author.userId, id: m.id }));
     if (relayed.length === 0) return; // outsider mentions never open a session
     await tracked(serialized(input.thread.id, () => handleTurn({ thread: input.thread, relayed, isMention: input.isMention })));
+  };
+
+  /** A user reaction in a tracked thread. While the thread waits on an asked
+   *  user, THAT user's reaction TO THE ASK is their answer: it relays as a
+   *  normal turn for the model to interpret (thumbs up approves, thumbs down
+   *  declines - the model decides). "To the ask" is enforced structurally
+   *  (review catch: a mid-turn encouragement reaction queued behind the
+   *  asking turn must not auto-approve the question it never saw): the
+   *  reaction must have occurred AFTER askedAt (occurredAt = the Slack
+   *  event_ts) and sit on a message at or after the ask's triggering message
+   *  (Slack ids are timestamps, so >= compares post order). Anything that
+   *  fails a gate degrades to the unmetered note path, which folds into the
+   *  next turn's prompt. The answer path never pre-clears the attention
+   *  state (review catch): handleTurn's own consume step clears it at the
+   *  point the turn is committed, so a failed thread fetch, an unlinked
+   *  channel, or a drain landing mid-await leaves the ask intact for the
+   *  nudge and the next daemon generation.
+   *  Reactor identity: the answer path only trusts ids that already passed
+   *  the author guard as requesters (reaction events carry no team-origin
+   *  fields, so isOutsideAuthor cannot run here); the note path fail-closed
+   *  verifies the reactor against the home workspace via seam.isHomeUser
+   *  and drops non-home or unverifiable reactors loudly (review catch: the
+   *  outsiders-never-reach-claude invariant covers context lines too), and
+   *  only structurally valid emoji names are ever folded. Removals and
+   *  untracked threads are ignored, as are other bots; our own reactions
+   *  never arrive (chat core drops isMe reaction events before routing). */
+  const onReaction = async (
+    input: { threadId: string; messageId: string; emoji: string; userId: string; isBot?: boolean | "unknown"; added: boolean; occurredAt: number | null },
+    streamable: (threadId: string) => Promise<{ thread: ServeThread }>,
+  ) => {
+    if (!input.added || input.isBot === true) return;
+    if (!loadSlackThread(input.threadId)) return; // untracked thread
+    // unlinked channels are contractually silent AND inert (vercel review
+    // catch on PR #43): a reaction stored to pendingReactions here would
+    // reach claude after a re-link, the one leak every other unlinked path
+    // already closes.
+    if (!linkForChannel(cfg, bareChannelId(input.threadId.split(":").slice(0, 2).join(":")))) {
+      log("serve.reaction_dropped", { thread: input.threadId, reason: "unlinked-channel" });
+      return;
+    }
+    await tracked(serialized(input.threadId, async () => {
+      const fresh = loadSlackThread(input.threadId);
+      if (!fresh) return; // finished while queued
+      const asked = fresh.attention;
+      const afterAsk = asked !== undefined && input.occurredAt !== null && input.occurredAt >= Date.parse(asked.askedAt);
+      const onAskMessage = asked !== undefined
+        && (asked.messageId === undefined || (Number.isFinite(Number(input.messageId)) && Number(input.messageId) >= Number(asked.messageId)));
+      // draining takes the durable note path even for an asked user: the
+      // answer turn could not run anyway, and a "please re-send" drop notice
+      // makes no sense for a reaction - the note survives the restart and
+      // folds into the next turn.
+      if (!draining && asked && asked.requesterIds.includes(input.userId) && afterAsk && onAskMessage) {
+        log("serve.reaction_answer", { thread: input.threadId, emoji: input.emoji });
+        const { thread } = await streamable(input.threadId);
+        await handleTurn({
+          thread,
+          relayed: [{
+            text: `<@${input.userId}> answered your pending question with the Slack reaction :${input.emoji}:. Interpret the reaction as their reply and continue.`,
+            authorId: input.userId,
+            id: input.messageId,
+          }],
+          isMention: false,
+        });
+        return;
+      }
+      const home = await seam.isHomeUser({ userId: input.userId });
+      if (home !== true) {
+        log("serve.reaction_dropped", { thread: input.threadId, reason: home === false ? "outside-author" : "unverifiable-author" });
+        return;
+      }
+      const validEmoji = input.emoji.length > 0 && input.emoji.length <= 100
+        && [...input.emoji].every((ch) => (ch >= "a" && ch <= "z") || (ch >= "0" && ch <= "9") || ch === "_" || ch === "-" || ch === "+" || ch === "'");
+      if (!validEmoji) {
+        log("serve.reaction_dropped", { thread: input.threadId, reason: "invalid-emoji-name" });
+        return;
+      }
+      const notes = [...(fresh.pendingReactions ?? []), { userId: input.userId, emoji: input.emoji, at: new Date().toISOString() }].slice(-10);
+      saveSlackThread({ ...fresh, pendingReactions: notes });
+      log("serve.reaction_noted", { thread: input.threadId, emoji: input.emoji });
+    }));
+  };
+
+  /** One pass over every thread record: threads whose attention went
+   *  unanswered past ATTENTION_NUDGE_MS get one mention-tagging reminder.
+   *  Greedy and convergent: nudgedAt persists, so re-runs (and daemon
+   *  restarts) never repeat a nudge; a failed post retries next sweep,
+   *  logged each time. The per-thread work runs inside the serialized chain
+   *  so a sweep can never resurrect an attention state a concurrent turn
+   *  just cleared. */
+  const nudgeSweep = async (input?: { now?: number }) => {
+    if (draining) return;
+    const now = input?.now ?? Date.now();
+    for (const record of listSlackThreads()) {
+      const asked = record.attention;
+      if (!asked || asked.nudgedAt !== undefined || now - Date.parse(asked.askedAt) < ATTENTION_NUDGE_MS) continue;
+      // unlinked channels are contractually silent in Slack (review catch:
+      // `serve unlink` leaves thread records behind, and every other outbound
+      // path honors the contract). Skipped without a log line on purpose - a
+      // 60s sweep would otherwise repeat the same warning forever.
+      if (!linkForChannel(cfg, bareChannelId(record.threadId.split(":").slice(0, 2).join(":")))) continue;
+      void tracked(serialized(record.threadId, async () => {
+        if (draining) return;
+        const fresh = loadSlackThread(record.threadId);
+        const due = fresh?.attention;
+        if (!fresh || !due || due.nudgedAt !== undefined || now - Date.parse(due.askedAt) < ATTENTION_NUDGE_MS) return;
+        const tags = due.requesterIds.map((id) => `<@${id}>`).join(" ");
+        try {
+          await seam.postToThread({
+            threadId: record.threadId,
+            text: `${tags || "the requester"} still waiting on your input above.`,
+          });
+          saveSlackThread({ ...fresh, attention: { ...due, nudgedAt: new Date().toISOString() } });
+          log("serve.nudge_sent", { thread: record.threadId });
+        } catch (e) {
+          const detail = (e instanceof Error ? e.message : String(e)).slice(0, 300);
+          log("serve.nudge_error", { thread: record.threadId, err: detail });
+        }
+      }));
+    }
   };
 
   /** Deferred-turn wakes: one process-local timer per thread, re-armed by a
@@ -727,6 +974,11 @@ export function buildServeRuntime(seam: {
           // with the user never told the daemon gave up.
           await thread.post(decision.notice);
           saveSlackThread(omit(fresh, ["activeTurn"]));
+          // the abandoned turn's message must not keep reading as processing.
+          if (turn.messageId) {
+            await setStatus({ threadId: thread.id, messageId: turn.messageId, emoji: STATUS_EMOJI.failed, op: "add" });
+            await setStatus({ threadId: thread.id, messageId: turn.messageId, emoji: STATUS_EMOJI.processing, op: "remove" });
+          }
           return;
         }
         if (turn.resumeAt !== undefined) {
@@ -759,6 +1011,14 @@ export function buildServeRuntime(seam: {
               }
               log("serve.resume_dropped_unknown", { thread: record.threadId });
               await thread.post("the pool is still at its usage limit and its recovery time is now unknown - this held message is dropped; re-send it once the pool recovers.");
+              // terminal exit on a linked channel: settle the trigger's status
+              // or its hourglass reads "processing" forever (cubic review
+              // catch on PR #43). The unlinked abandon above stays reactionless
+              // on purpose: unlinked channels are contractually untouchable.
+              if (turn.messageId) {
+                await setStatus({ threadId: thread.id, messageId: turn.messageId, emoji: STATUS_EMOJI.failed, op: "add" });
+                await setStatus({ threadId: thread.id, messageId: turn.messageId, emoji: STATUS_EMOJI.processing, op: "remove" });
+              }
               saveSlackThread(omit(fresh, ["activeTurn"]));
               return;
             }
@@ -776,8 +1036,13 @@ export function buildServeRuntime(seam: {
         // retries on every restart; unlinking it clears the marker.
         await thread.post(decision.notice);
         const startedAt = Date.now();
-        const outcome = await runTurn({ thread, record: fresh, prompt: decision.prompt, requesterIds, sessionId: decision.sessionId, marker: decision.marker, link });
-        await settleTurn({ thread, outcome, startedAt });
+        // the KILLED turn's actual askers outrank the streamable handle's
+        // newest-author derivation: a recovered need_attention turn must
+        // nudge and answer-gate the users who were actually asked (vercel
+        // review catch on PR #43); older markers without the field fall back.
+        const resumedRequesterIds = decision.marker.requesterIds ?? requesterIds;
+        const outcome = await runTurn({ thread, record: fresh, prompt: decision.prompt, requesterIds: resumedRequesterIds, sessionId: decision.sessionId, marker: decision.marker, link });
+        await settleTurn({ thread, outcome, startedAt, messageId: decision.marker.messageId, requesterIds: resumedRequesterIds });
       });
     } catch (e) {
       const detail = (e instanceof Error ? e.message : String(e)).slice(0, 300);
@@ -813,6 +1078,8 @@ export function buildServeRuntime(seam: {
     },
     relayable,
     onMessage,
+    onReaction,
+    nudgeSweep,
     /** the pieces runDaemon's startup interrupted-turn recovery reuses, so a
      *  resumed turn shares the exact chain and marker machinery of an inbound
      *  one. */
@@ -825,7 +1092,19 @@ export function buildServeRuntime(seam: {
   };
 }
 
+/** users.info slice the home-workspace reactor check reads. */
+const UsersInfoSchema = z.looseObject({
+  ok: z.boolean(),
+  user: z.looseObject({ team_id: z.string().optional() }).optional(),
+});
+
+/** The raw Slack reaction event slice the daemon reads: event_ts is when the
+ *  reaction happened, the discriminator that keeps a pre-ask reaction from
+ *  answering a question the user never saw. */
+const ReactionRawSchema = z.looseObject({ event_ts: z.string().optional() });
+
 async function runDaemon(): Promise<number> {
+  const homeUserCache = new Map<string, boolean>();
   let cfg = loadSlackConfig();
   if (!cfg) {
     printSetupInstructions();
@@ -919,6 +1198,35 @@ async function runDaemon(): Promise<number> {
     botUserId: () => slack.botUserId ?? null,
     relay: relayThread,
     cleanup: cleanupThread,
+    // reactions.add/remove; the runtime wraps every call in its own log-only
+    // guard, so adapter failures (missing reactions:write until the app is
+    // reinstalled with the current manifest) stay invisible to turns.
+    react: async (input) => {
+      if (input.op === "add") await slack.addReaction(input.threadId, input.messageId, input.emoji);
+      else await slack.removeReaction(input.threadId, input.messageId, input.emoji);
+    },
+    // one standalone line (the nudge); a lazy handle posts fine card-less.
+    postToThread: async (input) => {
+      await bot.thread(input.threadId).post(input.text);
+    },
+    // reaction events carry no team-origin fields, so the note path verifies
+    // reactors via users.info (scope users:read, already in the manifest).
+    // Definitive answers cache for the daemon's lifetime; errors return null
+    // (fail closed at the caller) without caching so transient failures heal.
+    isHomeUser: async (input) => {
+      const cached = homeUserCache.get(input.userId);
+      if (cached !== undefined) return cached;
+      try {
+        const resp = UsersInfoSchema.parse(await slack.webClient.users.info({ user: input.userId }));
+        const teamId = resp.user?.team_id;
+        if (!resp.ok || teamId === undefined) return null;
+        const home = teamId === workspaceTeamId;
+        homeUserCache.set(input.userId, home);
+        return home;
+      } catch {
+        return null;
+      }
+    },
     // lazy on purpose: streamableThread is declared just below and only ever
     // invoked long after startup (recovery runs and deferred wakes).
     streamable: (threadId) => streamableThread(threadId),
@@ -960,6 +1268,25 @@ async function runDaemon(): Promise<number> {
 
   bot.onNewMention(async (thread, message, context) => runtime.onMessage({ thread, message, skipped: context?.skipped ?? [], isMention: true }));
   bot.onSubscribedMessage(async (thread, message, context) => runtime.onMessage({ thread, message, skipped: context?.skipped ?? [], isMention: false }));
+  // user reactions: an asked user's reaction answers the pending question,
+  // anything else folds into the next turn as context (runtime.onReaction).
+  // chat core already drops the bot's own reactions before routing.
+  bot.onReaction(async (event) => {
+    const raw = ReactionRawSchema.safeParse(event.raw);
+    const eventTs = raw.success && raw.data.event_ts !== undefined ? Number(raw.data.event_ts) * 1000 : Number.NaN;
+    await runtime.onReaction(
+      {
+        threadId: event.threadId,
+        messageId: event.messageId,
+        emoji: event.emoji.name,
+        userId: event.user.userId,
+        isBot: event.user.isBot,
+        added: event.added,
+        occurredAt: Number.isFinite(eventTs) ? eventTs : null,
+      },
+      streamableThread,
+    );
+  });
 
   // drain instead of dying mid-answer: stop taking new turns, let in-flight
   // ones finish (bounded - a hung claude turn must not block a restart
@@ -1027,6 +1354,11 @@ async function runDaemon(): Promise<number> {
   const records = listSlackThreads();
   for (const record of records) await state.subscribe(record.threadId);
   log("serve.resubscribed", { threads: records.length });
+
+  // overdue-attention sweep: one mention-tagging reminder per unanswered ask.
+  // Never cleared: the sweep no-ops while draining, and shutdown exits the
+  // process outright.
+  setInterval(() => void runtime.nudgeSweep(), NUDGE_SWEEP_MS);
 
   // threads whose activeTurn marker survived the previous daemon were either
   // killed mid-turn by a restart (live incident 2026-07-18: a redeploy

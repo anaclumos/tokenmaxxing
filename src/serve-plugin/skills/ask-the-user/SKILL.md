@@ -17,7 +17,12 @@ reaches anyone. A plain reply does not notify the user; a mention does.
    notifies them.
 2. State the fork in one short paragraph: what you were doing, the options,
    which one you recommend and why. One question at a time.
-3. End the turn after asking. Do not pick a real fork's option unilaterally,
+3. Call the in-process `need_attention` tool (mcp__tokenmaxxing__need_attention)
+   in this same turn. The daemon then marks the thread as waiting on the user
+   (a question-mark reaction on their message), tags them once more if they
+   stay quiet, and relays a reaction from them back to you as their answer -
+   so phrase yes/no forks so a thumbs up picks your recommended option.
+4. End the turn after asking. Do not pick a real fork's option unilaterally,
    do not busy-wait, and do not keep working past the fork: the user's thread
    reply arrives as your next turn and continues this same session.
 

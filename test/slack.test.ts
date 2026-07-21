@@ -204,6 +204,26 @@ describe("thread records", () => {
     saveSlackThread({ ...baseRecord, activeTurn: marker });
     expect(loadSlackThread(baseRecord.threadId)?.activeTurn?.pid).toBeUndefined();
   });
+
+  test("the marker's triggering-message id persists (status reactions on recovery)", () => {
+    const marker = { prompt: "ship", startedAt: "2026-07-18T10:00:00.000Z", resumeCount: 0, messageId: "1721.456" };
+    saveSlackThread({ ...baseRecord, activeTurn: marker });
+    expect(loadSlackThread(baseRecord.threadId)?.activeTurn?.messageId).toBe("1721.456");
+  });
+
+  test("attention and pendingReactions round-trip and clear on omit-save", () => {
+    const attention = { requesterIds: ["U1", "U2"], askedAt: "2026-07-20T00:00:00.000Z", messageId: "1721.900" };
+    const pendingReactions = [{ userId: "U3", emoji: "eyes", at: "2026-07-20T00:01:00.000Z" }];
+    saveSlackThread({ ...baseRecord, attention, pendingReactions });
+    const loaded = loadSlackThread(baseRecord.threadId);
+    expect(loaded?.attention).toEqual(attention);
+    expect(loaded?.pendingReactions).toEqual(pendingReactions);
+    saveSlackThread({ ...baseRecord, attention: { ...attention, nudgedAt: "2026-07-20T00:10:00.000Z" } });
+    expect(loadSlackThread(baseRecord.threadId)?.attention?.nudgedAt).toBe("2026-07-20T00:10:00.000Z");
+    saveSlackThread(baseRecord);
+    expect(loadSlackThread(baseRecord.threadId)?.attention).toBeUndefined();
+    expect(loadSlackThread(baseRecord.threadId)?.pendingReactions).toBeUndefined();
+  });
 });
 
 describe("resumeDecision", () => {
