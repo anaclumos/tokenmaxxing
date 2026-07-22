@@ -123,6 +123,16 @@ describe("config invariants", () => {
     writeFileSync(paths.configJson, JSON.stringify({ policy: { projectionMargin: 94 } }));
     expect(loadConfig().policy.projectionMargin).toBe(94);
   });
+  test("hardThresholds default to the 100 wall and reject a wall below its screening bar", () => {
+    // absent from the file, both windows default to the server's own 100% limit
+    expect(loadConfig().hardThresholds).toEqual({ session: 100, weekly: 100 });
+    // a wall below its screening bar would make Layer 2 stricter than Layer 1
+    writeFileSync(paths.configJson, JSON.stringify({ thresholds: { weekly: 98 }, hardThresholds: { weekly: 90 } }));
+    expect(() => loadConfig()).toThrow("hardThresholds");
+    // equal is allowed - it simply disables Layer 2 for that window
+    writeFileSync(paths.configJson, JSON.stringify({ thresholds: { weekly: 98 }, hardThresholds: { weekly: 98 } }));
+    expect(loadConfig().hardThresholds.weekly).toBe(98);
+  });
   test("config set rejects a value whose MERGED config would brick loadConfig", () => {
     // The per-field 0-100 bound passes 96, but merged against the default
     // session threshold 95 the refine fails - without the merged gate this

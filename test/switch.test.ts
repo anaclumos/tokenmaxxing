@@ -53,10 +53,25 @@ describe("cmdSwitch idempotence", () => {
     expect(loadAccounts().activeAccountUuid).toBe("cur");
   });
 
-  test("stays put when all are depleted and the current account recovers soonest", async () => {
+  test("stays put when all are WALLED and the current account recovers soonest", async () => {
+    // both at the 100 wall, so Layer 2 has nothing to squeeze and the depleted
+    // fallback keeps the seat on the soonest-recovering account (a 99 here would
+    // hold at the wall squeeze and never reach this path).
     const now = Date.now();
-    const cur = acct("cur", { fiveHour: { usedPercentage: 99, resetsAt: now + H }, sevenDay: { usedPercentage: 10, resetsAt: now + 2 * D } });
-    const other = acct("other", { fiveHour: { usedPercentage: 99, resetsAt: now + 3 * H }, sevenDay: { usedPercentage: 10, resetsAt: now + 5 * D } });
+    const cur = acct("cur", { fiveHour: { usedPercentage: 100, resetsAt: now + H }, sevenDay: { usedPercentage: 10, resetsAt: now + 2 * D } });
+    const other = acct("other", { fiveHour: { usedPercentage: 100, resetsAt: now + 3 * H }, sevenDay: { usedPercentage: 10, resetsAt: now + 5 * D } });
+    saveAccounts({ version: 1, activeAccountUuid: "cur", accounts: [cur, other] });
+    expect(await cmdSwitch()).toBe(0);
+    expect(loadAccounts().activeAccountUuid).toBe("cur");
+  });
+
+  test("Layer 2: all over the screening bar but under the wall - holds and squeezes the seat", async () => {
+    // both accounts soft-exhausted (fiveHour 96 >= 95) but under the 100 wall:
+    // Layer 1 finds no usable target, and Layer 2 holds the seat rather than
+    // swapping onto the equally-squeezable rival or parking.
+    const now = Date.now();
+    const cur = acct("cur", { fiveHour: { usedPercentage: 96, resetsAt: now + H }, sevenDay: { usedPercentage: 10, resetsAt: now + 2 * D } });
+    const other = acct("other", { fiveHour: { usedPercentage: 96, resetsAt: now + 3 * H }, sevenDay: { usedPercentage: 10, resetsAt: now + 5 * D } });
     saveAccounts({ version: 1, activeAccountUuid: "cur", accounts: [cur, other] });
     expect(await cmdSwitch()).toBe(0);
     expect(loadAccounts().activeAccountUuid).toBe("cur");
@@ -74,9 +89,9 @@ describe("cmdSwitch idempotence", () => {
     expect(loadAccounts().activeAccountUuid).toBe("cur");
   });
 
-  test("stays put (exit 0) when current is at limit and the only rival needs re-auth", async () => {
+  test("stays put (exit 0) when current is WALLED and the only rival needs re-auth", async () => {
     const now = Date.now();
-    const cur = acct("cur", { fiveHour: { usedPercentage: 99, resetsAt: now + H }, sevenDay: { usedPercentage: 40, resetsAt: now + 6 * D } });
+    const cur = acct("cur", { fiveHour: { usedPercentage: 100, resetsAt: now + H }, sevenDay: { usedPercentage: 40, resetsAt: now + 6 * D } });
     const other = { ...acct("other", { fiveHour: { usedPercentage: 5, resetsAt: now + H }, sevenDay: { usedPercentage: 5, resetsAt: now + D } }), needsReauth: true };
     saveAccounts({ version: 1, activeAccountUuid: "cur", accounts: [cur, other] });
     expect(await cmdSwitch()).toBe(0);

@@ -142,6 +142,17 @@ export type Thresholds = z.infer<typeof ThresholdsSchema>;
 export const ConfigSchema = z
   .object({
     thresholds: ThresholdsSchema,
+    /** LAYER 2 - the wall bars. `thresholds` (Layer 1) screen normal
+     *  account-to-account switching and deliberately leave headroom; these are
+     *  the true-wall bars the decision falls back to ONLY once every account is
+     *  exhausted at Layer 1. Below the wall a session holds its seat and pumps
+     *  the last drops; a window at/over the wall (default 100 = the server's own
+     *  limit, the same figure /rate-limit-options reads) is genuinely spent and
+     *  the pool moves to the next account, parking only when all are walled.
+     *  Set equal to `thresholds` to disable Layer 2. No projection margin
+     *  applies: the wall is the literal limit, and the observed-limit failsafe
+     *  (recordObservedLimit) already backstops a single-turn overshoot. */
+    hardThresholds: ThresholdsSchema,
     claudeBin: z.string(),
     /** the real codex binary (empty = resolve from PATH); pinned by `init --codex`. */
     codexBin: z.string(),
@@ -168,6 +179,14 @@ export const ConfigSchema = z
   // switch path churns. Per-field bounds alone cannot see this.
   .refine((cfg) => cfg.policy.projectionMargin < Math.min(cfg.thresholds.session, cfg.thresholds.weekly), {
     message: "policy.projectionMargin must be strictly below both thresholds (effectiveBars would hit zero and every account would read as exhausted)",
+  })
+  // The wall must sit at or above each screening bar. A wall BELOW its
+  // screening bar would make Layer 2 "usable" a stricter test than Layer 1
+  // screening - the pool could reach the wall fallback and find every account
+  // already over the (lower) wall, parking earlier than Layer 1 alone would.
+  // Equal is allowed and simply disables Layer 2 for that window.
+  .refine((cfg) => cfg.hardThresholds.session >= cfg.thresholds.session && cfg.hardThresholds.weekly >= cfg.thresholds.weekly, {
+    message: "hardThresholds (the Layer 2 wall) must be at or above thresholds (the Layer 1 screening bars) for both windows",
   });
 export type Config = z.infer<typeof ConfigSchema>;
 

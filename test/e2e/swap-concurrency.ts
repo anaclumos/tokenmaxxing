@@ -187,18 +187,20 @@ try {
   const dec5 = await evaluateAndMaybeSwap();
   check(!dec5.swapped, "no swap on Sonnet even at 96% (sonnet = ok)");
 
-  // ---- Test 6: all accounts depleted -> switch to earliest-reset with waitUntil ----
-  console.log("Test 6 - all depleted: switch to earliest-reset (B) + waitUntil");
+  // ---- Test 6: all accounts WALLED -> pre-park onto earliest-reset with waitUntil ----
+  console.log("Test 6 - all walled: pre-park onto earliest-reset (B) + waitUntil");
   await seed(); // A active, over threshold
   const soon = Date.now() + 10 * 60 * 1000;
   const later = Date.now() + 40 * 60 * 1000;
+  // both at the 100 wall, so Layer 2 has nothing to squeeze and reaches the
+  // depleted pre-park (a 97 here would hold and squeeze instead of parking).
   writeFileSync(process.env.TOKENMAXXING_HOME + "/usage.json", JSON.stringify({
-    fiveHour: { usedPercentage: 97, resetsAt: later }, sevenDay: { usedPercentage: 50, resetsAt: later },
+    fiveHour: { usedPercentage: 100, resetsAt: later }, sevenDay: { usedPercentage: 50, resetsAt: later },
     org: "org-A", ts: Date.now(), model: null,
   }));
   const idxD = loadAccounts();
   idxD.accounts.find((a) => a.accountUuid === "uuid-B")!.lastUsage = {
-    fiveHour: { usedPercentage: 97, resetsAt: soon }, sevenDay: { usedPercentage: 50, resetsAt: soon },
+    fiveHour: { usedPercentage: 100, resetsAt: soon }, sevenDay: { usedPercentage: 50, resetsAt: soon },
   };
   saveAccounts(idxD);
   refreshCalls = 0;

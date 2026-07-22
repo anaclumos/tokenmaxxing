@@ -27,6 +27,17 @@ export function effectiveBars(cfg: Config): Thresholds {
   };
 }
 
+/** LAYER 2 - the wall bars. Unlike effectiveBars these take NO projection
+ *  margin: the wall is the literal limit (default 100, the server's own figure
+ *  /rate-limit-options reads), and pre-empting below it is exactly the headroom
+ *  Layer 1 already owns. Used only in the all-Layer-1-exhausted fallback, where
+ *  an account under its wall is still worth squeezing and the observed-limit
+ *  failsafe backstops a single-turn overshoot. Config's refine guarantees these
+ *  sit at or above effectiveBars, so Layer 2 is never stricter than Layer 1. */
+export function hardBars(cfg: Config): Thresholds {
+  return { session: cfg.hardThresholds.session, weekly: cfg.hardThresholds.weekly };
+}
+
 const PickCtxSchema = z.object({
   now: z.number(),
   thresholds: ThresholdsSchema,
