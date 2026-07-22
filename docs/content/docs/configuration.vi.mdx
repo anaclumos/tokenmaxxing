@@ -8,6 +8,7 @@ Cấu hình là JSON tại `~/.config/tokenmaxxing/config.json`. Mọi trường
 ```json
 {
   "thresholds": { "session": 95, "weekly": 98 },
+  "hardThresholds": { "session": 100, "weekly": 100 },
   "claudeBin": "/path/to/real/claude",
   "codexBin": "/path/to/real/codex",
   "policy": {
@@ -21,8 +22,9 @@ Cấu hình là JSON tại `~/.config/tokenmaxxing/config.json`. Mọi trường
 ```
 
 - `thresholds.session` / `thresholds.weekly`: các ngưỡng sàng lọc được mô tả trong [Cách chuyển đổi được quyết định](/vi/switching).
+- `hardThresholds.session` / `hardThresholds.weekly`: các ngưỡng tường (mặc định 100, giới hạn máy chủ thực của mỗi tài khoản). Khi mọi tài khoản đều vượt ngưỡng sàng lọc của nó, quyết định Claude tự động sẽ vắt từng tài khoản lên tới tường của nó trước khi dự trữ - xem [Bức tường](/vi/switching). Đặt bằng `thresholds` để vô hiệu hóa; Codex bỏ qua thiết lập này.
 - `claudeBin` / `codexBin`: ghim vào các tệp nhị phân THẬT mà các bộ giám sát khởi chạy (được ghi bởi `init` / `init --codex`; chẩn đoán bảo vệ-đệ-quy sẽ bảo bạn sửa `claudeBin` ở đây khi nó không còn trỏ vào tệp nhị phân Claude thật).
-- `policy.projectionMargin`: được trừ khỏi cả hai ngưỡng để tạo thành các ngưỡng hiệu lực.
+- `policy.projectionMargin`: được trừ khỏi cả các ngưỡng sàng lọc lẫn các ngưỡng tường để tạo thành các ngưỡng hiệu lực.
 - `policy.greedySessionFloor`: phần trăm phiên đã dùng mà tại đó sự hội tụ tham lam kích hoạt.
 - `policy.switchModels`: các họ mô hình mà mức trần hàng tuần theo từng mô hình của chúng kiểm soát một lần chuyển đổi (các mục được chuyển thành chữ thường khi tải).
 - `policy.usagePollTtlMs`: một lần thăm dò `/usage` theo từng mô hình giữ độ mới trong bao lâu.

@@ -8,6 +8,7 @@ A config é JSON em `~/.config/tokenmaxxing/config.json`. Todo campo é opcional
 ```json
 {
   "thresholds": { "session": 95, "weekly": 98 },
+  "hardThresholds": { "session": 100, "weekly": 100 },
   "claudeBin": "/path/to/real/claude",
   "codexBin": "/path/to/real/codex",
   "policy": {
@@ -21,8 +22,9 @@ A config é JSON em `~/.config/tokenmaxxing/config.json`. Todo campo é opcional
 ```
 
 - `thresholds.session` / `thresholds.weekly`: as barras de triagem descritas em [Como a troca decide](/pt/switching).
+- `hardThresholds.session` / `hardThresholds.weekly`: as barras de parede (padrão 100, o limite real do servidor de cada conta). Quando toda conta está acima de sua barra de triagem, a decisão automática do Claude espreme cada uma até sua parede antes de estacionar - veja [A parede](/pt/switching). Defina igual a `thresholds` para desativar; o Codex ignora esta configuração.
 - `claudeBin` / `codexBin`: fixa os binários REAIS que os supervisores geram (escritos por `init` / `init --codex`; o diagnóstico do guarda-recursão indica para corrigir `claudeBin` aqui quando ele parar de apontar para o binário real do Claude).
-- `policy.projectionMargin`: subtraído de ambas as barras para formar as barras efetivas.
+- `policy.projectionMargin`: subtraído tanto das barras de triagem quanto das barras de parede para formar as barras efetivas.
 - `policy.greedySessionFloor`: porcentagem de sessão usada em que a convergência gulosa se engaja.
 - `policy.switchModels`: famílias de modelos cujo limite semanal por modelo controla uma troca (as entradas são convertidas para minúsculas ao carregar).
 - `policy.usagePollTtlMs`: por quanto tempo uma consulta por modelo do `/usage` permanece fresca.

@@ -8,6 +8,7 @@ Config is JSON at `~/.config/tokenmaxxing/config.json`. Every field is optional;
 ```json
 {
   "thresholds": { "session": 95, "weekly": 98 },
+  "hardThresholds": { "session": 100, "weekly": 100 },
   "claudeBin": "/path/to/real/claude",
   "codexBin": "/path/to/real/codex",
   "policy": {
@@ -21,8 +22,9 @@ Config is JSON at `~/.config/tokenmaxxing/config.json`. Every field is optional;
 ```
 
 - `thresholds.session` / `thresholds.weekly`: the screening bars described in [How switching decides](/switching).
+- `hardThresholds.session` / `hardThresholds.weekly`: the wall bars (default 100, each account's real server limit). When every account is over its screening bar, the automatic Claude decision squeezes each one up to its wall before parking - see [The wall](/switching). Set equal to `thresholds` to disable; Codex ignores this setting.
 - `claudeBin` / `codexBin`: pins to the REAL binaries the supervisors spawn (written by `init` / `init --codex`; the recursion-guard diagnostic tells you to fix `claudeBin` here when it stops pointing at the real Claude binary).
-- `policy.projectionMargin`: subtracted from both bars to form the effective bars.
+- `policy.projectionMargin`: subtracted from both the screening bars and the wall bars to form the effective bars.
 - `policy.greedySessionFloor`: session-used percent at which the greedy convergence engages.
 - `policy.switchModels`: model families whose per-model weekly cap gates a switch (entries are lowercased on load).
 - `policy.usagePollTtlMs`: how long a `/usage` per-model poll stays fresh.
