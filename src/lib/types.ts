@@ -149,9 +149,10 @@ export const ConfigSchema = z
      *  the last drops; a window at/over the wall (default 100 = the server's own
      *  limit, the same figure /rate-limit-options reads) is genuinely spent and
      *  the pool moves to the next account, parking only when all are walled.
-     *  Set equal to `thresholds` to disable Layer 2. No projection margin
-     *  applies: the wall is the literal limit, and the observed-limit failsafe
-     *  (recordObservedLimit) already backstops a single-turn overshoot. */
+     *  Set equal to `thresholds` to disable Layer 2 (hardBars subtracts the same
+     *  projectionMargin as effectiveBars, so equal thresholds collapse to one
+     *  effective bar and Layer 2 has no band to act in). At the default margin 0
+     *  the wall is the literal 100. */
     hardThresholds: ThresholdsSchema,
     claudeBin: z.string(),
     /** the real codex binary (empty = resolve from PATH); pinned by `init --codex`. */

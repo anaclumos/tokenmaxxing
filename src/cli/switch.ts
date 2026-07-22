@@ -18,8 +18,8 @@ import { withLock } from "../lib/lock.ts";
 import { paths } from "../lib/paths.ts";
 import { loadAccounts, loadConfig } from "../lib/state.ts";
 import { readOAuthAccount } from "../lib/claudejson.ts";
-import { chooseAndSwap, performSwap } from "../lib/swap.ts";
-import { currentWins, effectiveBars, hardBars, isExhausted, pickBest, pickEarliestReset, weeklyExpiry, type PickCtx } from "../lib/picker.ts";
+import { performSwap } from "../lib/swap.ts";
+import { currentWins, effectiveBars, pickBest, pickEarliestReset, weeklyExpiry, type PickCtx } from "../lib/picker.ts";
 import { InvalidGrantError } from "../lib/oauth.ts";
 import { findAccount } from "./rename.ts";
 import { c, fmtReset } from "./render.ts";
@@ -110,33 +110,14 @@ export async function cmdSwitch(selector?: string): Promise<number> {
       return 0;
     }
 
-    // ── LAYER 2 (the wall). The greedy loop found no account under its Layer 1
-    // screening bar. Rather than parking with quota unspent, pump the last drops
-    // against the wall bars: keep the seat while it is still under its wall, else
-    // switch to the account with the most headroom left below its wall. Matches
-    // the auto decision path (decide.ts) so manual and automatic switching agree.
-    const wall: PickCtx = { ...everyone, thresholds: hardBars(cfg) };
-    const held = loadAccounts();
-    const heldSeat =
-      (claimedOrg != null ? held.accounts.find((a) => a.organizationUuid === claimedOrg) : null) ??
-      held.accounts.find((a) => a.accountUuid === held.activeAccountUuid) ??
-      null;
-    if (heldSeat != null && !heldSeat.needsReauth && !isExhausted(heldSeat, wall)) {
-      if (drifted) return swapTo(heldSeat);
-      console.log(c.yellow(`every account is over its screening bar - squeezing the last quota on ${c.bold(heldSeat.label)}`));
-      return 0;
-    }
-    const squeezed = await chooseAndSwap({ ...wall, currentAccountUuid: heldSeat?.accountUuid ?? null });
-    if (squeezed) {
-      console.log(`${c.green("↻")} switched to ${c.bold(squeezed.label)} - squeezing its last quota`);
-      return 0;
-    }
-
-    // Every account is walled (or the remaining candidates' refresh tokens just
-    // died - performSwap persists needs-reauth before throwing, hence the
-    // reload). Stay on / switch to whichever drops below its wall soonest.
+    // No usable target swapped in: everything is depleted, or the remaining
+    // candidates' refresh tokens just died (performSwap persists needs-reauth
+    // before throwing, hence the reload). Stay on / switch to whichever
+    // recovers soonest. (Layer 2 - the wall squeeze - is deliberately confined
+    // to the automatic decision path in decide.ts, which decides off the live
+    // statusLine tee; bare `xx switch` stays cache-only and simply parks here.)
     const fresh = loadAccounts();
-    const earliest = pickEarliestReset(fresh.accounts, wall);
+    const earliest = pickEarliestReset(fresh.accounts, everyone);
     if (!earliest) {
       // Either every account needs re-auth, or every account is blocked with no
       // recoverable bound (unparsed reset clocks AND no sample time - see log).

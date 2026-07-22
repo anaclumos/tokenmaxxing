@@ -481,4 +481,29 @@ describe("evaluateAndMaybeSwap headless snapshot handling", () => {
     ]);
     await expect(evaluateAndMaybeSwap()).rejects.toThrow(/no parked credential/);
   });
+
+  test("Layer 2 is disabled when hardThresholds == thresholds, even with a projection margin", async () => {
+    // margin 3 -> effectiveBars session 92 AND hardBars session 95-3=92: identical,
+    // so an account in the 92-95 band that Layer 1 flags is ALSO at the wall. Layer
+    // 2 finds nothing to squeeze and the pool parks, exactly as before Layer 2 - the
+    // documented `hardThresholds == thresholds` disable (which a naive no-margin wall
+    // would have left a live 92-95 band inside; PR #47 review catch).
+    installFakeClaude(50, Date.now() + 2 * D);
+    installFixtures([], { session: 95, weekly: 95 });
+    writeFileSync(
+      paths.configJson,
+      JSON.stringify({
+        thresholds: { session: 95, weekly: 95 },
+        hardThresholds: { session: 95, weekly: 95 },
+        claudeBin: fakeClaude,
+        policy: { projectionMargin: 3, switchModels: ["fable"] },
+      }),
+    );
+    writeUsageJson({
+      fiveHour: { usedPercentage: 93, resetsAt: Date.now() + 2 * D },
+      model: { id: "claude-3-5-sonnet-20241022", display: "Sonnet" },
+    });
+    const d = await evaluateAndMaybeSwap();
+    expect(d.reason).toBe("all-depleted"); // parked, NOT last-drop-hold
+  });
 });

@@ -312,12 +312,14 @@ export async function evaluateAndMaybeSwap(now = Date.now(), anticipatory = fals
     // quota still unspent on every account. Before parking, pump the last drops
     // against the hard wall bars (default the server's own 100% limit, the same
     // figure /rate-limit-options reads): hold the seat while it is still under
-    // its wall, else move onto the account with the most headroom below its
-    // wall. Only when EVERY account has truly walled do we fall through to the
-    // depleted-wait park below. The interactive Stop hook and the serve relay
-    // both stamp an account walled the instant a turn ends rate-limited
-    // (recordObservedLimit), so a single-turn overshoot past the wall is caught
-    // without waiting for the next statusLine render.
+    // its wall, else move onto the best still-under-wall account (chooseAndSwap
+    // keeps the usual pace-pressure ranking - squeeze the account whose weekly
+    // quota is most about to be forfeited first). Only when EVERY account has
+    // truly walled do we fall through to the depleted-wait park below. The wall
+    // reading is the statusLine's authoritative rate_limits tee (the same data
+    // /rate-limit-options renders); a single-turn overshoot is caught one
+    // boundary later by the check timer or the next Stop hook, and the serve/SDK
+    // path additionally stamps observed limits on errored results.
     const hardCtx = { now, thresholds: hardBars(cfg), currentAccountUuid: null, switchFamilies };
     const seat = seatOf(loadAccounts());
     if (seat && !seat.needsReauth && !isExhausted(seat, hardCtx)) {
