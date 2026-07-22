@@ -22,7 +22,7 @@ Ang config ay JSON sa `~/.config/tokenmaxxing/config.json`. Opsyonal ang bawat f
 ```
 
 - `thresholds.session` / `thresholds.weekly`: ang mga screening bar na inilarawan sa [Paano nagpapasya ang pagpapalit](/tl/switching).
-- `hardThresholds.session` / `hardThresholds.weekly`: ang mga bar ng dingding (default na 100, ang tunay na server limit ng bawat account). Kapag lampas na sa screening bar nito ang bawat account, pinipiga ng automatic na desisyon ang bawat isa hanggang sa dingding nito bago mag-park - tingnan ang [Ang dingding](/tl/switching). Itakda na katumbas ng `thresholds` upang i-disable.
+- `hardThresholds.session` / `hardThresholds.weekly`: ang mga bar ng dingding (default na 100, ang tunay na server limit ng bawat account). Kapag lampas na sa screening bar nito ang bawat account, pinipiga ng automatic na desisyon ng Claude ang bawat isa hanggang sa dingding nito bago mag-park - tingnan ang [Ang dingding](/tl/switching). Itakda na katumbas ng `thresholds` upang i-disable; hindi pinapansin ng Codex ang setting na ito.
 - `claudeBin` / `codexBin`: nagtutumbas sa TUNAY na mga binary na ipinapasimula ng mga supervisor (isinusulat ng `init` / `init --codex`; sinasabi sa iyo ng diagnostic ng recursion-guard na ayusin ang `claudeBin` dito kapag tumigil ito sa pagturo sa tunay na Claude binary).
 - `policy.projectionMargin`: ibinabawas sa parehong mga screening bar at mga bar ng dingding upang buuin ang mga epektibong bar.
 - `policy.greedySessionFloor`: ang porsyento ng nagamit na session kung saan nag-e-engage ang greedy convergence.

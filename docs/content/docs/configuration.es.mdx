@@ -22,7 +22,7 @@ La configuración es JSON en `~/.config/tokenmaxxing/config.json`. Cada campo es
 ```
 
 - `thresholds.session` / `thresholds.weekly`: las barras de cribado descritas en [Cómo decide el cambio](/es/switching).
-- `hardThresholds.session` / `hardThresholds.weekly`: las barras de muro (por defecto 100, el límite real del servidor de cada cuenta). Cuando cada cuenta está por encima de su barra de cribado, la decisión automática exprime cada una hasta su muro antes de estacionar - ver [El muro](/es/switching). Fija igual a `thresholds` para deshabilitarlo.
+- `hardThresholds.session` / `hardThresholds.weekly`: las barras de muro (por defecto 100, el límite real del servidor de cada cuenta). Cuando cada cuenta está por encima de su barra de cribado, la decisión automática de Claude exprime cada una hasta su muro antes de estacionar - ver [El muro](/es/switching). Fija igual a `thresholds` para deshabilitarlo; Codex ignora este ajuste.
 - `claudeBin` / `codexBin`: fija los binarios REALES que generan los supervisores (escritos por `init` / `init --codex`; el diagnóstico de la protección contra recursión te indica que corrijas `claudeBin` aquí cuando deje de apuntar al binario real de Claude).
 - `policy.projectionMargin`: se resta tanto de las barras de cribado como de las barras de muro para formar las barras efectivas.
 - `policy.greedySessionFloor`: porcentaje de sesión usado al cual entra en juego la convergencia voraz.

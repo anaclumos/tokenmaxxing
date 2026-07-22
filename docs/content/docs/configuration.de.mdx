@@ -22,7 +22,7 @@ Die Konfiguration ist JSON unter `~/.config/tokenmaxxing/config.json`. Jedes Fel
 ```
 
 - `thresholds.session` / `thresholds.weekly`: die in [Wie der Wechsel entscheidet](/de/switching) beschriebenen Screening-Schranken.
-- `hardThresholds.session` / `hardThresholds.weekly`: die Wandschranken (Standard 100, das echte Serverlimit jedes Kontos). Wenn jedes Konto über seiner Screening-Schranke liegt, quetscht die automatische Entscheidung jedes bis an seine Wand aus, bevor sie parkt - siehe [Die Wand](/de/switching). Gleich `thresholds` setzen, um es zu deaktivieren.
+- `hardThresholds.session` / `hardThresholds.weekly`: die Wandschranken (Standard 100, das echte Serverlimit jedes Kontos). Wenn jedes Konto über seiner Screening-Schranke liegt, quetscht die automatische Claude-Entscheidung jedes bis an seine Wand aus, bevor sie parkt - siehe [Die Wand](/de/switching). Gleich `thresholds` setzen, um es zu deaktivieren; Codex ignoriert diese Einstellung.
 - `claudeBin` / `codexBin`: pinnt auf die ECHTEN Binaries, die die Supervisoren starten (geschrieben von `init` / `init --codex`; die Rekursionsschutz-Diagnose weist Sie darauf hin, hier `claudeBin` zu korrigieren, wenn es nicht mehr auf die echte Claude-Binary zeigt).
 - `policy.projectionMargin`: sowohl von den Screening-Schranken als auch von den Wandschranken abgezogen, um die effektiven Schranken zu bilden.
 - `policy.greedySessionFloor`: der Sitzungsnutzungsprozentsatz, bei dem die greedy-Konvergenz greift.

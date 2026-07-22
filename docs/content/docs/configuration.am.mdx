@@ -22,7 +22,7 @@ Config በ `~/.config/tokenmaxxing/config.json` JSON ነው። እያንዳን�
 ```
 
 - `thresholds.session` / `thresholds.weekly`፦ በ[መቀያየር እንዴት እንደሚወሰን](/am/switching) የተገለጹት screening barዎች።
-- `hardThresholds.session` / `hardThresholds.weekly`፦ ግድግዳ barዎቹ (ነባሪ 100፣ የእያንዳንዱ መለያ እውነተኛ የ server ገደብ)። እያንዳንዱ መለያ ከ screening bar በላይ ሲሆን፣ automatic ውሳኔው ከማቆሙ በፊት እያንዳንዱን እስከ ግድግዳው ድረስ ይጨምቃል - [ግድግዳው](/am/switching) ን ተመልከት። ለማሰናከል ከ `thresholds` ጋር እኩል አድርግ።
+- `hardThresholds.session` / `hardThresholds.weekly`፦ ግድግዳ barዎቹ (ነባሪ 100፣ የእያንዳንዱ መለያ እውነተኛ የ server ገደብ)። እያንዳንዱ መለያ ከ screening bar በላይ ሲሆን፣ automatic የ Claude ውሳኔው ከማቆሙ በፊት እያንዳንዱን እስከ ግድግዳው ድረስ ይጨምቃል - [ግድግዳው](/am/switching) ን ተመልከት። ለማሰናከል ከ `thresholds` ጋር እኩል አድርግ፤ Codex ይህን ቅንብር ችላ ይላል።
 - `claudeBin` / `codexBin`፦ supervisorዎቹ የሚያስነሱትን ትክክለኛ binaryዎች ይሰካል (በ `init` / `init --codex` የተጻፈ፤ `claudeBin` እዚህ ወደ እውነተኛው Claude binary ማመልከቱን ሲያቆም recursion-guard ምርመራው እዚህ እንድታስተካክለው ይነግርሃል)።
 - `policy.projectionMargin`፦ ተግባራዊ barዎችን ለመፍጠር ከ screening barዎቹም ሆነ ከግድግዳ barዎቹ ይቀነሳል።
 - `policy.greedySessionFloor`፦ greedy convergence የሚሳተፍበት session-የተጠቀመ መቶኛ።

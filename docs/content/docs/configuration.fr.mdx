@@ -22,7 +22,7 @@ La configuration est du JSON dans `~/.config/tokenmaxxing/config.json`. Chaque c
 ```
 
 - `thresholds.session` / `thresholds.weekly` : les barres de filtrage décrites dans [Comment la bascule décide](/fr/switching).
-- `hardThresholds.session` / `hardThresholds.weekly` : les barres de mur (par défaut 100, la vraie limite serveur de chaque compte). Quand chaque compte dépasse sa barre de filtrage, la décision automatique presse chacun jusqu'à son mur avant de le parquer : voir [Le mur](/fr/switching). Définissez `hardThresholds` égal à `thresholds` pour désactiver.
+- `hardThresholds.session` / `hardThresholds.weekly` : les barres de mur (par défaut 100, la vraie limite serveur de chaque compte). Quand chaque compte dépasse sa barre de filtrage, la décision automatique de Claude presse chacun jusqu'à son mur avant de le parquer : voir [Le mur](/fr/switching). Définissez `hardThresholds` égal à `thresholds` pour désactiver ; Codex ignore ce réglage.
 - `claudeBin` / `codexBin` : épingle les VRAIS binaires que les superviseurs lancent (écrit par `init` / `init --codex` ; le diagnostic du garde-fou anti-récursion vous dit de corriger `claudeBin` ici quand il ne pointe plus vers le vrai binaire Claude).
 - `policy.projectionMargin` : soustrait à la fois des barres de filtrage et des barres de mur pour former les barres effectives.
 - `policy.greedySessionFloor` : pourcentage de session utilisé auquel la convergence gloutonne s'engage.

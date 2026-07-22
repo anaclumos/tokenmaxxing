@@ -22,7 +22,7 @@ description: "config.json 的结构、阈值与策略旋钮"
 ```
 
 - `thresholds.session` / `thresholds.weekly`：[切换如何决策](/zh/switching) 中所述的筛选阈值。
-- `hardThresholds.session` / `hardThresholds.weekly`：上限墙阈值条（默认 100，即每个账户真实的服务端限额）。当每个账户都超过其筛选阈值条时，自动决策会在停放之前把每个账户都压榨到它的上限墙，参见[上限墙](/zh/switching)。设为与 `thresholds` 相等即可禁用。
+- `hardThresholds.session` / `hardThresholds.weekly`：上限墙阈值条（默认 100，即每个账户真实的服务端限额）。当每个账户都超过其筛选阈值条时，Claude 的自动决策会在停放之前把每个账户都压榨到它的上限墙，参见[上限墙](/zh/switching)。设为与 `thresholds` 相等即可禁用；Codex 会忽略此设置。
 - `claudeBin` / `codexBin`：钉定监督进程实际生成的真实二进制文件（由 `init` / `init --codex` 写入；当递归防护诊断提示 `claudeBin` 不再指向真实的 Claude 二进制文件时，就在这里修正它）。
 - `policy.projectionMargin`：从筛选阈值条和上限墙阈值条中都减去，得到有效阈值条。
 - `policy.greedySessionFloor`：贪心收敛开始介入时的会话已用百分比。

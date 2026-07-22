@@ -22,7 +22,7 @@ description: "schema بتاع config.json، والعتبات، ومفاتيح ا
 ```
 
 - `thresholds.session` / `thresholds.weekly`: شرايط الفرز الموصوفة في [إزاي التبديل بيتقرر](/arz/switching).
-- `hardThresholds.session` / `hardThresholds.weekly`: شرايط الحائط (الافتراضي 100، الحد الحقيقي على السيرفر لكل حساب). لما كل حساب يبقى فوق شرط الفرز بتاعه، القرار التلقائي بيعصر كل واحد لغاية حائطه قبل ما يركنه - بص [الحائط](/arz/switching). اضبطها تساوي `thresholds` عشان تعطّلها.
+- `hardThresholds.session` / `hardThresholds.weekly`: شرايط الحائط (الافتراضي 100، الحد الحقيقي على السيرفر لكل حساب). لما كل حساب يبقى فوق شرط الفرز بتاعه، قرار Claude التلقائي بيعصر كل واحد لغاية حائطه قبل ما يركنه - بص [الحائط](/arz/switching). اضبطها تساوي `thresholds` عشان تعطّلها؛ Codex بيتجاهل الإعداد ده.
 - `claudeBin` / `codexBin`: بيثبّتوا على الـ binaries الحقيقية اللي الـ supervisors بتشغّلها (بتتكتب من `init` / `init --codex`؛ تشخيص حارس التكرار بيقولك تصلّح `claudeBin` هنا لما يبطّل يشاور على الـ Claude binary الحقيقي).
 - `policy.projectionMargin`: بيتطرح من شرايط الفرز وشرايط الحائط الاتنين عشان يكوّن الشرايط الفعّالة.
 - `policy.greedySessionFloor`: نسبة استخدام الـ session اللي عندها التقارب الـ greedy بينخرط.

@@ -22,7 +22,7 @@ description: "config.json のスキーマ、しきい値、ポリシーの調整
 ```
 
 - `thresholds.session` / `thresholds.weekly`: [切り替えの判断方法](/ja/switching)で説明したスクリーニングバー。
-- `hardThresholds.session` / `hardThresholds.weekly`: ウォールバー (デフォルト100、各アカウントの実際のサーバー制限)。すべてのアカウントがスクリーニングバーを超えると、自動判断はパークする前に各アカウントをウォールまで絞り出します ([ウォール](/ja/switching)を参照)。`thresholds` と同じ値に設定すると無効になります。
+- `hardThresholds.session` / `hardThresholds.weekly`: ウォールバー (デフォルト100、各アカウントの実際のサーバー制限)。すべてのアカウントがスクリーニングバーを超えると、自動の Claude 判断はパークする前に各アカウントをウォールまで絞り出します ([ウォール](/ja/switching)を参照)。`thresholds` と同じ値に設定すると無効になります。Codex はこの設定を無視します。
 - `claudeBin` / `codexBin`: スーパーバイザーが起動する本物のバイナリを固定する設定 (`init` / `init --codex` によって書き込まれる。再帰防止ガードの診断メッセージは、`claudeBin` が本物の Claude バイナリを指さなくなったとき、ここを修正するよう案内する)。
 - `policy.projectionMargin`: スクリーニングバーとウォールバーの両方から差し引いて有効バーを求める値。
 - `policy.greedySessionFloor`: グリーディ収束が作動するセッション使用率。
