@@ -8,6 +8,7 @@ description: "مخطط config.json، والعتبات، ومقابض السيا�
 ```json
 {
   "thresholds": { "session": 95, "weekly": 98 },
+  "hardThresholds": { "session": 100, "weekly": 100 },
   "claudeBin": "/path/to/real/claude",
   "codexBin": "/path/to/real/codex",
   "policy": {
@@ -21,8 +22,9 @@ description: "مخطط config.json، والعتبات، ومقابض السيا�
 ```
 
 - `thresholds.session` / `thresholds.weekly`: أشرطة الفرز الموصوفة في [كيف يقرّر التبديل](/ar/switching).
+- `hardThresholds.session` / `hardThresholds.weekly`: أشرطة الجدار (الافتراضي 100، وهو حدّ الخادم الحقيقي لكل حساب). وعندما يتجاوز كل حساب شريط فرزه، يعصر القرار التلقائي كلًّا منها حتى جداره قبل الركن: انظر [الجدار](/ar/switching). اجعلها مساوية لـ `thresholds` لتعطيلها.
 - `claudeBin` / `codexBin`: يثبّتان على الثنائيّات الحقيقية التي يشغّلها المشرفون (يكتبهما `init` / `init --codex`؛ ويخبرك تشخيص حارس التكرار بإصلاح `claudeBin` هنا عندما يتوقّف عن الإشارة إلى ثنائي Claude الحقيقي).
-- `policy.projectionMargin`: يُطرَح من كلا الشريطين لتكوين الأشرطة الفعّالة.
+- `policy.projectionMargin`: يُطرَح من أشرطة الفرز وأشرطة الجدار كليهما لتكوين الأشرطة الفعّالة.
 - `policy.greedySessionFloor`: النسبة المئوية لاستخدام الجلسة التي يُفعَّل عندها التقارب الجشِع.
 - `policy.switchModels`: عائلات النماذج التي يحجب حدّها الأسبوعي لكل نموذج التبديلَ (تُحوَّل المدخلات إلى أحرف صغيرة عند التحميل).
 - `policy.usagePollTtlMs`: المدّة التي يبقى فيها استطلاع `/usage` لكل نموذج حديثًا.

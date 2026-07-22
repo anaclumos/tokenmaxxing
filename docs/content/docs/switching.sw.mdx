@@ -27,7 +27,15 @@ Kila kitu huendeshwa kutokana na madirisha yaliyohifadhiwa kwenye kache yaliyohi
 ## Njia ya greedy dhidi ya ngumu
 
 - **Njia ya greedy** (imejihusisha, lakini chini ya kila baa): panga kila akaunti, ikijumuisha ya sasa. Ikiwa akaunti ya sasa tayari inashinda au inasare, usifanye chochote. Vinginevyo badilisha hadi akaunti bora kabisa. Haisubiri kamwe na haiegeshi mapema kamwe - akaunti ya sasa inayoweza kutumika haibadilishwi kwa ajili ya kusubiri. Kwa kuwa akaunti ya sasa pia inapangwa, njia ya otomatiki na `tokenmaxxing switch` peke yake zote ni idempotent: kutathmini mara kwa mara hukusanyika kwenye akaunti sahihi kisha hukaa pale.
-- **Njia ngumu** (baa imevukwa): badilisha uende kwa mgombea bora zaidi anayeweza kutumika. Ikiwa tokeni ya kuonyesha upya ya mgombea itakuwa imekufa, huwekewa alama ya inahitaji-uthibitishaji-upya na mgombea anayefuata hujaribiwa. Ikiwa hakuna kinachoweza kutumika, mantiki ya kusubiri-kwa-kukwisha huendeshwa; ni mpigaji simu pekee anayeweza kweli kusimamisha kikao (Stop hook iliyosimamiwa) ndiye anayeruhusiwa kuegesha mapema kwenye akaunti ambayo bado imezuiwa lakini inayopona mapema zaidi.
+- **Njia ngumu** (baa imevukwa): badilisha uende kwa mgombea bora zaidi anayeweza kutumika. Ikiwa tokeni ya kuonyesha upya ya mgombea itakuwa imekufa, huwekewa alama ya inahitaji-uthibitishaji-upya na mgombea anayefuata hujaribiwa. Ikiwa hakuna kinachoweza kutumika, ukamuaji wa ukuta (hapa chini) huendeshwa, na ni pale tu kila akaunti inapofikia ukuta wake ndipo mantiki ya kusubiri-kwa-kukwisha huendeshwa; ni mpigaji simu pekee anayeweza kweli kusimamisha kikao (Stop hook iliyosimamiwa) ndiye anayeruhusiwa kuegesha mapema kwenye akaunti ambayo bado imezuiwa lakini inayopona mapema zaidi.
+
+## Ukuta
+
+Wakati njia ngumu haipati mgombea anayeweza kutumika - kila akaunti imezidi baa zake za uchujaji - uamuzi wa otomatiki hauegeshi mara moja. Kwanza hutathmini tena dhidi ya **baa za ukuta** (`hardThresholds`, chaguo-msingi 100, kikomo halisi cha seva cha kila akaunti): kikao hushikilia kiti chake na kukamua wakati bado kiko chini ya ukuta, vinginevyo hubadilika hadi akaunti bora kabisa iliyo bado chini ya ukuta (upangaji ule ule wa shinikizo la mwendo), na huegesha tu mara kila akaunti inapofikia ukuta wake kweli. Kupona hupimwa dhidi ya ukuta, hivyo akaunti ambayo dirisha lake la saa 5 linajiweka upya inaweza kukamuliwa tena hata wakati dirisha lake la wiki bado liko juu ya baa ya uchujaji.
+
+Hii huzuia asilimia chache za mwisho za mgao wa kila akaunti zisibaki bila kutumika. Usomaji wa ukuta ni mlisho wa kikomo cha matumizi wa statusline yenyewe - takwimu zile zile ambazo `/rate-limit-options` ya Claude huonyesha - hivyo akaunti inayofika kikomo chake kweli hutambuliwa na kurukwa, na kuzidi kwa zamu moja hunaswa mpaka mmoja baadaye na ukaguzi wa mara kwa mara.
+
+`hardThresholds` hutoa `policy.projectionMargin` kwa njia ile ile ambayo baa za uchujaji hufanya, hivyo kuiweka sawa na `thresholds` huzima ukamuaji wa ukuta. Ukamuaji huendeshwa kwenye njia ya uamuzi wa otomatiki wa Claude pekee: `tokenmaxxing switch` peke yake huhifadhi uegeshaji wake wa kache-pekee, na Codex hupanda akaunti yake ya sasa hadi ukuta (Codex inayoendesha haiwezi kupokea kitambulisho kilichobadilishwa katikati ya kikao).
 
 ## Vikomo vya kila muundo
 

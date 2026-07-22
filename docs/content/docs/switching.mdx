@@ -27,7 +27,15 @@ Everything runs off cached windows stored as absolute UTC epochs, so a stale sna
 ## Greedy vs hard path
 
 - **Greedy path** (engaged, but under every bar): rank every account, current included. If the current account already wins or ties, do nothing. Otherwise swap onto the strictly better account. It never waits and never pre-parks - a usable current account is not traded for a wait. Because the current account is ranked too, both the automatic path and bare `tokenmaxxing switch` are idempotent: evaluating periodically converges on the right account and then stays put.
-- **Hard path** (a bar crossed): swap away to the best usable candidate. If a candidate's refresh token turns out to be dead, it is flagged needs-reauth and the next candidate is tried. If nothing is usable, the depleted-wait logic runs; only a caller that can actually pause the session (the supervised Stop hook) is allowed to pre-park onto a still-blocked but soonest-recovering account.
+- **Hard path** (a bar crossed): swap away to the best usable candidate. If a candidate's refresh token turns out to be dead, it is flagged needs-reauth and the next candidate is tried. If nothing is usable, the wall squeeze (below) runs, and only when every account has hit its wall does the depleted-wait logic run; only a caller that can actually pause the session (the supervised Stop hook) is allowed to pre-park onto a still-blocked but soonest-recovering account.
+
+## The wall
+
+When the hard path finds no usable candidate - every account is over its screening bars - the automatic decision does not park right away. It first re-evaluates against the **wall bars** (`hardThresholds`, default 100, each account's real server limit): the session holds its seat and squeezes while it is still under the wall, else swaps onto the best still-under-wall account (same pace-pressure ranking), and only parks once every account has truly hit its wall. Recovery is measured against the wall, so an account whose 5-hour window resets can be squeezed again even while its weekly window still sits above the screening bar.
+
+This keeps the last few percent of each account's quota from going unspent. The wall reading is the statusline's own rate-limit feed - the same figures Claude's `/rate-limit-options` shows - so an account that genuinely maxes out is detected and skipped, and a single-turn overshoot is caught one boundary later by the periodic check.
+
+`hardThresholds` subtracts `policy.projectionMargin` the same way the screening bars do, so setting it equal to `thresholds` disables the wall squeeze. The squeeze runs on the automatic Claude decision path only: bare `tokenmaxxing switch` keeps its cache-only park, and Codex rides its current account to the wall (a running Codex cannot adopt a swapped credential mid-session).
 
 ## Per-model caps
 

@@ -27,7 +27,15 @@ Everything dey run off cached windows wey dem store as absolute UTC epochs, so e
 ## Greedy vs hard path
 
 - **Greedy path** (engaged, but under every bar): rank every account, current one included. If the current account don already win or tie, do nothing. Otherwise swap go the strictly better account. E no dey wait at all and e no dey pre-park at all - a usable current account no be something wey you go trade for a wait. Because the current account dey ranked too, both the automatic path and bare `tokenmaxxing switch` dey idempotent: to evaluate periodically dey converge for the right account and then e dey stay put.
-- **Hard path** (a bar cross): swap comot go the best usable candidate. If one candidate im refresh token turn out to dey dead, dem go flag am needs-reauth and dem go try the next candidate. If nothing dey usable, the depleted-wait logic go run; only a caller wey fit actually pause the session (the supervised Stop hook) dey allowed to pre-park go one still-blocked but soonest-recovering account.
+- **Hard path** (a bar cross): swap comot go the best usable candidate. If one candidate im refresh token turn out to dey dead, dem go flag am needs-reauth and dem go try the next candidate. If nothing dey usable, the wall squeeze (below) go run, and na only when every account don hit im wall the depleted-wait logic go run; only a caller wey fit actually pause the session (the supervised Stop hook) dey allowed to pre-park go one still-blocked but soonest-recovering account.
+
+## Di wall
+
+When the hard path no find any usable candidate - every account don pass im screening bars - the automatic decision no dey park sharp-sharp. E dey first re-evaluate against the **wall bars** (`hardThresholds`, default 100, na each account im real server limit): the session dey hold im seat and dey squeeze as e still dey under the wall, else e go swap go the best account wey still dey under wall (same pace-pressure ranking), and e go only park once every account don truly hit im wall. Dem dey measure recovery against the wall, so an account wey im 5-hour window reset fit squeeze again even while im weekly window still dey sit above the screening bar.
+
+Dis one dey keep the last few percent of each account im quota make e no waste. The wall reading na the statusline im own rate-limit feed - the same figures wey Claude im `/rate-limit-options` dey show - so an account wey genuinely max out, dem go detect am and skip am, and one single-turn overshoot, the periodic check go catch am one boundary later.
+
+`hardThresholds` dey subtract `policy.projectionMargin` the same way the screening bars dey do, so if you set am equal to `thresholds` e go disable the wall squeeze. The squeeze dey run on the automatic Claude decision path only: bare `tokenmaxxing switch` dey keep im cache-only park, and Codex dey ride im current account reach the wall (a running Codex no fit adopt a swapped credential mid-session).
 
 ## Per-model caps
 

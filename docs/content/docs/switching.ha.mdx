@@ -27,7 +27,15 @@ Komai yana gudana daga tagogin da aka ajiye a matsayin cikakkun UTC epochs, don 
 ## Hanyar greedy da hanya mai wuya
 
 - **Hanyar greedy** (an shiga, amma ƙasa da kowace sanda): ka jera kowane asusu, tare da na yanzu. Idan asusun yanzu ya riga ya lashe ko ya daidaita, kada ka yi komai. In ba haka ba ka musanya zuwa asusun da ya fi kyau a fili. Ba ya taɓa jira kuma ba ya taɓa ajiyewa a gaba - ba a musanya asusu na yanzu mai amfani domin jira ba. Domin ana jera asusun yanzu ma, hanyar atomatik da `tokenmaxxing switch` shi kaɗai duk idempotent ne: auna lokaci-lokaci yana haɗuwa a kan asusun da ya dace sannan ya tsaya.
-- **Hanya mai wuya** (an ƙetare sanda): a musanya zuwa ɗan takara mafi kyau da za a iya amfani da shi. Idan refresh token na ɗan takara ya zama matacce, ana yiwa alama cewa yana buƙatar sake-tantancewa kuma ana gwada ɗan takara na gaba. Idan babu abin da za a iya amfani da shi, dabarar jira-ƙarewa tana gudana; kawai mai kira da zai iya dakatar da zaman da gaske (Stop hook da ake kula da shi) aka ba shi izinin ajiyewa a gaba zuwa asusu da har yanzu aka toshe amma zai fi kusa da dawowa.
+- **Hanya mai wuya** (an ƙetare sanda): a musanya zuwa ɗan takara mafi kyau da za a iya amfani da shi. Idan refresh token na ɗan takara ya zama matacce, ana yiwa alama cewa yana buƙatar sake-tantancewa kuma ana gwada ɗan takara na gaba. Idan babu abin da za a iya amfani da shi, matsawar bango (a ƙasa) tana gudana, kuma sai idan kowane asusu ya bugi bangonsa ne dabarar jira-ƙarewa ke gudana; kawai mai kira da zai iya dakatar da zaman da gaske (Stop hook da ake kula da shi) aka ba shi izinin ajiyewa a gaba zuwa asusu da har yanzu aka toshe amma zai fi kusa da dawowa.
+
+## Bango
+
+Lokacin da hanya mai wuya ba ta samu ɗan takara da za a iya amfani da shi - kowane asusu ya wuce sandunan tantancewarsa - shawarar atomatik ba ta ajiyewa nan take. Da farko tana sake auna a kan **sandunan bango** (`hardThresholds`, tsohuwa 100, ainihin iyakar sabar na kowane asusu): zaman yana riƙe wurin zamansa yana matsawa yayin da har yanzu yake ƙasa da bango, in ba haka ba yana musanya zuwa asusu mafi kyau da har yanzu yake ƙasa da bango (matsayi iri ɗaya na matsin sauri), kuma yana ajiyewa ne kawai da zarar kowane asusu ya bugi bangonsa da gaske. Ana auna dawowa a kan bango, don haka asusun da tagar awa 5 ɗinsa ta sake saiti za a iya sake matsa shi ko da yayin da tagar makonsa har yanzu yake sama da sandar tantancewa.
+
+Wannan yana hana a bar 'yan kaso na ƙarshe na ƙayyadaddun kowane asusu ba tare da an yi amfani da su ba. Karatun bango shi ne feed na iyaka na statusline da kansa - lambobi iri ɗaya da Claude ke nunawa ta `/rate-limit-options` - don haka ana gano asusun da ya kai iyakarsa da gaske a tsallake shi, kuma ana kama zarcewar iyaka ta zagaye ɗaya bayan iyakar zagaye ɗaya ta dubawar lokaci-lokaci.
+
+`hardThresholds` yana rage `policy.projectionMargin` kamar yadda sandunan tantancewa suke yi, don haka saita shi daidai da `thresholds` yana kashe matsawar bango. Matsawar tana gudana ne kawai a kan hanyar shawara ta atomatik ta Claude: `tokenmaxxing switch` shi kaɗai yana riƙe ajiyar cache-kawai ɗinsa, kuma Codex yana hawa asusunsa na yanzu har zuwa bango (Codex mai gudana ba zai iya ɗaukar shaidar da aka musanya a tsakiyar zama ba).
 
 ## Iyakoki na kowane-model
 

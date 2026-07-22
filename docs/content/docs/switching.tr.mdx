@@ -27,7 +27,15 @@ Her şey mutlak UTC epoch'ları olarak saklanan önbelleğe alınmış pencerele
 ## Açgözlü ve sert yol karşılaştırması
 
 - **Açgözlü yol** (devrede, ancak her çubuğun altında): mevcut dahil her hesabı sıralar. Mevcut hesap zaten kazanıyor veya berabere kalıyorsa hiçbir şey yapmaz. Aksi halde kesinlikle daha iyi hesaba geçer. Asla beklemez ve asla önceden park etmez - kullanılabilir bir mevcut hesap bir bekleme karşılığında takas edilmez. Mevcut hesap da sıralandığından, hem otomatik yol hem de sade `tokenmaxxing switch` idempotenttir: periyodik değerlendirme doğru hesapta yakınsar ve ardından yerinde kalır.
-- **Sert yol** (bir çubuk aşıldı): en iyi kullanılabilir adaya geçer. Bir adayın yenileme token'ı ölü çıkarsa, yeniden kimlik doğrulama gerekli olarak işaretlenir ve bir sonraki aday denenir. Hiçbir şey kullanılabilir değilse, tükenmiş bekleme mantığı çalışır; yalnızca oturumu gerçekten duraklatabilen bir çağırıcının (gözetimli Stop hook) hâlâ engellenmiş ancak en yakında kurtulacak bir hesaba önceden park etmesine izin verilir.
+- **Sert yol** (bir çubuk aşıldı): en iyi kullanılabilir adaya geçer. Bir adayın yenileme token'ı ölü çıkarsa, yeniden kimlik doğrulama gerekli olarak işaretlenir ve bir sonraki aday denenir. Hiçbir şey kullanılabilir değilse, duvar sıkıştırması (aşağıda) çalışır ve yalnızca her hesap duvarına ulaştığında tükenmiş bekleme mantığı çalışır; yalnızca oturumu gerçekten duraklatabilen bir çağırıcının (gözetimli Stop hook) hâlâ engellenmiş ancak en yakında kurtulacak bir hesaba önceden park etmesine izin verilir.
+
+## Duvar
+
+Sert yol kullanılabilir bir aday bulamadığında - her hesap eleme çubuklarının üzerindedir - otomatik karar hemen park etmez. Önce **duvar çubuklarına** (`hardThresholds`, varsayılan 100, her hesabın gerçek sunucu limiti) karşı yeniden değerlendirir: oturum hâlâ duvarın altındayken koltuğunu korur ve sıkıştırmayı sürdürür, aksi halde hâlâ duvarın altındaki en iyi hesaba geçer (aynı tempo baskısı sıralaması) ve yalnızca her hesap gerçekten duvarına ulaştığında park eder. Kurtulma duvara karşı ölçülür, bu nedenle 5 saatlik penceresi sıfırlanan bir hesap, haftalık penceresi hâlâ eleme çubuğunun üzerinde otururken bile yeniden sıkıştırılabilir.
+
+Bu, her hesabın kotasının son birkaç yüzdesinin harcanmadan kalmasını önler. Duvar okuması, statusline'ın kendi hız limiti beslemesidir - Claude'un `/rate-limit-options` komutunun gösterdiği aynı rakamlar - böylece gerçekten limitine dolan bir hesap tespit edilip atlanır ve tek turluk bir aşım, bir sınır sonra periyodik kontrol tarafından yakalanır.
+
+`hardThresholds`, eleme çubuklarının yaptığı gibi `policy.projectionMargin`'i çıkarır, bu nedenle onu `thresholds` ile eşit ayarlamak duvar sıkıştırmasını devre dışı bırakır. Sıkıştırma yalnızca otomatik Claude karar yolunda çalışır: sade `tokenmaxxing switch` yalnızca önbelleğe dayalı park etmesini korur ve Codex mevcut hesabında duvara kadar ilerler (çalışan bir Codex, oturum ortasında takas edilmiş bir kimlik bilgisini benimseyemez).
 
 ## Model başına üst sınırlar
 

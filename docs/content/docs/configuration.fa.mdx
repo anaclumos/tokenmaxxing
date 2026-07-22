@@ -8,6 +8,7 @@ description: "شمای config.json، آستانه‌ها، و کلیدهای س�
 ```json
 {
   "thresholds": { "session": 95, "weekly": 98 },
+  "hardThresholds": { "session": 100, "weekly": 100 },
   "claudeBin": "/path/to/real/claude",
   "codexBin": "/path/to/real/codex",
   "policy": {
@@ -21,8 +22,9 @@ description: "شمای config.json، آستانه‌ها، و کلیدهای س�
 ```
 
 - `thresholds.session` / `thresholds.weekly`: نوارهای غربالگری توصیف‌شده در [نحوه تصمیم‌گیری جابه‌جایی](/fa/switching).
+- `hardThresholds.session` / `hardThresholds.weekly`: نوارهای دیوار (پیش‌فرض ۱۰۰، محدودیت واقعی سرور هر حساب). وقتی هر حساب بالای نوار غربالگری خود است، تصمیم خودکار پیش از پارک کردن، هر یک را تا دیوارش می‌فشارد - [دیوار](/fa/switching) را ببینید. برای غیرفعال کردن، برابر با `thresholds` تنظیم کنید.
 - `claudeBin` / `codexBin`: به باینری‌های واقعی که ناظرها اجرا می‌کنند سنجاق می‌شود (توسط `init` / `init --codex` نوشته می‌شود؛ تشخیص نگهبان بازگشتی به شما می‌گوید وقتی `claudeBin` دیگر به باینری واقعی Claude اشاره نمی‌کند، همین‌جا آن را اصلاح کنید).
-- `policy.projectionMargin`: از هر دو نوار کم می‌شود تا نوارهای مؤثر شکل بگیرند.
+- `policy.projectionMargin`: هم از نوارهای غربالگری و هم از نوارهای دیوار کم می‌شود تا نوارهای مؤثر شکل بگیرند.
 - `policy.greedySessionFloor`: درصد استفاده نشست که در آن همگرایی حریصانه درگیر می‌شود.
 - `policy.switchModels`: خانواده‌های مدلی که سقف هفتگی به‌ازای هر مدلشان یک جابه‌جایی را دروازه‌بندی می‌کند (ورودی‌ها هنگام بارگذاری کوچک‌حروف می‌شوند).
 - `policy.usagePollTtlMs`: مدت زمانی که یک پیمایش `/usage` به‌ازای هر مدل تازه می‌ماند.
