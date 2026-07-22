@@ -113,7 +113,9 @@ export async function cmdSwitch(selector?: string): Promise<number> {
     // No usable target swapped in: everything is depleted, or the remaining
     // candidates' refresh tokens just died (performSwap persists needs-reauth
     // before throwing, hence the reload). Stay on / switch to whichever
-    // recovers soonest.
+    // recovers soonest. (Layer 2 - the wall squeeze - is deliberately confined
+    // to the automatic decision path in decide.ts, which decides off the live
+    // statusLine tee; bare `xx switch` stays cache-only and simply parks here.)
     const fresh = loadAccounts();
     const earliest = pickEarliestReset(fresh.accounts, everyone);
     if (!earliest) {

@@ -107,8 +107,9 @@ describe("evaluateAndMaybeSwap headless snapshot handling", () => {
   test("one probe persists BOTH snapshots and a burnt Fable cap gates despite healthy aggregates", async () => {
     installFakeClaude(96, Date.now() + 2 * D);
     const d = await evaluateAndMaybeSwap();
-    // sole account, so the gate resolves to the depleted path, never a swap.
-    expect(d.reason).toBe("all-depleted");
+    // sole account, soft-exhausted on Fable but under the 100 wall: Layer 2
+    // holds and squeezes the last drops rather than parking (the gate fired).
+    expect(d.reason).toBe("last-drop-hold");
     expect(d.swapped).toBe(false);
     expect(loadUsage()?.sevenDay.usedPercentage).toBe(72);
     expect(loadUsage()?.model).toBe(null);
@@ -139,7 +140,7 @@ describe("evaluateAndMaybeSwap headless snapshot handling", () => {
     // model. Trusting either would leave the box blind to the burnt Fable cap.
     writeUsageJson({ model: { id: "claude-3-5-sonnet-20241022", display: "Sonnet" } }, 120_000);
     const d = await evaluateAndMaybeSwap();
-    expect(d.reason).toBe("all-depleted");
+    expect(d.reason).toBe("last-drop-hold");
     expect(loadUsage()?.model).toBe(null);
     expect(loadUsage()?.sevenDay.usedPercentage).toBe(72);
   });
@@ -160,7 +161,7 @@ describe("evaluateAndMaybeSwap headless snapshot handling", () => {
     installFakeClaude(96, Date.now() + 2 * D);
     writeUsageJson({ org: "org-ELSEWHERE" });
     const d = await evaluateAndMaybeSwap();
-    expect(d.reason).toBe("all-depleted");
+    expect(d.reason).toBe("last-drop-hold");
     expect(loadUsage()?.org).toBe("org-A");
   });
 
@@ -287,13 +288,14 @@ describe("evaluateAndMaybeSwap headless snapshot handling", () => {
   test("split thresholds: a session window over its own bar triggers below the weekly bar", async () => {
     installFakeClaude(50, Date.now() + 2 * D);
     installFixtures([], { session: 95, weekly: 98 });
-    // fresh sonnet tee: no per-model gate, no probe; session 96 >= 95 is the sole trigger.
+    // fresh sonnet tee: no per-model gate, no probe; session 96 >= 95 is the sole
+    // trigger. Under the wall (96 < 100), so it engages then holds to squeeze.
     writeUsageJson({
       fiveHour: { usedPercentage: 96, resetsAt: Date.now() + 2 * D },
       model: { id: "claude-3-5-sonnet-20241022", display: "Sonnet" },
     });
     const d = await evaluateAndMaybeSwap();
-    expect(d.reason).toBe("all-depleted");
+    expect(d.reason).toBe("last-drop-hold");
     expect(await Bun.file(probeMarker).exists()).toBe(false);
   });
 
@@ -314,20 +316,24 @@ describe("evaluateAndMaybeSwap headless snapshot handling", () => {
     installFakeClaude(98, Date.now() + 2 * D);
     installFixtures([], { session: 95, weekly: 98 });
     const d = await evaluateAndMaybeSwap();
-    expect(d.reason).toBe("all-depleted");
+    // Fable 98 >= the 98 weekly bar engages the hard path; still under the 100
+    // wall, so Layer 2 holds and squeezes the last 2% rather than parking.
+    expect(d.reason).toBe("last-drop-hold");
     expect(loadModelUsage()?.perModel["Fable"]?.usedPercentage).toBe(98);
   });
 
   test("only a pause-capable caller may pre-park on a still-blocked account", async () => {
-    // B recovers within maxWaitMs but is blocked NOW. A non-anticipatory caller
-    // (check timer, unsupervised hook) must stay put; the supervised stop hook
-    // may pre-park, which here fails loudly on the missing parked credential -
-    // proving the flag, not the picker, is what withheld the swap.
-    installFakeClaude(96, Date.now() + 2 * D);
+    // Every account is WALLED (100), so Layer 2 finds nothing to squeeze and
+    // reaches the depleted-wait path. B drops below its wall within maxWaitMs but
+    // is walled NOW. A non-anticipatory caller (check timer, unsupervised hook)
+    // must stay put; the supervised stop hook may pre-park, which here fails
+    // loudly on the missing parked credential - proving the flag, not the
+    // picker, is what withheld the swap.
+    installFakeClaude(100, Date.now() + 2 * D);
     installFixtures([
       poolAccount("B", {
         lastUsage: {
-          fiveHour: { usedPercentage: 99, resetsAt: Date.now() + 30 * 60_000 },
+          fiveHour: { usedPercentage: 100, resetsAt: Date.now() + 30 * 60_000 },
           sevenDay: { usedPercentage: 30, resetsAt: Date.now() + 3 * D },
         },
         lastUsageAt: Date.now(),
@@ -368,8 +374,10 @@ describe("evaluateAndMaybeSwap headless snapshot handling", () => {
   });
 
   test("a dead grant on the earliest-reset pre-park target falls through to the next account", async () => {
-    // B recovers soonest but its refresh token is dead: the depleted loop must
-    // mark B needs-reauth and pre-park onto C, never abort into all-depleted.
+    // All three accounts are WALLED (100) so Layer 2 has nothing to squeeze and
+    // reaches the depleted-wait path. B drops below its wall soonest but its
+    // refresh token is dead: the depleted loop must mark B needs-reauth and
+    // pre-park onto C, never abort into all-depleted.
     const now = Date.now();
     const server = Bun.serve({
       port: Number(new URL(process.env.TOKENMAXXING_OAUTH_ROLES_URL!).port),
@@ -381,18 +389,18 @@ describe("evaluateAndMaybeSwap headless snapshot handling", () => {
       },
     });
     try {
-      installFakeClaude(96, now + 2 * D);
+      installFakeClaude(100, now + 2 * D);
       installFixtures([
         poolAccount("B", {
           lastUsage: {
-            fiveHour: { usedPercentage: 99, resetsAt: now + 20 * 60_000 },
+            fiveHour: { usedPercentage: 100, resetsAt: now + 20 * 60_000 },
             sevenDay: { usedPercentage: 30, resetsAt: now + 3 * D },
           },
           lastUsageAt: now,
         }),
         poolAccount("C", {
           lastUsage: {
-            fiveHour: { usedPercentage: 99, resetsAt: now + 40 * 60_000 },
+            fiveHour: { usedPercentage: 100, resetsAt: now + 40 * 60_000 },
             sevenDay: { usedPercentage: 30, resetsAt: now + 3 * D },
           },
           lastUsageAt: now,
@@ -417,18 +425,19 @@ describe("evaluateAndMaybeSwap headless snapshot handling", () => {
   });
 
   test("candidates whose gated cap is burnt are screened out down the whole chain", async () => {
-    // Parked account with healthy aggregates but a burnt Fable cap: pickBest
-    // must skip it and the depleted path must wait, not swap. If either loses
-    // the switchFamilies screen, performSwap on the missing parked credential
-    // throws and fails this test.
-    installFakeClaude(96, Date.now() + 2 * D);
+    // A is WALLED on Fable and B has healthy aggregates but a Fable cap burnt to
+    // the wall (100): the burnt cap must screen B out of the soft switch pick,
+    // the Layer 2 wall squeeze, AND the depleted pre-park. If any stage loses the
+    // switchFamilies screen, performSwap on the missing parked credential throws
+    // and fails this test; nothing is squeezable, so the pool parks.
+    installFakeClaude(100, Date.now() + 2 * D);
     installFixtures([
       poolAccount("B", {
         lastUsage: {
           fiveHour: { usedPercentage: 5, resetsAt: null },
           sevenDay: { usedPercentage: 30, resetsAt: Date.now() + 3 * D },
         },
-        lastPerModel: { Fable: { usedPercentage: 97, resetsAt: Date.now() + 3 * D } },
+        lastPerModel: { Fable: { usedPercentage: 100, resetsAt: Date.now() + 3 * D } },
         lastUsageAt: Date.now(),
       }),
     ]);
@@ -436,5 +445,65 @@ describe("evaluateAndMaybeSwap headless snapshot handling", () => {
     expect(d.reason).toBe("all-depleted");
     expect(d.swapped).toBe(false);
     expect(loadAccounts().activeAccountUuid).toBe("A");
+  });
+
+  test("Layer 2 hold: a hard-usable seat squeezes in place, never ping-ponging onto an equally squeezable sibling", async () => {
+    // Both accounts sit at Fable 96: soft-exhausted (>= 95) but under the 100
+    // wall. Layer 1 finds no usable switch target, and Layer 2 must HOLD the
+    // seat and squeeze rather than swap between two equally squeezable accounts.
+    installFakeClaude(96, Date.now() + 2 * D);
+    installFixtures([
+      poolAccount("B", {
+        lastUsage: { fiveHour: { usedPercentage: 5, resetsAt: null }, sevenDay: { usedPercentage: 30, resetsAt: Date.now() + 3 * D } },
+        lastPerModel: { Fable: { usedPercentage: 96, resetsAt: Date.now() + 3 * D } },
+        lastUsageAt: Date.now(),
+      }),
+    ]);
+    const d = await evaluateAndMaybeSwap();
+    expect(d.reason).toBe("last-drop-hold");
+    expect(d.swapped).toBe(false);
+    expect(loadAccounts().activeAccountUuid).toBe("A");
+  });
+
+  test("Layer 2 swap: a walled seat moves onto a still-squeezable account to keep pumping", async () => {
+    // A is walled on Fable (100); B is soft-exhausted (96) but under the wall.
+    // Layer 1 has no usable target and the seat cannot squeeze, so Layer 2 must
+    // swap onto B - proven by the missing-parked-credential throw, which fires
+    // only once the swap onto B is actually attempted (soft screening rejected B
+    // at 96 >= 95, so this can only be the Layer 2 wall pick).
+    installFakeClaude(100, Date.now() + 2 * D);
+    installFixtures([
+      poolAccount("B", {
+        lastUsage: { fiveHour: { usedPercentage: 5, resetsAt: null }, sevenDay: { usedPercentage: 30, resetsAt: Date.now() + 3 * D } },
+        lastPerModel: { Fable: { usedPercentage: 96, resetsAt: Date.now() + 3 * D } },
+        lastUsageAt: Date.now(),
+      }),
+    ]);
+    await expect(evaluateAndMaybeSwap()).rejects.toThrow(/no parked credential/);
+  });
+
+  test("Layer 2 is disabled when hardThresholds == thresholds, even with a projection margin", async () => {
+    // margin 3 -> effectiveBars session 92 AND hardBars session 95-3=92: identical,
+    // so an account in the 92-95 band that Layer 1 flags is ALSO at the wall. Layer
+    // 2 finds nothing to squeeze and the pool parks, exactly as before Layer 2 - the
+    // documented `hardThresholds == thresholds` disable (which a naive no-margin wall
+    // would have left a live 92-95 band inside; PR #47 review catch).
+    installFakeClaude(50, Date.now() + 2 * D);
+    installFixtures([], { session: 95, weekly: 95 });
+    writeFileSync(
+      paths.configJson,
+      JSON.stringify({
+        thresholds: { session: 95, weekly: 95 },
+        hardThresholds: { session: 95, weekly: 95 },
+        claudeBin: fakeClaude,
+        policy: { projectionMargin: 3, switchModels: ["fable"] },
+      }),
+    );
+    writeUsageJson({
+      fiveHour: { usedPercentage: 93, resetsAt: Date.now() + 2 * D },
+      model: { id: "claude-3-5-sonnet-20241022", display: "Sonnet" },
+    });
+    const d = await evaluateAndMaybeSwap();
+    expect(d.reason).toBe("all-depleted"); // parked, NOT last-drop-hold
   });
 });

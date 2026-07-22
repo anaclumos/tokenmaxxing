@@ -260,7 +260,13 @@ export async function evaluateAndMaybeSwapCodex(input: { now?: number }): Promis
 
     // Hard path: a bar is crossed. Land on the best usable candidate, walking
     // past dead grants; a fully depleted pool stays put (no pre-park: nothing
-    // can pause a codex session for a countdown yet).
+    // can pause a codex session for a countdown yet). Layer 2 (the wall) is
+    // deliberately claude-only: a running codex cannot hot-adopt a swapped
+    // credential (restart IS the switch), so a last-drop-swap onto a still-
+    // under-wall account would strand any concurrent sibling on the departed
+    // account (the reconcile can only signal siblings onto a Layer-1-usable
+    // seat), and a hold-only Layer 2 is identical to codex already staying put
+    // here - so codex just rides the current account to its wall.
     const tried = new Set<string>();
     while (true) {
       const current = loadCodexAccounts();

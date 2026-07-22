@@ -30,7 +30,7 @@ import { paths } from "./paths.ts";
 import { loadAccounts, loadConfig, loadDepletedWait, loadLastSwapAt, loadUsage, loadModelUsage, saveAccounts, saveDepletedWait, saveModelUsage, usageTeeAt, writeUsage } from "./state.ts";
 import { readOAuthAccount } from "./claudejson.ts";
 import { chooseAndSwap, performSwap } from "./swap.ts";
-import { currentWins, effectiveBars, pickBest, pickEarliestReset, usableAt } from "./picker.ts";
+import { currentWins, effectiveBars, hardBars, isExhausted, pickBest, pickEarliestReset, usableAt } from "./picker.ts";
 import { InvalidGrantError } from "./oauth.ts";
 import { familyTokens, gatedFamilies, probeUsage } from "./usage.ts";
 import { log } from "./log.ts";
@@ -307,15 +307,44 @@ export async function evaluateAndMaybeSwap(now = Date.now(), anticipatory = fals
     const landed = await chooseAndSwap({ now, thresholds: effectiveBars(cfg), switchFamilies, currentAccountUuid: seatOf(loadAccounts())?.accountUuid ?? null });
     if (landed) return { swapped: true, account: landed, reason: "swapped" };
 
-    // Every account is depleted. Wait for whichever recovers soonest (including
-    // the current one), if that reset is within the auto-wait window. A dead
-    // grant on the chosen pre-park target must not abort the wait: performSwap
-    // persists needs-reauth before throwing, so each retry re-ranks without the
-    // dead account and the loop terminates (mirrors the greedy loop above).
+    // ── LAYER 2 (the wall). Every account is exhausted at the Layer 1
+    // screening bars, so Layer 1 alone would park the pool right here with
+    // quota still unspent on every account. Before parking, pump the last drops
+    // against the hard wall bars (default the server's own 100% limit, the same
+    // figure /rate-limit-options reads): hold the seat while it is still under
+    // its wall, else move onto the best still-under-wall account (chooseAndSwap
+    // keeps the usual pace-pressure ranking - squeeze the account whose weekly
+    // quota is most about to be forfeited first). Only when EVERY account has
+    // truly walled do we fall through to the depleted-wait park below. The wall
+    // reading is the statusLine's authoritative rate_limits tee (the same data
+    // /rate-limit-options renders); a single-turn overshoot is caught one
+    // boundary later by the check timer or the next Stop hook, and the serve/SDK
+    // path additionally stamps observed limits on errored results.
+    const hardCtx = { now, thresholds: hardBars(cfg), currentAccountUuid: null, switchFamilies };
+    const seat = seatOf(loadAccounts());
+    if (seat && !seat.needsReauth && !isExhausted(seat, hardCtx)) {
+      log("decide.last_drop_hold", { account: seat.accountUuid.slice(0, 8) });
+      return { swapped: false, account: null, reason: "last-drop-hold" };
+    }
+    const squeezed = await chooseAndSwap({ ...hardCtx, currentAccountUuid: seat?.accountUuid ?? null });
+    if (squeezed) {
+      log("decide.last_drop_swap", { account: squeezed.accountUuid.slice(0, 8) });
+      return { swapped: true, account: squeezed, reason: "last-drop-swap" };
+    }
+
+    // Every account is walled. Wait for whichever drops below its wall soonest
+    // (including the current one), if that reset is within the auto-wait window.
+    // Recovery is measured against the WALL, not the screening bars: an account
+    // whose session window resets below 100 is squeezable again even while its
+    // weekly window still sits above the Layer 1 bar, so waiting on the Layer 1
+    // reset would over-park. A dead grant on the chosen pre-park target must not
+    // abort the wait: performSwap persists needs-reauth before throwing, so each
+    // retry re-ranks without the dead account and the loop terminates (mirrors
+    // the greedy loop above).
     while (true) {
       const fresh = loadAccounts();
       const current = seatOf(fresh);
-      const ctx = { now, thresholds: effectiveBars(cfg), currentAccountUuid: current?.accountUuid ?? null, switchFamilies };
+      const ctx = { now, thresholds: hardBars(cfg), currentAccountUuid: current?.accountUuid ?? null, switchFamilies };
       const currentAt = current ? usableAt(current, ctx) : Number.POSITIVE_INFINITY;
       const other = pickEarliestReset(fresh.accounts, ctx);
 

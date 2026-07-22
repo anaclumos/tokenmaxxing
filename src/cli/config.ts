@@ -20,6 +20,8 @@ import { c } from "./render.ts";
 export const KNOWN_KEYS = [
   "thresholds.session",
   "thresholds.weekly",
+  "hardThresholds.session",
+  "hardThresholds.weekly",
   "claudeBin",
   "codexBin",
   "policy.projectionMargin",

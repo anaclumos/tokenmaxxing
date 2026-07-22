@@ -20,9 +20,14 @@ import {
 // ---- config.json (minimal, fixed schema) ---------------------------------
 
 const DEFAULT_CONFIG: Config = {
-  // Screening bars, split per window (user 2026-07-16): a session reset is
-  // cheap to sit out, weekly quota is use-it-or-lose-it so it drains to 98.
+  // LAYER 1 - screening bars, split per window (user 2026-07-16): a session
+  // reset is cheap to sit out, weekly quota is use-it-or-lose-it so it drains
+  // to 98. These drive normal account-to-account switching with headroom.
   thresholds: { session: 95, weekly: 98 },
+  // LAYER 2 - the wall bars (default the server's own 100% limit). Reached only
+  // once every account is over its Layer 1 bar: from there a session pumps the
+  // last drops up to the wall instead of parking with quota unspent.
+  hardThresholds: { session: 100, weekly: 100 },
   claudeBin: "",
   codexBin: "",
   // per-model weekly caps exist only for Sonnet and Fable (no Opus-only quota,
@@ -42,6 +47,7 @@ const PercentSchema = z.number().min(0).max(100);
 export const ConfigFileSchema = z
   .object({
     thresholds: z.object({ session: PercentSchema, weekly: PercentSchema }).partial(),
+    hardThresholds: z.object({ session: PercentSchema, weekly: PercentSchema }).partial(),
     claudeBin: z.string(),
     codexBin: z.string(),
     policy: z
@@ -69,9 +75,16 @@ export type MergeOutcome = z.infer<typeof MergeOutcomeSchema>;
  *  throw, silently disabling status/switch/hooks/statusline until the file is
  *  hand-repaired (closing-review catch). */
 export function mergeConfigFile(p: z.infer<typeof ConfigFileSchema>): MergeOutcome {
-  const cfg: Config = { ...DEFAULT_CONFIG, thresholds: { ...DEFAULT_CONFIG.thresholds }, policy: { ...DEFAULT_CONFIG.policy } };
+  const cfg: Config = {
+    ...DEFAULT_CONFIG,
+    thresholds: { ...DEFAULT_CONFIG.thresholds },
+    hardThresholds: { ...DEFAULT_CONFIG.hardThresholds },
+    policy: { ...DEFAULT_CONFIG.policy },
+  };
   cfg.thresholds.session = p.thresholds?.session ?? cfg.thresholds.session;
   cfg.thresholds.weekly = p.thresholds?.weekly ?? cfg.thresholds.weekly;
+  cfg.hardThresholds.session = p.hardThresholds?.session ?? cfg.hardThresholds.session;
+  cfg.hardThresholds.weekly = p.hardThresholds?.weekly ?? cfg.hardThresholds.weekly;
   cfg.claudeBin = p.claudeBin ?? cfg.claudeBin;
   cfg.codexBin = p.codexBin ?? cfg.codexBin;
   cfg.policy.projectionMargin = p.policy?.projectionMargin ?? cfg.policy.projectionMargin;

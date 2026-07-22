@@ -81,7 +81,8 @@ function runHook(input: { pinned?: string; supervised?: boolean; stdin: string }
 }
 
 test("a depleted-pool wait writes the marker keyed by the PINNED sid, resuming the STDIN sid", () => {
-  seed({ sevenDayPct: 99, resetInMs: 30 * 60_000 });
+  // walled (100), so Layer 2 has nothing to squeeze and the pool parks.
+  seed({ sevenDayPct: 100, resetInMs: 30 * 60_000 });
   const p = runHook({ pinned: PINNED_A, stdin: JSON.stringify({ session_id: STDIN_SID }) });
   expect(p.exitCode).toBe(0);
   const markerFile = join(paths.respawnDir, PINNED_A);
@@ -94,7 +95,7 @@ test("a depleted-pool wait writes the marker keyed by the PINNED sid, resuming t
 });
 
 test("a non-UUID stdin session_id falls back to the pinned sid", () => {
-  seed({ sevenDayPct: 99, resetInMs: 30 * 60_000 });
+  seed({ sevenDayPct: 100, resetInMs: 30 * 60_000 });
   const p = runHook({ pinned: PINNED_B, stdin: JSON.stringify({ session_id: "not-a-uuid" }) });
   expect(p.exitCode).toBe(0);
   const marker = RespawnMarkerSchema.parse(JSON.parse(readFileSync(join(paths.respawnDir, PINNED_B), "utf8")));
@@ -109,7 +110,7 @@ test("engaged but under every bar writes NO marker (greedy path keeps the seat)"
 });
 
 test("an unsupervised hook writes NO marker even on a depleted pool", () => {
-  seed({ sevenDayPct: 99, resetInMs: 30 * 60_000 });
+  seed({ sevenDayPct: 100, resetInMs: 30 * 60_000 });
   const p = runHook({ supervised: false, stdin: JSON.stringify({ session_id: STDIN_SID }) });
   expect(p.exitCode).toBe(0);
   expect(existsSync(paths.respawnDir) && readdirSync(paths.respawnDir).length > 0).toBe(false);

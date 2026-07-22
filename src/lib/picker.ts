@@ -27,6 +27,23 @@ export function effectiveBars(cfg: Config): Thresholds {
   };
 }
 
+/** LAYER 2 - the wall bars. The projection margin is subtracted the SAME way
+ *  effectiveBars does it, for two reasons: (1) it keeps the documented disable
+ *  contract honest - `hardThresholds == thresholds` then yields hardBars ==
+ *  effectiveBars, so Layer 2 has no band to act in and is truly off (without
+ *  the margin here a nonzero margin left a live band between the two, review
+ *  catch PR #47); (2) at the default margin 0 the wall is still the literal 100
+ *  (the server's own figure /rate-limit-options reads). Used only in the
+ *  all-Layer-1-exhausted fallback, where an account under its wall is still
+ *  worth squeezing. Config's refine (hardThresholds >= thresholds) guarantees
+ *  hardBars >= effectiveBars, so Layer 2 is never stricter than Layer 1. */
+export function hardBars(cfg: Config): Thresholds {
+  return {
+    session: cfg.hardThresholds.session - cfg.policy.projectionMargin,
+    weekly: cfg.hardThresholds.weekly - cfg.policy.projectionMargin,
+  };
+}
+
 const PickCtxSchema = z.object({
   now: z.number(),
   thresholds: ThresholdsSchema,
