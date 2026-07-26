@@ -25,6 +25,7 @@ RULES: this folder is git-tracked in a PUBLIC repo. Treat every note as a public
 - [Live pool runs need permission](live-pool-runs-need-permission.md) - ask before any run that meters quota or starts a session window on real accounts; hermetic tests + free /usage reads only by default
 
 - [tokenmaxxing project goal](tokenmaxxing-project.md) - CLI pooling Claude Code/Codex accounts, hot-swap on quota; npm name owned by user (anaclumos); latest ship: 1.0.1 RELEASED 2026-07-20 (PRs #38+#39, npm-verified; Slack manifest agent_view object shape + codex device-auth login default - Codex-RUNTIME review still owed after Jul 25); .memory git-tracked since 2026-07-18
+- [AGENTS.md is gotchas-only](agents-md-is-gotchas-only.md) - 2026-07-26: cut 88% (16,484 to ~2,000 words) per the Claude 5 context-engineering rules; duplicated facts ROT (three verified drifts found), so link to DESIGN.md/docs/.memory/code comments instead of inlining
 - [CC/Codex auth mechanics](cc-codex-auth-mechanics.md) - verified keychain/CODEX_HOME/quota internals both CLIs depend on; see DESIGN.md §2
 - [Per-model weekly caps](cc-per-model-limits.md) - per-model weekly limits exist only for Sonnet and Fable, no Opus-only quota (user 2026-07-12); only Fable gates a switch ("fable=switch, sonnet=ok")
 - [ARM Linux host](linux-arm-host.md) - the owner's Pi: the Linux test box; claude 2.1.207, 4-account pool, tokenmaxxing 0.6.1

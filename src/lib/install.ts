@@ -406,8 +406,9 @@ export function findClaudeShadowers(rcText: string): ShellShadower[] {
 /** Remove ONLY the marker-tagged PATH line this tool added; a hand-added
  *  PATH entry without the marker is the user's own. A stale `# tokenmaxxing
  *  PATH` line pointing at an emptied binDir is exactly how the supervisor
- *  recursion incident started (see AGENTS.md), so uninstall must not leave
- *  one behind (closing-review catch). Returns true when a line was removed. */
+ *  recursion incident started (.memory/supervisor-recursion-guards.md), so
+ *  uninstall must not leave one behind (closing-review catch).
+ *  Returns true when a line was removed. */
 export function removePathFromRc(rc: string): boolean {
   if (!existsSync(rc)) return false;
   // same symlink + mode treatment as ensurePathInRc: write through a
