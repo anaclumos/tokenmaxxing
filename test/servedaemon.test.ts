@@ -6,13 +6,16 @@
 
 import { describe, expect, test } from "bun:test";
 import { spawn } from "node:child_process";
+import { unlinkSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { delay } from "es-toolkit";
 import { StreamingPlan, type StreamChunk } from "chat";
 import { ATTENTION_NUDGE_MS, buildServeRuntime } from "../src/cli/serve.ts";
 import { cleanupThread, type TurnOutcome } from "../src/lib/slackbridge.ts";
 import { setLogEcho } from "../src/lib/log.ts";
+import { paths } from "../src/lib/paths.ts";
 import { pidStartTime } from "../src/lib/proc.ts";
-import { MAX_TURN_RESUMES, SlackConfigSchema, loadSlackThread, saveSlackThread } from "../src/lib/slackstate.ts";
+import { MAX_TURN_RESUMES, SlackConfigSchema, loadSlackThread, saveSlackThread, threadKey } from "../src/lib/slackstate.ts";
 
 const cfg = SlackConfigSchema.parse({
   botToken: "xoxb-test",
@@ -1481,5 +1484,90 @@ describe("buildServeRuntime steer budget", () => {
     // the refused reply ran as the bounded next turn instead
     expect(prompts.length).toBe(2);
     expect(prompts[1]).toBe("s25");
+  });
+});
+
+describe("buildServeRuntime crash containment", () => {
+  test("a corrupt thread record crashes the turn visibly and the daemon keeps serving other threads", async () => {
+    let relayCalls = 0;
+    const rt = runtimeWith(async () => {
+      relayCalls += 1;
+      return okOutcome;
+    });
+    const id = "slack:C0DAEMON:600.1";
+    const file = join(paths.slackThreadsDir, `${threadKey(id)}.json`);
+    try {
+      saveSlackThread({ threadId: id, repo: "/tmp/serve-daemon-repo", cwd: "/tmp/serve-daemon-repo", sessionId: null, createdAt: new Date().toISOString() });
+      writeFileSync(file, "{ not json");
+      const t = fakeThread({ id });
+      await rt.onMessage({ thread: t.thread, message: home("@UBOT hi"), skipped: [], isMention: true });
+      expect(relayCalls).toBe(0);
+      expect(t.posted.some((p) => p.includes("handling crashed"))).toBe(true);
+      // the crash stayed inside its thread: another thread still relays
+      const t2 = fakeThread({ id: "slack:C0DAEMON:601.1" });
+      await rt.onMessage({ thread: t2.thread, message: home("@UBOT hello"), skipped: [], isMention: true });
+      await flushTurns(rt);
+      expect(relayCalls).toBe(1);
+    } finally {
+      unlinkSync(file);
+    }
+  });
+
+  test("tracked owns a task's rejection instead of leaking it to the process", async () => {
+    const rt = runtimeWith(async () => okOutcome);
+    await rt.tracked(Promise.reject(new Error("stray rejection")));
+    expect(rt.activeTurns.size).toBe(0);
+  });
+
+  test("a corrupt record does not kill the nudge sweep tick", async () => {
+    const rt = runtimeWith(async () => okOutcome);
+    const file = join(paths.slackThreadsDir, "corrupt-sweep-record.json");
+    writeFileSync(file, "{ nope");
+    try {
+      await rt.nudgeSweep();
+    } finally {
+      unlinkSync(file);
+    }
+  });
+
+  test("a crash that left a preserved turn marker stays silent: the resume machinery owns the messaging", async () => {
+    const rt = runtimeWith(async () => {
+      // the drain lands mid-relay and the relay dies with it: runTurn keeps
+      // the marker (presumedKilled) and the rethrow reaches the crash catch
+      rt.beginDrain();
+      throw new Error("killed by drain");
+    });
+    const id = "slack:C0DAEMON:650.1";
+    const t = fakeThread({ id });
+    await rt.onMessage({ thread: t.thread, message: home("@UBOT long job", "U-OWNER", "650.9"), skipped: [], isMention: true });
+    expect(loadSlackThread(id)?.activeTurn).toBeDefined(); // preserved for auto-resume
+    expect(t.posted.some((p) => p.includes("handling crashed"))).toBe(false);
+    expect(rt.reactions.some((r) => r.messageId === "650.9" && r.emoji === "x")).toBe(false);
+  });
+
+  test("a crashed reaction answer posts a notice, settles the trigger, and restores the ask", async () => {
+    const threadId = "slack:C0DAEMON:700.1";
+    let turns = 0;
+    const rt = runtimeWith(async () => {
+      turns += 1;
+      return { ...okOutcome, attention: true };
+    });
+    const t = fakeThread({ id: threadId });
+    await rt.onMessage({ thread: t.thread, message: home("@UBOT ship it?", "U-OWNER", "700.9"), skipped: [], isMention: true });
+    expect(loadSlackThread(threadId)?.attention).toBeDefined();
+    await rt.onReaction(
+      { threadId, messageId: "701.5", emoji: "thumbs_up", userId: "U-OWNER", isBot: false, added: true, occurredAt: Date.now() + 5_000 },
+      async () => {
+        throw new Error("streamable dead");
+      },
+    );
+    expect(turns).toBe(1); // the answer turn never ran
+    expect(rt.nudges.some((n) => n.text.includes("reaction answer crashed"))).toBe(true);
+    // the reacted-to message settles instead of reading as processing forever
+    expect(rt.reactions).toContainEqual({ threadId, messageId: "701.5", emoji: "x", op: "add" });
+    expect(rt.reactions).toContainEqual({ threadId, messageId: "701.5", emoji: "hourglass_flowing_sand", op: "remove" });
+    // the consumed ask is restored: still nudgeable, still answerable
+    expect(loadSlackThread(threadId)?.attention).toBeDefined();
+    expect(rt.reactions.filter((r) => r.messageId === "700.9" && r.emoji === "question" && r.op === "add").length).toBeGreaterThanOrEqual(1);
   });
 });
