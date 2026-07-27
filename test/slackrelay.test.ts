@@ -51,7 +51,7 @@ mock.module("es-toolkit", () => ({
   delay: (ms: number, opts?: { signal?: AbortSignal }) => realEsToolkit.delay(Math.min(Math.max(ms, 0), DELAY_CAP_MS), opts),
 }));
 
-const { relayThread, MAX_RECOVERIES, PARK_MAX_MS, SEGMENT_TEXT_MAX } = await import("../src/lib/slackbridge.ts");
+const { relayThread, MAX_RECOVERIES, MAX_TRANSIENT_RETRIES, PARK_MAX_MS, SEGMENT_ROTATION, SEGMENT_TEXT_MAX } = await import("../src/lib/slackbridge.ts");
 const { StreamingMarkdownRenderer } = await import("chat");
 const { SlackLinkSchema } = await import("../src/lib/slackstate.ts");
 const { loadUsage, writeUsage } = await import("../src/lib/state.ts");
@@ -834,5 +834,123 @@ describe("relayThread segment ordering", () => {
     expect(cardIndexes.length).toBeGreaterThan(0);
     // the card originally preceded the text; salvage must keep it there
     for (const i of cardIndexes) expect(i).toBeLessThan(firstText);
+  });
+});
+
+// the non-limit errored-result shape: a child that died without completing.
+const errored = (sessionId: string, resultText: string) => ({
+  type: "result",
+  subtype: "error_during_execution",
+  is_error: true,
+  session_id: sessionId,
+  result: resultText,
+  modelUsage: {},
+  total_cost_usd: 0,
+  duration_ms: 100,
+});
+
+describe("relayThread transient-failure retry", () => {
+  test("a non-limit child failure retries silently into the same session and the thread sees only the recovered answer", async () => {
+    // spawn 1, post-failure defer probe, spawn 2
+    decisionQueue.push(usable, usable, usable);
+    queryScripts.push(script([init("s-tr"), errored("s-tr", "Claude Code process exited with code 1")]));
+    queryScripts.push(script([init("s-tr"), textStart(), textDelta("recovered answer"), success("s-tr")]));
+    const col = collector();
+    const out = await relay({ post: col.post });
+    expect(out.failed).toBe(false);
+    expect(queryCalls.length).toBe(2);
+    // the retry CONTINUES the session the failed attempt opened
+    expect(queryCalls[1]!.options.resume).toBe("s-tr");
+    const all = col.posts.map((p) => strings(p)).join("\n");
+    expect(all).toContain("recovered answer");
+    expect(all).not.toContain("turn failed");
+    expect(all).not.toContain("trying again may help");
+  });
+
+  test("retries are bounded and the terminal line reports the total attempts", async () => {
+    const attempts = MAX_TRANSIENT_RETRIES + 1;
+    for (let i = 0; i < attempts; i += 1) {
+      decisionQueue.push(usable, usable); // spawn, then post-failure probe
+      queryScripts.push(script([init("s-tf"), errored("s-tf", "Claude Code process exited with code 1")]));
+    }
+    const col = collector();
+    const out = await relay({ post: col.post });
+    expect(out.failed).toBe(true);
+    expect(out.rateLimited).toBe(false);
+    expect(queryCalls.length).toBe(attempts);
+    const all = col.posts.map((p) => strings(p)).join("\n");
+    expect(all).toContain(`after ${attempts} attempts`);
+  });
+
+  test("a turn that streamed text and then errored explains the truncation instead of a bare failed reaction", async () => {
+    const attempts = MAX_TRANSIENT_RETRIES + 1;
+    for (let i = 0; i < attempts; i += 1) {
+      decisionQueue.push(usable, usable);
+      queryScripts.push(script([init("s-tp"), textStart(), textDelta("partial answer"), errored("s-tp", "boom detail")]));
+    }
+    const col = collector();
+    const out = await relay({ post: col.post });
+    expect(out.failed).toBe(true);
+    const all = col.posts.map((p) => strings(p)).join("\n");
+    expect(all).toContain("partial answer");
+    expect(all).toContain("boom detail");
+    expect(all).toContain("may be incomplete");
+  });
+});
+
+describe("relayThread segment rotation", () => {
+  test("an idle segment closes cleanly before Slack's stream expiry and the next chunk opens a fresh message", async () => {
+    const prev = SEGMENT_ROTATION.idleMs;
+    SEGMENT_ROTATION.idleMs = 40;
+    try {
+      decisionQueue.push(usable);
+      queryScripts.push(() =>
+        (async function* () {
+          yield init("s-rot");
+          yield textStart();
+          yield textDelta("part one");
+          await realEsToolkit.delay(150);
+          yield textDelta("part two");
+          yield success("s-rot");
+        })(),
+      );
+      const col = collector();
+      const out = await relay({ post: col.post });
+      expect(out.failed).toBe(false);
+      expect(col.calls()).toBe(2);
+      expect(strings(col.posts[0])).toContain("part one");
+      expect(strings(col.posts[1])).toContain("part two");
+      // the idle segment fully closed BEFORE the fresh one opened
+      expect(col.timeline).toEqual(["open:1", "close:1", "open:2", "close:2"]);
+    } finally {
+      SEGMENT_ROTATION.idleMs = prev;
+    }
+  });
+
+  test("a continuously active segment still rotates at its max age, losing no text", async () => {
+    const prev = SEGMENT_ROTATION.maxAgeMs;
+    SEGMENT_ROTATION.maxAgeMs = 60;
+    try {
+      decisionQueue.push(usable);
+      queryScripts.push(() =>
+        (async function* () {
+          yield init("s-age");
+          yield textStart();
+          for (let i = 1; i <= 8; i += 1) {
+            yield textDelta(`chunk-${i} `);
+            await realEsToolkit.delay(20);
+          }
+          yield success("s-age");
+        })(),
+      );
+      const col = collector();
+      const out = await relay({ post: col.post });
+      expect(out.failed).toBe(false);
+      expect(col.calls()).toBeGreaterThanOrEqual(2);
+      const all = col.posts.map((p) => strings(p)).join("");
+      for (let i = 1; i <= 8; i += 1) expect(all).toContain(`chunk-${i}`);
+    } finally {
+      SEGMENT_ROTATION.maxAgeMs = prev;
+    }
   });
 });

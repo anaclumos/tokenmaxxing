@@ -730,10 +730,22 @@ export function buildServeRuntime(seam: {
     return true;
   };
 
+  /** The ownership funnel for every task the daemon spawns: registration in
+   *  activeTurns so a shutdown drains it, and the daemon's terminal error
+   *  boundary. Bun kills the WHOLE process on any unhandled rejection
+   *  (default-mode exit verified 2026-07-27), so a `void tracked(...)`
+   *  fire-and-forget whose task threw would otherwise take every concurrent
+   *  session's turn down with it - one thread's bad state file must never
+   *  end another thread's half-streamed answer. Site-specific handling (the
+   *  in-thread crash notice in onMessage) stays at the site that has the
+   *  context; whatever escapes lands here, logged, and the daemon keeps
+   *  serving. */
   const tracked = async (turn: Promise<void>) => {
     activeTurns.add(turn);
     try {
       await turn;
+    } catch (e) {
+      log("serve.task_crashed", { err: (e instanceof Error ? e.message : String(e)).slice(0, 300) });
     } finally {
       activeTurns.delete(turn);
     }
@@ -775,7 +787,28 @@ export function buildServeRuntime(seam: {
   const onMessage = async (input: { thread: ServeThread; message: ServeMessage; skipped: ServeMessage[]; isMention: boolean }) => {
     const relayed = [...input.skipped, input.message].filter(relayable).map((m) => ({ text: m.text, authorId: m.author.userId, id: m.id }));
     if (relayed.length === 0) return; // outsider mentions never open a session
-    await tracked(serialized(input.thread.id, () => handleTurn({ thread: input.thread, relayed, isMention: input.isMention })));
+    await tracked(serialized(input.thread.id, async () => {
+      try {
+        await handleTurn({ thread: input.thread, relayed, isMention: input.isMention });
+      } catch (e) {
+        // an escaped handleTurn throw (a state-file parse, a Slack API
+        // rejection outside relayThread's never-throws boundary) previously
+        // died in the chat SDK's catch-and-log: the user's message vanished
+        // with no reply and no log line of ours (2026-07-27 report). Tell
+        // the thread and keep the daemon serving.
+        const detail = (e instanceof Error ? e.message : String(e)).slice(0, 300);
+        log("serve.turn_crashed", { thread: input.thread.id, err: detail });
+        try {
+          await input.thread.post(
+            (async function* () {
+              yield `tokenmaxxing: this message's handling crashed: ${detail}. If no reply landed above, re-send it.`;
+            })(),
+          );
+        } catch (postErr) {
+          log("serve.turn_crash_notice_failed", { thread: input.thread.id, err: (postErr instanceof Error ? postErr.message : String(postErr)).slice(0, 300) });
+        }
+      }
+    }));
   };
 
   /** A user reaction in a tracked thread. While the thread waits on an asked
@@ -868,7 +901,19 @@ export function buildServeRuntime(seam: {
   const nudgeSweep = async (input?: { now?: number }) => {
     if (draining) return;
     const now = input?.now ?? Date.now();
-    for (const record of listSlackThreads()) {
+    // one unparseable record must not kill the sweep tick: state files that
+    // fail to parse THROW by contract, and this sweep runs on a bare
+    // interval, so before the daemon's rejection backstop existed exactly
+    // this throw was a whole-daemon crash killing every in-flight turn
+    // (2026-07-27 report shape).
+    let records: SlackThread[];
+    try {
+      records = listSlackThreads();
+    } catch (e) {
+      log("serve.nudge_sweep_error", { err: (e instanceof Error ? e.message : String(e)).slice(0, 300) });
+      return;
+    }
+    for (const record of records) {
       const asked = record.attention;
       if (!asked || asked.nudgedAt !== undefined || now - Date.parse(asked.askedAt) < ATTENTION_NUDGE_MS) continue;
       // unlinked channels are contractually silent in Slack (review catch:
@@ -1337,6 +1382,18 @@ async function runDaemon(): Promise<number> {
   // against the real claude binary in the SDK's exact stdio shape: dead in
   // 2s, zero API calls).
   process.on("SIGHUP", () => void shutdown("SIGHUP"));
+
+  // LAST-RESORT backstop, not the error strategy: `tracked` is the daemon's
+  // own boundary, so this should stay idle - it exists for rejections minted
+  // outside our funnels (the chat SDK's socket client, adapter internals),
+  // where Bun's default is to kill the whole process (verified 2026-07-27)
+  // and with it every concurrent session's in-flight turn, leaving
+  // half-streamed Slack messages and no daemon to resume the markers.
+  // Sync throws keep the default crash: an uncaughtException means state is
+  // undefined and the durable markers make a restart the honest recovery.
+  process.on("unhandledRejection", (reason) => {
+    log("serve.unhandled_rejection", { err: (reason instanceof Error ? `${reason.message} ${reason.stack ?? ""}` : String(reason)).slice(0, 600) });
+  });
 
   // initialize() starts the PERSISTENT Socket Mode client (auto-reconnecting)
   // wired straight into event routing; the daemon only has to stay alive.

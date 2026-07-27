@@ -6,13 +6,16 @@
 
 import { describe, expect, test } from "bun:test";
 import { spawn } from "node:child_process";
+import { unlinkSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { delay } from "es-toolkit";
 import { StreamingPlan, type StreamChunk } from "chat";
 import { ATTENTION_NUDGE_MS, buildServeRuntime } from "../src/cli/serve.ts";
 import { cleanupThread, type TurnOutcome } from "../src/lib/slackbridge.ts";
 import { setLogEcho } from "../src/lib/log.ts";
+import { paths } from "../src/lib/paths.ts";
 import { pidStartTime } from "../src/lib/proc.ts";
-import { MAX_TURN_RESUMES, SlackConfigSchema, loadSlackThread, saveSlackThread } from "../src/lib/slackstate.ts";
+import { MAX_TURN_RESUMES, SlackConfigSchema, loadSlackThread, saveSlackThread, threadKey } from "../src/lib/slackstate.ts";
 
 const cfg = SlackConfigSchema.parse({
   botToken: "xoxb-test",
@@ -1010,5 +1013,49 @@ describe("buildServeRuntime nudge sweep", () => {
     await flushTurns(rt);
     expect(rt.nudges.length).toBe(1);
     expect(loadSlackThread(threadId)?.attention?.nudgedAt).toBeDefined();
+  });
+});
+
+describe("buildServeRuntime crash containment", () => {
+  test("a corrupt thread record crashes the turn visibly and the daemon keeps serving other threads", async () => {
+    let relayCalls = 0;
+    const rt = runtimeWith(async () => {
+      relayCalls += 1;
+      return okOutcome;
+    });
+    const id = "slack:C0DAEMON:600.1";
+    saveSlackThread({ threadId: id, repo: "/tmp/serve-daemon-repo", cwd: "/tmp/serve-daemon-repo", sessionId: null, createdAt: new Date().toISOString() });
+    const file = join(paths.slackThreadsDir, `${threadKey(id)}.json`);
+    writeFileSync(file, "{ not json");
+    try {
+      const t = fakeThread({ id });
+      await rt.onMessage({ thread: t.thread, message: home("@UBOT hi"), skipped: [], isMention: true });
+      expect(relayCalls).toBe(0);
+      expect(t.posted.some((p) => p.includes("handling crashed"))).toBe(true);
+      // the crash stayed inside its thread: another thread still relays
+      const t2 = fakeThread({ id: "slack:C0DAEMON:601.1" });
+      await rt.onMessage({ thread: t2.thread, message: home("@UBOT hello"), skipped: [], isMention: true });
+      await flushTurns(rt);
+      expect(relayCalls).toBe(1);
+    } finally {
+      unlinkSync(file);
+    }
+  });
+
+  test("tracked owns a task's rejection instead of leaking it to the process", async () => {
+    const rt = runtimeWith(async () => okOutcome);
+    await rt.tracked(Promise.reject(new Error("stray rejection")));
+    expect(rt.activeTurns.size).toBe(0);
+  });
+
+  test("a corrupt record does not kill the nudge sweep tick", async () => {
+    const rt = runtimeWith(async () => okOutcome);
+    const file = join(paths.slackThreadsDir, "corrupt-sweep-record.json");
+    writeFileSync(file, "{ nope");
+    try {
+      await rt.nudgeSweep();
+    } finally {
+      unlinkSync(file);
+    }
   });
 });

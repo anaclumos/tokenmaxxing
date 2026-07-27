@@ -75,6 +75,24 @@ const RETRY_DELAY_MS = 10_000;
 /** parks + retries per Slack message; keeps a stale usage cache from looping
  *  a thread forever. */
 export const MAX_RECOVERIES = 3;
+/** extra spawns for a NON-limit failure whose child never completed (crash,
+ *  API blip, errored result): each resumes the same session, so a retry
+ *  continues the turn instead of re-running it. Separate from MAX_RECOVERIES
+ *  on purpose - that budget bounds limit-driven parking, this one bounds
+ *  quota spent chasing a possibly-permanent error. */
+export const MAX_TRANSIENT_RETRIES = 2;
+/** Slack expires a native stream SERVER-SIDE on undocumented timers
+ *  (Slack-maintainer-confirmed in slackapi/python-slack-sdk#1859: idle
+ *  around 30s, total lifetime around 300s measured), and an expired stream
+ *  freezes in the Slack client as a grey "Something went wrong" pill - the
+ *  exact 2026-07-27 report. The salvage path recovers the CONTENT but
+ *  cannot un-freeze the pill, so the fix is to never let Slack expire a
+ *  stream we own: rotate the open segment - a clean end() that the adapter
+ *  finishes with a proper stream stop - before either timer can fire, and
+ *  let the next chunk open a fresh message, the same flow pushText's size
+ *  splits already use. Thresholds sit well inside Slack's observed margins;
+ *  read at every arm (a mutable object, the file's test seam pattern). */
+export const SEGMENT_ROTATION = { idleMs: 20_000, maxAgeMs: 240_000 };
 
 const ParkPlanSchema = z.union([
   z.object({ kind: z.literal("proceed") }),
@@ -469,6 +487,9 @@ export async function relayThread(input: {
   // a ``` split across two deltas would be invisible to per-chunk counting
   // (pullfrog review catch, PR #42).
   let segmentMeta: { text: boolean; acc: string; reopenFence: boolean } | null = null;
+  // the open segment's rotation clock (see armSegmentTimer).
+  let segmentTimer: ReturnType<typeof setTimeout> | null = null;
+  let segmentOpenedAt = 0;
   let lastPost: Promise<unknown> = Promise.resolve();
   // Reply TEXT that died with a rejected segment and was neither salvaged into
   // a follow-on message nor re-delivered by a later text-bearing segment: the
@@ -496,6 +517,8 @@ export async function relayThread(input: {
   const openSegment = () => {
     const seg = pushableStream();
     segment = seg;
+    segmentOpenedAt = Date.now();
+    armSegmentTimer();
     // reopenFence: the delivered prefix of a REJECTED predecessor left a code
     // fence open, so the first TEXT entering this salvage segment must be
     // preceded by a reopen or it renders outside the code block. Pending
@@ -637,6 +660,7 @@ export async function relayThread(input: {
         meta.acc += chunk;
       }
       seg.push(chunk);
+      if (segment === seg) armSegmentTimer();
     };
     return { seg, meta, pushInto };
   };
@@ -661,13 +685,26 @@ export async function relayThread(input: {
       segmentMeta!.acc += chunk;
     }
     target.push(chunk);
+    if (segment === target) armSegmentTimer();
   };
   // parity by occurrence count over the segment's accumulated text: an odd
   // number of ``` markers means the segment currently sits inside a fence.
   const fenceOpen = () => segmentMeta !== null && (segmentMeta.acc.split("```").length - 1) % 2 === 1;
   const breakSegment = () => {
+    if (segmentTimer !== null) {
+      clearTimeout(segmentTimer);
+      segmentTimer = null;
+    }
     segment?.end();
     segment = null;
+  };
+  const armSegmentTimer = () => {
+    if (segmentTimer !== null) clearTimeout(segmentTimer);
+    const ageLeft = segmentOpenedAt + SEGMENT_ROTATION.maxAgeMs - Date.now();
+    segmentTimer = setTimeout(() => {
+      segmentTimer = null;
+      breakSegment();
+    }, Math.max(0, Math.min(SEGMENT_ROTATION.idleMs, ageLeft)));
   };
   /** Reply text routed through here splits across Slack messages before the
    *  msg_too_long cap (see SEGMENT_TEXT_MAX): a break prefers the last newline
@@ -868,6 +905,13 @@ export async function relayThread(input: {
             // the stale pre-limit snapshot (poll TTL) and respawns the same
             // depleted account - a serve process has no statusLine tee.
             if (outcome.rateLimited) await recordObservedLimit({ text, now: Date.now(), org: spawnOrg });
+            // a turn that streamed SOME text and then errored used to end
+            // with a truncated answer and only the x reaction - no words at
+            // all (2026-07-27 audit). Hold the diagnostic like every other
+            // failure line; the depleted-pool probe still outranks it.
+            else if (postedText) {
+              pendingFailureLine = `tokenmaxxing: the turn errored before finishing (${text.slice(0, 200) || "no error detail"}) - the reply above may be incomplete.`;
+            }
           } else {
             result = message.result;
             outcome.resultReceived = true;
@@ -900,6 +944,7 @@ export async function relayThread(input: {
   };
 
   let recoveries = 0;
+  let transientRetries = 0;
   const parkDeadline = Date.now() + PARK_MAX_MS;
   while (true) {
     // the switch decision runs at the spawn boundary, same as the CLI hooks.
@@ -971,8 +1016,31 @@ export async function relayThread(input: {
           // keep the original failure; the probe must never mask it.
           log("serve.defer_probe_error", { err: (e instanceof Error ? e.message : String(e)).slice(0, 300) });
         }
+        // a transient non-limit failure (child crash, API blip, errored
+        // result) against a usable pool retries silently into the same
+        // session, mirroring the rate-limit path's invisible short retry
+        // (2026-07-27 report: these turns died terminally, telling the user
+        // "trying again may help" instead of trying again). resultReceived
+        // stays terminal above - a completed answer must never re-run - and
+        // the probe's deferral outranks a retry: an exhausted pool explains
+        // the failure better than "transient".
+        if (outcome.deferUntil === null && transientRetries < MAX_TRANSIENT_RETRIES) {
+          transientRetries += 1;
+          breakSegment();
+          log("serve.transient_retry", { attempt: transientRetries });
+          if (!(await sleep(RETRY_DELAY_MS))) {
+            // a drain aborted the retry sleep: same as a killed child, the
+            // marker survives (presumedKilled) and the next daemon start
+            // resumes the session where it stopped.
+            await notify("tokenmaxxing is restarting - this turn resumes after the restart.");
+            break;
+          }
+          continue;
+        }
       }
-      if (pendingFailureLine !== null) await push(pendingFailureLine);
+      if (pendingFailureLine !== null) {
+        await push(transientRetries > 0 ? `${pendingFailureLine} (after ${transientRetries + 1} attempts)` : pendingFailureLine);
+      }
       break;
     }
     if (recoveries >= MAX_RECOVERIES) {
