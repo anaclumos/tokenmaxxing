@@ -781,8 +781,16 @@ export async function relayThread(input: {
   // streamed segment.
   const notify = async (text: string) => {
     breakSegment();
+    // a notice must never inherit a rotation's pending fence reopen: the
+    // reopen belongs to the interrupted reply's continuation, not to the
+    // status line - consuming it here would render the notice as a code
+    // block AND strand the continuation unfenced (cubic review catch,
+    // round 3). Held aside and restored for the real continuation.
+    const heldReopen = pendingReopenFence;
+    pendingReopenFence = false;
     await push(text);
     breakSegment();
+    pendingReopenFence = heldReopen;
   };
   /** notify + confirm the post actually landed in Slack. A drop notice that
    *  never reached the user must NOT count as announced. DURING A DRAIN an
@@ -1074,6 +1082,9 @@ export async function relayThread(input: {
         }
       }
       if (pendingFailureLine !== null) {
+        // same fence-reopen bypass as notify: a diagnostic line opening a
+        // fresh segment must not render inside a reopened code fence.
+        pendingReopenFence = false;
         await push(transientRetries > 0 ? `${pendingFailureLine} (after ${transientRetries + 1} attempts)` : pendingFailureLine);
       }
       break;

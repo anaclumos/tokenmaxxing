@@ -802,6 +802,18 @@ export function buildServeRuntime(seam: {
         // the thread and keep the daemon serving.
         const detail = (e instanceof Error ? e.message : String(e)).slice(0, 300);
         log("serve.turn_crashed", { thread: input.thread.id, err: detail });
+        // a surviving activeTurn marker means the turn is PRESERVED (a drain
+        // kill kept it for the next generation's auto-resume): a "re-send it"
+        // notice would invite a duplicate run and a failed x would misread a
+        // guaranteed retry (cubic review catch, round 3) - log only, the
+        // resume machinery owns the messaging. The read is best-effort: an
+        // unreadable record (possibly the crash itself) takes the visible
+        // crash path.
+        let preserved = false;
+        try {
+          preserved = loadSlackThread(input.thread.id)?.activeTurn !== undefined;
+        } catch { /* unreadable record: treat as not preserved */ }
+        if (preserved) return;
         try {
           await input.thread.post(
             (async function* () {

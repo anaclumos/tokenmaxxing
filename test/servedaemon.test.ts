@@ -1059,6 +1059,21 @@ describe("buildServeRuntime crash containment", () => {
     }
   });
 
+  test("a crash that left a preserved turn marker stays silent: the resume machinery owns the messaging", async () => {
+    const rt = runtimeWith(async () => {
+      // the drain lands mid-relay and the relay dies with it: runTurn keeps
+      // the marker (presumedKilled) and the rethrow reaches the crash catch
+      rt.beginDrain();
+      throw new Error("killed by drain");
+    });
+    const id = "slack:C0DAEMON:650.1";
+    const t = fakeThread({ id });
+    await rt.onMessage({ thread: t.thread, message: home("@UBOT long job", "U-OWNER", "650.9"), skipped: [], isMention: true });
+    expect(loadSlackThread(id)?.activeTurn).toBeDefined(); // preserved for auto-resume
+    expect(t.posted.some((p) => p.includes("handling crashed"))).toBe(false);
+    expect(rt.reactions.some((r) => r.messageId === "650.9" && r.emoji === "x")).toBe(false);
+  });
+
   test("a crashed reaction answer posts a notice, settles the trigger, and restores the ask", async () => {
     const threadId = "slack:C0DAEMON:700.1";
     let turns = 0;

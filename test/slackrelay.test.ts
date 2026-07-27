@@ -946,6 +946,32 @@ describe("relayThread segment rotation", () => {
     }
   });
 
+  test("a status notice after a mid-fence rotation never renders inside the fence", async () => {
+    const prev = SEGMENT_ROTATION.idleMs;
+    SEGMENT_ROTATION.idleMs = 40;
+    try {
+      // spawn, then the post-failure probe defers on a depleted pool
+      decisionQueue.push(usable, depleted(Date.now() + 3_600_000));
+      queryScripts.push(() =>
+        (async function* () {
+          yield init("s-fn");
+          yield textStart();
+          yield textDelta("```\ncode half");
+          await realEsToolkit.delay(150); // rotation closes the fence, arms the reopen
+          yield errored("s-fn", "boom");
+        })(),
+      );
+      const col = collector();
+      const out = await relay({ post: col.post });
+      expect(out.deferUntil).not.toBeNull();
+      const notice = col.posts.map((p) => strings(p)).find((s) => s.includes("pausing this turn"));
+      expect(notice).toBeDefined();
+      expect(notice).not.toContain("```");
+    } finally {
+      SEGMENT_ROTATION.idleMs = prev;
+    }
+  });
+
   test("a continuously active segment still rotates at its max age, losing no text", async () => {
     const prev = SEGMENT_ROTATION.maxAgeMs;
     SEGMENT_ROTATION.maxAgeMs = 60;
