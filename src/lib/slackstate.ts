@@ -133,6 +133,15 @@ const ActiveTurnSchema = z.object({
    *  Absent on older records: recovery falls back to the streamable
    *  handle's newest-author derivation. */
   requesterIds: z.array(z.string()).optional(),
+  /** Slack ids of messages STEERED into this turn mid-run: they carry the
+   *  same hourglass-to-terminal reaction lifecycle as the triggering
+   *  message, so a killed or deferred turn's recovery must settle them too.
+   *  Their text is already folded into `prompt` at steer time, which is what
+   *  makes replays and retries include what the user steered in. An inbound
+   *  takeover of a DEFERRED turn also adopts the held turn's unsettled ids
+   *  here: the takeover serves their held prompt, and without the adoption
+   *  the old trigger's hourglass would read "processing" forever. */
+  steeredMessageIds: z.array(z.string()).optional(),
 });
 export type ActiveTurn = z.infer<typeof ActiveTurnSchema>;
 
