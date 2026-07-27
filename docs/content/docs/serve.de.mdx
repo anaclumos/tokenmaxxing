@@ -11,7 +11,7 @@ tokenmaxxing serve link <channel-id> <repo> # bindet einen Kanal an einen Repo-C
 tokenmaxxing serve                          # startet den Daemon
 ```
 
-Erwähnen Sie den Bot in einem verlinkten Kanal, und er öffnet eine Claude-Code-Sitzung für diesen Thread, im verlinkten Repo-Checkout. Jede Thread-Nachricht führt weiterhin ein einzelnes Agent-SDK-`query()` mit `resume` aus - sodass `ensureBestAccount()` den Pool bei jedem einzelnen Zug neu auswertet und der Daemon neu starten kann, ohne Threads zu verlieren (Thread-Datensätze sind dauerhaft; der Daemon abonniert sie beim Start erneut) - aber jede Abfrage nimmt Streaming-Eingaben entgegen, und genau das erlaubt es einer Antwort, den bereits laufenden Zug zu steuern.
+Erwähnen Sie den Bot in einem verlinkten Kanal, und er öffnet eine Claude-Code-Sitzung für diesen Thread, im verlinkten Repo-Checkout. Jeder neue Zug startet ein einzelnes Agent-SDK-`query()` mit `resume` - sodass `ensureBestAccount()` den Pool bei jedem Zug neu auswertet und der Daemon neu starten kann, ohne Threads zu verlieren (Thread-Datensätze sind dauerhaft; der Daemon abonniert sie beim Start erneut) - während eine Antwort, die eintrifft, während eine Abfrage noch läuft, in deren Streaming-Eingabe eingespeist wird, statt eine eigene zu starten; eine Antwort, die das Steuerungsfenster verpasst, läuft als nächster Zug.
 
 Bemerkenswertes Verhalten:
 

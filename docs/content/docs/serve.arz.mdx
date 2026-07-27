@@ -11,7 +11,7 @@ tokenmaxxing serve link <channel-id> <repo> # اربط قناة بـ checkout ل
 tokenmaxxing serve                          # شغّل الـ daemon
 ```
 
-منشِن البوت في قناة مربوطة وهيفتح Claude Code session للـ thread ده، في الـ repo checkout المربوط. لسه كل رسالة thread بتشغّل `query()` واحدة من الـ Agent SDK مع `resume`، عشان `ensureBestAccount()` بيعيد تقييم الـ pool في كل turn لوحده والـ daemon يقدر يعمل restart من غير ما يخسر الـ threads (سجلات الـ thread دايمة؛ الـ daemon بيعيد الاشتراك فيها عند الإقلاع)، بس كل query بياخد streaming input، وده اللي يخلّي أي رد يقدر يوجّه الـ turn اللي شغّال بالفعل.
+منشِن البوت في قناة مربوطة وهيفتح Claude Code session للـ thread ده، في الـ repo checkout المربوط. كل turn جديد بيشغّل `query()` واحدة من الـ Agent SDK مع `resume`، عشان `ensureBestAccount()` بيعيد تقييم الـ pool في كل turn والـ daemon يقدر يعمل restart من غير ما يخسر الـ threads (سجلات الـ thread دايمة؛ الـ daemon بيعيد الاشتراك فيها عند الإقلاع)، أما الرد اللي بيوصل والـ query لسه شغّال فبيتغذّى في الـ streaming input بتاعه بدل ما يشغّل query لوحده؛ والرد اللي بيفوّت شبّاك التوجيه بيشتغل كـ الـ turn اللي بعده.
 
 سلوك ملحوظ:
 

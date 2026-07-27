@@ -11,7 +11,7 @@ tokenmaxxing serve link <channel-id> <repo> # kaitkan sebuah channel ke checkout
 tokenmaxxing serve                          # jalankan daemon
 ```
 
-Sebut bot di channel yang tertaut dan ia membuka sesi Claude Code untuk thread itu, di checkout repo yang tertaut. Setiap pesan thread tetap menjalankan satu `query()` Agent SDK dengan `resume` - sehingga `ensureBestAccount()` mengevaluasi ulang gabungan di setiap giliran dan daemon dapat memulai ulang tanpa kehilangan thread (rekaman thread bersifat tahan lama; daemon berlangganan ulang saat startup) - tetapi setiap query menerima input streaming, yang membuat sebuah balasan bisa mengarahkan giliran yang sedang berjalan.
+Sebut bot di channel yang tertaut dan ia membuka sesi Claude Code untuk thread itu, di checkout repo yang tertaut. Setiap giliran baru menjalankan satu `query()` Agent SDK dengan `resume` - sehingga `ensureBestAccount()` mengevaluasi ulang gabungan di setiap giliran dan daemon dapat memulai ulang tanpa kehilangan thread (rekaman thread bersifat tahan lama; daemon berlangganan ulang saat startup) - sementara sebuah balasan yang tiba selagi sebuah query masih berjalan dimasukkan ke dalam input streaming query itu, alih-alih menjalankan query miliknya sendiri; sebuah balasan yang melewatkan jendela pengarahan berjalan sebagai giliran berikutnya.
 
 Perilaku yang perlu dicatat:
 

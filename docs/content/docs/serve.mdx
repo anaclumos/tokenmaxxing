@@ -11,7 +11,7 @@ tokenmaxxing serve link <channel-id> <repo> # tie a channel to a repo checkout
 tokenmaxxing serve                          # run the daemon
 ```
 
-Mention the bot in a linked channel and it opens a Claude Code session for that thread, in the linked repo checkout. Every thread message still spawns one Agent SDK `query()` with `resume` - so `ensureBestAccount()` re-evaluates the pool on every turn and the daemon can restart without losing threads (thread records are durable; the daemon re-subscribes them on startup) - but each query takes streaming input, which is what lets a reply steer the turn already running.
+Mention the bot in a linked channel and it opens a Claude Code session for that thread, in the linked repo checkout. Each new turn spawns one Agent SDK `query()` with `resume` - so `ensureBestAccount()` re-evaluates the pool per turn and the daemon can restart without losing threads (thread records are durable; the daemon re-subscribes them on startup) - while a reply arriving during a live query is fed into that query's streaming input instead of spawning its own; a reply that misses the steering window runs as the next turn.
 
 Notable behavior:
 

@@ -11,7 +11,7 @@ tokenmaxxing serve link <channel-id> <repo> # vincula un canal a un checkout de 
 tokenmaxxing serve                          # ejecuta el daemon
 ```
 
-Menciona al bot en un canal vinculado y abre una sesión de Claude Code para ese hilo, en el checkout del repo vinculado. Cada mensaje de hilo sigue ejecutando un único `query()` del Agent SDK con `resume` - de modo que `ensureBestAccount()` reevalúa el grupo en cada turno y el daemon puede reiniciarse sin perder hilos (los registros de hilo son duraderos; el daemon los vuelve a suscribir al arrancar) - pero cada consulta recibe entrada en streaming, que es justo lo que permite que una respuesta dirija el turno que ya está en marcha.
+Menciona al bot en un canal vinculado y abre una sesión de Claude Code para ese hilo, en el checkout del repo vinculado. Cada turno nuevo lanza un único `query()` del Agent SDK con `resume` - de modo que `ensureBestAccount()` reevalúa el grupo en cada turno y el daemon puede reiniciarse sin perder hilos (los registros de hilo son duraderos; el daemon los vuelve a suscribir al arrancar) - mientras que una respuesta que llega durante una consulta en marcha se incorpora a la entrada en streaming de esa consulta en lugar de lanzar la suya propia; una respuesta que llega demasiado tarde para dirigir el turno se ejecuta como el turno siguiente.
 
 Comportamiento destacado:
 

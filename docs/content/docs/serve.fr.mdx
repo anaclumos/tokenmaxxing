@@ -11,7 +11,7 @@ tokenmaxxing serve link <channel-id> <repo> # lie un canal à un checkout de dé
 tokenmaxxing serve                          # exécute le démon
 ```
 
-Mentionnez le bot dans un canal lié et il ouvre une session Claude Code pour ce fil, dans le checkout du dépôt lié. Chaque message de fil continue d'exécuter un unique `query()` de l'Agent SDK avec `resume`, de sorte que `ensureBestAccount()` réévalue le pool à chaque tour et que le démon peut redémarrer sans perdre de fils (les enregistrements de fils sont durables ; le démon les réabonne au démarrage), mais chaque requête reçoit une entrée en streaming, ce qui est justement ce qui permet à une réponse de piloter le tour déjà en cours.
+Mentionnez le bot dans un canal lié et il ouvre une session Claude Code pour ce fil, dans le checkout du dépôt lié. Chaque nouveau tour lance un unique `query()` de l'Agent SDK avec `resume`, de sorte que `ensureBestAccount()` réévalue le pool à chaque tour et que le démon peut redémarrer sans perdre de fils (les enregistrements de fils sont durables ; le démon les réabonne au démarrage), tandis qu'une réponse qui arrive pendant qu'une requête est en cours est intégrée à l'entrée en streaming de cette requête au lieu d'en lancer une nouvelle ; une réponse qui arrive trop tard pour piloter le tour s'exécute comme le tour suivant.
 
 Comportements notables :
 

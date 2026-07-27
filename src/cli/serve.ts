@@ -389,9 +389,11 @@ export function buildServeRuntime(seam: {
   // Un-steered messages waiting for the next turn, folded and drained as ONE
   // turn (sorted by Slack ts, which restores order for any upstream arrival
   // race). This is the daemon-owned replacement for the chat queue's
-  // skipped-message folding.
-  const pendingInbox = new Map<string, { text: string; authorId: string; id: string }[]>();
-  const inboxMention = new Set<string>();
+  // skipped-message folding. Each entry carries its delivery's mention flag,
+  // so the drained turn derives mention-ness from the RETAINED messages - a
+  // mention dropped by the overflow cap must not leave a phantom flag behind
+  // (cubic review catch on PR #50).
+  const pendingInbox = new Map<string, { text: string; authorId: string; id: string; isMention: boolean }[]>();
   // Per-thread arrival ordering: the steer attempt and the inbox push for
   // one message run to completion before the next message's do, so two
   // near-simultaneous replies can never interleave at the acceptor's await
@@ -504,18 +506,17 @@ export function buildServeRuntime(seam: {
             const text = stripped
               .map((r) => (input.requesterIds.includes(r.authorId) ? r.text : `Message from <@${r.authorId}>:\n${r.text}`))
               .join("\n\n");
-            if (!steerText(text)) {
-              for (const r of stripped) {
-                await setStatus({ threadId: input.thread.id, messageId: r.id, emoji: STATUS_EMOJI.processing, op: "remove" });
-              }
-              return false;
-            }
-            for (const r of stripped) {
-              if (!input.requesterIds.includes(r.authorId)) input.requesterIds.push(r.authorId);
-            }
+            // WRITE-AHEAD commit (cubic review catch on PR #50): the marker
+            // grows durably BEFORE the text reaches the child's stdin, so a
+            // daemon crash in between replays a steer the child may never
+            // have seen (duplication) instead of losing one it did (loss).
+            // The refusal rollback below runs synchronously after the save.
+            const prevRecord = record;
+            const prevSteeredIds = steeredMessageIds;
+            const mergedRequesters = uniq([...input.requesterIds, ...stripped.map((r) => r.authorId)]);
             const marker = record.activeTurn ?? input.marker;
             steeredMessageIds = [...(marker.steeredMessageIds ?? []), ...stripped.map((r) => r.id)];
-            record = { ...record, activeTurn: { ...marker, prompt: `${marker.prompt}\n\n${text}`, requesterIds: input.requesterIds, steeredMessageIds } };
+            record = { ...record, activeTurn: { ...marker, prompt: `${marker.prompt}\n\n${text}`, requesterIds: mergedRequesters, steeredMessageIds } };
             // the user responded: a pending ask is answered by the steer just
             // like by a queued turn (adversarial-review catch: leaving it
             // would strand the question mark and fire a spurious nudge about
@@ -523,6 +524,21 @@ export function buildServeRuntime(seam: {
             const asked = record.attention;
             if (asked) record = omit(record, ["attention"]);
             saveSlackThread(record);
+            if (!steerText(text)) {
+              record = prevRecord;
+              steeredMessageIds = prevSteeredIds;
+              saveSlackThread(record);
+              for (const r of stripped) {
+                await setStatus({ threadId: input.thread.id, messageId: r.id, emoji: STATUS_EMOJI.processing, op: "remove" });
+              }
+              return false;
+            }
+            // the SHARED requester array (the retry attempts' hook context)
+            // mutates only after acceptance, so a rollback leaves no phantom
+            // requesters behind.
+            for (const r of stripped) {
+              if (!input.requesterIds.includes(r.authorId)) input.requesterIds.push(r.authorId);
+            }
             log("serve.steered", { thread: input.thread.id, texts: stripped.length });
             if (asked?.messageId) {
               await setStatus({ threadId: input.thread.id, messageId: asked.messageId, emoji: STATUS_EMOJI.attention, op: "remove" });
@@ -961,7 +977,7 @@ export function buildServeRuntime(seam: {
     }
     const inbox = pendingInbox.get(threadId) ?? [];
     const hadPending = inbox.length > 0;
-    inbox.push(...input.relayed);
+    inbox.push(...input.relayed.map((r) => ({ ...r, isMention: input.isMention })));
     // hard cap, replacing the retired chat queue's maxQueueSize bound
     // (cursor security review on PR #50): without it a flood during one
     // long turn grows memory and the folded prompt without limit. Newest
@@ -972,16 +988,14 @@ export function buildServeRuntime(seam: {
       inbox.length = 100;
     }
     pendingInbox.set(threadId, inbox);
-    if (input.isMention) inboxMention.add(threadId);
     // one drain per non-empty inbox: later arrivals fold into the batch the
     // already-scheduled drain snapshots when it finally runs.
     if (hadPending) return null;
     const turn = tracked(serializedTurn(threadId, async () => {
       const batch = (pendingInbox.get(threadId) ?? []).sort((a, b) => Number(a.id) - Number(b.id));
       pendingInbox.delete(threadId);
-      const isMention = inboxMention.delete(threadId);
       if (batch.length === 0) return;
-      await handleTurn({ thread: input.thread, relayed: batch, isMention });
+      await handleTurn({ thread: input.thread, relayed: batch, isMention: batch.some((m) => m.isMention) });
     }));
     return { turn };
   };

@@ -11,7 +11,7 @@ tokenmaxxing serve link <channel-id> <repo> # channel ን ከ repo checkout ጋ�
 tokenmaxxing serve                          # daemon ን ያሄዳል
 ```
 
-bot ን በተገናኘ channel ውስጥ ይጥቀሱ እና ለዚያ thread በተገናኘ repo checkout ውስጥ Claude Code session ይከፍታል። እያንዳንዱ የ thread መልእክት አሁንም አንድ Agent SDK `query()` ን ከ `resume` ጋር ያሄዳል - ስለዚህ `ensureBestAccount()` pool ን በእያንዳንዱ turn እንደገና ይገመግማል እና daemon ው threadዎችን ሳያጣ ዳግም ማስጀመር ይችላል (የ thread መዝገቦች ዘላቂ ናቸው፤ daemon ው በ startup ላይ እንደገና ይመዘግባቸዋል) - ነገር ግን እያንዳንዱ query streaming input ይቀበላል፣ ይህም ምላሽ አሁን እየሄደ ያለውን turn እንዲመራ የሚያስችለው ነው።
+bot ን በተገናኘ channel ውስጥ ይጥቀሱ እና ለዚያ thread በተገናኘ repo checkout ውስጥ Claude Code session ይከፍታል። እያንዳንዱ አዲስ turn አንድ Agent SDK `query()` ን ከ `resume` ጋር ያስጀምራል - ስለዚህ `ensureBestAccount()` pool ን በእያንዳንዱ turn እንደገና ይገመግማል እና daemon ው threadዎችን ሳያጣ ዳግም ማስጀመር ይችላል (የ thread መዝገቦች ዘላቂ ናቸው፤ daemon ው በ startup ላይ እንደገና ይመዘግባቸዋል) - ነገር ግን query ው ገና በሚሄድበት ጊዜ የሚደርስ ምላሽ የራሱን query ከማስጀመር ይልቅ የዚያ query streaming input ውስጥ ይገባል፤ የ steering መስኮቱን የሚያመልጥ ምላሽ ደግሞ እንደ ቀጣዩ turn ይሄዳል።
 
 ትኩረት የሚሹ ባህሪያት፦
 

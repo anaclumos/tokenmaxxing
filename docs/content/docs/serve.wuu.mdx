@@ -11,7 +11,7 @@ tokenmaxxing serve link <channel-id> <repo> # 拿一个频道绑到一个仓库�
 tokenmaxxing serve                          # 跑守护进程
 ```
 
-勒链接过嗰频道里向 @ 一记 bot，伊就畀搿条 thread 勒链接嗰仓库检出里向开只 Claude Code 会话。每一条 thread 消息照旧跑一趟带 `resume` 嗰 Agent SDK `query()`，所以 `ensureBestAccount()` 勒每一个回合侪会重新评估池子，守护进程也好重启，勿会丢脱 thread（thread 记录是持久嗰；守护进程勒启动嗰辰光重新订阅伊拉），不过每一趟 query 侪收流式输入，搿就是一条回复好牵引牢正勒跑嗰回合嗰原因。
+勒链接过嗰频道里向 @ 一记 bot，伊就畀搿条 thread 勒链接嗰仓库检出里向开只 Claude Code 会话。每一个新回合会跑一趟带 `resume` 嗰 Agent SDK `query()`，所以 `ensureBestAccount()` 勒每一个回合侪会重新评估池子，守护进程也好重启，勿会丢脱 thread（thread 记录是持久嗰；守护进程勒启动嗰辰光重新订阅伊拉），不过一条回复要是勒一趟 query 还勒跑嗰辰光到脱，就会喂进搿趟 query 嗰流式输入里向，勿是另外起一趟自家嗰 query；一条回复要是错过引导嗰窗口，就会当作下一个回合跑。
 
 值得一讲嗰行为：
 

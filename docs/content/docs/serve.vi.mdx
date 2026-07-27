@@ -11,7 +11,7 @@ tokenmaxxing serve link <channel-id> <repo> # gắn một kênh với một chec
 tokenmaxxing serve                          # chạy daemon
 ```
 
-Nhắc đến bot trong một kênh đã liên kết và nó mở một phiên Claude Code cho luồng đó, trong checkout repo đã liên kết. Mỗi tin nhắn trong luồng vẫn chạy một `query()` của Agent SDK với `resume`, nên `ensureBestAccount()` đánh giá lại nhóm ở mỗi lượt và daemon có thể khởi động lại mà không mất các luồng (các bản ghi luồng là bền; daemon đăng ký lại chúng khi khởi động), nhưng mỗi query nhận đầu vào truyền phát, và đó chính là điều cho phép một câu trả lời lái được lượt đang chạy.
+Nhắc đến bot trong một kênh đã liên kết và nó mở một phiên Claude Code cho luồng đó, trong checkout repo đã liên kết. Mỗi lượt mới khởi chạy một `query()` của Agent SDK với `resume`, nên `ensureBestAccount()` đánh giá lại nhóm ở mỗi lượt và daemon có thể khởi động lại mà không mất các luồng (các bản ghi luồng là bền; daemon đăng ký lại chúng khi khởi động), trong khi một câu trả lời đến trong lúc một query đang chạy được đưa vào đầu vào truyền phát của chính query đó thay vì khởi chạy query riêng của nó; một câu trả lời bị lỡ khung điều hướng sẽ chạy như lượt tiếp theo.
 
 Hành vi đáng chú ý:
 

@@ -1105,6 +1105,11 @@ describe("buildServeRuntime steering", () => {
     // refused: nothing steered, the message waits behind the live turn
     expect(sr.seen).toEqual([]);
     expect(sr.prompts).toEqual(["begin"]);
+    // the write-ahead marker commit rolled back: the durable prompt carries
+    // no trace of the refused steer
+    const during = loadSlackThread(threadId);
+    expect(during?.activeTurn?.prompt).toBe("begin");
+    expect(during?.activeTurn?.steeredMessageIds).toBeUndefined();
     // the optimistic hourglass came back off
     expect(rt.reactions).toContainEqual({ threadId, messageId: "5200.3", emoji: "hourglass_flowing_sand", op: "remove" });
     sr.release();
@@ -1383,9 +1388,12 @@ describe("buildServeRuntime PR #50 review fixes", () => {
     while (!started && Date.now() < deadline) await delay(5);
     const floods: Promise<void>[] = [];
     for (let i = 0; i < 105; i++) {
-      floods.push(rt.onMessage({ thread: t.thread, message: home(`m${i}`, "U-OWNER", `6201.${i + 10}`), skipped: [], isMention: false }));
+      // the last flood message is a MENTION that lands in the dropped tail
+      const isMention = i === 104;
+      floods.push(rt.onMessage({ thread: t.thread, message: home(isMention ? "@UBOT m104" : `m${i}`, "U-OWNER", `6201.${i + 10}`), skipped: [], isMention }));
     }
     await delay(50);
+    const subscribesBefore = t.calls.subscribe;
     release();
     await Promise.all([first, ...floods]);
     await flushTurns(rt);
@@ -1395,6 +1403,9 @@ describe("buildServeRuntime PR #50 review fixes", () => {
     expect(folded[0]).toBe("m0");
     // newest dropped: the earliest instructions survive
     expect(prompts[1]).not.toContain("m104");
+    // and the dropped mention leaves no phantom flag: mention-ness derives
+    // from the RETAINED messages, so no re-subscribe fired for it
+    expect(t.calls.subscribe).toBe(subscribesBefore);
   });
 
   test("an arrival mid-decision is visible to the shutdown drain via activeTurns", async () => {

@@ -11,7 +11,7 @@ tokenmaxxing serve link <channel-id> <repo> # bir kanalı bir repo checkout'una 
 tokenmaxxing serve                          # daemon'u çalıştırır
 ```
 
-Bağlı bir kanalda bot'tan bahsedin (mention) ve o thread için, bağlı repo checkout'unda bir Claude Code oturumu açar. Her thread mesajı hâlâ `resume` ile bir Agent SDK `query()` çalıştırır - böylece `ensureBestAccount()` havuzu her tek turda yeniden değerlendirir ve daemon thread'leri kaybetmeden yeniden başlatabilir (thread kayıtları kalıcıdır; daemon başlangıçta onlara yeniden abone olur) - ama her query streaming girdi alır, bir yanıtın zaten çalışmakta olan turu yönlendirebilmesini sağlayan da budur.
+Bağlı bir kanalda bot'tan bahsedin (mention) ve o thread için, bağlı repo checkout'unda bir Claude Code oturumu açar. Her yeni tur, `resume` ile bir Agent SDK `query()` başlatır - böylece `ensureBestAccount()` havuzu her tur başına yeniden değerlendirir ve daemon thread'leri kaybetmeden yeniden başlatabilir (thread kayıtları kalıcıdır; daemon başlangıçta onlara yeniden abone olur) - bu arada, çalışmakta olan bir query sırasında gelen bir yanıt kendi query'sini başlatmak yerine o query'nin streaming girdisine beslenir; yönlendirme penceresini kaçıran bir yanıt bir sonraki tur olarak çalışır.
 
 Dikkat çekici davranış:
 

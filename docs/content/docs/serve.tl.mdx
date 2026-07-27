@@ -11,7 +11,7 @@ tokenmaxxing serve link <channel-id> <repo> # itali ang isang channel sa isang r
 tokenmaxxing serve                          # patakbuhin ang daemon
 ```
 
-Banggitin ang bot sa isang naka-link na channel at magbubukas ito ng isang Claude Code session para sa thread na iyon, sa naka-link na repo checkout. Ang bawat thread message ay nagpapatakbo pa rin ng isang Agent SDK `query()` na may `resume` - kaya't muling sinusuri ng `ensureBestAccount()` ang pool sa bawat isang turn at maaaring mag-restart ang daemon nang hindi nawawala ang mga thread (matibay ang mga thread record; muling nag-su-subscribe ang daemon sa mga ito sa startup) - pero tumatanggap ang bawat query ng streaming input, at iyon ang nagbibigay-daan sa isang reply na i-steer ang turn na tumatakbo na.
+Banggitin ang bot sa isang naka-link na channel at magbubukas ito ng isang Claude Code session para sa thread na iyon, sa naka-link na repo checkout. Ang bawat bagong turn ay nagsisimula ng isang Agent SDK `query()` na may `resume` - kaya't muling sinusuri ng `ensureBestAccount()` ang pool sa bawat turn at maaaring mag-restart ang daemon nang hindi nawawala ang mga thread (matibay ang mga thread record; muling nag-su-subscribe ang daemon sa mga ito sa startup) - habang ang isang reply na dumarating habang tumatakbo pa ang isang query ay pinapasok sa streaming input ng query na iyon sa halip na magsimula ng sarili nitong query; ang isang reply na hindi naabutan ang steering window ay tumatakbo bilang susunod na turn.
 
 Kapansin-pansing gawi:
 

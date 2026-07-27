@@ -11,7 +11,7 @@ tokenmaxxing serve link <channel-id> <repo> # tie one channel to one repo checko
 tokenmaxxing serve                          # run the daemon
 ```
 
-Mention the bot for one linked channel and e go open one Claude Code session for dat thread, for the linked repo checkout. Every thread message still dey run one Agent SDK `query()` with `resume` - so `ensureBestAccount()` dey re-evaluate the pool for every single turn and the daemon fit restart without losing threads (thread records dey durable; the daemon dey re-subscribe dem for startup) - but each query dey take streaming input, and na dat one dey make reply fit steer the turn wey dey run already.
+Mention the bot for one linked channel and e go open one Claude Code session for dat thread, for the linked repo checkout. Every new turn dey spawn one fresh Agent SDK `query()` with `resume` - so `ensureBestAccount()` dey re-evaluate the pool for every single turn and the daemon fit restart without losing threads (thread records dey durable; the daemon dey re-subscribe dem for startup) - while one reply wey land while one query still dey run dey enter dat same query im streaming input instead of e dey spawn im own; one reply wey miss the steering window dey run as the next turn.
 
 Notable behavior:
 

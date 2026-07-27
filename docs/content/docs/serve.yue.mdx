@@ -11,7 +11,7 @@ tokenmaxxing serve link <channel-id> <repo> # 將一個頻道綁去一個 repo c
 tokenmaxxing serve                          # 行守護程序
 ```
 
-喺連結咗嘅頻道提及個 bot，佢就會為嗰條 thread 喺連結嘅 repo checkout 入面開一個 Claude Code session。每條 thread 訊息依然會行一次帶 `resume` 嘅 Agent SDK `query()` - 所以 `ensureBestAccount()` 每一個回合都會重新評估帳戶池，而守護程序就算重新啟動都唔會失去 thread（thread 記錄係持久嘅;守護程序一啟動就會重新訂閱佢哋） - 不過每次 query 都會接收串流輸入，呢個先至令一個回覆可以帶到行緊嘅個回合轉向。
+喺連結咗嘅頻道提及個 bot，佢就會為嗰條 thread 喺連結嘅 repo checkout 入面開一個 Claude Code session。每一個新回合都會行一次帶 `resume` 嘅 Agent SDK `query()` - 所以 `ensureBestAccount()` 每一個回合都會重新評估帳戶池，而守護程序就算重新啟動都唔會失去 thread（thread 記錄係持久嘅;守護程序一啟動就會重新訂閱佢哋） - 不過一個回覆如果喺一次仲行緊嘅 query 期間到達，就會摺入嗰次 query 嘅串流輸入度，而唔係自己另外開一個 query；一個回覆如果錯過咗導向嘅窗口，就會當做下一個回合嚟行。
 
 值得注意嘅行為：
 
