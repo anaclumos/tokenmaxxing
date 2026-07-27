@@ -75,6 +75,24 @@ const RETRY_DELAY_MS = 10_000;
 /** parks + retries per Slack message; keeps a stale usage cache from looping
  *  a thread forever. */
 export const MAX_RECOVERIES = 3;
+/** extra spawns for a NON-limit failure whose child never completed (crash,
+ *  API blip, errored result): each resumes the same session, so a retry
+ *  continues the turn instead of re-running it. Separate from MAX_RECOVERIES
+ *  on purpose - that budget bounds limit-driven parking, this one bounds
+ *  quota spent chasing a possibly-permanent error. */
+export const MAX_TRANSIENT_RETRIES = 2;
+/** Slack expires a native stream SERVER-SIDE on undocumented timers
+ *  (Slack-maintainer-confirmed in slackapi/python-slack-sdk#1859: idle
+ *  around 30s, total lifetime around 300s measured), and an expired stream
+ *  freezes in the Slack client as a grey "Something went wrong" pill - the
+ *  exact 2026-07-27 report. The salvage path recovers the CONTENT but
+ *  cannot un-freeze the pill, so the fix is to never let Slack expire a
+ *  stream we own: rotate the open segment - a clean end() that the adapter
+ *  finishes with a proper stream stop - before either timer can fire, and
+ *  let the next chunk open a fresh message, the same flow pushText's size
+ *  splits already use. Thresholds sit well inside Slack's observed margins;
+ *  read at every arm (a mutable object, the file's test seam pattern). */
+export const SEGMENT_ROTATION = { idleMs: 20_000, maxAgeMs: 240_000 };
 
 const ParkPlanSchema = z.union([
   z.object({ kind: z.literal("proceed") }),
@@ -469,6 +487,14 @@ export async function relayThread(input: {
   // a ``` split across two deltas would be invisible to per-chunk counting
   // (pullfrog review catch, PR #42).
   let segmentMeta: { text: boolean; acc: string; reopenFence: boolean } | null = null;
+  // the open segment's rotation clock (see armSegmentTimer).
+  let segmentTimer: ReturnType<typeof setTimeout> | null = null;
+  let segmentOpenedAt = 0;
+  // a timer rotation closed the segment inside a code fence: the next
+  // segment must reopen it, exactly like pushText's size splits do (codex
+  // review catch). Consumed by openSegment; the salvage handler's own
+  // delivered-prefix recomputation overrides it there.
+  let pendingReopenFence = false;
   let lastPost: Promise<unknown> = Promise.resolve();
   // Reply TEXT that died with a rejected segment and was neither salvaged into
   // a follow-on message nor re-delivered by a later text-bearing segment: the
@@ -496,6 +522,8 @@ export async function relayThread(input: {
   const openSegment = () => {
     const seg = pushableStream();
     segment = seg;
+    segmentOpenedAt = Date.now();
+    armSegmentTimer();
     // reopenFence: the delivered prefix of a REJECTED predecessor left a code
     // fence open, so the first TEXT entering this salvage segment must be
     // preceded by a reopen or it renders outside the code block. Pending
@@ -503,7 +531,8 @@ export async function relayThread(input: {
     // salvage would otherwise either skip the reopen (later text joining the
     // segment renders unfenced) or dangle an empty open fence at message end
     // when no text ever follows. Materialized by BOTH text entry points.
-    const meta = { text: false, acc: "", reopenFence: false };
+    const meta = { text: false, acc: "", reopenFence: pendingReopenFence };
+    pendingReopenFence = false;
     segmentMeta = meta;
     lastPost = input.post(seg.iterable).then(
       () => {
@@ -608,9 +637,19 @@ export async function relayThread(input: {
           // the salvage segment here keeps the salvaged content ordered ahead
           // of any push still awaiting lastPost; the salvage segment's own
           // settle then decides whether its text counts as delivered.
+          // A salvage always recomputes its fence state from the delivered
+          // prefix (the override below), so it must never CONSUME a pending
+          // rotation reopen that belongs to a different segment's
+          // continuation - a rejected notice settling after notify()
+          // restored the flag would otherwise eat it (cubic review catch,
+          // round 4). Held across the lost-chunk re-push too: the salvaged
+          // text is the dying segment's, not the continuation's.
+          const heldReopen = pendingReopenFence;
+          pendingReopenFence = false;
           const next = openSegment();
           next.meta.reopenFence = deliveredFenceOpen;
           for (const c of lost) next.pushInto(c);
+          pendingReopenFence = heldReopen;
         } else if (textRemainder !== "") {
           textLost = true;
           textLostDetail = detail;
@@ -637,6 +676,7 @@ export async function relayThread(input: {
         meta.acc += chunk;
       }
       seg.push(chunk);
+      if (segment === seg) armSegmentTimer();
     };
     return { seg, meta, pushInto };
   };
@@ -649,6 +689,17 @@ export async function relayThread(input: {
     }
     const target = segment ?? openSegment().seg;
     if (!(chunk instanceof Object)) {
+      // a pending rotation reopen can outlive its openSegment hand-off when
+      // text JOINS a segment a rejection handler opened during the wait
+      // (the salvage recomputes its own fence state without consuming the
+      // flag): adopt it here so the continuation still reopens its fence,
+      // UNLESS the joined segment already sits inside an open fence - then
+      // the state is satisfied and a second marker would close it (cubic
+      // review catch, round 4).
+      if (pendingReopenFence) {
+        pendingReopenFence = false;
+        if (!fenceOpen()) segmentMeta!.reopenFence = true;
+      }
       // materialize a salvage segment's pending fence reopen (see
       // openSegment) before the first text from this entry point too.
       if (segmentMeta!.reopenFence) {
@@ -661,13 +712,41 @@ export async function relayThread(input: {
       segmentMeta!.acc += chunk;
     }
     target.push(chunk);
+    if (segment === target) armSegmentTimer();
   };
   // parity by occurrence count over the segment's accumulated text: an odd
   // number of ``` markers means the segment currently sits inside a fence.
   const fenceOpen = () => segmentMeta !== null && (segmentMeta.acc.split("```").length - 1) % 2 === 1;
   const breakSegment = () => {
+    if (segmentTimer !== null) {
+      clearTimeout(segmentTimer);
+      segmentTimer = null;
+    }
+    // a segment dying with an armed-but-unmaterialized reopen (no text ever
+    // arrived - a card-only segment that consumed the flag at open) folds it
+    // back: the reply still logically sits inside an open fence, and the
+    // next text-bearing segment must reopen it (cubic review catch, round
+    // 4: the errored result's closing card ate the rotation's reopen).
+    if (segmentMeta?.reopenFence) pendingReopenFence = true;
     segment?.end();
     segment = null;
+  };
+  const armSegmentTimer = () => {
+    if (segmentTimer !== null) clearTimeout(segmentTimer);
+    const ageLeft = segmentOpenedAt + SEGMENT_ROTATION.maxAgeMs - Date.now();
+    segmentTimer = setTimeout(() => {
+      segmentTimer = null;
+      // a rotation mid-fence closes the fence and arms the reopen, so both
+      // message halves render as code - pushText's split contract. An
+      // armed-but-unmaterialized reopen needs no close marker; breakSegment
+      // folds it forward.
+      if (segment !== null && fenceOpen()) {
+        segmentMeta!.acc += "\n```";
+        segment.push("\n```");
+        pendingReopenFence = true;
+      }
+      breakSegment();
+    }, Math.max(0, Math.min(SEGMENT_ROTATION.idleMs, ageLeft)));
   };
   /** Reply text routed through here splits across Slack messages before the
    *  msg_too_long cap (see SEGMENT_TEXT_MAX): a break prefers the last newline
@@ -723,8 +802,16 @@ export async function relayThread(input: {
   // streamed segment.
   const notify = async (text: string) => {
     breakSegment();
+    // a notice must never inherit a rotation's pending fence reopen: the
+    // reopen belongs to the interrupted reply's continuation, not to the
+    // status line - consuming it here would render the notice as a code
+    // block AND strand the continuation unfenced (cubic review catch,
+    // round 3). Held aside and restored for the real continuation.
+    const heldReopen = pendingReopenFence;
+    pendingReopenFence = false;
     await push(text);
     breakSegment();
+    pendingReopenFence = heldReopen;
   };
   /** notify + confirm the post actually landed in Slack. A drop notice that
    *  never reached the user must NOT count as announced. DURING A DRAIN an
@@ -759,6 +846,9 @@ export async function relayThread(input: {
   // deferral notice explains the pause; the raw line would invite a manual
   // re-send of work the daemon resumes itself - cubic catch, PR #44).
   let pendingFailureLine: string | null = null;
+  // what the next spawn submits: the original message, until a transient
+  // retry swaps in the continuation wrapper (see the retry branch).
+  let prompt = input.prompt;
   const runQueryOnce = async () => {
     postedText = false;
     pendingFailureLine = null;
@@ -777,7 +867,7 @@ export async function relayThread(input: {
       spawnOrg = readOAuthAccount()?.organizationUuid ?? null;
       const pooled = pooledOptions();
       const q = query({
-        prompt: input.prompt,
+        prompt,
         options: {
           ...pooled,
           // claude >= 2.1.142 emits the structured Task tools by default and
@@ -868,6 +958,17 @@ export async function relayThread(input: {
             // the stale pre-limit snapshot (poll TTL) and respawns the same
             // depleted account - a serve process has no statusLine tee.
             if (outcome.rateLimited) await recordObservedLimit({ text, now: Date.now(), org: spawnOrg });
+            // hold the REAL errored text for the terminal diagnostic (codex
+            // review catches: a streamed-then-errored turn used to end with
+            // a truncated answer and only the x reaction, and a no-text
+            // errored turn used to discard the reason for a generic line).
+            // The depleted-pool probe still outranks the line.
+            else {
+              const reason = text.slice(0, 200) || "no error detail";
+              pendingFailureLine = postedText
+                ? `tokenmaxxing: the turn errored before finishing (${reason}) - the reply above may be incomplete.`
+                : `tokenmaxxing: the turn errored without a result (${reason}) - trying again may help.`;
+            }
           } else {
             result = message.result;
             outcome.resultReceived = true;
@@ -880,12 +981,6 @@ export async function relayThread(input: {
       }
       // a turn that produced no streamed text (tool-only turns) still reports.
       if (!postedText && result) await pushText(result);
-      if (!postedText && !result && outcome.failed && !outcome.rateLimited) {
-        // held back until the depleted-pool probe rules: a "trying again may
-        // help" line right before a deferral notice invites a manual re-send
-        // of work the daemon is about to resume itself (cubic catch, PR #44).
-        pendingFailureLine = "the turn ended without a result - trying again may help";
-      }
     } catch (e) {
       outcome.failed = true;
       const detail = (e instanceof Error ? e.message : String(e)).slice(0, 300);
@@ -900,6 +995,7 @@ export async function relayThread(input: {
   };
 
   let recoveries = 0;
+  let transientRetries = 0;
   const parkDeadline = Date.now() + PARK_MAX_MS;
   while (true) {
     // the switch decision runs at the spawn boundary, same as the CLI hooks.
@@ -956,10 +1052,14 @@ export async function relayThread(input: {
       // the evidence the error text did not carry. A completed result stays
       // terminal, and a usable pool keeps the plain failure.
       if (!outcome.resultReceived) {
+        // outranks the transient retry below even when the recovery time is
+        // unknown (cubic review catch): a depleted pool explains the failure,
+        // and respawning against it would just burn doomed attempts.
+        let probeDepleted = false;
         try {
           const verdict = await ensureBestAccount();
-          const depleted = verdict.reason === "all-depleted" || verdict.reason === "depleted-wait";
-          const wake = depleted ? verdict.waitUntil ?? null : null;
+          probeDepleted = verdict.reason === "all-depleted" || verdict.reason === "depleted-wait";
+          const wake = probeDepleted ? verdict.waitUntil ?? null : null;
           if (wake != null) {
             outcome.rateLimited = true;
             outcome.deferUntil = wake + PARK_GRACE_MS;
@@ -971,8 +1071,43 @@ export async function relayThread(input: {
           // keep the original failure; the probe must never mask it.
           log("serve.defer_probe_error", { err: (e instanceof Error ? e.message : String(e)).slice(0, 300) });
         }
+        // a transient non-limit failure (child crash, API blip, errored
+        // result) against a usable pool retries silently into the same
+        // session, mirroring the rate-limit path's invisible short retry
+        // (2026-07-27 report: these turns died terminally, telling the user
+        // "trying again may help" instead of trying again). resultReceived
+        // stays terminal above - a completed answer must never re-run - and
+        // the probe's deferral outranks a retry: an exhausted pool explains
+        // the failure better than "transient".
+        if (!probeDepleted && outcome.deferUntil === null && transientRetries < MAX_TRANSIENT_RETRIES) {
+          transientRetries += 1;
+          breakSegment();
+          log("serve.transient_retry", { attempt: transientRetries });
+          // once a session exists, the failed attempt may have executed
+          // side-effectful tools before dying, so the retry must CONTINUE,
+          // never re-instruct: replaying the original prompt verbatim into
+          // the resumed session reads as "do it again" (codex review catch).
+          // The wrapper mirrors resumeDecision's deferral resume. A pre-init
+          // death ran nothing, so the original replays verbatim there.
+          if (outcome.sessionId !== null) {
+            prompt = `Your previous turn was interrupted by an error mid-run; this session's transcript already holds any work it completed, including tool calls whose side effects already happened. Pick up exactly where you left off and finish the task without re-running completed side-effectful steps. If the work was already complete, just summarize the final state. The original request was:\n\n${input.prompt}`;
+          }
+          if (!(await sleep(RETRY_DELAY_MS))) {
+            // a drain aborted the retry sleep: same as a killed child, the
+            // marker survives (presumedKilled) and the next daemon start
+            // resumes the session where it stopped.
+            await notify("tokenmaxxing is restarting - this turn resumes after the restart.");
+            break;
+          }
+          continue;
+        }
       }
-      if (pendingFailureLine !== null) await push(pendingFailureLine);
+      if (pendingFailureLine !== null) {
+        // same fence-reopen bypass as notify: a diagnostic line opening a
+        // fresh segment must not render inside a reopened code fence.
+        pendingReopenFence = false;
+        await push(transientRetries > 0 ? `${pendingFailureLine} (after ${transientRetries + 1} attempts)` : pendingFailureLine);
+      }
       break;
     }
     if (recoveries >= MAX_RECOVERIES) {

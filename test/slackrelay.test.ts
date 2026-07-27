@@ -51,7 +51,7 @@ mock.module("es-toolkit", () => ({
   delay: (ms: number, opts?: { signal?: AbortSignal }) => realEsToolkit.delay(Math.min(Math.max(ms, 0), DELAY_CAP_MS), opts),
 }));
 
-const { relayThread, MAX_RECOVERIES, PARK_MAX_MS, SEGMENT_TEXT_MAX } = await import("../src/lib/slackbridge.ts");
+const { relayThread, MAX_RECOVERIES, MAX_TRANSIENT_RETRIES, PARK_MAX_MS, SEGMENT_ROTATION, SEGMENT_TEXT_MAX } = await import("../src/lib/slackbridge.ts");
 const { StreamingMarkdownRenderer } = await import("chat");
 const { SlackLinkSchema } = await import("../src/lib/slackstate.ts");
 const { loadUsage, writeUsage } = await import("../src/lib/state.ts");
@@ -834,5 +834,206 @@ describe("relayThread segment ordering", () => {
     expect(cardIndexes.length).toBeGreaterThan(0);
     // the card originally preceded the text; salvage must keep it there
     for (const i of cardIndexes) expect(i).toBeLessThan(firstText);
+  });
+});
+
+// the non-limit errored-result shape: a child that died without completing.
+const errored = (sessionId: string, resultText: string) => ({
+  type: "result",
+  subtype: "error_during_execution",
+  is_error: true,
+  session_id: sessionId,
+  result: resultText,
+  modelUsage: {},
+  total_cost_usd: 0,
+  duration_ms: 100,
+});
+
+describe("relayThread transient-failure retry", () => {
+  test("a non-limit child failure retries silently into the same session and the thread sees only the recovered answer", async () => {
+    // spawn 1, post-failure defer probe, spawn 2
+    decisionQueue.push(usable, usable, usable);
+    queryScripts.push(script([init("s-tr"), errored("s-tr", "Claude Code process exited with code 1")]));
+    queryScripts.push(script([init("s-tr"), textStart(), textDelta("recovered answer"), success("s-tr")]));
+    const col = collector();
+    const out = await relay({ post: col.post });
+    expect(out.failed).toBe(false);
+    expect(queryCalls.length).toBe(2);
+    // the retry CONTINUES the session the failed attempt opened
+    expect(queryCalls[1]!.options.resume).toBe("s-tr");
+    const all = col.posts.map((p) => strings(p)).join("\n");
+    expect(all).toContain("recovered answer");
+    expect(all).not.toContain("turn failed");
+    expect(all).not.toContain("trying again may help");
+  });
+
+  test("retries are bounded and the terminal line reports the total attempts", async () => {
+    const attempts = MAX_TRANSIENT_RETRIES + 1;
+    for (let i = 0; i < attempts; i += 1) {
+      decisionQueue.push(usable, usable); // spawn, then post-failure probe
+      queryScripts.push(script([init("s-tf"), errored("s-tf", "Claude Code process exited with code 1")]));
+    }
+    const col = collector();
+    const out = await relay({ post: col.post });
+    expect(out.failed).toBe(true);
+    expect(out.rateLimited).toBe(false);
+    expect(queryCalls.length).toBe(attempts);
+    // the retries continue the session with an explicit continuation prompt,
+    // never a verbatim replay that would re-run completed side effects
+    for (let i = 1; i < attempts; i += 1) {
+      expect(queryCalls[i]!.options.resume).toBe("s-tf");
+      expect(z.string().parse(queryCalls[i]!.prompt)).toContain("Pick up exactly where you left off");
+    }
+    const all = col.posts.map((p) => strings(p)).join("\n");
+    // the terminal line carries the REAL child error, not a generic stub
+    expect(all).toContain("Claude Code process exited with code 1");
+    expect(all).toContain(`after ${attempts} attempts`);
+  });
+
+  test("a depleted pool with an unknown wake outranks the transient retry: no doomed respawns", async () => {
+    decisionQueue.push(usable, depleted()); // spawn, then the post-failure probe finds the pool exhausted
+    queryScripts.push(script([init("s-td"), errored("s-td", "Claude Code process exited with code 1")]));
+    const col = collector();
+    const out = await relay({ post: col.post });
+    expect(out.failed).toBe(true);
+    expect(queryCalls.length).toBe(1);
+    const all = col.posts.map((p) => strings(p)).join("\n");
+    expect(all).toContain("Claude Code process exited with code 1");
+  });
+
+  test("a turn that streamed text and then errored explains the truncation instead of a bare failed reaction", async () => {
+    const attempts = MAX_TRANSIENT_RETRIES + 1;
+    for (let i = 0; i < attempts; i += 1) {
+      decisionQueue.push(usable, usable);
+      queryScripts.push(script([init("s-tp"), textStart(), textDelta("partial answer"), errored("s-tp", "boom detail")]));
+    }
+    const col = collector();
+    const out = await relay({ post: col.post });
+    expect(out.failed).toBe(true);
+    const all = col.posts.map((p) => strings(p)).join("\n");
+    expect(all).toContain("partial answer");
+    expect(all).toContain("boom detail");
+    expect(all).toContain("may be incomplete");
+  });
+});
+
+describe("relayThread segment rotation", () => {
+  test("an idle segment closes cleanly before Slack's stream expiry and the next chunk opens a fresh message", async () => {
+    const prev = SEGMENT_ROTATION.idleMs;
+    SEGMENT_ROTATION.idleMs = 40;
+    try {
+      decisionQueue.push(usable);
+      queryScripts.push(() =>
+        (async function* () {
+          yield init("s-rot");
+          yield textStart();
+          yield textDelta("part one");
+          await realEsToolkit.delay(150);
+          yield textDelta("part two");
+          yield success("s-rot");
+        })(),
+      );
+      const col = collector();
+      const out = await relay({ post: col.post });
+      expect(out.failed).toBe(false);
+      expect(col.calls()).toBe(2);
+      expect(strings(col.posts[0])).toContain("part one");
+      expect(strings(col.posts[1])).toContain("part two");
+      // the idle segment fully closed BEFORE the fresh one opened
+      expect(col.timeline).toEqual(["open:1", "close:1", "open:2", "close:2"]);
+    } finally {
+      SEGMENT_ROTATION.idleMs = prev;
+    }
+  });
+
+  test("a status notice after a mid-fence rotation never renders inside the fence", async () => {
+    const prev = SEGMENT_ROTATION.idleMs;
+    SEGMENT_ROTATION.idleMs = 40;
+    try {
+      // spawn, then the post-failure probe defers on a depleted pool
+      decisionQueue.push(usable, depleted(Date.now() + 3_600_000));
+      queryScripts.push(() =>
+        (async function* () {
+          yield init("s-fn");
+          yield textStart();
+          yield textDelta("```\ncode half");
+          await realEsToolkit.delay(150); // rotation closes the fence, arms the reopen
+          yield errored("s-fn", "boom");
+        })(),
+      );
+      const col = collector();
+      const out = await relay({ post: col.post });
+      expect(out.deferUntil).not.toBeNull();
+      const notice = col.posts.map((p) => strings(p)).find((s) => s.includes("pausing this turn"));
+      expect(notice).toBeDefined();
+      expect(notice).not.toContain("```");
+    } finally {
+      SEGMENT_ROTATION.idleMs = prev;
+    }
+  });
+
+  test("a rejected notice's salvage never eats the interrupted reply's fence opener", async () => {
+    const prev = SEGMENT_ROTATION.idleMs;
+    SEGMENT_ROTATION.idleMs = 40;
+    try {
+      // spawn 1, park (depleted, near wake), spawn 2
+      decisionQueue.push(usable, depleted(Date.now() + 60_000), usable);
+      queryScripts.push(() =>
+        (async function* () {
+          yield init("s-fs");
+          yield textStart();
+          yield textDelta("```\ncode half");
+          await realEsToolkit.delay(150); // rotation closes the fence, arms the reopen
+          yield limitErrored("s-fs", "Claude AI usage limit reached|9999999999");
+        })(),
+      );
+      queryScripts.push(script([init("s-fs"), textStart(), textDelta("code rest"), success("s-fs")]));
+      const col = collector();
+      let calls = 0;
+      const post = async (m: AsyncIterable<unknown>) => {
+        calls += 1;
+        // the park notice's own post dies; its salvage re-post must not
+        // consume the pending fence reopen the rotation armed
+        if (calls === 2) throw new Error("message_not_in_streaming_state");
+        return col.post(m);
+      };
+      const out = await relay({ post });
+      expect(out.failed).toBe(false);
+      const texts = col.posts.map((p) => strings(p));
+      expect(texts.some((s) => s.includes("holding this message"))).toBe(true); // salvaged notice landed
+      const continuation = texts.find((s) => s.includes("code rest"));
+      expect(continuation).toBeDefined();
+      // the continuation still opens inside the fence the rotation closed
+      expect(continuation!.startsWith("```")).toBe(true);
+    } finally {
+      SEGMENT_ROTATION.idleMs = prev;
+    }
+  });
+
+  test("a continuously active segment still rotates at its max age, losing no text", async () => {
+    const prev = SEGMENT_ROTATION.maxAgeMs;
+    SEGMENT_ROTATION.maxAgeMs = 60;
+    try {
+      decisionQueue.push(usable);
+      queryScripts.push(() =>
+        (async function* () {
+          yield init("s-age");
+          yield textStart();
+          for (let i = 1; i <= 8; i += 1) {
+            yield textDelta(`chunk-${i} `);
+            await realEsToolkit.delay(20);
+          }
+          yield success("s-age");
+        })(),
+      );
+      const col = collector();
+      const out = await relay({ post: col.post });
+      expect(out.failed).toBe(false);
+      expect(col.calls()).toBeGreaterThanOrEqual(2);
+      const all = col.posts.map((p) => strings(p)).join("");
+      for (let i = 1; i <= 8; i += 1) expect(all).toContain(`chunk-${i}`);
+    } finally {
+      SEGMENT_ROTATION.maxAgeMs = prev;
+    }
   });
 });
