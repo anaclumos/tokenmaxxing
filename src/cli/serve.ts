@@ -886,14 +886,32 @@ export function buildServeRuntime(seam: {
           });
         } catch (e) {
           // a crashed answer turn must not read as an accepted answer (codex
-          // review catch): tell the thread. The attention state survives, so
-          // the ask stays nudgeable and answerable by a thread reply.
+          // review catch): tell the thread and settle the reacted-to
+          // message's status so it never reads as processing forever.
           const detail = (e instanceof Error ? e.message : String(e)).slice(0, 300);
           log("serve.reaction_crashed", { thread: input.threadId, err: detail });
           try {
             await seam.postToThread({ threadId: input.threadId, text: `tokenmaxxing: handling your reaction answer crashed: ${detail}. Reply in the thread to answer instead.` });
           } catch (postErr) {
             log("serve.reaction_crash_notice_failed", { thread: input.threadId, err: (postErr instanceof Error ? postErr.message : String(postErr)).slice(0, 300) });
+          }
+          await setStatus({ threadId: input.threadId, messageId: input.messageId, emoji: STATUS_EMOJI.failed, op: "add" });
+          await setStatus({ threadId: input.threadId, messageId: input.messageId, emoji: STATUS_EMOJI.processing, op: "remove" });
+          // handleTurn consumed the attention state (and its question mark)
+          // before the turn ran; a crashed answer must not eat the ask (cubic
+          // review catch, round 2). Restore both so the nudge sweep and the
+          // reaction-answer gates keep working; the restore itself is
+          // best-effort (the crash may BE an unreadable record).
+          try {
+            const cur = loadSlackThread(input.threadId);
+            if (cur && !cur.attention) {
+              saveSlackThread({ ...cur, attention: asked });
+              if (asked.messageId) {
+                await setStatus({ threadId: input.threadId, messageId: asked.messageId, emoji: STATUS_EMOJI.attention, op: "add" });
+              }
+            }
+          } catch (restoreErr) {
+            log("serve.attention_restore_failed", { thread: input.threadId, err: (restoreErr instanceof Error ? restoreErr.message : String(restoreErr)).slice(0, 300) });
           }
         }
         return;

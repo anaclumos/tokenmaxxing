@@ -1058,4 +1058,30 @@ describe("buildServeRuntime crash containment", () => {
       unlinkSync(file);
     }
   });
+
+  test("a crashed reaction answer posts a notice, settles the trigger, and restores the ask", async () => {
+    const threadId = "slack:C0DAEMON:700.1";
+    let turns = 0;
+    const rt = runtimeWith(async () => {
+      turns += 1;
+      return { ...okOutcome, attention: true };
+    });
+    const t = fakeThread({ id: threadId });
+    await rt.onMessage({ thread: t.thread, message: home("@UBOT ship it?", "U-OWNER", "700.9"), skipped: [], isMention: true });
+    expect(loadSlackThread(threadId)?.attention).toBeDefined();
+    await rt.onReaction(
+      { threadId, messageId: "701.5", emoji: "thumbs_up", userId: "U-OWNER", isBot: false, added: true, occurredAt: Date.now() + 5_000 },
+      async () => {
+        throw new Error("streamable dead");
+      },
+    );
+    expect(turns).toBe(1); // the answer turn never ran
+    expect(rt.nudges.some((n) => n.text.includes("reaction answer crashed"))).toBe(true);
+    // the reacted-to message settles instead of reading as processing forever
+    expect(rt.reactions).toContainEqual({ threadId, messageId: "701.5", emoji: "x", op: "add" });
+    expect(rt.reactions).toContainEqual({ threadId, messageId: "701.5", emoji: "hourglass_flowing_sand", op: "remove" });
+    // the consumed ask is restored: still nudgeable, still answerable
+    expect(loadSlackThread(threadId)?.attention).toBeDefined();
+    expect(rt.reactions.filter((r) => r.messageId === "700.9" && r.emoji === "question" && r.op === "add").length).toBeGreaterThanOrEqual(1);
+  });
 });

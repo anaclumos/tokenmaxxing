@@ -709,12 +709,20 @@ export async function relayThread(input: {
     const ageLeft = segmentOpenedAt + SEGMENT_ROTATION.maxAgeMs - Date.now();
     segmentTimer = setTimeout(() => {
       segmentTimer = null;
-      // a rotation mid-fence closes the fence and arms the reopen, so both
-      // message halves render as code - pushText's split contract.
-      if (segment !== null && fenceOpen()) {
-        segmentMeta!.acc += "\n```";
-        segment.push("\n```");
-        pendingReopenFence = true;
+      if (segment !== null) {
+        // a rotation mid-fence closes the fence and arms the reopen, so both
+        // message halves render as code - pushText's split contract. A
+        // salvage segment whose armed reopen never materialized (card-only
+        // so far) has no fence to close, but the armed state must carry to
+        // the next segment or its later text renders unfenced (cubic review
+        // catch, round 2).
+        if (fenceOpen()) {
+          segmentMeta!.acc += "\n```";
+          segment.push("\n```");
+          pendingReopenFence = true;
+        } else if (segmentMeta!.reopenFence) {
+          pendingReopenFence = true;
+        }
       }
       breakSegment();
     }, Math.max(0, Math.min(SEGMENT_ROTATION.idleMs, ageLeft)));
