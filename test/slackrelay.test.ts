@@ -996,3 +996,81 @@ describe("relayThread trailing steered-turn results", () => {
     expect(loadUsage()?.fiveHour).toEqual({ usedPercentage: 100, resetsAt: resetEpochSec * 1000 });
   });
 });
+
+describe("relayThread multi-result turns (round-2 review fixes)", () => {
+  test("a tool-only primary answer survives a trailing errored steer turn: flushed at its own result", async () => {
+    const now = Date.now();
+    seedIdentityAndUsage("org-relay", now);
+    const resetEpochSec = Math.floor((now + 3_600_000) / 1000);
+    decisionQueue.push(usable);
+    // NO streamed text: the primary answer lives only in result.result
+    queryScripts.push(
+      script([
+        init("s-toolonly"),
+        success("s-toolonly", "the primary tool-only answer"),
+        limitErrored("s-toolonly", `Claude AI usage limit reached|${resetEpochSec}`),
+      ]),
+    );
+    const col = collector();
+    const out = await relay({ post: col.post });
+    expect(out.failed).toBe(false);
+    expect(out.steerLost).toBe(true);
+    expect(queryCalls.length).toBe(1);
+    const allText = col.posts.map(strings).join(" ");
+    // the primary answer was flushed at ITS result, before the trailing
+    // turn's notice could suppress it
+    expect(allText).toContain("the primary tool-only answer");
+    expect(allText).toContain("steered follow-up");
+  });
+
+  test("two result-only turns in one child both deliver their answers", async () => {
+    decisionQueue.push(usable);
+    queryScripts.push(
+      script([
+        init("s-two"),
+        success("s-two", "first answer"),
+        success("s-two", "second answer"),
+      ]),
+    );
+    const col = collector();
+    const out = await relay({ post: col.post });
+    expect(out.failed).toBe(false);
+    expect(out.steerLost).toBe(false);
+    const allText = col.posts.map(strings).join(" ");
+    expect(allText).toContain("first answer");
+    expect(allText).toContain("second answer");
+  });
+
+  test("a limit classification is sticky across a child's errored results", async () => {
+    const now = Date.now();
+    seedIdentityAndUsage("org-relay", now);
+    const resetEpochSec = Math.floor((now + 3_600_000) / 1000);
+    decisionQueue.push(usable, usable);
+    // primary turn dies at a LIMIT, then the drained steer turn dies with a
+    // generic error: the limit classification must survive last-writer-wins
+    queryScripts.push(
+      script([
+        init("s-sticky"),
+        limitErrored("s-sticky", `Claude AI usage limit reached|${resetEpochSec}`),
+        {
+          type: "result",
+          subtype: "error_during_execution",
+          is_error: true,
+          session_id: "s-sticky",
+          result: "stream disconnected",
+          modelUsage: {},
+          total_cost_usd: 0,
+          duration_ms: 50,
+        },
+      ]),
+    );
+    queryScripts.push(script([init("s-sticky"), textDelta("recovered"), success("s-sticky")]));
+    const col = collector();
+    const out = await relay({ post: col.post });
+    // the silent limit retry ran (a plain failure would have posted "turn
+    // failed" and never spawned again)
+    expect(out.failed).toBe(false);
+    expect(queryCalls.length).toBe(2);
+    expect(col.posts.map(strings).join(" ")).toContain("recovered");
+  });
+});

@@ -766,9 +766,15 @@ export function buildServeRuntime(seam: {
     const deferredForResume = outcome.deferUntil !== null;
     if (!killedByDrain && !deferredForResume) {
       const emoji = outcome.failed ? STATUS_EMOJI.failed : outcome.attention && !outcome.finish ? STATUS_EMOJI.attention : STATUS_EMOJI.done;
+      // steerLost: a steered follow-up's own drained turn failed after the
+      // primary turn succeeded, so the steered messages settle as failed -
+      // matching the in-thread re-send notice; a lost instruction must never
+      // read green (see TurnOutcomeSchema.steerLost for the per-turn
+      // attribution tradeoff).
+      const steeredEmoji = outcome.steerLost ? STATUS_EMOJI.failed : emoji;
       for (const id of [input.messageId, ...(input.steeredMessageIds ?? [])]) {
         if (!id) continue;
-        await setStatus({ threadId: thread.id, messageId: id, emoji, op: "add" });
+        await setStatus({ threadId: thread.id, messageId: id, emoji: id === input.messageId ? emoji : steeredEmoji, op: "add" });
         await setStatus({ threadId: thread.id, messageId: id, emoji: STATUS_EMOJI.processing, op: "remove" });
       }
     }

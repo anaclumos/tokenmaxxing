@@ -56,6 +56,14 @@ export const TurnOutcomeSchema = z.object({
    *  thread's activeTurn marker with resumeAt and the daemon resumes the turn
    *  itself, instead of the old "re-send it once the pool recovers" drop. */
   deferUntil: z.number().nullable(),
+  /** a steered follow-up's own drained turn FAILED after the primary turn
+   *  already succeeded (success stays sticky, the loss is announced
+   *  in-thread): the caller settles the steered messages' reactions as
+   *  failed, never as done - a lost instruction must not read green.
+   *  Attribution is per-turn, not per-message (steer() carries text only),
+   *  so when several messages were steered a successfully folded one can
+   *  read failed too - accepted: a false re-send ask beats a false green. */
+  steerLost: z.boolean(),
 });
 export type TurnOutcome = z.infer<typeof TurnOutcomeSchema>;
 
@@ -529,7 +537,7 @@ export async function relayThread(input: {
    *  names them (the hook does not fire for folded mid-turn messages). */
   onSteer?: (steer: ((text: string) => boolean) | null) => void;
 }): Promise<TurnOutcome> {
-  const outcome: TurnOutcome = { sessionId: input.sessionId, failed: false, rateLimited: false, finish: false, attention: false, announcedDrop: false, resultReceived: false, deferUntil: null };
+  const outcome: TurnOutcome = { sessionId: input.sessionId, failed: false, rateLimited: false, finish: false, attention: false, announcedDrop: false, resultReceived: false, deferUntil: null, steerLost: false };
   let segment: ReturnType<typeof pushableStream> | null = null;
   // acc mirrors the segment's pushed text (bounded by SEGMENT_TEXT_MAX plus a
   // small overshoot): fence parity must be computed over the ACCUMULATED text,
@@ -940,6 +948,13 @@ export async function relayThread(input: {
       input.onSteer?.(steer);
       const mapState = newStreamMapState();
       let result: string | null = null;
+      // reply text streamed since the last result boundary: each turn in the
+      // child (the primary one, plus any post-fold-window steer drained as
+      // its own turn) delivers its answer independently - a tool-only turn's
+      // answer lives ONLY in its result message, and flushing it at that
+      // result is what keeps a trailing turn's notice or result from
+      // suppressing or clobbering it (adversarial-review catch, round 2).
+      let streamedSinceResult = false;
       for await (const message of q) {
         if (message.type === "system" && message.subtype === "init") {
           // persist BEFORE the turn ends so a first-turn kill stays
@@ -977,7 +992,9 @@ export async function relayThread(input: {
               // failed here would send the whole prompt back through the
               // retry/defer machinery and re-run completed work - the exact
               // duplicate-execution the outcome contract forbids. The steer
-              // is announced lost instead (drop-beats-false-promise).
+              // is announced lost instead (drop-beats-false-promise), and
+              // steerLost settles the steered messages' reactions as failed.
+              outcome.steerLost = true;
               log("serve.steered_turn_failed", { limited });
               await notify(
                 limited
@@ -986,20 +1003,30 @@ export async function relayThread(input: {
               );
             } else {
               outcome.failed = true;
-              outcome.rateLimited = limited;
+              // a limit classification is sticky across a child's errored
+              // results (adversarial-review catch, round 2): the drained
+              // steer turn's generic death must not declassify the primary
+              // turn's recoverable limit back to a plain failure.
+              outcome.rateLimited = outcome.rateLimited || limited;
             }
           } else {
             result = message.result;
             outcome.resultReceived = true;
+            // a turn that streamed no reply text (tool-only turns) still
+            // reports: its answer is flushed HERE, per result, not after the
+            // loop - a later turn in the same child must not suppress it.
+            if (!streamedSinceResult && result) await pushText(result);
           }
+          streamedSinceResult = false;
         }
         for (const part of agentEventChunks({ state: mapState, message })) {
           if (part instanceof Object) await push(part);
-          else await pushText(part);
+          else {
+            if (part.trim() !== "") streamedSinceResult = true;
+            await pushText(part);
+          }
         }
       }
-      // a turn that produced no streamed text (tool-only turns) still reports.
-      if (!postedText && result) await pushText(result);
       if (!postedText && !result && outcome.failed && !outcome.rateLimited) {
         // held back until the depleted-pool probe rules: a "trying again may
         // help" line right before a deferral notice invites a manual re-send

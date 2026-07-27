@@ -21,7 +21,7 @@ const cfg = SlackConfigSchema.parse({
   links: [{ channel: "C0DAEMON", repo: "/tmp/serve-daemon-repo" }],
 });
 
-const okOutcome: TurnOutcome = { sessionId: "s-ok", failed: false, rateLimited: false, finish: false, attention: false, announcedDrop: false, resultReceived: true, deferUntil: null };
+const okOutcome: TurnOutcome = { sessionId: "s-ok", failed: false, rateLimited: false, finish: false, attention: false, announcedDrop: false, resultReceived: true, deferUntil: null, steerLost: false };
 
 function runtimeWith(
   relay: Parameters<typeof buildServeRuntime>[0]["relay"],
@@ -279,7 +279,7 @@ describe("buildServeRuntime drain", () => {
     let beginDrain = () => {};
     const rt = runtimeWith(async () => {
       beginDrain(); // the drain lands mid-turn
-      return { sessionId: null, failed: true, rateLimited: true, finish: false, attention: false, announcedDrop: true, resultReceived: false, deferUntil: null };
+      return { sessionId: null, failed: true, rateLimited: true, finish: false, attention: false, announcedDrop: true, resultReceived: false, deferUntil: null, steerLost: false };
     });
     beginDrain = rt.beginDrain;
     const t = fakeThread({ id: "slack:C0DAEMON:700.1" });
@@ -292,7 +292,7 @@ describe("buildServeRuntime drain", () => {
     let beginDrain = () => {};
     const rt = runtimeWith(async () => {
       beginDrain();
-      return { sessionId: null, failed: true, rateLimited: false, finish: false, attention: false, announcedDrop: false, resultReceived: false, deferUntil: null };
+      return { sessionId: null, failed: true, rateLimited: false, finish: false, attention: false, announcedDrop: false, resultReceived: false, deferUntil: null, steerLost: false };
     });
     beginDrain = rt.beginDrain;
     const t = fakeThread({ id: "slack:C0DAEMON:701.1" });
@@ -308,7 +308,7 @@ describe("buildServeRuntime drain", () => {
     let beginDrain = () => {};
     const rt = runtimeWith(async () => {
       beginDrain();
-      return { sessionId: "s-done", failed: true, rateLimited: false, finish: false, attention: false, announcedDrop: false, resultReceived: true, deferUntil: null };
+      return { sessionId: "s-done", failed: true, rateLimited: false, finish: false, attention: false, announcedDrop: false, resultReceived: true, deferUntil: null, steerLost: false };
     });
     beginDrain = rt.beginDrain;
     const t = fakeThread({ id: "slack:C0DAEMON:702.1" });
@@ -435,7 +435,7 @@ describe("buildServeRuntime usage-limit deferral", () => {
         calls += 1;
         prompts.push(input.prompt);
         if (calls === 1) {
-          return { sessionId: "s-defer", failed: true, rateLimited: true, finish: false, attention: false, announcedDrop: false, resultReceived: false, deferUntil: wake };
+          return { sessionId: "s-defer", failed: true, rateLimited: true, finish: false, attention: false, announcedDrop: false, resultReceived: false, deferUntil: wake, steerLost: false };
         }
         return { ...okOutcome, sessionId: "s-after" };
       },
@@ -469,7 +469,7 @@ describe("buildServeRuntime usage-limit deferral", () => {
       prompts.push(input.prompt);
       if (calls === 1) {
         // spawn-boundary deferral: no onSpawn fires, so the marker keeps no pid
-        return { sessionId: null, failed: true, rateLimited: true, finish: false, attention: false, announcedDrop: false, resultReceived: false, deferUntil: wake };
+        return { sessionId: null, failed: true, rateLimited: true, finish: false, attention: false, announcedDrop: false, resultReceived: false, deferUntil: wake, steerLost: false };
       }
       return { ...okOutcome, sessionId: "s-folded" };
     });
@@ -633,7 +633,7 @@ describe("buildServeRuntime usage-limit deferral", () => {
   test("a sticky finish riding a deferred outcome skips cleanup: the record survives for the resume", async () => {
     const threadId = "slack:C0DAEMON:955.1";
     const wake = Date.now() + 3_600_000;
-    const rt = runtimeWith(async () => ({ sessionId: "s-finlim", failed: true, rateLimited: true, finish: true, attention: false, announcedDrop: false, resultReceived: false, deferUntil: wake }));
+    const rt = runtimeWith(async () => ({ sessionId: "s-finlim", failed: true, rateLimited: true, finish: true, attention: false, announcedDrop: false, resultReceived: false, deferUntil: wake, steerLost: false }));
     const t = fakeThread({ id: threadId });
     await rt.onMessage({ thread: t.thread, message: home("@UBOT wrap it up"), skipped: [], isMention: true });
     expect(loadSlackThread(threadId)?.activeTurn?.resumeAt).toBe(wake);
@@ -647,7 +647,7 @@ describe("buildServeRuntime usage-limit deferral", () => {
     let calls = 0;
     const rt = runtimeWith(async () => {
       calls += 1;
-      return { sessionId: "s-hold", failed: true, rateLimited: true, finish: false, attention: false, announcedDrop: false, resultReceived: false, deferUntil: wake };
+      return { sessionId: "s-hold", failed: true, rateLimited: true, finish: false, attention: false, announcedDrop: false, resultReceived: false, deferUntil: wake, steerLost: false };
     });
     const t = fakeThread({ id: threadId });
     await rt.onMessage({ thread: t.thread, message: home("@UBOT held work"), skipped: [], isMention: true });
@@ -712,7 +712,7 @@ describe("buildServeRuntime status reactions", () => {
     let beginDrain = () => {};
     const rt = runtimeWith(async () => {
       beginDrain(); // the drain kills the child mid-turn
-      return { sessionId: null, failed: true, rateLimited: false, finish: false, attention: false, announcedDrop: false, resultReceived: false, deferUntil: null };
+      return { sessionId: null, failed: true, rateLimited: false, finish: false, attention: false, announcedDrop: false, resultReceived: false, deferUntil: null, steerLost: false };
     });
     beginDrain = rt.beginDrain;
     const t = fakeThread({ id: "slack:C0DAEMON:1004.1" });
@@ -725,7 +725,7 @@ describe("buildServeRuntime status reactions", () => {
 
   test("a usage-limit deferral keeps its hourglass: the daemon resumes the turn itself", async () => {
     const wake = Date.now() + 3_600_000;
-    const rt = runtimeWith(async () => ({ sessionId: "s-defhg", failed: true, rateLimited: true, finish: false, attention: false, announcedDrop: false, resultReceived: false, deferUntil: wake }));
+    const rt = runtimeWith(async () => ({ sessionId: "s-defhg", failed: true, rateLimited: true, finish: false, attention: false, announcedDrop: false, resultReceived: false, deferUntil: wake, steerLost: false }));
     const t = fakeThread({ id: "slack:C0DAEMON:1005.1" });
     await rt.onMessage({ thread: t.thread, message: home("@UBOT limited job", "U-OWNER", "1005.2"), skipped: [], isMention: true });
     // no terminal x and no hourglass removal: the durable marker promises a
@@ -1322,5 +1322,37 @@ describe("buildServeRuntime steering after review fixes", () => {
     await Promise.all([first, late]);
     await flushTurns(rt);
     expect(sr.prompts).toEqual(["newest trigger", "older reply"]);
+  });
+});
+
+describe("buildServeRuntime steerLost reactions", () => {
+  test("a lost steer settles as failed while the trigger keeps the turn's success", async () => {
+    const threadId = "slack:C0DAEMON:6100.1";
+    let release = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let started = false;
+    const rt = runtimeWith(async (relayInput) => {
+      started = true;
+      relayInput.onSteer?.(() => true);
+      await gate;
+      relayInput.onSteer?.(null);
+      // the steer's own drained turn failed after the primary succeeded
+      return { ...okOutcome, sessionId: "s-lost", steerLost: true };
+    });
+    const t = fakeThread({ id: threadId });
+    const first = rt.onMessage({ thread: t.thread, message: home("@UBOT do the job", "U-OWNER", "6100.2"), skipped: [], isMention: true });
+    const deadline = Date.now() + 2_000;
+    while (!started && Date.now() < deadline) await delay(5);
+    await rt.onMessage({ thread: t.thread, message: home("late extra ask", "U-OWNER", "6100.3"), skipped: [], isMention: false });
+    release();
+    await first;
+    await flushTurns(rt);
+    // trigger: success; lost steer: failed - matching the in-thread notice
+    expect(rt.reactions).toContainEqual({ threadId, messageId: "6100.2", emoji: "white_check_mark", op: "add" });
+    expect(rt.reactions).toContainEqual({ threadId, messageId: "6100.3", emoji: "x", op: "add" });
+    expect(rt.reactions).not.toContainEqual({ threadId, messageId: "6100.3", emoji: "white_check_mark", op: "add" });
+    expect(rt.reactions).toContainEqual({ threadId, messageId: "6100.3", emoji: "hourglass_flowing_sand", op: "remove" });
   });
 });
