@@ -32,6 +32,7 @@ function runtimeWith(
   const nudges: { threadId: string; text: string }[] = [];
   let rejectReact = false;
   let rejectNudge = false;
+  let reactDelayMs = 0;
   let homeUser: boolean | null = true;
   const rt = buildServeRuntime({
     cfg,
@@ -40,6 +41,7 @@ function runtimeWith(
     relay,
     cleanup: cleanupThread,
     react: async (input) => {
+      if (reactDelayMs > 0) await delay(reactDelayMs);
       if (rejectReact) throw new Error("missing_scope");
       reactions.push(input);
     },
@@ -60,6 +62,7 @@ function runtimeWith(
     reactions,
     nudges,
     setRejectReact: (v: boolean) => { rejectReact = v; },
+    setReactDelay: (ms: number) => { reactDelayMs = ms; },
     setRejectNudge: (v: boolean) => { rejectNudge = v; },
     setHomeUser: (v: boolean | null) => { homeUser = v; },
   });
@@ -1354,5 +1357,75 @@ describe("buildServeRuntime steerLost reactions", () => {
     expect(rt.reactions).toContainEqual({ threadId, messageId: "6100.3", emoji: "x", op: "add" });
     expect(rt.reactions).not.toContainEqual({ threadId, messageId: "6100.3", emoji: "white_check_mark", op: "add" });
     expect(rt.reactions).toContainEqual({ threadId, messageId: "6100.3", emoji: "hourglass_flowing_sand", op: "remove" });
+  });
+});
+
+describe("buildServeRuntime PR #50 review fixes", () => {
+  test("the inbox caps at 100: overflow drops newest, the drained turn folds the survivors", async () => {
+    const threadId = "slack:C0DAEMON:6200.1";
+    const prompts: string[] = [];
+    let release = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let started = false;
+    const rt = runtimeWith(async (input) => {
+      prompts.push(input.prompt);
+      if (prompts.length === 1) {
+        started = true;
+        await gate;
+      }
+      return { ...okOutcome, sessionId: "s-cap" };
+    });
+    const t = fakeThread({ id: threadId });
+    const first = rt.onMessage({ thread: t.thread, message: home("@UBOT long job", "U-OWNER", "6200.2"), skipped: [], isMention: true });
+    const deadline = Date.now() + 2_000;
+    while (!started && Date.now() < deadline) await delay(5);
+    const floods: Promise<void>[] = [];
+    for (let i = 0; i < 105; i++) {
+      floods.push(rt.onMessage({ thread: t.thread, message: home(`m${i}`, "U-OWNER", `6201.${i + 10}`), skipped: [], isMention: false }));
+    }
+    await delay(50);
+    release();
+    await Promise.all([first, ...floods]);
+    await flushTurns(rt);
+    expect(prompts.length).toBe(2);
+    const folded = prompts[1]!.split("\n\n");
+    expect(folded.length).toBe(100);
+    expect(folded[0]).toBe("m0");
+    // newest dropped: the earliest instructions survive
+    expect(prompts[1]).not.toContain("m104");
+  });
+
+  test("an arrival mid-decision is visible to the shutdown drain via activeTurns", async () => {
+    const threadId = "slack:C0DAEMON:6300.1";
+    let releaseTurn = () => {};
+    const turnGate = new Promise<void>((resolve) => {
+      releaseTurn = resolve;
+    });
+    let started = false;
+    const rt = runtimeWith(async (relayInput) => {
+      started = true;
+      relayInput.onSteer?.(() => true);
+      await turnGate;
+      relayInput.onSteer?.(null);
+      return { ...okOutcome, sessionId: "s-drainvis" };
+    });
+    const t = fakeThread({ id: threadId });
+    const first = rt.onMessage({ thread: t.thread, message: home("@UBOT work", "U-OWNER", "6300.2"), skipped: [], isMention: true });
+    const deadline = Date.now() + 2_000;
+    while (!started && Date.now() < deadline) await delay(5);
+    const baseline = rt.activeTurns.size;
+    // the acceptor's first await (the hourglass reaction) holds the arrival
+    // DECISION open; pre-fix nothing tracked this window and a drain could
+    // exit right through it.
+    rt.setReactDelay(200);
+    const late = rt.onMessage({ thread: t.thread, message: home("steer me", "U-OWNER", "6300.3"), skipped: [], isMention: false });
+    await delay(50);
+    expect(rt.activeTurns.size).toBeGreaterThan(baseline);
+    rt.setReactDelay(0);
+    releaseTurn();
+    await Promise.all([first, late]);
+    await flushTurns(rt);
   });
 });

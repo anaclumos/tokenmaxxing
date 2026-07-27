@@ -932,8 +932,14 @@ export function buildServeRuntime(seam: {
     void link.then(() => {
       if (arrivalChains.get(input.thread.id) === link) arrivalChains.delete(input.thread.id);
     });
-    const scheduled = await job;
-    if (scheduled) await scheduled.turn;
+    // tracked from the DECISION on (codex review catch on PR #50): the drain
+    // waits on activeTurns, and an arrival still deciding at shutdown lived
+    // nowhere else - the daemon could exit before the message reached the
+    // inbox, a marker, or the drop notice.
+    await tracked((async () => {
+      const scheduled = await job;
+      if (scheduled) await scheduled.turn;
+    })());
   };
 
   /** One message's steer-or-inbox decision. Steering first (owner decision
@@ -956,6 +962,15 @@ export function buildServeRuntime(seam: {
     const inbox = pendingInbox.get(threadId) ?? [];
     const hadPending = inbox.length > 0;
     inbox.push(...input.relayed);
+    // hard cap, replacing the retired chat queue's maxQueueSize bound
+    // (cursor security review on PR #50): without it a flood during one
+    // long turn grows memory and the folded prompt without limit. Newest
+    // dropped, LOUDLY - the old queue's silent drop-oldest ate the earliest
+    // instructions, the worse failure.
+    if (inbox.length > 100) {
+      log("serve.inbox_dropped", { thread: threadId, dropped: inbox.length - 100 });
+      inbox.length = 100;
+    }
     pendingInbox.set(threadId, inbox);
     if (input.isMention) inboxMention.add(threadId);
     // one drain per non-empty inbox: later arrivals fold into the batch the

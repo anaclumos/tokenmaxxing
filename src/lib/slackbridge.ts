@@ -869,6 +869,12 @@ export async function relayThread(input: {
       if (!steerable) return false;
       steeredTexts.push(text);
       stream.push(steerUserMessage(text));
+      // a steer answers a LIVE ask too (codex review catch on PR #50): when
+      // need_attention already fired in this attempt, the ask exists only as
+      // this sticky flag until settleTurn persists it - left set, the
+      // answered ask would still get a question mark and a nudge. A later
+      // need_attention call re-arms it for a genuinely new ask.
+      outcome.attention = false;
       return true;
     };
     try {
@@ -1014,8 +1020,11 @@ export async function relayThread(input: {
             outcome.resultReceived = true;
             // a turn that streamed no reply text (tool-only turns) still
             // reports: its answer is flushed HERE, per result, not after the
-            // loop - a later turn in the same child must not suppress it.
-            if (!streamedSinceResult && result) await pushText(result);
+            // loop - a later turn in the same child must not suppress it. A
+            // paragraph break ahead of it when text already posted, or two
+            // result-only answers would concatenate mid-line (codex review
+            // catch on PR #50).
+            if (!streamedSinceResult && result) await pushText(`${postedText ? "\n\n" : ""}${result}`);
           }
           streamedSinceResult = false;
         }

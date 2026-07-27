@@ -1074,3 +1074,80 @@ describe("relayThread multi-result turns (round-2 review fixes)", () => {
     expect(col.posts.map(strings).join(" ")).toContain("recovered");
   });
 });
+
+describe("relayThread PR #50 review fixes", () => {
+  const toolHandler = (call: (typeof queryCalls)[number] | undefined, name: string) => {
+    const server = z
+      .object({ tools: z.array(z.tuple([z.string(), z.string(), z.record(z.string(), z.unknown()), z.custom<() => Promise<unknown>>()])) })
+      .parse(z.object({ options: z.object({ mcpServers: z.object({ tokenmaxxing: z.unknown() }) }) }).parse(call).options.mcpServers.tokenmaxxing);
+    const tool = server.tools.find((t) => t[0] === name);
+    if (!tool) throw new Error(`test: tool ${name} not found`);
+    return tool[3];
+  };
+
+  test("a steer answers a LIVE ask: the sticky attention flag clears, a later ask re-arms it", async () => {
+    decisionQueue.push(usable);
+    let release = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    queryScripts.push(() =>
+      (async function* () {
+        yield init("s-liveask");
+        yield textStart();
+        yield textDelta("which option?");
+        await gate;
+        yield success("s-liveask");
+      })(),
+    );
+    const col = collector();
+    const steers: (((text: string) => boolean) | null)[] = [];
+    const turn = relay({ post: col.post, onSteer: (s) => steers.push(s) });
+    for (let i = 0; i < 400 && steers.length === 0; i++) await realEsToolkit.delay(5);
+    const steer = steers[0];
+    if (!steer) throw new Error("test: steer never registered");
+    // the model asks mid-turn, then the user's steered reply answers it
+    await toolHandler(queryCalls[0], "need_attention")();
+    expect(steer("option B please")).toBe(true);
+    release();
+    const out = await turn;
+    expect(out.attention).toBe(false);
+  });
+
+  test("an ask AFTER the last steer still marks the thread waiting", async () => {
+    decisionQueue.push(usable);
+    let release = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    queryScripts.push(() =>
+      (async function* () {
+        yield init("s-lateask");
+        await gate;
+        yield success("s-lateask");
+      })(),
+    );
+    const col = collector();
+    const steers: (((text: string) => boolean) | null)[] = [];
+    const turn = relay({ post: col.post, onSteer: (s) => steers.push(s) });
+    for (let i = 0; i < 400 && steers.length === 0; i++) await realEsToolkit.delay(5);
+    const steer = steers[0];
+    if (!steer) throw new Error("test: steer never registered");
+    expect(steer("more context")).toBe(true);
+    // the ask lands AFTER the steer: it is a new, unanswered question
+    await toolHandler(queryCalls[0], "need_attention")();
+    release();
+    const out = await turn;
+    expect(out.attention).toBe(true);
+  });
+
+  test("consecutive result-only answers get a paragraph break, never mid-line concatenation", async () => {
+    decisionQueue.push(usable);
+    queryScripts.push(script([init("s-sep"), success("s-sep", "first answer"), success("s-sep", "second answer")]));
+    const col = collector();
+    await relay({ post: col.post });
+    const allText = col.posts.map(strings).join(" ");
+    expect(allText).toContain("first answer\n\nsecond answer");
+    expect(allText).not.toContain("first answersecond answer");
+  });
+});
