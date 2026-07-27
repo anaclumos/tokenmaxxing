@@ -965,12 +965,29 @@ export async function relayThread(input: {
           // check - and only an errored result is ever limit-classified.
           if (message.is_error || message.subtype !== "success") {
             const text = erroredResultText(message);
-            outcome.failed = true;
-            outcome.rateLimited = isRateLimitText({ text });
-            // persist the observation: the retry's decision otherwise re-reads
-            // the stale pre-limit snapshot (poll TTL) and respawns the same
-            // depleted account - a serve process has no statusLine tee.
-            if (outcome.rateLimited) await recordObservedLimit({ text, now: Date.now(), org: spawnOrg });
+            const limited = isRateLimitText({ text });
+            // persist the observation either way: the next spawn decision
+            // must see the limit even when this turn does not retry.
+            if (limited) await recordObservedLimit({ text, now: Date.now(), org: spawnOrg });
+            if (outcome.resultReceived) {
+              // SUCCESS IS STICKY within an attempt (adversarial-review
+              // catch): this errored result belongs to a post-fold-window
+              // steer's own drained turn, arriving AFTER the primary turn
+              // already succeeded and delivered its answer. Marking the turn
+              // failed here would send the whole prompt back through the
+              // retry/defer machinery and re-run completed work - the exact
+              // duplicate-execution the outcome contract forbids. The steer
+              // is announced lost instead (drop-beats-false-promise).
+              log("serve.steered_turn_failed", { limited });
+              await notify(
+                limited
+                  ? "a steered follow-up message hit a usage limit before it could run - please re-send it."
+                  : "a steered follow-up message failed - please re-send it.",
+              );
+            } else {
+              outcome.failed = true;
+              outcome.rateLimited = limited;
+            }
           } else {
             result = message.result;
             outcome.resultReceived = true;

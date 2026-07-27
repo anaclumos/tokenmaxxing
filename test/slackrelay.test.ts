@@ -962,3 +962,37 @@ describe("relayThread steering", () => {
     expect(steers[3]).toBeNull();
   });
 });
+
+describe("relayThread trailing steered-turn results", () => {
+  test("an errored result AFTER a success never re-runs the turn: announced loss, no retry", async () => {
+    const now = Date.now();
+    seedIdentityAndUsage("org-relay", now);
+    const resetEpochSec = Math.floor((now + 3_600_000) / 1000);
+    // exactly ONE decision: a retry would exhaust the queue and throw
+    decisionQueue.push(usable);
+    queryScripts.push(
+      script([
+        init("s-trail"),
+        textStart(),
+        textDelta("primary answer"),
+        success("s-trail"),
+        // the post-fold-window steer's own drained turn, dying at a limit
+        limitErrored("s-trail", `Claude AI usage limit reached|${resetEpochSec}`),
+      ]),
+    );
+    const col = collector();
+    const out = await relay({ post: col.post });
+    // success is sticky: the delivered primary answer stays delivered
+    expect(out.failed).toBe(false);
+    expect(out.rateLimited).toBe(false);
+    expect(out.resultReceived).toBe(true);
+    expect(queryCalls.length).toBe(1);
+    const allText = col.posts.map(strings).join(" ");
+    expect(allText).toContain("primary answer");
+    // the lost steer is announced, never silently retried
+    expect(allText).toContain("steered follow-up");
+    expect(allText).toContain("re-send");
+    // the limit observation still lands for the NEXT spawn decision
+    expect(loadUsage()?.fiveHour).toEqual({ usedPercentage: 100, resetsAt: resetEpochSec * 1000 });
+  });
+});

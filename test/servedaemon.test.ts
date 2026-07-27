@@ -1110,7 +1110,7 @@ describe("buildServeRuntime steering", () => {
     expect(sr.prompts).toEqual(["begin", "follow-up"]);
   });
 
-  test("a message behind a queued turn never steers past it: order is preserved", async () => {
+  test("a message behind a waiting message never steers past it: both fold into ONE ordered next turn", async () => {
     const threadId = "slack:C0DAEMON:5300.1";
     const sr = steeringRelay({ accept: false });
     const rt = runtimeWith(sr.relay);
@@ -1121,13 +1121,15 @@ describe("buildServeRuntime steering", () => {
     await delay(25);
     const third = rt.onMessage({ thread: t.thread, message: home("three", "U-OWNER", "5300.4"), skipped: [], isMention: false });
     await delay(25);
-    // the acceptor ran only for "two" (refused); "three" was blocked by the
-    // queue-depth guard and never even consulted it
+    // the acceptor ran only for "two" (refused into the inbox); "three" was
+    // blocked by the non-empty inbox and never even consulted it
     expect(sr.steerCalls()).toBe(1);
     sr.release();
     await Promise.all([first, second, third]);
     await flushTurns(rt);
-    expect(sr.prompts).toEqual(["one", "two", "three"]);
+    // the inbox drained BOTH waiting messages as one folded turn, in order:
+    // no reordering, and one metered spawn instead of two
+    expect(sr.prompts).toEqual(["one", "two\n\nthree"]);
   });
 
   test("draining never steers: the loud-drop contract wins", async () => {
@@ -1208,5 +1210,117 @@ describe("buildServeRuntime steering", () => {
       expect(rt.reactions).toContainEqual({ threadId, messageId: id, emoji: "white_check_mark", op: "add" });
       expect(rt.reactions).toContainEqual({ threadId, messageId: id, emoji: "hourglass_flowing_sand", op: "remove" });
     }
+  });
+});
+
+describe("buildServeRuntime steering after review fixes", () => {
+  /** Same shape as steeringRelay above, local so this block reads standalone. */
+  function gatedSteeringRelay() {
+    const seen: string[] = [];
+    const prompts: string[] = [];
+    let steerCalls = 0;
+    let release = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let started = false;
+    const relay: Parameters<typeof buildServeRuntime>[0]["relay"] = async (relayInput) => {
+      prompts.push(relayInput.prompt);
+      if (prompts.length > 1) return { ...okOutcome, sessionId: "s-follow" };
+      started = true;
+      relayInput.onSteer?.((text) => {
+        steerCalls += 1;
+        seen.push(text);
+        return true;
+      });
+      await gate;
+      relayInput.onSteer?.(null);
+      return { ...okOutcome, sessionId: "s-steer" };
+    };
+    return { relay, seen, prompts, release, steerCalls: () => steerCalls, started: () => started };
+  }
+
+  const waitUntil = async (cond: () => boolean) => {
+    const deadline = Date.now() + 2_000;
+    while (!cond() && Date.now() < deadline) await delay(5);
+    expect(cond()).toBe(true);
+  };
+
+  test("a mid-turn reaction never disables steering: the note is bookkeeping, not a queued turn", async () => {
+    const threadId = "slack:C0DAEMON:5700.1";
+    const sr = gatedSteeringRelay();
+    const rt = runtimeWith(sr.relay);
+    const t = fakeThread({ id: threadId });
+    const first = rt.onMessage({ thread: t.thread, message: home("@UBOT long job", "U-OWNER", "5700.2"), skipped: [], isMention: true });
+    await waitUntil(sr.started);
+    // an ordinary encouragement reaction lands mid-turn; its note path rides
+    // the serialized chain behind the live turn
+    const note = rt.onReaction(
+      { threadId, messageId: "5700.2", emoji: "eyes", userId: "U-OWNER", isBot: false, added: true, occurredAt: Date.now() },
+      async () => {
+        throw new Error("streamable must not be called on the note path");
+      },
+    );
+    await delay(25);
+    // the reply that follows must still steer the live turn
+    await rt.onMessage({ thread: t.thread, message: home("also update the docs", "U-OWNER", "5700.3"), skipped: [], isMention: false });
+    expect(sr.seen).toEqual(["also update the docs"]);
+    expect(sr.prompts.length).toBe(1);
+    sr.release();
+    await Promise.all([first, note]);
+    await flushTurns(rt);
+  });
+
+  test("a steer answers a resumed turn's pending ask: attention cleared, question mark removed", async () => {
+    const threadId = "slack:C0DAEMON:5800.1";
+    const sr = gatedSteeringRelay();
+    const t = fakeThread({ id: threadId });
+    const rt = runtimeWith(sr.relay, async () => ({ thread: t.thread, requesterIds: ["U-OWNER"] }));
+    // a deferred turn that had asked the user before it parked: attention and
+    // the durable marker coexist, so the resumed turn runs WITH a pending ask
+    saveSlackThread({
+      threadId,
+      repo: "/tmp/serve-daemon-repo",
+      cwd: "/tmp/serve-daemon-repo",
+      sessionId: "s-ask",
+      createdAt: new Date().toISOString(),
+      activeTurn: {
+        prompt: "held asking work",
+        startedAt: new Date().toISOString(),
+        resumeCount: 0,
+        resumeAt: Date.now() - 1_000,
+        messageId: "5800.2",
+      },
+      attention: { requesterIds: ["U-OWNER"], askedAt: new Date().toISOString(), messageId: "5800.2" },
+    });
+    const recovery = rt.recoverInterrupted(loadSlackThread(threadId)!);
+    await waitUntil(sr.started);
+    await rt.onMessage({ thread: t.thread, message: home("go with option B", "U-OWNER", "5800.3"), skipped: [], isMention: false });
+    expect(sr.seen).toEqual(["go with option B"]);
+    // the ask is answered: state gone, question mark off, before the turn ends
+    expect(loadSlackThread(threadId)?.attention).toBeUndefined();
+    expect(rt.reactions).toContainEqual({ threadId, messageId: "5800.2", emoji: "question", op: "remove" });
+    sr.release();
+    await recovery;
+    await flushTurns(rt);
+  });
+
+  test("an out-of-order late arrival never steers: it waits for the next turn instead", async () => {
+    const threadId = "slack:C0DAEMON:5900.1";
+    const sr = gatedSteeringRelay();
+    const rt = runtimeWith(sr.relay);
+    const t = fakeThread({ id: threadId });
+    const first = rt.onMessage({ thread: t.thread, message: home("@UBOT newest trigger", "U-OWNER", "5900.5"), skipped: [], isMention: true });
+    await waitUntil(sr.started);
+    // an OLDER message surfaces late (upstream delivery race): folding it
+    // after the newer trigger would invert the user's order. Not awaited
+    // before release: its fallback turn queues behind the live gated turn.
+    const late = rt.onMessage({ thread: t.thread, message: home("older reply", "U-OWNER", "5900.3"), skipped: [], isMention: false });
+    await delay(25);
+    expect(sr.steerCalls()).toBe(0);
+    sr.release();
+    await Promise.all([first, late]);
+    await flushTurns(rt);
+    expect(sr.prompts).toEqual(["newest trigger", "older reply"]);
   });
 });

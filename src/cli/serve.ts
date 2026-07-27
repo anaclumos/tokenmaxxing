@@ -374,17 +374,29 @@ export function buildServeRuntime(seam: {
   const unlinkedLogged = new Set<string>();
   // Steering registry: one acceptor per thread with a LIVE query attempt
   // (registered by runTurn via the relay's onSteer hook, removed when the
-  // attempt ends). onMessage tries the acceptor before queueing - steering
+  // attempt ends). onMessage tries the acceptor before the inbox - steering
   // is the default for a mid-turn reply (owner decision 2026-07-27); a
-  // refusal (attempt ending, mention-only text) falls back to the normal
-  // serialized next turn. A thread only ever appears here after handleTurn
+  // refusal (attempt ending, mention-only text, out-of-order arrival) falls
+  // back to the inbox path. A thread only ever appears here after handleTurn
   // ran under this daemon's cfg, so the channel is known linked.
   const liveSteers = new Map<string, (m: { relayed: { text: string; authorId: string; id: string }[] }) => Promise<boolean>>();
-  // turns currently queued or running per thread (the serialized chain's
-  // depth). A steer is only ordered when NOTHING waits behind the live turn:
-  // with a queued turn pending, folding a newer message into the running
-  // turn would reorder it ahead of the older one.
-  const queuedTurns = new Map<string, number>();
+  // TURN-PRODUCING serialized work per thread (running plus waiting). Only
+  // turn producers count (adversarial-review catch: reaction notes and nudge
+  // bookkeeping ride the same serialized chain, and counting them silently
+  // disabled steering for the rest of any turn a user reacted to). A steer
+  // is only ordered when nothing waits behind the live turn.
+  const turnDepth = new Map<string, number>();
+  // Un-steered messages waiting for the next turn, folded and drained as ONE
+  // turn (sorted by Slack ts, which restores order for any upstream arrival
+  // race). This is the daemon-owned replacement for the chat queue's
+  // skipped-message folding.
+  const pendingInbox = new Map<string, { text: string; authorId: string; id: string }[]>();
+  const inboxMention = new Set<string>();
+  // Per-thread arrival ordering: the steer attempt and the inbox push for
+  // one message run to completion before the next message's do, so two
+  // near-simultaneous replies can never interleave at the acceptor's await
+  // points and land on the child's stdin out of order.
+  const arrivalChains = new Map<string, Promise<void>>();
 
   /** Best-effort status reaction: reaction state is decoration, so every
    *  failure (missing reactions:write until the app is reinstalled,
@@ -473,6 +485,13 @@ export function buildServeRuntime(seam: {
               .map((r) => ({ text: stripLeadingMention({ text: r.text, botUserId: seam.botUserId() }), authorId: r.authorId, id: r.id }))
               .filter((r) => r.text !== "");
             if (stripped.length === 0) return false;
+            // out-of-order insurance: Slack ids are timestamps, so a message
+            // OLDER than anything this turn already carries arrived late
+            // through an upstream race - refuse it into the inbox, whose
+            // drain sorts by ts, instead of folding it after its successor.
+            const seen = record.activeTurn ?? input.marker;
+            const newestSeen = Math.max(Number(seen.messageId ?? 0) || 0, ...(seen.steeredMessageIds ?? []).map((id) => Number(id) || 0));
+            if (stripped.some((r) => (Number(r.id) || 0) < newestSeen)) return false;
             // hourglass BEFORE the steer so a settle racing this acceptor
             // can never leave an unremovable reaction; a refusal takes it
             // back off.
@@ -497,8 +516,17 @@ export function buildServeRuntime(seam: {
             const marker = record.activeTurn ?? input.marker;
             steeredMessageIds = [...(marker.steeredMessageIds ?? []), ...stripped.map((r) => r.id)];
             record = { ...record, activeTurn: { ...marker, prompt: `${marker.prompt}\n\n${text}`, requesterIds: input.requesterIds, steeredMessageIds } };
+            // the user responded: a pending ask is answered by the steer just
+            // like by a queued turn (adversarial-review catch: leaving it
+            // would strand the question mark and fire a spurious nudge about
+            // an ask this very message answered).
+            const asked = record.attention;
+            if (asked) record = omit(record, ["attention"]);
             saveSlackThread(record);
             log("serve.steered", { thread: input.thread.id, texts: stripped.length });
+            if (asked?.messageId) {
+              await setStatus({ threadId: input.thread.id, messageId: asked.messageId, emoji: STATUS_EMOJI.attention, op: "remove" });
+            }
             return true;
           });
         },
@@ -545,7 +573,7 @@ export function buildServeRuntime(seam: {
 
   const handleTurn = async (input: {
     thread: ServeThread;
-    /** every relayed message this turn (queue-skipped + triggering), text
+    /** every relayed message this turn (the inbox batch, ts-sorted), text
      *  paired with its author id: a decision may be owed to an earlier
      *  folded sender, and a sender whose whole message was the bot mention
      *  contributes no prompt text, so text and author filter together
@@ -600,11 +628,10 @@ export function buildServeRuntime(seam: {
       return;
     }
     log("serve.message", { thread: thread.id, isMention, texts: input.relayed.length });
-    // relayed carries queue-skipped messages plus the triggering one: the
-    // queue strategy hands a turn only the LATEST message and the rest via
-    // context.skipped, so they are folded into one prompt here. A message
-    // that is empty once its bot mention is stripped contributes neither
-    // prompt text nor a requester id (cursor review catch 2026-07-18).
+    // relayed carries every message the inbox batched for this turn, folded
+    // into one prompt here. A message that is empty once its bot mention is
+    // stripped contributes neither prompt text nor a requester id (cursor
+    // review catch 2026-07-18).
     const stripped = input.relayed
       .map((m) => ({ text: stripLeadingMention({ text: m.text, botUserId: seam.botUserId() }), authorId: m.authorId }))
       .filter((m) => m.text !== "");
@@ -826,16 +853,15 @@ export function buildServeRuntime(seam: {
     }
   };
 
-  // Per-thread serialization owned HERE, not only by the SDK's queue lock:
-  // chat 4.34.0 acquires the dispatch lock with a 30s TTL and extends it only
-  // BETWEEN dispatches, so any handler outliving 30s (every claude turn, any
-  // depleted-pool park) lets a later message take the expired lock and start
-  // a second concurrent handler in the same thread and cwd (review catch,
-  // PR #18). Escaped messages run as sequential turns in arrival order.
+  // Per-thread serialization owned HERE: with concurrent dispatch (see
+  // runDaemon's Chat config) chat provides no per-thread locking at all, so
+  // this chain is the ONLY thing keeping two claude turns off one thread's
+  // cwd and session. It predates the concurrent switch for the same reason
+  // in weaker form: chat's old queue lock expired 30s into any claude turn
+  // and let a second handler start anyway (review catch, PR #18).
   const threadTurns = new Map<string, Promise<void>>();
   const serialized = (threadId: string, run: () => Promise<void>) => {
     const prev = threadTurns.get(threadId) ?? Promise.resolve();
-    queuedTurns.set(threadId, (queuedTurns.get(threadId) ?? 0) + 1);
     const next = (async () => {
       try {
         await prev;
@@ -850,33 +876,93 @@ export function buildServeRuntime(seam: {
       try {
         await next;
       } catch { /* surfaced to the awaiting handler */ }
-      const depth = (queuedTurns.get(threadId) ?? 1) - 1;
-      if (depth <= 0) queuedTurns.delete(threadId);
-      else queuedTurns.set(threadId, depth);
       if (threadTurns.get(threadId) === next) threadTurns.delete(threadId);
     })();
+    return next;
+  };
+  /** serialized + the turnDepth count, for callers that produce a claude
+   *  TURN (inbox drains, reaction answers, recoveries). Bookkeeping riders
+   *  on the chain (reaction notes, nudges) use bare `serialized` so they
+   *  never gate steering. */
+  const serializedTurn = (threadId: string, run: () => Promise<void>) => {
+    turnDepth.set(threadId, (turnDepth.get(threadId) ?? 0) + 1);
+    const next = serialized(threadId, run);
+    void next.catch(() => {}).finally(() => {
+      const depth = (turnDepth.get(threadId) ?? 1) - 1;
+      if (depth <= 0) turnDepth.delete(threadId);
+      else turnDepth.set(threadId, depth);
+    });
     return next;
   };
 
   // both Chat SDK callbacks funnel here. Filter EVERY message, trigger
   // included: an outsider (or our own post) arriving last must not discard
-  // relayable home-workspace messages queued behind the turn - the queue hands
-  // the handler only the latest message and the rest ride context.skipped
-  // (review catch, PR #18).
+  // relayable home-workspace messages delivered alongside it (review catch,
+  // PR #18). context.skipped is empty under concurrent dispatch but stays
+  // merged defensively - a chat release reintroducing batching must not
+  // silently drop messages.
   const onMessage = async (input: { thread: ServeThread; message: ServeMessage; skipped: ServeMessage[]; isMention: boolean }) => {
     const relayed = [...input.skipped, input.message].filter(relayable).map((m) => ({ text: m.text, authorId: m.author.userId, id: m.id }));
     if (relayed.length === 0) return; // outsider mentions never open a session
-    // Steering first (owner decision 2026-07-27): a reply landing while the
-    // thread's turn is running folds into that turn instead of waiting
-    // behind it. Guarded to an EMPTY queue (only the live turn itself in the
-    // chain), or the fold would reorder this message ahead of one already
-    // waiting; a drain keeps its loud-drop contract. Every refusal falls
-    // through to the exact pre-steering path.
-    if (!draining && (queuedTurns.get(input.thread.id) ?? 0) <= 1) {
-      const accept = liveSteers.get(input.thread.id);
-      if (accept && (await accept({ relayed }))) return;
+    // arrivals for one thread DECIDE strictly one at a time, in delivery
+    // order: the steer-or-inbox decision for this message completes before
+    // the next message's begins, so two near-simultaneous replies can never
+    // interleave at the acceptor's await points. The chain holds only the
+    // DECISION - a scheduled turn's completion is awaited outside it, or a
+    // long turn would hold every later arrival hostage and steering could
+    // never engage.
+    const prev = arrivalChains.get(input.thread.id) ?? Promise.resolve();
+    const job = (async () => {
+      try {
+        await prev;
+      } catch { /* the previous arrival's failure was surfaced to its own caller */ }
+      return dispatchArrival({ thread: input.thread, relayed, isMention: input.isMention });
+    })();
+    const link = job.then(
+      () => {},
+      () => {},
+    );
+    arrivalChains.set(input.thread.id, link);
+    void link.then(() => {
+      if (arrivalChains.get(input.thread.id) === link) arrivalChains.delete(input.thread.id);
+    });
+    const scheduled = await job;
+    if (scheduled) await scheduled.turn;
+  };
+
+  /** One message's steer-or-inbox decision. Steering first (owner decision
+   *  2026-07-27): a reply landing while the thread's turn is running folds
+   *  into that turn instead of waiting behind it. Guarded to an empty inbox
+   *  and no waiting turn, or the fold would reorder this message ahead of
+   *  one already waiting; a drain keeps its loud-drop contract. Every
+   *  refusal falls through to the inbox, whose drain runs ALL waiting
+   *  messages as one folded turn - the daemon-owned replacement for the
+   *  chat queue's skipped-message folding, sorted by Slack ts so an
+   *  upstream arrival race cannot reorder the prompt. Returns the tracked
+   *  drain-turn promise when this arrival scheduled one, so the caller can
+   *  await the turn without holding the arrival chain. */
+  const dispatchArrival = async (input: { thread: ServeThread; relayed: { text: string; authorId: string; id: string }[]; isMention: boolean }): Promise<{ turn: Promise<void> } | null> => {
+    const threadId = input.thread.id;
+    if (!draining && (pendingInbox.get(threadId)?.length ?? 0) === 0 && (turnDepth.get(threadId) ?? 0) <= 1) {
+      const accept = liveSteers.get(threadId);
+      if (accept && (await accept({ relayed: input.relayed }))) return null;
     }
-    await tracked(serialized(input.thread.id, () => handleTurn({ thread: input.thread, relayed, isMention: input.isMention })));
+    const inbox = pendingInbox.get(threadId) ?? [];
+    const hadPending = inbox.length > 0;
+    inbox.push(...input.relayed);
+    pendingInbox.set(threadId, inbox);
+    if (input.isMention) inboxMention.add(threadId);
+    // one drain per non-empty inbox: later arrivals fold into the batch the
+    // already-scheduled drain snapshots when it finally runs.
+    if (hadPending) return null;
+    const turn = tracked(serializedTurn(threadId, async () => {
+      const batch = (pendingInbox.get(threadId) ?? []).sort((a, b) => Number(a.id) - Number(b.id));
+      pendingInbox.delete(threadId);
+      const isMention = inboxMention.delete(threadId);
+      if (batch.length === 0) return;
+      await handleTurn({ thread: input.thread, relayed: batch, isMention });
+    }));
+    return { turn };
   };
 
   /** A user reaction in a tracked thread. While the thread waits on an asked
@@ -917,6 +1003,14 @@ export function buildServeRuntime(seam: {
       log("serve.reaction_dropped", { thread: input.threadId, reason: "unlinked-channel" });
       return;
     }
+    // bare `serialized` on purpose, so a reaction can never gate steering
+    // (adversarial-review catch: counting these bookkeeping riders in
+    // turnDepth silently disabled steering for the rest of any turn a user
+    // reacted to). Accepted tradeoff (documented, WONTFIX): in the rare
+    // shape where an ANSWER turn is queued here behind a live turn, a
+    // fresh reply may steer the live turn ahead of the queued answer - both
+    // still reach the model, and an answer coexisting with a live turn only
+    // occurs in multi-user threads.
     await tracked(serialized(input.threadId, async () => {
       const fresh = loadSlackThread(input.threadId);
       if (!fresh) return; // finished while queued
@@ -1041,7 +1135,9 @@ export function buildServeRuntime(seam: {
     try {
       const { thread, requesterIds } = await seam.streamable(record.threadId);
       const link = linkForChannel(cfg, bareChannelId(thread.channelId));
-      await serialized(record.threadId, async () => {
+      // serializedTurn: a recovery runs a real claude turn, so it must gate
+      // steering-order like any other queued turn.
+      await serializedTurn(record.threadId, async () => {
         // a drain signal can land between the scan and this turn; leave the
         // marker at its previous count so the next start retries.
         if (draining) return;
@@ -1267,38 +1363,25 @@ async function runDaemon(): Promise<number> {
   // held directly (not only via Chat) so startup can re-subscribe recorded
   // threads: subscriptions live in this in-memory state and die with the
   // process, and only a fresh mention would otherwise revive a thread.
-  // The dispatch-lock lease is clamped to 5s: chat core hardcodes a 30s TTL
-  // (DEFAULT_LOCK_TTL_MS, chat 4.34.0) and only re-pumps its queue when a
-  // handler finishes or a LATER message takes the expired lock, so a lone
-  // reply landing early in a long turn would sit in chat's queue until the
-  // turn ended - unsteerable. The daemon owns real per-thread ordering (the
-  // serialized chain), so a short lease only moves messages to onMessage
-  // sooner; chat's release/extend of an expired lease are verified no-ops in
-  // @chat-adapter/state-memory 4.34.0 (token-checked), the same expiry path
-  // every >30s turn already exercises today.
-  class ClampedLockMemoryState extends MemoryStateAdapter {
-    override acquireLock(threadId: string, ttlMs: number) {
-      return super.acquireLock(threadId, Math.min(ttlMs, 5_000));
-    }
-  }
-  const state = new ClampedLockMemoryState();
+  const state = new MemoryStateAdapter();
   const bot = new Chat({
     userName: "tokenmaxxing",
     adapters: { slack },
     state,
-    // per-thread lock with queueing: a message landing mid-turn waits its turn
-    // instead of racing a second claude spawn on the same cwd. Queue-entry TTL
-    // expiry is SILENT (chat 4.34.0 has no app callback for it), so the TTL
-    // must outlast the longest legitimate hold: a depleted-pool park
-    // (PARK_MAX_MS 14min) plus a long claude turn. Expired-and-folded beats
-    // silently-vanished, hence a full hour. maxQueueSize matters for the same
-    // reason: the SDK default is 10 with a LOG-LESS drop-oldest trim
-    // (@chat-adapter/state-memory enqueue splices the front, and the SDK's
-    // message-dropped log only fires for drop-newest), so a >10-message burst
-    // behind one long turn silently ate the oldest instructions
-    // (adversarial-review catch). 100 outlasts any legitimate burst; the TTL
-    // stays the real bound.
-    concurrency: { strategy: "queue", queueEntryTtlMs: 3_600_000, maxQueueSize: 100 },
+    // CONCURRENT dispatch (steering redesign, superseding the queue strategy
+    // and its 1h-TTL/size-100 tuning): every message reaches onMessage the
+    // moment Slack delivers it, in arrival order. The queue strategy's
+    // 30s dispatch-lock lease made mid-turn messages invisible AND could
+    // reorder them - a reply enqueued behind a live lease was only released
+    // when a LATER message took the expired lock, dispatching newest-first
+    // (adversarial-review catch; chat 4.34.0 handleQueueOrDebounce). The
+    // daemon owns everything the queue used to provide: per-thread turn
+    // ordering (the serialized chain), mid-turn folding (the steering path),
+    // and batching of waiting messages (the per-thread inbox in
+    // buildServeRuntime, drained sorted as ONE folded turn). Chat's
+    // message-id dedupe runs before the concurrency branch, so the
+    // app_mention + message.channels double-delivery stays deduped.
+    concurrency: { strategy: "concurrent" },
     // without this a cards-only segment in post-and-edit fallback would
     // strand a bare "..." placeholder message.
     fallbackStreamingPlaceholderText: null,
