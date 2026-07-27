@@ -1440,3 +1440,46 @@ describe("buildServeRuntime PR #50 review fixes", () => {
     await flushTurns(rt);
   });
 });
+
+describe("buildServeRuntime steer budget", () => {
+  test("the 26th steer of one turn is refused into the inbox: per-turn growth is bounded", async () => {
+    const threadId = "slack:C0DAEMON:6400.1";
+    const seen: string[] = [];
+    const prompts: string[] = [];
+    let release = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let started = false;
+    const rt = runtimeWith(async (relayInput) => {
+      prompts.push(relayInput.prompt);
+      if (prompts.length > 1) return { ...okOutcome, sessionId: "s-follow" };
+      started = true;
+      relayInput.onSteer?.((text) => {
+        seen.push(text);
+        return true;
+      });
+      await gate;
+      relayInput.onSteer?.(null);
+      return { ...okOutcome, sessionId: "s-budget" };
+    });
+    const t = fakeThread({ id: threadId });
+    const first = rt.onMessage({ thread: t.thread, message: home("@UBOT marathon", "U-OWNER", "6400.2"), skipped: [], isMention: true });
+    const deadline = Date.now() + 2_000;
+    while (!started && Date.now() < deadline) await delay(5);
+    const extras: Promise<void>[] = [];
+    for (let i = 0; i < 26; i++) {
+      extras.push(rt.onMessage({ thread: t.thread, message: home(`s${i}`, "U-OWNER", `6401.${i + 10}`), skipped: [], isMention: false }));
+    }
+    await delay(100);
+    // 25 accepted, the 26th refused past the budget
+    expect(seen.length).toBe(25);
+    expect(loadSlackThread(threadId)?.activeTurn?.steeredMessageIds?.length).toBe(25);
+    release();
+    await Promise.all([first, ...extras]);
+    await flushTurns(rt);
+    // the refused reply ran as the bounded next turn instead
+    expect(prompts.length).toBe(2);
+    expect(prompts[1]).toBe("s25");
+  });
+});

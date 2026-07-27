@@ -494,6 +494,12 @@ export function buildServeRuntime(seam: {
             const seen = record.activeTurn ?? input.marker;
             const newestSeen = Math.max(Number(seen.messageId ?? 0) || 0, ...(seen.steeredMessageIds ?? []).map((id) => Number(id) || 0));
             if (stripped.some((r) => (Number(r.id) || 0) < newestSeen)) return false;
+            // per-turn steer budget (cursor security review, round 2 on
+            // PR #50): accepted steers grow the durable prompt and the
+            // child's queue outside the inbox's 100-entry cap, so a flood
+            // could balloon one turn without bound. Far past any human
+            // steering cadence, a reply takes the capped inbox path instead.
+            if ((seen.steeredMessageIds?.length ?? 0) + stripped.length > 25) return false;
             // hourglass BEFORE the steer so a settle racing this acceptor
             // can never leave an unremovable reaction; a refusal takes it
             // back off.
