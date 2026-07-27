@@ -972,6 +972,44 @@ describe("relayThread segment rotation", () => {
     }
   });
 
+  test("a rejected notice's salvage never eats the interrupted reply's fence opener", async () => {
+    const prev = SEGMENT_ROTATION.idleMs;
+    SEGMENT_ROTATION.idleMs = 40;
+    try {
+      // spawn 1, park (depleted, near wake), spawn 2
+      decisionQueue.push(usable, depleted(Date.now() + 60_000), usable);
+      queryScripts.push(() =>
+        (async function* () {
+          yield init("s-fs");
+          yield textStart();
+          yield textDelta("```\ncode half");
+          await realEsToolkit.delay(150); // rotation closes the fence, arms the reopen
+          yield limitErrored("s-fs", "Claude AI usage limit reached|9999999999");
+        })(),
+      );
+      queryScripts.push(script([init("s-fs"), textStart(), textDelta("code rest"), success("s-fs")]));
+      const col = collector();
+      let calls = 0;
+      const post = async (m: AsyncIterable<unknown>) => {
+        calls += 1;
+        // the park notice's own post dies; its salvage re-post must not
+        // consume the pending fence reopen the rotation armed
+        if (calls === 2) throw new Error("message_not_in_streaming_state");
+        return col.post(m);
+      };
+      const out = await relay({ post });
+      expect(out.failed).toBe(false);
+      const texts = col.posts.map((p) => strings(p));
+      expect(texts.some((s) => s.includes("holding this message"))).toBe(true); // salvaged notice landed
+      const continuation = texts.find((s) => s.includes("code rest"));
+      expect(continuation).toBeDefined();
+      // the continuation still opens inside the fence the rotation closed
+      expect(continuation!.startsWith("```")).toBe(true);
+    } finally {
+      SEGMENT_ROTATION.idleMs = prev;
+    }
+  });
+
   test("a continuously active segment still rotates at its max age, losing no text", async () => {
     const prev = SEGMENT_ROTATION.maxAgeMs;
     SEGMENT_ROTATION.maxAgeMs = 60;

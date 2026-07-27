@@ -637,9 +637,19 @@ export async function relayThread(input: {
           // the salvage segment here keeps the salvaged content ordered ahead
           // of any push still awaiting lastPost; the salvage segment's own
           // settle then decides whether its text counts as delivered.
+          // A salvage always recomputes its fence state from the delivered
+          // prefix (the override below), so it must never CONSUME a pending
+          // rotation reopen that belongs to a different segment's
+          // continuation - a rejected notice settling after notify()
+          // restored the flag would otherwise eat it (cubic review catch,
+          // round 4). Held across the lost-chunk re-push too: the salvaged
+          // text is the dying segment's, not the continuation's.
+          const heldReopen = pendingReopenFence;
+          pendingReopenFence = false;
           const next = openSegment();
           next.meta.reopenFence = deliveredFenceOpen;
           for (const c of lost) next.pushInto(c);
+          pendingReopenFence = heldReopen;
         } else if (textRemainder !== "") {
           textLost = true;
           textLostDetail = detail;
@@ -679,6 +689,17 @@ export async function relayThread(input: {
     }
     const target = segment ?? openSegment().seg;
     if (!(chunk instanceof Object)) {
+      // a pending rotation reopen can outlive its openSegment hand-off when
+      // text JOINS a segment a rejection handler opened during the wait
+      // (the salvage recomputes its own fence state without consuming the
+      // flag): adopt it here so the continuation still reopens its fence,
+      // UNLESS the joined segment already sits inside an open fence - then
+      // the state is satisfied and a second marker would close it (cubic
+      // review catch, round 4).
+      if (pendingReopenFence) {
+        pendingReopenFence = false;
+        if (!fenceOpen()) segmentMeta!.reopenFence = true;
+      }
       // materialize a salvage segment's pending fence reopen (see
       // openSegment) before the first text from this entry point too.
       if (segmentMeta!.reopenFence) {
@@ -701,6 +722,12 @@ export async function relayThread(input: {
       clearTimeout(segmentTimer);
       segmentTimer = null;
     }
+    // a segment dying with an armed-but-unmaterialized reopen (no text ever
+    // arrived - a card-only segment that consumed the flag at open) folds it
+    // back: the reply still logically sits inside an open fence, and the
+    // next text-bearing segment must reopen it (cubic review catch, round
+    // 4: the errored result's closing card ate the rotation's reopen).
+    if (segmentMeta?.reopenFence) pendingReopenFence = true;
     segment?.end();
     segment = null;
   };
@@ -709,20 +736,14 @@ export async function relayThread(input: {
     const ageLeft = segmentOpenedAt + SEGMENT_ROTATION.maxAgeMs - Date.now();
     segmentTimer = setTimeout(() => {
       segmentTimer = null;
-      if (segment !== null) {
-        // a rotation mid-fence closes the fence and arms the reopen, so both
-        // message halves render as code - pushText's split contract. A
-        // salvage segment whose armed reopen never materialized (card-only
-        // so far) has no fence to close, but the armed state must carry to
-        // the next segment or its later text renders unfenced (cubic review
-        // catch, round 2).
-        if (fenceOpen()) {
-          segmentMeta!.acc += "\n```";
-          segment.push("\n```");
-          pendingReopenFence = true;
-        } else if (segmentMeta!.reopenFence) {
-          pendingReopenFence = true;
-        }
+      // a rotation mid-fence closes the fence and arms the reopen, so both
+      // message halves render as code - pushText's split contract. An
+      // armed-but-unmaterialized reopen needs no close marker; breakSegment
+      // folds it forward.
+      if (segment !== null && fenceOpen()) {
+        segmentMeta!.acc += "\n```";
+        segment.push("\n```");
+        pendingReopenFence = true;
       }
       breakSegment();
     }, Math.max(0, Math.min(SEGMENT_ROTATION.idleMs, ageLeft)));
