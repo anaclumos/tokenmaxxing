@@ -15,7 +15,8 @@
 //   serve links            list links
 //   serve                  run the daemon
 
-import { existsSync, realpathSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, realpathSync } from "node:fs";
+import { join } from "node:path";
 import { delay, omit, uniq } from "es-toolkit";
 import { z } from "zod";
 import { Chat, ConsoleLogger, StreamingPlan, ThreadImpl, type StreamChunk } from "chat";
@@ -36,6 +37,7 @@ import {
   stripLeadingMention,
   upsertLink,
   SlackLinkSchema,
+  SlackThreadSchema,
   type ActiveTurn,
   type SlackConfig,
   type SlackLink,
@@ -369,6 +371,8 @@ export function buildServeRuntime(seam: {
   let draining = false;
   // channels already diagnosed as unlinked this run (see handleTurn).
   const unlinkedLogged = new Set<string>();
+  // corrupt thread records already logged as skipped this run (see nudgeSweep).
+  const sweepSkipLogged = new Set<string>();
 
   /** Best-effort status reaction: reaction state is decoration, so every
    *  failure (missing reactions:write until the app is reinstalled,
@@ -807,6 +811,13 @@ export function buildServeRuntime(seam: {
         } catch (postErr) {
           log("serve.turn_crash_notice_failed", { thread: input.thread.id, err: (postErr instanceof Error ? postErr.message : String(postErr)).slice(0, 300) });
         }
+        // a crash after runTurn added the hourglass would otherwise read as
+        // "processing" forever (codex review catch); setStatus never throws.
+        const messageId = relayed.at(-1)?.id;
+        if (messageId) {
+          await setStatus({ threadId: input.thread.id, messageId, emoji: STATUS_EMOJI.failed, op: "add" });
+          await setStatus({ threadId: input.thread.id, messageId, emoji: STATUS_EMOJI.processing, op: "remove" });
+        }
       }
     }));
   };
@@ -862,16 +873,29 @@ export function buildServeRuntime(seam: {
       // folds into the next turn.
       if (!draining && asked && asked.requesterIds.includes(input.userId) && afterAsk && onAskMessage) {
         log("serve.reaction_answer", { thread: input.threadId, emoji: input.emoji });
-        const { thread } = await streamable(input.threadId);
-        await handleTurn({
-          thread,
-          relayed: [{
-            text: `<@${input.userId}> answered your pending question with the Slack reaction :${input.emoji}:. Interpret the reaction as their reply and continue.`,
-            authorId: input.userId,
-            id: input.messageId,
-          }],
-          isMention: false,
-        });
+        try {
+          const { thread } = await streamable(input.threadId);
+          await handleTurn({
+            thread,
+            relayed: [{
+              text: `<@${input.userId}> answered your pending question with the Slack reaction :${input.emoji}:. Interpret the reaction as their reply and continue.`,
+              authorId: input.userId,
+              id: input.messageId,
+            }],
+            isMention: false,
+          });
+        } catch (e) {
+          // a crashed answer turn must not read as an accepted answer (codex
+          // review catch): tell the thread. The attention state survives, so
+          // the ask stays nudgeable and answerable by a thread reply.
+          const detail = (e instanceof Error ? e.message : String(e)).slice(0, 300);
+          log("serve.reaction_crashed", { thread: input.threadId, err: detail });
+          try {
+            await seam.postToThread({ threadId: input.threadId, text: `tokenmaxxing: handling your reaction answer crashed: ${detail}. Reply in the thread to answer instead.` });
+          } catch (postErr) {
+            log("serve.reaction_crash_notice_failed", { thread: input.threadId, err: (postErr instanceof Error ? postErr.message : String(postErr)).slice(0, 300) });
+          }
+        }
         return;
       }
       const home = await seam.isHomeUser({ userId: input.userId });
@@ -901,19 +925,32 @@ export function buildServeRuntime(seam: {
   const nudgeSweep = async (input?: { now?: number }) => {
     if (draining) return;
     const now = input?.now ?? Date.now();
-    // one unparseable record must not kill the sweep tick: state files that
-    // fail to parse THROW by contract, and this sweep runs on a bare
-    // interval, so before the daemon's rejection backstop existed exactly
-    // this throw was a whole-daemon crash killing every in-flight turn
-    // (2026-07-27 report shape).
-    let records: SlackThread[];
+    // per-record parsing, not listSlackThreads: state files that fail to
+    // parse THROW by contract, but here one corrupt record aborting the
+    // whole sweep would silence every OTHER thread's overdue nudge on every
+    // tick (codex review catch) - and before the daemon's rejection backstop
+    // existed, this bare-interval throw was a whole-daemon crash killing
+    // every in-flight turn (2026-07-27 report shape). The skip is logged
+    // once per file per daemon run; a 60s tick would repeat it forever.
+    let files: string[] = [];
     try {
-      records = listSlackThreads();
+      files = existsSync(paths.slackThreadsDir) ? readdirSync(paths.slackThreadsDir) : [];
     } catch (e) {
       log("serve.nudge_sweep_error", { err: (e instanceof Error ? e.message : String(e)).slice(0, 300) });
       return;
     }
-    for (const record of records) {
+    for (const f of files) {
+      if (!f.endsWith(".json")) continue;
+      let record: SlackThread;
+      try {
+        record = SlackThreadSchema.parse(JSON.parse(readFileSync(join(paths.slackThreadsDir, f), "utf8")));
+      } catch (e) {
+        if (!sweepSkipLogged.has(f)) {
+          sweepSkipLogged.add(f);
+          log("serve.nudge_record_skipped", { file: f, err: (e instanceof Error ? e.message : String(e)).slice(0, 300) });
+        }
+        continue;
+      }
       const asked = record.attention;
       if (!asked || asked.nudgedAt !== undefined || now - Date.parse(asked.askedAt) < ATTENTION_NUDGE_MS) continue;
       // unlinked channels are contractually silent in Slack (review catch:
@@ -1391,8 +1428,11 @@ async function runDaemon(): Promise<number> {
   // half-streamed Slack messages and no daemon to resume the markers.
   // Sync throws keep the default crash: an uncaughtException means state is
   // undefined and the durable markers make a restart the honest recovery.
+  // message-only, like every other logged error here: a rejection minted by
+  // an auth-carrying HTTP client must not persist its request into the log
+  // (cursor review catch).
   process.on("unhandledRejection", (reason) => {
-    log("serve.unhandled_rejection", { err: (reason instanceof Error ? `${reason.message} ${reason.stack ?? ""}` : String(reason)).slice(0, 600) });
+    log("serve.unhandled_rejection", { err: (reason instanceof Error ? reason.message : String(reason)).slice(0, 300) });
   });
 
   // initialize() starts the PERSISTENT Socket Mode client (auto-reconnecting)

@@ -878,8 +878,27 @@ describe("relayThread transient-failure retry", () => {
     expect(out.failed).toBe(true);
     expect(out.rateLimited).toBe(false);
     expect(queryCalls.length).toBe(attempts);
+    // the retries continue the session with an explicit continuation prompt,
+    // never a verbatim replay that would re-run completed side effects
+    for (let i = 1; i < attempts; i += 1) {
+      expect(queryCalls[i]!.options.resume).toBe("s-tf");
+      expect(z.string().parse(queryCalls[i]!.prompt)).toContain("Pick up exactly where you left off");
+    }
     const all = col.posts.map((p) => strings(p)).join("\n");
+    // the terminal line carries the REAL child error, not a generic stub
+    expect(all).toContain("Claude Code process exited with code 1");
     expect(all).toContain(`after ${attempts} attempts`);
+  });
+
+  test("a depleted pool with an unknown wake outranks the transient retry: no doomed respawns", async () => {
+    decisionQueue.push(usable, depleted()); // spawn, then the post-failure probe finds the pool exhausted
+    queryScripts.push(script([init("s-td"), errored("s-td", "Claude Code process exited with code 1")]));
+    const col = collector();
+    const out = await relay({ post: col.post });
+    expect(out.failed).toBe(true);
+    expect(queryCalls.length).toBe(1);
+    const all = col.posts.map((p) => strings(p)).join("\n");
+    expect(all).toContain("Claude Code process exited with code 1");
   });
 
   test("a turn that streamed text and then errored explains the truncation instead of a bare failed reaction", async () => {

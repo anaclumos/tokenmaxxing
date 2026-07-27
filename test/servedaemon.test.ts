@@ -1024,10 +1024,10 @@ describe("buildServeRuntime crash containment", () => {
       return okOutcome;
     });
     const id = "slack:C0DAEMON:600.1";
-    saveSlackThread({ threadId: id, repo: "/tmp/serve-daemon-repo", cwd: "/tmp/serve-daemon-repo", sessionId: null, createdAt: new Date().toISOString() });
     const file = join(paths.slackThreadsDir, `${threadKey(id)}.json`);
-    writeFileSync(file, "{ not json");
     try {
+      saveSlackThread({ threadId: id, repo: "/tmp/serve-daemon-repo", cwd: "/tmp/serve-daemon-repo", sessionId: null, createdAt: new Date().toISOString() });
+      writeFileSync(file, "{ not json");
       const t = fakeThread({ id });
       await rt.onMessage({ thread: t.thread, message: home("@UBOT hi"), skipped: [], isMention: true });
       expect(relayCalls).toBe(0);
