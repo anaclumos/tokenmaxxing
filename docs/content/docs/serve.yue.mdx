@@ -11,10 +11,11 @@ tokenmaxxing serve link <channel-id> <repo> # 將一個頻道綁去一個 repo c
 tokenmaxxing serve                          # 行守護程序
 ```
 
-喺連結咗嘅頻道提及個 bot，佢就會為嗰條 thread 喺連結嘅 repo checkout 入面開一個 Claude Code session。每條 thread 訊息都行一次帶 `resume` 嘅 Agent SDK `query()` - 永遠唔係持久嘅串流 query - 所以 `ensureBestAccount()` 每一個回合都會重新評估帳戶池，而守護程序就算重新啟動都唔會失去 thread（thread 記錄係持久嘅;守護程序一啟動就會重新訂閱佢哋）。
+喺連結咗嘅頻道提及個 bot，佢就會為嗰條 thread 喺連結嘅 repo checkout 入面開一個 Claude Code session。每條 thread 訊息依然會行一次帶 `resume` 嘅 Agent SDK `query()` - 所以 `ensureBestAccount()` 每一個回合都會重新評估帳戶池，而守護程序就算重新啟動都唔會失去 thread（thread 記錄係持久嘅;守護程序一啟動就會重新訂閱佢哋） - 不過每次 query 都會接收串流輸入，呢個先至令一個回覆可以帶到行緊嘅個回合轉向。
 
 值得注意嘅行為：
 
+- **導向**：一個回覆如果喺條 thread 嘅回合仲行緊嗰陣到達，就會摺入嗰個回合 - 同 Claude Code 互動用緊嘅回合中途注入一樣 - 所以個模型會喺佢下一個工具邊界度睇到，然後調整方向，而唔係第一時間做完錯嘅嘢先。一個回覆如果喺回合最後一次工具呼叫之後先到，就會即刻當做自己一個獨立回合嚟行；不論邊種情況都唔會有嘢俾漏低。畀導向咗嘅訊息會帶住沙漏反應，同個回合一齊完結，佢哋嘅文字仲會跟住個回合嘅持久標記，所以重新啟動同用量上限自動恢復都會重播佢。淨係排喺另一個等緊嘅訊息後面嘅訊息先會跳過呢個摺入（次序係保住嘅），而排走緊嘅守護程序仲係會大聲噉丟棄，唔會去導向。
 - **串流**：回覆會原生串流入 Slack，有思考同工具運行嘅任務卡片、用高亮渲染嘅圍欄程式碼、一張寫住成本同持續時間嘅收尾「Turn」卡片；一個回合嘅卡片會摺埋成一個可展開嘅 plan block，所以一個回合通常睇落好似一條訊息：回覆，加埋一個顯示佢活動嘅落拉選單（回合中途重試，或者被拒嘅追加，會開一條跟進訊息）。TodoWrite 呼叫會就地更新同一張穩定嘅檢查清單卡片。
 - **權限**：每個連結嘅 `permissionMode` 預設係 `acceptEdits`;`--yolo`（別名 `--dangerous`）就令連結轉用 `bypassPermissions`。轉發嘅回合入面唔准用互動式對話 - 冇人可以喺 Slack 度回答 - 所以個模型會用文字問，而你嘅 thread 回覆就係下一個回合。附帶嘅 plugin skill 會教佢，一需要做決定就標記請求者，然後結束個回合。
 - **狀態反應**：觸發一個回合嘅訊息會用 emoji 反應帶住佢嘅狀態：回合行緊嘅時候係沙漏，之後係剔號（完成）、交叉（失敗），或者問號（個模型需要你做決定）。需要現時 manifest 入面嘅 `reactions:write` scope;現有嘅 app 要重新貼一次 manifest 再重新安裝。
