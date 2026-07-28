@@ -9,7 +9,7 @@ import { spawn } from "node:child_process";
 import { join } from "node:path";
 import { z } from "zod";
 import { delay } from "es-toolkit";
-import { createSdkMcpServer, query, tool, type SpawnOptions } from "@anthropic-ai/claude-agent-sdk";
+import { createSdkMcpServer, query, tool, type SDKUserMessage, type SpawnOptions } from "@anthropic-ai/claude-agent-sdk";
 import { StreamingMarkdownRenderer, type StreamChunk } from "chat";
 import { ensureBestAccount, pooledOptions, stopHookCheck, type SwapDecision } from "../sdk.ts";
 import { POST_SWAP_COOLDOWN_MS } from "./decide.ts";
@@ -56,6 +56,14 @@ export const TurnOutcomeSchema = z.object({
    *  thread's activeTurn marker with resumeAt and the daemon resumes the turn
    *  itself, instead of the old "re-send it once the pool recovers" drop. */
   deferUntil: z.number().nullable(),
+  /** a steered follow-up's own drained turn FAILED after the primary turn
+   *  already succeeded (success stays sticky, the loss is announced
+   *  in-thread): the caller settles the steered messages' reactions as
+   *  failed, never as done - a lost instruction must not read green.
+   *  Attribution is per-turn, not per-message (steer() carries text only),
+   *  so when several messages were steered a successfully folded one can
+   *  read failed too - accepted: a false re-send ask beats a false green. */
+  steerLost: z.boolean(),
 });
 export type TurnOutcome = z.infer<typeof TurnOutcomeSchema>;
 
@@ -233,6 +241,60 @@ export function serveTurnContext(input: { requesterIds: string[] }): string {
 
 const SegmentChunkSchema = z.union([z.string(), z.custom<StreamChunk>()]);
 type SegmentChunk = z.infer<typeof SegmentChunkSchema>;
+
+/** The exact user-message shape the SDK's own string-prompt path writes to the
+ *  child's stdin (verified in @anthropic-ai/claude-agent-sdk 0.3.214: the SDK
+ *  serializes yielded messages verbatim, adding nothing). No uuid on purpose:
+ *  the CLI dedupes stream-json user messages by uuid and silently swallows a
+ *  reused one, so a uuid derived from a Slack message ts would eat retries.
+ *  No priority either: the default "next" folds the message into the running
+ *  turn at the next tool boundary, while "now" is an undocumented hard
+ *  interrupt that would abort the turn mid-tool (both verified in the claude
+ *  2.1.220 binary). */
+function steerUserMessage(text: string): SDKUserMessage {
+  return { type: "user", session_id: "", message: { role: "user", content: [{ type: "text", text }] }, parent_tool_use_id: null };
+}
+
+/** A hand-pushed async iterable of SDK user messages: the streaming-input
+ *  prompt for one query attempt. The initial prompt is pushed before query()
+ *  and steered messages join mid-turn; end() closes the child's stdin (the
+ *  SDK ends the stream when the iterable finishes). */
+function pushableMessages(): {
+  iterable: AsyncIterable<SDKUserMessage>;
+  push: (m: SDKUserMessage) => void;
+  end: () => void;
+} {
+  const queued: SDKUserMessage[] = [];
+  let cursor = 0;
+  let done = false;
+  let notify: (() => void) | null = null;
+  return {
+    push(m) {
+      queued.push(m);
+      notify?.();
+    },
+    end() {
+      done = true;
+      notify?.();
+    },
+    iterable: {
+      async *[Symbol.asyncIterator]() {
+        while (true) {
+          while (cursor < queued.length) {
+            const next = queued[cursor]!;
+            cursor += 1;
+            yield next;
+          }
+          if (done) return;
+          await new Promise<void>((resolve) => {
+            notify = resolve;
+          });
+          notify = null;
+        }
+      },
+    },
+  };
+}
 
 /** A hand-pushed async iterable: relayThread feeds one of these per Slack
  *  message segment while thread.post concurrently drains it. */
@@ -478,8 +540,22 @@ export async function relayThread(input: {
   /** daemon shutdown signal: aborts park/retry sleeps so a drain never sits
    *  out a depleted-pool countdown. */
   drainSignal?: AbortSignal;
+  /** Steering seam. Called with a steer function while a query attempt is
+   *  live and with null when it ends; steer(text) returns true when the text
+   *  was written into the RUNNING attempt's stdin (the CLI folds it into the
+   *  turn at the next tool boundary, or runs it as its own turn in the same
+   *  child when the fold window is gone - either way it reaches the session,
+   *  verified against claude 2.1.220), false once the attempt's result
+   *  arrived or the attempt died - the caller then queues the message as a
+   *  normal next turn instead. Accepted texts also fold into any RETRY
+   *  attempt's prompt, mirroring the existing resend-the-full-prompt retry
+   *  tradeoff (duplication in the resumed transcript beats loss).
+   *  input.requesterIds is shared by reference on purpose: the caller may
+   *  push a steer author's id so a retry attempt's UserPromptSubmit context
+   *  names them (the hook does not fire for folded mid-turn messages). */
+  onSteer?: (steer: ((text: string, onAccept?: () => void) => boolean) | null) => void;
 }): Promise<TurnOutcome> {
-  const outcome: TurnOutcome = { sessionId: input.sessionId, failed: false, rateLimited: false, finish: false, attention: false, announcedDrop: false, resultReceived: false, deferUntil: null };
+  const outcome: TurnOutcome = { sessionId: input.sessionId, failed: false, rateLimited: false, finish: false, attention: false, announcedDrop: false, resultReceived: false, deferUntil: null, steerLost: false };
   let segment: ReturnType<typeof pushableStream> | null = null;
   // acc mirrors the segment's pushed text (bounded by SEGMENT_TEXT_MAX plus a
   // small overshoot): fence parity must be computed over the ACCUMULATED text,
@@ -846,8 +922,15 @@ export async function relayThread(input: {
   // deferral notice explains the pause; the raw line would invite a manual
   // re-send of work the daemon resumes itself - cubic catch, PR #44).
   let pendingFailureLine: string | null = null;
-  // what the next spawn submits: the original message, until a transient
-  // retry swaps in the continuation wrapper (see the retry branch).
+  // texts steered into this message's turn, kept across retries: a retry
+  // resumes the session and re-sends the attempt prompt (the established
+  // duplication-beats-loss tradeoff), so steered text folds into every
+  // retry attempt's first message too - a steer written just before a
+  // mid-turn limit killed the child must not vanish from the turn it joined.
+  const steeredTexts: string[] = [];
+  // what the next spawn submits ahead of the steered texts: the original
+  // message, until a transient retry swaps in the continuation wrapper (see
+  // the retry branch).
   let prompt = input.prompt;
   const runQueryOnce = async () => {
     postedText = false;
@@ -863,11 +946,47 @@ export async function relayThread(input: {
     // inside the try: a malformed claude.json must fail the TURN, not the
     // relay's never-throws contract.
     let spawnOrg: string | null = null;
+    // Streaming input: the prompt rides an open stdin stream instead of a
+    // one-shot string, which is what lets a mid-turn Slack reply steer the
+    // running turn (the CLI folds a queued stream-json user message into the
+    // current turn at the next tool boundary; one that misses the last fold
+    // window runs as its own turn in the same child before exit, so nothing
+    // is ever dropped - both verified against claude 2.1.220 + SDK 0.3.214).
+    // steer() refuses the moment the attempt's result arrives: stdin ends
+    // then, and the SDK silently drops writes to an ended stdin.
+    const stream = pushableMessages();
+    let steerable = true;
+    const steer = (text: string, onAccept?: () => void): boolean => {
+      if (!steerable) return false;
+      // the caller's SYNCHRONOUS durable commit runs inside the acceptance,
+      // in the same JS tick as the liveness check and BEFORE the child sees
+      // the text (adversarial-review catch, round 3): steerable=true here
+      // proves the turn has not ended, so the commit's view of the turn
+      // state cannot be stale, a crash between commit and push replays a
+      // steer the child never saw (duplication over loss), and a refusal
+      // commits NOTHING - a stale acceptor invocation racing the turn's end
+      // can no longer resurrect a finished turn's marker or clobber
+      // post-turn state. A THROWING commit escapes to the caller before
+      // anything is pushed or recorded here: the stream, steeredTexts, and
+      // the sticky flags are untouched, so the caller can treat the throw
+      // as a refusal and a later steer still works.
+      onAccept?.();
+      steeredTexts.push(text);
+      stream.push(steerUserMessage(text));
+      // a steer answers a LIVE ask too (codex review catch on PR #50): when
+      // need_attention already fired in this attempt, the ask exists only as
+      // this sticky flag until settleTurn persists it - left set, the
+      // answered ask would still get a question mark and a nudge. A later
+      // need_attention call re-arms it for a genuinely new ask.
+      outcome.attention = false;
+      return true;
+    };
     try {
       spawnOrg = readOAuthAccount()?.organizationUuid ?? null;
       const pooled = pooledOptions();
+      stream.push(steerUserMessage([prompt, ...steeredTexts].join("\n\n")));
       const q = query({
-        prompt,
+        prompt: stream.iterable,
         options: {
           ...pooled,
           // claude >= 2.1.142 emits the structured Task tools by default and
@@ -934,8 +1053,18 @@ export async function relayThread(input: {
           ...(outcome.sessionId ? { resume: outcome.sessionId } : {}),
         },
       });
+      // registered only while this attempt is live (cleared in the finally):
+      // the caller's fallback for a refused steer is the normal queued turn.
+      input.onSteer?.(steer);
       const mapState = newStreamMapState();
       let result: string | null = null;
+      // reply text streamed since the last result boundary: each turn in the
+      // child (the primary one, plus any post-fold-window steer drained as
+      // its own turn) delivers its answer independently - a tool-only turn's
+      // answer lives ONLY in its result message, and flushing it at that
+      // result is what keeps a trailing turn's notice or result from
+      // suppressing or clobbering it (adversarial-review catch, round 2).
+      let streamedSinceResult = false;
       for await (const message of q) {
         if (message.type === "system" && message.subtype === "init") {
           // persist BEFORE the turn ends so a first-turn kill stays
@@ -946,41 +1075,82 @@ export async function relayThread(input: {
         }
         if (message.type === "result") {
           outcome.sessionId = message.session_id;
+          // any result ends steerability and closes the child's stdin: a
+          // steer arriving now queues as its own next turn instead. A steer
+          // accepted BEFORE this that missed its fold window still runs -
+          // the CLI drains queued commands as their own turns in this same
+          // child before exiting, emitting a further result each time, so
+          // this loop just keeps consuming until the child exits (end() is
+          // idempotent).
+          steerable = false;
+          stream.end();
           // is_error can ride a "success" subtype (a mid-turn usage limit
           // arrives exactly that way: result "Claude AI usage limit
           // reached|<epoch>"), so errored is a field check, not a subtype
           // check - and only an errored result is ever limit-classified.
           if (message.is_error || message.subtype !== "success") {
             const text = erroredResultText(message);
-            outcome.failed = true;
-            outcome.rateLimited = isRateLimitText({ text });
-            // persist the observation: the retry's decision otherwise re-reads
-            // the stale pre-limit snapshot (poll TTL) and respawns the same
-            // depleted account - a serve process has no statusLine tee.
-            if (outcome.rateLimited) await recordObservedLimit({ text, now: Date.now(), org: spawnOrg });
-            // hold the REAL errored text for the terminal diagnostic (codex
-            // review catches: a streamed-then-errored turn used to end with
-            // a truncated answer and only the x reaction, and a no-text
-            // errored turn used to discard the reason for a generic line).
-            // The depleted-pool probe still outranks the line.
-            else {
-              const reason = text.slice(0, 200) || "no error detail";
-              pendingFailureLine = postedText
-                ? `tokenmaxxing: the turn errored before finishing (${reason}) - the reply above may be incomplete.`
-                : `tokenmaxxing: the turn errored without a result (${reason}) - trying again may help.`;
+            const limited = isRateLimitText({ text });
+            // persist the observation either way: the next spawn decision
+            // must see the limit even when this turn does not retry.
+            if (limited) await recordObservedLimit({ text, now: Date.now(), org: spawnOrg });
+            if (outcome.resultReceived) {
+              // SUCCESS IS STICKY within an attempt (adversarial-review
+              // catch): this errored result belongs to a post-fold-window
+              // steer's own drained turn, arriving AFTER the primary turn
+              // already succeeded and delivered its answer. Marking the turn
+              // failed here would send the whole prompt back through the
+              // retry/defer machinery and re-run completed work - the exact
+              // duplicate-execution the outcome contract forbids. The steer
+              // is announced lost instead (drop-beats-false-promise), and
+              // steerLost settles the steered messages' reactions as failed.
+              outcome.steerLost = true;
+              log("serve.steered_turn_failed", { limited });
+              await notify(
+                limited
+                  ? "a steered follow-up message hit a usage limit before it could run - please re-send it."
+                  : "a steered follow-up message failed - please re-send it.",
+              );
+            } else {
+              outcome.failed = true;
+              // a limit classification is sticky across a child's errored
+              // results (adversarial-review catch, round 2): the drained
+              // steer turn's generic death must not declassify the primary
+              // turn's recoverable limit back to a plain failure.
+              outcome.rateLimited = outcome.rateLimited || limited;
+              // hold the REAL errored text for the terminal diagnostic (codex
+              // review catches: a streamed-then-errored turn used to end with
+              // a truncated answer and only the x reaction, and a no-text
+              // errored turn used to discard the reason for a generic line).
+              // The depleted-pool probe still outranks the line.
+              if (!limited) {
+                const reason = text.slice(0, 200) || "no error detail";
+                pendingFailureLine = postedText
+                  ? `tokenmaxxing: the turn errored before finishing (${reason}) - the reply above may be incomplete.`
+                  : `tokenmaxxing: the turn errored without a result (${reason}) - trying again may help.`;
+              }
             }
           } else {
             result = message.result;
             outcome.resultReceived = true;
+            // a turn that streamed no reply text (tool-only turns) still
+            // reports: its answer is flushed HERE, per result, not after the
+            // loop - a later turn in the same child must not suppress it. A
+            // paragraph break ahead of it when text already posted, or two
+            // result-only answers would concatenate mid-line (codex review
+            // catch on PR #50).
+            if (!streamedSinceResult && result) await pushText(`${postedText ? "\n\n" : ""}${result}`);
           }
+          streamedSinceResult = false;
         }
         for (const part of agentEventChunks({ state: mapState, message })) {
           if (part instanceof Object) await push(part);
-          else await pushText(part);
+          else {
+            if (part.trim() !== "") streamedSinceResult = true;
+            await pushText(part);
+          }
         }
       }
-      // a turn that produced no streamed text (tool-only turns) still reports.
-      if (!postedText && result) await pushText(result);
     } catch (e) {
       outcome.failed = true;
       const detail = (e instanceof Error ? e.message : String(e)).slice(0, 300);
@@ -991,6 +1161,13 @@ export async function relayThread(input: {
       // deferral's own notice explains the pause better than a raw child
       // error that reads as "please re-send".
       if (!outcome.rateLimited) pendingFailureLine = `tokenmaxxing: turn failed: ${detail}`;
+    } finally {
+      // a died attempt must stop accepting steers (they would be silent
+      // drops on an ended stdin) and must release the caller's steer hook
+      // before the retry loop decides anything.
+      steerable = false;
+      stream.end();
+      input.onSteer?.(null);
     }
   };
 

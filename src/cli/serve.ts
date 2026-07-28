@@ -21,7 +21,7 @@ import { delay, omit, uniq } from "es-toolkit";
 import { z } from "zod";
 import { Chat, ConsoleLogger, StreamingPlan, ThreadImpl, type StreamChunk } from "chat";
 import { createSlackAdapter } from "@chat-adapter/slack";
-import { createMemoryState } from "@chat-adapter/state-memory";
+import { MemoryStateAdapter } from "@chat-adapter/state-memory";
 import {
   bareChannelId,
   isChannelId,
@@ -334,6 +334,10 @@ export function buildServeRuntime(seam: {
      *  relayThread). */
     onSpawn?: (pid: number) => void;
     drainSignal?: AbortSignal;
+    /** steering seam (see relayThread): a live attempt's steer function, or
+     *  null when the attempt ends. steer runs its onAccept callback
+     *  synchronously inside acceptance, before the child sees the text. */
+    onSteer?: (steer: ((text: string, onAccept?: () => void) => boolean) | null) => void;
   }) => Promise<TurnOutcome>;
   cleanup: (input: { threadId: string }) => CleanupOutcome;
   /** add/remove a status reaction on a message (production: the Slack
@@ -373,6 +377,33 @@ export function buildServeRuntime(seam: {
   const unlinkedLogged = new Set<string>();
   // corrupt thread records already logged as skipped this run (see nudgeSweep).
   const sweepSkipLogged = new Set<string>();
+  // Steering registry: one acceptor per thread with a LIVE query attempt
+  // (registered by runTurn via the relay's onSteer hook, removed when the
+  // attempt ends). onMessage tries the acceptor before the inbox - steering
+  // is the default for a mid-turn reply (owner decision 2026-07-27); a
+  // refusal (attempt ending, mention-only text, out-of-order arrival) falls
+  // back to the inbox path. A thread only ever appears here after handleTurn
+  // ran under this daemon's cfg, so the channel is known linked.
+  const liveSteers = new Map<string, (m: { relayed: { text: string; authorId: string; id: string }[] }) => Promise<boolean>>();
+  // TURN-PRODUCING serialized work per thread (running plus waiting). Only
+  // turn producers count (adversarial-review catch: reaction notes and nudge
+  // bookkeeping ride the same serialized chain, and counting them silently
+  // disabled steering for the rest of any turn a user reacted to). A steer
+  // is only ordered when nothing waits behind the live turn.
+  const turnDepth = new Map<string, number>();
+  // Un-steered messages waiting for the next turn, folded and drained as ONE
+  // turn (sorted by Slack ts, which restores order for any upstream arrival
+  // race). This is the daemon-owned replacement for the chat queue's
+  // skipped-message folding. Each entry carries its delivery's mention flag,
+  // so the drained turn derives mention-ness from the RETAINED messages - a
+  // mention dropped by the overflow cap must not leave a phantom flag behind
+  // (cubic review catch on PR #50).
+  const pendingInbox = new Map<string, { text: string; authorId: string; id: string; isMention: boolean }[]>();
+  // Per-thread arrival ordering: the steer attempt and the inbox push for
+  // one message run to completion before the next message's do, so two
+  // near-simultaneous replies can never interleave at the acceptor's await
+  // points and land on the child's stdin out of order.
+  const arrivalChains = new Map<string, Promise<void>>();
 
   /** Best-effort status reaction: reaction state is decoration, so every
    *  failure (missing reactions:write until the app is reinstalled,
@@ -391,7 +422,9 @@ export function buildServeRuntime(seam: {
    *  before the spawn, cleared when the turn returns, so a marker surviving
    *  into the next daemon start identifies a turn a restart killed mid-run.
    *  The session id persists the moment init assigns it - a first-turn kill
-   *  must stay resumable. */
+   *  must stay resumable. Returns the steered message ids alongside the
+   *  outcome: they joined the turn mid-run, so the caller's settle must
+   *  close their reaction lifecycle too. */
   const runTurn = async (input: {
     thread: { id: string; post: (m: StreamingPlan) => Promise<unknown> };
     record: SlackThread;
@@ -400,14 +433,17 @@ export function buildServeRuntime(seam: {
     sessionId: string | null;
     marker: ActiveTurn;
     link: SlackLink;
-  }): Promise<TurnOutcome> => {
+  }): Promise<{ outcome: TurnOutcome; steeredMessageIds: string[] }> => {
     let record: SlackThread = { ...input.record, activeTurn: input.marker };
     saveSlackThread(record);
-    // the whole turn (parks and retries included) reads as "being processed".
-    if (input.marker.messageId) {
-      await setStatus({ threadId: input.thread.id, messageId: input.marker.messageId, emoji: STATUS_EMOJI.processing, op: "add" });
+    // the whole turn (parks and retries included) reads as "being processed";
+    // a resumed marker's steered messages re-arm their hourglass too
+    // (setStatus swallows already_reacted).
+    for (const id of [input.marker.messageId, ...(input.marker.steeredMessageIds ?? [])]) {
+      if (id) await setStatus({ threadId: input.thread.id, messageId: id, emoji: STATUS_EMOJI.processing, op: "add" });
     }
     let outcome: TurnOutcome | null = null;
+    let steeredMessageIds = input.marker.steeredMessageIds ?? [];
     try {
       outcome = await seam.relay({
         cwd: record.cwd,
@@ -424,9 +460,14 @@ export function buildServeRuntime(seam: {
         onSpawn: (pid) => {
           // the lstart token makes the pid a verifiable identity for the
           // orphan reaper; a child dead before ps sees it persists without
-          // one, and an identity-less pid is never signaled.
+          // one, and an identity-less pid is never signaled. Built on the
+          // CURRENT marker (a steer may have grown it), with the previous
+          // spawn's identity dropped: a retry child must never inherit the
+          // dead child's lstart, or the reaper would skip (or mis-verify)
+          // the live group.
           const startedAt = pidStartTime(pid);
-          record = { ...record, activeTurn: { ...input.marker, pid, ...(startedAt === null ? {} : { pidStartedAt: startedAt }) } };
+          const marker = omit(record.activeTurn ?? input.marker, ["pid", "pidStartedAt"]);
+          record = { ...record, activeTurn: { ...marker, pid, ...(startedAt === null ? {} : { pidStartedAt: startedAt }) } };
           saveSlackThread(record);
         },
         onSessionId: (sessionId) => {
@@ -434,9 +475,115 @@ export function buildServeRuntime(seam: {
           saveSlackThread(record);
         },
         drainSignal: drainAbort.signal,
+        // While an attempt is steerable, a relayable mid-turn message folds
+        // into the RUNNING turn (owner decision 2026-07-27: steering is the
+        // default; the queued next turn is only the fallback). The acceptor
+        // runs its marker mutation synchronously after a successful steer:
+        // the steered text becomes part of the durable prompt (replays and
+        // retries must include it) before any await can interleave with the
+        // turn's own marker writes.
+        onSteer: (steerText) => {
+          if (steerText === null) {
+            liveSteers.delete(input.thread.id);
+            return;
+          }
+          liveSteers.set(input.thread.id, async (m) => {
+            const stripped = m.relayed
+              .map((r) => ({ text: stripLeadingMention({ text: r.text, botUserId: seam.botUserId() }), authorId: r.authorId, id: r.id }))
+              .filter((r) => r.text !== "");
+            if (stripped.length === 0) return false;
+            // out-of-order insurance: Slack ids are timestamps, so a message
+            // OLDER than anything this turn already carries arrived late
+            // through an upstream race - refuse it into the inbox, whose
+            // drain sorts by ts, instead of folding it after its successor.
+            const seen = record.activeTurn ?? input.marker;
+            const newestSeen = Math.max(Number(seen.messageId ?? 0) || 0, ...(seen.steeredMessageIds ?? []).map((id) => Number(id) || 0));
+            if (stripped.some((r) => (Number(r.id) || 0) < newestSeen)) return false;
+            // per-turn steer budget (cursor security review, round 2 on
+            // PR #50): accepted steers grow the durable prompt and the
+            // child's queue outside the inbox's 100-entry cap, so a flood
+            // could balloon one turn without bound. Far past any human
+            // steering cadence, a reply takes the capped inbox path instead.
+            if ((seen.steeredMessageIds?.length ?? 0) + stripped.length > 25) return false;
+            // hourglass BEFORE the steer so a settle racing this acceptor
+            // can never leave an unremovable reaction; a refusal takes it
+            // back off.
+            for (const r of stripped) {
+              await setStatus({ threadId: input.thread.id, messageId: r.id, emoji: STATUS_EMOJI.processing, op: "add" });
+            }
+            // authors the turn does not know yet get named inline: the
+            // UserPromptSubmit context does not re-fire for folded mid-turn
+            // messages, so attribution rides the message itself.
+            const text = stripped
+              .map((r) => (input.requesterIds.includes(r.authorId) ? r.text : `Message from <@${r.authorId}>:\n${r.text}`))
+              .join("\n\n");
+            // The durable commit runs INSIDE steer's acceptance, in the same
+            // JS tick as its liveness check (adversarial-review catch, round
+            // 3: this acceptor runs on the arrival chain and can resume from
+            // its hourglass awaits AFTER the turn ended - a write-ahead save
+            // here resurrected the finished turn's marker on disk, and its
+            // refusal rollback clobbered post-turn state with a stale
+            // snapshot). Acceptance proves the turn is live, so the closure
+            // record is disk-faithful; the marker still grows durably BEFORE
+            // the text reaches the child's stdin (a crash in between replays
+            // a steer the child may never have seen - duplication over
+            // loss); and a refusal commits nothing, so a stale invocation is
+            // a harmless fall-through to the inbox.
+            let asked: SlackThread["attention"];
+            const commit = () => {
+              const mergedRequesters = uniq([...input.requesterIds, ...stripped.map((r) => r.authorId)]);
+              const marker = record.activeTurn ?? input.marker;
+              const grownIds = [...(marker.steeredMessageIds ?? []), ...stripped.map((r) => r.id)];
+              let next = { ...record, activeTurn: { ...marker, prompt: `${marker.prompt}\n\n${text}`, requesterIds: mergedRequesters, steeredMessageIds: grownIds } };
+              // the user responded: a pending ask is answered by the steer
+              // just like by a queued turn (adversarial-review catch:
+              // leaving it would strand the question mark and fire a
+              // spurious nudge about an ask this very message answered).
+              const pendingAsk = next.attention;
+              if (pendingAsk) next = omit(next, ["attention"]);
+              // all-or-nothing (cubic review catch, round 4): the durable
+              // save runs before ANY outer mutation, so a failed write
+              // leaves the turn's view untouched and the refusal fallback
+              // below starts from clean state - without this ordering the
+              // settle would stamp the never-delivered message with the
+              // turn's outcome emoji.
+              saveSlackThread(next);
+              steeredMessageIds = grownIds;
+              record = next;
+              asked = pendingAsk;
+              for (const r of stripped) {
+                if (!input.requesterIds.includes(r.authorId)) input.requesterIds.push(r.authorId);
+              }
+            };
+            // a throwing commit (the durable save failing) escapes steer()
+            // BEFORE the text reaches the child or the relay records it
+            // (cubic review catch, round 4): treat it as a refusal, so the
+            // message keeps its inbox fallback instead of vanishing into
+            // the generic task_crashed log with its hourglass stranded. If
+            // the disk stays broken, the inbox turn's own marker write
+            // surfaces it loudly through the crash-notice path.
+            let accepted = false;
+            try {
+              accepted = steerText(text, commit);
+            } catch (e) {
+              log("serve.steer_commit_failed", { thread: input.thread.id, err: (e instanceof Error ? e.message : String(e)).slice(0, 300) });
+            }
+            if (!accepted) {
+              for (const r of stripped) {
+                await setStatus({ threadId: input.thread.id, messageId: r.id, emoji: STATUS_EMOJI.processing, op: "remove" });
+              }
+              return false;
+            }
+            log("serve.steered", { thread: input.thread.id, texts: stripped.length });
+            if (asked?.messageId) {
+              await setStatus({ threadId: input.thread.id, messageId: asked.messageId, emoji: STATUS_EMOJI.attention, op: "remove" });
+            }
+            return true;
+          });
+        },
       });
       record = { ...record, sessionId: outcome.sessionId };
-      return outcome;
+      return { outcome, steeredMessageIds };
     } finally {
       // a failure DURING a drain is presumed to be the shutdown signal killing
       // the claude child (terminal Ctrl-C and group signals hit the whole
@@ -462,6 +609,9 @@ export function buildServeRuntime(seam: {
       if (!draining && outcome !== null && outcome.failed && outcome.rateLimited && !outcome.announcedDrop && deferUntil === null) {
         log("serve.drop_unannounced", { thread: input.thread.id });
       }
+      // belt-and-braces: the relay clears its steer hook per attempt, but the
+      // registry entry must never outlive the turn that owns it.
+      liveSteers.delete(input.thread.id);
       if (deferUntil !== null && record.activeTurn) {
         record = { ...record, activeTurn: { ...record.activeTurn, resumeAt: deferUntil } };
         saveSlackThread(record);
@@ -474,7 +624,7 @@ export function buildServeRuntime(seam: {
 
   const handleTurn = async (input: {
     thread: ServeThread;
-    /** every relayed message this turn (queue-skipped + triggering), text
+    /** every relayed message this turn (the inbox batch, ts-sorted), text
      *  paired with its author id: a decision may be owed to an earlier
      *  folded sender, and a sender whose whole message was the bot mention
      *  contributes no prompt text, so text and author filter together
@@ -529,11 +679,10 @@ export function buildServeRuntime(seam: {
       return;
     }
     log("serve.message", { thread: thread.id, isMention, texts: input.relayed.length });
-    // relayed carries queue-skipped messages plus the triggering one: the
-    // queue strategy hands a turn only the LATEST message and the rest via
-    // context.skipped, so they are folded into one prompt here. A message
-    // that is empty once its bot mention is stripped contributes neither
-    // prompt text nor a requester id (cursor review catch 2026-07-18).
+    // relayed carries every message the inbox batched for this turn, folded
+    // into one prompt here. A message that is empty once its bot mention is
+    // stripped contributes neither prompt text nor a requester id (cursor
+    // review catch 2026-07-18).
     const stripped = input.relayed
       .map((m) => ({ text: stripLeadingMention({ text: m.text, botUserId: seam.botUserId() }), authorId: m.authorId }))
       .filter((m) => m.text !== "");
@@ -575,6 +724,12 @@ export function buildServeRuntime(seam: {
     // prompt re-appears alongside the session transcript that already holds
     // its partial work, and the newer message steers.
     const deferred = record.activeTurn?.resumeAt !== undefined ? record.activeTurn : null;
+    // a taken-over deferral's messages still wear their processing hourglass
+    // (a deferral settles nothing); this turn serves their held prompt, so
+    // it adopts their ids and settles them with its own outcome - without
+    // the adoption the old trigger's hourglass would read "processing"
+    // forever once the fold replaced its marker.
+    const adoptedIds = deferred ? [...(deferred.messageId ? [deferred.messageId] : []), ...(deferred.steeredMessageIds ?? [])] : [];
     if (deferred) {
       const timer = deferredTimers.get(thread.id);
       if (timer !== undefined) clearTimeout(timer);
@@ -612,16 +767,16 @@ export function buildServeRuntime(seam: {
     // agent feature + assistant:write (the adapter warns instead of throwing).
     await thread.startTyping();
     const startedAt = Date.now();
-    const outcome = await runTurn({
+    const { outcome, steeredMessageIds } = await runTurn({
       thread,
       record,
       prompt,
       requesterIds,
       sessionId: record.sessionId,
-      marker: { prompt, startedAt: new Date().toISOString(), resumeCount: 0, ...(messageId ? { messageId } : {}), requesterIds },
+      marker: { prompt, startedAt: new Date().toISOString(), resumeCount: 0, ...(messageId ? { messageId } : {}), requesterIds, ...(adoptedIds.length > 0 ? { steeredMessageIds: adoptedIds } : {}) },
       link,
     });
-    await settleTurn({ thread, outcome, startedAt, messageId, requesterIds });
+    await settleTurn({ thread, outcome, startedAt, messageId, steeredMessageIds, requesterIds });
   };
 
   /** Post-turn bookkeeping shared by inbound and resumed turns: the outcome
@@ -634,6 +789,9 @@ export function buildServeRuntime(seam: {
     startedAt: number;
     /** the triggering message carrying the status reactions; absent = skip. */
     messageId?: string;
+    /** messages steered into the turn mid-run: they carry the same reaction
+     *  lifecycle as the trigger and settle with the same emoji. */
+    steeredMessageIds?: string[];
     /** the turn's asked users, persisted when the model flagged attention. */
     requesterIds?: string[];
   }) => {
@@ -657,10 +815,19 @@ export function buildServeRuntime(seam: {
     // below makes the question mark unremovable forever.
     const killedByDrain = draining && outcome.failed && !outcome.announcedDrop && !outcome.resultReceived;
     const deferredForResume = outcome.deferUntil !== null;
-    if (input.messageId && !killedByDrain && !deferredForResume) {
+    if (!killedByDrain && !deferredForResume) {
       const emoji = outcome.failed ? STATUS_EMOJI.failed : outcome.attention && !outcome.finish ? STATUS_EMOJI.attention : STATUS_EMOJI.done;
-      await setStatus({ threadId: thread.id, messageId: input.messageId, emoji, op: "add" });
-      await setStatus({ threadId: thread.id, messageId: input.messageId, emoji: STATUS_EMOJI.processing, op: "remove" });
+      // steerLost: a steered follow-up's own drained turn failed after the
+      // primary turn succeeded, so the steered messages settle as failed -
+      // matching the in-thread re-send notice; a lost instruction must never
+      // read green (see TurnOutcomeSchema.steerLost for the per-turn
+      // attribution tradeoff).
+      const steeredEmoji = outcome.steerLost ? STATUS_EMOJI.failed : emoji;
+      for (const id of [input.messageId, ...(input.steeredMessageIds ?? [])]) {
+        if (!id) continue;
+        await setStatus({ threadId: thread.id, messageId: id, emoji: id === input.messageId ? emoji : steeredEmoji, op: "add" });
+        await setStatus({ threadId: thread.id, messageId: id, emoji: STATUS_EMOJI.processing, op: "remove" });
+      }
     }
     // the model asked the user for a decision: mark the thread waiting so the
     // nudge sweep and the reaction-answer path can see it. Persisted even on
@@ -755,12 +922,12 @@ export function buildServeRuntime(seam: {
     }
   };
 
-  // Per-thread serialization owned HERE, not only by the SDK's queue lock:
-  // chat 4.34.0 acquires the dispatch lock with a 30s TTL and extends it only
-  // BETWEEN dispatches, so any handler outliving 30s (every claude turn, any
-  // depleted-pool park) lets a later message take the expired lock and start
-  // a second concurrent handler in the same thread and cwd (review catch,
-  // PR #18). Escaped messages run as sequential turns in arrival order.
+  // Per-thread serialization owned HERE: with concurrent dispatch (see
+  // runDaemon's Chat config) chat provides no per-thread locking at all, so
+  // this chain is the ONLY thing keeping two claude turns off one thread's
+  // cwd and session. It predates the concurrent switch for the same reason
+  // in weaker form: chat's old queue lock expired 30s into any claude turn
+  // and let a second handler start anyway (review catch, PR #18).
   const threadTurns = new Map<string, Promise<void>>();
   const serialized = (threadId: string, run: () => Promise<void>) => {
     const prev = threadTurns.get(threadId) ?? Promise.resolve();
@@ -782,18 +949,101 @@ export function buildServeRuntime(seam: {
     })();
     return next;
   };
+  /** serialized + the turnDepth count, for callers that produce a claude
+   *  TURN (inbox drains, reaction answers, recoveries). Bookkeeping riders
+   *  on the chain (reaction notes, nudges) use bare `serialized` so they
+   *  never gate steering. */
+  const serializedTurn = (threadId: string, run: () => Promise<void>) => {
+    turnDepth.set(threadId, (turnDepth.get(threadId) ?? 0) + 1);
+    const next = serialized(threadId, run);
+    void next.catch(() => {}).finally(() => {
+      const depth = (turnDepth.get(threadId) ?? 1) - 1;
+      if (depth <= 0) turnDepth.delete(threadId);
+      else turnDepth.set(threadId, depth);
+    });
+    return next;
+  };
 
   // both Chat SDK callbacks funnel here. Filter EVERY message, trigger
   // included: an outsider (or our own post) arriving last must not discard
-  // relayable home-workspace messages queued behind the turn - the queue hands
-  // the handler only the latest message and the rest ride context.skipped
-  // (review catch, PR #18).
+  // relayable home-workspace messages delivered alongside it (review catch,
+  // PR #18). context.skipped is empty under concurrent dispatch but stays
+  // merged defensively - a chat release reintroducing batching must not
+  // silently drop messages.
   const onMessage = async (input: { thread: ServeThread; message: ServeMessage; skipped: ServeMessage[]; isMention: boolean }) => {
     const relayed = [...input.skipped, input.message].filter(relayable).map((m) => ({ text: m.text, authorId: m.author.userId, id: m.id }));
     if (relayed.length === 0) return; // outsider mentions never open a session
-    await tracked(serialized(input.thread.id, async () => {
+    // arrivals for one thread DECIDE strictly one at a time, in delivery
+    // order: the steer-or-inbox decision for this message completes before
+    // the next message's begins, so two near-simultaneous replies can never
+    // interleave at the acceptor's await points. The chain holds only the
+    // DECISION - a scheduled turn's completion is awaited outside it, or a
+    // long turn would hold every later arrival hostage and steering could
+    // never engage.
+    const prev = arrivalChains.get(input.thread.id) ?? Promise.resolve();
+    const job = (async () => {
       try {
-        await handleTurn({ thread: input.thread, relayed, isMention: input.isMention });
+        await prev;
+      } catch { /* the previous arrival's failure was surfaced to its own caller */ }
+      return dispatchArrival({ thread: input.thread, relayed, isMention: input.isMention });
+    })();
+    const link = job.then(
+      () => {},
+      () => {},
+    );
+    arrivalChains.set(input.thread.id, link);
+    void link.then(() => {
+      if (arrivalChains.get(input.thread.id) === link) arrivalChains.delete(input.thread.id);
+    });
+    // tracked from the DECISION on (codex review catch on PR #50): the drain
+    // waits on activeTurns, and an arrival still deciding at shutdown lived
+    // nowhere else - the daemon could exit before the message reached the
+    // inbox, a marker, or the drop notice.
+    await tracked((async () => {
+      const scheduled = await job;
+      if (scheduled) await scheduled.turn;
+    })());
+  };
+
+  /** One message's steer-or-inbox decision. Steering first (owner decision
+   *  2026-07-27): a reply landing while the thread's turn is running folds
+   *  into that turn instead of waiting behind it. Guarded to an empty inbox
+   *  and no waiting turn, or the fold would reorder this message ahead of
+   *  one already waiting; a drain keeps its loud-drop contract. Every
+   *  refusal falls through to the inbox, whose drain runs ALL waiting
+   *  messages as one folded turn - the daemon-owned replacement for the
+   *  chat queue's skipped-message folding, sorted by Slack ts so an
+   *  upstream arrival race cannot reorder the prompt. Returns the tracked
+   *  drain-turn promise when this arrival scheduled one, so the caller can
+   *  await the turn without holding the arrival chain. */
+  const dispatchArrival = async (input: { thread: ServeThread; relayed: { text: string; authorId: string; id: string }[]; isMention: boolean }): Promise<{ turn: Promise<void> } | null> => {
+    const threadId = input.thread.id;
+    if (!draining && (pendingInbox.get(threadId)?.length ?? 0) === 0 && (turnDepth.get(threadId) ?? 0) <= 1) {
+      const accept = liveSteers.get(threadId);
+      if (accept && (await accept({ relayed: input.relayed }))) return null;
+    }
+    const inbox = pendingInbox.get(threadId) ?? [];
+    const hadPending = inbox.length > 0;
+    inbox.push(...input.relayed.map((r) => ({ ...r, isMention: input.isMention })));
+    // hard cap, replacing the retired chat queue's maxQueueSize bound
+    // (cursor security review on PR #50): without it a flood during one
+    // long turn grows memory and the folded prompt without limit. Newest
+    // dropped, LOUDLY - the old queue's silent drop-oldest ate the earliest
+    // instructions, the worse failure.
+    if (inbox.length > 100) {
+      log("serve.inbox_dropped", { thread: threadId, dropped: inbox.length - 100 });
+      inbox.length = 100;
+    }
+    pendingInbox.set(threadId, inbox);
+    // one drain per non-empty inbox: later arrivals fold into the batch the
+    // already-scheduled drain snapshots when it finally runs.
+    if (hadPending) return null;
+    const turn = tracked(serializedTurn(threadId, async () => {
+      const batch = (pendingInbox.get(threadId) ?? []).sort((a, b) => Number(a.id) - Number(b.id));
+      pendingInbox.delete(threadId);
+      if (batch.length === 0) return;
+      try {
+        await handleTurn({ thread: input.thread, relayed: batch, isMention: batch.some((m) => m.isMention) });
       } catch (e) {
         // an escaped handleTurn throw (a state-file parse, a Slack API
         // rejection outside relayThread's never-throws boundary) previously
@@ -825,13 +1075,14 @@ export function buildServeRuntime(seam: {
         }
         // a crash after runTurn added the hourglass would otherwise read as
         // "processing" forever (codex review catch); setStatus never throws.
-        const messageId = relayed.at(-1)?.id;
+        const messageId = batch.at(-1)?.id;
         if (messageId) {
           await setStatus({ threadId: input.thread.id, messageId, emoji: STATUS_EMOJI.failed, op: "add" });
           await setStatus({ threadId: input.thread.id, messageId, emoji: STATUS_EMOJI.processing, op: "remove" });
         }
       }
     }));
+    return { turn };
   };
 
   /** A user reaction in a tracked thread. While the thread waits on an asked
@@ -872,6 +1123,14 @@ export function buildServeRuntime(seam: {
       log("serve.reaction_dropped", { thread: input.threadId, reason: "unlinked-channel" });
       return;
     }
+    // bare `serialized` on purpose, so a reaction can never gate steering
+    // (adversarial-review catch: counting these bookkeeping riders in
+    // turnDepth silently disabled steering for the rest of any turn a user
+    // reacted to). Accepted tradeoff (documented, WONTFIX): in the rare
+    // shape where an ANSWER turn is queued here behind a live turn, a
+    // fresh reply may steer the live turn ahead of the queued answer - both
+    // still reach the model, and an answer coexisting with a live turn only
+    // occurs in multi-user threads.
     await tracked(serialized(input.threadId, async () => {
       const fresh = loadSlackThread(input.threadId);
       if (!fresh) return; // finished while queued
@@ -1052,7 +1311,9 @@ export function buildServeRuntime(seam: {
     try {
       const { thread, requesterIds } = await seam.streamable(record.threadId);
       const link = linkForChannel(cfg, bareChannelId(thread.channelId));
-      await serialized(record.threadId, async () => {
+      // serializedTurn: a recovery runs a real claude turn, so it must gate
+      // steering-order like any other queued turn.
+      await serializedTurn(record.threadId, async () => {
         // a drain signal can land between the scan and this turn; leave the
         // marker at its previous count so the next start retries.
         if (draining) return;
@@ -1086,10 +1347,11 @@ export function buildServeRuntime(seam: {
           // with the user never told the daemon gave up.
           await thread.post(decision.notice);
           saveSlackThread(omit(fresh, ["activeTurn"]));
-          // the abandoned turn's message must not keep reading as processing.
-          if (turn.messageId) {
-            await setStatus({ threadId: thread.id, messageId: turn.messageId, emoji: STATUS_EMOJI.failed, op: "add" });
-            await setStatus({ threadId: thread.id, messageId: turn.messageId, emoji: STATUS_EMOJI.processing, op: "remove" });
+          // the abandoned turn's messages must not keep reading as processing.
+          for (const id of [turn.messageId, ...(turn.steeredMessageIds ?? [])]) {
+            if (!id) continue;
+            await setStatus({ threadId: thread.id, messageId: id, emoji: STATUS_EMOJI.failed, op: "add" });
+            await setStatus({ threadId: thread.id, messageId: id, emoji: STATUS_EMOJI.processing, op: "remove" });
           }
           return;
         }
@@ -1127,9 +1389,10 @@ export function buildServeRuntime(seam: {
               // or its hourglass reads "processing" forever (cubic review
               // catch on PR #43). The unlinked abandon above stays reactionless
               // on purpose: unlinked channels are contractually untouchable.
-              if (turn.messageId) {
-                await setStatus({ threadId: thread.id, messageId: turn.messageId, emoji: STATUS_EMOJI.failed, op: "add" });
-                await setStatus({ threadId: thread.id, messageId: turn.messageId, emoji: STATUS_EMOJI.processing, op: "remove" });
+              for (const id of [turn.messageId, ...(turn.steeredMessageIds ?? [])]) {
+                if (!id) continue;
+                await setStatus({ threadId: thread.id, messageId: id, emoji: STATUS_EMOJI.failed, op: "add" });
+                await setStatus({ threadId: thread.id, messageId: id, emoji: STATUS_EMOJI.processing, op: "remove" });
               }
               saveSlackThread(omit(fresh, ["activeTurn"]));
               return;
@@ -1153,8 +1416,8 @@ export function buildServeRuntime(seam: {
         // nudge and answer-gate the users who were actually asked (vercel
         // review catch on PR #43); older markers without the field fall back.
         const resumedRequesterIds = decision.marker.requesterIds ?? requesterIds;
-        const outcome = await runTurn({ thread, record: fresh, prompt: decision.prompt, requesterIds: resumedRequesterIds, sessionId: decision.sessionId, marker: decision.marker, link });
-        await settleTurn({ thread, outcome, startedAt, messageId: decision.marker.messageId, requesterIds: resumedRequesterIds });
+        const { outcome, steeredMessageIds } = await runTurn({ thread, record: fresh, prompt: decision.prompt, requesterIds: resumedRequesterIds, sessionId: decision.sessionId, marker: decision.marker, link });
+        await settleTurn({ thread, outcome, startedAt, messageId: decision.marker.messageId, steeredMessageIds, requesterIds: resumedRequesterIds });
       });
     } catch (e) {
       const detail = (e instanceof Error ? e.message : String(e)).slice(0, 300);
@@ -1276,24 +1539,25 @@ async function runDaemon(): Promise<number> {
   // held directly (not only via Chat) so startup can re-subscribe recorded
   // threads: subscriptions live in this in-memory state and die with the
   // process, and only a fresh mention would otherwise revive a thread.
-  const state = createMemoryState();
+  const state = new MemoryStateAdapter();
   const bot = new Chat({
     userName: "tokenmaxxing",
     adapters: { slack },
     state,
-    // per-thread lock with queueing: a message landing mid-turn waits its turn
-    // instead of racing a second claude spawn on the same cwd. Queue-entry TTL
-    // expiry is SILENT (chat 4.34.0 has no app callback for it), so the TTL
-    // must outlast the longest legitimate hold: a depleted-pool park
-    // (PARK_MAX_MS 14min) plus a long claude turn. Expired-and-folded beats
-    // silently-vanished, hence a full hour. maxQueueSize matters for the same
-    // reason: the SDK default is 10 with a LOG-LESS drop-oldest trim
-    // (@chat-adapter/state-memory enqueue splices the front, and the SDK's
-    // message-dropped log only fires for drop-newest), so a >10-message burst
-    // behind one long turn silently ate the oldest instructions
-    // (adversarial-review catch). 100 outlasts any legitimate burst; the TTL
-    // stays the real bound.
-    concurrency: { strategy: "queue", queueEntryTtlMs: 3_600_000, maxQueueSize: 100 },
+    // CONCURRENT dispatch (steering redesign, superseding the queue strategy
+    // and its 1h-TTL/size-100 tuning): every message reaches onMessage the
+    // moment Slack delivers it, in arrival order. The queue strategy's
+    // 30s dispatch-lock lease made mid-turn messages invisible AND could
+    // reorder them - a reply enqueued behind a live lease was only released
+    // when a LATER message took the expired lock, dispatching newest-first
+    // (adversarial-review catch; chat 4.34.0 handleQueueOrDebounce). The
+    // daemon owns everything the queue used to provide: per-thread turn
+    // ordering (the serialized chain), mid-turn folding (the steering path),
+    // and batching of waiting messages (the per-thread inbox in
+    // buildServeRuntime, drained sorted as ONE folded turn). Chat's
+    // message-id dedupe runs before the concurrency branch, so the
+    // app_mention + message.channels double-delivery stays deduped.
+    concurrency: { strategy: "concurrent" },
     // without this a cards-only segment in post-and-edit fallback would
     // strand a bare "..." placeholder message.
     fallbackStreamingPlaceholderText: null,

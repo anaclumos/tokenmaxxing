@@ -20,7 +20,7 @@ const realEsToolkit = { ...(await import("es-toolkit")) };
 // scriptable state the mocked modules read at call time
 const decisionQueue: { swapped: boolean; account: null; reason: string; waitUntil?: number }[] = [];
 const queryScripts: (() => AsyncGenerator<unknown, void, unknown>)[] = [];
-const queryCalls: { prompt: string; options: Record<string, unknown> }[] = [];
+const queryCalls: { prompt: unknown; options: Record<string, unknown> }[] = [];
 
 mock.module("../src/sdk.ts", () => ({
   ...realSdk,
@@ -35,7 +35,7 @@ mock.module("../src/sdk.ts", () => ({
 
 mock.module("@anthropic-ai/claude-agent-sdk", () => ({
   ...realAgentSdk,
-  query: (input: { prompt: string; options: Record<string, unknown> }) => {
+  query: (input: { prompt: unknown; options: Record<string, unknown> }) => {
     queryCalls.push(input);
     const script = queryScripts.shift();
     if (script === undefined) throw new Error("test: query script queue exhausted");
@@ -44,6 +44,23 @@ mock.module("@anthropic-ai/claude-agent-sdk", () => ({
   createSdkMcpServer: (def: unknown) => def,
   tool: (...parts: unknown[]) => parts,
 }));
+
+/** Drain a captured streaming-input prompt into its user-message texts. The
+ *  mocked query never consumes the iterable, so a post-hoc drain replays
+ *  everything relayThread pushed, in order; end() has already closed it by
+ *  the time an awaited relay returns. */
+const StreamedUserMessageSchema = z.object({
+  type: z.literal("user"),
+  message: z.object({ content: z.array(z.object({ type: z.literal("text"), text: z.string() })) }),
+});
+async function promptTexts(prompt: unknown): Promise<string[]> {
+  const iterable = z.custom<AsyncIterable<unknown>>((v) => typeof v === "object" && v !== null && Symbol.asyncIterator in v).parse(prompt);
+  const texts: string[] = [];
+  for await (const m of iterable) {
+    texts.push(StreamedUserMessageSchema.parse(m).message.content.map((b) => b.text).join(""));
+  }
+  return texts;
+}
 
 const DELAY_CAP_MS = 250;
 mock.module("es-toolkit", () => ({
@@ -211,7 +228,12 @@ function seedIdentityAndUsage(org: string, now: number): void {
   });
 }
 
-const relay = (input: { post: (m: AsyncIterable<unknown>) => Promise<unknown>; sessionId?: string | null; drainSignal?: AbortSignal }) =>
+const relay = (input: {
+  post: (m: AsyncIterable<unknown>) => Promise<unknown>;
+  sessionId?: string | null;
+  drainSignal?: AbortSignal;
+  onSteer?: (steer: ((text: string, onAccept?: () => void) => boolean) | null) => void;
+}) =>
   relayThread({
     cwd: "/tmp/relay-test-repo",
     sessionId: input.sessionId ?? null,
@@ -220,6 +242,7 @@ const relay = (input: { post: (m: AsyncIterable<unknown>) => Promise<unknown>; s
     link,
     post: input.post,
     drainSignal: input.drainSignal,
+    onSteer: input.onSteer,
   });
 
 describe("relayThread depleted-pool recovery", () => {
@@ -837,6 +860,332 @@ describe("relayThread segment ordering", () => {
   });
 });
 
+describe("relayThread steering", () => {
+  test("a steer mid-attempt joins the running attempt's stdin stream", async () => {
+    decisionQueue.push(usable);
+    let release = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    queryScripts.push(() =>
+      (async function* () {
+        yield init("s-steer");
+        yield textStart();
+        yield textDelta("working");
+        await gate;
+        yield success("s-steer");
+      })(),
+    );
+    const col = collector();
+    const steers: (((text: string) => boolean) | null)[] = [];
+    const turn = relay({ post: col.post, onSteer: (s) => steers.push(s) });
+    for (let i = 0; i < 400 && steers.length === 0; i++) await realEsToolkit.delay(5);
+    const steer = steers[0];
+    if (!steer) throw new Error("test: steer never registered");
+    expect(steer("also cover the edge case")).toBe(true);
+    release();
+    const out = await turn;
+    expect(out.failed).toBe(false);
+    // the attempt's input stream carried the prompt AND the steered text
+    expect(await promptTexts(queryCalls[0]?.prompt)).toEqual(["do the thing", "also cover the edge case"]);
+    // the hook is cleared when the attempt ends, and a late steer is refused
+    expect(steers.at(-1)).toBeNull();
+    expect(steer("too late")).toBe(false);
+  });
+
+  test("a steer after the attempt's result is refused: it must queue as its own turn instead", async () => {
+    decisionQueue.push(usable);
+    let resultYielded = false;
+    let release = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    queryScripts.push(() =>
+      (async function* () {
+        yield init("s-late");
+        yield textStart();
+        yield textDelta("answer");
+        yield success("s-late");
+        resultYielded = true;
+        await gate;
+      })(),
+    );
+    const col = collector();
+    const steers: (((text: string) => boolean) | null)[] = [];
+    const turn = relay({ post: col.post, onSteer: (s) => steers.push(s) });
+    for (let i = 0; i < 400 && !resultYielded; i++) await realEsToolkit.delay(5);
+    const steer = steers[0];
+    if (!steer) throw new Error("test: steer never registered");
+    expect(steer("after the result")).toBe(false);
+    release();
+    const out = await turn;
+    expect(out.failed).toBe(false);
+    // the refused text never reached the input stream
+    expect(await promptTexts(queryCalls[0]?.prompt)).toEqual(["do the thing"]);
+  });
+
+  test("steered texts fold into a retry attempt's prompt: a steer must survive a mid-turn limit", async () => {
+    const now = Date.now();
+    seedIdentityAndUsage("org-relay", now);
+    const resetEpochSec = Math.floor((now + 3_600_000) / 1000);
+    decisionQueue.push(usable, usable);
+    let release = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    queryScripts.push(() =>
+      (async function* () {
+        yield init("s-steer-limit");
+        await gate;
+        yield limitErrored("s-steer-limit", `Claude AI usage limit reached|${resetEpochSec}`);
+      })(),
+    );
+    queryScripts.push(script([init("s-steer-limit"), textDelta("recovered"), success("s-steer-limit")]));
+    const col = collector();
+    const steers: (((text: string) => boolean) | null)[] = [];
+    const turn = relay({ post: col.post, onSteer: (s) => steers.push(s) });
+    for (let i = 0; i < 400 && steers.length === 0; i++) await realEsToolkit.delay(5);
+    const steer = steers[0];
+    if (!steer) throw new Error("test: steer never registered");
+    expect(steer("and rename the flag")).toBe(true);
+    release();
+    const out = await turn;
+    expect(out.failed).toBe(false);
+    expect(queryCalls.length).toBe(2);
+    // the retry resumes the session AND re-sends the steered text with the
+    // prompt (the resend-the-full-prompt duplication tradeoff, extended)
+    expect(queryCalls[1]?.options.resume).toBe("s-steer-limit");
+    expect(await promptTexts(queryCalls[1]?.prompt)).toEqual(["do the thing\n\nand rename the flag"]);
+    // each attempt registered a fresh hook and cleared it
+    expect(steers.length).toBe(4);
+    expect(steers[1]).toBeNull();
+    expect(steers[3]).toBeNull();
+  });
+
+  test("a throwing commit escapes before the push: nothing reaches the child and a later steer still works", async () => {
+    decisionQueue.push(usable);
+    let release = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    queryScripts.push(() =>
+      (async function* () {
+        yield init("s-commit-throw");
+        yield textStart();
+        yield textDelta("working");
+        await gate;
+        yield success("s-commit-throw");
+      })(),
+    );
+    const col = collector();
+    const steers: (((text: string, onAccept?: () => void) => boolean) | null)[] = [];
+    const turn = relay({ post: col.post, onSteer: (s) => steers.push(s) });
+    for (let i = 0; i < 400 && steers.length === 0; i++) await realEsToolkit.delay(5);
+    const steer = steers[0];
+    if (!steer) throw new Error("test: steer never registered");
+    expect(() =>
+      steer("lost text", () => {
+        throw new Error("disk full");
+      }),
+    ).toThrow("disk full");
+    // the failed acceptance recorded nothing: the very next steer lands
+    expect(steer("second try", () => {})).toBe(true);
+    release();
+    const out = await turn;
+    expect(out.failed).toBe(false);
+    expect(await promptTexts(queryCalls[0]?.prompt)).toEqual(["do the thing", "second try"]);
+  });
+});
+
+describe("relayThread trailing steered-turn results", () => {
+  test("an errored result AFTER a success never re-runs the turn: announced loss, no retry", async () => {
+    const now = Date.now();
+    seedIdentityAndUsage("org-relay", now);
+    const resetEpochSec = Math.floor((now + 3_600_000) / 1000);
+    // exactly ONE decision: a retry would exhaust the queue and throw
+    decisionQueue.push(usable);
+    queryScripts.push(
+      script([
+        init("s-trail"),
+        textStart(),
+        textDelta("primary answer"),
+        success("s-trail"),
+        // the post-fold-window steer's own drained turn, dying at a limit
+        limitErrored("s-trail", `Claude AI usage limit reached|${resetEpochSec}`),
+      ]),
+    );
+    const col = collector();
+    const out = await relay({ post: col.post });
+    // success is sticky: the delivered primary answer stays delivered
+    expect(out.failed).toBe(false);
+    expect(out.rateLimited).toBe(false);
+    expect(out.resultReceived).toBe(true);
+    expect(queryCalls.length).toBe(1);
+    const allText = col.posts.map(strings).join(" ");
+    expect(allText).toContain("primary answer");
+    // the lost steer is announced, never silently retried
+    expect(allText).toContain("steered follow-up");
+    expect(allText).toContain("re-send");
+    // the limit observation still lands for the NEXT spawn decision
+    expect(loadUsage()?.fiveHour).toEqual({ usedPercentage: 100, resetsAt: resetEpochSec * 1000 });
+  });
+});
+
+describe("relayThread multi-result turns (round-2 review fixes)", () => {
+  test("a tool-only primary answer survives a trailing errored steer turn: flushed at its own result", async () => {
+    const now = Date.now();
+    seedIdentityAndUsage("org-relay", now);
+    const resetEpochSec = Math.floor((now + 3_600_000) / 1000);
+    decisionQueue.push(usable);
+    // NO streamed text: the primary answer lives only in result.result
+    queryScripts.push(
+      script([
+        init("s-toolonly"),
+        success("s-toolonly", "the primary tool-only answer"),
+        limitErrored("s-toolonly", `Claude AI usage limit reached|${resetEpochSec}`),
+      ]),
+    );
+    const col = collector();
+    const out = await relay({ post: col.post });
+    expect(out.failed).toBe(false);
+    expect(out.steerLost).toBe(true);
+    expect(queryCalls.length).toBe(1);
+    const allText = col.posts.map(strings).join(" ");
+    // the primary answer was flushed at ITS result, before the trailing
+    // turn's notice could suppress it
+    expect(allText).toContain("the primary tool-only answer");
+    expect(allText).toContain("steered follow-up");
+  });
+
+  test("two result-only turns in one child both deliver their answers", async () => {
+    decisionQueue.push(usable);
+    queryScripts.push(
+      script([
+        init("s-two"),
+        success("s-two", "first answer"),
+        success("s-two", "second answer"),
+      ]),
+    );
+    const col = collector();
+    const out = await relay({ post: col.post });
+    expect(out.failed).toBe(false);
+    expect(out.steerLost).toBe(false);
+    const allText = col.posts.map(strings).join(" ");
+    expect(allText).toContain("first answer");
+    expect(allText).toContain("second answer");
+  });
+
+  test("a limit classification is sticky across a child's errored results", async () => {
+    const now = Date.now();
+    seedIdentityAndUsage("org-relay", now);
+    const resetEpochSec = Math.floor((now + 3_600_000) / 1000);
+    decisionQueue.push(usable, usable);
+    // primary turn dies at a LIMIT, then the drained steer turn dies with a
+    // generic error: the limit classification must survive last-writer-wins
+    queryScripts.push(
+      script([
+        init("s-sticky"),
+        limitErrored("s-sticky", `Claude AI usage limit reached|${resetEpochSec}`),
+        {
+          type: "result",
+          subtype: "error_during_execution",
+          is_error: true,
+          session_id: "s-sticky",
+          result: "stream disconnected",
+          modelUsage: {},
+          total_cost_usd: 0,
+          duration_ms: 50,
+        },
+      ]),
+    );
+    queryScripts.push(script([init("s-sticky"), textDelta("recovered"), success("s-sticky")]));
+    const col = collector();
+    const out = await relay({ post: col.post });
+    // the silent limit retry ran (a plain failure would have posted "turn
+    // failed" and never spawned again)
+    expect(out.failed).toBe(false);
+    expect(queryCalls.length).toBe(2);
+    expect(col.posts.map(strings).join(" ")).toContain("recovered");
+  });
+});
+
+describe("relayThread PR #50 review fixes", () => {
+  const toolHandler = (call: (typeof queryCalls)[number] | undefined, name: string) => {
+    const server = z
+      .object({ tools: z.array(z.tuple([z.string(), z.string(), z.record(z.string(), z.unknown()), z.custom<() => Promise<unknown>>()])) })
+      .parse(z.object({ options: z.object({ mcpServers: z.object({ tokenmaxxing: z.unknown() }) }) }).parse(call).options.mcpServers.tokenmaxxing);
+    const tool = server.tools.find((t) => t[0] === name);
+    if (!tool) throw new Error(`test: tool ${name} not found`);
+    return tool[3];
+  };
+
+  test("a steer answers a LIVE ask: the sticky attention flag clears, a later ask re-arms it", async () => {
+    decisionQueue.push(usable);
+    let release = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    queryScripts.push(() =>
+      (async function* () {
+        yield init("s-liveask");
+        yield textStart();
+        yield textDelta("which option?");
+        await gate;
+        yield success("s-liveask");
+      })(),
+    );
+    const col = collector();
+    const steers: (((text: string) => boolean) | null)[] = [];
+    const turn = relay({ post: col.post, onSteer: (s) => steers.push(s) });
+    for (let i = 0; i < 400 && steers.length === 0; i++) await realEsToolkit.delay(5);
+    const steer = steers[0];
+    if (!steer) throw new Error("test: steer never registered");
+    // the model asks mid-turn, then the user's steered reply answers it
+    await toolHandler(queryCalls[0], "need_attention")();
+    expect(steer("option B please")).toBe(true);
+    release();
+    const out = await turn;
+    expect(out.attention).toBe(false);
+  });
+
+  test("an ask AFTER the last steer still marks the thread waiting", async () => {
+    decisionQueue.push(usable);
+    let release = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    queryScripts.push(() =>
+      (async function* () {
+        yield init("s-lateask");
+        await gate;
+        yield success("s-lateask");
+      })(),
+    );
+    const col = collector();
+    const steers: (((text: string) => boolean) | null)[] = [];
+    const turn = relay({ post: col.post, onSteer: (s) => steers.push(s) });
+    for (let i = 0; i < 400 && steers.length === 0; i++) await realEsToolkit.delay(5);
+    const steer = steers[0];
+    if (!steer) throw new Error("test: steer never registered");
+    expect(steer("more context")).toBe(true);
+    // the ask lands AFTER the steer: it is a new, unanswered question
+    await toolHandler(queryCalls[0], "need_attention")();
+    release();
+    const out = await turn;
+    expect(out.attention).toBe(true);
+  });
+
+  test("consecutive result-only answers get a paragraph break, never mid-line concatenation", async () => {
+    decisionQueue.push(usable);
+    queryScripts.push(script([init("s-sep"), success("s-sep", "first answer"), success("s-sep", "second answer")]));
+    const col = collector();
+    await relay({ post: col.post });
+    const allText = col.posts.map(strings).join(" ");
+    expect(allText).toContain("first answer\n\nsecond answer");
+    expect(allText).not.toContain("first answersecond answer");
+  });
+});
+
 // the non-limit errored-result shape: a child that died without completing.
 const errored = (sessionId: string, resultText: string) => ({
   type: "result",
@@ -882,7 +1231,7 @@ describe("relayThread transient-failure retry", () => {
     // never a verbatim replay that would re-run completed side effects
     for (let i = 1; i < attempts; i += 1) {
       expect(queryCalls[i]!.options.resume).toBe("s-tf");
-      expect(z.string().parse(queryCalls[i]!.prompt)).toContain("Pick up exactly where you left off");
+      expect((await promptTexts(queryCalls[i]!.prompt))[0]).toContain("Pick up exactly where you left off");
     }
     const all = col.posts.map((p) => strings(p)).join("\n");
     // the terminal line carries the REAL child error, not a generic stub
