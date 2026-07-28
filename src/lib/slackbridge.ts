@@ -553,7 +553,7 @@ export async function relayThread(input: {
    *  input.requesterIds is shared by reference on purpose: the caller may
    *  push a steer author's id so a retry attempt's UserPromptSubmit context
    *  names them (the hook does not fire for folded mid-turn messages). */
-  onSteer?: (steer: ((text: string) => boolean) | null) => void;
+  onSteer?: (steer: ((text: string, onAccept?: () => void) => boolean) | null) => void;
 }): Promise<TurnOutcome> {
   const outcome: TurnOutcome = { sessionId: input.sessionId, failed: false, rateLimited: false, finish: false, attention: false, announcedDrop: false, resultReceived: false, deferUntil: null, steerLost: false };
   let segment: ReturnType<typeof pushableStream> | null = null;
@@ -956,8 +956,18 @@ export async function relayThread(input: {
     // then, and the SDK silently drops writes to an ended stdin.
     const stream = pushableMessages();
     let steerable = true;
-    const steer = (text: string): boolean => {
+    const steer = (text: string, onAccept?: () => void): boolean => {
       if (!steerable) return false;
+      // the caller's SYNCHRONOUS durable commit runs inside the acceptance,
+      // in the same JS tick as the liveness check and BEFORE the child sees
+      // the text (adversarial-review catch, round 3): steerable=true here
+      // proves the turn has not ended, so the commit's view of the turn
+      // state cannot be stale, a crash between commit and push replays a
+      // steer the child never saw (duplication over loss), and a refusal
+      // commits NOTHING - a stale acceptor invocation racing the turn's end
+      // can no longer resurrect a finished turn's marker or clobber
+      // post-turn state.
+      onAccept?.();
       steeredTexts.push(text);
       stream.push(steerUserMessage(text));
       // a steer answers a LIVE ask too (codex review catch on PR #50): when

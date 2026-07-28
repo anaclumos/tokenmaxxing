@@ -1036,9 +1036,10 @@ describe("buildServeRuntime steering", () => {
       prompts.push(relayInput.prompt);
       if (prompts.length > 1) return { ...okOutcome, sessionId: "s-follow" }; // queued fallback turns run plain
       started = true;
-      relayInput.onSteer?.((text) => {
+      relayInput.onSteer?.((text, commit) => {
         steerCalls += 1;
         if (input?.accept === false) return false;
+        commit?.();
         seen.push(text);
         return true;
       });
@@ -1239,8 +1240,9 @@ describe("buildServeRuntime steering after review fixes", () => {
       prompts.push(relayInput.prompt);
       if (prompts.length > 1) return { ...okOutcome, sessionId: "s-follow" };
       started = true;
-      relayInput.onSteer?.((text) => {
+      relayInput.onSteer?.((text, commit) => {
         steerCalls += 1;
+        commit?.();
         seen.push(text);
         return true;
       });
@@ -1346,7 +1348,10 @@ describe("buildServeRuntime steerLost reactions", () => {
     let started = false;
     const rt = runtimeWith(async (relayInput) => {
       started = true;
-      relayInput.onSteer?.(() => true);
+      relayInput.onSteer?.((text, commit) => {
+        commit?.();
+        return true;
+      });
       await gate;
       relayInput.onSteer?.(null);
       // the steer's own drained turn failed after the primary succeeded
@@ -1420,7 +1425,10 @@ describe("buildServeRuntime PR #50 review fixes", () => {
     let started = false;
     const rt = runtimeWith(async (relayInput) => {
       started = true;
-      relayInput.onSteer?.(() => true);
+      relayInput.onSteer?.((text, commit) => {
+        commit?.();
+        return true;
+      });
       await turnGate;
       relayInput.onSteer?.(null);
       return { ...okOutcome, sessionId: "s-drainvis" };
@@ -1458,7 +1466,8 @@ describe("buildServeRuntime steer budget", () => {
       prompts.push(relayInput.prompt);
       if (prompts.length > 1) return { ...okOutcome, sessionId: "s-follow" };
       started = true;
-      relayInput.onSteer?.((text) => {
+      relayInput.onSteer?.((text, commit) => {
+        commit?.();
         seen.push(text);
         return true;
       });
@@ -1569,5 +1578,55 @@ describe("buildServeRuntime crash containment", () => {
     // the consumed ask is restored: still nudgeable, still answerable
     expect(loadSlackThread(threadId)?.attention).toBeDefined();
     expect(rt.reactions.filter((r) => r.messageId === "700.9" && r.emoji === "question" && r.op === "add").length).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe("buildServeRuntime stale steer acceptor", () => {
+  test("an acceptor resuming after the turn ended commits NOTHING: no marker resurrection, post-turn state intact", async () => {
+    const threadId = "slack:C0DAEMON:6500.1";
+    let live = true;
+    let release = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let started = false;
+    const rt = runtimeWith(async (relayInput) => {
+      started = true;
+      // refuse once the turn has ended, exactly like relayThread's
+      // steerable flag; the commit must then never run
+      relayInput.onSteer?.((text, commit) => {
+        if (!live) return false;
+        commit?.();
+        return true;
+      });
+      await gate;
+      relayInput.onSteer?.(null);
+      // the model asked mid-turn: settle persists an attention record
+      return { ...okOutcome, sessionId: "s-stale", attention: true };
+    });
+    const t = fakeThread({ id: threadId });
+    const first = rt.onMessage({ thread: t.thread, message: home("@UBOT risky op?", "U-OWNER", "6500.2"), skipped: [], isMention: true });
+    const deadline = Date.now() + 2_000;
+    while (!started && Date.now() < deadline) await delay(5);
+    // the reply's acceptor suspends on its hourglass call (200ms)...
+    rt.setReactDelay(200);
+    const late = rt.onMessage({ thread: t.thread, message: home("too late reply", "U-OWNER", "6500.3"), skipped: [], isMention: false });
+    await delay(30);
+    // ...and the turn completes underneath it: the marker clears right here
+    live = false;
+    release();
+    // sample INSIDE the stale window (acceptor resumed and refused at
+    // ~200ms; its refusal-removal await holds the fallback turn back until
+    // ~400ms). The pre-fix write-ahead had already resurrected the finished
+    // turn's marker on disk in exactly this window.
+    await delay(270);
+    expect(loadSlackThread(threadId)?.activeTurn).toBeUndefined();
+    rt.setReactDelay(0);
+    await Promise.all([first, late]);
+    await flushTurns(rt);
+    const rec = loadSlackThread(threadId);
+    // end state: no resurrection, and the ask machinery survived
+    expect(rec?.activeTurn).toBeUndefined();
+    expect(rec?.attention).toBeDefined();
   });
 });

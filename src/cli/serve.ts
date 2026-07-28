@@ -335,8 +335,9 @@ export function buildServeRuntime(seam: {
     onSpawn?: (pid: number) => void;
     drainSignal?: AbortSignal;
     /** steering seam (see relayThread): a live attempt's steer function, or
-     *  null when the attempt ends. */
-    onSteer?: (steer: ((text: string) => boolean) | null) => void;
+     *  null when the attempt ends. steer runs its onAccept callback
+     *  synchronously inside acceptance, before the child sees the text. */
+    onSteer?: (steer: ((text: string, onAccept?: () => void) => boolean) | null) => void;
   }) => Promise<TurnOutcome>;
   cleanup: (input: { threadId: string }) => CleanupOutcome;
   /** add/remove a status reaction on a message (production: the Slack
@@ -516,38 +517,40 @@ export function buildServeRuntime(seam: {
             const text = stripped
               .map((r) => (input.requesterIds.includes(r.authorId) ? r.text : `Message from <@${r.authorId}>:\n${r.text}`))
               .join("\n\n");
-            // WRITE-AHEAD commit (cubic review catch on PR #50): the marker
-            // grows durably BEFORE the text reaches the child's stdin, so a
-            // daemon crash in between replays a steer the child may never
-            // have seen (duplication) instead of losing one it did (loss).
-            // The refusal rollback below runs synchronously after the save.
-            const prevRecord = record;
-            const prevSteeredIds = steeredMessageIds;
-            const mergedRequesters = uniq([...input.requesterIds, ...stripped.map((r) => r.authorId)]);
-            const marker = record.activeTurn ?? input.marker;
-            steeredMessageIds = [...(marker.steeredMessageIds ?? []), ...stripped.map((r) => r.id)];
-            record = { ...record, activeTurn: { ...marker, prompt: `${marker.prompt}\n\n${text}`, requesterIds: mergedRequesters, steeredMessageIds } };
-            // the user responded: a pending ask is answered by the steer just
-            // like by a queued turn (adversarial-review catch: leaving it
-            // would strand the question mark and fire a spurious nudge about
-            // an ask this very message answered).
-            const asked = record.attention;
-            if (asked) record = omit(record, ["attention"]);
-            saveSlackThread(record);
-            if (!steerText(text)) {
-              record = prevRecord;
-              steeredMessageIds = prevSteeredIds;
+            // The durable commit runs INSIDE steer's acceptance, in the same
+            // JS tick as its liveness check (adversarial-review catch, round
+            // 3: this acceptor runs on the arrival chain and can resume from
+            // its hourglass awaits AFTER the turn ended - a write-ahead save
+            // here resurrected the finished turn's marker on disk, and its
+            // refusal rollback clobbered post-turn state with a stale
+            // snapshot). Acceptance proves the turn is live, so the closure
+            // record is disk-faithful; the marker still grows durably BEFORE
+            // the text reaches the child's stdin (a crash in between replays
+            // a steer the child may never have seen - duplication over
+            // loss); and a refusal commits nothing, so a stale invocation is
+            // a harmless fall-through to the inbox.
+            let asked: SlackThread["attention"];
+            const commit = () => {
+              const mergedRequesters = uniq([...input.requesterIds, ...stripped.map((r) => r.authorId)]);
+              const marker = record.activeTurn ?? input.marker;
+              steeredMessageIds = [...(marker.steeredMessageIds ?? []), ...stripped.map((r) => r.id)];
+              record = { ...record, activeTurn: { ...marker, prompt: `${marker.prompt}\n\n${text}`, requesterIds: mergedRequesters, steeredMessageIds } };
+              // the user responded: a pending ask is answered by the steer
+              // just like by a queued turn (adversarial-review catch:
+              // leaving it would strand the question mark and fire a
+              // spurious nudge about an ask this very message answered).
+              asked = record.attention;
+              if (asked) record = omit(record, ["attention"]);
               saveSlackThread(record);
+              for (const r of stripped) {
+                if (!input.requesterIds.includes(r.authorId)) input.requesterIds.push(r.authorId);
+              }
+            };
+            if (!steerText(text, commit)) {
               for (const r of stripped) {
                 await setStatus({ threadId: input.thread.id, messageId: r.id, emoji: STATUS_EMOJI.processing, op: "remove" });
               }
               return false;
-            }
-            // the SHARED requester array (the retry attempts' hook context)
-            // mutates only after acceptance, so a rollback leaves no phantom
-            // requesters behind.
-            for (const r of stripped) {
-              if (!input.requesterIds.includes(r.authorId)) input.requesterIds.push(r.authorId);
             }
             log("serve.steered", { thread: input.thread.id, texts: stripped.length });
             if (asked?.messageId) {
