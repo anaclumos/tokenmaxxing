@@ -966,7 +966,10 @@ export async function relayThread(input: {
       // steer the child never saw (duplication over loss), and a refusal
       // commits NOTHING - a stale acceptor invocation racing the turn's end
       // can no longer resurrect a finished turn's marker or clobber
-      // post-turn state.
+      // post-turn state. A THROWING commit escapes to the caller before
+      // anything is pushed or recorded here: the stream, steeredTexts, and
+      // the sticky flags are untouched, so the caller can treat the throw
+      // as a refusal and a later steer still works.
       onAccept?.();
       steeredTexts.push(text);
       stream.push(steerUserMessage(text));

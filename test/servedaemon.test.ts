@@ -6,7 +6,7 @@
 
 import { describe, expect, test } from "bun:test";
 import { spawn } from "node:child_process";
-import { unlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { delay } from "es-toolkit";
 import { StreamingPlan, type StreamChunk } from "chat";
@@ -1142,6 +1142,41 @@ describe("buildServeRuntime steering", () => {
     // the inbox drained BOTH waiting messages as one folded turn, in order:
     // no reordering, and one metered spawn instead of two
     expect(sr.prompts).toEqual(["one", "two\n\nthree"]);
+  });
+
+  test("a throwing durable commit refuses the steer into the inbox: nothing lost, no false settle", async () => {
+    const threadId = "slack:C0DAEMON:5900.1";
+    const sr = steeringRelay();
+    const rt = runtimeWith(sr.relay);
+    const t = fakeThread({ id: threadId });
+    const first = rt.onMessage({ thread: t.thread, message: home("@UBOT begin", "U-OWNER", "5900.2"), skipped: [], isMention: true });
+    await waitFor(sr.started);
+    // break the durable save mid-turn: the commit's writeFileAtomic creates
+    // its temp file inside this dir, so a read-only dir makes it throw
+    chmodSync(paths.slackThreadsDir, 0o555);
+    let second: Promise<void>;
+    try {
+      second = rt.onMessage({ thread: t.thread, message: home("steer me", "U-OWNER", "5900.3"), skipped: [], isMention: false });
+      // the refusal path completes when the optimistic hourglass rolls back
+      await waitFor(() => rt.reactions.some((r) => r.messageId === "5900.3" && r.emoji === "hourglass_flowing_sand" && r.op === "remove"));
+    } finally {
+      chmodSync(paths.slackThreadsDir, 0o755);
+    }
+    // the throw never reached the live turn, and the all-or-nothing commit
+    // left the durable marker untouched
+    expect(sr.seen).toEqual([]);
+    const during = loadSlackThread(threadId);
+    expect(during?.activeTurn?.prompt).toBe("begin");
+    expect(during?.activeTurn?.steeredMessageIds).toBeUndefined();
+    sr.release();
+    await Promise.all([first, second]);
+    await flushTurns(rt);
+    // the message survived through the inbox as its own next turn
+    expect(sr.prompts).toEqual(["begin", "steer me"]);
+    // and only THAT turn settled it: the live turn's settle carried no trace
+    // of the failed steer (one check, from the fallback turn)
+    expect(rt.reactions.filter((r) => r.messageId === "5900.3" && r.emoji === "white_check_mark" && r.op === "add").length).toBe(1);
+    expect(loadSlackThread(threadId)?.activeTurn).toBeUndefined();
   });
 
   test("draining never steers: the loud-drop contract wins", async () => {

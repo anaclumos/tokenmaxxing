@@ -533,20 +533,42 @@ export function buildServeRuntime(seam: {
             const commit = () => {
               const mergedRequesters = uniq([...input.requesterIds, ...stripped.map((r) => r.authorId)]);
               const marker = record.activeTurn ?? input.marker;
-              steeredMessageIds = [...(marker.steeredMessageIds ?? []), ...stripped.map((r) => r.id)];
-              record = { ...record, activeTurn: { ...marker, prompt: `${marker.prompt}\n\n${text}`, requesterIds: mergedRequesters, steeredMessageIds } };
+              const grownIds = [...(marker.steeredMessageIds ?? []), ...stripped.map((r) => r.id)];
+              let next = { ...record, activeTurn: { ...marker, prompt: `${marker.prompt}\n\n${text}`, requesterIds: mergedRequesters, steeredMessageIds: grownIds } };
               // the user responded: a pending ask is answered by the steer
               // just like by a queued turn (adversarial-review catch:
               // leaving it would strand the question mark and fire a
               // spurious nudge about an ask this very message answered).
-              asked = record.attention;
-              if (asked) record = omit(record, ["attention"]);
-              saveSlackThread(record);
+              const pendingAsk = next.attention;
+              if (pendingAsk) next = omit(next, ["attention"]);
+              // all-or-nothing (cubic review catch, round 4): the durable
+              // save runs before ANY outer mutation, so a failed write
+              // leaves the turn's view untouched and the refusal fallback
+              // below starts from clean state - without this ordering the
+              // settle would stamp the never-delivered message with the
+              // turn's outcome emoji.
+              saveSlackThread(next);
+              steeredMessageIds = grownIds;
+              record = next;
+              asked = pendingAsk;
               for (const r of stripped) {
                 if (!input.requesterIds.includes(r.authorId)) input.requesterIds.push(r.authorId);
               }
             };
-            if (!steerText(text, commit)) {
+            // a throwing commit (the durable save failing) escapes steer()
+            // BEFORE the text reaches the child or the relay records it
+            // (cubic review catch, round 4): treat it as a refusal, so the
+            // message keeps its inbox fallback instead of vanishing into
+            // the generic task_crashed log with its hourglass stranded. If
+            // the disk stays broken, the inbox turn's own marker write
+            // surfaces it loudly through the crash-notice path.
+            let accepted = false;
+            try {
+              accepted = steerText(text, commit);
+            } catch (e) {
+              log("serve.steer_commit_failed", { thread: input.thread.id, err: (e instanceof Error ? e.message : String(e)).slice(0, 300) });
+            }
+            if (!accepted) {
               for (const r of stripped) {
                 await setStatus({ threadId: input.thread.id, messageId: r.id, emoji: STATUS_EMOJI.processing, op: "remove" });
               }

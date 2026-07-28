@@ -232,7 +232,7 @@ const relay = (input: {
   post: (m: AsyncIterable<unknown>) => Promise<unknown>;
   sessionId?: string | null;
   drainSignal?: AbortSignal;
-  onSteer?: (steer: ((text: string) => boolean) | null) => void;
+  onSteer?: (steer: ((text: string, onAccept?: () => void) => boolean) | null) => void;
 }) =>
   relayThread({
     cwd: "/tmp/relay-test-repo",
@@ -960,6 +960,40 @@ describe("relayThread steering", () => {
     expect(steers.length).toBe(4);
     expect(steers[1]).toBeNull();
     expect(steers[3]).toBeNull();
+  });
+
+  test("a throwing commit escapes before the push: nothing reaches the child and a later steer still works", async () => {
+    decisionQueue.push(usable);
+    let release = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    queryScripts.push(() =>
+      (async function* () {
+        yield init("s-commit-throw");
+        yield textStart();
+        yield textDelta("working");
+        await gate;
+        yield success("s-commit-throw");
+      })(),
+    );
+    const col = collector();
+    const steers: (((text: string, onAccept?: () => void) => boolean) | null)[] = [];
+    const turn = relay({ post: col.post, onSteer: (s) => steers.push(s) });
+    for (let i = 0; i < 400 && steers.length === 0; i++) await realEsToolkit.delay(5);
+    const steer = steers[0];
+    if (!steer) throw new Error("test: steer never registered");
+    expect(() =>
+      steer("lost text", () => {
+        throw new Error("disk full");
+      }),
+    ).toThrow("disk full");
+    // the failed acceptance recorded nothing: the very next steer lands
+    expect(steer("second try", () => {})).toBe(true);
+    release();
+    const out = await turn;
+    expect(out.failed).toBe(false);
+    expect(await promptTexts(queryCalls[0]?.prompt)).toEqual(["do the thing", "second try"]);
   });
 });
 
