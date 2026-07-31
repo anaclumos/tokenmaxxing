@@ -103,3 +103,12 @@ The live interactive-PTY SIGTERM test is still owed (`DESIGN.md` §9), but the o
 - A prior go-ahead does not cover collision evidence that arrives after it. Every new signal of concurrent work freezes git actions until the owner rules.
 - Never write a completion claim into docs or memory ahead of the output that proves it.
 - `status --force` opens a real 5h window on every account it pings. A feature request is not permission to spend.
+
+## Cursor Cloud specific instructions
+
+The cloud VM is a throwaway Linux clone, not the owner's Mac, so its git-safety and live-process cautions do not apply here; the machine-gotchas above still describe real runtime behavior.
+
+- Runtime is Bun, which is not on the base image. The startup update script installs it to `~/.bun/bin` (added to `~/.bashrc`). A fresh non-login shell may not have it on PATH: run `export PATH="$HOME/.bun/bin:$PATH"` or call `~/.bun/bin/bun` directly.
+- No Claude/Codex subscription logins exist here and none should be created, so the live swap loop, `init`, `add`, `auth`, `status`, and `serve` cannot run end to end. Exercise the real decision engine hermetically instead: `bun test` plus the standalone `bun test/e2e/swap-concurrency.ts` (see `## Testing`). On Linux the 4 macOS-keychain tests skip, which is expected.
+- For manual CLI pokes that must not touch real state, point `TOKENMAXXING_HOME` at a throwaway dir (e.g. `TOKENMAXXING_HOME=/tmp/xx bun run src/main.ts config`); it overrides the whole `~/.config/tokenmaxxing` state root. Commands that only read/write local state (`help`, `config get|set|unset`, `ls`, `doctor`) work with no accounts; `doctor` exits 1 on a fresh dir because nothing is installed, which is correct.
+- The docs site under `docs/` is a separate Next.js app with its own `bun.lock`; the root update script does not install it. Run `cd docs && bun install` then `bun run dev` (serves http://localhost:3000). First page load compiles via Turbopack and can take ~20s.
