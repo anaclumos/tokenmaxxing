@@ -23,6 +23,24 @@ bun add -g tokenmaxxing
 tokenmaxxing init
 ```
 
+Or with Nix (same source-run-by-Bun package; `init` still owns credentials, the `claude` shim, and settings merges):
+
+```sh
+nix run github:anaclumos/tokenmaxxing -- init
+# or: nix profile install github:anaclumos/tokenmaxxing
+```
+
+nix-darwin / Home Manager:
+
+```nix
+# flake inputs: tokenmaxxing.url = "github:anaclumos/tokenmaxxing";
+modules = [
+  inputs.tokenmaxxing.darwinModules.withOverlay
+  { programs.tokenmaxxing.enable = true; }
+];
+# then: tokenmaxxing init
+```
+
 `init` imports the account you're already on, installs the `claude` supervisor + four `settings.json` entries (the tokenmaxxing statusLine, a subagentStatusLine, a Stop hook, a SessionStart hook), and adds the supervisor's bin dir to PATH in your shell rc (idempotent; it must sit ahead of the real `claude` to intercept it). Restart your shell, then add more accounts and go:
 
 ```sh

@@ -1,12 +1,59 @@
 ---
 title: البناء والتوزيع
-description: "شيفرة TypeScript المصدرية على npm، يشغّلها Bun، منشورة مع إثبات المنشأ"
+description: "شيفرة TypeScript المصدرية على npm وNix، يشغّلها Bun، منشورة مع إثبات المنشأ"
 ---
 
 تشحن حزمة npm شيفرة TypeScript المصدرية، لا نسخة مبنيّة: إذ يشير ملف `tokenmaxxing` الثنائي مباشرةً إلى `src/main.ts` بترويسة Bun (shebang)، ويشغّله Bun 1.2.6 أو أحدث كما هو. ولهذا يكون Bun متطلّبًا صارمًا. ولا توجد ملفات ثنائية مُصرَّفة بحكم التصميم: فقد شحن إصدار مبكّر ملفًا ثنائيًا واحدًا لـ macOS بحجم 61 ميغابايت إلى كل منصّة وأخفق على Linux بخطأ `exec format error`، وكانت الحزم المُصرَّفة لكل منصّة ستحتاج كلٌّ منها إلى خطّ إصدار خاص بها، فأصبح التشغيل من المصدر عبر Bun نموذج التوزيع.
 
 تعرض خريطة `exports` الخاصة بالحزمة `src/sdk.ts` بوصفها نقطة الدخول البرمجية الموصوفة في [واجهة Agent SDK](/ar/sdk). وتُوسَم الإصدارات بـ `v<version>` على GitHub؛ وينشر التكامل المستمر (CI) إلى npm عبر النشر الموثوق (OIDC، مع إثبات المنشأ)، وتشغّل بوّابة النشر فحص الأنواع ومجموعة الاختبارات الكاملة أوّلًا.
 
+## Nix / nix-darwin
+
+شجرة المصدر نفسها هي أيضًا flake. تحافظ على نموذج تشغيل المصدر عبر Bun (عبر [bun2nix](https://github.com/nix-community/bun2nix) و`writeBunApplication`) وتعرض:
+
+| المخرج | الغرض |
+|---|---|
+| `packages.default` | `tokenmaxxing` + `xx` في PATH |
+| `darwinModules.default` / `withOverlay` | nix-darwin: تثبيت واجهة سطر الأوامر (مؤقّت فحص تصريحي اختياري) |
+| `homeManagerModules.default` | Home Manager على macOS أو Linux |
+| `nixosModules.default` / `withOverlay` | تثبيت نظام على NixOS |
+
+تشغيل لمرة واحدة دون التثبيت في ملف تعريف:
+
+```sh
+nix run github:anaclumos/tokenmaxxing -- help
+```
+
+nix-darwin (يضيف الـ overlay حتى يُحلّ `pkgs.tokenmaxxing`):
+
+```nix
+{
+  inputs.tokenmaxxing.url = "github:anaclumos/tokenmaxxing";
+  # ...
+  modules = [
+    inputs.tokenmaxxing.darwinModules.withOverlay
+    { programs.tokenmaxxing.enable = true; }
+  ];
+}
+```
+
+أو عيّن الحزمة صراحةً (يعمل مع Home Manager أيضًا):
+
+```nix
+{
+  imports = [ inputs.tokenmaxxing.homeManagerModules.default ];
+  programs.tokenmaxxing.enable = true;
+  programs.tokenmaxxing.package = inputs.tokenmaxxing.packages.${pkgs.system}.default;
+}
+```
+
+يضع Nix واجهة سطر الأوامر في PATH فحسب. استيراد الحسابات، وshim المشرف `claude` على PATH، وhooks في `settings.json`، ومؤقّت الفحص الدوري (افتراضيًا) ما زالت تأتي من `tokenmaxxing init` — فهي تمسّ بيانات الاعتماد وإعدادات يملكها المستخدم، ولا ينبغي لوحدة نقية أن تعيد كتابتها. اضبط `programs.tokenmaxxing.checkTimer.enable = true` فقط عندما تريد أن يملك Nix المؤقّت بدل init.
+
+عند تغيّر `bun.lock`، أعد توليد تعبير اعتماديات Nix:
+
+```sh
+bun run nix:bun   # writes bun.nix via bun2nix
+```
 ## الرخصة
 
 MIT. الشيفرة المصدرية على [anaclumos/tokenmaxxing](https://github.com/anaclumos/tokenmaxxing).

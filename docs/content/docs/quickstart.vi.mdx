@@ -3,10 +3,12 @@ title: Bắt đầu nhanh
 description: "Cài đặt tokenmaxxing, nhập tài khoản hiện tại của bạn, và gộp thêm nhiều tài khoản"
 ---
 
-Yêu cầu [Bun](https://bun.sh) và Claude Code, trên macOS hoặc Linux.
+Yêu cầu [Bun](https://bun.sh) và Claude Code, trên macOS hoặc Linux. Cài bằng Bun, hoặc từ flake nếu bạn đã dùng Nix / nix-darwin (xem [Xây dựng và phân phối](/vi/distribution)):
 
 ```sh
 bun add -g tokenmaxxing
+# or: nix profile install github:anaclumos/tokenmaxxing
+# or: enable programs.tokenmaxxing in your nix-darwin / Home Manager config
 tokenmaxxing init
 ```
 

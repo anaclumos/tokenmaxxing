@@ -3,10 +3,12 @@ title: ፈጣን ጅምር
 description: "tokenmaxxing ን ይጫኑ፣ አሁን ያለውን መለያዎን ያስገቡ፣ እና ተጨማሪ ያሰባስቡ"
 ---
 
-[Bun](https://bun.sh) እና Claude Code ን ይፈልጋል፣ በ macOS ወይም Linux ላይ።
+[Bun](https://bun.sh) እና Claude Code ን ይፈልጋል፣ በ macOS ወይም Linux ላይ። በ Bun ይጫኑ፣ ወይም አስቀድመው Nix / nix-darwin የሚጠቀሙ ከሆነ ከ flake ይጫኑ ([Build እና ስርጭት](/am/distribution) ይመልከቱ)፦
 
 ```sh
 bun add -g tokenmaxxing
+# or: nix profile install github:anaclumos/tokenmaxxing
+# or: enable programs.tokenmaxxing in your nix-darwin / Home Manager config
 tokenmaxxing init
 ```
 

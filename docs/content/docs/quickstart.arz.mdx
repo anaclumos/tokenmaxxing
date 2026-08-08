@@ -3,10 +3,12 @@ title: البداية السريعة
 description: "ثبّت tokenmaxxing، استورد حسابك الحالي، وضمّ حسابات أكتر"
 ---
 
-بيحتاج [Bun](https://bun.sh) و Claude Code، على macOS أو Linux.
+بيحتاج [Bun](https://bun.sh) و Claude Code، على macOS أو Linux. ثبّت بـ Bun، أو من الـ flake لو أصلاً بتستخدم Nix / nix-darwin (بص [البناء والتوزيع](/arz/distribution)):
 
 ```sh
 bun add -g tokenmaxxing
+# or: nix profile install github:anaclumos/tokenmaxxing
+# or: enable programs.tokenmaxxing in your nix-darwin / Home Manager config
 tokenmaxxing init
 ```
 

@@ -37,6 +37,20 @@ jobs:
           bun add -g "$PWD"/tokenmaxxing-*.tgz
           tokenmaxxing help
 
+  nix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: DeterminateSystems/nix-installer-action@v22
+      - uses: DeterminateSystems/magic-nix-cache-action@v14
+      - name: Build flake package
+        run: nix build --accept-flake-config .#tokenmaxxing -L
+      - name: Smoke-test the store binary
+        run: |
+          ./result/bin/tokenmaxxing help
+          ./result/bin/xx help >/dev/null
+          TOKENMAXXING_HOME="$RUNNER_TEMP/tm-nix" ./result/bin/tokenmaxxing config get thresholds.session
+
   publish:
     if: github.event_name == 'release'
     needs: test

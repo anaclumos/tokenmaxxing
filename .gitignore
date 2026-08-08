@@ -5,3 +5,5 @@ dist/
 scratch/
 .env
 bun.lockb
+result
+result-*

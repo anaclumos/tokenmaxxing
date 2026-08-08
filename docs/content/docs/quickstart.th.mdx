@@ -3,10 +3,12 @@ title: เริ่มต้นอย่างรวดเร็ว
 description: "ติดตั้ง tokenmaxxing นำเข้าบัญชีปัจจุบันของคุณ และรวมบัญชีเพิ่มเข้าพูล"
 ---
 
-ต้องใช้ [Bun](https://bun.sh) และ Claude Code บน macOS หรือ Linux
+ต้องใช้ [Bun](https://bun.sh) และ Claude Code บน macOS หรือ Linux. ติดตั้งด้วย Bun หรือจาก flake ถ้าคุณใช้ Nix / nix-darwin อยู่แล้ว (ดู [การ build และการเผยแพร่](/th/distribution)):
 
 ```sh
 bun add -g tokenmaxxing
+# or: nix profile install github:anaclumos/tokenmaxxing
+# or: enable programs.tokenmaxxing in your nix-darwin / Home Manager config
 tokenmaxxing init
 ```
 

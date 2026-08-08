@@ -3,10 +3,12 @@ title: 快速開始
 description: "安裝 tokenmaxxing、匯入你而家用緊嘅帳戶，再集合多啲帳戶"
 ---
 
-需要 [Bun](https://bun.sh) 同 Claude Code，喺 macOS 或者 Linux 上面。
+需要 [Bun](https://bun.sh) 同 Claude Code，喺 macOS 或者 Linux 上面。用 Bun 裝，或者如果你已經用緊 Nix / nix-darwin，就由 flake 裝（睇[建置同分發](/yue/distribution)）：
 
 ```sh
 bun add -g tokenmaxxing
+# or: nix profile install github:anaclumos/tokenmaxxing
+# or: enable programs.tokenmaxxing in your nix-darwin / Home Manager config
 tokenmaxxing init
 ```
 

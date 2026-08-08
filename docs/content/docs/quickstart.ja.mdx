@@ -3,10 +3,12 @@ title: クイックスタート
 description: "tokenmaxxing をインストールし、現在のアカウントをインポートして、さらにプールする"
 ---
 
-macOS または Linux 上で [Bun](https://bun.sh) と Claude Code が必要です。
+macOS または Linux 上で [Bun](https://bun.sh) と Claude Code が必要です。Bun で入れるか、すでに Nix / nix-darwin を使っているなら flake から入れられます ([ビルドと配布](/ja/distribution) を参照):
 
 ```sh
 bun add -g tokenmaxxing
+# or: nix profile install github:anaclumos/tokenmaxxing
+# or: enable programs.tokenmaxxing in your nix-darwin / Home Manager config
 tokenmaxxing init
 ```
 

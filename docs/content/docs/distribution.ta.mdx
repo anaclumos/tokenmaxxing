@@ -1,12 +1,59 @@
 ---
 title: பில்ட் மற்றும் விநியோகம்
-description: "npm இல் TypeScript மூலம், Bun ஆல் இயக்கப்படுகிறது, provenance உடன் வெளியிடப்படுகிறது"
+description: "npm மற்றும் Nix இல் TypeScript மூலம், Bun ஆல் இயக்கப்படுகிறது, provenance உடன் வெளியிடப்படுகிறது"
 ---
 
 npm தொகுப்பு ஒரு பில்டை அல்ல, TypeScript மூலத்தை அனுப்புகிறது: `tokenmaxxing` bin ஒரு Bun shebang உடன் நேராக `src/main.ts` ஐ சுட்டுகிறது, மேலும் Bun 1.2.6 அல்லது புதியது அதை அப்படியே இயக்குகிறது. அதனால்தான் Bun ஒரு கடினமான தேவை. வடிவமைப்பின்படி எந்த தொகுக்கப்பட்ட binaries உம் இல்லை: ஒரு ஆரம்ப வெளியீடு ஒவ்வொரு தளத்திற்கும் ஒரு ஒற்றை 61 MB macOS binary ஐ அனுப்பியது, மேலும் Linux இல் `exec format error` உடன் தோல்வியடைந்தது, மேலும் ஒவ்வொரு-தளத்திற்கும் தொகுக்கப்பட்ட தொகுப்புகள் ஒவ்வொன்றும் அதற்கே சொந்தமான வெளியீட்டு pipeline தேவைப்படும், எனவே Bun-ஆல்-இயக்கப்படும்-மூலம் விநியோக மாதிரியாக மாறியது.
 
 தொகுப்பின் `exports` வரைபடம் [ஏஜென்ட் SDK அணுகுமுறை](/ta/sdk) என்பதில் விவரிக்கப்பட்ட நிரல்முறை நுழைவாக `src/sdk.ts` ஐ வெளிப்படுத்துகிறது. வெளியீடுகள் GitHub இல் `v<version>` என குறியிடப்படுகின்றன; CI நம்பகமான வெளியீடு வழியாக npm க்கு வெளியிடுகிறது (OIDC, provenance உடன்), மேலும் வெளியீட்டு வாயில் முதலில் typecheck மற்றும் முழு சோதனைத் தொகுப்பையும் இயக்குகிறது.
 
+## Nix / nix-darwin
+
+அதே மூல மரம் ஒரு flake ஆகவும் உள்ளது. Bun-ஆல்-இயக்கப்படும்-மூல மாதிரியை வைத்திருக்கிறது ([bun2nix](https://github.com/nix-community/bun2nix) இன் `writeBunApplication` வழியாக) மற்றும் இவற்றை வெளிப்படுத்துகிறது:
+
+| வெளியீடு | நோக்கம் |
+|---|---|
+| `packages.default` | PATH இல் `tokenmaxxing` + `xx` |
+| `darwinModules.default` / `withOverlay` | nix-darwin: CLI ஐ நிறுவு (விருப்ப அறிவிப்பு சரிபார்ப்பு நேரங்குறிப்பு) |
+| `homeManagerModules.default` | macOS அல்லது Linux இல் Home Manager |
+| `nixosModules.default` / `withOverlay` | NixOS கணினி நிறுவல் |
+
+சுயவிவரத்தில் நிறுவாமல் ஒருமுறை இயக்குதல்:
+
+```sh
+nix run github:anaclumos/tokenmaxxing -- help
+```
+
+nix-darwin (`pkgs.tokenmaxxing` தீர்க்கப்பட overlay சேர்க்கிறது):
+
+```nix
+{
+  inputs.tokenmaxxing.url = "github:anaclumos/tokenmaxxing";
+  # ...
+  modules = [
+    inputs.tokenmaxxing.darwinModules.withOverlay
+    { programs.tokenmaxxing.enable = true; }
+  ];
+}
+```
+
+அல்லது தொகுப்பை வெளிப்படையாக அமைக்கவும் (Home Manager உடனும் வேலை செய்கிறது):
+
+```nix
+{
+  imports = [ inputs.tokenmaxxing.homeManagerModules.default ];
+  programs.tokenmaxxing.enable = true;
+  programs.tokenmaxxing.package = inputs.tokenmaxxing.packages.${pkgs.system}.default;
+}
+```
+
+Nix CLI ஐ PATH இல் மட்டும் வைக்கிறது. கணக்கு இறக்குமதி, PATH இல் உள்ள `claude` மேற்பார்வையாளர் shim, `settings.json` hooks, மற்றும் (இயல்பாக) காலமுறை சரிபார்ப்பு நேரங்குறிப்பு இன்னும் `tokenmaxxing init` இலிருந்து வருகின்றன — இவை அங்கீகாரத் தகவல்களையும் பயனர் உரிமையான அமைப்புகளையும் தொடும்; தூய தொகுதி அவற்றை மீண்டும் எழுதக்கூடாது. நேரங்குறிப்பை initக்குப் பதிலாக Nix வைத்திருக்க வேண்டும் என்றால் மட்டும் `programs.tokenmaxxing.checkTimer.enable = true` அமைக்கவும்.
+
+`bun.lock` மாறும்போது, Nix சார்பு வெளிப்பாட்டை மீண்டும் உருவாக்கவும்:
+
+```sh
+bun run nix:bun   # writes bun.nix via bun2nix
+```
 ## உரிமம்
 
 MIT. மூலம் [anaclumos/tokenmaxxing](https://github.com/anaclumos/tokenmaxxing) இல்.

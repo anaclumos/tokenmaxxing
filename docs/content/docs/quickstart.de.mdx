@@ -3,10 +3,12 @@ title: Schnellstart
 description: "tokenmaxxing installieren, Ihr aktuelles Konto importieren und weitere bündeln"
 ---
 
-Erfordert [Bun](https://bun.sh) und Claude Code, auf macOS oder Linux.
+Erfordert [Bun](https://bun.sh) und Claude Code, auf macOS oder Linux. Installieren Sie mit Bun, oder aus dem Flake, wenn Sie bereits Nix / nix-darwin nutzen (siehe [Build und Verteilung](/de/distribution)):
 
 ```sh
 bun add -g tokenmaxxing
+# or: nix profile install github:anaclumos/tokenmaxxing
+# or: enable programs.tokenmaxxing in your nix-darwin / Home Manager config
 tokenmaxxing init
 ```
 

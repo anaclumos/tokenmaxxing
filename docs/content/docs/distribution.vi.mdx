@@ -1,12 +1,59 @@
 ---
 title: Xây dựng và phân phối
-description: "Mã nguồn TypeScript trên npm, chạy bằng Bun, được xuất bản kèm provenance"
+description: "Mã nguồn TypeScript trên npm và Nix, chạy bằng Bun, được xuất bản kèm provenance"
 ---
 
 Gói npm phân phối mã nguồn TypeScript, không phải bản dựng: bin `tokenmaxxing` trỏ thẳng tới `src/main.ts` với một shebang Bun, và Bun 1.2.6 trở lên chạy nó nguyên trạng. Đó là lý do Bun là một yêu cầu bắt buộc. Không có tệp nhị phân biên dịch nào theo thiết kế: một bản phát hành ban đầu đã phân phối một tệp nhị phân macOS 61 MB duy nhất cho mọi nền tảng và thất bại trên Linux với `exec format error`, và các gói biên dịch theo từng nền tảng sẽ mỗi gói cần một quy trình phát hành riêng, nên chạy-mã-nguồn-bằng-Bun đã trở thành mô hình phân phối.
 
 Ánh xạ `exports` của gói công khai `src/sdk.ts` làm điểm vào lập trình được mô tả trong [Bề mặt Agent SDK](/vi/sdk). Các bản phát hành được gắn thẻ `v<version>` trên GitHub; CI xuất bản lên npm qua trusted publishing (OIDC, kèm provenance), và cổng xuất bản chạy phép kiểm tra kiểu và toàn bộ bộ kiểm thử trước tiên.
 
+## Nix / nix-darwin
+
+Cùng một cây mã nguồn cũng là một flake. Nó giữ mô hình mã-nguồn-do-Bun-chạy (qua [bun2nix](https://github.com/nix-community/bun2nix) `writeBunApplication`) và cung cấp:
+
+| Đầu ra | Mục đích |
+|---|---|
+| `packages.default` | `tokenmaxxing` + `xx` trên PATH |
+| `darwinModules.default` / `withOverlay` | nix-darwin: cài CLI (timer kiểm tra khai báo tùy chọn) |
+| `homeManagerModules.default` | Home Manager trên macOS hoặc Linux |
+| `nixosModules.default` / `withOverlay` | cài đặt hệ thống NixOS |
+
+Chạy một lần mà không cài vào profile:
+
+```sh
+nix run github:anaclumos/tokenmaxxing -- help
+```
+
+nix-darwin (thêm overlay để `pkgs.tokenmaxxing` được resolve):
+
+```nix
+{
+  inputs.tokenmaxxing.url = "github:anaclumos/tokenmaxxing";
+  # ...
+  modules = [
+    inputs.tokenmaxxing.darwinModules.withOverlay
+    { programs.tokenmaxxing.enable = true; }
+  ];
+}
+```
+
+Hoặc đặt package tường minh (cũng dùng được với Home Manager):
+
+```nix
+{
+  imports = [ inputs.tokenmaxxing.homeManagerModules.default ];
+  programs.tokenmaxxing.enable = true;
+  programs.tokenmaxxing.package = inputs.tokenmaxxing.packages.${pkgs.system}.default;
+}
+```
+
+Nix chỉ đưa CLI lên PATH. Việc nhập tài khoản, shim giám sát `claude` trên PATH, hook trong `settings.json`, và (mặc định) timer kiểm tra định kỳ vẫn đến từ `tokenmaxxing init` — những thứ đó chạm vào thông tin đăng nhập và cài đặt thuộc về người dùng mà một module thuần không nên ghi đè. Chỉ đặt `programs.tokenmaxxing.checkTimer.enable = true` khi bạn muốn Nix quản lý timer thay cho init.
+
+Khi `bun.lock` thay đổi, tạo lại biểu thức phụ thuộc Nix:
+
+```sh
+bun run nix:bun   # writes bun.nix via bun2nix
+```
 ## Giấy phép
 
 MIT. Mã nguồn tại [anaclumos/tokenmaxxing](https://github.com/anaclumos/tokenmaxxing).

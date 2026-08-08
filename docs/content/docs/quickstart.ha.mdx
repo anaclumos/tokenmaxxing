@@ -3,10 +3,12 @@ title: Farawa da sauri
 description: "Shigar da tokenmaxxing, shigo da asusun ka na yanzu, kuma ka haɗa ƙari"
 ---
 
-Yana buƙatar [Bun](https://bun.sh) da Claude Code, a kan macOS ko Linux.
+Yana buƙatar [Bun](https://bun.sh) da Claude Code, a kan macOS ko Linux. Shigar da Bun, ko daga flake idan kun riga kuna amfani da Nix / nix-darwin (duba [Ginawa da rarrabawa](/ha/distribution)):
 
 ```sh
 bun add -g tokenmaxxing
+# or: nix profile install github:anaclumos/tokenmaxxing
+# or: enable programs.tokenmaxxing in your nix-darwin / Home Manager config
 tokenmaxxing init
 ```
 

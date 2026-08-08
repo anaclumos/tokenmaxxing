@@ -3,10 +3,12 @@ title: త్వరిత ప్రారంభం
 description: "tokenmaxxingను ఇన్‌స్టాల్ చేయండి, మీ ప్రస్తుత ఖాతాను దిగుమతి చేయండి, మరిన్నింటిని పూల్ చేయండి"
 ---
 
-macOS లేదా Linux పై [Bun](https://bun.sh) మరియు Claude Code అవసరం.
+macOS లేదా Linux పై [Bun](https://bun.sh) మరియు Claude Code అవసరం. Bunతో ఇన్‌స్టాల్ చేయండి, లేదా మీరు ఇప్పటికే Nix / nix-darwin ఉపయోగిస్తుంటే flake నుండి ([బిల్డ్ మరియు పంపిణీ](/te/distribution) చూడండి):
 
 ```sh
 bun add -g tokenmaxxing
+# or: nix profile install github:anaclumos/tokenmaxxing
+# or: enable programs.tokenmaxxing in your nix-darwin / Home Manager config
 tokenmaxxing init
 ```
 

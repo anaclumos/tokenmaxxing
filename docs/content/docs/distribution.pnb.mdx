@@ -1,12 +1,59 @@
 ---
 title: بلڈ تے ونڈ
-description: "npm تے TypeScript سورس، Bun ولوں چلایا، provenance نال شائع کیتا"
+description: "npm تے Nix تے TypeScript سورس، Bun ولوں چلایا، provenance نال شائع کیتا"
 ---
 
 npm پیکج TypeScript سورس بھیجدا اے، کوئی بلڈ نئیں: `tokenmaxxing` bin اک Bun shebang نال سِدھا `src/main.ts` ول اشارہ کردا اے، تے Bun 1.2.6 یا اوہدے توں نواں اوہنوں جیویں دا تیویں چلاندا اے۔ ایسے لئی Bun اک سخت لوڑ اے۔ ڈزائن ولوں کوئی کمپائل کیتیاں بائنریاں نئیں: اک پہلاں والی ریلیز نے ہر پلیٹ فارم نوں اک اکلی 61 MB دی macOS بائنری بھیجی سی تے اوہ Linux تے `exec format error` نال ناکام ہو گئی، تے فی پلیٹ فارم کمپائل کیتے پیکجاں نوں ہر اک نوں اپنی ریلیز پائپ لائن دی لوڑ ہندی، سو سورس نوں Bun ولوں چلانا ای ونڈ دا ماڈل بن گیا۔
 
 پیکج دا `exports` نقشہ `src/sdk.ts` نوں [ایجنٹ SDK سطح](/pnb/sdk) وچ دسے پروگرامی داخلے وانگوں سامنے لیاندا اے۔ ریلیزاں GitHub تے `v<version>` نال ٹیگ کیتیاں جاندیاں نیں؛ CI trusted publishing (OIDC، provenance نال) راہیں npm تے شائع کردا اے، تے شائع کرن والا گیٹ پہلاں typecheck تے پورا ٹیسٹ سویٹ چلاندا اے۔
 
+## Nix / nix-darwin
+
+اوہی سورس ٹری اک flake وی اے۔ ایہ Bun ولوں سورس چلان دا ماڈل رکھدا اے ([bun2nix](https://github.com/nix-community/bun2nix) دے `writeBunApplication` راہیں) تے ایہ سامنے لیاندا اے:
+
+| آؤٹ پٹ | مقصد |
+|---|---|
+| `packages.default` | PATH تے `tokenmaxxing` + `xx` |
+| `darwinModules.default` / `withOverlay` | nix-darwin: CLI انسٹال کرو (اختیاری اعلانی چیک ٹائمر) |
+| `homeManagerModules.default` | macOS یا Linux تے Home Manager |
+| `nixosModules.default` / `withOverlay` | NixOS سسٹم انسٹال |
+
+پروفائل وچ انسٹال کیتے بغیر اک وار چلاؤ:
+
+```sh
+nix run github:anaclumos/tokenmaxxing -- help
+```
+
+nix-darwin (overlay جوڑدا اے تاکہ `pkgs.tokenmaxxing` resolve ہووے):
+
+```nix
+{
+  inputs.tokenmaxxing.url = "github:anaclumos/tokenmaxxing";
+  # ...
+  modules = [
+    inputs.tokenmaxxing.darwinModules.withOverlay
+    { programs.tokenmaxxing.enable = true; }
+  ];
+}
+```
+
+یا پیکج صاف صاف سیٹ کرو (Home Manager نال وی کم کردا اے):
+
+```nix
+{
+  imports = [ inputs.tokenmaxxing.homeManagerModules.default ];
+  programs.tokenmaxxing.enable = true;
+  programs.tokenmaxxing.package = inputs.tokenmaxxing.packages.${pkgs.system}.default;
+}
+```
+
+Nix صرف CLI نوں PATH تے رکھدا اے۔ اکاؤنٹ درآمد، PATH تے `claude` سپروائزر shim، `settings.json` ہکس، تے (ڈیفالٹ طور تے) وقفے وقفے نال چیک ٹائمر ہجے وی `tokenmaxxing init` توں آندے نیں — ایہ اسناد تے یوزر دیاں سیٹنگز نوں چھوندے نیں جیہناں نوں خالص ماڈیول نوں دوبارہ نہیں لکھنا چاہیدا۔ `programs.tokenmaxxing.checkTimer.enable = true` صرف اودوں سیٹ کرو جدوں تسیں چاہو کہ ٹائمر init دی بجائے Nix دے کول ہووے۔
+
+`bun.lock` بدلن تے Nix انحصار اظہار دوبارہ بناؤ:
+
+```sh
+bun run nix:bun   # writes bun.nix via bun2nix
+```
 ## لائسنس
 
 MIT۔ سورس [anaclumos/tokenmaxxing](https://github.com/anaclumos/tokenmaxxing) تے۔

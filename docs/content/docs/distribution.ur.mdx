@@ -1,12 +1,59 @@
 ---
 title: بلڈ اور تقسیم
-description: "npm پر TypeScript سورس، Bun کے ذریعے چلایا گیا، provenance کے ساتھ شائع"
+description: "npm اور Nix پر TypeScript سورس، Bun کے ذریعے چلایا گیا، provenance کے ساتھ شائع"
 ---
 
 npm پیکج TypeScript سورس بھیجتا ہے، کوئی بلڈ نہیں: `tokenmaxxing` bin ایک Bun shebang کے ساتھ سیدھا `src/main.ts` کی طرف اشارہ کرتا ہے، اور Bun 1.2.6 یا اس سے نیا اسے ویسے کا ویسا چلاتا ہے۔ یہی وجہ ہے کہ Bun ایک سخت شرط ہے۔ ڈیزائن کے اعتبار سے کوئی کمپائل شدہ بائنریز نہیں ہیں: ایک ابتدائی ریلیز نے ہر پلیٹ فارم پر ایک واحد 61 MB macOS بائنری بھیجی اور Linux پر `exec format error` کے ساتھ ناکام ہو گئی، اور فی پلیٹ فارم کمپائل شدہ پیکجز میں سے ہر ایک کو اپنی خود کی ریلیز پائپ لائن درکار ہوتی، لہٰذا Bun کے ذریعے سورس چلانا تقسیم کا ماڈل بن گیا۔
 
 پیکج کا `exports` نقشہ `src/sdk.ts` کو [ایجنٹ SDK سطح](/ur/sdk) میں بیان کردہ پروگرامی انٹری کے طور پر ظاہر کرتا ہے۔ ریلیزز GitHub پر `v<version>` ٹیگ کی جاتی ہیں؛ CI trusted publishing (OIDC، provenance کے ساتھ) کے ذریعے npm پر شائع کرتا ہے، اور شائع کرنے کا گیٹ پہلے typecheck اور مکمل ٹیسٹ سویٹ چلاتا ہے۔
 
+## Nix / nix-darwin
+
+وہی سورس ٹری ایک flake بھی ہے۔ یہ Bun کے ذریعے سورس چلانے کا ماڈل رکھتا ہے ([bun2nix](https://github.com/nix-community/bun2nix) کے `writeBunApplication` کے ذریعے) اور یہ ظاہر کرتا ہے:
+
+| آؤٹ پٹ | مقصد |
+|---|---|
+| `packages.default` | PATH پر `tokenmaxxing` + `xx` |
+| `darwinModules.default` / `withOverlay` | nix-darwin: CLI انسٹال کریں (اختیاری اعلانی چیک ٹائمر) |
+| `homeManagerModules.default` | macOS یا Linux پر Home Manager |
+| `nixosModules.default` / `withOverlay` | NixOS سسٹم انسٹال |
+
+پروفائل میں انسٹال کیے بغیر ایک بار چلانا:
+
+```sh
+nix run github:anaclumos/tokenmaxxing -- help
+```
+
+nix-darwin (overlay جوڑتا ہے تاکہ `pkgs.tokenmaxxing` resolve ہو):
+
+```nix
+{
+  inputs.tokenmaxxing.url = "github:anaclumos/tokenmaxxing";
+  # ...
+  modules = [
+    inputs.tokenmaxxing.darwinModules.withOverlay
+    { programs.tokenmaxxing.enable = true; }
+  ];
+}
+```
+
+یا پیکیج واضح طور پر سیٹ کریں (Home Manager کے ساتھ بھی کام کرتا ہے):
+
+```nix
+{
+  imports = [ inputs.tokenmaxxing.homeManagerModules.default ];
+  programs.tokenmaxxing.enable = true;
+  programs.tokenmaxxing.package = inputs.tokenmaxxing.packages.${pkgs.system}.default;
+}
+```
+
+Nix صرف CLI کو PATH پر رکھتا ہے۔ اکاؤنٹ درآمد، PATH پر `claude` سپروائزر shim، `settings.json` ہکس، اور (ڈیفالٹ طور پر) وقفہ وقفے سے چیک ٹائمر اب بھی `tokenmaxxing init` سے آتے ہیں — یہ اسناد اور صارف کی اپنی سیٹنگز کو چھوتے ہیں جنہیں خالص ماڈیول کو دوبارہ نہیں لکھنا چاہیے۔ `programs.tokenmaxxing.checkTimer.enable = true` صرف تب سیٹ کریں جب آپ چاہیں کہ ٹائمر init کے بجائے Nix کے پاس ہو۔
+
+`bun.lock` بدلنے پر Nix انحصار اظہار دوبارہ بنائیں:
+
+```sh
+bun run nix:bun   # writes bun.nix via bun2nix
+```
 ## لائسنس
 
 MIT۔ سورس [anaclumos/tokenmaxxing](https://github.com/anaclumos/tokenmaxxing) پر۔

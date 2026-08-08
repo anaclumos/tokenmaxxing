@@ -3,10 +3,12 @@ title: Быстрый старт
 description: "Установите tokenmaxxing, импортируйте текущий аккаунт и добавьте ещё"
 ---
 
-Требуется [Bun](https://bun.sh) и Claude Code, на macOS или Linux.
+Требуется [Bun](https://bun.sh) и Claude Code, на macOS или Linux. Установите через Bun или из flake, если вы уже используете Nix / nix-darwin (см. [Сборка и распространение](/ru/distribution)):
 
 ```sh
 bun add -g tokenmaxxing
+# or: nix profile install github:anaclumos/tokenmaxxing
+# or: enable programs.tokenmaxxing in your nix-darwin / Home Manager config
 tokenmaxxing init
 ```
 

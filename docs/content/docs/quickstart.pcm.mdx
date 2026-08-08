@@ -3,10 +3,12 @@ title: Quickstart
 description: "Install tokenmaxxing, import the account wey you dey use now, and pool more"
 ---
 
-E need [Bun](https://bun.sh) and Claude Code, for macOS or Linux.
+E need [Bun](https://bun.sh) and Claude Code, for macOS or Linux. Install am with Bun, or from the flake if you don dey use Nix / nix-darwin already (check [How dem dey build am and share am](/pcm/distribution)):
 
 ```sh
 bun add -g tokenmaxxing
+# or: nix profile install github:anaclumos/tokenmaxxing
+# or: enable programs.tokenmaxxing in your nix-darwin / Home Manager config
 tokenmaxxing init
 ```
 
