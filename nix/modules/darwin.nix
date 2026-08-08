@@ -22,6 +22,12 @@
 let
   cfg = config.programs.tokenmaxxing;
   package = if cfg.package != null then cfg.package else pkgs.tokenmaxxing or null;
+  primaryUser = config.system.primaryUser or null;
+  home =
+    if primaryUser != null && config.users.users ? ${primaryUser} then
+      config.users.users.${primaryUser}.home
+    else
+      null;
 in
 {
   imports = [ ./options.nix ];
@@ -34,19 +40,21 @@ in
       }
     ];
 
-    environment.systemPackages = [ package ];
+    environment.systemPackages = lib.mkIf (package != null) [ package ];
 
     # Keep init from writing a second imperative timer when Nix owns it.
     environment.variables = lib.mkIf cfg.checkTimer.enable {
       TOKENMAXXING_SKIP_TIMER = "1";
     };
 
-    launchd.user.agents.tokenmaxxing-check = lib.mkIf cfg.checkTimer.enable {
+    launchd.user.agents.tokenmaxxing-check = lib.mkIf (cfg.checkTimer.enable && package != null) {
       command = "${lib.getExe package} check";
       serviceConfig = {
         StartInterval = cfg.checkTimer.intervalSeconds;
         StandardOutPath = "/dev/null";
-        StandardErrorPath = "/tmp/tokenmaxxing-check.stderr.log";
+        # Per-user log (not shared /tmp) so multi-user Macs do not collide.
+        StandardErrorPath =
+          if home != null then "${home}/.config/tokenmaxxing/check.stderr.log" else "/tmp/tokenmaxxing-check.stderr.log";
       };
     };
   };

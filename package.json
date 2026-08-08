@@ -34,7 +34,7 @@
     "test": "bun test",
     "typecheck": "tsc --noEmit",
     "prepublishOnly": "bun run typecheck && bun run test",
-    "nix:bun": "bunx bun2nix -o bun.nix"
+    "nix:bun": "bunx bun2nix@2.1.2 -o bun.nix"
   },
   "devDependencies": {
     "@types/bun": "1.3.14",

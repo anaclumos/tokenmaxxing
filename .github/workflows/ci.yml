@@ -39,6 +39,7 @@ jobs:
 
   nix:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
       - uses: DeterminateSystems/nix-installer-action@v22
@@ -49,7 +50,9 @@ jobs:
         run: |
           ./result/bin/tokenmaxxing help
           ./result/bin/xx help >/dev/null
-          TOKENMAXXING_HOME="$RUNNER_TEMP/tm-nix" ./result/bin/tokenmaxxing config get thresholds.session
+          TOKENMAXXING_HOME="$RUNNER_TEMP/tm-nix" ./result/bin/tokenmaxxing config set thresholds.session 90
+          TOKENMAXXING_HOME="$RUNNER_TEMP/tm-nix" ./result/bin/tokenmaxxing config get thresholds.session | grep -qx 90
+          TOKENMAXXING_HOME="$RUNNER_TEMP/tm-nix" ./result/bin/tokenmaxxing config unset thresholds.session
 
   publish:
     if: github.event_name == 'release'

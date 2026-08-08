@@ -54,10 +54,12 @@ export function skipImperativeTimer(): boolean {
   return EnvFlagSchema.parse(process.env.TOKENMAXXING_SKIP_TIMER) != null;
 }
 
-/** PATH-indirect shim for Nix installs: re-resolve `tokenmaxxing` from PATH
- *  excluding this binDir so a profile upgrade / GC of the old store generation
- *  does not leave hooks and the claude wrapper pointing at a vanished path. */
-function nixPathShim(args: string): string {
+/** Nix supervisor shim: prefer a PATH-stable `tokenmaxxing` (profile /
+ *  current-system, excluding this binDir) so upgrades/GC of an old store
+ *  generation stay reachable; fall back to bun+entry for the rare
+ *  `nix run ... -- init` case where nothing is on PATH yet (works until that
+ *  generation is GC'd — docs steer users to `nix profile install` first). */
+function nixSupervisorShim(bun: string, entry: string): string {
   return `#!/bin/sh
 dir=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
 old_ifs=$IFS
@@ -70,22 +72,24 @@ done
 IFS=$old_ifs
 PATH=$new_path
 export PATH
-exec tokenmaxxing${args}
+if command -v tokenmaxxing >/dev/null 2>&1; then
+  exec tokenmaxxing "$@"
+fi
+exec ${JSON.stringify(bun)} run ${JSON.stringify(entry)} "$@"
 `;
 }
 
 export function installSupervisor(): InstallOutcome {
   mkdirSync(paths.binDir, { recursive: true });
   const target = installedBin(); // binDir/tokenmaxxing
+  // Resolve the entry through the global-bin symlink (bun add -g links
+  // ~/.bun/bin/tokenmaxxing → the package's src/main.ts) so the shim points
+  // into the installed package tree, where its imports resolve. Nix shims
+  // prefer PATH first (see nixSupervisorShim).
+  const entry = realpathSync(Bun.main);
   if (isNixPackaged()) {
-    // Do not hardcode /nix/store/.../src/main.ts: that path dies with the
-    // generation. Look tokenmaxxing up on PATH (profile / current-system).
-    writeFileAtomic(target, nixPathShim(' "$@"'), 0o755);
+    writeFileAtomic(target, nixSupervisorShim(process.execPath, entry), 0o755);
   } else {
-    // Resolve the entry through the global-bin symlink (bun add -g links
-    // ~/.bun/bin/tokenmaxxing → the package's src/main.ts) so the shim points
-    // into the installed package tree, where its imports resolve.
-    const entry = realpathSync(Bun.main);
     writeFileAtomic(target, `#!/bin/sh\nexec ${JSON.stringify(process.execPath)} run ${JSON.stringify(entry)} "$@"\n`, 0o755);
   }
 
@@ -359,6 +363,8 @@ function systemdTimerActive(): "active" | "not-active" | "unavailable" {
  *  loaded must deactivate successfully, and an unanswerable probe (service
  *  manager unusable) reports false rather than pretending it is gone. */
 function uninstallCheckTimer(): boolean {
+  // Nix owns the timer: do not bootout/disable the declarative unit.
+  if (skipImperativeTimer()) return true;
   if (process.platform === "darwin") {
     const domain = launchdDomain();
     const loaded = launchdJobLoaded();

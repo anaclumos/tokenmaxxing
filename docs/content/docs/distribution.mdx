@@ -18,7 +18,14 @@ The same source tree is also a flake. It keeps the source-run-by-Bun model (via 
 | `homeManagerModules.default` | Home Manager on macOS or Linux |
 | `nixosModules.default` / `withOverlay` | NixOS system install |
 
-One-shot without installing into a profile:
+Install onto a profile (so `init`'s supervisor shims can resolve a stable `tokenmaxxing` on PATH), then init:
+
+```sh
+nix profile install github:anaclumos/tokenmaxxing
+tokenmaxxing init
+```
+
+One-shot without installing (help / status only — do not `init` this way):
 
 ```sh
 nix run github:anaclumos/tokenmaxxing -- help
@@ -37,7 +44,7 @@ nix-darwin (adds the overlay so `pkgs.tokenmaxxing` resolves):
 }
 ```
 
-Or set the package explicitly (works with Home Manager too):
+Home Manager (set the package explicitly, or apply this flake's overlay to the pkgs Home Manager uses):
 
 ```nix
 {
@@ -47,12 +54,12 @@ Or set the package explicitly (works with Home Manager too):
 }
 ```
 
-Nix only puts the CLI on PATH. Account import, the on-PATH `claude` supervisor shim, `settings.json` hooks, and (by default) the periodic check timer still come from `tokenmaxxing init` — those touch credentials and user-owned settings that a pure module should not rewrite. Set `programs.tokenmaxxing.checkTimer.enable = true` only when you want Nix to own the timer instead of init.
+Nix only puts the CLI on PATH. Account import, the on-PATH `claude` supervisor shim, `settings.json` hooks, and (by default) the periodic check timer still come from `tokenmaxxing init` — those touch credentials and user-owned settings that a pure module should not rewrite. Set `programs.tokenmaxxing.checkTimer.enable = true` only when you want Nix to own the timer instead of init (that also exports `TOKENMAXXING_SKIP_TIMER=1` so init does not write a second unit). The declarative timer is a user-session timer, matching init — headless Linux needs `loginctl enable-linger` for it to fire without a login.
 
 When `bun.lock` changes, regenerate the Nix dependency expression:
 
 ```sh
-bun run nix:bun   # writes bun.nix via bun2nix
+bun run nix:bun   # writes bun.nix via bun2nix@2.1.2
 ```
 
 ## License

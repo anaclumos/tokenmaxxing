@@ -31,14 +31,14 @@ in
       }
     ];
 
-    home.packages = [ package ];
+    home.packages = lib.mkIf (package != null) [ package ];
 
     # Keep init from writing a second imperative timer when Nix owns it.
     home.sessionVariables = lib.mkIf cfg.checkTimer.enable {
       TOKENMAXXING_SKIP_TIMER = "1";
     };
 
-    launchd.agents.tokenmaxxing-check = lib.mkIf (cfg.checkTimer.enable && hostPlatform.isDarwin) {
+    launchd.agents.tokenmaxxing-check = lib.mkIf (cfg.checkTimer.enable && hostPlatform.isDarwin && package != null) {
       enable = true;
       config = {
         ProgramArguments = [
@@ -52,7 +52,7 @@ in
     };
 
     systemd.user.services.tokenmaxxing-check =
-      lib.mkIf (cfg.checkTimer.enable && hostPlatform.isLinux)
+      lib.mkIf (cfg.checkTimer.enable && hostPlatform.isLinux && package != null)
         {
           Unit.Description = "tokenmaxxing account-switch check";
           Service = {
@@ -61,12 +61,15 @@ in
           };
         };
 
-    systemd.user.timers.tokenmaxxing-check = lib.mkIf (cfg.checkTimer.enable && hostPlatform.isLinux) {
+    # User timer (same model as `tokenmaxxing init`). Headless Linux needs
+    # lingering for the timer to fire without a login.
+    systemd.user.timers.tokenmaxxing-check = lib.mkIf (cfg.checkTimer.enable && hostPlatform.isLinux && package != null) {
       Unit.Description = "tokenmaxxing periodic account-switch check";
       Timer = {
         OnBootSec = "60";
         OnUnitActiveSec = toString cfg.checkTimer.intervalSeconds;
         AccuracySec = "30";
+        Persistent = "true";
         Unit = "tokenmaxxing-check.service";
       };
       Install.WantedBy = [ "timers.target" ];

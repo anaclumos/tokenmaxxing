@@ -6,10 +6,10 @@
     package = lib.mkOption {
       type = lib.types.nullOr lib.types.package;
       default = null;
-      defaultText = lib.literalExpression "pkgs.tokenmaxxing  # via this flake's overlay, or set explicitly";
+      defaultText = lib.literalExpression "null  # falls back to pkgs.tokenmaxxing when this flake's overlay is applied";
       description = ''
         tokenmaxxing package to install. Leave null to use `pkgs.tokenmaxxing`
-        (requires this flake's overlay). Or set explicitly:
+        (requires this flake's overlay / `*.withOverlay`). Or set explicitly:
 
             programs.tokenmaxxing.package = inputs.tokenmaxxing.packages.''${pkgs.system}.default;
       '';

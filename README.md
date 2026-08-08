@@ -23,14 +23,14 @@ bun add -g tokenmaxxing
 tokenmaxxing init
 ```
 
-Or with Nix (same source-run-by-Bun package; `init` still owns credentials, the `claude` shim, and settings merges):
+Or with Nix (same source-run-by-Bun package; `init` still owns credentials, the `claude` shim, and settings merges). Install onto PATH first, then init — `nix run ... -- init` alone leaves supervisor shims without a stable `tokenmaxxing` on PATH after the ephemeral run exits:
 
 ```sh
-nix run github:anaclumos/tokenmaxxing -- init
-# or: nix profile install github:anaclumos/tokenmaxxing
+nix profile install github:anaclumos/tokenmaxxing
+tokenmaxxing init
 ```
 
-nix-darwin / Home Manager:
+nix-darwin:
 
 ```nix
 # flake inputs: tokenmaxxing.url = "github:anaclumos/tokenmaxxing";
@@ -38,6 +38,15 @@ modules = [
   inputs.tokenmaxxing.darwinModules.withOverlay
   { programs.tokenmaxxing.enable = true; }
 ];
+# then: tokenmaxxing init
+```
+
+Home Manager:
+
+```nix
+imports = [ inputs.tokenmaxxing.homeManagerModules.default ];
+programs.tokenmaxxing.enable = true;
+programs.tokenmaxxing.package = inputs.tokenmaxxing.packages.${pkgs.system}.default;
 # then: tokenmaxxing init
 ```
 

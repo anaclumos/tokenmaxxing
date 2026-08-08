@@ -21,14 +21,14 @@ in
       }
     ];
 
-    environment.systemPackages = [ package ];
+    environment.systemPackages = lib.mkIf (package != null) [ package ];
 
     # Keep init from writing a second imperative timer when Nix owns it.
     environment.variables = lib.mkIf cfg.checkTimer.enable {
       TOKENMAXXING_SKIP_TIMER = "1";
     };
 
-    systemd.user.services.tokenmaxxing-check = lib.mkIf cfg.checkTimer.enable {
+    systemd.user.services.tokenmaxxing-check = lib.mkIf (cfg.checkTimer.enable && package != null) {
       description = "tokenmaxxing account-switch check";
       serviceConfig = {
         Type = "oneshot";
@@ -36,12 +36,16 @@ in
       };
     };
 
-    systemd.user.timers.tokenmaxxing-check = lib.mkIf cfg.checkTimer.enable {
+    # User timer (same model as `tokenmaxxing init`): runs while the user
+    # session is active. Headless boxes need lingering
+    # (`loginctl enable-linger <user>`) for the timer to fire without a login.
+    systemd.user.timers.tokenmaxxing-check = lib.mkIf (cfg.checkTimer.enable && package != null) {
       description = "tokenmaxxing periodic account-switch check";
       timerConfig = {
         OnBootSec = "60";
         OnUnitActiveSec = toString cfg.checkTimer.intervalSeconds;
         AccuracySec = "30";
+        Persistent = true;
         Unit = "tokenmaxxing-check.service";
       };
       wantedBy = [ "timers.target" ];

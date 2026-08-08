@@ -6,6 +6,7 @@ import {
   installSupervisor,
   isNixPackaged,
   skipImperativeTimer,
+  uninstallSupervisor,
 } from "../src/lib/install.ts";
 import { paths } from "../src/lib/paths.ts";
 
@@ -29,17 +30,16 @@ function wipeInstallArtifacts(): void {
 }
 
 describe("nix packaging install path", () => {
-  test("TOKENMAXXING_NIX writes a PATH-indirect shim (no store/bun hardcode)", () => {
+  test("TOKENMAXXING_NIX writes a PATH-first shim with bun+entry fallback", () => {
     process.env.TOKENMAXXING_NIX = "1";
-    process.env.TOKENMAXXING_SKIP_TIMER = "1"; // don't leave imperative units for later tests
+    process.env.TOKENMAXXING_SKIP_TIMER = "1";
     expect(isNixPackaged()).toBe(true);
     try {
       const out = installSupervisor();
       const shim = readFileSync(out.installedBin, "utf8");
-      expect(shim).toContain("exec tokenmaxxing");
+      expect(shim).toContain("command -v tokenmaxxing");
       expect(shim).toContain("for p in $PATH");
-      expect(shim).not.toContain(" bun ");
-      expect(shim).not.toContain("/nix/store/");
+      expect(shim).toContain(" run ");
       expect(readFileSync(paths.supervisorLink, "utf8")).toContain(out.installedBin);
     } finally {
       restoreEnv();
@@ -47,7 +47,7 @@ describe("nix packaging install path", () => {
     }
   });
 
-  test("TOKENMAXXING_SKIP_TIMER skips imperative timer install and looks healthy", () => {
+  test("TOKENMAXXING_SKIP_TIMER skips imperative timer install/uninstall and looks healthy", () => {
     wipeInstallArtifacts();
     delete process.env.TOKENMAXXING_NIX;
     process.env.TOKENMAXXING_SKIP_TIMER = "1";
@@ -58,29 +58,40 @@ describe("nix packaging install path", () => {
       expect(checkTimerHealthy()).toBe(true);
       expect(existsSync(join(paths.systemdUserDir, "tokenmaxxing-check.timer"))).toBe(false);
       expect(existsSync(join(paths.launchdAgentsDir, "com.tokenmaxxing.check.plist"))).toBe(false);
+      // Seed a decoy unit: uninstall must not remove it when Nix owns the timer.
+      const decoy = join(paths.systemdUserDir, "tokenmaxxing-check.timer");
+      Bun.write(decoy, "[Timer]\n");
+      uninstallSupervisor();
+      expect(existsSync(decoy)).toBe(true);
     } finally {
       restoreEnv();
       wipeInstallArtifacts();
     }
   });
 
-  test("unset flags leave the bun+entry shim (not PATH-indirect)", () => {
+  test("unset NIX flag leaves the bun+entry shim (not PATH-first)", () => {
     wipeInstallArtifacts();
     delete process.env.TOKENMAXXING_NIX;
-    delete process.env.TOKENMAXXING_SKIP_TIMER;
+    // SKIP_TIMER keeps this hermetic even if setup.ts dirs were missing; the
+    // shim shape under test does not depend on the timer path.
+    process.env.TOKENMAXXING_SKIP_TIMER = "1";
     expect(isNixPackaged()).toBe(false);
-    expect(skipImperativeTimer()).toBe(false);
     try {
       const out = installSupervisor();
       const shim = readFileSync(out.installedBin, "utf8");
-      // bun test's Bun.main is this test file; the shim still uses `bun run <entry>`.
       expect(shim.startsWith("#!/bin/sh\nexec ")).toBe(true);
       expect(shim).toContain(" run ");
+      expect(shim).not.toContain("command -v tokenmaxxing");
       expect(shim).not.toContain("for p in $PATH");
-      expect(shim).not.toContain("exec tokenmaxxing");
     } finally {
       restoreEnv();
       wipeInstallArtifacts();
     }
+  });
+
+  test("skipImperativeTimer is false when the env is unset", () => {
+    delete process.env.TOKENMAXXING_SKIP_TIMER;
+    expect(skipImperativeTimer()).toBe(false);
+    restoreEnv();
   });
 });
