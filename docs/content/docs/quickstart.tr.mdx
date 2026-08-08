@@ -3,10 +3,12 @@ title: Hızlı başlangıç
 description: "tokenmaxxing'i kurun, mevcut hesabınızı içe aktarın ve daha fazlasını havuzlayın"
 ---
 
-macOS veya Linux üzerinde [Bun](https://bun.sh) ve Claude Code gerektirir.
+macOS veya Linux üzerinde [Bun](https://bun.sh) ve Claude Code gerektirir. Bun ile kurun, veya zaten Nix / nix-darwin kullanıyorsanız flake'ten kurun (bkz. [Derleme ve dağıtım](/tr/distribution)):
 
 ```sh
 bun add -g tokenmaxxing
+# or: nix profile install github:anaclumos/tokenmaxxing
+# or: enable programs.tokenmaxxing in your nix-darwin / Home Manager config
 tokenmaxxing init
 ```
 

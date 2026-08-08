@@ -3,10 +3,12 @@ title: چھیتی شروعات
 description: "tokenmaxxing انسٹال کرو، اپنا موجودہ اکاؤنٹ درآمد کرو، تے ہور اکٹھے کرو"
 ---
 
-macOS یا Linux تے [Bun](https://bun.sh) تے Claude Code دی لوڑ اے۔
+macOS یا Linux تے [Bun](https://bun.sh) تے Claude Code دی لوڑ اے۔ Bun نال انسٹال کرو، یا جے تسیں پہلے توں Nix / nix-darwin ورتدے او تے flake توں (ویکھو [بلڈ تے ونڈ](/pnb/distribution)):
 
 ```sh
 bun add -g tokenmaxxing
+# or: nix profile install github:anaclumos/tokenmaxxing
+# or: enable programs.tokenmaxxing in your nix-darwin / Home Manager config
 tokenmaxxing init
 ```
 

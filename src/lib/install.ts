@@ -33,14 +33,65 @@ export function isBinDirAhead(): boolean {
   }
 }
 
+// Optional "1"/"true"/"yes" flag; unset/empty → undefined (feature off).
+const EnvFlagSchema = z.enum(["1", "true", "yes"]).optional().catch(undefined);
+
+/** True when this process is the Nix-packaged CLI (flake startScript sets
+ *  TOKENMAXXING_NIX=1; store-path Bun.main is the fallback for wraps that
+ *  forget the env). Env overrides parse at the read site. */
+export function isNixPackaged(): boolean {
+  if (EnvFlagSchema.parse(process.env.TOKENMAXXING_NIX) != null) return true;
+  try {
+    return realpathSync(Bun.main).startsWith("/nix/store/");
+  } catch {
+    return false;
+  }
+}
+
+/** True when a Nix module owns the periodic check timer; init must not write
+ *  a second imperative unit. */
+export function skipImperativeTimer(): boolean {
+  return EnvFlagSchema.parse(process.env.TOKENMAXXING_SKIP_TIMER) != null;
+}
+
+/** Nix supervisor shim: prefer a PATH-stable `tokenmaxxing` (profile /
+ *  current-system, excluding this binDir) so upgrades/GC of an old store
+ *  generation stay reachable; fall back to bun+entry for the rare
+ *  `nix run ... -- init` case where nothing is on PATH yet (works until that
+ *  generation is GC'd — docs steer users to `nix profile install` first). */
+function nixSupervisorShim(bun: string, entry: string): string {
+  return `#!/bin/sh
+dir=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
+old_ifs=$IFS
+IFS=:
+new_path=
+for p in $PATH; do
+  [ "$p" = "$dir" ] && continue
+  if [ -n "$new_path" ]; then new_path="$new_path:$p"; else new_path="$p"; fi
+done
+IFS=$old_ifs
+PATH=$new_path
+export PATH
+if command -v tokenmaxxing >/dev/null 2>&1; then
+  exec tokenmaxxing "$@"
+fi
+exec ${JSON.stringify(bun)} run ${JSON.stringify(entry)} "$@"
+`;
+}
+
 export function installSupervisor(): InstallOutcome {
   mkdirSync(paths.binDir, { recursive: true });
   const target = installedBin(); // binDir/tokenmaxxing
   // Resolve the entry through the global-bin symlink (bun add -g links
   // ~/.bun/bin/tokenmaxxing → the package's src/main.ts) so the shim points
-  // into the installed package tree, where its imports resolve.
+  // into the installed package tree, where its imports resolve. Nix shims
+  // prefer PATH first (see nixSupervisorShim).
   const entry = realpathSync(Bun.main);
-  writeFileAtomic(target, `#!/bin/sh\nexec ${JSON.stringify(process.execPath)} run ${JSON.stringify(entry)} "$@"\n`, 0o755);
+  if (isNixPackaged()) {
+    writeFileAtomic(target, nixSupervisorShim(process.execPath, entry), 0o755);
+  } else {
+    writeFileAtomic(target, `#!/bin/sh\nexec ${JSON.stringify(process.execPath)} run ${JSON.stringify(entry)} "$@"\n`, 0o755);
+  }
 
   // the on-PATH `claude` wrapper
   writeFileAtomic(paths.supervisorLink, `#!/bin/sh\nexec ${JSON.stringify(target)} __supervise "$@"\n`, 0o755);
@@ -174,6 +225,10 @@ function run(cmd: string[]): boolean {
  *  place but activation failed (e.g. systemd user session absent over ssh) -
  *  the caller prints the manual activation step. */
 function installCheckTimer(): boolean {
+  // Nix module owns the timer (TOKENMAXXING_SKIP_TIMER): do not write a second
+  // unit that would double-fire or clobber the declarative one.
+  if (skipImperativeTimer()) return true;
+
   if (process.platform === "darwin") {
     const plist = launchdPlist();
     writeFileAtomic(
@@ -243,6 +298,9 @@ export function timerActivationHint(): string {
 
 /** True when the timer unit exists AND the service manager reports it loaded. */
 export function checkTimerHealthy(): boolean {
+  // Declarative Nix timer: init wrote nothing; doctor must not demand the
+  // imperative unit.
+  if (skipImperativeTimer()) return true;
   if (process.platform === "darwin") {
     const domain = launchdDomain();
     return existsSync(launchdPlist()) && domain != null && run(["launchctl", "print", `${domain}/${LAUNCHD_LABEL}`]);
@@ -305,6 +363,8 @@ function systemdTimerActive(): "active" | "not-active" | "unavailable" {
  *  loaded must deactivate successfully, and an unanswerable probe (service
  *  manager unusable) reports false rather than pretending it is gone. */
 function uninstallCheckTimer(): boolean {
+  // Nix owns the timer: do not bootout/disable the declarative unit.
+  if (skipImperativeTimer()) return true;
   if (process.platform === "darwin") {
     const domain = launchdDomain();
     const loaded = launchdJobLoaded();

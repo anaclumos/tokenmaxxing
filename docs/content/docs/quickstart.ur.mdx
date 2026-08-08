@@ -3,10 +3,12 @@ title: فوری آغاز
 description: "tokenmaxxing انسٹال کریں، اپنا موجودہ اکاؤنٹ امپورٹ کریں، اور مزید پول کریں"
 ---
 
-macOS یا Linux پر [Bun](https://bun.sh) اور Claude Code درکار ہیں۔
+macOS یا Linux پر [Bun](https://bun.sh) اور Claude Code درکار ہیں۔ Bun سے انسٹال کریں، یا اگر آپ پہلے سے Nix / nix-darwin استعمال کرتے ہیں تو flake سے (دیکھیں [بلڈ اور تقسیم](/ur/distribution)):
 
 ```sh
 bun add -g tokenmaxxing
+# or: nix profile install github:anaclumos/tokenmaxxing
+# or: enable programs.tokenmaxxing in your nix-darwin / Home Manager config
 tokenmaxxing init
 ```
 

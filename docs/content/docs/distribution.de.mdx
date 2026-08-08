@@ -1,12 +1,59 @@
 ---
 title: Build und Verteilung
-description: "TypeScript-Quellcode auf npm, von Bun ausgeführt, mit Provenance veröffentlicht"
+description: "TypeScript-Quellcode auf npm und Nix, von Bun ausgeführt, mit Provenance veröffentlicht"
 ---
 
 Das npm-Paket liefert TypeScript-Quellcode aus, keinen Build: Der `tokenmaxxing`-Bin-Eintrag zeigt direkt auf `src/main.ts` mit einem Bun-Shebang, und Bun 1.2.6 oder neuer führt es unverändert aus. Deshalb ist Bun eine harte Voraussetzung. Es gibt bewusst keine kompilierten Binaries: Ein frühes Release lieferte ein einziges 61 MB großes macOS-Binary an jede Plattform und scheiterte auf Linux mit `exec format error`, und pro Plattform kompilierte Pakete bräuchten jeweils ihre eigene Release-Pipeline, sodass die Ausführung des Quellcodes durch Bun zum Verteilungsmodell wurde.
 
 Die `exports`-Map des Pakets stellt `src/sdk.ts` als den in [Die Agent-SDK-Oberfläche](/de/sdk) beschriebenen programmatischen Einstiegspunkt bereit. Releases werden auf GitHub mit `v<version>` getaggt; CI veröffentlicht via Trusted Publishing (OIDC, mit Provenance) auf npm, und das Veröffentlichungsgate führt zuerst den Typecheck und die vollständige Testsuite aus.
 
+## Nix / nix-darwin
+
+Derselbe Quellbaum ist auch ein Flake. Er behält das Modell „Quellcode von Bun ausgeführt“ bei (über [bun2nix](https://github.com/nix-community/bun2nix) `writeBunApplication`) und stellt bereit:
+
+| Ausgabe | Zweck |
+|---|---|
+| `packages.default` | `tokenmaxxing` + `xx` auf dem PATH |
+| `darwinModules.default` / `withOverlay` | nix-darwin: CLI installieren (optional deklarativer Check-Timer) |
+| `homeManagerModules.default` | Home Manager unter macOS oder Linux |
+| `nixosModules.default` / `withOverlay` | NixOS-Systeminstallation |
+
+Einmaliger Lauf, ohne Installation in ein Profil:
+
+```sh
+nix run github:anaclumos/tokenmaxxing -- help
+```
+
+nix-darwin (fügt den Overlay hinzu, damit `pkgs.tokenmaxxing` auflöst):
+
+```nix
+{
+  inputs.tokenmaxxing.url = "github:anaclumos/tokenmaxxing";
+  # ...
+  modules = [
+    inputs.tokenmaxxing.darwinModules.withOverlay
+    { programs.tokenmaxxing.enable = true; }
+  ];
+}
+```
+
+Oder das Paket explizit setzen (funktioniert auch mit Home Manager):
+
+```nix
+{
+  imports = [ inputs.tokenmaxxing.homeManagerModules.default ];
+  programs.tokenmaxxing.enable = true;
+  programs.tokenmaxxing.package = inputs.tokenmaxxing.packages.${pkgs.system}.default;
+}
+```
+
+Nix legt nur die CLI auf den PATH. Kontoimport, der `claude`-Supervisor-Shim auf dem PATH, `settings.json`-Hooks und (standardmäßig) der periodische Check-Timer kommen weiterhin von `tokenmaxxing init` — diese greifen auf Anmeldedaten und benutzereigene Einstellungen zu, die ein reines Modul nicht überschreiben sollte. Setze `programs.tokenmaxxing.checkTimer.enable = true` nur, wenn Nix den Timer statt init verwalten soll.
+
+Wenn sich `bun.lock` ändert, die Nix-Abhängigkeitsexpression neu erzeugen:
+
+```sh
+bun run nix:bun   # writes bun.nix via bun2nix
+```
 ## Lizenz
 
 MIT. Quellcode unter [anaclumos/tokenmaxxing](https://github.com/anaclumos/tokenmaxxing).

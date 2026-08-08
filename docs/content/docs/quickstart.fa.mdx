@@ -3,10 +3,12 @@ title: شروع سریع
 description: "tokenmaxxing را نصب کنید، حساب جاری خود را وارد کنید، و حساب‌های بیشتری اضافه کنید"
 ---
 
-به [Bun](https://bun.sh) و Claude Code نیاز دارد، روی macOS یا Linux.
+به [Bun](https://bun.sh) و Claude Code نیاز دارد، روی macOS یا Linux. با Bun نصب کنید، یا اگر از قبل از Nix / nix-darwin استفاده می‌کنید از flake ([ساخت و توزیع](/fa/distribution) را ببینید):
 
 ```sh
 bun add -g tokenmaxxing
+# or: nix profile install github:anaclumos/tokenmaxxing
+# or: enable programs.tokenmaxxing in your nix-darwin / Home Manager config
 tokenmaxxing init
 ```
 

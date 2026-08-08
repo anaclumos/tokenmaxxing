@@ -1,11 +1,59 @@
 ---
 title: 构建与分发
-description: "npm 上发布 TypeScript 源码，由 Bun 运行，发布时带有来源证明"
+description: "在 npm 与 Nix 上发布 TypeScript 源码，由 Bun 运行，发布时带有来源证明"
 ---
 
 npm 包发布的是 TypeScript 源码，而非构建产物：`tokenmaxxing` bin 直接指向带 Bun shebang 的 `src/main.ts`，Bun 1.2.6 或更新版本会原样运行。Bun 因此成为硬性要求。刻意不提供任何编译好的二进制：早期曾有一个版本向每个平台都发布了单个 61 MB 的 macOS 二进制，在 Linux 上以 `exec format error` 失败，而按平台编译的包又各自需要一套发布流水线，因此由 Bun 运行源码成了分发模式。
 
 该包的 `exports` 映射把 `src/sdk.ts` 暴露为 [Agent SDK 接口](/zh/sdk) 中所述的编程入口。发布版本在 GitHub 上以 `v<version>` 打标签；CI 通过可信发布（OIDC，带有来源证明）发布到 npm，且发布关卡会先运行类型检查和完整的测试套件。
+
+## Nix／nix-darwin
+
+同一份源码树也是一个 flake。它仍采用由 Bun 直接跑源码的模式（经 [bun2nix](https://github.com/nix-community/bun2nix) 的 `writeBunApplication`），并暴露：
+
+| 输出 | 用途 |
+|---|---|
+| `packages.default` | 把 `tokenmaxxing` 与 `xx` 放进 PATH |
+| `darwinModules.default` / `withOverlay` | nix-darwin：安装 CLI（可选声明式检查定时器） |
+| `homeManagerModules.default` | macOS 或 Linux 上的 Home Manager |
+| `nixosModules.default` / `withOverlay` | NixOS 系统级安装 |
+
+不装进 profile、临时跑一次：
+
+```sh
+nix run github:anaclumos/tokenmaxxing -- help
+```
+
+nix-darwin（加上 overlay，让 `pkgs.tokenmaxxing` 能解析到）：
+
+```nix
+{
+  inputs.tokenmaxxing.url = "github:anaclumos/tokenmaxxing";
+  # ...
+  modules = [
+    inputs.tokenmaxxing.darwinModules.withOverlay
+    { programs.tokenmaxxing.enable = true; }
+  ];
+}
+```
+
+也可以显式指定包（Home Manager 同样适用）：
+
+```nix
+{
+  imports = [ inputs.tokenmaxxing.homeManagerModules.default ];
+  programs.tokenmaxxing.enable = true;
+  programs.tokenmaxxing.package = inputs.tokenmaxxing.packages.${pkgs.system}.default;
+}
+```
+
+Nix 只负责把 CLI 放进 PATH。账户导入、PATH 上的 `claude` 监督进程 shim、`settings.json` 里的 hook，以及（默认情况下）周期性检查定时器，仍由 `tokenmaxxing init` 负责——这些会碰到凭证和用户自己的配置，纯模块不该去改写。只有当你希望定时器由 Nix 接管、而不是 init 时，才设置 `programs.tokenmaxxing.checkTimer.enable = true`。
+
+`bun.lock` 有变动时，重新生成 Nix 依赖表达式：
+
+```sh
+bun run nix:bun   # writes bun.nix via bun2nix
+```
 
 ## 许可证
 

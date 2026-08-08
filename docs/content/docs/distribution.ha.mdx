@@ -1,12 +1,59 @@
 ---
 title: Ginawa da rarrabawa
-description: "Lambar tushe ta TypeScript a npm, Bun ke gudanarwa, an wallafa da tushen asali"
+description: "Lambar tushe ta TypeScript a npm da Nix, Bun ke gudanarwa, an wallafa da tushen asali"
 ---
 
 Kunshin npm yana aika lambar tushe ta TypeScript, ba build ba: bin na `tokenmaxxing` yana nuni kai tsaye ga `src/main.ts` da shebang na Bun, kuma Bun 1.2.6 ko sabo yana gudanar da shi kamar yadda yake. Wannan shi ne dalilin da ya sa Bun ke zama buƙata mai tsauri. Babu binaries da aka haɗa (compiled) da gangan: wani sakin farko ya aika binary na macOS guda na 61 MB zuwa kowane dandali kuma ya gaza a kan Linux da `exec format error`, kuma kunshin da aka haɗa na kowane dandali kowanne zai buƙaci layin saki nasa na kansa, don haka tushe-da-Bun-ke-gudanarwa ya zama tsarin rarrabawa.
 
 Taswirar `exports` na kunshin tana fallasa `src/sdk.ts` a matsayin wurin shigar shirye-shirye da aka bayyana a [Fuskar Agent SDK](/ha/sdk). Ana yiwa saki alama da `v<version>` a kan GitHub; CI yana wallafa zuwa npm ta hanyar wallafa amintacce (OIDC, tare da tushen asali), kuma ƙofar wallafa tana gudanar da typecheck da cikakken jerin gwaje-gwaje da farko.
 
+## Nix / nix-darwin
+
+Wannan bishiyar tushe ɗaya kuma flake ce. Tana riƙe tsarin tushe-da-Bun-ke-gudanarwa (ta hanyar [bun2nix](https://github.com/nix-community/bun2nix) `writeBunApplication`) kuma tana fallasa:
+
+| Fitarwa | Manufa |
+|---|---|
+| `packages.default` | `tokenmaxxing` + `xx` a kan PATH |
+| `darwinModules.default` / `withOverlay` | nix-darwin: shigar da CLI (na'urar ƙidayar lokaci ta bincike ta declarative na zaɓi) |
+| `homeManagerModules.default` | Home Manager a kan macOS ko Linux |
+| `nixosModules.default` / `withOverlay` | shigarwar tsarin NixOS |
+
+Gudu ɗaya ba tare da shigarwa cikin bayanin martaba ba:
+
+```sh
+nix run github:anaclumos/tokenmaxxing -- help
+```
+
+nix-darwin (yana ƙara overlay don `pkgs.tokenmaxxing` ya warware):
+
+```nix
+{
+  inputs.tokenmaxxing.url = "github:anaclumos/tokenmaxxing";
+  # ...
+  modules = [
+    inputs.tokenmaxxing.darwinModules.withOverlay
+    { programs.tokenmaxxing.enable = true; }
+  ];
+}
+```
+
+Ko saita kunshin a sarari (yana aiki da Home Manager ma):
+
+```nix
+{
+  imports = [ inputs.tokenmaxxing.homeManagerModules.default ];
+  programs.tokenmaxxing.enable = true;
+  programs.tokenmaxxing.package = inputs.tokenmaxxing.packages.${pkgs.system}.default;
+}
+```
+
+Nix kawai yana sanya CLI a kan PATH. Shigo da asusu, shim na supervisor na `claude` a kan PATH, hooks na `settings.json`, da (ta tsoho) na'urar ƙidayar lokaci ta bincike na lokaci-lokaci har yanzu suna zuwa daga `tokenmaxxing init` — suna taɓa bayanan shiga da saitunan mai amfani waɗanda tsantsar module bai kamata ya sake rubuta ba. Saita `programs.tokenmaxxing.checkTimer.enable = true` kawai idan kana son Nix ya mallaki na'urar ƙidayar lokaci maimakon init.
+
+Idan `bun.lock` ya canza, sake ƙirƙirar maganar dogaro ta Nix:
+
+```sh
+bun run nix:bun   # writes bun.nix via bun2nix
+```
 ## Lasisi
 
 MIT. Lambar tushe a [anaclumos/tokenmaxxing](https://github.com/anaclumos/tokenmaxxing).

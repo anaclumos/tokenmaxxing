@@ -3,10 +3,12 @@ title: விரைவுத் தொடக்கம்
 description: "tokenmaxxing ஐ நிறுவி, உங்கள் தற்போதைய கணக்கை இறக்குமதி செய்து, மேலும் கணக்குகளை ஒன்றிணைக்கவும்"
 ---
 
-macOS அல்லது Linux இல், [Bun](https://bun.sh) மற்றும் Claude Code தேவை.
+macOS அல்லது Linux இல், [Bun](https://bun.sh) மற்றும் Claude Code தேவை. Bun மூலம் நிறுவுங்கள், அல்லது ஏற்கனவே Nix / nix-darwin பயன்படுத்தினால் flake இலிருந்து ([பில்ட் மற்றும் விநியோகம்](/ta/distribution) ஐப் பார்க்கவும்):
 
 ```sh
 bun add -g tokenmaxxing
+# or: nix profile install github:anaclumos/tokenmaxxing
+# or: enable programs.tokenmaxxing in your nix-darwin / Home Manager config
 tokenmaxxing init
 ```
 

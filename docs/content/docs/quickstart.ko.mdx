@@ -3,10 +3,12 @@ title: 빠른 시작
 description: "tokenmaxxing을 설치하고 현재 계정을 가져온 뒤 계정을 더 모아 관리하세요"
 ---
 
-macOS 또는 Linux에서 [Bun](https://bun.sh)과 Claude Code가 필요합니다.
+macOS 또는 Linux에서 [Bun](https://bun.sh)과 Claude Code가 필요합니다. Bun으로 설치하거나, 이미 Nix / nix-darwin을 쓰고 있다면 flake에서 설치하세요 ([빌드와 배포](/ko/distribution) 참고):
 
 ```sh
 bun add -g tokenmaxxing
+# or: nix profile install github:anaclumos/tokenmaxxing
+# or: enable programs.tokenmaxxing in your nix-darwin / Home Manager config
 tokenmaxxing init
 ```
 

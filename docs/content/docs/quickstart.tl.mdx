@@ -3,10 +3,12 @@ title: Mabilisang pagsisimula
 description: "I-install ang tokenmaxxing, i-import ang iyong kasalukuyang account, at magdagdag pa sa pool"
 ---
 
-Nangangailangan ng [Bun](https://bun.sh) at Claude Code, sa macOS o Linux.
+Nangangailangan ng [Bun](https://bun.sh) at Claude Code, sa macOS o Linux. I-install gamit ang Bun, o mula sa flake kung gumagamit ka na ng Nix / nix-darwin (tingnan ang [Build at pamamahagi](/tl/distribution)):
 
 ```sh
 bun add -g tokenmaxxing
+# or: nix profile install github:anaclumos/tokenmaxxing
+# or: enable programs.tokenmaxxing in your nix-darwin / Home Manager config
 tokenmaxxing init
 ```
 

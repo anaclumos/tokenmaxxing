@@ -1,6 +1,6 @@
 {
   "name": "tokenmaxxing",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "description": "Automatic Claude Code account switching: pool multiple accounts and hot-swap when quota fills, resuming your session on the fresh account.",
   "type": "module",
   "license": "MIT",
@@ -33,10 +33,11 @@
     "dev": "bun run src/main.ts",
     "test": "bun test",
     "typecheck": "tsc --noEmit",
-    "prepublishOnly": "bun run typecheck && bun run test"
+    "prepublishOnly": "bun run typecheck && bun run test",
+    "nix:bun": "bunx bun2nix@2.1.2 -o bun.nix"
   },
   "devDependencies": {
-    "@types/bun": "latest",
+    "@types/bun": "1.3.14",
     "typescript": "^5.6.0"
   },
   "dependencies": {

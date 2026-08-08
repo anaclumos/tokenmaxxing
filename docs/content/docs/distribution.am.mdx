@@ -1,12 +1,59 @@
 ---
 title: Build እና ስርጭት
-description: "በ npm ላይ የ TypeScript ምንጭ፣ በ Bun የሚሄድ፣ ከ provenance ጋር የታተመ"
+description: "በ npm እና Nix ላይ የ TypeScript ምንጭ፣ በ Bun የሚሄድ፣ ከ provenance ጋር የታተመ"
 ---
 
 የ npm ጥቅሉ የ TypeScript ምንጭ ኮድ ይልካል እንጂ build አይደለም፦ የ `tokenmaxxing` bin በ Bun shebang በቀጥታ ወደ `src/main.ts` ያመለክታል፣ እና Bun 1.2.6 ወይም ከዚያ በኋላ እንዳለ ያሄደዋል። Bun ጠንካራ መስፈርት የሆነው ለዚህ ነው። በ design ምንም compiled binaryዎች የሉም፦ አንድ ቀደምት release አንድ ነጠላ 61 MB የ macOS binary ወደ እያንዳንዱ platform ልኮ በ Linux ላይ በ `exec format error` ወደቀ፣ እና በ-platform compiled ጥቅሎች እያንዳንዳቸው የራሳቸው release pipeline ያስፈልጋቸዋል፣ ስለዚህ በ-Bun-የሚሄድ-ምንጭ የስርጭት ሞዴል ሆነ።
 
 የጥቅሉ `exports` map በ[የ Agent SDK surface](/am/sdk) የተገለጸውን programmatic entry `src/sdk.ts` ን ያጋልጣል። Releaseዎች በ GitHub ላይ `v<version>` ተብለው ይሰየማሉ፤ CI በ trusted publishing (OIDC፣ ከ provenance ጋር) ወደ npm ያትማል፣ እና የ publish gate መጀመሪያ typecheck ን እና ሙሉ test suite ን ያሄዳል።
 
+## Nix / nix-darwin
+
+ተመሳሳዩ የምንጭ ዛፍ እንዲሁ flake ነው። በ-Bun-የሚሄድ-ምንጭ ሞዴሉን ይይዛል (በ [bun2nix](https://github.com/nix-community/bun2nix) `writeBunApplication` በኩል) እና ይህን ያጋልጣል፦
+
+| ውጤት | ዓላማ |
+|---|---|
+| `packages.default` | በ PATH ላይ `tokenmaxxing` + `xx` |
+| `darwinModules.default` / `withOverlay` | nix-darwin፦ CLI ን ጫን (አማራጽ declarative የፍተሻ ሰዓት ቆጣሪ) |
+| `homeManagerModules.default` | በ macOS ወይም Linux ላይ Home Manager |
+| `nixosModules.default` / `withOverlay` | የ NixOS ስርዓት ጭነት |
+
+ወደ profile ሳይጫን አንድ ጊዜ ማሄድ፦
+
+```sh
+nix run github:anaclumos/tokenmaxxing -- help
+```
+
+nix-darwin (`pkgs.tokenmaxxing` እንዲፈታ overlay ያክላል)፦
+
+```nix
+{
+  inputs.tokenmaxxing.url = "github:anaclumos/tokenmaxxing";
+  # ...
+  modules = [
+    inputs.tokenmaxxing.darwinModules.withOverlay
+    { programs.tokenmaxxing.enable = true; }
+  ];
+}
+```
+
+ወይም ጥቅሉን በግልጽ ያዘጋጁ (ከ Home Manager ጋርም ይሰራል)፦
+
+```nix
+{
+  imports = [ inputs.tokenmaxxing.homeManagerModules.default ];
+  programs.tokenmaxxing.enable = true;
+  programs.tokenmaxxing.package = inputs.tokenmaxxing.packages.${pkgs.system}.default;
+}
+```
+
+Nix CLI ን በ PATH ላይ ብቻ ያስቀምጣል። የመለያ ማስመጣት፣ በ PATH ላይ ያለው የ `claude` supervisor shim፣ የ `settings.json` hooks፣ እና (በነባሪ) ወቅታዊ የፍተሻ ሰዓት ቆጣሪ አሁንም ከ `tokenmaxxing init` ይመጣሉ — እነዚህ ምስክርነቶችን እና የተጠቃሚ ባለቤትነት ያላቸውን ቅንብሮች ይነካሉ፣ ንጩህ ሞጁል መልሶ መጻፍ የለበትም። ሰዓት ቆጣሪው ከ init ይልቅ በ Nix እንዲያስተዳድር ሲፈልጉ ብቻ `programs.tokenmaxxing.checkTimer.enable = true` ያዘጋጁ።
+
+`bun.lock` ሲቀየር የ Nix ጥገኝነት አገላለጹን እንደገና ይፍጠሩ፦
+
+```sh
+bun run nix:bun   # writes bun.nix via bun2nix
+```
 ## ፈቃድ
 
 MIT። ምንጭ በ [anaclumos/tokenmaxxing](https://github.com/anaclumos/tokenmaxxing)።

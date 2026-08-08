@@ -35,6 +35,13 @@ process.env.TOKENMAXXING_OAUTH_ROLES_URL = `http://127.0.0.1:${MOCK_OAUTH_PORT}/
 process.env.TOKENMAXXING_KEYCHAIN_SERVICE = `tokenmaxxing-test-${process.pid}`;
 process.env.TOKENMAXXING_KEYCHAIN_ACCOUNT = `tokenmaxxing-test-${process.pid}`;
 process.env.TOKENMAXXING_SHELL_RC = join(base, "shellrc");
+// Keep installSupervisor's timer units out of the real user service manager
+// (a test that forgets TOKENMAXXING_SKIP_TIMER must not bootstrap launchd /
+// systemd against the live Mac/Linux session).
+process.env.TOKENMAXXING_LAUNCHD_DIR = join(base, "LaunchAgents");
+process.env.TOKENMAXXING_SYSTEMD_USER_DIR = join(base, "systemd-user");
+mkdirSync(process.env.TOKENMAXXING_LAUNCHD_DIR, { recursive: true });
+mkdirSync(process.env.TOKENMAXXING_SYSTEMD_USER_DIR, { recursive: true });
 process.env.TOKENMAXXING_CODEX_HOME = join(base, "codexhome");
 process.env.TOKENMAXXING_CODEX_TOKEN_URL = `http://127.0.0.1:${MOCK_CODEX_PORT}/codex-token`;
 process.env.TOKENMAXXING_CODEX_USAGE_URL = `http://127.0.0.1:${MOCK_CODEX_PORT}/codex-usage`;

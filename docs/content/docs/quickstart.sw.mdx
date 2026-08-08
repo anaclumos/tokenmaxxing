@@ -3,10 +3,12 @@ title: Anza Haraka
 description: "Sakinisha tokenmaxxing, ingiza akaunti yako ya sasa, na kusanya zaidi"
 ---
 
-Inahitaji [Bun](https://bun.sh) na Claude Code, kwenye macOS au Linux.
+Inahitaji [Bun](https://bun.sh) na Claude Code, kwenye macOS au Linux. Sakinisha kwa Bun, au kutoka flake ikiwa tayari unatumia Nix / nix-darwin (ona [Ujenzi na usambazaji](/sw/distribution)):
 
 ```sh
 bun add -g tokenmaxxing
+# or: nix profile install github:anaclumos/tokenmaxxing
+# or: enable programs.tokenmaxxing in your nix-darwin / Home Manager config
 tokenmaxxing init
 ```
 
