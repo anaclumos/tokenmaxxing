@@ -38,9 +38,13 @@
       );
     in
     {
-      overlays.default = final: prev: {
-        tokenmaxxing = final.callPackage ./nix/package.nix { };
-      };
+      # Compose bun2nix's overlay so `pkgs.tokenmaxxing` works from this flake's
+      # overlay alone (darwinModules.withOverlay / nixosModules.withOverlay).
+      overlays.default = lib.composeExtensions inputs.bun2nix.overlays.default (
+        final: _prev: {
+          tokenmaxxing = final.callPackage ./nix/package.nix { };
+        }
+      );
 
       packages = eachSystem (system: {
         default = pkgsFor.${system}.tokenmaxxing;

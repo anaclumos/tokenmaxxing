@@ -36,6 +36,11 @@ in
 
     environment.systemPackages = [ package ];
 
+    # Keep init from writing a second imperative timer when Nix owns it.
+    environment.variables = lib.mkIf cfg.checkTimer.enable {
+      TOKENMAXXING_SKIP_TIMER = "1";
+    };
+
     launchd.user.agents.tokenmaxxing-check = lib.mkIf cfg.checkTimer.enable {
       command = "${lib.getExe package} check";
       serviceConfig = {

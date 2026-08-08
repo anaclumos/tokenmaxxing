@@ -33,14 +33,61 @@ export function isBinDirAhead(): boolean {
   }
 }
 
+// Optional "1"/"true"/"yes" flag; unset/empty → undefined (feature off).
+const EnvFlagSchema = z.enum(["1", "true", "yes"]).optional().catch(undefined);
+
+/** True when this process is the Nix-packaged CLI (flake startScript sets
+ *  TOKENMAXXING_NIX=1; store-path Bun.main is the fallback for wraps that
+ *  forget the env). Env overrides parse at the read site. */
+export function isNixPackaged(): boolean {
+  if (EnvFlagSchema.parse(process.env.TOKENMAXXING_NIX) != null) return true;
+  try {
+    return realpathSync(Bun.main).startsWith("/nix/store/");
+  } catch {
+    return false;
+  }
+}
+
+/** True when a Nix module owns the periodic check timer; init must not write
+ *  a second imperative unit. */
+export function skipImperativeTimer(): boolean {
+  return EnvFlagSchema.parse(process.env.TOKENMAXXING_SKIP_TIMER) != null;
+}
+
+/** PATH-indirect shim for Nix installs: re-resolve `tokenmaxxing` from PATH
+ *  excluding this binDir so a profile upgrade / GC of the old store generation
+ *  does not leave hooks and the claude wrapper pointing at a vanished path. */
+function nixPathShim(args: string): string {
+  return `#!/bin/sh
+dir=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
+old_ifs=$IFS
+IFS=:
+new_path=
+for p in $PATH; do
+  [ "$p" = "$dir" ] && continue
+  if [ -n "$new_path" ]; then new_path="$new_path:$p"; else new_path="$p"; fi
+done
+IFS=$old_ifs
+PATH=$new_path
+export PATH
+exec tokenmaxxing${args}
+`;
+}
+
 export function installSupervisor(): InstallOutcome {
   mkdirSync(paths.binDir, { recursive: true });
   const target = installedBin(); // binDir/tokenmaxxing
-  // Resolve the entry through the global-bin symlink (bun add -g links
-  // ~/.bun/bin/tokenmaxxing → the package's src/main.ts) so the shim points
-  // into the installed package tree, where its imports resolve.
-  const entry = realpathSync(Bun.main);
-  writeFileAtomic(target, `#!/bin/sh\nexec ${JSON.stringify(process.execPath)} run ${JSON.stringify(entry)} "$@"\n`, 0o755);
+  if (isNixPackaged()) {
+    // Do not hardcode /nix/store/.../src/main.ts: that path dies with the
+    // generation. Look tokenmaxxing up on PATH (profile / current-system).
+    writeFileAtomic(target, nixPathShim(' "$@"'), 0o755);
+  } else {
+    // Resolve the entry through the global-bin symlink (bun add -g links
+    // ~/.bun/bin/tokenmaxxing → the package's src/main.ts) so the shim points
+    // into the installed package tree, where its imports resolve.
+    const entry = realpathSync(Bun.main);
+    writeFileAtomic(target, `#!/bin/sh\nexec ${JSON.stringify(process.execPath)} run ${JSON.stringify(entry)} "$@"\n`, 0o755);
+  }
 
   // the on-PATH `claude` wrapper
   writeFileAtomic(paths.supervisorLink, `#!/bin/sh\nexec ${JSON.stringify(target)} __supervise "$@"\n`, 0o755);
@@ -174,6 +221,10 @@ function run(cmd: string[]): boolean {
  *  place but activation failed (e.g. systemd user session absent over ssh) -
  *  the caller prints the manual activation step. */
 function installCheckTimer(): boolean {
+  // Nix module owns the timer (TOKENMAXXING_SKIP_TIMER): do not write a second
+  // unit that would double-fire or clobber the declarative one.
+  if (skipImperativeTimer()) return true;
+
   if (process.platform === "darwin") {
     const plist = launchdPlist();
     writeFileAtomic(
@@ -243,6 +294,9 @@ export function timerActivationHint(): string {
 
 /** True when the timer unit exists AND the service manager reports it loaded. */
 export function checkTimerHealthy(): boolean {
+  // Declarative Nix timer: init wrote nothing; doctor must not demand the
+  // imperative unit.
+  if (skipImperativeTimer()) return true;
   if (process.platform === "darwin") {
     const domain = launchdDomain();
     return existsSync(launchdPlist()) && domain != null && run(["launchctl", "print", `${domain}/${LAUNCHD_LABEL}`]);

@@ -33,6 +33,11 @@ in
 
     home.packages = [ package ];
 
+    # Keep init from writing a second imperative timer when Nix owns it.
+    home.sessionVariables = lib.mkIf cfg.checkTimer.enable {
+      TOKENMAXXING_SKIP_TIMER = "1";
+    };
+
     launchd.agents.tokenmaxxing-check = lib.mkIf (cfg.checkTimer.enable && hostPlatform.isDarwin) {
       enable = true;
       config = {

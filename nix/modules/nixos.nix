@@ -23,6 +23,11 @@ in
 
     environment.systemPackages = [ package ];
 
+    # Keep init from writing a second imperative timer when Nix owns it.
+    environment.variables = lib.mkIf cfg.checkTimer.enable {
+      TOKENMAXXING_SKIP_TIMER = "1";
+    };
+
     systemd.user.services.tokenmaxxing-check = lib.mkIf cfg.checkTimer.enable {
       description = "tokenmaxxing account-switch check";
       serviceConfig = {

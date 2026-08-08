@@ -33,9 +33,11 @@ bun2nix.writeBunApplication {
   dontUseBunBuild = true;
   dontUseBunCheck = true;
 
-  # chdir is the packaged share tree; Bun.main resolves there so init's
-  # supervisor shims point into the nix store entry for this generation.
+  # TOKENMAXXING_NIX tells init to write PATH-indirect supervisor shims instead
+  # of hardcoding this generation's /nix/store entry (which vanishes on GC /
+  # profile upgrade). chdir is the packaged share tree.
   startScript = ''
+    export TOKENMAXXING_NIX=1
     exec bun run ./src/main.ts "$@"
   '';
 

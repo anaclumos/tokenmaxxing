@@ -23,10 +23,14 @@
           Declaratively install the periodic `tokenmaxxing check` timer
           (launchd on nix-darwin / Home Manager on macOS, systemd user timer
           under Home Manager / NixOS on Linux). Defaults to false so
-          `tokenmaxxing init`'s own timer remains the single owner; enable this
-          only when you want Nix to manage the timer instead (then skip relying
-          on init's copy, or re-run init after disabling this so the two do not
-          double-fire).
+          `tokenmaxxing init`'s own timer remains the single owner.
+
+          When enabled, the module also exports `TOKENMAXXING_SKIP_TIMER=1` so
+          a subsequent `tokenmaxxing init` does not write a second imperative
+          timer. If you already ran init before enabling this, remove the
+          imperative timer once (`launchctl bootout gui/$(id -u)/com.tokenmaxxing.check`
+          on macOS, or `systemctl --user disable --now tokenmaxxing-check.timer`
+          on Linux) so only the Nix-managed unit fires.
         '';
       };
 
