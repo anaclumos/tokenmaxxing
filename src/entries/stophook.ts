@@ -11,6 +11,9 @@ import { z } from "zod";
 import { paths } from "../lib/paths.ts";
 import { writeFileAtomic } from "../lib/atomic.ts";
 import { evaluateAndMaybeSwap } from "../lib/decide.ts";
+import { writeTurnDoneMarker } from "../lib/relay/markers.ts";
+import { registryHas } from "../lib/relay/registry.ts";
+import { RELAY_SESSION_ENV } from "../lib/relay/worker.ts";
 import { RespawnMarkerSchema } from "../lib/types.ts";
 import { log } from "../lib/log.ts";
 
@@ -41,6 +44,14 @@ export async function runStopHook(): Promise<number> {
   const pinnedSid = process.env.TOKENMAXXING_SESSION_ID;
 
   try {
+    // Additive relay turn-done marker (never writes into respawn/). Only when
+    // a registry entry exists for this relay session.
+    const relaySid = process.env[RELAY_SESSION_ENV];
+    if (relaySid != null && registryHas({ sessionId: relaySid })) {
+      writeTurnDoneMarker({ sessionId: relaySid, source: "claude-stop" });
+      log("stop.relay_turn_done", { session: relaySid.slice(0, 8) });
+    }
+
     // Anticipatory depleted swaps are only sane when the respawn marker below
     // will actually pause the session until the reset.
     const canPause = process.env.TOKENMAXXING_SUPERVISED === "1" && pinnedSid != null;
