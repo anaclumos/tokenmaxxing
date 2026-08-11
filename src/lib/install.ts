@@ -66,6 +66,7 @@ function isEacces(e: unknown): boolean {
  *  through that symlink throws EACCES; soft-skip instead. Still write through
  *  ordinary writable symlink targets (PR #36). */
 function cannotWriteRcTarget(target: string): boolean {
+  if (EnvFlagSchema.parse(process.env.TOKENMAXXING_SKIP_SHELL_RC) != null) return true;
   if (isNixStorePath(target)) return true;
   if (!existsSync(target)) return false;
   try {
@@ -427,7 +428,8 @@ const PATH_LINE_MARK = "# tokenmaxxing PATH";
 /** Idempotently append the supervisor-bin PATH line to `rc` (created if absent).
  *  A pre-existing hand-added line for the bin dir also counts as present.
  *  Returns `"skipped"` when the resolved target is immutable (nix-store /
- *  non-writable) so callers can print guidance instead of surfacing EACCES. */
+ *  non-writable / TOKENMAXXING_SKIP_SHELL_RC) so callers can print guidance
+ *  instead of surfacing EACCES. */
 export function ensurePathInRc(rc: string): "added" | "present" | "skipped" {
   const dir = paths.binDir.startsWith(`${HOME}/`) ? `$HOME${paths.binDir.slice(HOME.length)}` : paths.binDir;
   // Write through a dotfile-managed symlink, never over it: writeFileAtomic
