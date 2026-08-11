@@ -8,14 +8,15 @@ import { refreshCredential, isAccessTokenExpiring, fetchTokenOrg } from "../lib/
 import { withClaudeRefreshLock } from "../lib/claudelock.ts";
 import { loadAccounts, saveAccounts, loadConfig, pinBinOverride } from "../lib/state.ts";
 import { withLock } from "../lib/lock.ts";
-import { installSupervisor, shellRcPath, ensurePathInRc, timerActivationHint, type InstallOutcome } from "../lib/install.ts";
+import { installSupervisor, shellRcPath, ensurePathInRc, managedShellRcSkipLines, timerActivationHint, type InstallOutcome } from "../lib/install.ts";
 import { resolveVerifiedClaude } from "../lib/claudebin.ts";
 import { credItemFor, paths } from "../lib/paths.ts";
 import { CredentialBlobSchema, type Account } from "../lib/types.ts";
 import { c, claudeTierLabel } from "./render.ts";
 
 /** Put the supervisor bin dir on PATH via the user's shell rc (idempotent).
- *  Falls back to the manual instruction when the shell is unknown. */
+ *  Falls back to the manual instruction when the shell is unknown or the rc
+ *  target is immutable (Home Manager / nix-store). */
 function ensurePathAhead(): void {
   const rc = shellRcPath();
   if (!rc) {
@@ -24,7 +25,12 @@ function ensurePathAhead(): void {
   }
   const outcome = ensurePathInRc(rc);
   if (outcome === "added") console.log(`${c.green("✓")} added ${paths.binDir} to PATH in ${rc} - restart your shell (or \`source ${rc}\`)`);
-  else console.log(c.yellow(`⚠ PATH line already in ${rc} - restart your shell to pick it up`));
+  else if (outcome === "skipped") {
+    const hint = managedShellRcSkipLines();
+    console.log(c.yellow(`⚠ ${hint.headline}`));
+    console.log(c.yellow(`  ${hint.detail}`));
+    console.log(c.yellow(`  ${hint.exportLine}`));
+  } else console.log(c.yellow(`⚠ PATH line already in ${rc} - restart your shell to pick it up`));
 }
 
 function reportTimer(out: InstallOutcome): void {

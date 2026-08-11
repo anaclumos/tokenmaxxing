@@ -33,6 +33,11 @@ in
 
     home.packages = lib.mkIf (package != null) [ package ];
 
+    # Supervisor `claude`/`codex` shims live under XDG config after
+    # `tokenmaxxing init`. Home Manager points ~/.zshrc at a nix-store file,
+    # so init soft-skips PATH edits there; put the shim dir on session PATH.
+    home.sessionPath = [ "${config.xdg.configHome}/tokenmaxxing/bin" ];
+
     # Keep init from writing a second imperative timer when Nix owns it.
     home.sessionVariables = lib.mkIf cfg.checkTimer.enable {
       TOKENMAXXING_SKIP_TIMER = "1";
