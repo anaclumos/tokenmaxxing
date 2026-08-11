@@ -427,8 +427,7 @@ const PATH_LINE_MARK = "# tokenmaxxing PATH";
 /** Idempotently append the supervisor-bin PATH line to `rc` (created if absent).
  *  A pre-existing hand-added line for the bin dir also counts as present.
  *  Returns `"skipped"` when the resolved target is immutable (nix-store /
- *  non-writable / TOKENMAXXING_SKIP_SHELL_RC) so callers can print guidance
- *  instead of surfacing EACCES. */
+ *  non-writable) so callers can print guidance instead of surfacing EACCES. */
 export function ensurePathInRc(rc: string): "added" | "present" | "skipped" {
   const dir = paths.binDir.startsWith(`${HOME}/`) ? `$HOME${paths.binDir.slice(HOME.length)}` : paths.binDir;
   // Write through a dotfile-managed symlink, never over it: writeFileAtomic
@@ -453,13 +452,23 @@ export function ensurePathInRc(rc: string): "added" | "present" | "skipped" {
     const addition = kept.some(isCurrentExport) ? "" : `export PATH="${dir}:$PATH" ${PATH_LINE_MARK}\n`;
     // preserve the rc's own mode: writeFileAtomic defaults to 0600, which
     // would silently tighten a normally 0644 shell rc (PR #36 review catch)
-    writeFileAtomic(target, `${body}${sep0}${addition}`, statSync(target).mode & 0o777);
+    try {
+      writeFileAtomic(target, `${body}${sep0}${addition}`, statSync(target).mode & 0o777);
+    } catch (e) {
+      if (isEacces(e)) return "skipped";
+      throw e;
+    }
     return "added";
   }
   if (lines.some(isCurrentExport)) return "present";
   if (cannotWriteRcTarget(target)) return "skipped";
   const sep = current === "" || current.endsWith("\n") ? "" : "\n";
-  appendFileSync(target, `${sep}export PATH="${dir}:$PATH" ${PATH_LINE_MARK}\n`);
+  try {
+    appendFileSync(target, `${sep}export PATH="${dir}:$PATH" ${PATH_LINE_MARK}\n`);
+  } catch (e) {
+    if (isEacces(e)) return "skipped";
+    throw e;
+  }
   return "added";
 }
 
@@ -515,7 +524,12 @@ export function removePathFromRc(rc: string): boolean {
   const kept = lines.filter((line) => !line.includes(PATH_LINE_MARK));
   if (kept.length === lines.length) return false;
   if (cannotWriteRcTarget(target)) return false;
-  writeFileAtomic(target, kept.join("\n"), statSync(target).mode & 0o777);
+  try {
+    writeFileAtomic(target, kept.join("\n"), statSync(target).mode & 0o777);
+  } catch (e) {
+    if (isEacces(e)) return false;
+    throw e;
+  }
   return true;
 }
 

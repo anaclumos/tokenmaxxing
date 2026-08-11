@@ -78,6 +78,8 @@ describe("shell rc PATH line", () => {
 
   test("soft-skips a read-only symlink target without throwing or mutating it", () => {
     // Home Manager: ~/.zshrc → /nix/store/...-hm_..zshrc (immutable).
+    // Hermetic stand-in: chmod 444 (W_OK fails the same way; we cannot create
+    // a real /nix/store path under the temp tree).
     const store = join(base, "fake-store-zshrc");
     const rc = join(base, "rc-hm-link");
     rmSync(rc, { force: true });
@@ -86,8 +88,14 @@ describe("shell rc PATH line", () => {
     symlinkSync(store, rc);
     expect(ensurePathInRc(rc)).toBe("skipped");
     expect(readFileSync(store, "utf8")).toBe("# home-manager\n");
+    expect(lstatSync(rc).isSymbolicLink()).toBe(true);
+    // marked line present: remove must also soft-skip (not only "absent")
+    chmodSync(store, 0o644);
+    writeFileSync(store, `export PATH="${paths.binDir}:$PATH" # tokenmaxxing PATH\n`);
+    chmodSync(store, 0o444);
+    const withMark = readFileSync(store, "utf8");
     expect(removePathFromRc(rc)).toBe(false);
-    expect(readFileSync(store, "utf8")).toBe("# home-manager\n");
+    expect(readFileSync(store, "utf8")).toBe(withMark);
     chmodSync(store, 0o644);
   });
 
@@ -101,20 +109,6 @@ describe("shell rc PATH line", () => {
     expect(ensurePathInRc(rc)).toBe("present");
     expect(readFileSync(store, "utf8")).toBe(`export PATH="${paths.binDir}:$PATH"\n`);
     chmodSync(store, 0o644);
-  });
-
-  test("TOKENMAXXING_SKIP_SHELL_RC soft-skips even a writable rc", () => {
-    const rc = join(base, "rc-skip-env");
-    rmSync(rc, { force: true });
-    const prev = process.env.TOKENMAXXING_SKIP_SHELL_RC;
-    process.env.TOKENMAXXING_SKIP_SHELL_RC = "1";
-    try {
-      expect(ensurePathInRc(rc)).toBe("skipped");
-      expect(existsSync(rc)).toBe(false);
-    } finally {
-      if (prev === undefined) delete process.env.TOKENMAXXING_SKIP_SHELL_RC;
-      else process.env.TOKENMAXXING_SKIP_SHELL_RC = prev;
-    }
   });
 });
 
