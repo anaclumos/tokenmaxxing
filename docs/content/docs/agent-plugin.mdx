@@ -1,0 +1,56 @@
+---
+title: Agent Plugin
+description: Portable Agent Plugins package with skills and a gated MCP for ops and coding agents
+---
+
+tokenmaxxing ships a portable [Agent Plugins 1.0](https://agent-plugins.org/) package at `agent-plugin/`. Compatible clients (Cursor, Codex, ChatGPT, VS Code, Copilot, and others) load that directory as a local plugin: skills under `skills/`, MCP from `mcp.json`.
+
+This is separate from the Slack serve Claude plugin at `src/serve-plugin/` (`.claude-plugin/plugin.json`). Serve injects session skills (`serve-session`, `ask-the-user`) into daemon-relayed threads. The portable package is for owner and coding agents in Cursor, Pi, Codex, and similar clients.
+
+## Install
+
+Point the client at the `agent-plugin/` directory in a git checkout or an installed npm package (`node_modules/tokenmaxxing/agent-plugin`).
+
+- **Cursor:** load `./agent-plugin` as an Agent Plugin, or use the project `.cursor/mcp.json` stdio entry that runs `bun ./agent-plugin/bin/tokenmaxxing-mcp`.
+- **Pi:** project `.pi/settings.json` already lists `agentPluginPaths: ["./agent-plugin"]`.
+- **Other Agent Plugins clients:** add the same directory as a local plugin path.
+
+The MCP binary is `agent-plugin/bin/tokenmaxxing-mcp` (Bun). It refuses ambient `CLAUDE_CONFIG_DIR` / `CLAUDE_SECURESTORAGE_CONFIG_DIR`. Set `TOKENMAXXING_HOME` for hermetic use.
+
+## MCP tools
+
+**Always available (read / free):**
+
+| Tool | Backing |
+|---|---|
+| `pool_ls` | `tokenmaxxing ls` |
+| `pool_status` | `tokenmaxxing status` (never `--force`) |
+| `doctor` | `tokenmaxxing doctor` |
+| `config_get` | `tokenmaxxing config` / `config get` |
+| `help` | tool catalog + safety rules |
+
+**Mutating (dual-gated):** each call needs `confirm: true` **and** the server env `TOKENMAXXING_AGENT_MUTATIONS=1` (set only after the user approves pool mutations).
+
+| Tool | Backing |
+|---|---|
+| `pool_switch` | Claude `switch` or Codex `switch --codex` when `codex=true` |
+| `pool_check` | `tokenmaxxing check` |
+| `config_set` / `config_unset` | config writers |
+
+**Not exposed:** `status --force`, credential dumps, `init` / `add` / `auth` / `rm` / `uninstall`, `serve` / Slack posts, process kills.
+
+Tool results scrub bearer-looking and token-shaped spans. Prefer MCP over raw shell for pool ops.
+
+## Skills
+
+| Skill | Job |
+|---|---|
+| `pool-status` | Safe pool reads |
+| `doctor-diagnostics` | Install health |
+| `switching-policy` | GREEDY vs HARD, pace pressure, Layer 2 Claude-only |
+| `sdk-pairing` | Agent SDK helpers |
+| `codex-pool` | Restart-is-switch, no Layer 2 |
+| `credentials-hygiene` | Identity and secret rules |
+| `safe-contribution` | Tests, PR window, public-repo hygiene |
+
+Skills tell agents when to call which MCP tool and what never to do. Coding agents still edit the repo with normal tools; policy skills stop banned patterns from being reintroduced.
