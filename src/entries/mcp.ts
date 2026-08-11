@@ -43,22 +43,34 @@ export function scrubSecrets(text: string): string {
 
 type CaptureResult = { code: number; stdout: string; stderr: string };
 
+/** Serialize captureCli: console.log/error are process-global, so concurrent
+ *  tool calls would interleave stdout into each other and corrupt JSON-RPC. */
+let captureChain: Promise<unknown> = Promise.resolve();
+
 /** Run a CLI cmd while keeping stdout clean for the MCP transport. */
 export async function captureCli(run: () => number | Promise<number>): Promise<CaptureResult> {
-  const out: string[] = [];
-  const err: string[] = [];
-  const joinArgs = (args: unknown[]) => args.map((a) => (typeof a === "string" ? a : String(a))).join(" ");
-  const log = console.log;
-  const error = console.error;
-  console.log = (...args: unknown[]) => { out.push(joinArgs(args)); };
-  console.error = (...args: unknown[]) => { err.push(joinArgs(args)); };
-  try {
-    const code = await run();
-    return { code, stdout: out.join("\n"), stderr: err.join("\n") };
-  } finally {
-    console.log = log;
-    console.error = error;
-  }
+  const job = async (): Promise<CaptureResult> => {
+    const out: string[] = [];
+    const err: string[] = [];
+    const joinArgs = (args: unknown[]) => args.map((a) => (typeof a === "string" ? a : String(a))).join(" ");
+    const log = console.log;
+    const error = console.error;
+    console.log = (...args: unknown[]) => { out.push(joinArgs(args)); };
+    console.error = (...args: unknown[]) => { err.push(joinArgs(args)); };
+    try {
+      const code = await run();
+      return { code, stdout: out.join("\n"), stderr: err.join("\n") };
+    } finally {
+      console.log = log;
+      console.error = error;
+    }
+  };
+  const next = captureChain.then(job, job);
+  captureChain = next.then(
+    () => undefined,
+    () => undefined,
+  );
+  return next;
 }
 
 function textResult(input: { text: string; isError?: boolean }) {
@@ -252,7 +264,9 @@ export function createTokenmaxxingMcpServer(): McpServer {
   return server;
 }
 
-async function main(): Promise<void> {
+/** Entrypoint for the Agent Plugin launcher (`agent-plugin/bin/tokenmaxxing-mcp`).
+ *  Exported because that bin imports this module (so `import.meta.main` is false here). */
+export async function main(): Promise<void> {
   const ambient = refuseAmbientStoreEnv();
   if (ambient != null) {
     console.error(

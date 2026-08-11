@@ -1,6 +1,6 @@
 // Unit tests for the portable Agent Plugin MCP helpers and mutation gates.
 
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import {
@@ -13,10 +13,15 @@ import {
 
 const MUTATIONS_ENV = "TOKENMAXXING_AGENT_MUTATIONS";
 
-afterEach(() => {
+beforeEach(() => {
   delete process.env[MUTATIONS_ENV];
   delete process.env.CLAUDE_SECURESTORAGE_CONFIG_DIR;
   // CLAUDE_CONFIG_DIR stays owned by test/setup.ts for hermetic paths.
+});
+
+afterEach(() => {
+  delete process.env[MUTATIONS_ENV];
+  delete process.env.CLAUDE_SECURESTORAGE_CONFIG_DIR;
 });
 
 describe("mcp helpers", () => {
@@ -47,6 +52,22 @@ describe("mcp helpers", () => {
       return 7;
     });
     expect(cap).toEqual({ code: 7, stdout: "hello-mcp", stderr: "warn-mcp" });
+  });
+
+  test("captureCli serializes concurrent callers so console patches do not interleave", async () => {
+    const slow = captureCli(async () => {
+      console.log("a");
+      await Bun.sleep(30);
+      console.log("b");
+      return 1;
+    });
+    const fast = captureCli(async () => {
+      console.log("c");
+      return 2;
+    });
+    const [a, b] = await Promise.all([slow, fast]);
+    expect(a).toEqual({ code: 1, stdout: "a\nb", stderr: "" });
+    expect(b).toEqual({ code: 2, stdout: "c", stderr: "" });
   });
 
   test("mutationsEnabled is only true when env is exactly 1", () => {
