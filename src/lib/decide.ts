@@ -42,8 +42,7 @@ const SwapDecisionSchema = z.object({
   reason: z.string(),
   /** set when every account is depleted and the soonest recovery is known:
    *  epoch ms that account recovers. The wait target on depleted-wait;
-   *  informational on a bare all-depleted (callers like `xx serve` park on
-   *  it - nothing here waits). */
+   *  informational on a bare all-depleted (nothing here waits). */
   waitUntil: z.number().optional(),
 });
 export type SwapDecision = z.infer<typeof SwapDecisionSchema>;
@@ -318,8 +317,7 @@ export async function evaluateAndMaybeSwap(now = Date.now(), anticipatory = fals
     // truly walled do we fall through to the depleted-wait park below. The wall
     // reading is the statusLine's authoritative rate_limits tee (the same data
     // /rate-limit-options renders); a single-turn overshoot is caught one
-    // boundary later by the check timer or the next Stop hook, and the serve/SDK
-    // path additionally stamps observed limits on errored results.
+    // boundary later by the check timer or the next Stop hook.
     const hardCtx = { now, thresholds: hardBars(cfg), currentAccountUuid: null, switchFamilies };
     const seat = seatOf(loadAccounts());
     if (seat && !seat.needsReauth && !isExhausted(seat, hardCtx)) {

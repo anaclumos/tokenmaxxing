@@ -4,13 +4,9 @@
 // process exit).
 //
 // The acquire is NON-BLOCKING (LOCK_EX|LOCK_NB) with an async retry loop: a
-// blocking LOCK_EX from this runtime freezes the whole event loop, and in
-// `xx serve` (many actors, one process) a second actor's blocking acquire
-// would stop the holder from ever resuming to release - a true single-process
-// deadlock; a cross-process holder would freeze the daemon for its whole
-// critical section (adversarial review catch, 2026-07-19). EWOULDBLOCK is
-// told apart from real failures via errno, so a bad fd still fails fast
-// instead of spinning.
+// blocking LOCK_EX from this runtime freezes the whole event loop.
+// EWOULDBLOCK is told apart from real failures via errno, so a bad fd still
+// fails fast instead of spinning.
 
 import { closeSync, mkdirSync, openSync } from "node:fs";
 import { dirname } from "node:path";

@@ -18,7 +18,6 @@ description: "每個 tokenmaxxing 指令同佢做啲乜"
 | `tokenmaxxing watch [seconds]` | 即時狀態，每 N 秒重新渲染一次（預設 120，下限 30；永遠唔 ping） |
 | `tokenmaxxing config [get\|set\|unset\|tidy]` | 連同來源嘅有效設定；編輯點分隔嘅 key；`tidy` 會刪走未知嘅 key |
 | `tokenmaxxing check` | 評估切換決定一次（呢個就係定期計時器會行嘅） |
-| `tokenmaxxing serve [setup\|link\|unlink\|links]` | Slack 橋接守護程序（Socket Mode，唔需要公開 URL） |
 | `tokenmaxxing doctor` | 驗證監督者同設定項目係咪仲喺度 |
 | `tokenmaxxing rename [--codex] <sel> <label>` | 重新標籤帳戶池內嘅帳戶 |
 | `tokenmaxxing rm [--codex] <sel>` | 從 claude 或 codex 帳戶池移除一個帳戶（連埋佢停泊咗嘅憑證） |

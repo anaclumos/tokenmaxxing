@@ -14,15 +14,12 @@ Komai yana zaune ƙarƙashin `~/.config/tokenmaxxing/` (ana iya sauya shi da `TO
 | `lastswap.json` | Hatimin lokaci na epoch na musanya ta ƙarshe; yana tuƙa sanyaya na daƙiƙa 45 |
 | `depleted.json` | Jiran tafki-da-ya-ƙare da aka rubuta, wanda hooks na 'yan uwa ke sake kunnawa har sai sake-saitin ya wuce, wurin zama mai aiki ya motsa, ko kowace musanya ta cika |
 | `lock` | Fayil ɗin `flock` da ke jera musanya |
-| `serve-lock` | Flock guda ɗaya na `xx serve`: sabuwar zuriyar daemon tana toshewa a nan har sai wacce ta gabata ta fita gabaɗaya |
 | `sessions/<session-id>.json` | Tutocin ƙaddamarwa na kowane-zama-da-ake-kulawa da mai kula ke ajiyewa don sake-farawa; ana share su bayan kwanaki 30 na rashin aiki (daidai da riƙon rubutun claude na kanta) |
 | `tokenmaxxing.log` | Log na al'amura na ƙari-kawai |
 | `bin/` | Shims na PATH: `claude`, `codex`, da wuraren shiga na `tokenmaxxing` / `xx` |
 | `respawn/<session-id>` | Alamomin sake-farawa na jira-ƙarewa da mai kula ke kallo |
 | `creds/` | Linux kawai: fayilolin tantancewa da aka ajiye, 0600 cikin babban shirin 0700 (macOS yana ajiye tantancewa a matsayin abubuwan keychain na kowane asusu maimakon haka) |
 | `onboard/`, `sample/` | Gidajen saitin da aka ware na jefarwa don shiga na `add`/`auth` da probes na `/usage` na asusun da aka ajiye; gidajen onboard da ke riƙe tantancewa bayyananne ana share su bayan tattarawa |
-| `slack.json` | Tokens na `xx serve` da haɗin tashoshi (0600) |
-| `slack-threads/` | Bayanan zama na kowane zare don `xx serve` |
 | `codex-*` | Tafkin Codex mai gudana a layi ɗaya: `codex-accounts.json`, `codex-lastswap.json`, `codex-lock`, `codex-creds/`, `codex-onboard/`, `codex-respawn/`, `codex-reconcile/` (sigina tsakanin-zama da ke neman mai kula na zaman 'yan uwa ya sake farawa zuwa asusun mai aiki), da `codex-live/` (fayil ɗin kasancewa guda da aka tabbatar da PID ga kowane zaman codex da ake kula da shi mai gudana, don asusu mai aiki ba ya taɓa zama abin nufi na musanya) |
 
 A wajen babban shirinsa, tokenmaxxing yana taɓa ainihin waɗannan: `~/.claude.json` (musanyar `oauthAccount`), `settings.json` na Claude Code (shigarwar hook da statusline), ma'ajin tantancewar da ke aiki (abin keychain na `Claude Code-credentials` a kan macOS, `.credentials.json` a kan Linux), makullan sabuntawa na claude da kanta da ake ɗauka yayin musanya (na farko `.oauth_refresh.lock` a cikin babban shirin saitin claude, tare da tsohon ɗan'uwansa `~/.claude.lock`), `auth.json` da `hooks.json` na codex, da na'urar dubawa-ta-lokaci-lokaci a cikin launchd ko systemd.

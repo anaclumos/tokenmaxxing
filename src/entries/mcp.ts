@@ -108,12 +108,10 @@ Mutating tools (confirm=true AND ${MUTATIONS_ENV}=1):
 Hard deny (no tools):
   status --force / metered pings
   init / add / auth / rm / uninstall
-  serve / Slack posts
   credential blobs or token values
   killing sessions or supervisors
 
 Prefer these tools over raw shell for pool ops. Honor TOKENMAXXING_HOME for hermetic use.
-The Slack serve Claude plugin (src/serve-plugin/) is separate: session skills for daemon-relayed threads, not this portable package.
 `;
 
 export function createTokenmaxxingMcpServer(): McpServer {

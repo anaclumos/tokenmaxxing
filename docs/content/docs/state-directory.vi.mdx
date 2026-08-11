@@ -14,15 +14,12 @@ Mọi thứ nằm trong `~/.config/tokenmaxxing/` (có thể ghi đè bằng `TO
 | `lastswap.json` | Dấu thời gian epoch của lần hoán đổi gần nhất; điều khiển thời gian hồi 45 giây |
 | `depleted.json` | Lần chờ do nhóm cạn kiệt đã được ghi lại, được các hook anh em phát lại cho đến khi thời điểm đặt lại trôi qua, ghế đang hoạt động chuyển chỗ, hoặc bất kỳ lần hoán đổi nào hoàn tất |
 | `lock` | Tệp `flock` tuần tự hóa các lần hoán đổi |
-| `serve-lock` | Flock đơn-thực-thể của `xx serve`: một thế hệ daemon mới sẽ bị chặn ở đây cho đến khi thế hệ trước thoát hoàn toàn |
 | `sessions/<session-id>.json` | Các cờ khởi chạy theo từng phiên được quản lý mà bộ giám sát lưu lại để respawn; bị dọn dẹp sau 30 ngày không hoạt động (khớp với thời gian lưu giữ transcript của chính claude) |
 | `tokenmaxxing.log` | Nhật ký sự kiện chỉ-ghi-thêm |
 | `bin/` | Các shim PATH: `claude`, `codex`, và các điểm vào `tokenmaxxing` / `xx` |
 | `respawn/<session-id>` | Các tệp đánh dấu respawn khi chờ do cạn kiệt mà bộ giám sát theo dõi |
 | `creds/` | Chỉ Linux: các tệp thông tin xác thực dự trữ, 0600 trong một thư mục 0700 (macOS thay vào đó dự trữ thông tin xác thực dưới dạng các mục keychain theo từng tài khoản) |
 | `onboard/`, `sample/` | Các thư mục cấu hình biệt lập dùng-một-lần cho các lần đăng nhập `add`/`auth` và các phép thăm dò `/usage` của tài khoản dự trữ; các thư mục onboard chứa thông tin xác thực dạng văn bản thuần bị xóa sau khi thu hoạch |
-| `slack.json` | Các token và liên kết kênh của `xx serve` (0600) |
-| `slack-threads/` | Các bản ghi phiên theo từng luồng cho `xx serve` |
 | `codex-*` | Nhóm Codex song song: `codex-accounts.json`, `codex-lastswap.json`, `codex-lock`, `codex-creds/`, `codex-onboard/`, `codex-respawn/`, `codex-reconcile/` (các tín hiệu liên-phiên yêu cầu bộ giám sát của một phiên anh em respawn sang tài khoản đang hoạt động), và `codex-live/` (một tệp hiện diện được xác thực PID cho mỗi phiên codex được giám sát đang chạy, nên một tài khoản còn sống không bao giờ là mục tiêu hoán đổi) |
 
 Bên ngoài thư mục riêng của mình, tokenmaxxing chạm đến đúng những thứ sau: `~/.claude.json` (việc hoán đổi `oauthAccount`), `settings.json` của Claude Code (các mục hook và statusline), kho thông tin xác thực đang hoạt động (mục keychain `Claude Code-credentials` trên macOS, `.credentials.json` trên Linux), các khóa làm mới riêng của claude được lấy trong các lần hoán đổi (khóa chính `.oauth_refresh.lock` bên trong thư mục cấu hình của claude, cùng với người anh em kế thừa `~/.claude.lock`), `auth.json` và `hooks.json` của codex, và đơn vị kiểm tra định kỳ trong launchd hoặc systemd.

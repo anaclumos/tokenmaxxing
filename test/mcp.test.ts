@@ -32,7 +32,9 @@ describe("mcp helpers", () => {
   test("refuseAmbientStoreEnv prefers secure-storage over config-dir", () => {
     // test/setup.ts sets CLAUDE_CONFIG_DIR for hermetic paths; leave it alone.
     const suiteConfigDir = process.env.CLAUDE_CONFIG_DIR;
-    expect(suiteConfigDir).toBeTruthy();
+    if (suiteConfigDir == null || suiteConfigDir === "") {
+      throw new Error("expected test/setup.ts to set CLAUDE_CONFIG_DIR");
+    }
     expect(refuseAmbientStoreEnv()).toBe(suiteConfigDir);
     process.env.CLAUDE_SECURESTORAGE_CONFIG_DIR = "/tmp/secure-mcp-test";
     expect(refuseAmbientStoreEnv()).toBe("/tmp/secure-mcp-test");
@@ -122,7 +124,7 @@ describe("mcp tools", () => {
       const text = JSON.stringify(result);
       expect(text).toContain(MUTATIONS_ENV);
       expect(text).toContain("status --force");
-      expect(text).toContain("serve");
+      expect(text).toContain("credential blobs");
     });
   });
 });

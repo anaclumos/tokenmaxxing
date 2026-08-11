@@ -18,10 +18,9 @@ function redact(s: string): string {
 
 let echo: ((input: { event: string; parts: string }) => void) | null = null;
 
-/** Tee every subsequent log() line to a terminal printer. Only the serve
- *  daemon opts in: hooks and the statusline own their stdout protocol, so the
- *  echo stays off by default. The printer receives the same redacted parts the
- *  file line gets. */
+/** Tee every subsequent log() line to a terminal printer. Off by default
+ *  (hooks and the statusline own their stdout protocol). The printer receives
+ *  the same redacted parts the file line gets. */
 export function setLogEcho(input: { printer: (input: { event: string; parts: string }) => void }): void {
   echo = input.printer;
 }
@@ -36,10 +35,9 @@ export function log(event: string, fields: Record<string, unknown> = {}): void {
       })
       .join(" ");
     mkdirSync(dirname(paths.logFile), { recursive: true });
-    // Rotation cap: the check timer logs every 180s and the serve daemon
-    // echoes every event, so an uncapped append-only file grows forever on a
-    // live install (closing-review critic gap). One .old generation bounds
-    // total disk at ~2x the cap; older history is disposable diagnostics.
+    // Rotation cap: the check timer logs every 180s, so an uncapped
+    // append-only file grows forever on a live install. One .old generation
+    // bounds total disk at ~2x the cap; older history is disposable diagnostics.
     if (existsSync(paths.logFile) && statSync(paths.logFile).size > LOG_MAX_BYTES) {
       renameSync(paths.logFile, `${paths.logFile}.old`);
     }
@@ -47,11 +45,10 @@ export function log(event: string, fields: Record<string, unknown> = {}): void {
   } catch {
     // logging must never throw into a hook / supervisor path
   }
-  // separate from the file sink: an unwritable log file must not also silence
-  // the terminal echo (that is exactly when the daemon needs to stay visible).
+  // separate from the file sink: an unwritable log file must not also silence the echo.
   try {
     echo?.({ event, parts: line });
   } catch {
-    // the echo printer must never throw into the daemon either
+    // the echo printer must never throw into a caller path
   }
 }

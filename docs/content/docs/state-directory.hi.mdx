@@ -14,15 +14,12 @@ description: "~/.config/tokenmaxxing के तहत हर फ़ाइल औ
 | `lastswap.json` | अंतिम स्वैप का epoch टाइमस्टैम्प; 45-सेकंड कूलडाउन को चलाता है |
 | `depleted.json` | दर्ज की गई समाप्त-पूल प्रतीक्षा, जिसे सहोदर हुक तब तक दोहराते हैं जब तक रीसेट न गुज़र जाए, लाइव सीट न बदल जाए, या कोई स्वैप पूरा न हो जाए |
 | `lock` | `flock` फ़ाइल जो स्वैप को क्रमबद्ध करती है |
-| `serve-lock` | `xx serve` सिंगल-इंस्टेंस flock: नई डेमॉन जनरेशन यहां तब तक ब्लॉक होती है जब तक पिछली पूरी तरह से बाहर न निकल जाए |
 | `sessions/<session-id>.json` | प्रति-प्रबंधित-सेशन लॉन्च फ़्लैग जिन्हें सुपरवाइज़र respawn के लिए बनाए रखता है; 30 दिन निष्क्रिय रहने के बाद छांटे जाते हैं (claude की अपनी ट्रांसक्रिप्ट रिटेंशन से मेल खाते हुए) |
 | `tokenmaxxing.log` | केवल-जोड़ने वाला इवेंट लॉग |
 | `bin/` | PATH शिम: `claude`, `codex`, और `tokenmaxxing` / `xx` प्रवेश बिंदु |
 | `respawn/<session-id>` | समाप्त-प्रतीक्षा respawn मार्कर जिन पर सुपरवाइज़र नज़र रखता है |
 | `creds/` | केवल Linux: पार्क की गई क्रेडेंशियल फ़ाइलें, 0700 डायरेक्टरी में 0600 (macOS इसके बजाय क्रेडेंशियल को प्रति-खाता keychain आइटम के रूप में पार्क करता है) |
 | `onboard/`, `sample/` | `add`/`auth` लॉगिन और पार्क-किए-गए-खाते के `/usage` प्रोब के लिए फेंकने योग्य पृथक config होम; प्लेनटेक्स्ट क्रेडेंशियल रखने वाले onboard होम हार्वेस्ट के बाद हटा दिए जाते हैं |
-| `slack.json` | `xx serve` टोकन और चैनल लिंक (0600) |
-| `slack-threads/` | `xx serve` के लिए प्रति-थ्रेड सेशन रिकॉर्ड |
 | `codex-*` | समानांतर Codex पूल: `codex-accounts.json`, `codex-lastswap.json`, `codex-lock`, `codex-creds/`, `codex-onboard/`, `codex-respawn/`, `codex-reconcile/` (क्रॉस-सेशन सिग्नल जो किसी सहोदर सेशन के सुपरवाइज़र से लाइव खाते पर respawn करने का अनुरोध करते हैं), और `codex-live/` (प्रति चालू पर्यवेक्षित codex सेशन एक PID-सत्यापित उपस्थिति फ़ाइल, ताकि एक लाइव खाता कभी स्वैप लक्ष्य न हो) |
 
 अपनी स्वयं की डायरेक्टरी के बाहर, tokenmaxxing बिल्कुल इन्हें छूता है: `~/.claude.json` (`oauthAccount` स्वैप), Claude Code का `settings.json` (हुक और statusline प्रविष्टियां), लाइव क्रेडेंशियल स्टोर (macOS पर `Claude Code-credentials` keychain आइटम, Linux पर `.credentials.json`), स्वैप के दौरान लिए गए claude के अपने रिफ्रेश लॉक (claude की config डायरेक्टरी के भीतर मुख्य `.oauth_refresh.lock`, साथ ही legacy `~/.claude.lock` सहोदर), codex का `auth.json` और `hooks.json`, और launchd या systemd में आवधिक-जांच यूनिट।

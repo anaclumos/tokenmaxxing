@@ -1,6 +1,6 @@
 {
   "name": "tokenmaxxing",
-  "version": "1.6.0",
+  "version": "1.7.0",
   "description": "Automatic Claude Code account switching: pool multiple accounts and hot-swap when quota fills, resuming your session on the fresh account.",
   "type": "module",
   "license": "MIT",
@@ -42,11 +42,7 @@
     "typescript": "^5.6.0"
   },
   "dependencies": {
-    "@anthropic-ai/claude-agent-sdk": "^0.3.214",
-    "@chat-adapter/slack": "^4.34.0",
-    "@chat-adapter/state-memory": "^4.34.0",
     "@modelcontextprotocol/sdk": "1.29.0",
-    "chat": "^4.34.0",
     "es-toolkit": "^1.49.0",
     "ky": "^2.0.2",
     "zod": "^4.4.3"

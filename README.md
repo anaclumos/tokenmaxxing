@@ -73,7 +73,6 @@ claude                  # use claude as always
 | `tokenmaxxing status --force` | additionally ping every account (one tiny haiku request each) so all 5h session timers start now, then sample fresh |
 | `tokenmaxxing watch [seconds]` | live status: re-render every N seconds (default 120, floor 30; never pings) |
 | `tokenmaxxing config` | effective config with sources; `get`/`set`/`unset` dotted keys, `tidy` prunes unknown keys |
-| `tokenmaxxing serve` | Slack bridge daemon (Socket Mode, no public URL): `setup` prints the app manifest and stores the two tokens, `link <channel-id> <repo>` ties a channel to a repo (`--yolo` for full-autonomy bypassPermissions sessions), then mentioning the bot in that channel opens a Claude Code session per thread in the repo checkout (the session cuts its own git worktree only when a task needs isolation) and thread messages relay in and out |
 | `tokenmaxxing doctor` | verify the supervisor + settings entries survived |
 | `tokenmaxxing rename [--codex] <sel> <label>` / `rm [--codex] <sel>` | manage the pool (`--codex` targets the codex pool: one email can hold both a claude and a codex account) |
 | `tokenmaxxing uninstall` | remove supervisor + settings entries (accounts/credentials kept) |
@@ -159,7 +158,7 @@ Two codex-specific facts worth knowing: codex does not run hooks it has not been
 
 ## How it's built
 
-TypeScript on Bun: one multi-call entry (`src/main.ts`) serves the CLI, the `claude` supervisor, and the hook/statusLine shims, and runs directly under bun. [Zod](https://zod.dev) validates every external-boundary payload (credential blobs, hook/statusLine stdin, OAuth responses, config), [es-toolkit](https://es-toolkit.dev) for utilities. The supervisor is process/terminal-only - it never proxies API traffic or touches tokens in flight. Cross-process coordination uses `flock(2)` via `bun:ffi` (macOS has no `flock(1)`; one codepath serves both platforms). Credential I/O goes through one platform-selected store: `security(1)` generic-passwords on macOS, atomic 0600 file writes on Linux.
+TypeScript on Bun. One multi-call entry (`src/main.ts`) runs the CLI, the `claude` supervisor, and the hook/statusLine shims. [Zod](https://zod.dev) validates every external-boundary payload (credential blobs, hook/statusLine stdin, OAuth responses, config). [es-toolkit](https://es-toolkit.dev) for utilities. The supervisor is process/terminal-only. It never proxies API traffic or touches tokens in flight. Cross-process coordination uses `flock(2)` via `bun:ffi` (macOS has no `flock(1)`; one codepath for both platforms). Credential I/O goes through one platform-selected store: `security(1)` generic-passwords on macOS, atomic 0600 file writes on Linux.
 
 ## License
 

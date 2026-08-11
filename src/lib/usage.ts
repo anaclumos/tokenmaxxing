@@ -199,9 +199,9 @@ export function parseUsageLimitEpoch(input: { text: string }): number | null {
 
 /**
  * Persist a limit observed in a turn RESULT into usage.json so the next
- * decision sees the depleted account immediately. A headless serve/SDK process
- * has no statusLine tee and `loadFreshSnapshots` skips re-probing inside the
- * poll TTL (and `/usage` is fail-silent against the just-limited active token
+ * decision sees the depleted account immediately. A headless SDK process has
+ * no statusLine tee and `loadFreshSnapshots` skips re-probing inside the poll
+ * TTL (and `/usage` is fail-silent against the just-limited active token
  * anyway), so without this write a post-limit retry re-decides off the stale
  * pre-limit snapshot and respawns the same depleted account. The session
  * window is stamped 100% with the announced reset: whichever window actually

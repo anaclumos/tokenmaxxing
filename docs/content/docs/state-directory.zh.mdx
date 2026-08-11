@@ -14,15 +14,12 @@ description: "~/.config/tokenmaxxing 之下的每个文件与目录"
 | `lastswap.json` | 上次切换的纪元时间戳；驱动 45 秒冷却期 |
 | `depleted.json` | 记录的账户池耗尽等待，由兄弟会话的 hook 反复重放，直到重置时间过去、活动席位移动，或任何一次切换完成 |
 | `lock` | 用于串行化切换的 `flock` 文件 |
-| `serve-lock` | `xx serve` 的单实例 flock：新一代守护进程会在此阻塞，直到上一代完全退出 |
 | `sessions/<session-id>.json` | 监督进程为每个受管会话持久化的启动参数，供 respawn 使用；空闲 30 天后清理（与 claude 自身的会话记录保留期一致） |
 | `tokenmaxxing.log` | 仅追加的事件日志 |
 | `bin/` | PATH shim：`claude`、`codex`，以及 `tokenmaxxing` / `xx` 入口点 |
 | `respawn/<session-id>` | 监督进程所监视的耗尽等待 respawn 标记 |
 | `creds/` | 仅 Linux：停放的凭证文件，是位于 0700 目录中的 0600 文件（macOS 改为把凭证停放为每账户各一个钥匙串条目） |
 | `onboard/`、`sample/` | 用于 `add`/`auth` 登录以及停放账户 `/usage` 探测的一次性隔离配置 home；持有明文凭证的 onboard home 会在收集后删除 |
-| `slack.json` | `xx serve` 的 token 和频道链接（0600） |
-| `slack-threads/` | `xx serve` 的按线程会话记录 |
 | `codex-*` | 并行的 Codex 账户池：`codex-accounts.json`、`codex-lastswap.json`、`codex-lock`、`codex-creds/`、`codex-onboard/`、`codex-respawn/`、`codex-reconcile/`（跨会话信号，请求某个兄弟会话的监督进程重新生成到活动账户上），以及 `codex-live/`（每个正在运行的受监督 codex 会话各一个经 PID 校验的存在文件，因此活动账户绝不会成为切换目标） |
 
 在自身目录之外，tokenmaxxing 会触及的恰好只有这些：`~/.claude.json`（`oauthAccount` 切换）、Claude Code 的 `settings.json`（hook 和 statusline 条目）、活动凭证存储（macOS 上的 `Claude Code-credentials` 钥匙串条目，Linux 上的 `.credentials.json`）、claude 自身在切换期间取用的刷新锁（claude 配置目录内的主锁 `.oauth_refresh.lock`，以及作为遗留兼容的 `~/.claude.lock`）、codex 的 `auth.json` 和 `hooks.json`，以及 launchd 或 systemd 中的周期性检查单元。

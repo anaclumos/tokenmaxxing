@@ -3,13 +3,11 @@ title: Agent Plugin
 description: Portable Agent Plugins package with skills and a gated MCP for ops and coding agents
 ---
 
-tokenmaxxing ships a portable [Agent Plugins 1.0](https://agent-plugins.org/) package at `agent-plugin/`. Compatible clients (Cursor, Codex, ChatGPT, VS Code, Copilot, and others) load that directory as a local plugin: skills under `skills/`, MCP from `mcp.json`.
-
-This is separate from the Slack serve Claude plugin at `src/serve-plugin/` (`.claude-plugin/plugin.json`). Serve injects session skills (`serve-session`, `ask-the-user`) into daemon-relayed threads. The portable package is for owner and coding agents in Cursor, Pi, Codex, and similar clients.
+tokenmaxxing ships a portable [Agent Plugins 1.0](https://agent-plugins.org/) package at `agent-plugin/`. Compatible clients load that directory as a local plugin. Skills under `skills/`. MCP from `mcp.json`. Cursor, Codex, ChatGPT, VS Code, Copilot, and friends.
 
 ## Install
 
-Point the client at the `agent-plugin/` directory in a git checkout or an installed npm package (`node_modules/tokenmaxxing/agent-plugin`).
+Point the client at `agent-plugin/` in a git checkout or an installed npm package (`node_modules/tokenmaxxing/agent-plugin`).
 
 - **Cursor:** load `./agent-plugin` as an Agent Plugin, or use the project `.cursor/mcp.json` stdio entry that runs `bun ./agent-plugin/bin/tokenmaxxing-mcp`.
 - **Pi:** project `.pi/settings.json` already lists `agentPluginPaths: ["./agent-plugin"]`.
@@ -29,7 +27,7 @@ The MCP binary is `agent-plugin/bin/tokenmaxxing-mcp` (Bun). It refuses ambient 
 | `config_get` | `tokenmaxxing config` / `config get` |
 | `help` | tool catalog + safety rules |
 
-**Mutating (dual-gated):** each call needs `confirm: true` **and** the server env `TOKENMAXXING_AGENT_MUTATIONS=1` (set only after the user approves pool mutations).
+**Mutating (dual-gated):** each call needs `confirm: true` **and** the server env `TOKENMAXXING_AGENT_MUTATIONS=1`. Set that only after the user approves pool mutations.
 
 | Tool | Backing |
 |---|---|
@@ -37,7 +35,7 @@ The MCP binary is `agent-plugin/bin/tokenmaxxing-mcp` (Bun). It refuses ambient 
 | `pool_check` | `tokenmaxxing check` |
 | `config_set` / `config_unset` | config writers |
 
-**Not exposed:** `status --force`, credential dumps, `init` / `add` / `auth` / `rm` / `uninstall`, `serve` / Slack posts, process kills.
+**Not exposed:** `status --force`, credential dumps, `init` / `add` / `auth` / `rm` / `uninstall`, process kills.
 
 Tool results scrub bearer-looking and token-shaped spans. Prefer MCP over raw shell for pool ops.
 
@@ -53,4 +51,4 @@ Tool results scrub bearer-looking and token-shaped spans. Prefer MCP over raw sh
 | `credentials-hygiene` | Identity and secret rules |
 | `safe-contribution` | Tests, PR window, public-repo hygiene |
 
-Skills tell agents when to call which MCP tool and what never to do. Coding agents still edit the repo with normal tools; policy skills stop banned patterns from being reintroduced.
+Skills tell agents when to call which MCP tool and what never to do. Coding agents still edit the repo with normal tools. Policy skills stop banned patterns from coming back.
