@@ -36,9 +36,6 @@ export const paths = {
   sampleDir: join(TM_HOME, "sample"),
   /** linux only: parked credential .json files (0700 dir, 0600 files). */
   credsDir: join(TM_HOME, "creds"),
-  /** Durable tmux relay companion: config + per-session state (not respawn/). */
-  relayJson: join(TM_HOME, "relay.json"),
-  relayDir: join(TM_HOME, "relay"),
 
   /** ~/.claude.json - holds the active `oauthAccount` identity object. */
   claudeJson: env("TOKENMAXXING_CLAUDE_JSON", join(HOME, ".claude.json")),

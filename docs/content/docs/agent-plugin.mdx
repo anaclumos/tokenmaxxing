@@ -50,15 +50,5 @@ Tool results scrub bearer-looking and token-shaped spans. Prefer MCP over raw sh
 | `codex-pool` | Restart-is-switch, no Layer 2 |
 | `credentials-hygiene` | Identity and secret rules |
 | `safe-contribution` | Tests, PR window, public-repo hygiene |
-| `relay-session` | Durable tmux relay via `tokenmaxxing relay`; Claude permission modes, Cursor Run Mode auto-approve rule, Codex mapping, IPC matrices |
 
 Skills tell agents when to call which MCP tool and what never to do. Coding agents still edit the repo with normal tools. Policy skills stop banned patterns from coming back.
-
-## Relay agents
-
-Thin shell-only agents under `agent-plugin/agents/`:
-
-- `tokenmaxxing-claude.md`: Claude Code worker through `relay turn --worker claude`
-- `tokenmaxxing-codex.md`: Codex worker through `relay turn --worker codex`
-
-Install into host agent dirs with `tokenmaxxing relay install --target cursor|claude|all` (merges only tokenmaxxing-owned hook keys). Host finish hooks must fire on every return, including `permission-needed` pings.

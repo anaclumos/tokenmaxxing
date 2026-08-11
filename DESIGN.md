@@ -111,9 +111,7 @@ The decision engages at `five_hour >= 50%` (policy.greedySessionFloor): from the
 
 **Shipped since (0.13.0):** Codex as a second pool, parallel state (`codex-accounts.json`, `codex-creds/`, own flock), same pace-pressure policy. Codex differences that shaped it: restart IS the switch (a running codex refuses another account's credential), usage is a free direct GET with epoch resets and a duration-classified window set (the weekly window is primary on current plans), the refresh token rotates with reuse punished (harvest-by-true-owner, persist every rotation), and codex's new Stop-hook system drives the auto-swap through a codex supervisor shim that respawns `codex resume <session-id>` (hooks must be trusted once via `/hooks`). Sibling sessions left on ANY non-live account are reconciled cross-session (owner decisions 2026-07-20; a non-live session cannot refresh cross-account and would wedge at token expiry, healthy or not): the deciding actor drops a reconcile marker addressed to the sibling's supervisor, and the sibling's own Stop hook promotes it into a respawn onto the live account at its next turn boundary - the only safe respawn point - while a blocked live seat never receives a signal.
 
-**Shipped since (relay companion):** `tokenmaxxing relay` hosts durable tmux workers for cheap host subagents. Claude `--permission-mode` vocabulary (default `auto`), Codex sandbox mapping, per-session flock + registry under `relay/`, additive turn-done markers (never `respawn/`), and `permission-needed` stdout pings decided by main. Host finish hooks still run on every return including pings. Skill + agents live under `agent-plugin/` (`relay-session`, `tokenmaxxing-claude`, `tokenmaxxing-codex`). Docs: `docs/content/docs/commands.mdx`, `state-directory.mdx`, `agent-plugin.mdx`.
-
-**Non-goals:** an API/MITM proxy; reimplementing OAuth beyond the single refresh-grant call in the swap; Slack serve as the relay bus; soft concurrency caps; Cloud Agents without local tmux.
+**Non-goals:** an API/MITM proxy; reimplementing OAuth beyond the single refresh-grant call in the swap; Slack as a message bus; soft concurrency caps.
 
 ---
 

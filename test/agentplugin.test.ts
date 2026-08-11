@@ -11,7 +11,6 @@ const SKILL_DIRS = [
   "credentials-hygiene",
   "doctor-diagnostics",
   "pool-status",
-  "relay-session",
   "safe-contribution",
   "sdk-pairing",
   "switching-policy",
@@ -58,13 +57,6 @@ describe("agent-plugin layout", () => {
       expect(fields.get("name")).toBe(dir);
       expect(fields.get("description")?.length ?? 0).toBeGreaterThan(20);
     }
-  });
-
-  test("relay agents and skill exist", () => {
-    for (const name of ["tokenmaxxing-claude.md", "tokenmaxxing-codex.md"]) {
-      expect(statSync(join(pluginDir, "agents", name)).isFile()).toBe(true);
-    }
-    expect(statSync(join(pluginDir, "skills", "relay-session", "SKILL.md")).isFile()).toBe(true);
   });
 
   test("skill files carry no em-dash or interpunct", () => {

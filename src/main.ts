@@ -27,8 +27,6 @@ import { cmdRename } from "./cli/rename.ts";
 import { cmdSwitch } from "./cli/switch.ts";
 import { cmdCheck } from "./cli/check.ts";
 import { cmdConfig } from "./cli/config.ts";
-import { cmdRelay } from "./cli/relay.ts";
-import { runRelayPermissionHook } from "./entries/relaypermission.ts";
 import { timerDeactivationHint, uninstallSupervisor } from "./lib/install.ts";
 import { c } from "./cli/render.ts";
 
@@ -49,7 +47,6 @@ function printHelp(): void {
   ${c.cyan("tokenmaxxing status --force")}  ping every account (one tiny haiku request each) so all 5h session timers start now, then sample fresh; ${c.cyan("xx --force")} works too
   ${c.cyan("tokenmaxxing watch")} [seconds]  live status: re-render every N seconds (default 120, never pings)
   ${c.cyan("tokenmaxxing config")} [get|set|unset|tidy]  inspect and edit config.json (bare = effective config with sources)
-  ${c.cyan("tokenmaxxing relay")} …  durable tmux relay for host agents (turn/decide/status/…); see ${c.cyan("relay --help")}
   ${c.cyan("tokenmaxxing doctor")}     verify the install is intact
   ${c.cyan("tokenmaxxing rename")} [--codex] <sel> <label>
   ${c.cyan("tokenmaxxing rm")} [--codex] <sel>
@@ -103,13 +100,11 @@ async function main(): Promise<number> {
     case "__stop-hook": return runStopHook();
     case "__session-start": return runSessionStart();
     case "__codex-stop-hook": return runCodexStopHook();
-    case "__relay-permission-hook": return runRelayPermissionHook();
     case undefined: return cmdStatus(); // bare `tokenmaxxing` / `xx` → status
     case "--force": return cmdStatus(true); // bare `xx --force` → status --force
     // --codex accepted anywhere, like init/add/status: the old args[1]-only
     // check made `xx switch <sel> --codex` silently run a real CLAUDE swap
     // (one email can hold both pools' accounts - closing-review catch).
-    case "relay": return cmdRelay(args.slice(1));
     case "switch": {
       const rest = args.slice(1).filter((a) => a !== "--codex");
       return args.includes("--codex") ? cmdCodexSwitch(rest[0]) : cmdSwitch(rest[0]);

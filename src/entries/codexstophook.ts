@@ -25,9 +25,6 @@ import { loadConfig } from "../lib/state.ts";
 import { effectiveBars } from "../lib/picker.ts";
 import { CODEX_SUPERVISOR_ID_ENV } from "./codexsupervisor.ts";
 import { CodexReconcileMarkerSchema, CodexRespawnMarkerSchema, CodexStopStdinSchema, type CodexAccount } from "../lib/types.ts";
-import { writeTurnDoneMarker } from "../lib/relay/markers.ts";
-import { registryHas } from "../lib/relay/registry.ts";
-import { RELAY_SESSION_ENV } from "../lib/relay/worker.ts";
 import { log } from "../lib/log.ts";
 
 const SupervisorIdSchema = z.string().min(1).optional().catch(undefined);
@@ -141,13 +138,6 @@ export async function handleCodexStop(input: { rawStdin: string }): Promise<void
   const sessionId = parsed.success ? (parsed.data.session_id ?? null) : null;
 
   try {
-    // Additive relay turn-done marker (never writes into respawn/).
-    const relaySid = process.env[RELAY_SESSION_ENV];
-    if (relaySid != null && registryHas({ sessionId: relaySid })) {
-      writeTurnDoneMarker({ sessionId: relaySid, source: "codex-stop" });
-      log("codexstop.relay_turn_done", { session: relaySid.slice(0, 8) });
-    }
-
     // No supervisor = no decision AT ALL, checked before evaluate can swap:
     // hooks.json is global, so this hook also fires in sessions launched
     // around the PATH shim (IDE extension, absolute path), and a swap with
