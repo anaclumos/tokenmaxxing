@@ -3,7 +3,7 @@ title: State directory layout
 description: Every file and directory under ~/.config/tokenmaxxing
 ---
 
-Everything lives under `~/.config/tokenmaxxing/` (overridable with `TOKENMAXXING_HOME`; every externally observable path has an env override so the whole tool can run hermetically in tests).
+Everything lives under `~/.config/tokenmaxxing/`. Override with `TOKENMAXXING_HOME`. Every external path has an env override so tests stay hermetic.
 
 | Path | What it holds |
 |---|---|
@@ -14,15 +14,12 @@ Everything lives under `~/.config/tokenmaxxing/` (overridable with `TOKENMAXXING
 | `lastswap.json` | Epoch timestamp of the last swap; drives the 45-second cooldown |
 | `depleted.json` | The recorded depleted-pool wait, replayed by sibling hooks until the reset passes, the live seat moves, or any swap completes |
 | `lock` | The `flock` file that serializes swaps |
-| `serve-lock` | The `xx serve` single-instance flock: a new daemon generation blocks here until the previous one fully exits |
 | `sessions/<session-id>.json` | Per-managed-session launch flags the supervisor persists for respawns; pruned after 30 days idle (matching claude's own transcript retention) |
 | `tokenmaxxing.log` | Append-only event log |
 | `bin/` | The PATH shims: `claude`, `codex`, and the `tokenmaxxing` / `xx` entry points |
 | `respawn/<session-id>` | Depleted-wait respawn markers the supervisor watches |
 | `creds/` | Linux only: parked credential files, 0600 in a 0700 directory (macOS parks credentials as per-account keychain items instead) |
 | `onboard/`, `sample/` | Throwaway isolated config homes for `add`/`auth` logins and parked-account `/usage` probes; onboard homes holding plaintext credentials are deleted after harvest |
-| `slack.json` | `xx serve` tokens and channel links (0600) |
-| `slack-threads/` | Per-thread session records for `xx serve` |
 | `codex-*` | The parallel Codex pool: `codex-accounts.json`, `codex-lastswap.json`, `codex-lock`, `codex-creds/`, `codex-onboard/`, `codex-respawn/`, `codex-reconcile/` (cross-session signals asking a sibling session's supervisor to respawn onto the live account), and `codex-live/` (one PID-validated presence file per running supervised codex session, so a live account is never a swap target) |
 
 Outside its own directory, tokenmaxxing touches exactly: `~/.claude.json` (the `oauthAccount` swap), Claude Code's `settings.json` (the hook and statusline entries), the live credential store (the `Claude Code-credentials` keychain item on macOS, `.credentials.json` on Linux), claude's own refresh locks taken during swaps (the primary `.oauth_refresh.lock` inside claude's config dir, plus the legacy `~/.claude.lock` sibling), codex's `auth.json` and `hooks.json`, and the periodic-check unit in launchd or systemd.

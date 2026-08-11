@@ -3,9 +3,7 @@
 // `claude` (or `__supervise`), routes hook/statusLine subcommands, and otherwise
 // dispatches the `tokenmaxxing` CLI.
 
-import { existsSync } from "node:fs";
 import { basename } from "node:path";
-import { paths } from "./lib/paths.ts";
 import { runSupervisor } from "./entries/supervisor.ts";
 import { runStatusline } from "./entries/statusline.ts";
 import { runSubagentStatusline } from "./entries/subagentstatusline.ts";
@@ -29,7 +27,6 @@ import { cmdRename } from "./cli/rename.ts";
 import { cmdSwitch } from "./cli/switch.ts";
 import { cmdCheck } from "./cli/check.ts";
 import { cmdConfig } from "./cli/config.ts";
-import { cmdServe } from "./cli/serve.ts";
 import { timerDeactivationHint, uninstallSupervisor } from "./lib/install.ts";
 import { c } from "./cli/render.ts";
 
@@ -50,7 +47,6 @@ function printHelp(): void {
   ${c.cyan("tokenmaxxing status --force")}  ping every account (one tiny haiku request each) so all 5h session timers start now, then sample fresh; ${c.cyan("xx --force")} works too
   ${c.cyan("tokenmaxxing watch")} [seconds]  live status: re-render every N seconds (default 120, never pings)
   ${c.cyan("tokenmaxxing config")} [get|set|unset|tidy]  inspect and edit config.json (bare = effective config with sources)
-  ${c.cyan("tokenmaxxing serve")} [setup|link|unlink|links]  Slack bridge daemon: mention the bot in a linked channel to open a claude session per thread in the repo checkout
   ${c.cyan("tokenmaxxing doctor")}     verify the install is intact
   ${c.cyan("tokenmaxxing rename")} [--codex] <sel> <label>
   ${c.cyan("tokenmaxxing rm")} [--codex] <sel>
@@ -115,7 +111,6 @@ async function main(): Promise<number> {
     }
     case "check": return cmdCheck();
     case "config": return cmdConfig(args.slice(1));
-    case "serve": return cmdServe(args.slice(1));
     case "init": return args.includes("--codex") ? cmdCodexInit() : cmdInit();
     case "add": return args.includes("--codex") ? cmdCodexAdd() : cmdAdd();
     case "auth": return cmdAuth(args.slice(1));
@@ -145,7 +140,7 @@ async function main(): Promise<number> {
       console.log(`removed ${removed.join(", ")}`);
       if (!out.timerDeactivated) console.log(c.yellow(`⚠ the check job may still be loaded - run: ${timerDeactivationHint()}`));
       if (!out.pathLineRemoved) console.log(c.dim("(no tokenmaxxing PATH line found in the shell rc)"));
-      console.log(`kept: accounts.json, config.json${existsSync(paths.slackJson) ? ", slack.json (Slack tokens)" : ""}, and every parked credential (claude - macOS: keychain items, Linux: creds/; codex: codex-creds/) - remove accounts with \`xx rm\` to delete their credentials`);
+      console.log(`kept: accounts.json, config.json, and every parked credential (claude - macOS: keychain items, Linux: creds/; codex: codex-creds/) - remove accounts with \`xx rm\` to delete their credentials`);
       return 0;
     }
     case "help":

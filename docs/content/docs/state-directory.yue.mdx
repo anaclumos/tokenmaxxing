@@ -14,15 +14,12 @@ description: "~/.config/tokenmaxxing 之下每個檔案同目錄"
 | `lastswap.json` | 上次切換嘅 epoch 時間戳;驅動 45 秒冷卻 |
 | `depleted.json` | 記錄低嘅帳戶池耗盡等待，由手足 session 嘅 hook 重播，直到重設時間過咗、活躍座位轉咗、或者任何一次切換完成為止 |
 | `lock` | 令切換序列化嘅 `flock` 檔案 |
-| `serve-lock` | `xx serve` 嘅單一實例 flock：新一代 daemon 會喺呢度卡住，直到上一代完全退出為止 |
 | `sessions/<session-id>.json` | 監督者為每個受管 session 保存嘅啟動旗標，俾重生用;閒置 30 日之後會清走（同 claude 自己嘅 transcript 保留期一致） |
 | `tokenmaxxing.log` | 只可追加嘅事件記錄 |
 | `bin/` | PATH shim：`claude`、`codex` 同 `tokenmaxxing` / `xx` 入口點 |
 | `respawn/<session-id>` | 監督者監視嘅耗盡等待重生標記 |
 | `creds/` | 只限 Linux：泊存憑證檔案，喺 0700 目錄入面 0600（macOS 改為將憑證泊存做每帳戶 keychain 項目） |
 | `onboard/`、`sample/` | 俾 `add`/`auth` 登入同泊存帳戶 `/usage` 探測用嘅用完即棄隔離設定 home;持有明文憑證嘅 onboard home 喺收集之後會刪除 |
-| `slack.json` | `xx serve` token 同頻道連結（0600） |
-| `slack-threads/` | `xx serve` 嘅每 thread session 記錄 |
 | `codex-*` | 並行嘅 Codex 帳戶池：`codex-accounts.json`、`codex-lastswap.json`、`codex-lock`、`codex-creds/`、`codex-onboard/`、`codex-respawn/`、`codex-reconcile/`（跨 session 訊號，叫手足 session 嘅監督者重生到活躍帳戶度）同 `codex-live/`（每個運行緊嘅受監督 codex session 都有一個經 PID 驗證嘅存在檔案，所以活躍帳戶永遠唔會係切換目標） |
 
 喺自己嘅目錄以外，tokenmaxxing 淨係會掂到以下呢啲：`~/.claude.json`（`oauthAccount` 切換）、Claude Code 嘅 `settings.json`（hook 同 statusline 項目）、活躍憑證儲存（macOS 上面嘅 `Claude Code-credentials` keychain 項目，Linux 上面嘅 `.credentials.json`）、claude 自己嘅刷新鎖，喺切換期間攞（主要嘅 `.oauth_refresh.lock` 喺 claude 設定目錄入面，加埋舊有嘅手足 `~/.claude.lock`）、codex 嘅 `auth.json` 同 `hooks.json`，同埋 launchd 或者 systemd 入面嘅定期檢查單元。

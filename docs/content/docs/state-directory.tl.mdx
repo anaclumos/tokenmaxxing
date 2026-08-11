@@ -14,15 +14,12 @@ Ang lahat ay nasa ilalim ng `~/.config/tokenmaxxing/` (maaaring i-override gamit
 | `lastswap.json` | Epoch timestamp ng huling pagpapalit; nagpapatakbo sa 45-segundong cooldown |
 | `depleted.json` | Ang naitalang depleted-pool na paghihintay, inuulit ng mga hook ng kapatid-session hanggang lumipas ang reset, lumipat ang live seat, o may pagpapalit na makumpleto |
 | `lock` | Ang `flock` na file na nagse-serialize sa mga pagpapalit |
-| `serve-lock` | Ang single-instance na flock ng `xx serve`: nagha-harang dito ang isang bagong henerasyon ng daemon hanggang lubos na lumabas ang nauna |
 | `sessions/<session-id>.json` | Mga launch flag kada pinamamahalaang session na iniingatan ng supervisor para sa mga respawn; tinatanggal pagkalipas ng 30 araw na idle (kasabay ng sariling retention ng transcript ng claude) |
 | `tokenmaxxing.log` | Append-only na event log |
 | `bin/` | Ang mga PATH shim: `claude`, `codex`, at ang mga `tokenmaxxing` / `xx` entry point |
 | `respawn/<session-id>` | Mga depleted-wait na respawn marker na binabantayan ng supervisor |
 | `creds/` | Linux lamang: mga naka-park na credential file, 0600 sa isang 0700 na directory (sa halip ay nagpa-park ang macOS ng mga credential bilang per-account na keychain item) |
 | `onboard/`, `sample/` | Mga throwaway na isolated config home para sa mga `add`/`auth` login at mga `/usage` probe ng naka-park na account; ang mga onboard home na may hawak na plaintext credential ay tinatanggal pagkatapos ng pag-ani |
-| `slack.json` | Mga `xx serve` na token at channel link (0600) |
-| `slack-threads/` | Mga per-thread na session record para sa `xx serve` |
 | `codex-*` | Ang parallel na Codex pool: `codex-accounts.json`, `codex-lastswap.json`, `codex-lock`, `codex-creds/`, `codex-onboard/`, `codex-respawn/`, `codex-reconcile/` (mga cross-session na signal na humihiling sa supervisor ng isang kapatid-session na mag-respawn patungo sa live account), at `codex-live/` (isang PID-validated na presence file kada tumatakbong supervised na codex session, kaya't ang isang live account ay hindi kailanman isang swap target) |
 
 Sa labas ng sarili nitong directory, hinahawakan ng tokenmaxxing ang eksaktong ito lamang: `~/.claude.json` (ang `oauthAccount` swap), ang `settings.json` ng Claude Code (ang mga hook at statusline entry), ang live credential store (ang `Claude Code-credentials` na keychain item sa macOS, `.credentials.json` sa Linux), ang sariling mga refresh lock ng claude na kinukuha sa panahon ng mga pagpapalit (ang pangunahing `.oauth_refresh.lock` sa loob ng config dir ng claude, kasama ang legacy na kapatid nitong `~/.claude.lock`), ang `auth.json` at `hooks.json` ng codex, at ang periodic-check unit sa launchd o systemd.

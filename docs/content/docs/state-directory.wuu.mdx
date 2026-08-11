@@ -14,15 +14,12 @@ description: "~/.config/tokenmaxxing 底下嗰每一个文件搭目录。"
 | `lastswap.json` | 顶末一趟切换嗰纪元时间戳；驱动 45 秒嗰冷却 |
 | `depleted.json` | 记落嗰耗光池子等待，会畀兄弟 hook 拿来重放，一直到重置过脱、活跃席位换脱，或者随便啥一趟切换完成为止 |
 | `lock` | 拿切换串行化嗰 `flock` 文件 |
-| `serve-lock` | `xx serve` 单实例嗰 flock：新一代 daemon 会勒搿搭挡牢，一直到前一代完全退脱为止 |
 | `sessions/<session-id>.json` | supervisor 拿每个受管会话嗰起动旗标存牢，畀重生用；闲脱 30 天之后就剪脱（跟 claude 自家嗰 transcript 保留期一样） |
 | `tokenmaxxing.log` | 只追加嗰事件日志 |
 | `bin/` | PATH 垫片：`claude`、`codex`，搭 `tokenmaxxing` / `xx` 嗰入口点 |
 | `respawn/<session-id>` | supervisor 盯牢嗰耗光等待重生标记 |
 | `creds/` | 只 Linux：停放嗰凭据文件，0700 目录里向嗰 0600（macOS 改成拿凭据当作每个账户各自嗰 keychain 条目停放） |
 | `onboard/`、`sample/` | 畀 `add`/`auth` 登录搭停放账户 `/usage` 探测用嗰一次性隔离配置 home；拿牢明文凭据嗰 onboard home 采集之后就删脱 |
-| `slack.json` | `xx serve` 嗰 token 搭频道链接（0600） |
-| `slack-threads/` | `xx serve` 每条 thread 各自嗰会话记录 |
 | `codex-*` | 并行嗰 Codex 池子：`codex-accounts.json`、`codex-lastswap.json`、`codex-lock`、`codex-creds/`、`codex-onboard/`、`codex-respawn/`、`codex-reconcile/`（跨会话嗰信号，请兄弟会话嗰 supervisor 重生到活跃账户高头去），搭 `codex-live/`（每个跑牢嗰受监管 codex 会话各自一个 PID 校验过嗰在场文件，所以活跃账户永远勿会是切换目标） |
 
 勒伊自家嗰目录外头，tokenmaxxing 碰嗰恰恰是搿眼：`~/.claude.json`（`oauthAccount` 切换）、Claude Code 嗰 `settings.json`（hook 搭 statusline 条目）、活跃凭据存储（macOS 高头是 `Claude Code-credentials` keychain 条目，Linux 高头是 `.credentials.json`）、claude 自家嗰刷新锁（切换当中拿嗰：为主嗰 `.oauth_refresh.lock` 勒 claude 配置目录里向，还有老底子搭配嗰 `~/.claude.lock`）、codex 嗰 `auth.json` 搭 `hooks.json`，还有 launchd 或者 systemd 里向嗰定期检查单元。

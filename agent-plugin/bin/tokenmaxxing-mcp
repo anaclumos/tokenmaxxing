@@ -1,0 +1,7 @@
+#!/usr/bin/env bun
+import { main } from "../../src/entries/mcp.ts";
+
+main().catch((e: unknown) => {
+  console.error(e instanceof Error ? e.message : String(e));
+  process.exit(1);
+});

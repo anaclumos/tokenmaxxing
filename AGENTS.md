@@ -13,7 +13,6 @@ No external installed user base, so this is pre-production code: delete old-stat
 - The owner's Mac runs tokenmaxxing straight from this working tree, so a bad git operation breaks the live install.
 - This machine runs live supervisors, hooks, the periodic check, and the owner's real claude sessions. Stop processes by PID, and never kill a running session or supervisor to free a resource without asking.
 - Never print credential material: keychain blobs, `.credentials.json`, `auth.json`, OAuth access or refresh tokens. Report account labels and status only. A ky error carries its request, Authorization header included.
-- Live Slack channels are production surfaces. No test or probe posts without in-the-moment approval. Slack tagging is suspended until the new workspace channel exists; ask in-session with AskUserQuestion instead.
 - Ask before any run that meters real quota or opens a session window (`status --force`, live-pool runs). Free `/usage` reads are fine.
 - This repo is PUBLIC. The no-Slack-info and no-device-info rule covers PR bodies, commit messages, review replies, release notes, and docs, not just `.memory`.
 - `rm` is aliased to `rm -i` on the owner's Mac. In a non-TTY shell the prompt gets EOF, nothing is deleted, and it still exits 0, so `rm f && echo ok` lies. Deletion is the owner's call except for artifacts this session created; when you must, pass `-f` and verify the path is gone.
@@ -22,7 +21,7 @@ No external installed user base, so this is pre-production code: delete old-stat
 - State files that exist but fail to parse THROW. A truncated `accounts.json` read as an empty pool once let `init` overwrite it.
 - A configured-but-missing path (`claudeBin`, `codexBin`, credential locations) fails fast. Never fall through to a PATH scan: seeding `/bin/true` as claudeBin made the scan resolve the real installed wrapper and wedge an E2E for 15 minutes, the same shape that fed the runaway-recursion incident.
 - The Mac runs the working tree, the Linux boxes run an npm global that nothing auto-updates, so version skew is chronic. For any works-on-Mac-not-Linux report, compare the box's installed version against the repo before anything else.
-- Core deps are exactly zod, es-toolkit, and ky; the serve deps are serve-only. The global default stack does not apply (there is no date-fns here, date math goes through `Intl` in `parseResetClock`).
+- Core deps are zod, es-toolkit, ky, and `@modelcontextprotocol/sdk` (stdio MCP for the Agent Plugin). The global default stack does not apply (there is no date-fns here, date math goes through `Intl` in `parseResetClock`).
 - Keep `node:fs`, which is Bun-native. `Bun.file`/`Bun.write` are async-only, non-atomic, and have no create-mode, so they cannot serve the 0600 credential store or the flock fd. When asked to simplify this, that is the answer.
 
 ## Credentials and identity
@@ -76,14 +75,12 @@ Ship = work on a branch, bump `package.json` in the same PR, open the PR, make C
 - npm trusted publishing is bound to the literal workflow filename `ci.yml`. Renaming it silently breaks publishing.
 - `bun add -g <local .tgz>` over an existing global errors `DependencyLoop`. Run `bun remove -g` first.
 
-## Statusline, serve, SDK
+## Statusline and SDK
 
 Short pointers; these surfaces document themselves at the code site.
 
 - Statusline: `src/entries/statusline.ts` renders natively and tees `usage.json`; subagent rows in `src/entries/subagentstatusline.ts`. Format spec in `docs/statusline.mdx`. statusLine stdin sends top-level sub-objects as JSON `null`, so their schemas need `.nullable().optional()`, not `.optional()`. The main payload can never reflect the focused subagent; the subagent rows are the only such surface. This runs every turn, so keep it O(ms) and off flock and oauth: read the HEAD file, never spawn a git subprocess.
-- Serve: a Socket Mode Slack daemon driving the pooled SDK surface. `DESIGN.md` §5b, `docs/serve.mdx`. Only an ERRORED result is ever limit-classified, because `is_error: true` can ride subtype `"success"`; misclassifying either discards a real answer or re-runs a completed turn. A thread's cwd must stay byte-stable, since resume is cwd-keyed. The external-author guard checks origin, not authorization: any same-workspace member passes. One Slack app per daemon, or two daemons steal each other's events (`docs/limitations.mdx`).
-- Serve steering: a mid-turn reply STEERS the running turn by default (owner, 2026-07-27; `.memory/serve-steering-default.md`); the serialized queue is only the fallback. Mechanics and rationale live at the steer sites in `serve.ts`/`slackbridge.ts` and DESIGN.md §5b. Steered stream-json messages must never carry a uuid (the CLI dedupes by uuid and silently swallows a reuse) or `priority: "now"` (an undocumented hard interrupt; the default "next" folds politely).
-- SDK: `src/sdk.ts` is the programmatic entry and is self-documenting. `docs/sdk.mdx`, `.memory/agent-sdk-auth-surface.md`. Pooling subscription logins is framed as the owner using their own accounts in agents they run themselves; offering it to third parties is a ToS problem (`docs/terms.mdx`). Serve-only deps (`chat`, `@chat-adapter/slack`, the Agent SDK) must not be imported outside the serve path.
+- SDK: `src/sdk.ts` is the programmatic entry and is self-documenting. `docs/sdk.mdx`, `.memory/agent-sdk-auth-surface.md`. Pooling subscription logins is framed as the owner using their own accounts in agents they run themselves; offering it to third parties is a ToS problem (`docs/terms.mdx`).
 
 ## Do not reintroduce
 
@@ -109,6 +106,6 @@ The live interactive-PTY SIGTERM test is still owed (`DESIGN.md` §9), but the o
 The cloud VM is a throwaway Linux clone, not the owner's Mac, so its git-safety and live-process cautions do not apply here; the machine-gotchas above still describe real runtime behavior.
 
 - Runtime is Bun, which is not on the base image. The startup update script installs it to `~/.bun/bin` (added to `~/.bashrc`). A fresh non-login shell may not have it on PATH: run `export PATH="$HOME/.bun/bin:$PATH"` or call `~/.bun/bin/bun` directly.
-- No Claude/Codex subscription logins exist here and none should be created, so the live swap loop, `init`, `add`, `auth`, `status`, and `serve` cannot run end to end. Exercise the real decision engine hermetically instead: `bun test` plus the standalone `bun test/e2e/swap-concurrency.ts` (see `## Testing`). On Linux the 4 macOS-keychain tests skip, which is expected.
+- No Claude/Codex subscription logins exist here and none should be created, so the live swap loop, `init`, `add`, `auth`, and `status` cannot run end to end. Exercise the real decision engine hermetically instead: `bun test` plus the standalone `bun test/e2e/swap-concurrency.ts` (see `## Testing`). On Linux the 4 macOS-keychain tests skip, which is expected.
 - For manual CLI pokes that must not touch real state, point `TOKENMAXXING_HOME` at a throwaway dir (e.g. `TOKENMAXXING_HOME=/tmp/xx bun run src/main.ts config`); it overrides the whole `~/.config/tokenmaxxing` state root. Commands that only read/write local state (`help`, `config get|set|unset`, `ls`, `doctor`) work with no accounts; `doctor` exits 1 on a fresh dir because nothing is installed, which is correct.
 - The docs site under `docs/` is a separate Next.js app with its own `bun.lock`; the root update script does not install it. Run `cd docs && bun install` then `bun run dev` (serves http://localhost:3000). First page load compiles via Turbopack and can take ~20s.

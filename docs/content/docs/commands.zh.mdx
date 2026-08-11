@@ -18,7 +18,6 @@ description: "每一个 tokenmaxxing 命令及其作用"
 | `tokenmaxxing watch [seconds]` | 实时状态，每 N 秒重新渲染一次（默认 120，最低 30；从不 ping） |
 | `tokenmaxxing config [get\|set\|unset\|tidy]` | 显示带来源的有效配置；编辑点分键；`tidy` 清除未知键 |
 | `tokenmaxxing check` | 评估一次切换决策（这正是周期性定时器所运行的） |
-| `tokenmaxxing serve [setup\|link\|unlink\|links]` | Slack 桥接守护进程（Socket Mode，无需公网 URL） |
 | `tokenmaxxing doctor` | 校验监督进程和设置条目是否仍然存在 |
 | `tokenmaxxing rename [--codex] <sel> <label>` | 重新标注池内账户 |
 | `tokenmaxxing rm [--codex] <sel>` | 从 claude 或 codex 池中移除账户（及其已保存的凭证） |

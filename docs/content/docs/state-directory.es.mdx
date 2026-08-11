@@ -14,15 +14,12 @@ Todo vive bajo `~/.config/tokenmaxxing/` (sobreescribible con `TOKENMAXXING_HOME
 | `lastswap.json` | Marca de tiempo epoch del último cambio; impulsa el enfriamiento de 45 segundos |
 | `depleted.json` | La espera registrada por grupo agotado, repetida por los hooks hermanos hasta que pasa el reinicio, la sede en vivo se mueve, o se completa cualquier cambio |
 | `lock` | El archivo `flock` que serializa los cambios |
-| `serve-lock` | El flock de instancia única de `xx serve`: una nueva generación del daemon bloquea aquí hasta que la anterior termine por completo |
 | `sessions/<session-id>.json` | Los indicadores de lanzamiento por sesión gestionada que el supervisor persiste para las reapariciones; se podan tras 30 días de inactividad (igualando la retención de transcripciones del propio claude) |
 | `tokenmaxxing.log` | Registro de eventos de solo anexado |
 | `bin/` | Los shims del PATH: `claude`, `codex`, y los puntos de entrada `tokenmaxxing` / `xx` |
 | `respawn/<session-id>` | Marcadores de reaparición de espera por agotamiento que el supervisor vigila |
 | `creds/` | Solo Linux: archivos de credenciales estacionadas, 0600 en un directorio 0700 (macOS estaciona las credenciales como elementos de llavero por cuenta en su lugar) |
 | `onboard/`, `sample/` | Homes de configuración aislados y desechables para los inicios de sesión de `add`/`auth` y las sondas `/usage` de cuentas estacionadas; los homes de incorporación que contienen credenciales en texto plano se eliminan tras la recolección |
-| `slack.json` | Tokens y vínculos de canal de `xx serve` (0600) |
-| `slack-threads/` | Registros de sesión por hilo para `xx serve` |
 | `codex-*` | El grupo paralelo de Codex: `codex-accounts.json`, `codex-lastswap.json`, `codex-lock`, `codex-creds/`, `codex-onboard/`, `codex-respawn/`, `codex-reconcile/` (señales entre sesiones que piden al supervisor de una sesión hermana que reaparezca sobre la cuenta en vivo), y `codex-live/` (un archivo de presencia validado por PID por cada sesión de codex supervisada en ejecución, así que una cuenta en vivo nunca es un destino de cambio) |
 
 Fuera de su propio directorio, tokenmaxxing toca exactamente: `~/.claude.json` (el cambio de `oauthAccount`), el `settings.json` de Claude Code (las entradas de hook y statusline), el almacén de credenciales en vivo (el elemento de llavero `Claude Code-credentials` en macOS, `.credentials.json` en Linux), los propios bloqueos de refresco de claude tomados durante los cambios (el primario `.oauth_refresh.lock` dentro del directorio de configuración de claude, más el hermano heredado `~/.claude.lock`), el `auth.json` y `hooks.json` de codex, y la unidad de comprobación periódica en launchd o systemd.

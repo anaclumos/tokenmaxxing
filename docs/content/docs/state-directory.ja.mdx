@@ -14,15 +14,12 @@ description: "~/.config/tokenmaxxing 以下のすべてのファイルとディ�
 | `lastswap.json` | 直近の切り替えのエポックタイムスタンプ。45秒のクールダウンの起点となる |
 | `depleted.json` | 記録された枯渇プール待機。リセットが過ぎるか、ライブ座席が移動するか、いずれかの切り替えが完了するまで、兄弟フックによって再生される |
 | `lock` | 切り替えを直列化する `flock` ファイル |
-| `serve-lock` | `xx serve` の単一インスタンス flock。新しいデーモン世代は、前の世代が完全に終了するまでここでブロックされる |
 | `sessions/<session-id>.json` | 再起動のためにスーパーバイザーが保持する管理対象セッションごとの起動フラグ。30日間アイドル状態が続くと削除される (claude 自身のトランスクリプト保持期間と一致) |
 | `tokenmaxxing.log` | 追記のみのイベントログ |
 | `bin/` | PATH シム。`claude`、`codex`、および `tokenmaxxing` / `xx` のエントリポイント |
 | `respawn/<session-id>` | スーパーバイザーが監視する枯渇待機の再起動マーカー |
 | `creds/` | Linux のみ。0700ディレクトリ内の0600のパーク済み認証情報ファイル (macOS は代わりにアカウントごとのキーチェーンアイテムとして認証情報をパークする) |
 | `onboard/`, `sample/` | `add` / `auth` のログインとパーク済みアカウントの `/usage` プローブのための使い捨ての分離設定ホーム。平文の認証情報を保持する onboard ホームは取り込み後に削除される |
-| `slack.json` | `xx serve` のトークンとチャンネルリンク (0600) |
-| `slack-threads/` | `xx serve` のスレッドごとのセッションレコード |
 | `codex-*` | 並列した Codex プール。`codex-accounts.json`、`codex-lastswap.json`、`codex-lock`、`codex-creds/`、`codex-onboard/`、`codex-respawn/`、`codex-reconcile/` (兄弟セッションのスーパーバイザーにライブアカウントへ再起動するよう求めるセッション間シグナル)、および `codex-live/` (実行中のスーパーバイズされた codex セッションごとに1つの PID 検証済みプレゼンスファイル。そのためライブアカウントが切り替えターゲットになることは決してない) |
 
 自身のディレクトリの外で、tokenmaxxing が触れるのは正確に次のものだけです。`~/.claude.json` (`oauthAccount` の切り替え)、Claude Code の `settings.json` (フックと statusline のエントリ)、ライブ認証情報ストア (macOS では `Claude Code-credentials` キーチェーンアイテム、Linux では `.credentials.json`)、切り替え中に取得する claude 自身のリフレッシュロック (claude の設定ディレクトリ内にあるプライマリの `.oauth_refresh.lock`、および従来からある `~/.claude.lock` のシブリング)、codex の `auth.json` と `hooks.json`、そして launchd または systemd の定期チェックユニット。
