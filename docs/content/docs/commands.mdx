@@ -17,8 +17,28 @@ description: Every tokenmaxxing command and what it does
 | `tokenmaxxing status --force` | Additionally ping every account (one tiny haiku request each) so all 5h session timers start now, then sample fresh |
 | `tokenmaxxing watch [seconds]` | Live status, re-rendered every N seconds (default 120, floor 30; never pings) |
 | `tokenmaxxing config [get\|set\|unset\|tidy]` | Effective config with sources; edit dotted keys; `tidy` prunes unknown keys |
+| `tokenmaxxing relay …` | Durable tmux relay for host agents (`turn` / `decide` / `set-permission-mode` / `status` / `destroy` / `gc` / `install` / `config`). See `tokenmaxxing relay --help` |
 | `tokenmaxxing check` | Evaluate the switch decision once (this is what the periodic timer runs) |
 | `tokenmaxxing doctor` | Verify the supervisor and settings entries survived |
 | `tokenmaxxing rename [--codex] <sel> <label>` | Relabel a pooled account |
 | `tokenmaxxing rm [--codex] <sel>` | Remove an account (and its parked credential) from the claude or codex pool |
 | `tokenmaxxing uninstall` | Remove the supervisor and settings entries (accounts and credentials are kept) |
+
+## Relay
+
+Cheap host subagents shell into `tokenmaxxing relay`, which owns a durable tmux worker (Claude Code or Codex via tokenmaxxing). Default permission mode is Claude's `auto`. Modes: `default` (alias `manual`), `acceptEdits`, `plan`, `auto`, `dontAsk`, `bypassPermissions`. Codex maps those names onto `--sandbox` / `--ask-for-approval`.
+
+Stdout contract:
+
+```
+session: <id>
+permission-mode: <mode>
+# turn output OR:
+permission-needed: <requestId>
+summary: <one line>
+detail: <flagged action>
+session: <id>
+permission-mode: auto
+```
+
+Host finish hooks still run on every return, including `permission-needed`. Worker Stop hooks still run on real turn finish. Config lives in `$TOKENMAXXING_HOME/relay.json`. Locale pages may lag; English is source of truth.
