@@ -21,7 +21,7 @@ No external installed user base, so this is pre-production code: delete old-stat
 - State files that exist but fail to parse THROW. A truncated `accounts.json` read as an empty pool once let `init` overwrite it.
 - A configured-but-missing path (`claudeBin`, `codexBin`, credential locations) fails fast. Never fall through to a PATH scan: seeding `/bin/true` as claudeBin made the scan resolve the real installed wrapper and wedge an E2E for 15 minutes, the same shape that fed the runaway-recursion incident.
 - The Mac runs the working tree, the Linux boxes run an npm global that nothing auto-updates, so version skew is chronic. For any works-on-Mac-not-Linux report, compare the box's installed version against the repo before anything else.
-- Core deps are exactly zod, es-toolkit, and ky. The global default stack does not apply (there is no date-fns here, date math goes through `Intl` in `parseResetClock`).
+- Core deps are zod, es-toolkit, ky, and `@modelcontextprotocol/sdk` (stdio MCP for the Agent Plugin). The global default stack does not apply (there is no date-fns here, date math goes through `Intl` in `parseResetClock`).
 - Keep `node:fs`, which is Bun-native. `Bun.file`/`Bun.write` are async-only, non-atomic, and have no create-mode, so they cannot serve the 0600 credential store or the flock fd. When asked to simplify this, that is the answer.
 
 ## Credentials and identity

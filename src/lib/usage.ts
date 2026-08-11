@@ -199,11 +199,12 @@ export function parseUsageLimitEpoch(input: { text: string }): number | null {
 
 /**
  * Persist a limit observed in a turn RESULT into usage.json so the next
- * decision sees the depleted account immediately. A headless SDK process has
- * no statusLine tee and `loadFreshSnapshots` skips re-probing inside the poll
- * TTL (and `/usage` is fail-silent against the just-limited active token
- * anyway), so without this write a post-limit retry re-decides off the stale
- * pre-limit snapshot and respawns the same depleted account. The session
+ * decision sees the depleted account immediately. Callers without a statusLine
+ * tee (headless Agent SDK integrations) should invoke this on errored limit
+ * results: `loadFreshSnapshots` skips re-probing inside the poll TTL and
+ * `/usage` is fail-silent against the just-limited active token, so without
+ * this write a post-limit retry re-decides off the stale pre-limit snapshot
+ * and respawns the same depleted account. The session
  * window is stamped 100% with the announced reset: whichever window actually
  * tripped, the account is unusable until then, and the hard path swaps away.
  * `org` is the identity captured AT THE SPAWN BOUNDARY of the turn that

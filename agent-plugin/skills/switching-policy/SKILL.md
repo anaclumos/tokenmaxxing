@@ -19,7 +19,7 @@ When the hard path finds no usable target, judge against the wall (`hardThreshol
 
 ## Model matching
 
-Match model names by family substring or prefix, never exact display strings (names drift: "Fable" / "Fable 5"). Unmeasured usage is unknown and ranks last, never 0 / first. Per-model weekly caps: Sonnet and Fable exist; only Fable gates a switch by default (`policy.switchModels`).
+Match model families by exact token after splitting id/display on spaces, dots, and hyphens (`familyTokens` / `matchedFamily` in `src/lib/usage.ts`). Never exact full display strings (names drift: "Fable" / "Fable 5"). Unmeasured usage is unknown and ranks last, never 0 / first. Per-model weekly caps: Sonnet and Fable exist; only Fable gates a switch by default (`policy.switchModels`).
 
 ## Agent actions
 
