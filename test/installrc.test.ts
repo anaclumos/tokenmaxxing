@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, lstatSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { ensurePathInRc, findClaudeShadowers, removePathFromRc, shellRcPath } from "../src/lib/install.ts";
 import { paths } from "../src/lib/paths.ts";
@@ -60,6 +60,55 @@ describe("shell rc PATH line", () => {
     expect(after).toContain(`export PATH="/user/own/bin:$PATH"`);
     expect(removePathFromRc(rc)).toBe(false); // nothing left to remove
     expect(removePathFromRc(join(base, "rc-never-existed"))).toBe(false);
+  });
+
+  test("writes through a writable symlink without replacing the link (PR #36)", () => {
+    const target = join(base, "rc-dotfiles-target");
+    const rc = join(base, "rc-dotfiles-link");
+    rmSync(rc, { force: true });
+    writeFileSync(target, "export FOO=1\n");
+    symlinkSync(target, rc);
+    expect(ensurePathInRc(rc)).toBe("added");
+    expect(readFileSync(target, "utf8")).toContain("# tokenmaxxing PATH");
+    expect(lstatSync(rc).isSymbolicLink()).toBe(true);
+    expect(removePathFromRc(rc)).toBe(true);
+    expect(lstatSync(rc).isSymbolicLink()).toBe(true);
+    expect(readFileSync(target, "utf8")).not.toContain("# tokenmaxxing PATH");
+  });
+
+  test("soft-skips a read-only symlink target without throwing or mutating it", () => {
+    // Home Manager: ~/.zshrc → /nix/store/...-hm_..zshrc (immutable).
+    // Hermetic stand-in: chmod 444 (W_OK fails the same way; we cannot create
+    // a real /nix/store path under the temp tree).
+    const store = join(base, "fake-store-zshrc");
+    const rc = join(base, "rc-hm-link");
+    rmSync(rc, { force: true });
+    writeFileSync(store, "# home-manager\n");
+    chmodSync(store, 0o444);
+    symlinkSync(store, rc);
+    expect(ensurePathInRc(rc)).toBe("skipped");
+    expect(readFileSync(store, "utf8")).toBe("# home-manager\n");
+    expect(lstatSync(rc).isSymbolicLink()).toBe(true);
+    // marked line present: remove must also soft-skip (not only "absent")
+    chmodSync(store, 0o644);
+    writeFileSync(store, `export PATH="${paths.binDir}:$PATH" # tokenmaxxing PATH\n`);
+    chmodSync(store, 0o444);
+    const withMark = readFileSync(store, "utf8");
+    expect(removePathFromRc(rc)).toBe(false);
+    expect(readFileSync(store, "utf8")).toBe(withMark);
+    chmodSync(store, 0o644);
+  });
+
+  test("reports present on a read-only rc that already exports the bin dir", () => {
+    const store = join(base, "fake-store-present");
+    const rc = join(base, "rc-hm-present");
+    rmSync(rc, { force: true });
+    writeFileSync(store, `export PATH="${paths.binDir}:$PATH"\n`);
+    chmodSync(store, 0o444);
+    symlinkSync(store, rc);
+    expect(ensurePathInRc(rc)).toBe("present");
+    expect(readFileSync(store, "utf8")).toBe(`export PATH="${paths.binDir}:$PATH"\n`);
+    chmodSync(store, 0o644);
   });
 });
 

@@ -2,7 +2,7 @@
 // The wrapper is a 2-line `exec ... __supervise "$@"` shim so dispatch never
 // depends on argv0 semantics.
 
-import { appendFileSync, existsSync, mkdirSync, readFileSync, realpathSync, rmSync, statSync } from "node:fs";
+import { accessSync, appendFileSync, constants, existsSync, mkdirSync, readFileSync, realpathSync, rmSync, statSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { escape } from "es-toolkit";
 import { z } from "zod";
@@ -52,6 +52,38 @@ export function isNixPackaged(): boolean {
  *  a second imperative unit. */
 export function skipImperativeTimer(): boolean {
   return EnvFlagSchema.parse(process.env.TOKENMAXXING_SKIP_TIMER) != null;
+}
+
+function isNixStorePath(path: string): boolean {
+  return path === "/nix/store" || path.startsWith("/nix/store/");
+}
+
+function isEacces(e: unknown): boolean {
+  return typeof e === "object" && e != null && "code" in e && e.code === "EACCES";
+}
+
+/** Home Manager (and similar) point ~/.zshrc at a nix-store file. Writing
+ *  through that symlink throws EACCES; soft-skip instead. Still write through
+ *  ordinary writable symlink targets (PR #36). */
+function cannotWriteRcTarget(target: string): boolean {
+  if (EnvFlagSchema.parse(process.env.TOKENMAXXING_SKIP_SHELL_RC) != null) return true;
+  if (isNixStorePath(target)) return true;
+  if (!existsSync(target)) return false;
+  try {
+    accessSync(target, constants.W_OK);
+    return false;
+  } catch {
+    return true;
+  }
+}
+
+/** User-facing lines when ensurePathInRc soft-skips a managed shell rc. */
+export function managedShellRcSkipLines(): { headline: string; detail: string; exportLine: string } {
+  return {
+    headline: "shell rc is managed (Home Manager / nix-store) - PATH was not auto-edited",
+    detail: `put ${paths.binDir} on PATH via home.sessionPath (programs.tokenmaxxing Home Manager module sets this), e.g.`,
+    exportLine: `home.sessionPath = [ "${paths.binDir}" ];`,
+  };
 }
 
 /** Nix supervisor shim: prefer a PATH-stable `tokenmaxxing` (profile /
@@ -394,8 +426,11 @@ export function shellRcPath(): string | null {
 const PATH_LINE_MARK = "# tokenmaxxing PATH";
 
 /** Idempotently append the supervisor-bin PATH line to `rc` (created if absent).
- *  A pre-existing hand-added line for the bin dir also counts as present. */
-export function ensurePathInRc(rc: string): "added" | "present" {
+ *  A pre-existing hand-added line for the bin dir also counts as present.
+ *  Returns `"skipped"` when the resolved target is immutable (nix-store /
+ *  non-writable / TOKENMAXXING_SKIP_SHELL_RC) so callers can print guidance
+ *  instead of surfacing EACCES. */
+export function ensurePathInRc(rc: string): "added" | "present" | "skipped" {
   const dir = paths.binDir.startsWith(`${HOME}/`) ? `$HOME${paths.binDir.slice(HOME.length)}` : paths.binDir;
   // Write through a dotfile-managed symlink, never over it: writeFileAtomic
   // renames a sibling temp over its target, which would replace the link with
@@ -413,17 +448,29 @@ export function ensurePathInRc(rc: string): "added" | "present" {
   // relocation.
   const kept = lines.filter((line) => isCurrentExport(line) || !line.includes(PATH_LINE_MARK));
   if (kept.length !== lines.length) {
+    if (cannotWriteRcTarget(target)) return "skipped";
     const body = kept.join("\n");
     const sep0 = body === "" || body.endsWith("\n") ? "" : "\n";
     const addition = kept.some(isCurrentExport) ? "" : `export PATH="${dir}:$PATH" ${PATH_LINE_MARK}\n`;
     // preserve the rc's own mode: writeFileAtomic defaults to 0600, which
     // would silently tighten a normally 0644 shell rc (PR #36 review catch)
-    writeFileAtomic(target, `${body}${sep0}${addition}`, statSync(target).mode & 0o777);
+    try {
+      writeFileAtomic(target, `${body}${sep0}${addition}`, statSync(target).mode & 0o777);
+    } catch (e) {
+      if (isEacces(e)) return "skipped";
+      throw e;
+    }
     return "added";
   }
   if (lines.some(isCurrentExport)) return "present";
+  if (cannotWriteRcTarget(target)) return "skipped";
   const sep = current === "" || current.endsWith("\n") ? "" : "\n";
-  appendFileSync(target, `${sep}export PATH="${dir}:$PATH" ${PATH_LINE_MARK}\n`);
+  try {
+    appendFileSync(target, `${sep}export PATH="${dir}:$PATH" ${PATH_LINE_MARK}\n`);
+  } catch (e) {
+    if (isEacces(e)) return "skipped";
+    throw e;
+  }
   return "added";
 }
 
@@ -468,7 +515,8 @@ export function findClaudeShadowers(rcText: string): ShellShadower[] {
  *  PATH` line pointing at an emptied binDir is exactly how the supervisor
  *  recursion incident started (.memory/supervisor-recursion-guards.md), so
  *  uninstall must not leave one behind (closing-review catch).
- *  Returns true when a line was removed. */
+ *  Returns true when a line was removed. Soft-skips (returns false, no throw)
+ *  when the resolved target is immutable. */
 export function removePathFromRc(rc: string): boolean {
   if (!existsSync(rc)) return false;
   // same symlink + mode treatment as ensurePathInRc: write through a
@@ -477,7 +525,13 @@ export function removePathFromRc(rc: string): boolean {
   const lines = readFileSync(target, "utf8").split("\n");
   const kept = lines.filter((line) => !line.includes(PATH_LINE_MARK));
   if (kept.length === lines.length) return false;
-  writeFileAtomic(target, kept.join("\n"), statSync(target).mode & 0o777);
+  if (cannotWriteRcTarget(target)) return false;
+  try {
+    writeFileAtomic(target, kept.join("\n"), statSync(target).mode & 0o777);
+  } catch (e) {
+    if (isEacces(e)) return false;
+    throw e;
+  }
   return true;
 }
 

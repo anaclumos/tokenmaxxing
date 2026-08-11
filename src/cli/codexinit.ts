@@ -11,7 +11,7 @@ import { codexIdentityOf, readLiveCodexAuth, writeParkedCodexAuth } from "../lib
 import { CodexUsageReadError, fetchCodexUsage } from "../lib/codexusage.ts";
 import { loadCodexAccounts, saveCodexAccounts } from "../lib/codexstate.ts";
 import { loadConfig, pinBinOverride } from "../lib/state.ts";
-import { installCodexSupervisor, codexSupervisorLink, ensurePathInRc, shellRcPath } from "../lib/install.ts";
+import { installCodexSupervisor, codexSupervisorLink, ensurePathInRc, managedShellRcSkipLines, shellRcPath } from "../lib/install.ts";
 import { withLock } from "../lib/lock.ts";
 import { presentCodexAccountIds } from "../lib/codexpresence.ts";
 import { codexCredItemFor, codexPaths } from "../lib/paths.ts";
@@ -137,7 +137,16 @@ export async function cmdCodexInit(): Promise<number> {
 
   installCodexSupervisor();
   const rc = shellRcPath();
-  if (rc) ensurePathInRc(rc);
+  if (rc) {
+    const pathOutcome = ensurePathInRc(rc);
+    if (pathOutcome === "skipped") {
+      const hint = managedShellRcSkipLines();
+      console.log();
+      console.log(c.yellow(`⚠ ${hint.headline}`));
+      console.log(c.yellow(`  ${hint.detail}`));
+      console.log(c.yellow(`  ${hint.exportLine}`));
+    }
+  }
 
   console.log();
   console.log(`${c.green("✓")} imported codex account ${c.bold(account.label)} (${account.planType ?? "?"})`);
