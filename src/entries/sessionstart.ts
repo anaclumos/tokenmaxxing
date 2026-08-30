@@ -1,15 +1,9 @@
-// SessionStart hook. A launch/resume backstop: if the active account is already
-// over threshold with FRESH usage (e.g. a prior session left it exhausted), swap
-// the credential before this session's first turn so it starts on a good account.
-// Right after a respawn, the post-swap cooldown in evaluateAndMaybeSwap makes
-// this correctly no-op.
-
 import { z } from "zod";
 import { evaluateAndMaybeSwap } from "../lib/decide.ts";
 import { log } from "../lib/log.ts";
 
 const SessionStartStdin = z.looseObject({
-  source: z.string().optional(), // startup | resume | clear | compact
+  source: z.string().optional(),
   session_id: z.string().optional(),
 });
 
@@ -29,7 +23,6 @@ export async function runSessionStart(): Promise<number> {
   try {
     const decision = await evaluateAndMaybeSwap();
     if (decision.swapped && decision.account) {
-      // fresh session → it will read the new credential on its first API call.
       log("sessionstart.swapped", { source, account: decision.account.accountUuid.slice(0, 8) });
     }
   } catch (e) {

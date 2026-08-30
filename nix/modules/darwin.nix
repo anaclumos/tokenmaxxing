@@ -1,18 +1,3 @@
-# nix-darwin module. Import via this flake's `darwinModules.default`.
-#
-#   {
-#     inputs.tokenmaxxing.url = "github:anaclumos/tokenmaxxing";
-#     # ...
-#     modules = [
-#       inputs.tokenmaxxing.darwinModules.withOverlay
-#       { programs.tokenmaxxing.enable = true; }
-#     ];
-#   }
-#
-# Puts `tokenmaxxing` / `xx` on PATH. Account import, the on-PATH `claude`
-# supervisor shim, settings.json hooks, and (by default) the check timer still
-# come from `tokenmaxxing init` - Nix cannot own those (credentials + merge
-# into user-owned settings).
 {
   config,
   lib,
@@ -42,17 +27,15 @@ in
 
     environment.systemPackages = lib.mkIf (package != null) [ package ];
 
-    # Keep init from writing a second imperative timer when Nix owns it.
     environment.variables = lib.mkIf cfg.checkTimer.enable {
       TOKENMAXXING_SKIP_TIMER = "1";
     };
 
     launchd.user.agents.tokenmaxxing-check = lib.mkIf (cfg.checkTimer.enable && package != null) {
-      command = "${lib.getExe package} check";
+      command = "${lib.getExe package} check --if-due";
       serviceConfig = {
         StartInterval = cfg.checkTimer.intervalSeconds;
         StandardOutPath = "/dev/null";
-        # Per-user log (not shared /tmp) so multi-user Macs do not collide.
         StandardErrorPath =
           if home != null then "${home}/.config/tokenmaxxing/check.stderr.log" else "/tmp/tokenmaxxing-check.stderr.log";
       };

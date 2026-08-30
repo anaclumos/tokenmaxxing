@@ -16,8 +16,6 @@ import { handleCodexStop } from "../src/entries/codexstophook.ts";
 import { codexCredItemFor, codexPaths } from "../src/lib/paths.ts";
 import type { CodexAccount, CodexAuthJson, CodexWindow } from "../src/lib/types.ts";
 
-// ---- fixtures ---------------------------------------------------------------
-
 const b64url = (value: unknown) => Buffer.from(JSON.stringify(value)).toString("base64url");
 const jwt = (payload: unknown) => `${b64url({ alg: "none" })}.${b64url(payload)}.sig`;
 
@@ -63,8 +61,6 @@ function account(id: string, input?: { weekly?: CodexWindow; perLimit?: Record<s
     lastUsageAt: input?.sampledAt ?? nowMs(),
   };
 }
-
-// ---- mock endpoints (ports pinned by test/setup.ts env) ----------------------
 
 let refreshCalls = 0;
 let usageBody: () => unknown = () => ({});
@@ -124,8 +120,6 @@ beforeEach(() => {
   mkdirSync(codexPaths.home, { recursive: true });
 });
 
-// ---- codexauth ---------------------------------------------------------------
-
 describe("codex identity + auth blobs", () => {
   test("identity comes from tokens.account_id with claims filling email/plan", () => {
     const identity = codexIdentityOf({ auth: authBlob("A") });
@@ -144,11 +138,6 @@ describe("codex identity + auth blobs", () => {
   });
 
   test("an api-key auth.json (tokens omitted or null) reads as no poolable login; corrupt still throws", () => {
-    // `codex login --with-api-key` writes `tokens` OMITTED (serde
-    // skip_serializing_if on Option<TokenData>, source-verified at
-    // rust-v0.144.5): a valid codex state the real binary runs on, so the
-    // shim and `xx status` must not crash on it - there is just nothing to
-    // pool (closing-review catch). Genuine corruption keeps throwing.
     writeFileSync(codexPaths.authJson, JSON.stringify({ OPENAI_API_KEY: "sk-test" }));
     expect(readLiveCodexAuth()).toBeNull();
     writeFileSync(codexPaths.authJson, JSON.stringify({ OPENAI_API_KEY: "sk-test", tokens: null }));
@@ -174,8 +163,6 @@ describe("codex identity + auth blobs", () => {
   });
 });
 
-// ---- codexoauth ----------------------------------------------------------------
-
 describe("codex refresh", () => {
   test("rotates tokens, restamps last_refresh, preserves siblings", async () => {
     const fresh = await refreshCodexAuth({ auth: authBlob("A"), now: 1_784_000_000_000 });
@@ -194,8 +181,6 @@ describe("codex refresh", () => {
     await expect(refreshCodexAuth({ auth: authBlob("A", { refreshToken: "BOOM-1" }) })).rejects.toBeInstanceOf(CodexRefreshFailedError);
   });
 });
-
-// ---- codexusage ----------------------------------------------------------------
 
 describe("codex usage mapping", () => {
   test("maps the pinned live wire shape: weekly primary, per-limit rows, epoch seconds to ms", async () => {
@@ -241,8 +226,6 @@ describe("codex usage mapping", () => {
   });
 });
 
-// ---- codexpick ------------------------------------------------------------------
-
 describe("codex picking", () => {
   const bars = { session: 95, weekly: 98 };
 
@@ -270,8 +253,6 @@ describe("codex picking", () => {
   });
 
   test("currentWins keeps the seat within the respawn-cost margin, yields past it", () => {
-    // a codex greedy swap restarts a live session: a challenger inside the
-    // improvement margin must not unseat the incumbent.
     const cur = account("cur", { weekly: window({ used: 40, resetInMs: 24 * 3600_000 }) });
     const marginal = account("marginal", { weekly: window({ used: 35, resetInMs: 24 * 3600_000 }) });
     const better = account("better", { weekly: window({ used: 5, resetInMs: 24 * 3600_000 }) });
@@ -294,8 +275,6 @@ describe("codex picking", () => {
   });
 });
 
-// ---- presence (concurrent sessions) -------------------------------------------
-
 describe("codex presence", () => {
   test("a living supervisor's account is present; a dead pid is cleaned up", () => {
     writeCodexPresence({ supervisorId: "sup-1", accountId: "acct-A" });
@@ -311,16 +290,12 @@ describe("codex presence", () => {
   });
 
   test("a corrupt presence file fails the read loudly instead of dropping protection", () => {
-    // a presence file guards a RUNNING session's account from being swapped
-    // out from under it; unreadable state must never silently read as absent.
     mkdirSync(codexPaths.presenceDir, { recursive: true });
     writeFileSync(join(codexPaths.presenceDir, "sup-corrupt"), "not json");
     expect(() => presentCodexAccountIds()).toThrow("refusing to treat it as absent");
   });
 
   test("an ALIVE pid with the wrong start-time identity is treated as dead (pid reuse)", () => {
-    // A recycled pid after a supervisor crash must not bench the account
-    // forever: identity is pid + ps lstart, not bare aliveness.
     mkdirSync(codexPaths.presenceDir, { recursive: true });
     writeFileSync(
       join(codexPaths.presenceDir, "sup-reused"),
@@ -339,8 +314,6 @@ describe("codex presence", () => {
     expect(targetable.map((entry) => entry.accountId)).toEqual(["acct-A"]);
   });
 });
-
-// ---- codexswap -------------------------------------------------------------------
 
 function seedPool(input: { accounts: CodexAccount[]; activeId: string | null }): void {
   saveCodexAccounts({ index: { version: 1, activeAccountId: input.activeId, accounts: input.accounts } });
@@ -361,7 +334,6 @@ describe("codex swap", () => {
     const live = readLiveCodexAuth();
     expect(live?.tokens.refresh_token).toBe("rt-B-rot");
     expect(live?.tokens.account_id).toBe("acct-B");
-    // A's harvest is the LIVE blob verbatim, not its stale parked copy
     expect(readParkedCodexAuth({ credFile: accountA.credFile })?.tokens.refresh_token).toBe("rt-A-live");
     expect(readParkedCodexAuth({ credFile: accountB.credFile })?.tokens.refresh_token).toBe("rt-B-rot");
     expect(loadCodexAccounts().activeAccountId).toBe("acct-B");
@@ -374,8 +346,6 @@ describe("codex swap", () => {
     writeParkedCodexAuth({ credFile: accountB.credFile, auth: authBlob("B") });
     await expect(performCodexSwap({ target: accountB })).rejects.toThrow(/not in the pool/);
     expect(readLiveCodexAuth()?.tokens.account_id).toBe("acct-STRANGER");
-    // the refusal must not have rotated B's token server-side: a rotation here
-    // with the parked file unrewritten would strand a reuse-punished token.
     expect(refreshCalls).toBe(0);
     expect(readParkedCodexAuth({ credFile: accountB.credFile })?.tokens.refresh_token).toBe("rt-B");
   });
@@ -400,8 +370,6 @@ describe("codex swap", () => {
     expect(readLiveCodexAuth()?.tokens.account_id).toBe("acct-A");
   });
 });
-
-// ---- codexdecide -----------------------------------------------------------------
 
 describe("codex decide", () => {
   test("greedy swap onto the pace-better account once the active one is engaged", async () => {
@@ -439,7 +407,6 @@ describe("codex decide", () => {
   });
 
   test("hard path: a crossed bar swaps even when greedy would keep the seat", async () => {
-    // A is over the weekly bar; B is worse on pace than A was pre-burn but usable.
     const accountA = account("A", { weekly: window({ used: 99, resetInMs: 24 * 3600_000 }) });
     const accountB = account("B", { weekly: window({ used: 70, resetInMs: 24 * 3600_000 }) });
     seedPool({ accounts: [accountA, accountB], activeId: "acct-A" });
@@ -496,8 +463,6 @@ describe("codex decide", () => {
   });
 
   test("a dead LIVE grant marks its owner and still swaps onto a healthy account", async () => {
-    // The live refresh throwing CodexInvalidGrantError used to escape to the
-    // hook's generic catch: no mark, no swap, the session stuck on a dead seat.
     const accountA = account("A", { weekly: window({ used: 99, resetInMs: 24 * 3600_000 }), sampledAt: nowMs() - 10 * 60_000 });
     const accountB = account("B", { weekly: window({ used: 5, resetInMs: 24 * 3600_000 }) });
     seedPool({ accounts: [accountA, accountB], activeId: "acct-A" });
@@ -527,12 +492,10 @@ describe("codex decide", () => {
     const accountA = account("A", { weekly: window({ used: 10, resetInMs: 24 * 3600_000 }), sampledAt: nowMs() - 10 * 60_000 });
     seedPool({ accounts: [accountA], activeId: "acct-A" });
     writeLiveCodexAuth({ auth: authBlob("A", { accessExpSecondsFromNow: 30 }) });
-    writeParkedCodexAuth({ credFile: accountA.credFile, auth: authBlob("A") }); // pre-rotation rt-A
-    usageBody = () => ({ error: "boom" }); // schema-invalid: the usage read fails after the refresh
+    writeParkedCodexAuth({ credFile: accountA.credFile, auth: authBlob("A") });
+    usageBody = () => ({ error: "boom" });
 
     await expect(evaluateAndMaybeSwapCodex({})).rejects.toThrow();
-    // the rotation exists server-side; a stranded pre-rotation parked copy
-    // would be reuse-punished on its next refresh.
     expect(readParkedCodexAuth({ credFile: accountA.credFile })?.tokens.refresh_token).toBe("rt-A-rot");
   });
 
@@ -553,8 +516,6 @@ describe("codex decide", () => {
   });
 });
 
-// ---- codexstate fail-fast ------------------------------------------------------
-
 describe("codex state fail-fast", () => {
   test("a corrupt codex-accounts.json throws instead of fabricating an empty pool", () => {
     mkdirSync(codexPaths.home, { recursive: true });
@@ -564,8 +525,6 @@ describe("codex state fail-fast", () => {
     expect(() => loadCodexLastSwapAt()).toThrow();
   });
 });
-
-// ---- stop hook entry -------------------------------------------------------------
 
 describe("codex stop hook", () => {
   test("a swap under a supervisor writes the respawn marker with the stdin session id", async () => {
@@ -594,12 +553,8 @@ describe("codex stop hook", () => {
   });
 });
 
-// ---- sibling reconcile (owner-approved option b, 2026-07-20) ---------------------
-
 describe("codex sibling reconcile", () => {
   test("the deciding actor signals a living sibling on an exhausted account", async () => {
-    // live seat B: healthy AND disengaged - the early-return case that made
-    // the sibling's wedge invisible to every decision before the reconcile.
     const accountA = account("A", { weekly: window({ used: 99, resetInMs: 24 * 3600_000 }) });
     const accountB = account("B", { weekly: window({ used: 5, resetInMs: 24 * 3600_000 }) });
     seedPool({ accounts: [accountA, accountB], activeId: "acct-B" });
@@ -607,15 +562,12 @@ describe("codex sibling reconcile", () => {
     writeCodexPresence({ supervisorId: "sup-sibling", accountId: "acct-A" });
 
     const decision = await evaluateAndMaybeSwapCodex({});
-    expect(decision.reason).toBe("under-threshold-or-stale"); // the live seat itself stays put
+    expect(decision.reason).toBe("under-threshold-or-stale");
     const marker = JSON.parse(readFileSync(join(codexPaths.reconcileDir, "sup-sibling"), "utf8"));
     expect(marker.accountId).toBe("acct-A");
   });
 
   test("a HEALTHY non-live sibling is signaled too; a blocked live seat still gets nothing", async () => {
-    // Owner ruling 2026-07-20 (superseding the exhausted-only scope): every
-    // pooled non-live sibling follows the seat - codex refuses cross-account
-    // refreshes, so a healthy non-live session wedges at token expiry anyway.
     const healthyA = account("A", { weekly: window({ used: 50, resetInMs: 24 * 3600_000 }) });
     const freshB = account("B", { weekly: window({ used: 5, resetInMs: 24 * 3600_000 }) });
     seedPool({ accounts: [healthyA, freshB], activeId: "acct-B" });
@@ -624,7 +576,6 @@ describe("codex sibling reconcile", () => {
     await evaluateAndMaybeSwapCodex({});
     expect(existsSync(join(codexPaths.reconcileDir, "sup-healthy"))).toBe(true);
 
-    // a blocked LIVE seat must never receive a session (no-depleted-pre-park analog)
     rmSync(codexPaths.reconcileDir, { recursive: true, force: true });
     const burntA = account("A", { weekly: window({ used: 99, resetInMs: 24 * 3600_000 }) });
     const burntB = account("B", { weekly: window({ used: 99, resetInMs: 24 * 3600_000 }) });
@@ -635,8 +586,6 @@ describe("codex sibling reconcile", () => {
   });
 
   test("the sweep runs even inside the post-swap cooldown", async () => {
-    // a swap strands siblings at exactly the moment the cooldown starts, so
-    // the cooldown return must not gate the sweep (review catch, PR #34).
     const accountA = account("A", { weekly: window({ used: 99, resetInMs: 24 * 3600_000 }) });
     const accountB = account("B", { weekly: window({ used: 5, resetInMs: 24 * 3600_000 }) });
     seedPool({ accounts: [accountA, accountB], activeId: "acct-B" });
@@ -650,9 +599,6 @@ describe("codex sibling reconcile", () => {
   });
 
   test("a hard swap re-sweeps: siblings on the departed account are signaled immediately", async () => {
-    // While A is live its siblings are invisible to the entry sweep (their
-    // account IS the live seat); the post-swap re-sweep signals them the
-    // moment the seat moves (pullfrog review catch, PR #34).
     const accountA = account("A", { weekly: window({ used: 99, resetInMs: 24 * 3600_000 }) });
     const accountB = account("B", { weekly: window({ used: 5, resetInMs: 24 * 3600_000 }) });
     seedPool({ accounts: [accountA, accountB], activeId: "acct-A" });
@@ -694,14 +640,14 @@ describe("codex sibling reconcile", () => {
     }
     const respawn = JSON.parse(readFileSync(join(codexPaths.respawnDir, "sup-promote"), "utf8"));
     expect(respawn.sessionId).toBe("sess-77");
-    expect(respawn.account).toBe("B"); // the live seat's label
+    expect(respawn.account).toBe("B");
     expect(existsSync(join(codexPaths.reconcileDir, "sup-promote"))).toBe(false);
   });
 
   test("a stale signal (the session already moved accounts) is dropped without a respawn", async () => {
     seedPool({ accounts: [account("A"), account("B")], activeId: "acct-B" });
     writeLiveCodexAuth({ auth: authBlob("B") });
-    writeCodexPresence({ supervisorId: "sup-stale", accountId: "acct-B" }); // already on the live seat
+    writeCodexPresence({ supervisorId: "sup-stale", accountId: "acct-B" });
     mkdirSync(codexPaths.reconcileDir, { recursive: true });
     writeFileSync(join(codexPaths.reconcileDir, "sup-stale"), JSON.stringify({ accountId: "acct-A", ts: nowMs() }));
 
@@ -712,14 +658,10 @@ describe("codex sibling reconcile", () => {
       delete process.env[CODEX_SUPERVISOR_ID_ENV];
     }
     expect(existsSync(join(codexPaths.respawnDir, "sup-stale"))).toBe(false);
-    expect(existsSync(join(codexPaths.reconcileDir, "sup-stale"))).toBe(false); // dropped, not retained
+    expect(existsSync(join(codexPaths.reconcileDir, "sup-stale"))).toBe(false);
   });
 
   test("a lone stranded session rescues ITSELF at one boundary: sweep signals it, the post-evaluation promote consumes it", async () => {
-    // The removed self-skip lost exactly this session: presence names
-    // exhausted A while the live seat is healthy B, and no other actor ever
-    // evaluates (bugbot/pullfrog/cubic HIGH catch, PR #34). Its own hook now
-    // signals during the evaluation and promotes right after, same boundary.
     const accountA = account("A", { weekly: window({ used: 99, resetInMs: 24 * 3600_000 }) });
     const accountB = account("B", { weekly: window({ used: 5, resetInMs: 24 * 3600_000 }) });
     seedPool({ accounts: [accountA, accountB], activeId: "acct-B" });
@@ -739,10 +681,6 @@ describe("codex sibling reconcile", () => {
   });
 
   test("promotion revalidates the DESTINATION: a healthy source still respawns, a blocked live target drops", async () => {
-    // Owner ruling 2026-07-20: the source seat's state no longer matters (a
-    // non-live session wedges at token expiry regardless of quota), so a
-    // healthy/recovered source STILL promotes; the destination guard stays -
-    // never move a session onto a blocked live seat (PR #34 catches).
     const recoveredA = account("A", { weekly: window({ used: 10, resetInMs: 24 * 3600_000 }) });
     const freshB = account("B", { weekly: window({ used: 5, resetInMs: 24 * 3600_000 }) });
     seedPool({ accounts: [recoveredA, freshB], activeId: "acct-B" });
@@ -757,7 +695,7 @@ describe("codex sibling reconcile", () => {
       delete process.env[CODEX_SUPERVISOR_ID_ENV];
     }
     const respawn = JSON.parse(readFileSync(join(codexPaths.respawnDir, "sup-recovered"), "utf8"));
-    expect(respawn.sessionId).toBe("sess-1"); // healthy source: promoted anyway
+    expect(respawn.sessionId).toBe("sess-1");
     expect(existsSync(join(codexPaths.reconcileDir, "sup-recovered"))).toBe(false);
 
     const burntA = account("A", { weekly: window({ used: 99, resetInMs: 24 * 3600_000 }) });
@@ -772,7 +710,7 @@ describe("codex sibling reconcile", () => {
       delete process.env[CODEX_SUPERVISOR_ID_ENV];
     }
     expect(existsSync(join(codexPaths.respawnDir, "sup-target-blocked"))).toBe(false);
-    expect(existsSync(join(codexPaths.reconcileDir, "sup-target-blocked"))).toBe(false); // dropped
+    expect(existsSync(join(codexPaths.reconcileDir, "sup-target-blocked"))).toBe(false);
   });
 
   test("a blank stdin session id is treated as missing (never resume --last)", async () => {
@@ -791,7 +729,7 @@ describe("codex sibling reconcile", () => {
       delete process.env[CODEX_SUPERVISOR_ID_ENV];
     }
     expect(existsSync(join(codexPaths.respawnDir, "sup-blank"))).toBe(false);
-    expect(existsSync(join(codexPaths.reconcileDir, "sup-blank"))).toBe(true); // retained for a real id
+    expect(existsSync(join(codexPaths.reconcileDir, "sup-blank"))).toBe(true);
   });
 
   test("a boundary without a stdin session id keeps the signal for the next one", async () => {
@@ -810,11 +748,9 @@ describe("codex sibling reconcile", () => {
       delete process.env[CODEX_SUPERVISOR_ID_ENV];
     }
     expect(existsSync(join(codexPaths.respawnDir, "sup-noid"))).toBe(false);
-    expect(existsSync(join(codexPaths.reconcileDir, "sup-noid"))).toBe(true); // retained
+    expect(existsSync(join(codexPaths.reconcileDir, "sup-noid"))).toBe(true);
   });
 });
-
-// ---- supervisor shim lifecycle ------------------------------------------------------
 
 describe("codex supervisor install lifecycle", () => {
   test("install writes the shim + hook entry; uninstall removes both", () => {
@@ -822,7 +758,6 @@ describe("codex supervisor install lifecycle", () => {
     expect(existsSync(codexSupervisorLink())).toBe(true);
     const hooks = readFileSync(codexPaths.hooksJson, "utf8");
     expect(hooks).toContain("__codex-stop-hook");
-    // quoted command: an install path with a space must not mis-split
     expect(hooks).toContain('\\"');
     uninstallCodexSupervisor();
     expect(existsSync(codexSupervisorLink())).toBe(false);
@@ -830,12 +765,7 @@ describe("codex supervisor install lifecycle", () => {
   });
 });
 
-// ---- hooks install ----------------------------------------------------------------
-
 describe("codex hooks.json install", () => {
-  // the event map nests under a top-level `hooks` field (HooksFile) - a live
-  // 0.13.0 install with the claude-style top-level map made codex refuse the
-  // whole file: "unknown field Stop, expected description or hooks".
   const HooksFileSchema = z.looseObject({
     hooks: z.looseObject({
       PreToolUse: z.array(z.unknown()).optional(),
@@ -874,8 +804,6 @@ describe("codex hooks.json install", () => {
     expect(parsed.hooks.Stop).toHaveLength(1);
   });
 });
-
-// ---- supervisor arg analysis --------------------------------------------------------
 
 describe("codex supervisor management decision", () => {
   test("interactive launches are managed, utility subcommands and version checks pass through", () => {

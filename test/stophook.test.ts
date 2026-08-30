@@ -1,12 +1,3 @@
-// Behavioral coverage for the __stop-hook entry (adversarial-review catch: the
-// per-turn trigger + respawn-marker writer had zero behavioral tests). Driven
-// through the real subprocess entry - stdin in, marker files out - pinning the
-// marker gate (a marker is written ONLY for a depleted-pool wait), the /clear
-// pairing (file keyed by the PINNED env sid, payload sessionId = the stdin
-// sid), the non-UUID stdin fallback, and the unsupervised no-marker rule.
-// Hermetic: single-account pool, fresh tee, depleted-wait resolves to the
-// current seat so no credential store or network is ever touched.
-
 import { existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { beforeEach, expect, test } from "bun:test";
@@ -28,8 +19,6 @@ beforeEach(() => {
   rmSync(paths.respawnDir, { recursive: true, force: true });
 });
 
-/** One-account pool with a fresh statusline tee: sevenDay at `sevenDayPct`
- *  resetting in `resetInMs`, session engaged (60%) but under its bar. */
 function seed(input: { sevenDayPct: number; resetInMs: number }): void {
   const now = Date.now();
   writeFileSync(paths.configJson, JSON.stringify({ policy: { switchModels: ["fable"] } }));
@@ -81,7 +70,6 @@ function runHook(input: { pinned?: string; supervised?: boolean; stdin: string }
 }
 
 test("a depleted-pool wait writes the marker keyed by the PINNED sid, resuming the STDIN sid", () => {
-  // walled (100), so Layer 2 has nothing to squeeze and the pool parks.
   seed({ sevenDayPct: 100, resetInMs: 30 * 60_000 });
   const p = runHook({ pinned: PINNED_A, stdin: JSON.stringify({ session_id: STDIN_SID }) });
   expect(p.exitCode).toBe(0);

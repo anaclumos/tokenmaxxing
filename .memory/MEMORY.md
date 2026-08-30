@@ -25,6 +25,7 @@ RULES: this folder is git-tracked in a PUBLIC repo. Treat every note as a public
 - [tokenmaxxing project goal](tokenmaxxing-project.md) - CLI pooling Claude Code/Codex accounts, hot-swap on quota; npm name owned by user (anaclumos); .memory git-tracked since 2026-07-18
 - [AGENTS.md is gotchas-only](agents-md-is-gotchas-only.md) - 2026-07-26: cut 88% (16,484 to ~2,000 words) per the Claude 5 context-engineering rules; duplicated facts ROT (three verified drifts found), so link to DESIGN.md/docs/.memory/code comments instead of inlining
 - [CC/Codex auth mechanics](cc-codex-auth-mechanics.md) - verified keychain/CODEX_HOME/quota internals both CLIs depend on; see DESIGN.md §2
+- [StopFailure enforced-limit signal](stopfailure-enforced-limit-signal.md) - 2026-08-30: Fable blindness = fail-silent live probe; StopFailure hook is the real errored-turn signal, structured-only classification (hook ruling), post-swap proof, retrigger marker prompt, 60s floor tick self-paced check cadence, no code comments
 - [Per-model weekly caps](cc-per-model-limits.md) - per-model weekly limits exist only for Sonnet and Fable, no Opus-only quota (user 2026-07-12); only Fable gates a switch ("fable=switch, sonnet=ok")
 - [ARM Linux host](linux-arm-host.md) - the owner's Pi: the Linux test box; claude 2.1.207, 4-account pool, tokenmaxxing 0.6.1
 - [x86 Linux host](linux-x86-host.md) - the owner's Fedora box: 4-account pool; bun/xx under ~/.bun/bin; Linux claude prints comma reset-clock glue
@@ -41,3 +42,4 @@ RULES: this folder is git-tracked in a PUBLIC repo. Treat every note as a public
 - [Credential-dir cleanup rule](credential-dir-cleanup-rule.md) - user 2026-07-16: onboard homes holding plaintext creds are hard-deleted (rmSync), the one exception to the trash safeguard
 - [No rm -rf command form](no-rm-rf-command-form.md) - the ban is on the command form itself; session temporaries may be deleted but never via rm -rf (fresh dir names or trash instead)
 - [xx quota chart labels](xx-quota-chart-labels.md) - user rule 2026-07-17: chart labels all lowercase ("5h", "week", "spark", "fable"; Titlecase "Week" tried and reverted); OpenAI's GPT-5.3-Codex-Spark cap maps via codexLimitLabel, never exact strings
+- [Fable fan-out is quota spend](fable-fanout-is-quota-spend.md) - owner 2026-08-30 "Don't spam fable like that": dev hosts share the pooled live accounts, so Fable agents burn the real weekly cap; Fable only for one small hardest-judgment stage, ask before wide Fable fan-outs

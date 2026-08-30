@@ -19,20 +19,12 @@ jobs:
       - run: bun install --frozen-lockfile
       - run: bun run typecheck
       - run: bun test
-      # Artifact-class verification: bun test cannot catch a broken TARBALL
-      # (0.2.0 shipped an exec-format-error binary that every test passed
-      # around). Assert the committed exec bit on the bun-shebang bin and that
-      # the Agent Plugins package lands in the tarball, then install globally
-      # and run it, exactly what `bun i -g tokenmaxxing` does on the Linux boxes.
       - name: Pack and verify the artifact
         run: |
           npm pack
           tar tvf tokenmaxxing-*.tgz > /tmp/tarlist.txt
           grep -F "package/agent-plugin/plugin.json" /tmp/tarlist.txt
           grep -E "^-rwx[-rwx]+ .* package/src/main.ts$" /tmp/tarlist.txt
-          # absolute path on purpose: bun resolves a RELATIVE tarball path
-          # against the global install dir, not cwd (reproduced locally:
-          # "ENOENT extracting tarball" - the first CI run of this step).
           bun add -g "$PWD"/tokenmaxxing-*.tgz
           tokenmaxxing help
 
@@ -59,12 +51,10 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      id-token: write # npm trusted publishing (OIDC): no token needed
+      id-token: write
     steps:
       - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2
-      # ubuntu-latest's default node bundles npm 10.x; trusted publishing needs
-      # npm >= 11.5.1, which node 24 ships.
       - uses: actions/setup-node@v6
         with:
           node-version: 24

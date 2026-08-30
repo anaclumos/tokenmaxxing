@@ -21,7 +21,6 @@ describe("claude.json oauthAccount I/O", () => {
   });
 
   test("readOAuthAccount tolerates null descriptive fields (real blobs have them)", () => {
-    // real ~/.claude.json carries seatTier:null etc. - must still parse
     writeFileSync(claudeJson, JSON.stringify({
       oauthAccount: { accountUuid: "u", emailAddress: "e@e.com", organizationUuid: "o", seatTier: null, billingType: null, displayName: null },
     }));
@@ -35,9 +34,9 @@ describe("claude.json oauthAccount I/O", () => {
     const j = JSON.parse(readFileSync(claudeJson, "utf8"));
     expect(j.oauthAccount.accountUuid).toBe("new");
     expect(j.oauthAccount.emailAddress).toBe("new@e.com");
-    expect(j.numStartups).toBe(42); // untouched
-    expect(j.someOtherKey).toBe("keep-me"); // untouched
-    expect(j.projects["/x"].foo).toBe(1); // untouched
+    expect(j.numStartups).toBe(42);
+    expect(j.someOtherKey).toBe("keep-me");
+    expect(j.projects["/x"].foo).toBe(1);
   });
 
   test("isApiKeyMode detects ANTHROPIC_API_KEY", () => {

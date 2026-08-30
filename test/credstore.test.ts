@@ -54,13 +54,9 @@ describe("target resolution", () => {
   });
 
   darwinOnly("live/parked/isolated resolve to keychain services", () => {
-    // setup.ts sandboxes the service/account (the suite must never touch the
-    // real `Claude Code-credentials` item); the target follows those knobs.
     expect(liveTarget()).toEqual({
       kind: "keychain",
       service: `tokenmaxxing-test-${process.pid}`,
-      // pid-suffixed since the concurrent-suite isolation fix: keychain items
-      // are machine-global, so BOTH halves must be instance-unique.
       account: `tokenmaxxing-test-${process.pid}`,
     });
     expect(parkedTarget("tokenmaxxing-cred-abcd1234")).toMatchObject({ kind: "keychain", service: "tokenmaxxing-cred-abcd1234" });
@@ -74,7 +70,7 @@ describe("target resolution", () => {
     try {
       process.env.CLAUDE_SECURESTORAGE_CONFIG_DIR = "/x/secure";
       expect(credDir()).toBe("/x/secure");
-      process.env.CLAUDE_SECURESTORAGE_CONFIG_DIR = ""; // defined-but-empty → ~/.claude
+      process.env.CLAUDE_SECURESTORAGE_CONFIG_DIR = "";
       expect(credDir()).toBe(join(homedir(), ".claude"));
       delete process.env.CLAUDE_SECURESTORAGE_CONFIG_DIR;
       expect(credDir()).toBe(paths.claudeDir);
@@ -99,8 +95,8 @@ describe("credential blob helpers", () => {
   test("mergeIntoLive swaps claudeAiOauth but preserves every sibling key", () => {
     const merged = JSON.parse(mergeIntoLive(full, { accessToken: "NEW", refreshToken: "NR", expiresAt: 9, scopes: [] }));
     expect(merged.claudeAiOauth.accessToken).toBe("NEW");
-    expect(merged.mcpOAuth.sentry.accessToken).toBe("keep-me"); // preserved
-    expect(merged.extra).toBe(42); // preserved
+    expect(merged.mcpOAuth.sentry.accessToken).toBe("keep-me");
+    expect(merged.extra).toBe(42);
   });
   test("mergeIntoLive handles a null/empty current blob", () => {
     const merged = JSON.parse(mergeIntoLive(null, { accessToken: "X", refreshToken: "Y", expiresAt: 1, scopes: [] }));

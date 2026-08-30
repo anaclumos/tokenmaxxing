@@ -1,17 +1,9 @@
-// The init epilogue must actually teach the two things a fresh user needs:
-// that `xx` is the tokenmaxxing shorthand, and what to run day to day
-// (bare claude, xx, xx status --force, add, switch).
-
 import { expect, spyOn, test } from "bun:test";
 import { rmSync, writeFileSync } from "node:fs";
 import { cmdInit, printUsage } from "../src/cli/init.ts";
 import { paths } from "../src/lib/paths.ts";
 
 test("init fails fast on a merged-invalid config instead of claiming a repair", async () => {
-  // pinBinOverride writes sparsely without validating, so without the
-  // explicit loadConfig gate a re-init printed success while every later
-  // loadConfig (hooks, switching, statusline) kept throwing until the file
-  // was hand-repaired (bugbot review catch, PR #33).
   writeFileSync(paths.configJson, JSON.stringify({ policy: { projectionMargin: 96 } }));
   try {
     await expect(cmdInit()).rejects.toThrow("is invalid");

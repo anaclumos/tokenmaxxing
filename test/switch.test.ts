@@ -1,8 +1,3 @@
-// The idempotent no-op paths of bare `tokenmaxxing switch`: they must decide
-// entirely off accounts.json + ~/.claude.json (never touching the credential
-// store), so they run hermetically here. Paths that actually swap are covered
-// by the e2e suite.
-
 import { writeFileSync } from "node:fs";
 import { beforeEach, describe, expect, test } from "bun:test";
 import { cmdSwitch } from "../src/cli/switch.ts";
@@ -26,7 +21,6 @@ function acct(uuid: string, lastUsage?: UsageWindows): Account {
   };
 }
 
-/** Pin the live-login identity to the labeled active account (no drift). */
 function claudeJsonNames(uuid: string) {
   writeFileSync(
     process.env.TOKENMAXXING_CLAUDE_JSON!,
@@ -47,7 +41,6 @@ describe("cmdSwitch idempotence", () => {
   });
 
   test("no-ops on an exact tie even when the tied rival sorts first", async () => {
-    // both unsampled: weekly expiry Infinity, weekly usage 0 - a dead tie.
     saveAccounts({ version: 1, activeAccountUuid: "cur", accounts: [acct("other"), acct("cur")] });
     expect(await cmdSwitch()).toBe(0);
     expect(loadAccounts().activeAccountUuid).toBe("cur");

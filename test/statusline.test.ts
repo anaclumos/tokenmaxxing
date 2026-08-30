@@ -134,13 +134,8 @@ describe("renderStatusline", () => {
         }),
       ],
     };
-    // clean's 5h window resets in 30m, burnt's in 1h: clean leads even though
-    // burnt is more pace-starved, and the fable-burnt cap changes nothing -
-    // the pool order is purely informational since 2026-07-18 (the burnt
-    // account's 𝒇97 still surfaces as its binding cap).
     const underFable = renderStatusline(fullStdin, ctx({ accounts }));
     expect(underFable).toBe("Fable 5 (high) ctx 42 +156/-23  ◆ 𝒇? 2h5 1d38  ◇ 3d40  ◇ 𝒇97 1d30");
-    // The order is model-independent: same pool under a sonnet session.
     const sonnetStdin = { ...fullStdin, model: { id: "claude-sonnet-5", display_name: "Sonnet 5" } };
     const underSonnet = renderStatusline(sonnetStdin, ctx({ accounts }));
     expect(underSonnet).toBe("Sonnet 5 (high) ctx 42 +156/-23  ◆ 2h5 1d38  ◇ 3d40  ◇ 𝒇97 1d30");
@@ -210,9 +205,6 @@ describe("renderStatusline", () => {
         acct({ accountUuid: "uuid-fresh2" }),
       ],
     };
-    // used's 5h resets soonest (30m), the untouched accounts' 5h in 1h, and
-    // never-sampled accounts (no reset anchor) sort last; each keeps its own
-    // marker (no counted collapse since 2026-07-18).
     expect(renderStatusline(null, ctx({ accounts }))).toBe("◇ 2d40  ◇ full  ◇ full  ◇ ?  ◇ ?");
   });
 
@@ -247,7 +239,6 @@ describe("renderStatusline", () => {
       ],
     };
     const out = renderStatusline(null, ctx({ accounts }));
-    // the recorded 80% usage no longer applies: the window already reset
     expect(out).toBe("◇ full");
   });
 
@@ -280,9 +271,7 @@ describe("renderStatusline", () => {
       ],
     };
     const out = renderStatusline(null, ctx({ accounts, color: true, truecolor: true }));
-    // 96 used weekly -> pure red countdown, bold, and no number anywhere
     expect(out).toBe("\x1b[36m◇\x1b[0m \x1b[1m\x1b[38;2;255;0;0m1d\x1b[0m\x1b[0m");
-    // without truecolor the same ramp steps to the 256-color cube (196 = red)
     const stepped = renderStatusline(null, ctx({ accounts, color: true, truecolor: false }));
     expect(stepped).toBe("\x1b[36m◇\x1b[0m \x1b[1m\x1b[38;5;196m1d\x1b[0m\x1b[0m");
   });
@@ -292,9 +281,9 @@ describe("renderStatusline", () => {
       fullStdin,
       ctx({ perModel: { Fable: { usedPercentage: 26, resetsAt: NOW + 30 * H } }, color: true, truecolor: true }),
     );
-    expect(out).toContain("\x1b[1m\x1b[38;2;88;255;0m𝒇\x1b[0m\x1b[0m"); // fable cap, 26 used
-    expect(out).toContain("\x1b[1m\x1b[38;2;17;255;0m2h\x1b[0m\x1b[0m"); // 5h window, 5 used
-    expect(out).toContain("\x1b[1m\x1b[38;2;129;255;0m1d\x1b[0m\x1b[0m"); // week, 38 used
+    expect(out).toContain("\x1b[1m\x1b[38;2;88;255;0m𝒇\x1b[0m\x1b[0m");
+    expect(out).toContain("\x1b[1m\x1b[38;2;17;255;0m2h\x1b[0m\x1b[0m");
+    expect(out).toContain("\x1b[1m\x1b[38;2;129;255;0m1d\x1b[0m\x1b[0m");
   });
 
   test("a passed reset paints 0 (empty again); measured usage with no clock paints ?", () => {

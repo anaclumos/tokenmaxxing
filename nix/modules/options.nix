@@ -36,8 +36,8 @@
 
       intervalSeconds = lib.mkOption {
         type = lib.types.ints.positive;
-        default = 180;
-        description = "How often to run `tokenmaxxing check`.";
+        default = 60;
+        description = "The floor tick for `tokenmaxxing check`; the check itself sleeps longer while the live account has headroom.";
       };
     };
   };

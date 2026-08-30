@@ -1,10 +1,3 @@
-// The one OAuth call tokenmaxxing makes for codex: the refresh_token grant.
-// Verified against openai/codex rust-v0.144.5 (login/src/auth/manager.rs):
-// POST auth.openai.com/oauth/token, JSON body {client_id, grant_type,
-// refresh_token}, no auth headers. The server ROTATES the refresh token and
-// punishes reuse of a superseded one (refresh_token_reused), so every rotation
-// must be persisted back into the blob it came from immediately.
-
 import { z } from "zod";
 import { http, safeErrorDetail } from "./http.ts";
 import { CodexAuthJsonSchema, type CodexAuthJson } from "./types.ts";
@@ -13,7 +6,6 @@ const EnvOverrideSchema = z.string().min(1).optional().catch(undefined);
 const TOKEN_URL = EnvOverrideSchema.parse(process.env.TOKENMAXXING_CODEX_TOKEN_URL) ?? "https://auth.openai.com/oauth/token";
 const CLIENT_ID = EnvOverrideSchema.parse(process.env.TOKENMAXXING_CODEX_CLIENT_ID) ?? "app_EMoamEEZ73f0CkXaXp7hrann";
 
-/** Refresh token dead, superseded, or revoked: mark needs-reauth and move on. */
 export class CodexInvalidGrantError extends Error {
   constructor(detail: string) {
     super(`codex invalid grant: ${detail}`);
@@ -21,8 +13,6 @@ export class CodexInvalidGrantError extends Error {
   }
 }
 
-/** The refresh could not run (endpoint unreachable, throttled, drifted body):
- *  an operational miss to retry later, NOT a dead grant and NOT a bug. */
 export class CodexRefreshFailedError extends Error {
   constructor(detail: string) {
     super(`codex token refresh failed: ${detail}`);
@@ -43,12 +33,6 @@ const DEAD_GRANT_MARKERS = [
   "refresh_token_invalidated",
 ];
 
-/**
- * Exchange the blob's refresh token for fresh tokens. Returns a NEW auth.json
- * value with rotated token material and last_refresh restamped; every sibling
- * field rides along verbatim. Throws CodexInvalidGrantError on a dead grant.
- * Error paths only ever surface response-body snippets, never request headers.
- */
 export async function refreshCodexAuth(input: { auth: CodexAuthJson; now?: number }): Promise<CodexAuthJson> {
   const { auth, now = Date.now() } = input;
   let res: Response;

@@ -1,6 +1,6 @@
 # Agent rules
 
-Repo-specific rules only. The owner's global rules load alongside this file in every session, so nothing here repeats them; where this file is silent, the global rule applies. Long-form detail lives in `DESIGN.md`, `docs/content/docs/`, `.memory/`, and in comments at the code site that could regress. Link to it, do not inline it.
+Repo-specific rules only. The owner's global rules load alongside this file in every session, so nothing here repeats them; where this file is silent, the global rule applies. Long-form detail lives in `DESIGN.md`, `docs/content/docs/`, and `.memory/`. The source carries no comments (owner ruling 2026-08-30), so rationale that could regress goes to `.memory/`, not the code site. Link to it, do not inline it.
 
 ## The project
 
@@ -12,6 +12,8 @@ No external installed user base, so this is pre-production code: delete old-stat
 
 - The owner's Mac runs tokenmaxxing straight from this working tree, so a bad git operation breaks the live install.
 - This machine runs live supervisors, hooks, the periodic check, and the owner's real claude sessions. Stop processes by PID, and never kill a running session or supervisor to free a resource without asking.
+- The owner's hosts are managed environments: never run `init`, `add`, `auth`, `uninstall`, or anything that writes settings.json, launchd/systemd units, shell rc, or the global package on a live host (owner, 2026-08-30). Ship code; activation is the owner's step.
+- This working tree is a shared checkout (the owner and other agents work in it live). Stage commits by explicit path, never `git add -A`/`-u` (hook correction, 2026-08-30).
 - Never print credential material: keychain blobs, `.credentials.json`, `auth.json`, OAuth access or refresh tokens. Report account labels and status only. A ky error carries its request, Authorization header included.
 - Ask before any run that meters real quota or opens a session window (`status --force`, live-pool runs). Free `/usage` reads are fine.
 - This repo is PUBLIC. The no-Slack-info and no-device-info rule covers PR bodies, commit messages, review replies, release notes, and docs, not just `.memory`.
@@ -34,7 +36,7 @@ No external installed user base, so this is pre-production code: delete old-stat
 
 ## Switching
 
-Accounts rank by pace pressure (remaining percent over time to weekly reset, highest first), not by most-remaining. Mechanics live in `src/lib/decide.ts` and `src/lib/picker.ts` with rationale inline; policy in `docs/switching.mdx` and `.memory/switch-policy-pace-pressure.md`. The vocabulary below is used across both files.
+Accounts rank by pace pressure (remaining percent over time to weekly reset, highest first), not by most-remaining. Mechanics live in `src/lib/decide.ts` and `src/lib/picker.ts`; rationale and policy in `docs/switching.mdx`, `.memory/switch-policy-pace-pressure.md`, and `.memory/stopfailure-enforced-limit-signal.md`. The vocabulary below is used across both files.
 
 - Engaged but under every bar = the GREEDY path: `currentWins` keeps the seat on best-or-tie, else swap onto the strictly better account. It never depleted-waits or pre-parks. Only the HARD path (a bar crossed) may.
 - Layer 2 is the fallback reached only when the hard path finds no usable target, judged against the wall (`hardBars` = hardThresholds minus projectionMargin). A seat under its wall HOLDS and squeezes in place, and that check runs BEFORE any swap, or equally-squeezable siblings ping-pong. A walled seat swaps onto the best under-wall account.
@@ -49,13 +51,14 @@ Accounts rank by pace pressure (remaining percent over time to weekly reset, hig
 Verified auth and quota mechanics live in `.memory/cc-codex-auth-mechanics.md`; the credential store and swap sequence are in `DESIGN.md` §2-3. Both CLIs change monthly, so re-verify before trusting a recorded fact.
 
 - Quota comes from `claude -p '/usage'` (free, 0 tokens), probed in a throwaway `CLAUDE_CONFIG_DIR` for parked accounts. The direct `GET /api/oauth/usage` was tried and REJECTED by the owner because it 429s when the sampled account is the one running the session: fix the CLI method, never bypass it. Codex deliberately differs here (its own direct GET was separately approved), so the codex side is not a precedent.
-- Never probe the active account's own token. `/usage` is fail-silent for it and prints no percentages at all, so sample the active account from the statusLine tee instead.
+- Never probe the active account's own token. `/usage` is fail-silent for it and prints no percentages at all, so sample the active account from the statusLine tee instead. The tee carries no per-model rows, so the live Fable cap still comes from that probe and goes blind for hours under load (2026-08-30 diagnosis: 10,198 failed probes); the StopFailure hook is the backstop, not a better probe.
+- StopFailure (verified 2.1.251) fires INSTEAD of Stop when a turn ends on an API error, for subagents too (`agent_id` set), with `error` (`rate_limit`, ...) and `last_assistant_message` on stdin. `quotaLimits` (rateLimitType, resetsAt in epoch seconds) lives only on the transcript row. The Fable cap failure is the credits branch: no quotaLimits, no reset, text `You've reached your Fable 5 limit.` or `Fable 5 requires usage credits.`. The statusline payload no longer carries `organizationUuid`.
 - `claude setup-token` was investigated and abandoned: it is inference-only scoped and returns no rate-limit percentages, which breaks monitoring. Do not revisit without solving usage.
 - Every new spawn of the real claude goes through `resolveRealClaude()`. Preset the depth cap for probe subtrees that must never re-enter the wrapper; set `TOKENMAXXING_UNMANAGED` where nested invocations are legitimate. The layered guards live in `src/lib/claudebin.ts`; read them there before adding a spawn.
 
 ## Codex
 
-Source-verified against rust-v0.144.5 (2026-07-16); the installed CLI is 0.145.0 and codex changes monthly, so re-verify before trusting any line here. Detail: `docs/codex.mdx`, `.memory/cc-codex-auth-mechanics.md`, and the `src/lib/codex*.ts` headers.
+Source-verified against rust-v0.144.5 (2026-07-16); the installed CLI is 0.145.0 and codex changes monthly, so re-verify before trusting any line here. Detail: `docs/codex.mdx` and `.memory/cc-codex-auth-mechanics.md`.
 
 - No hot-swap: restart IS the switch (`codex resume <sid>`).
 - Refresh-token reuse is punished, and a superseded token kills the whole grant family. Harvest by true owner and persist every rotation the instant it returns.
@@ -77,14 +80,14 @@ Ship = work on a branch, bump `package.json` in the same PR, open the PR, make C
 
 ## Statusline and SDK
 
-Short pointers; these surfaces document themselves at the code site.
+Short pointers.
 
 - Statusline: `src/entries/statusline.ts` renders natively and tees `usage.json`; subagent rows in `src/entries/subagentstatusline.ts`. Format spec in `docs/statusline.mdx`. statusLine stdin sends top-level sub-objects as JSON `null`, so their schemas need `.nullable().optional()`, not `.optional()`. The main payload can never reflect the focused subagent; the subagent rows are the only such surface. This runs every turn, so keep it O(ms) and off flock and oauth: read the HEAD file, never spawn a git subprocess.
 - SDK: `src/sdk.ts` is the programmatic entry and is self-documenting. `docs/sdk.mdx`, `.memory/agent-sdk-auth-surface.md`. Pooling subscription logins is framed as the owner using their own accounts in agents they run themselves; offering it to third parties is a ToS problem (`docs/terms.mdx`).
 
 ## Do not reintroduce
 
-- A Stop-hook text-sniffing limit failsafe. Stop stdin carries no `is_error`, so it fired on turns that merely discussed limits and stamped healthy accounts as walled. It needs a real errored-turn signal first.
+- A Stop-hook text-sniffing limit failsafe. Stop stdin carries no `is_error`, so it fired on turns that merely discussed limits and stamped healthy accounts as walled. The real errored-turn signal is the StopFailure hook (`src/entries/stopfailurehook.ts`): it classifies only the transcript row Claude Code itself marked `isApiErrorMessage`, never prose, and stamps only with post-swap proof. Keep it that way.
 - Statusline formats already rejected: meter glyphs, Unicode fractions, dim or faint ANSI anywhere, account names, S/W window labels, percent signs, remaining-instead-of-used, usage numbers in color mode, and the counted parked collapse.
 - Compatibility bridges, migration shims, or dual behavior for old local states.
 

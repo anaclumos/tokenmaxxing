@@ -1,11 +1,3 @@
-// `tokenmaxxing auth` - reauthenticate a pooled account in place. The dead
-// refresh token cannot heal itself (a needs-reauth account can never win a
-// swap), so this drives one isolated login per target and REQUIRES the login
-// to land on the target account: the harvested identity must match, otherwise
-// nothing changes. Bare `auth` lists the pool (emails shown) and asks which;
-// `auth <sel>` targets one account, stating the email to sign in with;
-// `auth --all` walks every needs-reauth account one by one.
-
 import { partition } from "es-toolkit";
 import { z } from "zod";
 import { withLock } from "../lib/lock.ts";
@@ -20,18 +12,13 @@ import type { Account, AccountsIndex } from "../lib/types.ts";
 const AUTH_USAGE = "usage: tokenmaxxing auth [<email|label|id> | --all]";
 
 const AuthPlanSchema = z.discriminatedUnion("kind", [
-  /** malformed argv: print AUTH_USAGE, exit 2. */
   z.object({ kind: z.literal("usage") }),
-  /** unresolvable state (empty pool, unknown selector): exit 1. */
   z.object({ kind: z.literal("error"), message: z.string() }),
-  /** bare `auth`: ask interactively. */
   z.object({ kind: z.literal("pick") }),
   z.object({ kind: z.literal("targets"), uuids: z.array(z.string()) }),
 ]);
 export type AuthPlan = z.infer<typeof AuthPlanSchema>;
 
-/** Resolve argv into a reauth plan (pure - unit-tested). Argv shape is
- *  validated before any pool state is consulted. */
 export function planAuth(input: { accounts: Account[]; argv: string[] }): AuthPlan {
   const all = input.argv.includes("--all");
   const rest = input.argv.filter((a) => a !== "--all");
@@ -50,7 +37,6 @@ export function planAuth(input: { accounts: Account[]; argv: string[] }): AuthPl
   return { kind: "pick" };
 }
 
-/** Needs-reauth accounts first (they are why the user is here), pool order within. */
 export function pickerOrder(accounts: Account[]): Account[] {
   const [flagged, healthy] = partition(accounts, (a) => a.needsReauth === true);
   return [...flagged, ...healthy];
@@ -100,16 +86,7 @@ async function reauthOne(target: Account): Promise<boolean> {
     return false;
   }
 
-  // under the flock: a concurrent swap both harvests into parked items and
-  // writes the index, so the credential write and the needsReauth clear must
-  // land in one critical section (else a swap-away harvest of the live blob
-  // could overwrite this fresh backup right before it is marked healthy).
   const isActive = await withLock(paths.lockFile, async () => {
-    // The account must still be pooled BEFORE anything is written: the
-    // interactive login can sit open for minutes, and a concurrent `xx rm`
-    // completing in that window used to get its parked item recreated as an
-    // orphan no pool entry tracks - plus a false "reauthed" success
-    // (closing-review catch).
     const idx = loadAccounts();
     const account = idx.accounts.find((a) => a.accountUuid === target.accountUuid);
     if (!account) {

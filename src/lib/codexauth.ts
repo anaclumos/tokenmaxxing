@@ -1,9 +1,3 @@
-// Read/write codex credential blobs ($CODEX_HOME/auth.json and parked copies)
-// and decode the id_token's identity claims. Codex has NO cross-process lock on
-// auth.json (its refresh serialization is an in-process semaphore, verified
-// rust-v0.144.5 manager.rs), so every mutation here runs under tokenmaxxing's
-// own codex flock, held by the caller.
-
 import { readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
@@ -15,14 +9,6 @@ function isEnoent(e: unknown): boolean {
   return e instanceof Error && "code" in e && e.code === "ENOENT";
 }
 
-/** auth.json at an explicit path (the live file, or an onboard dir's), or null
- *  when absent. Throws on a present-but-unparsable file: that is drift to
- *  surface, not to paper over. One valid-but-unpoolable state maps to null
- *  instead of throwing: `codex login --with-api-key` writes auth.json with
- *  `tokens` OMITTED (serde skip_serializing_if, verified rust-v0.144.5) - the
- *  real binary runs fine on it, so the shim and status must too, and with no
- *  ChatGPT tokens there is nothing tokenmaxxing can pool (closing-review
- *  catch). */
 export function readCodexAuthAt(input: { path: string }): CodexAuthJson | null {
   let raw: string;
   try {
@@ -37,7 +23,6 @@ export function readCodexAuthAt(input: { path: string }): CodexAuthJson | null {
   return CodexAuthJsonSchema.parse(parsed);
 }
 
-/** The live auth.json, or null when codex has no login here. */
 export function readLiveCodexAuth(): CodexAuthJson | null {
   return readCodexAuthAt({ path: codexPaths.authJson });
 }
@@ -65,15 +50,10 @@ export function writeParkedCodexAuth(input: { credFile: string; auth: CodexAuthJ
   writeFileAtomic(parkedPath(input), JSON.stringify(CodexAuthJsonSchema.parse(input.auth), null, 2), 0o600);
 }
 
-/** `rm --codex` uses this so the path shape (.json suffix) has one owner:
- *  a hand-built path without the suffix silently missed the real file under
- *  rmSync force (PR #37 review catch). */
 export function deleteParkedCodexAuth(input: { credFile: string }): void {
   rmSync(parkedPath(input), { force: true });
 }
 
-/** Identity claims inside the id_token JWT payload (verified against a live
- *  0.144.4 token: the chatgpt fields sit under the api.openai.com/auth claim). */
 const IdClaimsSchema = z.looseObject({
   email: z.string().optional(),
   "https://api.openai.com/auth": z
@@ -100,12 +80,6 @@ const CodexIdentitySchema = z.object({
 });
 export type CodexIdentity = z.infer<typeof CodexIdentitySchema>;
 
-/**
- * The blob's own identity, from its token material alone (no network): the
- * explicit tokens.account_id, else the id_token's chatgpt_account_id claim.
- * Parking MUST key on this (or the usage endpoint's echo of it), never on a
- * stored label - labels drift, tokens cannot lie.
- */
 export function codexIdentityOf(input: { auth: CodexAuthJson }): CodexIdentity {
   const { auth } = input;
   const claims = IdClaimsSchema.parse(decodeJwtPayload({ jwt: auth.tokens.id_token }));
@@ -121,9 +95,6 @@ export function codexIdentityOf(input: { auth: CodexAuthJson }): CodexIdentity {
   });
 }
 
-/** True when the access token is within `skewMs` of its JWT exp (or exp is
- *  unreadable). Codex's own proactive refresh margin is 5 minutes; matching it
- *  means we never install a token codex would immediately refresh. */
 export function isCodexAccessExpiring(input: { auth: CodexAuthJson; skewMs?: number; now?: number }): boolean {
   const { auth, skewMs = 300_000, now = Date.now() } = input;
   let exp: number | undefined;

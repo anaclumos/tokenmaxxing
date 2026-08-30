@@ -1,9 +1,5 @@
-// Terminal rendering helpers for the CLI (bars, colors, relative times).
-
 import { clamp } from "es-toolkit";
 
-/** ANSI painters, no-ops when disabled. The statusLine renders through a pipe
- *  (never a TTY), so it needs its own enable gate; the CLI gates on stdout. */
 export function makeColors(enabled: boolean) {
   const paint = (code: string) => (s: string) => (enabled ? `\x1b[${code}m${s}\x1b[0m` : s);
   return {
@@ -18,9 +14,6 @@ export function makeColors(enabled: boolean) {
 
 export const c = makeColors(!process.env.NO_COLOR && !!process.stdout.isTTY);
 
-/** Used% -> RGB on a continuous green->yellow->red ramp, anchored at the
- *  semantic severity bands (pure green at 0, yellow at 75, red from 95) so the
- *  band boundaries read exactly like the old 3-color scheme. Blue stays 0. */
 function rampRgb(usedPct: number): { r: number; g: number } {
   const u = clamp(usedPct, 0, 100);
   if (u >= 95) return { r: 255, g: 0 };
@@ -28,11 +21,6 @@ function rampRgb(usedPct: number): { r: number; g: number } {
   return { r: Math.round((255 * u) / 75), g: 255 };
 }
 
-/** Usage-severity painter for the statusLine (user decision 2026-07-18: colors
- *  carry quota status instead of numbers). Truecolor when the terminal
- *  advertises it, else the nearest 256-color cube step; disabled -> identity,
- *  and callers must then fall back to numeric rendering (without color a
- *  drained window must not look fresh). */
 export function makeUsagePaint(input: { enabled: boolean; truecolor: boolean }) {
   return (usedPct: number) =>
     (s: string): string => {
@@ -45,12 +33,6 @@ export function makeUsagePaint(input: { enabled: boolean; truecolor: boolean }) 
     };
 }
 
-/** Plan label for a claude account, e.g. "max 20x": subscription name plus the
- *  multiplier segment of the rate-limit tier id ("default_claude_max_20x").
- *  Structural, never exact-string: the multiplier is any <digits>x segment, so
- *  tiers without one (e.g. "default_claude_zero") fall back to the bare
- *  subscription name, and an absent blob field falls back to null (unmeasured
- *  must not look like a tier). */
 export function claudeTierLabel(input: { subscriptionType?: string; rateLimitTier?: string }): string | null {
   const segments = input.rateLimitTier?.split("_") ?? [];
   const multiplier = segments.find((seg) => seg.length > 1 && seg.endsWith("x") && Number.isInteger(Number(seg.slice(0, -1))));
@@ -58,12 +40,10 @@ export function claudeTierLabel(input: { subscriptionType?: string; rateLimitTie
   return multiplier ? `${input.subscriptionType} ${multiplier}` : input.subscriptionType;
 }
 
-/** "1 account" / "3 accounts": counted nouns always pluralize properly. */
 export function count(input: { n: number; noun: string }): string {
   return `${input.n} ${input.noun}${input.n === 1 ? "" : "s"}`;
 }
 
-/** A fixed-width usage bar, colored by fill. */
 export function bar(pct: number, width = 16): string {
   const clamped = clamp(pct, 0, 100);
   const filled = Math.round((clamped / 100) * width);
@@ -73,7 +53,6 @@ export function bar(pct: number, width = 16): string {
   return `${paint(body)} ${label}`;
 }
 
-/** Relative-time string for a reset epoch, e.g. "resets in 2h13m". */
 export function fmtReset(epochMs: number | null | undefined, now = Date.now()): string {
   if (epochMs == null) return "";
   const dsec = Math.round((epochMs - now) / 1000);
@@ -85,8 +64,6 @@ export function fmtReset(epochMs: number | null | undefined, now = Date.now()): 
   return `resets in ${m}m`;
 }
 
-/** Age of a cached sample, largest unit only: "just now", "3m ago", "2h ago",
- *  "5d ago". */
 export function fmtAgo(epochMs: number, now = Date.now()): string {
   const dsec = Math.max(0, Math.round((now - epochMs) / 1000));
   if (dsec < 60) return "just now";

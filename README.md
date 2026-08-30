@@ -50,7 +50,7 @@ programs.tokenmaxxing.package = inputs.tokenmaxxing.packages.${pkgs.system}.defa
 # then: tokenmaxxing init
 ```
 
-`init` imports the account you're already on, installs the `claude` supervisor + four `settings.json` entries (the tokenmaxxing statusLine, a subagentStatusLine, a Stop hook, a SessionStart hook), and adds the supervisor's bin dir to PATH in your shell rc (idempotent; it must sit ahead of the real `claude` to intercept it). Restart your shell, then add more accounts and go:
+`init` imports the account you're already on, installs the `claude` supervisor + five `settings.json` entries (the tokenmaxxing statusLine, a subagentStatusLine, a Stop hook, a StopFailure hook, a SessionStart hook), and adds the supervisor's bin dir to PATH in your shell rc (idempotent; it must sit ahead of the real `claude` to intercept it). Restart your shell, then add more accounts and go:
 
 ```sh
 tokenmaxxing add        # logs one in, in isolation, and pools it

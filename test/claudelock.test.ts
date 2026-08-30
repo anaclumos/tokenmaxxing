@@ -1,7 +1,3 @@
-// Hermetic tests for the claude refresh-lock interlock: the dual mkdir locks
-// (primary <credDir>/.oauth_refresh.lock + legacy <realpath(credDir)>.lock),
-// claude's 60s stale reclaim, fail-fast on contention, and theft detection.
-
 import { afterEach, expect, test } from "bun:test";
 import { existsSync, mkdirSync, realpathSync, rmdirSync, utimesSync } from "node:fs";
 import { join } from "node:path";
@@ -18,7 +14,7 @@ const fast = { attempts: 2, retryMs: 5 };
 
 afterEach(() => {
   for (const d of [primary, legacy]) {
-    try { rmdirSync(d); } catch { /* not held */ }
+    try { rmdirSync(d); } catch {  }
   }
 });
 
@@ -42,7 +38,7 @@ test("fails fast when the primary lock is contested", async () => {
   let ran = false;
   await expect(withClaudeRefreshLock(() => { ran = true; }, fast)).rejects.toThrow("contested");
   expect(ran).toBe(false);
-  expect(existsSync(legacy)).toBe(false); // never reached the legacy lock
+  expect(existsSync(legacy)).toBe(false);
 });
 
 test("fails fast when the legacy lock is contested, releasing the primary", async () => {
@@ -50,7 +46,7 @@ test("fails fast when the legacy lock is contested, releasing the primary", asyn
   let ran = false;
   await expect(withClaudeRefreshLock(() => { ran = true; }, fast)).rejects.toThrow("contested");
   expect(ran).toBe(false);
-  expect(existsSync(primary)).toBe(false); // released on the way out
+  expect(existsSync(primary)).toBe(false);
 });
 
 test("reclaims a lock older than claude's 60s stale bar", async () => {
@@ -65,14 +61,14 @@ test("reclaims a lock older than claude's 60s stale bar", async () => {
 test("theft while held is detected, fails the section, and spares the thief's lock", async () => {
   await expect(
     withClaudeRefreshLock(async (lock) => {
-      rmdirSync(primary); // a thief reclaims the lock...
-      mkdirSync(primary); // ...and re-takes it with its own mtime
+      rmdirSync(primary);
+      mkdirSync(primary);
       const theirs = new Date(Date.now() + 1_000);
       utimesSync(primary, theirs, theirs);
-      await delay(60); // let the heartbeat observe the deviation
+      await delay(60);
       expect(lock.compromised()).toBe(true);
       return "tainted";
     }, { ...fast, heartbeatMs: 10 }),
   ).rejects.toThrow("reclaimed");
-  expect(existsSync(primary)).toBe(true); // the thief's lock is not ours to delete
+  expect(existsSync(primary)).toBe(true);
 });

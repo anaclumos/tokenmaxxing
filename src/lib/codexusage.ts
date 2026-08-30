@@ -1,15 +1,3 @@
-// The free codex usage read (user decision 2026-07-16: the direct GET, the same
-// HTTP call the codex CLI makes for its own /status). One authed GET returns
-// BOTH the token's true identity (account_id/email/plan: the codex analog of
-// the claude roles endpoint) and every rate-limit window. No inference runs and
-// no session window starts.
-//
-// Response shape pinned against a live read 2026-07-16: windows carry
-// used_percent + reset_at (epoch SECONDS) + limit_window_seconds, the weekly
-// window is PRIMARY on plans whose 5h window was removed (July 2026), and
-// per-model caps arrive as additional_rate_limits[] rows keyed by limit_name.
-// Classification is therefore duration-driven, never position-driven.
-
 import { z } from "zod";
 import { http, safeErrorDetail } from "./http.ts";
 import { CodexUsageSchema, type CodexAuthJson, type CodexUsage, type CodexWindow } from "./types.ts";
@@ -19,9 +7,6 @@ import { familyTokens } from "./usage.ts";
 const EnvOverrideSchema = z.string().min(1).optional().catch(undefined);
 const USAGE_URL = EnvOverrideSchema.parse(process.env.TOKENMAXXING_CODEX_USAGE_URL) ?? "https://chatgpt.com/backend-api/wham/usage";
 
-/** The usage read could not complete (endpoint unreachable, HTTP failure,
- *  drifted body): an operational miss to fall back on cached figures for,
- *  NOT a bug to swallow. */
 export class CodexUsageReadError extends Error {
   constructor(detail: string) {
     super(`codex usage read failed: ${detail}`);
@@ -63,11 +48,6 @@ function toWindows(rateLimit: z.infer<typeof WireRateLimitSchema> | null | undef
   return out;
 }
 
-/**
- * One free usage read for the credential in `auth`. Throws on HTTP failure
- * (401 included: the caller decides whether to refresh and retry); error
- * text carries only a response-body snippet, never request headers.
- */
 export async function fetchCodexUsage(input: { auth: CodexAuthJson }): Promise<CodexUsage> {
   const { auth } = input;
   const identity = codexIdentityOf({ auth });
@@ -115,10 +95,6 @@ export async function fetchCodexUsage(input: { auth: CodexAuthJson }): Promise<C
   });
 }
 
-/** Quota-chart label for an additional_rate_limits row: the model family,
- *  lowercase ("GPT-5.3-Codex-Spark" -> "spark"). Wire names are versioned, so
- *  the label is derived structurally (last non-numeric token), never by exact
- *  string (user rule 2026-07-17: chart names are lowercase, e.g. "spark"). */
 export function codexLimitLabel(input: { limitName: string }): string {
   const tokens = familyTokens(input.limitName).filter((t) => Number.isNaN(Number(t)));
   return tokens.at(-1) ?? input.limitName.trim().toLowerCase();
@@ -126,15 +102,11 @@ export function codexLimitLabel(input: { limitName: string }): string {
 
 const SESSION_WINDOW_MAX_S = 6 * 3600;
 
-/** A window's screening bar: short windows (5h-class) screen at the session
- *  bar, everything else (weekly aggregates and per-model caps) at the weekly
- *  bar. An unknown duration is treated as weekly: the strictest reading. */
 export function isSessionWindow(input: { window: CodexWindow }): boolean {
   const seconds = input.window.windowSeconds;
   return seconds != null && seconds <= SESSION_WINDOW_MAX_S;
 }
 
-/** The account's weekly aggregate window: the longest-duration aggregate row. */
 export function weeklyWindowOf(input: { aggregate: CodexWindow[] }): CodexWindow | null {
   let best: CodexWindow | null = null;
   for (const window of input.aggregate) {

@@ -1,13 +1,3 @@
-// The `codex` supervisor. Invoked in place of codex (via ~/.config/tokenmaxxing/
-// bin/codex on PATH). Codex REQUIRES a restart to change accounts: a running
-// process refuses an auth.json swap to a different account (verified
-// rust-v0.144.5 reload_if_account_id_matches), so unlike the claude supervisor
-// (whose child hot-adopts swaps) this respawn IS the switch mechanism, not just
-// UX. The codex Stop hook performs the swap at an idle turn boundary and drops
-// a marker keyed by THIS supervisor's id (passed down via env, so N concurrent
-// sessions pair correctly); the supervisor then SIGTERMs its child and
-// relaunches `codex resume <session-id>` on the freshly-installed account.
-
 import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
@@ -23,7 +13,6 @@ import { log } from "../lib/log.ts";
 
 export const CODEX_SUPERVISOR_ID_ENV = "TOKENMAXXING_CODEX_SUPERVISOR_ID";
 
-/** Subcommands that never host an interactive session worth managing. */
 const NONINTERACTIVE_SUBCMDS = new Set([
   "exec", "review", "login", "logout", "mcp", "plugin", "mcp-server", "app-server",
   "remote-control", "app", "completion", "update", "doctor", "sandbox", "debug",
@@ -32,11 +21,6 @@ const NONINTERACTIVE_SUBCMDS = new Set([
 
 const PASSTHROUGH_FLAGS = new Set(["--version", "-V", "--help", "-h"]);
 
-/** Read + validate a codex respawn marker. An unparseable one (version-skew
- *  hook, corruption) is dropped loudly and reported as absent: the watcher
- *  checks validity BEFORE the SIGTERM, so garbage never kills the session, and
- *  the post-exit consume never throws after the child is already dead (PR #36
- *  review catch, mirroring the claude supervisor). */
 function consumableCodexMarker(marker: string): z.infer<typeof CodexRespawnMarkerSchema> | null {
   try {
     return CodexRespawnMarkerSchema.parse(JSON.parse(readFileSync(marker, "utf8")));
@@ -47,9 +31,6 @@ function consumableCodexMarker(marker: string): z.infer<typeof CodexRespawnMarke
   }
 }
 
-/** Root options that consume the NEXT token as their value (verified against
- *  `codex --help` 0.144.4): without skipping them, `codex -m gpt exec ...`
- *  would read "gpt" as the subcommand and wrongly supervise an exec run. */
 const VALUE_TAKING_ROOT_FLAGS = new Set([
   "-c", "--config", "-i", "--image", "-m", "--model", "--local-provider", "-p", "--profile",
   "-s", "--sandbox", "-a", "--ask-for-approval", "-C", "--cd", "--add-dir", "--enable",
@@ -70,7 +51,6 @@ export function shouldManageCodex(input: { argv: string[] }): boolean {
   return firstPositional === null || !NONINTERACTIVE_SUBCMDS.has(firstPositional);
 }
 
-/** Entry point: `codex ...args` through the on-PATH shim. */
 export async function runCodexSupervisor(input: { argv: string[] }): Promise<number> {
   const { argv } = input;
   const depth = wrapDepth();
@@ -92,19 +72,7 @@ export async function runCodexSupervisor(input: { argv: string[] }): Promise<num
   const real = resolveRealCodex();
   const childEnv = { ...process.env, [WRAP_DEPTH_ENV]: String(depth + 1) };
 
-  // The unmanaged-zone sentinel forces passthrough regardless of argv, exactly
-  // like the claude shim: a serve turn's agent running `codex exec` must reach
-  // the real codex instead of dying at the shared depth cap.
   if (!shouldManageCodex({ argv }) || process.env[UNMANAGED_ENV]) {
-    // STRIP the supervisor pairing env from unmanaged spawns: a nested codex
-    // launched from inside a supervised session (e.g. its agent running
-    // `codex exec ...`) would otherwise inherit the OUTER session's id, and
-    // its global Stop hook could then write a respawn marker that SIGTERMs
-    // the outer session MID-TURN and resumes it onto the nested transcript
-    // (closing-review catch). A managed nested launch is already safe - it
-    // exports its own fresh id below; only a shim-bypassed absolute-path
-    // nested launch keeps the inherited env, the same accepted gap as
-    // claude's bg-daemon bypass.
     const passthroughEnv: Record<string, string | undefined> = { ...childEnv };
     delete passthroughEnv[CODEX_SUPERVISOR_ID_ENV];
     const p = Bun.spawn([real, ...argv], { stdin: "inherit", stdout: "inherit", stderr: "inherit", env: passthroughEnv });
@@ -120,28 +88,12 @@ export async function runCodexSupervisor(input: { argv: string[] }): Promise<num
   process.on("SIGINT", () => {});
   process.on("SIGHUP", () => {});
 
-  // On respawn the ONLY reliable relaunch is `codex resume <session-id>`:
-  // codex generates its own session ids (there is no flag to pin one at
-  // launch), so original launch args are used verbatim only for the first
-  // spawn. Model/sandbox preferences persist in config.toml either way.
   let launchArgs = argv;
   let respawns = 0;
   while (true) {
     if (existsSync(marker)) rmSync(marker, { force: true });
     log("codexsupervisor.launch", { supervisorId: supervisorId.slice(0, 8), respawns, args: launchArgs.join(" ") });
 
-    // Declare which account THIS session runs on (the live identity at spawn):
-    // the picker must never target it and the sampler must never rotate its
-    // parked token while the session lives. Rewritten every respawn (the swap
-    // changed the live identity); cleared on exit; PID-validated by readers.
-    // Read + presence-write + spawn run under the codex FLOCK (closing-review
-    // catch): unlocked, a swap could land between the read and the child's
-    // auth.json read, seating the child on the NEW account while presence
-    // named the old one for the session's whole life - un-benching the
-    // running account for samplers and the picker. Under the flock no swap
-    // can interleave until after the spawn; the residual window (child
-    // startup vs a swap acquiring the lock immediately after) is sub-ms in
-    // practice against a swap's network-bound critical section.
     const child = await withLock(codexPaths.lockFile, async () => {
       const spawnAccountId = liveCodexAccountId();
       const spawned = Bun.spawn([real, ...launchArgs], {
@@ -150,32 +102,16 @@ export async function runCodexSupervisor(input: { argv: string[] }): Promise<num
         stderr: "inherit",
         env: { ...childEnv, [CODEX_SUPERVISOR_ID_ENV]: supervisorId },
       });
-      // Presence pins the CHILD's pid, written after the spawn (still inside
-      // the flock): the session IS the codex process, and pinning this
-      // supervisor's pid let a SIGKILLed supervisor prune the presence while
-      // its orphaned codex kept rotating the account's token (closing-review
-      // catch). Brief retries cover ps visibility lag on a just-spawned pid.
-      // FAIL CLOSED on final failure (PR #36 review catch): a session running
-      // without presence is exactly the unprotected state presence exists to
-      // prevent - its account would look swappable and samplable - so kill
-      // the just-spawned child (nothing is in flight yet) and surface the
-      // error instead of running unprotected.
       if (spawnAccountId) {
         for (let attempt = 0; attempt < 10; attempt++) {
           try {
             writeCodexPresence({ supervisorId, accountId: spawnAccountId, pid: spawned.pid });
             break;
           } catch (e) {
-            // a child that already exited needs no presence (its absence is
-            // correct) and must keep its own exit result - the normal exit
-            // path below handles it (PR #36 second-round catch)
             if (spawned.exitCode !== null || spawned.signalCode !== null) break;
             if (attempt === 9) {
               log("codexsupervisor.presence_failed", { err: e instanceof Error ? e.message : String(e) });
               spawned.kill();
-              // the child may have entered raw mode during the retries: await
-              // its death and restore the terminal before surfacing (PR #36
-              // second-round catch)
               await spawned.exited;
               restoreTermios(savedTermios);
               throw new Error("could not write the codex presence file - refusing to run an unprotected session (its account would look like a swap target)");
@@ -202,7 +138,7 @@ export async function runCodexSupervisor(input: { argv: string[] }): Promise<num
     const winner = await Promise.race([exited, markerWatch.then((found) => (found ? "marker" : "exit"))]);
 
     if (winner === "marker") {
-      child.kill(); // SIGTERM at the committed turn boundary the Stop hook chose
+      child.kill();
     }
     await child.exited;
     done = true;
@@ -218,8 +154,6 @@ export async function runCodexSupervisor(input: { argv: string[] }): Promise<num
       continue;
     }
     clearCodexPresence({ supervisorId });
-    // a reconcile signal addressed to this now-gone session is moot; the
-    // deciding actor's sweep would gc it eventually, this is just prompt.
     rmSync(join(codexPaths.reconcileDir, supervisorId), { force: true });
     log("codexsupervisor.exit", { supervisorId: supervisorId.slice(0, 8), respawns, code: child.exitCode, signal: child.signalCode });
     return child.exitCode ?? (child.signalCode ? 1 : 0);

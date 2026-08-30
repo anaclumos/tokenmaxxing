@@ -1,8 +1,3 @@
-// performSwap's owner-first ordering (iteration-3 review): the live owner is
-// resolved BEFORE any rotation, a label-drifted self-swap never refreshes the
-// target's parked copy (that grant is superseded) and never installs over the
-// live item - it repairs the parked backup and the label instead.
-
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { rmSync, writeFileSync } from "node:fs";
 import { performSwap } from "../src/lib/swap.ts";
@@ -12,12 +7,11 @@ import { loadAccounts, loadDepletedWait, saveAccounts, saveDepletedWait } from "
 import { paths } from "../src/lib/paths.ts";
 import { CredentialBlobSchema, type Account } from "../src/lib/types.ts";
 
-// tokens encode their org as "at|org-X" so the /roles mock can echo it back.
 const at = (id: string) => `at-${id}|org-${id}`;
 const creds = (id: string, over: Record<string, unknown> = {}) => ({
   accessToken: at(id),
   refreshToken: `rt-${id}`,
-  expiresAt: Date.now() + 3_600_000, // non-expiring: the live pre-refresh stays out of the way
+  expiresAt: Date.now() + 3_600_000,
   ...over,
 });
 
@@ -34,9 +28,6 @@ function poolAccount(id: string): Account {
 }
 
 let tokenCalls: string[] = [];
-// one-shot side effect run inside the /token handler: simulates a concurrent
-// actor (manual /login) mutating the live item while performSwap is between
-// its unlocked owner resolution and the locked critical section.
 let onTokenCall: (() => Promise<void>) | null = null;
 let server: ReturnType<typeof Bun.serve>;
 
@@ -89,9 +80,6 @@ describe("performSwap owner-first ordering", () => {
   afterAll(clearItems);
 
   test("label-drifted self-swap repairs the backup without rotating or installing", async () => {
-    // Live is really B (manual /login) while the label says A; B's parked copy
-    // holds a DEAD pre-login grant. The old order refreshed that dead grant
-    // first and flagged healthy B needs-reauth.
     await writeItem(liveTarget(), JSON.stringify({ claudeAiOauth: creds("B"), sibling: "keep" }));
     await writeItem(parkedTarget("tokenmaxxing-cred-B"), JSON.stringify({ claudeAiOauth: creds("B", { refreshToken: "DEAD-B-old" }) }));
 
@@ -100,11 +88,11 @@ describe("performSwap owner-first ordering", () => {
     const idx = loadAccounts();
     expect(idx.activeAccountUuid).toBe("B");
     expect(idx.accounts.find((a) => a.accountUuid === "B")?.needsReauth).toBe(false);
-    expect(tokenCalls).toEqual([]); // the superseded parked grant was never rotated
+    expect(tokenCalls).toEqual([]);
     const parked = CredentialBlobSchema.parse(JSON.parse((await readItem(parkedTarget("tokenmaxxing-cred-B")))!));
-    expect(parked.claudeAiOauth.refreshToken).toBe("rt-B"); // repaired from the live blob
+    expect(parked.claudeAiOauth.refreshToken).toBe("rt-B");
     const live = CredentialBlobSchema.parse(JSON.parse((await readItem(liveTarget()))!));
-    expect(live.claudeAiOauth.refreshToken).toBe("rt-B"); // untouched, no install
+    expect(live.claudeAiOauth.refreshToken).toBe("rt-B");
   });
 
   test("a normal swap still harvests the outgoing owner and installs the refreshed target", async () => {
@@ -116,16 +104,12 @@ describe("performSwap owner-first ordering", () => {
     expect(tokenCalls).toEqual(["rt-B"]);
     expect(loadAccounts().activeAccountUuid).toBe("B");
     const parkedA = CredentialBlobSchema.parse(JSON.parse((await readItem(parkedTarget("tokenmaxxing-cred-A")))!));
-    expect(parkedA.claudeAiOauth.refreshToken).toBe("rt-A"); // harvested
+    expect(parkedA.claudeAiOauth.refreshToken).toBe("rt-A");
     const live = CredentialBlobSchema.parse(JSON.parse((await readItem(liveTarget()))!));
-    expect(live.claudeAiOauth.refreshToken).toBe("rt-B-rot"); // installed fresh rotation
+    expect(live.claudeAiOauth.refreshToken).toBe("rt-B-rot");
   });
 
   test("a live credential replaced while unlocked aborts before any harvest or install", async () => {
-    // Owner resolution saw A live; during B's parked refresh (unlocked, network)
-    // a manual /login lands a THIRD credential in the live item. Harvesting it
-    // under A's identity would corrupt A's only backup - the swap must abort
-    // with nothing written to the live item or A's parked slot.
     await writeItem(liveTarget(), JSON.stringify({ claudeAiOauth: creds("A") }));
     await writeItem(parkedTarget("tokenmaxxing-cred-B"), JSON.stringify({ claudeAiOauth: creds("B") }));
     onTokenCall = async () => {
@@ -135,14 +119,12 @@ describe("performSwap owner-first ordering", () => {
     await expect(performSwap(poolAccount("B"))).rejects.toThrow("changed while unlocked");
 
     const live = CredentialBlobSchema.parse(JSON.parse((await readItem(liveTarget()))!));
-    expect(live.claudeAiOauth.refreshToken).toBe("rt-C"); // the intruder was not installed over
-    expect(await readItem(parkedTarget("tokenmaxxing-cred-A"))).toBeNull(); // no harvest under the stale owner
-    expect(loadAccounts().activeAccountUuid).toBe("A"); // label untouched
+    expect(live.claudeAiOauth.refreshToken).toBe("rt-C");
+    expect(await readItem(parkedTarget("tokenmaxxing-cred-A"))).toBeNull();
+    expect(loadAccounts().activeAccountUuid).toBe("A");
   });
 
   test("a completed swap clears a recorded depleted-wait (the decision moved on)", async () => {
-    // An unexpired stale record would otherwise replay through this swap's own
-    // cooldown and pause the fresh seat for a long-gone decision.
     await writeItem(liveTarget(), JSON.stringify({ claudeAiOauth: creds("A") }));
     await writeItem(parkedTarget("tokenmaxxing-cred-B"), JSON.stringify({ claudeAiOauth: creds("B") }));
     saveDepletedWait({ waitUntil: Date.now() + 10 * 60_000, accountUuid: "A", ts: Date.now() });

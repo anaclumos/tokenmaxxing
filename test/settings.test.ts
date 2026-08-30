@@ -32,9 +32,9 @@ describe("settings merge", () => {
     installSettings();
     const s = read();
     const stopCmds = s.hooks.Stop.flatMap((g: any) => g.hooks.map((h: any) => h.command));
-    expect(stopCmds).toContain("/orca/hook.sh"); // existing preserved
-    expect(stopCmds.some((c: string) => c.includes("__stop-hook"))).toBe(true); // ours added
-    expect(s.hooks.PostToolUse).toBeTruthy(); // untouched
+    expect(stopCmds).toContain("/orca/hook.sh");
+    expect(stopCmds.some((c: string) => c.includes("__stop-hook"))).toBe(true);
+    expect(s.hooks.PostToolUse).toBeTruthy();
     const ssCmds = s.hooks.SessionStart.flatMap((g: any) => g.hooks.map((h: any) => h.command));
     expect(ssCmds.some((c: string) => c.includes("__session-start"))).toBe(true);
   });
@@ -53,7 +53,29 @@ describe("settings merge", () => {
     expect(c.statusLineOk).toBe(true);
     expect(c.subagentStatusLineOk).toBe(true);
     expect(c.stopOk).toBe(true);
+    expect(c.stopFailureOk).toBe(true);
     expect(c.sessionStartOk).toBe(true);
+  });
+
+  test("the StopFailure hook is installed under a rate_limit matcher and removed on uninstall", () => {
+    installSettings();
+    const groups = read().hooks.StopFailure;
+    expect(groups).toHaveLength(1);
+    expect(groups[0].matcher).toBe("rate_limit");
+    expect(groups[0].hooks[0].command).toContain("__stop-failure-hook");
+    installSettings();
+    expect(read().hooks.StopFailure).toHaveLength(1);
+    uninstallSettings();
+    expect(read().hooks.StopFailure).toBeUndefined();
+    expect(checkSettings().stopFailureOk).toBe(false);
+  });
+
+  test("a StopFailure entry without the matcher does not count as installed", () => {
+    installSettings();
+    const s = read();
+    delete s.hooks.StopFailure[0].matcher;
+    writeFileSync(settingsPath, JSON.stringify(s, null, 2));
+    expect(checkSettings().stopFailureOk).toBe(false);
   });
 
   test("uninstall removes our statusLine and hooks, keeps foreign entries", () => {
@@ -69,27 +91,27 @@ describe("settings merge", () => {
   });
 
   test("uninstall leaves a foreign statusLine alone", () => {
-    uninstallSettings(); // never installed: seed statusLine is not ours
+    uninstallSettings();
     expect(read().statusLine.command).toBe("my-existing-statusline --fancy");
   });
 
   test("install preserves the file's mode; a new file starts 0600", () => {
     chmodSync(settingsPath, 0o600);
     installSettings();
-    expect(statSync(settingsPath).mode & 0o777).toBe(0o600); // never widened
+    expect(statSync(settingsPath).mode & 0o777).toBe(0o600);
     rmSync(settingsPath, { force: true });
     installSettings();
-    expect(statSync(settingsPath).mode & 0o777).toBe(0o600); // safe default
+    expect(statSync(settingsPath).mode & 0o777).toBe(0o600);
   });
 
   test("a stale-path hook is rewritten to the current install and reads unhealthy until then", () => {
     const stale = { ...seed(), hooks: { Stop: [{ hooks: [{ type: "command", command: '"/old/home/bin/tokenmaxxing" __stop-hook' }] }] } };
     writeFileSync(settingsPath, JSON.stringify(stale, null, 2));
-    expect(checkSettings().stopOk).toBe(false); // old path = broken, not installed
+    expect(checkSettings().stopOk).toBe(false);
     installSettings();
     const cmds: string[] = read().hooks.Stop.flatMap((g: { hooks: { command: string }[] }) => g.hooks.map((h) => h.command));
     const ours = cmds.filter((cmd) => cmd.includes("__stop-hook"));
-    expect(ours.length).toBe(1); // stale entry replaced, not accumulated
+    expect(ours.length).toBe(1);
     expect(ours[0]).not.toContain("/old/home");
     expect(checkSettings().stopOk).toBe(true);
   });
@@ -99,9 +121,7 @@ describe("settings merge", () => {
       ...seed(),
       hooks: {
         Stop: [
-          // our stale entry sharing a group with a foreign hook
           { hooks: [{ type: "command", command: '"/old/home/bin/tokenmaxxing" __stop-hook' }, { type: "command", command: "/orca/other.sh" }] },
-          // a foreign wrapper that only MENTIONS our subcommand text
           { hooks: [{ type: "command", command: "sh -c 'log __stop-hook ran'" }] },
         ],
       },
@@ -109,10 +129,10 @@ describe("settings merge", () => {
     writeFileSync(settingsPath, JSON.stringify(shared, null, 2));
     installSettings();
     const cmds: string[] = read().hooks.Stop.flatMap((g: { hooks: { command: string }[] }) => g.hooks.map((h) => h.command));
-    expect(cmds).toContain("/orca/other.sh"); // group-mate survived
-    expect(cmds).toContain("sh -c 'log __stop-hook ran'"); // mention-only survived
-    expect(cmds.filter((cmd) => cmd.startsWith('"'))).toHaveLength(1); // exactly one canonical entry
-    expect(cmds).not.toContain('"/old/home/bin/tokenmaxxing" __stop-hook'); // stale ours replaced
+    expect(cmds).toContain("/orca/other.sh");
+    expect(cmds).toContain("sh -c 'log __stop-hook ran'");
+    expect(cmds.filter((cmd) => cmd.startsWith('"'))).toHaveLength(1);
+    expect(cmds).not.toContain('"/old/home/bin/tokenmaxxing" __stop-hook');
   });
 
   test("a foreign command mentioning the path and subcommand as text never green-lights doctor", () => {

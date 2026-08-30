@@ -1,5 +1,3 @@
-// Unit tests for the portable Agent Plugin MCP helpers and mutation gates.
-
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
@@ -16,7 +14,6 @@ const MUTATIONS_ENV = "TOKENMAXXING_AGENT_MUTATIONS";
 beforeEach(() => {
   delete process.env[MUTATIONS_ENV];
   delete process.env.CLAUDE_SECURESTORAGE_CONFIG_DIR;
-  // CLAUDE_CONFIG_DIR stays owned by test/setup.ts for hermetic paths.
 });
 
 afterEach(() => {
@@ -35,7 +32,6 @@ describe("mcp helpers", () => {
   });
 
   test("refuseAmbientStoreEnv prefers secure-storage over config-dir", () => {
-    // test/setup.ts sets CLAUDE_CONFIG_DIR for hermetic paths; leave it alone.
     const suiteConfigDir = process.env.CLAUDE_CONFIG_DIR;
     if (suiteConfigDir == null || suiteConfigDir === "") {
       throw new Error("expected test/setup.ts to set CLAUDE_CONFIG_DIR");

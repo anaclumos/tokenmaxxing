@@ -1,9 +1,3 @@
-// cmdRm's live-identity guard (iteration-3 review, hardened by PR #31 review):
-// rm fails CLOSED - removal proceeds only when the LIVE credential verifiably
-// belongs to some OTHER account; a drifted label or an unverifiable live owner
-// refuses, because deleting the live account's parked backup destroys its only
-// copy while inference keeps using the live store.
-
 import { afterAll, beforeEach, describe, expect, test } from "bun:test";
 import { cmdRm } from "../src/cli/rm.ts";
 import { deleteItem, liveTarget, parkedTarget, readItem, writeItem } from "../src/lib/credstore.ts";
@@ -20,16 +14,11 @@ const account = (id: string): Account => ({
   addedAt: new Date(0).toISOString(),
 });
 
-// mirrors swap.test's convention: the bearer encodes the org after "|".
 const blob = (id: string) =>
   JSON.stringify({ claudeAiOauth: { accessToken: `at-${id}|org-${id}`, refreshToken: `rt-${id}`, expiresAt: Date.now() + 3_600_000 } });
 
 let server: ReturnType<typeof Bun.serve> | null = null;
 
-/** Idempotent: every test needing the roles endpoint calls this itself, so
- *  tests pass in isolation and any order - the old start-inside-test-2 left
- *  later tests dependent on execution order (closing-review catch). The
- *  FIRST test needs the server ABSENT, which is why this is not beforeAll. */
 function startServer(): void {
   if (server) return;
   server = Bun.serve({
@@ -65,8 +54,6 @@ describe("rm live-identity guard", () => {
   });
 
   test("an unreachable roles endpoint refuses the removal (fail closed)", async () => {
-    // no server bound yet: the live owner cannot be verified, so rm must not
-    // trust the stale active label and delete a possibly-live account's backup.
     await writeItem(liveTarget(), blob("B"));
     expect(await cmdRm("B")).toBe(1);
     expect(loadAccounts().accounts.map((a) => a.accountUuid)).toEqual(["A", "B"]);
@@ -75,7 +62,6 @@ describe("rm live-identity guard", () => {
 
   test("a drifted label does not fool the guard: the live token names the target", async () => {
     startServer();
-    // the label says A is active, but a manual /login made B live.
     await writeItem(liveTarget(), blob("B"));
     expect(await cmdRm("B")).toBe(1);
     expect(loadAccounts().accounts.map((a) => a.accountUuid)).toEqual(["A", "B"]);

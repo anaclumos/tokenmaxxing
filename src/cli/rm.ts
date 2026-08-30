@@ -1,5 +1,3 @@
-// `tokenmaxxing rm <selector>` - remove a pooled account (not the active one).
-
 import { rmSync } from "node:fs";
 import { join } from "node:path";
 import { deleteItem, isolatedTarget, liveTarget, parkedTarget, readItem } from "../lib/credstore.ts";
@@ -16,7 +14,6 @@ export async function cmdRm(selector?: string): Promise<number> {
     console.error("usage: tokenmaxxing rm <email|label|uuid>");
     return 2;
   }
-  // under the flock: a concurrent swap's index write must not be clobbered.
   return withLock(paths.lockFile, async () => {
     const idx = loadAccounts();
     const a = findAccount(idx.accounts, selector);
@@ -28,13 +25,6 @@ export async function cmdRm(selector?: string): Promise<number> {
       console.error(c.red(`${a.email} is the ACTIVE account - switch away before removing it.`));
       return 1;
     }
-    // The label drifts (manual /login); the token cannot lie. Removing the
-    // account whose credential is actually LIVE would destroy its only backup
-    // and leave the next swap refusing over an unpooled credential. Fail
-    // CLOSED (review catch, PR #31): when the live owner cannot be verified -
-    // unparsable blob, expired token, roles outage - refuse rather than trust
-    // the stale label; rm is destructive and can wait. The check is read-only:
-    // an expired bearer simply fails the roles call, nothing is ever rotated.
     const live = await readItem(liveTarget());
     if (live != null) {
       let liveOrg: string;
@@ -51,15 +41,6 @@ export async function cmdRm(selector?: string): Promise<number> {
       }
     }
     await deleteItem(parkedTarget(a.keychainItem));
-    // Sweep sample-probe residue too: a probe killed mid-run strands the
-    // account's isolated credential (macOS: a namespaced keychain item), and
-    // once the account leaves the pool nothing would ever probe-and-heal it
-    // again (closing-review critic gap). deleteItem on a missing item is a
-    // no-op. Hard delete, not trash, on purpose: the sample dir is a
-    // throwaway CLAUDE_CONFIG_DIR that can hold PLAINTEXT credential material
-    // on Linux - the credential-dir cleanup exception (owner 2026-07-16, same
-    // rule sample.ts and onboard.ts follow); trashing would move credentials
-    // into the Trash folder.
     const sampleDir = join(paths.sampleDir, credItemFor(a.accountUuid));
     await deleteItem(isolatedTarget(sampleDir));
     rmSync(sampleDir, { recursive: true, force: true });

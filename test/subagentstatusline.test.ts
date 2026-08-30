@@ -20,9 +20,6 @@ describe("renderSubagentRows", () => {
       ],
     };
     expect(renderSubagentRows(stdin, plain)).toEqual([JSON.stringify({ id: "t1", content: "fable (high) ctx 10  explore the repo" })]);
-    // ANSI reaches claude through the JSON line (control chars escaped there,
-    // restored by its JSON.parse), so assert on the parsed content: the family
-    // name carries the ctx-fill color and the ctx token disappears.
     const colored = z
       .object({ id: z.string(), content: z.string() })
       .parse(JSON.parse(renderSubagentRows(stdin, { color: true, truecolor: true })[0]!));

@@ -1,15 +1,9 @@
-// Resolve the REAL codex binary (never our shim on PATH). Same guarantees as
-// claudebin.ts: a configured-but-missing pin fails fast instead of degrading
-// to a scan, and anything that realpath-resolves into our binDir is refused
-// (spawning it as codex would recurse through the codex supervisor).
-
 import { existsSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { LOOP_DIAGNOSIS, MAX_WRAP_DEPTH, WRAP_DEPTH_ENV, pointsBackAtUs } from "./claudebin.ts";
 import { loadConfig } from "./state.ts";
 import { paths } from "./paths.ts";
 
-/** First PATH entry with a `codex` that is not us. null when PATH has none. */
 function scanPathForCodex(): string | null {
   for (const d of (process.env.PATH ?? "").split(":")) {
     if (!d) continue;
@@ -41,10 +35,6 @@ export function resolveRealCodex(): string {
   throw new Error("could not locate the real `codex` binary (set codexBin in config.json)");
 }
 
-/** Behavioral check used by `init --codex` before pinning: the binary must
- *  answer `--version` identifying itself as codex, without re-entering our
- *  wrapper (depth preset to the cap kills a poisoned pin on first entry).
- *  Returns null when the binary passes, else the failure detail. */
 export function verifyRealCodex(input: { bin: string }): string | null {
   const env = { ...process.env, [WRAP_DEPTH_ENV]: String(MAX_WRAP_DEPTH), TOKENMAXXING_PROBE: "1" };
   let p: ReturnType<typeof Bun.spawnSync>;

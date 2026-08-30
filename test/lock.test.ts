@@ -1,10 +1,3 @@
-// The flock acquire must never block the event loop. Before 2026-07-19 it was
-// a blocking synchronous LOCK_EX via FFI: in `xx serve` (one process, many
-// actors) a contender's blocking acquire froze the runtime while the holder
-// awaited network work, so the holder could never resume to release - a true
-// single-process deadlock. The non-blocking acquire makes contenders queue on
-// an async retry loop instead; under the old code the first test here hangs.
-
 import { expect, test } from "bun:test";
 import { join } from "node:path";
 import { delay } from "es-toolkit";
@@ -16,10 +9,10 @@ test("same-process contenders serialize instead of deadlocking", async () => {
   const events: string[] = [];
   const holder = withLock(lockPath, async () => {
     events.push("holder-start");
-    await delay(250); // the holder awaits (the serve deadlock shape)
+    await delay(250);
     events.push("holder-end");
   });
-  await delay(40); // let the holder acquire first
+  await delay(40);
   const contender = withLock(lockPath, async () => {
     events.push("contender");
   });

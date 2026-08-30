@@ -47,9 +47,6 @@ describe("shell rc PATH line", () => {
   });
 
   test("removePathFromRc removes ONLY the marked line and reports honestly", () => {
-    // A stale marked line pointing at an emptied binDir is the recursion-
-    // incident vector uninstall must not leave behind; a hand-added PATH line
-    // without the marker is the user's own (deletion scope is literal).
     const rc = join(base, "rc-remove");
     writeFileSync(rc, `alias ll='ls -la'\nexport PATH="/user/own/bin:$PATH"\n`);
     ensurePathInRc(rc);
@@ -58,7 +55,7 @@ describe("shell rc PATH line", () => {
     expect(after).not.toContain("# tokenmaxxing PATH");
     expect(after).toContain("alias ll='ls -la'");
     expect(after).toContain(`export PATH="/user/own/bin:$PATH"`);
-    expect(removePathFromRc(rc)).toBe(false); // nothing left to remove
+    expect(removePathFromRc(rc)).toBe(false);
     expect(removePathFromRc(join(base, "rc-never-existed"))).toBe(false);
   });
 
@@ -77,9 +74,6 @@ describe("shell rc PATH line", () => {
   });
 
   test("soft-skips a read-only symlink target without throwing or mutating it", () => {
-    // Home Manager: ~/.zshrc → /nix/store/...-hm_..zshrc (immutable).
-    // Hermetic stand-in: chmod 444 (W_OK fails the same way; we cannot create
-    // a real /nix/store path under the temp tree).
     const store = join(base, "fake-store-zshrc");
     const rc = join(base, "rc-hm-link");
     rmSync(rc, { force: true });
@@ -89,7 +83,6 @@ describe("shell rc PATH line", () => {
     expect(ensurePathInRc(rc)).toBe("skipped");
     expect(readFileSync(store, "utf8")).toBe("# home-manager\n");
     expect(lstatSync(rc).isSymbolicLink()).toBe(true);
-    // marked line present: remove must also soft-skip (not only "absent")
     chmodSync(store, 0o644);
     writeFileSync(store, `export PATH="${paths.binDir}:$PATH" # tokenmaxxing PATH\n`);
     chmodSync(store, 0o444);

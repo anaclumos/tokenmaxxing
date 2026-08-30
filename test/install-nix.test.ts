@@ -58,7 +58,6 @@ describe("nix packaging install path", () => {
       expect(checkTimerHealthy()).toBe(true);
       expect(existsSync(join(paths.systemdUserDir, "tokenmaxxing-check.timer"))).toBe(false);
       expect(existsSync(join(paths.launchdAgentsDir, "com.tokenmaxxing.check.plist"))).toBe(false);
-      // Seed a decoy unit: uninstall must not remove it when Nix owns the timer.
       const decoy = join(paths.systemdUserDir, "tokenmaxxing-check.timer");
       Bun.write(decoy, "[Timer]\n");
       uninstallSupervisor();
@@ -72,8 +71,6 @@ describe("nix packaging install path", () => {
   test("unset NIX flag leaves the bun+entry shim (not PATH-first)", () => {
     wipeInstallArtifacts();
     delete process.env.TOKENMAXXING_NIX;
-    // SKIP_TIMER keeps this hermetic even if setup.ts dirs were missing; the
-    // shim shape under test does not depend on the timer path.
     process.env.TOKENMAXXING_SKIP_TIMER = "1";
     expect(isNixPackaged()).toBe(false);
     try {
