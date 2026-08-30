@@ -5,7 +5,7 @@ metadata:
   type: project
 ---
 
-Dated 2026-08-30. Shipped in 1.9.0.
+Dated 2026-08-30. Targets 1.9.0 (PR #55).
 
 **Diagnosis of "fable switch not working".** Model-name matching was fine. The live account's Fable per-model cap has one source, `claude -p '/usage'` against the busy live token, and under session load it prints header-only or footer-only output: the log held 10,198 failed probes with 10-hour stretches of zero samples. A missing cap read as safe, every swap deleted `model-usage.json`, and the anti-storm stamp carried stale rows, so the 98 bar was jumped and ridden to 100. When the server enforced the limit, nothing ran: Claude Code fires `StopFailure` instead of `Stop` on an API-error turn, and no such hook was installed.
 

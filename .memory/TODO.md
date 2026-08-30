@@ -16,4 +16,10 @@ Dated 2026-08-30. Ship of StopFailure force-switch + dynamic check cadence + com
 - [x] swap-concurrency e2e after the fixes: ALL PASS
 - [x] Full suite after the fixes: the one flake was my own new tick-anchor assertion (1ms clock skew), replaced by a slow-probe anchoring test; then 384 pass, 1 skip, 0 fail on two consecutive full runs, tsc clean
 - [x] Commit the review fixes by explicit path
-- [ ] PR, CI, review window, merge, release v1.9.0, verify npm
+- [x] PR #55 opened (branch pushed 2026-08-30 11:16:13Z; review window runs the full 10 minutes from the last push)
+- [x] CI green on #55 (test, nix)
+- [x] First review window elapsed 11:26:13Z; one Codex P1 (premature "shipped in 1.9.0" claim in stopfailure-enforced-limit-signal.md) fixed; the fix push restarts the 10-minute window
+- [ ] Second review window elapsed, every review handled (fix or refute)
+- [ ] Merge #55
+- [ ] `gh release create v1.9.0`, verify the npm publish landed
+- [ ] Teardown: branch cleanup, TODO closed
