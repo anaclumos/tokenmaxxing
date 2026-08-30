@@ -27,14 +27,14 @@ import { maxBy } from "es-toolkit";
 import { z } from "zod";
 import { withLock } from "./lock.ts";
 import { paths } from "./paths.ts";
-import { loadAccounts, loadConfig, loadDepletedWait, loadLastSwapAt, loadUsage, loadModelUsage, saveAccounts, saveDepletedWait, saveModelUsage, usageTeeAt, writeUsage } from "./state.ts";
+import { MAX_CHECK_DELAY_MS, loadAccounts, loadConfig, loadDepletedWait, loadLastSwapAt, loadUsage, loadModelUsage, saveAccounts, saveDepletedWait, saveModelUsage, usageTeeAt, writeUsage } from "./state.ts";
 import { readOAuthAccount } from "./claudejson.ts";
 import { chooseAndSwap, performSwap } from "./swap.ts";
-import { currentWins, effectiveBars, hardBars, isExhausted, pickBest, pickEarliestReset, usableAt } from "./picker.ts";
+import { currentWins, effectiveBars, hardBars, isExhausted, nextWeeklyReset, pickBest, pickEarliestReset, usableAt } from "./picker.ts";
 import { InvalidGrantError } from "./oauth.ts";
-import { familyTokens, gatedFamilies, probeUsage } from "./usage.ts";
+import { familyTokens, gatedFamilies, probeUsage, type EnforcedClass } from "./usage.ts";
 import { log } from "./log.ts";
-import { AccountSchema, ModelUsageStateSchema, UsageStateSchema, type Account, type Config, type ModelUsageState, type UsageState, type UsageWindow } from "./types.ts";
+import { AccountSchema, ModelUsageStateSchema, UsageStateSchema, type Account, type Config, type EnforcedLimit, type ModelUsageState, type UsageState, type UsageWindow } from "./types.ts";
 
 const SwapDecisionSchema = z.object({
   swapped: z.boolean(),
@@ -159,6 +159,11 @@ async function loadFreshSnapshots(cfg: Config, org: string | null, now: number):
         }
         mu = { perModel: full.perModel, org, ts, sampledAt: ts };
         saveModelUsage(mu);
+        const expected = gatedFamilies(u?.model ?? null, cfg.policy.switchModels);
+        const rows = Object.keys(full.perModel);
+        if (expected.length > 0 && !expected.some((f) => rows.some((k) => familyTokens(k).includes(f)))) {
+          log("usage.no_permodel_row", { families: expected.join(","), rows: rows.join(",") });
+        }
       } else {
         // the anti-storm stamp: ts=now suppresses re-probing, but the carried
         // rows keep their ORIGINAL sample time - dating them by ts rolled the
@@ -188,14 +193,16 @@ export const POST_SWAP_COOLDOWN_MS = 45_000;
  * known-over-limit account, and buys nothing - the normal pick path adopts the
  * recovering account the moment its reset passes.
  */
-export async function evaluateAndMaybeSwap(now = Date.now(), anticipatory = false): Promise<SwapDecision> {
+export async function evaluateAndMaybeSwap(now = Date.now(), anticipatory = false, enforced: EnforcedLimit | null = null): Promise<SwapDecision> {
+  const activeOrg = readOAuthAccount()?.organizationUuid ?? null;
+  const enforced0 = enforced && enforced.org === activeOrg ? enforced : null;
+
   const lastSwapAt = loadLastSwapAt();
-  if (lastSwapAt != null && now - lastSwapAt < POST_SWAP_COOLDOWN_MS) {
+  if (!enforced0 && lastSwapAt != null && now - lastSwapAt < POST_SWAP_COOLDOWN_MS) {
     return depletedReplay(now) ?? { swapped: false, account: null, reason: "post-swap-cooldown" };
   }
 
   const cfg = loadConfig();
-  const activeOrg = readOAuthAccount()?.organizationUuid ?? null;
 
   const { u: usage, mu } = await loadFreshSnapshots(cfg, activeOrg, now);
 
@@ -203,7 +210,7 @@ export async function evaluateAndMaybeSwap(now = Date.now(), anticipatory = fals
   // NO measurement for the live org (a pre-park just cleared the snapshots),
   // a recorded depleted-wait still replays; a fresh measurement that reads
   // under-threshold never does - measured-healthy must win over a stale wait.
-  if (!isEngaged(usage, mu, activeOrg, cfg, now)) {
+  if (!enforced0 && !isEngaged(usage, mu, activeOrg, cfg, now)) {
     const measured = usage != null && activeOrg != null && usage.org === activeOrg;
     if (!measured) {
       const replay = depletedReplay(now);
@@ -215,8 +222,9 @@ export async function evaluateAndMaybeSwap(now = Date.now(), anticipatory = fals
   return withLock(paths.lockFile, async () => {
     const idx = loadAccounts();
     const org2 = readOAuthAccount()?.organizationUuid ?? null;
+    const enforced2 = enforced0 && enforced0.org === org2 ? enforced0 : null;
     const u2 = loadUsage() ?? usage;
-    const mu2 = needsPerModel(u2, cfg) ? loadModelUsage() ?? mu : null;
+    const mu2 = needsPerModel(u2, cfg) || enforced2?.family ? loadModelUsage() ?? mu : null;
 
     // A live login whose org is KNOWN but outside the pool: do nothing - the
     // codex org-guard analog. performSwap would refuse any swap over it (an
@@ -235,25 +243,28 @@ export async function evaluateAndMaybeSwap(now = Date.now(), anticipatory = fals
     // surviving drift source, see cli/switch.ts), and a label-keyed write
     // would stamp the live account's windows onto whichever account the label
     // still names (closing-review catch, mirrors the codex live-identity rule).
-    if (u2 && org2 && u2.org === org2) {
-      const active = idx.accounts.find((a) => a.organizationUuid === org2);
-      if (active) {
+    const active = org2 ? idx.accounts.find((a) => a.organizationUuid === org2) : undefined;
+    if (active) {
+      let sampled = false;
+      if (u2 && u2.org === org2) {
         active.lastUsage = { fiveHour: u2.fiveHour, sevenDay: u2.sevenDay };
         active.lastUsageAt = u2.ts;
-        // Snapshot per-model caps too, so they still show after we switch away.
-        // An empty map is a failed probe's anti-storm stamp, not a measurement -
-        // it must not erase the burnt-cap snapshot the picker screens on.
-        if (mu2 && mu2.org === org2 && Object.keys(mu2.perModel).length > 0) {
-          active.lastPerModel = mu2.perModel;
-          // the rows' TRUE sample time, not the write time: an anti-storm
-          // stamp re-writes ts while carrying old rows (closing-review catch).
-          active.lastPerModelAt = mu2.sampledAt ?? mu2.ts;
-        }
-        saveAccounts(idx);
+        sampled = true;
       }
+      // Snapshot per-model caps too, so they still show after we switch away.
+      // An empty map is a failed probe's anti-storm stamp, not a measurement -
+      // it must not erase the burnt-cap snapshot the picker screens on.
+      if (mu2 && mu2.org === org2 && Object.keys(mu2.perModel).length > 0) {
+        active.lastPerModel = mu2.perModel;
+        // the rows' TRUE sample time, not the write time: an anti-storm
+        // stamp re-writes ts while carrying old rows (closing-review catch).
+        active.lastPerModelAt = mu2.sampledAt ?? mu2.ts;
+        sampled = true;
+      }
+      if (sampled) saveAccounts(idx);
     }
 
-    if (!isEngaged(u2, mu2, org2, cfg, now)) {
+    if (!enforced2 && !isEngaged(u2, mu2, org2, cfg, now)) {
       return depletedReplay(now) ?? { swapped: false, account: null, reason: "raced-already-swapped" };
     }
 
@@ -271,7 +282,8 @@ export async function evaluateAndMaybeSwap(now = Date.now(), anticipatory = fals
 
     // Candidates are screened by the same families that drove this decision, so
     // the pool cannot ping-pong onto an account the gate would immediately flag.
-    const switchFamilies = gatedFamilies(u2?.model ?? null, cfg.policy.switchModels);
+    const gated = gatedFamilies(u2?.model ?? null, cfg.policy.switchModels);
+    const switchFamilies = enforced2?.family && !gated.includes(enforced2.family) ? [...gated, enforced2.family] : gated;
 
     // Greedy path: engaged but under every screening bar. Converge like bare
     // `xx switch` - swap only onto a strictly better usable account - and stay
@@ -282,7 +294,7 @@ export async function evaluateAndMaybeSwap(now = Date.now(), anticipatory = fals
     // refresh token on the winner would bounce a healthy session onto a worse
     // account and back. performSwap marks needs-reauth before throwing, so each
     // reload re-ranks without the dead account and the loop must terminate.
-    if (!isOver(u2, mu2, org2, cfg, now)) {
+    if (!enforced2 && !isOver(u2, mu2, org2, cfg, now)) {
       const ctxAll = { now, thresholds: effectiveBars(cfg), currentAccountUuid: null, switchFamilies };
       while (true) {
         const cur = loadAccounts();
@@ -320,7 +332,7 @@ export async function evaluateAndMaybeSwap(now = Date.now(), anticipatory = fals
     // boundary later by the check timer or the next Stop hook.
     const hardCtx = { now, thresholds: hardBars(cfg), currentAccountUuid: null, switchFamilies };
     const seat = seatOf(loadAccounts());
-    if (seat && !seat.needsReauth && !isExhausted(seat, hardCtx)) {
+    if (!enforced2 && seat && !seat.needsReauth && !isExhausted(seat, hardCtx)) {
       log("decide.last_drop_hold", { account: seat.accountUuid.slice(0, 8) });
       return { swapped: false, account: null, reason: "last-drop-hold" };
     }
@@ -343,7 +355,8 @@ export async function evaluateAndMaybeSwap(now = Date.now(), anticipatory = fals
       const fresh = loadAccounts();
       const current = seatOf(fresh);
       const ctx = { now, thresholds: hardBars(cfg), currentAccountUuid: current?.accountUuid ?? null, switchFamilies };
-      const currentAt = current ? usableAt(current, ctx) : Number.POSITIVE_INFINITY;
+      const enforcedUntil = enforced2 && current && current.organizationUuid === enforced2.org ? (enforced2.resetsAt ?? now + enforced2.windowMs) : 0;
+      const currentAt = current ? Math.max(usableAt(current, ctx), enforcedUntil) : Number.POSITIVE_INFINITY;
       const other = pickEarliestReset(fresh.accounts, ctx);
 
       let target: Account | null = null;
@@ -393,4 +406,86 @@ function depletedReplay(now: number): SwapDecision | null {
   if (!account) return null;
   if (account.organizationUuid !== (readOAuthAccount()?.organizationUuid ?? null)) return null;
   return { swapped: false, account, reason: "depleted-wait", waitUntil: rec.waitUntil };
+}
+
+export function enforcedWindowMs(limit: EnforcedClass): number {
+  return limit.kind === "session" ? FIVE_HOURS_MS : WEEK_MS;
+}
+
+export function postSwapProof(input: { swapAt: number | null; launchedAt: number | null; turnStartTs: number | null; now: number }): boolean {
+  const { swapAt, launchedAt, turnStartTs, now } = input;
+  if (swapAt == null) return true;
+  if (launchedAt != null && launchedAt > swapAt) return true;
+  if (turnStartTs != null) return turnStartTs > swapAt + POST_SWAP_COOLDOWN_MS;
+  return now - swapAt >= POST_SWAP_COOLDOWN_MS;
+}
+
+const StampOutcomeSchema = z.enum(["stamped", "org-moved", "no-carrier"]);
+export type StampOutcome = z.infer<typeof StampOutcomeSchema>;
+
+export async function recordEnforcedLimit(input: { limit: EnforcedClass; org: string; now: number }): Promise<StampOutcome> {
+  const { limit, org, now } = input;
+  return withLock(paths.lockFile, () => {
+    if ((readOAuthAccount()?.organizationUuid ?? null) !== org) return "org-moved";
+    const prior = loadUsage();
+    const priorSame = prior && prior.org === org ? prior : null;
+    const account = loadAccounts().accounts.find((a) => a.organizationUuid === org);
+    const mu = loadModelUsage();
+    const muSame = mu && mu.org === org ? mu : null;
+    const carriedRows = muSame?.perModel ?? {};
+    const sampledAt = muSame?.sampledAt ?? muSame?.ts;
+    if (limit.kind === "model") {
+      const rowsFor = (rows: Record<string, UsageWindow>) => Object.entries(rows).filter(([k]) => familyTokens(k).includes(limit.family)).map(([, w]) => w);
+      const knownReset = [...rowsFor(carriedRows), ...rowsFor(account?.lastPerModel ?? {})].map((w) => w.resetsAt).find((r): r is number => r != null) ?? null;
+      const weeklyReset = priorSame?.sevenDay.resetsAt ?? account?.lastUsage?.sevenDay.resetsAt ?? null;
+      const resetsAt = limit.resetsAt ?? nextWeeklyReset(knownReset ?? weeklyReset, now);
+      saveModelUsage({
+        perModel: { ...carriedRows, [limit.family]: { usedPercentage: 100, resetsAt } },
+        org,
+        ts: now,
+        sampledAt: resetsAt == null ? now : sampledAt ?? now,
+      });
+      log("usage.enforced_limit", { kind: limit.kind, family: limit.family, resetsAt });
+      return "stamped";
+    }
+    saveModelUsage({ perModel: carriedRows, org, ts: now, sampledAt });
+    const carrier = priorSame ?? (account?.lastUsage ? { ...account.lastUsage, model: null } : null);
+    if (!carrier) return "no-carrier";
+    const window: UsageWindow = { usedPercentage: 100, resetsAt: limit.resetsAt };
+    writeUsage({
+      fiveHour: limit.kind === "session" ? window : carrier.fiveHour,
+      sevenDay: limit.kind === "weekly" ? window : carrier.sevenDay,
+      org,
+      ts: now,
+      model: carrier.model,
+    });
+    log("usage.enforced_limit", { kind: limit.kind, resetsAt: limit.resetsAt });
+    return "stamped";
+  });
+}
+
+export const CHECK_DELAY_FLOOR_MS = 60_000;
+const CHECK_DELAY_UNKNOWN_MS = 180_000;
+
+export function checkDelayMs(input: { cfg: Config; org: string | null; now: number; decision: SwapDecision }): number {
+  const { cfg, org, now, decision } = input;
+  if (decision.waitUntil !== undefined) return Math.min(MAX_CHECK_DELAY_MS, Math.max(CHECK_DELAY_FLOOR_MS, decision.waitUntil - now));
+  const u = loadUsage();
+  if (!org || !u || !usageFresh(u, org, cfg.policy.usagePollTtlMs, now)) return CHECK_DELAY_UNKNOWN_MS;
+  const bars = effectiveBars(cfg);
+  const heads = [
+    bars.session - liveUsed({ window: u.fiveHour, windowMs: FIVE_HOURS_MS, sampledAt: u.ts, now }),
+    bars.weekly - liveUsed({ window: u.sevenDay, windowMs: WEEK_MS, sampledAt: u.ts, now }),
+  ];
+  const mu = loadModelUsage();
+  const muSame = mu && mu.org === org ? mu : null;
+  let capMissing = false;
+  for (const family of gatedFamilies(u.model, cfg.policy.switchModels)) {
+    const cap = muSame ? capForFamily(muSame, family, now) : undefined;
+    if (cap && muSame) heads.push(bars.weekly - liveUsed({ window: cap, windowMs: WEEK_MS, sampledAt: muSame.sampledAt ?? muSame.ts, now }));
+    else capMissing = true;
+  }
+  const headroom = Math.min(...heads);
+  const banded = headroom >= 40 ? MAX_CHECK_DELAY_MS : headroom >= 20 ? 180_000 : headroom >= 8 ? 120_000 : CHECK_DELAY_FLOOR_MS;
+  return capMissing ? Math.min(banded, 120_000) : banded;
 }

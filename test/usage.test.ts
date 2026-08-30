@@ -1,74 +1,114 @@
-// parseUsageLimitEpoch + recordObservedLimit: limit text → usage.json stamps.
+// Server-enforced limit classification: transcript error rows → the window
+// the server refused. Row shapes mirror the 2.1.251 transcripts (a
+// five_hour quotaLimits rejection; the Fable credits branch with no
+// quotaLimits and a raw 429 body; the transient and high-load 429s).
 
 import { describe, expect, test } from "bun:test";
-import { writeFileSync } from "node:fs";
-import { parseUsageLimitEpoch, recordObservedLimit } from "../src/lib/usage.ts";
-import { loadUsage, writeUsage } from "../src/lib/state.ts";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { classifyEnforcedLimit, findEnforcedRow, readTranscriptTail, transcriptRowText, type TranscriptRow } from "../src/lib/usage.ts";
+import { paths } from "../src/lib/paths.ts";
 
 const NOW = 1_784_400_000_000;
+const iso = (ms: number) => new Date(ms).toISOString();
 
-describe("parseUsageLimitEpoch", () => {
-  test("parses the piped epoch, seconds or milliseconds", () => {
-    expect(parseUsageLimitEpoch({ text: "Claude AI usage limit reached|1784369046" })).toBe(1_784_369_046_000);
-    expect(parseUsageLimitEpoch({ text: "Claude AI usage limit reached|1784369046000" })).toBe(1_784_369_046_000);
+function errorRow(over: Partial<TranscriptRow> & { text: string; at?: number }): TranscriptRow {
+  const { text, at, ...rest } = over;
+  return {
+    type: "assistant",
+    timestamp: iso(at ?? NOW),
+    isApiErrorMessage: true,
+    error: "rate_limit",
+    message: { content: [{ type: "text", text }] },
+    ...rest,
+  };
+}
+
+const userRow = (at: number): TranscriptRow => ({ type: "user", timestamp: iso(at), message: { content: "do the thing" } });
+
+describe("classifyEnforcedLimit", () => {
+  const families = ["fable"];
+
+  test("five_hour quotaLimits is the session window with the server's reset (epoch seconds)", () => {
+    const row = errorRow({ text: "You've hit your session limit · resets 3pm (Asia/Seoul)", quotaLimits: { rateLimitType: "five_hour", resetsAt: 1_784_403_600 } });
+    expect(classifyEnforcedLimit(row, families)).toEqual({ kind: "session", resetsAt: 1_784_403_600_000 });
   });
 
-  test("null on phrase-only or malformed epochs", () => {
-    expect(parseUsageLimitEpoch({ text: "usage limit reached, resets 3pm" })).toBeNull();
-    expect(parseUsageLimitEpoch({ text: "usage limit reached|12345" })).toBeNull();
-    // 11/12-digit runs are malformed, never "seconds" (they would become
-    // far-future resets).
-    expect(parseUsageLimitEpoch({ text: "usage limit reached|17843690460" })).toBeNull();
-    expect(parseUsageLimitEpoch({ text: "usage limit reached|178436904600" })).toBeNull();
-    expect(parseUsageLimitEpoch({ text: "no limit here" })).toBeNull();
+  test("seven_day quotaLimits is the weekly aggregate", () => {
+    const row = errorRow({ text: "You've hit your weekly limit", quotaLimits: { rateLimitType: "seven_day", resetsAt: 1_784_900_000 } });
+    expect(classifyEnforcedLimit(row, families)).toEqual({ kind: "weekly", resetsAt: 1_784_900_000_000 });
+  });
+
+  test("a per-model quotaLimits type matches the family by substring (underscore glue)", () => {
+    const row = errorRow({ text: "You've hit your Sonnet limit", quotaLimits: { rateLimitType: "seven_day_sonnet", resetsAt: 1_784_900_000 } });
+    expect(classifyEnforcedLimit(row, ["fable", "sonnet"])).toEqual({ kind: "model", family: "sonnet", resetsAt: 1_784_900_000_000 });
+  });
+
+  test("an unrecognized quotaLimits window stamps nothing rather than the aggregate", () => {
+    const row = errorRow({ text: "You've hit your usage credit limit", quotaLimits: { rateLimitType: "overage", resetsAt: 1_784_900_000 } });
+    expect(classifyEnforcedLimit(row, families)).toBeNull();
+  });
+
+  test("the Fable credits branch (no quotaLimits) is the fable cap from the rendering's family + limit tokens", () => {
+    const row = errorRow({ text: "You've reached your Fable 5 limit. Run /usage-credits to continue or switch models with /model.", errorDetails: '429 {"error":{"type":"rate_limit_error","message":"..."},"request_id":"req_1"}' });
+    expect(classifyEnforcedLimit(row, families)).toEqual({ kind: "model", family: "fable", resetsAt: null });
+  });
+
+  test("credits_required in the 429 body counts as exhaustion even without a limit token", () => {
+    const row = errorRow({ text: "Fable 5 requires usage credits.", errorDetails: '429 {"error":{"type":"rate_limit_error","details":{"error_code":"credits_required"}}}' });
+    expect(classifyEnforcedLimit(row, families)).toEqual({ kind: "model", family: "fable", resetsAt: null });
+  });
+
+  test("high load and transient 429s are not exhaustion", () => {
+    expect(classifyEnforcedLimit(errorRow({ text: "Fable is experiencing high load, please use /model to switch to Sonnet" }), families)).toBeNull();
+    expect(classifyEnforcedLimit(errorRow({ text: "Server is temporarily limiting requests (not your usage limit)", apiErrorIsTransient: true }), families)).toBeNull();
+    expect(classifyEnforcedLimit(errorRow({ text: "You've reached your Fable 5 limit.", apiErrorIsTransient: true }), families)).toBeNull();
+  });
+
+  test("a family outside switchModels never classifies", () => {
+    expect(classifyEnforcedLimit(errorRow({ text: "You've reached your Opus limit." }), families)).toBeNull();
   });
 });
 
-describe("recordObservedLimit", () => {
-  const claudeJson = process.env.TOKENMAXXING_CLAUDE_JSON!;
-  const seedIdentity = (org: string) => {
-    writeFileSync(claudeJson, JSON.stringify({ oauthAccount: { accountUuid: "u1", emailAddress: "a@e.com", organizationUuid: org } }));
-  };
-  const priorUsage = (org: string) => ({
-    fiveHour: { usedPercentage: 40, resetsAt: NOW + 3_600_000 },
-    sevenDay: { usedPercentage: 70, resetsAt: NOW + 86_400_000 },
-    org,
-    ts: NOW - 60_000,
-    model: null,
+describe("findEnforcedRow", () => {
+  test("pairs the row by content identity with last_assistant_message and anchors the turn at the preceding user row", () => {
+    const rows = [userRow(NOW - 400_000), errorRow({ text: "old failure", at: NOW - 390_000 }), userRow(NOW - 30_000), errorRow({ text: "You've reached your Fable 5 limit.", at: NOW - 300_000 })];
+    const found = findEnforcedRow({ rows, lastAssistantMessage: "You've reached your Fable 5 limit.", now: NOW });
+    expect(transcriptRowText(found!.row)).toBe("You've reached your Fable 5 limit.");
+    expect(found!.turnStartTs).toBe(NOW - 30_000);
   });
 
-  test("stamps the spawn org's session window 100% with the announced reset", async () => {
-    seedIdentity("org-a");
-    writeUsage(priorUsage("org-a"));
-    await recordObservedLimit({ text: "Claude AI usage limit reached|1784369046", now: NOW, org: "org-a" });
-    const u = loadUsage();
-    expect(u?.fiveHour).toEqual({ usedPercentage: 100, resetsAt: 1_784_369_046_000 });
-    expect(u?.sevenDay.usedPercentage).toBe(70); // weekly carried, never fabricated
+  test("without a content match only a recent row counts, so a previous turn's row cannot classify this failure", () => {
+    const rows = [userRow(NOW - 400_000), errorRow({ text: "You've reached your Fable 5 limit.", at: NOW - 390_000 })];
+    expect(findEnforcedRow({ rows, lastAssistantMessage: "Server is temporarily limiting requests", now: NOW })).toBeNull();
+    expect(findEnforcedRow({ rows, lastAssistantMessage: undefined, now: NOW })).toBeNull();
+    const recent = [...rows, userRow(NOW - 20_000), errorRow({ text: "You've hit your session limit", at: NOW - 5_000 })];
+    expect(findEnforcedRow({ rows: recent, lastAssistantMessage: undefined, now: NOW })?.turnStartTs).toBe(NOW - 20_000);
   });
 
-  test("a weekly-phrased limit stamps the WEEKLY window, not the 5h one", async () => {
-    // a 5h-only stamp would re-seat the account in 5h against a days-dead cap.
-    seedIdentity("org-a");
-    writeUsage(priorUsage("org-a"));
-    await recordObservedLimit({ text: "You've hit your weekly limit.", now: NOW, org: "org-a" });
-    const u = loadUsage();
-    expect(u?.sevenDay).toEqual({ usedPercentage: 100, resetsAt: null });
-    expect(u?.fiveHour.usedPercentage).toBe(40); // session carried
+  test("skips non-error and non-rate_limit rows", () => {
+    const rows = [userRow(NOW - 10_000), errorRow({ text: "auth", error: "authentication_failed", at: NOW - 1_000 }), { type: "assistant", timestamp: iso(NOW), message: { content: [{ type: "text", text: "fine" }] } }];
+    expect(findEnforcedRow({ rows, lastAssistantMessage: "fine", now: NOW })).toBeNull();
+  });
+});
+
+describe("readTranscriptTail", () => {
+  test("reads the trailing rows of a large transcript and drops the torn first line", () => {
+    mkdirSync(paths.home, { recursive: true });
+    const file = join(paths.home, "tail-test.jsonl");
+    const filler = JSON.stringify({ type: "assistant", message: { content: [{ type: "text", text: "x".repeat(2000) }] } });
+    const lines = Array.from({ length: 300 }, () => filler);
+    lines.push(JSON.stringify(userRow(NOW - 1_000)));
+    lines.push(JSON.stringify(errorRow({ text: "You've reached your Fable 5 limit." })));
+    writeFileSync(file, lines.join("\n") + "\n");
+    const rows = readTranscriptTail(file, 64 * 1024);
+    expect(rows.length).toBeGreaterThan(2);
+    expect(rows.length).toBeLessThan(300);
+    expect(rows.at(-1)?.isApiErrorMessage).toBe(true);
+    expect(rows.at(-2)?.type).toBe("user");
   });
 
-  test("never stamps when the spawn org is no longer live (mid-turn swap)", async () => {
-    seedIdentity("org-b");
-    writeUsage(priorUsage("org-b"));
-    await recordObservedLimit({ text: "usage limit reached|1784369046", now: NOW, org: "org-a" });
-    expect(loadUsage()?.fiveHour.usedPercentage).toBe(40);
-  });
-
-  test("never stamps without a same-org prior snapshot or a known org", async () => {
-    seedIdentity("org-a");
-    writeUsage(priorUsage("org-b"));
-    await recordObservedLimit({ text: "usage limit reached|1784369046", now: NOW, org: "org-a" });
-    expect(loadUsage()?.fiveHour.usedPercentage).toBe(40);
-    await recordObservedLimit({ text: "usage limit reached|1784369046", now: NOW, org: null });
-    expect(loadUsage()?.fiveHour.usedPercentage).toBe(40);
+  test("an unreadable transcript yields no rows", () => {
+    expect(readTranscriptTail(join(paths.home, "does-not-exist.jsonl"))).toEqual([]);
   });
 });

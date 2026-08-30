@@ -230,7 +230,7 @@ export function uninstallCodexSupervisor(): void {
 // window from healthy to depleted with zero boundaries (2026-07-10 incident).
 // A timer closes that gap: launchd on macOS, a systemd user timer on Linux.
 
-const CHECK_INTERVAL_S = 180;
+const CHECK_INTERVAL_S = 60;
 const LAUNCHD_LABEL = "com.tokenmaxxing.check";
 
 function launchdPlist(): string {

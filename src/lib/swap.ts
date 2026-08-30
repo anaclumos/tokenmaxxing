@@ -18,7 +18,7 @@
 //     crash-atomic together, but the next swap's true-owner resolution catches
 //     and logs any crash drift - swap.harvest_drift)
 
-import { clearDepletedWait, clearUsageSnapshots, loadAccounts, saveAccounts, saveLastSwapAt } from "./state.ts";
+import { clearDepletedWait, clearNextCheck, clearUsageSnapshots, loadAccounts, saveAccounts, saveLastSwapAt } from "./state.ts";
 import { readItem, writeItem, liveTarget, parkedTarget, claudeAiOauthOnly, mergeIntoLive } from "./credstore.ts";
 import { refreshCredential, isAccessTokenExpiring, fetchTokenOrg, InvalidGrantError } from "./oauth.ts";
 import { swapOAuthAccount } from "./claudejson.ts";
@@ -174,6 +174,7 @@ export async function performSwap(target: Account): Promise<void> {
     // PR #31). The depleted path re-records its own wait right after its
     // pre-park swap returns.
     clearDepletedWait();
+    clearNextCheck();
     saveLastSwapAt(Date.now());
   });
   log("swap.done", { account: target.accountUuid.slice(0, 8), email: target.email });

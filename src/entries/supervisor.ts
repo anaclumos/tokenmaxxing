@@ -214,24 +214,42 @@ function latestSessionForCwd(): string | null {
   }
 }
 
+const MarkerGateSchema = z.object({
+  launchedAt: z.number(),
+  overriddenUntil: z.number(),
+});
+type MarkerGate = z.infer<typeof MarkerGateSchema>;
+
 /** Read + validate a respawn marker. An unparseable one (a version-skew hook,
  *  corruption) is dropped loudly and reported as absent: the watcher checks
  *  validity BEFORE the SIGTERM, so garbage can never kill the session, and the
  *  post-exit consume can never throw after the child is already dead (PR #36
  *  review catch). */
-function consumableMarker(marker: string): z.infer<typeof RespawnMarkerSchema> | null {
+function consumableMarker(marker: string, gate: MarkerGate): z.infer<typeof RespawnMarkerSchema> | null {
+  let m: z.infer<typeof RespawnMarkerSchema>;
   try {
-    return RespawnMarkerSchema.parse(JSON.parse(readFileSync(marker, "utf8")));
+    m = RespawnMarkerSchema.parse(JSON.parse(readFileSync(marker, "utf8")));
   } catch (e) {
     rmSync(marker, { force: true });
     log("supervisor.marker_invalid", { err: e instanceof Error ? e.message : String(e) });
     return null;
   }
+  if (m.launchedAt !== undefined && m.launchedAt !== gate.launchedAt) {
+    rmSync(marker, { force: true });
+    log("supervisor.marker_stale", { markerLaunch: m.launchedAt, childLaunch: gate.launchedAt });
+    return null;
+  }
+  if (m.waitUntil > Date.now() && m.waitUntil <= gate.overriddenUntil) {
+    rmSync(marker, { force: true });
+    log("supervisor.marker_overridden", { waitUntil: m.waitUntil });
+    return null;
+  }
+  return m;
 }
 
 /** Interruptible countdown until `until`, shown in the terminal (claude is dead,
  *  so the statusLine can't render it). Ctrl-C resumes immediately. */
-async function countdownWait(acct: string, until: number): Promise<void> {
+async function countdownWait(acct: string, until: number): Promise<boolean> {
   let aborted = false;
   const onInt = () => { aborted = true; };
   process.on("SIGINT", onInt);
@@ -245,6 +263,7 @@ async function countdownWait(acct: string, until: number): Promise<void> {
   }
   process.removeListener("SIGINT", onInt);
   process.stdout.write(`\n\x1b[36m↻ resuming on ${acct}...\x1b[0m\n`);
+  return aborted;
 }
 
 /** Entry point: `claude ...args`. */
@@ -341,22 +360,24 @@ export async function runSupervisor(argv: string[]): Promise<number> {
   process.on("SIGHUP", () => {});
 
   let respawns = 0;
+  let overriddenUntil = 0;
   while (true) {
     if (existsSync(marker)) rmSync(marker, { force: true });
     log("supervisor.launch", { sid, respawns, args: launchArgs.join(" ") });
 
+    const gate: MarkerGate = { launchedAt: Date.now(), overriddenUntil };
     const child = Bun.spawn([real, ...launchArgs], {
       stdin: "inherit",
       stdout: "inherit",
       stderr: "inherit",
-      env: { ...childEnv, TOKENMAXXING_SUPERVISED: "1", TOKENMAXXING_SESSION_ID: sid },
+      env: { ...childEnv, TOKENMAXXING_SUPERVISED: "1", TOKENMAXXING_SESSION_ID: sid, TOKENMAXXING_LAUNCHED_AT: String(gate.launchedAt) },
     });
 
     // Race the child's own exit against the appearance of a respawn marker.
     let done = false;
     const markerWatch = (async () => {
       while (!done) {
-        if (existsSync(marker) && consumableMarker(marker) != null) return true;
+        if (existsSync(marker) && consumableMarker(marker, gate) != null) return true;
         await Bun.sleep(150);
       }
       return false;
@@ -372,12 +393,13 @@ export async function runSupervisor(argv: string[]): Promise<number> {
     await markerWatch.catch(() => {});
     restoreTermios(savedTermios);
 
-    const m = existsSync(marker) ? consumableMarker(marker) : null;
+    const m = existsSync(marker) ? consumableMarker(marker, gate) : null;
     if (m) {
       rmSync(marker, { force: true });
       respawns++;
-      if (m.waitUntil > Date.now()) await countdownWait(m.account, m.waitUntil);
-      else process.stdout.write(`\n\x1b[36m↻ tokenmaxxing: switched to ${m.account} - resuming...\x1b[0m\n`);
+      if (m.waitUntil > Date.now()) {
+        if (await countdownWait(m.account, m.waitUntil)) overriddenUntil = m.waitUntil;
+      } else process.stdout.write(`\n\x1b[36m↻ tokenmaxxing: switched to ${m.account} - resuming...\x1b[0m\n`);
       // resume the marker's CURRENT transcript, not the pinned id: after
       // /clear they differ, and resuming the pinned id would revive the
       // pre-/clear conversation (closing-review HIGH catch). Persist the
@@ -386,7 +408,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
       // only: replaying a positional prompt would re-submit it as a fresh
       // turn on the progressed session (adversarial-review HIGH catch).
       saveSessionFlags(m.sessionId, persistable, process.cwd());
-      launchArgs = ["--resume", m.sessionId, ...persistable];
+      launchArgs = ["--resume", m.sessionId, ...persistable, ...(m.prompt ? ["--", m.prompt] : [])];
       continue;
     }
     // No marker: claude exited on its own (quit, crash, resume refused). Log it -

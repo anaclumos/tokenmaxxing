@@ -8,6 +8,7 @@ import { runSupervisor } from "./entries/supervisor.ts";
 import { runStatusline } from "./entries/statusline.ts";
 import { runSubagentStatusline } from "./entries/subagentstatusline.ts";
 import { runStopHook } from "./entries/stophook.ts";
+import { runStopFailureHook } from "./entries/stopfailurehook.ts";
 import { runSessionStart } from "./entries/sessionstart.ts";
 import { cmdInit } from "./cli/init.ts";
 import { cmdAdd } from "./cli/add.ts";
@@ -98,6 +99,7 @@ async function main(): Promise<number> {
     case "__statusline": return runStatusline();
     case "__subagent-statusline": return runSubagentStatusline();
     case "__stop-hook": return runStopHook();
+    case "__stop-failure-hook": return runStopFailureHook();
     case "__session-start": return runSessionStart();
     case "__codex-stop-hook": return runCodexStopHook();
     case undefined: return cmdStatus(); // bare `tokenmaxxing` / `xx` → status

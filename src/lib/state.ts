@@ -10,6 +10,7 @@ import {
   ConfigSchema,
   LastSwapSchema,
   ModelUsageStateSchema,
+  NextCheckSchema,
   UsageStateSchema,
   type AccountsIndex,
   type Config,
@@ -244,6 +245,28 @@ export function saveDepletedWait(rec: DepletedWait): void {
 
 export function clearDepletedWait(): void {
   rmSync(paths.depletedJson, { force: true });
+}
+
+export const MAX_CHECK_DELAY_MS = 300_000;
+
+export function loadNextCheckDueAt(now: number): number | null {
+  if (!existsSync(paths.nextCheckJson)) return null;
+  let parsed;
+  try {
+    parsed = NextCheckSchema.safeParse(JSON.parse(readFileSync(paths.nextCheckJson, "utf8")));
+  } catch {
+    return null;
+  }
+  if (!parsed.success) return null;
+  return parsed.data.dueAt - now > MAX_CHECK_DELAY_MS ? null : parsed.data.dueAt;
+}
+
+export function saveNextCheckDueAt(input: { dueAt: number; ts: number }): void {
+  writeFileAtomic(paths.nextCheckJson, JSON.stringify(NextCheckSchema.parse(input)));
+}
+
+export function clearNextCheck(): void {
+  rmSync(paths.nextCheckJson, { force: true });
 }
 
 /** An alive feed re-proving unchanged figures still refreshes `ts` this often,

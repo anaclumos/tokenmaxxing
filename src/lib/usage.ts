@@ -4,16 +4,13 @@
 // figures claude's own usage screen shows; we run it in a throwaway
 // CLAUDE_CONFIG_DIR to sample a parked account without disturbing the live login.
 
-import { mkdirSync } from "node:fs";
+import { closeSync, fstatSync, mkdirSync, openSync, readSync } from "node:fs";
 import { join } from "node:path";
 import { delay } from "es-toolkit";
 import { z } from "zod";
 import { MAX_WRAP_DEPTH, WRAP_DEPTH_ENV, resolveRealClaude } from "./claudebin.ts";
-import { readOAuthAccount } from "./claudejson.ts";
-import { withLock } from "./lock.ts";
 import { log } from "./log.ts";
 import { paths } from "./paths.ts";
-import { loadUsage, writeUsage } from "./state.ts";
 import { RateLimitsStdinSchema, UsageWindowSchema, type ModelInfo, type UsageWindow, type UsageWindows } from "./types.ts";
 
 /** Normalize a resets_at value (epoch s, epoch ms, or ISO string) to epoch ms. */
@@ -176,81 +173,124 @@ export function fmtResetShort(epochMs: number | null | undefined, now = Date.now
   return `${Math.max(m, 1)}m`;
 }
 
-/** The reset epoch a limit result announces ("Claude AI usage limit
- *  reached|<epoch>", 10-digit seconds or 13-digit ms). Structural scan, no
- *  regex: everything after the pipe up to the first non-digit. Null when the
- *  text is a phrase-only limit with no epoch. */
-export function parseUsageLimitEpoch(input: { text: string }): number | null {
-  const marker = "usage limit reached|";
-  const at = input.text.toLowerCase().indexOf(marker);
-  if (at < 0) return null;
-  let digits = "";
-  for (const ch of input.text.slice(at + marker.length)) {
-    if (ch < "0" || ch > "9") break;
-    digits += ch;
+const TranscriptBlockSchema = z.looseObject({ type: z.string().optional(), text: z.string().optional() });
+export const TranscriptRowSchema = z.looseObject({
+  type: z.string().optional(),
+  timestamp: z.string().optional(),
+  isApiErrorMessage: z.boolean().optional(),
+  apiErrorIsTransient: z.boolean().optional(),
+  error: z.string().optional(),
+  errorDetails: z.string().optional(),
+  quotaLimits: z.looseObject({ rateLimitType: z.string().optional(), resetsAt: z.number().optional() }).optional(),
+  message: z.looseObject({ content: z.unknown().optional() }).optional(),
+});
+export type TranscriptRow = z.infer<typeof TranscriptRowSchema>;
+
+const TRANSCRIPT_TAIL_BYTES = 256 * 1024;
+
+export function readTranscriptTail(path: string, maxBytes = TRANSCRIPT_TAIL_BYTES): TranscriptRow[] {
+  let text: string;
+  try {
+    const fd = openSync(path, "r");
+    try {
+      const size = fstatSync(fd).size;
+      const start = Math.max(0, size - maxBytes);
+      const buf = Buffer.alloc(size - start);
+      readSync(fd, buf, 0, buf.length, start);
+      text = buf.toString("utf8");
+      if (start > 0) text = text.slice(text.indexOf("\n") + 1);
+    } finally {
+      closeSync(fd);
+    }
+  } catch {
+    return [];
   }
-  // exactly the two real encodings: 10-digit seconds or 13-digit ms. An 11-
-  // or 12-digit run is malformed and must stay an unknown reset, not become
-  // a far-future one via the seconds branch.
-  if (digits.length !== 10 && digits.length !== 13) return null;
-  const n = Number(digits);
-  return digits.length === 13 ? n : n * 1000;
+  const rows: TranscriptRow[] = [];
+  for (const line of text.split("\n")) {
+    if (line.trim() === "") continue;
+    try {
+      const parsed = TranscriptRowSchema.safeParse(JSON.parse(line));
+      if (parsed.success) rows.push(parsed.data);
+    } catch {}
+  }
+  return rows;
 }
 
-/**
- * Persist a limit observed in a turn RESULT into usage.json so the next
- * decision sees the depleted account immediately. Callers without a statusLine
- * tee (headless Agent SDK integrations) should invoke this on errored limit
- * results: `loadFreshSnapshots` skips re-probing inside the poll TTL and
- * `/usage` is fail-silent against the just-limited active token, so without
- * this write a post-limit retry re-decides off the stale pre-limit snapshot
- * and respawns the same depleted account. The session
- * window is stamped 100% with the announced reset: whichever window actually
- * tripped, the account is unusable until then, and the hard path swaps away.
- * `org` is the identity captured AT THE SPAWN BOUNDARY of the turn that
- * failed; the write happens only when that identity is known and still live,
- * so a concurrent thread's mid-turn swap can never get its fresh account
- * stamped depleted by this turn's failure (review catch, PR #18). Without a
- * same-org prior snapshot there is nothing safe to write (a synthetic weekly
- * value would flow into `account.lastUsage` and poison the picker's ranking;
- * unmeasured must not look fresh), so the observation is dropped and the
- * retry stays merely bounded.
- *
- * INTENTIONAL TRADEOFF (closing-review critic gap, 2026-07-20): the statusline
- * tee (writeUsage) is deliberately UNLOCKED - the shim stays off flock/oauth -
- * so it can interleave with this locked check-then-write. Last-writer-wins is
- * semantically safe in both orderings: a tee landing after this stamp replaces
- * it with a FRESHER live measurement (truth wins), and this stamp landing
- * after a tee replaces pre-limit figures with the observed limit the server
- * just enforced (also truth). Neither writer can write a stale fabrication
- * over the other; locking the shim to close the interleave would buy nothing.
- */
-export async function recordObservedLimit(input: { text: string; now: number; org: string | null }): Promise<void> {
-  if (!input.org) return;
-  // the whole check-then-write runs under the swap flock: a concurrent
-  // performSwap clears the snapshots and flips the live org, and a stale
-  // depleted write must not land for the wrong org right after that
-  // (review catch, PR #18).
-  await withLock(paths.lockFile, () => {
-    const live = readOAuthAccount()?.organizationUuid ?? null;
-    if (live !== input.org) return;
-    const prior = loadUsage();
-    if (!prior || prior.org !== input.org) return;
-    const resetsAt = parseUsageLimitEpoch({ text: input.text });
-    // a weekly-phrased limit exhausts the WEEKLY window: stamping only the 5h
-    // window would let the picker re-seat this account in 5h while the weekly
-    // cap stays dead for days (review catch, PR #18). Unknown-reset blocked
-    // windows self-bound at the window's own duration either way.
-    const weekly = input.text.toLowerCase().includes("weekly");
-    writeUsage({
-      fiveHour: weekly ? prior.fiveHour : { usedPercentage: 100, resetsAt },
-      sevenDay: weekly ? { usedPercentage: 100, resetsAt } : prior.sevenDay,
-      org: input.org,
-      ts: input.now,
-      model: prior.model,
-    });
-    log("usage.observed_limit", { resetsAt, weekly });
-  });
+export function transcriptRowText(row: TranscriptRow): string {
+  const blocks = z.array(TranscriptBlockSchema).safeParse(row.message?.content);
+  if (!blocks.success) return "";
+  return blocks.data.filter((b) => b.type === "text").map((b) => b.text ?? "").join("\n").trim();
+}
+
+const ROW_RECENCY_MS = 60_000;
+
+const EnforcedRowSchema = z.object({
+  row: TranscriptRowSchema,
+  turnStartTs: z.number().nullable(),
+});
+export type EnforcedRow = z.infer<typeof EnforcedRowSchema>;
+
+export function findEnforcedRow(input: { rows: TranscriptRow[]; lastAssistantMessage: string | undefined; now: number }): EnforcedRow | null {
+  const { rows, lastAssistantMessage, now } = input;
+  for (let i = rows.length - 1; i >= 0; i--) {
+    const row = rows[i]!;
+    if (row.isApiErrorMessage !== true || row.error !== "rate_limit") continue;
+    const ts = row.timestamp ? Date.parse(row.timestamp) : Number.NaN;
+    const byContent = lastAssistantMessage != null && lastAssistantMessage !== "" && transcriptRowText(row) === lastAssistantMessage;
+    const byRecency = Number.isFinite(ts) && Math.abs(now - ts) <= ROW_RECENCY_MS;
+    if (!byContent && !byRecency) continue;
+    let turnStartTs: number | null = null;
+    for (let j = i - 1; j >= 0; j--) {
+      const prev = rows[j]!;
+      if (prev.type !== "user") continue;
+      const pts = prev.timestamp ? Date.parse(prev.timestamp) : Number.NaN;
+      turnStartTs = Number.isFinite(pts) ? pts : null;
+      break;
+    }
+    return { row, turnStartTs };
+  }
+  return null;
+}
+
+export const EnforcedClassSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("session"), resetsAt: z.number().nullable() }),
+  z.object({ kind: z.literal("weekly"), resetsAt: z.number().nullable() }),
+  z.object({ kind: z.literal("model"), family: z.string(), resetsAt: z.number().nullable() }),
+]);
+export type EnforcedClass = z.infer<typeof EnforcedClassSchema>;
+
+const CreditsBodySchema = z.looseObject({
+  error: z.looseObject({ details: z.looseObject({ error_code: z.string().optional() }).optional() }).optional(),
+});
+
+function creditsRequired(errorDetails: string | undefined): boolean {
+  if (!errorDetails) return false;
+  const at = errorDetails.indexOf("{");
+  if (at < 0) return false;
+  try {
+    const body = CreditsBodySchema.safeParse(JSON.parse(errorDetails.slice(at)));
+    return body.success && body.data.error?.details?.error_code === "credits_required";
+  } catch {
+    return false;
+  }
+}
+
+export function classifyEnforcedLimit(row: TranscriptRow, switchModels: string[]): EnforcedClass | null {
+  const q = row.quotaLimits;
+  if (q) {
+    const resetsAt = q.resetsAt != null ? normalizeResetsAt(q.resetsAt) : null;
+    const type = q.rateLimitType ?? "";
+    if (type === "five_hour") return { kind: "session", resetsAt };
+    if (type === "seven_day") return { kind: "weekly", resetsAt };
+    const family = switchModels.find((f) => type.includes(f));
+    return family ? { kind: "model", family, resetsAt } : null;
+  }
+  if (row.apiErrorIsTransient === true) return null;
+  const tokens = familyTokens(transcriptRowText(row));
+  const family = switchModels.find((f) => tokens.includes(f));
+  if (!family) return null;
+  if (tokens.includes("limit") || creditsRequired(row.errorDetails)) return { kind: "model", family, resetsAt: null };
+  return null;
 }
 
 /**

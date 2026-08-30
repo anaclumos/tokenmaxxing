@@ -125,6 +125,16 @@ export const AccountsIndexSchema = z.object({
 export const LastSwapSchema = z.object({ ts: z.number() });
 export type AccountsIndex = z.infer<typeof AccountsIndexSchema>;
 
+export const NextCheckSchema = z.object({ dueAt: z.number(), ts: z.number() });
+
+export const EnforcedLimitSchema = z.object({
+  org: z.string(),
+  family: z.string().nullable(),
+  resetsAt: z.number().nullable(),
+  windowMs: z.number(),
+});
+export type EnforcedLimit = z.infer<typeof EnforcedLimitSchema>;
+
 /** Per-window screening bars (used %): an account with a window at/over its bar
  *  is no switch candidate until that window resets. The session bar is lower
  *  than the weekly one: a session reset is at most 5h away, so burning a little
@@ -207,6 +217,8 @@ export const RespawnMarkerSchema = z.object({
   /** the transcript to `--resume`: the hook-stdin session id, which drifts
    *  from the pinned id after /clear. */
   sessionId: z.string(),
+  prompt: z.string().optional(),
+  launchedAt: z.number().optional(),
 });
 
 /** rate_limits + model as they appear in statusLine stdin (epoch-seconds resets). */

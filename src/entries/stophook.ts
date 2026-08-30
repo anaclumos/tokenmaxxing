@@ -51,11 +51,13 @@ export async function runStopHook(): Promise<number> {
       // killing the child. A plain swap leaves the session running to adopt.
       if (decision.waitUntil !== undefined && canPause && pinnedSid) {
         const marker = join(paths.respawnDir, pinnedSid);
+        const launchedAt = z.coerce.number().finite().optional().catch(undefined).parse(process.env.TOKENMAXXING_LAUNCHED_AT);
         const payload = RespawnMarkerSchema.parse({
           account: decision.account.label,
           ts: Date.now(),
           waitUntil: decision.waitUntil,
           sessionId: stdinSid ?? pinnedSid,
+          ...(launchedAt != null ? { launchedAt } : {}),
         });
         writeFileAtomic(marker, JSON.stringify(payload));
         log("stop.marker", { session: (stdinSid ?? pinnedSid).slice(0, 8) });

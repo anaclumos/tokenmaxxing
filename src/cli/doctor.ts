@@ -35,6 +35,7 @@ export async function cmdDoctor(): Promise<number> {
   check(s.statusLineOk, "statusLine shim installed in settings.json", "run `tokenmaxxing init`");
   check(s.subagentStatusLineOk, "subagentStatusLine shim installed in settings.json", "run `tokenmaxxing init`");
   check(s.stopOk, "Stop hook installed in settings.json", "run `tokenmaxxing init`");
+  check(s.stopFailureOk, "StopFailure hook installed in settings.json", "run `tokenmaxxing init`");
   check(s.sessionStartOk, "SessionStart hook installed in settings.json", "run `tokenmaxxing init`");
   check(checkTimerHealthy(), "periodic check timer active", timerActivationHint());
 

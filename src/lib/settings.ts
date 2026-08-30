@@ -30,8 +30,11 @@ const SUBCMD = {
   statusline: "__statusline",
   subagentStatusline: "__subagent-statusline",
   stop: "__stop-hook",
+  stopFailure: "__stop-failure-hook",
   sessionStart: "__session-start",
 } as const;
+
+const STOP_FAILURE_MATCHER = "rate_limit";
 
 function readSettings(): Settings {
   if (!existsSync(paths.claudeSettings)) return {};
@@ -53,6 +56,7 @@ function isOurCommand(cmd: string | undefined): boolean {
     cmd.includes(SUBCMD.statusline) ||
     cmd.includes(SUBCMD.subagentStatusline) ||
     cmd.includes(SUBCMD.stop) ||
+    cmd.includes(SUBCMD.stopFailure) ||
     cmd.includes(SUBCMD.sessionStart) ||
     // also match the installed bin path even if the subcommand text changes
     cmd.includes(installedBin())
@@ -65,16 +69,16 @@ function ourCommand(sub: string): string {
   return `${JSON.stringify(installedBin())} ${sub}`;
 }
 
-function ourHookGroup(sub: string): HookGroup {
-  return { hooks: [{ type: "command", command: ourCommand(sub) }] };
+function ourHookGroup(sub: string, matcher?: string): HookGroup {
+  return { ...(matcher ? { matcher } : {}), hooks: [{ type: "command", command: ourCommand(sub) }] };
 }
 
-function appendHook(s: Settings, event: string, sub: string): void {
+function appendHook(s: Settings, event: string, sub: string, matcher?: string): void {
   s.hooks ??= {};
   s.hooks[event] ??= [];
   const arr = s.hooks[event]!;
   const present = arr.some((g) => g.hooks.some((h) => h.command === ourCommand(sub)));
-  if (!present) arr.push(ourHookGroup(sub));
+  if (!present) arr.push(ourHookGroup(sub, matcher));
 }
 
 /** True only for a command tokenmaxxing itself wrote - the exact historical
@@ -121,8 +125,10 @@ export function installSettings(): void {
   s.statusLine = { type: "command", command: ourCommand(SUBCMD.statusline) };
   s.subagentStatusLine = { type: "command", command: ourCommand(SUBCMD.subagentStatusline) };
   removeHook(s, "Stop", SUBCMD.stop);
+  removeHook(s, "StopFailure", SUBCMD.stopFailure);
   removeHook(s, "SessionStart", SUBCMD.sessionStart);
   appendHook(s, "Stop", SUBCMD.stop);
+  appendHook(s, "StopFailure", SUBCMD.stopFailure, STOP_FAILURE_MATCHER);
   appendHook(s, "SessionStart", SUBCMD.sessionStart);
   writeSettings(s);
 }
@@ -131,6 +137,7 @@ export function installSettings(): void {
 export function uninstallSettings(): void {
   const s = readSettings();
   removeHook(s, "Stop", SUBCMD.stop);
+  removeHook(s, "StopFailure", SUBCMD.stopFailure);
   removeHook(s, "SessionStart", SUBCMD.sessionStart);
   if (s.statusLine && isOurCommand(s.statusLine.command)) delete s.statusLine;
   if (s.subagentStatusLine && isOurCommand(s.subagentStatusLine.command)) delete s.subagentStatusLine;
@@ -141,6 +148,7 @@ const SettingsCheckSchema = z.object({
   statusLineOk: z.boolean(),
   subagentStatusLineOk: z.boolean(),
   stopOk: z.boolean(),
+  stopFailureOk: z.boolean(),
   sessionStartOk: z.boolean(),
 });
 export type SettingsCheck = z.infer<typeof SettingsCheckSchema>;
@@ -151,12 +159,13 @@ export function checkSettings(): SettingsCheck {
   // installSettings writes counts as installed. A hook pointing at an OLD
   // install path reads as broken, and a foreign command that merely mentions
   // the path or subcommand as text never green-lights.
-  const has = (event: string, sub: string) =>
-    !!s.hooks?.[event]?.some((g) => g.hooks.some((h) => h.command === ourCommand(sub)));
+  const has = (event: string, sub: string, matcher?: string) =>
+    !!s.hooks?.[event]?.some((g) => (matcher === undefined || g.matcher === matcher) && g.hooks.some((h) => h.command === ourCommand(sub)));
   return {
     statusLineOk: s.statusLine?.command === ourCommand(SUBCMD.statusline),
     subagentStatusLineOk: s.subagentStatusLine?.command === ourCommand(SUBCMD.subagentStatusline),
     stopOk: has("Stop", SUBCMD.stop),
+    stopFailureOk: has("StopFailure", SUBCMD.stopFailure, STOP_FAILURE_MATCHER),
     sessionStartOk: has("SessionStart", SUBCMD.sessionStart),
   };
 }
