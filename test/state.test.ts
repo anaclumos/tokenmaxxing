@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { z } from "zod";
-import { loadAccounts, saveAccounts, loadConfig, loadDepletedWait, loadLastSwapAt, loadUsage, saveDepletedWait, usageTeeAt, writeUsage } from "../src/lib/state.ts";
+import { loadAccounts, saveAccounts, loadConfig, loadDepletedWait, loadLastSwapAt, loadNextCheckDueAt, loadUsage, saveDepletedWait, saveNextCheckDueAt, usageTeeAt, writeUsage } from "../src/lib/state.ts";
 import { paths } from "../src/lib/paths.ts";
 import type { Account, UsageState } from "../src/lib/types.ts";
 
@@ -77,6 +77,19 @@ describe("corrupt state fails loud", () => {
     });
     rmSync(paths.lastSwapJson, { force: true });
     expect(loadLastSwapAt()).toBe(null);
+  });
+  test("nextcheck.json is a schedule cache: absent, corrupt, and far-future all read as due now", () => {
+    const now = Date.now();
+    rmSync(paths.nextCheckJson, { force: true });
+    expect(loadNextCheckDueAt(now)).toBe(null);
+    withReplaced(paths.nextCheckJson, "{ not json", () => {
+      expect(loadNextCheckDueAt(now)).toBe(null);
+    });
+    saveNextCheckDueAt({ dueAt: now + 3_600_000, ts: now });
+    expect(loadNextCheckDueAt(now)).toBe(null);
+    saveNextCheckDueAt({ dueAt: now + 240_000, ts: now });
+    expect(loadNextCheckDueAt(now)).toBe(now + 240_000);
+    rmSync(paths.nextCheckJson, { force: true });
   });
   test("depleted-wait record round-trips; absent reads null", () => {
     rmSync(paths.depletedJson, { force: true });

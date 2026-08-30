@@ -5,7 +5,7 @@ import { writeFileAtomic } from "../lib/atomic.ts";
 import { readOAuthAccount } from "../lib/claudejson.ts";
 import { enforcedWindowMs, evaluateAndMaybeSwap, postSwapProof, recordEnforcedLimit } from "../lib/decide.ts";
 import { loadConfig, loadLastSwapAt } from "../lib/state.ts";
-import { classifyEnforcedLimit, findEnforcedRow, readTranscriptTail, transcriptRowText } from "../lib/usage.ts";
+import { classifyEnforcedLimit, findEnforcedRow, parseErrorBody, readTranscriptTail } from "../lib/usage.ts";
 import { RespawnMarkerSchema, type EnforcedLimit } from "../lib/types.ts";
 import { log } from "../lib/log.ts";
 
@@ -65,7 +65,8 @@ export async function runStopFailureHook(): Promise<number> {
       log("stopfailure.unclassified", {
         row: found != null,
         type: found?.row.quotaLimits?.rateLimitType,
-        text: found ? transcriptRowText(found.row).slice(0, 80) : undefined,
+        transient: found?.row.apiErrorIsTransient,
+        body: found ? parseErrorBody(found.row.errorDetails)?.error?.type : undefined,
       });
     }
 

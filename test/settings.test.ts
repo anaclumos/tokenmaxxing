@@ -53,7 +53,29 @@ describe("settings merge", () => {
     expect(c.statusLineOk).toBe(true);
     expect(c.subagentStatusLineOk).toBe(true);
     expect(c.stopOk).toBe(true);
+    expect(c.stopFailureOk).toBe(true);
     expect(c.sessionStartOk).toBe(true);
+  });
+
+  test("the StopFailure hook is installed under a rate_limit matcher and removed on uninstall", () => {
+    installSettings();
+    const groups = read().hooks.StopFailure;
+    expect(groups).toHaveLength(1);
+    expect(groups[0].matcher).toBe("rate_limit");
+    expect(groups[0].hooks[0].command).toContain("__stop-failure-hook");
+    installSettings();
+    expect(read().hooks.StopFailure).toHaveLength(1);
+    uninstallSettings();
+    expect(read().hooks.StopFailure).toBeUndefined();
+    expect(checkSettings().stopFailureOk).toBe(false);
+  });
+
+  test("a StopFailure entry without the matcher does not count as installed", () => {
+    installSettings();
+    const s = read();
+    delete s.hooks.StopFailure[0].matcher;
+    writeFileSync(settingsPath, JSON.stringify(s, null, 2));
+    expect(checkSettings().stopFailureOk).toBe(false);
   });
 
   test("uninstall removes our statusLine and hooks, keeps foreign entries", () => {

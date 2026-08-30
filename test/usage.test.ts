@@ -44,12 +44,19 @@ describe("classifyEnforcedLimit", () => {
     expect(classifyEnforcedLimit(row, families)).toBeNull();
   });
 
-  test("the Fable credits branch (no quotaLimits) is the fable cap from the rendering's family + limit tokens", () => {
+  test("the credits branch (no quotaLimits, a typed rate_limit_error body) is the credits-gated family's cap", () => {
     const row = errorRow({ text: "You've reached your Fable 5 limit. Run /usage-credits to continue or switch models with /model.", errorDetails: '429 {"error":{"type":"rate_limit_error","message":"..."},"request_id":"req_1"}' });
     expect(classifyEnforcedLimit(row, families)).toEqual({ kind: "model", family: "fable", resetsAt: null });
+    expect(classifyEnforcedLimit(errorRow({ text: "", errorDetails: '429 {"error":{"type":"rate_limit_error"}}' }), families)).toEqual({ kind: "model", family: "fable", resetsAt: null });
   });
 
-  test("credits_required in the 429 body counts as exhaustion even without a limit token", () => {
+  test("a body of another error type, an unparsable body, or no body is not exhaustion", () => {
+    expect(classifyEnforcedLimit(errorRow({ text: "You've reached your Fable 5 limit.", errorDetails: '429 {"error":{"type":"overloaded_error"}}' }), families)).toBeNull();
+    expect(classifyEnforcedLimit(errorRow({ text: "You've reached your Fable 5 limit.", errorDetails: "429 not json" }), families)).toBeNull();
+    expect(classifyEnforcedLimit(errorRow({ text: "You've reached your Fable 5 limit." }), families)).toBeNull();
+  });
+
+  test("a credits_required body is the same credits branch", () => {
     const row = errorRow({ text: "Fable 5 requires usage credits.", errorDetails: '429 {"error":{"type":"rate_limit_error","details":{"error_code":"credits_required"}}}' });
     expect(classifyEnforcedLimit(row, families)).toEqual({ kind: "model", family: "fable", resetsAt: null });
   });
@@ -60,8 +67,10 @@ describe("classifyEnforcedLimit", () => {
     expect(classifyEnforcedLimit(errorRow({ text: "You've reached your Fable 5 limit.", apiErrorIsTransient: true }), families)).toBeNull();
   });
 
-  test("a family outside switchModels never classifies", () => {
-    expect(classifyEnforcedLimit(errorRow({ text: "You've reached your Opus limit." }), families)).toBeNull();
+  test("the credits branch stamps nothing when its family is not a switch family", () => {
+    const row = errorRow({ text: "You've reached your Fable 5 limit.", errorDetails: '429 {"error":{"type":"rate_limit_error"}}' });
+    expect(classifyEnforcedLimit(row, ["sonnet"])).toBeNull();
+    expect(classifyEnforcedLimit(row, [])).toBeNull();
   });
 });
 

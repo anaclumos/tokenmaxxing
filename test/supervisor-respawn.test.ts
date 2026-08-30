@@ -123,3 +123,40 @@ test(
   },
   30_000,
 );
+
+test(
+  "a marker prompt is submitted once behind `--` on the relaunch and never persisted",
+  () => {
+    const setup = buildInstall(
+      "prompt",
+      JSON.stringify({ account: "acct-b", ts: 1, waitUntil: 1, sessionId: MARKER_SID, prompt: "Continue where the previous turn left off" }),
+    );
+    const p = runManaged(setup, ["--model", "opus", "--debug"]);
+    expect(p.exitCode).toBe(0);
+
+    const lines = readFileSync(setup.argsLog, "utf8").trim().split("\n");
+    expect(lines.length).toBe(2);
+    expect(lines[1]).toBe(`--resume ${MARKER_SID} --model opus --debug -- Continue where the previous turn left off`);
+    const stored = JSON.parse(readFileSync(join(setup.tmHome, "sessions", `${MARKER_SID}.json`), "utf8"));
+    expect(stored.flags).toEqual(["--model", "opus", "--debug"]);
+  },
+  30_000,
+);
+
+test(
+  "a marker stamped by another launch is dropped without a respawn",
+  () => {
+    const setup = buildInstall(
+      "stale-launch",
+      JSON.stringify({ account: "acct-b", ts: 1, waitUntil: 1, sessionId: MARKER_SID, launchedAt: 1 }),
+    );
+    const p = runManaged(setup, ["--model", "opus"]);
+    expect(p.exitCode).toBe(0);
+
+    const lines = readFileSync(setup.argsLog, "utf8").trim().split("\n");
+    expect(lines.length).toBe(1);
+    const pinned = lines[0]!.split(" ")[1]!;
+    expect(existsSync(join(setup.tmHome, "respawn", pinned))).toBe(false);
+  },
+  30_000,
+);

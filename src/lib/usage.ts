@@ -213,19 +213,21 @@ export const EnforcedClassSchema = z.discriminatedUnion("kind", [
 ]);
 export type EnforcedClass = z.infer<typeof EnforcedClassSchema>;
 
-const CreditsBodySchema = z.looseObject({
-  error: z.looseObject({ details: z.looseObject({ error_code: z.string().optional() }).optional() }).optional(),
+const ErrorBodySchema = z.looseObject({
+  error: z.looseObject({ type: z.string().optional(), details: z.looseObject({ error_code: z.string().optional() }).optional() }).optional(),
 });
 
-function creditsRequired(errorDetails: string | undefined): boolean {
-  if (!errorDetails) return false;
+const CREDITS_GATED_FAMILIES = ["fable"];
+
+export function parseErrorBody(errorDetails: string | undefined): z.infer<typeof ErrorBodySchema> | null {
+  if (!errorDetails) return null;
   const at = errorDetails.indexOf("{");
-  if (at < 0) return false;
+  if (at < 0) return null;
   try {
-    const body = CreditsBodySchema.safeParse(JSON.parse(errorDetails.slice(at)));
-    return body.success && body.data.error?.details?.error_code === "credits_required";
+    const body = ErrorBodySchema.safeParse(JSON.parse(errorDetails.slice(at)));
+    return body.success ? body.data : null;
   } catch {
-    return false;
+    return null;
   }
 }
 
@@ -240,11 +242,9 @@ export function classifyEnforcedLimit(row: TranscriptRow, switchModels: string[]
     return family ? { kind: "model", family, resetsAt } : null;
   }
   if (row.apiErrorIsTransient === true) return null;
-  const tokens = familyTokens(transcriptRowText(row));
-  const family = switchModels.find((f) => tokens.includes(f));
-  if (!family) return null;
-  if (tokens.includes("limit") || creditsRequired(row.errorDetails)) return { kind: "model", family, resetsAt: null };
-  return null;
+  if (parseErrorBody(row.errorDetails)?.error?.type !== "rate_limit_error") return null;
+  const family = switchModels.find((f) => CREDITS_GATED_FAMILIES.includes(f));
+  return family ? { kind: "model", family, resetsAt: null } : null;
 }
 
 export function parseUsageTextFull(text: string, now = Date.now()): FullUsage | null {
