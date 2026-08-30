@@ -1,9 +1,3 @@
-// `tokenmaxxing check` - one auto-switch evaluation, the same decision the
-// Stop/SessionStart hooks make (flocked, idempotent). Installed as a periodic
-// launchd/systemd job so a limit crossed mid-turn, or with no session running,
-// still switches within minutes; the hooks only ever see turn boundaries.
-// Running claude sessions adopt the swapped credential in place (<=30s).
-
 import { checkDelayMs, evaluateAndMaybeSwap } from "../lib/decide.ts";
 import { readOAuthAccount } from "../lib/claudejson.ts";
 import { log } from "../lib/log.ts";
@@ -21,7 +15,6 @@ export async function cmdCheck(): Promise<number> {
   try {
     d = await evaluateAndMaybeSwap(now);
   } catch (e) {
-    // unattended under the timer: the log is the only place anyone will look.
     const detail = e instanceof Error ? e.message : String(e);
     log("check.error", { err: detail });
     console.error(c.red(`check failed: ${detail}`));

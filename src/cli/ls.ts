@@ -1,5 +1,3 @@
-// `tokenmaxxing ls` - compact list of pooled accounts, claude then codex.
-
 import { loadAccounts } from "../lib/state.ts";
 import { loadCodexAccounts } from "../lib/codexstate.ts";
 import { liveCodexAccountId } from "../lib/codexsample.ts";

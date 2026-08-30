@@ -1,8 +1,3 @@
-// probeParkedUsage's identity check (iteration-3 review): only a DEFINITIVE
-// org disagreement flags needs-reauth; a transient roles-endpoint failure must
-// never bench a healthy account (a temporary outage once removed every parked
-// account from switching until manual reauth).
-
 import { afterAll, beforeEach, describe, expect, test } from "bun:test";
 import { probeParkedUsage } from "../src/lib/sample.ts";
 import { deleteItem, parkedTarget, writeItem } from "../src/lib/credstore.ts";
@@ -18,16 +13,12 @@ const account = (): Account => ({
   addedAt: new Date(0).toISOString(),
 });
 
-// mirrors swap.test's convention: the bearer encodes the org after "|".
 const blob = (org: string) =>
   JSON.stringify({ claudeAiOauth: { accessToken: `at-S|${org}`, refreshToken: "rt-S", expiresAt: Date.now() + 3_600_000 } });
 
 let rolesMode: "down" | "mismatch" = "down";
 let server: ReturnType<typeof Bun.serve> | null = null;
 
-/** Idempotent: every test needing the endpoint calls this itself (isolation
- *  and any-order safety, closing-review catch); the first test needs the
- *  server ABSENT, hence not beforeAll. */
 function startServer(): void {
   if (server) return;
   server = Bun.serve({
@@ -54,7 +45,6 @@ describe("parked identity check severity", () => {
   });
 
   test("an unreachable roles endpoint fails the sample WITHOUT flagging needs-reauth", async () => {
-    // no server bound: connection refused = transient outage
     const a = account();
     const outcome = await probeParkedUsage(a);
     expect(outcome.ok).toBe(false);

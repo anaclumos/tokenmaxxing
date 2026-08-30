@@ -1,10 +1,3 @@
-// One isolated Claude login, harvested. Shared by `add` (register whatever
-// account the login lands on) and `auth` (require it to match an existing
-// account). Drives the login in a throwaway CLAUDE_CONFIG_DIR - the ONLY use
-// of CLAUDE_CONFIG_DIR in the tool - auto-exits the moment the login lands,
-// samples that account's usage, then returns the credential + identity. The
-// temp dir and isolated credential are always destroyed before returning.
-
 import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
@@ -17,7 +10,6 @@ import { CredentialBlobSchema, OAuthAccountSchema } from "../lib/types.ts";
 import { c } from "./render.ts";
 
 const HarvestedLoginSchema = z.object({
-  /** the raw isolated credential blob (park it via claudeAiOauthOnly). */
   blobRaw: z.string(),
   blob: CredentialBlobSchema,
   oauthAccount: OAuthAccountSchema,
@@ -25,7 +17,6 @@ const HarvestedLoginSchema = z.object({
 });
 export type HarvestedLogin = z.infer<typeof HarvestedLoginSchema>;
 
-/** True once `/login` has written a usable identity into the onboard dir. */
 function identityReady(cjPath: string): boolean {
   if (!existsSync(cjPath)) return false;
   try {
@@ -36,32 +27,16 @@ function identityReady(cjPath: string): boolean {
   }
 }
 
-/**
- * Run one isolated login session and harvest it. The caller prints its own
- * instructions (which account to sign in as) BEFORE calling. Prints progress
- * and failure diagnostics; returns null when no usable login landed.
- */
 export async function harvestIsolatedLogin(): Promise<HarvestedLogin | null> {
   const onboardDir = paths.onboardDir;
   rmSync(onboardDir, { recursive: true, force: true });
   mkdirSync(onboardDir, { recursive: true });
   const iso = isolatedTarget(onboardDir);
-  // Reap a PREVIOUS run's stranded isolated credential too: on macOS the
-  // isolated store is a namespaced KEYCHAIN item, not a file in onboardDir,
-  // so the rmSync above never touched it - a signal-killed harvest (Ctrl-C
-  // after /login, before the ~400ms poll) left a live credential in the
-  // keychain that the next run's spawned claude would silently reuse as an
-  // already-authenticated session (closing-review catch). deleteItem on a
-  // missing item is a no-op; on Linux iso is a file inside onboardDir and the
-  // rmSync already covered it.
   await deleteItem(iso);
   const cjPath = join(onboardDir, ".claude.json");
   const real = resolveRealClaude();
 
   const savedTermios = saveTermios();
-  // Scrub the ambient credential/identity overrides claude honors BEFORE its
-  // keychain lookup (verified 2.1.205) - the onboard session must authenticate
-  // only via the /login the user performs inside it.
   const env: Record<string, string> = { ...process.env, CLAUDE_CONFIG_DIR: onboardDir, TOKENMAXXING_PROBE: "1", TOKENMAXXING_SUPERVISED: "" };
   for (const key of CRED_ENV_OVERRIDES) delete env[key];
   const p = Bun.spawn([real], {
@@ -71,15 +46,7 @@ export async function harvestIsolatedLogin(): Promise<HarvestedLogin | null> {
     env,
   });
 
-  // The finally makes the "always destroyed before returning" header true for
-  // every non-signal exit - INCLUDING a failure while the login session is
-  // still being polled (review catch, PR #31): an exception must not strand a
-  // plaintext credential on disk or leave the spawned claude running. (An
-  // interactive Ctrl-C is reaped by the next run's cleanup-first, which
-  // deletes the isolated keychain item as well as the dir.)
   try {
-    // Auto-exit (#17): watch for a completed login - identity written AND the
-    // isolated credential present - then SIGTERM claude. No manual /exit.
     let exited = false;
     const onExit = p.exited.then(() => { exited = true; });
     while (!exited) {
@@ -91,9 +58,6 @@ export async function harvestIsolatedLogin(): Promise<HarvestedLogin | null> {
     }
     await p.exited;
     await onExit;
-    // restore promptly so the harvest's own output renders on a sane terminal;
-    // the finally's second restore is an idempotent stty and covers the
-    // thrown-mid-poll path.
     restoreTermios(savedTermios);
 
     const blobRaw = await readItem(iso);
@@ -111,7 +75,6 @@ export async function harvestIsolatedLogin(): Promise<HarvestedLogin | null> {
       return null;
     }
 
-    // Sample usage now (#16) so the account isn't "not sampled yet" in status/ls.
     console.log(c.dim("sampling usage..."));
     const sampled = await probeUsage(onboardDir);
     if (!sampled) console.log(c.yellow("could not sample usage now - it will fill in on first use."));

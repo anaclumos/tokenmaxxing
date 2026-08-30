@@ -1,5 +1,3 @@
-// `tokenmaxxing auth` plan resolution: which accounts a given argv targets.
-
 import { describe, expect, test } from "bun:test";
 import { planAuth, pickerOrder } from "../src/cli/auth.ts";
 import type { Account } from "../src/lib/types.ts";

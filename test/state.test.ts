@@ -27,11 +27,9 @@ describe("config round-trip", () => {
     expect(c.policy.greedySessionFloor).toBe(40);
     expect(c.policy.switchModels).toEqual(["fable", "opus"]);
     expect(c.policy.usagePollTtlMs).toBe(60_000);
-    // note: claudeBin may be overridden by TOKENMAXXING_CLAUDE_BIN env (unset here)
     expect(c.claudeBin).toBe("/bin/claude");
   });
   test("missing config yields defaults", () => {
-    // fresh load after a save still valid; defaults path covered by schema
     expect(loadConfig().thresholds.session).toBeGreaterThan(0);
     expect(loadConfig().thresholds.weekly).toBeGreaterThan(0);
   });
@@ -78,7 +76,7 @@ describe("corrupt state fails loud", () => {
       expect(() => loadLastSwapAt()).toThrow("corrupt");
     });
     rmSync(paths.lastSwapJson, { force: true });
-    expect(loadLastSwapAt()).toBe(null); // absent = genuinely never swapped
+    expect(loadLastSwapAt()).toBe(null);
   });
   test("depleted-wait record round-trips; absent reads null", () => {
     rmSync(paths.depletedJson, { force: true });
@@ -92,7 +90,7 @@ describe("corrupt state fails loud", () => {
       expect(() => loadConfig()).toThrow("wrong-typed values (claudeBin)");
     });
     withReplaced(paths.configJson, JSON.stringify({ someFutureKey: true }), () => {
-      expect(loadConfig().thresholds.session).toBeGreaterThan(0); // stripped, defaults apply
+      expect(loadConfig().thresholds.session).toBeGreaterThan(0);
     });
   });
 });
@@ -108,17 +106,16 @@ describe("usage write-on-change", () => {
   test("writes when values change, skips when only ts differs", () => {
     expect(writeUsage(mk(50, 1))).toBe(true);
     expect(loadUsage()?.fiveHour.usedPercentage).toBe(50);
-    expect(writeUsage(mk(50, 999))).toBe(false); // only ts changed → skipped
-    expect(writeUsage(mk(96, 1000))).toBe(true); // value changed → written
+    expect(writeUsage(mk(50, 999))).toBe(false);
+    expect(writeUsage(mk(96, 1000))).toBe(true);
     expect(loadUsage()?.fiveHour.usedPercentage).toBe(96);
   });
   test("a suppressed write still bumps the liveness heartbeat (mtime)", () => {
     const t0 = Date.now();
     expect(writeUsage(mk(70, t0 - 60_000))).toBe(true);
-    expect(writeUsage(mk(70, t0))).toBe(false); // suppressed, figures unchanged
+    expect(writeUsage(mk(70, t0))).toBe(false);
     const teeAt = usageTeeAt();
     expect(teeAt).not.toBeNull();
-    // mtime tracks the suppressed write's ts, not the original write time.
     expect(Math.abs((teeAt ?? 0) - t0)).toBeLessThan(1_000);
   });
 });

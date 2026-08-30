@@ -1,14 +1,3 @@
-# Home Manager module (macOS or Linux). Import via this flake's
-# `homeManagerModules.default`.
-#
-#   home-manager.users.you = {
-#     imports = [ inputs.tokenmaxxing.homeManagerModules.default ];
-#     programs.tokenmaxxing.enable = true;
-#     programs.tokenmaxxing.package = inputs.tokenmaxxing.packages.''${pkgs.system}.default;
-#   };
-#
-# Same split as the darwin module: Nix installs the CLI; `tokenmaxxing init`
-# still owns credentials, the `claude` supervisor shim, and settings merges.
 {
   config,
   lib,
@@ -33,12 +22,8 @@ in
 
     home.packages = lib.mkIf (package != null) [ package ];
 
-    # Supervisor `claude`/`codex` shims live under XDG config after
-    # `tokenmaxxing init`. Home Manager points ~/.zshrc at a nix-store file,
-    # so init soft-skips PATH edits there; put the shim dir on session PATH.
     home.sessionPath = [ "${config.xdg.configHome}/tokenmaxxing/bin" ];
 
-    # Keep init from writing a second imperative timer when Nix owns it.
     home.sessionVariables = lib.mkIf cfg.checkTimer.enable {
       TOKENMAXXING_SKIP_TIMER = "1";
     };
@@ -66,8 +51,6 @@ in
           };
         };
 
-    # User timer (same model as `tokenmaxxing init`). Headless Linux needs
-    # lingering for the timer to fire without a login.
     systemd.user.timers.tokenmaxxing-check = lib.mkIf (cfg.checkTimer.enable && hostPlatform.isLinux && package != null) {
       Unit.Description = "tokenmaxxing periodic account-switch check";
       Timer = {

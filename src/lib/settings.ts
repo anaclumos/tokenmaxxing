@@ -1,16 +1,9 @@
-// Idempotent merge of tokenmaxxing's entries into the user-owned
-// ~/.claude/settings.json: our statusLine + subagentStatusLine, a Stop hook,
-// a SessionStart hook. Hooks APPEND to existing arrays; the statusLine slots
-// are ours outright - tokenmaxxing renders them natively, so any other
-// statusLine command is replaced.
-
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
 import { paths } from "./paths.ts";
 import { writeFileAtomic } from "./atomic.ts";
 
-/** Absolute path to the installed tokenmaxxing binary the settings entries call. */
 export function installedBin(): string {
   return join(paths.binDir, "tokenmaxxing");
 }
@@ -42,14 +35,10 @@ function readSettings(): Settings {
 }
 
 function writeSettings(s: Settings): void {
-  // Preserve the user's mode: settings.json can carry an env block with
-  // credentials, and the atomic rename would otherwise widen a 0600 file to
-  // world-readable. A brand-new file starts at the conservative 0600.
   const mode = existsSync(paths.claudeSettings) ? statSync(paths.claudeSettings).mode & 0o777 : 0o600;
   writeFileAtomic(paths.claudeSettings, JSON.stringify(s, null, 2) + "\n", mode);
 }
 
-/** True if a hook/statusline command string is one tokenmaxxing installed. */
 function isOurCommand(cmd: string | undefined): boolean {
   if (!cmd) return false;
   return (
@@ -58,13 +47,10 @@ function isOurCommand(cmd: string | undefined): boolean {
     cmd.includes(SUBCMD.stop) ||
     cmd.includes(SUBCMD.stopFailure) ||
     cmd.includes(SUBCMD.sessionStart) ||
-    // also match the installed bin path even if the subcommand text changes
     cmd.includes(installedBin())
   );
 }
 
-/** The exact command string installSettings writes for a subcommand; doctor
- *  compares against it verbatim, so a green check proves the canonical entry. */
 function ourCommand(sub: string): string {
   return `${JSON.stringify(installedBin())} ${sub}`;
 }
@@ -81,15 +67,6 @@ function appendHook(s: Settings, event: string, sub: string, matcher?: string): 
   if (!present) arr.push(ourHookGroup(sub, matcher));
 }
 
-/** True only for a command tokenmaxxing itself wrote - the exact historical
- *  shape `"<...>/tokenmaxxing" <sub>` at ANY install path (so stale
- *  pre-relocation entries match too). A foreign command that merely mentions
- *  the subcommand or the path as text is NOT ours and must survive removal. */
-/** Structural ownership: exactly `"<path>/tokenmaxxing" <sub>`. Exported for
- *  the codex hooks.json installer, whose old includes()-based match deleted
- *  foreign hooks sharing a group and misclassified commands merely mentioning
- *  the subcommand (closing-review catch; the same class settings.ts's own
- *  removeHook was fixed for in PR #31). */
 export function isOurHookCommand(cmd: string, sub: string): boolean {
   if (!cmd.endsWith(` ${sub}`)) return false;
   const quotedPath = cmd.slice(0, cmd.length - (sub.length + 1));
@@ -107,19 +84,11 @@ export function isOurHookCommand(cmd: string, sub: string): boolean {
 function removeHook(s: Settings, event: string, sub: string): void {
   const arr = s.hooks?.[event];
   if (!arr) return;
-  // Strip only VERIFIED tokenmaxxing-owned entries from WITHIN each group:
-  // foreign hooks sharing a group - or merely mentioning our strings - survive
-  // (review catches, PR #31), and a group is dropped only once it is empty.
   for (const g of arr) g.hooks = g.hooks.filter((h) => !isOurHookCommand(h.command, sub));
   s.hooks![event] = arr.filter((g) => g.hooks.length > 0);
   if (s.hooks![event]!.length === 0) delete s.hooks![event];
 }
 
-/** Install the entries: take both statusLine slots, append our hooks. Stale
- *  same-subcommand hooks from an OLD install path are dropped first, so a
- *  TOKENMAXXING_HOME relocation rewrites the entries instead of leaving dead
- *  paths that read as installed (relocation residue is how the supervisor
- *  recursion incident started). Foreign hooks are untouched. */
 export function installSettings(): void {
   const s = readSettings();
   s.statusLine = { type: "command", command: ourCommand(SUBCMD.statusline) };
@@ -133,7 +102,6 @@ export function installSettings(): void {
   writeSettings(s);
 }
 
-/** Remove our entries. The statusLine slots are deleted only if they are ours. */
 export function uninstallSettings(): void {
   const s = readSettings();
   removeHook(s, "Stop", SUBCMD.stop);
@@ -155,10 +123,6 @@ export type SettingsCheck = z.infer<typeof SettingsCheckSchema>;
 
 export function checkSettings(): SettingsCheck {
   const s = readSettings();
-  // Exact-command identity (review catch, PR #31): only the verbatim string
-  // installSettings writes counts as installed. A hook pointing at an OLD
-  // install path reads as broken, and a foreign command that merely mentions
-  // the path or subcommand as text never green-lights.
   const has = (event: string, sub: string, matcher?: string) =>
     !!s.hooks?.[event]?.some((g) => (matcher === undefined || g.matcher === matcher) && g.hooks.some((h) => h.command === ourCommand(sub)));
   return {

@@ -1,19 +1,7 @@
-// The two OAuth calls tokenmaxxing makes:
-//   1. the refresh_token grant that turns a parked account's (possibly expired)
-//      access token into a fresh one before we install it. Verified against
-//      Claude Code 2.1.204: POST platform.claude.com, JSON body, public PKCE
-//      client (no secret), no auth/beta headers on this call.
-//   2. the roles lookup that reports which org a token ACTUALLY belongs to.
-//      Endpoint string extracted from the Claude Code 2.1.205 binary; verified
-//      live to answer HTTP 200 with plain Bearer auth (with or without the
-//      oauth beta header - we send it to match the CLI's OAuth convention).
-
 import { z } from "zod";
 import { http, safeErrorDetail } from "./http.ts";
 import { RefreshResponseSchema, RolesResponseSchema, type OAuthCreds, type RolesResponse } from "./types.ts";
 
-// zod-parsed like every other env override (repo rule): a set-but-EMPTY value
-// parses to undefined and the default applies, instead of posting to "".
 const EnvOverrideSchema = z.string().min(1).optional().catch(undefined);
 const TOKEN_URL = EnvOverrideSchema.parse(process.env.TOKENMAXXING_OAUTH_TOKEN_URL) ?? "https://platform.claude.com/v1/oauth/token";
 const CLIENT_ID = EnvOverrideSchema.parse(process.env.TOKENMAXXING_OAUTH_CLIENT_ID) ?? "9d1c250a-e61b-44d9-88ed-5944d1962f5e";
@@ -27,7 +15,6 @@ const DEFAULT_SCOPES = [
   "user:file_upload",
 ];
 
-/** Refresh token is dead / revoked - caller should mark needs_reauth and skip. */
 export class InvalidGrantError extends Error {
   constructor(public readonly detail: string) {
     super(`invalid_grant: ${detail}`);
@@ -35,12 +22,6 @@ export class InvalidGrantError extends Error {
   }
 }
 
-/**
- * Exchange `creds.refreshToken` for a fresh access token. Returns a NEW OAuthCreds
- * with the fresh access token, the rotated refresh token (or the old one if the
- * server omitted it), and recomputed absolute expiries. Non-token fields are
- * preserved. Throws InvalidGrantError on a dead refresh token.
- */
 export async function refreshCredential(creds: OAuthCreds, now = Date.now()): Promise<OAuthCreds> {
   const scope = (creds.scopes?.length ? creds.scopes : DEFAULT_SCOPES).join(" ");
   const body = {
@@ -62,9 +43,6 @@ export async function refreshCredential(creds: OAuthCreds, now = Date.now()): Pr
 
   const text = await res.text();
   if (!res.ok) {
-    // invalid_grant → dead refresh token; anything else is transient/unknown.
-    // Bodies go through the safeErrorDetail allowlist, never raw: a token
-    // endpoint's failure body can echo request material.
     if (res.status === 400 && /invalid_grant/.test(text)) {
       throw new InvalidGrantError(safeErrorDetail({ text }));
     }
@@ -75,7 +53,6 @@ export async function refreshCredential(creds: OAuthCreds, now = Date.now()): Pr
     try { return JSON.parse(text); } catch { return null; }
   })());
   if (!parsed.success) {
-    // A success-status body holds live tokens: never echo any of it.
     throw new Error(`token endpoint returned an unrecognized body (${text.length} bytes, withheld)`);
   }
   const json = parsed.data;
@@ -86,7 +63,7 @@ export async function refreshCredential(creds: OAuthCreds, now = Date.now()): Pr
   return {
     ...creds,
     accessToken: json.access_token,
-    refreshToken: json.refresh_token ?? creds.refreshToken, // server may omit → reuse
+    refreshToken: json.refresh_token ?? creds.refreshToken,
     expiresAt: now + expiresIn * 1000,
     refreshTokenExpiresAt:
       refreshExpiresIn != null ? now + refreshExpiresIn * 1000 : creds.refreshTokenExpiresAt,
@@ -94,17 +71,10 @@ export async function refreshCredential(creds: OAuthCreds, now = Date.now()): Pr
   };
 }
 
-/** True if the access token is within `skewMs` of expiry (or already expired). */
 export function isAccessTokenExpiring(creds: OAuthCreds, skewMs = 120_000, now = Date.now()): boolean {
   return !creds.expiresAt || creds.expiresAt - now <= skewMs;
 }
 
-/**
- * Ask the API which org `accessToken` ACTUALLY belongs to. Stored labels
- * (accounts.json, oauthAccount) can drift from the credential they describe;
- * the token itself cannot lie. Requires a non-expired access token. Read-only:
- * never rotates anything.
- */
 export async function fetchTokenOrg(accessToken: string): Promise<RolesResponse> {
   let res: Response;
   try {

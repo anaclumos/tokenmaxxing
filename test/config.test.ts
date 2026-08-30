@@ -23,7 +23,6 @@ describe("config set/get/unset", () => {
   test("set writes a sparse override, get reads the effective value", () => {
     expect(cmdConfig(["set", "thresholds.session", "80"])).toBe(0);
     expect(loadConfig().thresholds.session).toBe(80);
-    // the file stays sparse: only the override, no baked defaults
     const file = readFile();
     expect(file).toEqual({ thresholds: { session: 80 } });
     expect(cmdConfig(["get", "thresholds.session"])).toBe(0);
@@ -114,8 +113,6 @@ describe("config invariants", () => {
     ).toBe(true);
   });
   test("a projectionMargin at or above a threshold fails the merged config loudly", () => {
-    // per-field bounds pass; the merged whole would zero the effective bar and
-    // read every account as exhausted, so loadConfig refuses it by name.
     writeFileSync(paths.configJson, JSON.stringify({ thresholds: { session: 5 }, policy: { projectionMargin: 10 } }));
     expect(() => loadConfig()).toThrow("projectionMargin");
     writeFileSync(paths.configJson, JSON.stringify({ policy: { projectionMargin: 95 } }));
@@ -124,20 +121,13 @@ describe("config invariants", () => {
     expect(loadConfig().policy.projectionMargin).toBe(94);
   });
   test("hardThresholds default to the 100 wall and reject a wall below its screening bar", () => {
-    // absent from the file, both windows default to the server's own 100% limit
     expect(loadConfig().hardThresholds).toEqual({ session: 100, weekly: 100 });
-    // a wall below its screening bar would make Layer 2 stricter than Layer 1
     writeFileSync(paths.configJson, JSON.stringify({ thresholds: { weekly: 98 }, hardThresholds: { weekly: 90 } }));
     expect(() => loadConfig()).toThrow("hardThresholds");
-    // equal is allowed - it simply disables Layer 2 for that window
     writeFileSync(paths.configJson, JSON.stringify({ thresholds: { weekly: 98 }, hardThresholds: { weekly: 98 } }));
     expect(loadConfig().hardThresholds.weekly).toBe(98);
   });
   test("config set rejects a value whose MERGED config would brick loadConfig", () => {
-    // The per-field 0-100 bound passes 96, but merged against the default
-    // session threshold 95 the refine fails - without the merged gate this
-    // write made every later loadConfig throw, silently disabling
-    // status/switch/hooks until hand-repaired (closing-review catch).
     writeFileSync(paths.configJson, JSON.stringify({}));
     const errs: string[] = [];
     const spy = spyOn(console, "error").mockImplementation((line: string) => { errs.push(line); });
@@ -147,7 +137,7 @@ describe("config invariants", () => {
       spy.mockRestore();
     }
     expect(errs.join(" ")).toContain("projectionMargin");
-    expect(loadConfig().policy.projectionMargin).toBe(0); // the file write never happened
+    expect(loadConfig().policy.projectionMargin).toBe(0);
   });
 });
 

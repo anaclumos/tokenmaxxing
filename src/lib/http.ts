@@ -1,14 +1,6 @@
-// Shared HTTP client. Sampling every account at once, or swapping right at a
-// limit, can trip an endpoint's burst throttle, so GETs retry a bounded number
-// of times, honoring the server's Retry-After (capped). throwHttpErrors is off
-// so callers read the body and shape their own fail-fast error; retry still runs.
-
 import ky from "ky";
 import { z } from "zod";
 
-/** The error-shape fields OAuth/usage endpoints legitimately explain themselves
- *  with. Error bodies are NEVER surfaced raw: a token endpoint's failure body
- *  can echo request material, so anything outside this allowlist is dropped. */
 const ErrorBodySchema = z.looseObject({
   error: z.string().optional(),
   error_description: z.string().optional(),
@@ -16,7 +8,6 @@ const ErrorBodySchema = z.looseObject({
   message: z.string().optional(),
 });
 
-/** Allowlisted, token-safe rendering of an HTTP error body. */
 export function safeErrorDetail(input: { text: string }): string {
   const parsed = ErrorBodySchema.safeParse((() => {
     try {

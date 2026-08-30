@@ -1,12 +1,3 @@
-// Regression for the 2026-07-12 recursive-spawn incident: a claudeBin pinned to
-// a shim that re-execs `claude` from PATH (where our wrapper sits first) made
-// wrapper -> shim -> wrapper recurse unboundedly (~1800 bun processes). The
-// depth sentinel must kill the chain at MAX_WRAP_DEPTH wrapper entries.
-//
-// Fully hermetic: the chain runs under its OWN TOKENMAXXING_HOME in tmp, and the
-// shim carries a hard counter bound (exit 97) so a guard regression fails the
-// test instead of fork-bombing the test host.
-
 import { afterAll, expect, test } from "bun:test";
 import { chmodSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -25,11 +16,6 @@ afterAll(() => {
   rmSync(scratch, { recursive: true, force: true });
 });
 
-/** A hermetic poisoned install under its own TOKENMAXXING_HOME: an on-PATH
- *  wrapper (as installSupervisor lays it out, dev entry) plus a claudeBin shim
- *  that re-execs `claude` from PATH. `stripSentinel` simulates an
- *  env-sanitizing shim by dropping TOKENMAXXING_WRAP_DEPTH each cycle. The
- *  counter is the test's hard safety bound - never remove it. */
 function buildLoop(name: string, safetyBound: number, stripSentinel: boolean) {
   const tmHome = join(scratch, name, "tmhome");
   const binDir = join(tmHome, "bin");
@@ -81,7 +67,7 @@ test(
     const p = runLoop(setup, 30_000);
 
     const reentries = Number(readFileSync(setup.counterFile, "utf8").trim());
-    expect(reentries).toBe(MAX_WRAP_DEPTH); // bounded by the sentinel, not the shim's backstop
+    expect(reentries).toBe(MAX_WRAP_DEPTH);
     expect(p.exitCode).toBe(1);
     expect(p.stderr.toString()).toContain(LOOP_DIAGNOSIS);
   },
@@ -128,8 +114,6 @@ printf 'SUP=%s\\nSID=%s\\nUNM=%s\\nDEPTH=%s\\n' "$TOKENMAXXING_SUPERVISED" "$TOK
       JSON.stringify({ thresholds: { session: 95, weekly: 98 }, claudeBin: fakeClaude, policy: { switchModels: ["fable"] } }),
     );
 
-    // No argv at all = the managed interactive shape; only the sentinel forces
-    // passthrough. Simulated inherited pairing env must be stripped.
     const p = Bun.spawnSync([join(binDir, "claude")], {
       env: {
         PATH: `${binDir}:/usr/bin:/bin:${dirname(process.execPath)}`,
@@ -148,7 +132,6 @@ printf 'SUP=%s\\nSID=%s\\nUNM=%s\\nDEPTH=%s\\n' "$TOKENMAXXING_SUPERVISED" "$TOK
     });
 
     expect(p.exitCode).toBe(0);
-    // Passthrough: argv untouched, so no injected --session-id/--resume.
     expect(readFileSync(argsFile, "utf8").trim()).toBe("");
     const childEnv = readFileSync(envFile, "utf8");
     expect(childEnv).toContain("SUP=\n");
@@ -166,8 +149,8 @@ test(
     const p = runLoop(setup, 110_000);
 
     const reentries = Number(readFileSync(setup.counterFile, "utf8").trim());
-    expect(reentries).toBeGreaterThan(MAX_WRAP_DEPTH); // the sentinel really was defeated
-    expect(reentries).toBe(WRAP_RATE_MAX); // ...and the on-disk window stopped it
+    expect(reentries).toBeGreaterThan(MAX_WRAP_DEPTH);
+    expect(reentries).toBe(WRAP_RATE_MAX);
     expect(p.exitCode).toBe(1);
     expect(p.stderr.toString()).toContain(LOOP_DIAGNOSIS);
   },

@@ -89,7 +89,6 @@ describe("scanPathForClaude", () => {
     const aliasDir = join(scratch, "alias-to-bindir");
     symlinkSync(paths.binDir, aliasDir);
 
-    // the old exact-string compare (`d === paths.binDir`) missed the alias dir
     process.env.PATH = `${aliasDir}:${realDir}`;
     expect(scanPathForClaude()).toBe(join(realDir, "claude"));
   });

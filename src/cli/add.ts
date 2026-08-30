@@ -1,7 +1,3 @@
-// `tokenmaxxing add` - register an ADDITIONAL account. Drives one isolated
-// login (see onboard.ts), then pools whatever account it landed on. Your
-// primary login is never touched.
-
 import { withLock } from "../lib/lock.ts";
 import { loadAccounts, saveAccounts } from "../lib/state.ts";
 import { credItemFor, paths } from "../lib/paths.ts";
@@ -22,11 +18,8 @@ export async function cmdAdd(): Promise<number> {
   const uuid = oauthAccount.accountUuid;
   const keychainItem = credItemFor(uuid);
 
-  // under the flock: a concurrent swap both harvests into parked items and
-  // writes the index, so the backup write and the index upsert must land in
-  // one critical section.
   const { account, poolSize } = await withLock(paths.lockFile, async () => {
-    await writeItem(parkedTarget(keychainItem), claudeAiOauthOnly(blobRaw)); // park a small backup
+    await writeItem(parkedTarget(keychainItem), claudeAiOauthOnly(blobRaw));
     const idx = loadAccounts();
     const existing = idx.accounts.find((a) => a.accountUuid === uuid);
     const fresh: Account = {

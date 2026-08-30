@@ -1,11 +1,3 @@
-// Hermetic end-to-end test of the credential SWAP + flocked concurrency, using
-// throwaway credential targets (keychain services on darwin, sandboxed files on
-// linux), a mock OAuth server, and a temp claude.json - no real second account
-// or real credentials involved. Run: `bun test/e2e/swap-concurrency.ts`.
-//
-// Env is set BEFORE importing our modules (which capture it at load), so all
-// dynamic imports come after this block.
-
 import { mkdirSync, rmSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -25,9 +17,6 @@ process.env.TOKENMAXXING_HOME = join(base, "home");
 process.env.CLAUDE_CONFIG_DIR = join(base, "claudedir");
 process.env.TOKENMAXXING_CLAUDE_JSON = join(base, "claude.json");
 process.env.TOKENMAXXING_KEYCHAIN_SERVICE = LIVE_SVC;
-// pid-derived like test/setup.ts but in a DISJOINT range (50000+): the suite
-// occupies 20000-49999 (stride-2 pairs), so an e2e run can never collide with
-// any concurrent suite run's ports.
 const MOCK_PORT = 50000 + (process.pid % 15000);
 process.env.TOKENMAXXING_OAUTH_TOKEN_URL = `http://127.0.0.1:${MOCK_PORT}/token`;
 process.env.TOKENMAXXING_OAUTH_ROLES_URL = `http://127.0.0.1:${MOCK_PORT}/roles`;
@@ -47,7 +36,6 @@ const server = Bun.serve({
   async fetch(req) {
     const url = new URL(req.url);
     if (url.pathname === "/roles") {
-      // every test token embeds its account tag: A-access / FRESH-A-rt / ROT-B-rt ...
       const token = req.headers.get("authorization")?.replace(/^Bearer /, "") ?? "";
       const tag = token.match(/(?:^|-)([ABC])-/)?.[1];
       if (!tag) return new Response("unknown test token", { status: 401 });
@@ -55,7 +43,6 @@ const server = Bun.serve({
     }
     const body = RefreshGrantSchema.parse(await req.json());
     refreshCalls++;
-    // a DEAD-prefixed refresh token is a dead grant (test 9's needs-reauth winner).
     if (body.refresh_token.startsWith("DEAD")) {
       return new Response(JSON.stringify({ error: "invalid_grant" }), { status: 400 });
     }
@@ -88,26 +75,18 @@ const check = (cond: boolean, label: string) => {
 };
 
 async function seed() {
-  // Each test is its own scenario: drop the previous test's swap stamp, or the
-  // 45s POST_SWAP_COOLDOWN suppresses every evaluation after the first swap.
   rmSync(join(process.env.TOKENMAXXING_HOME!, "lastswap.json"), { force: true });
-  // /usr/bin/true, not /bin/true: macOS has no /bin/true, and a missing
-  // claudeBin makes resolveRealClaude fail (it must never PATH-scan its way
-  // to the installed tokenmaxxing wrapper and recurse).
-  // both bars at 95: the seeded windows (5h 97, Fable 96) target a single bar.
   writeFileSync(process.env.TOKENMAXXING_HOME + "/config.json", JSON.stringify({ thresholds: { session: 95, weekly: 95 }, claudeBin: "/usr/bin/true", codexBin: "", policy: { projectionMargin: 0, greedySessionFloor: 50, switchModels: ["fable", "opus"], usagePollTtlMs: 90_000, maxWaitMs: 3_600_000 } }));
   await writeItem(parkedTarget(CRED_A), blob("A"));
   await writeItem(parkedTarget(CRED_B), blob("B"));
-  await writeItem(liveTarget(), blob("A")); // A is live
+  await writeItem(liveTarget(), blob("A"));
   writeFileSync(process.env.TOKENMAXXING_CLAUDE_JSON!, JSON.stringify({ numStartups: 7, oauthAccount: oauthAccount("A", "org-A"), keep: "me" }));
   saveAccounts({ version: 1, activeAccountUuid: "uuid-A", accounts: [acct("A", "org-A", CRED_A, false), acct("B", "org-B", CRED_B, true)] });
-  // A is over threshold (org matches active)
   const usage: UsageState = { fiveHour: { usedPercentage: 97, resetsAt: future }, sevenDay: { usedPercentage: 50, resetsAt: future }, org: "org-A", ts: Date.now(), model: null };
   writeFileSync(process.env.TOKENMAXXING_HOME + "/usage.json", JSON.stringify(usage));
 }
 
 try {
-  // ---- Test 1: a single swap does the full mechanical dance ----
   console.log("Test 1 - single swap A→B (harvest, refresh, install, rewrite identity)");
   await seed();
   const dec = await evaluateAndMaybeSwap();
@@ -123,11 +102,7 @@ try {
   const backupA = JSON.parse((await readItem(parkedTarget(CRED_A)))!);
   check(backupA.claudeAiOauth.accessToken === "A-access", "A's live creds harvested into its backup");
 
-  // ---- Test 2: org guard - a second evaluation does NOT double-swap ----
   console.log("Test 2 - org guard: stale usage (org-A) with active=B does nothing");
-  // Clear test 1's swap stamp and restore its (now cleared) org-A usage: without
-  // this the evaluation exits at post-swap-cooldown and the org guard this test
-  // is named for never runs.
   rmSync(join(process.env.TOKENMAXXING_HOME!, "lastswap.json"), { force: true });
   writeFileSync(process.env.TOKENMAXXING_HOME + "/usage.json", JSON.stringify({
     fiveHour: { usedPercentage: 97, resetsAt: future }, sevenDay: { usedPercentage: 50, resetsAt: future },
@@ -138,9 +113,8 @@ try {
   check(!dec2.swapped && dec2.reason === "under-threshold-or-stale", `org guard held (got ${dec2.reason})`);
   check(refreshCalls === 0, "no OAuth call made");
 
-  // ---- Test 3: N concurrent PROCESSES race one flocked swap ----
   console.log("Test 3 - 4 concurrent processes, one flocked swap");
-  await seed(); // reset: A active, over threshold
+  await seed();
   refreshCalls = 0;
   const runner = `
     const { evaluateAndMaybeSwap } = await import("${join(import.meta.dir, "../../src/lib/decide.ts")}");
@@ -157,23 +131,19 @@ try {
   check(refreshCalls === 1, `exactly one OAuth refresh across all processes (got ${refreshCalls})`);
   check(loadAccounts().activeAccountUuid === "uuid-B", "final state: B active after concurrent race");
 
-  // ---- Test 4: model-aware trigger - aggregate is FINE but Fable's cap is over ----
   console.log("Test 4 - per-model cap on Fable triggers a swap while aggregate is under threshold");
-  await seed(); // A active
+  await seed();
   refreshCalls = 0;
-  // aggregate well under threshold, but active model is Fable
   writeFileSync(process.env.TOKENMAXXING_HOME + "/usage.json", JSON.stringify({
     fiveHour: { usedPercentage: 30, resetsAt: future }, sevenDay: { usedPercentage: 50, resetsAt: future },
     org: "org-A", ts: Date.now(), model: { id: "claude-fable-5", display: "Fable" },
   }));
-  // pre-populate the per-model cache (fresh, org-A) so ensurePerModel doesn't shell out
   writeFileSync(process.env.TOKENMAXXING_HOME + "/model-usage.json", JSON.stringify({
     perModel: { Fable: { usedPercentage: 96, resetsAt: future } }, org: "org-A", ts: Date.now(),
   }));
   const dec4 = await evaluateAndMaybeSwap();
   check(dec4.swapped && dec4.account?.accountUuid === "uuid-B", "swapped to B on Fable's per-model cap (aggregate was 30/50)");
 
-  // ---- Test 5: same aggregate + cap, but on Sonnet → NO swap ----
   console.log("Test 5 - same numbers on Sonnet do NOT trigger (sonnet not in switchModels)");
   await seed();
   refreshCalls = 0;
@@ -187,13 +157,10 @@ try {
   const dec5 = await evaluateAndMaybeSwap();
   check(!dec5.swapped, "no swap on Sonnet even at 96% (sonnet = ok)");
 
-  // ---- Test 6: all accounts WALLED -> pre-park onto earliest-reset with waitUntil ----
   console.log("Test 6 - all walled: pre-park onto earliest-reset (B) + waitUntil");
-  await seed(); // A active, over threshold
+  await seed();
   const soon = Date.now() + 10 * 60 * 1000;
   const later = Date.now() + 40 * 60 * 1000;
-  // both at the 100 wall, so Layer 2 has nothing to squeeze and reaches the
-  // depleted pre-park (a 97 here would hold and squeeze instead of parking).
   writeFileSync(process.env.TOKENMAXXING_HOME + "/usage.json", JSON.stringify({
     fiveHour: { usedPercentage: 100, resetsAt: later }, sevenDay: { usedPercentage: 50, resetsAt: later },
     org: "org-A", ts: Date.now(), model: null,
@@ -204,13 +171,10 @@ try {
   };
   saveAccounts(idxD);
   refreshCalls = 0;
-  // anticipatory=true: only the supervised Stop hook (whose respawn marker can
-  // pause until the reset) may pre-park on a still-blocked account.
   const dec6 = await evaluateAndMaybeSwap(Date.now(), true);
   check(dec6.reason === "depleted-wait" && dec6.swapped && dec6.account?.accountUuid === "uuid-B", "depleted -> swapped to earliest-reset B");
   check(dec6.waitUntil === soon, `waitUntil = B's reset (got ${dec6.waitUntil}, want ${soon})`);
 
-  // ---- Test 7: greedy - a half-used session swaps onto the pace-behind account ----
   console.log("Test 7 - greedy: session at 55 (under every bar) still swaps to pace-behind B");
   await seed();
   writeFileSync(process.env.TOKENMAXXING_HOME + "/usage.json", JSON.stringify({
@@ -227,7 +191,6 @@ try {
   check(dec7.swapped && dec7.account?.accountUuid === "uuid-B" && dec7.waitUntil === undefined, "greedy swap landed on B with no wait");
   check(loadAccounts().activeAccountUuid === "uuid-B", "accounts.json marks B active after the greedy swap");
 
-  // ---- Test 8: greedy idempotence - re-evaluation on B holds still ----
   console.log("Test 8 - greedy idempotence: B keeps the seat on the next evaluation");
   rmSync(join(process.env.TOKENMAXXING_HOME!, "lastswap.json"), { force: true });
   writeFileSync(process.env.TOKENMAXXING_HOME + "/usage.json", JSON.stringify({
@@ -239,10 +202,9 @@ try {
   check(dec8.reason === "current-best" && !dec8.swapped, `B still wins (got ${dec8.reason})`);
   check(refreshCalls === 0, "no OAuth call on the idempotent re-check");
 
-  // ---- Test 9: greedy dead-winner fallback must still strictly beat current ----
   console.log("Test 9 - greedy: dead token on the winner never bounces a healthy session onto a worse account");
   await seed();
-  await writeItem(parkedTarget(CRED_B), blob("B", "DEAD-B-rt")); // B: best pace, dead grant
+  await writeItem(parkedTarget(CRED_B), blob("B", "DEAD-B-rt"));
   await writeItem(parkedTarget(CRED_C), blob("C"));
   const idx9 = loadAccounts();
   idx9.accounts.find((a) => a.accountUuid === "uuid-B")!.lastUsage = {

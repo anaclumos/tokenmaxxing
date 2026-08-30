@@ -1,7 +1,3 @@
-// Stdio MCP entry for the portable Agent Plugin (agent-plugin/).
-// Tools wrap existing CLI commands. stdout is reserved for MCP JSON-RPC, so
-// every CLI call captures console.log / console.error and returns the text.
-
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
@@ -27,13 +23,11 @@ function packageVersion(): string {
   }
 }
 
-/** Refuse ambient Claude store overrides the same way the CLI and SDK do. */
 export function refuseAmbientStoreEnv(): string | null {
   const nonEmpty = (v: string | undefined) => (v != null && v !== "" ? v : null);
   return nonEmpty(process.env.CLAUDE_SECURESTORAGE_CONFIG_DIR) ?? nonEmpty(process.env.CLAUDE_CONFIG_DIR);
 }
 
-/** Redact token-shaped spans so tool results never echo credentials. */
 export function scrubSecrets(text: string): string {
   return text
     .replace(/\b(Bearer\s+)[A-Za-z0-9._\-+/=]+/gi, "$1[redacted]")
@@ -43,11 +37,8 @@ export function scrubSecrets(text: string): string {
 
 type CaptureResult = { code: number; stdout: string; stderr: string };
 
-/** Serialize captureCli: console.log/error are process-global, so concurrent
- *  tool calls would interleave stdout into each other and corrupt JSON-RPC. */
 let captureChain: Promise<unknown> = Promise.resolve();
 
-/** Run a CLI cmd while keeping stdout clean for the MCP transport. */
 export async function captureCli(run: () => number | Promise<number>): Promise<CaptureResult> {
   const job = async (): Promise<CaptureResult> => {
     const out: string[] = [];
@@ -264,8 +255,6 @@ export function createTokenmaxxingMcpServer(): McpServer {
   return server;
 }
 
-/** Entrypoint for the Agent Plugin launcher (`agent-plugin/bin/tokenmaxxing-mcp`).
- *  Exported because that bin imports this module (so `import.meta.main` is false here). */
 export async function main(): Promise<void> {
   const ambient = refuseAmbientStoreEnv();
   if (ambient != null) {

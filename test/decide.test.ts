@@ -1,13 +1,3 @@
-// The headless paths of evaluateAndMaybeSwap: no rendering statusLine, so the
-// decision runs off `claude -p '/usage'` probes with the model unknown. The
-// probe must feed BOTH snapshots, refresh them once they age past the poll TTL
-// or drift orgs, and gate on every configured family - on 2026-07-12 the ARM box sat
-// at its Fable cap for hours of periodic checks because the per-model half was
-// discarded and nothing ever refreshed the aggregates. Every case here resolves
-// without touching a credential store; decisions that would perform a real swap
-// fail loudly on the missing parked credential, which is itself an assertion
-// that the picker screened the candidates it was supposed to.
-
 import { chmodSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, beforeEach, describe, expect, test } from "bun:test";
@@ -21,7 +11,6 @@ const D = 86_400_000;
 const fakeClaude = join(paths.home, "fake-claude");
 const probeMarker = join(paths.home, "probe-ran");
 
-/** A `/usage` reset clock the parser accepts (comma glue), `epochMs` in UTC. */
 function usageClock(epochMs: number): string {
   const d = new Date(epochMs);
   const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -31,7 +20,6 @@ function usageClock(epochMs: number): string {
   return `${months[d.getUTCMonth()]} ${d.getUTCDate()}, ${h}:${mm}${h24 >= 12 ? "pm" : "am"} (UTC)`;
 }
 
-/** Install a fake claude whose `/usage` reports the given Fable percentage. */
 function installFakeClaude(fablePct: number, resetAt: number): void {
   const text = [
     "You are currently using your subscription to power your Claude Code usage",
@@ -77,8 +65,6 @@ function clearState(): void {
   for (const f of files) rmSync(f, { force: true });
 }
 
-/** Write a usage.json fixture; `ageMs` backdates BOTH ts and the mtime
- *  heartbeat, the way a genuinely idle feed looks. */
 function writeUsageJson(over: Record<string, unknown>, ageMs = 0): void {
   writeFileSync(
     paths.usageJson,
@@ -107,14 +93,11 @@ describe("evaluateAndMaybeSwap headless snapshot handling", () => {
   test("one probe persists BOTH snapshots and a burnt Fable cap gates despite healthy aggregates", async () => {
     installFakeClaude(96, Date.now() + 2 * D);
     const d = await evaluateAndMaybeSwap();
-    // sole account, soft-exhausted on Fable but under the 100 wall: Layer 2
-    // holds and squeezes the last drops rather than parking (the gate fired).
     expect(d.reason).toBe("last-drop-hold");
     expect(d.swapped).toBe(false);
     expect(loadUsage()?.sevenDay.usedPercentage).toBe(72);
     expect(loadUsage()?.model).toBe(null);
     expect(loadModelUsage()?.perModel["Fable"]?.usedPercentage).toBe(96);
-    // the locked section stamped the snapshot onto the account for the picker.
     expect(loadAccounts().accounts[0]?.lastPerModel?.["Fable"]?.usedPercentage).toBe(96);
   });
 
@@ -136,8 +119,6 @@ describe("evaluateAndMaybeSwap headless snapshot handling", () => {
 
   test("a snapshot older than the poll TTL is re-probed, not trusted (frozen aggregates, stale model label)", async () => {
     installFakeClaude(96, Date.now() + 2 * D);
-    // Stale tee from a session that may be long gone: healthy values, sonnet
-    // model. Trusting either would leave the box blind to the burnt Fable cap.
     writeUsageJson({ model: { id: "claude-3-5-sonnet-20241022", display: "Sonnet" } }, 120_000);
     const d = await evaluateAndMaybeSwap();
     expect(d.reason).toBe("last-drop-hold");
@@ -147,9 +128,6 @@ describe("evaluateAndMaybeSwap headless snapshot handling", () => {
 
   test("an alive tee whose figures held still (aged ts, fresh mtime) stays trusted, model intact", async () => {
     installFakeClaude(96, Date.now() + 2 * D);
-    // write-on-change suppression lets ts age up to 10min under an alive feed;
-    // the mtime heartbeat is what proves liveness. A live sonnet session must
-    // not be treated as headless (model erased -> fable gate misfires).
     writeUsageJson({ ts: Date.now() - 300_000, model: { id: "claude-sonnet-5", display: "Sonnet 5" } });
     const d = await evaluateAndMaybeSwap();
     expect(d.reason).toBe("under-threshold-or-stale");
@@ -195,13 +173,11 @@ describe("evaluateAndMaybeSwap headless snapshot handling", () => {
         lastUsageAt: Date.now(),
       }),
     ]);
-    // fresh sonnet tee, under every bar, session half-used: B (90 left) out-pressures A (40 left).
     writeUsageJson({
       fiveHour: { usedPercentage: 55, resetsAt: Date.now() + 3_600_000 },
       sevenDay: { usedPercentage: 60, resetsAt: Date.now() + D2 },
       model: { id: "claude-3-5-sonnet-20241022", display: "Sonnet" },
     });
-    // the greedy path chose to swap onto B - proven by the loud missing-credential throw.
     await expect(evaluateAndMaybeSwap()).rejects.toThrow(/no parked credential/);
   });
 
@@ -247,30 +223,18 @@ describe("evaluateAndMaybeSwap headless snapshot handling", () => {
   });
 
   test("under label drift both the usage stamp AND the greedy seat resolve by the LIVE org", async () => {
-    // accounts.json's activeAccountUuid still names B (manual /login drift,
-    // the surviving drift source) while claude.json and the tee say org-A.
-    // Stamping by label wrote A's windows into B, and the label-resolved seat
-    // then judged B as "current" - ranking on the wrong cached windows and
-    // offering the LIVE account as a swap target (closing-review + bugbot
-    // catches). With both resolved by live org: A gets the stamp, A wins its
-    // own seat, and the decision is a clean no-swap current-best.
     installFakeClaude(10, Date.now() + 2 * D);
     installFixtures([poolAccount("B")]);
     saveAccounts({ version: 1, activeAccountUuid: "B", accounts: [poolAccount("A"), poolAccount("B")] });
     writeUsageJson({ fiveHour: { usedPercentage: 60, resetsAt: Date.now() + 3_600_000 } });
     const d = await evaluateAndMaybeSwap(Date.now(), false);
-    expect(d.reason).toBe("current-best"); // the live account holds the seat; never-sampled B ranks last
+    expect(d.reason).toBe("current-best");
     const after = loadAccounts();
     expect(after.accounts.find((x) => x.accountUuid === "A")!.lastUsage?.fiveHour.usedPercentage).toBe(60);
     expect(after.accounts.find((x) => x.accountUuid === "B")!.lastUsage).toBeUndefined();
   });
 
   test("a KNOWN live org outside the pool stands down instead of seating the stale label", async () => {
-    // The user /login'd an account that was never pooled. The seat fallback
-    // must not stand in the stale labeled account: the depleted path could
-    // park a supervised session against the LABEL's reset while the running
-    // login is someone else entirely (pullfrog review catch, PR #33 - the
-    // codex live-credential-not-in-pool guard, mirrored).
     installFakeClaude(10, Date.now() + 2 * D);
     installFixtures();
     writeFileSync(
@@ -281,15 +245,12 @@ describe("evaluateAndMaybeSwap headless snapshot handling", () => {
     const d = await evaluateAndMaybeSwap(Date.now(), true);
     expect(d.reason).toBe("live-credential-not-in-pool");
     expect(d.swapped).toBe(false);
-    // no depleted-wait was recorded against the stale label
     expect(loadDepletedWait()).toBeNull();
   });
 
   test("split thresholds: a session window over its own bar triggers below the weekly bar", async () => {
     installFakeClaude(50, Date.now() + 2 * D);
     installFixtures([], { session: 95, weekly: 98 });
-    // fresh sonnet tee: no per-model gate, no probe; session 96 >= 95 is the sole
-    // trigger. Under the wall (96 < 100), so it engages then holds to squeeze.
     writeUsageJson({
       fiveHour: { usedPercentage: 96, resetsAt: Date.now() + 2 * D },
       model: { id: "claude-3-5-sonnet-20241022", display: "Sonnet" },
@@ -300,8 +261,6 @@ describe("evaluateAndMaybeSwap headless snapshot handling", () => {
   });
 
   test("split thresholds: weekly windows between the bars do not trigger", async () => {
-    // week-all 96 and week-Fable 96 both sit under the 98 weekly bar; the old
-    // single 95 bar would have swapped on either.
     installFakeClaude(96, Date.now() + 2 * D);
     installFixtures([], { session: 95, weekly: 98 });
     writeUsageJson({
@@ -316,19 +275,11 @@ describe("evaluateAndMaybeSwap headless snapshot handling", () => {
     installFakeClaude(98, Date.now() + 2 * D);
     installFixtures([], { session: 95, weekly: 98 });
     const d = await evaluateAndMaybeSwap();
-    // Fable 98 >= the 98 weekly bar engages the hard path; still under the 100
-    // wall, so Layer 2 holds and squeezes the last 2% rather than parking.
     expect(d.reason).toBe("last-drop-hold");
     expect(loadModelUsage()?.perModel["Fable"]?.usedPercentage).toBe(98);
   });
 
   test("only a pause-capable caller may pre-park on a still-blocked account", async () => {
-    // Every account is WALLED (100), so Layer 2 finds nothing to squeeze and
-    // reaches the depleted-wait path. B drops below its wall within maxWaitMs but
-    // is walled NOW. A non-anticipatory caller (check timer, unsupervised hook)
-    // must stay put; the supervised stop hook may pre-park, which here fails
-    // loudly on the missing parked credential - proving the flag, not the
-    // picker, is what withheld the swap.
     installFakeClaude(100, Date.now() + 2 * D);
     installFixtures([
       poolAccount("B", {
@@ -346,38 +297,27 @@ describe("evaluateAndMaybeSwap headless snapshot handling", () => {
   });
 
   test("a recorded depleted-wait replays through the cooldown so sibling hooks get their marker", async () => {
-    // The first hook's pre-park starts the cooldown; without the replay every
-    // sibling Stop hook returned account:null and only ONE session ever paused
-    // (DESIGN.md 3.5's fan-out). The record must also die on expiry and when a
-    // real swap moved the active label elsewhere.
     const now = Date.now();
     installFakeClaude(96, now + 2 * D);
-    saveLastSwapAt(now - 1_000); // inside the 45s cooldown
+    saveLastSwapAt(now - 1_000);
     saveDepletedWait({ waitUntil: now + 10 * 60_000, accountUuid: "A", ts: now });
     const replay = await evaluateAndMaybeSwap(now, true);
     expect(replay.reason).toBe("depleted-wait");
     expect(replay.account?.accountUuid).toBe("A");
     expect(replay.waitUntil).toBe(now + 10 * 60_000);
 
-    saveDepletedWait({ waitUntil: now - 1, accountUuid: "A", ts: now }); // expired
+    saveDepletedWait({ waitUntil: now - 1, accountUuid: "A", ts: now });
     expect((await evaluateAndMaybeSwap(now, true)).reason).toBe("post-swap-cooldown");
 
-    saveDepletedWait({ waitUntil: now + 10 * 60_000, accountUuid: "B", ts: now }); // superseded
+    saveDepletedWait({ waitUntil: now + 10 * 60_000, accountUuid: "B", ts: now });
     expect((await evaluateAndMaybeSwap(now, true)).reason).toBe("post-swap-cooldown");
 
-    // a manual /login moved the live seat: claude.json oauthAccount is the
-    // fresh signal, and the stale accounts.json label (still "A") must not
-    // resurrect a wait for an account no longer live.
     saveDepletedWait({ waitUntil: now + 10 * 60_000, accountUuid: "A", ts: now });
     writeFileSync(paths.claudeJson, JSON.stringify({ oauthAccount: { accountUuid: "F", emailAddress: "F@e.com", organizationUuid: "org-F" } }));
     expect((await evaluateAndMaybeSwap(now, true)).reason).toBe("post-swap-cooldown");
   });
 
   test("a dead grant on the earliest-reset pre-park target falls through to the next account", async () => {
-    // All three accounts are WALLED (100) so Layer 2 has nothing to squeeze and
-    // reaches the depleted-wait path. B drops below its wall soonest but its
-    // refresh token is dead: the depleted loop must mark B needs-reauth and
-    // pre-park onto C, never abort into all-depleted.
     const now = Date.now();
     const server = Bun.serve({
       port: Number(new URL(process.env.TOKENMAXXING_OAUTH_ROLES_URL!).port),
@@ -425,11 +365,6 @@ describe("evaluateAndMaybeSwap headless snapshot handling", () => {
   });
 
   test("candidates whose gated cap is burnt are screened out down the whole chain", async () => {
-    // A is WALLED on Fable and B has healthy aggregates but a Fable cap burnt to
-    // the wall (100): the burnt cap must screen B out of the soft switch pick,
-    // the Layer 2 wall squeeze, AND the depleted pre-park. If any stage loses the
-    // switchFamilies screen, performSwap on the missing parked credential throws
-    // and fails this test; nothing is squeezable, so the pool parks.
     installFakeClaude(100, Date.now() + 2 * D);
     installFixtures([
       poolAccount("B", {
@@ -448,9 +383,6 @@ describe("evaluateAndMaybeSwap headless snapshot handling", () => {
   });
 
   test("Layer 2 hold: a hard-usable seat squeezes in place, never ping-ponging onto an equally squeezable sibling", async () => {
-    // Both accounts sit at Fable 96: soft-exhausted (>= 95) but under the 100
-    // wall. Layer 1 finds no usable switch target, and Layer 2 must HOLD the
-    // seat and squeeze rather than swap between two equally squeezable accounts.
     installFakeClaude(96, Date.now() + 2 * D);
     installFixtures([
       poolAccount("B", {
@@ -466,11 +398,6 @@ describe("evaluateAndMaybeSwap headless snapshot handling", () => {
   });
 
   test("Layer 2 swap: a walled seat moves onto a still-squeezable account to keep pumping", async () => {
-    // A is walled on Fable (100); B is soft-exhausted (96) but under the wall.
-    // Layer 1 has no usable target and the seat cannot squeeze, so Layer 2 must
-    // swap onto B - proven by the missing-parked-credential throw, which fires
-    // only once the swap onto B is actually attempted (soft screening rejected B
-    // at 96 >= 95, so this can only be the Layer 2 wall pick).
     installFakeClaude(100, Date.now() + 2 * D);
     installFixtures([
       poolAccount("B", {
@@ -483,11 +410,6 @@ describe("evaluateAndMaybeSwap headless snapshot handling", () => {
   });
 
   test("Layer 2 is disabled when hardThresholds == thresholds, even with a projection margin", async () => {
-    // margin 3 -> effectiveBars session 92 AND hardBars session 95-3=92: identical,
-    // so an account in the 92-95 band that Layer 1 flags is ALSO at the wall. Layer
-    // 2 finds nothing to squeeze and the pool parks, exactly as before Layer 2 - the
-    // documented `hardThresholds == thresholds` disable (which a naive no-margin wall
-    // would have left a live 92-95 band inside; PR #47 review catch).
     installFakeClaude(50, Date.now() + 2 * D);
     installFixtures([], { session: 95, weekly: 95 });
     writeFileSync(
@@ -504,6 +426,6 @@ describe("evaluateAndMaybeSwap headless snapshot handling", () => {
       model: { id: "claude-3-5-sonnet-20241022", display: "Sonnet" },
     });
     const d = await evaluateAndMaybeSwap();
-    expect(d.reason).toBe("all-depleted"); // parked, NOT last-drop-hold
+    expect(d.reason).toBe("all-depleted");
   });
 });

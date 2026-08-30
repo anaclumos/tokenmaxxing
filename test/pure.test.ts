@@ -25,31 +25,25 @@ describe("supervisor argument analysis", () => {
   test("explicit session id / resume are captured", () => {
     expect(analyzeArgs(["--session-id", UUID]).sessionId).toBe(UUID);
     expect(analyzeArgs(["--resume", UUID]).resumeId).toBe(UUID);
-    expect(analyzeArgs(["-r"]).resumeId).toBe(null); // picker mode, no id
+    expect(analyzeArgs(["-r"]).resumeId).toBe(null);
     expect(analyzeArgs(["-c"]).continueLatest).toBe(true);
   });
   test("a non-UUID --session-id never becomes supervisor state (path traversal guard)", () => {
     const bad = analyzeArgs(["--session-id", "../../../../some/file"]);
     expect(bad.sessionId).toBe(null);
-    expect(bad.manage).toBe(false); // pass through unmanaged; real claude rejects the id
+    expect(bad.manage).toBe(false);
   });
   test("value-taking root flag values never read as the subcommand", () => {
-    // `--settings config` once flipped manage off because the VALUE token was
-    // mistaken for a subcommand and the session silently ran unmanaged
-    // (closing-review catch; the hardening shouldManageCodex already had).
     expect(analyzeArgs(["--settings", "config"]).manage).toBe(true);
     expect(analyzeArgs(["--append-system-prompt", "help"]).manage).toBe(true);
-    expect(analyzeArgs(["--add-dir", "agents", "mcp"]).manage).toBe(true); // variadic eats every non-dash follower
-    expect(analyzeArgs(["-d", "config"]).manage).toBe(true); // optional-value consumes a non-flag follower
-    expect(analyzeArgs(["--settings", "x", "mcp"]).manage).toBe(false); // a real subcommand still passes through
+    expect(analyzeArgs(["--add-dir", "agents", "mcp"]).manage).toBe(true);
+    expect(analyzeArgs(["-d", "config"]).manage).toBe(true);
+    expect(analyzeArgs(["--settings", "x", "mcp"]).manage).toBe(false);
   });
   test("a forked resume passes through unmanaged (the fork mints a new sid)", () => {
-    // Managing it would pin marker paths to the stale pre-fork sid, and a
-    // respawn would fork yet another session off the old transcript
-    // (closing-review catch).
     expect(analyzeArgs(["--resume", UUID, "--fork-session"]).manage).toBe(false);
     expect(analyzeArgs(["-c", "--fork-session"]).manage).toBe(false);
-    expect(analyzeArgs(["--fork-session"]).manage).toBe(true); // inert without a resume
+    expect(analyzeArgs(["--fork-session"]).manage).toBe(true);
   });
   test("stripSessionFlags removes only session selectors", () => {
     expect(stripSessionFlags(["--session-id", UUID, "--model", "opus"])).toEqual(["--model", "opus"]);
@@ -57,10 +51,6 @@ describe("supervisor argument analysis", () => {
     expect(stripSessionFlags(["-c", "--add-dir", "/x"])).toEqual(["--add-dir", "/x"]);
   });
   test("picker-mode resume passes through unmanaged (claude owns the sid choice)", () => {
-    // Bare -r opens claude's interactive picker; -r <term> is a picker SEARCH
-    // TERM (binary-verified 2.1.214). Both choose the sid inside claude, so
-    // the supervisor cannot pin marker paths - it must not convert them into
-    // fresh --session-id launches.
     expect(analyzeArgs(["-r"]).manage).toBe(false);
     expect(analyzeArgs(["-r"]).resumeId).toBe(null);
     expect(analyzeArgs(["--resume"]).manage).toBe(false);
@@ -86,12 +76,8 @@ function acct(over: Partial<Account>): Account {
 describe("account picker", () => {
   const now = 1_000_000;
   const WEEK = 7 * 24 * 60 * 60 * 1000;
-  // Both bars at 95: these cases exercise window/reset semantics, not the split.
   const T = { session: 95, weekly: 95 };
   test("prefers the account furthest behind its own pace, excludes current + reauth", () => {
-    // soonest expiry but nearly drained (10 left / 1d = 10/d) loses to the one
-    // with real forfeiture pressure (80 left / 2d = 40/d) - the case where the
-    // old soonest-expiry policy and pace pressure disagree.
     const soon = acct({ accountUuid: "A", lastUsage: { fiveHour: { usedPercentage: 10, resetsAt: null }, sevenDay: { usedPercentage: 90, resetsAt: now + 86_400_000 } } });
     const behind = acct({ accountUuid: "B", lastUsage: { fiveHour: { usedPercentage: 10, resetsAt: null }, sevenDay: { usedPercentage: 20, resetsAt: now + 2 * 86_400_000 } } });
     const cur = acct({ accountUuid: "CUR" });
@@ -108,10 +94,8 @@ describe("account picker", () => {
     const D = 86_400_000;
     const live = acct({ lastUsage: { fiveHour: { usedPercentage: 0, resetsAt: null }, sevenDay: { usedPercentage: 60, resetsAt: now + 2 * D } } });
     expect(pacePressure(live, now)).toBe(40 / (2 * D));
-    // cached window already reset: the account is fresh again, deadline extrapolated
     const rolled = acct({ lastUsage: { fiveHour: { usedPercentage: 0, resetsAt: null }, sevenDay: { usedPercentage: 90, resetsAt: now - 10_000 } } });
     expect(pacePressure(rolled, now)).toBe(100 / (WEEK - 10_000));
-    // no reset anchor: nothing is known to be forfeited on any clock
     expect(pacePressure(acct({}), now)).toBe(0);
     const clockless = acct({ lastUsage: { fiveHour: { usedPercentage: 0, resetsAt: null }, sevenDay: { usedPercentage: 30, resetsAt: null } } });
     expect(pacePressure(clockless, now)).toBe(0);
@@ -122,9 +106,6 @@ describe("account picker", () => {
     expect(pickBest([a, b], { now, thresholds: T, currentAccountUuid: null, switchFamilies: [] })?.accountUuid).toBe("B");
   });
   test("unmeasured ranks LAST in the usage tiebreak: any measured account beats a never-sampled one", () => {
-    // `?? 0` once made a never-sampled account look maximally safe and win
-    // this tiebreak against any measured account (closing-review catch:
-    // unmeasured must not look safe).
     const measured = acct({ accountUuid: "M", lastUsage: { fiveHour: { usedPercentage: 10, resetsAt: null }, sevenDay: { usedPercentage: 80, resetsAt: null } } });
     const unmeasured = acct({ accountUuid: "U" });
     expect(pickBest([unmeasured, measured], { now, thresholds: T, currentAccountUuid: null, switchFamilies: [] })?.accountUuid).toBe("M");
@@ -139,7 +120,6 @@ describe("account picker", () => {
     expect(weeklyExpiry(acct({}), now)).toBe(Number.POSITIVE_INFINITY);
   });
   test("just-reset (stale past) account ranks after one with nearer forfeiture pressure", () => {
-    // R is fresh with a full week ahead (100/7d); E must burn 70 in 2d.
     const justReset = acct({ accountUuid: "R", lastUsage: { fiveHour: { usedPercentage: 10, resetsAt: null }, sevenDay: { usedPercentage: 90, resetsAt: now - 10_000 } } });
     const expiring = acct({ accountUuid: "E", lastUsage: { fiveHour: { usedPercentage: 10, resetsAt: null }, sevenDay: { usedPercentage: 30, resetsAt: now + 2 * 86_400_000 } } });
     expect(pickBest([justReset, expiring], { now, thresholds: T, currentAccountUuid: null, switchFamilies: [] })?.accountUuid).toBe("E");
@@ -215,30 +195,25 @@ describe("account picker", () => {
       acct({ accountUuid: uuid, lastUsage: { fiveHour: { usedPercentage: 10, resetsAt: null }, sevenDay: { usedPercentage: used, resetsAt: now + 2 * D } } });
     const ctx = { now, thresholds: T, currentAccountUuid: null, switchFamilies: [] };
     const active = mk("A", 40);
-    expect(currentWins(active, [active, mk("B", 70)], ctx)).toBe(true); // A has more at risk
-    expect(currentWins(active, [active, mk("B", 10)], ctx)).toBe(false); // B strictly better
-    expect(currentWins(active, [active, mk("B", 40)], ctx)).toBe(true); // tie: swapping buys nothing
+    expect(currentWins(active, [active, mk("B", 70)], ctx)).toBe(true);
+    expect(currentWins(active, [active, mk("B", 10)], ctx)).toBe(false);
+    expect(currentWins(active, [active, mk("B", 40)], ctx)).toBe(true);
     const burnt = acct({ accountUuid: "A", lastUsage: { fiveHour: { usedPercentage: 99, resetsAt: now + 3_600_000 }, sevenDay: { usedPercentage: 40, resetsAt: now + 2 * D } } });
-    expect(currentWins(burnt, [burnt, mk("B", 70)], ctx)).toBe(false); // own exhaustion loses the seat
+    expect(currentWins(burnt, [burnt, mk("B", 70)], ctx)).toBe(false);
     expect(currentWins(null, [mk("B", 70)], ctx)).toBe(false);
   });
   test("split thresholds: the session window gates at its own bar, weekly windows at theirs", () => {
     const t = { session: 95, weekly: 98 };
     const week = { usedPercentage: 10, resetsAt: now + 86_400_000 };
-    // session 96 blocks at the 95 session bar even though it is under the weekly bar
     const sessionHot = acct({ lastUsage: { fiveHour: { usedPercentage: 96, resetsAt: now + 3_600_000 }, sevenDay: week } });
     expect(isExhausted(sessionHot, { now, thresholds: t, currentAccountUuid: null, switchFamilies: [] })).toBe(true);
-    // weekly 96 stays under the 98 weekly bar (the old single 95 bar would have blocked)
     const weekWarm = acct({ lastUsage: { fiveHour: { usedPercentage: 10, resetsAt: null }, sevenDay: { usedPercentage: 96, resetsAt: now + 86_400_000 } } });
     expect(isExhausted(weekWarm, { now, thresholds: t, currentAccountUuid: null, switchFamilies: [] })).toBe(false);
-    // per-model caps ride the weekly bar: 96 passes, 98 blocks
     const cap = (pct: number) => acct({ lastUsage: { fiveHour: { usedPercentage: 10, resetsAt: null }, sevenDay: week }, lastPerModel: { Fable: { usedPercentage: pct, resetsAt: now + 2 * 86_400_000 } } });
     expect(isExhausted(cap(96), { now, thresholds: t, currentAccountUuid: null, switchFamilies: ["fable"] })).toBe(false);
     expect(isExhausted(cap(98), { now, thresholds: t, currentAccountUuid: null, switchFamilies: ["fable"] })).toBe(true);
   });
   test("a blocked window with no reset and no sample time is never a wait target (Infinity, skipped)", () => {
-    // isExhausted holds such an account blocked; claiming availableAt=now would
-    // swap onto it with waitUntil=now and churn kill/respawn.
     const unknowable = acct({
       accountUuid: "U",
       lastUsage: { fiveHour: { usedPercentage: 10, resetsAt: null }, sevenDay: { usedPercentage: 10, resetsAt: now + 86_400_000 } },
@@ -257,13 +232,10 @@ describe("account picker", () => {
     const H = 3_600_000;
     const ctx = { now, thresholds: T, currentAccountUuid: null, switchFamilies: ["fable"] };
     const win = { fiveHour: { usedPercentage: 99, resetsAt: null }, sevenDay: { usedPercentage: 10, resetsAt: null } };
-    // 5h window sampled 6h ago has certainly reset - the bench self-heals.
     expect(isExhausted(acct({ lastUsage: win, lastUsageAt: now - 6 * H }), ctx)).toBe(false);
-    // sampled 1h ago: blocked, recovering at sample + 5h.
     const recent = acct({ lastUsage: win, lastUsageAt: now - H });
     expect(isExhausted(recent, ctx)).toBe(true);
     expect(usableAt(recent, ctx)).toBe(now - H + 5 * H);
-    // per-model caps bound by the weekly duration.
     const fableNull = acct({
       lastUsage: { fiveHour: { usedPercentage: 5, resetsAt: null }, sevenDay: { usedPercentage: 10, resetsAt: null } },
       lastPerModel: { Fable: { usedPercentage: 97, resetsAt: null } },
@@ -275,11 +247,6 @@ describe("account picker", () => {
 
 describe("respawn marker contract", () => {
   test("a marker IS a depleted wait: waitUntil AND the resume sessionId are required", () => {
-    // Plain swaps adopt in place and write no marker (0.15.0); a marker that
-    // parses without waitUntil would respawn a session for nothing. The
-    // sessionId names the CURRENT transcript to resume - after /clear it
-    // drifts from the pinned id keying the marker FILE, and a marker without
-    // it would resume the pre-/clear conversation (closing-review HIGH).
     expect(RespawnMarkerSchema.safeParse({ account: "a", ts: 1 }).success).toBe(false);
     expect(RespawnMarkerSchema.safeParse({ account: "a", ts: 1, waitUntil: 2 }).success).toBe(false);
     expect(RespawnMarkerSchema.safeParse({ account: "a", ts: 1, waitUntil: 2, sessionId: "s" }).success).toBe(true);
@@ -288,9 +255,6 @@ describe("respawn marker contract", () => {
 
 describe("codex account contract", () => {
   test("credFile is a bare file name: a traversal in the index fails to parse", () => {
-    // `rm --codex` unlinks join(credsDir, credFile + ".json"), and join()
-    // normalizes `../` straight out of codex-creds, so a corrupted index must
-    // throw at load rather than delete somebody else's file (review catch).
     const base = { accountId: "a", email: null, label: "l", planType: null, addedAt: "t" };
     expect(CodexAccountSchema.safeParse({ ...base, credFile: "tokenmaxxing-codex-abc12345" }).success).toBe(true);
     for (const credFile of ["../../.claude/settings", "creds/x", "..", "", "a\\b"]) {
@@ -317,7 +281,6 @@ describe("usage parsing", () => {
     expect(parseStatusLineStdin("garbage")).toBe(null);
   });
   test("a partial statusLine payload is rejected, never zero-filled", () => {
-    // Fabricating 0% for the missing aggregate would make unmeasured look safe.
     expect(parseStatusLineStdin({ rate_limits: { five_hour: { used_percentage: 40, resets_at: 1738425600 } } })).toBe(null);
     expect(parseStatusLineStdin({ rate_limits: { seven_day: { used_percentage: 40, resets_at: 1738857600 } } })).toBe(null);
   });
@@ -331,7 +294,7 @@ describe("usage parsing", () => {
     expect(parseStatusLineModel({ foo: 1 })).toBe(null);
   });
   test("parseUsageTextFull separates session, week-all, and per-model caps with reset epochs", () => {
-    const now = Date.parse("2026-07-09T12:00:00+09:00"); // Asia/Seoul reference
+    const now = Date.parse("2026-07-09T12:00:00+09:00");
     const text = [
       "Current session: 35% used · resets Jul 9 at 11:20pm (Asia/Seoul)",
       "Current week (all models): 50% used · resets Jul 11 at 12pm (Asia/Seoul)",
@@ -344,7 +307,7 @@ describe("usage parsing", () => {
     expect(f.weekAll.resetsAt).toBe(Date.parse("2026-07-11T12:00:00+09:00"));
     expect(f.perModel["Fable"]?.usedPercentage).toBe(80);
     expect(f.perModel["Fable"]?.resetsAt).toBe(Date.parse("2026-07-11T12:00:00+09:00"));
-    expect(Object.keys(f.perModel)).toEqual(["Fable"]); // "all models" excluded
+    expect(Object.keys(f.perModel)).toEqual(["Fable"]);
   });
   test("parseUsageTextFull tolerates missing reset clocks", () => {
     const text = ["Current session: 5% used", "Current week (all models): 9% used"].join("\n");
@@ -354,13 +317,12 @@ describe("usage parsing", () => {
     expect(f.weekAll.usedPercentage).toBe(9);
   });
   test("a partial parse (an aggregate row missing) is rejected, never zero-filled", () => {
-    // Fabricating 0% for an unparsed window would make unmeasured look safe.
     expect(parseUsageTextFull("Current session: 41% used", Date.now())).toBeNull();
     expect(parseUsageTextFull("Current week (all models): 41% used", Date.now())).toBeNull();
     expect(parseUsageTextFull("Current week (Fable): 41% used", Date.now())).toBeNull();
   });
   test("parseUsageTextFull parses the comma day-time glue (real 2.1.206 Linux output)", () => {
-    const now = Date.parse("2026-07-10T13:00:00+09:00"); // Asia/Seoul reference
+    const now = Date.parse("2026-07-10T13:00:00+09:00");
     const text = [
       "You are currently using your subscription to power your Claude Code usage",
       "",
@@ -378,7 +340,6 @@ describe("usage parsing", () => {
   });
   test("parseResetClock infers the nearest year and honors the tz", () => {
     const now = Date.parse("2026-12-31T12:00:00+09:00");
-    // "Jan 1" with no year should resolve to 2027, not 2026 (nearest to now).
     expect(parseResetClock("Jan 1 at 9am (Asia/Seoul)", now)).toBe(Date.parse("2027-01-01T09:00:00+09:00"));
     expect(parseResetClock("nonsense", now)).toBe(null);
   });
@@ -387,8 +348,6 @@ describe("usage parsing", () => {
     const expected = Date.parse("2026-07-10T15:30:00+09:00");
     expect(parseResetClock("Jul 10 at 3:30pm (Asia/Seoul)", now)).toBe(expected);
     expect(parseResetClock("Jul 10, 3:30pm (Asia/Seoul)", now)).toBe(expected);
-    // An unobserved glue stays unparsed so format drift trips the drift log
-    // instead of guessing an instant.
     expect(parseResetClock("Jul 10 3:30pm (Asia/Seoul)", now)).toBe(null);
   });
   test("parseUsageTextFull never lets a dateless clock steal the next entry's clock", () => {
@@ -444,7 +403,6 @@ describe("claudeTierLabel", () => {
   });
   test("a tier without a multiplier falls back to the bare subscription", () => {
     expect(claudeTierLabel({ subscriptionType: "free", rateLimitTier: "default_claude_zero" })).toBe("free");
-    // "max" ends in x but is not <digits>x - it must never read as a multiplier.
     expect(claudeTierLabel({ subscriptionType: "max", rateLimitTier: "default_claude_max" })).toBe("max");
   });
   test("missing fields degrade to what is known, never to a fake tier", () => {

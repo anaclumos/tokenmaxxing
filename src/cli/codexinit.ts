@@ -1,10 +1,3 @@
-// `tokenmaxxing init --codex` - bring the codex side up: verify + pin the real
-// codex binary, import the existing live login as codex account #1, install
-// the on-PATH codex supervisor shim and the Stop hook declaration, and tell
-// the user about the one step tokenmaxxing cannot do for them: codex skips
-// hooks it has not been TRUSTED to run (trust is recorded against the hook's
-// hash via /hooks in the codex TUI), so auto-switching stays inert until then.
-
 import { existsSync, readFileSync } from "node:fs";
 import { resolveRealCodex, verifyRealCodex } from "../lib/codexbin.ts";
 import { codexIdentityOf, readLiveCodexAuth, writeParkedCodexAuth } from "../lib/codexauth.ts";
@@ -18,16 +11,6 @@ import { codexCredItemFor, codexPaths } from "../lib/paths.ts";
 import type { CodexAccount, CodexUsage } from "../lib/types.ts";
 import { c } from "./render.ts";
 
-/** Fail fast when config.toml pins the credential store away from the plain
- *  file tokenmaxxing swaps (structural line scan: the repo ships no TOML
- *  parser, and this single key is the only one we ever inspect). The real key
- *  is `cli_auth_credentials_store` (binary-verified 0.144.5; an earlier
- *  verification misread the enum TYPE name as a `_mode` key). An ABSENT key is
- *  allowed: the DEFAULT at 0.144.5 is `file` itself (source-verified:
- *  AuthCredentialsStoreMode derives Default on the File variant), and init
- *  separately verifies a harvestable auth.json.
- *  Any EXPLICIT non-file pin (keyring, auto, ephemeral) is a deliberate store
- *  choice tokenmaxxing cannot honor. */
 function storePinnedAwayFromFile(): boolean {
   const configToml = `${codexPaths.home}/config.toml`;
   if (!existsSync(configToml)) return false;
@@ -36,8 +19,6 @@ function storePinnedAwayFromFile(): boolean {
     if (!line.startsWith("cli_auth_credentials_store")) continue;
     const rest = line.slice("cli_auth_credentials_store".length).trimStart();
     if (!rest.startsWith("=")) continue;
-    // Value only: strip an inline TOML comment and the quotes structurally so
-    // a comment mentioning "keyring" never false-positives the fail-fast.
     const beforeComment = rest.slice(1).split("#", 1)[0]!;
     const value = beforeComment.replaceAll('"', "").replaceAll("'", "").trim();
     return value !== "file";
@@ -46,7 +27,6 @@ function storePinnedAwayFromFile(): boolean {
 }
 
 export async function cmdCodexInit(): Promise<number> {
-  // Fail fast on a broken merged config before installing (see cmdInit).
   loadConfig();
   const real = resolveRealCodex();
   const fail = verifyRealCodex({ bin: real });
@@ -54,7 +34,6 @@ export async function cmdCodexInit(): Promise<number> {
     console.error(c.red(`codex binary failed verification: ${real}: ${fail}`));
     return 1;
   }
-  // Sparse write: only the pin lands in the file, never the merged config.
   pinBinOverride({ key: "codexBin", bin: real });
 
   if (storePinnedAwayFromFile()) {
@@ -81,13 +60,6 @@ export async function cmdCodexInit(): Promise<number> {
 
   const credFile = codexCredItemFor(identity.accountId);
 
-  // A RUNNING supervised session on this account can rotate auth.json at any
-  // moment (codex persists rotations instantly, and the flock serializes only
-  // tokenmaxxing actors) - a snapshot parked now could hold an already-
-  // superseded refresh token whose next refresh is reuse-punished (cubic
-  // review catch, PR #35). Refuse loudly, like the sampler's present-account
-  // rule; sessions launched around the shim are the same accepted gap as
-  // everywhere presence is the signal.
   if (presentCodexAccountIds().has(identity.accountId)) {
     console.error(c.red("a live supervised codex session is running this account - its token rotates under us, so parking a snapshot now could poison the backup."));
     console.error(c.dim("close that codex session (or let it exit) and re-run `tokenmaxxing init --codex`."));
@@ -95,21 +67,9 @@ export async function cmdCodexInit(): Promise<number> {
   }
 
   const account = await withLock(codexPaths.lockFile, () => {
-    // Re-check presence INSIDE the critical section (pullfrog review catch,
-    // PR #35): supervisor spawns are flock-serialized too, so one can start -
-    // check passed, presence written, session live - entirely between the
-    // friendly pre-lock check above and this lock acquisition. The throw
-    // routes through the CLI error boundary as a clean failure.
     if (presentCodexAccountIds().has(identity.accountId)) {
       throw new Error("a live supervised codex session started running this account mid-init - close it and re-run `tokenmaxxing init --codex`");
     }
-    // Park INSIDE the flock, from a blob RE-READ inside it (closing-review
-    // catch): the pre-lock snapshot is seconds stale (a network usage GET sits
-    // in between), and parking it unlocked could clobber a concurrent swap's
-    // just-harvested newest rotation with a superseded refresh token - whose
-    // next refresh is reuse-punished into a dead grant family. An identity
-    // that changed since the pre-lock read means a swap landed mid-init:
-    // abort rather than file the wrong account.
     const fresh2 = readLiveCodexAuth();
     if (!fresh2 || codexIdentityOf({ auth: fresh2 }).accountId !== identity.accountId) {
       throw new Error("the live codex login changed while init was running (a concurrent swap?) - re-run `tokenmaxxing init --codex`");

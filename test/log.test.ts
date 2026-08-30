@@ -1,5 +1,3 @@
-// log(): the append-only file line and the optional terminal echo tee.
-
 import { describe, expect, test } from "bun:test";
 import { chmodSync, readFileSync, writeFileSync } from "node:fs";
 import { log, setLogEcho } from "../src/lib/log.ts";

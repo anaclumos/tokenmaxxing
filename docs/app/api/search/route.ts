@@ -3,8 +3,6 @@ import { createFromSource } from 'fumadocs-core/search/server';
 import { createTokenizer as createMandarinTokenizer } from '@orama/tokenizers/mandarin';
 import { createTokenizer as createJapaneseTokenizer } from '@orama/tokenizers/japanese';
 
-// Orama's stock splitters cannot segment these scripts (they would produce zero
-// tokens); a word-granularity Intl.Segmenter covers them.
 function segmenterTokenizer({ locale }: { locale: string }) {
   const segmenter = new Intl.Segmenter(locale, { granularity: 'word' });
 
@@ -21,7 +19,6 @@ function segmenterTokenizer({ locale }: { locale: string }) {
   };
 }
 
-// https://docs.orama.com/docs/orama-js/supported-languages
 export const { GET } = createFromSource(source, {
   localeMap: {
     en: { language: 'english' },

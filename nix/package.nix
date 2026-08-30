@@ -3,9 +3,6 @@
   bun2nix,
   stdenv,
 }:
-# Source-run under Bun (same distribution model as the npm package). Do not
-# switch this to bun2nix.mkDerivation/--compile: flock goes through bun:ffi and
-# the published artifact is deliberately TypeScript source.
 bun2nix.writeBunApplication {
   packageJson = ../package.json;
 
@@ -20,8 +17,6 @@ bun2nix.writeBunApplication {
     ];
   };
 
-  # Optional platform packages (claude-agent-sdk) and Darwin's preference for
-  # symlink installs mirror the bun2nix nextjs template.
   bunInstallFlags = [
     "--cpu=*"
   ]
@@ -33,9 +28,6 @@ bun2nix.writeBunApplication {
   dontUseBunBuild = true;
   dontUseBunCheck = true;
 
-  # TOKENMAXXING_NIX tells init to write PATH-indirect supervisor shims instead
-  # of hardcoding this generation's /nix/store entry (which vanishes on GC /
-  # profile upgrade). chdir is the packaged share tree.
   startScript = ''
     export TOKENMAXXING_NIX=1
     exec bun run ./src/main.ts "$@"

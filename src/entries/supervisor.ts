@@ -1,12 +1,3 @@
-// The `claude` supervisor. Invoked in place of claude (via ~/.config/tokenmaxxing/
-// bin/claude on PATH). Runs the REAL claude with inherited stdio (claude owns the
-// real terminal exactly as if run directly), pins a session id, and watches for a
-// respawn marker dropped by the Stop hook on a depleted-pool wait (plain swaps
-// adopt in place and never respawn). When the marker appears it SIGTERMs its own
-// child at the (already-committed) turn boundary, counts down to the reset, and
-// relaunches `claude --resume <id>`. Process/terminal manager only - it never
-// reads or proxies tokens.
-
 import { existsSync, mkdirSync, readFileSync, rmSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { maxBy } from "es-toolkit";
@@ -23,13 +14,6 @@ const NONINTERACTIVE_SUBCMDS = new Set([
   "setup-token", "plugin", "agents", "completion", "help",
 ]);
 
-// Root flags whose VALUE tokens must never be read as the subcommand (e.g.
-// `--settings config` is an interactive session, not `claude config`): the
-// same hardening class shouldManageCodex got. Split by arity, mirroring
-// claude's own commander declarations (--help-verified 2.1.215; claude changes
-// monthly - a newly added value-taking flag regresses only that flag's
-// collision case). `--session-id` / `-r` / `--resume` consume their values in
-// dedicated branches below.
 const VALUE_TAKING_ROOT_FLAGS = new Set([
   "--agent", "--agents", "--append-system-prompt", "--append-system-prompt-file",
   "--debug-file", "--effort", "--fallback-model", "--input-format",
@@ -38,12 +22,10 @@ const VALUE_TAKING_ROOT_FLAGS = new Set([
   "--remote-control-session-name-prefix", "--setting-sources", "--settings",
   "--system-prompt",
 ]);
-// Variadic (`<x...>`): commander consumes EVERY following non-dash token.
 const VARIADIC_ROOT_FLAGS = new Set([
   "--add-dir", "--allowedTools", "--allowed-tools", "--betas",
   "--disallowedTools", "--disallowed-tools", "--file", "--mcp-config", "--tools",
 ]);
-// Optional value (`[x]`): commander consumes the next token unless it is a flag.
 const OPTIONAL_VALUE_ROOT_FLAGS = new Set([
   "-d", "--debug", "--from-pr", "--prompt-suggestions", "--remote-control", "-w", "--worktree",
 ]);
@@ -73,33 +55,17 @@ export function analyzeArgs(argv: string[]): Analysis {
     if (a === "-p" || a === "--print") printMode = true;
     else if (a === "--version" || a === "-v" || a === "--help" || a === "-h") printMode = true;
     else if (a === "--session-id") {
-      // A non-UUID here must never become supervisor state: the sid names the
-      // respawn-marker and session-flag paths (an unvalidated value could
-      // traverse out of them), and real claude rejects a malformed id anyway -
-      // pass it through unmanaged and let claude do the rejecting.
       const next = argv[++i] ?? null;
       if (next && isUuid(next)) sessionId = next;
       else invalidSessionArg = true;
     }
     else if (a === "-c" || a === "--continue") continueLatest = true;
     else if (a === "-r" || a === "--resume") {
-      // A UUID resume is managed (the sid is known, marker paths can be
-      // pinned). Bare `-r`, or `-r <term>` (binary-verified 2.1.214: a non-id
-      // value is an interactive-picker SEARCH TERM), choose the sid INSIDE
-      // claude - the supervisor cannot pin marker paths for an unknown sid, so
-      // those pass through unmanaged and claude behaves exactly as without the
-      // wrapper (same accepted state as claude's bg-daemon sessions: swaps
-      // still adopt in place, hooks still fire; only the depleted-pool
-      // countdown is absent).
       const next = argv[i + 1];
       if (next && !next.startsWith("-") && isUuid(next)) { resumeId = next; i++; }
       else pickerResume = true;
     }
     else if (a === "--fork-session") forkSession = true;
-    // commander's `--flag=value` forms (closing-review catch: unrecognized,
-    // they were skipped as unknown dash-args, so the supervisor pinned a
-    // fresh random sid while claude ran the flag-selected session - markers
-    // and session flags landed under an id nothing was running).
     else if (a.startsWith("--session-id=")) {
       const value = a.slice("--session-id=".length);
       if (isUuid(value)) sessionId = value;
@@ -123,18 +89,11 @@ export function analyzeArgs(argv: string[]): Analysis {
   }
 
   const isSubcmd = firstPositional !== null && NONINTERACTIVE_SUBCMDS.has(firstPositional);
-  // A forked resume gets a NEW session id chosen inside claude, so the
-  // supervisor cannot pin marker paths - pass through unmanaged like
-  // picker-mode resume (closing-review catch: managing it paired the marker
-  // to the stale pre-fork sid, and a respawn would fork yet another session).
   const forkResume = forkSession && (resumeId !== null || continueLatest);
   const manage = !printMode && !isSubcmd && !invalidSessionArg && !pickerResume && !forkResume && !process.env.TOKENMAXXING_PROBE;
   return { manage, sessionId, resumeId, continueLatest };
 }
 
-/** Remove session-selecting flags so we can inject our own on respawn. Managed
- *  argv can only carry a UUID-valued resume (picker-mode passes through
- *  unmanaged), so the value is always consumed with its flag. */
 export function stripSessionFlags(argv: string[]): string[] {
   const out: string[] = [];
   for (let i = 0; i < argv.length; i++) {
@@ -142,43 +101,17 @@ export function stripSessionFlags(argv: string[]): string[] {
     if (a === "--session-id") { i++; continue; }
     if (a === "-c" || a === "--continue") continue;
     if (a === "-r" || a === "--resume") { i++; continue; }
-    // the commander `=` forms carry their value in the same token
     if (a.startsWith("--session-id=") || a.startsWith("--resume=")) continue;
-    // --fork-session must not survive into respawn args: bare `--fork-session`
-    // is inert and stays managed, but a depleted-pool respawn injects
-    // `--resume <sid>` - with the flag still present claude would FORK to a
-    // NEW session id, permanently unpairing the supervisor's marker path from
-    // the running session (closing-review catch).
     if (a === "--fork-session") continue;
     out.push(a);
   }
   return out;
 }
 
-/** Remove positional tokens (the one-shot initial prompt) while keeping every
- *  flag and its consumed value(s). A positional is a submit-once user turn:
- *  persisting or replaying it on a respawn / later `--resume` re-injects the
- *  original instruction into an already-progressed session (adversarial-review
- *  HIGH catch) - only real flags like --model belong in sessions/ files and
- *  respawn args.
- *
- *  TRADEOFF (WONTFIX, flagged PR #37): when claude adds a value-taking root
- *  flag before the sets above are updated, that value reads as a positional
- *  and is dropped, so the respawn launches without it and claude errors on the
- *  missing argument - loud, and the user relaunches. The alternative default
- *  (treat a bare token after an UNRECOGNIZED flag as that flag's value) turns
- *  the same staleness silent: a newly added BOOLEAN flag sitting before the
- *  prompt would make the prompt look like a value and replay a submit-once
- *  turn, which is the exact harm this function exists to prevent. The
- *  ambiguity is irreducible without claude's own option table, and a loud
- *  broken launch beats a silent re-submit. */
 export function stripPositionals(argv: string[]): string[] {
   const out: string[] = [];
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]!;
-    // `--` ends option parsing: everything after it is positional (a prompt
-    // deliberately starting with "-"), never a flag to persist (PR #37
-    // review catch). The delimiter itself is dropped with them.
     if (a === "--") break;
     if (!a.startsWith("-")) continue;
     out.push(a);
@@ -193,12 +126,6 @@ export function stripPositionals(argv: string[]): string[] {
   return out;
 }
 
-/** Newest transcript session id for the current cwd (for `-c`). claude's
- *  project-dir slug maps EVERY non-alphanumeric char to "-": the regex below
- *  mirrors claude's own, byte for byte (binary-verified 2.1.215, the external-
- *  contract regex exception). The old [/.]-only mapping missed underscores
- *  etc., so `-c` in such a cwd silently opened a brand-new session instead of
- *  continuing (closing-review catch). */
 function latestSessionForCwd(): string | null {
   const slug = process.cwd().replace(/[^a-zA-Z0-9]/g, "-");
   const projDir = join(paths.claudeDir, "projects", slug);
@@ -220,11 +147,6 @@ const MarkerGateSchema = z.object({
 });
 type MarkerGate = z.infer<typeof MarkerGateSchema>;
 
-/** Read + validate a respawn marker. An unparseable one (a version-skew hook,
- *  corruption) is dropped loudly and reported as absent: the watcher checks
- *  validity BEFORE the SIGTERM, so garbage can never kill the session, and the
- *  post-exit consume can never throw after the child is already dead (PR #36
- *  review catch). */
 function consumableMarker(marker: string, gate: MarkerGate): z.infer<typeof RespawnMarkerSchema> | null {
   let m: z.infer<typeof RespawnMarkerSchema>;
   try {
@@ -247,8 +169,6 @@ function consumableMarker(marker: string, gate: MarkerGate): z.infer<typeof Resp
   return m;
 }
 
-/** Interruptible countdown until `until`, shown in the terminal (claude is dead,
- *  so the statusLine can't render it). Ctrl-C resumes immediately. */
 async function countdownWait(acct: string, until: number): Promise<boolean> {
   let aborted = false;
   const onInt = () => { aborted = true; };
@@ -266,11 +186,7 @@ async function countdownWait(acct: string, until: number): Promise<boolean> {
   return aborted;
 }
 
-/** Entry point: `claude ...args`. */
 export async function runSupervisor(argv: string[]): Promise<number> {
-  // Depth cap: every spawn below tags its child, so a claudeBin that leads back
-  // here (pinned shim re-execing `claude` from PATH) dies at a handful of
-  // processes instead of fork-bombing the machine (2026-07-12 incident).
   const depth = wrapDepth();
   if (depth >= MAX_WRAP_DEPTH) {
     console.error(
@@ -279,8 +195,6 @@ export async function runSupervisor(argv: string[]): Promise<number> {
     log("supervisor.loop_abort", { depth });
     return 1;
   }
-  // Rate backstop: an env-sanitizing shim in the loop strips the sentinel, but
-  // it cannot erase the on-disk entry counter.
   if (wrapperEntryRateTripped(Date.now())) {
     console.error(
       `tokenmaxxing: ${LOOP_DIAGNOSIS} (over ${WRAP_RATE_MAX} wrapper entries in ${WRAP_RATE_WINDOW_MS / 1000}s) - claudeBin in ${paths.configJson} does not launch the real Claude binary. Fix claudeBin, then run \`tokenmaxxing doctor\`.`,
@@ -292,21 +206,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
   const info = analyzeArgs(argv);
   const childEnv = { ...process.env, [WRAP_DEPTH_ENV]: String(depth + 1) };
 
-  // Pass-through: no session management, no respawn - exact stock behavior.
-  // The unmanaged-zone sentinel (pooledSpawnEnv) forces it regardless of argv:
-  // everything below an SDK-driven session runs the real claude unsupervised,
-  // so a repo script invoking `claude` from inside a serve turn works instead
-  // of dying at the depth cap. The sentinel rides childEnv, so the whole
-  // subtree stays unmanaged, and depth still counts wrapper entries toward
-  // the cap above, keeping a poisoned pin inside the zone bounded.
   if (!info.manage || process.env[UNMANAGED_ENV]) {
-    // STRIP the supervision pairing env (mirrors the codex shim's passthrough
-    // arm, closing-review catch): a nested unmanaged claude inside a
-    // supervised session (e.g. the agent running `claude -p ...`) would
-    // otherwise inherit TOKENMAXXING_SUPERVISED/TOKENMAXXING_SESSION_ID, and
-    // its Stop hooks - which DO fire in print mode - would compute
-    // canPause=true and could anticipatorily pre-park the pool against a
-    // marker path the OUTER supervisor owns.
     const passthroughEnv: Record<string, string | undefined> = { ...childEnv };
     delete passthroughEnv.TOKENMAXXING_SUPERVISED;
     delete passthroughEnv.TOKENMAXXING_SESSION_ID;
@@ -315,7 +215,6 @@ export async function runSupervisor(argv: string[]): Promise<number> {
     return p.exitCode ?? (p.signalCode ? 1 : 0);
   }
 
-  // Decide the managed session id + whether we're resuming an existing one.
   let base = stripSessionFlags(argv);
   let sid: string;
   let resuming = false;
@@ -331,19 +230,10 @@ export async function runSupervisor(argv: string[]): Promise<number> {
     sid = crypto.randomUUID();
   }
 
-  // Restore the original launch flags when resuming a session with none given
-  // this time (a bare `claude --resume <id>`, or the depleted-pool recovery).
   if (resuming && base.length === 0) {
     const persisted = loadSessionFlags(sid);
-    // enforce the flags-only contract at the trust boundary, not just at
-    // write: a sessions/ file written before stripPositionals existed can
-    // still carry the original prompt, and restoring it verbatim would
-    // re-submit that prompt on a bare `claude --resume` (PR #37 review
-    // catch). Idempotent on well-formed files.
     if (persisted) base = stripPositionals(persisted);
   }
-  // The FIRST launch keeps a positional prompt (the user just typed it);
-  // everything persisted or respawned carries flags only.
   const persistable = stripPositionals(base);
   saveSessionFlags(sid, persistable, process.cwd());
   pruneStaleSessions(Date.now());
@@ -354,8 +244,6 @@ export async function runSupervisor(argv: string[]): Promise<number> {
   const marker = join(paths.respawnDir, sid);
   const savedTermios = saveTermios();
 
-  // Supervisor survives the SIGINT/SIGHUP that flow to the foreground group;
-  // claude (the child, same pgrp) receives and handles them itself.
   process.on("SIGINT", () => {});
   process.on("SIGHUP", () => {});
 
@@ -373,7 +261,6 @@ export async function runSupervisor(argv: string[]): Promise<number> {
       env: { ...childEnv, TOKENMAXXING_SUPERVISED: "1", TOKENMAXXING_SESSION_ID: sid, TOKENMAXXING_LAUNCHED_AT: String(gate.launchedAt) },
     });
 
-    // Race the child's own exit against the appearance of a respawn marker.
     let done = false;
     const markerWatch = (async () => {
       while (!done) {
@@ -386,7 +273,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
     const winner = await Promise.race([exited, markerWatch.then((m) => (m ? "marker" : "exit"))]);
 
     if (winner === "marker") {
-      child.kill(); // SIGTERM at the committed turn boundary
+      child.kill();
     }
     await child.exited;
     done = true;
@@ -400,19 +287,10 @@ export async function runSupervisor(argv: string[]): Promise<number> {
       if (m.waitUntil > Date.now()) {
         if (await countdownWait(m.account, m.waitUntil)) overriddenUntil = m.waitUntil;
       } else process.stdout.write(`\n\x1b[36m↻ tokenmaxxing: switched to ${m.account} - resuming...\x1b[0m\n`);
-      // resume the marker's CURRENT transcript, not the pinned id: after
-      // /clear they differ, and resuming the pinned id would revive the
-      // pre-/clear conversation (closing-review HIGH catch). Persist the
-      // flags under that transcript id too, so a later bare
-      // `claude --resume <id>` restores them (PR #36 review catch). FLAGS
-      // only: replaying a positional prompt would re-submit it as a fresh
-      // turn on the progressed session (adversarial-review HIGH catch).
       saveSessionFlags(m.sessionId, persistable, process.cwd());
       launchArgs = ["--resume", m.sessionId, ...persistable, ...(m.prompt ? ["--", m.prompt] : [])];
       continue;
     }
-    // No marker: claude exited on its own (quit, crash, resume refused). Log it -
-    // "the process just exited" is undiagnosable without the code/signal.
     log("supervisor.exit", { sid, respawns, code: child.exitCode, signal: child.signalCode });
     return child.exitCode ?? (child.signalCode ? 1 : 0);
   }

@@ -1,12 +1,3 @@
-// `tokenmaxxing add --codex` - register an ADDITIONAL codex account. Runs
-// `codex login --device-auth` inside a throwaway CODEX_HOME pinned to
-// file-mode credential storage (auto mode would keyring-namespace the login on
-// macOS and leave nothing harvestable), then parks the resulting auth.json
-// under the token's OWN identity and indexes it. The primary login is never
-// touched. Device auth is the default (user decision 2026-07-20): the browser
-// flow binds localhost on the machine running the command, so it dead-ends
-// over ssh; the device code works from any browser.
-
 import { mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { MAX_WRAP_DEPTH, WRAP_DEPTH_ENV } from "../lib/claudebin.ts";
@@ -24,11 +15,6 @@ import { c, count } from "./render.ts";
 export async function cmdCodexAdd(): Promise<number> {
   const real = resolveRealCodex();
   const onboardDir = codexPaths.onboardDir;
-  // Deliberate hard delete (not trash; user decision 2026-07-16): the onboard
-  // dir holds a plaintext live credential after login, and a trashed copy
-  // would keep that token readable. The dir is tokenmaxxing's own transient
-  // artifact; its one durable output is parked separately before cleanup.
-  // Same rationale at the end-of-run cleanup below.
   rmSync(onboardDir, { recursive: true, force: true });
   mkdirSync(onboardDir, { recursive: true });
   writeFileAtomic(join(onboardDir, "config.toml"), 'cli_auth_credentials_store = "file"\n');
@@ -52,9 +38,6 @@ export async function cmdCodexAdd(): Promise<number> {
   await p.exited;
   restoreTermios(savedTermios);
 
-  // The finally guarantees the plaintext onboard home is destroyed on every
-  // non-signal exit; an exception mid-registration must not strand it. (An
-  // interactive Ctrl-C is reaped by the next run's rmSync-first.)
   let account: CodexAccount;
   let poolSize: number;
   try {

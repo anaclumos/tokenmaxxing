@@ -1,10 +1,3 @@
-// `pingSession` (status --force): one minimal metered request that starts an
-// account's 5h session window. These pin the spawn contract - the exact argv
-// (haiku model, hooks disabled, json output), the scrubbed probe env with the
-// wrap-depth cap preset (a ping must never re-enter the wrapper), the isolated
-// CLAUDE_CONFIG_DIR, and the empty scratch cwd - plus the failure surfaces
-// (nonzero exit, is_error result, unparseable output).
-
 import { afterAll, afterEach, expect, test } from "bun:test";
 import { chmodSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -36,8 +29,6 @@ afterAll(() => {
 
 test("a successful ping returns null and spawns the exact minimal-request contract", async () => {
   installFakeClaude(`echo '{"type":"result","subtype":"success","is_error":false,"result":"ok"}'`);
-  // an ambient credential override must never leak into the ping (it would
-  // meter the wrong account) - same scrub contract as the /usage probe.
   process.env.CLAUDE_CODE_OAUTH_TOKEN = "sk-ant-oat01-ambient";
   const isolated = join(scratch, "isolated-dir");
 
@@ -57,7 +48,6 @@ test("a successful ping returns null and spawns the exact minimal-request contra
   expect(env.get("TOKENMAXXING_WRAP_DEPTH")).toBe(String(MAX_WRAP_DEPTH));
   expect(env.has("CLAUDE_CODE_OAUTH_TOKEN")).toBe(false);
 
-  // runs from the empty scratch cwd so no project context inflates the request
   expect(realpathSync(readFileSync(cwdFile, "utf8").trim())).toBe(realpathSync(join(paths.sampleDir, "ping-cwd")));
 });
 
@@ -65,8 +55,6 @@ test("a live ping (no configDir) does not force CLAUDE_CONFIG_DIR", async () => 
   installFakeClaude(`echo '{"type":"result","subtype":"success","is_error":false,"result":"ok"}'`);
   expect(await pingSession()).toBeNull();
   const env = readFileSync(envFile, "utf8");
-  // setup.ts pins a hermetic CLAUDE_CONFIG_DIR for the whole test process; the
-  // live ping must pass it through untouched rather than overriding it.
   expect(env).toContain(`CLAUDE_CONFIG_DIR=${process.env.CLAUDE_CONFIG_DIR}`);
 });
 

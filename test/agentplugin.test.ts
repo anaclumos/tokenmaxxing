@@ -1,5 +1,3 @@
-// Layout invariants for the portable Agent Plugins package (agent-plugin/).
-
 import { describe, expect, test } from "bun:test";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";

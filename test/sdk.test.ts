@@ -18,9 +18,6 @@ const saved: Record<string, string | undefined> = {};
 
 beforeEach(() => {
   for (const k of MUTATED) saved[k] = process.env[k];
-  // The preload sandbox sets CLAUDE_CONFIG_DIR (paths.ts captured it at import);
-  // pooledSpawnEnv reads it at CALL time and fails fast on it by design, so the
-  // happy-path tests below run with it unset, and the guard test sets it back.
   delete process.env.CLAUDE_CONFIG_DIR;
   for (const f of [paths.configJson, paths.usageJson, paths.modelUsageJson, paths.lastSwapJson, paths.accountsJson]) {
     rmSync(f, { force: true });
@@ -44,19 +41,12 @@ describe("pooledSpawnEnv", () => {
     }
     process.env.TOKENMAXXING_SDK_TEST_PASSTHROUGH = "kept";
 
-    // The session running this test may itself sit under the wrapper (ambient
-    // depth); clear it so the assertion pins "not preset" rather than racing
-    // the launcher's env.
     delete process.env[WRAP_DEPTH_ENV];
     const env = pooledSpawnEnv();
     for (const k of CRED_ENV_OVERRIDES) expect(env[k]).toBeUndefined();
     expect(env[UNMANAGED_ENV]).toBe("1");
-    // depth is NOT preset: it keeps counting real wrapper entries so a
-    // poisoned pin below the SDK session still dies at the cap, while a
-    // legitimate nested `claude`/`codex` passes through unmanaged.
     expect(env[WRAP_DEPTH_ENV]).toBeUndefined();
     expect(env.TOKENMAXXING_SDK_TEST_PASSTHROUGH).toBe("kept");
-    // the copy is scrubbed, the ambient process env is not
     expect(process.env.CLAUDE_CODE_OAUTH_TOKEN).toBe("ambient");
   });
 
@@ -90,8 +80,6 @@ describe("stopHookCheck", () => {
   });
 
   test("swallows a decision failure that ensureBestAccount surfaces (hook must never interrupt the agent)", async () => {
-    // Corrupt claude.json makes readOAuthAccount throw before the engagement
-    // pre-check ever short-circuits, exercising the real failure path.
     writeFileSync(process.env.TOKENMAXXING_CLAUDE_JSON!, "{ not json");
     await expect(ensureBestAccount()).rejects.toThrow();
     await expect(stopHookCheck()).resolves.toEqual({});

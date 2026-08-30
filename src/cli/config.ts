@@ -1,10 +1,3 @@
-// `tokenmaxxing config` - inspect, edit, and housekeep config.json (user ask
-// 2026-07-16). Operates on the SPARSE file: config.json holds only overrides
-// and loadConfig merges defaults at read time, so baking defaults into the
-// file would freeze future default changes. `tidy` is the housekeeper: it
-// drops keys the schema no longer knows (e.g. the pre-0.7 flat `threshold`)
-// and normalizes switchModels casing; get/set/unset only ever report them.
-
 import { existsSync, readFileSync } from "node:fs";
 import { isPlainObject } from "es-toolkit";
 import { get, set, unset } from "es-toolkit/compat";
@@ -14,9 +7,6 @@ import { ConfigFileSchema, loadConfig, mergeConfigFile } from "../lib/state.ts";
 import { writeFileAtomic } from "../lib/atomic.ts";
 import { c } from "./render.ts";
 
-/** Hand-maintained mirror of ConfigFileSchema's dotted keys; an invariant test
- *  (test/config.test.ts) pins the two together so a new schema field cannot
- *  silently become invisible to get/set/tidy. */
 export const KNOWN_KEYS = [
   "thresholds.session",
   "thresholds.weekly",
@@ -42,7 +32,6 @@ function writeRawFile(input: { raw: Record<string, unknown> }): void {
   writeFileAtomic(paths.configJson, JSON.stringify(input.raw, null, 2) + "\n");
 }
 
-/** Dotted keys in `obj` (two levels: this config nests exactly once). */
 function dottedKeys(obj: Record<string, unknown>): string[] {
   const keys: string[] = [];
   for (const [key, value] of Object.entries(obj)) {
@@ -94,7 +83,6 @@ function cmdGet(key: string): number {
   return 0;
 }
 
-/** JSON when it parses (numbers, booleans, arrays), else the literal string. */
 function parseValue(text: string): unknown {
   try {
     return JSON.parse(text);
@@ -117,19 +105,12 @@ function cmdSet(key: string, valueText: string): number {
     console.error(c.red(`rejected: ${validated.error.issues.map((issue) => `${issue.path.join(".")}: ${issue.message}`).join("; ")}`));
     return 1;
   }
-  // The per-field gate passed; the MERGED whole must too, or this write makes
-  // every later loadConfig throw (the projectionMargin-vs-thresholds refine),
-  // silently disabling status/switch/hooks/statusline until the file is
-  // hand-repaired (closing-review catch).
   const mergedCheck = mergeConfigFile(validated.data);
   if (!mergedCheck.ok) {
     console.error(c.red(`rejected: ${mergedCheck.detail}`));
     return 1;
   }
   writeRawFile({ raw: next });
-  // Report the FILE-level change: with an env override in place, the effective
-  // value would not move, and an unchanged-looking arrow would misrepresent
-  // the write that just happened.
   const beforeFile = get(raw, key);
   console.log(
     `${key}: ${beforeFile === undefined ? "(default)" : JSON.stringify(beforeFile)} -> ${JSON.stringify(get(next, key))}`,
@@ -139,8 +120,6 @@ function cmdSet(key: string, valueText: string): number {
   return 0;
 }
 
-/** Remove parents emptied by a deletion or a strip: the sparse file must not
- *  accumulate `{}` husks. */
 function pruneEmptyParents(raw: Record<string, unknown>): void {
   for (const [topKey, value] of Object.entries(raw)) {
     if (isPlainObject(value) && Object.keys(value).length === 0) {
@@ -162,11 +141,6 @@ function cmdUnset(key: string): number {
   const next = structuredClone(raw);
   unset(next, key);
   pruneEmptyParents(next);
-  // Same merged-whole gate as `set` (adversarial-review catch): removing one
-  // override shifts the merged value back to its default, and the
-  // projectionMargin-vs-thresholds refine can fail on the RESULT even though
-  // every remaining field is individually valid - writing that file would make
-  // every later loadConfig throw, bricking status/switch/hooks/statusline.
   const validated = ConfigFileSchema.safeParse(next);
   if (!validated.success) {
     console.error(c.red(`rejected: ${validated.error.issues.map((issue) => `${issue.path.join(".")}: ${issue.message}`).join("; ")}`));
@@ -185,8 +159,6 @@ function cmdUnset(key: string): number {
 function cmdTidy(): number {
   const raw = readRawFile();
   const dropped = unknownFileKeys(raw);
-  // ConfigFileSchema strips unknown keys at both levels; switchModels casing
-  // normalizes to what the loader would use anyway.
   const parsed = ConfigFileSchema.parse(raw);
   const next = RawFileSchema.parse(JSON.parse(JSON.stringify(parsed)));
   const models = get(next, "policy.switchModels");
@@ -195,7 +167,6 @@ function cmdTidy(): number {
   if (normalized != null) set(next, "policy.switchModels", normalized);
   pruneEmptyParents(next);
 
-  // Honest housekeeping: say exactly what changed, write only when something did.
   if (JSON.stringify(next) === JSON.stringify(raw)) {
     console.log(c.dim("nothing to tidy"));
     return 0;
@@ -216,7 +187,6 @@ export function cmdConfig(args: string[]): number {
     if (sub === "unset" && key !== undefined) return cmdUnset(key);
     if (sub === "tidy") return cmdTidy();
   } catch (e) {
-    // A corrupt config.json fails fast with a recovery step, not a stack trace.
     console.error(c.red(`config.json is unreadable: ${e instanceof Error ? e.message : String(e)}`));
     console.error(c.dim(`fix or delete ${paths.configJson} (defaults apply when it is absent), then re-run`));
     return 1;

@@ -1,7 +1,4 @@
 #!/usr/bin/env bun
-// Single multi-call binary. Behaves as the `claude` supervisor when invoked as
-// `claude` (or `__supervise`), routes hook/statusLine subcommands, and otherwise
-// dispatches the `tokenmaxxing` CLI.
 
 import { basename } from "node:path";
 import { runSupervisor } from "./entries/supervisor.ts";
@@ -65,7 +62,6 @@ async function main(): Promise<number> {
   const argv0 = basename(process.argv0 || process.argv[0] || "");
   const sub = args[0];
 
-  // supervisor mode: invoked as `claude`, or explicit `__supervise`
   if (argv0 === "claude" || sub === "__supervise") {
     return runSupervisor(sub === "__supervise" ? args.slice(1) : args);
   }
@@ -73,20 +69,7 @@ async function main(): Promise<number> {
     return runCodexSupervisor({ argv: sub === "__supervise-codex" ? args.slice(1) : args });
   }
 
-  // CLI commands refuse an ambient claude store override (closing-review
-  // catch): with CLAUDE_CONFIG_DIR set, claude reads a hash-namespaced
-  // keychain item and a relocated .claude.json while this tool's identity,
-  // swap, and sampling machinery target the default store - `xx init` would
-  // silently import whatever stale login lives in the default location. The
-  // SDK's pooledSpawnEnv fails fast on exactly this; the CLI now matches.
-  // Scoped to COMMANDS only: the __-entries (hooks/statusline) and the
-  // supervisor arms above must never break a session claude itself launched
-  // with that env - sessions run under an ambient override are outside the
-  // managed envelope, like claude's bg-daemon bypass.
   if (!(sub != null && sub.startsWith("__")) && !process.env.TOKENMAXXING_PROBE) {
-    // first NONEMPTY value, secure-storage first (claude's own precedence):
-    // `??` alone let an empty CLAUDE_CONFIG_DIR mask a set SECURESTORAGE
-    // override (cubic review catch, PR #35).
     const nonEmpty = (v: string | undefined) => (v != null && v !== "" ? v : null);
     const ambient = nonEmpty(process.env.CLAUDE_SECURESTORAGE_CONFIG_DIR) ?? nonEmpty(process.env.CLAUDE_CONFIG_DIR);
     if (ambient != null) {
@@ -102,11 +85,8 @@ async function main(): Promise<number> {
     case "__stop-failure-hook": return runStopFailureHook();
     case "__session-start": return runSessionStart();
     case "__codex-stop-hook": return runCodexStopHook();
-    case undefined: return cmdStatus(); // bare `tokenmaxxing` / `xx` → status
-    case "--force": return cmdStatus(true); // bare `xx --force` → status --force
-    // --codex accepted anywhere, like init/add/status: the old args[1]-only
-    // check made `xx switch <sel> --codex` silently run a real CLAUDE swap
-    // (one email can hold both pools' accounts - closing-review catch).
+    case undefined: return cmdStatus();
+    case "--force": return cmdStatus(true);
     case "switch": {
       const rest = args.slice(1).filter((a) => a !== "--codex");
       return args.includes("--codex") ? cmdCodexSwitch(rest[0]) : cmdSwitch(rest[0]);
@@ -120,9 +100,6 @@ async function main(): Promise<number> {
     case "status": return cmdStatus(args.includes("--force"));
     case "watch": return cmdWatch(args[1]);
     case "doctor": return cmdDoctor();
-    // --codex accepted anywhere, like switch/rename: the two pools are
-    // separate namespaces and codex accounts were otherwise unremovable
-    // (adversarial-review catch).
     case "rm": {
       const rest = args.slice(1).filter((a) => a !== "--codex");
       return args.includes("--codex") ? cmdCodexRm(rest[0]) : cmdRm(rest[0]);
@@ -130,9 +107,6 @@ async function main(): Promise<number> {
     case "rename": return cmdRename(args.slice(1));
     case "uninstall": {
       const out = uninstallSupervisor();
-      // the headline lists only what verifiably happened - claiming the timer
-      // or PATH line gone while the outcome flags say otherwise would
-      // contradict the warnings below (bugbot review catch, PR #33).
       const removed = [
         "supervisor wrapper",
         "settings entries",
@@ -157,12 +131,6 @@ async function main(): Promise<number> {
   }
 }
 
-// The CLI's error boundary: operational failures that deliberately THROW deep
-// in the libs (a locked keychain failing readItem loudly, codexinit's
-// changed-mid-init abort, corrupt state files) must reach the user as one
-// clean red line with the recovery hint the throw site wrote - not a raw
-// stack trace (bugbot review catch, PR #35). The __-entry subcommands keep
-// their own never-throw contracts and normally never reach this.
 try {
   process.exit(await main());
 } catch (e) {

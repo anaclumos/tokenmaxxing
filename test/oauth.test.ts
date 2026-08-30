@@ -18,8 +18,6 @@ beforeAll(() => {
         return new Response("upstream exploded", { status: 500 });
       }
       if (lastBody.refresh_token === "OMIT") {
-        // rotation omitted: the schema allows it, and the client must keep
-        // the previous refresh token instead of persisting undefined.
         return Response.json({
           access_token: "fresh-access-OMIT",
           expires_in: 3600,
@@ -57,20 +55,14 @@ describe("oauth refresh grant", () => {
     expect(out.refreshToken).toBe("rotated-rt-123");
     expect(out.expiresAt).toBe(now + 3600 * 1000);
     expect(out.refreshTokenExpiresAt).toBe(now + 7776000 * 1000);
-    expect(out.subscriptionType).toBe("max"); // preserved
+    expect(out.subscriptionType).toBe("max");
     expect(out.rateLimitTier).toBe("tier");
-    // request shape
     expect(lastBody.grant_type).toBe("refresh_token");
     expect(lastBody.client_id).toBeTruthy();
     expect(lastBody.scope).toBe("user:inference user:profile");
   });
 
   test("reuses previous refresh token when server omits it", async () => {
-    // the OMIT sentinel makes the mock answer WITHOUT refresh_token: the old
-    // version of this test always got a rotation back, so the fallback at
-    // oauth.ts had zero coverage despite a test named for it (closing-review
-    // catch) - losing the fallback persists refreshToken: undefined over the
-    // account's parked backup and destroys its only grant.
     const creds = { ...base, refreshToken: "OMIT" };
     const out = await refreshCredential(creds, 0);
     expect(out.accessToken).toBe("fresh-access-OMIT");

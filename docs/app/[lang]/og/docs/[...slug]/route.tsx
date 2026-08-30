@@ -7,8 +7,6 @@ import { appName } from '@/lib/shared';
 
 export const revalidate = false;
 
-// Renders the default-language page regardless of the lang segment: see the
-// satori shaping constraint documented at getPageImage in lib/source.ts.
 export async function GET(_req: Request, { params }: RouteContext<'/[lang]/og/docs/[...slug]'>) {
   const { slug } = await params;
   const page = source.getPage(slug.slice(0, -1), i18n.defaultLanguage);

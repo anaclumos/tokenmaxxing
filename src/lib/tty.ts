@@ -1,7 +1,3 @@
-// Save/restore the controlling terminal's line settings around a child that owns
-// the tty via inherited stdio. If we SIGTERM such a child (supervisor respawn, or
-// `add` auto-exit), the terminal can be left in raw mode; restoring stty fixes it.
-
 export function saveTermios(): string | null {
   const p = Bun.spawnSync(["/bin/sh", "-c", "stty -g </dev/tty"]);
   const s = p.stdout?.toString().trim();

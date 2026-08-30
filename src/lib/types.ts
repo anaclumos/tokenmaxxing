@@ -1,12 +1,5 @@
-// Shared data model - Zod schemas are the single source of truth; TS types are
-// inferred from them. Everything that crosses an external boundary (keychain
-// blob, ~/.claude.json, hook/statusLine stdin, OAuth response, our own state
-// files) is validated through these instead of hand-checked.
-
 import { z } from "zod";
 
-/** OAuth object inside the keychain blob (`claudeAiOauth`). Loose: preserve any
- *  extra fields claude may add so a harvest→install round-trip is lossless. */
 const OAuthCredsSchema = z.looseObject({
   accessToken: z.string(),
   refreshToken: z.string(),
@@ -18,15 +11,8 @@ const OAuthCredsSchema = z.looseObject({
 });
 export type OAuthCreds = z.infer<typeof OAuthCredsSchema>;
 
-/** The `Claude Code-credentials` keychain item. Loose: the live item also holds
- *  sibling state (e.g. per-MCP-server OAuth tokens), which we must preserve when
- *  swapping - we only ever replace `claudeAiOauth`. */
 export const CredentialBlobSchema = z.looseObject({ claudeAiOauth: OAuthCredsSchema });
 
-/** The `oauthAccount` identity object in ~/.claude.json. Loose: preserve every
- *  key so we can reinstall it verbatim on activation. Only the three ids are
- *  required; real blobs carry many more fields (some null), so descriptive ones
- *  are `.nullish()` (string | null | undefined) to tolerate them. */
 export const OAuthAccountSchema = z.looseObject({
   accountUuid: z.string(),
   emailAddress: z.string(),
@@ -35,8 +21,6 @@ export const OAuthAccountSchema = z.looseObject({
   seatTier: z.string().nullish(),
   billingType: z.string().nullish(),
   displayName: z.string().nullish(),
-  /** rate-limit tier id ("default_claude_max_20x"), same value the credential
-   *  blob carries; claude fills it in on profile fetch (live-verified 2.1.211). */
   organizationRateLimitTier: z.string().nullish(),
 });
 export type OAuthAccount = z.infer<typeof OAuthAccountSchema>;
@@ -56,9 +40,6 @@ export type UsageWindows = z.infer<typeof UsageWindowsSchema>;
 const ModelInfoSchema = z.object({ id: z.string(), display: z.string() });
 export type ModelInfo = z.infer<typeof ModelInfoSchema>;
 
-/** usage.json - written by the statusLine shim, read by the Stop hook. Carries
- *  the two AGGREGATE windows (session=fiveHour, week-all-models=sevenDay) plus
- *  the active model. Per-model caps live in ModelUsageState (from `/usage`). */
 export const UsageStateSchema = UsageWindowsSchema.extend({
   org: z.string().nullable(),
   ts: z.number(),
@@ -66,22 +47,14 @@ export const UsageStateSchema = UsageWindowsSchema.extend({
 });
 export type UsageState = z.infer<typeof UsageStateSchema>;
 
-/** model-usage.json - per-model weekly caps parsed from `claude -p '/usage'`,
- *  TTL-cached so we don't poll every turn. Keyed by model display name ("Fable"). */
 export const ModelUsageStateSchema = z.object({
   perModel: z.record(z.string(), UsageWindowSchema).default({}),
   org: z.string().nullable(),
   ts: z.number(),
-  /** when the rows were actually MEASURED. `ts` is the write time and drives
-   *  the probe-TTL anti-storm, so a failed probe re-stamps it while carrying
-   *  the OLD rows forward - dating those rows by ts rolled the null-reset
-   *  self-bound forward on every failed probe (closing-review catch). Absent
-   *  on records predating this field: readers fall back to ts. */
   sampledAt: z.number().optional(),
 });
 export type ModelUsageState = z.infer<typeof ModelUsageStateSchema>;
 
-/** A parked account in the pool (accounts.json - NON-secret). */
 export const AccountSchema = z.object({
   accountUuid: z.string(),
   email: z.string(),
@@ -92,23 +65,10 @@ export const AccountSchema = z.object({
   addedAt: z.string(),
   lastUsage: UsageWindowsSchema.optional(),
   lastPerModel: z.record(z.string(), UsageWindowSchema).optional(),
-  /** epoch ms of the sample behind lastPerModel SPECIFICALLY: the aggregate
-   *  stamp (lastUsageAt) advances on every engaged evaluation while the
-   *  per-model rows refresh only when a gated family is measured, so dating
-   *  the rows by lastUsageAt inflated the null-reset self-bound by days
-   *  (closing-review catch). Absent on records predating this field: readers
-   *  fall back to lastUsageAt, the previous (over-)approximation. */
   lastPerModelAt: z.number().optional(),
-  /** epoch ms of the sample behind the AGGREGATE lastUsage windows (per-model
-   *  rows date by lastPerModelAt above). resetsAt values are absolute epochs
-   *  (UTC-anchored), so even an old snapshot still resolves to correct
-   *  resets - display it as a dated cache, never discard. */
   lastUsageAt: z.number().optional(),
   needsReauth: z.boolean().optional(),
   subscriptionType: z.string().optional(),
-  /** the blob's rate-limit tier id (e.g. "default_claude_max_20x"): the only
-   *  field that distinguishes max 5x from max 20x (subscriptionType is just
-   *  "max" for both). Refreshed on every verified sample. */
   rateLimitTier: z.string().optional(),
 });
 export type Account = z.infer<typeof AccountSchema>;
@@ -119,9 +79,6 @@ export const AccountsIndexSchema = z.object({
   accounts: z.array(AccountSchema).default([]),
 });
 
-/** lastswap.json - epoch ms of the last credential swap. Its own tiny file (not
- *  accounts.json) so the statusLine shim reads a few bytes per tick and no other
- *  index writer can clobber it. Absent = no swap has ever run. */
 export const LastSwapSchema = z.object({ ts: z.number() });
 export type AccountsIndex = z.infer<typeof AccountsIndexSchema>;
 
@@ -135,16 +92,8 @@ export const EnforcedLimitSchema = z.object({
 });
 export type EnforcedLimit = z.infer<typeof EnforcedLimitSchema>;
 
-/** Per-window screening bars (used %): an account with a window at/over its bar
- *  is no switch candidate until that window resets. The session bar is lower
- *  than the weekly one: a session reset is at most 5h away, so burning a little
- *  headroom there is cheap, while weekly quota is use-it-or-lose-it and worth
- *  draining closer to the wall. Screening is these bars' ONLY job - the switch
- *  trigger is the greedy pace-pressure convergence (policy.greedySessionFloor). */
 export const ThresholdsSchema = z.object({
-  /** 5h session window. */
   session: z.number().min(0).max(100),
-  /** 7-day aggregate AND per-model weekly caps. */
   weekly: z.number().min(0).max(100),
 });
 export type Thresholds = z.infer<typeof ThresholdsSchema>;
@@ -152,76 +101,34 @@ export type Thresholds = z.infer<typeof ThresholdsSchema>;
 export const ConfigSchema = z
   .object({
     thresholds: ThresholdsSchema,
-    /** LAYER 2 - the wall bars. `thresholds` (Layer 1) screen normal
-     *  account-to-account switching and deliberately leave headroom; these are
-     *  the true-wall bars the decision falls back to ONLY once every account is
-     *  exhausted at Layer 1. Below the wall a session holds its seat and pumps
-     *  the last drops; a window at/over the wall (default 100 = the server's own
-     *  limit, the same figure /rate-limit-options reads) is genuinely spent and
-     *  the pool moves to the next account, parking only when all are walled.
-     *  Set equal to `thresholds` to disable Layer 2 (hardBars subtracts the same
-     *  projectionMargin as effectiveBars, so equal thresholds collapse to one
-     *  effective bar and Layer 2 has no band to act in). At the default margin 0
-     *  the wall is the literal 100. */
     hardThresholds: ThresholdsSchema,
     claudeBin: z.string(),
-    /** the real codex binary (empty = resolve from PATH); pinned by `init --codex`. */
     codexBin: z.string(),
     policy: z.object({
-      /** percent margin subtracted from every bar (effectiveBars); above 100 the
-       *  effective bars go negative and everything reads exhausted, so bounded. */
       projectionMargin: z.number().min(0).max(100),
-      /** session-used % at which the greedy convergence engages: from here on,
-       *  every evaluation swaps to the usable account furthest behind its weekly
-       *  pace whenever that beats the current one (idempotent; current keeps its
-       *  seat on ties). Below the floor a fresh session rides its account. */
       greedySessionFloor: z.number().min(0).max(100),
-      /** models whose PER-MODEL weekly cap should trigger a switch (display names, lowercased). */
       switchModels: z.array(z.string()),
-      /** how long a `/usage` per-model poll stays fresh before we re-poll (ms). */
       usagePollTtlMs: z.number().int().positive(),
-      /** when every account is depleted, auto-wait for a reset only if it is within this window (ms). */
       maxWaitMs: z.number().int().positive(),
     }),
   })
-  // Cross-field (review catch, PR #31): effectiveBars subtracts the margin
-  // from each threshold, and a bar at or below zero makes EVERY nonnegative
-  // usage percentage read as exhausted - the whole pool looks depleted and the
-  // switch path churns. Per-field bounds alone cannot see this.
   .refine((cfg) => cfg.policy.projectionMargin < Math.min(cfg.thresholds.session, cfg.thresholds.weekly), {
     message: "policy.projectionMargin must be strictly below both thresholds (effectiveBars would hit zero and every account would read as exhausted)",
   })
-  // The wall must sit at or above each screening bar. A wall BELOW its
-  // screening bar would make Layer 2 "usable" a stricter test than Layer 1
-  // screening - the pool could reach the wall fallback and find every account
-  // already over the (lower) wall, parking earlier than Layer 1 alone would.
-  // Equal is allowed and simply disables Layer 2 for that window.
   .refine((cfg) => cfg.hardThresholds.session >= cfg.thresholds.session && cfg.hardThresholds.weekly >= cfg.thresholds.weekly, {
     message: "hardThresholds (the Layer 2 wall) must be at or above thresholds (the Layer 1 screening bars) for both windows",
   });
 export type Config = z.infer<typeof ConfigSchema>;
 
-/** The hook -> supervisor respawn marker. Written only for a depleted-pool
- *  wait (plain swaps adopt in place, no respawn). The marker FILE is keyed by
- *  the supervisor's PINNED session id (the path it watches - stable for the
- *  process's whole life), while `sessionId` carries the CURRENT transcript to
- *  resume: after /clear claude mints a new session id, and keying the file by
- *  the stdin sid orphaned every marker while the anticipatory pre-park still
- *  fired (closing-review HIGH catch; the codex marker was immune by exactly
- *  this construction). */
 export const RespawnMarkerSchema = z.object({
   account: z.string(),
   ts: z.number(),
-  /** the supervisor waits until this epoch ms before relaunching. */
   waitUntil: z.number(),
-  /** the transcript to `--resume`: the hook-stdin session id, which drifts
-   *  from the pinned id after /clear. */
   sessionId: z.string(),
   prompt: z.string().optional(),
   launchedAt: z.number().optional(),
 });
 
-/** rate_limits + model as they appear in statusLine stdin (epoch-seconds resets). */
 export const RateLimitsStdinSchema = z.looseObject({
   rate_limits: z
     .looseObject({
@@ -233,11 +140,6 @@ export const RateLimitsStdinSchema = z.looseObject({
   organizationUuid: z.string().optional(),
 });
 
-/** The statusLine stdin fields the native renderer consumes, on top of the
- *  rate-limit tee's needs. Loose + optional throughout: fields are null before
- *  the first API response and claude adds new ones freely. Each sub-object also
- *  `.catch(undefined)`es so a field that drifts to a wrong shape degrades to
- *  absent instead of failing the whole parse and erasing the info block. */
 export const StatusLineStdinSchema = RateLimitsStdinSchema.extend({
   workspace: z
     .looseObject({
@@ -259,10 +161,6 @@ export const StatusLineStdinSchema = RateLimitsStdinSchema.extend({
   effort: z.looseObject({ level: z.string().optional() }).nullable().optional().catch(undefined),
 });
 
-/** subagentStatusLine stdin: base session fields plus one entry per active
- *  subagent task (verified against the 2.1.214 bundle + docs 2026-07-18;
- *  tasks[].model/contextWindowSize need claude >= 2.1.205, effort >= 2.1.214).
- *  Same loose + catch degradation contract as StatusLineStdinSchema. */
 export const SubagentStatusLineStdinSchema = z.looseObject({
   tasks: z
     .array(
@@ -281,7 +179,6 @@ export const SubagentStatusLineStdinSchema = z.looseObject({
     .catch(undefined),
 });
 
-/** Success body of the OAuth refresh grant. */
 export const RefreshResponseSchema = z.looseObject({
   access_token: z.string(),
   refresh_token: z.string().optional(),
@@ -291,19 +188,12 @@ export const RefreshResponseSchema = z.looseObject({
   token_type: z.string().optional(),
 });
 
-/** Success body of GET /api/oauth/claude_cli/roles - the org a token ACTUALLY
- *  belongs to, independent of any stored label. */
 export const RolesResponseSchema = z.looseObject({
   organization_uuid: z.string(),
   organization_name: z.string(),
 });
 export type RolesResponse = z.infer<typeof RolesResponseSchema>;
 
-// ---- Codex pool ------------------------------------------------------------
-
-/** `tokens` inside $CODEX_HOME/auth.json (verified against a live 0.144.4
- *  auth.json). Loose: preserve unknown siblings so a harvest and reinstall
- *  round-trip is lossless. */
 const CodexTokensSchema = z.looseObject({
   id_token: z.string(),
   access_token: z.string(),
@@ -311,19 +201,12 @@ const CodexTokensSchema = z.looseObject({
   account_id: z.string().optional(),
 });
 
-/** The whole auth.json. Loose: auth_mode, OPENAI_API_KEY (may be null), and
- *  future siblings ride along verbatim. */
 export const CodexAuthJsonSchema = z.looseObject({
   tokens: CodexTokensSchema,
   last_refresh: z.string().optional(),
 });
 export type CodexAuthJson = z.infer<typeof CodexAuthJsonSchema>;
 
-/** One rate-limit window as tokenmaxxing stores it: percent used, absolute
- *  epoch ms reset, and the server-declared duration. Codex windows are
- *  duration-driven (the weekly window is PRIMARY on plans whose 5h window was
- *  removed in July 2026), so classification must go by windowSeconds, never
- *  by primary/secondary position. */
 const CodexWindowSchema = z.object({
   usedPercentage: z.number(),
   resetsAt: z.number().nullable(),
@@ -331,9 +214,6 @@ const CodexWindowSchema = z.object({
 });
 export type CodexWindow = z.infer<typeof CodexWindowSchema>;
 
-/** Everything one free usage read yields: the token's OWN identity (the codex
- *  analog of the claude roles endpoint: labels drift, the token cannot lie)
- *  plus every rate-limit window, aggregate and per-limit-family. */
 export const CodexUsageSchema = z.object({
   accountId: z.string(),
   email: z.string().nullable(),
@@ -343,19 +223,12 @@ export const CodexUsageSchema = z.object({
 });
 export type CodexUsage = z.infer<typeof CodexUsageSchema>;
 
-/** A parked-credential file NAME, never a path. These are machine-written
- *  (`tokenmaxxing-codex-<id8>`), so a separator here means the index is
- *  corrupted - and `join(credsDir, credFile)` would normalize `../` right out
- *  of codex-creds, letting `rm --codex` unlink another file (review catch).
- *  Refusing at parse time matches the codex loaders' throw-on-unparsable
- *  contract and covers the read/write paths with the delete. */
 const BareFileNameSchema = z
   .string()
   .refine((s) => s.length > 0 && s !== "." && s !== ".." && !s.includes("/") && !s.includes("\\"), {
     message: "credFile must be a bare file name, not a path",
   });
 
-/** A pooled codex account (codex-accounts.json - NON-secret). */
 export const CodexAccountSchema = z.object({
   accountId: z.string(),
   email: z.string().nullable(),
@@ -381,30 +254,17 @@ export const CodexAccountsIndexSchema = z.object({
 });
 export type CodexAccountsIndex = z.infer<typeof CodexAccountsIndexSchema>;
 
-/** Codex Stop-hook stdin (verified against the 0.144.4 binary wire schema and
- *  the official hooks reference): only what the swap trigger consumes. */
 export const CodexStopStdinSchema = z.looseObject({
   session_id: z.string().optional(),
   hook_event_name: z.string().optional(),
 });
 
-/** The codex supervisor's respawn marker payload: which session to resume and
- *  under which account label (for the switch banner). */
 export const CodexRespawnMarkerSchema = z.object({
   account: z.string(),
   sessionId: z.string().nullable(),
   ts: z.number(),
 });
 
-/** A cross-session reconcile signal (owner decisions 2026-07-20): the
- *  deciding actor saw the addressed supervisor's session running on this
- *  pooled NON-LIVE account - healthy or not (a non-live session cannot
- *  refresh cross-account and wedges at token expiry) - while the live seat
- *  is usable. The session's OWN Stop hook consumes it at its next turn
- *  boundary - the only safe respawn point - promoting it into a respawn
- *  marker with the session id its stdin alone carries. `accountId` doubles
- *  as the staleness guard: a session that already moved accounts drops the
- *  signal instead of respawning. */
 export const CodexReconcileMarkerSchema = z.object({
   accountId: z.string(),
   ts: z.number(),

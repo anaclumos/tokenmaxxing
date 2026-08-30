@@ -1,6 +1,3 @@
-// `tokenmaxxing init` - import the account you're already on (no prompts), then
-// install the supervisor + the four settings entries.
-
 import { mkdirSync } from "node:fs";
 import { isApiKeyMode, readOAuthAccount } from "../lib/claudejson.ts";
 import { readItem, writeItem, liveTarget, parkedTarget, mergeIntoLive } from "../lib/credstore.ts";
@@ -14,9 +11,6 @@ import { credItemFor, paths } from "../lib/paths.ts";
 import { CredentialBlobSchema, type Account } from "../lib/types.ts";
 import { c, claudeTierLabel } from "./render.ts";
 
-/** Put the supervisor bin dir on PATH via the user's shell rc (idempotent).
- *  Falls back to the manual instruction when the shell is unknown or the rc
- *  target is immutable (Home Manager / nix-store). */
 function ensurePathAhead(): void {
   const rc = shellRcPath();
   if (!rc) {
@@ -38,9 +32,6 @@ function reportTimer(out: InstallOutcome): void {
   else console.log(c.yellow(`⚠ check timer written but not activated - run: ${timerActivationHint()}`));
 }
 
-/** The how-to-use epilogue both init paths end on: the whole point of the tool
- *  is that after init you just run `claude`, so say exactly that, and teach the
- *  `xx` shorthand every other command hangs off. Exported for the render test. */
 export function printUsage(): void {
   console.log();
   console.log(`  ${c.bold("how to use")} - ${c.cyan("xx")} is shorthand for ${c.cyan("tokenmaxxing")}:`);
@@ -54,25 +45,11 @@ export function printUsage(): void {
 
 export async function cmdInit(): Promise<number> {
   mkdirSync(paths.home, { recursive: true });
-  // Fail fast on a broken merged config BEFORE installing or claiming a
-  // successful repair: pinBinOverride writes sparsely without validating, so
-  // without this gate a re-init printed success while hooks, switching, and
-  // the statusline kept throwing on every loadConfig until the file was
-  // hand-repaired (bugbot review catch, PR #33). The throw carries the
-  // fix-or-remove recovery message.
   loadConfig();
 
-  // Already initialized → repair install ONLY. Never re-import: ~/.claude.json's
-  // oauthAccount can drift from the live keychain cred (after swaps / concurrent
-  // sessions), and re-importing would park the wrong cred + mislabel active.
   const existingIdx = loadAccounts();
   if (existingIdx.accounts.length > 0) {
     const out = installSupervisor();
-    // repair the claudeBin pin too - hooks run with claude's PATH and must
-    // never have to guess which binary is the real claude. Verified pinning:
-    // a pin that fails --version (or loops back into the wrapper) is replaced
-    // by a fresh PATH scan instead of being re-saved. Sparse write: only the
-    // pin lands in the file, never the merged config.
     pinBinOverride({ key: "claudeBin", bin: resolveVerifiedClaude() });
     const active = existingIdx.accounts.find((a) => a.accountUuid === existingIdx.activeAccountUuid);
     console.log(`${c.green("✓")} re-installed supervisor + hooks (pool already has ${existingIdx.accounts.length} account${existingIdx.accounts.length === 1 ? "" : "s"} - not re-importing)`);
@@ -105,13 +82,9 @@ export async function cmdInit(): Promise<number> {
     return 1;
   }
 
-  // Verify the live credential actually belongs to the identity we're about to
-  // file it under - ~/.claude.json's oauthAccount can drift from the live
-  // keychain credential, and importing on drifted state parks a mislabeled blob.
   let creds = blob.claudeAiOauth;
   if (isAccessTokenExpiring(creds)) {
     await withClaudeRefreshLock(async (lock) => {
-      // re-read inside the lock: a running claude may have rotated it already.
       const raw2 = await readItem(liveTarget());
       if (raw2 == null) throw new Error("live credential vanished while waiting for the refresh lock");
       const current = CredentialBlobSchema.parse(JSON.parse(raw2)).claudeAiOauth;
@@ -130,12 +103,8 @@ export async function cmdInit(): Promise<number> {
 
   const uuid = oauthAccount.accountUuid;
   const keychainItem = credItemFor(uuid);
-  // Park + index update under the tokenmaxxing flock, like every sibling
-  // index writer (add/auth/rm/status/rename): unlocked, a concurrent `xx add`
-  // completing between this path's load and save had its just-registered
-  // account silently clobbered out of the index (closing-review catch).
   const account = await withLock(paths.lockFile, async () => {
-    await writeItem(parkedTarget(keychainItem), JSON.stringify({ claudeAiOauth: creds })); // park a small backup
+    await writeItem(parkedTarget(keychainItem), JSON.stringify({ claudeAiOauth: creds }));
     const idx = loadAccounts();
     const existing = idx.accounts.find((a) => a.accountUuid === uuid);
     const imported: Account = {
@@ -157,7 +126,6 @@ export async function cmdInit(): Promise<number> {
     return imported;
   });
 
-  // Sparse write: only the pin lands in the file, never the merged config.
   pinBinOverride({ key: "claudeBin", bin: resolveVerifiedClaude() });
 
   const out = installSupervisor();

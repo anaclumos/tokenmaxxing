@@ -1,5 +1,3 @@
-// Config + accounts index + usage snapshot persistence. All writes atomic.
-
 import { existsSync, readFileSync, rmSync, statSync, utimesSync } from "node:fs";
 import { isEqual } from "es-toolkit";
 import { z } from "zod";
@@ -18,33 +16,16 @@ import {
   type UsageState,
 } from "./types.ts";
 
-// ---- config.json (minimal, fixed schema) ---------------------------------
-
 const DEFAULT_CONFIG: Config = {
-  // LAYER 1 - screening bars, split per window (user 2026-07-16): a session
-  // reset is cheap to sit out, weekly quota is use-it-or-lose-it so it drains
-  // to 98. These drive normal account-to-account switching with headroom.
   thresholds: { session: 95, weekly: 98 },
-  // LAYER 2 - the wall bars (default the server's own 100% limit). Reached only
-  // once every account is over its Layer 1 bar: from there a session pumps the
-  // last drops up to the wall instead of parking with quota unspent.
   hardThresholds: { session: 100, weekly: 100 },
   claudeBin: "",
   codexBin: "",
-  // per-model weekly caps exist only for Sonnet and Fable (no Opus-only quota,
-  // per the user 2026-07-12), and only Fable's is worth switching on.
-  // greedySessionFloor 50: half a session window buys the swap (user 2026-07-16).
   policy: { projectionMargin: 0, greedySessionFloor: 50, switchModels: ["fable"], usagePollTtlMs: 90_000, maxWaitMs: 3_600_000 },
 };
 
-/** Percent-of-window values: out-of-range bars make every account read as
- *  exhausted, so the schema rejects them at the config gate. The cross-field
- *  case (a projectionMargin at or above a threshold zeroes the effective bar)
- *  is caught by ConfigSchema's refine on the merged result. */
 const PercentSchema = z.number().min(0).max(100);
 
-/** On-disk shape (all optional); validated via Zod, merged over defaults.
- *  Exported for `xx config`, which edits and housekeeps the sparse file. */
 export const ConfigFileSchema = z
   .object({
     thresholds: z.object({ session: PercentSchema, weekly: PercentSchema }).partial(),
@@ -69,12 +50,6 @@ const MergeOutcomeSchema = z.union([
 ]);
 export type MergeOutcome = z.infer<typeof MergeOutcomeSchema>;
 
-/** Merge a validated sparse file over the defaults, apply the env binary
- *  overrides, and validate the merged WHOLE (the projectionMargin-vs-
- *  thresholds refine). Shared by loadConfig and `xx config set`: set must
- *  reject a value whose merged result would make every later loadConfig
- *  throw, silently disabling status/switch/hooks/statusline until the file is
- *  hand-repaired (closing-review catch). */
 export function mergeConfigFile(p: z.infer<typeof ConfigFileSchema>): MergeOutcome {
   const cfg: Config = {
     ...DEFAULT_CONFIG,
@@ -95,15 +70,12 @@ export function mergeConfigFile(p: z.infer<typeof ConfigFileSchema>): MergeOutco
   if (p.policy?.switchModels) {
     cfg.policy.switchModels = p.policy.switchModels.map((s) => s.toLowerCase());
   }
-  // env overrides win for the real binaries (tests / relocation)
   const envBin = realClaudeBinFromEnv();
   if (envBin) cfg.claudeBin = envBin;
   const envCodexBin = realCodexBinFromEnv();
   if (envCodexBin) cfg.codexBin = envCodexBin;
   const merged = ConfigSchema.safeParse(cfg);
   if (!merged.success) {
-    // per-field values passed but the merged whole is unusable (the
-    // projectionMargin-vs-thresholds refine); name the reason, not a zod dump.
     return { ok: false, detail: merged.error.issues.map((issue) => issue.message).join("; ") };
   }
   return { ok: true, config: merged.data };
@@ -116,15 +88,10 @@ export function loadConfig(): Config {
     try {
       raw = JSON.parse(readFileSync(paths.configJson, "utf8"));
     } catch {
-      // Silent defaults here once meant a corrupt file could quietly unpin
-      // claudeBin; a damaged config is the user's to repair, loudly.
       throw new Error(`${paths.configJson} is corrupt (unparsable JSON) - fix or remove it`);
     }
     const parsed = ConfigFileSchema.safeParse(raw);
     if (!parsed.success) {
-      // Valid JSON with wrong-typed KNOWN keys must not silently drop pins
-      // like claudeBin; unknown keys are stripped by the schema and stay
-      // tolerated (that is `config tidy`'s territory, not an error).
       const fields = parsed.error.issues.map((issue) => issue.path.join(".")).join(", ");
       throw new Error(`${paths.configJson} has wrong-typed values (${fields}) - fix or remove them`);
     }
@@ -135,12 +102,6 @@ export function loadConfig(): Config {
   return outcome.config;
 }
 
-/** Pin one binary path into the SPARSE config file, preserving every other
- *  override verbatim. Never write the merged config here: baking defaults (or
- *  an ambient TOKENMAXXING_*_BIN env override) into the file freezes future
- *  default changes as stale explicit values and misreports every `xx config`
- *  source as "file" (closing-review catch; the sparse-overrides contract is
- *  config.ts's header). Throws on a corrupt file, like loadConfig. */
 export function pinBinOverride(input: { key: "claudeBin" | "codexBin"; bin: string }): void {
   let raw: Record<string, unknown> = {};
   if (existsSync(paths.configJson)) {
@@ -150,15 +111,9 @@ export function pinBinOverride(input: { key: "claudeBin" | "codexBin"; bin: stri
   writeFileAtomic(paths.configJson, JSON.stringify(raw, null, 2) + "\n");
 }
 
-// ---- accounts.json -------------------------------------------------------
-
 const emptyIndex = (): AccountsIndex => ({ version: 1, activeAccountUuid: null, accounts: [] });
 
 export function loadAccounts(): AccountsIndex {
-  // Absent = genuinely empty. Present-but-unreadable THROWS (mirrors the codex
-  // state loaders): a truncated index once read as an empty pool would send
-  // `init` down first-time onboarding and overwrite it, orphaning every parked
-  // credential. Damaged state is the user's to repair, loudly.
   if (!existsSync(paths.accountsJson)) return emptyIndex();
   let json: unknown;
   try {
@@ -177,8 +132,6 @@ export function saveAccounts(idx: AccountsIndex): void {
   writeFileAtomic(paths.accountsJson, JSON.stringify(AccountsIndexSchema.parse(idx), null, 2) + "\n");
 }
 
-// ---- usage.json ----------------------------------------------------------
-
 export function loadUsage(): UsageState | null {
   if (!existsSync(paths.usageJson)) return null;
   try {
@@ -189,16 +142,10 @@ export function loadUsage(): UsageState | null {
   }
 }
 
-/** Drop the statusLine-fed snapshots after a swap: their windows belong to the
- *  pre-swap account and would otherwise be read under the new active org. */
 export function clearUsageSnapshots(): void {
   rmSync(paths.usageJson, { force: true });
   rmSync(paths.modelUsageJson, { force: true });
 }
-
-// ---- lastswap.json (epoch ms of the last swap; absent = never swapped;
-// present-but-corrupt THROWS - silently reading a damaged swap clock as
-// never-swapped would bypass the post-swap cooldown) ----
 
 export function loadLastSwapAt(): number | null {
   if (!existsSync(paths.lastSwapJson)) return null;
@@ -214,16 +161,6 @@ export function loadLastSwapAt(): number | null {
 export function saveLastSwapAt(ts: number): void {
   writeFileAtomic(paths.lastSwapJson, JSON.stringify(LastSwapSchema.parse({ ts })));
 }
-
-// ---- depleted.json (the last depleted-wait decision; absent = none) ----
-// Written on every depleted-wait so hooks that hit an early exit (post-swap
-// cooldown, raced re-check, cleared snapshots) can REPLAY the wait to their
-// own supervisor: without the replay only the first session's Stop hook ever
-// saw a marker-writable decision and sibling sessions never paused (DESIGN.md
-// 3.5's fan-out). The record dies three ways: waitUntil passing, the live
-// seat (claude's oauthAccount) moving off the recorded account, and ANY
-// completed swap clearing it outright (performSwap - the depleted path
-// re-records its own wait right after its pre-park swap returns).
 
 const DepletedWaitSchema = z.object({ waitUntil: z.number(), accountUuid: z.string(), ts: z.number() });
 export type DepletedWait = z.infer<typeof DepletedWaitSchema>;
@@ -269,23 +206,14 @@ export function clearNextCheck(): void {
   rmSync(paths.nextCheckJson, { force: true });
 }
 
-/** An alive feed re-proving unchanged figures still refreshes `ts` this often,
- *  so cache-age displays stay honest without a write+fsync per tick. */
 const USAGE_TS_REFRESH_MS = 10 * 60_000;
 
-/** Write-on-change: skip the write (and its fsync) when only `ts` would differ,
- *  unless the stored `ts` has aged past the refresh window. A suppressed write
- *  still bumps the file's mtime (metadata only, no fsync): mtime is the feed's
- *  liveness heartbeat, and without the bump an alive tee re-proving unchanged
- *  figures reads as a dead feed and the decision path goes model-blind. */
 export function writeUsage(next: UsageState): boolean {
   const prev = loadUsage();
   if (prev && isEqual({ ...prev, ts: 0 }, { ...next, ts: 0 }) && next.ts - prev.ts < USAGE_TS_REFRESH_MS) {
     try {
       utimesSync(paths.usageJson, new Date(next.ts), new Date(next.ts));
     } catch (e) {
-      // The file vanished mid-race: a concurrent swap just invalidated these
-      // figures. Suppressing stays correct; a write would resurrect them.
       const errno = z.object({ code: z.string() }).safeParse(e);
       if (!errno.success || errno.data.code !== "ENOENT") throw e;
     }
@@ -295,9 +223,6 @@ export function writeUsage(next: UsageState): boolean {
   return true;
 }
 
-/** When the usage feed last proved itself alive (usage.json mtime), null if the
- *  snapshot is absent. Fresher than the embedded `ts`, which write-on-change
- *  deliberately lets age while figures hold still. */
 export function usageTeeAt(): number | null {
   try {
     return statSync(paths.usageJson).mtimeMs;
@@ -305,8 +230,6 @@ export function usageTeeAt(): number | null {
     return null;
   }
 }
-
-// ---- model-usage.json (per-model caps from `/usage`, TTL-cached) ----------
 
 export function loadModelUsage(): ModelUsageState | null {
   if (!existsSync(paths.modelUsageJson)) return null;

@@ -1,12 +1,3 @@
-// `tokenmaxxing switch --codex [sel]`. Bare form is GREEDY and IDEMPOTENT off
-// cached windows, exactly like the claude switch: rank every codex account
-// (current included) by pace pressure among those under their screening bars;
-// when the current account already wins, do nothing. The current account is
-// the LIVE auth.json's own identity, never the stored label. The swap takes
-// effect for the NEXT codex start: a running codex refuses a different
-// account's credential (restart is the switch; the Stop hook + supervisor
-// automate that for supervised sessions).
-
 import { withLock } from "../lib/lock.ts";
 import { codexPaths } from "../lib/paths.ts";
 import { loadConfig } from "../lib/state.ts";
@@ -32,10 +23,6 @@ export async function cmdCodexSwitch(sel?: string): Promise<number> {
     }
     const currentId = liveCodexAccountId();
 
-    // truthiness on purpose, mirroring the claude switch: an EMPTY selector
-    // must mean "no selector" - `startsWith("")` matches every account, so
-    // `sel !== undefined` let `xx switch --codex ""` swap onto the first
-    // account (adversarial-review catch)
     if (sel) {
       const target = index.accounts.find(
         (account) => account.label === sel || account.email === sel || account.accountId.startsWith(sel),
@@ -60,8 +47,6 @@ export async function cmdCodexSwitch(sel?: string): Promise<number> {
       try {
         await performCodexSwap({ target });
       } catch (e) {
-        // a dead grant is an expected operational state, not a stack trace
-        // (closing-review catch; mirrors the claude selector path).
         if (e instanceof CodexInvalidGrantError) {
           console.error(c.red(`${target.label}'s refresh token is dead - re-add it with \`tokenmaxxing add --codex\``));
           return 1;

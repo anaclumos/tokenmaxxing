@@ -1,15 +1,3 @@
-// Which codex accounts are RUNNING right now. Codex cannot hot-swap, so a swap
-// respawns only the session whose Stop hook decided it; sibling supervised
-// sessions keep running on whatever account they started with, rotating that
-// account's token live. Such an account is a landmine for the rest of the
-// pool: its parked copy is superseded (refresh trips reuse punishment) and
-// installing it as live would yank the running session's grant. Supervisors
-// therefore declare their session's account in a presence file at every
-// (re)spawn; the picker refuses to target present accounts and the sampler
-// refuses to refresh their parked blobs. Staleness is checked by process
-// IDENTITY (pid + ps lstart), not bare pid-aliveness: after a supervisor
-// crash a recycled pid would otherwise keep its account benched forever.
-
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
@@ -23,17 +11,9 @@ const PresenceSchema = z.object({
   startedAt: z.string(),
 });
 
-/** `pid` should be the CODEX CHILD's pid when known (the supervisor passes
- *  it): the session IS the child, and pinning the supervisor's own pid let a
- *  SIGKILLed supervisor prune the presence while its orphaned codex kept
- *  running and rotating the account's token - un-benching a live account for
- *  samplers and the picker (closing-review catch). Defaults to process.pid
- *  for callers that ARE the session-owning process (tests, future uses). */
 export function writeCodexPresence(input: { supervisorId: string; accountId: string; pid?: number }): void {
   const pid = input.pid ?? process.pid;
   const startedAt = pidStartTime(pid);
-  // The pid must be ps-visible; a null here means ps broke or the process
-  // already died - corrupt state to fail loudly on, never a masked placeholder.
   if (startedAt == null) throw new Error(`could not read pid ${pid}'s start time (ps lstart) - refusing to write an unverifiable presence file`);
   mkdirSync(codexPaths.presenceDir, { recursive: true });
   writeFileAtomic(
@@ -49,13 +29,6 @@ export function clearCodexPresence(input: { supervisorId: string }): void {
 const LivingPresenceSchema = z.object({ supervisorId: z.string(), accountId: z.string() });
 export type LivingPresence = z.infer<typeof LivingPresenceSchema>;
 
-/** Every LIVING supervised session (pid + start-time identity match), as
- *  {supervisorId, accountId} pairs - the reconcile sweep needs to address a
- *  specific supervisor, not just know which accounts are busy. Dead or
- *  recycled-pid presences are removed. A file that exists but fails to parse
- *  THROWS (review catch, PR #31): a presence file is what keeps a RUNNING
- *  session's account from being swapped out from under it, so damaged state
- *  must fail the decision loudly, never silently drop the protection. */
 export function livingCodexPresences(): LivingPresence[] {
   const living: LivingPresence[] = [];
   if (!existsSync(codexPaths.presenceDir)) return living;
@@ -65,7 +38,6 @@ export function livingCodexPresences(): LivingPresence[] {
     try {
       raw = readFileSync(file, "utf8");
     } catch (e) {
-      // a supervisor exiting between readdir and read clears its own file
       const errno = z.object({ code: z.string() }).safeParse(e);
       if (errno.success && errno.data.code === "ENOENT") continue;
       throw e;
@@ -82,10 +54,6 @@ export function livingCodexPresences(): LivingPresence[] {
     }
     const observed = pidStartTime(parsed.data.pid);
     if (observed !== parsed.data.startedAt) {
-      // A null lstart is ambiguous: dead pid, or ps itself failing. Deleting
-      // on a ps failure would silently unbench a RUNNING session's account
-      // (review catch, PR #31), so only a confirmed-dead pid - or a live pid
-      // with a DIFFERENT start time, a recycle - may clear the file.
       if (observed == null && pidExists(parsed.data.pid)) {
         throw new Error(`ps could not read the start time of live pid ${parsed.data.pid} (${file}) - refusing to clear a presence file that may guard a RUNNING codex session`);
       }
@@ -97,13 +65,10 @@ export function livingCodexPresences(): LivingPresence[] {
   return living;
 }
 
-/** Account ids with a LIVING supervisor - the picker/sampler exclusion view. */
 export function presentCodexAccountIds(): Set<string> {
   return new Set(livingCodexPresences().map((presence) => presence.accountId));
 }
 
-/** The accounts a swap may target: running accounts are off limits, except the
- *  seat itself (it is ranked as the incumbent, never installed over itself). */
 export function targetableCodexAccounts<T extends { accountId: string }>(input: {
   accounts: T[];
   activeAccountId: string | null;

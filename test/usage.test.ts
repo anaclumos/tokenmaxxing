@@ -1,8 +1,3 @@
-// Server-enforced limit classification: transcript error rows → the window
-// the server refused. Row shapes mirror the 2.1.251 transcripts (a
-// five_hour quotaLimits rejection; the Fable credits branch with no
-// quotaLimits and a raw 429 body; the transient and high-load 429s).
-
 import { describe, expect, test } from "bun:test";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
