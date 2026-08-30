@@ -1,13 +1,15 @@
-import { checkDelayMs, evaluateAndMaybeSwap } from "../lib/decide.ts";
+import { CHECK_DELAY_FLOOR_MS, checkDelayMs, evaluateAndMaybeSwap } from "../lib/decide.ts";
 import { readOAuthAccount } from "../lib/claudejson.ts";
 import { log } from "../lib/log.ts";
 import { loadConfig, loadNextCheckDueAt, saveNextCheckDueAt } from "../lib/state.ts";
 import { c, fmtReset } from "./render.ts";
 
-export async function cmdCheck(): Promise<number> {
+const TICK_SLACK_MS = CHECK_DELAY_FLOOR_MS / 2;
+
+export async function cmdCheck(args: string[] = []): Promise<number> {
   const now = Date.now();
-  const dueAt = loadNextCheckDueAt(now);
-  if (dueAt != null && now < dueAt) {
+  const dueAt = args.includes("--if-due") ? loadNextCheckDueAt(now) : null;
+  if (dueAt != null && now + TICK_SLACK_MS < dueAt) {
     console.log(c.dim(`not due (${Math.ceil((dueAt - now) / 1000)}s)`));
     return 0;
   }
@@ -20,9 +22,8 @@ export async function cmdCheck(): Promise<number> {
     console.error(c.red(`check failed: ${detail}`));
     return 1;
   }
-  const after = Date.now();
-  const delayMs = checkDelayMs({ cfg: loadConfig(), org: readOAuthAccount()?.organizationUuid ?? null, now: after, decision: d });
-  saveNextCheckDueAt({ dueAt: after + delayMs, ts: after });
+  const delayMs = checkDelayMs({ cfg: loadConfig(), org: readOAuthAccount()?.organizationUuid ?? null, now, decision: d });
+  saveNextCheckDueAt({ dueAt: now + delayMs, ts: now });
   const next = c.dim(`next in ${Math.round(delayMs / 1000)}s`);
   if (d.swapped && d.account) {
     console.log(`${c.green("↻")} switched to ${c.bold(d.account.label)} ${next}`);

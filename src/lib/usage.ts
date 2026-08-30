@@ -180,7 +180,7 @@ const ROW_RECENCY_MS = 60_000;
 
 const EnforcedRowSchema = z.object({
   row: TranscriptRowSchema,
-  turnStartTs: z.number().nullable(),
+  errorAt: z.number().nullable(),
 });
 export type EnforcedRow = z.infer<typeof EnforcedRowSchema>;
 
@@ -193,15 +193,7 @@ export function findEnforcedRow(input: { rows: TranscriptRow[]; lastAssistantMes
     const byContent = lastAssistantMessage != null && lastAssistantMessage !== "" && transcriptRowText(row) === lastAssistantMessage;
     const byRecency = Number.isFinite(ts) && Math.abs(now - ts) <= ROW_RECENCY_MS;
     if (!byContent && !byRecency) continue;
-    let turnStartTs: number | null = null;
-    for (let j = i - 1; j >= 0; j--) {
-      const prev = rows[j]!;
-      if (prev.type !== "user") continue;
-      const pts = prev.timestamp ? Date.parse(prev.timestamp) : Number.NaN;
-      turnStartTs = Number.isFinite(pts) ? pts : null;
-      break;
-    }
-    return { row, turnStartTs };
+    return { row, errorAt: Number.isFinite(ts) ? ts : null };
   }
   return null;
 }

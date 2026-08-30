@@ -29,7 +29,7 @@ in
       description = "tokenmaxxing account-switch check";
       serviceConfig = {
         Type = "oneshot";
-        ExecStart = "${lib.getExe package} check";
+        ExecStart = "${lib.getExe package} check --if-due";
       };
     };
 
@@ -38,7 +38,7 @@ in
       timerConfig = {
         OnBootSec = "60";
         OnUnitActiveSec = toString cfg.checkTimer.intervalSeconds;
-        AccuracySec = "30";
+        AccuracySec = "5";
         Persistent = true;
         Unit = "tokenmaxxing-check.service";
       };

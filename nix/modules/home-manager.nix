@@ -34,6 +34,7 @@ in
         ProgramArguments = [
           (lib.getExe package)
           "check"
+          "--if-due"
         ];
         StartInterval = cfg.checkTimer.intervalSeconds;
         StandardOutPath = "/dev/null";
@@ -47,7 +48,7 @@ in
           Unit.Description = "tokenmaxxing account-switch check";
           Service = {
             Type = "oneshot";
-            ExecStart = "${lib.getExe package} check";
+            ExecStart = "${lib.getExe package} check --if-due";
           };
         };
 
@@ -56,7 +57,7 @@ in
       Timer = {
         OnBootSec = "60";
         OnUnitActiveSec = toString cfg.checkTimer.intervalSeconds;
-        AccuracySec = "30";
+        AccuracySec = "5";
         Persistent = "true";
         Unit = "tokenmaxxing-check.service";
       };

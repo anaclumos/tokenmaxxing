@@ -37,7 +37,7 @@ It is a process manager only - spawn with inherited stdio plus saved `stty -g` t
   - `bin/claude` - the supervisor.
 - Per-account **credentials** follow the platform's Claude Code store: macOS = login-keychain items `tokenmaxxing-cred-<accountUuid[:8]>` (never plaintext on disk); Linux = 0600 files `creds/tokenmaxxing-cred-<accountUuid[:8]>.json` (the same plaintext model claude itself uses - its Linux build has no keyring path at all, binary-verified 2.1.205). One `credstore` facade dispatches on a `{kind: keychain|file}` target; call sites never branch on platform.
 
-- A periodic check job (`com.tokenmaxxing.check` launchd agent on macOS, `tokenmaxxing-check.timer` systemd user timer on Linux) running `tokenmaxxing check` every 180s: hooks alone miss long agentic turns, so the timer is the backstop that keeps switching engaged mid-turn.
+- A periodic check job (`com.tokenmaxxing.check` launchd agent on macOS, `tokenmaxxing-check.timer` systemd user timer on Linux) running `tokenmaxxing check --if-due` every 60s, self-paced up to 300s from the live account's headroom: hooks alone miss long agentic turns, so the timer is the backstop that keeps switching engaged mid-turn.
 
 The switching path runs no long-lived daemon. The statusline pushes usage. Hooks and the supervisor react. The periodic check job above is the only recurring process. The `claude` binary and `~/.claude` layout are untouched.
 

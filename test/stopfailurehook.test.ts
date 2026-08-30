@@ -2,7 +2,8 @@ import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, wr
 import { join } from "node:path";
 import { beforeEach, expect, test } from "bun:test";
 import { paths } from "../src/lib/paths.ts";
-import { loadModelUsage, loadUsage, saveAccounts, saveLastSwapAt } from "../src/lib/state.ts";
+import { loadAccounts, loadModelUsage, loadUsage, saveAccounts, saveLastSwapAt } from "../src/lib/state.ts";
+import { deleteItem, liveTarget, parkedTarget, writeItem } from "../src/lib/credstore.ts";
 import { RespawnMarkerSchema } from "../src/lib/types.ts";
 import { RETRIGGER_PROMPT } from "../src/entries/stopfailurehook.ts";
 
@@ -107,6 +108,30 @@ function runHook(input: { supervised?: boolean; launchedAt?: number; stdin: Reco
 
 const markers = () => (existsSync(paths.respawnDir) ? readdirSync(paths.respawnDir) : []);
 
+const at = (id: string) => `at-${id}|org-${id}`;
+const creds = (id: string) => ({ accessToken: at(id), refreshToken: `rt-${id}`, expiresAt: Date.now() + H });
+
+function oauthServer() {
+  return Bun.serve({
+    port: Number(new URL(process.env.TOKENMAXXING_OAUTH_ROLES_URL!).port),
+    hostname: "127.0.0.1",
+    async fetch(req) {
+      const url = new URL(req.url);
+      if (url.pathname === "/token") {
+        const body = await req.json();
+        const rt = body != null && body instanceof Object && "refresh_token" in body ? String(body.refresh_token) : "";
+        return Response.json({ access_token: `fresh-${rt}|org-${rt.split("-")[1]}`, refresh_token: `${rt}-rot`, expires_in: 3600 });
+      }
+      if (url.pathname === "/roles") {
+        const bearer = req.headers.get("authorization") ?? "";
+        const org = bearer.split("|")[1] ?? "org-unknown";
+        return Response.json({ organization_uuid: org, organization_name: `${org} name` });
+      }
+      return new Response("not found", { status: 404 });
+    },
+  });
+}
+
 test("a session-limit failure stamps the 5h window, parks on the enforced reset, and writes a retrigger marker", () => {
   seed();
   const now = Date.now();
@@ -123,17 +148,77 @@ test("a session-limit failure stamps the 5h window, parks on the enforced reset,
   expect(marker.launchedAt).toBe(now - 60_000);
 });
 
-test("the Fable credits failure stamps the family cap with the weekly reset", () => {
+test("the Fable credits failure stamps the family cap with the weekly reset and parks the lone seat on that reset, not a week out", () => {
   seed();
   const now = Date.now();
+  const weeklyReset = now + 30 * 60_000;
+  writeFileSync(
+    paths.usageJson,
+    JSON.stringify({
+      fiveHour: { usedPercentage: 30, resetsAt: now + 2 * H },
+      sevenDay: { usedPercentage: 20, resetsAt: weeklyReset },
+      org: "org-A",
+      ts: now,
+      model: { id: "claude-fable-5", display: "Fable 5" },
+    }),
+  );
   writeTranscript({ turnStart: now - 20_000, errorAt: now - 1_000, text: FABLE_TEXT });
   const p = runHook({ stdin: { last_assistant_message: FABLE_TEXT } });
   expect(p.exitCode).toBe(0);
   const mu = loadModelUsage();
   expect(mu?.org).toBe("org-A");
-  expect(mu?.perModel["fable"]?.usedPercentage).toBe(100);
-  expect(mu?.perModel["fable"]?.resetsAt).toBe(loadUsage()?.sevenDay.resetsAt ?? null);
+  expect(mu?.perModel["fable"]).toEqual({ usedPercentage: 100, resetsAt: weeklyReset });
+  expect(markers()).toEqual([PINNED]);
+  const marker = RespawnMarkerSchema.parse(JSON.parse(readFileSync(join(paths.respawnDir, PINNED), "utf8")));
+  expect(marker.account).toBe("acct-a");
+  expect(marker.waitUntil).toBe(weeklyReset);
 });
+
+test("an unclassified failure on a depleted pool never pre-parks the seat onto another depleted account", async () => {
+  seed();
+  const now = Date.now();
+  const idx = loadAccounts();
+  idx.accounts[0]!.lastUsage = { fiveHour: { usedPercentage: 100, resetsAt: now + 2 * H }, sevenDay: { usedPercentage: 20, resetsAt: now + 3 * D } };
+  idx.accounts.push({
+    accountUuid: "B",
+    email: "b@e.com",
+    organizationUuid: "org-B",
+    label: "acct-b",
+    keychainItem: "tokenmaxxing-cred-B",
+    oauthAccount: { accountUuid: "B", emailAddress: "b@e.com", organizationUuid: "org-B" },
+    addedAt: new Date(0).toISOString(),
+    lastUsage: { fiveHour: { usedPercentage: 100, resetsAt: now + 30 * 60_000 }, sevenDay: { usedPercentage: 20, resetsAt: now + 3 * D } },
+    lastUsageAt: now,
+  });
+  saveAccounts(idx);
+  writeFileSync(
+    paths.usageJson,
+    JSON.stringify({
+      fiveHour: { usedPercentage: 100, resetsAt: now + 2 * H },
+      sevenDay: { usedPercentage: 20, resetsAt: now + 3 * D },
+      org: "org-A",
+      ts: now,
+      model: { id: "claude-fable-5", display: "Fable 5" },
+    }),
+  );
+  const server = oauthServer();
+  try {
+    await writeItem(liveTarget(), JSON.stringify({ claudeAiOauth: creds("A") }));
+    await writeItem(parkedTarget("tokenmaxxing-cred-B"), JSON.stringify({ claudeAiOauth: creds("B") }));
+    const text = "Server is temporarily limiting requests (not your usage limit)";
+    writeTranscript({ turnStart: now - 20_000, errorAt: now - 1_000, text, transient: true });
+    const p = runHook({ stdin: { last_assistant_message: text } });
+    expect(p.exitCode).toBe(0);
+    expect(loadAccounts().activeAccountUuid).toBe("A");
+    expect(existsSync(paths.depletedJson)).toBe(false);
+    expect(markers()).toEqual([]);
+  } finally {
+    server.stop(true);
+    await deleteItem(parkedTarget("tokenmaxxing-cred-A"));
+    await deleteItem(parkedTarget("tokenmaxxing-cred-B"));
+    await deleteItem(liveTarget());
+  }
+}, 30_000);
 
 test("inside the cooldown an unproven failure neither stamps nor retriggers; a post-swap launch proves it", () => {
   seed();

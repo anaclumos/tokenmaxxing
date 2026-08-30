@@ -5,6 +5,7 @@ import { POST_SWAP_COOLDOWN_MS, checkDelayMs, evaluateAndMaybeSwap, postSwapProo
 import { paths } from "../src/lib/paths.ts";
 import { loadAccounts, loadModelUsage, loadUsage, saveAccounts, saveLastSwapAt, saveModelUsage } from "../src/lib/state.ts";
 import { deleteItem, liveTarget, parkedTarget, writeItem } from "../src/lib/credstore.ts";
+import { isExhausted, pickBest, usableAt } from "../src/lib/picker.ts";
 import type { Account } from "../src/lib/types.ts";
 
 const D = 86_400_000;
@@ -103,19 +104,20 @@ function oauthServer() {
 describe("postSwapProof", () => {
   const now = 1_784_400_000_000;
   test("no swap ever: proven", () => {
-    expect(postSwapProof({ swapAt: null, launchedAt: null, turnStartTs: null, now })).toBe(true);
+    expect(postSwapProof({ swapAt: null, launchedAt: null, errorAt: null, now })).toBe(true);
   });
-  test("a process launched after the swap is proven, whatever the turn anchor says", () => {
-    expect(postSwapProof({ swapAt: now - 10_000, launchedAt: now - 5_000, turnStartTs: now - 60_000, now })).toBe(true);
+  test("a process launched after the swap is proven, whatever the error time says", () => {
+    expect(postSwapProof({ swapAt: now - 10_000, launchedAt: now - 5_000, errorAt: now - 8_000, now })).toBe(true);
   });
-  test("an older process needs its turn to start after the swap plus the adoption cooldown", () => {
-    expect(postSwapProof({ swapAt: now - 100_000, launchedAt: now - 200_000, turnStartTs: now - 100_000 + POST_SWAP_COOLDOWN_MS + 1, now })).toBe(true);
-    expect(postSwapProof({ swapAt: now - 100_000, launchedAt: now - 200_000, turnStartTs: now - 100_000 + POST_SWAP_COOLDOWN_MS - 1, now })).toBe(false);
-    expect(postSwapProof({ swapAt: now - 10_000, launchedAt: null, turnStartTs: now - 60_000, now })).toBe(false);
+  test("an older process needs the failing request to land after the swap plus the adoption cooldown, however long the turn ran", () => {
+    expect(postSwapProof({ swapAt: now - 100_000, launchedAt: now - 200_000, errorAt: now - 100_000 + POST_SWAP_COOLDOWN_MS, now })).toBe(true);
+    expect(postSwapProof({ swapAt: now - 100_000, launchedAt: now - 200_000, errorAt: now - 100_000 + POST_SWAP_COOLDOWN_MS - 1, now })).toBe(false);
+    expect(postSwapProof({ swapAt: now - 10_000, launchedAt: null, errorAt: now - 1_000, now })).toBe(false);
+    expect(postSwapProof({ swapAt: now - 600_000, launchedAt: now - 700_000, errorAt: now - 1_000, now })).toBe(true);
   });
-  test("with no anchor at all the cooldown alone decides", () => {
-    expect(postSwapProof({ swapAt: now - POST_SWAP_COOLDOWN_MS + 1, launchedAt: null, turnStartTs: null, now })).toBe(false);
-    expect(postSwapProof({ swapAt: now - POST_SWAP_COOLDOWN_MS, launchedAt: null, turnStartTs: null, now })).toBe(true);
+  test("with no row time the hook's own clock decides", () => {
+    expect(postSwapProof({ swapAt: now - POST_SWAP_COOLDOWN_MS + 1, launchedAt: null, errorAt: null, now })).toBe(false);
+    expect(postSwapProof({ swapAt: now - POST_SWAP_COOLDOWN_MS, launchedAt: null, errorAt: null, now })).toBe(true);
   });
 });
 
@@ -129,7 +131,7 @@ describe("recordEnforcedLimit", () => {
     writeUsageJson({ sevenDay: { usedPercentage: 20, resetsAt: weeklyReset } });
     saveModelUsage({ perModel: { Fable: { usedPercentage: 91, resetsAt: null } }, org: "org-A", ts: Date.now() - 10 * 60_000, sampledAt: Date.now() - 10 * 60_000 });
     const now = Date.now();
-    expect(await recordEnforcedLimit({ limit: { kind: "model", family: "fable", resetsAt: null }, org: "org-A", now })).toBe("stamped");
+    expect(await recordEnforcedLimit({ limit: { kind: "model", family: "fable", resetsAt: null }, org: "org-A", now })).toEqual({ outcome: "stamped", resetsAt: weeklyReset });
     const mu = loadModelUsage();
     expect(mu?.perModel["fable"]).toEqual({ usedPercentage: 100, resetsAt: weeklyReset });
     expect(mu?.perModel["Fable"]?.usedPercentage).toBe(91);
@@ -142,7 +144,8 @@ describe("recordEnforcedLimit", () => {
     writeUsageJson({});
     const now = Date.now();
     const resetsAt = now + 30 * 60_000;
-    expect(await recordEnforcedLimit({ limit: { kind: "session", resetsAt }, org: "org-A", now })).toBe("stamped");
+    expect(await recordEnforcedLimit({ limit: { kind: "session", resetsAt }, org: "org-A", now })).toEqual({ outcome: "stamped", resetsAt });
+    expect(loadAccounts().accounts[0]?.enforcedUntil).toBe(resetsAt);
     const u = loadUsage();
     expect(u?.fiveHour).toEqual({ usedPercentage: 100, resetsAt });
     expect(u?.sevenDay.usedPercentage).toBe(20);
@@ -150,15 +153,22 @@ describe("recordEnforcedLimit", () => {
     expect(loadModelUsage()?.ts).toBe(now);
   });
 
-  test("without a tee the account's dated lastUsage carries the other window; with nothing there is no stamp", async () => {
+  test("without a tee the account's dated lastUsage carries the other window; with nothing the account is still pinned until the server's reset", async () => {
     installFixtures();
     const now = Date.now();
-    expect(await recordEnforcedLimit({ limit: { kind: "weekly", resetsAt: now + 3 * D }, org: "org-A", now })).toBe("no-carrier");
+    const ctx = { now, thresholds: { session: 95, weekly: 98 }, currentAccountUuid: null, switchFamilies: ["fable"] };
+    expect(isExhausted(loadAccounts().accounts[0]!, ctx)).toBe(false);
+    expect(await recordEnforcedLimit({ limit: { kind: "weekly", resetsAt: now + 3 * D }, org: "org-A", now })).toEqual({ outcome: "no-carrier", resetsAt: now + 3 * D });
     expect(loadUsage()).toBeNull();
+    const pinned = loadAccounts().accounts[0]!;
+    expect(pinned.enforcedUntil).toBe(now + 3 * D);
+    expect(isExhausted(pinned, ctx)).toBe(true);
+    expect(usableAt(pinned, ctx)).toBe(now + 3 * D);
+    expect(pickBest([pinned], ctx)).toBeNull();
     const idx = loadAccounts();
     idx.accounts[0]!.lastUsage = { fiveHour: { usedPercentage: 33, resetsAt: now + H }, sevenDay: { usedPercentage: 44, resetsAt: now + 3 * D } };
     saveAccounts(idx);
-    expect(await recordEnforcedLimit({ limit: { kind: "weekly", resetsAt: now + 3 * D }, org: "org-A", now })).toBe("stamped");
+    expect(await recordEnforcedLimit({ limit: { kind: "weekly", resetsAt: now + 3 * D }, org: "org-A", now })).toEqual({ outcome: "stamped", resetsAt: now + 3 * D });
     expect(loadUsage()?.sevenDay).toEqual({ usedPercentage: 100, resetsAt: now + 3 * D });
     expect(loadUsage()?.fiveHour.usedPercentage).toBe(33);
   });
@@ -167,8 +177,9 @@ describe("recordEnforcedLimit", () => {
     installFixtures();
     writeUsageJson({});
     writeFileSync(paths.claudeJson, JSON.stringify({ oauthAccount: { accountUuid: "B", emailAddress: "B@e.com", organizationUuid: "org-B" } }));
-    expect(await recordEnforcedLimit({ limit: { kind: "session", resetsAt: null }, org: "org-A", now: Date.now() })).toBe("org-moved");
+    expect(await recordEnforcedLimit({ limit: { kind: "session", resetsAt: null }, org: "org-A", now: Date.now() })).toEqual({ outcome: "org-moved", resetsAt: null });
     expect(loadUsage()?.fiveHour.usedPercentage).toBe(10);
+    expect(loadAccounts().accounts[0]?.enforcedUntil).toBeUndefined();
   });
 });
 

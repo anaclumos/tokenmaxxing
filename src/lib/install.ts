@@ -211,7 +211,7 @@ function installCheckTimer(): boolean {
 <plist version="1.0">
 <dict>
   <key>Label</key><string>${LAUNCHD_LABEL}</string>
-  <key>ProgramArguments</key><array><string>${escape(installedBin())}</string><string>check</string></array>
+  <key>ProgramArguments</key><array><string>${escape(installedBin())}</string><string>check</string><string>--if-due</string></array>
   <key>StartInterval</key><integer>${CHECK_INTERVAL_S}</integer>
   <key>StandardOutPath</key><string>/dev/null</string>
   <key>StandardErrorPath</key><string>${escape(join(paths.home, "check.stderr.log"))}</string>
@@ -226,7 +226,7 @@ function installCheckTimer(): boolean {
     return run(["launchctl", "bootstrap", domain, plist]) || checkTimerHealthy();
   }
 
-  const exec = `"${installedBin().replaceAll("%", "%%")}" check`;
+  const exec = `"${installedBin().replaceAll("%", "%%")}" check --if-due`;
   writeFileAtomic(
     join(paths.systemdUserDir, "tokenmaxxing-check.service"),
     `[Unit]
@@ -246,7 +246,7 @@ Description=tokenmaxxing periodic account-switch check
 [Timer]
 OnBootSec=60
 OnUnitActiveSec=${CHECK_INTERVAL_S}
-AccuracySec=30
+AccuracySec=5
 
 [Install]
 WantedBy=timers.target

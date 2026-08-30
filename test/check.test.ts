@@ -53,16 +53,42 @@ function seed(): void {
 beforeEach(clearState);
 afterAll(clearState);
 
-test("an evaluation schedules the next one from headroom, and a tick before that exits without probing", async () => {
+test("an evaluation schedules the next one from headroom, and a timer tick before that exits without probing", async () => {
   seed();
-  expect(await cmdCheck()).toBe(0);
+  expect(await cmdCheck(["--if-due"])).toBe(0);
   const dueAt = loadNextCheckDueAt(Date.now());
   expect(dueAt).not.toBeNull();
   expect(dueAt! - Date.now()).toBeGreaterThan(290_000);
   rmSync(probeMarker, { force: true });
   rmSync(paths.modelUsageJson, { force: true });
-  expect(await cmdCheck()).toBe(0);
+  expect(await cmdCheck(["--if-due"])).toBe(0);
   expect(existsSync(probeMarker)).toBe(false);
+});
+
+test("the schedule counts from the tick's start even when the evaluation itself is slow", async () => {
+  seed();
+  writeFileSync(fakeClaude, `#!/bin/sh\nsleep 3\ntouch ${JSON.stringify(probeMarker)}\nprintf '%s' '{"result":""}'\n`);
+  rmSync(paths.modelUsageJson, { force: true });
+  const tickStart = Date.now();
+  expect(await cmdCheck(["--if-due"])).toBe(0);
+  expect(Date.now() - tickStart).toBeGreaterThanOrEqual(3_000);
+  expect(loadNextCheckDueAt(Date.now())! - tickStart).toBeLessThanOrEqual(120_000 + 1_000);
+}, 30_000);
+
+test("a timer tick landing within half a tick of the due time evaluates, so a slow evaluation cannot push every band out by a tick", async () => {
+  seed();
+  const now = Date.now();
+  saveNextCheckDueAt({ dueAt: now + 20_000, ts: now });
+  expect(await cmdCheck(["--if-due"])).toBe(0);
+  expect(loadNextCheckDueAt(Date.now())! - now).toBeGreaterThan(290_000);
+});
+
+test("a bare check evaluates regardless of the schedule and reschedules from now", async () => {
+  seed();
+  const now = Date.now();
+  saveNextCheckDueAt({ dueAt: now + 120_000, ts: now });
+  expect(await cmdCheck()).toBe(0);
+  expect(loadNextCheckDueAt(Date.now())! - now).toBeGreaterThan(290_000);
 });
 
 test("an absent, corrupt, or far-future schedule is due now", async () => {
@@ -75,6 +101,6 @@ test("an absent, corrupt, or far-future schedule is due now", async () => {
   expect(loadNextCheckDueAt(now)).toBeNull();
   saveNextCheckDueAt({ dueAt: now + 120_000, ts: now });
   expect(loadNextCheckDueAt(now)).toBe(now + 120_000);
-  expect(await cmdCheck()).toBe(0);
+  expect(await cmdCheck(["--if-due"])).toBe(0);
   expect(loadNextCheckDueAt(now)).toBe(now + 120_000);
 });

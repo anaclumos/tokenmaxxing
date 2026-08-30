@@ -257,24 +257,24 @@ export function enforcedWindowMs(limit: EnforcedClass): number {
   return limit.kind === "session" ? FIVE_HOURS_MS : WEEK_MS;
 }
 
-export function postSwapProof(input: { swapAt: number | null; launchedAt: number | null; turnStartTs: number | null; now: number }): boolean {
-  const { swapAt, launchedAt, turnStartTs, now } = input;
+export function postSwapProof(input: { swapAt: number | null; launchedAt: number | null; errorAt: number | null; now: number }): boolean {
+  const { swapAt, launchedAt, errorAt, now } = input;
   if (swapAt == null) return true;
   if (launchedAt != null && launchedAt > swapAt) return true;
-  if (turnStartTs != null) return turnStartTs > swapAt + POST_SWAP_COOLDOWN_MS;
-  return now - swapAt >= POST_SWAP_COOLDOWN_MS;
+  return (errorAt ?? now) - swapAt >= POST_SWAP_COOLDOWN_MS;
 }
 
-const StampOutcomeSchema = z.enum(["stamped", "org-moved", "no-carrier"]);
-export type StampOutcome = z.infer<typeof StampOutcomeSchema>;
+const StampSchema = z.object({ outcome: z.enum(["stamped", "org-moved", "no-carrier"]), resetsAt: z.number().nullable() });
+export type Stamp = z.infer<typeof StampSchema>;
 
-export async function recordEnforcedLimit(input: { limit: EnforcedClass; org: string; now: number }): Promise<StampOutcome> {
+export async function recordEnforcedLimit(input: { limit: EnforcedClass; org: string; now: number }): Promise<Stamp> {
   const { limit, org, now } = input;
   return withLock(paths.lockFile, () => {
-    if ((readOAuthAccount()?.organizationUuid ?? null) !== org) return "org-moved";
+    if ((readOAuthAccount()?.organizationUuid ?? null) !== org) return { outcome: "org-moved", resetsAt: limit.resetsAt };
     const prior = loadUsage();
     const priorSame = prior && prior.org === org ? prior : null;
-    const account = loadAccounts().accounts.find((a) => a.organizationUuid === org);
+    const idx = loadAccounts();
+    const account = idx.accounts.find((a) => a.organizationUuid === org);
     const mu = loadModelUsage();
     const muSame = mu && mu.org === org ? mu : null;
     const carriedRows = muSame?.perModel ?? {};
@@ -291,11 +291,15 @@ export async function recordEnforcedLimit(input: { limit: EnforcedClass; org: st
         sampledAt: resetsAt == null ? now : sampledAt ?? now,
       });
       log("usage.enforced_limit", { kind: limit.kind, family: limit.family, resetsAt });
-      return "stamped";
+      return { outcome: "stamped", resetsAt };
     }
     saveModelUsage({ perModel: carriedRows, org, ts: now, sampledAt });
+    if (account && limit.resetsAt != null) {
+      account.enforcedUntil = limit.resetsAt;
+      saveAccounts(idx);
+    }
     const carrier = priorSame ?? (account?.lastUsage ? { ...account.lastUsage, model: null } : null);
-    if (!carrier) return "no-carrier";
+    if (!carrier) return { outcome: "no-carrier", resetsAt: limit.resetsAt };
     const window: UsageWindow = { usedPercentage: 100, resetsAt: limit.resetsAt };
     writeUsage({
       fiveHour: limit.kind === "session" ? window : carrier.fiveHour,
@@ -305,7 +309,7 @@ export async function recordEnforcedLimit(input: { limit: EnforcedClass; org: st
       model: carrier.model,
     });
     log("usage.enforced_limit", { kind: limit.kind, resetsAt: limit.resetsAt });
-    return "stamped";
+    return { outcome: "stamped", resetsAt: limit.resetsAt };
   });
 }
 

@@ -75,11 +75,11 @@ describe("classifyEnforcedLimit", () => {
 });
 
 describe("findEnforcedRow", () => {
-  test("pairs the row by content identity with last_assistant_message and anchors the turn at the preceding user row", () => {
+  test("pairs the row by content identity with last_assistant_message and reports the row's own time", () => {
     const rows = [userRow(NOW - 400_000), errorRow({ text: "old failure", at: NOW - 390_000 }), userRow(NOW - 30_000), errorRow({ text: "You've reached your Fable 5 limit.", at: NOW - 300_000 })];
     const found = findEnforcedRow({ rows, lastAssistantMessage: "You've reached your Fable 5 limit.", now: NOW });
     expect(transcriptRowText(found!.row)).toBe("You've reached your Fable 5 limit.");
-    expect(found!.turnStartTs).toBe(NOW - 30_000);
+    expect(found!.errorAt).toBe(NOW - 300_000);
   });
 
   test("without a content match only a recent row counts, so a previous turn's row cannot classify this failure", () => {
@@ -87,7 +87,7 @@ describe("findEnforcedRow", () => {
     expect(findEnforcedRow({ rows, lastAssistantMessage: "Server is temporarily limiting requests", now: NOW })).toBeNull();
     expect(findEnforcedRow({ rows, lastAssistantMessage: undefined, now: NOW })).toBeNull();
     const recent = [...rows, userRow(NOW - 20_000), errorRow({ text: "You've hit your session limit", at: NOW - 5_000 })];
-    expect(findEnforcedRow({ rows: recent, lastAssistantMessage: undefined, now: NOW })?.turnStartTs).toBe(NOW - 20_000);
+    expect(findEnforcedRow({ rows: recent, lastAssistantMessage: undefined, now: NOW })?.errorAt).toBe(NOW - 5_000);
   });
 
   test("skips non-error and non-rate_limit rows", () => {

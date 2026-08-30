@@ -50,6 +50,7 @@ function blockingUntil(a: Account, ctx: PickCtx): number[] {
         ]
       : []),
     ...gatedPerModelWindows(a, ctx.switchFamilies).map((w) => blockedUntil(w, WEEK_MS, a.lastPerModelAt ?? a.lastUsageAt, ctx.thresholds.weekly)),
+    ...(a.enforcedUntil != null ? [a.enforcedUntil] : []),
   ];
 }
 

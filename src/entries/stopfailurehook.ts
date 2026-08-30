@@ -52,11 +52,11 @@ export async function runStopFailureHook(): Promise<number> {
 
     let enforced: EnforcedLimit | null = null;
     if (limit && found && org) {
-      if (postSwapProof({ swapAt: loadLastSwapAt(), launchedAt, turnStartTs: found.turnStartTs, now })) {
-        const outcome = await recordEnforcedLimit({ limit, org, now });
-        log("stopfailure.enforced", { kind: limit.kind, family: limit.kind === "model" ? limit.family : undefined, outcome, subagent: !mainLoop });
-        if (outcome !== "org-moved") {
-          enforced = { org, family: limit.kind === "model" ? limit.family : null, resetsAt: limit.resetsAt, windowMs: enforcedWindowMs(limit) };
+      if (postSwapProof({ swapAt: loadLastSwapAt(), launchedAt, errorAt: found.errorAt, now })) {
+        const stamp = await recordEnforcedLimit({ limit, org, now });
+        log("stopfailure.enforced", { kind: limit.kind, family: limit.kind === "model" ? limit.family : undefined, outcome: stamp.outcome, resetsAt: stamp.resetsAt, subagent: !mainLoop });
+        if (stamp.outcome !== "org-moved") {
+          enforced = { org, family: limit.kind === "model" ? limit.family : null, resetsAt: stamp.resetsAt, windowMs: enforcedWindowMs(limit) };
         }
       } else {
         log("stopfailure.unproven", { kind: limit.kind });
@@ -70,7 +70,7 @@ export async function runStopFailureHook(): Promise<number> {
       });
     }
 
-    const decision = await evaluateAndMaybeSwap(now, canPause, enforced);
+    const decision = await evaluateAndMaybeSwap(now, canPause && enforced != null, enforced);
     if (enforced && canPause && pinnedSid && decision.account && (decision.swapped || decision.waitUntil !== undefined)) {
       const marker = join(paths.respawnDir, pinnedSid);
       const payload = RespawnMarkerSchema.parse({
