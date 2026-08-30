@@ -10,5 +10,5 @@ Dated 2026-08-30. Ship of StopFailure force-switch + dynamic check cadence + com
 - [x] Docs: switching, state directory, limitations
 - [x] AGENTS.md and .memory updates
 - [x] Bump to 1.9.0
-- [ ] Adversarial review of the diff, fix findings
+- [ ] Review the diff, fix findings
 - [ ] PR, CI, review window, merge, release v1.9.0, verify npm

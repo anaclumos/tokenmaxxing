@@ -279,6 +279,15 @@ describe("checkDelayMs", () => {
     expect(checkDelayMs({ cfg: cfg(), org: "org-A", now, decision })).toBe(120_000);
     saveModelUsage({ perModel: {}, org: "org-A", ts: now, sampledAt: now });
     expect(checkDelayMs({ cfg: cfg(), org: "org-A", now, decision })).toBe(120_000);
+    saveModelUsage({ perModel: { Fable: { usedPercentage: 20, resetsAt: now + 2 * D } }, org: "org-A", ts: now, sampledAt: now - 6 * H });
+    expect(checkDelayMs({ cfg: cfg(), org: "org-A", now, decision })).toBe(120_000);
+  });
+
+  test("a tick inside the post-swap cooldown sleeps exactly to its end", () => {
+    const now = Date.now();
+    writeUsageJson({});
+    saveLastSwapAt(now - 10_000);
+    expect(checkDelayMs({ cfg: cfg(), org: "org-A", now, decision })).toBe(35_000);
   });
 
   test("a depleted wait sleeps toward its reset within the floor and ceiling", () => {

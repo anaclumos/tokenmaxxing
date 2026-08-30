@@ -315,6 +315,8 @@ const CHECK_DELAY_UNKNOWN_MS = 180_000;
 export function checkDelayMs(input: { cfg: Config; org: string | null; now: number; decision: SwapDecision }): number {
   const { cfg, org, now, decision } = input;
   if (decision.waitUntil !== undefined) return Math.min(MAX_CHECK_DELAY_MS, Math.max(CHECK_DELAY_FLOOR_MS, decision.waitUntil - now));
+  const swapAt = loadLastSwapAt();
+  if (swapAt != null && now - swapAt < POST_SWAP_COOLDOWN_MS) return swapAt + POST_SWAP_COOLDOWN_MS - now;
   const u = loadUsage();
   if (!org || !u || !usageFresh(u, org, cfg.policy.usagePollTtlMs, now)) return CHECK_DELAY_UNKNOWN_MS;
   const bars = effectiveBars(cfg);
@@ -325,8 +327,9 @@ export function checkDelayMs(input: { cfg: Config; org: string | null; now: numb
   const mu = loadModelUsage();
   const muSame = mu && mu.org === org ? mu : null;
   let capMissing = false;
+  const capFresh = muSame != null && now - (muSame.sampledAt ?? muSame.ts) <= cfg.policy.usagePollTtlMs;
   for (const family of gatedFamilies(u.model, cfg.policy.switchModels)) {
-    const cap = muSame ? capForFamily(muSame, family, now) : undefined;
+    const cap = muSame && capFresh ? capForFamily(muSame, family, now) : undefined;
     if (cap && muSame) heads.push(bars.weekly - liveUsed({ window: cap, windowMs: WEEK_MS, sampledAt: muSame.sampledAt ?? muSame.ts, now }));
     else capMissing = true;
   }
