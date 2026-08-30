@@ -6,7 +6,7 @@ Dated 2026-08-30. Ship of StopFailure force-switch + dynamic check cadence + com
 - [x] StopFailure hook: classify, stamp, force, retrigger marker
 - [x] Dynamic check cadence (60s floor tick, 60-300s self-paced)
 - [x] Delete every code comment (owner ruling 2026-08-30)
-- [x] Test suite green with the new tests
+- [x] Test suite green with the new tests (379 pass, 1 skip, 0 fail after the plugin.json version fix)
 - [x] Docs: switching, state directory, limitations
 - [x] AGENTS.md and .memory updates
 - [x] Bump to 1.9.0

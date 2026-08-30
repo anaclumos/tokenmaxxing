@@ -21,4 +21,4 @@ Dated 2026-08-30. Shipped in 1.9.0.
 
 **Policy left alone.** `thresholds.weekly` stays 98 for the Fable cap and the greedy ranking ignores per-model caps below the bar, so an account at Fable 93 is a legitimate target while running Fable. Codex gets none of this (no error signal in codex hook stdin as of 0.150.1).
 
-**Comments.** Owner ruling 2026-08-30: no comments anywhere in the tree; 2,232 were stripped. Rationale lives here and in the docs, never at the code site.
+**Comments.** Owner ruling 2026-08-30: no comments anywhere in the tree; 2,232 were stripped with a TypeScript-compiler-API script under a one-time named exception to the no-scripted-rewrite rule (the rule stands), verified by typecheck, the suite, a zero-comment recount, and a transpile-with-removeComments comparison of every file before and after (0 mismatches). Rationale lives here and in the docs, never at the code site. bun.nix (generated) and pullfrog.yml (vendor-managed) keep their headers.
