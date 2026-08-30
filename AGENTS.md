@@ -13,6 +13,7 @@ No external installed user base, so this is pre-production code: delete old-stat
 - The owner's Mac runs tokenmaxxing straight from this working tree, so a bad git operation breaks the live install.
 - This machine runs live supervisors, hooks, the periodic check, and the owner's real claude sessions. Stop processes by PID, and never kill a running session or supervisor to free a resource without asking.
 - The owner's hosts are managed environments: never run `init`, `add`, `auth`, `uninstall`, or anything that writes settings.json, launchd/systemd units, shell rc, or the global package on a live host (owner, 2026-08-30). Ship code; activation is the owner's step.
+- This working tree is a shared checkout (the owner and other agents work in it live). Stage commits by explicit path, never `git add -A`/`-u` (hook correction, 2026-08-30).
 - Never print credential material: keychain blobs, `.credentials.json`, `auth.json`, OAuth access or refresh tokens. Report account labels and status only. A ky error carries its request, Authorization header included.
 - Ask before any run that meters real quota or opens a session window (`status --force`, live-pool runs). Free `/usage` reads are fine.
 - This repo is PUBLIC. The no-Slack-info and no-device-info rule covers PR bodies, commit messages, review replies, release notes, and docs, not just `.memory`.
