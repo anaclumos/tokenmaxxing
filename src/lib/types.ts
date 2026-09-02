@@ -1,3 +1,4 @@
+import { isEqual, uniq } from "es-toolkit";
 import { z } from "zod";
 
 const OAuthCredsSchema = z.looseObject({
@@ -99,9 +100,21 @@ export const ThresholdsSchema = z.object({
 });
 export type Thresholds = z.infer<typeof ThresholdsSchema>;
 
+export const SessionLadderSchema = z
+  .array(z.number().min(0).max(100))
+  .min(1)
+  .refine((rungs) => isEqual(rungs, uniq(rungs).toSorted((a, b) => a - b)), {
+    message: "thresholds.session rungs must be strictly ascending",
+  });
+
+export const ScreeningThresholdsSchema = z.object({
+  session: SessionLadderSchema,
+  weekly: z.number().min(0).max(100),
+});
+
 export const ConfigSchema = z
   .object({
-    thresholds: ThresholdsSchema,
+    thresholds: ScreeningThresholdsSchema,
     hardThresholds: ThresholdsSchema,
     claudeBin: z.string(),
     codexBin: z.string(),
@@ -113,11 +126,11 @@ export const ConfigSchema = z
       maxWaitMs: z.number().int().positive(),
     }),
   })
-  .refine((cfg) => cfg.policy.projectionMargin < Math.min(cfg.thresholds.session, cfg.thresholds.weekly), {
-    message: "policy.projectionMargin must be strictly below both thresholds (effectiveBars would hit zero and every account would read as exhausted)",
+  .refine((cfg) => cfg.policy.projectionMargin < Math.min(...cfg.thresholds.session, cfg.thresholds.weekly), {
+    message: "policy.projectionMargin must be strictly below every threshold (effectiveBars would hit zero and every account would read as exhausted)",
   })
-  .refine((cfg) => cfg.hardThresholds.session >= cfg.thresholds.session && cfg.hardThresholds.weekly >= cfg.thresholds.weekly, {
-    message: "hardThresholds (the Layer 2 wall) must be at or above thresholds (the Layer 1 screening bars) for both windows",
+  .refine((cfg) => cfg.hardThresholds.session >= Math.max(...cfg.thresholds.session) && cfg.hardThresholds.weekly >= cfg.thresholds.weekly, {
+    message: "hardThresholds (the Layer 2 wall) must be at or above thresholds (the Layer 1 screening bars, the top session rung) for both windows",
   });
 export type Config = z.infer<typeof ConfigSchema>;
 

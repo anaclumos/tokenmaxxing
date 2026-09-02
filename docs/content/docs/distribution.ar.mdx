@@ -5,7 +5,7 @@ description: "شيفرة TypeScript المصدرية على npm وNix، يشغّ
 
 تشحن حزمة npm شيفرة TypeScript المصدرية، لا نسخة مبنيّة: إذ يشير ملف `tokenmaxxing` الثنائي مباشرةً إلى `src/main.ts` بترويسة Bun (shebang)، ويشغّله Bun 1.2.6 أو أحدث كما هو. ولهذا يكون Bun متطلّبًا صارمًا. ولا توجد ملفات ثنائية مُصرَّفة بحكم التصميم: فقد شحن إصدار مبكّر ملفًا ثنائيًا واحدًا لـ macOS بحجم 61 ميغابايت إلى كل منصّة وأخفق على Linux بخطأ `exec format error`، وكانت الحزم المُصرَّفة لكل منصّة ستحتاج كلٌّ منها إلى خطّ إصدار خاص بها، فأصبح التشغيل من المصدر عبر Bun نموذج التوزيع.
 
-تعرض خريطة `exports` الخاصة بالحزمة `src/sdk.ts` بوصفها نقطة الدخول البرمجية الموصوفة في [واجهة Agent SDK](/ar/sdk). وتُوسَم الإصدارات بـ `v<version>` على GitHub؛ وينشر التكامل المستمر (CI) إلى npm عبر النشر الموثوق (OIDC، مع إثبات المنشأ)، وتشغّل بوّابة النشر فحص الأنواع ومجموعة الاختبارات الكاملة أوّلًا.
+تعرض خريطة `exports` الخاصة بالحزمة `src/sdk.ts` بوصفها نقطة الدخول البرمجية الموصوفة في [واجهة Agent SDK](/ar/sdk). وتُوسَم الإصدارات بـ `v<version>` على GitHub؛ وينشر التكامل المستمر (CI) إلى npm عبر النشر الموثوق (OIDC، مع إثبات المنشأ)، وتشغّل بوّابة النشر فحص الأنواع أوّلًا.
 
 ## Nix / nix-darwin
 
@@ -18,7 +18,14 @@ description: "شيفرة TypeScript المصدرية على npm وNix، يشغّ
 | `homeManagerModules.default` | Home Manager على macOS أو Linux |
 | `nixosModules.default` / `withOverlay` | تثبيت نظام على NixOS |
 
-تشغيل لمرة واحدة دون التثبيت في ملف تعريف:
+ثبّت في ملف تعريف (حتى تستطيع وسائط المشرف التي يكتبها `init` أن تحلّ `tokenmaxxing` ثابتًا في PATH)، ثم شغّل init:
+
+```sh
+nix profile install github:anaclumos/tokenmaxxing
+tokenmaxxing init
+```
+
+تشغيل لمرة واحدة دون تثبيت (المساعدة أو الحالة فقط، ولا تُشغّل `init` بهذه الطريقة):
 
 ```sh
 nix run github:anaclumos/tokenmaxxing -- help
@@ -29,7 +36,6 @@ nix-darwin (يضيف الـ overlay حتى يُحلّ `pkgs.tokenmaxxing`):
 ```nix
 {
   inputs.tokenmaxxing.url = "github:anaclumos/tokenmaxxing";
-  # ...
   modules = [
     inputs.tokenmaxxing.darwinModules.withOverlay
     { programs.tokenmaxxing.enable = true; }
@@ -37,7 +43,7 @@ nix-darwin (يضيف الـ overlay حتى يُحلّ `pkgs.tokenmaxxing`):
 }
 ```
 
-أو عيّن الحزمة صراحةً (يعمل مع Home Manager أيضًا):
+Home Manager (عيّن الحزمة صراحةً، أو طبّق overlay هذا الـ flake على pkgs التي يستخدمها Home Manager):
 
 ```nix
 {
@@ -47,13 +53,14 @@ nix-darwin (يضيف الـ overlay حتى يُحلّ `pkgs.tokenmaxxing`):
 }
 ```
 
-يضع Nix واجهة سطر الأوامر في PATH فحسب. استيراد الحسابات، وshim المشرف `claude` على PATH، وhooks في `settings.json`، ومؤقّت الفحص الدوري (افتراضيًا) ما زالت تأتي من `tokenmaxxing init` — فهي تمسّ بيانات الاعتماد وإعدادات يملكها المستخدم، ولا ينبغي لوحدة نقية أن تعيد كتابتها. اضبط `programs.tokenmaxxing.checkTimer.enable = true` فقط عندما تريد أن يملك Nix المؤقّت بدل init.
+يضع Nix واجهة سطر الأوامر في PATH فحسب. أمّا استيراد الحسابات، وshim المشرف `claude` على PATH، وhooks في `settings.json`، ومؤقّت الفحص الدوري (افتراضيًا)، فما زالت تأتي من `tokenmaxxing init`، لأنها تمسّ بيانات الاعتماد وإعدادات يملكها المستخدم، ولا ينبغي لوحدة نقية أن تعيد كتابتها. اضبط `programs.tokenmaxxing.checkTimer.enable = true` فقط عندما تريد أن يملك Nix المؤقّت بدل init (وهذا يصدّر أيضًا `TOKENMAXXING_SKIP_TIMER=1` حتى لا يكتب init وحدة ثانية). والمؤقّت التصريحي مؤقّت جلسة مستخدم، مطابقًا لما يفعله init، ويحتاج Linux بلا واجهة إلى `loginctl enable-linger` لكي يعمل دون تسجيل دخول.
 
 عند تغيّر `bun.lock`، أعد توليد تعبير اعتماديات Nix:
 
 ```sh
-bun run nix:bun   # writes bun.nix via bun2nix
+bun run nix:bun   # writes bun.nix via bun2nix@2.1.2
 ```
+
 ## الرخصة
 
 MIT. الشيفرة المصدرية على [anaclumos/tokenmaxxing](https://github.com/anaclumos/tokenmaxxing).

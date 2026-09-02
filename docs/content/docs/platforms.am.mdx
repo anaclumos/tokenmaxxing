@@ -8,7 +8,7 @@ description: "macOS እና Linux በማከማቻ፣ በመቀበል፣ እና �
 | ቀጥታ credential | Login keychain generic-password ንጥል | 0600 `.credentials.json` ፋይል |
 | የተያዙ credentialዎች | በ-መለያ keychain ንጥሎች | 0600 ፋይሎች በ 0700 directory ውስጥ |
 | ከመቀያየር በኋላ መቀበል | በ~30 ሰከንድ ውስጥ (keychain read cache) | ቀጣይ request (file mtime poll) |
-| ወቅታዊ ፍተሻ | launchd agent፣ በየ180ሰ | systemd user timer፣ በየ180ሰ |
+| ወቅታዊ ፍተሻ | launchd agent፣ 60ሰ የወለል tick፣ ራስ-ተስተካካይ ከ60ሰ እስከ 300ሰ | systemd user timer፣ 60ሰ የወለል tick፣ ራስ-ተስተካካይ ከ60ሰ እስከ 300ሰ |
 | የተነጠለ-login store | በ config dir ውስጥ Hash-namespaced keychain service | በተነጠለ config dir ውስጥ ያለ ፋይል |
 
 ማወቅ የሚገባቸው ሁለት ለ Linux-የተለዩ ዝርዝሮች፦ claude የ credential directory ውን መጀመሪያ ከ `CLAUDE_SECURESTORAGE_CONFIG_DIR` ይፈታል (ከዚያ `CLAUDE_CONFIG_DIR`፣ ከዚያ `~/.claude`)፣ እና tokenmaxxing ያንን አፈታት በትክክል ስለሚያንጸባርቅ ሁለቱ በጭራሽ አይለያዩም። እና የተመሳሳዩ claude ስሪት ሁለቱ የ OS buildዎች የ `/usage` ዳግም ማስጀመሪያ ሰዓቶችን በተለየ ሁኔታ ይቀርጻሉ (አንዱ " at " ማጣበቂያ ይጠቀማል፣ ሌላው ኮማ)፤ የ tokenmaxxing parser በትክክል እነዚያን ሁለት ቅርጾች ይቀበላል እና በማንኛውም ሦስተኛ ላይ ከመገመት ይልቅ ይመዘግባል።

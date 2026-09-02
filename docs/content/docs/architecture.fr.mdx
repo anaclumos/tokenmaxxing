@@ -24,10 +24,9 @@ Le tee écrit uniquement en cas de changement : lorsque les chiffres sont inchan
 À chaque frontière de tour, le hook Stop exécute la décision de bascule (voir [Comment la bascule décide](/fr/switching)). Lorsqu'une bascule est justifiée, elle se produit sous un verrou exclusif `flock(2)` (pris via `bun:ffi`, puisque macOS ne livre aucun binaire `flock(1)`), et les écritures d'identifiants s'imbriquent en plus avec le propre verrou de rafraîchissement de Claude Code. Au sein de la section critique, une bascule :
 
 1. Récupère l'identifiant actif actuel dans la sauvegarde parquée de son véritable propriétaire.
-2. Installe l'identifiant fraîchement rafraîchi du compte cible comme identifiant actif, en fusionnant avec le blob actif existant afin que l'état voisin (tel que les jetons OAuth par serveur MCP) survive.
-3. Conserve le jeton pivoté de la cible dans sa propre sauvegarde.
-4. Réécrit atomiquement le champ `oauthAccount` dans `~/.claude.json`.
-5. Valide la nouvelle étiquette active et efface les instantanés d'utilisation périmés, le tout avant que le verrou ne se libère, de sorte qu'un plantage ne puisse jamais laisser l'identifiant installé et l'étiquette active pointer vers des comptes différents.
+2. Installe l'identifiant fraîchement rafraîchi du compte cible comme identifiant actif, en fusionnant avec le blob actif existant afin que l'état voisin (tel que les jetons OAuth par serveur MCP) survive. (Le jeton de rafraîchissement pivoté de la cible a déjà été persisté dans sa propre sauvegarde à l'instant où le rafraîchissement est revenu, sous le flock mais avant cette section critique du verrou de rafraîchissement.)
+3. Réécrit atomiquement le champ `oauthAccount` dans `~/.claude.json`.
+4. Valide la nouvelle étiquette active et efface les instantanés d'utilisation périmés avant que le verrou ne se libère. Ces fichiers ne peuvent pas être atomiques ensemble face à un plantage, si bien qu'un plantage peut laisser un état intermédiaire ; la bascule suivante détermine le véritable propriétaire de l'identifiant actif indépendamment de l'étiquette et journalise toute dérive détectée.
 
 Comme toutes les sessions du profil par défaut partagent l'unique identifiant actif, une seule bascule migre toutes les sessions en même temps, et le flock, plus une revérification sous le verrou, empêche des hooks en concurrence de consommer deux comptes.
 
@@ -41,7 +40,7 @@ Ce n'est que lorsque chaque compte du pool dépasse ses barres que le hook Stop 
 
 ## La minuterie de vérification périodique
 
-Les hooks ne se déclenchent qu'aux frontières de tour, et un long tour agentique peut consumer une fenêtre, la faisant passer de saine à épuisée, sans une seule frontière. `init` installe donc aussi une minuterie périodique (un agent launchd sur macOS, une minuterie utilisateur systemd sur Linux) qui exécute `tokenmaxxing check` toutes les 180 secondes, indépendamment de l'activité des tours.
+Les hooks ne se déclenchent qu'aux frontières de tour, et un long tour agentique peut consumer une fenêtre, la faisant passer de saine à épuisée, sans une seule frontière. `init` installe donc aussi une minuterie périodique (un agent launchd sur macOS, une minuterie utilisateur systemd sur Linux) qui exécute `tokenmaxxing check --if-due` toutes les 60 secondes, indépendamment de l'activité des tours. La vérification s'auto-rythme d'après la marge du compte actif : avec beaucoup de place jusqu'à chaque barre, elle évalue toutes les cinq minutes, et près d'une barre à chaque tick (voir [Comment la bascule décide](/fr/switching)).
 
 ## Un hook SessionStart
 

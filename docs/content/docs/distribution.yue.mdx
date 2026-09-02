@@ -5,7 +5,7 @@ description: "npm 同 Nix 上嘅 TypeScript 原始碼，由 Bun 運行，帶來�
 
 npm 套件發布嘅係 TypeScript 原始碼，而唔係 build：`tokenmaxxing` bin 用 Bun shebang 直接指向 `src/main.ts`，而 Bun 1.2.6 或以上版本會原封不動咁行。呢個就係點解 Bun 係硬性要求。刻意冇編譯二進位檔：早期有個版本將同一個 61 MB 嘅 macOS 二進位檔發布到每個平台，喺 Linux 上就報 `exec format error` 失敗咗，而每個平台嘅編譯套件各自都要有自己嘅發布流水線，所以由 Bun 運行原始碼就成為咗分發模型。
 
-套件嘅 `exports` 映射將 `src/sdk.ts` 公開成 [Agent SDK 介面](/yue/sdk)入面描述嘅程式化入口。發布版本喺 GitHub 上會標記做 `v<version>`。CI 會透過受信任發布（OIDC，連同來源證明）發布到 npm，而發布閘門會先跑類型檢查同完整嘅測試套件。
+套件嘅 `exports` 映射將 `src/sdk.ts` 公開成 [Agent SDK 介面](/yue/sdk)入面描述嘅程式化入口。發布版本喺 GitHub 上會標記做 `v<version>`。CI 會透過受信任發布（OIDC，連同來源證明）發布到 npm，而發布閘門會先跑類型檢查。
 
 ## Nix／nix-darwin
 
@@ -18,7 +18,14 @@ npm 套件發布嘅係 TypeScript 原始碼，而唔係 build：`tokenmaxxing` b
 | `homeManagerModules.default` | macOS 或者 Linux 嘅 Home Manager |
 | `nixosModules.default` / `withOverlay` | NixOS 系統級安裝 |
 
-唔使裝入 profile，即場跑一次：
+裝入 profile（噉 `init` 嘅監督者 shim 先解得到 PATH 上面一個穩定嘅 `tokenmaxxing`），跟住再 init：
+
+```sh
+nix profile install github:anaclumos/tokenmaxxing
+tokenmaxxing init
+```
+
+唔使裝就跑一次（淨係 help／status，唔好用呢種方式行 `init`）：
 
 ```sh
 nix run github:anaclumos/tokenmaxxing -- help
@@ -29,7 +36,6 @@ nix-darwin（加埋 overlay，等 `pkgs.tokenmaxxing` 解到）：
 ```nix
 {
   inputs.tokenmaxxing.url = "github:anaclumos/tokenmaxxing";
-  # ...
   modules = [
     inputs.tokenmaxxing.darwinModules.withOverlay
     { programs.tokenmaxxing.enable = true; }
@@ -37,7 +43,7 @@ nix-darwin（加埋 overlay，等 `pkgs.tokenmaxxing` 解到）：
 }
 ```
 
-又或者明確指定個 package（Home Manager 都用得）：
+Home Manager（明確指定個 package，又或者將呢個 flake 嘅 overlay 套落 Home Manager 用緊嘅 pkgs）：
 
 ```nix
 {
@@ -47,12 +53,12 @@ nix-darwin（加埋 overlay，等 `pkgs.tokenmaxxing` 解到）：
 }
 ```
 
-Nix 淨係將 CLI 放落 PATH。帳戶匯入、PATH 上面嘅 `claude` supervisor shim、`settings.json` 嘅 hook，同埋（預設）定期檢查計時器，仍然嚟自 `tokenmaxxing init`——呢啲會掂到憑證同用戶自己嘅設定，一個純模組唔應該改寫。只有你想計時器由 Nix 管、而唔係 init 嗰陣，先至設 `programs.tokenmaxxing.checkTimer.enable = true`。
+Nix 淨係將 CLI 放落 PATH。帳戶匯入、PATH 上面嘅 `claude` supervisor shim、`settings.json` 嘅 hook，同埋（預設）定期檢查計時器，仍然嚟自 `tokenmaxxing init`。呢啲會掂到憑證同用戶自己嘅設定，一個純模組唔應該改寫。只有你想計時器由 Nix 管、而唔係 init 嗰陣，先至設 `programs.tokenmaxxing.checkTimer.enable = true`（噉亦都會匯出 `TOKENMAXXING_SKIP_TIMER=1`，等 init 唔會再寫多一個 unit）。呢個聲明式計時器同 init 一樣係 user session 計時器。無頭 Linux 要行 `loginctl enable-linger`，佢先至可以喺冇登入嘅情況下觸發。
 
 `bun.lock` 有變就重新產生 Nix 依賴表達式：
 
 ```sh
-bun run nix:bun   # writes bun.nix via bun2nix
+bun run nix:bun   # writes bun.nix via bun2nix@2.1.2
 ```
 
 ## 授權

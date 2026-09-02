@@ -9,18 +9,19 @@ The package's programmatic entry (`exports["."]` points at `src/sdk.ts`) pairs t
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import { ensureBestAccount, pooledOptions, stopHookCheck } from "tokenmaxxing";
 
-await ensureBestAccount(); // run the switch decision before the spawn
+await ensureBestAccount();
 
 for await (const message of query({
   prompt: "...",
   options: {
-    ...pooledOptions(), // pinned real claude + scrubbed env
-    hooks: { Stop: [{ hooks: [stopHookCheck] }] }, // re-decide at every turn boundary
+    ...pooledOptions(),
+    hooks: { Stop: [{ hooks: [stopHookCheck] }] },
   },
 })) {
-  // capture the session id from the init message for `resume` across swaps
 }
 ```
+
+The loop body receives the message stream; keep the session id from the init message if you want `resume` across swaps.
 
 The Agent SDK spawns a claude subprocess per `query()` and reads credentials once at spawn - no statusline, no mid-query hot-swap - so the integration is boundary-driven:
 

@@ -19,9 +19,10 @@ for await (const message of query({
     hooks: { Stop: [{ hooks: [stopHookCheck] }] },
   },
 })) {
-  // capture session id from init for resume across swaps
 }
 ```
+
+The loop body receives the message stream; keep the session id from the init message for `resume` across swaps.
 
 ## Rules
 

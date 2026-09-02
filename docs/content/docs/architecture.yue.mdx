@@ -24,10 +24,9 @@ Claude Code 每個回合都會將速率限制數據（`rate_limits.five_hour` �
 喺每個回合邊界，Stop hook 會行切換決定（睇[切換點樣決定](/yue/switching)）。當一次切換有需要嗰陣，就會喺一個 `flock(2)` 獨佔鎖之下發生（透過 `bun:ffi` 取得，因為 macOS 冇附帶 `flock(1)` 二進位檔），另外，憑證寫入仲會同 Claude Code 自己嘅刷新鎖互鎖。喺臨界區入面，一次切換：
 
 1. 將目前活躍嘅憑證收集入佢真正擁有者嘅泊存備份。
-2. 將目標帳戶啱啱刷新好嘅憑證安裝做活躍嗰個，合併入現有嘅活躍 blob，令兄弟狀態（例如每個 MCP 伺服器嘅 OAuth token）得以保留。
-3. 將目標嘅輪換 token 保存去佢自己嘅備份。
-4. 原子性咁重寫 `~/.claude.json` 入面嘅 `oauthAccount` 欄位。
-5. 提交新嘅活躍標籤，同埋清除過時嘅用量快照，全部喺個鎖釋放之前做，所以一次崩潰永遠唔會令已安裝嘅憑證同活躍標籤指向唔同嘅帳戶。
+2. 將目標帳戶啱啱刷新好嘅憑證安裝做活躍嗰個，合併入現有嘅活躍 blob，令兄弟狀態（例如每個 MCP 伺服器嘅 OAuth token）得以保留。（目標輪換咗嘅刷新 token，喺刷新一返到嗰刻就已經喺 flock 之下、但喺呢個刷新鎖臨界區之前，保存咗去佢自己嘅備份。）
+3. 原子性咁重寫 `~/.claude.json` 入面嘅 `oauthAccount` 欄位。
+4. 喺個鎖釋放之前，提交新嘅活躍標籤，同埋清除過時嘅用量快照。呢啲檔案冇辦法一齊做到崩潰原子性，所以一次崩潰可能會留低中間狀態；下一次切換會獨立於個標籤去解析活躍憑證嘅真正擁有者，並且將偵測到嘅漂移記錄低。
 
 因為所有預設 profile 嘅 session 共用同一個活躍憑證，一次切換會即刻遷移每個 session，而個 flock 加埋喺鎖之下嘅重新檢查，就阻止到競爭緊嘅 hook 燒毀兩個帳戶。
 
@@ -41,7 +40,7 @@ Claude Code 每個回合都會將速率限制數據（`rate_limits.five_hour` �
 
 ## 定期檢查計時器
 
-Hook 只會喺回合邊界觸發，而一個長嘅 agentic 回合可以一個邊界都冇，就將個窗口由健康燒到耗盡。所以 `init` 亦都會安裝一個定期計時器 - macOS 上面係一個 launchd agent，Linux 上面係一個 systemd user timer - 每 180 秒行一次 `tokenmaxxing check`，唔理回合有冇活動。
+Hook 只會喺回合邊界觸發，而一個長嘅 agentic 回合可以一個邊界都冇，就將個窗口由健康燒到耗盡。所以 `init` 亦都會安裝一個定期計時器 - macOS 上面係一個 launchd agent，Linux 上面係一個 systemd user timer - 每 60 秒行一次 `tokenmaxxing check --if-due`，唔理回合有冇活動。個檢查會按活躍帳戶嘅餘裕自己調節節奏：距離每一條界線都仲有大把位嗰陣就每五分鐘評估一次，貼近一條界線就每一下 tick 都評估（睇[切換點樣決定](/yue/switching)）。
 
 ## 一個 SessionStart hook
 

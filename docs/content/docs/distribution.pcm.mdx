@@ -5,7 +5,7 @@ description: "TypeScript source for npm and Nix, wey Bun dey run, dem publish am
 
 The npm package dey ship TypeScript source, no be build: the `tokenmaxxing` bin dey point straight at `src/main.ts` with one Bun shebang, and Bun 1.2.6 or newer dey run am as-is. Na why Bun na hard requirement. No compiled binaries dey by design: one early release ship one single 61 MB macOS binary go every platform and e fail for Linux with `exec format error`, and per-platform compiled packages go each need dia own release pipeline, so source-run-by-Bun become the distribution model.
 
-The package im `exports` map dey expose `src/sdk.ts` as the programmatic entry wey dem describe for [Di Agent SDK Surface](/pcm/sdk). Dem dey tag releases `v<version>` for GitHub; CI dey publish to npm via trusted publishing (OIDC, with provenance), and the publish gate dey run the typecheck and the full test suite first.
+The package im `exports` map dey expose `src/sdk.ts` as the programmatic entry wey dem describe for [Di Agent SDK Surface](/pcm/sdk). Dem dey tag releases `v<version>` for GitHub; CI dey publish to npm via trusted publishing (OIDC, with provenance), and the publish gate dey run the typecheck first.
 
 ## Nix / nix-darwin
 
@@ -18,7 +18,14 @@ Di same source tree na flake too. E still dey use di source-run-by-Bun model (th
 | `homeManagerModules.default` | Home Manager for macOS or Linux |
 | `nixosModules.default` / `withOverlay` | NixOS system install |
 
-One-shot without install am into profile:
+Install am into one profile (so `init` im supervisor shims fit resolve one stable `tokenmaxxing` for PATH), then init:
+
+```sh
+nix profile install github:anaclumos/tokenmaxxing
+tokenmaxxing init
+```
+
+One-shot without to install am (help / status only, no `init` dis way):
 
 ```sh
 nix run github:anaclumos/tokenmaxxing -- help
@@ -29,7 +36,6 @@ nix-darwin (e add di overlay so `pkgs.tokenmaxxing` go resolve):
 ```nix
 {
   inputs.tokenmaxxing.url = "github:anaclumos/tokenmaxxing";
-  # ...
   modules = [
     inputs.tokenmaxxing.darwinModules.withOverlay
     { programs.tokenmaxxing.enable = true; }
@@ -37,7 +43,7 @@ nix-darwin (e add di overlay so `pkgs.tokenmaxxing` go resolve):
 }
 ```
 
-Or set di package clear-clear (e work with Home Manager too):
+Home Manager (set di package clear-clear, or apply dis flake im overlay to di pkgs wey Home Manager dey use):
 
 ```nix
 {
@@ -47,13 +53,14 @@ Or set di package clear-clear (e work with Home Manager too):
 }
 ```
 
-Nix only put di CLI for PATH. Account import, di on-PATH `claude` supervisor shim, `settings.json` hooks, and (by default) di periodic check timer still dey come from `tokenmaxxing init` — dem dey touch credentials and user-owned settings wey pure module no suppose rewrite. Set `programs.tokenmaxxing.checkTimer.enable = true` only when you wan make Nix own di timer instead of init.
+Nix only put di CLI for PATH. Account import, di on-PATH `claude` supervisor shim, `settings.json` hooks, and (by default) di periodic check timer still dey come from `tokenmaxxing init`. Dem dey touch credentials and user-owned settings wey pure module no suppose rewrite. Set `programs.tokenmaxxing.checkTimer.enable = true` only when you wan make Nix own di timer instead of init (dat one dey also export `TOKENMAXXING_SKIP_TIMER=1` so init no go write second unit). Di declarative timer na user-session timer, e match init. Headless Linux need `loginctl enable-linger` before e go fire without login.
 
 When `bun.lock` change, regenerate di Nix dependency expression:
 
 ```sh
-bun run nix:bun   # writes bun.nix via bun2nix
+bun run nix:bun   # writes bun.nix via bun2nix@2.1.2
 ```
+
 ## License
 
 MIT. Source for [anaclumos/tokenmaxxing](https://github.com/anaclumos/tokenmaxxing).

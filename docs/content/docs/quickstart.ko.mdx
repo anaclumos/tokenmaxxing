@@ -3,22 +3,22 @@ title: 빠른 시작
 description: "tokenmaxxing을 설치하고 현재 계정을 가져온 뒤 계정을 더 모아 관리하세요"
 ---
 
-macOS 또는 Linux에서 [Bun](https://bun.sh)과 Claude Code가 필요합니다. Bun으로 설치하거나, 이미 Nix / nix-darwin을 쓰고 있다면 flake에서 설치하세요 ([빌드와 배포](/ko/distribution) 참고):
+macOS 또는 Linux에서 [Bun](https://bun.sh)과 Claude Code가 필요합니다. Bun으로 설치하거나, 이미 Nix / nix-darwin을 쓰고 있다면 flake에서 설치하세요. `init` 전에 CLI를 PATH에 올려 두어야 합니다([빌드와 배포](/ko/distribution) 참고).
 
 ```sh
 bun add -g tokenmaxxing
-# or: nix profile install github:anaclumos/tokenmaxxing
-# or: enable programs.tokenmaxxing in your nix-darwin / Home Manager config
 tokenmaxxing init
 ```
+
+Nix 사용자는 Bun 단계를 `nix profile install github:anaclumos/tokenmaxxing`으로 바꾸거나, nix-darwin 또는 Home Manager 설정에서 `programs.tokenmaxxing`을 켜면 됩니다.
 
 `init`은 다섯 가지 일을 합니다.
 
 1. 이미 로그인되어 있는 계정을 계정 #1로 가져옵니다(별도의 `adopt` 명령은 없습니다).
 2. `claude` supervisor shim을 설치합니다.
-3. Claude Code의 `settings.json`에 statusLine, Stop 훅, SessionStart 훅 세 항목을 설치합니다(subagentStatusLine 항목도 함께).
+3. Claude Code의 `settings.json`에 statusLine, Stop 훅, StopFailure 훅, SessionStart 훅 네 항목을 설치합니다(subagentStatusLine 항목도 함께).
 4. supervisor의 bin 디렉터리를 셸 rc의 PATH에 추가합니다(멱등적이며 `# tokenmaxxing PATH` 주석으로 표시됩니다). 실제 `claude`를 가로채려면 PATH에서 그보다 앞에 있어야 합니다.
-5. 180초마다 `tokenmaxxing check`를 실행하는 주기적 확인 타이머(macOS에서는 launchd 에이전트, Linux에서는 systemd 사용자 타이머)를 설치합니다.
+5. 60초마다 `tokenmaxxing check --if-due`를 실행하는 주기적 확인 타이머(macOS에서는 launchd 에이전트, Linux에서는 systemd 사용자 타이머)를 설치합니다. 확인은 라이브 계정의 여유에 맞춰 1분에서 5분 사이로 스스로 주기를 조절합니다.
 
 셸을 재시작한 다음 계정을 더 추가하고 시작하세요.
 

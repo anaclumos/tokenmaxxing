@@ -1,10 +1,11 @@
 import { withLock } from "../lib/lock.ts";
 import { paths } from "../lib/paths.ts";
-import { loadAccounts, loadConfig } from "../lib/state.ts";
+import { loadAccounts, loadConfig, loadUsage } from "../lib/state.ts";
 import { readOAuthAccount } from "../lib/claudejson.ts";
 import { performSwap } from "../lib/swap.ts";
 import { currentWins, effectiveBars, pickBest, pickEarliestReset, weeklyExpiry, type PickCtx } from "../lib/picker.ts";
 import { InvalidGrantError } from "../lib/oauth.ts";
+import { gatedFamilies } from "../lib/usage.ts";
 import { findAccount } from "./rename.ts";
 import { c, fmtReset } from "./render.ts";
 import type { Account } from "../lib/types.ts";
@@ -44,9 +45,16 @@ export async function cmdSwitch(selector?: string): Promise<number> {
       return swapTo(target);
     }
 
-    const everyone: PickCtx = { now, thresholds: effectiveBars(cfg), currentAccountUuid: null, switchFamilies: cfg.policy.switchModels };
+    const switchFamilies = gatedFamilies(loadUsage()?.model ?? null, cfg.policy.switchModels);
+    const everyoneIn = (accounts: Account[]): PickCtx => ({
+      now,
+      thresholds: effectiveBars(cfg, { accounts, now, switchFamilies }),
+      currentAccountUuid: null,
+      switchFamilies,
+    });
     while (true) {
       const cur = loadAccounts();
+      const everyone = everyoneIn(cur.accounts);
       const active =
         (claimedOrg != null ? cur.accounts.find((a) => a.organizationUuid === claimedOrg) : null) ??
         cur.accounts.find((a) => a.accountUuid === cur.activeAccountUuid) ??
@@ -74,7 +82,7 @@ export async function cmdSwitch(selector?: string): Promise<number> {
     }
 
     const fresh = loadAccounts();
-    const earliest = pickEarliestReset(fresh.accounts, everyone);
+    const earliest = pickEarliestReset(fresh.accounts, everyoneIn(fresh.accounts));
     if (!earliest) {
       const reauth = fresh.accounts.filter((a) => a.needsReauth).map((a) => a.label);
       if (reauth.length > 0) { console.error(c.yellow(`no switchable account - reauth needed (run \`tokenmaxxing auth --all\`): ${reauth.join(", ")}`)); return 1; }

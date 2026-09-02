@@ -3,22 +3,22 @@ title: Mulai cepat
 description: "Pasang tokenmaxxing, impor akun Anda saat ini, dan gabungkan lebih banyak"
 ---
 
-Membutuhkan [Bun](https://bun.sh) dan Claude Code, di macOS atau Linux. Instal dengan Bun, atau dari flake jika Anda sudah memakai Nix / nix-darwin (lihat [Build dan distribusi](/id/distribution)):
+Membutuhkan [Bun](https://bun.sh) dan Claude Code, di macOS atau Linux. Instal dengan Bun, atau dari flake jika Anda sudah memakai Nix / nix-darwin. Taruh CLI di PATH sebelum `init` (lihat [Build dan distribusi](/id/distribution)):
 
 ```sh
 bun add -g tokenmaxxing
-# or: nix profile install github:anaclumos/tokenmaxxing
-# or: enable programs.tokenmaxxing in your nix-darwin / Home Manager config
 tokenmaxxing init
 ```
+
+Pengguna Nix mengganti langkah Bun dengan `nix profile install github:anaclumos/tokenmaxxing`, atau mengaktifkan `programs.tokenmaxxing` di konfigurasi nix-darwin atau Home Manager mereka.
 
 `init` melakukan lima hal:
 
 1. Mengimpor akun yang sudah Anda login sebagai akun #1 (tidak ada perintah `adopt` terpisah).
 2. Memasang shim supervisor `claude`.
-3. Memasang tiga entri di `settings.json` milik Claude Code: sebuah statusLine, sebuah hook Stop, dan sebuah hook SessionStart (ditambah sebuah entri subagentStatusLine).
+3. Memasang empat entri di `settings.json` milik Claude Code: sebuah statusLine, sebuah hook Stop, sebuah hook StopFailure, dan sebuah hook SessionStart (ditambah sebuah entri subagentStatusLine).
 4. Menambahkan direktori bin supervisor ke PATH pada shell rc Anda (idempoten, ditandai dengan komentar `# tokenmaxxing PATH`). Ia harus berada di depan `claude` yang asli di PATH agar dapat mencegatnya.
-5. Memasang pengatur waktu pemeriksaan berkala (agen launchd di macOS, pengatur waktu pengguna systemd di Linux) yang menjalankan `tokenmaxxing check` setiap 180 detik.
+5. Memasang pengatur waktu pemeriksaan berkala (agen launchd di macOS, pengatur waktu pengguna systemd di Linux) yang menjalankan `tokenmaxxing check --if-due` setiap 60 detik. Pemeriksaan itu mengatur lajunya sendiri antara satu dan lima menit dari ruang tersisa akun langsung.
 
 Mulai ulang shell Anda, lalu tambahkan lebih banyak akun dan mulai:
 

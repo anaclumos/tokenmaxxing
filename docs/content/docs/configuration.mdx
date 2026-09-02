@@ -7,7 +7,7 @@ Config is JSON at `~/.config/tokenmaxxing/config.json`. Every field is optional;
 
 ```json
 {
-  "thresholds": { "session": 95, "weekly": 98 },
+  "thresholds": { "session": [50, 80, 95], "weekly": 98 },
   "hardThresholds": { "session": 100, "weekly": 100 },
   "claudeBin": "/path/to/real/claude",
   "codexBin": "/path/to/real/codex",
@@ -21,10 +21,11 @@ Config is JSON at `~/.config/tokenmaxxing/config.json`. Every field is optional;
 }
 ```
 
-- `thresholds.session` / `thresholds.weekly`: the screening bars described in [How switching decides](/switching).
-- `hardThresholds.session` / `hardThresholds.weekly`: the wall bars (default 100, each account's real server limit). When every account is over its screening bar, the automatic Claude decision squeezes each one up to its wall before parking - see [The wall](/switching). Set equal to `thresholds` to disable; Codex ignores this setting.
+- `thresholds.session`: the 5-hour ladder, an ascending list of screening rungs. Each evaluation resolves one active rung, the lowest rung some pooled account still clears, and that rung is both the trigger and the candidate screen. Codex reads the top rung only. See [How switching decides](/switching).
+- `thresholds.weekly`: the weekly screening bar, covering the 7-day aggregate and every per-model weekly cap.
+- `hardThresholds.session` / `hardThresholds.weekly`: the wall bars (default 100, each account's real server limit). `hardThresholds.session` must be at or above the top session rung. When every account is over its screening bar, the automatic Claude decision squeezes each one up to its wall before parking - see [The wall](/switching). Set equal to the top rung and the weekly bar to disable; Codex ignores this setting.
 - `claudeBin` / `codexBin`: pins to the REAL binaries the supervisors spawn (written by `init` / `init --codex`; the recursion-guard diagnostic tells you to fix `claudeBin` here when it stops pointing at the real Claude binary).
-- `policy.projectionMargin`: subtracted from both the screening bars and the wall bars to form the effective bars.
+- `policy.projectionMargin`: subtracted from every session rung, the weekly bar, and the wall bars to form the effective bars.
 - `policy.greedySessionFloor`: session-used percent at which the greedy convergence engages.
 - `policy.switchModels`: model families whose per-model weekly cap gates a switch (entries are lowercased on load).
 - `policy.usagePollTtlMs`: how long a `/usage` per-model poll stays fresh.

@@ -8,7 +8,7 @@ description: "Como o macOS e o Linux diferem em armazenamento, adoção e timers
 | Credencial ativa | Item generic-password do keychain de login | Arquivo `.credentials.json` 0600 |
 | Credenciais estacionadas | Itens de keychain por conta | Arquivos 0600 em um diretório 0700 |
 | Adoção após uma troca | Em ~30 segundos (cache de leitura do keychain) | Próxima requisição (verificação de mtime do arquivo) |
-| Verificação periódica | Agente launchd, a cada 180s | Timer de usuário systemd, a cada 180s |
+| Verificação periódica | Agente launchd, tick base de 60s, autorregulado de 60s a 300s | Timer de usuário systemd, tick base de 60s, autorregulado de 60s a 300s |
 | Armazenamento de login isolado | Serviço de keychain com namespace por hash por diretório de config | Um arquivo dentro do diretório de config isolado |
 
 Dois detalhes específicos do Linux que vale conhecer: o claude resolve seu diretório de credenciais primeiro a partir de `CLAUDE_SECURESTORAGE_CONFIG_DIR` (depois `CLAUDE_CONFIG_DIR`, depois `~/.claude`), e o tokenmaxxing espelha essa resolução exatamente para que os dois nunca desincronizem. E as duas builds de SO da mesma versão do claude formatam os relógios de redefinição do `/usage` de forma diferente (uma usa a cola " at ", a outra uma vírgula); o parser do tokenmaxxing aceita exatamente essas duas formas e registra em log, em vez de adivinhar, em qualquer terceira.

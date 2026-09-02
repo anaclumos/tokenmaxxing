@@ -5,11 +5,11 @@ import { paths } from "./paths.ts";
 import { MAX_CHECK_DELAY_MS, loadAccounts, loadConfig, loadDepletedWait, loadLastSwapAt, loadUsage, loadModelUsage, saveAccounts, saveDepletedWait, saveModelUsage, usageTeeAt, writeUsage } from "./state.ts";
 import { readOAuthAccount } from "./claudejson.ts";
 import { chooseAndSwap, performSwap } from "./swap.ts";
-import { currentWins, effectiveBars, hardBars, isExhausted, nextWeeklyReset, pickBest, pickEarliestReset, usableAt } from "./picker.ts";
+import { currentWins, effectiveBars, hardBars, isExhausted, nextWeeklyReset, pickBest, pickEarliestReset, sessionLadder, usableAt } from "./picker.ts";
 import { InvalidGrantError } from "./oauth.ts";
 import { familyTokens, gatedFamilies, probeUsage, type EnforcedClass } from "./usage.ts";
 import { log } from "./log.ts";
-import { AccountSchema, ModelUsageStateSchema, UsageStateSchema, type Account, type Config, type EnforcedLimit, type ModelUsageState, type UsageState, type UsageWindow } from "./types.ts";
+import { AccountSchema, ModelUsageStateSchema, UsageStateSchema, type Account, type Config, type EnforcedLimit, type ModelUsageState, type Thresholds, type UsageState, type UsageWindow } from "./types.ts";
 
 const SwapDecisionSchema = z.object({
   swapped: z.boolean(),
@@ -36,9 +36,17 @@ function capForFamily(mu: ModelUsageState, family: string, now: number): UsageWi
   return maxBy(rows, (w) => liveUsed({ window: w, windowMs: WEEK_MS, sampledAt: mu.sampledAt ?? mu.ts, now }));
 }
 
-function isOver(u: UsageState | null, mu: ModelUsageState | null, org: string | null, cfg: Config, now: number): boolean {
+function overlayLive(accounts: Account[], u: UsageState | null, mu: ModelUsageState | null, org: string | null): Account[] {
+  return accounts.map((a) => {
+    if (org == null || a.organizationUuid !== org) return a;
+    const live = u && u.org === org ? { lastUsage: { fiveHour: u.fiveHour, sevenDay: u.sevenDay }, lastUsageAt: u.ts } : {};
+    const perModel = mu && mu.org === org && Object.keys(mu.perModel).length > 0 ? { lastPerModel: mu.perModel, lastPerModelAt: mu.sampledAt ?? mu.ts } : {};
+    return { ...a, ...live, ...perModel };
+  });
+}
+
+function isOver(u: UsageState | null, mu: ModelUsageState | null, org: string | null, bars: Thresholds, cfg: Config, now: number): boolean {
   if (!u || !org || u.org !== org) return false;
-  const bars = effectiveBars(cfg);
   if (
     liveUsed({ window: u.fiveHour, windowMs: FIVE_HOURS_MS, sampledAt: u.ts, now }) >= bars.session ||
     liveUsed({ window: u.sevenDay, windowMs: WEEK_MS, sampledAt: u.ts, now }) >= bars.weekly
@@ -56,9 +64,9 @@ function needsPerModel(u: UsageState | null, cfg: Config): boolean {
   return u != null && gatedFamilies(u.model, cfg.policy.switchModels).length > 0;
 }
 
-function isEngaged(u: UsageState | null, mu: ModelUsageState | null, org: string | null, cfg: Config, now: number): boolean {
+function isEngaged(u: UsageState | null, mu: ModelUsageState | null, org: string | null, bars: Thresholds, cfg: Config, now: number): boolean {
   if (!u || !org || u.org !== org) return false;
-  return liveUsed({ window: u.fiveHour, windowMs: FIVE_HOURS_MS, sampledAt: u.ts, now }) >= cfg.policy.greedySessionFloor || isOver(u, mu, org, cfg, now);
+  return liveUsed({ window: u.fiveHour, windowMs: FIVE_HOURS_MS, sampledAt: u.ts, now }) >= cfg.policy.greedySessionFloor || isOver(u, mu, org, bars, cfg, now);
 }
 
 const SnapshotsSchema = z.object({
@@ -120,8 +128,13 @@ export async function evaluateAndMaybeSwap(now = Date.now(), anticipatory = fals
   const cfg = loadConfig();
 
   const { u: usage, mu } = await loadFreshSnapshots(cfg, activeOrg, now);
+  const bars0 = effectiveBars(cfg, {
+    accounts: overlayLive(loadAccounts().accounts, usage, mu, activeOrg),
+    now,
+    switchFamilies: gatedFamilies(usage?.model ?? null, cfg.policy.switchModels),
+  });
 
-  if (!enforced0 && !isEngaged(usage, mu, activeOrg, cfg, now)) {
+  if (!enforced0 && !isEngaged(usage, mu, activeOrg, bars0, cfg, now)) {
     const measured = usage != null && activeOrg != null && usage.org === activeOrg;
     if (!measured) {
       const replay = depletedReplay(now);
@@ -157,7 +170,12 @@ export async function evaluateAndMaybeSwap(now = Date.now(), anticipatory = fals
       if (sampled) saveAccounts(idx);
     }
 
-    if (!enforced2 && !isEngaged(u2, mu2, org2, cfg, now)) {
+    const gated = gatedFamilies(u2?.model ?? null, cfg.policy.switchModels);
+    const switchFamilies = enforced2?.family && !gated.includes(enforced2.family) ? [...gated, enforced2.family] : gated;
+    const barsOf = (accounts: Account[]): Thresholds => effectiveBars(cfg, { accounts, now, switchFamilies });
+    const bars = barsOf(idx.accounts);
+
+    if (!enforced2 && !isEngaged(u2, mu2, org2, bars, cfg, now)) {
       return depletedReplay(now) ?? { swapped: false, account: null, reason: "raced-already-swapped" };
     }
 
@@ -166,14 +184,11 @@ export async function evaluateAndMaybeSwap(now = Date.now(), anticipatory = fals
       idx2.accounts.find((a) => a.accountUuid === idx2.activeAccountUuid) ??
       null;
 
-    const gated = gatedFamilies(u2?.model ?? null, cfg.policy.switchModels);
-    const switchFamilies = enforced2?.family && !gated.includes(enforced2.family) ? [...gated, enforced2.family] : gated;
-
-    if (!enforced2 && !isOver(u2, mu2, org2, cfg, now)) {
-      const ctxAll = { now, thresholds: effectiveBars(cfg), currentAccountUuid: null, switchFamilies };
+    const greedy = async (): Promise<SwapDecision> => {
       while (true) {
         const cur = loadAccounts();
         const active = seatOf(cur);
+        const ctxAll = { now, thresholds: barsOf(cur.accounts), currentAccountUuid: null, switchFamilies };
         if (currentWins(active, cur.accounts, ctxAll)) {
           return { swapped: false, account: null, reason: "current-best" };
         }
@@ -188,10 +203,24 @@ export async function evaluateAndMaybeSwap(now = Date.now(), anticipatory = fals
         log("decide.greedy_swap", { account: best.accountUuid.slice(0, 8) });
         return { swapped: true, account: best, reason: "swapped" };
       }
-    }
+    };
+    if (!enforced2 && !isOver(u2, mu2, org2, bars, cfg, now)) return greedy();
 
-    const landed = await chooseAndSwap({ now, thresholds: effectiveBars(cfg), switchFamilies, currentAccountUuid: seatOf(loadAccounts())?.accountUuid ?? null });
-    if (landed) return { swapped: true, account: landed, reason: "swapped" };
+    while (true) {
+      const cur = loadAccounts();
+      const seat = seatOf(cur);
+      const thresholds = barsOf(cur.accounts);
+      if (!enforced2 && seat && !seat.needsReauth && !isExhausted(seat, { now, thresholds, currentAccountUuid: null, switchFamilies })) return greedy();
+      const best = pickBest(cur.accounts, { now, thresholds, currentAccountUuid: seat?.accountUuid ?? null, switchFamilies });
+      if (!best) break;
+      try {
+        await performSwap(best);
+      } catch (e) {
+        if (e instanceof InvalidGrantError) continue;
+        throw e;
+      }
+      return { swapped: true, account: best, reason: "swapped" };
+    }
 
     const hardCtx = { now, thresholds: hardBars(cfg), currentAccountUuid: null, switchFamilies };
     const seat = seatOf(loadAccounts());
@@ -315,6 +344,7 @@ export async function recordEnforcedLimit(input: { limit: EnforcedClass; org: st
 
 export const CHECK_DELAY_FLOOR_MS = 60_000;
 const CHECK_DELAY_UNKNOWN_MS = 180_000;
+const STAGE_CEILING_MS = [MAX_CHECK_DELAY_MS, 180_000, 120_000];
 
 export function checkDelayMs(input: { cfg: Config; org: string | null; now: number; decision: SwapDecision }): number {
   const { cfg, org, now, decision } = input;
@@ -323,21 +353,24 @@ export function checkDelayMs(input: { cfg: Config; org: string | null; now: numb
   if (swapAt != null && now - swapAt < POST_SWAP_COOLDOWN_MS) return swapAt + POST_SWAP_COOLDOWN_MS - now;
   const u = loadUsage();
   if (!org || !u || !usageFresh(u, org, cfg.policy.usagePollTtlMs, now)) return CHECK_DELAY_UNKNOWN_MS;
-  const bars = effectiveBars(cfg);
+  const mu = loadModelUsage();
+  const muSame = mu && mu.org === org ? mu : null;
+  const families = gatedFamilies(u.model, cfg.policy.switchModels);
+  const bars = effectiveBars(cfg, { accounts: overlayLive(loadAccounts().accounts, u, muSame, org), now, switchFamilies: families });
   const heads = [
     bars.session - liveUsed({ window: u.fiveHour, windowMs: FIVE_HOURS_MS, sampledAt: u.ts, now }),
     bars.weekly - liveUsed({ window: u.sevenDay, windowMs: WEEK_MS, sampledAt: u.ts, now }),
   ];
-  const mu = loadModelUsage();
-  const muSame = mu && mu.org === org ? mu : null;
   let capMissing = false;
   const capFresh = muSame != null && now - (muSame.sampledAt ?? muSame.ts) <= cfg.policy.usagePollTtlMs;
-  for (const family of gatedFamilies(u.model, cfg.policy.switchModels)) {
+  for (const family of families) {
     const cap = muSame && capFresh ? capForFamily(muSame, family, now) : undefined;
     if (cap && muSame) heads.push(bars.weekly - liveUsed({ window: cap, windowMs: WEEK_MS, sampledAt: muSame.sampledAt ?? muSame.ts, now }));
     else capMissing = true;
   }
   const headroom = Math.min(...heads);
   const banded = headroom >= 40 ? MAX_CHECK_DELAY_MS : headroom >= 20 ? 180_000 : headroom >= 8 ? 120_000 : CHECK_DELAY_FLOOR_MS;
-  return capMissing ? Math.min(banded, 120_000) : banded;
+  const stage = sessionLadder(cfg).indexOf(bars.session);
+  const staged = Math.min(banded, STAGE_CEILING_MS[stage] ?? CHECK_DELAY_FLOOR_MS);
+  return capMissing ? Math.min(staged, 120_000) : staged;
 }

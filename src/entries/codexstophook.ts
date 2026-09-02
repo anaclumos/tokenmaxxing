@@ -10,7 +10,7 @@ import { livingCodexPresences } from "../lib/codexpresence.ts";
 import { liveCodexAccountId } from "../lib/codexsample.ts";
 import { loadCodexAccounts } from "../lib/codexstate.ts";
 import { loadConfig } from "../lib/state.ts";
-import { effectiveBars } from "../lib/picker.ts";
+import { terminalBars } from "../lib/picker.ts";
 import { CODEX_SUPERVISOR_ID_ENV } from "./codexsupervisor.ts";
 import { CodexReconcileMarkerSchema, CodexRespawnMarkerSchema, CodexStopStdinSchema, type CodexAccount } from "../lib/types.ts";
 import { log } from "../lib/log.ts";
@@ -51,7 +51,7 @@ function promoteReconcileLocked(input: { supervisorId: string; sessionId: string
     return false;
   }
   const now = Date.now();
-  const bars = effectiveBars(loadConfig());
+  const bars = terminalBars(loadConfig());
   const index = loadCodexAccounts();
   const unusable = (account: CodexAccount): boolean =>
     account.needsReauth === true || isCodexExhausted({ account, thresholds: bars, now });

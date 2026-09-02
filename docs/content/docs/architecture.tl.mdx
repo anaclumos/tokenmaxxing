@@ -24,10 +24,9 @@ Ang tee ay write-on-change: kapag hindi nagbago ang mga numero, itinataas lamang
 Sa bawat turn boundary, pinapatakbo ng Stop hook ang desisyon sa pagpapalit (tingnan ang [Paano nagpapasya ang pagpapalit](/tl/switching)). Kapag makatwiran ang isang pagpapalit, nangyayari ito sa ilalim ng isang `flock(2)` exclusive lock (kinuha sa pamamagitan ng `bun:ffi`, dahil walang inihahatid na `flock(1)` binary ang macOS), at ang mga credential write ay karagdagang naka-interlock sa sariling refresh lock ng Claude Code. Sa loob ng critical section, isang pagpapalit ang:
 
 1. Inaani ang kasalukuyang live credential papunta sa parked backup ng tunay na may-ari nito.
-2. Ini-install ang sariwang na-refresh na credential ng target na account bilang ang live, na isinasama sa umiiral na live blob upang mabuhay ang sibling state (tulad ng per-MCP-server OAuth token).
-3. Pinananatili ang na-rotate na token ng target sa sarili nitong backup.
-4. Atomically na muling isinusulat ang field na `oauthAccount` sa `~/.claude.json`.
-5. Kino-commit ang bagong aktibong label at nililinis ang mga lipas na usage snapshot, lahat bago mag-release ang lock, upang hindi kailanman maaaring iwan ng isang crash ang naka-install na credential at ang aktibong label na nakaturo sa magkaibang account.
+2. Ini-install ang sariwang na-refresh na credential ng target na account bilang ang live, na isinasama sa umiiral na live blob upang mabuhay ang sibling state (tulad ng per-MCP-server OAuth token). (Ang na-rotate na refresh token ng target ay naipanatili na sa sarili nitong backup kaagad nang bumalik ang refresh, sa ilalim ng flock ngunit bago ang critical section na ito ng refresh lock.)
+3. Atomically na muling isinusulat ang field na `oauthAccount` sa `~/.claude.json`.
+4. Kino-commit ang bagong aktibong label at nililinis ang mga lipas na usage snapshot bago mag-release ang lock. Hindi maaaring maging crash-atomic nang sabay ang mga file na ito, kaya't maaaring mag-iwan ng intermediate na estado ang isang crash; nire-resolve ng susunod na pagpapalit ang tunay na may-ari ng live credential nang hiwalay sa label at nila-log ang anumang natukoy na drift.
 
 Dahil ibinabahagi ng lahat ng default-profile na session ang iisang live credential, ang isang pagpapalit ay naglilipat ng bawat session nang sabay-sabay, at pinipigilan ng flock kasama ang muling pagsusuri sa ilalim ng lock ang mga nagtutunggaliang hook na masunog ang dalawang account.
 
@@ -41,7 +40,7 @@ Tanging kapag lampas na sa mga bar nito ang bawat account sa pool ay nagsusulat 
 
 ## Ang pana-panahong check timer
 
-Ang mga hook ay pumuputok lamang sa mga turn boundary, at ang isang mahabang agentic na turn ay maaaring masunog ang isang window mula sa malusog patungong naubos nang walang kahit isang boundary. Kaya't nag-i-install din ang `init` ng isang pana-panahong timer - isang launchd agent sa macOS, isang systemd user timer sa Linux - na nagpapatakbo ng `tokenmaxxing check` tuwing 180 segundo anuman ang aktibidad ng turn.
+Ang mga hook ay pumuputok lamang sa mga turn boundary, at ang isang mahabang agentic na turn ay maaaring masunog ang isang window mula sa malusog patungong naubos nang walang kahit isang boundary. Kaya't nag-i-install din ang `init` ng isang pana-panahong timer - isang launchd agent sa macOS, isang systemd user timer sa Linux - na nagpapatakbo ng `tokenmaxxing check --if-due` tuwing 60 segundo anuman ang aktibidad ng turn. Ang check mismo ang nagtatakda ng sarili nitong bilis batay sa headroom ng live na account: kapag maluwag pa ito sa bawat bar ay nagsusuri ito tuwing limang minuto, at kapag malapit na sa isang bar ay sa bawat tick (tingnan ang [Paano nagpapasya ang pagpapalit](/tl/switching)).
 
 ## Isang SessionStart hook
 

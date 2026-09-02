@@ -3,22 +3,22 @@ title: クイックスタート
 description: "tokenmaxxing をインストールし、現在のアカウントをインポートして、さらにプールする"
 ---
 
-macOS または Linux 上で [Bun](https://bun.sh) と Claude Code が必要です。Bun で入れるか、すでに Nix / nix-darwin を使っているなら flake から入れられます ([ビルドと配布](/ja/distribution) を参照):
+macOS または Linux 上で [Bun](https://bun.sh) と Claude Code が必要です。Bun で入れるか、すでに Nix / nix-darwin を使っているなら flake から入れられます。`init` の前に CLI を PATH に載せておいてください ([ビルドと配布](/ja/distribution) を参照):
 
 ```sh
 bun add -g tokenmaxxing
-# or: nix profile install github:anaclumos/tokenmaxxing
-# or: enable programs.tokenmaxxing in your nix-darwin / Home Manager config
 tokenmaxxing init
 ```
+
+Nix ユーザーは Bun のステップを `nix profile install github:anaclumos/tokenmaxxing` に置き換えるか、nix-darwin または Home Manager の設定で `programs.tokenmaxxing` を有効にしてください。
 
 `init` は次の5つを行います。
 
 1. すでにログイン済みのアカウントをアカウント #1 としてインポートします (別途 `adopt` コマンドはありません)。
 2. `claude` スーパーバイザーのシムをインストールします。
-3. Claude Code の `settings.json` に3つのエントリをインストールします。statusLine、Stop フック、SessionStart フック (加えて subagentStatusLine エントリ)。
+3. Claude Code の `settings.json` に4つのエントリをインストールします。statusLine、Stop フック、StopFailure フック、SessionStart フック (加えて subagentStatusLine エントリ)。
 4. スーパーバイザーの bin ディレクトリをシェル rc の PATH に追記します (冪等で、`# tokenmaxxing PATH` コメントで印を付けます)。本物の `claude` より前に PATH 上に置いてインターセプトする必要があります。
-5. `tokenmaxxing check` を180秒ごとに実行する定期チェックタイマーをインストールします (macOS では launchd エージェント、Linux では systemd ユーザータイマー)。
+5. `tokenmaxxing check --if-due` を60秒ごとに実行する定期チェックタイマーをインストールします (macOS では launchd エージェント、Linux では systemd ユーザータイマー)。チェックはライブアカウントの余裕に応じて、1分から5分の間で自らペースを調整します。
 
 シェルを再起動してから、アカウントを追加して始めます。
 

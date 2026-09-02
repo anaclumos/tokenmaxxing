@@ -3,11 +3,24 @@ import { z } from "zod";
 import { familyTokens } from "./usage.ts";
 import { AccountSchema, ThresholdsSchema, type Account, type Config, type Thresholds, type UsageWindow } from "./types.ts";
 
-export function effectiveBars(cfg: Config): Thresholds {
+export function sessionLadder(cfg: Config): number[] {
+  return cfg.thresholds.session.map((rung) => rung - cfg.policy.projectionMargin);
+}
+
+export function terminalBars(cfg: Config): Thresholds {
   return {
-    session: cfg.thresholds.session - cfg.policy.projectionMargin,
+    session: Math.max(...sessionLadder(cfg)),
     weekly: cfg.thresholds.weekly - cfg.policy.projectionMargin,
   };
+}
+
+export function effectiveBars(cfg: Config, pool: { accounts: Account[]; now: number; switchFamilies: string[] }): Thresholds {
+  const top = terminalBars(cfg);
+  const holdsAt = (session: number) =>
+    pool.accounts.some(
+      (a) => !a.needsReauth && !isExhausted(a, { now: pool.now, thresholds: { session, weekly: top.weekly }, currentAccountUuid: null, switchFamilies: pool.switchFamilies }),
+    );
+  return { session: sessionLadder(cfg).find(holdsAt) ?? top.session, weekly: top.weekly };
 }
 
 export function hardBars(cfg: Config): Thresholds {

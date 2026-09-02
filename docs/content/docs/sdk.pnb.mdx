@@ -9,18 +9,19 @@ description: "اپنے چلائے ایجنٹاں وچ پول نوں Claude Agent
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import { ensureBestAccount, pooledOptions, stopHookCheck } from "tokenmaxxing";
 
-await ensureBestAccount(); // run the switch decision before the spawn
+await ensureBestAccount();
 
 for await (const message of query({
   prompt: "...",
   options: {
-    ...pooledOptions(), // pinned real claude + scrubbed env
-    hooks: { Stop: [{ hooks: [stopHookCheck] }] }, // re-decide at every turn boundary
+    ...pooledOptions(),
+    hooks: { Stop: [{ hooks: [stopHookCheck] }] },
   },
 })) {
-  // capture the session id from the init message for `resume` across swaps
 }
 ```
+
+لوپ دے اندر پیغاماں دا سٹریم آندا اے؛ جے تُسیں بدلاؤاں دے آر پار `resume` ورتنا چاہندے او تاں init پیغام وچوں سیشن id سنبھال رکھو۔
 
 Agent SDK ہر `query()` لئی اک claude سب پروسیس شروع کردا اے تے شروعات تے اک وار کریڈینشل پڑھدا اے - کوئی statusline نئیں، کوئی کوئری دے وچالے ہاٹ سویپ نئیں - سو انضمام حد تے مبنی اے:
 

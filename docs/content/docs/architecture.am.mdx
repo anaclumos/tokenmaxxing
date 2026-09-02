@@ -24,10 +24,9 @@ tee ው በለውጥ-ላይ-ይጽፋል፦ ቁጥሮች ሳይለወጡ ሲቀ�
 በእያንዳንዱ turn ወሰን፣ Stop hook ው የመቀያየር ውሳኔን ያሄዳል ([መቀያየር እንዴት እንደሚወስን](/am/switching) ይመልከቱ)። መቀያየር ሲያስፈልግ፣ በ `flock(2)` ብቸኛ lock ስር ይከሰታል (macOS የ `flock(1)` binary ስለማይልክ በ `bun:ffi` የተወሰደ)፣ እና የ credential ጽሁፎች በተጨማሪም ከ Claude Code የራሱ refresh lock ጋር ይተሳሰራሉ። በወሳኙ ክፍል ውስጥ፣ አንድ መቀያየር፦
 
 1. አሁን ያለውን ቀጥታ credential ወደ ትክክለኛ ባለቤቱ የተያዘ backup ይሰበስባል።
-2. የታለመውን መለያ አዲስ የተታደሰ credential እንደ ቀጥታ ይጭናል፣ ወደ ነባሩ ቀጥታ blob በማዋሃድ ስለዚህ ተጓዳኝ ሁኔታ (እንደ በ-MCP-server OAuth tokenዎች ያሉ) ይተርፋል።
-3. የታለመውን የተሽከረከረ token ወደ ራሱ backup ያስቀምጣል።
-4. በ `~/.claude.json` ውስጥ ያለውን `oauthAccount` field በ atomic መንገድ እንደገና ይጽፋል።
-5. አዲሱን ንቁ label ያረጋግጣል እና ያረጁ የአጠቃቀም snapshotዎችን ያጸዳል፣ ሁሉም lock ከመለቀቁ በፊት፣ ስለዚህ crash በጭራሽ የተጫነውን credential እና ንቁ label ን የተለያዩ መለያዎችን እያመለከቱ አይተውም።
+2. የታለመውን መለያ አዲስ የተታደሰ credential እንደ ቀጥታ ይጭናል፣ ወደ ነባሩ ቀጥታ blob በማዋሃድ ስለዚህ ተጓዳኝ ሁኔታ (እንደ በ-MCP-server OAuth tokenዎች ያሉ) ይተርፋል። (የታለመው የተሽከረከረ refresh token refresh ው እንደተመለሰ ወዲያውኑ፣ በ flock ስር ግን ከዚህ refresh-lock ወሳኝ ክፍል በፊት፣ ወደ ራሱ backup ተቀምጧል።)
+3. በ `~/.claude.json` ውስጥ ያለውን `oauthAccount` field በ atomic መንገድ እንደገና ይጽፋል።
+4. lock ው ከመለቀቁ በፊት አዲሱን ንቁ label ያረጋግጣል እና ያረጁ የአጠቃቀም snapshotዎችን ያጸዳል። እነዚህ ፋይሎች በአንድነት crash-atomic ሊሆኑ አይችሉም፣ ስለዚህ crash መካከለኛ ሁኔታ ሊተው ይችላል፤ ቀጣዩ መቀያየር የቀጥታውን credential እውነተኛ ባለቤት ከ label ው ተለይቶ ይፈታል እና የተገኘውን ማንኛውንም drift ይመዘግባል።
 
 ሁሉም default-profile sessionዎች አንዱን ቀጥታ credential ስለሚጋሩ፣ አንድ መቀያየር እያንዳንዱን session በአንድ ጊዜ ያዛውራል፣ እና flock ው በተጨማሪም lock ስር እንደገና-ማረጋገጥ የሚሽቀዳደሙ hookዎች ሁለት መለያዎችን ከማቃጠል ይከለክላል።
 
@@ -41,7 +40,7 @@ tee ው በለውጥ-ላይ-ይጽፋል፦ ቁጥሮች ሳይለወጡ ሲቀ�
 
 ## ወቅታዊው የፍተሻ timer
 
-Hookዎች የሚቀሰቀሱት በ turn ወሰኖች ላይ ብቻ ነው፣ እና አንድ ረጅም agentic turn መስኮትን ያለ አንድ ወሰን ከጤናማ ወደ የተሟጠጠ ማቃጠል ይችላል። ስለዚህ `init` በተጨማሪም ወቅታዊ timer ይጭናል - በ macOS ላይ launchd agent፣ በ Linux ላይ systemd user timer - እሱም ከ turn እንቅስቃሴ ውጭ በየ180 ሰከንዱ `tokenmaxxing check` ን ያሄዳል።
+Hookዎች የሚቀሰቀሱት በ turn ወሰኖች ላይ ብቻ ነው፣ እና አንድ ረጅም agentic turn መስኮትን ያለ አንድ ወሰን ከጤናማ ወደ የተሟጠጠ ማቃጠል ይችላል። ስለዚህ `init` በተጨማሪም ወቅታዊ timer ይጭናል - በ macOS ላይ launchd agent፣ በ Linux ላይ systemd user timer - እሱም ከ turn እንቅስቃሴ ውጭ በየ60 ሰከንዱ `tokenmaxxing check --if-due` ን ያሄዳል። ፍተሻው ከቀጥታው መለያ ክፍተት አንጻር ራሱን ያስተካክላል፦ ወደ እያንዳንዱ bar በቂ ቦታ ሲኖር በየአምስት ደቂቃው ይገመግማል፣ ከ bar ሲቀርብ ደግሞ በእያንዳንዱ tick ([መቀያየር እንዴት እንደሚወስን](/am/switching) ይመልከቱ)።
 
 ## SessionStart hook
 

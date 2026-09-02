@@ -7,7 +7,7 @@ Konfigurasi berupa JSON di `~/.config/tokenmaxxing/config.json`. Setiap bidang o
 
 ```json
 {
-  "thresholds": { "session": 95, "weekly": 98 },
+  "thresholds": { "session": [50, 80, 95], "weekly": 98 },
   "hardThresholds": { "session": 100, "weekly": 100 },
   "claudeBin": "/path/to/real/claude",
   "codexBin": "/path/to/real/codex",
@@ -21,10 +21,11 @@ Konfigurasi berupa JSON di `~/.config/tokenmaxxing/config.json`. Setiap bidang o
 }
 ```
 
-- `thresholds.session` / `thresholds.weekly`: bilah penyaringan yang dijelaskan di [Cara pertukaran diputuskan](/id/switching).
-- `hardThresholds.session` / `hardThresholds.weekly`: bilah dinding (default 100, batas server sebenarnya tiap akun). Ketika setiap akun melewati bilah penyaringannya, keputusan Claude otomatis memeras masing-masing hingga dindingnya sebelum memarkir - lihat [Dinding](/id/switching). Setel sama dengan `thresholds` untuk menonaktifkan; Codex mengabaikan pengaturan ini.
+- `thresholds.session`: tangga 5 jam, sebuah daftar anak tangga penyaringan yang menaik. Setiap evaluasi menentukan satu anak tangga aktif, yaitu anak tangga terendah yang masih menyisakan setidaknya satu akun tergabung yang dapat dipakai, dan anak tangga itu sekaligus menjadi pemicu dan penyaring kandidat. Codex hanya membaca anak tangga teratas. Lihat [Cara pertukaran diputuskan](/id/switching).
+- `thresholds.weekly`: bilah penyaringan mingguan, mencakup agregat 7 hari maupun setiap batas mingguan per-model.
+- `hardThresholds.session` / `hardThresholds.weekly`: bilah dinding (default 100, batas server sebenarnya tiap akun). `hardThresholds.session` harus sama dengan atau lebih tinggi dari anak tangga sesi teratas. Ketika setiap akun melewati bilah penyaringannya, keputusan Claude otomatis memeras masing-masing hingga dindingnya sebelum memarkir - lihat [Dinding](/id/switching). Setel sama dengan anak tangga teratas dan bilah mingguan untuk menonaktifkan; Codex mengabaikan pengaturan ini.
 - `claudeBin` / `codexBin`: menetapkan biner ASLI yang dijalankan oleh para supervisor (ditulis oleh `init` / `init --codex`; diagnostik penjaga-rekursi memberitahumu untuk memperbaiki `claudeBin` di sini saat berhenti menunjuk ke biner Claude yang asli).
-- `policy.projectionMargin`: dikurangkan dari bilah penyaringan maupun bilah dinding untuk membentuk bilah efektif.
+- `policy.projectionMargin`: dikurangkan dari setiap anak tangga sesi, bilah mingguan, dan bilah dinding untuk membentuk bilah efektif.
 - `policy.greedySessionFloor`: persen sesi-terpakai saat konvergensi rakus terlibat.
 - `policy.switchModels`: keluarga model yang batas mingguan per-model-nya menggerbangi sebuah pertukaran (entri dijadikan huruf kecil saat dimuat).
 - `policy.usagePollTtlMs`: berapa lama sebuah poll `/usage` per-model tetap segar.

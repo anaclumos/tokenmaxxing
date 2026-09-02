@@ -9,18 +9,19 @@ Le point d'entrée programmatique du paquet (`exports["."]` pointe vers `src/sdk
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import { ensureBestAccount, pooledOptions, stopHookCheck } from "tokenmaxxing";
 
-await ensureBestAccount(); // run the switch decision before the spawn
+await ensureBestAccount();
 
 for await (const message of query({
   prompt: "...",
   options: {
-    ...pooledOptions(), // pinned real claude + scrubbed env
-    hooks: { Stop: [{ hooks: [stopHookCheck] }] }, // re-decide at every turn boundary
+    ...pooledOptions(),
+    hooks: { Stop: [{ hooks: [stopHookCheck] }] },
   },
 })) {
-  // capture the session id from the init message for `resume` across swaps
 }
 ```
+
+Le corps de la boucle reçoit le flux de messages ; conservez l'identifiant de session du message init si vous voulez `resume` d'une bascule à l'autre.
 
 L'Agent SDK lance un sous-processus claude par `query()` et lit les identifiants une seule fois au lancement (pas de statusline, pas de bascule à chaud en cours de requête), de sorte que l'intégration est pilotée par les frontières :
 

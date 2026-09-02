@@ -7,12 +7,12 @@ import { performCodexSwap } from "../lib/codexswap.ts";
 import { CodexInvalidGrantError } from "../lib/codexoauth.ts";
 import { liveCodexAccountId } from "../lib/codexsample.ts";
 import { presentCodexAccountIds, targetableCodexAccounts } from "../lib/codexpresence.ts";
-import { effectiveBars } from "../lib/picker.ts";
+import { terminalBars } from "../lib/picker.ts";
 import { c } from "./render.ts";
 
 export async function cmdCodexSwitch(sel?: string): Promise<number> {
   const cfg = loadConfig();
-  const bars = effectiveBars(cfg);
+  const bars = terminalBars(cfg);
   const now = Date.now();
 
   return withLock(codexPaths.lockFile, async () => {

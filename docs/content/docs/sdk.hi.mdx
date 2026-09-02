@@ -9,18 +9,19 @@ description: "पूल को Claude Agent SDK के साथ उन एज�
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import { ensureBestAccount, pooledOptions, stopHookCheck } from "tokenmaxxing";
 
-await ensureBestAccount(); // run the switch decision before the spawn
+await ensureBestAccount();
 
 for await (const message of query({
   prompt: "...",
   options: {
-    ...pooledOptions(), // pinned real claude + scrubbed env
-    hooks: { Stop: [{ hooks: [stopHookCheck] }] }, // re-decide at every turn boundary
+    ...pooledOptions(),
+    hooks: { Stop: [{ hooks: [stopHookCheck] }] },
   },
 })) {
-  // capture the session id from the init message for `resume` across swaps
 }
 ```
+
+लूप की बॉडी को संदेश स्ट्रीम मिलती है; अगर आप स्वैप के आर-पार `resume` चाहते हैं तो init संदेश से सेशन id सहेज रखें।
 
 Agent SDK प्रति `query()` एक claude सबप्रोसेस स्पॉन करता है और स्पॉन पर एक बार क्रेडेंशियल पढ़ता है - कोई statusline नहीं, कोई मध्य-क्वेरी हॉट-स्वैप नहीं - इसलिए एकीकरण सीमा-चालित है:
 

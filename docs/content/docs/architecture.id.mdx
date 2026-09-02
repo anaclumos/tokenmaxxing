@@ -24,10 +24,9 @@ Tee bersifat tulis-saat-berubah: ketika angka tidak berubah ia hanya memutakhirk
 Pada setiap batas giliran, hook Stop menjalankan keputusan pertukaran (lihat [Cara pertukaran diputuskan](/id/switching)). Ketika sebuah pertukaran dibenarkan, ia terjadi di bawah kunci eksklusif `flock(2)` (diambil melalui `bun:ffi`, karena macOS tidak menyertakan biner `flock(1)`), dan penulisan kredensial selain itu saling mengunci dengan kunci refresh milik Claude Code sendiri. Di dalam bagian kritis, satu pertukaran:
 
 1. Memanen kredensial langsung saat ini ke dalam cadangan terparkir milik pemilik sejatinya.
-2. Memasang kredensial akun target yang baru saja disegarkan sebagai kredensial langsung, digabungkan ke dalam blob langsung yang ada sehingga status pendamping (seperti token OAuth per-server-MCP) tetap bertahan.
-3. Menyimpan token akun target yang telah dirotasi ke cadangannya sendiri.
-4. Menulis ulang secara atomik bidang `oauthAccount` di `~/.claude.json`.
-5. Menetapkan label aktif baru dan menghapus snapshot penggunaan yang usang, semuanya sebelum kunci dilepas, sehingga sebuah crash tidak pernah bisa membuat kredensial terpasang dan label aktif menunjuk ke akun yang berbeda.
+2. Memasang kredensial akun target yang baru saja disegarkan sebagai kredensial langsung, digabungkan ke dalam blob langsung yang ada sehingga status pendamping (seperti token OAuth per-server-MCP) tetap bertahan. (Token refresh target yang telah dirotasi sudah disimpan ke cadangannya sendiri begitu penyegaran itu kembali, di bawah flock tetapi sebelum bagian kritis kunci-refresh ini.)
+3. Menulis ulang secara atomik bidang `oauthAccount` di `~/.claude.json`.
+4. Menetapkan label aktif baru dan menghapus snapshot penggunaan yang usang sebelum kunci dilepas. Berkas-berkas ini tidak bisa dibuat atomik bersama terhadap crash, jadi sebuah crash bisa meninggalkan keadaan setengah jalan. Pertukaran berikutnya menentukan pemilik sejati kredensial langsung secara independen dari label dan mencatat penyimpangan apa pun yang terdeteksi.
 
 Karena semua sesi profil-default berbagi satu kredensial langsung, satu pertukaran memindahkan setiap sesi sekaligus, dan flock ditambah pemeriksaan-ulang di bawah kunci mencegah hook yang berlomba membakar dua akun.
 
@@ -41,7 +40,7 @@ Hanya ketika setiap akun dalam gabungan melewati bilahnya, hook Stop menulis pen
 
 ## Pengatur waktu pemeriksaan berkala
 
-Hook hanya menyala di batas giliran, dan satu giliran agentic yang panjang bisa membakar sebuah jendela dari sehat menjadi habis tanpa satu batas pun. Karena itu `init` juga memasang pengatur waktu berkala - agen launchd di macOS, pengatur waktu pengguna systemd di Linux - yang menjalankan `tokenmaxxing check` setiap 180 detik tanpa memandang aktivitas giliran.
+Hook hanya menyala di batas giliran, dan satu giliran agentic yang panjang bisa membakar sebuah jendela dari sehat menjadi habis tanpa satu batas pun. Karena itu `init` juga memasang pengatur waktu berkala - agen launchd di macOS, pengatur waktu pengguna systemd di Linux - yang menjalankan `tokenmaxxing check --if-due` setiap 60 detik tanpa memandang aktivitas giliran. Pemeriksaan itu mengatur lajunya sendiri dari ruang tersisa akun langsung: dengan ruang berlimpah ke setiap bilah ia mengevaluasi setiap lima menit, dan di dekat sebuah bilah pada setiap detak (lihat [Cara pertukaran diputuskan](/id/switching)).
 
 ## Sebuah hook SessionStart
 

@@ -3,22 +3,22 @@ title: விரைவுத் தொடக்கம்
 description: "tokenmaxxing ஐ நிறுவி, உங்கள் தற்போதைய கணக்கை இறக்குமதி செய்து, மேலும் கணக்குகளை ஒன்றிணைக்கவும்"
 ---
 
-macOS அல்லது Linux இல், [Bun](https://bun.sh) மற்றும் Claude Code தேவை. Bun மூலம் நிறுவுங்கள், அல்லது ஏற்கனவே Nix / nix-darwin பயன்படுத்தினால் flake இலிருந்து ([பில்ட் மற்றும் விநியோகம்](/ta/distribution) ஐப் பார்க்கவும்):
+macOS அல்லது Linux இல், [Bun](https://bun.sh) மற்றும் Claude Code தேவை. Bun மூலம் நிறுவுங்கள், அல்லது ஏற்கனவே Nix / nix-darwin பயன்படுத்தினால் flake இலிருந்து நிறுவுங்கள். `init` க்கு முன்பு CLI ஐ PATH இல் வையுங்கள் ([பில்ட் மற்றும் விநியோகம்](/ta/distribution) ஐப் பார்க்கவும்):
 
 ```sh
 bun add -g tokenmaxxing
-# or: nix profile install github:anaclumos/tokenmaxxing
-# or: enable programs.tokenmaxxing in your nix-darwin / Home Manager config
 tokenmaxxing init
 ```
+
+Nix பயனர்கள் Bun படிக்குப் பதிலாக `nix profile install github:anaclumos/tokenmaxxing` ஐப் பயன்படுத்துகிறார்கள், அல்லது தங்கள் nix-darwin அல்லது Home Manager கட்டமைப்பில் `programs.tokenmaxxing` ஐ இயக்குகிறார்கள்.
 
 `init` ஐந்து காரியங்களைச் செய்கிறது:
 
 1. நீங்கள் ஏற்கனவே உள்நுழைந்திருக்கும் கணக்கை கணக்கு #1 ஆக இறக்குமதி செய்கிறது (தனி `adopt` கட்டளை எதுவும் இல்லை).
 2. `claude` மேற்பார்வையாளர் shim ஐ நிறுவுகிறது.
-3. Claude Code இன் `settings.json` இல் மூன்று உள்ளீடுகளை நிறுவுகிறது: ஒரு statusLine, ஒரு Stop hook, மற்றும் ஒரு SessionStart hook (மேலும் ஒரு subagentStatusLine உள்ளீடு).
+3. Claude Code இன் `settings.json` இல் நான்கு உள்ளீடுகளை நிறுவுகிறது: ஒரு statusLine, ஒரு Stop hook, ஒரு StopFailure hook, மற்றும் ஒரு SessionStart hook (மேலும் ஒரு subagentStatusLine உள்ளீடு).
 4. மேற்பார்வையாளரின் bin அடைவை உங்கள் ஷெல் rc இன் PATH இல் இணைக்கிறது (idempotent, ஒரு `# tokenmaxxing PATH` கருத்துடன் குறிக்கப்பட்டது). அதை இடைமறிக்க அது PATH இல் உண்மையான `claude` க்கு முன்பே அமர வேண்டும்.
-5. ஒரு காலமுறை சரிபார்ப்பு டைமரை நிறுவுகிறது (macOS இல் ஒரு launchd ஏஜென்ட், Linux இல் ஒரு systemd பயனர் டைமர்), இது ஒவ்வொரு 180 வினாடிகளுக்கும் `tokenmaxxing check` ஐ இயக்குகிறது.
+5. ஒரு காலமுறை சரிபார்ப்பு டைமரை நிறுவுகிறது (macOS இல் ஒரு launchd ஏஜென்ட், Linux இல் ஒரு systemd பயனர் டைமர்), இது ஒவ்வொரு 60 வினாடிக்கும் `tokenmaxxing check --if-due` ஐ இயக்குகிறது; சரிபார்ப்பு நேரடிக் கணக்கின் இடைவெளியிலிருந்து ஒரு நிமிடத்திற்கும் ஐந்து நிமிடத்திற்கும் இடையே தன் வேகத்தைத் தானே அமைத்துக்கொள்கிறது.
 
 உங்கள் ஷெல்லை மறுதொடக்கம் செய்யுங்கள், பிறகு மேலும் கணக்குகளைச் சேர்த்து செல்லுங்கள்:
 
