@@ -26,14 +26,30 @@ Dated 2026-08-30. Ship of StopFailure force-switch + dynamic check cadence + com
 
 Dated 2026-09-02. Codex reserve label (1.9.1) and the 5h session ladder (1.10.0).
 
+Goal: ship 1.10.0, a 5-hour threshold ladder (50, then 80, then 95, with the check cadence tightening one band per rung) that drains the pooled accounts level by level, in a repo that carries no tests and no comments and whose every doc page states the thresholds the code enforces.
+
+Longer form: tokenmaxxing drains a pool of the owner's own Claude and Codex accounts evenly and without the owner noticing. The 5-hour window is a ladder, not a single bar: a seat hands off at 50 while any sibling is under 50, the bar climbs to 80 once every account is past 50, then to 95, and the check cadence tightens per rung so a fuller pool is watched more closely. Verification is the typecheck plus hermetic runs of the real CLI. Done means merged, released, visible on npm, and English plus localized docs in agreement with the code.
+
+Diet audit candidates (owner picks; none applied):
+1. Eight copies of the parse-JSON-then-safeParse idiom: one zod pipe from a JSON text codec into each schema.
+2. Five identical stdin readers: `Bun.stdin.text()`.
+3. Hand timer plus race around the usage probe spawn: the spawn's own `timeout` and `killSignal`.
+4. Probe retry loop: es-toolkit `retry` once the single probe throws instead of returning null.
+5. Hand-merged config defaults in the loader: schema defaults.
+6. Shell quoting of the hook command through `JSON.stringify`: `Bun.$.escape` (changes how installed hooks are recognized on live hosts).
+7. Manual tail read of the transcript: a `Bun.file` slice.
+8. Duplicated guards across entries (ambient store check, launch timestamp parse, truecolor detection, depth cap block): one shared site each.
+
 - [x] `gpt-reserve` row renders as `rsrv` (PR #56, merged c5374ce, v1.9.1 released, `npm view` shows 1.9.1)
 - [x] Ladder: `thresholds.session` is an ascending list, default [50, 80, 95]; `effectiveBars(cfg, pool)` resolves the active rung per pool; codex on `terminalBars`
 - [x] Cadence: per-stage ceiling on the check sleep (300/180/120/60)
 - [x] Docs: configuration, switching, README, DESIGN, AGENTS; memory addendum
-- [x] Owner ruling: delete all test code and comments from the codebase. `test/` and `bunfig.toml` trashed and unstaged, `test` script and publish-time test run dropped, CI test step dropped, tsconfig include narrowed to `src`, nix fileset no longer lists bunfig.toml, flake.nix comments removed, doc snippet comments turned into prose. AGENTS.md `## Testing` records the ruling.
-- [ ] bun.nix generator header: decide whether to strip (regeneration re-adds it)
-- [ ] Diet audit findings presented (ask before cutting)
-- [ ] typecheck clean
-- [ ] Adversarial review of the ladder diff
-- [ ] PR opened, CI green, 10-minute window from the last push, every review handled
-- [ ] Merge, `gh release create v1.10.0`, verify `npm view tokenmaxxing version` is 1.10.0, teardown
+- [x] Owner ruling: delete all test code and comments from the codebase. `test/` and `bunfig.toml` trashed and their deletion committed, `test` script and publish-time test run dropped, CI test step dropped, tsconfig include narrowed to `src`, nix fileset no longer lists bunfig.toml, flake.nix comments removed, doc snippet comments turned into prose. AGENTS.md `## Testing` records the ruling.
+- [x] bun.nix generator header stripped (regeneration via `bun run nix:bun` re-adds it; owner decides then)
+- [x] pullfrog workflow removed (owner: "Remove pullfrog too")
+- [x] typecheck clean; four hermetic `check` scenarios under a throwaway root behave as specified (hand-off at 50 over a pace-winning seat, greedy hold at 80, hand-off at 95, wall hold past 95); live `status` header reads `5h 50/80/95% (at 50%)`
+- [x] Adversarial review of the branch: 12 findings survived, 8 refuted. Fixed in the working tree, UNCOMMITTED: hard path returns to the greedy path when a dead grant climbs the rung under the seat (decide.ts loop, chooseAndSwap signature restored); status header resolves the rung with the engine's gated families; README nix-fence comments and switching prose; quickstart and distribution fence comments and the "full test suite" claim; safe-contribution and switching-policy skills plus references/policy.md; this file's wording
+- [ ] PAUSED 2026-09-02 on the owner's "Hold all and pause". Branch feat/session-threshold-ladder at 4bd642b plus the uncommitted fixes above. Not pushed, no PR, 1.10.0 not released.
+- [ ] Remaining from the review: 29 localized configuration.*.mdx still carry `"session": 95` on line 10 (byte-identical line, files already read this session); 29 localized sdk.*.mdx still carry the code-sample comments (26 identical to the old English block, de/mr/pt translated); localized switching and distribution prose still describe the single 95 bar and the test suite
+- [ ] Diet audit: findings drafted from the stack map and two inventories; not applied (owner rule: present findings, ask before fixing)
+- [ ] Resume: commit the fixes by explicit path, finish the locale sweep, push, PR with the drafted body (scratch pr-body-1.10.0.md), CI green, 10-minute window from the last push, handle reviews, merge, `gh release create v1.10.0`, verify `npm view tokenmaxxing version`, teardown
