@@ -3,22 +3,22 @@ title: Bắt đầu nhanh
 description: "Cài đặt tokenmaxxing, nhập tài khoản hiện tại của bạn, và gộp thêm nhiều tài khoản"
 ---
 
-Yêu cầu [Bun](https://bun.sh) và Claude Code, trên macOS hoặc Linux. Cài bằng Bun, hoặc từ flake nếu bạn đã dùng Nix / nix-darwin (xem [Xây dựng và phân phối](/vi/distribution)):
+Yêu cầu [Bun](https://bun.sh) và Claude Code, trên macOS hoặc Linux. Cài bằng Bun, hoặc từ flake nếu bạn đã dùng Nix / nix-darwin. Hãy đưa CLI lên PATH trước khi chạy `init` (xem [Xây dựng và phân phối](/vi/distribution)):
 
 ```sh
 bun add -g tokenmaxxing
 tokenmaxxing init
 ```
 
-Người dùng Nix hãy thay bước Bun bằng `nix profile install github:anaclumos/tokenmaxxing`, hoặc bật `programs.tokenmaxxing` trong cấu hình nix-darwin hay Home Manager của mình.
+Người dùng Nix thay bước Bun bằng `nix profile install github:anaclumos/tokenmaxxing`, hoặc bật `programs.tokenmaxxing` trong cấu hình nix-darwin hay Home Manager của họ.
 
 `init` làm năm việc:
 
 1. Nhập tài khoản mà bạn đã đăng nhập sẵn làm tài khoản #1 (không có lệnh `adopt` riêng).
 2. Cài đặt shim giám sát `claude`.
-3. Cài đặt ba mục vào `settings.json` của Claude Code: một statusLine, một Stop hook, và một SessionStart hook (cùng một mục subagentStatusLine).
+3. Cài đặt bốn mục vào `settings.json` của Claude Code: một statusLine, một Stop hook, một StopFailure hook, và một SessionStart hook (cùng một mục subagentStatusLine).
 4. Thêm thư mục bin của bộ giám sát vào PATH trong tệp rc của shell của bạn (bất biến, được đánh dấu bằng một chú thích `# tokenmaxxing PATH`). Nó phải đứng trước `claude` thật trên PATH để chặn bắt nó.
-5. Cài đặt một bộ hẹn giờ kiểm tra định kỳ (một launchd agent trên macOS, một systemd user timer trên Linux) chạy `tokenmaxxing check` mỗi 180 giây.
+5. Cài đặt một bộ hẹn giờ kiểm tra định kỳ (một launchd agent trên macOS, một systemd user timer trên Linux) chạy `tokenmaxxing check --if-due` mỗi 60 giây. Phép kiểm tra tự điều chỉnh nhịp trong khoảng từ một đến năm phút dựa trên khoảng dư của tài khoản đang hoạt động.
 
 Khởi động lại shell của bạn, rồi thêm nhiều tài khoản hơn và bắt đầu:
 

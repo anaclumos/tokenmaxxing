@@ -21,7 +21,7 @@ for await (const message of query({
 }
 ```
 
-Tumatanggap ang loop body ng stream ng mga mensahe. Itabi ang session id mula sa init message kung nais mong magamit ang `resume` sa kabila ng mga pagpapalit.
+Natatanggap ng katawan ng loop ang message stream; itabi ang session id mula sa init message kung gusto mong gumamit ng `resume` sa kabila ng mga pagpapalit.
 
 Ang Agent SDK ay nag-spawn ng isang claude subprocess kada `query()` at binabasa ang mga credential nang minsan sa spawn - walang statusline, walang mid-query hot-swap - kaya't ang integration ay boundary-driven:
 

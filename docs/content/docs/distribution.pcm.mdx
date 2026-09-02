@@ -18,7 +18,14 @@ Di same source tree na flake too. E still dey use di source-run-by-Bun model (th
 | `homeManagerModules.default` | Home Manager for macOS or Linux |
 | `nixosModules.default` / `withOverlay` | NixOS system install |
 
-One-shot without install am into profile:
+Install am into one profile (so `init` im supervisor shims fit resolve one stable `tokenmaxxing` for PATH), then init:
+
+```sh
+nix profile install github:anaclumos/tokenmaxxing
+tokenmaxxing init
+```
+
+One-shot without to install am (help / status only, no `init` dis way):
 
 ```sh
 nix run github:anaclumos/tokenmaxxing -- help
@@ -36,7 +43,7 @@ nix-darwin (e add di overlay so `pkgs.tokenmaxxing` go resolve):
 }
 ```
 
-Or set di package clear-clear (e work with Home Manager too):
+Home Manager (set di package clear-clear, or apply dis flake im overlay to di pkgs wey Home Manager dey use):
 
 ```nix
 {
@@ -46,13 +53,14 @@ Or set di package clear-clear (e work with Home Manager too):
 }
 ```
 
-Nix only put di CLI for PATH. Account import, di on-PATH `claude` supervisor shim, `settings.json` hooks, and (by default) di periodic check timer still dey come from `tokenmaxxing init` — dem dey touch credentials and user-owned settings wey pure module no suppose rewrite. Set `programs.tokenmaxxing.checkTimer.enable = true` only when you wan make Nix own di timer instead of init.
+Nix only put di CLI for PATH. Account import, di on-PATH `claude` supervisor shim, `settings.json` hooks, and (by default) di periodic check timer still dey come from `tokenmaxxing init`. Dem dey touch credentials and user-owned settings wey pure module no suppose rewrite. Set `programs.tokenmaxxing.checkTimer.enable = true` only when you wan make Nix own di timer instead of init (dat one dey also export `TOKENMAXXING_SKIP_TIMER=1` so init no go write second unit). Di declarative timer na user-session timer, e match init. Headless Linux need `loginctl enable-linger` before e go fire without login.
 
 When `bun.lock` change, regenerate di Nix dependency expression:
 
 ```sh
-bun run nix:bun   # writes bun.nix via bun2nix
+bun run nix:bun   # writes bun.nix via bun2nix@2.1.2
 ```
+
 ## License
 
 MIT. Source for [anaclumos/tokenmaxxing](https://github.com/anaclumos/tokenmaxxing).

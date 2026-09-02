@@ -18,7 +18,14 @@ npm 包发布的是 TypeScript 源码，而非构建产物：`tokenmaxxing` bin 
 | `homeManagerModules.default` | macOS 或 Linux 上的 Home Manager |
 | `nixosModules.default` / `withOverlay` | NixOS 系统级安装 |
 
-不装进 profile、临时跑一次：
+装进 profile（这样 `init` 写出的监督进程 shim 才能在 PATH 上稳定解析到 `tokenmaxxing`），然后再 init：
+
+```sh
+nix profile install github:anaclumos/tokenmaxxing
+tokenmaxxing init
+```
+
+不安装、临时跑一次（只适合 help / status，不要用这种方式跑 `init`）：
 
 ```sh
 nix run github:anaclumos/tokenmaxxing -- help
@@ -36,7 +43,7 @@ nix-darwin（加上 overlay，让 `pkgs.tokenmaxxing` 能解析到）：
 }
 ```
 
-也可以显式指定包（Home Manager 同样适用）：
+Home Manager（显式指定 package，或者把这个 flake 的 overlay 应用到 Home Manager 所用的 pkgs 上）：
 
 ```nix
 {
@@ -46,12 +53,12 @@ nix-darwin（加上 overlay，让 `pkgs.tokenmaxxing` 能解析到）：
 }
 ```
 
-Nix 只负责把 CLI 放进 PATH。账户导入、PATH 上的 `claude` 监督进程 shim、`settings.json` 里的 hook，以及（默认情况下）周期性检查定时器，仍由 `tokenmaxxing init` 负责——这些会碰到凭证和用户自己的配置，纯模块不该去改写。只有当你希望定时器由 Nix 接管、而不是 init 时，才设置 `programs.tokenmaxxing.checkTimer.enable = true`。
+Nix 只负责把 CLI 放进 PATH。账户导入、PATH 上的 `claude` 监督进程 shim、`settings.json` 里的 hook，以及（默认情况下）周期性检查定时器，仍由 `tokenmaxxing init` 负责，这些会碰到凭证和用户自己的配置，纯模块不该去改写。只有当你希望定时器由 Nix 接管、而不是由 init 接管时，才设置 `programs.tokenmaxxing.checkTimer.enable = true`（它同时会导出 `TOKENMAXXING_SKIP_TIMER=1`，这样 init 就不会再写第二个单元）。声明式定时器和 init 一样，都是用户会话级的定时器，无头 Linux 需要 `loginctl enable-linger`，它才能在没有登录的情况下触发。
 
 `bun.lock` 有变动时，重新生成 Nix 依赖表达式：
 
 ```sh
-bun run nix:bun   # writes bun.nix via bun2nix
+bun run nix:bun   # writes bun.nix via bun2nix@2.1.2
 ```
 
 ## 许可证

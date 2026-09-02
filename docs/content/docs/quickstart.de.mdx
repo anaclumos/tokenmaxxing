@@ -3,7 +3,7 @@ title: Schnellstart
 description: "tokenmaxxing installieren, Ihr aktuelles Konto importieren und weitere bündeln"
 ---
 
-Erfordert [Bun](https://bun.sh) und Claude Code, auf macOS oder Linux. Installieren Sie mit Bun, oder aus dem Flake, wenn Sie bereits Nix / nix-darwin nutzen (siehe [Build und Verteilung](/de/distribution)):
+Erfordert [Bun](https://bun.sh) und Claude Code, auf macOS oder Linux. Installieren Sie mit Bun, oder aus dem Flake, wenn Sie bereits Nix / nix-darwin nutzen. Legen Sie die CLI vor `init` auf den PATH (siehe [Build und Verteilung](/de/distribution)):
 
 ```sh
 bun add -g tokenmaxxing
@@ -16,9 +16,9 @@ Nix-Nutzer ersetzen den Bun-Schritt durch `nix profile install github:anaclumos/
 
 1. Importiert das Konto, mit dem Sie bereits angemeldet sind, als Konto Nr. 1 (es gibt keinen separaten `adopt`-Befehl).
 2. Installiert den `claude`-Supervisor-Shim.
-3. Installiert drei Einträge in der `settings.json` von Claude Code: eine statusLine, einen Stop-Hook und einen SessionStart-Hook (plus einen subagentStatusLine-Eintrag).
+3. Installiert vier Einträge in der `settings.json` von Claude Code: eine statusLine, einen Stop-Hook, einen StopFailure-Hook und einen SessionStart-Hook (plus einen subagentStatusLine-Eintrag).
 4. Hängt das bin-Verzeichnis des Supervisors an den PATH Ihrer Shell-rc an (idempotent, markiert mit einem `# tokenmaxxing PATH`-Kommentar). Es muss im PATH vor dem echten `claude` stehen, um es abzufangen.
-5. Installiert einen periodischen Prüf-Timer (ein launchd-Agent auf macOS, ein systemd-Benutzer-Timer auf Linux), der `tokenmaxxing check` alle 180 Sekunden ausführt.
+5. Installiert einen periodischen Prüf-Timer (ein launchd-Agent auf macOS, ein systemd-Benutzer-Timer auf Linux), der alle 60 Sekunden `tokenmaxxing check --if-due` ausführt; die Prüfung taktet sich anhand des Spielraums des Live-Kontos selbst zwischen einer und fünf Minuten.
 
 Starten Sie Ihre Shell neu, fügen Sie dann weitere Konten hinzu und los geht's:
 

@@ -18,7 +18,14 @@ Pohon sumber yang sama juga merupakan flake. Model sumber-dijalankan-oleh-Bun te
 | `homeManagerModules.default` | Home Manager di macOS atau Linux |
 | `nixosModules.default` / `withOverlay` | instalasi sistem NixOS |
 
-Sekali jalan tanpa memasang ke profil:
+Pasang ke sebuah profil (agar shim supervisor milik `init` dapat menemukan `tokenmaxxing` yang stabil di PATH), lalu jalankan init:
+
+```sh
+nix profile install github:anaclumos/tokenmaxxing
+tokenmaxxing init
+```
+
+Sekali jalan tanpa memasang (hanya untuk help / status, jangan `init` dengan cara ini):
 
 ```sh
 nix run github:anaclumos/tokenmaxxing -- help
@@ -36,7 +43,7 @@ nix-darwin (menambahkan overlay agar `pkgs.tokenmaxxing` ter-resolve):
 }
 ```
 
-Atau set paket secara eksplisit (juga cocok dengan Home Manager):
+Home Manager (set paketnya secara eksplisit, atau terapkan overlay flake ini ke pkgs yang dipakai Home Manager):
 
 ```nix
 {
@@ -46,13 +53,14 @@ Atau set paket secara eksplisit (juga cocok dengan Home Manager):
 }
 ```
 
-Nix hanya menaruh CLI di PATH. Impor akun, shim supervisor `claude` di PATH, hook `settings.json`, dan (secara default) timer pemeriksaan berkala tetap dari `tokenmaxxing init` — itu menyentuh kredensial dan pengaturan milik pengguna yang tidak seharusnya ditulis ulang oleh modul murni. Set `programs.tokenmaxxing.checkTimer.enable = true` hanya jika ingin Nix yang mengelola timer, bukan init.
+Nix hanya menaruh CLI di PATH. Impor akun, shim supervisor `claude` di PATH, hook `settings.json`, dan (secara default) timer pemeriksaan berkala tetap dari `tokenmaxxing init`. Semua itu menyentuh kredensial dan pengaturan milik pengguna yang tidak seharusnya ditulis ulang oleh modul murni. Set `programs.tokenmaxxing.checkTimer.enable = true` hanya jika ingin Nix yang mengelola timer, bukan init (itu juga mengekspor `TOKENMAXXING_SKIP_TIMER=1` agar init tidak menulis unit kedua). Timer deklaratif itu adalah timer sesi-pengguna, sama seperti init. Linux tanpa kepala membutuhkan `loginctl enable-linger` agar timer itu menyala tanpa login.
 
 Ketika `bun.lock` berubah, regenerasi ekspresi dependensi Nix:
 
 ```sh
-bun run nix:bun   # writes bun.nix via bun2nix
+bun run nix:bun   # writes bun.nix via bun2nix@2.1.2
 ```
+
 ## Lisensi
 
 MIT. Kode sumber di [anaclumos/tokenmaxxing](https://github.com/anaclumos/tokenmaxxing).

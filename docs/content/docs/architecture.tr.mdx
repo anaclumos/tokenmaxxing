@@ -24,10 +24,9 @@ Tee değişiklikte yazma ilkesine tabidir: rakamlar değişmediğinde yalnızca 
 Her tur sınırında Stop hook, geçiş kararını çalıştırır (bkz. [Geçişe nasıl karar verilir](/tr/switching)). Bir geçiş gerektiğinde, bir `flock(2)` özel kilidi altında gerçekleşir (macOS bir `flock(1)` ikili dosyası göndermediğinden `bun:ffi` üzerinden alınır) ve kimlik bilgisi yazımları ek olarak Claude Code'un kendi yenileme kilidiyle iç içe geçer. Kritik bölüm içinde tek bir geçiş:
 
 1. Mevcut canlı kimlik bilgisini gerçek sahibinin park edilmiş yedeğine toplar.
-2. Hedef hesabın taze yenilenmiş kimlik bilgisini canlı olan olarak kurar, kardeş durumun (örneğin MCP sunucusu başına OAuth token'ları) hayatta kalması için mevcut canlı blob'a birleştirir.
-3. Hedefin döndürülmüş token'ını kendi yedeğine kalıcılaştırır.
-4. `~/.claude.json` içindeki `oauthAccount` alanını atomik olarak yeniden yazar.
-5. Kilit serbest bırakılmadan önce yeni aktif etiketi commit'ler ve bayat kullanım anlık görüntülerini temizler, böylece bir çökme, kurulu kimlik bilgisini ve aktif etiketi asla farklı hesaplara işaret eder halde bırakamaz.
+2. Hedef hesabın taze yenilenmiş kimlik bilgisini canlı olan olarak kurar, kardeş durumun (örneğin MCP sunucusu başına OAuth token'ları) hayatta kalması için mevcut canlı blob'a birleştirir. (Hedefin döndürülmüş yenileme token'ı, yenileme döner dönmez, flock altında ama bu yenileme kilidi kritik bölümünden önce kendi yedeğine zaten kalıcılaştırılmıştır.)
+3. `~/.claude.json` içindeki `oauthAccount` alanını atomik olarak yeniden yazar.
+4. Kilit serbest bırakılmadan önce yeni aktif etiketi commit'ler ve bayat kullanım anlık görüntülerini temizler. Bu dosyalar birlikte çökmeye karşı atomik olamaz, bu yüzden bir çökme ara durum bırakabilir; bir sonraki geçiş, canlı kimlik bilgisinin gerçek sahibini etiketten bağımsız olarak çözer ve tespit ettiği her sapmayı günlüğe kaydeder.
 
 Tüm varsayılan profil oturumları tek canlı kimlik bilgisini paylaştığından, tek bir geçiş her oturumu aynı anda taşır ve flock artı kilit altındaki bir yeniden denetim, yarışan hook'ların iki hesabı yakmasını önler.
 
@@ -41,7 +40,7 @@ Yalnızca havuzdaki her hesap kendi çubuklarının üzerinde olduğunda Stop ho
 
 ## Periyodik denetim zamanlayıcısı
 
-Hook'lar yalnızca tur sınırlarında tetiklenir ve uzun bir agentic tur, tek bir sınır olmadan bir pencereyi sağlıklıdan tükenmişe yakabilir. Bu nedenle `init` ayrıca, tur etkinliğinden bağımsız olarak her 180 saniyede bir `tokenmaxxing check` çalıştıran periyodik bir zamanlayıcı (macOS'ta bir launchd agent, Linux'ta bir systemd kullanıcı zamanlayıcısı) kurar.
+Hook'lar yalnızca tur sınırlarında tetiklenir ve uzun bir agentic tur, tek bir sınır olmadan bir pencereyi sağlıklıdan tükenmişe yakabilir. Bu nedenle `init` ayrıca, tur etkinliğinden bağımsız olarak her 60 saniyede bir `tokenmaxxing check --if-due` çalıştıran periyodik bir zamanlayıcı (macOS'ta bir launchd agent, Linux'ta bir systemd kullanıcı zamanlayıcısı) kurar. Denetim kendi temposunu canlı hesabın kalan boşluğuna göre ayarlar: her çubuğa bol yer varken beş dakikada bir, bir çubuğa yaklaşınca her tikte değerlendirir (bkz. [Geçişe nasıl karar verilir](/tr/switching)).
 
 ## SessionStart hook
 

@@ -21,11 +21,11 @@ description: "config.json 嘅 schema、閾值同策略選項"
 }
 ```
 
-- `thresholds.session`：5 小時嘅階梯，即係一串由細排到大嘅篩選級。每次評估都會定出一個活躍嘅級，就係帳戶池入面仲有帳戶過得到嘅最低嗰級，而嗰一級同時做觸發同候選篩選。Codex 淨係讀最高嗰級。睇[點樣決定切換](/yue/switching)。
-- `thresholds.weekly`：每週嘅篩選界線，同時涵蓋 7 日總量同每個模型嘅每週上限。
-- `hardThresholds.session` / `hardThresholds.weekly`：撞牆界線（預設 100，即每個帳戶喺伺服器嘅真正上限）。`hardThresholds.session` 一定要等於或者高過 session 最高嗰級。當每個帳戶都超咗自己嘅篩選界線，自動嘅 Claude 決定喺泊存之前會將每一個都榨到自己嘅牆 - 睇[撞牆](/yue/switching)。分別設成最高嗰級同每週界線就會停用；Codex 會忽略呢個設定。
+- `thresholds.session`：5 小時嘅階梯，係一串由細到大排嘅篩選級數。每次評估都會解析出一個活躍級數，即係仲有已入池帳戶過得到嘅最低嗰級，而嗰級同時做觸發器同候選篩選。Codex 淨係讀最高嗰級。睇[點樣決定切換](/yue/switching)。
+- `thresholds.weekly`：每週嘅篩選界線，涵蓋 7 日總量同每個模型嘅每週上限。
+- `hardThresholds.session` / `hardThresholds.weekly`：撞牆界線（預設 100，即每個帳戶喺伺服器嘅真正上限）。`hardThresholds.session` 一定要等於或者高過最高嗰級 session 級數。當每個帳戶都超咗自己嘅篩選界線，自動嘅 Claude 決定喺泊存之前會將每一個都榨到自己嘅牆 - 睇[撞牆](/yue/switching)。設成同最高嗰級同每週界線一樣就會停用；Codex 會忽略呢個設定。
 - `claudeBin` / `codexBin`：釘死監督者實際會 spawn 嘅真身 binary（由 `init` / `init --codex` 寫入;當防遞歸嘅診斷話你知 `claudeBin` 唔再指向真身 Claude binary 嘅時候，就要嚟呢度改）。
-- `policy.projectionMargin`：會喺每一級 session 界線、每週界線同撞牆界線各自減走，得出有效界線。
+- `policy.projectionMargin`：會喺每一級 session 級數、每週界線同撞牆界線各自減走，得出有效界線。
 - `policy.greedySessionFloor`：session 已用百分比去到幾多，貪婪收斂就會啟動。
 - `policy.switchModels`：每模型每週上限會閘住切換嘅模型系列（載入時項目會轉做細楷）。
 - `policy.usagePollTtlMs`：`/usage` 每模型輪詢保持新鮮嘅時間。

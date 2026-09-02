@@ -24,10 +24,9 @@ Der Tee ist write-on-change: Wenn sich die Zahlen nicht ändern, aktualisiert er
 An jeder Zuggrenze führt der Stop-Hook die Wechselentscheidung aus (siehe [Wie der Wechsel entschieden wird](/de/switching)). Wenn ein Wechsel gerechtfertigt ist, geschieht er unter einer exklusiven `flock(2)`-Sperre (via `bun:ffi` genommen, da macOS kein `flock(1)`-Binary mitliefert), und die Anmeldeinformationsschreibvorgänge verzahnen sich zusätzlich mit Claude Codes eigener Refresh-Sperre. Innerhalb des kritischen Abschnitts erledigt ein Wechsel:
 
 1. Erntet die aktuelle Live-Anmeldeinformation in die geparkte Sicherung ihres wahren Eigentümers.
-2. Installiert die frisch aufgefrischte Anmeldeinformation des Zielkontos als die Live-Anmeldeinformation und führt sie in das bestehende Live-Blob zusammen, sodass Geschwisterzustände (etwa Pro-MCP-Server-OAuth-Tokens) erhalten bleiben.
-3. Persistiert den rotierten Token des Ziels in seiner eigenen Sicherung.
-4. Schreibt atomar das Feld `oauthAccount` in `~/.claude.json` neu.
-5. Committet das neue aktive Label und löscht veraltete Nutzungs-Snapshots, alles bevor die Sperre freigegeben wird, sodass ein Absturz nie die installierte Anmeldeinformation und das aktive Label auf verschiedene Konten zeigen lassen kann.
+2. Installiert die frisch aufgefrischte Anmeldeinformation des Zielkontos als die Live-Anmeldeinformation und führt sie in das bestehende Live-Blob zusammen, sodass Geschwisterzustände (etwa Pro-MCP-Server-OAuth-Tokens) erhalten bleiben. (Der rotierte Refresh-Token des Ziels wurde bereits in dem Moment, in dem die Auffrischung zurückkam, in seiner eigenen Sicherung persistiert, unter dem flock, aber vor diesem kritischen Abschnitt der Refresh-Sperre.)
+3. Schreibt atomar das Feld `oauthAccount` in `~/.claude.json` neu.
+4. Committet das neue aktive Label und löscht veraltete Nutzungs-Snapshots, bevor die Sperre freigegeben wird. Diese Dateien lassen sich nicht gemeinsam absturzsicher atomar schreiben, ein Absturz kann also einen Zwischenzustand hinterlassen; der nächste Wechsel bestimmt den wahren Eigentümer der Live-Anmeldeinformation unabhängig vom Label und loggt jede erkannte Abweichung.
 
 Da alle Sitzungen des Standardprofils die eine Live-Anmeldeinformation teilen, migriert ein einziger Wechsel jede Sitzung auf einmal, und das flock plus eine erneute Prüfung unter der Sperre verhindert, dass konkurrierende Hooks zwei Konten verbrennen.
 
@@ -41,7 +40,7 @@ Nur wenn jedes Konto im Pool über seinen Schranken liegt, schreibt der Stop-Hoo
 
 ## Der periodische Prüf-Timer
 
-Hooks feuern nur an Zuggrenzen, und ein langer agentischer Zug kann ein Fenster von gesund bis erschöpft verbrennen, ohne eine einzige Grenze. `init` installiert daher auch einen periodischen Timer - ein launchd-Agent auf macOS, ein systemd-Benutzer-Timer auf Linux - der `tokenmaxxing check` alle 180 Sekunden ausführt, unabhängig von der Zugaktivität.
+Hooks feuern nur an Zuggrenzen, und ein langer agentischer Zug kann ein Fenster von gesund bis erschöpft verbrennen, ohne eine einzige Grenze. `init` installiert daher auch einen periodischen Timer - ein launchd-Agent auf macOS, ein systemd-Benutzer-Timer auf Linux - der unabhängig von der Zugaktivität alle 60 Sekunden `tokenmaxxing check --if-due` ausführt. Die Prüfung taktet sich anhand des Spielraums des Live-Kontos selbst: Bei reichlich Luft bis zu jeder Schranke wertet sie alle fünf Minuten aus, nahe an einer Schranke bei jedem Takt (siehe [Wie der Wechsel entschieden wird](/de/switching)).
 
 ## Ein SessionStart-Hook
 

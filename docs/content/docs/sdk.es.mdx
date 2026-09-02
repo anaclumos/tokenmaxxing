@@ -21,7 +21,7 @@ for await (const message of query({
 }
 ```
 
-El cuerpo del bucle recibe el flujo de mensajes. Conserva el id de sesión del mensaje init si quieres `resume` entre cambios.
+El cuerpo del bucle recibe el flujo de mensajes; guarda el id de sesión del mensaje init si quieres `resume` a través de los cambios.
 
 El Agent SDK lanza un subproceso claude por `query()` y lee las credenciales una vez al lanzar - sin statusline, sin intercambio en caliente a mitad de consulta - así que la integración está impulsada por los límites:
 

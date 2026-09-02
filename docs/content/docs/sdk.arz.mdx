@@ -21,7 +21,7 @@ for await (const message of query({
 }
 ```
 
-جسم الـ loop بيستقبل مجرى الرسايل. احتفظ بالـ session id من رسالة الـ init لو عايز `resume` عبر التبديلات.
+جسم الـ loop بيستقبل مجرى الرسايل؛ خلّي الـ session id بتاع رسالة الـ init معاك لو عايز `resume` عبر التبديلات.
 
 الـ Agent SDK بيطلّع claude subprocess لكل `query()` وبيقرا الـ credentials مرة واحدة عند الإطلاق. مفيش statusline، مفيش hot-swap في نص الـ query، فالتكامل بيتحدّد بالحدود:
 

@@ -21,7 +21,7 @@ for await (const message of query({
 }
 ```
 
-Der Schleifenrumpf erhält den Nachrichtenstrom. Behalten Sie die Sitzungs-ID aus der Init-Nachricht, wenn Sie `resume` über Wechsel hinweg nutzen wollen.
+Der Schleifenkörper erhält den Nachrichtenstrom; behalten Sie die Sitzungs-ID aus der Init-Nachricht, wenn Sie `resume` über Wechsel hinweg nutzen wollen.
 
 Das Agent SDK startet pro `query()` einen claude-Unterprozess und liest die Anmeldeinformationen einmal beim Spawn - keine Statusline, kein Hot-Swap mitten in der Abfrage - sodass die Integration grenzgesteuert ist:
 

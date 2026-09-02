@@ -21,7 +21,7 @@ for await (const message of query({
 }
 ```
 
-የ loop አካሉ የመልእክት ዥረቱን ይቀበላል፤ በመቀያየሮች ላይ `resume` ማድረግ ከፈለጉ የ session id ን ከ init መልእክቱ ያቆዩ።
+የ loop አካሉ የመልእክት ዥረቱን ይቀበላል፤ በመቀያየሮች ውስጥ `resume` ማድረግ ከፈለጉ የ session id ን ከ init መልእክቱ ያስቀምጡ።
 
 Agent SDK በ `query()` አንድ claude subprocess ያስነሳል እና credentialዎችን በ spawn አንድ ጊዜ ያነባል - ምንም statusline የለም፣ ምንም mid-query hot-swap የለም - ስለዚህ ውህደቱ boundary-driven ነው፦
 

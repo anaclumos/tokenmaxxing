@@ -21,7 +21,7 @@ for await (const message of query({
 }
 ```
 
-Thân vòng lặp nhận luồng thông điệp; hãy giữ lại id phiên từ thông điệp init nếu bạn muốn `resume` xuyên suốt các lần hoán đổi.
+Thân vòng lặp nhận luồng thông điệp. Hãy giữ lại id phiên từ thông điệp init nếu bạn muốn dùng `resume` xuyên qua các lần hoán đổi.
 
 Agent SDK khởi tạo một tiến trình con claude cho mỗi `query()` và đọc thông tin xác thực một lần khi khởi tạo (không có statusline, không hoán đổi nóng giữa query), nên việc tích hợp dựa trên ranh giới:
 

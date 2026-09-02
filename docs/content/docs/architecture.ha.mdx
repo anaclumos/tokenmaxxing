@@ -24,10 +24,9 @@ Tee ɗin yana rubutu-akan-canji: lokacin da alkaluma ba su canza ba yana kawai �
 A kowane iyakar zagaye, Stop hook yana gudanar da shawarar musanya (duba [Yadda musanya ke yanke shawara](/ha/switching)). Lokacin da musanya ta cancanta, tana faruwa a ƙarƙashin makullin keɓe na `flock(2)` (an ɗauka ta `bun:ffi`, tunda macOS ba ta zo da binary na `flock(1)` ba), kuma rubuce-rubucen tantancewa suna ƙulla haɗi ƙari da makullin sabuntawa na Claude Code. A cikin sashe mai muhimmanci, musanya guda:
 
 1. Yana tattara tantancewar da ke aiki a yanzu cikin adana na mai shi na gaskiya.
-2. Yana shigar da sabuwar tantancewar da aka sabunta na asusun da ake nufi a matsayin mai aiki, yana haɗawa cikin blob ɗin da ke aiki don yanayin "yan'uwa" (kamar tokens na OAuth na kowane MCP-server) su tsira.
-3. Yana adana token ɗin da aka juya na wanda ake nufi zuwa ajiyarsa.
-4. Yana sake rubuta filin `oauthAccount` cikin `~/.claude.json` ta hanyar atomic.
-5. Yana tabbatar da sabuwar lakabin mai aiki kuma yana share tsofaffin samfuran amfani, duka kafin makullin ya saki, don kar wani hatsari ya bar tantancewar da aka shigar da lakabin mai aiki suna nuni ga asusu daban-daban.
+2. Yana shigar da sabuwar tantancewar da aka sabunta na asusun da ake nufi a matsayin mai aiki, yana haɗawa cikin blob ɗin da ke aiki don yanayin "yan'uwa" (kamar tokens na OAuth na kowane MCP-server) su tsira. (An riga an adana refresh token ɗin da aka juya na wanda ake nufi zuwa ajiyarsa nan take da sabuntawar ta dawo, ƙarƙashin flock amma kafin wannan sashe mai muhimmanci na makullin sabuntawa.)
+3. Yana sake rubuta filin `oauthAccount` cikin `~/.claude.json` ta hanyar atomic.
+4. Yana tabbatar da sabuwar lakabin mai aiki kuma yana share tsofaffin samfuran amfani kafin makullin ya saki. Waɗannan fayiloli ba za su iya zama atomic tare a lokacin hatsari ba, don haka hatsari na iya barin yanayi na tsaka-tsaki; musanya ta gaba tana warware ainihin mai shi na tantancewar da ke aiki ba tare da dogara ga lakabin ba kuma tana rubuta duk wata karkata da aka gano.
 
 Domin dukkan zaman bayanan martaba na tsohuwa suna raba tantancewa guda ɗaya da ke aiki, musanya guda tana ƙaura da kowane zama a lokaci ɗaya, kuma flock tare da sake-dubawa ƙarƙashin makulli yana hana hooks masu tsere ƙona asusu biyu.
 
@@ -41,7 +40,7 @@ Sai lokacin da kowane asusu a cikin tafki ya wuce sandunansa ne Stop hook ke rub
 
 ## Agogon dubawa na lokaci-lokaci
 
-Hooks suna aiki ne kawai a iyakokin zagaye, kuma zagaye guda mai tsawo na agent na iya ƙona taga daga lafiya zuwa ƙarewa ba tare da iyaka guda ɗaya ba. Saboda haka `init` yana kuma shigar da agogon lokaci-lokaci - launchd agent a kan macOS, systemd user timer a kan Linux - da ke gudanar da `tokenmaxxing check` kowace daƙiƙa 180 ba tare da la'akari da ayyukan zagaye ba.
+Hooks suna aiki ne kawai a iyakokin zagaye, kuma zagaye guda mai tsawo na agent na iya ƙona taga daga lafiya zuwa ƙarewa ba tare da iyaka guda ɗaya ba. Saboda haka `init` yana kuma shigar da agogon lokaci-lokaci - launchd agent a kan macOS, systemd user timer a kan Linux - da ke gudanar da `tokenmaxxing check --if-due` kowace daƙiƙa 60 ba tare da la'akari da ayyukan zagaye ba. Dubawar tana daidaita saurin kanta bisa sararin asusun da ke aiki: idan akwai sarari mai yawa zuwa kowace sanda tana auna kowane minti biyar, kuma kusa da sanda tana auna a kowane tick (duba [Yadda musanya ke yanke shawara](/ha/switching)).
 
 ## SessionStart hook
 

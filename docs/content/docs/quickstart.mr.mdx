@@ -3,22 +3,22 @@ title: झटपट सुरुवात
 description: "tokenmaxxing स्थापित करा, तुमचे सध्याचे खाते आयात करा, आणि आणखी एकत्र करा"
 ---
 
-macOS किंवा Linux वर [Bun](https://bun.sh) आणि Claude Code आवश्यक आहेत. Bun ने इंस्टॉल करा, किंवा तुम्ही आधीच Nix / nix-darwin वापरत असाल तर flake मधून (पहा [बिल्ड आणि वितरण](/mr/distribution)):
+macOS किंवा Linux वर [Bun](https://bun.sh) आणि Claude Code आवश्यक आहेत. Bun ने इंस्टॉल करा, किंवा तुम्ही आधीच Nix / nix-darwin वापरत असाल तर flake मधून. `init` च्या आधी CLI PATH वर आणा (पहा [बिल्ड आणि वितरण](/mr/distribution)):
 
 ```sh
 bun add -g tokenmaxxing
 tokenmaxxing init
 ```
 
-Nix वापरकर्ते Bun ची पायरी `nix profile install github:anaclumos/tokenmaxxing` ने बदलतात, किंवा त्यांच्या nix-darwin किंवा Home Manager कॉन्फिगमध्ये `programs.tokenmaxxing` सुरू करतात.
+Nix वापरणारे Bun ची पायरी `nix profile install github:anaclumos/tokenmaxxing` ने बदलतात, किंवा आपल्या nix-darwin किंवा Home Manager कॉन्फिगमध्ये `programs.tokenmaxxing` सक्षम करतात.
 
 `init` पाच गोष्टी करते:
 
 1. तुम्ही आधीच ज्या खात्याने लॉग इन आहात ते खाते #1 म्हणून आयात करते (वेगळी `adopt` कमांड नाही).
 2. `claude` पर्यवेक्षक शिम स्थापित करते.
-3. Claude Code च्या `settings.json` मध्ये तीन नोंदी स्थापित करते: एक statusLine, एक Stop हुक, आणि एक SessionStart हुक (तसेच एक subagentStatusLine नोंद).
+3. Claude Code च्या `settings.json` मध्ये चार नोंदी स्थापित करते: एक statusLine, एक Stop हुक, एक StopFailure हुक, आणि एक SessionStart हुक (तसेच एक subagentStatusLine नोंद).
 4. तुमच्या शेल rc च्या PATH मध्ये पर्यवेक्षकाची bin डिरेक्टरी जोडते (आयडेम्पोटेंट, `# tokenmaxxing PATH` टिप्पणीने चिन्हांकित). त्याला रोखण्यासाठी ते PATH वर खऱ्या `claude` च्या पुढे बसणे आवश्यक आहे.
-5. एक नियतकालिक तपासणी टायमर स्थापित करते (macOS वर launchd एजंट, Linux वर systemd यूजर टायमर) जो दर १८० सेकंदांनी `tokenmaxxing check` चालवतो.
+5. एक नियतकालिक तपासणी टायमर स्थापित करते (macOS वर launchd एजंट, Linux वर systemd यूजर टायमर) जो दर ६० सेकंदांनी `tokenmaxxing check --if-due` चालवतो; तपासणी थेट खात्याच्या मोकळिकेवरून एक ते पाच मिनिटांदरम्यान स्वतःची गती ठरवते.
 
 तुमचे शेल पुन्हा सुरू करा, नंतर अधिक खाती जोडा आणि सुरू करा:
 

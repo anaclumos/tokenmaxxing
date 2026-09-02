@@ -21,11 +21,11 @@ description: "config.json 스키마, 임계값, 정책 옵션"
 }
 ```
 
-- `thresholds.session`: 5시간 사다리, 즉 오름차순으로 나열한 선별 단이 들어갑니다. 평가할 때마다 활성 단 하나가 정해지며, 풀에 아직 통과하는 계정이 하나라도 있는 가장 낮은 단이 그 단입니다. 이 단이 트리거이자 후보 선별 기준이 됩니다. Codex는 맨 위 단만 읽습니다. [전환 결정 방식](/ko/switching)을 참고하세요.
+- `thresholds.session`: 5시간 사다리, 오름차순으로 늘어놓은 선별 단계 목록입니다. 평가할 때마다 활성 단계 하나가 정해지는데, 풀의 계정 중 하나라도 아직 넘지 않은 가장 낮은 단계이며 이 단계가 트리거이자 후보 선별 기준입니다. Codex는 맨 위 단계만 읽습니다. [전환 결정 방식](/ko/switching)을 참고하세요.
 - `thresholds.weekly`: 주간 선별 기준선. 7일 합산과 모든 모델별 주간 상한을 함께 다룹니다.
-- `hardThresholds.session` / `hardThresholds.weekly`: 벽 기준선(기본 100, 각 계정의 실제 서버 한도). `hardThresholds.session`은 맨 위 세션 단 이상이어야 합니다. 모든 계정이 선별 기준선을 넘어서면 자동 Claude 결정은 park하기 전에 각 계정을 벽까지 쥐어짜냅니다. [벽](/ko/switching)을 참고하세요. 맨 위 단과 주간 기준선에 같게 설정하면 비활성화됩니다. Codex는 이 설정을 무시합니다.
+- `hardThresholds.session` / `hardThresholds.weekly`: 벽 기준선(기본 100, 각 계정의 실제 서버 한도). `hardThresholds.session`은 세션 사다리의 맨 위 단계 이상이어야 합니다. 모든 계정이 선별 기준선을 넘어서면 자동 Claude 결정은 park하기 전에 각 계정을 벽까지 쥐어짜냅니다. [벽](/ko/switching)을 참고하세요. 맨 위 단계와 주간 기준선에 각각 같게 설정하면 비활성화됩니다. Codex는 이 설정을 무시합니다.
 - `claudeBin` / `codexBin`: supervisor가 실행하는 실제 바이너리를 고정합니다(`init` / `init --codex`가 기록합니다. 재귀 방지 진단이 `claudeBin`을 여기서 고치라고 안내하는 경우는 이 값이 더 이상 실제 Claude 바이너리를 가리키지 않을 때입니다).
-- `policy.projectionMargin`: 유효 기준선을 만들기 위해 모든 세션 단과 주간 기준선, 그리고 벽 기준선에서 빼는 값.
+- `policy.projectionMargin`: 유효 기준선을 만들기 위해 모든 세션 단계와 주간 기준선, 그리고 벽 기준선에서 빼는 값.
 - `policy.greedySessionFloor`: 그리디 수렴이 관여하는 세션 사용 백분율.
 - `policy.switchModels`: 모델별 주간 상한이 전환을 게이트하는 모델 계열(항목은 로드 시 소문자로 변환됩니다).
 - `policy.usagePollTtlMs`: `/usage` 모델별 폴링이 최신 상태로 유지되는 시간.

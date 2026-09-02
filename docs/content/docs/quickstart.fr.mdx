@@ -3,7 +3,7 @@ title: Démarrage rapide
 description: "Installez tokenmaxxing, importez votre compte actuel et regroupez-en d'autres"
 ---
 
-Nécessite [Bun](https://bun.sh) et Claude Code, sur macOS ou Linux. Installez avec Bun, ou depuis le flake si vous utilisez déjà Nix / nix-darwin (voir [Compilation et distribution](/fr/distribution)) :
+Nécessite [Bun](https://bun.sh) et Claude Code, sur macOS ou Linux. Installez avec Bun, ou depuis le flake si vous utilisez déjà Nix / nix-darwin. Mettez la CLI sur le PATH avant `init` (voir [Compilation et distribution](/fr/distribution)) :
 
 ```sh
 bun add -g tokenmaxxing
@@ -16,9 +16,9 @@ Les utilisateurs de Nix remplacent l'étape Bun par `nix profile install github:
 
 1. Importe le compte avec lequel vous êtes déjà connecté en tant que compte #1 (il n'y a pas de commande `adopt` séparée).
 2. Installe le shim superviseur `claude`.
-3. Installe trois entrées dans le `settings.json` de Claude Code : une statusLine, un hook Stop et un hook SessionStart (plus une entrée subagentStatusLine).
+3. Installe quatre entrées dans le `settings.json` de Claude Code : une statusLine, un hook Stop, un hook StopFailure et un hook SessionStart (plus une entrée subagentStatusLine).
 4. Ajoute le répertoire bin du superviseur au PATH du fichier rc de votre shell (idempotent, marqué d'un commentaire `# tokenmaxxing PATH`). Il doit se placer avant le vrai `claude` dans le PATH pour l'intercepter.
-5. Installe une minuterie de vérification périodique (un agent launchd sur macOS, une minuterie utilisateur systemd sur Linux) qui exécute `tokenmaxxing check` toutes les 180 secondes.
+5. Installe une minuterie de vérification périodique (un agent launchd sur macOS, une minuterie utilisateur systemd sur Linux) qui exécute `tokenmaxxing check --if-due` toutes les 60 secondes ; la vérification s'auto-rythme entre une et cinq minutes d'après la marge du compte actif.
 
 Redémarrez votre shell, puis ajoutez d'autres comptes et lancez-vous :
 

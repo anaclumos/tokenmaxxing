@@ -18,7 +18,14 @@ npm パッケージはビルド成果物ではなく TypeScript ソースを配�
 | `homeManagerModules.default` | macOS / Linux 向け Home Manager |
 | `nixosModules.default` / `withOverlay` | NixOS へのシステム導入 |
 
-プロファイルへ入れずに一度だけ動かす場合:
+プロファイルへ入れて (そうすることで `init` のスーパーバイザーシムが PATH 上の安定した `tokenmaxxing` を解決できます)、それから init します:
+
+```sh
+nix profile install github:anaclumos/tokenmaxxing
+tokenmaxxing init
+```
+
+インストールせずに一度だけ動かす場合 (help / status のみ。この方法で `init` してはいけません):
 
 ```sh
 nix run github:anaclumos/tokenmaxxing -- help
@@ -36,7 +43,7 @@ nix-darwin (`pkgs.tokenmaxxing` が解決されるよう overlay を足す):
 }
 ```
 
-パッケージを明示してもよい (Home Manager でも同じ):
+Home Manager (パッケージを明示するか、Home Manager が使う pkgs にこの flake の overlay を適用します):
 
 ```nix
 {
@@ -46,12 +53,12 @@ nix-darwin (`pkgs.tokenmaxxing` が解決されるよう overlay を足す):
 }
 ```
 
-Nix がやるのは CLI を PATH に載せるところまでです。アカウント取り込み、PATH 上の `claude` スーパーバイザーシム、`settings.json` のフック、(既定では) 定期チェックタイマーは、いままでどおり `tokenmaxxing init` 側です。これらは認証情報やユーザー所有の設定に触れるので、純粋なモジュールが書き換えるべきではありません。タイマーを init ではなく Nix に持たせたいときだけ `programs.tokenmaxxing.checkTimer.enable = true` にしてください。
+Nix がやるのは CLI を PATH に載せるところまでです。アカウント取り込み、PATH 上の `claude` スーパーバイザーシム、`settings.json` のフック、(既定では) 定期チェックタイマーは、いままでどおり `tokenmaxxing init` 側です。これらは認証情報やユーザー所有の設定に触れるので、純粋なモジュールが書き換えるべきではありません。タイマーを init ではなく Nix に持たせたいときだけ `programs.tokenmaxxing.checkTimer.enable = true` にしてください (この設定は `TOKENMAXXING_SKIP_TIMER=1` もエクスポートするので、init が2つ目のユニットを書き込むことはありません)。宣言的なタイマーは init と同じくユーザーセッションのタイマーです。ヘッドレスな Linux では、ログインなしで発火させるために `loginctl enable-linger` が必要です。
 
 `bun.lock` が変わったら、Nix の依存式を作り直します:
 
 ```sh
-bun run nix:bun   # writes bun.nix via bun2nix
+bun run nix:bun   # writes bun.nix via bun2nix@2.1.2
 ```
 
 ## ライセンス

@@ -24,10 +24,9 @@ Tee ni andika-kwa-mabadiliko: takwimu zisipobadilika inaongeza tu mtime ya faili
 Kwenye kila mpaka wa zamu, Stop hook huendesha uamuzi wa kubadilisha (angalia [Jinsi kubadilisha kunavyoamua](/sw/switching)). Ubadilishaji unapohitajika, hutokea chini ya kufuli maalum ya `flock(2)` (inayochukuliwa kupitia `bun:ffi`, kwa kuwa macOS haitumi binary ya `flock(1)`), na uandishi wa vitambulisho unaingiliana zaidi na kufuli ya kuonyesha upya ya Claude Code yenyewe. Ndani ya sehemu muhimu, ubadilishaji mmoja:
 
 1. Huvuna kitambulisho hai cha sasa hadi nakala rudufu iliyoegeshwa ya mmiliki wake halisi.
-2. Husakinisha kitambulisho kilichoonyeshwa upya cha akaunti lengwa kama kile hai, kikiunganisha kwenye blob hai iliyopo ili hali ndugu (kama vile tokeni za OAuth za kila-seva-ya-MCP) isalie.
-3. Huhifadhi tokeni iliyozungushwa ya lengwa kwenye nakala rudufu yake yenyewe.
-4. Huandika upya kwa uatomiki uga wa `oauthAccount` katika `~/.claude.json`.
-5. Huhifadhi lebo mpya inayotumika na kufuta picha kuu za matumizi zilizopitwa na wakati, vyote kabla ya kufuli kuachiliwa, ili kuanguka kusiweze kamwe kuacha kitambulisho kilichosakinishwa na lebo inayotumika vikielekeza kwenye akaunti tofauti.
+2. Husakinisha kitambulisho kilichoonyeshwa upya cha akaunti lengwa kama kile hai, kikiunganisha kwenye blob hai iliyopo ili hali ndugu (kama vile tokeni za OAuth za kila-seva-ya-MCP) isalie. (Tokeni ya kuonyesha upya iliyozungushwa ya lengwa ilikuwa tayari imehifadhiwa kwenye nakala rudufu yake yenyewe mara tu kuonyesha upya kulipojibu, chini ya flock lakini kabla ya sehemu muhimu hii ya kufuli ya kuonyesha upya.)
+3. Huandika upya kwa uatomiki uga `oauthAccount` katika `~/.claude.json`.
+4. Huhifadhi lebo mpya inayotumika na kufuta picha kuu za matumizi zilizopitwa na wakati kabla ya kufuli kuachiliwa. Faili hizi haziwezi kuwa za uatomiki wa kuanguka kwa pamoja, hivyo kuanguka kunaweza kuacha hali ya katikati. Ubadilishaji unaofuata hutatua mmiliki halisi wa kitambulisho hai bila kutegemea lebo na huweka kumbukumbu ya mkengeuko wowote unaogunduliwa.
 
 Kwa kuwa vikao vyote vya wasifu-msingi vinashiriki kitambulisho kimoja hai, ubadilishaji mmoja huhamisha kila kikao kwa wakati mmoja, na flock pamoja na ukaguzi-upya chini ya kufuli huzuia hooks zinazoshindana zisiharibu akaunti mbili.
 
@@ -41,7 +40,7 @@ Ni pale tu kila akaunti kwenye mkusanyiko inapozidi baa zake ndipo Stop hook hua
 
 ## Kipima muda cha ukaguzi wa mara kwa mara
 
-Hooks huwaka tu kwenye mipaka ya zamu, na zamu moja ndefu ya agent inaweza kuchoma dirisha kutoka afya hadi kwisha bila mpaka hata mmoja. Kwa hiyo `init` pia husakinisha kipima muda cha mara kwa mara - launchd agent kwenye macOS, systemd user timer kwenye Linux - kinachoendesha `tokenmaxxing check` kila sekunde 180 bila kujali shughuli ya zamu.
+Hooks huwaka tu kwenye mipaka ya zamu, na zamu moja ndefu ya agent inaweza kuchoma dirisha kutoka afya hadi kwisha bila mpaka hata mmoja. Kwa hiyo `init` pia husakinisha kipima muda cha mara kwa mara - launchd agent kwenye macOS, systemd user timer kwenye Linux - kinachoendesha `tokenmaxxing check --if-due` kila sekunde 60 bila kujali shughuli ya zamu. Ukaguzi hujipangia mwendo wake kutokana na nafasi ya akaunti hai: ukiwa na nafasi kubwa hadi kila baa hutathmini kila dakika tano, na ukiwa karibu na baa hutathmini kila tiki (angalia [Jinsi kubadilisha kunavyoamua](/sw/switching)).
 
 ## SessionStart hook
 

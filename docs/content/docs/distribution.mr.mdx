@@ -18,7 +18,14 @@ npm पॅकेज TypeScript स्रोत पाठवते, बिल्�
 | `homeManagerModules.default` | macOS किंवा Linux वर Home Manager |
 | `nixosModules.default` / `withOverlay` | NixOS सिस्टम इंस्टॉल |
 
-प्रोफाइलमध्ये इंस्टॉल न करता एकदा चालवा:
+प्रोफाइलमध्ये इंस्टॉल करा (जेणेकरून `init` चे पर्यवेक्षक शिम्स PATH वर स्थिर `tokenmaxxing` शोधू शकतील), नंतर init करा:
+
+```sh
+nix profile install github:anaclumos/tokenmaxxing
+tokenmaxxing init
+```
+
+इंस्टॉल न करता एकदाच चालवा (फक्त help / status. अशा प्रकारे `init` करू नका):
 
 ```sh
 nix run github:anaclumos/tokenmaxxing -- help
@@ -36,7 +43,7 @@ nix-darwin (`pkgs.tokenmaxxing` resolve व्हावे म्हणून ov
 }
 ```
 
-किंवा पॅकेज स्पष्टपणे सेट करा (Home Manager सोबतही चालते):
+Home Manager (पॅकेज स्पष्टपणे सेट करा, किंवा Home Manager जे pkgs वापरते त्यावर या flake चा overlay लावा):
 
 ```nix
 {
@@ -46,13 +53,14 @@ nix-darwin (`pkgs.tokenmaxxing` resolve व्हावे म्हणून ov
 }
 ```
 
-Nix फक्त CLI PATH वर ठेवतो. खाते आयात, PATH वरील `claude` सुपरवायझर shim, `settings.json` हुक, आणि (डीफॉल्टने) नियतकालिक तपासणी टाइमर अजूनही `tokenmaxxing init` कडून येतात — हे क्रेडेन्शियल्स आणि वापरकर्त्याच्या मालकीच्या सेटिंग्जना स्पर्श करतात जे शुद्ध मॉड्यूलने पुन्हा लिहू नयेत. `programs.tokenmaxxing.checkTimer.enable = true` फक्त तेव्हा सेट करा जेव्हा टाइमर init ऐवजी Nix कडे असावा असे वाटते.
+Nix फक्त CLI PATH वर ठेवतो. खाते आयात, PATH वरील `claude` सुपरवायझर shim, `settings.json` हुक, आणि (डीफॉल्टने) नियतकालिक तपासणी टाइमर अजूनही `tokenmaxxing init` कडून येतात. हे क्रेडेन्शियल्स आणि वापरकर्त्याच्या मालकीच्या सेटिंग्जना स्पर्श करतात जे शुद्ध मॉड्यूलने पुन्हा लिहू नयेत. `programs.tokenmaxxing.checkTimer.enable = true` फक्त तेव्हा सेट करा जेव्हा टाइमर init ऐवजी Nix कडे असावा असे वाटते (त्यामुळे `TOKENMAXXING_SKIP_TIMER=1` देखील एक्सपोर्ट होते, जेणेकरून init दुसरे युनिट लिहीत नाही). घोषणात्मक टाइमर हा init प्रमाणेच यूजर-सेशन टाइमर आहे. हेडलेस Linux वर लॉगिनशिवाय तो चालण्यासाठी `loginctl enable-linger` लागते.
 
 `bun.lock` बदलल्यावर Nix अवलंबित्व अभिव्यक्ती पुन्हा तयार करा:
 
 ```sh
-bun run nix:bun   # writes bun.nix via bun2nix
+bun run nix:bun   # writes bun.nix via bun2nix@2.1.2
 ```
+
 ## परवाना
 
 MIT. स्रोत [anaclumos/tokenmaxxing](https://github.com/anaclumos/tokenmaxxing) येथे.

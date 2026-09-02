@@ -21,9 +21,9 @@ Config na JSON for `~/.config/tokenmaxxing/config.json`. Every field na optional
 }
 ```
 
-- `thresholds.session`: the 5-hour ladder, one ascending list of screening rungs. Every evaluation dey resolve one active rung, the lowest rung wey some pooled account still dey clear, and dat rung na the trigger and the candidate screen at the same time. Codex dey read only the top rung. Check [How Switching Dey Decide](/pcm/switching).
-- `thresholds.weekly`: the weekly screening bar, wey dey cover the 7-day aggregate and every per-model weekly cap.
-- `hardThresholds.session` / `hardThresholds.weekly`: the **wall bars** (default 100, na each account im real server limit). `hardThresholds.session` must sit for the top session rung or above am. When every account don pass im screening bar, the automatic Claude decision dey squeeze each one reach im wall before e go park - check [Di wall](/pcm/switching). Set am equal to the top rung and the weekly bar to disable am; Codex dey ignore dis setting.
+- `thresholds.session`: na the 5-hour ladder, one ascending list of screening rungs. Every evaluation dey resolve one active rung, na the lowest rung wey some pooled account still dey clear, and dat rung na the trigger and the candidate screen at the same time. Codex dey read only the top rung. Check [How Switching Dey Decide](/pcm/switching).
+- `thresholds.weekly`: na the weekly screening bar, wey dey cover the 7-day aggregate and every per-model weekly cap.
+- `hardThresholds.session` / `hardThresholds.weekly`: the **wall bars** (default 100, na each account im real server limit). `hardThresholds.session` must dey at or above the top session rung. When every account don pass im screening bar, the automatic Claude decision dey squeeze each one reach im wall before e go park - check [Di wall](/pcm/switching). Set am equal to the top rung and the weekly bar to disable am; Codex dey ignore dis setting.
 - `claudeBin` / `codexBin`: e dey pin to the REAL binaries wey the supervisors dey spawn (`init` / `init --codex` dey write am; if the recursion-guard diagnostic talk say make you fix `claudeBin` for here, na because e don stop to point to the real Claude binary).
 - `policy.projectionMargin`: dem dey subtract am from every session rung, the weekly bar, and the wall bars to form the effective bars.
 - `policy.greedySessionFloor`: session-used percent wey the greedy convergence go engage.

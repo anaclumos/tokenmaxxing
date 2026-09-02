@@ -18,7 +18,14 @@ Cùng một cây mã nguồn cũng là một flake. Nó giữ mô hình mã-ngu�
 | `homeManagerModules.default` | Home Manager trên macOS hoặc Linux |
 | `nixosModules.default` / `withOverlay` | cài đặt hệ thống NixOS |
 
-Chạy một lần mà không cài vào profile:
+Cài vào một profile (để các shim giám sát của `init` phân giải được một `tokenmaxxing` ổn định trên PATH), rồi chạy init:
+
+```sh
+nix profile install github:anaclumos/tokenmaxxing
+tokenmaxxing init
+```
+
+Chạy một lần mà không cài đặt (chỉ dành cho help / status, đừng chạy `init` theo cách này):
 
 ```sh
 nix run github:anaclumos/tokenmaxxing -- help
@@ -36,7 +43,7 @@ nix-darwin (thêm overlay để `pkgs.tokenmaxxing` được resolve):
 }
 ```
 
-Hoặc đặt package tường minh (cũng dùng được với Home Manager):
+Home Manager (đặt package tường minh, hoặc áp dụng overlay của flake này lên pkgs mà Home Manager dùng):
 
 ```nix
 {
@@ -46,13 +53,14 @@ Hoặc đặt package tường minh (cũng dùng được với Home Manager):
 }
 ```
 
-Nix chỉ đưa CLI lên PATH. Việc nhập tài khoản, shim giám sát `claude` trên PATH, hook trong `settings.json`, và (mặc định) timer kiểm tra định kỳ vẫn đến từ `tokenmaxxing init` — những thứ đó chạm vào thông tin đăng nhập và cài đặt thuộc về người dùng mà một module thuần không nên ghi đè. Chỉ đặt `programs.tokenmaxxing.checkTimer.enable = true` khi bạn muốn Nix quản lý timer thay cho init.
+Nix chỉ đưa CLI lên PATH. Việc nhập tài khoản, shim giám sát `claude` trên PATH, hook trong `settings.json`, và (mặc định) timer kiểm tra định kỳ vẫn đến từ `tokenmaxxing init`: những thứ đó chạm vào thông tin đăng nhập và cài đặt thuộc về người dùng mà một module thuần không nên ghi đè. Chỉ đặt `programs.tokenmaxxing.checkTimer.enable = true` khi bạn muốn Nix quản lý timer thay cho init (việc đó cũng xuất `TOKENMAXXING_SKIP_TIMER=1` để init không ghi thêm một unit thứ hai). Timer khai báo là một timer theo phiên người dùng, khớp với init, nên Linux không đầu cần `loginctl enable-linger` để nó kích hoạt mà không cần đăng nhập.
 
 Khi `bun.lock` thay đổi, tạo lại biểu thức phụ thuộc Nix:
 
 ```sh
-bun run nix:bun   # writes bun.nix via bun2nix
+bun run nix:bun   # writes bun.nix via bun2nix@2.1.2
 ```
+
 ## Giấy phép
 
 MIT. Mã nguồn tại [anaclumos/tokenmaxxing](https://github.com/anaclumos/tokenmaxxing).

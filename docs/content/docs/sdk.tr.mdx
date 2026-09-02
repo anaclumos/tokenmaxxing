@@ -21,7 +21,7 @@ for await (const message of query({
 }
 ```
 
-Döngü gövdesi mesaj akışını alır. Geçişler boyunca `resume` kullanmak istiyorsanız init mesajındaki oturum kimliğini saklayın.
+Döngü gövdesi mesaj akışını alır; geçişler boyunca `resume` kullanmak istiyorsanız init mesajındaki oturum kimliğini saklayın.
 
 Agent SDK, `query()` başına bir claude alt süreci başlatır ve kimlik bilgilerini başlatmada bir kez okur - statusline yok, query ortası anında geçiş yok - bu nedenle entegrasyon sınır güdümlüdür:
 

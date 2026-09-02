@@ -21,8 +21,8 @@ Yapılandırma `~/.config/tokenmaxxing/config.json` konumunda JSON'dur. Her alan
 }
 ```
 
-- `thresholds.session`: 5 saatlik merdiven, eleme basamaklarının küçükten büyüğe sıralanmış listesi. Her değerlendirme, havuzdaki bir hesabın hâlâ altında kaldığı en düşük basamağı aktif basamak olarak belirler ve bu basamak hem tetikleyici hem de aday elemesidir. Codex yalnızca en üst basamağı okur. Bkz. [Geçiş nasıl karar verir](/tr/switching).
-- `thresholds.weekly`: haftalık eleme çubuğu. Hem 7 günlük toplamı hem de her model başına haftalık üst sınırı kapsar.
+- `thresholds.session`: 5 saatlik merdiven, artan bir eleme basamakları listesi. Her değerlendirme tek bir aktif basamak çözer: havuzdaki bir hesabın hâlâ altında kaldığı en düşük basamak. O basamak hem tetikleyicidir hem de aday elemesidir. Codex yalnızca en üst basamağı okur. Bkz. [Geçiş nasıl karar verir](/tr/switching).
+- `thresholds.weekly`: haftalık eleme çubuğu; hem 7 günlük toplamı hem de her model başına haftalık üst sınırı kapsar.
 - `hardThresholds.session` / `hardThresholds.weekly`: duvar çubukları (varsayılan 100, her hesabın gerçek sunucu limiti). `hardThresholds.session`, en üst oturum basamağına eşit ya da ondan yüksek olmalıdır. Her hesap eleme çubuğunun üzerine çıktığında, otomatik Claude kararı park etmeden önce her birini duvarına kadar sıkıştırır - bkz. [Duvar](/tr/switching). Devre dışı bırakmak için en üst basamağa ve haftalık çubuğa eşit ayarlayın; Codex bu ayarı yok sayar.
 - `claudeBin` / `codexBin`: gözetmenlerin başlattığı GERÇEK ikili dosyalara sabitler (`init` / `init --codex` tarafından yazılır; recursion-guard tanısı, `claudeBin` gerçek Claude ikili dosyasını göstermemeye başladığında bunu burada düzeltmenizi söyler).
 - `policy.projectionMargin`: etkin çubukları oluşturmak için her oturum basamağından, haftalık çubuktan ve duvar çubuklarından çıkarılır.

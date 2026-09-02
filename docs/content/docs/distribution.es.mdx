@@ -18,7 +18,14 @@ El mismo árbol de código fuente también es un flake. Mantiene el modelo de c�
 | `homeManagerModules.default` | Home Manager en macOS o Linux |
 | `nixosModules.default` / `withOverlay` | instalación de sistema en NixOS |
 
-Uso puntual sin instalar en un perfil:
+Instala en un perfil (para que los shims supervisores de `init` puedan resolver un `tokenmaxxing` estable en el PATH), y luego ejecuta init:
+
+```sh
+nix profile install github:anaclumos/tokenmaxxing
+tokenmaxxing init
+```
+
+Uso puntual sin instalar (solo help / status, no ejecutes `init` así):
 
 ```sh
 nix run github:anaclumos/tokenmaxxing -- help
@@ -36,7 +43,7 @@ nix-darwin (añade el overlay para que `pkgs.tokenmaxxing` se resuelva):
 }
 ```
 
-O fija el paquete explícitamente (también funciona con Home Manager):
+Home Manager (fija el paquete explícitamente, o aplica el overlay de este flake a los pkgs que use Home Manager):
 
 ```nix
 {
@@ -46,13 +53,14 @@ O fija el paquete explícitamente (también funciona con Home Manager):
 }
 ```
 
-Nix solo pone la CLI en el PATH. La importación de cuentas, el shim supervisor `claude` en el PATH, los hooks de `settings.json` y (por defecto) el temporizador de comprobación periódica siguen viniendo de `tokenmaxxing init` — tocan credenciales y ajustes del usuario que un módulo puro no debería reescribir. Pon `programs.tokenmaxxing.checkTimer.enable = true` solo cuando quieras que Nix gestione el temporizador en lugar de init.
+Nix solo pone la CLI en el PATH. La importación de cuentas, el shim supervisor `claude` en el PATH, los hooks de `settings.json` y (por defecto) el temporizador de comprobación periódica siguen viniendo de `tokenmaxxing init`. Esos pasos tocan credenciales y ajustes del usuario que un módulo puro no debería reescribir. Pon `programs.tokenmaxxing.checkTimer.enable = true` solo cuando quieras que Nix gestione el temporizador en lugar de init (eso también exporta `TOKENMAXXING_SKIP_TIMER=1`, así que init no escribe una segunda unidad). El temporizador declarativo es un temporizador de sesión de usuario, igual que el de init. En Linux sin cabeza hace falta `loginctl enable-linger` para que se dispare sin un inicio de sesión.
 
 Cuando cambie `bun.lock`, regenera la expresión de dependencias de Nix:
 
 ```sh
-bun run nix:bun   # writes bun.nix via bun2nix
+bun run nix:bun   # writes bun.nix via bun2nix@2.1.2
 ```
+
 ## Licencia
 
 MIT. Código fuente en [anaclumos/tokenmaxxing](https://github.com/anaclumos/tokenmaxxing).

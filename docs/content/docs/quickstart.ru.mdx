@@ -3,22 +3,22 @@ title: Быстрый старт
 description: "Установите tokenmaxxing, импортируйте текущий аккаунт и добавьте ещё"
 ---
 
-Требуется [Bun](https://bun.sh) и Claude Code, на macOS или Linux. Установите через Bun или из flake, если вы уже используете Nix / nix-darwin (см. [Сборка и распространение](/ru/distribution)):
+Требуется [Bun](https://bun.sh) и Claude Code, на macOS или Linux. Установите через Bun или из flake, если вы уже используете Nix / nix-darwin. Положите CLI в PATH до запуска `init` (см. [Сборка и распространение](/ru/distribution)):
 
 ```sh
 bun add -g tokenmaxxing
 tokenmaxxing init
 ```
 
-Пользователи Nix заменяют шаг с Bun на `nix profile install github:anaclumos/tokenmaxxing` или включают `programs.tokenmaxxing` в своей конфигурации nix-darwin или Home Manager.
+Пользователи Nix заменяют шаг с Bun на `nix profile install github:anaclumos/tokenmaxxing` либо включают `programs.tokenmaxxing` в своей конфигурации nix-darwin или Home Manager.
 
 `init` делает пять вещей:
 
 1. Импортирует аккаунт, под которым вы уже вошли, как аккаунт #1 (отдельной команды `adopt` нет).
 2. Устанавливает shim-супервизор `claude`.
-3. Добавляет три записи в `settings.json` для Claude Code: statusLine, хук Stop и хук SessionStart (плюс запись subagentStatusLine).
+3. Добавляет четыре записи в `settings.json` для Claude Code: statusLine, хук Stop, хук StopFailure и хук SessionStart (плюс запись subagentStatusLine).
 4. Добавляет каталог bin супервизора в PATH в rc-файле вашей оболочки (идемпотентно, помечается комментарием `# tokenmaxxing PATH`). Он должен стоять в PATH раньше настоящего `claude`, чтобы перехватывать его.
-5. Устанавливает таймер периодической проверки (агент launchd на macOS, пользовательский таймер systemd в Linux), который запускает `tokenmaxxing check` каждые 180 секунд.
+5. Устанавливает таймер периодической проверки (агент launchd на macOS, пользовательский таймер systemd в Linux), который запускает `tokenmaxxing check --if-due` каждые 60 секунд. Сама проверка задаёт себе темп от одной до пяти минут исходя из запаса активного аккаунта.
 
 Перезапустите оболочку, затем добавьте больше аккаунтов и приступайте:
 

@@ -18,7 +18,14 @@ npm پیکج TypeScript سورس بھیجدا اے، کوئی بلڈ نئیں: `
 | `homeManagerModules.default` | macOS یا Linux تے Home Manager |
 | `nixosModules.default` / `withOverlay` | NixOS سسٹم انسٹال |
 
-پروفائل وچ انسٹال کیتے بغیر اک وار چلاؤ:
+پروفائل وچ انسٹال کرو (تاں جو `init` دیاں سُپروائزر شِماں PATH تے اک پکا `tokenmaxxing` لبھ سکن)، فیر init کرو:
+
+```sh
+nix profile install github:anaclumos/tokenmaxxing
+tokenmaxxing init
+```
+
+انسٹال کیتے بغیر اک وار چلاؤ (صرف help / status، ایس طرحاں `init` نہ کرو):
 
 ```sh
 nix run github:anaclumos/tokenmaxxing -- help
@@ -36,7 +43,7 @@ nix-darwin (overlay جوڑدا اے تاکہ `pkgs.tokenmaxxing` resolve ہوو�
 }
 ```
 
-یا پیکج صاف صاف سیٹ کرو (Home Manager نال وی کم کردا اے):
+Home Manager (پیکج صاف صاف سیٹ کرو، یا ایس flake دا overlay اوس pkgs تے لاؤ جیہڑا Home Manager ورتدا اے):
 
 ```nix
 {
@@ -46,13 +53,14 @@ nix-darwin (overlay جوڑدا اے تاکہ `pkgs.tokenmaxxing` resolve ہوو�
 }
 ```
 
-Nix صرف CLI نوں PATH تے رکھدا اے۔ اکاؤنٹ درآمد، PATH تے `claude` سپروائزر shim، `settings.json` ہکس، تے (ڈیفالٹ طور تے) وقفے وقفے نال چیک ٹائمر ہجے وی `tokenmaxxing init` توں آندے نیں — ایہ اسناد تے یوزر دیاں سیٹنگز نوں چھوندے نیں جیہناں نوں خالص ماڈیول نوں دوبارہ نہیں لکھنا چاہیدا۔ `programs.tokenmaxxing.checkTimer.enable = true` صرف اودوں سیٹ کرو جدوں تسیں چاہو کہ ٹائمر init دی بجائے Nix دے کول ہووے۔
+Nix صرف CLI نوں PATH تے رکھدا اے۔ اکاؤنٹ درآمد، PATH تے `claude` سپروائزر shim، `settings.json` ہکس، تے (ڈیفالٹ طور تے) وقفے وقفے نال چیک ٹائمر ہجے وی `tokenmaxxing init` توں آندے نیں۔ ایہ اسناد تے یوزر دیاں سیٹنگز نوں چھوندے نیں جیہناں نوں خالص ماڈیول نوں دوبارہ نہیں لکھنا چاہیدا۔ `programs.tokenmaxxing.checkTimer.enable = true` صرف اودوں سیٹ کرو جدوں تسیں چاہو کہ ٹائمر init دی بجائے Nix دے کول ہووے (اوہ نال ای `TOKENMAXXING_SKIP_TIMER=1` وی برآمد کردا اے تاں جو init کوئی دوجی یونٹ نہ لکھے)۔ اعلانی ٹائمر اک یوزر سیشن ٹائمر اے، بالکل init وانگوں۔ ہیڈ لیس Linux تے ایہنوں لاگ اِن بغیر چلن لئی `loginctl enable-linger` دی لوڑ اے۔
 
 `bun.lock` بدلن تے Nix انحصار اظہار دوبارہ بناؤ:
 
 ```sh
-bun run nix:bun   # writes bun.nix via bun2nix
+bun run nix:bun   # writes bun.nix via bun2nix@2.1.2
 ```
+
 ## لائسنس
 
 MIT۔ سورس [anaclumos/tokenmaxxing](https://github.com/anaclumos/tokenmaxxing) تے۔

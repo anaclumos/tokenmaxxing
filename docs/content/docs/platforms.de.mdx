@@ -8,7 +8,7 @@ description: "Wie sich macOS und Linux bei Speicherung, Übernahme und Timern un
 | Live-Anmeldeinformation | Login-Keychain generic-password-Element | 0600 `.credentials.json`-Datei |
 | Geparkte Anmeldeinformationen | Pro-Konto-Keychain-Elemente | 0600-Dateien in einem 0700-Verzeichnis |
 | Übernahme nach einem Wechsel | Innerhalb von ~30 Sekunden (Keychain-Lese-Cache) | Nächste Anfrage (Datei-mtime-Abfrage) |
-| Periodische Prüfung | launchd-Agent, alle 180s | systemd-Benutzer-Timer, alle 180s |
+| Periodische Prüfung | launchd-Agent, 60s-Grundtakt, selbstgetaktet 60s bis 300s | systemd-Benutzer-Timer, 60s-Grundtakt, selbstgetaktet 60s bis 300s |
 | Speicher für isolierte Anmeldung | Hash-namensräumiger Keychain-Dienst pro Konfigurationsverzeichnis | Eine Datei innerhalb des isolierten Konfigurationsverzeichnisses |
 
 Zwei linux-spezifische Details, die es zu kennen lohnt: claude löst sein Anmeldeinformationsverzeichnis zuerst aus `CLAUDE_SECURESTORAGE_CONFIG_DIR` auf (dann `CLAUDE_CONFIG_DIR`, dann `~/.claude`), und tokenmaxxing spiegelt diese Auflösung exakt, sodass die beiden nie desynchronisieren. Und die beiden Betriebssystem-Builds derselben claude-Version formatieren die `/usage`-Zurücksetzungsuhren unterschiedlich (der eine verwendet " at " als Bindeglied, der andere ein Komma); tokenmaxxings Parser akzeptiert genau diese zwei Formen und loggt, statt zu raten, bei jeder dritten.

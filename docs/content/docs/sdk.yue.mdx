@@ -21,7 +21,7 @@ for await (const message of query({
 }
 ```
 
-迴圈體收到嘅係訊息串流；如果你想跨切換做 `resume`，就記住 init 訊息入面嗰個 session id。
+個迴圈嘅主體會收到訊息串流。如果你想喺切換之間用 `resume`，就要由 init 訊息度攞住個 session id。
 
 Agent SDK 每次 `query()` 都會生成一個 claude 子進程，喺生成嗰陣讀一次憑證 - 冇 statusline，query 中途亦都冇熱切換 - 所以呢個整合係跟邊界嚟行嘅：
 

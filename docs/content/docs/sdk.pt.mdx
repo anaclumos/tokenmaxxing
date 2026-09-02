@@ -21,7 +21,7 @@ for await (const message of query({
 }
 ```
 
-O corpo do laço recebe o fluxo de mensagens. Capture o id de sessão da mensagem init se quiser usar `resume` entre as trocas.
+O corpo do laço recebe o fluxo de mensagens; guarde o id de sessão da mensagem init se quiser usar `resume` entre as trocas.
 
 O Agent SDK gera um subprocesso claude por `query()` e lê as credenciais uma vez no spawn - sem statusline, sem troca a quente no meio da query - então a integração é guiada por limites:
 

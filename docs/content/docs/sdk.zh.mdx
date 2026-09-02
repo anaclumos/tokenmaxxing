@@ -21,7 +21,7 @@ for await (const message of query({
 }
 ```
 
-循环体接收的是消息流；如果你想在切换之间使用 `resume`，就把 init 消息里的会话 id 保留下来。
+循环体拿到的是消息流；如果你想在切换之间使用 `resume`，就从 init 消息里保存会话 id。
 
 Agent SDK 每次 `query()` 都会 spawn 一个 claude 子进程，并在 spawn 时读取一次凭证（没有 statusline，也没有 query 中途的热切换），因此这套集成是边界驱动的：
 

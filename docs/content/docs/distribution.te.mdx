@@ -18,7 +18,14 @@ npm ప్యాకేజీ TypeScript సోర్స్‌ను పంపు
 | `homeManagerModules.default` | macOS లేదా Linuxపై Home Manager |
 | `nixosModules.default` / `withOverlay` | NixOS సిస్టమ్ ఇన్‌స్టాల్ |
 
-ప్రొఫైల్‌లో ఇన్‌స్టాల్ చేయకుండా ఒక్కసారి నడపడం:
+ప్రొఫైల్‌లో ఇన్‌స్టాల్ చేయండి (తద్వారా `init` రాసే సూపర్‌వైజర్ shimలు PATHపై స్థిరమైన `tokenmaxxing`ను resolve చేయగలవు), ఆపై init చేయండి:
+
+```sh
+nix profile install github:anaclumos/tokenmaxxing
+tokenmaxxing init
+```
+
+ఇన్‌స్టాల్ చేయకుండా ఒక్కసారి నడపడం (help / status మాత్రమే, ఈ పద్ధతిలో `init` చేయవద్దు):
 
 ```sh
 nix run github:anaclumos/tokenmaxxing -- help
@@ -36,7 +43,7 @@ nix-darwin (`pkgs.tokenmaxxing` resolve అయ్యేలా overlay జోడ�
 }
 ```
 
-లేదా ప్యాకేజీని స్పష్టంగా సెట్ చేయండి (Home Managerతో కూడా పనిచేస్తుంది):
+Home Manager (ప్యాకేజీని స్పష్టంగా సెట్ చేయండి, లేదా Home Manager వాడే pkgsకు ఈ flake యొక్క overlayను వర్తింపజేయండి):
 
 ```nix
 {
@@ -46,13 +53,14 @@ nix-darwin (`pkgs.tokenmaxxing` resolve అయ్యేలా overlay జోడ�
 }
 ```
 
-Nix CLIని PATHపై మాత్రమే ఉంచుతుంది. ఖాతా దిగుమతి, PATHపై `claude` సూపర్‌వైజర్ shim, `settings.json` హుక్స్, మరియు (డిఫాల్ట్‌గా) కాలానుగుణ చెక్ టైమర్ ఇంకా `tokenmaxxing init` నుండి వస్తాయి — ఇవి క్రెడెన్షియల్స్ మరియు వినియోగదారు యాజమాన్య సెట్టింగ్‌లను తాకుతాయి; స్వచ్ఛమైన మాడ్యూల్ వాటిని తిరిగి రాయకూడదు. టైమర్ initకి బదులు Nixకి ఉండాలనుకున్నప్పుడు మాత్రమే `programs.tokenmaxxing.checkTimer.enable = true` సెట్ చేయండి.
+Nix CLIని PATHపై మాత్రమే ఉంచుతుంది. ఖాతా దిగుమతి, PATHపై `claude` సూపర్‌వైజర్ shim, `settings.json` హుక్స్, మరియు (డిఫాల్ట్‌గా) కాలానుగుణ చెక్ టైమర్ ఇంకా `tokenmaxxing init` నుండి వస్తాయి. ఇవి క్రెడెన్షియల్స్ మరియు వినియోగదారు యాజమాన్య సెట్టింగ్‌లను తాకుతాయి; స్వచ్ఛమైన మాడ్యూల్ వాటిని తిరిగి రాయకూడదు. టైమర్ initకి బదులు Nixకి ఉండాలనుకున్నప్పుడు మాత్రమే `programs.tokenmaxxing.checkTimer.enable = true` సెట్ చేయండి (అది `TOKENMAXXING_SKIP_TIMER=1`ను కూడా ఎగుమతి చేస్తుంది, తద్వారా init రెండవ యూనిట్‌ను రాయదు). డిక్లరేటివ్ టైమర్ initలాగే ఒక యూజర్-సెషన్ టైమర్. హెడ్‌లెస్ Linuxలో లాగిన్ లేకుండా అది ప్రేరేపించబడాలంటే `loginctl enable-linger` అవసరం.
 
 `bun.lock` మారినప్పుడు, Nix డిపెండెన్సీ ఎక్స్‌ప్రెషన్‌ను మళ్లీ రూపొందించండి:
 
 ```sh
-bun run nix:bun   # writes bun.nix via bun2nix
+bun run nix:bun   # writes bun.nix via bun2nix@2.1.2
 ```
+
 ## లైసెన్స్
 
 MIT. సోర్స్ [anaclumos/tokenmaxxing](https://github.com/anaclumos/tokenmaxxing) వద్ద.

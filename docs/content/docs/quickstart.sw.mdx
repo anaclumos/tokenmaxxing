@@ -3,22 +3,22 @@ title: Anza Haraka
 description: "Sakinisha tokenmaxxing, ingiza akaunti yako ya sasa, na kusanya zaidi"
 ---
 
-Inahitaji [Bun](https://bun.sh) na Claude Code, kwenye macOS au Linux. Sakinisha kwa Bun, au kutoka flake ikiwa tayari unatumia Nix / nix-darwin (ona [Ujenzi na usambazaji](/sw/distribution)):
+Inahitaji [Bun](https://bun.sh) na Claude Code, kwenye macOS au Linux. Sakinisha kwa Bun, au kutoka flake ikiwa tayari unatumia Nix / nix-darwin. Weka CLI kwenye PATH kabla ya `init` (ona [Ujenzi na usambazaji](/sw/distribution)):
 
 ```sh
 bun add -g tokenmaxxing
 tokenmaxxing init
 ```
 
-Watumiaji wa Nix wabadilishe hatua ya Bun na `nix profile install github:anaclumos/tokenmaxxing`, au wawashe `programs.tokenmaxxing` katika usanidi wao wa nix-darwin au Home Manager.
+Watumiaji wa Nix hubadilisha hatua ya Bun na `nix profile install github:anaclumos/tokenmaxxing`, au huwasha `programs.tokenmaxxing` katika usanidi wao wa nix-darwin au Home Manager.
 
 `init` hufanya mambo matano:
 
 1. Inaingiza akaunti ambayo tayari umeingia nayo kama akaunti #1 (hakuna amri tofauti ya `adopt`).
 2. Inasakinisha shim ya msimamizi ya `claude`.
-3. Inasakinisha viingizo vitatu katika `settings.json` ya Claude Code: statusLine, Stop hook, na SessionStart hook (pamoja na kiingizo cha subagentStatusLine).
+3. Inasakinisha viingizo vinne katika `settings.json` ya Claude Code: statusLine, Stop hook, StopFailure hook, na SessionStart hook (pamoja na kiingizo cha subagentStatusLine).
 4. Inaongeza saraka ya bin ya msimamizi kwenye PATH ya rc ya shell yako (idempotent, iliyowekwa alama na maoni ya `# tokenmaxxing PATH`). Ni lazima ikae mbele ya `claude` halisi kwenye PATH ili kuikamata.
-5. Inasakinisha kipima muda cha ukaguzi wa mara kwa mara (launchd agent kwenye macOS, systemd user timer kwenye Linux) kinachoendesha `tokenmaxxing check` kila sekunde 180.
+5. Inasakinisha kipima muda cha ukaguzi wa mara kwa mara (launchd agent kwenye macOS, systemd user timer kwenye Linux) kinachoendesha `tokenmaxxing check --if-due` kila sekunde 60; ukaguzi hujipangia mwendo wake kati ya dakika moja na tano kutokana na nafasi ya akaunti hai.
 
 Anzisha upya shell yako, kisha ongeza akaunti zaidi na uendelee:
 

@@ -18,7 +18,14 @@ npm-пакет поставляется как исходный код на Type
 | `homeManagerModules.default` | Home Manager на macOS или Linux |
 | `nixosModules.default` / `withOverlay` | системная установка на NixOS |
 
-Разовый запуск без установки в профиль:
+Установите в профиль (чтобы shim-ы супервизора из `init` находили в PATH стабильный `tokenmaxxing`), затем выполните init:
+
+```sh
+nix profile install github:anaclumos/tokenmaxxing
+tokenmaxxing init
+```
+
+Разовый запуск без установки (только help / status, `init` так делать нельзя):
 
 ```sh
 nix run github:anaclumos/tokenmaxxing -- help
@@ -36,7 +43,7 @@ nix-darwin (добавляет overlay, чтобы резолвился `pkgs.to
 }
 ```
 
-Или задайте пакет явно (работает и с Home Manager):
+Home Manager (задайте пакет явно или примените overlay этого flake к тем pkgs, которые использует Home Manager):
 
 ```nix
 {
@@ -46,13 +53,14 @@ nix-darwin (добавляет overlay, чтобы резолвился `pkgs.to
 }
 ```
 
-Nix только кладёт CLI в PATH. Импорт аккаунтов, supervisor-shim `claude` в PATH, хуки в `settings.json` и (по умолчанию) периодический таймер проверки по-прежнему идут из `tokenmaxxing init` — они трогают учётные данные и пользовательские настройки, которые чистый модуль не должен переписывать. Ставьте `programs.tokenmaxxing.checkTimer.enable = true` только когда хотите, чтобы таймером владел Nix, а не init.
+Nix только кладёт CLI в PATH. Импорт аккаунтов, supervisor-shim `claude` в PATH, хуки в `settings.json` и (по умолчанию) периодический таймер проверки по-прежнему идут из `tokenmaxxing init`. Они трогают учётные данные и пользовательские настройки, которые чистый модуль не должен переписывать. Ставьте `programs.tokenmaxxing.checkTimer.enable = true` только когда хотите, чтобы таймером владел Nix, а не init (это заодно экспортирует `TOKENMAXXING_SKIP_TIMER=1`, чтобы init не записал второй юнит). Декларативный таймер работает в пользовательской сессии, как и у init, поэтому на безголовом Linux нужен `loginctl enable-linger`, чтобы он срабатывал без входа в систему.
 
 Когда меняется `bun.lock`, перегенерируйте выражение зависимостей Nix:
 
 ```sh
-bun run nix:bun   # writes bun.nix via bun2nix
+bun run nix:bun   # записывает bun.nix через bun2nix@2.1.2
 ```
+
 ## Лицензия
 
 MIT. Исходный код: [anaclumos/tokenmaxxing](https://github.com/anaclumos/tokenmaxxing).

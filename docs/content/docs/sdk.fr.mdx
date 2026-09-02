@@ -21,7 +21,7 @@ for await (const message of query({
 }
 ```
 
-Le corps de la boucle reçoit le flux de messages ; conservez l'identifiant de session issu du message d'initialisation si vous voulez pouvoir reprendre la session avec `resume` après une bascule.
+Le corps de la boucle reçoit le flux de messages ; conservez l'identifiant de session du message init si vous voulez `resume` d'une bascule à l'autre.
 
 L'Agent SDK lance un sous-processus claude par `query()` et lit les identifiants une seule fois au lancement (pas de statusline, pas de bascule à chaud en cours de requête), de sorte que l'intégration est pilotée par les frontières :
 

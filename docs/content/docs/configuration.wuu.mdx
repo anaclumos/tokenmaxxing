@@ -21,11 +21,11 @@ description: "config.json 嗰结构、阈值搭策略旋钮。"
 }
 ```
 
-- `thresholds.session`：5 钟头嗰阶梯，是一串从低排到高嗰筛选档。每趟评估侪定出活跃嗰埃一档，就是池子里向还有账户过得牢嗰顶低嗰埃一档，搿一档既是触发线，也是候选嗰筛选线。Codex 只读顶高嗰埃一档。看 [切换是哪能决定嗰](/wuu/switching)。
-- `thresholds.weekly`：礼拜嗰筛选阈值，搿一条同时管 7 天汇总搭每个分模型嗰礼拜上限。
-- `hardThresholds.session` / `hardThresholds.weekly`：墙壁阈值（默认 100，是每个账户真嗰服务器限额）。`hardThresholds.session` 勿好低于会话阶梯顶高嗰埃一档。等每个账户侪超过伊嗰筛选阈值嗰辰光，自动嗰 Claude 决策会先拿每个账户挤到伊嗰墙壁为止，然后再停放，看 [墙壁](/wuu/switching)。拿伊分别设成顶高嗰埃一档搭礼拜阈值，就好禁脱；Codex 勿睬搿项设置。
+- `thresholds.session`：5 钟头嗰阶梯，是一串从低排到高嗰筛选档位。每一趟评估侪解出一个生效档位，就是池子里向还有账户勒伊底下能用嗰顶低嗰埃一档，搿一档既是触发线，也是候选嗰筛选线。Codex 只读顶高嗰埃一档。看[切换是哪能决定嗰](/wuu/switching)。
+- `thresholds.weekly`：礼拜嗰筛选阈值，同时管 7 天汇总搭每个分模型嗰礼拜上限。
+- `hardThresholds.session` / `hardThresholds.weekly`：墙壁阈值（默认 100，是每个账户真嗰服务器限额）。`hardThresholds.session` 必须搭会话阶梯顶高嗰埃一档相等或者比伊高。等每个账户侪超过伊嗰筛选阈值嗰辰光，自动嗰 Claude 决策会先拿每个账户挤到伊嗰墙壁为止，然后再停放，看 [墙壁](/wuu/switching)。拿伊设成顶高嗰埃一档搭礼拜阈值嗰数字，就好禁脱；Codex 勿睬搿项设置。
 - `claudeBin` / `codexBin`：钉牢 supervisor 起动嗰真身二进制（勒 `init` / `init --codex` 辰光写落嗰；辰光递归防护嗰诊断讲侬去修 `claudeBin`，就是伊勿再指牢真嗰 Claude 二进制嗰辰光）。
-- `policy.projectionMargin`：从会话阶梯嗰每一档、礼拜阈值搭墙壁阈值里向侪减脱，得出有效阈值。
+- `policy.projectionMargin`：从每一档会话阈值、礼拜阈值搭墙壁阈值里向侪减脱，得出有效阈值。
 - `policy.greedySessionFloor`：贪心收敛开始运作嗰会话已用百分比。
 - `policy.switchModels`：哪几个模型系列嗰分模型礼拜上限会给切换把关（条目加载嗰辰光会转成小写）。
 - `policy.usagePollTtlMs`：一趟 `/usage` 分模型轮询保持新鲜多少辰光。

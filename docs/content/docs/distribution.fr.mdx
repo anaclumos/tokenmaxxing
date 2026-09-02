@@ -18,7 +18,14 @@ Le même arbre source est aussi un flake. Il conserve le modèle source-exécut�
 | `homeManagerModules.default` | Home Manager sur macOS ou Linux |
 | `nixosModules.default` / `withOverlay` | installation système NixOS |
 
-Exécution ponctuelle sans installation dans un profil :
+Installez dans un profil (pour que les shims superviseurs de `init` puissent résoudre un `tokenmaxxing` stable sur le PATH), puis lancez init :
+
+```sh
+nix profile install github:anaclumos/tokenmaxxing
+tokenmaxxing init
+```
+
+Exécution ponctuelle sans installation (aide / statut uniquement, ne lancez pas `init` de cette façon) :
 
 ```sh
 nix run github:anaclumos/tokenmaxxing -- help
@@ -36,7 +43,7 @@ nix-darwin (ajoute l'overlay pour que `pkgs.tokenmaxxing` se résolve) :
 }
 ```
 
-Ou définir le paquet explicitement (fonctionne aussi avec Home Manager) :
+Home Manager (définissez le paquet explicitement, ou appliquez l'overlay de ce flake aux pkgs qu'utilise Home Manager) :
 
 ```nix
 {
@@ -46,13 +53,14 @@ Ou définir le paquet explicitement (fonctionne aussi avec Home Manager) :
 }
 ```
 
-Nix ne place que la CLI sur le PATH. L'import de comptes, le shim superviseur `claude` sur le PATH, les hooks de `settings.json` et (par défaut) le minuteur de vérification périodique viennent toujours de `tokenmaxxing init` — ils touchent aux identifiants et aux réglages appartenant à l'utilisateur qu'un module pur ne devrait pas réécrire. Mets `programs.tokenmaxxing.checkTimer.enable = true` seulement si tu veux que Nix gère le minuteur à la place de init.
+Nix ne place que la CLI sur le PATH. L'import de comptes, le shim superviseur `claude` sur le PATH, les hooks de `settings.json` et (par défaut) le minuteur de vérification périodique viennent toujours de `tokenmaxxing init` : ils touchent aux identifiants et aux réglages appartenant à l'utilisateur qu'un module pur ne devrait pas réécrire. Mets `programs.tokenmaxxing.checkTimer.enable = true` seulement si tu veux que Nix gère le minuteur à la place de init (cela exporte aussi `TOKENMAXXING_SKIP_TIMER=1` pour que init n'écrive pas une seconde unité). Le minuteur déclaratif est un minuteur de session utilisateur, comme celui de init, et sur un Linux sans interface il faut `loginctl enable-linger` pour qu'il se déclenche sans connexion.
 
 Quand `bun.lock` change, régénère l'expression de dépendances Nix :
 
 ```sh
-bun run nix:bun   # writes bun.nix via bun2nix
+bun run nix:bun   # writes bun.nix via bun2nix@2.1.2
 ```
+
 ## Licence
 
 MIT. Code source sur [anaclumos/tokenmaxxing](https://github.com/anaclumos/tokenmaxxing).

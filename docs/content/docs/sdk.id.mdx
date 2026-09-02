@@ -21,7 +21,7 @@ for await (const message of query({
 }
 ```
 
-Badan perulangan menerima aliran pesan. Simpan id sesi dari pesan init jika Anda ingin memakai `resume` melintasi pertukaran.
+Badan loop menerima aliran pesan; simpan id sesi dari pesan init jika Anda ingin `resume` melintasi pertukaran.
 
 Agent SDK menelurkan sebuah subproses claude per `query()` dan membaca kredensial sekali saat penelurannya - tanpa statusline, tanpa hot-swap di tengah query - jadi integrasinya digerakkan-batas:
 

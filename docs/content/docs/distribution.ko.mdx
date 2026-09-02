@@ -18,7 +18,14 @@ npm 패키지는 빌드 산출물이 아니라 TypeScript 소스를 배포합니
 | `homeManagerModules.default` | macOS·Linux용 Home Manager |
 | `nixosModules.default` / `withOverlay` | NixOS 시스템 설치 |
 
-프로필에 넣지 않고 한 번만 실행하려면:
+프로필에 설치한 다음(그래야 `init`이 만드는 supervisor shim이 PATH에서 안정적인 `tokenmaxxing`을 찾습니다) init을 실행하세요:
+
+```sh
+nix profile install github:anaclumos/tokenmaxxing
+tokenmaxxing init
+```
+
+설치하지 않고 한 번만 실행하려면(help / status 전용입니다. 이 방식으로 `init`을 실행하면 안 됩니다):
 
 ```sh
 nix run github:anaclumos/tokenmaxxing -- help
@@ -36,7 +43,7 @@ nix-darwin(`pkgs.tokenmaxxing`이 풀리도록 overlay 추가):
 }
 ```
 
-패키지를 명시해도 됩니다(Home Manager에서도 동일):
+Home Manager(패키지를 직접 지정하거나, Home Manager가 쓰는 pkgs에 이 flake의 overlay를 적용하세요):
 
 ```nix
 {
@@ -46,12 +53,12 @@ nix-darwin(`pkgs.tokenmaxxing`이 풀리도록 overlay 추가):
 }
 ```
 
-Nix가 하는 일은 CLI를 PATH에 올리는 것뿐입니다. 계정 가져오기, PATH의 `claude` 슈퍼바이저 shim, `settings.json` 훅, (기본값으로는) 주기적 점검 타이머는 여전히 `tokenmaxxing init`에서 옵니다. 자격 증명과 사용자가 소유한 설정을 건드리는 부분이라 순수 모듈이 덮어쓰면 안 됩니다. 타이머를 init 대신 Nix가 맡게 하려면 `programs.tokenmaxxing.checkTimer.enable = true`만 켜세요.
+Nix가 하는 일은 CLI를 PATH에 올리는 것뿐입니다. 계정 가져오기, PATH의 `claude` 슈퍼바이저 shim, `settings.json` 훅, (기본값으로는) 주기적 점검 타이머는 여전히 `tokenmaxxing init`에서 옵니다. 자격 증명과 사용자가 소유한 설정을 건드리는 부분이라 순수 모듈이 덮어쓰면 안 됩니다. 타이머를 init 대신 Nix가 맡게 하고 싶을 때만 `programs.tokenmaxxing.checkTimer.enable = true`를 켜세요(이 옵션은 `TOKENMAXXING_SKIP_TIMER=1`도 함께 내보내므로 init이 두 번째 유닛을 쓰지 않습니다). 선언적 타이머도 init과 마찬가지로 사용자 세션 타이머입니다. 헤드리스 Linux에서 로그인 없이 발동하게 하려면 `loginctl enable-linger`가 필요합니다.
 
 `bun.lock`이 바뀌면 Nix 의존성 식을 다시 만듭니다:
 
 ```sh
-bun run nix:bun   # writes bun.nix via bun2nix
+bun run nix:bun   # writes bun.nix via bun2nix@2.1.2
 ```
 
 ## 라이선스
