@@ -95,9 +95,12 @@ export async function fetchCodexUsage(input: { auth: CodexAuthJson }): Promise<C
   });
 }
 
+const LIMIT_LABEL_ABBREVIATIONS = new Map([["reserve", "rsrv"]]);
+
 export function codexLimitLabel(input: { limitName: string }): string {
   const tokens = familyTokens(input.limitName).filter((t) => Number.isNaN(Number(t)));
-  return tokens.at(-1) ?? input.limitName.trim().toLowerCase();
+  const label = tokens.at(-1) ?? input.limitName.trim().toLowerCase();
+  return LIMIT_LABEL_ABBREVIATIONS.get(label) ?? label;
 }
 
 const SESSION_WINDOW_MAX_S = 6 * 3600;

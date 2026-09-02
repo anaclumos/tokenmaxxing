@@ -224,6 +224,11 @@ describe("codex usage mapping", () => {
     expect(codexLimitLabel({ limitName: "GPT-5.3-Codex" })).toBe("codex");
     expect(codexLimitLabel({ limitName: "5.3" })).toBe("5.3");
   });
+
+  test("the reserve limit abbreviates to rsrv so it fits the 5-char label column", () => {
+    expect(codexLimitLabel({ limitName: "gpt-reserve" })).toBe("rsrv");
+    expect(codexLimitLabel({ limitName: "GPT-6-Codex-Reserve" })).toBe("rsrv");
+  });
 });
 
 describe("codex picking", () => {
