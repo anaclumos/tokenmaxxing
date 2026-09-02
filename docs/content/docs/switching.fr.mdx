@@ -7,16 +7,16 @@ La décision comporte deux couches : une porte d'engagement, puis un chemin glou
 
 ## Engagement
 
-En dessous de `policy.greedySessionFloor` (par défaut 50, en pourcentage de la fenêtre de session de 5 heures), la décision ne s'exécute pas du tout : une nouvelle session reste sur son compte. Dès que la fenêtre de session active est utilisée à 50 %, ou qu'une barre dure est franchie, la décision s'engage.
+En dessous de `policy.greedySessionFloor` (par défaut 50, en pourcentage de la fenêtre de session de 5 heures), la décision ne s'exécute pas du tout : une nouvelle session reste sur son compte. Dès que la fenêtre de session active est utilisée à 50 %, ou qu'une barre est franchie, la décision s'engage.
 
 ## Barres de filtrage
 
 Les seuils sont des barres de filtrage, pas le déclencheur d'une panique :
 
-- `thresholds.session` : 95. Une réinitialisation de 5 heures est peu coûteuse à attendre, donc la fenêtre de session bascule plus tôt.
+- `thresholds.session` : une échelle, par défaut `[50, 80, 95]`. Chaque évaluation résout un échelon actif : le plus bas échelon auquel un compte du pool, le compte actuel compris, reste utilisable. Tant qu'un compte se situe sous 50, la barre est à 50, donc une session qui franchit 50 passe la main à ce compte. Une fois que chaque compte a dépassé 50, la barre monte à 80, et quand 80 est dépassé partout, elle monte à 95. L'échelon le plus haut est la barre terminale ; au-delà, le mur (ci-dessous) prend le relais. Une réinitialisation de 5 heures est peu coûteuse à attendre, donc le pool se vide niveau par niveau et aucun compte ne prend une grande avance sur les autres.
 - `thresholds.weekly` : 98. Cette seule barre couvre à la fois l'agrégat sur 7 jours et chaque plafond hebdomadaire par modèle. Le quota hebdomadaire fonctionne selon le principe du tout ou rien, il se vide donc au plus près du mur.
 
-Les deux sont délibérément en dessous de 100 : la marge est le budget permettant d'atteindre une frontière de tour propre (plus jusqu'à un tour de latence d'adoption sur macOS) avant que le compte n'atteigne réellement sa limite. Les mêmes barres filtrent les candidats à la bascule : un compte dépassant l'une de ses barres n'est pas une cible valide. Le déclenchement et le filtrage utilisent toujours les mêmes barres effectives (les seuils moins `policy.projectionMargin`), car un filtrage plus laxiste que le déclenchement ferait atterrir des bascules sur des comptes que le déclenchement re-signale immédiatement, faisant faire du ping-pong au pool.
+Les deux sont délibérément en dessous de 100 : la marge est le budget permettant d'atteindre une frontière de tour propre (plus jusqu'à un tour de latence d'adoption sur macOS) avant que le compte n'atteigne réellement sa limite. Les mêmes barres filtrent les candidats à la bascule : un compte dépassant l'une de ses barres n'est pas une cible valide. Le déclenchement et le filtrage utilisent toujours les mêmes barres effectives (l'échelon actif et la barre hebdomadaire, chacun moins `policy.projectionMargin`), car un filtrage plus laxiste que le déclenchement ferait atterrir des bascules sur des comptes que le déclenchement re-signale immédiatement, faisant faire du ping-pong au pool. Un échelon ne compte que les comptes utilisables à ce niveau : une autorisation morte, un plafond par modèle verrouillé et déjà consommé ou une limite épinglée par le serveur n'empêchent pas la barre de monter, et l'échelon est relu depuis le pool à chaque nouvelle tentative au sein d'une même évaluation. Codex ne lit que l'échelon le plus haut, car le redémarrage est sa bascule.
 
 ## La cible : la pression de rythme
 

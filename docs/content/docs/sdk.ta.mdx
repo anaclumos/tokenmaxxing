@@ -9,18 +9,19 @@ description: "நீங்களே இயக்கும் ஏஜென்ட�
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import { ensureBestAccount, pooledOptions, stopHookCheck } from "tokenmaxxing";
 
-await ensureBestAccount(); // run the switch decision before the spawn
+await ensureBestAccount();
 
 for await (const message of query({
   prompt: "...",
   options: {
-    ...pooledOptions(), // pinned real claude + scrubbed env
-    hooks: { Stop: [{ hooks: [stopHookCheck] }] }, // re-decide at every turn boundary
+    ...pooledOptions(),
+    hooks: { Stop: [{ hooks: [stopHookCheck] }] },
   },
 })) {
-  // capture the session id from the init message for `resume` across swaps
 }
 ```
+
+வளையத்தின் உடற்பகுதி செய்தி ஸ்ட்ரீமைப் பெறுகிறது; மாற்றங்களைக் கடந்தும் `resume` செய்ய வேண்டுமெனில், init செய்தியிலிருந்து அமர்வு id ஐ வைத்துக்கொள்ளவும்.
 
 Agent SDK ஒவ்வொரு `query()` க்கும் ஒரு claude துணைச்செயல்முறையை உருவாக்கி, spawn இல் ஒருமுறை சான்றுதல்களைப் படிக்கிறது - எந்த statusline உம் இல்லை, எந்த query-நடு உடனுக்குடன் மாற்றமும் இல்லை - எனவே ஒருங்கிணைப்பு எல்லை-உந்தப்பட்டது:
 

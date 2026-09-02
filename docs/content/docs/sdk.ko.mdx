@@ -9,18 +9,19 @@ description: "직접 실행하는 에이전트에서 풀을 Claude Agent SDK와 
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import { ensureBestAccount, pooledOptions, stopHookCheck } from "tokenmaxxing";
 
-await ensureBestAccount(); // run the switch decision before the spawn
+await ensureBestAccount();
 
 for await (const message of query({
   prompt: "...",
   options: {
-    ...pooledOptions(), // pinned real claude + scrubbed env
-    hooks: { Stop: [{ hooks: [stopHookCheck] }] }, // re-decide at every turn boundary
+    ...pooledOptions(),
+    hooks: { Stop: [{ hooks: [stopHookCheck] }] },
   },
 })) {
-  // capture the session id from the init message for `resume` across swaps
 }
 ```
+
+루프 본문은 메시지 스트림을 받습니다. 교체를 넘나드는 `resume`을 쓰려면 init 메시지에서 세션 id를 챙겨 두세요.
 
 Agent SDK는 `query()`마다 claude 서브프로세스를 생성하며 그 시점에 자격 증명을 한 번 읽습니다. statusline도 쿼리 도중 hot-swap도 없습니다. 그래서 이 통합은 경계 기반입니다.
 

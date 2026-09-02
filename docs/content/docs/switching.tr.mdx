@@ -7,16 +7,16 @@ Kararın iki katmanı vardır: bir devreye girme kapısı ve ardından açgözl�
 
 ## Devreye girme
 
-`policy.greedySessionFloor` altında (varsayılan 50, 5 saatlik oturum penceresinin yüzdesi olarak) karar hiç çalışmaz - taze bir oturum kendi hesabında ilerler. Aktif oturum penceresi %50 kullanıldığında veya herhangi bir sert çubuk aşıldığında karar devreye girer.
+`policy.greedySessionFloor` altında (varsayılan 50, 5 saatlik oturum penceresinin yüzdesi olarak) karar hiç çalışmaz - taze bir oturum kendi hesabında ilerler. Aktif oturum penceresi %50 kullanıldığında veya herhangi bir çubuk aşıldığında karar devreye girer.
 
 ## Eleme çubukları
 
 Eşikler panik tetikleyicisi değil, eleme çubuklarıdır:
 
-- `thresholds.session`: 95. Bir 5 saatlik sıfırlamayı beklemek ucuzdur, bu nedenle oturum penceresi daha erken başka bir hesaba geçer.
+- `thresholds.session`: bir merdiven, varsayılan `[50, 80, 95]`. Her değerlendirme tek bir aktif basamak belirler: mevcut hesap dahil havuzdaki bir hesabın hâlâ kullanılabilir olduğu en düşük basamak. Herhangi bir hesap 50'nin altında durduğu sürece çubuk 50'dir, yani 50'yi aşan bir koltuk o hesaba devredilir. Havuzdaki hesapların tümü 50'yi geçtiğinde çubuk 80'e tırmanır, hepsinde 80 de geçilince 95'e çıkar. En üst basamak son çubuktur. Onun ötesinde duvar (aşağıda) devralır. Bir 5 saatlik sıfırlamayı beklemek ucuzdur, bu yüzden havuz kat kat boşalır ve hiçbir hesap diğerlerinin çok ilerisine geçmez.
 - `thresholds.weekly`: 98. Bu tek çubuk hem 7 günlük toplamı hem de her model başına haftalık üst sınırı kapsar. Haftalık kota kullan ya da kaybet ilkesine tabidir, bu yüzden duvara yakın tükenir.
 
-Her ikisi de kasıtlı olarak 100'ün altındadır: boşluk, hesap gerçekten limitine ulaşmadan önce temiz bir tur sınırına ulaşma bütçesidir (artı macOS'ta bir tura kadar benimseme gecikmesi). Aynı çubuklar geçiş adaylarını eler: çubuklarından herhangi birinin üzerinde olan bir hesap geçerli bir hedef değildir. Tetikleyici ve eleme her zaman aynı etkin çubukları kullanır (eşikler eksi `policy.projectionMargin`), çünkü tetikleyiciden daha gevşek bir eleme, geçişleri tetikleyicinin hemen yeniden işaretlediği hesaplara indirir ve havuzu ileri geri sektirir.
+Her ikisi de kasıtlı olarak 100'ün altındadır: boşluk, hesap gerçekten limitine ulaşmadan önce temiz bir tur sınırına ulaşma bütçesidir (artı macOS'ta bir tura kadar benimseme gecikmesi). Aynı çubuklar geçiş adaylarını eler: çubuklarından herhangi birinin üzerinde olan bir hesap geçerli bir hedef değildir. Tetikleyici ve eleme her zaman aynı etkin çubukları kullanır (aktif basamak ve haftalık çubuk, her biri eksi `policy.projectionMargin`), çünkü tetikleyiciden daha gevşek bir eleme, geçişleri tetikleyicinin hemen yeniden işaretlediği hesaplara indirir ve havuzu ileri geri sektirir. Bir basamak yalnızca o basamakta kullanılabilir olan hesapları sayar: ölü bir yetkilendirme, geçişi kapatan yanmış bir model başına üst sınır ya da sunucunun dayattığı bir limit, çubuğu aşağıda tutmaz ve basamak, tek bir değerlendirmenin içindeki her yeniden denemede havuzdan yeniden okunur. Codex yalnızca en üst basamağı okur, çünkü yeniden başlatma onun geçişidir.
 
 ## Hedef: tempo baskısı
 

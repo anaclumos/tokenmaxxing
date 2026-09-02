@@ -7,16 +7,16 @@ La decisión tiene dos capas: una compuerta de participación, y luego un camino
 
 ## Participación
 
-Por debajo de `policy.greedySessionFloor` (por defecto 50, en porcentaje de la ventana de sesión de 5 horas), la decisión no se ejecuta en absoluto - una sesión fresca cabalga su cuenta. Una vez que la ventana de sesión activa está usada al 50%, o se cruza cualquier barra dura, la decisión entra en juego.
+Por debajo de `policy.greedySessionFloor` (por defecto 50, en porcentaje de la ventana de sesión de 5 horas), la decisión no se ejecuta en absoluto - una sesión fresca cabalga su cuenta. Una vez que la ventana de sesión activa está usada al 50%, o se cruza cualquier barra, la decisión entra en juego.
 
 ## Barras de cribado
 
 Los umbrales son barras de cribado, no el disparador del pánico:
 
-- `thresholds.session`: 95. Un restablecimiento de 5 horas es barato de esperar sentado, así que la ventana de sesión se cambia antes.
+- `thresholds.session`: una escalera, por defecto `[50, 80, 95]`. Cada evaluación resuelve un peldaño activo: el peldaño más bajo en el que alguna cuenta del grupo, la actual incluida, sigue siendo utilizable. Mientras alguna cuenta esté por debajo de 50, la barra es 50, así que una sesión que cruza 50 le cede el asiento a esa cuenta. Una vez que todas las cuentas pasan de 50, la barra sube a 80, y pasado el 80 en todas ellas sube a 95. El peldaño superior es la barra terminal, y más allá toma el relevo el muro (más abajo). Un restablecimiento de 5 horas es barato de esperar sentado, así que el grupo se agota nivel a nivel y ninguna cuenta se adelanta mucho a las demás.
 - `thresholds.weekly`: 98. Esta única barra cubre tanto el agregado de 7 días como cada tope semanal por modelo. La cuota semanal es de usar o perder, así que se agota cerca del muro.
 
-Ambas están deliberadamente por debajo de 100: el margen es el presupuesto para alcanzar un límite de turno limpio (más hasta un turno de retraso de adopción en macOS) antes de que la cuenta realmente alcance su límite. Las mismas barras criban a las cuentas candidatas: una cuenta por encima de cualquiera de sus barras no es un destino válido. El disparador y el cribado siempre usan las mismas barras efectivas (umbrales menos `policy.projectionMargin`), porque un cribado más laxo que el disparador aterrizaría cambios en cuentas que el disparador vuelve a marcar de inmediato, haciendo rebotar el grupo.
+Ambas están deliberadamente por debajo de 100: el margen es el presupuesto para alcanzar un límite de turno limpio (más hasta un turno de retraso de adopción en macOS) antes de que la cuenta realmente alcance su límite. Las mismas barras criban a las cuentas candidatas: una cuenta por encima de cualquiera de sus barras no es un destino válido. El disparador y el cribado siempre usan las mismas barras efectivas (el peldaño activo y la barra semanal, cada uno menos `policy.projectionMargin`), porque un cribado más laxo que el disparador aterrizaría cambios en cuentas que el disparador vuelve a marcar de inmediato, haciendo rebotar el grupo. Un peldaño solo cuenta las cuentas que son utilizables en él: un grant muerto, un tope por modelo bajo compuerta ya quemado o un límite impuesto y fijado por el servidor no mantienen la barra abajo, y el peldaño se vuelve a leer del grupo en cada reintento dentro de una misma evaluación. Codex solo lee el peldaño superior, porque su cambio es reiniciar.
 
 ## El destino: presión de ritmo
 

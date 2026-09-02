@@ -7,7 +7,7 @@ Usanidi ni JSON katika `~/.config/tokenmaxxing/config.json`. Kila uga ni wa hiar
 
 ```json
 {
-  "thresholds": { "session": 95, "weekly": 98 },
+  "thresholds": { "session": [50, 80, 95], "weekly": 98 },
   "hardThresholds": { "session": 100, "weekly": 100 },
   "claudeBin": "/path/to/real/claude",
   "codexBin": "/path/to/real/codex",
@@ -21,10 +21,11 @@ Usanidi ni JSON katika `~/.config/tokenmaxxing/config.json`. Kila uga ni wa hiar
 }
 ```
 
-- `thresholds.session` / `thresholds.weekly`: baa za uchujaji zilizoelezwa katika [Jinsi ubadilishaji unavyoamua](/sw/switching).
-- `hardThresholds.session` / `hardThresholds.weekly`: baa za ukuta (chaguo-msingi 100, kikomo halisi cha seva cha kila akaunti). Wakati kila akaunti imezidi baa yake ya uchujaji, uamuzi wa otomatiki wa Claude huikamua kila moja hadi ukuta wake kabla ya kuegesha - ona [Ukuta](/sw/switching). Iweke sawa na `thresholds` ili kuzima; Codex huipuuza mpangilio huu.
+- `thresholds.session`: ngazi ya saa 5, orodha inayopanda ya vipandio vya uchujaji. Kila tathmini hutatua kipandio kimoja kinachotumika, kipandio cha chini kabisa ambacho akaunti fulani iliyokusanywa bado iko chini yake, na kipandio hicho ndicho kichocheo na pia kichujio cha wagombea. Codex husoma kipandio cha juu kabisa pekee. Ona [Jinsi ubadilishaji unavyoamua](/sw/switching).
+- `thresholds.weekly`: baa ya uchujaji ya kila wiki, inayoshughulikia jumla ya siku 7 na kila kikomo cha kila wiki cha kila muundo.
+- `hardThresholds.session` / `hardThresholds.weekly`: baa za ukuta (chaguo-msingi 100, kikomo halisi cha seva cha kila akaunti). `hardThresholds.session` ni lazima iwe sawa na au juu ya kipandio cha juu kabisa cha kikao. Wakati kila akaunti imezidi baa yake ya uchujaji, uamuzi wa otomatiki wa Claude huikamua kila moja hadi ukuta wake kabla ya kuegesha - ona [Ukuta](/sw/switching). Iweke sawa na kipandio cha juu kabisa na baa ya kila wiki ili kuzima; Codex huipuuza mpangilio huu.
 - `claudeBin` / `codexBin`: hupachika kwenye faili za kutekeleza HALISI ambazo wasimamizi huzalisha (huandikwa na `init` / `init --codex`; utambuzi wa kinga ya urejeleaji hukuambia urekebishe `claudeBin` hapa pale isipoelekeza tena kwenye faili halisi ya Claude).
-- `policy.projectionMargin`: hutolewa kutoka kwa baa za uchujaji na baa za ukuta zote mbili kuunda baa zinazotumika.
+- `policy.projectionMargin`: hutolewa kutoka kwa kila kipandio cha kikao, baa ya kila wiki, na baa za ukuta kuunda baa zinazotumika.
 - `policy.greedySessionFloor`: asilimia ya kikao kilichotumika ambapo muungano wa greedy hujihusisha.
 - `policy.switchModels`: familia za miundo ambazo kikomo chao cha kila wiki cha kila muundo hulinda ubadilishaji (viingizo hufanywa herufi ndogo wakati wa kupakia).
 - `policy.usagePollTtlMs`: muda ambao uchunguzi wa `/usage` wa kila muundo hubaki bichi.

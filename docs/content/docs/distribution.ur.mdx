@@ -5,7 +5,7 @@ description: "npm اور Nix پر TypeScript سورس، Bun کے ذریعے چل
 
 npm پیکج TypeScript سورس بھیجتا ہے، کوئی بلڈ نہیں: `tokenmaxxing` bin ایک Bun shebang کے ساتھ سیدھا `src/main.ts` کی طرف اشارہ کرتا ہے، اور Bun 1.2.6 یا اس سے نیا اسے ویسے کا ویسا چلاتا ہے۔ یہی وجہ ہے کہ Bun ایک سخت شرط ہے۔ ڈیزائن کے اعتبار سے کوئی کمپائل شدہ بائنریز نہیں ہیں: ایک ابتدائی ریلیز نے ہر پلیٹ فارم پر ایک واحد 61 MB macOS بائنری بھیجی اور Linux پر `exec format error` کے ساتھ ناکام ہو گئی، اور فی پلیٹ فارم کمپائل شدہ پیکجز میں سے ہر ایک کو اپنی خود کی ریلیز پائپ لائن درکار ہوتی، لہٰذا Bun کے ذریعے سورس چلانا تقسیم کا ماڈل بن گیا۔
 
-پیکج کا `exports` نقشہ `src/sdk.ts` کو [ایجنٹ SDK سطح](/ur/sdk) میں بیان کردہ پروگرامی انٹری کے طور پر ظاہر کرتا ہے۔ ریلیزز GitHub پر `v<version>` ٹیگ کی جاتی ہیں؛ CI trusted publishing (OIDC، provenance کے ساتھ) کے ذریعے npm پر شائع کرتا ہے، اور شائع کرنے کا گیٹ پہلے typecheck اور مکمل ٹیسٹ سویٹ چلاتا ہے۔
+پیکج کا `exports` نقشہ `src/sdk.ts` کو [ایجنٹ SDK سطح](/ur/sdk) میں بیان کردہ پروگرامی انٹری کے طور پر ظاہر کرتا ہے۔ ریلیزز GitHub پر `v<version>` ٹیگ کی جاتی ہیں؛ CI trusted publishing (OIDC، provenance کے ساتھ) کے ذریعے npm پر شائع کرتا ہے، اور شائع کرنے کا گیٹ پہلے typecheck چلاتا ہے۔
 
 ## Nix / nix-darwin
 
@@ -29,7 +29,6 @@ nix-darwin (overlay جوڑتا ہے تاکہ `pkgs.tokenmaxxing` resolve ہو):
 ```nix
 {
   inputs.tokenmaxxing.url = "github:anaclumos/tokenmaxxing";
-  # ...
   modules = [
     inputs.tokenmaxxing.darwinModules.withOverlay
     { programs.tokenmaxxing.enable = true; }

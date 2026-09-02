@@ -7,16 +7,16 @@ Shawarar tana da yadudduka biyu: ƙofar shiga (engagement gate), sannan hanyar g
 
 ## Shiga (Engagement)
 
-Ƙasa da `policy.greedySessionFloor` (tsohuwa 50, cikin kaso na tagar zaman awa 5), shawarar ba ta gudana kwata-kwata - sabon zama yana hawa asusunsa. Da zarar tagar zaman da ke aiki ta yi amfani 50%, ko an ƙetare wata sandar tsauri, shawarar tana shiga.
+Ƙasa da `policy.greedySessionFloor` (tsohuwa 50, cikin kaso na tagar zaman awa 5), shawarar ba ta gudana kwata-kwata - sabon zama yana hawa asusunsa. Da zarar tagar zaman da ke aiki ta yi amfani 50%, ko an ƙetare wata sanda, shawarar tana shiga.
 
 ## Sandunan tantancewa
 
 Ƙofofin (thresholds) sandunan tantancewa ne, ba abin da ke jawo firgita ba:
 
-- `thresholds.session`: 95. Sake saiti na awa 5 mai arha ne a jira, don haka tagar zaman tana musanya da wuri.
+- `thresholds.session`: tsani, tsohuwa `[50, 80, 95]`. Kowace auna tana warware mataki guda mai aiki: mataki mafi ƙasa wanda a kansa wani asusu a cikin tafki, tare da na yanzu, har yanzu ana iya amfani da shi. Muddin wani asusu yana ƙasa da 50, sandar ita ce 50, don haka wurin zaman da ya ƙetare 50 yana miƙawa wannan asusun. Da zarar kowane asusu ya wuce 50, sandar tana hawa zuwa 80, kuma bayan an wuce 80 a ko'ina tana hawa zuwa 95. Mataki na sama shi ne sandar ƙarshe. Bayansa bango (a ƙasa) yana ɗaukar aikin. Sake saiti na awa 5 mai arha ne a jira, don haka tafkin yana zubewa mataki bayan mataki kuma babu asusun da zai yi nisa a gaban 'yan'uwansa.
 - `thresholds.weekly`: 98. Wannan sanda guda tana rufe tarin kwanaki 7 da kowane iyakar mako na kowane-model. Ƙayyadaddun mako na "yi amfani da shi ko ka rasa shi" ne, don haka yana zubewa kusa da bango.
 
-Dukansu suna ƙasa da 100 da gangan: sararin shi ne kasafin da za a iso wurin iyakar zagaye mai tsafta (tare da har zuwa zagaye guda na jinkirin amincewa a kan macOS) kafin asusu ya bugi iyakarsa da gaske. Sandunan iri ɗaya suna tantance 'yan takarar musanya: asusun da ya wuce kowace sandarsa ba abin nufi ba ne mai inganci. Jawowa da tantancewa koyaushe suna amfani da sandunan da ke aiki iri ɗaya (thresholds ban da `policy.projectionMargin`), domin tantancewa mai sassauci fiye da jawowa zai sa musanya su sauka a kan asusun da jawowar za ta sake yiwa alama nan take, tana sa tafkin ping-pong.
+Dukansu suna ƙasa da 100 da gangan: sararin shi ne kasafin da za a iso wurin iyakar zagaye mai tsafta (tare da har zuwa zagaye guda na jinkirin amincewa a kan macOS) kafin asusu ya bugi iyakarsa da gaske. Sandunan iri ɗaya suna tantance 'yan takarar musanya: asusun da ya wuce kowace sandarsa ba abin nufi ba ne mai inganci. Jawowa da tantancewa koyaushe suna amfani da sandunan da ke aiki iri ɗaya (matakin da ke aiki da sandar mako, an rage `policy.projectionMargin` daga kowannensu), domin tantancewa mai sassauci fiye da jawowa zai sa musanya su sauka a kan asusun da jawowar za ta sake yiwa alama nan take, tana sa tafkin ping-pong. Mataki yana ƙidaya asusun da za a iya amfani da su a kansa kawai: izinin da ya mutu, iyakar kowane-model da aka toshe kuma aka ƙone, ko tilastawar da sabar ta ƙulla ba sa riƙe sandar a ƙasa, kuma ana sake karanta matakin daga tafkin a kowace sake gwadawa cikin auna guda. Codex yana karanta mataki na sama kaɗai, domin sake farawa shi ne musanyarsa.
 
 ## Abin nufi: matsin sauri (pace pressure)
 

@@ -7,16 +7,16 @@ May dalawang layer ang desisyon: isang engagement gate, at pagkatapos ay isang g
 
 ## Engagement
 
-Sa ibaba ng `policy.greedySessionFloor` (default na 50, sa porsyento ng 5-oras na session window), hindi tumatakbo ang desisyon - sumasakay ang isang sariwang session sa account nito. Kapag 50% na ang nagamit sa aktibong session window, o may na-cross na anumang hard bar, nag-e-engage ang desisyon.
+Sa ibaba ng `policy.greedySessionFloor` (default na 50, sa porsyento ng 5-oras na session window), hindi tumatakbo ang desisyon - sumasakay ang isang sariwang session sa account nito. Kapag 50% na ang nagamit sa aktibong session window, o may na-cross na anumang bar, nag-e-engage ang desisyon.
 
 ## Mga screening bar
 
 Ang mga threshold ay mga screening bar, hindi ang trigger para sa pagkataranta:
 
-- `thresholds.session`: 95. Mura lamang ang paghihintay sa isang 5-oras na reset, kaya't mas maaga nang lumilipat palayo ang session window.
+- `thresholds.session`: isang hagdan, default na `[50, 80, 95]`. Ang bawat pagsusuri ay pumipili ng isang aktibong baitang: ang pinakamababang baitang kung saan may naka-pool pa ring account na magagamit, kasama na ang kasalukuyan. Habang may account na nasa ilalim ng 50, 50 ang bar, kaya't ang isang upuang tumawid sa 50 ay ipinapasa sa account na iyon. Kapag lampas na sa 50 ang bawat account, umaakyat ang bar sa 80, at kapag lampas na sa 80 ang lahat, umaakyat ito sa 95. Ang tuktok na baitang ang huling bar. Lampas doon, ang dingding (sa ibaba) na ang humahawak. Mura lamang ang paghihintay sa isang 5-oras na reset, kaya't naaubos ang pool nang antas-antas at walang account na malayong nauuna sa mga kapwa account nito.
 - `thresholds.weekly`: 98. Sinasakop ng isang bar na ito ang parehong 7-araw na kabuuan at bawat per-model na lingguhang cap. Ang lingguhang quota ay use-it-or-lose-it, kaya't naaubos ito malapit sa dingding.
 
-Ang dalawa ay sinadyang mas mababa sa 100: ang headroom ay ang badyet upang maabot ang isang malinis na turn boundary (kasama ang hanggang isang turn ng adoption lag sa macOS) bago talagang tumama ang account sa limitasyon nito. Ang parehong mga bar ang nagse-screen ng mga swap candidate: ang isang account na lampas sa alinman sa mga bar nito ay hindi isang wastong target. Ang trigger at screening ay palaging gumagamit ng parehong epektibong mga bar (mga threshold na binawasan ng `policy.projectionMargin`), dahil ang isang screen na mas maluwag kaysa sa trigger ay maglalapag ng mga swap sa mga account na agad na muling ini-flag ng trigger, na nagpi-ping-pong sa pool.
+Ang dalawa ay sinadyang mas mababa sa 100: ang headroom ay ang badyet upang maabot ang isang malinis na turn boundary (kasama ang hanggang isang turn ng adoption lag sa macOS) bago talagang tumama ang account sa limitasyon nito. Ang parehong mga bar ang nagse-screen ng mga swap candidate: ang isang account na lampas sa alinman sa mga bar nito ay hindi isang wastong target. Ang trigger at screening ay palaging gumagamit ng parehong epektibong mga bar (ang aktibong baitang at ang lingguhang bar, na bawat isa ay binawasan ng `policy.projectionMargin`), dahil ang isang screen na mas maluwag kaysa sa trigger ay maglalapag ng mga swap sa mga account na agad na muling ini-flag ng trigger, na nagpi-ping-pong sa pool. Binibilang lamang ng isang baitang ang mga account na magagamit dito. Ang isang patay na grant, isang nasunog na naka-gate na per-model cap, o isang server-pinned na enforcement ay hindi nagpapanatiling mababa ang bar, at muling binabasa ang baitang mula sa pool sa bawat muling pagsubok sa loob ng iisang pagsusuri. Ang tuktok na baitang lamang ang binabasa ng Codex, dahil ang restart ang siyang pagpapalit nito.
 
 ## Ang target: pace pressure
 

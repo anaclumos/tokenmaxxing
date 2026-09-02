@@ -9,18 +9,19 @@ description: "Ghép nhóm tài khoản với Claude Agent SDK trong các agent m
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import { ensureBestAccount, pooledOptions, stopHookCheck } from "tokenmaxxing";
 
-await ensureBestAccount(); // run the switch decision before the spawn
+await ensureBestAccount();
 
 for await (const message of query({
   prompt: "...",
   options: {
-    ...pooledOptions(), // pinned real claude + scrubbed env
-    hooks: { Stop: [{ hooks: [stopHookCheck] }] }, // re-decide at every turn boundary
+    ...pooledOptions(),
+    hooks: { Stop: [{ hooks: [stopHookCheck] }] },
   },
 })) {
-  // capture the session id from the init message for `resume` across swaps
 }
 ```
+
+Thân vòng lặp nhận luồng thông điệp; hãy giữ lại id phiên từ thông điệp init nếu bạn muốn `resume` xuyên suốt các lần hoán đổi.
 
 Agent SDK khởi tạo một tiến trình con claude cho mỗi `query()` và đọc thông tin xác thực một lần khi khởi tạo (không có statusline, không hoán đổi nóng giữa query), nên việc tích hợp dựa trên ranh giới:
 

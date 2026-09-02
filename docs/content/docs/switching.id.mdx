@@ -7,16 +7,16 @@ Keputusan ini memiliki dua lapis: sebuah gerbang keterlibatan, lalu jalur rakus 
 
 ## Keterlibatan
 
-Di bawah `policy.greedySessionFloor` (default 50, dalam persen jendela sesi 5 jam), keputusan tidak dijalankan sama sekali - sesi segar mengendarai akunnya. Begitu jendela sesi aktif terpakai 50%, atau bilah keras mana pun dilewati, keputusan terlibat.
+Di bawah `policy.greedySessionFloor` (default 50, dalam persen jendela sesi 5 jam), keputusan tidak dijalankan sama sekali - sesi segar mengendarai akunnya. Begitu jendela sesi aktif terpakai 50%, atau bilah mana pun dilewati, keputusan terlibat.
 
 ## Bilah penyaringan
 
 Ambang batas adalah bilah penyaringan, bukan pemicu kepanikan:
 
-- `thresholds.session`: 95. Reset 5 jam murah untuk didiamkan, jadi jendela sesi berpindah lebih awal.
+- `thresholds.session`: sebuah tangga, default `[50, 80, 95]`. Setiap evaluasi menetapkan satu anak tangga aktif: anak tangga terendah yang padanya salah satu akun tergabung, termasuk akun saat ini, masih dapat dipakai. Selama masih ada akun yang berada di bawah 50, bilahnya adalah 50, jadi kursi yang melewati 50 menyerahkan giliran ke akun itu. Begitu setiap akun sudah melewati 50, bilahnya naik ke 80, dan setelah semuanya melewati 80 ia naik ke 95. Anak tangga teratas adalah bilah terminal. Di luar itu dinding (di bawah) mengambil alih. Reset 5 jam murah untuk didiamkan, jadi gabungan terkuras selapis demi selapis dan tidak ada akun yang melaju jauh mendahului akun lainnya.
 - `thresholds.weekly`: 98. Satu bilah ini mencakup agregat 7 hari maupun setiap batas mingguan per-model. Kuota mingguan bersifat pakai-atau-hangus, jadi ia dikuras dekat dengan dinding.
 
-Keduanya sengaja di bawah 100: ruang tersisa adalah anggaran untuk mencapai batas giliran yang bersih (ditambah hingga satu giliran keterlambatan adopsi di macOS) sebelum akun benar-benar menabrak batasnya. Bilah yang sama menyaring kandidat pertukaran: sebuah akun yang melewati salah satu bilahnya bukan target yang sah. Pemicu dan penyaringan selalu memakai bilah efektif yang sama (ambang batas dikurangi `policy.projectionMargin`), karena penyaringan yang lebih longgar dari pemicu akan mendaratkan pertukaran ke akun yang segera ditandai ulang oleh pemicu, memantul-mantulkan gabungan.
+Keduanya sengaja di bawah 100: ruang tersisa adalah anggaran untuk mencapai batas giliran yang bersih (ditambah hingga satu giliran keterlambatan adopsi di macOS) sebelum akun benar-benar menabrak batasnya. Bilah yang sama menyaring kandidat pertukaran: sebuah akun yang melewati salah satu bilahnya bukan target yang sah. Pemicu dan penyaringan selalu memakai bilah efektif yang sama (anak tangga aktif dan bilah mingguan, masing-masing dikurangi `policy.projectionMargin`), karena penyaringan yang lebih longgar dari pemicu akan mendaratkan pertukaran ke akun yang segera ditandai ulang oleh pemicu, memantul-mantulkan gabungan. Sebuah anak tangga hanya menghitung akun yang dapat dipakai pada level itu: token refresh yang mati, batas per-model tergerbang yang sudah terbakar, atau penegakan batas yang dipatok server tidak menahan bilahnya tetap rendah, dan anak tangga itu dibaca ulang dari gabungan pada setiap percobaan ulang di dalam satu evaluasi. Codex hanya membaca anak tangga teratas, karena mulai ulang adalah pertukarannya.
 
 ## Target: tekanan laju
 

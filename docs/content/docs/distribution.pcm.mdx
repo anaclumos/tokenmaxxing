@@ -5,7 +5,7 @@ description: "TypeScript source for npm and Nix, wey Bun dey run, dem publish am
 
 The npm package dey ship TypeScript source, no be build: the `tokenmaxxing` bin dey point straight at `src/main.ts` with one Bun shebang, and Bun 1.2.6 or newer dey run am as-is. Na why Bun na hard requirement. No compiled binaries dey by design: one early release ship one single 61 MB macOS binary go every platform and e fail for Linux with `exec format error`, and per-platform compiled packages go each need dia own release pipeline, so source-run-by-Bun become the distribution model.
 
-The package im `exports` map dey expose `src/sdk.ts` as the programmatic entry wey dem describe for [Di Agent SDK Surface](/pcm/sdk). Dem dey tag releases `v<version>` for GitHub; CI dey publish to npm via trusted publishing (OIDC, with provenance), and the publish gate dey run the typecheck and the full test suite first.
+The package im `exports` map dey expose `src/sdk.ts` as the programmatic entry wey dem describe for [Di Agent SDK Surface](/pcm/sdk). Dem dey tag releases `v<version>` for GitHub; CI dey publish to npm via trusted publishing (OIDC, with provenance), and the publish gate dey run the typecheck first.
 
 ## Nix / nix-darwin
 
@@ -29,7 +29,6 @@ nix-darwin (e add di overlay so `pkgs.tokenmaxxing` go resolve):
 ```nix
 {
   inputs.tokenmaxxing.url = "github:anaclumos/tokenmaxxing";
-  # ...
   modules = [
     inputs.tokenmaxxing.darwinModules.withOverlay
     { programs.tokenmaxxing.enable = true; }

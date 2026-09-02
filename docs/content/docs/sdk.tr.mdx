@@ -9,18 +9,19 @@ Paketin programatik giriş noktası (`exports["."]` `src/sdk.ts`'i işaret eder)
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import { ensureBestAccount, pooledOptions, stopHookCheck } from "tokenmaxxing";
 
-await ensureBestAccount(); // run the switch decision before the spawn
+await ensureBestAccount();
 
 for await (const message of query({
   prompt: "...",
   options: {
-    ...pooledOptions(), // pinned real claude + scrubbed env
-    hooks: { Stop: [{ hooks: [stopHookCheck] }] }, // re-decide at every turn boundary
+    ...pooledOptions(),
+    hooks: { Stop: [{ hooks: [stopHookCheck] }] },
   },
 })) {
-  // capture the session id from the init message for `resume` across swaps
 }
 ```
+
+Döngü gövdesi mesaj akışını alır. Geçişler boyunca `resume` kullanmak istiyorsanız init mesajındaki oturum kimliğini saklayın.
 
 Agent SDK, `query()` başına bir claude alt süreci başlatır ve kimlik bilgilerini başlatmada bir kez okur - statusline yok, query ortası anında geçiş yok - bu nedenle entegrasyon sınır güdümlüdür:
 

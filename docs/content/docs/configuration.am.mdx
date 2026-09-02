@@ -7,7 +7,7 @@ Config በ `~/.config/tokenmaxxing/config.json` JSON ነው። እያንዳን�
 
 ```json
 {
-  "thresholds": { "session": 95, "weekly": 98 },
+  "thresholds": { "session": [50, 80, 95], "weekly": 98 },
   "hardThresholds": { "session": 100, "weekly": 100 },
   "claudeBin": "/path/to/real/claude",
   "codexBin": "/path/to/real/codex",
@@ -21,10 +21,11 @@ Config በ `~/.config/tokenmaxxing/config.json` JSON ነው። እያንዳን�
 }
 ```
 
-- `thresholds.session` / `thresholds.weekly`፦ በ[መቀያየር እንዴት እንደሚወሰን](/am/switching) የተገለጹት screening barዎች።
-- `hardThresholds.session` / `hardThresholds.weekly`፦ ግድግዳ barዎቹ (ነባሪ 100፣ የእያንዳንዱ መለያ እውነተኛ የ server ገደብ)። እያንዳንዱ መለያ ከ screening bar በላይ ሲሆን፣ automatic የ Claude ውሳኔው ከማቆሙ በፊት እያንዳንዱን እስከ ግድግዳው ድረስ ይጨምቃል - [ግድግዳው](/am/switching) ን ተመልከት። ለማሰናከል ከ `thresholds` ጋር እኩል አድርግ፤ Codex ይህን ቅንብር ችላ ይላል።
+- `thresholds.session`፦ የ5-ሰዓቱ መሰላል፣ ወደ ላይ የተደረደረ የ screening እርከኖች ዝርዝር። እያንዳንዱ ግምገማ አንድ ንቁ እርከን ይፈታል፣ ማለትም በ pool ውስጥ ያለ አንድ መለያ አሁንም ጥቅም ላይ ሊውል የሚችልበት ዝቅተኛው እርከን፣ እና ያ እርከን trigger ውም የእጩ screen ውም ነው። Codex የላይኛውን እርከን ብቻ ያነባል። [መቀያየር እንዴት እንደሚወሰን](/am/switching) ን ተመልከት።
+- `thresholds.weekly`፦ ሳምንታዊው screening bar፣ የ7-ቀን ጥቅሉንም እያንዳንዱን በ-ሞዴል ሳምንታዊ ገደብም ይሸፍናል።
+- `hardThresholds.session` / `hardThresholds.weekly`፦ ግድግዳ barዎቹ (ነባሪ 100፣ የእያንዳንዱ መለያ እውነተኛ የ server ገደብ)። `hardThresholds.session` ከላይኛው session እርከን ጋር እኩል ወይም ከሱ በላይ መሆን አለበት። እያንዳንዱ መለያ ከ screening bar በላይ ሲሆን፣ automatic የ Claude ውሳኔው ከማቆሙ በፊት እያንዳንዱን እስከ ግድግዳው ድረስ ይጨምቃል - [ግድግዳው](/am/switching) ን ተመልከት። ለማሰናከል ከላይኛው እርከን እና ከሳምንታዊው bar ጋር እኩል አድርግ፤ Codex ይህን ቅንብር ችላ ይላል።
 - `claudeBin` / `codexBin`፦ supervisorዎቹ የሚያስነሱትን ትክክለኛ binaryዎች ይሰካል (በ `init` / `init --codex` የተጻፈ፤ `claudeBin` እዚህ ወደ እውነተኛው Claude binary ማመልከቱን ሲያቆም recursion-guard ምርመራው እዚህ እንድታስተካክለው ይነግርሃል)።
-- `policy.projectionMargin`፦ ተግባራዊ barዎችን ለመፍጠር ከ screening barዎቹም ሆነ ከግድግዳ barዎቹ ይቀነሳል።
+- `policy.projectionMargin`፦ ተግባራዊ barዎችን ለመፍጠር ከእያንዳንዱ session እርከን፣ ከሳምንታዊው bar እና ከግድግዳ barዎቹ ይቀነሳል።
 - `policy.greedySessionFloor`፦ greedy convergence የሚሳተፍበት session-የተጠቀመ መቶኛ።
 - `policy.switchModels`፦ በ-ሞዴል ሳምንታዊ ገደባቸው መቀያየርን የሚገድብ የሞዴል ቤተሰቦች (ግቤቶች በ load ጊዜ ወደ ትንንሽ ፊደላት ይቀየራሉ)።
 - `policy.usagePollTtlMs`፦ የ `/usage` በ-ሞዴል poll ምን ያህል ጊዜ ትኩስ ሆኖ እንደሚቆይ።

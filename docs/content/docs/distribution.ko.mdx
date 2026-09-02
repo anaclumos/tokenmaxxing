@@ -5,7 +5,7 @@ description: "npm과 Nix의 TypeScript 소스, Bun으로 실행, provenance와 �
 
 npm 패키지는 빌드 산출물이 아니라 TypeScript 소스를 배포합니다. `tokenmaxxing` bin은 Bun 셔뱅을 달고 곧바로 `src/main.ts`를 가리키며 Bun 1.2.6 이상이 그대로 실행합니다. 그래서 Bun이 필수 요건입니다. 컴파일된 바이너리는 설계상 없습니다. 초기 릴리스는 61 MB짜리 단일 macOS 바이너리를 모든 플랫폼에 배포했다가 Linux에서 `exec format error`로 실패했습니다. 플랫폼별 컴파일 패키지는 저마다 자체 릴리스 파이프라인이 필요했고 결국 Bun이 소스를 실행하는 방식이 배포 모델이 되었습니다.
 
-패키지의 `exports` 맵은 [Agent SDK 인터페이스](/ko/sdk)에서 설명한 프로그래밍 진입점으로 `src/sdk.ts`를 노출합니다. 릴리스는 GitHub에서 `v<version>`으로 태그됩니다. CI는 신뢰할 수 있는 게시(trusted publishing, OIDC 및 provenance 포함)로 npm에 배포하며, 게시 게이트는 먼저 타입 체크와 전체 테스트 스위트를 실행합니다.
+패키지의 `exports` 맵은 [Agent SDK 인터페이스](/ko/sdk)에서 설명한 프로그래밍 진입점으로 `src/sdk.ts`를 노출합니다. 릴리스는 GitHub에서 `v<version>`으로 태그됩니다. CI는 신뢰할 수 있는 게시(trusted publishing, OIDC 및 provenance 포함)로 npm에 배포하며, 게시 게이트는 먼저 타입 체크를 실행합니다.
 
 ## Nix / nix-darwin
 
@@ -29,7 +29,6 @@ nix-darwin(`pkgs.tokenmaxxing`이 풀리도록 overlay 추가):
 ```nix
 {
   inputs.tokenmaxxing.url = "github:anaclumos/tokenmaxxing";
-  # ...
   modules = [
     inputs.tokenmaxxing.darwinModules.withOverlay
     { programs.tokenmaxxing.enable = true; }

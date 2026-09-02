@@ -5,7 +5,7 @@ description: "npm 搭 Nix 高头发嗰是 TypeScript 源码，由 Bun 跑，带�
 
 npm 包发嗰是 TypeScript 源码，勿是编译产物：`tokenmaxxing` 嗰 bin 带 Bun shebang，直接指向 `src/main.ts`，Bun 1.2.6 或者更新嗰版本就原样跑伊。搿也就是 Bun 是硬性要求嗰道理。特为勿做编译好嗰二进制：早先一趟发布拿单单一只 61 MB 嗰 macOS 二进制发到每个平台，勒 Linux 高头带 `exec format error` 失败脱，而分平台编译嗰包每个侪要自家一条发布流水线，所以拿源码交畀 Bun 跑就变成了分发嗰模式。
 
-包嗰 `exports` 映射拿 `src/sdk.ts` 当作 [Agent SDK 界面](/wuu/sdk)里向讲过嗰编程入口露出来。发布勒 GitHub 高头打上 `v<version>` 标签；CI 用可信发布（OIDC，带来源证明）发到 npm，而发布嗰门槛会先跑类型检查搭整套测试。
+包嗰 `exports` 映射拿 `src/sdk.ts` 当作 [Agent SDK 界面](/wuu/sdk)里向讲过嗰编程入口露出来。发布勒 GitHub 高头打上 `v<version>` 标签；CI 用可信发布（OIDC，带来源证明）发到 npm，而发布嗰门槛会先跑类型检查。
 
 ## Nix／nix-darwin
 
@@ -29,7 +29,6 @@ nix-darwin（加 overlay，让 `pkgs.tokenmaxxing` 好解析到）：
 ```nix
 {
   inputs.tokenmaxxing.url = "github:anaclumos/tokenmaxxing";
-  # ...
   modules = [
     inputs.tokenmaxxing.darwinModules.withOverlay
     { programs.tokenmaxxing.enable = true; }

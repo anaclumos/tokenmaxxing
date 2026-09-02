@@ -9,18 +9,19 @@ Der programmatische Einstiegspunkt des Pakets (`exports["."]` zeigt auf `src/sdk
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import { ensureBestAccount, pooledOptions, stopHookCheck } from "tokenmaxxing";
 
-await ensureBestAccount(); // die Wechselentscheidung vor dem Spawn ausführen
+await ensureBestAccount();
 
 for await (const message of query({
   prompt: "...",
   options: {
-    ...pooledOptions(), // fixiertes echtes claude + bereinigte env
-    hooks: { Stop: [{ hooks: [stopHookCheck] }] }, // an jeder Zuggrenze neu entscheiden
+    ...pooledOptions(),
+    hooks: { Stop: [{ hooks: [stopHookCheck] }] },
   },
 })) {
-  // die Sitzungs-ID aus der Init-Nachricht für `resume` über Wechsel hinweg erfassen
 }
 ```
+
+Der Schleifenrumpf erhält den Nachrichtenstrom. Behalten Sie die Sitzungs-ID aus der Init-Nachricht, wenn Sie `resume` über Wechsel hinweg nutzen wollen.
 
 Das Agent SDK startet pro `query()` einen claude-Unterprozess und liest die Anmeldeinformationen einmal beim Spawn - keine Statusline, kein Hot-Swap mitten in der Abfrage - sodass die Integration grenzgesteuert ist:
 

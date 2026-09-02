@@ -5,7 +5,7 @@ description: "TypeScript source sa npm at Nix, pinapatakbo ng Bun, inilalathala 
 
 Ang npm package ay naghahatid ng TypeScript source, hindi isang build: ang `tokenmaxxing` bin ay direktang nakaturo sa `src/main.ts` na may Bun shebang, at pinapatakbo ito ng Bun 1.2.6 o mas bago nang walang binago. Iyon ang dahilan kung bakit ang Bun ay isang mahigpit na kinakailangan. Walang mga compiled na binary ayon sa disenyo: isang maagang release ang naghatid ng iisang 61 MB na macOS binary sa bawat platform at nabigo sa Linux nang may `exec format error`, at ang bawat per-platform na compiled package ay mangangailangan ng sarili nitong release pipeline, kaya't naging modelo ng pamamahagi ang source-run-by-Bun.
 
-Ang `exports` map ng package ay naglalantad ng `src/sdk.ts` bilang ang programmatic entry na inilarawan sa [Ang Agent SDK surface](/tl/sdk). Ang mga release ay tinatatakan ng `v<version>` sa GitHub; naglalathala ang CI sa npm sa pamamagitan ng trusted publishing (OIDC, na may provenance), at pinapatakbo ng publish gate ang typecheck at ang buong test suite muna.
+Ang `exports` map ng package ay naglalantad ng `src/sdk.ts` bilang ang programmatic entry na inilarawan sa [Ang Agent SDK surface](/tl/sdk). Ang mga release ay tinatatakan ng `v<version>` sa GitHub; naglalathala ang CI sa npm sa pamamagitan ng trusted publishing (OIDC, na may provenance), at pinapatakbo muna ng publish gate ang typecheck.
 
 ## Nix / nix-darwin
 
@@ -29,7 +29,6 @@ nix-darwin (idinadagdag ang overlay para ma-resolve ang `pkgs.tokenmaxxing`):
 ```nix
 {
   inputs.tokenmaxxing.url = "github:anaclumos/tokenmaxxing";
-  # ...
   modules = [
     inputs.tokenmaxxing.darwinModules.withOverlay
     { programs.tokenmaxxing.enable = true; }

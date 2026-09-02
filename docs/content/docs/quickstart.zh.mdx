@@ -7,10 +7,10 @@ description: "安装 tokenmaxxing，导入当前账户，并汇集更多账户"
 
 ```sh
 bun add -g tokenmaxxing
-# or: nix profile install github:anaclumos/tokenmaxxing
-# or: enable programs.tokenmaxxing in your nix-darwin / Home Manager config
 tokenmaxxing init
 ```
+
+使用 Nix 的话，把 Bun 那一步换成 `nix profile install github:anaclumos/tokenmaxxing`，或者在 nix-darwin / Home Manager 配置里启用 `programs.tokenmaxxing`。
 
 `init` 会做五件事：
 

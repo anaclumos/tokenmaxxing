@@ -7,16 +7,16 @@ Uamuzi una tabaka mbili: lango la kujihusisha, kisha njia ya greedy au ngumu.
 
 ## Kujihusisha
 
-Chini ya `policy.greedySessionFloor` (chaguo-msingi 50, kwa asilimia ya dirisha la kikao la saa 5), uamuzi hauendeshwi kabisa - kikao kipya hupanda akaunti yake. Mara dirisha la kikao kinachotumika linapofika 50% ya matumizi, au baa yoyote ngumu inapovukwa, uamuzi hujihusisha.
+Chini ya `policy.greedySessionFloor` (chaguo-msingi 50, kwa asilimia ya dirisha la kikao la saa 5), uamuzi hauendeshwi kabisa - kikao kipya hupanda akaunti yake. Mara dirisha la kikao kinachotumika linapofika 50% ya matumizi, au baa yoyote inapovukwa, uamuzi hujihusisha.
 
 ## Baa za uchujaji
 
 Vizingiti ni baa za uchujaji, si kichocheo cha hofu:
 
-- `thresholds.session`: 95. Kujiweka upya kwa saa 5 ni rahisi kukisubiri, hivyo dirisha la kikao hubadilika mapema zaidi.
+- `thresholds.session`: ngazi, chaguo-msingi `[50, 80, 95]`. Kila tathmini hutatua kipandio kimoja kinachotumika, yaani kipandio cha chini kabisa ambacho akaunti fulani iliyokusanywa, ikijumuisha ya sasa, bado inaweza kutumika hapo. Wakati akaunti yoyote ingali chini ya 50, baa ni 50, hivyo kiti kinachovuka 50 hukabidhi kazi kwa akaunti hiyo. Mara kila akaunti inapopita 50, baa hupanda hadi 80, na zikishapita 80 kila mahali hupanda hadi 95. Kipandio cha juu kabisa ndicho baa ya mwisho, na zaidi yake ukuta (hapa chini) huchukua nafasi. Kujiweka upya kwa saa 5 ni rahisi kukisubiri, hivyo mkusanyiko hukauka ngazi kwa ngazi na hakuna akaunti inayotangulia wenzake kwa mbali.
 - `thresholds.weekly`: 98. Baa hii moja inashughulikia jumla ya siku 7 na kila kikomo cha kila wiki cha kila muundo. Mgao wa kila wiki ni tumia-au-poteza, hivyo hukauka karibu na ukuta.
 
-Zote zimewekwa chini ya 100 kwa makusudi: nafasi ni bajeti ya kufikia mpaka safi wa zamu (pamoja na hadi zamu moja ya ucheleweshaji wa upokeaji kwenye macOS) kabla akaunti haijafikia kikomo chake hasa. Baa zile zile huchuja wagombea wa ubadilishaji: akaunti iliyozidi baa zake zozote si lengo halali. Kichocheo na uchujaji hutumia kila mara baa zile zile zinazotumika (vizingiti bila `policy.projectionMargin`), kwa sababu uchujaji ulio legevu kuliko kichocheo ungeweka ubadilishaji kwenye akaunti ambazo kichocheo huziweka alama tena mara moja, ukiufanya mkusanyiko kwenda na kurudi kama ping-pong.
+Zote zimewekwa chini ya 100 kwa makusudi: nafasi ni bajeti ya kufikia mpaka safi wa zamu (pamoja na hadi zamu moja ya ucheleweshaji wa upokeaji kwenye macOS) kabla akaunti haijafikia kikomo chake hasa. Baa zile zile huchuja wagombea wa ubadilishaji: akaunti iliyozidi baa zake zozote si lengo halali. Kichocheo na uchujaji hutumia kila mara baa zile zile zinazotumika (kipandio kinachotumika na baa ya kila wiki, kila kimoja bila `policy.projectionMargin`), kwa sababu uchujaji ulio legevu kuliko kichocheo ungeweka ubadilishaji kwenye akaunti ambazo kichocheo huziweka alama tena mara moja, ukiufanya mkusanyiko kwenda na kurudi kama ping-pong. Kipandio huhesabu akaunti zinazoweza kutumika hapo pekee. Ruhusa iliyokufa, kikomo cha kila muundo kilicholindwa ambacho kimechomwa, au utekelezaji uliobandikwa na seva havizuii baa isipande, na kipandio husomwa upya kutoka kwa mkusanyiko kwa kila jaribio jipya ndani ya tathmini moja. Codex husoma kipandio cha juu kabisa pekee, kwa sababu kuanzisha upya ndio ubadilishaji wake.
 
 ## Lengo: shinikizo la mwendo
 

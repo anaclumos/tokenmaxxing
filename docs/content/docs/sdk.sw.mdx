@@ -9,18 +9,19 @@ Kiingilio cha programu cha kifurushi (`exports["."]` kinaelekeza kwenye `src/sdk
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import { ensureBestAccount, pooledOptions, stopHookCheck } from "tokenmaxxing";
 
-await ensureBestAccount(); // run the switch decision before the spawn
+await ensureBestAccount();
 
 for await (const message of query({
   prompt: "...",
   options: {
-    ...pooledOptions(), // pinned real claude + scrubbed env
-    hooks: { Stop: [{ hooks: [stopHookCheck] }] }, // re-decide at every turn boundary
+    ...pooledOptions(),
+    hooks: { Stop: [{ hooks: [stopHookCheck] }] },
   },
 })) {
-  // capture the session id from the init message for `resume` across swaps
 }
 ```
+
+Mwili wa kitanzi hupokea mtiririko wa ujumbe. Hifadhi kitambulisho cha kikao kutoka kwa ujumbe wa init ikiwa unataka `resume` ifanye kazi hata baada ya ubadilishaji.
 
 Agent SDK huzalisha mchakato-mdogo wa claude kwa kila `query()` na husoma vitambulisho mara moja wakati wa kuzalisha - hakuna statusline, hakuna ubadilishaji papo hapo katikati ya uchunguzi - hivyo muunganisho huendeshwa kwa mipaka:
 

@@ -9,18 +9,19 @@ description: "勒侬自家跑嗰 agent 里向拿账户池搭 Claude Agent SDK �
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import { ensureBestAccount, pooledOptions, stopHookCheck } from "tokenmaxxing";
 
-await ensureBestAccount(); // run the switch decision before the spawn
+await ensureBestAccount();
 
 for await (const message of query({
   prompt: "...",
   options: {
-    ...pooledOptions(), // pinned real claude + scrubbed env
-    hooks: { Stop: [{ hooks: [stopHookCheck] }] }, // re-decide at every turn boundary
+    ...pooledOptions(),
+    hooks: { Stop: [{ hooks: [stopHookCheck] }] },
   },
 })) {
-  // capture the session id from the init message for `resume` across swaps
 }
 ```
+
+循环体里向收到嗰是消息流。想勒一趟趟切换当中用 `resume` 个话，就拿 init 消息里向嗰会话 id 留牢。
 
 Agent SDK 每一趟 `query()` 侪生个 claude 子进程，勒生嗰辰光读一趟凭据，呒没 statusline，也呒没 query 半当中嗰热切换，所以搿个集成是边界驱动嗰：
 

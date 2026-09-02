@@ -7,7 +7,7 @@ Die Konfiguration ist JSON unter `~/.config/tokenmaxxing/config.json`. Jedes Fel
 
 ```json
 {
-  "thresholds": { "session": 95, "weekly": 98 },
+  "thresholds": { "session": [50, 80, 95], "weekly": 98 },
   "hardThresholds": { "session": 100, "weekly": 100 },
   "claudeBin": "/path/to/real/claude",
   "codexBin": "/path/to/real/codex",
@@ -21,10 +21,11 @@ Die Konfiguration ist JSON unter `~/.config/tokenmaxxing/config.json`. Jedes Fel
 }
 ```
 
-- `thresholds.session` / `thresholds.weekly`: die in [Wie der Wechsel entscheidet](/de/switching) beschriebenen Screening-Schranken.
-- `hardThresholds.session` / `hardThresholds.weekly`: die Wandschranken (Standard 100, das echte Serverlimit jedes Kontos). Wenn jedes Konto über seiner Screening-Schranke liegt, quetscht die automatische Claude-Entscheidung jedes bis an seine Wand aus, bevor sie parkt - siehe [Die Wand](/de/switching). Gleich `thresholds` setzen, um es zu deaktivieren; Codex ignoriert diese Einstellung.
+- `thresholds.session`: die 5-Stunden-Leiter, eine aufsteigende Liste von Screening-Stufen. Jede Auswertung ermittelt eine aktive Stufe, die niedrigste Stufe, auf der noch ein gebündeltes Konto nutzbar ist, und diese Stufe ist zugleich Auslöser und Kandidaten-Screening. Codex liest nur die oberste Stufe. Siehe [Wie der Wechsel entscheidet](/de/switching).
+- `thresholds.weekly`: die wöchentliche Screening-Schranke, die das 7-Tage-Aggregat und jede wöchentliche Pro-Modell-Obergrenze abdeckt.
+- `hardThresholds.session` / `hardThresholds.weekly`: die Wandschranken (Standard 100, das echte Serverlimit jedes Kontos). `hardThresholds.session` muss auf oder über der obersten Sitzungsstufe liegen. Wenn jedes Konto über seiner Screening-Schranke liegt, quetscht die automatische Claude-Entscheidung jedes bis an seine Wand aus, bevor sie parkt - siehe [Die Wand](/de/switching). Gleich der obersten Stufe und der Wochenschranke setzen, um es zu deaktivieren; Codex ignoriert diese Einstellung.
 - `claudeBin` / `codexBin`: pinnt auf die ECHTEN Binaries, die die Supervisoren starten (geschrieben von `init` / `init --codex`; die Rekursionsschutz-Diagnose weist Sie darauf hin, hier `claudeBin` zu korrigieren, wenn es nicht mehr auf die echte Claude-Binary zeigt).
-- `policy.projectionMargin`: sowohl von den Screening-Schranken als auch von den Wandschranken abgezogen, um die effektiven Schranken zu bilden.
+- `policy.projectionMargin`: von jeder Sitzungsstufe, der Wochenschranke und den Wandschranken abgezogen, um die effektiven Schranken zu bilden.
 - `policy.greedySessionFloor`: der Sitzungsnutzungsprozentsatz, bei dem die greedy-Konvergenz greift.
 - `policy.switchModels`: Modellfamilien, deren wöchentliche Pro-Modell-Obergrenze einen Wechsel gated (Einträge werden beim Laden kleingeschrieben).
 - `policy.usagePollTtlMs`: wie lange eine `/usage`-Pro-Modell-Abfrage frisch bleibt.

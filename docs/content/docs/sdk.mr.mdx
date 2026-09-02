@@ -9,18 +9,19 @@ description: "तुम्ही स्वतः चालवत असलेल
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import { ensureBestAccount, pooledOptions, stopHookCheck } from "tokenmaxxing";
 
-await ensureBestAccount(); // स्पॉनआधी बदल निर्णय चालवा
+await ensureBestAccount();
 
 for await (const message of query({
   prompt: "...",
   options: {
-    ...pooledOptions(), // पिन केलेले खरे claude + स्वच्छ केलेले env
-    hooks: { Stop: [{ hooks: [stopHookCheck] }] }, // प्रत्येक टर्न सीमेवर पुन्हा-निर्णय घ्या
+    ...pooledOptions(),
+    hooks: { Stop: [{ hooks: [stopHookCheck] }] },
   },
 })) {
-  // बदलांदरम्यान `resume` साठी init संदेशातून session id पकडा
 }
 ```
+
+लूप बॉडीला संदेशांचा प्रवाह मिळतो; बदलांदरम्यान `resume` हवे असल्यास init संदेशातील session id जपून ठेवा.
 
 Agent SDK प्रति `query()` एक claude सबप्रोसेस स्पॉन करते आणि स्पॉनवर एकदाच क्रेडेन्शियल्स वाचते - कोणतीही statusline नाही, कोणताही मध्य-क्वेरी हॉट-स्वॅप नाही - त्यामुळे एकत्रीकरण सीमा-आधारित आहे:
 

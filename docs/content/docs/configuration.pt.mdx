@@ -7,7 +7,7 @@ A config é JSON em `~/.config/tokenmaxxing/config.json`. Todo campo é opcional
 
 ```json
 {
-  "thresholds": { "session": 95, "weekly": 98 },
+  "thresholds": { "session": [50, 80, 95], "weekly": 98 },
   "hardThresholds": { "session": 100, "weekly": 100 },
   "claudeBin": "/path/to/real/claude",
   "codexBin": "/path/to/real/codex",
@@ -21,10 +21,11 @@ A config é JSON em `~/.config/tokenmaxxing/config.json`. Todo campo é opcional
 }
 ```
 
-- `thresholds.session` / `thresholds.weekly`: as barras de triagem descritas em [Como a troca decide](/pt/switching).
-- `hardThresholds.session` / `hardThresholds.weekly`: as barras de parede (padrão 100, o limite real do servidor de cada conta). Quando toda conta está acima de sua barra de triagem, a decisão automática do Claude espreme cada uma até sua parede antes de estacionar - veja [A parede](/pt/switching). Defina igual a `thresholds` para desativar; o Codex ignora esta configuração.
+- `thresholds.session`: a escada de 5 horas, uma lista ascendente de degraus de triagem. Cada avaliação resolve um degrau ativo, o degrau mais baixo em que alguma conta do grupo ainda é usável, e esse degrau é ao mesmo tempo o gatilho e a triagem de candidatos. O Codex lê apenas o degrau do topo. Veja [Como a troca decide](/pt/switching).
+- `thresholds.weekly`: a barra de triagem semanal, que cobre o agregado de 7 dias e todos os limites semanais por modelo.
+- `hardThresholds.session` / `hardThresholds.weekly`: as barras de parede (padrão 100, o limite real do servidor de cada conta). `hardThresholds.session` precisa estar no degrau de sessão do topo ou acima dele. Quando toda conta está acima de sua barra de triagem, a decisão automática do Claude espreme cada uma até sua parede antes de estacionar - veja [A parede](/pt/switching). Defina igual ao degrau do topo e à barra semanal para desativar; o Codex ignora esta configuração.
 - `claudeBin` / `codexBin`: fixa os binários REAIS que os supervisores geram (escritos por `init` / `init --codex`; o diagnóstico do guarda-recursão indica para corrigir `claudeBin` aqui quando ele parar de apontar para o binário real do Claude).
-- `policy.projectionMargin`: subtraído tanto das barras de triagem quanto das barras de parede para formar as barras efetivas.
+- `policy.projectionMargin`: subtraído de cada degrau de sessão, da barra semanal e das barras de parede para formar as barras efetivas.
 - `policy.greedySessionFloor`: porcentagem de sessão usada em que a convergência gulosa se engaja.
 - `policy.switchModels`: famílias de modelos cujo limite semanal por modelo controla uma troca (as entradas são convertidas para minúsculas ao carregar).
 - `policy.usagePollTtlMs`: por quanto tempo uma consulta por modelo do `/usage` permanece fresca.

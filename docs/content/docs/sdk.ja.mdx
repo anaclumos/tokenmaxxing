@@ -9,18 +9,19 @@ description: "自分で動かすエージェントでプールを Claude Agent S
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import { ensureBestAccount, pooledOptions, stopHookCheck } from "tokenmaxxing";
 
-await ensureBestAccount(); // run the switch decision before the spawn
+await ensureBestAccount();
 
 for await (const message of query({
   prompt: "...",
   options: {
-    ...pooledOptions(), // pinned real claude + scrubbed env
-    hooks: { Stop: [{ hooks: [stopHookCheck] }] }, // re-decide at every turn boundary
+    ...pooledOptions(),
+    hooks: { Stop: [{ hooks: [stopHookCheck] }] },
   },
 })) {
-  // capture the session id from the init message for `resume` across swaps
 }
 ```
+
+ループ本体はメッセージのストリームを受け取ります。切り替えをまたいで `resume` したい場合は、init メッセージのセッション ID を保持してください。
 
 Agent SDK は `query()` ごとに claude サブプロセスを起動し、認証情報を起動時に1度だけ読みます (statusline なし、クエリ途中のホットスワップなし)。そのため統合は境界駆動です。
 

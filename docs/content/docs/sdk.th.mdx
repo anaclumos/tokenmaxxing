@@ -9,18 +9,19 @@ description: "จับคู่พูลเข้ากับ Claude Agent SDK 
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import { ensureBestAccount, pooledOptions, stopHookCheck } from "tokenmaxxing";
 
-await ensureBestAccount(); // run the switch decision before the spawn
+await ensureBestAccount();
 
 for await (const message of query({
   prompt: "...",
   options: {
-    ...pooledOptions(), // pinned real claude + scrubbed env
-    hooks: { Stop: [{ hooks: [stopHookCheck] }] }, // re-decide at every turn boundary
+    ...pooledOptions(),
+    hooks: { Stop: [{ hooks: [stopHookCheck] }] },
   },
 })) {
-  // capture the session id from the init message for `resume` across swaps
 }
 ```
+
+ตัวลูปจะได้รับสตรีมข้อความเข้ามา เก็บ session id จากข้อความ init ไว้ถ้าคุณต้องการ `resume` ข้ามการสลับบัญชี
 
 Agent SDK จะ spawn โปรเซสย่อย claude ต่อ `query()` หนึ่งครั้ง และอ่าน credential เพียงครั้งเดียวตอน spawn ไม่มี statusline ไม่มี hot-swap ระหว่าง query ดังนั้นการผสานรวมจึงขับเคลื่อนด้วยขอบเขต:
 

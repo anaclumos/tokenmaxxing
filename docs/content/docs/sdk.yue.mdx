@@ -9,18 +9,19 @@ description: "喺你自己行嘅 agent 入面將帳戶池同 Claude Agent SDK �
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import { ensureBestAccount, pooledOptions, stopHookCheck } from "tokenmaxxing";
 
-await ensureBestAccount(); // run the switch decision before the spawn
+await ensureBestAccount();
 
 for await (const message of query({
   prompt: "...",
   options: {
-    ...pooledOptions(), // pinned real claude + scrubbed env
-    hooks: { Stop: [{ hooks: [stopHookCheck] }] }, // re-decide at every turn boundary
+    ...pooledOptions(),
+    hooks: { Stop: [{ hooks: [stopHookCheck] }] },
   },
 })) {
-  // capture the session id from the init message for `resume` across swaps
 }
 ```
+
+迴圈體收到嘅係訊息串流；如果你想跨切換做 `resume`，就記住 init 訊息入面嗰個 session id。
 
 Agent SDK 每次 `query()` 都會生成一個 claude 子進程，喺生成嗰陣讀一次憑證 - 冇 statusline，query 中途亦都冇熱切換 - 所以呢個整合係跟邊界嚟行嘅：
 

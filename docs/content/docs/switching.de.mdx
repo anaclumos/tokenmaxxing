@@ -7,16 +7,16 @@ Die Entscheidung hat zwei Ebenen: ein Aktivierungstor und dann einen greedy- ode
 
 ## Aktivierung
 
-Unterhalb von `policy.greedySessionFloor` (Standard 50, in Prozent des 5-Stunden-Sitzungsfensters) läuft die Entscheidung gar nicht - eine frische Sitzung reitet auf ihrem Konto. Sobald das aktive Sitzungsfenster zu 50 % genutzt ist oder eine harte Schranke überschritten wird, greift die Entscheidung.
+Unterhalb von `policy.greedySessionFloor` (Standard 50, in Prozent des 5-Stunden-Sitzungsfensters) läuft die Entscheidung gar nicht - eine frische Sitzung reitet auf ihrem Konto. Sobald das aktive Sitzungsfenster zu 50 % genutzt ist oder eine Schranke überschritten wird, greift die Entscheidung.
 
 ## Screening-Schranken
 
 Die Schwellenwerte sind Screening-Schranken, nicht der Auslöser für Panik:
 
-- `thresholds.session`: 95. Eine 5-Stunden-Zurücksetzung ist billig auszusitzen, daher wechselt das Sitzungsfenster früher weg.
+- `thresholds.session`: eine Leiter, Standard `[50, 80, 95]`. Jede Auswertung ermittelt eine aktive Stufe: die niedrigste Stufe, auf der noch ein gebündeltes Konto nutzbar ist, das aktuelle eingeschlossen. Solange ein Konto unter 50 liegt, ist die Schranke 50, sodass ein Platz, der 50 überschreitet, an dieses Konto übergibt. Sobald jedes Konto über 50 liegt, steigt die Schranke auf 80, und sobald alle über 80 liegen, auf 95. Die oberste Stufe ist die Endschranke, darüber übernimmt die Wand (unten). Eine 5-Stunden-Zurücksetzung ist billig auszusitzen, daher wird der Pool Ebene für Ebene ausgeschöpft und kein Konto läuft seinen Geschwistern weit voraus.
 - `thresholds.weekly`: 98. Diese eine Schranke deckt sowohl das 7-Tage-Aggregat als auch jede wöchentliche Pro-Modell-Obergrenze ab. Das Wochenkontingent ist use-it-or-lose-it, daher wird es nah an die Wand ausgeschöpft.
 
-Beide liegen bewusst unter 100: Der Spielraum ist das Budget, um eine saubere Zuggrenze zu erreichen (plus bis zu einen Zug Übernahmeverzögerung auf macOS), bevor das Konto tatsächlich sein Limit erreicht. Dieselben Schranken screenen Wechselkandidaten: Ein Konto über einer seiner Schranken ist kein gültiges Ziel. Auslöser und Screening verwenden immer dieselben effektiven Schranken (Schwellenwerte minus `policy.projectionMargin`), denn ein Screening, das laxer als der Auslöser ist, würde Wechsel auf Konten landen lassen, die der Auslöser sofort wieder markiert, und den Pool hin- und herpendeln lassen.
+Beide liegen bewusst unter 100: Der Spielraum ist das Budget, um eine saubere Zuggrenze zu erreichen (plus bis zu einen Zug Übernahmeverzögerung auf macOS), bevor das Konto tatsächlich sein Limit erreicht. Dieselben Schranken screenen Wechselkandidaten: Ein Konto über einer seiner Schranken ist kein gültiges Ziel. Auslöser und Screening verwenden immer dieselben effektiven Schranken (die aktive Stufe und die Wochenschranke, jeweils minus `policy.projectionMargin`), denn ein Screening, das laxer als der Auslöser ist, würde Wechsel auf Konten landen lassen, die der Auslöser sofort wieder markiert, und den Pool hin- und herpendeln lassen. Eine Stufe zählt nur Konten, die auf ihr nutzbar sind: Ein toter Grant, eine verbrannte gegatete Pro-Modell-Obergrenze oder eine serverseitig erzwungene Sperre hält die Schranke nicht unten, und innerhalb einer Auswertung wird die Stufe bei jedem erneuten Versuch neu aus dem Pool gelesen. Codex liest nur die oberste Stufe, denn ein Neustart ist sein Wechsel.
 
 ## Das Ziel: Tempodruck
 

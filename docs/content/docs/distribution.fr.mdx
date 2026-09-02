@@ -5,7 +5,7 @@ description: "Code source TypeScript sur npm et Nix, exécuté par Bun, publié 
 
 Le paquet npm livre du code source TypeScript, pas une compilation : le bin `tokenmaxxing` pointe directement vers `src/main.ts` avec un shebang Bun, et Bun 1.2.6 ou plus récent l'exécute tel quel. C'est pourquoi Bun est une exigence stricte. Il n'y a aucun binaire compilé par conception : une première version a livré un unique binaire macOS de 61 Mo à toutes les plateformes et a échoué sur Linux avec `exec format error`, et des paquets compilés par plateforme nécessiteraient chacun leur propre pipeline de publication, si bien que l'exécution du code source par Bun est devenue le modèle de distribution.
 
-La table `exports` du paquet expose `src/sdk.ts` comme point d'entrée programmatique décrit dans [La surface du SDK Agent](/fr/sdk). Les versions sont taguées `v<version>` sur GitHub ; le CI publie sur npm via la publication de confiance (OIDC, avec provenance), et la porte de publication exécute d'abord la vérification de types et la suite de tests complète.
+La table `exports` du paquet expose `src/sdk.ts` comme point d'entrée programmatique décrit dans [La surface du SDK Agent](/fr/sdk). Les versions sont taguées `v<version>` sur GitHub ; le CI publie sur npm via la publication de confiance (OIDC, avec provenance), et la porte de publication exécute d'abord la vérification de types.
 
 ## Nix / nix-darwin
 
@@ -29,7 +29,6 @@ nix-darwin (ajoute l'overlay pour que `pkgs.tokenmaxxing` se résolve) :
 ```nix
 {
   inputs.tokenmaxxing.url = "github:anaclumos/tokenmaxxing";
-  # ...
   modules = [
     inputs.tokenmaxxing.darwinModules.withOverlay
     { programs.tokenmaxxing.enable = true; }

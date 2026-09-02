@@ -9,18 +9,19 @@ Titik masuk terprogram paket (`exports["."]` menunjuk ke `src/sdk.ts`) memasangk
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import { ensureBestAccount, pooledOptions, stopHookCheck } from "tokenmaxxing";
 
-await ensureBestAccount(); // run the switch decision before the spawn
+await ensureBestAccount();
 
 for await (const message of query({
   prompt: "...",
   options: {
-    ...pooledOptions(), // pinned real claude + scrubbed env
-    hooks: { Stop: [{ hooks: [stopHookCheck] }] }, // re-decide at every turn boundary
+    ...pooledOptions(),
+    hooks: { Stop: [{ hooks: [stopHookCheck] }] },
   },
 })) {
-  // capture the session id from the init message for `resume` across swaps
 }
 ```
+
+Badan perulangan menerima aliran pesan. Simpan id sesi dari pesan init jika Anda ingin memakai `resume` melintasi pertukaran.
 
 Agent SDK menelurkan sebuah subproses claude per `query()` dan membaca kredensial sekali saat penelurannya - tanpa statusline, tanpa hot-swap di tengah query - jadi integrasinya digerakkan-batas:
 

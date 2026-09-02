@@ -9,18 +9,19 @@ description: "pool ን በራስዎ በሚያሄዷቸው agentዎች ውስጥ 
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import { ensureBestAccount, pooledOptions, stopHookCheck } from "tokenmaxxing";
 
-await ensureBestAccount(); // run the switch decision before the spawn
+await ensureBestAccount();
 
 for await (const message of query({
   prompt: "...",
   options: {
-    ...pooledOptions(), // pinned real claude + scrubbed env
-    hooks: { Stop: [{ hooks: [stopHookCheck] }] }, // re-decide at every turn boundary
+    ...pooledOptions(),
+    hooks: { Stop: [{ hooks: [stopHookCheck] }] },
   },
 })) {
-  // capture the session id from the init message for `resume` across swaps
 }
 ```
+
+የ loop አካሉ የመልእክት ዥረቱን ይቀበላል፤ በመቀያየሮች ላይ `resume` ማድረግ ከፈለጉ የ session id ን ከ init መልእክቱ ያቆዩ።
 
 Agent SDK በ `query()` አንድ claude subprocess ያስነሳል እና credentialዎችን በ spawn አንድ ጊዜ ያነባል - ምንም statusline የለም፣ ምንም mid-query hot-swap የለም - ስለዚህ ውህደቱ boundary-driven ነው፦
 
