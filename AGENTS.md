@@ -41,7 +41,7 @@ Accounts rank by pace pressure (remaining percent over time to weekly reset, hig
 - Engaged but under every bar = the GREEDY path: `currentWins` keeps the seat on best-or-tie, else swap onto the strictly better account. It never depleted-waits or pre-parks. Only the HARD path (a bar crossed) may.
 - Layer 2 is the fallback reached only when the hard path finds no usable target, judged against the wall (`hardBars` = hardThresholds minus projectionMargin). A seat under its wall HOLDS and squeezes in place, and that check runs BEFORE any swap, or equally-squeezable siblings ping-pong. A walled seat swaps onto the best under-wall account.
 - Layer 2 is CLAUDE-ONLY. A codex last-drop-swap would strand siblings on the walled account, because codex cannot hot-adopt and the reconcile only signals siblings onto a Layer-1-usable seat. Codex rides its account to the wall instead. Do not extend it.
-- Build EVERY PickCtx and trigger floor from `effectiveBars(cfg)`: one bar per window for trigger and screening alike, or a margin-triggered swap lands inside the band and ping-pongs on the cooldown beat.
+- Build EVERY Claude PickCtx and trigger floor from `effectiveBars(cfg, pool)`, which resolves the 5h ladder (`thresholds.session`, ascending rungs, default 50/80/95) to the lowest rung some pooled account still clears, the current account included: one bar per window for trigger and screening alike, re-read from the freshly loaded pool on every retry, or a margin-triggered swap lands inside the band and ping-pongs on the cooldown beat. Codex reads `terminalBars(cfg)`, the top rung only. The check cadence is capped one band per rung climbed (`STAGE_CEILING_MS`).
 - Match model names by family substring or prefix, never by exact display string. Display names drift per release in BOTH directions ("Opus 4.8", and "Fable" became "Fable 5" in 2.1.206), so any exact-match gate silently stops matching. One did, and an account's Opus weekly drained to 100% with no auto-switch.
 - Unmeasured must never look safe: an unmeasured usage percent renders as unknown, never 0, and ranks last, never first.
 - Per-model weekly caps exist only for Sonnet and Fable, and only Fable gates a switch (owner, 2026-07-12).
@@ -93,7 +93,7 @@ Short pointers.
 
 ## Testing
 
-`bun test/e2e/swap-concurrency.ts` is standalone, not part of `bun test`, and has rotted silently once. Re-run it by hand after any decision-path change. New tests go inside `bun test`.
+The repo carries no test code and no code comments (owner ruling 2026-09-02: "Delete all testcodes and comments from the codebase"). Do not add test files, a test script, a test CI step, or comments. Verification is `bun run typecheck` plus hermetic CLI runs under a throwaway `TOKENMAXXING_HOME` and free live reads.
 
 The live interactive-PTY SIGTERM test is still owed (`DESIGN.md` §9), but the owner declined it once. Never re-run it without asking.
 
@@ -109,6 +109,6 @@ The live interactive-PTY SIGTERM test is still owed (`DESIGN.md` §9), but the o
 The cloud VM is a throwaway Linux clone, not the owner's Mac, so its git-safety and live-process cautions do not apply here; the machine-gotchas above still describe real runtime behavior.
 
 - Runtime is Bun, which is not on the base image. The startup update script installs it to `~/.bun/bin` (added to `~/.bashrc`). A fresh non-login shell may not have it on PATH: run `export PATH="$HOME/.bun/bin:$PATH"` or call `~/.bun/bin/bun` directly.
-- No Claude/Codex subscription logins exist here and none should be created, so the live swap loop, `init`, `add`, `auth`, and `status` cannot run end to end. Exercise the real decision engine hermetically instead: `bun test` plus the standalone `bun test/e2e/swap-concurrency.ts` (see `## Testing`). On Linux the 4 macOS-keychain tests skip, which is expected.
+- No Claude/Codex subscription logins exist here and none should be created, so the live swap loop, `init`, `add`, `auth`, and `status` cannot run end to end. Exercise the decision engine hermetically instead, under a throwaway `TOKENMAXXING_HOME` (see `## Testing`).
 - For manual CLI pokes that must not touch real state, point `TOKENMAXXING_HOME` at a throwaway dir (e.g. `TOKENMAXXING_HOME=/tmp/xx bun run src/main.ts config`); it overrides the whole `~/.config/tokenmaxxing` state root. Commands that only read/write local state (`help`, `config get|set|unset`, `ls`, `doctor`) work with no accounts; `doctor` exits 1 on a fresh dir because nothing is installed, which is correct.
 - The docs site under `docs/` is a separate Next.js app with its own `bun.lock`; the root update script does not install it. Run `cd docs && bun install` then `bun run dev` (serves http://localhost:3000). First page load compiles via Turbopack and can take ~20s.

@@ -4,7 +4,7 @@ import { readOAuthAccount } from "../lib/claudejson.ts";
 import { ensureLiveTokenFresh, probeActiveUsage, probeParkedUsage, type SampleOutcome } from "../lib/sample.ts";
 import { withLock } from "../lib/lock.ts";
 import { codexPaths, paths } from "../lib/paths.ts";
-import { earliestReset, effectiveBars, isExhausted, nextWeeklyReset } from "../lib/picker.ts";
+import { earliestReset, effectiveBars, isExhausted, nextWeeklyReset, terminalBars } from "../lib/picker.ts";
 import { loadCodexAccounts, saveCodexAccounts } from "../lib/codexstate.ts";
 import { liveCodexAccountId, sampleCodexAccount, type CodexSampleOutcome } from "../lib/codexsample.ts";
 import { isCodexExhausted } from "../lib/codexpick.ts";
@@ -93,7 +93,8 @@ export async function cmdStatus(force = false, preRender?: () => void): Promise<
   });
 
   preRender?.();
-  console.log(c.dim(`thresholds 5h ${cfg.thresholds.session}% weekly ${cfg.thresholds.weekly}%  (${count({ n: idx.accounts.length, noun: "claude account" })})`));
+  const bars = effectiveBars(cfg, { accounts: idx.accounts, now, switchFamilies: cfg.policy.switchModels });
+  console.log(c.dim(`thresholds 5h ${cfg.thresholds.session.join("/")}% (at ${bars.session + cfg.policy.projectionMargin}%) weekly ${cfg.thresholds.weekly}%  (${count({ n: idx.accounts.length, noun: "claude account" })})`));
   console.log();
 
   const displayAccounts = sortBy(idx.accounts, [(a) => (a.needsReauth ? 1 : 0), (a) => earliestReset(a, now)]);
@@ -110,7 +111,7 @@ export async function cmdStatus(force = false, preRender?: () => void): Promise<
     const badges: string[] = [];
     if (active) badges.push(c.green("active"));
     if (a.needsReauth) badges.push(c.red("needs-reauth"));
-    if (isExhausted(a, { now, thresholds: effectiveBars(cfg), currentAccountUuid: idx.activeAccountUuid, switchFamilies: cfg.policy.switchModels }))
+    if (isExhausted(a, { now, thresholds: bars, currentAccountUuid: idx.activeAccountUuid, switchFamilies: cfg.policy.switchModels }))
       badges.push(c.yellow("exhausted"));
 
     const tier = claudeTierLabel(a);
@@ -187,7 +188,7 @@ async function renderCodexSection(input: {
     const badges: string[] = [];
     if (active) badges.push(c.green("active"));
     if (account.needsReauth) badges.push(c.red("needs-reauth"));
-    if (isCodexExhausted({ account, thresholds: effectiveBars(cfg), now })) badges.push(c.yellow("exhausted"));
+    if (isCodexExhausted({ account, thresholds: terminalBars(cfg), now })) badges.push(c.yellow("exhausted"));
     console.log(`${marker} ${c.bold(account.label)}${account.planType ? ` ${c.dim(account.planType)}` : ""}${badges.length ? ` ${badges.join(" ")}` : ""}`);
 
     const usage = account.lastUsage;

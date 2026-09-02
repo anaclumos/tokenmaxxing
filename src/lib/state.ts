@@ -9,6 +9,7 @@ import {
   LastSwapSchema,
   ModelUsageStateSchema,
   NextCheckSchema,
+  SessionLadderSchema,
   UsageStateSchema,
   type AccountsIndex,
   type Config,
@@ -17,7 +18,7 @@ import {
 } from "./types.ts";
 
 const DEFAULT_CONFIG: Config = {
-  thresholds: { session: 95, weekly: 98 },
+  thresholds: { session: [50, 80, 95], weekly: 98 },
   hardThresholds: { session: 100, weekly: 100 },
   claudeBin: "",
   codexBin: "",
@@ -28,7 +29,7 @@ const PercentSchema = z.number().min(0).max(100);
 
 export const ConfigFileSchema = z
   .object({
-    thresholds: z.object({ session: PercentSchema, weekly: PercentSchema }).partial(),
+    thresholds: z.object({ session: SessionLadderSchema, weekly: PercentSchema }).partial(),
     hardThresholds: z.object({ session: PercentSchema, weekly: PercentSchema }).partial(),
     claudeBin: z.string(),
     codexBin: z.string(),

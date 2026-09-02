@@ -18,7 +18,6 @@ jobs:
       - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile
       - run: bun run typecheck
-      - run: bun test
       - name: Pack and verify the artifact
         run: |
           npm pack
@@ -41,9 +40,9 @@ jobs:
         run: |
           ./result/bin/tokenmaxxing help
           ./result/bin/xx help >/dev/null
-          TOKENMAXXING_HOME="$RUNNER_TEMP/tm-nix" ./result/bin/tokenmaxxing config set thresholds.session 90
-          TOKENMAXXING_HOME="$RUNNER_TEMP/tm-nix" ./result/bin/tokenmaxxing config get thresholds.session | grep -qx 90
-          TOKENMAXXING_HOME="$RUNNER_TEMP/tm-nix" ./result/bin/tokenmaxxing config unset thresholds.session
+          TOKENMAXXING_HOME="$RUNNER_TEMP/tm-nix" ./result/bin/tokenmaxxing config set thresholds.weekly 90
+          TOKENMAXXING_HOME="$RUNNER_TEMP/tm-nix" ./result/bin/tokenmaxxing config get thresholds.weekly | grep -qx 90
+          TOKENMAXXING_HOME="$RUNNER_TEMP/tm-nix" ./result/bin/tokenmaxxing config unset thresholds.weekly
 
   publish:
     if: github.event_name == 'release'

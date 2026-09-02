@@ -13,7 +13,7 @@ import { fetchCodexUsage } from "./codexusage.ts";
 import { codexIdentityOf, isCodexAccessExpiring, readLiveCodexAuth, writeLiveCodexAuth, writeParkedCodexAuth } from "./codexauth.ts";
 import { liveCodexAccountId } from "./codexsample.ts";
 import { livingCodexPresences, presentCodexAccountIds, targetableCodexAccounts } from "./codexpresence.ts";
-import { effectiveBars } from "./picker.ts";
+import { terminalBars } from "./picker.ts";
 import { log } from "./log.ts";
 import { CodexAccountSchema, CodexReconcileMarkerSchema, type CodexAccount } from "./types.ts";
 
@@ -100,7 +100,7 @@ function postSwapResweep(input: { liveAccountId: string; bars: { session: number
 export async function evaluateAndMaybeSwapCodex(input: { now?: number }): Promise<CodexSwapDecision> {
   const now = input.now ?? Date.now();
   const cfg = loadConfig();
-  const bars = effectiveBars(cfg);
+  const bars = terminalBars(cfg);
 
   return withLock(codexPaths.lockFile, async () => {
     let index = loadCodexAccounts();

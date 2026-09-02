@@ -9,8 +9,6 @@
     bun2nix.inputs.systems.follows = "systems";
   };
 
-  # bun2nix's Rust CLI is cached here; consumers of this flake do not need it
-  # unless regenerating bun.nix.
   nixConfig = {
     extra-substituters = [
       "https://nix-community.cachix.org"
@@ -38,8 +36,6 @@
       );
     in
     {
-      # Compose bun2nix's overlay so `pkgs.tokenmaxxing` works from this flake's
-      # overlay alone (darwinModules.withOverlay / nixosModules.withOverlay).
       overlays.default = lib.composeExtensions inputs.bun2nix.overlays.default (
         final: _prev: {
           tokenmaxxing = final.callPackage ./nix/package.nix { };
@@ -58,14 +54,10 @@
         };
       });
 
-      # Import into nix-darwin / Home Manager / NixOS configs. Each module
-      # expects `programs.tokenmaxxing.package` or this flake's overlay so
-      # `pkgs.tokenmaxxing` resolves.
       darwinModules.default = import ./nix/modules/darwin.nix;
       homeManagerModules.default = import ./nix/modules/home-manager.nix;
       nixosModules.default = import ./nix/modules/nixos.nix;
 
-      # Convenience: overlay + matching module, for `imports = [ inputs.tokenmaxxing.darwinModules.withOverlay ]`.
       darwinModules.withOverlay =
         { ... }:
         {

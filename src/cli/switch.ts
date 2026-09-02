@@ -44,9 +44,15 @@ export async function cmdSwitch(selector?: string): Promise<number> {
       return swapTo(target);
     }
 
-    const everyone: PickCtx = { now, thresholds: effectiveBars(cfg), currentAccountUuid: null, switchFamilies: cfg.policy.switchModels };
+    const everyoneIn = (accounts: Account[]): PickCtx => ({
+      now,
+      thresholds: effectiveBars(cfg, { accounts, now, switchFamilies: cfg.policy.switchModels }),
+      currentAccountUuid: null,
+      switchFamilies: cfg.policy.switchModels,
+    });
     while (true) {
       const cur = loadAccounts();
+      const everyone = everyoneIn(cur.accounts);
       const active =
         (claimedOrg != null ? cur.accounts.find((a) => a.organizationUuid === claimedOrg) : null) ??
         cur.accounts.find((a) => a.accountUuid === cur.activeAccountUuid) ??
@@ -74,7 +80,7 @@ export async function cmdSwitch(selector?: string): Promise<number> {
     }
 
     const fresh = loadAccounts();
-    const earliest = pickEarliestReset(fresh.accounts, everyone);
+    const earliest = pickEarliestReset(fresh.accounts, everyoneIn(fresh.accounts));
     if (!earliest) {
       const reauth = fresh.accounts.filter((a) => a.needsReauth).map((a) => a.label);
       if (reauth.length > 0) { console.error(c.yellow(`no switchable account - reauth needed (run \`tokenmaxxing auth --all\`): ${reauth.join(", ")}`)); return 1; }

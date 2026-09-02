@@ -11,7 +11,6 @@ bun2nix.writeBunApplication {
     fileset = lib.fileset.unions [
       ../package.json
       ../bun.lock
-      ../bunfig.toml
       ../tsconfig.json
       ../src
     ];
