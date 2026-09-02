@@ -40,7 +40,7 @@ tee ው በለውጥ-ላይ-ይጽፋል፦ ቁጥሮች ሳይለወጡ ሲቀ�
 
 ## ወቅታዊው የፍተሻ timer
 
-Hookዎች የሚቀሰቀሱት በ turn ወሰኖች ላይ ብቻ ነው፣ እና አንድ ረጅም agentic turn መስኮትን ያለ አንድ ወሰን ከጤናማ ወደ የተሟጠጠ ማቃጠል ይችላል። ስለዚህ `init` በተጨማሪም ወቅታዊ timer ይጭናል - በ macOS ላይ launchd agent፣ በ Linux ላይ systemd user timer - እሱም ከ turn እንቅስቃሴ ውጭ በየ180 ሰከንዱ `tokenmaxxing check` ን ያሄዳል።
+Hookዎች የሚቀሰቀሱት በ turn ወሰኖች ላይ ብቻ ነው፣ እና አንድ ረጅም agentic turn መስኮትን ያለ አንድ ወሰን ከጤናማ ወደ የተሟጠጠ ማቃጠል ይችላል። ስለዚህ `init` በተጨማሪም ወቅታዊ timer ይጭናል - በ macOS ላይ launchd agent፣ በ Linux ላይ systemd user timer - እሱም ከ turn እንቅስቃሴ ውጭ በየ60 ሰከንዱ `tokenmaxxing check --if-due` ን ያሄዳል። ፍተሻው ከቀጥታው መለያ ክፍተት አንጻር ራሱን ያስተካክላል፦ ወደ እያንዳንዱ bar በቂ ቦታ ሲኖር በየአምስት ደቂቃው ይገመግማል፣ ከ bar ሲቀርብ ደግሞ በእያንዳንዱ tick ([መቀያየር እንዴት እንደሚወስን](/am/switching) ይመልከቱ)።
 
 ## SessionStart hook
 
