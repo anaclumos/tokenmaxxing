@@ -184,7 +184,7 @@ export async function evaluateAndMaybeSwap(now = Date.now(), anticipatory = fals
       idx2.accounts.find((a) => a.accountUuid === idx2.activeAccountUuid) ??
       null;
 
-    if (!enforced2 && !isOver(u2, mu2, org2, bars, cfg, now)) {
+    const greedy = async (): Promise<SwapDecision> => {
       while (true) {
         const cur = loadAccounts();
         const active = seatOf(cur);
@@ -203,10 +203,24 @@ export async function evaluateAndMaybeSwap(now = Date.now(), anticipatory = fals
         log("decide.greedy_swap", { account: best.accountUuid.slice(0, 8) });
         return { swapped: true, account: best, reason: "swapped" };
       }
-    }
+    };
+    if (!enforced2 && !isOver(u2, mu2, org2, bars, cfg, now)) return greedy();
 
-    const landed = await chooseAndSwap((cur) => ({ now, thresholds: barsOf(cur.accounts), switchFamilies, currentAccountUuid: seatOf(cur)?.accountUuid ?? null }));
-    if (landed) return { swapped: true, account: landed, reason: "swapped" };
+    while (true) {
+      const cur = loadAccounts();
+      const seat = seatOf(cur);
+      const thresholds = barsOf(cur.accounts);
+      if (!enforced2 && seat && !seat.needsReauth && !isExhausted(seat, { now, thresholds, currentAccountUuid: null, switchFamilies })) return greedy();
+      const best = pickBest(cur.accounts, { now, thresholds, currentAccountUuid: seat?.accountUuid ?? null, switchFamilies });
+      if (!best) break;
+      try {
+        await performSwap(best);
+      } catch (e) {
+        if (e instanceof InvalidGrantError) continue;
+        throw e;
+      }
+      return { swapped: true, account: best, reason: "swapped" };
+    }
 
     const hardCtx = { now, thresholds: hardBars(cfg), currentAccountUuid: null, switchFamilies };
     const seat = seatOf(loadAccounts());
@@ -214,7 +228,7 @@ export async function evaluateAndMaybeSwap(now = Date.now(), anticipatory = fals
       log("decide.last_drop_hold", { account: seat.accountUuid.slice(0, 8) });
       return { swapped: false, account: null, reason: "last-drop-hold" };
     }
-    const squeezed = await chooseAndSwap((cur) => ({ ...hardCtx, currentAccountUuid: seatOf(cur)?.accountUuid ?? null }));
+    const squeezed = await chooseAndSwap({ ...hardCtx, currentAccountUuid: seat?.accountUuid ?? null });
     if (squeezed) {
       log("decide.last_drop_swap", { account: squeezed.accountUuid.slice(0, 8) });
       return { swapped: true, account: squeezed, reason: "last-drop-swap" };

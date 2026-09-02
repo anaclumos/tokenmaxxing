@@ -5,7 +5,7 @@ import { swapOAuthAccount } from "./claudejson.ts";
 import { withClaudeRefreshLock } from "./claudelock.ts";
 import { log } from "./log.ts";
 import { pickBest, type PickCtx } from "./picker.ts";
-import { CredentialBlobSchema, type Account, type AccountsIndex, type OAuthCreds } from "./types.ts";
+import { CredentialBlobSchema, type Account, type OAuthCreds } from "./types.ts";
 
 function parseBlob(raw: string) {
   return CredentialBlobSchema.parse(JSON.parse(raw));
@@ -105,12 +105,12 @@ export async function performSwap(target: Account): Promise<void> {
   log("swap.done", { account: target.accountUuid.slice(0, 8), email: target.email });
 }
 
-export async function chooseAndSwap(ctxOf: (idx: AccountsIndex) => PickCtx): Promise<Account | null> {
+export async function chooseAndSwap(ctx: PickCtx): Promise<Account | null> {
   const tried = new Set<string>();
   while (true) {
     const idx = loadAccounts();
     const candidates = idx.accounts.filter((a) => !tried.has(a.accountUuid));
-    const best = pickBest(candidates, ctxOf(idx));
+    const best = pickBest(candidates, ctx);
     if (!best) return null;
     tried.add(best.accountUuid);
     try {

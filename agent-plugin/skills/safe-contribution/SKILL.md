@@ -1,15 +1,14 @@
 ---
 name: safe-contribution
-description: Safely change and ship tokenmaxxing (tests, PR window, Mac vs Linux skew, public-repo hygiene). Use when editing this repo, opening PRs, or verifying decision-path changes.
+description: Safely change and ship tokenmaxxing (verification without a test suite, PR window, Mac vs Linux skew, public-repo hygiene). Use when editing this repo, opening PRs, or verifying decision-path changes.
 ---
 
 # Safe contribution
 
 ## Verify
 
-- Default suite: `bun test`.
-- After decision-path changes, also run `bun test/e2e/swap-concurrency.ts` by hand (not part of `bun test`).
-- Hermetic CLI: `TOKENMAXXING_HOME=/tmp/xx-test bun run src/main.ts ...`.
+- The repo carries no test code and no comments (owner ruling 2026-09-02). Never add tests, a test script, or comments.
+- Verify with `bun run typecheck`, then hermetic CLI runs: `TOKENMAXXING_HOME=/tmp/xx-test bun run src/main.ts ...` (for decision-path changes, write accounts.json, usage.json, config.json, and a claude.json under that root and run `check`; point `TOKENMAXXING_KEYCHAIN_SERVICE` and `TOKENMAXXING_KEYCHAIN_ACCOUNT` at throwaway names).
 - Ask before any run that meters real quota (`status --force`, live-pool inference). Free `/usage` / plain status is fine.
 
 ## Ship
