@@ -10,7 +10,7 @@ import { liveCodexAccountId, sampleCodexAccount, type CodexSampleOutcome } from 
 import { isCodexExhausted } from "../lib/codexpick.ts";
 import { codexLimitLabel, isSessionWindow } from "../lib/codexusage.ts";
 import { bar, c, claudeTierLabel, count, fmtAgo, fmtReset } from "./render.ts";
-import type { FullUsage } from "../lib/usage.ts";
+import { gatedFamilies, type FullUsage } from "../lib/usage.ts";
 import type { Account, Config, CodexWindow, UsageWindow } from "../lib/types.ts";
 
 export async function cmdStatus(force = false, preRender?: () => void): Promise<number> {
@@ -93,7 +93,8 @@ export async function cmdStatus(force = false, preRender?: () => void): Promise<
   });
 
   preRender?.();
-  const bars = effectiveBars(cfg, { accounts: idx.accounts, now, switchFamilies: cfg.policy.switchModels });
+  const families = gatedFamilies(loadUsage()?.model ?? null, cfg.policy.switchModels);
+  const bars = effectiveBars(cfg, { accounts: idx.accounts, now, switchFamilies: families });
   console.log(c.dim(`thresholds 5h ${cfg.thresholds.session.join("/")}% (at ${bars.session + cfg.policy.projectionMargin}%) weekly ${cfg.thresholds.weekly}%  (${count({ n: idx.accounts.length, noun: "claude account" })})`));
   console.log();
 
@@ -111,7 +112,7 @@ export async function cmdStatus(force = false, preRender?: () => void): Promise<
     const badges: string[] = [];
     if (active) badges.push(c.green("active"));
     if (a.needsReauth) badges.push(c.red("needs-reauth"));
-    if (isExhausted(a, { now, thresholds: bars, currentAccountUuid: idx.activeAccountUuid, switchFamilies: cfg.policy.switchModels }))
+    if (isExhausted(a, { now, thresholds: bars, currentAccountUuid: idx.activeAccountUuid, switchFamilies: families }))
       badges.push(c.yellow("exhausted"));
 
     const tier = claudeTierLabel(a);
