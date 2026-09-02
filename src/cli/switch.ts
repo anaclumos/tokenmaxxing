@@ -1,10 +1,11 @@
 import { withLock } from "../lib/lock.ts";
 import { paths } from "../lib/paths.ts";
-import { loadAccounts, loadConfig } from "../lib/state.ts";
+import { loadAccounts, loadConfig, loadUsage } from "../lib/state.ts";
 import { readOAuthAccount } from "../lib/claudejson.ts";
 import { performSwap } from "../lib/swap.ts";
 import { currentWins, effectiveBars, pickBest, pickEarliestReset, weeklyExpiry, type PickCtx } from "../lib/picker.ts";
 import { InvalidGrantError } from "../lib/oauth.ts";
+import { gatedFamilies } from "../lib/usage.ts";
 import { findAccount } from "./rename.ts";
 import { c, fmtReset } from "./render.ts";
 import type { Account } from "../lib/types.ts";
@@ -44,11 +45,12 @@ export async function cmdSwitch(selector?: string): Promise<number> {
       return swapTo(target);
     }
 
+    const switchFamilies = gatedFamilies(loadUsage()?.model ?? null, cfg.policy.switchModels);
     const everyoneIn = (accounts: Account[]): PickCtx => ({
       now,
-      thresholds: effectiveBars(cfg, { accounts, now, switchFamilies: cfg.policy.switchModels }),
+      thresholds: effectiveBars(cfg, { accounts, now, switchFamilies }),
       currentAccountUuid: null,
-      switchFamilies: cfg.policy.switchModels,
+      switchFamilies,
     });
     while (true) {
       const cur = loadAccounts();
