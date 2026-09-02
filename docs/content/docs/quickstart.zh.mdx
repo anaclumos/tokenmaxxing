@@ -3,22 +3,22 @@ title: 快速上手
 description: "安装 tokenmaxxing，导入当前账户，并汇集更多账户"
 ---
 
-需要 [Bun](https://bun.sh) 和 Claude Code，运行于 macOS 或 Linux。用 Bun 安装，或者如果你已经在用 Nix / nix-darwin，也可以从 flake 安装（参见[构建与分发](/zh/distribution)）：
+需要 [Bun](https://bun.sh) 和 Claude Code，运行于 macOS 或 Linux。用 Bun 安装；如果你已经在用 Nix / nix-darwin，也可以从 flake 安装。无论哪种方式，都要在 `init` 之前把 CLI 放到 PATH 上（参见[构建与分发](/zh/distribution)）：
 
 ```sh
 bun add -g tokenmaxxing
-# or: nix profile install github:anaclumos/tokenmaxxing
-# or: enable programs.tokenmaxxing in your nix-darwin / Home Manager config
 tokenmaxxing init
 ```
+
+用 Nix 的话，把 Bun 那一步换成 `nix profile install github:anaclumos/tokenmaxxing`，或者在自己的 nix-darwin 或 Home Manager 配置里启用 `programs.tokenmaxxing`。
 
 `init` 会做五件事：
 
 1. 把当前已登录的账户作为 #1 号账户导入（没有单独的 `adopt` 命令）。
 2. 安装 `claude` 监督进程 shim。
-3. 在 Claude Code 的 `settings.json` 中安装三个条目：statusLine、Stop hook 和 SessionStart hook（另加一个 subagentStatusLine 条目）。
+3. 在 Claude Code 的 `settings.json` 中安装四个条目：statusLine、Stop hook、StopFailure hook 和 SessionStart hook（另加一个 subagentStatusLine 条目）。
 4. 把监督进程的 bin 目录追加到 shell rc 的 PATH 中（幂等操作，用 `# tokenmaxxing PATH` 注释标记）。它必须排在真正的 `claude` 之前才能拦截。
-5. 安装周期性检查定时器（macOS 上为 launchd agent，Linux 上为 systemd 用户定时器），每 180 秒运行一次 `tokenmaxxing check`。
+5. 安装周期性检查定时器（macOS 上为 launchd agent，Linux 上为 systemd 用户定时器），每 60 秒运行一次 `tokenmaxxing check --if-due`；这项检查会依据活动账户的余量，把自己的节奏调在一到五分钟之间。
 
 重启 shell，然后添加更多账户即可开始：
 

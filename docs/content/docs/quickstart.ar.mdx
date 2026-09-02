@@ -3,22 +3,22 @@ title: البدء السريع
 description: "ثبّت tokenmaxxing، واستورد حسابك الحالي، واجمع مزيدًا من الحسابات"
 ---
 
-يتطلّب [Bun](https://bun.sh) و Claude Code، على macOS أو Linux. ثبّت عبر Bun، أو من الـ flake إن كنت تستخدم Nix / nix-darwin مسبقًا (انظر [البناء والتوزيع](/ar/distribution)):
+يتطلّب [Bun](https://bun.sh) و Claude Code، على macOS أو Linux. ثبّت عبر Bun، أو من الـ flake إن كنت تستخدم Nix / nix-darwin مسبقًا. ضع واجهة سطر الأوامر في PATH قبل `init` (انظر [البناء والتوزيع](/ar/distribution)):
 
 ```sh
 bun add -g tokenmaxxing
-# or: nix profile install github:anaclumos/tokenmaxxing
-# or: enable programs.tokenmaxxing in your nix-darwin / Home Manager config
 tokenmaxxing init
 ```
+
+ويستبدل مستخدمو Nix خطوة Bun بـ `nix profile install github:anaclumos/tokenmaxxing`، أو يفعّلون `programs.tokenmaxxing` في إعداد nix-darwin أو Home Manager لديهم.
 
 يقوم `init` بخمسة أشياء:
 
 1. يستورد الحساب المُسجَّل دخولك به بالفعل بوصفه الحساب رقم 1 (لا يوجد أمر `adopt` منفصل).
 2. يثبّت وسيط (shim) المشرف الخاص بـ `claude`.
-3. يثبّت ثلاثة مدخلات في ملف `settings.json` الخاص بـ Claude Code: سطر حالة (statusLine)، وخطّاف Stop، وخطّاف SessionStart (إضافةً إلى مدخل subagentStatusLine).
+3. يثبّت أربعة مدخلات في ملف `settings.json` الخاص بـ Claude Code: سطر حالة (statusLine)، وخطّاف Stop، وخطّاف StopFailure، وخطّاف SessionStart (إضافةً إلى مدخل subagentStatusLine).
 4. يُلحق دليل bin الخاص بالمشرف بمسار PATH في ملف تهيئة الصدفة لديك (عملية عديمة الأثر عند التكرار، معلّمة بتعليق `# tokenmaxxing PATH`). ويجب أن يسبق `claude` الحقيقي في PATH لكي يعترضه.
-5. يثبّت مؤقّت فحص دوري (عميل launchd على macOS، ومؤقّت مستخدم systemd على Linux) يُشغّل `tokenmaxxing check` كل 180 ثانية.
+5. يثبّت مؤقّت فحص دوري (عميل launchd على macOS، ومؤقّت مستخدم systemd على Linux) يُشغّل `tokenmaxxing check --if-due` كل 60 ثانية، ويضبط الفحص وتيرته بنفسه بين دقيقة وخمس دقائق انطلاقًا من هامش الحساب الحيّ.
 
 أعد تشغيل الصدفة، ثم أضف مزيدًا من الحسابات وانطلق:
 

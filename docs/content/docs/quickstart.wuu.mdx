@@ -3,22 +3,22 @@ title: 快速上手
 description: "装好 tokenmaxxing，拿侬当前嗰账户导进来，再汇拢更多账户。"
 ---
 
-需要 [Bun](https://bun.sh) 搭 Claude Code，勒 macOS 或者 Linux 高头。用 Bun 装，或者侬本来就用 Nix / nix-darwin 个话，从 flake 装（详见[构建搭分发](/wuu/distribution)）：
+需要 [Bun](https://bun.sh) 搭 Claude Code，勒 macOS 或者 Linux 高头。用 Bun 装，或者侬本来就用 Nix / nix-darwin 个话，从 flake 装，`init` 之前先拿 CLI 放进 PATH（详见[构建搭分发](/wuu/distribution)）：
 
 ```sh
 bun add -g tokenmaxxing
-# or: nix profile install github:anaclumos/tokenmaxxing
-# or: enable programs.tokenmaxxing in your nix-darwin / Home Manager config
 tokenmaxxing init
 ```
+
+用 Nix 嗰人拿 Bun 埃一步换成 `nix profile install github:anaclumos/tokenmaxxing`，或者勒自家嗰 nix-darwin 或者 Home Manager 配置里向启用 `programs.tokenmaxxing`。
 
 `init` 会做五桩事体：
 
 1. 拿侬已经登进嗰账户当作 1 号账户导入（呒没另外嗰 `adopt` 命令）。
 2. 装好 `claude` supervisor 垫片。
-3. 勒 Claude Code 嗰 `settings.json` 里向装三条条目：一条 statusLine、一条 Stop hook、搭一条 SessionStart hook（另外还有一条 subagentStatusLine 条目）。
+3. 勒 Claude Code 嗰 `settings.json` 里向装四条条目：一条 statusLine、一条 Stop hook、一条 StopFailure hook，搭一条 SessionStart hook（另外还有一条 subagentStatusLine 条目）。
 4. 拿 supervisor 嗰 bin 目录加到侬 shell rc 嗰 PATH 高头（幂等嗰，用 `# tokenmaxxing PATH` 注释标牢）。伊必须勒 PATH 高头排勒真嗰 `claude` 前头，先拦得牢伊。
-5. 装一个定期检查嗰定时器（macOS 高头是 launchd agent，Linux 高头是 systemd 用户定时器），每 180 秒跑一趟 `tokenmaxxing check`。
+5. 装一个定期检查嗰定时器（macOS 高头是 launchd agent，Linux 高头是 systemd 用户定时器），每 60 秒跑一趟 `tokenmaxxing check --if-due`；搿趟检查会照活跃账户嗰余量，自家勒一分钟到五分钟当中调节节奏。
 
 重启侬嗰 shell，然后再添几个账户就好开跑：
 

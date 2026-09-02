@@ -7,7 +7,7 @@ Cấu hình là JSON tại `~/.config/tokenmaxxing/config.json`. Mọi trường
 
 ```json
 {
-  "thresholds": { "session": 95, "weekly": 98 },
+  "thresholds": { "session": [50, 80, 95], "weekly": 98 },
   "hardThresholds": { "session": 100, "weekly": 100 },
   "claudeBin": "/path/to/real/claude",
   "codexBin": "/path/to/real/codex",
@@ -21,10 +21,11 @@ Cấu hình là JSON tại `~/.config/tokenmaxxing/config.json`. Mọi trường
 }
 ```
 
-- `thresholds.session` / `thresholds.weekly`: các ngưỡng sàng lọc được mô tả trong [Cách chuyển đổi được quyết định](/vi/switching).
-- `hardThresholds.session` / `hardThresholds.weekly`: các ngưỡng tường (mặc định 100, giới hạn máy chủ thực của mỗi tài khoản). Khi mọi tài khoản đều vượt ngưỡng sàng lọc của nó, quyết định Claude tự động sẽ vắt từng tài khoản lên tới tường của nó trước khi dự trữ - xem [Bức tường](/vi/switching). Đặt bằng `thresholds` để vô hiệu hóa; Codex bỏ qua thiết lập này.
+- `thresholds.session`: thang 5 giờ, một danh sách các nấc sàng lọc tăng dần. Mỗi lần đánh giá xác định một nấc đang hoạt động, là nấc thấp nhất mà tại đó vẫn còn một tài khoản trong nhóm dùng được, và nấc đó vừa là yếu tố kích hoạt vừa là bộ sàng lọc ứng viên. Codex chỉ đọc nấc trên cùng. Xem [Cách chuyển đổi được quyết định](/vi/switching).
+- `thresholds.weekly`: ngưỡng sàng lọc hàng tuần, bao trùm mức tổng hợp 7 ngày và mọi mức trần hàng tuần theo từng mô hình.
+- `hardThresholds.session` / `hardThresholds.weekly`: các ngưỡng tường (mặc định 100, giới hạn máy chủ thực của mỗi tài khoản). `hardThresholds.session` phải bằng hoặc cao hơn nấc phiên trên cùng. Khi mọi tài khoản đều vượt ngưỡng sàng lọc của nó, quyết định Claude tự động sẽ vắt từng tài khoản lên tới tường của nó trước khi dự trữ - xem [Bức tường](/vi/switching). Đặt bằng nấc trên cùng và ngưỡng hàng tuần để vô hiệu hóa; Codex bỏ qua thiết lập này.
 - `claudeBin` / `codexBin`: ghim vào các tệp nhị phân THẬT mà các bộ giám sát khởi chạy (được ghi bởi `init` / `init --codex`; chẩn đoán bảo vệ-đệ-quy sẽ bảo bạn sửa `claudeBin` ở đây khi nó không còn trỏ vào tệp nhị phân Claude thật).
-- `policy.projectionMargin`: được trừ khỏi cả các ngưỡng sàng lọc lẫn các ngưỡng tường để tạo thành các ngưỡng hiệu lực.
+- `policy.projectionMargin`: được trừ khỏi mọi nấc phiên, ngưỡng hàng tuần, và các ngưỡng tường để tạo thành các ngưỡng hiệu lực.
 - `policy.greedySessionFloor`: phần trăm phiên đã dùng mà tại đó sự hội tụ tham lam kích hoạt.
 - `policy.switchModels`: các họ mô hình mà mức trần hàng tuần theo từng mô hình của chúng kiểm soát một lần chuyển đổi (các mục được chuyển thành chữ thường khi tải).
 - `policy.usagePollTtlMs`: một lần thăm dò `/usage` theo từng mô hình giữ độ mới trong bao lâu.

@@ -9,18 +9,19 @@ Wurin shigar shirye-shirye na kunshin (`exports["."]` yana nuni ga `src/sdk.ts`)
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import { ensureBestAccount, pooledOptions, stopHookCheck } from "tokenmaxxing";
 
-await ensureBestAccount(); // run the switch decision before the spawn
+await ensureBestAccount();
 
 for await (const message of query({
   prompt: "...",
   options: {
-    ...pooledOptions(), // pinned real claude + scrubbed env
-    hooks: { Stop: [{ hooks: [stopHookCheck] }] }, // re-decide at every turn boundary
+    ...pooledOptions(),
+    hooks: { Stop: [{ hooks: [stopHookCheck] }] },
   },
 })) {
-  // capture the session id from the init message for `resume` across swaps
 }
 ```
+
+Jikin madaukin yana karɓar rafin saƙonni; ka riƙe ID na zama daga saƙon init idan kana son `resume` a tsakanin musanya.
 
 Agent SDK yana ƙirƙirar subprocess na claude ga kowane `query()` kuma yana karanta tantancewa sau ɗaya lokacin ƙirƙira - babu statusline, babu hot-swap tsakiyar-tambaya - don haka haɗin yana bisa iyaka:
 

@@ -5,7 +5,7 @@ description: "كود TypeScript على npm و Nix، بيشتغل بـ Bun، وب
 
 باكدج الـ npm بيشحن كود TypeScript، مش build: الـ `tokenmaxxing` bin بيأشّر على طول على `src/main.ts` بـ Bun shebang، و Bun 1.2.6 أو أحدث بيشغّله زي ما هو. عشان كده Bun مطلب أساسي. مفيش binaries مترجمة عن قصد في التصميم: إصدار بدري شحن binary واحد بحجم 61 MB لـ macOS لكل المنصات وفشل على Linux بـ `exec format error`، والباكدجات المترجمة لكل منصة كل واحدة كانت هتحتاج pipeline إصدار خاص بيها، فالكود اللي بيتشغّل بـ Bun بقى نموذج التوزيع.
 
-خريطة الـ `exports` بتاعت الباكدج بتكشف `src/sdk.ts` كنقطة الدخول البرمجية الموصوفة في [واجهة الـ Agent SDK](/arz/sdk). الإصدارات بتتعلّم بـ `v<version>` على GitHub؛ الـ CI بينشر لـ npm عن طريق النشر الموثوق (OIDC، مع provenance)، وبوابة النشر بتشغّل الـ typecheck ومجموعة الاختبارات الكاملة الأول.
+خريطة الـ `exports` بتاعت الباكدج بتكشف `src/sdk.ts` كنقطة الدخول البرمجية الموصوفة في [واجهة الـ Agent SDK](/arz/sdk). الإصدارات بتتعلّم بـ `v<version>` على GitHub؛ الـ CI بينشر لـ npm عن طريق النشر الموثوق (OIDC، مع provenance)، وبوابة النشر بتشغّل الـ typecheck الأول.
 
 ## Nix / nix-darwin
 
@@ -18,7 +18,14 @@ description: "كود TypeScript على npm و Nix، بيشتغل بـ Bun، وب
 | `homeManagerModules.default` | Home Manager على macOS أو Linux |
 | `nixosModules.default` / `withOverlay` | تثبيت نظام على NixOS |
 
-تشغيل مرة واحدة من غير تثبيت في بروفايل:
+ثبّت في بروفايل (عشان الـ supervisor shims بتاعت `init` تلاقي `tokenmaxxing` ثابت على PATH)، وبعدين اعمل init:
+
+```sh
+nix profile install github:anaclumos/tokenmaxxing
+tokenmaxxing init
+```
+
+تشغيل مرة واحدة من غير تثبيت (help / status بس، ماتعملش `init` بالطريقة دي):
 
 ```sh
 nix run github:anaclumos/tokenmaxxing -- help
@@ -29,7 +36,6 @@ nix-darwin (بيضيف الـ overlay عشان `pkgs.tokenmaxxing` يتحل):
 ```nix
 {
   inputs.tokenmaxxing.url = "github:anaclumos/tokenmaxxing";
-  # ...
   modules = [
     inputs.tokenmaxxing.darwinModules.withOverlay
     { programs.tokenmaxxing.enable = true; }
@@ -37,7 +43,7 @@ nix-darwin (بيضيف الـ overlay عشان `pkgs.tokenmaxxing` يتحل):
 }
 ```
 
-أو حدد الباكدج صراحة (يشتغل مع Home Manager كمان):
+Home Manager (حدد الباكدج صراحة، أو طبّق الـ overlay بتاع الـ flake ده على الـ pkgs اللي Home Manager بيستخدمها):
 
 ```nix
 {
@@ -47,13 +53,14 @@ nix-darwin (بيضيف الـ overlay عشان `pkgs.tokenmaxxing` يتحل):
 }
 ```
 
-Nix بيحط الـ CLI على PATH بس. استيراد الحسابات، وshim المشرف `claude` على PATH، وhooks بتاعة `settings.json`، ومؤقت الفحص الدوري (افتراضيًا) لسه بيجوا من `tokenmaxxing init` — دول بيلمسوا بيانات الاعتماد وإعدادات المستخدم اللي موديول نقي ما ينفعش يعيد كتابتها. حط `programs.tokenmaxxing.checkTimer.enable = true` بس لما تكون عايز Nix يملك المؤقت بدل init.
+Nix بيحط الـ CLI على PATH بس. استيراد الحسابات، وshim المشرف `claude` على PATH، وhooks بتاعة `settings.json`، ومؤقت الفحص الدوري (افتراضيًا) لسه بيجوا من `tokenmaxxing init`. دول بيلمسوا بيانات الاعتماد وإعدادات المستخدم اللي موديول نقي ما ينفعش يعيد كتابتها. حط `programs.tokenmaxxing.checkTimer.enable = true` بس لما تكون عايز Nix يملك المؤقت بدل init (وده كمان بيصدّر `TOKENMAXXING_SKIP_TIMER=1` عشان init مايكتبش unit تاني). المؤقت التصريحي هو مؤقت على مستوى session المستخدم، زي init بالظبط. Linux من غير واجهة محتاج `loginctl enable-linger` عشان يشتغل من غير تسجيل دخول.
 
 لما `bun.lock` يتغيّر، ولّد تعبير اعتماديات Nix من تاني:
 
 ```sh
-bun run nix:bun   # writes bun.nix via bun2nix
+bun run nix:bun   # writes bun.nix via bun2nix@2.1.2
 ```
+
 ## الرخصة
 
 MIT. الكود على [anaclumos/tokenmaxxing](https://github.com/anaclumos/tokenmaxxing).

@@ -24,10 +24,9 @@ El tee es de escritura al cambiar: cuando las cifras no cambian solo actualiza e
 En cada límite de turno, el hook Stop ejecuta la decisión de cambio (consulta [Cómo se decide el cambio](/es/switching)). Cuando un cambio está justificado, ocurre bajo un bloqueo exclusivo `flock(2)` (tomado mediante `bun:ffi`, ya que macOS no incluye un binario `flock(1)`), y las escrituras de credenciales además se interbloquean con el propio bloqueo de refresco de Claude Code. Dentro de la sección crítica, un cambio:
 
 1. Recolecta la credencial en vivo actual hacia la copia de seguridad estacionada de su verdadero propietario.
-2. Instala como la credencial en vivo la credencial recién refrescada de la cuenta destino, fusionándola con el blob en vivo existente para que el estado hermano (como los tokens OAuth por servidor MCP) sobreviva.
-3. Persiste el token rotado del destino en su propia copia de seguridad.
-4. Reescribe de forma atómica el campo `oauthAccount` en `~/.claude.json`.
-5. Confirma la nueva etiqueta activa y borra las instantáneas de uso obsoletas, todo antes de que se libere el bloqueo, de modo que un fallo nunca pueda dejar la credencial instalada y la etiqueta activa apuntando a cuentas distintas.
+2. Instala como la credencial en vivo la credencial recién refrescada de la cuenta destino, fusionándola con el blob en vivo existente para que el estado hermano (como los tokens OAuth por servidor MCP) sobreviva. (El token de refresco rotado del destino ya se persistió en su propia copia de seguridad en el instante en que volvió el refresco, bajo el flock pero antes de esta sección crítica del bloqueo de refresco.)
+3. Reescribe de forma atómica el campo `oauthAccount` en `~/.claude.json`.
+4. Confirma la nueva etiqueta activa y borra las instantáneas de uso obsoletas antes de que se libere el bloqueo. Estos archivos no pueden escribirse de forma atómica todos a la vez ante un fallo, así que un cierre abrupto puede dejar un estado intermedio; el siguiente cambio resuelve el verdadero propietario de la credencial en vivo con independencia de la etiqueta y registra cualquier desvío que detecte.
 
 Como todas las sesiones del perfil por defecto comparten la única credencial en vivo, un solo cambio migra todas las sesiones a la vez, y el flock más una nueva comprobación bajo el bloqueo evita que hooks en carrera quemen dos cuentas.
 
@@ -41,7 +40,7 @@ Solo cuando todas las cuentas del grupo superan sus barras el hook Stop escribe 
 
 ## El temporizador de comprobación periódica
 
-Los hooks solo se disparan en los límites de turno, y un turno agéntico largo puede quemar una ventana de sana a agotada sin un solo límite. Por eso `init` también instala un temporizador periódico - un agente launchd en macOS, un temporizador de usuario systemd en Linux - que ejecuta `tokenmaxxing check` cada 180 segundos independientemente de la actividad de turnos.
+Los hooks solo se disparan en los límites de turno, y un turno agéntico largo puede quemar una ventana de sana a agotada sin un solo límite. Por eso `init` también instala un temporizador periódico - un agente launchd en macOS, un temporizador de usuario systemd en Linux - que ejecuta `tokenmaxxing check --if-due` cada 60 segundos independientemente de la actividad de turnos. La comprobación marca su propio ritmo a partir del margen de la cuenta en vivo: con mucho espacio hasta cada barra evalúa cada cinco minutos, y cerca de una barra en cada tick (consulta [Cómo se decide el cambio](/es/switching)).
 
 ## Un hook SessionStart
 

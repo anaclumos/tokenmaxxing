@@ -3,22 +3,22 @@ title: Hızlı başlangıç
 description: "tokenmaxxing'i kurun, mevcut hesabınızı içe aktarın ve daha fazlasını havuzlayın"
 ---
 
-macOS veya Linux üzerinde [Bun](https://bun.sh) ve Claude Code gerektirir. Bun ile kurun, veya zaten Nix / nix-darwin kullanıyorsanız flake'ten kurun (bkz. [Derleme ve dağıtım](/tr/distribution)):
+macOS veya Linux üzerinde [Bun](https://bun.sh) ve Claude Code gerektirir. Bun ile kurun, veya zaten Nix / nix-darwin kullanıyorsanız flake'ten kurun. `init`'ten önce CLI'yi PATH'e koyun (bkz. [Derleme ve dağıtım](/tr/distribution)):
 
 ```sh
 bun add -g tokenmaxxing
-# or: nix profile install github:anaclumos/tokenmaxxing
-# or: enable programs.tokenmaxxing in your nix-darwin / Home Manager config
 tokenmaxxing init
 ```
+
+Nix kullanıcıları Bun adımının yerine `nix profile install github:anaclumos/tokenmaxxing` çalıştırır ya da nix-darwin veya Home Manager yapılandırmalarında `programs.tokenmaxxing`'i etkinleştirir.
 
 `init` beş şey yapar:
 
 1. Halihazırda oturum açtığınız hesabı 1 numaralı hesap olarak içe aktarır (ayrı bir `adopt` komutu yoktur).
 2. `claude` gözetmen shim'ini kurar.
-3. Claude Code'un `settings.json` dosyasına üç giriş kurar: bir statusLine, bir Stop hook ve bir SessionStart hook (artı bir subagentStatusLine girişi).
+3. Claude Code'un `settings.json` dosyasına dört giriş kurar: bir statusLine, bir Stop hook, bir StopFailure hook ve bir SessionStart hook (artı bir subagentStatusLine girişi).
 4. Gözetmenin bin dizinini kabuk rc dosyanızın PATH'ine ekler (idempotent, `# tokenmaxxing PATH` yorumuyla işaretlenmiş). Onu yakalayabilmek için PATH üzerinde gerçek `claude`'un önünde durması gerekir.
-5. Her 180 saniyede bir `tokenmaxxing check` çalıştıran periyodik bir denetim zamanlayıcısı kurar (macOS'ta bir launchd agent, Linux'ta bir systemd kullanıcı zamanlayıcısı).
+5. Her 60 saniyede bir `tokenmaxxing check --if-due` çalıştıran periyodik bir denetim zamanlayıcısı kurar (macOS'ta bir launchd agent, Linux'ta bir systemd kullanıcı zamanlayıcısı); denetim, canlı hesabın kalan boşluğuna göre kendi temposunu bir ile beş dakika arasında ayarlar.
 
 Kabuğunuzu yeniden başlatın, ardından daha fazla hesap ekleyin ve başlayın:
 

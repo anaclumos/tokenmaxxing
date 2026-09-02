@@ -3,22 +3,22 @@ title: ፈጣን ጅምር
 description: "tokenmaxxing ን ይጫኑ፣ አሁን ያለውን መለያዎን ያስገቡ፣ እና ተጨማሪ ያሰባስቡ"
 ---
 
-[Bun](https://bun.sh) እና Claude Code ን ይፈልጋል፣ በ macOS ወይም Linux ላይ። በ Bun ይጫኑ፣ ወይም አስቀድመው Nix / nix-darwin የሚጠቀሙ ከሆነ ከ flake ይጫኑ ([Build እና ስርጭት](/am/distribution) ይመልከቱ)፦
+[Bun](https://bun.sh) እና Claude Code ን ይፈልጋል፣ በ macOS ወይም Linux ላይ። በ Bun ይጫኑ፣ ወይም አስቀድመው Nix / nix-darwin የሚጠቀሙ ከሆነ ከ flake ይጫኑ። ከ `init` በፊት CLI ን በ PATH ላይ ያድርጉ ([Build እና ስርጭት](/am/distribution) ይመልከቱ)፦
 
 ```sh
 bun add -g tokenmaxxing
-# or: nix profile install github:anaclumos/tokenmaxxing
-# or: enable programs.tokenmaxxing in your nix-darwin / Home Manager config
 tokenmaxxing init
 ```
+
+የ Nix ተጠቃሚዎች የ Bun እርምጃውን በ `nix profile install github:anaclumos/tokenmaxxing` ይተካሉ፣ ወይም በ nix-darwin ወይም Home Manager ውቅራቸው ውስጥ `programs.tokenmaxxing` ን ያስችላሉ።
 
 `init` አምስት ነገሮችን ያደርጋል፦
 
 1. አስቀድመው የገቡበትን መለያ እንደ መለያ #1 ያስገባል (የተለየ `adopt` command የለም)።
 2. የ `claude` supervisor shim ን ይጭናል።
-3. በ Claude Code `settings.json` ውስጥ ሦስት ግቤቶችን ይጭናል፦ statusLine፣ Stop hook፣ እና SessionStart hook (በተጨማሪም subagentStatusLine ግቤት)።
+3. በ Claude Code `settings.json` ውስጥ አራት ግቤቶችን ይጭናል፦ statusLine፣ Stop hook፣ StopFailure hook፣ እና SessionStart hook (በተጨማሪም subagentStatusLine ግቤት)።
 4. የ supervisor ን bin directory ወደ shell rc ዎ PATH ላይ ያክላል (idempotent፣ በ `# tokenmaxxing PATH` አስተያየት ምልክት የተደረገበት)። ትክክለኛውን `claude` ለመጥለፍ በ PATH ላይ ከሱ ፊት መቀመጥ አለበት።
-5. በየ180 ሰከንዱ `tokenmaxxing check` ን የሚያሄድ ወቅታዊ የፍተሻ timer (በ macOS ላይ launchd agent፣ በ Linux ላይ systemd user timer) ይጭናል።
+5. በየ60 ሰከንዱ `tokenmaxxing check --if-due` ን የሚያሄድ ወቅታዊ የፍተሻ timer (በ macOS ላይ launchd agent፣ በ Linux ላይ systemd user timer) ይጭናል፤ ፍተሻው ከቀጥታው መለያ ክፍተት አንጻር ራሱን በአንድ እና በአምስት ደቂቃ መካከል ያስተካክላል።
 
 shell ዎን ዳግም ያስጀምሩ፣ ከዚያ ተጨማሪ መለያዎችን ይጨምሩ እና ይቀጥሉ፦
 

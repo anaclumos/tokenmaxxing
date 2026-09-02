@@ -24,10 +24,9 @@ O tee é grava-ao-mudar: quando os números não mudam, ele apenas atualiza o mt
 Em cada limite de turno, o hook Stop executa a decisão de troca (veja [Como a troca decide](/pt/switching)). Quando uma troca é justificada, ela acontece sob um bloqueio exclusivo `flock(2)` (obtido via `bun:ffi`, já que o macOS não vem com um binário `flock(1)`), e as gravações de credencial adicionalmente se interbloqueiam com o próprio bloqueio de atualização do Claude Code. Dentro da seção crítica, uma troca:
 
 1. Colhe a credencial ativa atual para o backup estacionado de seu verdadeiro dono.
-2. Instala a credencial recém-atualizada da conta de destino como a ativa, mesclando-a no blob ativo existente para que o estado irmão (como tokens OAuth por servidor MCP) sobreviva.
-3. Persiste o token rotacionado do destino em seu próprio backup.
-4. Reescreve atomicamente o campo `oauthAccount` em `~/.claude.json`.
-5. Confirma o novo rótulo ativo e limpa instantâneos de uso obsoletos, tudo antes de o bloqueio ser liberado, para que uma falha nunca possa deixar a credencial instalada e o rótulo ativo apontando para contas diferentes.
+2. Instala a credencial recém-atualizada da conta de destino como a ativa, mesclando-a no blob ativo existente para que o estado irmão (como tokens OAuth por servidor MCP) sobreviva. (O token de atualização rotacionado do destino já foi persistido em seu próprio backup no instante em que a atualização retornou, sob o flock, mas antes desta seção crítica do bloqueio de atualização.)
+3. Reescreve atomicamente o campo `oauthAccount` em `~/.claude.json`.
+4. Confirma o novo rótulo ativo e limpa instantâneos de uso obsoletos antes de o bloqueio ser liberado. Esses arquivos não têm como ser atômicos em conjunto diante de uma falha, então uma queda pode deixar estado intermediário; a próxima troca resolve o verdadeiro dono da credencial ativa independentemente do rótulo e registra em log qualquer desvio detectado.
 
 Como todas as sessões do perfil padrão compartilham a única credencial ativa, uma única troca migra todas as sessões de uma vez, e o flock mais uma reverificação sob o bloqueio impede que hooks concorrentes queimem duas contas.
 
@@ -41,7 +40,7 @@ Somente quando todas as contas do grupo estão acima de suas barras é que o hoo
 
 ## O timer de verificação periódica
 
-Os hooks só disparam em limites de turno, e um único turno agêntico longo pode queimar uma janela de saudável a esgotada sem um único limite. Portanto, `init` também instala um timer periódico - um agente launchd no macOS, um timer de usuário systemd no Linux - que executa `tokenmaxxing check` a cada 180 segundos independentemente da atividade de turno.
+Os hooks só disparam em limites de turno, e um único turno agêntico longo pode queimar uma janela de saudável a esgotada sem um único limite. Portanto, `init` também instala um timer periódico - um agente launchd no macOS, um timer de usuário systemd no Linux - que executa `tokenmaxxing check --if-due` a cada 60 segundos independentemente da atividade de turno. A verificação se autorregula conforme a folga da conta ativa: com bastante espaço até todas as barras, ela avalia a cada cinco minutos, e perto de uma barra, a cada tick (veja [Como a troca decide](/pt/switching)).
 
 ## Um hook SessionStart
 

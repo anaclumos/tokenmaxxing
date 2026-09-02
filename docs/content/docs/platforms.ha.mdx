@@ -8,7 +8,7 @@ description: "Yadda macOS da Linux suka bambanta a ajiya, amincewa, da agogo"
 | Tantancewar da ke aiki | Abin generic-password na keychain na shiga | Fayil ɗin `.credentials.json` na 0600 |
 | Tantancewar da aka ajiye | Abubuwan keychain na kowane asusu | Fayilolin 0600 cikin babban shirin 0700 |
 | Amincewa bayan musanya | Cikin kusan daƙiƙa 30 (ajiyar karatun keychain) | Buƙata ta gaba (dubawar mtime na fayil) |
-| Dubawa na lokaci-lokaci | launchd agent, kowace 180s | systemd user timer, kowace 180s |
+| Dubawa na lokaci-lokaci | launchd agent, tick na ƙasa na 60s, mai daidaita kansa 60s zuwa 300s | systemd user timer, tick na ƙasa na 60s, mai daidaita kansa 60s zuwa 300s |
 | Ma'ajin shiga-a-ware | Sabis na keychain mai suna-hash ga kowane babban shirin saitin | Fayil a cikin babban shirin saitin da aka ware |
 
 Bayanai guda biyu na musamman ga Linux da suka cancanci sani: claude yana warware babban shirin tantancewarsa daga `CLAUDE_SECURESTORAGE_CONFIG_DIR` da farko (sannan `CLAUDE_CONFIG_DIR`, sannan `~/.claude`), kuma tokenmaxxing yana kwaikwayon wannan warwarewa daidai don kada su rabu. Kuma gine-ginen OS guda biyu na sigar claude iri ɗaya suna tsara agogon sake saiti na `/usage` daban-daban (ɗaya yana amfani da haɗin " at ", ɗayan waƙafi); mai fassarar tokenmaxxing yana karɓar waɗannan sifofi biyu daidai kuma yana rubutawa, maimakon hasashe, a kan kowane na uku.

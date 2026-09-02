@@ -24,10 +24,9 @@ The tee na write-on-change: when figures no change e dey only bump the file im m
 For every turn boundary, the Stop hook dey run the switch decision (check [How switching dey decide](/pcm/switching)). When a swap dey warranted, e dey happen under one `flock(2)` exclusive lock (dem take am via `bun:ffi`, since macOS no dey ship any `flock(1)` binary), and the credential writes dey interlock extra with Claude Code im own refresh lock. Inside the critical section, one swap:
 
 1. E dey harvest the current live credential go im true owner im parked backup.
-2. E dey install the target account im freshly refreshed credential as the live one, e dey merge am go inside the existing live blob so sibling state (like per-MCP-server OAuth tokens) go survive.
-3. E dey persist the target im rotated token go im own backup.
-4. E dey atomically rewrite the `oauthAccount` field for `~/.claude.json`.
-5. E dey commit the new active label and clear stale usage snapshots, all before the lock release, so a crash no fit ever leave the installed credential and the active label dey point at different accounts.
+2. E dey install the target account im freshly refreshed credential as the live one, e dey merge am go inside the existing live blob so sibling state (like per-MCP-server OAuth tokens) go survive. (Dem don already persist the target im rotated refresh token go im own backup the moment wey the refresh return, under the flock but before dis refresh-lock critical section.)
+3. E dey atomically rewrite the `oauthAccount` field for `~/.claude.json`.
+4. E dey commit the new active label and clear stale usage snapshots before the lock release. Dis files no fit dey crash-atomic together, so one crash fit leave intermediate state; the next swap dey resolve the live credential im true owner independent of the label and e dey log any drift wey e detect.
 
 Because all default-profile sessions dey share the one live credential, one single swap dey migrate every session all at once, and the flock plus one re-check under the lock dey keep racing hooks from burning two accounts.
 
@@ -41,7 +40,7 @@ Only when every account for the pool don pass im bars the Stop hook go write one
 
 ## The periodic check timer
 
-Hooks dey only fire for turn boundaries, and one long agentic turn fit burn one window from healthy go depleted without one single boundary. Na why `init` dey also install one periodic timer - launchd agent for macOS, systemd user timer for Linux - wey dey run `tokenmaxxing check` every 180 seconds regardless of turn activity.
+Hooks dey only fire for turn boundaries, and one long agentic turn fit burn one window from healthy go depleted without one single boundary. Na why `init` dey also install one periodic timer - launchd agent for macOS, systemd user timer for Linux - wey dey run `tokenmaxxing check --if-due` every 60 seconds regardless of turn activity. The check dey pace imself from the live account im headroom: when plenty room still dey reach every bar e dey evaluate every five minutes, and when e near one bar e dey evaluate every tick (check [How switching dey decide](/pcm/switching)).
 
 ## A SessionStart hook
 

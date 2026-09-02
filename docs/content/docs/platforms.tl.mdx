@@ -8,7 +8,7 @@ description: "Kung paano nagkakaiba ang macOS at Linux sa pag-iimbak, adopsyon, 
 | Live na credential | Generic-password item sa login keychain | 0600 na `.credentials.json` na file |
 | Mga naka-park na credential | Mga per-account na keychain item | Mga 0600 na file sa isang 0700 na directory |
 | Adopsyon pagkatapos ng isang pagpapalit | Sa loob ng ~30 segundo (keychain read cache) | Susunod na request (file mtime poll) |
-| Pana-panahong check | launchd agent, tuwing 180s | systemd user timer, tuwing 180s |
+| Pana-panahong check | launchd agent, 60s na floor tick, self-paced na 60s hanggang 300s | systemd user timer, 60s na floor tick, self-paced na 60s hanggang 300s |
 | Isolated-login store | Hash-namespaced na keychain service kada config dir | Isang file sa loob ng isolated config dir |
 
 Dalawang Linux-specific na detalye na dapat malaman: nire-resolve ng claude ang credential directory nito mula sa `CLAUDE_SECURESTORAGE_CONFIG_DIR` muna (pagkatapos ay `CLAUDE_CONFIG_DIR`, pagkatapos ay `~/.claude`), at ginagaya ng tokenmaxxing ang resolution na iyon nang eksakto upang hindi kailanman mag-desync ang dalawa. At ang dalawang OS build ng parehong bersyon ng claude ay naka-format ng `/usage` reset clock nang magkaiba (isa ang gumagamit ng " at " na glue, ang isa ay isang kuwit); tinatanggap ng parser ng tokenmaxxing ang eksaktong dalawang anyo na iyon at nagla-log, sa halip na manghula, sa alinmang pangatlo.

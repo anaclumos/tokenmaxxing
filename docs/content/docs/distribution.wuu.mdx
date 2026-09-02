@@ -5,7 +5,7 @@ description: "npm 搭 Nix 高头发嗰是 TypeScript 源码，由 Bun 跑，带�
 
 npm 包发嗰是 TypeScript 源码，勿是编译产物：`tokenmaxxing` 嗰 bin 带 Bun shebang，直接指向 `src/main.ts`，Bun 1.2.6 或者更新嗰版本就原样跑伊。搿也就是 Bun 是硬性要求嗰道理。特为勿做编译好嗰二进制：早先一趟发布拿单单一只 61 MB 嗰 macOS 二进制发到每个平台，勒 Linux 高头带 `exec format error` 失败脱，而分平台编译嗰包每个侪要自家一条发布流水线，所以拿源码交畀 Bun 跑就变成了分发嗰模式。
 
-包嗰 `exports` 映射拿 `src/sdk.ts` 当作 [Agent SDK 界面](/wuu/sdk)里向讲过嗰编程入口露出来。发布勒 GitHub 高头打上 `v<version>` 标签；CI 用可信发布（OIDC，带来源证明）发到 npm，而发布嗰门槛会先跑类型检查搭整套测试。
+包嗰 `exports` 映射拿 `src/sdk.ts` 当作 [Agent SDK 界面](/wuu/sdk)里向讲过嗰编程入口露出来。发布勒 GitHub 高头打上 `v<version>` 标签；CI 用可信发布（OIDC，带来源证明）发到 npm，而发布嗰门槛会先跑类型检查。
 
 ## Nix／nix-darwin
 
@@ -18,7 +18,14 @@ npm 包发嗰是 TypeScript 源码，勿是编译产物：`tokenmaxxing` 嗰 bin
 | `homeManagerModules.default` | macOS 或者 Linux 高头嗰 Home Manager |
 | `nixosModules.default` / `withOverlay` | NixOS 系统级安装 |
 
-勿装进 profile，临时跑一趟：
+装进 profile（搿么 `init` 写嗰 supervisor 垫片好勒 PATH 高头解到一个稳定嗰 `tokenmaxxing`），然后再 init：
+
+```sh
+nix profile install github:anaclumos/tokenmaxxing
+tokenmaxxing init
+```
+
+勿装进 profile，临时跑一趟（只好看 help／status，勿好用搿个办法去 `init`）：
 
 ```sh
 nix run github:anaclumos/tokenmaxxing -- help
@@ -29,7 +36,6 @@ nix-darwin（加 overlay，让 `pkgs.tokenmaxxing` 好解析到）：
 ```nix
 {
   inputs.tokenmaxxing.url = "github:anaclumos/tokenmaxxing";
-  # ...
   modules = [
     inputs.tokenmaxxing.darwinModules.withOverlay
     { programs.tokenmaxxing.enable = true; }
@@ -37,7 +43,7 @@ nix-darwin（加 overlay，让 `pkgs.tokenmaxxing` 好解析到）：
 }
 ```
 
-也好显式指定包（Home Manager 一样用得）：
+Home Manager（显式指定包，或者拿搿个 flake 嗰 overlay 应用到 Home Manager 用嗰 pkgs 高头）：
 
 ```nix
 {
@@ -47,12 +53,12 @@ nix-darwin（加 overlay，让 `pkgs.tokenmaxxing` 好解析到）：
 }
 ```
 
-Nix 只管拿 CLI 放进 PATH。账户导入、PATH 高头嗰 `claude` 监督进程 shim、`settings.json` 里向嗰 hook，还有（默认）定期检查定时器，还是从 `tokenmaxxing init` 来——搿眼会碰着凭据搭用户自家嗰设置，纯模块勿应该改写。只有侬想定时器归 Nix 管、勿归 init 嗰辰光，才设 `programs.tokenmaxxing.checkTimer.enable = true`。
+Nix 只管拿 CLI 放进 PATH。账户导入、PATH 高头嗰 `claude` 监督进程 shim、`settings.json` 里向嗰 hook，还有（默认）定期检查定时器，还是从 `tokenmaxxing init` 来。搿眼会碰着凭据搭用户自家嗰设置，纯模块勿应该改写。只有侬想定时器归 Nix 管、勿归 init 嗰辰光，才设 `programs.tokenmaxxing.checkTimer.enable = true`（搿也会导出 `TOKENMAXXING_SKIP_TIMER=1`，畀 init 勿再写第二份单元）。声明式嗰定时器搭 init 一样，是用户会话级嗰定时器。无头嗰 Linux 要 `loginctl enable-linger`，伊才好勒呒没登录嗰辰光触发。
 
 `bun.lock` 有变动，就重新生成 Nix 依赖表达式：
 
 ```sh
-bun run nix:bun   # writes bun.nix via bun2nix
+bun run nix:bun   # writes bun.nix via bun2nix@2.1.2
 ```
 
 ## 许可证

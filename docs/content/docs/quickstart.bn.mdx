@@ -3,22 +3,22 @@ title: দ্রুত শুরু
 description: "tokenmaxxing ইনস্টল করুন, আপনার বর্তমান অ্যাকাউন্ট ইমপোর্ট করুন, এবং আরও অ্যাকাউন্ট একত্র করুন"
 ---
 
-macOS বা Linux-এ [Bun](https://bun.sh) এবং Claude Code প্রয়োজন। Bun দিয়ে ইনস্টল করুন, অথবা আপনি ইতিমধ্যে Nix / nix-darwin ব্যবহার করলে flake থেকে ([বিল্ড ও বিতরণ](/bn/distribution) দেখুন):
+macOS বা Linux-এ [Bun](https://bun.sh) এবং Claude Code প্রয়োজন। Bun দিয়ে ইনস্টল করুন, অথবা আপনি ইতিমধ্যে Nix / nix-darwin ব্যবহার করলে flake থেকে। `init` চালানোর আগে CLI-কে PATH-এ রাখুন ([বিল্ড ও বিতরণ](/bn/distribution) দেখুন):
 
 ```sh
 bun add -g tokenmaxxing
-# or: nix profile install github:anaclumos/tokenmaxxing
-# or: enable programs.tokenmaxxing in your nix-darwin / Home Manager config
 tokenmaxxing init
 ```
+
+Nix ব্যবহারকারীরা Bun ধাপটির বদলে `nix profile install github:anaclumos/tokenmaxxing` চালান, অথবা তাঁদের nix-darwin বা Home Manager কনফিগে `programs.tokenmaxxing` সক্রিয় করেন।
 
 `init` পাঁচটি কাজ করে:
 
 1. আপনি ইতিমধ্যে যে অ্যাকাউন্ট দিয়ে লগ ইন করে আছেন সেটিকে অ্যাকাউন্ট #1 হিসেবে ইমপোর্ট করে (আলাদা কোনো `adopt` কমান্ড নেই)।
 2. `claude` সুপারভাইজর শিম ইনস্টল করে।
-3. Claude Code-এর `settings.json`-এ তিনটি এন্ট্রি ইনস্টল করে: একটি statusLine, একটি Stop হুক, এবং একটি SessionStart হুক (সঙ্গে একটি subagentStatusLine এন্ট্রি)।
+3. Claude Code-এর `settings.json`-এ চারটি এন্ট্রি ইনস্টল করে: একটি statusLine, একটি Stop হুক, একটি StopFailure হুক, এবং একটি SessionStart হুক (সঙ্গে একটি subagentStatusLine এন্ট্রি)।
 4. সুপারভাইজরের bin ডিরেক্টরিটি আপনার শেল rc-এর PATH-এ যুক্ত করে (idempotent, একটি `# tokenmaxxing PATH` মন্তব্য দিয়ে চিহ্নিত)। আসল `claude`-কে আটকাতে হলে এটিকে PATH-এ তার আগে থাকতে হবে।
-5. একটি পর্যায়ক্রমিক চেক টাইমার ইনস্টল করে (macOS-এ একটি launchd এজেন্ট, Linux-এ একটি systemd ইউজার টাইমার) যা প্রতি 180 সেকেন্ডে `tokenmaxxing check` চালায়।
+5. একটি পর্যায়ক্রমিক চেক টাইমার ইনস্টল করে (macOS-এ একটি launchd এজেন্ট, Linux-এ একটি systemd ইউজার টাইমার) যা প্রতি 60 সেকেন্ডে `tokenmaxxing check --if-due` চালায়; চেকটি লাইভ অ্যাকাউন্টের হেডরুম দেখে নিজের ছন্দ এক থেকে পাঁচ মিনিটের মধ্যে ঠিক করে নেয়।
 
 আপনার শেল পুনরায় চালু করুন, তারপর আরও অ্যাকাউন্ট যোগ করুন এবং এগিয়ে যান:
 

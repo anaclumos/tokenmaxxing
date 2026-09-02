@@ -5,7 +5,7 @@ description: "ซอร์ส TypeScript บน npm และ Nix รันด�
 
 แพ็กเกจ npm เผยแพร่ซอร์ส TypeScript ไม่ใช่ไฟล์ที่ build แล้ว: bin `tokenmaxxing` ชี้ตรงไปที่ `src/main.ts` ด้วย Bun shebang และ Bun 1.2.6 หรือใหม่กว่าจะรันมันได้เลย นั่นคือเหตุผลที่ Bun เป็นข้อกำหนดที่ต้องมี ไม่มีไบนารีที่คอมไพล์แล้วโดยตั้งใจ: รุ่นแรกๆ เคยเผยแพร่ไบนารี macOS ขนาด 61 MB ไฟล์เดียวไปยังทุกแพลตฟอร์ม และล้มเหลวบน Linux ด้วย `exec format error` อีกทั้งแพ็กเกจที่คอมไพล์แยกตามแพลตฟอร์มก็ต้องมี release pipeline ของตัวเองแต่ละอัน การรันซอร์สด้วย Bun จึงกลายเป็นโมเดลการเผยแพร่
 
-แมป `exports` ของแพ็กเกจเปิดเผย `src/sdk.ts` เป็นจุดเข้าเชิงโปรแกรมตามที่อธิบายไว้ใน [หน้าตาของ Agent SDK](/th/sdk) รุ่นต่างๆ ถูกแท็กเป็น `v<version>` บน GitHub; CI เผยแพร่ไปยัง npm ผ่าน trusted publishing (OIDC พร้อม provenance) และด่านตรวจก่อนเผยแพร่จะรัน typecheck และชุดทดสอบทั้งหมดก่อน
+แมป `exports` ของแพ็กเกจเปิดเผย `src/sdk.ts` เป็นจุดเข้าเชิงโปรแกรมตามที่อธิบายไว้ใน [หน้าตาของ Agent SDK](/th/sdk) รุ่นต่างๆ ถูกแท็กเป็น `v<version>` บน GitHub; CI เผยแพร่ไปยัง npm ผ่าน trusted publishing (OIDC พร้อม provenance) และด่านตรวจก่อนเผยแพร่จะรัน typecheck ก่อน
 
 ## Nix / nix-darwin
 
@@ -18,7 +18,14 @@ description: "ซอร์ส TypeScript บน npm และ Nix รันด�
 | `homeManagerModules.default` | Home Manager บน macOS หรือ Linux |
 | `nixosModules.default` / `withOverlay` | ติดตั้งระดับระบบบน NixOS |
 
-รันครั้งเดียวโดยไม่ติดตั้งลงโปรไฟล์:
+ติดตั้งลงโปรไฟล์ (เพื่อให้ shim ของ supervisor ที่ `init` เขียนไว้ resolve `tokenmaxxing` บน PATH ได้อย่างเสถียร) แล้วจึง init:
+
+```sh
+nix profile install github:anaclumos/tokenmaxxing
+tokenmaxxing init
+```
+
+รันครั้งเดียวโดยไม่ต้องติดตั้ง (สำหรับ help หรือ status เท่านั้น อย่ารัน `init` ด้วยวิธีนี้):
 
 ```sh
 nix run github:anaclumos/tokenmaxxing -- help
@@ -29,7 +36,6 @@ nix-darwin (เพิ่ม overlay เพื่อให้ `pkgs.tokenmaxxing`
 ```nix
 {
   inputs.tokenmaxxing.url = "github:anaclumos/tokenmaxxing";
-  # ...
   modules = [
     inputs.tokenmaxxing.darwinModules.withOverlay
     { programs.tokenmaxxing.enable = true; }
@@ -37,7 +43,7 @@ nix-darwin (เพิ่ม overlay เพื่อให้ `pkgs.tokenmaxxing`
 }
 ```
 
-หรือตั้งแพ็กเกจแบบชัดเจน (ใช้กับ Home Manager ได้ด้วย):
+Home Manager (ตั้งแพ็กเกจแบบชัดเจน หรือใช้ overlay ของ flake นี้กับ pkgs ที่ Home Manager ใช้อยู่):
 
 ```nix
 {
@@ -47,13 +53,14 @@ nix-darwin (เพิ่ม overlay เพื่อให้ `pkgs.tokenmaxxing`
 }
 ```
 
-Nix ใส่แค่ CLI บน PATH การนำเข้าบัญชี, shim supervisor `claude` บน PATH, hook ใน `settings.json` และ (โดยค่าเริ่มต้น) ตัวจับเวลาตรวจสอบเป็นระยะ ยังมาจาก `tokenmaxxing init` — สิ่งเหล่านี้แตะข้อมูลรับรองและการตั้งค่าที่เป็นของยูสเซอร์ ซึ่งโมดูลแบบ pure ไม่ควรเขียนทับ ตั้ง `programs.tokenmaxxing.checkTimer.enable = true` เฉพาะเมื่อต้องการให้ Nix เป็นเจ้าของตัวจับเวลาแทน init
+Nix ใส่แค่ CLI บน PATH การนำเข้าบัญชี, shim supervisor `claude` บน PATH, hook ใน `settings.json` และ (โดยค่าเริ่มต้น) ตัวจับเวลาตรวจสอบเป็นระยะ ยังมาจาก `tokenmaxxing init` สิ่งเหล่านี้แตะข้อมูลรับรองและการตั้งค่าที่เป็นของยูสเซอร์ ซึ่งโมดูลแบบ pure ไม่ควรเขียนทับ ตั้ง `programs.tokenmaxxing.checkTimer.enable = true` เฉพาะเมื่อต้องการให้ Nix เป็นเจ้าของตัวจับเวลาแทน init (การตั้งค่านี้จะ export `TOKENMAXXING_SKIP_TIMER=1` ไปด้วย เพื่อไม่ให้ init เขียน unit ซ้ำอีกอัน) ตัวจับเวลาแบบ declarative นี้เป็นตัวจับเวลาระดับ user session เช่นเดียวกับที่ init เขียน บน Linux แบบ headless จึงต้องใช้ `loginctl enable-linger` เพื่อให้มันทำงานได้โดยไม่ต้องล็อกอิน
 
 เมื่อ `bun.lock` เปลี่ยน ให้สร้างนิพจน์ dependency ของ Nix ใหม่:
 
 ```sh
-bun run nix:bun   # writes bun.nix via bun2nix
+bun run nix:bun   # เขียน bun.nix ผ่าน bun2nix@2.1.2
 ```
+
 ## สัญญาอนุญาต
 
 MIT ซอร์สโค้ดที่ [anaclumos/tokenmaxxing](https://github.com/anaclumos/tokenmaxxing)

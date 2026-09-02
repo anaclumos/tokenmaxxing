@@ -5,7 +5,7 @@ description: "کد منبع TypeScript روی npm و Nix، اجراشده توس
 
 بسته npm کد منبع TypeScript را عرضه می‌کند، نه یک ساخت را: فایل اجرایی `tokenmaxxing` مستقیماً به `src/main.ts` با یک shebang مربوط به Bun اشاره می‌کند، و Bun نسخه ۱.۲.۶ یا جدیدتر آن را همان‌طور که هست اجرا می‌کند. به همین دلیل است که Bun یک الزام قطعی است. به‌عمد هیچ باینری کامپایل‌شده‌ای وجود ندارد: یک انتشار اولیه یک باینری macOS واحد ۶۱ مگابایتی را به هر سکو عرضه کرد و روی Linux با `exec format error` شکست خورد، و بسته‌های کامپایل‌شده به‌ازای هر سکو هر کدام به خط لوله انتشار مخصوص خود نیاز داشتند، بنابراین اجرای-منبع-توسط-Bun به مدل توزیع تبدیل شد.
 
-نقشه `exports` بسته، `src/sdk.ts` را به‌عنوان نقطه ورود برنامه‌نویسی‌شده توصیف‌شده در [سطح SDK ایجنت](/fa/sdk) نمایان می‌کند. انتشارها روی GitHub با `v<version>` برچسب‌گذاری می‌شوند؛ CI از طریق انتشار مورد اعتماد (OIDC، با provenance) به npm منتشر می‌کند، و دروازه انتشار ابتدا بررسی نوع و کل مجموعه تست را اجرا می‌کند.
+نقشه `exports` بسته، `src/sdk.ts` را به‌عنوان نقطه ورود برنامه‌نویسی‌شده توصیف‌شده در [سطح SDK ایجنت](/fa/sdk) نمایان می‌کند. انتشارها روی GitHub با `v<version>` برچسب‌گذاری می‌شوند؛ CI از طریق انتشار مورد اعتماد (OIDC، با provenance) به npm منتشر می‌کند، و دروازه انتشار ابتدا بررسی نوع را اجرا می‌کند.
 
 ## Nix / nix-darwin
 
@@ -18,7 +18,14 @@ description: "کد منبع TypeScript روی npm و Nix، اجراشده توس
 | `homeManagerModules.default` | Home Manager روی macOS یا Linux |
 | `nixosModules.default` / `withOverlay` | نصب سیستمی روی NixOS |
 
-اجرای یک‌باره بدون نصب در پروفایل:
+روی یک پروفایل نصب کنید (تا شیم‌های ناظری که `init` می‌نویسد بتوانند یک `tokenmaxxing` پایدار را روی PATH پیدا کنند)، سپس init را اجرا کنید:
+
+```sh
+nix profile install github:anaclumos/tokenmaxxing
+tokenmaxxing init
+```
+
+اجرای یک‌باره بدون نصب (فقط help / status، به این شیوه `init` نکنید):
 
 ```sh
 nix run github:anaclumos/tokenmaxxing -- help
@@ -29,7 +36,6 @@ nix-darwin (اورلی را اضافه می‌کند تا `pkgs.tokenmaxxing` re
 ```nix
 {
   inputs.tokenmaxxing.url = "github:anaclumos/tokenmaxxing";
-  # ...
   modules = [
     inputs.tokenmaxxing.darwinModules.withOverlay
     { programs.tokenmaxxing.enable = true; }
@@ -37,7 +43,7 @@ nix-darwin (اورلی را اضافه می‌کند تا `pkgs.tokenmaxxing` re
 }
 ```
 
-یا بسته را صریح تنظیم کنید (با Home Manager هم کار می‌کند):
+Home Manager (بسته را صریح تنظیم کنید، یا اورلی این flake را روی pkgs که Home Manager استفاده می‌کند اعمال کنید):
 
 ```nix
 {
@@ -47,13 +53,14 @@ nix-darwin (اورلی را اضافه می‌کند تا `pkgs.tokenmaxxing` re
 }
 ```
 
-Nix فقط CLI را روی PATH می‌گذارد. وارد کردن حساب، shim ناظر `claude` روی PATH، هوک‌های `settings.json`، و (به‌صورت پیش‌فرض) تایمر بررسی دوره‌ای همچنان از `tokenmaxxing init` می‌آیند — این‌ها به اعتبارنامه‌ها و تنظیمات متعلق به کاربر دست می‌زنند که یک ماژول خالص نباید بازنویسی‌شان کند. فقط وقتی که می‌خواهید تایمر را Nix به‌جای init مالک شود، `programs.tokenmaxxing.checkTimer.enable = true` را بگذارید.
+Nix فقط CLI را روی PATH می‌گذارد. وارد کردن حساب، shim ناظر `claude` روی PATH، هوک‌های `settings.json`، و (به‌صورت پیش‌فرض) تایمر بررسی دوره‌ای همچنان از `tokenmaxxing init` می‌آیند. این‌ها به اعتبارنامه‌ها و تنظیمات متعلق به کاربر دست می‌زنند که یک ماژول خالص نباید بازنویسی‌شان کند. `programs.tokenmaxxing.checkTimer.enable = true` را فقط وقتی بگذارید که می‌خواهید تایمر را Nix به‌جای init مالک شود (این کار `TOKENMAXXING_SKIP_TIMER=1` را هم صادر می‌کند تا init واحد دومی ننویسد). تایمر اعلانی هم مانند init یک تایمر نشست کاربر است. روی Linux بی‌کله برای آنکه بدون ورود شلیک شود به `loginctl enable-linger` نیاز دارد.
 
 وقتی `bun.lock` عوض شد، عبارت وابستگی Nix را دوباره بسازید:
 
 ```sh
-bun run nix:bun   # writes bun.nix via bun2nix
+bun run nix:bun   # فایل bun.nix را از طریق bun2nix@2.1.2 می‌نویسد
 ```
+
 ## مجوز
 
 MIT. کد منبع در [anaclumos/tokenmaxxing](https://github.com/anaclumos/tokenmaxxing).

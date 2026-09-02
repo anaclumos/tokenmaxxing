@@ -3,22 +3,22 @@ title: چھیتی شروعات
 description: "tokenmaxxing انسٹال کرو، اپنا موجودہ اکاؤنٹ درآمد کرو، تے ہور اکٹھے کرو"
 ---
 
-macOS یا Linux تے [Bun](https://bun.sh) تے Claude Code دی لوڑ اے۔ Bun نال انسٹال کرو، یا جے تسیں پہلے توں Nix / nix-darwin ورتدے او تے flake توں (ویکھو [بلڈ تے ونڈ](/pnb/distribution)):
+macOS یا Linux تے [Bun](https://bun.sh) تے Claude Code دی لوڑ اے۔ Bun نال انسٹال کرو، یا جے تسیں پہلے توں Nix / nix-darwin ورتدے او تے flake توں۔ `init` توں پہلاں CLI نوں PATH تے لے آؤ (ویکھو [بلڈ تے ونڈ](/pnb/distribution)):
 
 ```sh
 bun add -g tokenmaxxing
-# or: nix profile install github:anaclumos/tokenmaxxing
-# or: enable programs.tokenmaxxing in your nix-darwin / Home Manager config
 tokenmaxxing init
 ```
+
+Nix ورتن والے Bun والا قدم `nix profile install github:anaclumos/tokenmaxxing` نال بدل لین، یا اپنی nix-darwin یا Home Manager ترتیب وچ `programs.tokenmaxxing` چالو کر لین۔
 
 `init` پنج کم کردا اے:
 
 1. جیہڑے اکاؤنٹ نال تُسیں پہلوں لاگ اِن او اوہنوں اکاؤنٹ #1 وانگوں درآمد کردا اے (کوئی الگ `adopt` کمانڈ نئیں)۔
 2. `claude` سُپروائزر شِم انسٹال کردا اے۔
-3. Claude Code دی `settings.json` وچ تِن اِندراج انسٹال کردا اے: اک statusLine، اک Stop ہُک، تے اک SessionStart ہُک (نال اک subagentStatusLine اِندراج وی)۔
+3. Claude Code دی `settings.json` وچ چار اِندراج انسٹال کردا اے: اک statusLine، اک Stop ہُک، اک StopFailure ہُک، تے اک SessionStart ہُک (نال اک subagentStatusLine اِندراج وی)۔
 4. سُپروائزر دی bin ڈائریکٹری نوں تہاڈے شیل rc دے PATH نال جوڑدا اے (idempotent، اک `# tokenmaxxing PATH` تبصرے نال نشان زدہ)۔ اصل `claude` نوں روکن لئی ایہنوں PATH تے اوہدے توں اگے بیٹھنا پیندا اے۔
-5. اک وقفے وار جانچ ٹائمر انسٹال کردا اے (macOS تے اک launchd ایجنٹ، Linux تے اک systemd یوزر ٹائمر) جیہڑا ہر 180 سیکنڈ بعد `tokenmaxxing check` چلاندا اے۔
+5. اک وقفے وار جانچ ٹائمر انسٹال کردا اے (macOS تے اک launchd ایجنٹ، Linux تے اک systemd یوزر ٹائمر) جیہڑا ہر 60 سیکنڈ بعد `tokenmaxxing check --if-due` چلاندا اے؛ جانچ لائیو اکاؤنٹ دی گنجائش دے حساب نال اپنی چال اک توں پنج منٹ دے وچکار آپ رکھدی اے۔
 
 اپنا شیل مُڑ چالو کرو، فیر ہور اکاؤنٹ شامل کرو تے چل پوو:
 

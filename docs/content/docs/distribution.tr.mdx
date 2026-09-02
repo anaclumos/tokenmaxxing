@@ -5,7 +5,7 @@ description: "npm ve Nix'te TypeScript kaynağı, Bun tarafından çalıştırı
 
 npm paketi bir derleme değil, TypeScript kaynağı gönderir: `tokenmaxxing` bin'i bir Bun shebang'ı ile doğrudan `src/main.ts`'i işaret eder ve Bun 1.2.6 veya daha yenisi onu olduğu gibi çalıştırır. Bun'ın katı bir gereklilik olmasının nedeni budur. Tasarım gereği hiçbir derlenmiş ikili dosya yoktur: erken bir sürüm her platforma tek bir 61 MB'lık macOS ikili dosyası gönderdi ve Linux'ta `exec format error` ile başarısız oldu ve platform başına derlenmiş paketlerin her biri kendi yayınlama hattına ihtiyaç duyardı, bu yüzden kaynağın Bun tarafından çalıştırılması dağıtım modeli haline geldi.
 
-Paketin `exports` haritası, [Agent SDK yüzeyi](/tr/sdk) sayfasında açıklanan programatik giriş olarak `src/sdk.ts`'i açığa çıkarır. Sürümler GitHub'da `v<version>` olarak etiketlenir; CI, güvenilir yayınlama (OIDC, provenance ile) yoluyla npm'e yayınlar ve yayınlama kapısı önce typecheck'i ve tam test paketini çalıştırır.
+Paketin `exports` haritası, [Agent SDK yüzeyi](/tr/sdk) sayfasında açıklanan programatik giriş olarak `src/sdk.ts`'i açığa çıkarır. Sürümler GitHub'da `v<version>` olarak etiketlenir; CI, güvenilir yayınlama (OIDC, provenance ile) yoluyla npm'e yayınlar ve yayınlama kapısı önce typecheck'i çalıştırır.
 
 ## Nix / nix-darwin
 
@@ -18,7 +18,14 @@ Aynı kaynak ağacı aynı zamanda bir flake'tir. Kaynağın Bun tarafından ça
 | `homeManagerModules.default` | macOS veya Linux'ta Home Manager |
 | `nixosModules.default` / `withOverlay` | NixOS sistem kurulumu |
 
-Profile kurmadan tek seferlik çalıştırma:
+Bir profile kurun (böylece `init`'in gözetmen shim'leri PATH üzerinde kararlı bir `tokenmaxxing` çözebilsin), ardından init çalıştırın:
+
+```sh
+nix profile install github:anaclumos/tokenmaxxing
+tokenmaxxing init
+```
+
+Kurmadan tek seferlik çalıştırma (yalnızca help / status, `init`'i bu yolla çalıştırmayın):
 
 ```sh
 nix run github:anaclumos/tokenmaxxing -- help
@@ -29,7 +36,6 @@ nix-darwin (`pkgs.tokenmaxxing` çözülsün diye overlay ekler):
 ```nix
 {
   inputs.tokenmaxxing.url = "github:anaclumos/tokenmaxxing";
-  # ...
   modules = [
     inputs.tokenmaxxing.darwinModules.withOverlay
     { programs.tokenmaxxing.enable = true; }
@@ -37,7 +43,7 @@ nix-darwin (`pkgs.tokenmaxxing` çözülsün diye overlay ekler):
 }
 ```
 
-Veya paketi açıkça ayarla (Home Manager ile de çalışır):
+Home Manager (paketi açıkça ayarlayın ya da bu flake'in overlay'ini Home Manager'ın kullandığı pkgs'e uygulayın):
 
 ```nix
 {
@@ -47,13 +53,14 @@ Veya paketi açıkça ayarla (Home Manager ile de çalışır):
 }
 ```
 
-Nix yalnızca CLI'yi PATH'e koyar. Hesap içe aktarma, PATH'teki `claude` supervisor shim'i, `settings.json` kancaları ve (varsayılan olarak) periyodik denetim zamanlayıcısı hâlâ `tokenmaxxing init`'ten gelir — bunlar kimlik bilgilerine ve kullanıcının kendi ayarlarına dokunur; saf bir modül bunları yeniden yazmamalıdır. Zamanlayıcının init yerine Nix'e ait olmasını istediğinde `programs.tokenmaxxing.checkTimer.enable = true` yap.
+Nix yalnızca CLI'yi PATH'e koyar. Hesap içe aktarma, PATH'teki `claude` supervisor shim'i, `settings.json` kancaları ve (varsayılan olarak) periyodik denetim zamanlayıcısı hâlâ `tokenmaxxing init`'ten gelir. Bunlar kimlik bilgilerine ve kullanıcının kendi ayarlarına dokunur; saf bir modül bunları yeniden yazmamalıdır. `programs.tokenmaxxing.checkTimer.enable = true` seçeneğini yalnızca zamanlayıcının init yerine Nix'e ait olmasını istediğinizde ayarlayın (bu aynı zamanda `TOKENMAXXING_SKIP_TIMER=1` dışa aktarır, böylece init ikinci bir birim yazmaz). Bildirimsel zamanlayıcı, init ile aynı şekilde bir kullanıcı oturumu zamanlayıcısıdır; başsız Linux'ta bir oturum açma olmadan tetiklenmesi için `loginctl enable-linger` gerekir.
 
 `bun.lock` değişince Nix bağımlılık ifadesini yeniden üret:
 
 ```sh
-bun run nix:bun   # writes bun.nix via bun2nix
+bun run nix:bun   # writes bun.nix via bun2nix@2.1.2
 ```
+
 ## Lisans
 
 MIT. Kaynak: [anaclumos/tokenmaxxing](https://github.com/anaclumos/tokenmaxxing).

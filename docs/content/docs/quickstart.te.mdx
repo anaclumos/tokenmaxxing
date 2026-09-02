@@ -3,22 +3,22 @@ title: త్వరిత ప్రారంభం
 description: "tokenmaxxingను ఇన్‌స్టాల్ చేయండి, మీ ప్రస్తుత ఖాతాను దిగుమతి చేయండి, మరిన్నింటిని పూల్ చేయండి"
 ---
 
-macOS లేదా Linux పై [Bun](https://bun.sh) మరియు Claude Code అవసరం. Bunతో ఇన్‌స్టాల్ చేయండి, లేదా మీరు ఇప్పటికే Nix / nix-darwin ఉపయోగిస్తుంటే flake నుండి ([బిల్డ్ మరియు పంపిణీ](/te/distribution) చూడండి):
+macOS లేదా Linux పై [Bun](https://bun.sh) మరియు Claude Code అవసరం. Bunతో ఇన్‌స్టాల్ చేయండి, లేదా మీరు ఇప్పటికే Nix / nix-darwin ఉపయోగిస్తుంటే flake నుండి ఇన్‌స్టాల్ చేయండి. `init` కంటే ముందు CLIని PATHపై ఉంచండి ([బిల్డ్ మరియు పంపిణీ](/te/distribution) చూడండి):
 
 ```sh
 bun add -g tokenmaxxing
-# or: nix profile install github:anaclumos/tokenmaxxing
-# or: enable programs.tokenmaxxing in your nix-darwin / Home Manager config
 tokenmaxxing init
 ```
+
+Nix వాడేవారు Bun దశకు బదులుగా `nix profile install github:anaclumos/tokenmaxxing` నడుపుతారు, లేదా తమ nix-darwin లేదా Home Manager కాన్ఫిగ్‌లో `programs.tokenmaxxing`ను ఎనేబుల్ చేస్తారు.
 
 `init` ఐదు పనులు చేస్తుంది:
 
 1. మీరు ఇప్పటికే లాగిన్ అయి ఉన్న ఖాతాను ఖాతా #1గా దిగుమతి చేస్తుంది (ప్రత్యేక `adopt` కమాండ్ లేదు).
 2. `claude` సూపర్‌వైజర్ షిమ్‌ను ఇన్‌స్టాల్ చేస్తుంది.
-3. Claude Code యొక్క `settings.json`లో మూడు ఎంట్రీలను ఇన్‌స్టాల్ చేస్తుంది: ఒక statusLine, ఒక Stop హుక్, మరియు ఒక SessionStart హుక్ (అదనంగా ఒక subagentStatusLine ఎంట్రీ).
+3. Claude Code యొక్క `settings.json`లో నాలుగు ఎంట్రీలను ఇన్‌స్టాల్ చేస్తుంది: ఒక statusLine, ఒక Stop హుక్, ఒక StopFailure హుక్, మరియు ఒక SessionStart హుక్ (అదనంగా ఒక subagentStatusLine ఎంట్రీ).
 4. సూపర్‌వైజర్ యొక్క bin డైరెక్టరీని మీ షెల్ rc యొక్క PATHకు జోడిస్తుంది (ఇడెంపొటెంట్, `# tokenmaxxing PATH` వ్యాఖ్యతో గుర్తించబడింది). దాన్ని అడ్డగించడానికి అది PATHలో అసలైన `claude` కంటే ముందు ఉండాలి.
-5. ప్రతి 180 సెకన్లకు `tokenmaxxing check`ను నడిపే ఆవర్తన తనిఖీ టైమర్‌ను (macOS పై launchd ఏజెంట్, Linux పై systemd యూజర్ టైమర్) ఇన్‌స్టాల్ చేస్తుంది.
+5. ప్రతి 60 సెకన్లకు `tokenmaxxing check --if-due`ను నడిపే ఆవర్తన తనిఖీ టైమర్‌ను (macOS పై launchd ఏజెంట్, Linux పై systemd యూజర్ టైమర్) ఇన్‌స్టాల్ చేస్తుంది; తనిఖీ లైవ్ ఖాతా వెసులుబాటును బట్టి ఒక నిమిషం నుండి ఐదు నిమిషాల మధ్య తన వేగాన్ని తానే సర్దుకుంటుంది.
 
 మీ షెల్‌ను పునఃప్రారంభించండి, తర్వాత మరిన్ని ఖాతాలను జోడించి ప్రారంభించండి:
 

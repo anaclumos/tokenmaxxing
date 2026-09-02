@@ -5,7 +5,7 @@ description: "Chanzo cha TypeScript kwenye npm na Nix, kinachoendeshwa na Bun, k
 
 Kifurushi cha npm hutuma chanzo cha TypeScript, si build: bin ya `tokenmaxxing` inaelekeza moja kwa moja kwenye `src/main.ts` na shebang ya Bun, na Bun 1.2.6 au mpya zaidi huiendesha kama ilivyo. Ndiyo maana Bun ni sharti gumu. Hakuna binary zilizokusanywa kwa makusudi: toleo la awali lilituma binary moja ya macOS ya MB 61 kwa kila jukwaa na likashindwa kwenye Linux kwa `exec format error`, na vifurushi vilivyokusanywa kwa kila jukwaa vingehitaji kila kimoja bomba lake la kutoa, hivyo chanzo-kinachoendeshwa-na-Bun kikawa mfumo wa usambazaji.
 
-Ramani ya `exports` ya kifurushi huweka wazi `src/sdk.ts` kama kiingilio cha programu kilichoelezwa katika [Uso wa Agent SDK](/sw/sdk). Matoleo hupewa lebo `v<version>` kwenye GitHub; CI huchapisha kwenye npm kupitia uchapishaji wa kuaminika (OIDC, na provenance), na lango la uchapishaji huendesha ukaguzi wa aina na seti kamili ya majaribio kwanza.
+Ramani ya `exports` ya kifurushi huweka wazi `src/sdk.ts` kama kiingilio cha programu kilichoelezwa katika [Uso wa Agent SDK](/sw/sdk). Matoleo hupewa lebo `v<version>` kwenye GitHub; CI huchapisha kwenye npm kupitia uchapishaji wa kuaminika (OIDC, na provenance), na lango la uchapishaji huendesha ukaguzi wa aina kwanza.
 
 ## Nix / nix-darwin
 
@@ -18,7 +18,14 @@ Mti uleule wa chanzo pia ni flake. Unaendeleza mfumo wa chanzo-kinachoendeshwa-n
 | `homeManagerModules.default` | Home Manager kwenye macOS au Linux |
 | `nixosModules.default` / `withOverlay` | usakinishaji wa mfumo wa NixOS |
 
-Kukimbiza mara moja bila kusakinisha kwenye wasifu:
+Sakinisha kwenye wasifu (ili shims za msimamizi za `init` ziweze kupata `tokenmaxxing` thabiti kwenye PATH), kisha endesha init:
+
+```sh
+nix profile install github:anaclumos/tokenmaxxing
+tokenmaxxing init
+```
+
+Kukimbiza mara moja bila kusakinisha (help / status pekee, usifanye `init` kwa njia hii):
 
 ```sh
 nix run github:anaclumos/tokenmaxxing -- help
@@ -29,7 +36,6 @@ nix-darwin (inaongeza overlay ili `pkgs.tokenmaxxing` iweze kutatuliwa):
 ```nix
 {
   inputs.tokenmaxxing.url = "github:anaclumos/tokenmaxxing";
-  # ...
   modules = [
     inputs.tokenmaxxing.darwinModules.withOverlay
     { programs.tokenmaxxing.enable = true; }
@@ -37,7 +43,7 @@ nix-darwin (inaongeza overlay ili `pkgs.tokenmaxxing` iweze kutatuliwa):
 }
 ```
 
-Au weka kifurushi waziwazi (inafanya kazi na Home Manager pia):
+Home Manager (weka kifurushi waziwazi, au tumia overlay ya flake hii kwenye pkgs ambazo Home Manager inatumia):
 
 ```nix
 {
@@ -47,13 +53,14 @@ Au weka kifurushi waziwazi (inafanya kazi na Home Manager pia):
 }
 ```
 
-Nix inaweka tu CLI kwenye PATH. Uingizaji wa akaunti, shim ya supervisor ya `claude` kwenye PATH, hooks za `settings.json`, na (kwa chaguo-msingi) kipima muda cha ukaguzi wa mara kwa mara bado vinatoka kwa `tokenmaxxing init` — vinagusa vitambulisho na mipangilio ya mtumiaji ambayo moduli safi haipaswi kuandika upya. Weka `programs.tokenmaxxing.checkTimer.enable = true` tu unapotaka Nix imiliki kipima muda badala ya init.
+Nix inaweka tu CLI kwenye PATH. Uingizaji wa akaunti, shim ya supervisor ya `claude` kwenye PATH, hooks za `settings.json`, na (kwa chaguo-msingi) kipima muda cha ukaguzi wa mara kwa mara bado vinatoka kwa `tokenmaxxing init`. Hivi hugusa vitambulisho na mipangilio ya mtumiaji ambayo moduli safi haipaswi kuandika upya. Weka `programs.tokenmaxxing.checkTimer.enable = true` tu unapotaka Nix imiliki kipima muda badala ya init (hiyo pia husafirisha `TOKENMAXXING_SKIP_TIMER=1` ili init isiandike kitengo cha pili). Kipima muda cha declarative ni cha kikao cha mtumiaji, sawa na init. Linux isiyo na kichwa inahitaji `loginctl enable-linger` ili kiweze kuwaka bila kuingia.
 
 Wakati `bun.lock` inabadilika, tengeneza upya usemi wa tegemezi wa Nix:
 
 ```sh
-bun run nix:bun   # writes bun.nix via bun2nix
+bun run nix:bun   # writes bun.nix via bun2nix@2.1.2
 ```
+
 ## Leseni
 
 MIT. Chanzo katika [anaclumos/tokenmaxxing](https://github.com/anaclumos/tokenmaxxing).

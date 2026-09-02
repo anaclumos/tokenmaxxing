@@ -5,7 +5,7 @@ description: "Código-fonte TypeScript no npm e no Nix, executado pelo Bun, publ
 
 O pacote npm entrega o código-fonte TypeScript, não uma build: o bin `tokenmaxxing` aponta direto para `src/main.ts` com um shebang do Bun, e o Bun 1.2.6 ou mais novo o executa como está. É por isso que o Bun é um requisito obrigatório. Não há binários compilados por design: um lançamento inicial entregou um único binário macOS de 61 MB para todas as plataformas e falhou no Linux com `exec format error`, e pacotes compilados por plataforma precisariam cada um de seu próprio pipeline de lançamento, então rodar o código-fonte via Bun se tornou o modelo de distribuição.
 
-O mapa `exports` do pacote expõe `src/sdk.ts` como o ponto de entrada programático descrito em [A superfície do Agent SDK](/pt/sdk). Os lançamentos são marcados como `v<version>` no GitHub; a CI publica no npm via trusted publishing (OIDC, com procedência), e o portão de publicação executa o typecheck e a suíte de testes completa primeiro.
+O mapa `exports` do pacote expõe `src/sdk.ts` como o ponto de entrada programático descrito em [A superfície do Agent SDK](/pt/sdk). Os lançamentos são marcados como `v<version>` no GitHub; a CI publica no npm via trusted publishing (OIDC, com procedência), e o portão de publicação executa o typecheck primeiro.
 
 ## Nix / nix-darwin
 
@@ -18,7 +18,14 @@ A mesma árvore de código-fonte também é um flake. Mantém o modelo de códig
 | `homeManagerModules.default` | Home Manager no macOS ou Linux |
 | `nixosModules.default` / `withOverlay` | instalação de sistema no NixOS |
 
-Uso pontual sem instalar num perfil:
+Instale em um perfil (para que os shims supervisores do `init` consigam resolver um `tokenmaxxing` estável no PATH), depois rode o init:
+
+```sh
+nix profile install github:anaclumos/tokenmaxxing
+tokenmaxxing init
+```
+
+Uso pontual sem instalar (apenas help / status, não faça `init` assim):
 
 ```sh
 nix run github:anaclumos/tokenmaxxing -- help
@@ -29,7 +36,6 @@ nix-darwin (adiciona o overlay para `pkgs.tokenmaxxing` resolver):
 ```nix
 {
   inputs.tokenmaxxing.url = "github:anaclumos/tokenmaxxing";
-  # ...
   modules = [
     inputs.tokenmaxxing.darwinModules.withOverlay
     { programs.tokenmaxxing.enable = true; }
@@ -37,7 +43,7 @@ nix-darwin (adiciona o overlay para `pkgs.tokenmaxxing` resolver):
 }
 ```
 
-Ou define o pacote explicitamente (também funciona com Home Manager):
+Home Manager (defina o pacote explicitamente, ou aplique o overlay deste flake aos pkgs que o Home Manager usa):
 
 ```nix
 {
@@ -47,13 +53,14 @@ Ou define o pacote explicitamente (também funciona com Home Manager):
 }
 ```
 
-O Nix só coloca a CLI no PATH. A importação de contas, o shim supervisor `claude` no PATH, os hooks de `settings.json` e (por omissão) o timer de verificação periódica continuam a vir de `tokenmaxxing init` — mexem em credenciais e definições do utilizador que um módulo puro não deve reescrever. Define `programs.tokenmaxxing.checkTimer.enable = true` só quando quiseres que o Nix controle o timer em vez do init.
+O Nix só coloca a CLI no PATH. A importação de contas, o shim supervisor `claude` no PATH, os hooks de `settings.json` e (por omissão) o timer de verificação periódica continuam a vir de `tokenmaxxing init`. Todos eles mexem em credenciais e definições do utilizador que um módulo puro não deve reescrever. Defina `programs.tokenmaxxing.checkTimer.enable = true` só quando quiser que o Nix controle o timer em vez do init (isso também exporta `TOKENMAXXING_SKIP_TIMER=1` para que o init não grave uma segunda unidade). O timer declarativo é um timer de sessão de usuário, igual ao do init, e no Linux headless ele precisa de `loginctl enable-linger` para disparar sem um login.
 
 Quando `bun.lock` mudar, regenera a expressão de dependências do Nix:
 
 ```sh
-bun run nix:bun   # writes bun.nix via bun2nix
+bun run nix:bun   # writes bun.nix via bun2nix@2.1.2
 ```
+
 ## Licença
 
 MIT. Código-fonte em [anaclumos/tokenmaxxing](https://github.com/anaclumos/tokenmaxxing).
