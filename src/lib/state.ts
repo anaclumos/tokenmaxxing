@@ -1,4 +1,4 @@
-import { closeSync, existsSync, fstatSync, openSync, readFileSync, rmSync, statSync, utimesSync } from "node:fs";
+import { closeSync, existsSync, fstatSync, openSync, readFileSync, rmSync, utimesSync } from "node:fs";
 import { isEqual } from "es-toolkit";
 import { z } from "zod";
 import { paths, realClaudeBinFromEnv, realCodexBinFromEnv } from "./paths.ts";
