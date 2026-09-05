@@ -2,15 +2,16 @@ import { CHECK_DELAY_FLOOR_MS, checkDelayMs, evaluateAndMaybeSwap } from "../lib
 import { readOAuthAccount } from "../lib/claudejson.ts";
 import { log } from "../lib/log.ts";
 import { loadConfig, loadNextCheckDueAt, saveNextCheckDueAt } from "../lib/state.ts";
-import { c, fmtReset } from "./render.ts";
+import { c, emitError, emitJson, fmtReset } from "./render.ts";
 
 const TICK_SLACK_MS = CHECK_DELAY_FLOOR_MS / 2;
 
-export async function cmdCheck(args: string[] = []): Promise<number> {
+export async function cmdCheck(args: string[] = [], json = false): Promise<number> {
   const now = Date.now();
   const dueAt = args.includes("--if-due") ? loadNextCheckDueAt(now) : null;
   if (dueAt != null && now + TICK_SLACK_MS < dueAt) {
-    console.log(c.dim(`not due (${Math.ceil((dueAt - now) / 1000)}s)`));
+    if (json) emitJson({ ok: true, due: false, nextCheckAt: dueAt });
+    else console.log(c.dim(`not due (${Math.ceil((dueAt - now) / 1000)}s)`));
     return 0;
   }
   let d;
@@ -19,11 +20,23 @@ export async function cmdCheck(args: string[] = []): Promise<number> {
   } catch (e) {
     const detail = e instanceof Error ? e.message : String(e);
     log("check.error", { err: detail });
-    console.error(c.red(`check failed: ${detail}`));
+    emitError({ json, message: `check failed: ${detail}` });
     return 1;
   }
   const delayMs = checkDelayMs({ cfg: loadConfig(), org: readOAuthAccount()?.organizationUuid ?? null, now, decision: d });
   saveNextCheckDueAt({ dueAt: now + delayMs, ts: now });
+  if (json) {
+    emitJson({
+      ok: true,
+      due: true,
+      swapped: d.swapped,
+      account: d.account?.label ?? null,
+      reason: d.reason,
+      waitUntil: d.waitUntil ?? null,
+      nextCheckAt: now + delayMs,
+    });
+    return 0;
+  }
   const next = c.dim(`next in ${Math.round(delayMs / 1000)}s`);
   if (d.swapped && d.account) {
     console.log(`${c.green("↻")} switched to ${c.bold(d.account.label)} ${next}`);

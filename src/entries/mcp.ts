@@ -151,7 +151,7 @@ export function createTokenmaxxingMcpServer(): McpServer {
       inputSchema: {},
     },
     async () => {
-      const cap = await captureCli(() => cmdStatus(false));
+      const cap = await captureCli(() => cmdStatus());
       return textResult({ text: formatCapture(cap), isError: cap.code !== 0 });
     },
   );

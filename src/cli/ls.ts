@@ -1,10 +1,45 @@
 import { loadAccounts } from "../lib/state.ts";
 import { loadCodexAccounts } from "../lib/codexstate.ts";
 import { liveCodexAccountId } from "../lib/codexsample.ts";
-import { c, claudeTierLabel } from "./render.ts";
+import { c, claudeTierLabel, emitJson } from "./render.ts";
 
-export function cmdLs(): number {
+export function cmdLs(json = false): number {
   const idx = loadAccounts();
+
+  if (json) {
+    const codex = loadCodexAccounts();
+    const liveId = codex.accounts.length > 0 ? liveCodexAccountId() : null;
+    emitJson({
+      ok: true,
+      claude: {
+        activeAccountUuid: idx.activeAccountUuid,
+        accounts: idx.accounts.map((a) => ({
+          label: a.label,
+          email: a.email,
+          accountUuid: a.accountUuid,
+          organizationUuid: a.organizationUuid,
+          tier: claudeTierLabel(a),
+          active: a.accountUuid === idx.activeAccountUuid,
+          needsReauth: a.needsReauth === true,
+          addedAt: a.addedAt,
+        })),
+      },
+      codex: {
+        activeAccountId: liveId,
+        accounts: codex.accounts.map((account) => ({
+          label: account.label,
+          email: account.email,
+          accountId: account.accountId,
+          planType: account.planType,
+          active: account.accountId === liveId,
+          needsReauth: account.needsReauth === true,
+          addedAt: account.addedAt,
+        })),
+      },
+    });
+    return 0;
+  }
+
   if (idx.accounts.length === 0) {
     console.log(c.dim("no accounts yet - run `tokenmaxxing init` then `tokenmaxxing add`"));
   }

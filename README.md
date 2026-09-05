@@ -76,6 +76,7 @@ claude                  # use claude as always
 | `tokenmaxxing doctor` | verify the supervisor + settings entries survived |
 | `tokenmaxxing rename [--codex] <sel> <label>` / `rm [--codex] <sel>` | manage the pool (`--codex` targets the codex pool: one email can hold both a claude and a codex account) |
 | `tokenmaxxing uninstall` | remove supervisor + settings entries (accounts/credentials kept) |
+| `--json` | machine-readable output: one JSON document on stdout for `status`, `ls`, `config`, `doctor`, `check`, `switch`, `rename`, `rm`, `uninstall`, and one per tick for `watch` (`ok` mirrors the exit code, failures add `error`) |
 
 ## How switching decides
 

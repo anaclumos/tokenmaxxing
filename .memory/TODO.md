@@ -68,11 +68,29 @@ Diet audit candidates (owner picks; none applied):
 
 One-line goal for the resuming machine: Ship tokenmaxxing 1.10.0 from branch feat/session-threshold-ladder (5h ladder 50/80/95, check cadence capped one band per rung, no tests, no comments) with every English and localized doc page stating exactly what the code enforces: finish the locale gates and verification, re-run the hermetic harness, open the PR, pass CI, sit the full 10-minute review window, merge, release v1.10.0, verify npm.
 
-Dated 2026-09-05. Defaults raised: greedy floor 80, session ladder [90] (1.11.0).
+Dated 2026-09-05. `--json` output mode (1.11.0), branch feat/json-output, PR #58.
 
-Goal: ship 1.11.0 from branch t3code/raise-greedy-floor-threshold with `policy.greedySessionFloor` defaulting to 80 and `thresholds.session` to `[90]`, mechanics untouched, every English and localized doc page stating the new defaults.
+Goal: every reporting command prints one JSON document on stdout under `--json` (`ok` mirrors exit 0, failures add `error`, progress stays on stderr, never credential material), with the text form byte-identical to 1.10.0 apart from the new `--json` help line (two further deltas accepted in review round 1: the `config unset` known-keys hint and the Codex greedy switch reporting a dead grant on stderr), then ship it PR-based with the release and the npm publish verified.
 
-- [x] `src/lib/state.ts` defaults: session `[90]`, greedySessionFloor 80; `package.json` and `agent-plugin/plugin.json` to 1.11.0
+- [x] Flag parse in `src/main.ts` after the supervisor pass-through (claude/codex argv never filtered); `init`/`add`/`auth` refuse with exit 2
+- [x] `emitJson`/`emitError` in `src/cli/render.ts`; every error branch of status, ls, config, doctor, check, switch, switch --codex, watch, rename, rm, uninstall routed through them
+- [x] `status` split into collect (typed report) and render; text diffed against main on a throwaway root (identical) and on the real pool via the free `/usage` path (only probe-timing tie order differs)
+- [x] Docs: commands.mdx row + "JSON output" section, README row, help text, pool-status skill; `cd docs && bun run build` exit 0
+- [x] Bump 1.11.0 in package.json and agent-plugin/plugin.json; typecheck clean
+- [x] Committed 673b5a8 by explicit path after the full untruncated diff read; pushed; PR #58 opened 2026-09-05 06:42:20Z (window runs 10 minutes from the last push)
+- [x] Adversarial review of the branch: four opus finders ran; the refuter stage was STOPPED early because one finder ran `uninstall --json` under a throwaway `TOKENMAXXING_HOME` on the dev host and stripped that host's live install (settings.json entries, codex hooks.json, rc PATH line, systemd timer; wrappers, accounts, and credentials untouched). No repair attempted: `init` on a live host is the owner's step. Lesson recorded in AGENTS.md. Findings triaged by hand: fixed the status render/sample interleaving, the `ls` codex-read ordering, the `--force` ping-note gate, the codex no-target stdout routing, the `swapTo` dead-grant record, the guard order for the interactive refusal, the doctor `error` field and raw rc line, the not-due `nextCheckAt`, the codex-only `watch`, and every undocumented field; refuted the JSON `notes`, the stale-window zeroing (unmeasured must never look safe), the `config unset` hint (intended consistency), and the locale sweep (owner: features over docs)
+- [x] Codex review round 1 (4 findings, all fixed) and cubic round 1 (13 findings: 9 fixed, 3 refuted, 1 duplicate) handled in the same push
+- [ ] CI green, review window elapsed from the last push, every reviewer finding handled
+- [ ] Merge, `gh release create v1.11.0`, `npm view tokenmaxxing version` reads 1.11.0
+- [ ] Teardown: remote and local branch deleted, throwaway roots removed
+
+One-line goal for the resuming machine: Ship tokenmaxxing 1.11.0 from branch feat/json-output (PR #58, the `--json` output mode): finish the adversarial review, pass CI, sit the full 10-minute window from the last push, handle every review, merge, release v1.11.0, verify npm, tear down.
+
+Dated 2026-09-05. Defaults raised: greedy floor 80, session ladder [90] (1.12.0).
+
+Goal: ship 1.12.0 from branch t3code/raise-greedy-floor-threshold with `policy.greedySessionFloor` defaulting to 80 and `thresholds.session` to `[90]`, mechanics untouched, every English and localized doc page stating the new defaults.
+
+- [x] `src/lib/state.ts` defaults: session `[90]`, greedySessionFloor 80; `package.json` and `agent-plugin/plugin.json` to 1.12.0 (opened as 1.11.0; PR #58 took that number first)
 - [x] English prose: README, DESIGN.md, AGENTS.md, switching.mdx, configuration.mdx, the switching-policy skill and its policy reference; the 50/80/95 ladder stays as the documented multi-rung example
 - [x] Localized pages: JSON snippets in 29 configuration pages; engagement line and ladder bullet in 29 switching pages (default `[90]`, single rung; the climb sentence reframed as the `[50, 80, 95]` example)
 - [x] `.memory`: switch-policy-pace-pressure (2026-09-05 decision), MEMORY.md index line, hermetic-ladder-verification (defaults now need an explicit config; HOME override on Linux)
@@ -81,5 +99,6 @@ Goal: ship 1.11.0 from branch t3code/raise-greedy-floor-threshold with `policy.g
 - [x] Hermetic Layer 1, four cases, all PASS (recorded in hermetic-ladder-verification.md)
 - [x] Committed 5b3d5c8 by explicit path, pushed 2026-09-05 06:57:54Z, PR #59 opened; CI green (test, nix, Vercel, cubic)
 - [x] Review round 1 on #59: Codex 2 (P1 premature "Shipped as 1.11.0" in the policy memory, P2 stale 50/80/95 sentence in DESIGN.md section 1), cubic 5 (the same two plus the localized closing sentence missing the multi-rung qualifier, flagged on ja, vi, de and applying to all 29). All seven agreed and fixed in one commit across DESIGN.md, the policy memory, and the 29 switching pages; the fix push restarts the 10-minute window
-- [ ] Second review window from the fix push, handle anything new
-- [ ] Merge, `gh release create v1.11.0`, `npm view tokenmaxxing version` reads 1.11.0, teardown
+- [x] Second window elapsed 07:20:11Z with CI green and no new findings; the merge was refused because PR #58 (--json output mode, 1.11.0) merged into main at 07:20:26Z and released v1.11.0 while the window ran. Resolved by merging main into the branch (the only conflict was both sessions appending to this file), bumping to 1.12.0, and re-pushing, which restarts the window
+- [ ] Third review window from the merge push, handle anything new
+- [ ] Merge, `gh release create v1.12.0`, `npm view tokenmaxxing version` reads 1.12.0, teardown

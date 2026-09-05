@@ -85,6 +85,10 @@ Short pointers.
 - Statusline: `src/entries/statusline.ts` renders natively and tees `usage.json`; subagent rows in `src/entries/subagentstatusline.ts`. Format spec in `docs/statusline.mdx`. statusLine stdin sends top-level sub-objects as JSON `null`, so their schemas need `.nullable().optional()`, not `.optional()`. The main payload can never reflect the focused subagent; the subagent rows are the only such surface. This runs every turn, so keep it O(ms) and off flock and oauth: read the HEAD file, never spawn a git subprocess.
 - SDK: `src/sdk.ts` is the programmatic entry and is self-documenting. `docs/sdk.mdx`, `.memory/agent-sdk-auth-surface.md`. Pooling subscription logins is framed as the owner using their own accounts in agents they run themselves; offering it to third parties is a ToS problem (`docs/terms.mdx`).
 
+## CLI output
+
+Every reporting command has a text form and a `--json` form (`ok` mirrors exit 0, failures add `error`, progress on stderr only; contract in `docs/commands.mdx`). Route every new success line through `emitJson` behind the `json` flag and every error through `emitError` (`notes` are text-only hints, `extra` is structured data). A bare `console.log` on a `--json`-capable command breaks the contract for scripts, and the text form must stay byte-identical: `status` renders from the same report the JSON prints, so change the collect step, not the renderer, when a number is wrong.
+
 ## Do not reintroduce
 
 - A Stop-hook text-sniffing limit failsafe. Stop stdin carries no `is_error`, so it fired on turns that merely discussed limits and stamped healthy accounts as walled. The real errored-turn signal is the StopFailure hook (`src/entries/stopfailurehook.ts`): it classifies only the transcript row Claude Code itself marked `isApiErrorMessage`, never prose, and stamps only with post-swap proof. Keep it that way.
@@ -103,6 +107,7 @@ The live interactive-PTY SIGTERM test is still owed (`DESIGN.md` §9), but the o
 - A prior go-ahead does not cover collision evidence that arrives after it. Every new signal of concurrent work freezes git actions until the owner rules.
 - Never write a completion claim into docs or memory ahead of the output that proves it.
 - `status --force` opens a real 5h window on every account it pings. A feature request is not permission to spend.
+- `TOKENMAXXING_HOME` isolates state files only. `init`, `uninstall`, and the codex hook install write settings.json, codex `hooks.json`, the shell rc, and the timer unit under `HOME` regardless, so a throwaway root does not make them hermetic: a review subagent ran `uninstall --json` under one and stripped a live install (2026-09-05). Subagent prompts must forbid those commands by name; "hermetic" is not enough.
 
 ## Cursor Cloud specific instructions
 
