@@ -39,7 +39,10 @@ export async function cmdSwitch(selector?: string, json = false): Promise<number
       try {
         await performSwap(target);
       } catch (e) {
-        if (e instanceof InvalidGrantError) return fail(deadGrantMessage(target));
+        if (e instanceof InvalidGrantError) {
+          deadGrants.push(target.label);
+          return fail(deadGrantMessage(target));
+        }
         throw e;
       }
       emit(`${c.green("↻")} switched to ${c.bold(target.label)}`, { switched: true, account: target.label, reason, ...extra });

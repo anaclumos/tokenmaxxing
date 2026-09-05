@@ -67,3 +67,21 @@ Diet audit candidates (owner picks; none applied):
 - [x] Diet audit: the eight candidates above are presented to the owner in the ship report; none applied (owner rule: present findings, ask before fixing). Any pick is new work, not part of this goal.
 
 One-line goal for the resuming machine: Ship tokenmaxxing 1.10.0 from branch feat/session-threshold-ladder (5h ladder 50/80/95, check cadence capped one band per rung, no tests, no comments) with every English and localized doc page stating exactly what the code enforces: finish the locale gates and verification, re-run the hermetic harness, open the PR, pass CI, sit the full 10-minute review window, merge, release v1.10.0, verify npm.
+
+Dated 2026-09-05. `--json` output mode (1.11.0), branch feat/json-output, PR #58.
+
+Goal: every reporting command prints one JSON document on stdout under `--json` (`ok` mirrors exit 0, failures add `error`, progress stays on stderr, never credential material), with the text form byte-identical to 1.10.0, then ship it PR-based with the release and the npm publish verified.
+
+- [x] Flag parse in `src/main.ts` after the supervisor pass-through (claude/codex argv never filtered); `init`/`add`/`auth` refuse with exit 2
+- [x] `emitJson`/`emitError` in `src/cli/render.ts`; every error branch of status, ls, config, doctor, check, switch, switch --codex, watch, rename, rm, uninstall routed through them
+- [x] `status` split into collect (typed report) and render; text diffed against main on a throwaway root (identical) and on the real pool via the free `/usage` path (only probe-timing tie order differs)
+- [x] Docs: commands.mdx row + "JSON output" section, README row, help text, pool-status skill; `cd docs && bun run build` exit 0
+- [x] Bump 1.11.0 in package.json and agent-plugin/plugin.json; typecheck clean
+- [x] Committed 673b5a8 by explicit path after the full untruncated diff read; pushed; PR #58 opened 2026-09-05 06:42:20Z (window runs 10 minutes from the last push)
+- [x] Adversarial review of the branch: four opus finders ran; the refuter stage was STOPPED early because one finder ran `uninstall --json` under a throwaway `TOKENMAXXING_HOME` on the dev host and stripped that host's live install (settings.json entries, codex hooks.json, rc PATH line, systemd timer; wrappers, accounts, and credentials untouched). No repair attempted: `init` on a live host is the owner's step. Lesson recorded in AGENTS.md. Findings triaged by hand: fixed the status render/sample interleaving, the `ls` codex-read ordering, the `--force` ping-note gate, the codex no-target stdout routing, the `swapTo` dead-grant record, the guard order for the interactive refusal, the doctor `error` field and raw rc line, the not-due `nextCheckAt`, the codex-only `watch`, and every undocumented field; refuted the JSON `notes`, the stale-window zeroing (unmeasured must never look safe), the `config unset` hint (intended consistency), and the locale sweep (owner: features over docs)
+- [x] Codex review round 1 (4 findings, all fixed) and cubic round 1 (13 findings: 9 fixed, 3 refuted, 1 duplicate) handled in the same push
+- [ ] CI green, review window elapsed from the last push, every reviewer finding handled
+- [ ] Merge, `gh release create v1.11.0`, `npm view tokenmaxxing version` reads 1.11.0
+- [ ] Teardown: remote and local branch deleted, throwaway roots removed
+
+One-line goal for the resuming machine: Ship tokenmaxxing 1.11.0 from branch feat/json-output (PR #58, the `--json` output mode): finish the adversarial review, pass CI, sit the full 10-minute window from the last push, handle every review, merge, release v1.11.0, verify npm, tear down.

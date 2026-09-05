@@ -11,14 +11,17 @@ import { terminalBars } from "../lib/picker.ts";
 import { c, emitError, emitJson } from "./render.ts";
 
 export async function cmdCodexSwitch(sel?: string, json = false): Promise<number> {
+  const deadGrants: string[] = [];
+  const withDeadGrants = (report: Record<string, unknown>) => (deadGrants.length > 0 ? { ...report, deadGrants } : report);
   const emit = (text: string, report: Record<string, unknown>): void => {
-    if (json) emitJson({ ok: true, ...report });
+    if (json) emitJson({ ok: true, ...withDeadGrants(report) });
     else console.log(text);
   };
   const fail = (message: string, opts: { paint?: (s: string) => string; notes?: string[]; extra?: Record<string, unknown> } = {}): number => {
-    emitError({ json, message, paint: opts.paint, notes: opts.notes, extra: opts.extra });
+    emitError({ json, message, paint: opts.paint, notes: opts.notes, extra: withDeadGrants(opts.extra ?? {}) });
     return 1;
   };
+  const deadGrantMessage = (label: string) => `${label}'s refresh token is dead - re-add it with \`tokenmaxxing add --codex\``;
   const cfg = loadConfig();
   const bars = terminalBars(cfg);
   const now = Date.now();
@@ -56,7 +59,8 @@ export async function cmdCodexSwitch(sel?: string, json = false): Promise<number
         await performCodexSwap({ target });
       } catch (e) {
         if (e instanceof CodexInvalidGrantError) {
-          return fail(`${target.label}'s refresh token is dead - re-add it with \`tokenmaxxing add --codex\``);
+          deadGrants.push(target.label);
+          return fail(deadGrantMessage(target.label));
         }
         throw e;
       }
@@ -81,11 +85,21 @@ export async function cmdCodexSwitch(sel?: string, json = false): Promise<number
         return 0;
       }
       const best = pickBestCodex({ accounts: candidates, thresholds: bars, now, currentAccountId: currentId });
-      if (!best) return fail("no usable codex switch target (all at their bars, unmeasured, or needing reauth)", { paint: c.yellow });
+      if (!best) {
+        const message = "no usable codex switch target (all at their bars, unmeasured, or needing reauth)";
+        const reauthNeeded = current.accounts.filter((account) => account.needsReauth).map((account) => account.label);
+        if (json) return fail(message, { extra: { reauthNeeded } });
+        console.log(c.yellow(message));
+        return 1;
+      }
       try {
         await performCodexSwap({ target: best });
       } catch (e) {
-        if (e instanceof CodexInvalidGrantError) continue;
+        if (e instanceof CodexInvalidGrantError) {
+          deadGrants.push(best.label);
+          if (!json) console.error(c.red(deadGrantMessage(best.label)));
+          continue;
+        }
         throw e;
       }
       emit(`${c.green("✓")} switched codex to ${c.bold(best.label)} (takes effect on the next codex start)`, {

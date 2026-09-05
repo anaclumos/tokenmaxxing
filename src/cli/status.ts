@@ -169,7 +169,7 @@ async function collectClaude(input: { cfg: Config; force: boolean; now: number }
       usageAt: a.lastUsageAt ?? null,
       sample: sampled.outcome.ok ? { ok: true, source: sampled.viaTee ? "statusline" : "probe" } : { ok: false, reason: sampled.outcome.reason },
       pingError: sampled.outcome.pingError ?? null,
-      pinged: force && sampled.outcome.ok && sampled.outcome.pingError == null,
+      pinged: force && sampled.outcome.ok && sampled.outcome.pingError == null && aggregate != null && aggregate.fiveHour.resetsAt == null,
     };
   });
   return {
@@ -271,20 +271,21 @@ function renderCodex(input: { codex: StatusReport["codex"]; now: number; row: (n
   }
 }
 
-function renderStatus(report: StatusReport): void {
-  const { now, claude, codex } = report;
-  const row = (name: string, w: UsageWindow) => {
+function rowPrinter(now: number): (name: string, w: UsageWindow) => void {
+  return (name, w) => {
     console.log(`    ${name.padEnd(5)} ${bar(w.usedPercentage)}  ${c.dim(fmtReset(w.resetsAt, now))}`);
   };
+}
 
+function renderClaude(input: { claude: StatusReport["claude"]; codexPooled: boolean; now: number; row: (name: string, w: UsageWindow) => void }): void {
+  const { claude, codexPooled, now, row } = input;
   if (claude.accounts.length === 0) {
-    if (codex.accounts.length === 0) {
+    if (!codexPooled) {
       console.log(c.dim("no accounts yet, run `tokenmaxxing init` (or `tokenmaxxing init --codex`)"));
       return;
     }
     console.log(c.dim("no claude accounts (run `tokenmaxxing init` to pool claude too)"));
     console.log();
-    renderCodex({ codex, now, row });
     return;
   }
 
@@ -309,26 +310,29 @@ function renderStatus(report: StatusReport): void {
     if (a.pingError != null) {
       console.log(`    ${c.yellow("ping failed (5h timer may not have started)")}: ${c.dim(a.pingError)}`);
     }
-    if (a.pinged && a.usage && a.usage.fiveHour.resetsAt == null) {
+    if (a.pinged) {
       console.log(`    ${c.dim("pinged - 5h timer started this run; the usage feed lags, re-run status shortly for the fresh window")}`);
     }
     console.log();
   }
-  renderCodex({ codex, now, row });
 }
 
 export async function cmdStatus(opts: { force?: boolean; json?: boolean; preRender?: () => void } = {}): Promise<number> {
   const { force = false, json = false } = opts;
   const cfg = loadConfig();
   const now = Date.now();
+  const row = rowPrinter(now);
   const claude = await collectClaude({ cfg, force, now });
+  if (!json) {
+    opts.preRender?.();
+    renderClaude({ claude, codexPooled: loadCodexAccounts().accounts.length > 0, now, row });
+  }
   const codex = await collectCodex({ cfg, now });
-  const report: StatusReport = { now, claude, codex };
-  opts.preRender?.();
   if (json) {
+    const report: StatusReport = { now, claude, codex };
     emitJson({ ok: true, ...report });
     return 0;
   }
-  renderStatus(report);
+  renderCodex({ codex, now, row });
   return 0;
 }

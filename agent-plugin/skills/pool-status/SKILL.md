@@ -22,6 +22,6 @@ If MCP is unavailable, run `tokenmaxxing ls --json` or `tokenmaxxing status --js
 
 - Active Claude usage often comes from the statusLine tee; parked accounts are probed in isolation.
 - `watch` re-renders status on an interval and never force-pings.
-- Hermetic agents: set `TOKENMAXXING_HOME` to a throwaway directory.
+- Hermetic agents: set `TOKENMAXXING_HOME` to a throwaway directory. That isolates state files only: `init`, `uninstall`, and the codex hook install still write settings.json, codex `hooks.json`, the shell rc, and the timer unit under `HOME`, so never run them from an agent.
 
 See [references/commands.md](references/commands.md).

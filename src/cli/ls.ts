@@ -5,10 +5,10 @@ import { c, claudeTierLabel, emitJson } from "./render.ts";
 
 export function cmdLs(json = false): number {
   const idx = loadAccounts();
-  const codex = loadCodexAccounts();
-  const liveId = codex.accounts.length > 0 ? liveCodexAccountId() : null;
 
   if (json) {
+    const codex = loadCodexAccounts();
+    const liveId = codex.accounts.length > 0 ? liveCodexAccountId() : null;
     emitJson({
       ok: true,
       claude: {
@@ -55,7 +55,9 @@ export function cmdLs(json = false): number {
     console.log(`  ${c.dim(`org ${a.organizationUuid.slice(0, 8)}, ${claudeTierLabel(a) ?? "?"}, uuid ${a.accountUuid.slice(0, 8)}`)}`);
   }
 
+  const codex = loadCodexAccounts();
   if (codex.accounts.length > 0) {
+    const liveId = liveCodexAccountId();
     console.log();
     console.log(c.dim("codex"));
     for (const account of codex.accounts) {

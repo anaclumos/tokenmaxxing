@@ -10,7 +10,7 @@ export async function cmdCheck(args: string[] = [], json = false): Promise<numbe
   const now = Date.now();
   const dueAt = args.includes("--if-due") ? loadNextCheckDueAt(now) : null;
   if (dueAt != null && now + TICK_SLACK_MS < dueAt) {
-    if (json) emitJson({ ok: true, due: false, dueAt });
+    if (json) emitJson({ ok: true, due: false, nextCheckAt: dueAt });
     else console.log(c.dim(`not due (${Math.ceil((dueAt - now) / 1000)}s)`));
     return 0;
   }

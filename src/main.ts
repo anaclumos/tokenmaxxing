@@ -53,7 +53,7 @@ function printHelp(): void {
   ${c.cyan("tokenmaxxing rm")} [--codex] <sel>
   ${c.cyan("tokenmaxxing uninstall")}  remove supervisor + settings entries
 
-  ${c.cyan("--json")}                  print one JSON document on stdout instead of text (status, ls, config, doctor, check, switch, watch, rename, rm, uninstall); every document carries ${c.bold("ok")}, failures add ${c.bold("error")}
+  ${c.cyan("--json")}                  print one JSON document on stdout instead of text (status, ls, config, doctor, check, switch, rename, rm, uninstall; one per tick for watch); every document carries ${c.bold("ok")}, failures add ${c.bold("error")}
 
   ${c.dim("(aliased as")} ${c.cyan("xx")}${c.dim(")")} - then just run ${c.bold("claude")} as always; it switches accounts near quota automatically.`);
 }
@@ -80,6 +80,10 @@ async function main(): Promise<number> {
   const args = argv.filter((a) => a !== JSON_FLAG);
   const sub = args[0];
 
+  if (json && sub != null && INTERACTIVE_COMMANDS.has(sub)) {
+    emitError({ json, message: `${sub} is interactive (it runs a login flow) and has no --json form` });
+    return 2;
+  }
   if (!(sub != null && sub.startsWith("__")) && !process.env.TOKENMAXXING_PROBE) {
     const nonEmpty = (v: string | undefined) => (v != null && v !== "" ? v : null);
     const ambient = nonEmpty(process.env.CLAUDE_SECURESTORAGE_CONFIG_DIR) ?? nonEmpty(process.env.CLAUDE_CONFIG_DIR);
@@ -90,10 +94,6 @@ async function main(): Promise<number> {
       });
       return 1;
     }
-  }
-  if (json && sub != null && INTERACTIVE_COMMANDS.has(sub)) {
-    emitError({ json, message: `${sub} is interactive (it runs a login flow) and has no --json form` });
-    return 2;
   }
 
   switch (sub) {

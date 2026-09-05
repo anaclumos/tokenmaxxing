@@ -1,5 +1,6 @@
 import { clamp, delay } from "es-toolkit";
 import { loadAccounts } from "../lib/state.ts";
+import { loadCodexAccounts } from "../lib/codexstate.ts";
 import { cmdStatus } from "./status.ts";
 import { c, emitError, emitJson } from "./render.ts";
 
@@ -22,7 +23,7 @@ export async function cmdWatch(intervalArg?: string, json = false): Promise<numb
     emitError({ json, message: `watch interval must be a positive number of seconds, got: ${intervalArg}` });
     return 2;
   }
-  if (loadAccounts().accounts.length === 0) return cmdStatus({ json });
+  if (loadAccounts().accounts.length === 0 && loadCodexAccounts().accounts.length === 0) return cmdStatus({ json });
 
   const paintHeader = () => {
     process.stdout.write(process.stdout.isTTY ? CLEAR : "\n");

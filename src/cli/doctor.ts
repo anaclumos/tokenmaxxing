@@ -87,14 +87,15 @@ export async function cmdDoctor(json = false): Promise<number> {
   const rc = shellRcPath();
   if (rc && existsSync(rc)) {
     for (const s of findClaudeShadowers(readFileSync(rc, "utf8"))) {
-      if (s.kind === "shadow") warn(`${rc}: \`${s.line}\` shadows the supervised claude wrapper - launches through it skip tokenmaxxing`);
+      if (s.kind === "shadow") warn(`${rc}: ${s.line.startsWith("alias ") ? "alias" : "function"} \`claude\` shadows the supervised claude wrapper - launches through it skip tokenmaxxing`);
       else warn(`${rc}: alias \`${s.name}\` hardcodes a claude path and bypasses the supervisor - use plain \`claude\` in its body instead`);
     }
   }
 
-  const ok = checks.every((entry) => entry.ok);
+  const failed = checks.filter((entry) => !entry.ok).length;
+  const ok = failed === 0;
   if (json) {
-    emitJson({ ok, checks, notes, warnings });
+    emitJson(ok ? { ok, checks, notes, warnings } : { ok, error: `issues found - ${failed} of ${checks.length} checks failed`, checks, notes, warnings });
     return ok ? 0 : 1;
   }
   console.log();
