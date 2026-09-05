@@ -238,14 +238,6 @@ export function writeUsage(next: UsageState): boolean {
   return true;
 }
 
-export function usageTeeAt(): number | null {
-  try {
-    return statSync(paths.usageJson).mtimeMs;
-  } catch {
-    return null;
-  }
-}
-
 export function loadModelUsage(): ModelUsageState | null {
   if (!existsSync(paths.modelUsageJson)) return null;
   try {

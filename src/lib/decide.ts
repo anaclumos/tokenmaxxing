@@ -2,7 +2,7 @@ import { maxBy } from "es-toolkit";
 import { z } from "zod";
 import { withLock } from "./lock.ts";
 import { paths } from "./paths.ts";
-import { MAX_CHECK_DELAY_MS, loadAccounts, loadConfig, loadDepletedWait, loadLastSwapAt, loadUsage, loadUsageSnapshot, loadModelUsage, saveAccounts, saveDepletedWait, saveModelUsage, usageTeeAt, writeUsage } from "./state.ts";
+import { MAX_CHECK_DELAY_MS, loadAccounts, loadConfig, loadDepletedWait, loadLastSwapAt, loadUsage, loadUsageSnapshot, loadModelUsage, saveAccounts, saveDepletedWait, saveModelUsage, writeUsage } from "./state.ts";
 import { readOAuthAccount } from "./claudejson.ts";
 import { chooseAndSwap, performSwap } from "./swap.ts";
 import { currentWins, effectiveBars, hardBars, isExhausted, nextWeeklyReset, pickBest, pickEarliestReset, sessionLadder, usableAt } from "./picker.ts";
@@ -76,10 +76,8 @@ const SnapshotsSchema = z.object({
 });
 type Snapshots = z.infer<typeof SnapshotsSchema>;
 
-function usageFresh(u: UsageState | null, org: string | null, ttl: number, now: number): boolean {
-  if (u == null || u.org !== org) return false;
-  const teeAt = usageTeeAt();
-  return teeAt != null && now - teeAt <= ttl;
+function usageFresh(u: UsageState | null, uAt: number | null, org: string | null, ttl: number, now: number): boolean {
+  return u != null && u.org === org && uAt != null && now - uAt <= ttl;
 }
 
 function freshest(u: UsageState | null, uAt: number | null, account: Account | undefined): UsageState | null {
@@ -95,13 +93,13 @@ async function loadFreshSnapshots(cfg: Config, org: string | null, now: number):
   let mu = loadModelUsage();
   const ttl = cfg.policy.usagePollTtlMs;
   const probeAttempted = mu != null && mu.org === org && now - mu.ts <= ttl;
-  if (org && !probeAttempted && (!usageFresh(u, org, ttl, now) || needsPerModel(u, cfg))) {
+  if (org && !probeAttempted && (!usageFresh(u, uAt, org, ttl, now) || needsPerModel(u, cfg))) {
     const full = await probeUsage();
     const ts = Date.now();
     if (readOAuthAccount()?.organizationUuid === org) {
       if (full) {
         const teed = loadUsageSnapshot();
-        if (teed && usageFresh(teed.state, org, ttl, ts)) {
+        if (teed && usageFresh(teed.state, teed.at, org, ttl, ts)) {
           u = teed.state;
           uAt = teed.at;
         } else {
@@ -365,8 +363,9 @@ export function checkDelayMs(input: { cfg: Config; org: string | null; now: numb
   if (decision.waitUntil !== undefined) return Math.min(MAX_CHECK_DELAY_MS, Math.max(CHECK_DELAY_FLOOR_MS, decision.waitUntil - now));
   const swapAt = loadLastSwapAt();
   if (swapAt != null && now - swapAt < POST_SWAP_COOLDOWN_MS) return swapAt + POST_SWAP_COOLDOWN_MS - now;
-  const u = loadUsage();
-  if (!org || !u || !usageFresh(u, org, cfg.policy.usagePollTtlMs, now)) return CHECK_DELAY_UNKNOWN_MS;
+  const snap = loadUsageSnapshot();
+  if (!org || !snap || !usageFresh(snap.state, snap.at, org, cfg.policy.usagePollTtlMs, now)) return CHECK_DELAY_UNKNOWN_MS;
+  const u = snap.state;
   const mu = loadModelUsage();
   const muSame = mu && mu.org === org ? mu : null;
   const families = gatedFamilies(u.model, cfg.policy.switchModels);

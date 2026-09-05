@@ -118,5 +118,6 @@ Goal: ship 1.13.1 so the active account's status row can never silently show a s
 - [x] Committed da18720 by explicit path, pushed, PR #61 opened 2026-09-05 08:09:45Z; CI green (test, nix, Vercel, cubic)
 - [x] Review round 1 (Codex 3 P2, cubic the same 3): tee payload and mtime now come from one open descriptor (`loadUsageSnapshot`, used by status and the engine), the age line and bars render on a render-time clock, and ping success requires an explicit `is_error: false`; the fix push restarts the 10-minute window
 - [x] Review round 2 (Codex P2 + cubic P1, one finding): the engine now selects the freshest same-org sample BEFORE its engagement checks (`freshest`), not only on the write-back; hermetic check runs prove a newer stored 100% drives the decision over a fresh-mtime 21% tee and the tee still wins when newer
+- [x] Review round 3 (Codex P2): `usageFresh` takes the snapshot's own mtime instead of stat-ing the path again, in the probe gate, the post-probe re-read, and `checkDelayMs`; `usageTeeAt` deleted
 - [ ] CI green, window elapsed from the last push, every reviewer finding handled
 - [ ] Merge, `gh release create v1.13.1`, `npm view tokenmaxxing version` reads 1.13.1, teardown
