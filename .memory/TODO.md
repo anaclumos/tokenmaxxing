@@ -103,19 +103,20 @@ Goal: ship 1.12.0 from branch t3code/raise-greedy-floor-threshold with `policy.g
 - [ ] Third review window from the merge push, handle anything new
 - [ ] Merge, `gh release create v1.12.0`, `npm view tokenmaxxing version` reads 1.12.0, teardown
 
-Dated 2026-09-05. Status freshness fixes (1.12.1).
+Dated 2026-09-05. Status freshness fixes (1.13.1, opened as 1.12.1).
 
-Goal: ship 1.12.1 so the active account's status row can never silently show a stale tee or regress the stored sample, and so a refused --force ping says why.
+Goal: ship 1.13.1 so the active account's status row can never silently show a stale tee or regress the stored sample, and so a refused --force ping says why.
 
 - [x] Diagnose: plain `status` showed a 20-minute-old tee at 21% while `--force` probed live at 100%; the tee had frozen when the host's hooks and timer were stripped; the plain run then overwrote the fresh record with the older tee (adversarially verified by three read-only opus lenses)
 - [x] `status.ts`: tee adopted only when its `ts` is not older than the account's `lastUsageAt` (else live probe, or under --force the failed probe stands); tee-sourced rows print `statusline tee <age>` with `(stale)` past `usagePollTtlMs`; `pingRejected` in the report; `ping rejected at the <window> limit: <text>` in text mode
 - [x] `decide.ts`: the same newest-wins guard on the tee copy into the account record (aggregate only; the per-model copy stays unguarded because the Fable stamp carries an older `sampledAt` on purpose)
 - [x] `usage.ts`: `pingSession` returns `{reason, rejected}`; a failed ping reads its own transcript row and classifies `rate_limit` structurally; `transcriptSlug`/`pingTranscriptPath`
 - [x] AGENTS.md: the live-probe bullet made conditional; docs commands.mdx JSON field `pingRejected`; `.memory` note and index
-- [x] Bump 1.12.1 (package.json, agent-plugin/plugin.json); tsc clean
+- [x] Bump 1.12.1 (package.json, agent-plugin/plugin.json); tsc clean; renumbered to 1.13.1 after PR #60 (1.13.0) merged mid-window, by merging main into the branch
 - [x] Hermetic runs under throwaway roots: tee newer than record (adopted, age line), tee older (ignored, probe attempted, record kept), `check` with tee older/newer (record kept/updated), `--force` against a fake claude replaying the real rejection row (`ping rejected at the 5h limit`); `pingRejection` replayed on the real failed-ping transcript
 - [x] Adversarial review of the diff (three opus finders, two opus refuters per finding, no Fable): the tee clock moved from the embedded `ts` to the file mtime (`usageTeeAt`, the documented heartbeat; the `ts` freezes for up to 10 minutes on unchanged payloads, the same misjudgment recorded in headless-decision-freshness.md), and `pingRejection` now refuses `apiErrorIsTransient` rows and requires either a `quotaLimits` window or the credits-branch `rate_limit_error` body, mirroring `classifyEnforcedLimit`; troubleshooting.mdx sentence about probing corrected; three duplicate-clock findings and a dangling memory link folded into the same fixes
 - [x] Committed da18720 by explicit path, pushed, PR #61 opened 2026-09-05 08:09:45Z; CI green (test, nix, Vercel, cubic)
 - [x] Review round 1 (Codex 3 P2, cubic the same 3): tee payload and mtime now come from one open descriptor (`loadUsageSnapshot`, used by status and the engine), the age line and bars render on a render-time clock, and ping success requires an explicit `is_error: false`; the fix push restarts the 10-minute window
+- [x] Review round 2 (Codex P2 + cubic P1, one finding): the engine now selects the freshest same-org sample BEFORE its engagement checks (`freshest`), not only on the write-back; hermetic check runs prove a newer stored 100% drives the decision over a fresh-mtime 21% tee and the tee still wins when newer
 - [ ] CI green, window elapsed from the last push, every reviewer finding handled
-- [ ] Merge, `gh release create v1.12.1`, `npm view tokenmaxxing version` reads 1.12.1, teardown
+- [ ] Merge, `gh release create v1.13.1`, `npm view tokenmaxxing version` reads 1.13.1, teardown

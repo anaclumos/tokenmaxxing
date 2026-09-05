@@ -72,6 +72,7 @@ function isEngaged(u: UsageState | null, mu: ModelUsageState | null, org: string
 const SnapshotsSchema = z.object({
   u: UsageStateSchema.nullable(),
   mu: ModelUsageStateSchema.nullable(),
+  uAt: z.number().nullable(),
 });
 type Snapshots = z.infer<typeof SnapshotsSchema>;
 
@@ -81,8 +82,16 @@ function usageFresh(u: UsageState | null, org: string | null, ttl: number, now: 
   return teeAt != null && now - teeAt <= ttl;
 }
 
+function freshest(u: UsageState | null, uAt: number | null, account: Account | undefined): UsageState | null {
+  if (!u || uAt == null || !account?.lastUsage || account.lastUsageAt == null || u.org !== account.organizationUuid) return u;
+  if (uAt >= account.lastUsageAt) return u;
+  return { ...u, fiveHour: account.lastUsage.fiveHour, sevenDay: account.lastUsage.sevenDay, ts: account.lastUsageAt };
+}
+
 async function loadFreshSnapshots(cfg: Config, org: string | null, now: number): Promise<Snapshots> {
-  let u = loadUsage();
+  const snap = loadUsageSnapshot();
+  let u = snap?.state ?? null;
+  let uAt = snap?.at ?? null;
   let mu = loadModelUsage();
   const ttl = cfg.policy.usagePollTtlMs;
   const probeAttempted = mu != null && mu.org === org && now - mu.ts <= ttl;
@@ -91,12 +100,14 @@ async function loadFreshSnapshots(cfg: Config, org: string | null, now: number):
     const ts = Date.now();
     if (readOAuthAccount()?.organizationUuid === org) {
       if (full) {
-        const teed = loadUsage();
-        if (usageFresh(teed, org, ttl, ts)) {
-          u = teed;
+        const teed = loadUsageSnapshot();
+        if (teed && usageFresh(teed.state, org, ttl, ts)) {
+          u = teed.state;
+          uAt = teed.at;
         } else {
           u = { fiveHour: full.session, sevenDay: full.weekAll, org, ts, model: null };
           writeUsage(u);
+          uAt = ts;
         }
         mu = { perModel: full.perModel, org, ts, sampledAt: ts };
         saveModelUsage(mu);
@@ -111,7 +122,7 @@ async function loadFreshSnapshots(cfg: Config, org: string | null, now: number):
       }
     }
   }
-  return { u, mu };
+  return { u, mu, uAt };
 }
 
 export const POST_SWAP_COOLDOWN_MS = 45_000;
@@ -127,9 +138,11 @@ export async function evaluateAndMaybeSwap(now = Date.now(), anticipatory = fals
 
   const cfg = loadConfig();
 
-  const { u: usage, mu } = await loadFreshSnapshots(cfg, activeOrg, now);
+  const { u: teeUsage, mu, uAt } = await loadFreshSnapshots(cfg, activeOrg, now);
+  const pool = loadAccounts();
+  const usage = freshest(teeUsage, uAt, pool.accounts.find((a) => a.organizationUuid === activeOrg));
   const bars0 = effectiveBars(cfg, {
-    accounts: overlayLive(loadAccounts().accounts, usage, mu, activeOrg),
+    accounts: overlayLive(pool.accounts, usage, mu, activeOrg),
     now,
     switchFamilies: gatedFamilies(usage?.model ?? null, cfg.policy.switchModels),
   });
@@ -148,20 +161,19 @@ export async function evaluateAndMaybeSwap(now = Date.now(), anticipatory = fals
     const org2 = readOAuthAccount()?.organizationUuid ?? null;
     const enforced2 = enforced0 && enforced0.org === org2 ? enforced0 : null;
     const tee = loadUsageSnapshot();
-    const u2 = tee?.state ?? usage;
+    const active = org2 ? idx.accounts.find((a) => a.organizationUuid === org2) : undefined;
+    const u2 = tee ? freshest(tee.state, tee.at, active) : usage;
     const mu2 = needsPerModel(u2, cfg) || enforced2?.family ? loadModelUsage() ?? mu : null;
 
-    if (org2 != null && !idx.accounts.some((a) => a.organizationUuid === org2)) {
+    if (org2 != null && !active) {
       return { swapped: false, account: null, reason: "live-credential-not-in-pool" };
     }
 
-    const active = org2 ? idx.accounts.find((a) => a.organizationUuid === org2) : undefined;
     if (active) {
       let sampled = false;
-      const teeAt = tee != null ? tee.at : (u2 ? u2.ts : null);
-      if (u2 && teeAt != null && u2.org === org2 && (active.lastUsageAt == null || teeAt >= active.lastUsageAt)) {
-        active.lastUsage = { fiveHour: u2.fiveHour, sevenDay: u2.sevenDay };
-        active.lastUsageAt = teeAt;
+      if (tee && tee.state.org === org2 && (active.lastUsageAt == null || tee.at >= active.lastUsageAt)) {
+        active.lastUsage = { fiveHour: tee.state.fiveHour, sevenDay: tee.state.sevenDay };
+        active.lastUsageAt = tee.at;
         sampled = true;
       }
       if (mu2 && mu2.org === org2 && Object.keys(mu2.perModel).length > 0) {
