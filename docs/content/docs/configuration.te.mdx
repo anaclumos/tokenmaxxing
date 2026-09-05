@@ -7,13 +7,13 @@ description: "config.json స్కీమా, థ్రెషోల్డ్‌�
 
 ```json
 {
-  "thresholds": { "session": [50, 80, 95], "weekly": 98 },
+  "thresholds": { "session": [90], "weekly": 98 },
   "hardThresholds": { "session": 100, "weekly": 100 },
   "claudeBin": "/path/to/real/claude",
   "codexBin": "/path/to/real/codex",
   "policy": {
     "projectionMargin": 0,
-    "greedySessionFloor": 50,
+    "greedySessionFloor": 80,
     "switchModels": ["fable"],
     "usagePollTtlMs": 90000,
     "maxWaitMs": 3600000

@@ -7,13 +7,13 @@ The decision get two layers: one engagement gate, and then one greedy or hard pa
 
 ## Engagement
 
-Below `policy.greedySessionFloor` (default 50, for percent of the 5-hour session window), the decision no dey run at all - a fresh session dey ride im account. Once the active session window don use 50%, or any bar don cross, the decision dey engage.
+Below `policy.greedySessionFloor` (default 80, for percent of the 5-hour session window), the decision no dey run at all - a fresh session dey ride im account. Once the active session window don use 80%, or any bar don cross, the decision dey engage.
 
 ## Screening bars
 
 The thresholds na screening bars, no be the trigger for panic:
 
-- `thresholds.session`: na ladder, default `[50, 80, 95]`. Every evaluation dey resolve one active rung: na the lowest rung wia some pooled account, including the current one, still fit work. As long as any account still dey below 50, the bar na 50, so a seat wey cross 50 go hand over give dat account. Once every account don pass 50, the bar dey climb go 80, and once everywhere don pass 80 e dey climb go 95. The top rung na the terminal bar; after am, na the wall (below) go take over. One 5-hour reset cheap make you sit am out, so the pool dey drain level by level and no account dey run far ahead of im siblings.
+- `thresholds.session`: na ladder, default `[90]`, na only one rung. Every evaluation dey resolve one active rung: na the lowest rung wia some pooled account, including the current one, still fit work. With ladder wey get plenty rungs like `[50, 80, 95]`, as long as any account still dey below 50, the bar na 50, so a seat wey cross 50 go hand over give dat account. Once every account don pass 50, the bar dey climb go 80, and once everywhere don pass 80 e dey climb go 95. The top rung na the terminal bar; after am, na the wall (below) go take over. One 5-hour reset cheap make you sit am out, so a pool wey get plenty rungs dey drain level by level and no account dey run far ahead of im siblings.
 - `thresholds.weekly`: 98. Dis one bar dey cover both the 7-day aggregate and every per-model weekly cap. Weekly quota na use-am-or-lose-am, so e dey drain close to the wall.
 
 The two of dem dey deliberately below 100: the headroom na the budget to reach one clean turn boundary (plus up to one turn of adoption lag for macOS) before the account go actually hit im limit. The same bars dey screen swap candidates: an account wey pass any of im bars no be valid target. Trigger and screening dey always use the same effective bars (the active rung and the weekly bar, each one minus `policy.projectionMargin`), because one screen wey laxer pass the trigger go land swaps for accounts wey the trigger go immediately re-flag, and e go ping-pong the pool. One rung dey count only accounts wey still fit work for am: one dead grant, one gated per-model cap wey don burn, or one server-pinned enforcement no dey hold the bar down, and dem dey re-read the rung from the pool for every retry inside one evaluation. Codex dey read only the top rung, because restart na im own switch.

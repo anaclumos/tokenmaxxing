@@ -7,13 +7,13 @@ The decision has two layers: an engagement gate, and then a greedy or hard path.
 
 ## Engagement
 
-Below `policy.greedySessionFloor` (default 50, in percent of the 5-hour session window), the decision does not run at all - a fresh session rides its account. Once the active session window is 50% used, or any bar is crossed, the decision engages.
+Below `policy.greedySessionFloor` (default 80, in percent of the 5-hour session window), the decision does not run at all - a fresh session rides its account. Once the active session window is 80% used, or any bar is crossed, the decision engages.
 
 ## Screening bars
 
 The thresholds are screening bars, not the trigger for panic:
 
-- `thresholds.session`: a ladder, default `[50, 80, 95]`. Each evaluation resolves one active rung: the lowest rung at which some pooled account, the current one included, is still usable. While any account sits under 50, the bar is 50, so a seat that crosses 50 hands off to that account. Once every account is past 50 the bar climbs to 80, and past 80 everywhere it climbs to 95. The top rung is the terminal bar; beyond it the wall (below) takes over. A 5-hour reset is cheap to sit out, so the pool drains level by level and no account runs far ahead of its siblings.
+- `thresholds.session`: a ladder, default `[90]`, a single rung. Each evaluation resolves one active rung: the lowest rung at which some pooled account, the current one included, is still usable. With a multi-rung ladder such as `[50, 80, 95]`, while any account sits under 50, the bar is 50, so a seat that crosses 50 hands off to that account. Once every account is past 50 the bar climbs to 80, and past 80 everywhere it climbs to 95. The top rung is the terminal bar; beyond it the wall (below) takes over. A 5-hour reset is cheap to sit out, so a multi-rung pool drains level by level and no account runs far ahead of its siblings.
 - `thresholds.weekly`: 98. This one bar covers both the 7-day aggregate and every per-model weekly cap. Weekly quota is use-it-or-lose-it, so it drains close to the wall.
 
 Both are deliberately below 100: the headroom is the budget to reach a clean turn boundary (plus up to one turn of adoption lag on macOS) before the account actually hits its limit. The same bars screen swap candidates: an account over any of its bars is not a valid target. Trigger and screening always use the same effective bars (the active rung and the weekly bar, each minus `policy.projectionMargin`), because a screen laxer than the trigger would land swaps on accounts the trigger immediately re-flags, ping-ponging the pool. A rung counts only accounts that are usable at it: a dead grant, a burnt gated per-model cap, or a server-pinned enforcement does not hold the bar down, and the rung is re-read from the pool on every retry inside one evaluation. Codex reads the top rung only, because restart is its switch.

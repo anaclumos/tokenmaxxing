@@ -18,11 +18,11 @@ import {
 } from "./types.ts";
 
 const DEFAULT_CONFIG: Config = {
-  thresholds: { session: [50, 80, 95], weekly: 98 },
+  thresholds: { session: [90], weekly: 98 },
   hardThresholds: { session: 100, weekly: 100 },
   claudeBin: "",
   codexBin: "",
-  policy: { projectionMargin: 0, greedySessionFloor: 50, switchModels: ["fable"], usagePollTtlMs: 90_000, maxWaitMs: 3_600_000 },
+  policy: { projectionMargin: 0, greedySessionFloor: 80, switchModels: ["fable"], usagePollTtlMs: 90_000, maxWaitMs: 3_600_000 },
 };
 
 const PercentSchema = z.number().min(0).max(100);

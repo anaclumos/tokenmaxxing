@@ -85,3 +85,20 @@ Goal: every reporting command prints one JSON document on stdout under `--json` 
 - [ ] Teardown: remote and local branch deleted, throwaway roots removed
 
 One-line goal for the resuming machine: Ship tokenmaxxing 1.11.0 from branch feat/json-output (PR #58, the `--json` output mode): finish the adversarial review, pass CI, sit the full 10-minute window from the last push, handle every review, merge, release v1.11.0, verify npm, tear down.
+
+Dated 2026-09-05. Defaults raised: greedy floor 80, session ladder [90] (1.12.0).
+
+Goal: ship 1.12.0 from branch t3code/raise-greedy-floor-threshold with `policy.greedySessionFloor` defaulting to 80 and `thresholds.session` to `[90]`, mechanics untouched, every English and localized doc page stating the new defaults.
+
+- [x] `src/lib/state.ts` defaults: session `[90]`, greedySessionFloor 80; `package.json` and `agent-plugin/plugin.json` to 1.12.0 (opened as 1.11.0; PR #58 took that number first)
+- [x] English prose: README, DESIGN.md, AGENTS.md, switching.mdx, configuration.mdx, the switching-policy skill and its policy reference; the 50/80/95 ladder stays as the documented multi-rung example
+- [x] Localized pages: JSON snippets in 29 configuration pages; engagement line and ladder bullet in 29 switching pages (default `[90]`, single rung; the climb sentence reframed as the `[50, 80, 95]` example)
+- [x] `.memory`: switch-policy-pace-pressure (2026-09-05 decision), MEMORY.md index line, hermetic-ladder-verification (defaults now need an explicit config; HOME override on Linux)
+- [x] tsc clean; `cd docs && bun run build` exit 0 (1042 static paths)
+- [x] Hermetic `config` readback: `thresholds.session [90] default`, `policy.greedySessionFloor 80 default`
+- [x] Hermetic Layer 1, four cases, all PASS (recorded in hermetic-ladder-verification.md)
+- [x] Committed 5b3d5c8 by explicit path, pushed 2026-09-05 06:57:54Z, PR #59 opened; CI green (test, nix, Vercel, cubic)
+- [x] Review round 1 on #59: Codex 2 (P1 premature "Shipped as 1.11.0" in the policy memory, P2 stale 50/80/95 sentence in DESIGN.md section 1), cubic 5 (the same two plus the localized closing sentence missing the multi-rung qualifier, flagged on ja, vi, de and applying to all 29). All seven agreed and fixed in one commit across DESIGN.md, the policy memory, and the 29 switching pages; the fix push restarts the 10-minute window
+- [x] Second window elapsed 07:20:11Z with CI green and no new findings; the merge was refused because PR #58 (--json output mode, 1.11.0) merged into main at 07:20:26Z and released v1.11.0 while the window ran. Resolved by merging main into the branch (the only conflict was both sessions appending to this file), bumping to 1.12.0, and re-pushing, which restarts the window
+- [ ] Third review window from the merge push, handle anything new
+- [ ] Merge, `gh release create v1.12.0`, `npm view tokenmaxxing version` reads 1.12.0, teardown
