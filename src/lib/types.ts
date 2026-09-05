@@ -121,6 +121,7 @@ export const ConfigSchema = z
     policy: z.object({
       projectionMargin: z.number().min(0).max(100),
       greedySessionFloor: z.number().min(0).max(100),
+      greedySwapMargin: z.number().min(0).max(1),
       switchModels: z.array(z.string()),
       usagePollTtlMs: z.number().int().positive(),
       maxWaitMs: z.number().int().positive(),

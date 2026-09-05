@@ -184,11 +184,11 @@ export async function evaluateAndMaybeSwap(now = Date.now(), anticipatory = fals
       idx2.accounts.find((a) => a.accountUuid === idx2.activeAccountUuid) ??
       null;
 
-    const greedy = async (): Promise<SwapDecision> => {
+    const greedy = async (holdMargin: number): Promise<SwapDecision> => {
       while (true) {
         const cur = loadAccounts();
         const active = seatOf(cur);
-        const ctxAll = { now, thresholds: barsOf(cur.accounts), currentAccountUuid: null, switchFamilies };
+        const ctxAll = { now, thresholds: barsOf(cur.accounts), currentAccountUuid: null, switchFamilies, holdMargin };
         if (currentWins(active, cur.accounts, ctxAll)) {
           return { swapped: false, account: null, reason: "current-best" };
         }
@@ -204,13 +204,13 @@ export async function evaluateAndMaybeSwap(now = Date.now(), anticipatory = fals
         return { swapped: true, account: best, reason: "swapped" };
       }
     };
-    if (!enforced2 && !isOver(u2, mu2, org2, bars, cfg, now)) return greedy();
+    if (!enforced2 && !isOver(u2, mu2, org2, bars, cfg, now)) return greedy(cfg.policy.greedySwapMargin);
 
     while (true) {
       const cur = loadAccounts();
       const seat = seatOf(cur);
       const thresholds = barsOf(cur.accounts);
-      if (!enforced2 && seat && !seat.needsReauth && !isExhausted(seat, { now, thresholds, currentAccountUuid: null, switchFamilies })) return greedy();
+      if (!enforced2 && seat && !seat.needsReauth && !isExhausted(seat, { now, thresholds, currentAccountUuid: null, switchFamilies })) return greedy(0);
       const best = pickBest(cur.accounts, { now, thresholds, currentAccountUuid: seat?.accountUuid ?? null, switchFamilies });
       if (!best) break;
       try {

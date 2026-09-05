@@ -16,6 +16,7 @@ export const KNOWN_KEYS = [
   "codexBin",
   "policy.projectionMargin",
   "policy.greedySessionFloor",
+  "policy.greedySwapMargin",
   "policy.switchModels",
   "policy.usagePollTtlMs",
   "policy.maxWaitMs",
