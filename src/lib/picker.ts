@@ -112,7 +112,8 @@ export function currentWins(active: Account | null, accounts: Account[], ctx: Pi
   const best = pickBest(accounts, { ...ctx, currentAccountUuid: null });
   if (best == null || best.accountUuid === active.accountUuid) return true;
   const margin = ctx.holdMargin ?? 0;
-  if (margin > 0 && pacePressure(active, ctx.now) >= pacePressure(best, ctx.now) * (1 - margin)) return true;
+  const bestPace = pacePressure(best, ctx.now);
+  if (margin > 0 && bestPace > 0 && bestPace <= pacePressure(active, ctx.now) * (1 + margin)) return true;
   return swapPreference(ctx.now).every((k) => k(active) === k(best));
 }
 

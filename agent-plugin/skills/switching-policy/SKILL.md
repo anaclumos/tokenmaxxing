@@ -8,7 +8,7 @@ description: Explain and apply tokenmaxxing switch policy (greedy vs hard path, 
 ## Vocabulary
 
 - **Engaged**: session used >= `policy.greedySessionFloor` (default 80) or any screening bar crossed.
-- **GREEDY path**: engaged but under every bar. Rank all accounts by pace pressure; keep seat on best-or-tie (`currentWins`); else swap to strictly better. Never depleted-waits or pre-parks.
+- **GREEDY path**: engaged but under every bar. Rank all accounts by pace pressure; keep seat on best-or-tie (`currentWins`); else swap to strictly better. Never depleted-waits or pre-parks. The automatic path adds incumbent hysteresis (`policy.greedySwapMargin`, default 0.15): hold the seat unless a parked account's pace pressure exceeds the current one's by more than that fraction, so near-tied accounts stop trading the seat and busting the per-org prompt cache. The margin gates lateral under-bar swaps only, never a crossed bar or the wall; bare `tokenmaxxing switch` uses margin 0 and always takes the strictly best account.
 - **HARD path**: a screening bar crossed. Swap to best usable target; if none, Layer 2 wall logic (Claude only).
 - **Pace pressure**: remaining weekly percent / time to weekly reset (highest first). Not most-remaining.
 - **Effective bars**: `effectiveBars(cfg, pool)` = the active rung of the 5h ladder (`thresholds.session`, default `[90]`, a single rung: the lowest rung some pooled account, the current one included, still clears) and the weekly bar, each minus `policy.projectionMargin`. Trigger and screening must share these bars or swaps ping-pong. Codex reads `terminalBars(cfg)`, the top rung only. The check cadence is capped one band per rung climbed.
