@@ -70,7 +70,7 @@ One-line goal for the resuming machine: Ship tokenmaxxing 1.10.0 from branch fea
 
 Dated 2026-09-05. `--json` output mode (1.11.0), branch feat/json-output, PR #58.
 
-Goal: every reporting command prints one JSON document on stdout under `--json` (`ok` mirrors exit 0, failures add `error`, progress stays on stderr, never credential material), with the text form byte-identical to 1.10.0, then ship it PR-based with the release and the npm publish verified.
+Goal: every reporting command prints one JSON document on stdout under `--json` (`ok` mirrors exit 0, failures add `error`, progress stays on stderr, never credential material), with the text form byte-identical to 1.10.0 apart from the new `--json` help line (two further deltas accepted in review round 1: the `config unset` known-keys hint and the Codex greedy switch reporting a dead grant on stderr), then ship it PR-based with the release and the npm publish verified.
 
 - [x] Flag parse in `src/main.ts` after the supervisor pass-through (claude/codex argv never filtered); `init`/`add`/`auth` refuse with exit 2
 - [x] `emitJson`/`emitError` in `src/cli/render.ts`; every error branch of status, ls, config, doctor, check, switch, switch --codex, watch, rename, rm, uninstall routed through them
