@@ -35,6 +35,7 @@ const PickCtxSchema = z.object({
   thresholds: ThresholdsSchema,
   currentAccountUuid: z.string().nullable(),
   switchFamilies: z.array(z.string()),
+  holdMargin: z.number().min(0).optional(),
 });
 export type PickCtx = z.infer<typeof PickCtxSchema>;
 
@@ -110,6 +111,8 @@ export function currentWins(active: Account | null, accounts: Account[], ctx: Pi
   if (!active || active.needsReauth || isExhausted(active, ctx)) return false;
   const best = pickBest(accounts, { ...ctx, currentAccountUuid: null });
   if (best == null || best.accountUuid === active.accountUuid) return true;
+  const margin = ctx.holdMargin ?? 0;
+  if (margin > 0 && pacePressure(active, ctx.now) >= pacePressure(best, ctx.now) * (1 - margin)) return true;
   return swapPreference(ctx.now).every((k) => k(active) === k(best));
 }
 

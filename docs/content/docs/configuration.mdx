@@ -14,6 +14,7 @@ Config is JSON at `~/.config/tokenmaxxing/config.json`. Every field is optional;
   "policy": {
     "projectionMargin": 0,
     "greedySessionFloor": 80,
+    "greedySwapMargin": 0.15,
     "switchModels": ["fable"],
     "usagePollTtlMs": 90000,
     "maxWaitMs": 3600000
@@ -27,6 +28,7 @@ Config is JSON at `~/.config/tokenmaxxing/config.json`. Every field is optional;
 - `claudeBin` / `codexBin`: pins to the REAL binaries the supervisors spawn (written by `init` / `init --codex`; the recursion-guard diagnostic tells you to fix `claudeBin` here when it stops pointing at the real Claude binary).
 - `policy.projectionMargin`: subtracted from every session rung, the weekly bar, and the wall bars to form the effective bars.
 - `policy.greedySessionFloor`: session-used percent at which the greedy convergence engages.
+- `policy.greedySwapMargin`: incumbent hysteresis on the greedy path, a fraction from 0 to 1 (default 0.15). The current account holds its seat unless a parked account's pace pressure exceeds it by more than this fraction, so near-tied accounts stop trading the seat back and forth and busting the per-organization prompt cache. Set to 0 for the old always-take-the-best behavior. It never softens a crossed bar or the wall - only lateral swaps between accounts that are all under the bars. Manual `tokenmaxxing switch` ignores it and always converges on the best account.
 - `policy.switchModels`: model families whose per-model weekly cap gates a switch (entries are lowercased on load).
 - `policy.usagePollTtlMs`: how long a `/usage` per-model poll stays fresh.
 - `policy.maxWaitMs`: the depleted-pool auto-wait bound.

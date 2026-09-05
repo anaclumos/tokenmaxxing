@@ -188,7 +188,7 @@ export async function evaluateAndMaybeSwap(now = Date.now(), anticipatory = fals
       while (true) {
         const cur = loadAccounts();
         const active = seatOf(cur);
-        const ctxAll = { now, thresholds: barsOf(cur.accounts), currentAccountUuid: null, switchFamilies };
+        const ctxAll = { now, thresholds: barsOf(cur.accounts), currentAccountUuid: null, switchFamilies, holdMargin: cfg.policy.greedySwapMargin };
         if (currentWins(active, cur.accounts, ctxAll)) {
           return { swapped: false, account: null, reason: "current-best" };
         }
