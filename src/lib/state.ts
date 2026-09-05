@@ -49,7 +49,7 @@ export const ConfigFileSchema = z
         switchModels: z.array(z.string()),
         usagePollTtlMs: z.number().int().positive(),
         maxWaitMs: z.number().int().positive(),
-        checkIntervalMs: z.number().int().min(1000),
+        checkIntervalMs: z.number().int().min(10_000),
       })
       .partial(),
   })
