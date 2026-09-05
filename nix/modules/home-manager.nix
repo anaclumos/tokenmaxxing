@@ -55,7 +55,7 @@ in
     systemd.user.timers.tokenmaxxing-check = lib.mkIf (cfg.checkTimer.enable && hostPlatform.isLinux && package != null) {
       Unit.Description = "tokenmaxxing periodic account-switch check";
       Timer = {
-        OnBootSec = "60";
+        OnBootSec = toString cfg.checkTimer.intervalSeconds;
         OnUnitActiveSec = toString cfg.checkTimer.intervalSeconds;
         AccuracySec = toString (lib.max 1 (cfg.checkTimer.intervalSeconds / 12));
         Persistent = "true";

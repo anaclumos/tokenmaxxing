@@ -247,7 +247,7 @@ ExecStart=${exec}
 Description=tokenmaxxing periodic account-switch check
 
 [Timer]
-OnBootSec=60
+OnBootSec=${intervalS}
 OnUnitActiveSec=${intervalS}
 AccuracySec=${Math.max(1, Math.floor(intervalS / 12))}
 
