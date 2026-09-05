@@ -22,7 +22,15 @@ const DEFAULT_CONFIG: Config = {
   hardThresholds: { session: 100, weekly: 100 },
   claudeBin: "",
   codexBin: "",
-  policy: { projectionMargin: 0, greedySessionFloor: 80, greedySwapMargin: 0.15, switchModels: ["fable"], usagePollTtlMs: 90_000, maxWaitMs: 3_600_000 },
+  policy: {
+    projectionMargin: 0,
+    greedySessionFloor: 80,
+    greedySwapMargin: 0.15,
+    switchModels: ["fable"],
+    usagePollTtlMs: 90_000,
+    maxWaitMs: 3_600_000,
+    checkIntervalMs: 60_000,
+  },
 };
 
 const PercentSchema = z.number().min(0).max(100);
@@ -41,6 +49,7 @@ export const ConfigFileSchema = z
         switchModels: z.array(z.string()),
         usagePollTtlMs: z.number().int().positive(),
         maxWaitMs: z.number().int().positive(),
+        checkIntervalMs: z.number().int().min(1000),
       })
       .partial(),
   })
@@ -70,6 +79,7 @@ export function mergeConfigFile(p: z.infer<typeof ConfigFileSchema>): MergeOutco
   cfg.policy.greedySwapMargin = p.policy?.greedySwapMargin ?? cfg.policy.greedySwapMargin;
   cfg.policy.usagePollTtlMs = p.policy?.usagePollTtlMs ?? cfg.policy.usagePollTtlMs;
   cfg.policy.maxWaitMs = p.policy?.maxWaitMs ?? cfg.policy.maxWaitMs;
+  cfg.policy.checkIntervalMs = p.policy?.checkIntervalMs ?? cfg.policy.checkIntervalMs;
   if (p.policy?.switchModels) {
     cfg.policy.switchModels = p.policy.switchModels.map((s) => s.toLowerCase());
   }
@@ -199,9 +209,13 @@ export function clearDepletedWait(): void {
   rmSync(paths.depletedJson, { force: true });
 }
 
-export const MAX_CHECK_DELAY_MS = 300_000;
+export const MAX_CHECK_DELAY_TICKS = 5;
 
-export function loadNextCheckDueAt(now: number): number | null {
+export function maxCheckDelayMs(cfg: Config): number {
+  return MAX_CHECK_DELAY_TICKS * cfg.policy.checkIntervalMs;
+}
+
+export function loadNextCheckDueAt(input: { now: number; cfg: Config }): number | null {
   if (!existsSync(paths.nextCheckJson)) return null;
   let parsed;
   try {
@@ -210,7 +224,7 @@ export function loadNextCheckDueAt(now: number): number | null {
     return null;
   }
   if (!parsed.success) return null;
-  return parsed.data.dueAt - now > MAX_CHECK_DELAY_MS ? null : parsed.data.dueAt;
+  return parsed.data.dueAt - input.now > maxCheckDelayMs(input.cfg) ? null : parsed.data.dueAt;
 }
 
 export function saveNextCheckDueAt(input: { dueAt: number; ts: number }): void {

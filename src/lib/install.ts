@@ -6,12 +6,14 @@ import { codexPaths, HOME, paths } from "./paths.ts";
 import { writeFileAtomic } from "./atomic.ts";
 import { installedBin, installSettings, isOurHookCommand, uninstallSettings } from "./settings.ts";
 import { resolveRealClaude } from "./claudebin.ts";
+import { loadConfig } from "./state.ts";
 
 const InstallOutcomeSchema = z.object({
   claudeWrapper: z.string(),
   installedBin: z.string(),
   pathAhead: z.boolean(),
   timerLoaded: z.boolean(),
+  checkIntervalS: z.number().int().positive(),
 });
 export type InstallOutcome = z.infer<typeof InstallOutcomeSchema>;
 
@@ -105,11 +107,13 @@ export function installSupervisor(): InstallOutcome {
   writeFileAtomic(join(paths.binDir, "xx"), `#!/bin/sh\nexec ${JSON.stringify(target)} "$@"\n`, 0o755);
 
   installSettings();
+  const checkIntervalS = Math.ceil(loadConfig().policy.checkIntervalMs / 1000);
   return {
     claudeWrapper: paths.supervisorLink,
     installedBin: target,
     pathAhead: isBinDirAhead(),
-    timerLoaded: installCheckTimer(),
+    timerLoaded: installCheckTimer(checkIntervalS),
+    checkIntervalS,
   };
 }
 
@@ -179,7 +183,6 @@ export function uninstallCodexSupervisor(): void {
   if (existsSync(codexSupervisorLink())) rmSync(codexSupervisorLink(), { force: true });
 }
 
-const CHECK_INTERVAL_S = 60;
 const LAUNCHD_LABEL = "com.tokenmaxxing.check";
 
 function launchdPlist(): string {
@@ -199,7 +202,7 @@ function run(cmd: string[]): boolean {
   }
 }
 
-function installCheckTimer(): boolean {
+function installCheckTimer(intervalS: number): boolean {
   if (skipImperativeTimer()) return true;
 
   if (process.platform === "darwin") {
@@ -212,7 +215,7 @@ function installCheckTimer(): boolean {
 <dict>
   <key>Label</key><string>${LAUNCHD_LABEL}</string>
   <key>ProgramArguments</key><array><string>${escape(installedBin())}</string><string>check</string><string>--if-due</string></array>
-  <key>StartInterval</key><integer>${CHECK_INTERVAL_S}</integer>
+  <key>StartInterval</key><integer>${intervalS}</integer>
   <key>StandardOutPath</key><string>/dev/null</string>
   <key>StandardErrorPath</key><string>${escape(join(paths.home, "check.stderr.log"))}</string>
 </dict>
@@ -245,7 +248,7 @@ Description=tokenmaxxing periodic account-switch check
 
 [Timer]
 OnBootSec=60
-OnUnitActiveSec=${CHECK_INTERVAL_S}
+OnUnitActiveSec=${intervalS}
 AccuracySec=5
 
 [Install]

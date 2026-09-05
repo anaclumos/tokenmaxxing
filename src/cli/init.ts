@@ -28,7 +28,7 @@ function ensurePathAhead(): void {
 }
 
 function reportTimer(out: InstallOutcome): void {
-  if (out.timerLoaded) console.log(`${c.green("✓")} periodic check timer active (every 3m)`);
+  if (out.timerLoaded) console.log(`${c.green("✓")} periodic check timer active (every ${out.checkIntervalS}s)`);
   else console.log(c.yellow(`⚠ check timer written but not activated - run: ${timerActivationHint()}`));
 }
 
