@@ -79,12 +79,12 @@ claude                  # use claude as always
 
 ## How switching decides
 
-Switching engages (configurable) once the active account's 5-hour session window is **50% used** - from there, every evaluation greedily converges on the usable account **furthest behind its own weekly pace**, and does nothing when the current account already wins. Independent of that, crossing a screening bar always forces a switch: the session bar is the active rung of a ladder (**50**, then **80**, then **95**, each rung taking over once every pooled account is past the one below) and the weekly bar is **98%**. The bars also screen candidates on any of:
+Switching engages (configurable) once the active account's 5-hour session window is **80% used** - from there, every evaluation greedily converges on the usable account **furthest behind its own weekly pace**, and does nothing when the current account already wins. Independent of that, crossing a screening bar always forces a switch: the session bar is the active rung of a ladder (a single rung at **90** by default; with more rungs configured, each takes over once every pooled account is past the one below) and the weekly bar is **98%**. The bars also screen candidates on any of:
 
 - **Session** (5-hour) or **week (all models)** - the aggregate windows, fed free/push-based by the statusLine.
 - **Per-model weekly cap** - the most capable model (Fable) has its own tighter weekly limit that binds *before* the aggregate (per-model caps currently exist only for Sonnet and Fable, and Sonnet's is generous). tokenmaxxing reads it from `claude -p '/usage'` (free, 0 tokens, TTL-cached) whenever the active model is one of `policy.switchModels`, so a Fable session switches on the Fable cap while a Sonnet session rides the aggregate.
 
-The bars' headroom is deliberate: it's the budget to reach a clean turn boundary (plus up to one turn of adoption lag on macOS) before the wall. The session ladder tops out lower (95) because a 5-hour reset is cheap to sit out, and its lower rungs keep the pool draining level by level; weekly quota is use-it-or-lose-it, so it drains closer to the wall (98). The greedy engagement floor sits far below both: weekly allowance is forfeited at each account's fixed reset, so once half a session window justifies the swap, quota is best burned on whichever account has the most at risk.
+The bars' headroom is deliberate: it's the budget to reach a clean turn boundary (plus up to one turn of adoption lag on macOS) before the wall. The session ladder tops out lower (90) because a 5-hour reset is cheap to sit out, and any lower rungs you add keep the pool draining level by level; weekly quota is use-it-or-lose-it, so it drains closer to the wall (98). The greedy engagement floor (80) sits below both: weekly allowance is forfeited at each account's fixed reset, so once most of a session window is spent, quota is best burned on whichever account has the most at risk.
 
 The **target** is chosen greedily off each account's cached windows: among usable accounts (every window under its bar, or past its reset), the one **furthest behind its own weekly pace** - highest remaining% divided by time to its weekly reset - because unused weekly allowance is forfeited at the fixed per-account reset. Cached resets are absolute UTC epochs, so a stale snapshot still resolves correctly: a weekly reset that has passed extrapolates forward in 7-day steps, and a session window past its reset counts as empty. Both `tokenmaxxing switch` and the automatic path rank the current account too and do nothing when it already wins, so they are idempotent - evaluating periodically converges on the right account.
 
@@ -94,17 +94,17 @@ The **target** is chosen greedily off each account's cached windows: among usabl
 
 ```json
 {
-  "thresholds": { "session": [50, 80, 95], "weekly": 98 },
+  "thresholds": { "session": [90], "weekly": 98 },
   "policy": {
     "projectionMargin": 0,
-    "greedySessionFloor": 50,
+    "greedySessionFloor": 80,
     "switchModels": ["fable"],
     "usagePollTtlMs": 90000
   }
 }
 ```
 
-`thresholds.session` is a ladder: the bar is the lowest rung some pooled account still clears, so a seat past 50 hands off while a sibling is under 50, and the bar climbs to 80 and then 95 as the whole pool fills; `projectionMargin` is a fixed safety margin subtracted from each threshold bar (effective bar = threshold - margin), so a large turn is less likely to blow past a bar between checks; `greedySessionFloor` is the session-used % at which the greedy convergence engages; `switchModels` names the models whose per-model cap triggers a switch; `usagePollTtlMs` is how long a `/usage` per-model poll stays fresh; `maxWaitMs` bounds the depleted-pool countdown - a soonest reset further out than this does not pause the session (no respawn marker is written and the session simply keeps hitting its limit until an account recovers).
+`thresholds.session` is a ladder: the bar is the lowest rung some pooled account still clears, so the default `[90]` is one bar, while with `[50, 80, 95]` a seat past 50 hands off while a sibling is under 50, and the bar climbs to 80 and then 95 as the whole pool fills; `projectionMargin` is a fixed safety margin subtracted from each threshold bar (effective bar = threshold - margin), so a large turn is less likely to blow past a bar between checks; `greedySessionFloor` is the session-used % at which the greedy convergence engages; `switchModels` names the models whose per-model cap triggers a switch; `usagePollTtlMs` is how long a `/usage` per-model poll stays fresh; `maxWaitMs` bounds the depleted-pool countdown - a soonest reset further out than this does not pause the session (no respawn marker is written and the session simply keeps hitting its limit until an account recovers).
 
 State lives entirely in `~/.config/tokenmaxxing/`. Per-account credentials follow the platform's Claude Code store: the login keychain on macOS (`tokenmaxxing-cred-<uuid8>` items, never plaintext on disk), 0600 files under `~/.config/tokenmaxxing/creds/` on Linux (the same plaintext model claude itself uses for `~/.claude/.credentials.json`).
 

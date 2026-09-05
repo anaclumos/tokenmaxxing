@@ -67,3 +67,17 @@ Diet audit candidates (owner picks; none applied):
 - [x] Diet audit: the eight candidates above are presented to the owner in the ship report; none applied (owner rule: present findings, ask before fixing). Any pick is new work, not part of this goal.
 
 One-line goal for the resuming machine: Ship tokenmaxxing 1.10.0 from branch feat/session-threshold-ladder (5h ladder 50/80/95, check cadence capped one band per rung, no tests, no comments) with every English and localized doc page stating exactly what the code enforces: finish the locale gates and verification, re-run the hermetic harness, open the PR, pass CI, sit the full 10-minute review window, merge, release v1.10.0, verify npm.
+
+Dated 2026-09-05. Defaults raised: greedy floor 80, session ladder [90] (1.11.0).
+
+Goal: ship 1.11.0 from branch t3code/raise-greedy-floor-threshold with `policy.greedySessionFloor` defaulting to 80 and `thresholds.session` to `[90]`, mechanics untouched, every English and localized doc page stating the new defaults.
+
+- [x] `src/lib/state.ts` defaults: session `[90]`, greedySessionFloor 80; `package.json` and `agent-plugin/plugin.json` to 1.11.0
+- [x] English prose: README, DESIGN.md, AGENTS.md, switching.mdx, configuration.mdx, the switching-policy skill and its policy reference; the 50/80/95 ladder stays as the documented multi-rung example
+- [x] Localized pages: JSON snippets in 29 configuration pages; engagement line and ladder bullet in 29 switching pages (default `[90]`, single rung; the climb sentence reframed as the `[50, 80, 95]` example)
+- [x] `.memory`: switch-policy-pace-pressure (2026-09-05 decision), MEMORY.md index line, hermetic-ladder-verification (defaults now need an explicit config; HOME override on Linux)
+- [x] tsc clean; `cd docs && bun run build` exit 0 (1042 static paths)
+- [x] Hermetic `config` readback: `thresholds.session [90] default`, `policy.greedySessionFloor 80 default`
+- [x] Hermetic Layer 1, four cases, all PASS (recorded in hermetic-ladder-verification.md)
+- [ ] Commit by explicit path, push, PR, CI green, full 10-minute review window from the last push, handle reviews
+- [ ] Merge, `gh release create v1.11.0`, `npm view tokenmaxxing version` reads 1.11.0, teardown
