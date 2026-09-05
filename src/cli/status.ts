@@ -1,6 +1,6 @@
 import { sortBy } from "es-toolkit";
 import { z } from "zod";
-import { loadAccounts, loadConfig, loadUsage, loadModelUsage, saveAccounts } from "../lib/state.ts";
+import { loadAccounts, loadConfig, loadUsage, loadUsageSnapshot, loadModelUsage, saveAccounts } from "../lib/state.ts";
 import { readOAuthAccount } from "../lib/claudejson.ts";
 import { ensureLiveTokenFresh, probeActiveUsage, probeParkedUsage, type SampleOutcome } from "../lib/sample.ts";
 import { withLock } from "../lib/lock.ts";
@@ -33,6 +33,7 @@ const ClaudeStatusAccountSchema = z.object({
   usageAt: z.number().nullable(),
   sample: SampleReportSchema,
   pingError: z.string().nullable(),
+  pingRejected: z.boolean(),
   pinged: z.boolean(),
 });
 type ClaudeStatusAccount = z.infer<typeof ClaudeStatusAccountSchema>;
@@ -93,15 +94,18 @@ async function collectClaude(input: { cfg: Config; force: boolean; now: number }
     console.error(c.dim(force ? "pinging every account (starts each 5h session timer) + sampling live usage..." : "sampling live usage..."));
     await withLock(paths.lockFile, async () => {
       idx = loadAccounts();
-      const live = loadUsage();
+      const tee = loadUsageSnapshot();
+      const live = tee?.state ?? null;
+      const teeAt = tee?.at ?? null;
       const modelUsage = loadModelUsage();
       const liveOAuth = readOAuthAccount();
       const activeOrg = liveOAuth?.organizationUuid ?? null;
       const probeOne = async (a: Account) => {
         const isActive = activeOrg != null && activeOrg === a.organizationUuid;
         if (isActive && liveOAuth?.organizationRateLimitTier != null) a.rateLimitTier = liveOAuth.organizationRateLimitTier;
+        const teeCurrent = teeAt != null && (a.lastUsageAt == null || teeAt >= a.lastUsageAt);
         const fromStatusLine: FullUsage | null =
-          isActive && live && live.org === a.organizationUuid
+          isActive && live && teeCurrent && live.org === a.organizationUuid
             ? {
                 session: live.fiveHour,
                 weekAll: live.sevenDay,
@@ -115,7 +119,10 @@ async function collectClaude(input: { cfg: Config; force: boolean; now: number }
           if (!outcome.ok && fromStatusLine && outcome.reason.includes("no limit data")) {
             const failed = outcome;
             outcome = { ok: true, usage: fromStatusLine };
-            if (failed.pingError != null) outcome.pingError = failed.pingError;
+            if (failed.pingError != null) {
+              outcome.pingError = failed.pingError;
+              outcome.pingRejected = failed.pingRejected;
+            }
             viaTee = true;
           }
         } else {
@@ -129,7 +136,7 @@ async function collectClaude(input: { cfg: Config; force: boolean; now: number }
         samples.set(a.accountUuid, { outcome, viaTee });
         if (!outcome.ok) return;
         a.lastUsage = { fiveHour: outcome.usage.session, sevenDay: outcome.usage.weekAll };
-        a.lastUsageAt = viaTee && live ? live.ts : Date.now();
+        a.lastUsageAt = viaTee && teeAt != null ? teeAt : Date.now();
         if (Object.keys(outcome.usage.perModel).length > 0) {
           a.lastPerModel = outcome.usage.perModel;
           a.lastPerModelAt = viaTee && modelUsage ? (modelUsage.sampledAt ?? modelUsage.ts) : a.lastUsageAt;
@@ -169,6 +176,7 @@ async function collectClaude(input: { cfg: Config; force: boolean; now: number }
       usageAt: a.lastUsageAt ?? null,
       sample: sampled.outcome.ok ? { ok: true, source: sampled.viaTee ? "statusline" : "probe" } : { ok: false, reason: sampled.outcome.reason },
       pingError: sampled.outcome.pingError ?? null,
+      pingRejected: sampled.outcome.pingRejected === true,
       pinged: force && sampled.outcome.ok && sampled.outcome.pingError == null && aggregate != null && aggregate.fiveHour.resetsAt == null,
     };
   });
@@ -277,8 +285,14 @@ function rowPrinter(now: number): (name: string, w: UsageWindow) => void {
   };
 }
 
-function renderClaude(input: { claude: StatusReport["claude"]; codexPooled: boolean; now: number; row: (name: string, w: UsageWindow) => void }): void {
-  const { claude, codexPooled, now, row } = input;
+function renderClaude(input: {
+  claude: StatusReport["claude"];
+  codexPooled: boolean;
+  now: number;
+  staleAfterMs: number;
+  row: (name: string, w: UsageWindow) => void;
+}): void {
+  const { claude, codexPooled, now, staleAfterMs, row } = input;
   if (claude.accounts.length === 0) {
     if (!codexPooled) {
       console.log(c.dim("no accounts yet, run `tokenmaxxing init` (or `tokenmaxxing init --codex`)"));
@@ -303,11 +317,21 @@ function renderClaude(input: { claude: StatusReport["claude"]; codexPooled: bool
       row("week", a.usage.week);
     }
     for (const [name, w] of Object.entries(a.perModel)) row(name.toLowerCase(), w);
+    if (a.sample.ok && a.sample.source === "statusline") {
+      const stale = a.usageAt == null || now - a.usageAt > staleAfterMs;
+      const age = a.usageAt != null ? fmtAgo(a.usageAt, now) : "age unknown";
+      console.log(`    ${(stale ? c.yellow : c.dim)(`statusline tee ${age}${stale ? " (stale)" : ""}`)}`);
+    }
     if (!a.sample.ok) {
       const cached = a.usage || Object.keys(a.perModel).length > 0 ? `cached${a.usageAt != null ? ` ${fmtAgo(a.usageAt, now)}` : ""}, ` : "";
       console.log(`    ${c.yellow(`${cached}live sample failed`)}: ${c.dim(a.sample.reason)}`);
     }
-    if (a.pingError != null) {
+    if (a.pingError != null && a.pingRejected) {
+      const at = a.pingError.indexOf(": ");
+      const head = at >= 0 ? a.pingError.slice(0, at) : a.pingError;
+      const tail = at >= 0 ? a.pingError.slice(at + 2) : "";
+      console.log(`    ${c.yellow(`ping ${head}`)}${tail ? `: ${c.dim(tail)}` : ""}`);
+    } else if (a.pingError != null) {
       console.log(`    ${c.yellow("ping failed (5h timer may not have started)")}: ${c.dim(a.pingError)}`);
     }
     if (a.pinged) {
@@ -321,11 +345,11 @@ export async function cmdStatus(opts: { force?: boolean; json?: boolean; preRend
   const { force = false, json = false } = opts;
   const cfg = loadConfig();
   const now = Date.now();
-  const row = rowPrinter(now);
   const claude = await collectClaude({ cfg, force, now });
   if (!json) {
     opts.preRender?.();
-    renderClaude({ claude, codexPooled: loadCodexAccounts().accounts.length > 0, now, row });
+    const at = Date.now();
+    renderClaude({ claude, codexPooled: loadCodexAccounts().accounts.length > 0, now: at, staleAfterMs: cfg.policy.usagePollTtlMs, row: rowPrinter(at) });
   }
   const codex = await collectCodex({ cfg, now });
   if (json) {
@@ -333,6 +357,7 @@ export async function cmdStatus(opts: { force?: boolean; json?: boolean; preRend
     emitJson({ ok: true, ...report });
     return 0;
   }
-  renderCodex({ codex, now, row });
+  const at = Date.now();
+  renderCodex({ codex, now: at, row: rowPrinter(at) });
   return 0;
 }
