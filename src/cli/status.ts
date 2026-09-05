@@ -1,6 +1,6 @@
 import { sortBy } from "es-toolkit";
 import { z } from "zod";
-import { loadAccounts, loadConfig, loadUsage, loadModelUsage, saveAccounts, usageTeeAt } from "../lib/state.ts";
+import { loadAccounts, loadConfig, loadUsage, loadUsageSnapshot, loadModelUsage, saveAccounts } from "../lib/state.ts";
 import { readOAuthAccount } from "../lib/claudejson.ts";
 import { ensureLiveTokenFresh, probeActiveUsage, probeParkedUsage, type SampleOutcome } from "../lib/sample.ts";
 import { withLock } from "../lib/lock.ts";
@@ -94,8 +94,9 @@ async function collectClaude(input: { cfg: Config; force: boolean; now: number }
     console.error(c.dim(force ? "pinging every account (starts each 5h session timer) + sampling live usage..." : "sampling live usage..."));
     await withLock(paths.lockFile, async () => {
       idx = loadAccounts();
-      const live = loadUsage();
-      const teeAt = live ? (usageTeeAt() ?? live.ts) : null;
+      const tee = loadUsageSnapshot();
+      const live = tee?.state ?? null;
+      const teeAt = tee?.at ?? null;
       const modelUsage = loadModelUsage();
       const liveOAuth = readOAuthAccount();
       const activeOrg = liveOAuth?.organizationUuid ?? null;
@@ -344,11 +345,11 @@ export async function cmdStatus(opts: { force?: boolean; json?: boolean; preRend
   const { force = false, json = false } = opts;
   const cfg = loadConfig();
   const now = Date.now();
-  const row = rowPrinter(now);
   const claude = await collectClaude({ cfg, force, now });
   if (!json) {
     opts.preRender?.();
-    renderClaude({ claude, codexPooled: loadCodexAccounts().accounts.length > 0, now, staleAfterMs: cfg.policy.usagePollTtlMs, row });
+    const at = Date.now();
+    renderClaude({ claude, codexPooled: loadCodexAccounts().accounts.length > 0, now: at, staleAfterMs: cfg.policy.usagePollTtlMs, row: rowPrinter(at) });
   }
   const codex = await collectCodex({ cfg, now });
   if (json) {
@@ -356,6 +357,7 @@ export async function cmdStatus(opts: { force?: boolean; json?: boolean; preRend
     emitJson({ ok: true, ...report });
     return 0;
   }
-  renderCodex({ codex, now, row });
+  const at = Date.now();
+  renderCodex({ codex, now: at, row: rowPrinter(at) });
   return 0;
 }

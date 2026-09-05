@@ -407,7 +407,7 @@ export async function pingSession(configDir?: string): Promise<PingFailure | nul
   if (r === null) return fail("output pipes still open after child exit (leaked descendant)");
   const parsed = PingResultSchema.safeParse((() => { try { return JSON.parse(r.stdout); } catch { return null; } })());
   const result = parsed.success ? parsed.data : null;
-  if (r.exitCode === 0 && result && !result.is_error) {
+  if (r.exitCode === 0 && result?.is_error === false) {
     log("usage.ping_ok", { dir: configDir ?? "live" });
     return null;
   }
@@ -420,6 +420,6 @@ export async function pingSession(configDir?: string): Promise<PingFailure | nul
     const detail = result?.result?.trim() || r.stderr.trim() || r.stdout.trim();
     return fail(`claude exited ${r.exitCode ?? "on signal"}: ${detail.slice(0, 160)}`);
   }
-  if (!result) return fail(`unrecognized ping output: ${r.stdout.trim().slice(0, 120)}`);
-  return fail((result.result?.trim() || "request errored").slice(0, 160));
+  if (result?.is_error === true) return fail((result.result?.trim() || "request errored").slice(0, 160));
+  return fail(`unrecognized ping output: ${r.stdout.trim().slice(0, 120)}`);
 }

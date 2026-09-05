@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, rmSync, statSync, utimesSync } from "node:fs";
+import { closeSync, existsSync, fstatSync, openSync, readFileSync, rmSync, statSync, utimesSync } from "node:fs";
 import { isEqual } from "es-toolkit";
 import { z } from "zod";
 import { paths, realClaudeBinFromEnv, realCodexBinFromEnv } from "./paths.ts";
@@ -133,14 +133,26 @@ export function saveAccounts(idx: AccountsIndex): void {
   writeFileAtomic(paths.accountsJson, JSON.stringify(AccountsIndexSchema.parse(idx), null, 2) + "\n");
 }
 
-export function loadUsage(): UsageState | null {
-  if (!existsSync(paths.usageJson)) return null;
+export function loadUsageSnapshot(): { state: UsageState; at: number } | null {
+  let fd: number;
   try {
-    const parsed = UsageStateSchema.safeParse(JSON.parse(readFileSync(paths.usageJson, "utf8")));
-    return parsed.success ? parsed.data : null;
+    fd = openSync(paths.usageJson, "r");
   } catch {
     return null;
   }
+  try {
+    const at = fstatSync(fd).mtimeMs;
+    const parsed = UsageStateSchema.safeParse(JSON.parse(readFileSync(fd, "utf8")));
+    return parsed.success ? { state: parsed.data, at } : null;
+  } catch {
+    return null;
+  } finally {
+    closeSync(fd);
+  }
+}
+
+export function loadUsage(): UsageState | null {
+  return loadUsageSnapshot()?.state ?? null;
 }
 
 export function clearUsageSnapshots(): void {

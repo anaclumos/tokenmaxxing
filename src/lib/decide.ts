@@ -2,7 +2,7 @@ import { maxBy } from "es-toolkit";
 import { z } from "zod";
 import { withLock } from "./lock.ts";
 import { paths } from "./paths.ts";
-import { MAX_CHECK_DELAY_MS, loadAccounts, loadConfig, loadDepletedWait, loadLastSwapAt, loadUsage, loadModelUsage, saveAccounts, saveDepletedWait, saveModelUsage, usageTeeAt, writeUsage } from "./state.ts";
+import { MAX_CHECK_DELAY_MS, loadAccounts, loadConfig, loadDepletedWait, loadLastSwapAt, loadUsage, loadUsageSnapshot, loadModelUsage, saveAccounts, saveDepletedWait, saveModelUsage, usageTeeAt, writeUsage } from "./state.ts";
 import { readOAuthAccount } from "./claudejson.ts";
 import { chooseAndSwap, performSwap } from "./swap.ts";
 import { currentWins, effectiveBars, hardBars, isExhausted, nextWeeklyReset, pickBest, pickEarliestReset, sessionLadder, usableAt } from "./picker.ts";
@@ -147,7 +147,8 @@ export async function evaluateAndMaybeSwap(now = Date.now(), anticipatory = fals
     const idx = loadAccounts();
     const org2 = readOAuthAccount()?.organizationUuid ?? null;
     const enforced2 = enforced0 && enforced0.org === org2 ? enforced0 : null;
-    const u2 = loadUsage() ?? usage;
+    const tee = loadUsageSnapshot();
+    const u2 = tee?.state ?? usage;
     const mu2 = needsPerModel(u2, cfg) || enforced2?.family ? loadModelUsage() ?? mu : null;
 
     if (org2 != null && !idx.accounts.some((a) => a.organizationUuid === org2)) {
@@ -157,7 +158,7 @@ export async function evaluateAndMaybeSwap(now = Date.now(), anticipatory = fals
     const active = org2 ? idx.accounts.find((a) => a.organizationUuid === org2) : undefined;
     if (active) {
       let sampled = false;
-      const teeAt = u2 ? (usageTeeAt() ?? u2.ts) : null;
+      const teeAt = tee != null ? tee.at : (u2 ? u2.ts : null);
       if (u2 && teeAt != null && u2.org === org2 && (active.lastUsageAt == null || teeAt >= active.lastUsageAt)) {
         active.lastUsage = { fiveHour: u2.fiveHour, sevenDay: u2.sevenDay };
         active.lastUsageAt = teeAt;
