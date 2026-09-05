@@ -368,11 +368,12 @@ export function checkDelayMs(input: { cfg: Config; org: string | null; now: numb
   if (swapAt != null && now - swapAt < POST_SWAP_COOLDOWN_MS) return swapAt + POST_SWAP_COOLDOWN_MS - now;
   const snap = loadUsageSnapshot();
   if (!org || !snap || !usageFresh(snap.state, snap.at, org, cfg.policy.usagePollTtlMs, now)) return CHECK_DELAY_UNKNOWN_MS;
-  const u = { ...snap.state, ts: snap.at };
+  const accounts = loadAccounts().accounts;
+  const u = freshest(snap.state, snap.at, accounts.find((a) => a.organizationUuid === org)) ?? { ...snap.state, ts: snap.at };
   const mu = loadModelUsage();
   const muSame = mu && mu.org === org ? mu : null;
   const families = gatedFamilies(u.model, cfg.policy.switchModels);
-  const bars = effectiveBars(cfg, { accounts: overlayLive(loadAccounts().accounts, u, muSame, org), now, switchFamilies: families });
+  const bars = effectiveBars(cfg, { accounts: overlayLive(accounts, u, muSame, org), now, switchFamilies: families });
   const heads = [
     bars.session - liveUsed({ window: u.fiveHour, windowMs: FIVE_HOURS_MS, sampledAt: u.ts, now }),
     bars.weekly - liveUsed({ window: u.sevenDay, windowMs: WEEK_MS, sampledAt: u.ts, now }),

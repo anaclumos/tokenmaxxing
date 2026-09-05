@@ -120,5 +120,6 @@ Goal: ship 1.13.1 so the active account's status row can never silently show a s
 - [x] Review round 2 (Codex P2 + cubic P1, one finding): the engine now selects the freshest same-org sample BEFORE its engagement checks (`freshest`), not only on the write-back; hermetic check runs prove a newer stored 100% drives the decision over a fresh-mtime 21% tee and the tee still wins when newer
 - [x] Review round 3 (Codex P2): `usageFresh` takes the snapshot's own mtime instead of stat-ing the path again, in the probe gate, the post-probe re-read, and `checkDelayMs`; `usageTeeAt` deleted
 - [x] Review round 4 (cubic P2): an accepted tee carries its mtime as `ts` (the resetless-window expiry clock in `liveUsed`), in `freshest` and in `checkDelayMs`, so selection and expiry use one clock
+- [x] Review round 5 (cubic P2): `checkDelayMs` paces from the same freshest sample as the decision, so a newer near-limit record tightens the cadence even while an older low tee is inside the TTL
 - [ ] CI green, window elapsed from the last push, every reviewer finding handled
 - [ ] Merge, `gh release create v1.13.1`, `npm view tokenmaxxing version` reads 1.13.1, teardown
