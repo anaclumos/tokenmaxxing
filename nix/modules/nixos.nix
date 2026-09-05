@@ -38,7 +38,7 @@ in
       timerConfig = {
         OnBootSec = "60";
         OnUnitActiveSec = toString cfg.checkTimer.intervalSeconds;
-        AccuracySec = "5";
+        AccuracySec = toString (lib.max 1 (cfg.checkTimer.intervalSeconds / 12));
         Persistent = true;
         Unit = "tokenmaxxing-check.service";
       };

@@ -210,6 +210,7 @@ export function clearDepletedWait(): void {
 }
 
 export const MAX_CHECK_DELAY_TICKS = 5;
+export const POST_SWAP_COOLDOWN_MS = 45_000;
 
 export function maxCheckDelayMs(cfg: Config): number {
   return MAX_CHECK_DELAY_TICKS * cfg.policy.checkIntervalMs;
@@ -224,7 +225,7 @@ export function loadNextCheckDueAt(input: { now: number; cfg: Config }): number 
     return null;
   }
   if (!parsed.success) return null;
-  return parsed.data.dueAt - input.now > maxCheckDelayMs(input.cfg) ? null : parsed.data.dueAt;
+  return parsed.data.dueAt - input.now > Math.max(maxCheckDelayMs(input.cfg), POST_SWAP_COOLDOWN_MS) ? null : parsed.data.dueAt;
 }
 
 export function saveNextCheckDueAt(input: { dueAt: number; ts: number }): void {

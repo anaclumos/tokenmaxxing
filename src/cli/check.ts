@@ -6,15 +6,16 @@ import { c, emitError, emitJson, fmtReset } from "./render.ts";
 
 export async function cmdCheck(args: string[] = [], json = false): Promise<number> {
   const now = Date.now();
-  const cfg = loadConfig();
-  const dueAt = args.includes("--if-due") ? loadNextCheckDueAt({ now, cfg }) : null;
-  if (dueAt != null && now + cfg.policy.checkIntervalMs / 2 < dueAt) {
-    if (json) emitJson({ ok: true, due: false, nextCheckAt: dueAt });
-    else console.log(c.dim(`not due (${Math.ceil((dueAt - now) / 1000)}s)`));
-    return 0;
-  }
+  let cfg;
   let d;
   try {
+    cfg = loadConfig();
+    const dueAt = args.includes("--if-due") ? loadNextCheckDueAt({ now, cfg }) : null;
+    if (dueAt != null && now + cfg.policy.checkIntervalMs / 2 < dueAt) {
+      if (json) emitJson({ ok: true, due: false, nextCheckAt: dueAt });
+      else console.log(c.dim(`not due (${Math.ceil((dueAt - now) / 1000)}s)`));
+      return 0;
+    }
     d = await evaluateAndMaybeSwap(now);
   } catch (e) {
     const detail = e instanceof Error ? e.message : String(e);

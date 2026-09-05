@@ -249,7 +249,7 @@ Description=tokenmaxxing periodic account-switch check
 [Timer]
 OnBootSec=60
 OnUnitActiveSec=${intervalS}
-AccuracySec=5
+AccuracySec=${Math.max(1, Math.floor(intervalS / 12))}
 
 [Install]
 WantedBy=timers.target
