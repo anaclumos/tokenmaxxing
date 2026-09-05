@@ -81,9 +81,12 @@ function usageFresh(u: UsageState | null, uAt: number | null, org: string | null
 }
 
 function freshest(u: UsageState | null, uAt: number | null, account: Account | undefined): UsageState | null {
-  if (!u || uAt == null || !account?.lastUsage || account.lastUsageAt == null || u.org !== account.organizationUuid) return u;
-  if (uAt >= account.lastUsageAt) return u;
-  return { ...u, fiveHour: account.lastUsage.fiveHour, sevenDay: account.lastUsage.sevenDay, ts: account.lastUsageAt };
+  if (!u || uAt == null) return u;
+  const stored = account?.lastUsage;
+  if (stored && account.lastUsageAt != null && u.org === account.organizationUuid && uAt < account.lastUsageAt) {
+    return { ...u, fiveHour: stored.fiveHour, sevenDay: stored.sevenDay, ts: account.lastUsageAt };
+  }
+  return { ...u, ts: uAt };
 }
 
 async function loadFreshSnapshots(cfg: Config, org: string | null, now: number): Promise<Snapshots> {
@@ -365,7 +368,7 @@ export function checkDelayMs(input: { cfg: Config; org: string | null; now: numb
   if (swapAt != null && now - swapAt < POST_SWAP_COOLDOWN_MS) return swapAt + POST_SWAP_COOLDOWN_MS - now;
   const snap = loadUsageSnapshot();
   if (!org || !snap || !usageFresh(snap.state, snap.at, org, cfg.policy.usagePollTtlMs, now)) return CHECK_DELAY_UNKNOWN_MS;
-  const u = snap.state;
+  const u = { ...snap.state, ts: snap.at };
   const mu = loadModelUsage();
   const muSame = mu && mu.org === org ? mu : null;
   const families = gatedFamilies(u.model, cfg.policy.switchModels);
