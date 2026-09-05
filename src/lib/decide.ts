@@ -2,7 +2,7 @@ import { maxBy } from "es-toolkit";
 import { z } from "zod";
 import { withLock } from "./lock.ts";
 import { paths } from "./paths.ts";
-import { MAX_CHECK_DELAY_MS, loadAccounts, loadConfig, loadDepletedWait, loadLastSwapAt, loadUsage, loadUsageSnapshot, loadModelUsage, saveAccounts, saveDepletedWait, saveModelUsage, writeUsage } from "./state.ts";
+import { MAX_CHECK_DELAY_TICKS, POST_SWAP_COOLDOWN_MS, maxCheckDelayMs, loadAccounts, loadConfig, loadDepletedWait, loadLastSwapAt, loadUsage, loadUsageSnapshot, loadModelUsage, saveAccounts, saveDepletedWait, saveModelUsage, writeUsage } from "./state.ts";
 import { readOAuthAccount } from "./claudejson.ts";
 import { chooseAndSwap, performSwap } from "./swap.ts";
 import { currentWins, effectiveBars, hardBars, isExhausted, nextWeeklyReset, pickBest, pickEarliestReset, sessionLadder, usableAt } from "./picker.ts";
@@ -125,8 +125,6 @@ async function loadFreshSnapshots(cfg: Config, org: string | null, now: number):
   }
   return { u, mu, uAt };
 }
-
-export const POST_SWAP_COOLDOWN_MS = 45_000;
 
 export async function evaluateAndMaybeSwap(now = Date.now(), anticipatory = false, enforced: EnforcedLimit | null = null): Promise<SwapDecision> {
   const activeOrg = readOAuthAccount()?.organizationUuid ?? null;
@@ -357,17 +355,17 @@ export async function recordEnforcedLimit(input: { limit: EnforcedClass; org: st
   });
 }
 
-export const CHECK_DELAY_FLOOR_MS = 60_000;
-const CHECK_DELAY_UNKNOWN_MS = 180_000;
-const STAGE_CEILING_MS = [MAX_CHECK_DELAY_MS, 180_000, 120_000];
+const STAGE_CEILING_TICKS = [MAX_CHECK_DELAY_TICKS, 3, 2];
 
 export function checkDelayMs(input: { cfg: Config; org: string | null; now: number; decision: SwapDecision }): number {
   const { cfg, org, now, decision } = input;
-  if (decision.waitUntil !== undefined) return Math.min(MAX_CHECK_DELAY_MS, Math.max(CHECK_DELAY_FLOOR_MS, decision.waitUntil - now));
+  const tick = cfg.policy.checkIntervalMs;
+  const max = maxCheckDelayMs(cfg);
+  if (decision.waitUntil !== undefined) return Math.min(max, Math.max(tick, decision.waitUntil - now));
   const swapAt = loadLastSwapAt();
   if (swapAt != null && now - swapAt < POST_SWAP_COOLDOWN_MS) return swapAt + POST_SWAP_COOLDOWN_MS - now;
   const snap = loadUsageSnapshot();
-  if (!org || !snap || !usageFresh(snap.state, snap.at, org, cfg.policy.usagePollTtlMs, now)) return CHECK_DELAY_UNKNOWN_MS;
+  if (!org || !snap || !usageFresh(snap.state, snap.at, org, cfg.policy.usagePollTtlMs, now)) return 3 * tick;
   const accounts = loadAccounts().accounts;
   const u = freshest(snap.state, snap.at, accounts.find((a) => a.organizationUuid === org)) ?? { ...snap.state, ts: snap.at };
   const mu = loadModelUsage();
@@ -386,8 +384,8 @@ export function checkDelayMs(input: { cfg: Config; org: string | null; now: numb
     else capMissing = true;
   }
   const headroom = Math.min(...heads);
-  const banded = headroom >= 40 ? MAX_CHECK_DELAY_MS : headroom >= 20 ? 180_000 : headroom >= 8 ? 120_000 : CHECK_DELAY_FLOOR_MS;
+  const banded = headroom >= 40 ? max : headroom >= 20 ? 3 * tick : headroom >= 8 ? 2 * tick : tick;
   const stage = sessionLadder(cfg).indexOf(bars.session);
-  const staged = Math.min(banded, STAGE_CEILING_MS[stage] ?? CHECK_DELAY_FLOOR_MS);
-  return capMissing ? Math.min(staged, 120_000) : staged;
+  const staged = Math.min(banded, (STAGE_CEILING_TICKS[stage] ?? 1) * tick);
+  return capMissing ? Math.min(staged, 2 * tick) : staged;
 }

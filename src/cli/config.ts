@@ -20,7 +20,10 @@ export const KNOWN_KEYS = [
   "policy.switchModels",
   "policy.usagePollTtlMs",
   "policy.maxWaitMs",
+  "policy.checkIntervalMs",
 ] as const;
+
+const TIMER_REWRITE_NOTE = "note: run `tokenmaxxing init` to rewrite the periodic timer at the new tick";
 
 const RawFileSchema = z.record(z.string(), z.unknown());
 
@@ -150,6 +153,7 @@ function cmdSet(key: string, valueText: string, json: boolean): number {
     `${key}: ${beforeFile === undefined ? "(default)" : JSON.stringify(beforeFile)} -> ${JSON.stringify(get(next, key))}`,
   );
   if (env) console.log(c.yellow(`note: ${env} is set and overrides the file value in this environment`));
+  if (key === "policy.checkIntervalMs") console.log(c.yellow(TIMER_REWRITE_NOTE));
   return 0;
 }
 
@@ -189,6 +193,7 @@ function cmdUnset(key: string, json: boolean): number {
     return 0;
   }
   console.log(`${key} unset -> ${JSON.stringify(value)} (default)`);
+  if (key === "policy.checkIntervalMs") console.log(c.yellow(TIMER_REWRITE_NOTE));
   return 0;
 }
 

@@ -53,7 +53,7 @@ Home Manager (set the package explicitly, or apply this flake's overlay to the p
 }
 ```
 
-Nix only puts the CLI on PATH. Account import, the on-PATH `claude` supervisor shim, `settings.json` hooks, and (by default) the periodic check timer still come from `tokenmaxxing init` — those touch credentials and user-owned settings that a pure module should not rewrite. Set `programs.tokenmaxxing.checkTimer.enable = true` only when you want Nix to own the timer instead of init (that also exports `TOKENMAXXING_SKIP_TIMER=1` so init does not write a second unit). The declarative timer is a user-session timer, matching init — headless Linux needs `loginctl enable-linger` for it to fire without a login.
+Nix only puts the CLI on PATH. Account import, the on-PATH `claude` supervisor shim, `settings.json` hooks, and (by default) the periodic check timer still come from `tokenmaxxing init` — those touch credentials and user-owned settings that a pure module should not rewrite. Set `programs.tokenmaxxing.checkTimer.enable = true` only when you want Nix to own the timer instead of init (that also exports `TOKENMAXXING_SKIP_TIMER=1` so init does not write a second unit). The declarative timer is a user-session timer, matching init — headless Linux needs `loginctl enable-linger` for it to fire without a login. Keep `checkTimer.intervalSeconds` equal to `policy.checkIntervalMs` in seconds, because the self-paced schedule reads the config key while the unit fires on the Nix value.
 
 When `bun.lock` changes, regenerate the Nix dependency expression:
 

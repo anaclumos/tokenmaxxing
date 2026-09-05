@@ -1,21 +1,21 @@
-import { CHECK_DELAY_FLOOR_MS, checkDelayMs, evaluateAndMaybeSwap } from "../lib/decide.ts";
+import { checkDelayMs, evaluateAndMaybeSwap } from "../lib/decide.ts";
 import { readOAuthAccount } from "../lib/claudejson.ts";
 import { log } from "../lib/log.ts";
 import { loadConfig, loadNextCheckDueAt, saveNextCheckDueAt } from "../lib/state.ts";
 import { c, emitError, emitJson, fmtReset } from "./render.ts";
 
-const TICK_SLACK_MS = CHECK_DELAY_FLOOR_MS / 2;
-
 export async function cmdCheck(args: string[] = [], json = false): Promise<number> {
   const now = Date.now();
-  const dueAt = args.includes("--if-due") ? loadNextCheckDueAt(now) : null;
-  if (dueAt != null && now + TICK_SLACK_MS < dueAt) {
-    if (json) emitJson({ ok: true, due: false, nextCheckAt: dueAt });
-    else console.log(c.dim(`not due (${Math.ceil((dueAt - now) / 1000)}s)`));
-    return 0;
-  }
+  let cfg;
   let d;
   try {
+    cfg = loadConfig();
+    const dueAt = args.includes("--if-due") ? loadNextCheckDueAt({ now, cfg }) : null;
+    if (dueAt != null && now + cfg.policy.checkIntervalMs / 2 < dueAt) {
+      if (json) emitJson({ ok: true, due: false, nextCheckAt: dueAt });
+      else console.log(c.dim(`not due (${Math.ceil((dueAt - now) / 1000)}s)`));
+      return 0;
+    }
     d = await evaluateAndMaybeSwap(now);
   } catch (e) {
     const detail = e instanceof Error ? e.message : String(e);
@@ -23,7 +23,7 @@ export async function cmdCheck(args: string[] = [], json = false): Promise<numbe
     emitError({ json, message: `check failed: ${detail}` });
     return 1;
   }
-  const delayMs = checkDelayMs({ cfg: loadConfig(), org: readOAuthAccount()?.organizationUuid ?? null, now, decision: d });
+  const delayMs = checkDelayMs({ cfg, org: readOAuthAccount()?.organizationUuid ?? null, now, decision: d });
   saveNextCheckDueAt({ dueAt: now + delayMs, ts: now });
   if (json) {
     emitJson({

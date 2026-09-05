@@ -17,7 +17,8 @@ Config is JSON at `~/.config/tokenmaxxing/config.json`. Every field is optional;
     "greedySwapMargin": 0.15,
     "switchModels": ["fable"],
     "usagePollTtlMs": 90000,
-    "maxWaitMs": 3600000
+    "maxWaitMs": 3600000,
+    "checkIntervalMs": 60000
   }
 }
 ```
@@ -32,5 +33,6 @@ Config is JSON at `~/.config/tokenmaxxing/config.json`. Every field is optional;
 - `policy.switchModels`: model families whose per-model weekly cap gates a switch (entries are lowercased on load).
 - `policy.usagePollTtlMs`: how long a `/usage` per-model poll stays fresh.
 - `policy.maxWaitMs`: the depleted-pool auto-wait bound.
+- `policy.checkIntervalMs`: the periodic check tick (default 60000, minimum 10000 because launchd does not spawn a job more than once every 10 seconds by default). `init` writes it, rounded up to whole seconds, as the timer's interval (on Linux the systemd `AccuracySec` is a twelfth of it, at least one second), and every headroom band is a multiple of it: one tick near a bar, up to five ticks with plenty of headroom (see [Check cadence](/switching)). A depleted wait and the post-swap cooldown sleep to their own deadlines instead. The schedule reads the new value on the next check, but the installed timer keeps its old tick until you run `tokenmaxxing init` again, and the due-time slack is half the configured tick, so a changed tick is only fully honored after that re-run. With a Nix-managed timer, set `checkTimer.intervalSeconds` to the same value; that option has the same 10-second floor.
 
 `tokenmaxxing config` shows the effective config with sources; `config set`/`unset` edit dotted keys; `config tidy` prunes unknown keys.

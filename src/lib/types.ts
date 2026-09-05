@@ -125,6 +125,7 @@ export const ConfigSchema = z
       switchModels: z.array(z.string()),
       usagePollTtlMs: z.number().int().positive(),
       maxWaitMs: z.number().int().positive(),
+      checkIntervalMs: z.number().int().min(10_000),
     }),
   })
   .refine((cfg) => cfg.policy.projectionMargin < Math.min(...cfg.thresholds.session, cfg.thresholds.weekly), {
