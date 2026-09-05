@@ -79,5 +79,7 @@ Goal: ship 1.11.0 from branch t3code/raise-greedy-floor-threshold with `policy.g
 - [x] tsc clean; `cd docs && bun run build` exit 0 (1042 static paths)
 - [x] Hermetic `config` readback: `thresholds.session [90] default`, `policy.greedySessionFloor 80 default`
 - [x] Hermetic Layer 1, four cases, all PASS (recorded in hermetic-ladder-verification.md)
-- [ ] Commit by explicit path, push, PR, CI green, full 10-minute review window from the last push, handle reviews
+- [x] Committed 5b3d5c8 by explicit path, pushed 2026-09-05 06:57:54Z, PR #59 opened; CI green (test, nix, Vercel, cubic)
+- [x] Review round 1 on #59: Codex 2 (P1 premature "Shipped as 1.11.0" in the policy memory, P2 stale 50/80/95 sentence in DESIGN.md section 1), cubic 5 (the same two plus the localized closing sentence missing the multi-rung qualifier, flagged on ja, vi, de and applying to all 29). All seven agreed and fixed in one commit across DESIGN.md, the policy memory, and the 29 switching pages; the fix push restarts the 10-minute window
+- [ ] Second review window from the fix push, handle anything new
 - [ ] Merge, `gh release create v1.11.0`, `npm view tokenmaxxing version` reads 1.11.0, teardown
