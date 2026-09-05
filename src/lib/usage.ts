@@ -1,4 +1,4 @@
-import { closeSync, fstatSync, mkdirSync, openSync, readSync } from "node:fs";
+import { closeSync, existsSync, fstatSync, mkdirSync, openSync, readSync } from "node:fs";
 import { join } from "node:path";
 import { delay } from "es-toolkit";
 import { z } from "zod";
@@ -366,13 +366,36 @@ const PING_ARGS = [
   "--output-format", "json",
 ];
 
-const PingResultSchema = z.looseObject({ is_error: z.boolean(), result: z.string().optional() });
+const PingResultSchema = z.looseObject({ is_error: z.boolean().optional(), result: z.string().optional(), session_id: z.string().optional() });
 
-export async function pingSession(configDir?: string): Promise<string | null> {
+export const PingFailureSchema = z.object({ reason: z.string(), rejected: z.boolean() });
+export type PingFailure = z.infer<typeof PingFailureSchema>;
+
+export function transcriptSlug(cwd: string): string {
+  return cwd.replace(/[^a-zA-Z0-9]/g, "-");
+}
+
+export function pingTranscriptPath(input: { configDir: string; cwd: string; sessionId: string }): string {
+  return join(input.configDir, "projects", transcriptSlug(input.cwd), `${input.sessionId}.jsonl`);
+}
+
+const LIMIT_LABELS: Record<string, string> = { five_hour: "5h", seven_day: "weekly" };
+
+export function pingRejection(rows: TranscriptRow[]): string | null {
+  const row = rows.findLast((r) => r.isApiErrorMessage === true);
+  if (!row || row.error !== "rate_limit" || row.apiErrorIsTransient === true) return null;
+  const type = row.quotaLimits?.rateLimitType ?? "";
+  if (type === "" && parseErrorBody(row.errorDetails)?.error?.type !== "rate_limit_error") return null;
+  const label = LIMIT_LABELS[type] ?? (type !== "" ? type.replace(/_/g, " ") : "usage");
+  const text = transcriptRowText(row);
+  return `${label} limit${text ? `: ${text}` : ""}`;
+}
+
+export async function pingSession(configDir?: string): Promise<PingFailure | null> {
   const cwd = join(paths.sampleDir, "ping-cwd");
-  const fail = (reason: string): string => {
-    log("usage.ping_failed", { dir: configDir ?? "live", reason: reason.slice(0, 200) });
-    return reason;
+  const fail = (reason: string, rejected = false): PingFailure => {
+    log("usage.ping_failed", { dir: configDir ?? "live", rejected, reason: reason.slice(0, 200) });
+    return { reason, rejected };
   };
   let r: SpawnResult | null;
   try {
@@ -382,10 +405,21 @@ export async function pingSession(configDir?: string): Promise<string | null> {
     return fail(e instanceof Error ? e.message : String(e));
   }
   if (r === null) return fail("output pipes still open after child exit (leaked descendant)");
-  if (r.exitCode !== 0) return fail(`claude exited ${r.exitCode ?? "on signal"}: ${(r.stderr.trim() || r.stdout.trim()).slice(0, 160)}`);
   const parsed = PingResultSchema.safeParse((() => { try { return JSON.parse(r.stdout); } catch { return null; } })());
-  if (!parsed.success) return fail(`unrecognized ping output: ${r.stdout.trim().slice(0, 120)}`);
-  if (parsed.data.is_error) return fail((parsed.data.result?.trim() || "request errored").slice(0, 160));
-  log("usage.ping_ok", { dir: configDir ?? "live" });
-  return null;
+  const result = parsed.success ? parsed.data : null;
+  if (r.exitCode === 0 && result && !result.is_error) {
+    log("usage.ping_ok", { dir: configDir ?? "live" });
+    return null;
+  }
+  if (result?.session_id) {
+    const transcript = pingTranscriptPath({ configDir: configDir ?? paths.claudeDir, cwd, sessionId: result.session_id });
+    const rejection = existsSync(transcript) ? pingRejection(readTranscriptTail(transcript)) : null;
+    if (rejection) return fail(`rejected at the ${rejection}`.slice(0, 200), true);
+  }
+  if (r.exitCode !== 0) {
+    const detail = result?.result?.trim() || r.stderr.trim() || r.stdout.trim();
+    return fail(`claude exited ${r.exitCode ?? "on signal"}: ${detail.slice(0, 160)}`);
+  }
+  if (!result) return fail(`unrecognized ping output: ${r.stdout.trim().slice(0, 120)}`);
+  return fail((result.result?.trim() || "request errored").slice(0, 160));
 }

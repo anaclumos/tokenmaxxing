@@ -102,3 +102,18 @@ Goal: ship 1.12.0 from branch t3code/raise-greedy-floor-threshold with `policy.g
 - [x] Second window elapsed 07:20:11Z with CI green and no new findings; the merge was refused because PR #58 (--json output mode, 1.11.0) merged into main at 07:20:26Z and released v1.11.0 while the window ran. Resolved by merging main into the branch (the only conflict was both sessions appending to this file), bumping to 1.12.0, and re-pushing, which restarts the window
 - [ ] Third review window from the merge push, handle anything new
 - [ ] Merge, `gh release create v1.12.0`, `npm view tokenmaxxing version` reads 1.12.0, teardown
+
+Dated 2026-09-05. Status freshness fixes (1.12.1).
+
+Goal: ship 1.12.1 so the active account's status row can never silently show a stale tee or regress the stored sample, and so a refused --force ping says why.
+
+- [x] Diagnose: plain `status` showed a 20-minute-old tee at 21% while `--force` probed live at 100%; the tee had frozen when the host's hooks and timer were stripped; the plain run then overwrote the fresh record with the older tee (adversarially verified by three read-only opus lenses)
+- [x] `status.ts`: tee adopted only when its `ts` is not older than the account's `lastUsageAt` (else live probe, or under --force the failed probe stands); tee-sourced rows print `statusline tee <age>` with `(stale)` past `usagePollTtlMs`; `pingRejected` in the report; `ping rejected at the <window> limit: <text>` in text mode
+- [x] `decide.ts`: the same newest-wins guard on the tee copy into the account record (aggregate only; the per-model copy stays unguarded because the Fable stamp carries an older `sampledAt` on purpose)
+- [x] `usage.ts`: `pingSession` returns `{reason, rejected}`; a failed ping reads its own transcript row and classifies `rate_limit` structurally; `transcriptSlug`/`pingTranscriptPath`
+- [x] AGENTS.md: the live-probe bullet made conditional; docs commands.mdx JSON field `pingRejected`; `.memory` note and index
+- [x] Bump 1.12.1 (package.json, agent-plugin/plugin.json); tsc clean
+- [x] Hermetic runs under throwaway roots: tee newer than record (adopted, age line), tee older (ignored, probe attempted, record kept), `check` with tee older/newer (record kept/updated), `--force` against a fake claude replaying the real rejection row (`ping rejected at the 5h limit`); `pingRejection` replayed on the real failed-ping transcript
+- [x] Adversarial review of the diff (three opus finders, two opus refuters per finding, no Fable): the tee clock moved from the embedded `ts` to the file mtime (`usageTeeAt`, the documented heartbeat; the `ts` freezes for up to 10 minutes on unchanged payloads, the same misjudgment recorded in headless-decision-freshness.md), and `pingRejection` now refuses `apiErrorIsTransient` rows and requires either a `quotaLimits` window or the credits-branch `rate_limit_error` body, mirroring `classifyEnforcedLimit`; troubleshooting.mdx sentence about probing corrected; three duplicate-clock findings and a dangling memory link folded into the same fixes
+- [ ] Commit by explicit path, push, open PR, CI green, full 10-minute window from the last push, handle every review
+- [ ] Merge, `gh release create v1.12.1`, `npm view tokenmaxxing version` reads 1.12.1, teardown

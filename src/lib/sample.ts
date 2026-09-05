@@ -9,8 +9,8 @@ import { FullUsageSchema, pingSession, probeUsage } from "./usage.ts";
 import { CredentialBlobSchema, type Account, type OAuthCreds, type RolesResponse } from "./types.ts";
 
 const SampleOutcomeSchema = z.discriminatedUnion("ok", [
-  z.object({ ok: z.literal(true), usage: FullUsageSchema, pingError: z.string().optional() }),
-  z.object({ ok: z.literal(false), reason: z.string(), pingError: z.string().optional() }),
+  z.object({ ok: z.literal(true), usage: FullUsageSchema, pingError: z.string().optional(), pingRejected: z.boolean().optional() }),
+  z.object({ ok: z.literal(false), reason: z.string(), pingError: z.string().optional(), pingRejected: z.boolean().optional() }),
 ]);
 export type SampleOutcome = z.infer<typeof SampleOutcomeSchema>;
 
@@ -95,12 +95,15 @@ export async function probeParkedUsage(account: Account, opts: { ping?: boolean 
   try {
     await writeItem(isoTarget, installed);
     writeFileSync(join(dir, ".claude.json"), JSON.stringify({ oauthAccount: account.oauthAccount, hasCompletedOnboarding: true }));
-    const pingError = opts.ping ? await pingSession(dir) : null;
+    const ping = opts.ping ? await pingSession(dir) : null;
     const usage = await probeUsage(dir);
     const outcome: SampleOutcome = usage
       ? { ok: true, usage }
       : { ok: false, reason: "`/usage` returned no limit data (see log)" };
-    if (pingError != null) outcome.pingError = pingError;
+    if (ping != null) {
+      outcome.pingError = ping.reason;
+      outcome.pingRejected = ping.rejected;
+    }
     return outcome;
   } finally {
     const afterIso = await readItem(isoTarget);
@@ -152,9 +155,12 @@ export async function probeActiveUsage(account: Account, opts: { ping?: boolean 
   if (identity.status === "unavailable") return { ok: false, reason: identity.reason };
   refreshPlanFields(account, creds);
 
-  const pingError = opts.ping ? await pingSession() : null;
+  const ping = opts.ping ? await pingSession() : null;
   const usage = await probeUsage();
   const outcome: SampleOutcome = usage ? { ok: true, usage } : { ok: false, reason: "`/usage` returned no limit data (see log)" };
-  if (pingError != null) outcome.pingError = pingError;
+  if (ping != null) {
+    outcome.pingError = ping.reason;
+    outcome.pingRejected = ping.rejected;
+  }
   return outcome;
 }

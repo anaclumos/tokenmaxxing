@@ -157,9 +157,10 @@ export async function evaluateAndMaybeSwap(now = Date.now(), anticipatory = fals
     const active = org2 ? idx.accounts.find((a) => a.organizationUuid === org2) : undefined;
     if (active) {
       let sampled = false;
-      if (u2 && u2.org === org2) {
+      const teeAt = u2 ? (usageTeeAt() ?? u2.ts) : null;
+      if (u2 && teeAt != null && u2.org === org2 && (active.lastUsageAt == null || teeAt >= active.lastUsageAt)) {
         active.lastUsage = { fiveHour: u2.fiveHour, sevenDay: u2.sevenDay };
-        active.lastUsageAt = u2.ts;
+        active.lastUsageAt = teeAt;
         sampled = true;
       }
       if (mu2 && mu2.org === org2 && Object.keys(mu2.perModel).length > 0) {
