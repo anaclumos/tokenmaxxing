@@ -10,7 +10,7 @@ description: Read the Claude and Codex account pool safely (list, usage bars, wa
 - `pool_ls` for labels, active marker, needs-reauth
 - `pool_status` for 5h / weekly / per-model bars (free `/usage` path)
 
-If MCP is unavailable, run `tokenmaxxing ls` or `tokenmaxxing status` (alias `xx`). Never add `--force`.
+If MCP is unavailable, run `tokenmaxxing ls --json` or `tokenmaxxing status --json` (alias `xx`) and parse the document. Never add `--force`.
 
 ## Hard stops
 

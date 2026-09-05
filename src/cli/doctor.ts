@@ -7,7 +7,7 @@ import { loadAccounts, loadConfig } from "../lib/state.ts";
 import { readItem, liveTarget, parkedTarget } from "../lib/credstore.ts";
 import { isAccessTokenExpiring, fetchTokenOrg } from "../lib/oauth.ts";
 import { CredentialBlobSchema, type RolesResponse } from "../lib/types.ts";
-import { c } from "./render.ts";
+import { c, emitJson } from "./render.ts";
 
 async function blobOrg(raw: string): Promise<RolesResponse | null> {
   const creds = CredentialBlobSchema.parse(JSON.parse(raw)).claudeAiOauth;
@@ -15,11 +15,21 @@ async function blobOrg(raw: string): Promise<RolesResponse | null> {
   return fetchTokenOrg(creds.accessToken);
 }
 
-export async function cmdDoctor(): Promise<number> {
-  let ok = true;
+export async function cmdDoctor(json = false): Promise<number> {
+  const checks: { ok: boolean; label: string; hint: string | null }[] = [];
+  const notes: string[] = [];
+  const warnings: string[] = [];
   const check = (cond: boolean, label: string, hint?: string) => {
-    console.log(`${cond ? c.green("✓") : c.red("✗")} ${label}${!cond && hint ? c.dim(`  - ${hint}`) : ""}`);
-    if (!cond) ok = false;
+    checks.push({ ok: cond, label, hint: cond ? null : (hint ?? null) });
+    if (!json) console.log(`${cond ? c.green("✓") : c.red("✗")} ${label}${!cond && hint ? c.dim(`  - ${hint}`) : ""}`);
+  };
+  const note = (text: string) => {
+    notes.push(text);
+    if (!json) console.log(c.dim(`  - ${text}`));
+  };
+  const warn = (text: string) => {
+    warnings.push(text);
+    if (!json) console.log(c.yellow(`⚠ ${text}`));
   };
 
   check(existsSync(paths.supervisorLink), "claude supervisor wrapper present", "run `tokenmaxxing init`");
@@ -46,7 +56,7 @@ export async function cmdDoctor(): Promise<number> {
     try {
       const org = await blobOrg(live);
       if (org) check(org.organization_uuid === active.organizationUuid, `live credential identity matches active (${active.email})`, `token belongs to ${org.organization_name} - run \`tokenmaxxing switch\``);
-      else console.log(c.dim(`  - live credential identity unverifiable (access token expired)`));
+      else note("live credential identity unverifiable (access token expired)");
     } catch (e) {
       check(false, `live credential identity matches active (${active.email})`, (e instanceof Error ? e.message : String(e)).slice(0, 100));
     }
@@ -59,7 +69,7 @@ export async function cmdDoctor(): Promise<number> {
       try {
         const org = await blobOrg(parked);
         if (org) check(org.organization_uuid === a.organizationUuid, `parked credential identity matches ${a.email}`, `token belongs to ${org.organization_name} - run \`tokenmaxxing auth ${a.label}\``);
-        else console.log(c.dim(`  - ${a.email} identity unverifiable (access token expired)`));
+        else note(`${a.email} identity unverifiable (access token expired)`);
       } catch (e) {
         check(false, `parked credential identity matches ${a.email}`, (e instanceof Error ? e.message : String(e)).slice(0, 100));
       }
@@ -77,11 +87,16 @@ export async function cmdDoctor(): Promise<number> {
   const rc = shellRcPath();
   if (rc && existsSync(rc)) {
     for (const s of findClaudeShadowers(readFileSync(rc, "utf8"))) {
-      if (s.kind === "shadow") console.log(c.yellow(`⚠ ${rc}: \`${s.line}\` shadows the supervised claude wrapper - launches through it skip tokenmaxxing`));
-      else console.log(c.yellow(`⚠ ${rc}: alias \`${s.name}\` hardcodes a claude path and bypasses the supervisor - use plain \`claude\` in its body instead`));
+      if (s.kind === "shadow") warn(`${rc}: \`${s.line}\` shadows the supervised claude wrapper - launches through it skip tokenmaxxing`);
+      else warn(`${rc}: alias \`${s.name}\` hardcodes a claude path and bypasses the supervisor - use plain \`claude\` in its body instead`);
     }
   }
 
+  const ok = checks.every((entry) => entry.ok);
+  if (json) {
+    emitJson({ ok, checks, notes, warnings });
+    return ok ? 0 : 1;
+  }
   console.log();
   console.log(ok ? c.green("all good ✓") : c.yellow("issues found - see above"));
   return ok ? 0 : 1;

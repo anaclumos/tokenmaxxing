@@ -22,4 +22,26 @@ description: Every tokenmaxxing command and what it does
 | `tokenmaxxing rename [--codex] <sel> <label>` | Relabel a pooled account |
 | `tokenmaxxing rm [--codex] <sel>` | Remove an account (and its parked credential) from the claude or codex pool |
 | `tokenmaxxing uninstall` | Remove the supervisor and settings entries (accounts and credentials are kept) |
+| `--json` | Print one JSON document on stdout instead of text. Works with `status`, `ls`, `config`, `doctor`, `check`, `switch`, `watch`, `rename`, `rm`, and `uninstall`; position-independent (`xx --json`, `xx status --json`) |
 
+## JSON output
+
+Add `--json` to any non-interactive command and it prints one JSON document on stdout instead of text. Progress notices such as `sampling live usage...` still go to stderr, so `xx status --json | jq` stays clean. Every document carries `ok`, which is `true` exactly when the exit code is 0; a failure keeps its non-zero exit code and adds `error` with the same message the text form prints.
+
+```sh
+xx status --json | jq '.claude.accounts[] | {label, active, exhausted, fiveHour: .usage.fiveHour.usedPercentage}'
+xx check --json | jq '{swapped, account, reason, nextCheckAt}'
+xx switch --json | jq '{switched, account, reason}'
+```
+
+What each command reports:
+
+- `status` / bare `xx`: `now` (the reference time in epoch ms), `claude.thresholds`, the effective `claude.bars` and `claude.projectionMargin`, then one entry per account with `usage.fiveHour`, `usage.week`, `perModel`, `exhausted`, `needsReauth`, and `sample` (`{ok, source}` for a fresh read from the statusline tee or a probe, `{ok: false, reason}` when the live sample failed and `usage` is the cached value from `usageAt`). Windows are normalized the way the bars are drawn: a passed reset reads as 0 with the weekly reset rolled forward. `codex` mirrors this with `aggregate` and `perLimit` windows that keep their `windowSeconds`. `watch --json` prints one such document per tick and never clears the screen.
+- `ls`: both pools with `active`, `needsReauth`, `tier` or `planType`, and `addedAt`, no usage.
+- `config`: `config` (the effective object), `sources` per dotted key (`env`, `file`, or `default`), `envOverrides`, and `unknownKeys`; `get` adds `value` and `source`, `set` reports `before` and `after`, `unset` reports whether an override was removed, `tidy` reports `changed` and `droppedKeys`.
+- `doctor`: `checks` (each `{ok, label, hint}`), `notes`, and `warnings`; `ok` is the overall verdict, so the exit code is 1 when any check fails.
+- `check`: `due`, `swapped`, `account`, `reason`, `waitUntil`, and `nextCheckAt`.
+- `switch`: `switched`, `account`, and a short `reason` (`selected`, `best`, `already-on`, `current-wins`, `drift-reconciled`, `earliest-reset`, `no-target`, `all-at-limit`, `unknown-resets`), plus `availableAt`, `reauthNeeded`, and `deadGrants` when they apply.
+- `rename`, `rm`, `uninstall`: what changed (`from`/`to`, `removed`/`remaining`, the removed install pieces).
+
+`init`, `add`, and `auth` run a login flow and refuse `--json` with exit code 2. Account identifiers (labels, emails, uuids) appear in the documents; credential material never does.
