@@ -22,7 +22,7 @@ const DEFAULT_CONFIG: Config = {
   hardThresholds: { session: 100, weekly: 100 },
   claudeBin: "",
   codexBin: "",
-  policy: { projectionMargin: 0, greedySessionFloor: 80, switchModels: ["fable"], usagePollTtlMs: 90_000, maxWaitMs: 3_600_000 },
+  policy: { projectionMargin: 0, greedySessionFloor: 80, greedySwapMargin: 0.15, switchModels: ["fable"], usagePollTtlMs: 90_000, maxWaitMs: 3_600_000 },
 };
 
 const PercentSchema = z.number().min(0).max(100);
@@ -37,6 +37,7 @@ export const ConfigFileSchema = z
       .object({
         projectionMargin: PercentSchema,
         greedySessionFloor: PercentSchema,
+        greedySwapMargin: z.number().min(0).max(1),
         switchModels: z.array(z.string()),
         usagePollTtlMs: z.number().int().positive(),
         maxWaitMs: z.number().int().positive(),
@@ -66,6 +67,7 @@ export function mergeConfigFile(p: z.infer<typeof ConfigFileSchema>): MergeOutco
   cfg.codexBin = p.codexBin ?? cfg.codexBin;
   cfg.policy.projectionMargin = p.policy?.projectionMargin ?? cfg.policy.projectionMargin;
   cfg.policy.greedySessionFloor = p.policy?.greedySessionFloor ?? cfg.policy.greedySessionFloor;
+  cfg.policy.greedySwapMargin = p.policy?.greedySwapMargin ?? cfg.policy.greedySwapMargin;
   cfg.policy.usagePollTtlMs = p.policy?.usagePollTtlMs ?? cfg.policy.usagePollTtlMs;
   cfg.policy.maxWaitMs = p.policy?.maxWaitMs ?? cfg.policy.maxWaitMs;
   if (p.policy?.switchModels) {
