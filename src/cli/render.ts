@@ -75,3 +75,23 @@ export function fmtAgo(epochMs: number, now = Date.now()): string {
   return `${m}m ago`;
 }
 
+export const plain = (s: string): string => s;
+
+export function emitJson(value: unknown): void {
+  console.log(JSON.stringify(value, null, 2));
+}
+
+export function emitError(input: {
+  json: boolean;
+  message: string;
+  notes?: string[];
+  extra?: Record<string, unknown>;
+  paint?: (s: string) => string;
+}): void {
+  if (input.json) {
+    emitJson({ ok: false, error: input.message, ...input.extra });
+    return;
+  }
+  console.error((input.paint ?? c.red)(input.message));
+  for (const note of input.notes ?? []) console.error(c.dim(note));
+}

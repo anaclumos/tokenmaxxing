@@ -26,7 +26,10 @@ import { cmdSwitch } from "./cli/switch.ts";
 import { cmdCheck } from "./cli/check.ts";
 import { cmdConfig } from "./cli/config.ts";
 import { timerDeactivationHint, uninstallSupervisor } from "./lib/install.ts";
-import { c } from "./cli/render.ts";
+import { c, emitError, emitJson } from "./cli/render.ts";
+
+const JSON_FLAG = "--json";
+const INTERACTIVE_COMMANDS = new Set(["init", "add", "auth"]);
 
 function printHelp(): void {
   console.log(`${c.bold("tokenmaxxing")} - automatic Claude Code account switching
@@ -50,30 +53,45 @@ function printHelp(): void {
   ${c.cyan("tokenmaxxing rm")} [--codex] <sel>
   ${c.cyan("tokenmaxxing uninstall")}  remove supervisor + settings entries
 
+  ${c.cyan("--json")}                  print one JSON document on stdout instead of text (status, ls, config, doctor, check, switch, rename, rm, uninstall; one per tick for watch); every document carries ${c.bold("ok")}, failures add ${c.bold("error")}
+
   ${c.dim("(aliased as")} ${c.cyan("xx")}${c.dim(")")} - then just run ${c.bold("claude")} as always; it switches accounts near quota automatically.`);
 }
+
+let jsonMode = false;
 
 async function main(): Promise<number> {
   if (process.platform !== "darwin" && process.platform !== "linux") {
     console.error(`tokenmaxxing supports macOS and Linux only (this is ${process.platform})`);
     return 1;
   }
-  const args = process.argv.slice(2);
+  const argv = process.argv.slice(2);
   const argv0 = basename(process.argv0 || process.argv[0] || "");
+
+  if (argv0 === "claude" || argv[0] === "__supervise") {
+    return runSupervisor(argv[0] === "__supervise" ? argv.slice(1) : argv);
+  }
+  if (argv0 === "codex" || argv[0] === "__supervise-codex") {
+    return runCodexSupervisor({ argv: argv[0] === "__supervise-codex" ? argv.slice(1) : argv });
+  }
+
+  jsonMode = argv.includes(JSON_FLAG);
+  const json = jsonMode;
+  const args = argv.filter((a) => a !== JSON_FLAG);
   const sub = args[0];
 
-  if (argv0 === "claude" || sub === "__supervise") {
-    return runSupervisor(sub === "__supervise" ? args.slice(1) : args);
+  if (json && sub != null && INTERACTIVE_COMMANDS.has(sub)) {
+    emitError({ json, message: `${sub} is interactive (it runs a login flow) and has no --json form` });
+    return 2;
   }
-  if (argv0 === "codex" || sub === "__supervise-codex") {
-    return runCodexSupervisor({ argv: sub === "__supervise-codex" ? args.slice(1) : args });
-  }
-
   if (!(sub != null && sub.startsWith("__")) && !process.env.TOKENMAXXING_PROBE) {
     const nonEmpty = (v: string | undefined) => (v != null && v !== "" ? v : null);
     const ambient = nonEmpty(process.env.CLAUDE_SECURESTORAGE_CONFIG_DIR) ?? nonEmpty(process.env.CLAUDE_CONFIG_DIR);
     if (ambient != null) {
-      console.error(c.red(`CLAUDE_CONFIG_DIR / CLAUDE_SECURESTORAGE_CONFIG_DIR is set (${ambient}): claude uses a namespaced credential store there that tokenmaxxing does not manage - unset it (or run from a clean shell) and retry.`));
+      emitError({
+        json,
+        message: `CLAUDE_CONFIG_DIR / CLAUDE_SECURESTORAGE_CONFIG_DIR is set (${ambient}): claude uses a namespaced credential store there that tokenmaxxing does not manage - unset it (or run from a clean shell) and retry.`,
+      });
       return 1;
     }
   }
@@ -85,26 +103,26 @@ async function main(): Promise<number> {
     case "__stop-failure-hook": return runStopFailureHook();
     case "__session-start": return runSessionStart();
     case "__codex-stop-hook": return runCodexStopHook();
-    case undefined: return cmdStatus();
-    case "--force": return cmdStatus(true);
+    case undefined: return cmdStatus({ json });
+    case "--force": return cmdStatus({ force: true, json });
     case "switch": {
       const rest = args.slice(1).filter((a) => a !== "--codex");
-      return args.includes("--codex") ? cmdCodexSwitch(rest[0]) : cmdSwitch(rest[0]);
+      return args.includes("--codex") ? cmdCodexSwitch(rest[0], json) : cmdSwitch(rest[0], json);
     }
-    case "check": return cmdCheck(args.slice(1));
-    case "config": return cmdConfig(args.slice(1));
+    case "check": return cmdCheck(args.slice(1), json);
+    case "config": return cmdConfig(args.slice(1), json);
     case "init": return args.includes("--codex") ? cmdCodexInit() : cmdInit();
     case "add": return args.includes("--codex") ? cmdCodexAdd() : cmdAdd();
     case "auth": return cmdAuth(args.slice(1));
-    case "ls": return cmdLs();
-    case "status": return cmdStatus(args.includes("--force"));
-    case "watch": return cmdWatch(args[1]);
-    case "doctor": return cmdDoctor();
+    case "ls": return cmdLs(json);
+    case "status": return cmdStatus({ force: args.includes("--force"), json });
+    case "watch": return cmdWatch(args[1], json);
+    case "doctor": return cmdDoctor(json);
     case "rm": {
       const rest = args.slice(1).filter((a) => a !== "--codex");
-      return args.includes("--codex") ? cmdCodexRm(rest[0]) : cmdRm(rest[0]);
+      return args.includes("--codex") ? cmdCodexRm(rest[0], json) : cmdRm(rest[0], json);
     }
-    case "rename": return cmdRename(args.slice(1));
+    case "rename": return cmdRename(args.slice(1), json);
     case "uninstall": {
       const out = uninstallSupervisor();
       const removed = [
@@ -113,6 +131,10 @@ async function main(): Promise<number> {
         ...(out.timerDeactivated ? ["check timer"] : []),
         ...(out.pathLineRemoved ? ["rc PATH line"] : []),
       ];
+      if (json) {
+        emitJson({ ok: true, removed, timerDeactivated: out.timerDeactivated, pathLineRemoved: out.pathLineRemoved });
+        return 0;
+      }
       console.log(`removed ${removed.join(", ")}`);
       if (!out.timerDeactivated) console.log(c.yellow(`⚠ the check job may still be loaded - run: ${timerDeactivationHint()}`));
       if (!out.pathLineRemoved) console.log(c.dim("(no tokenmaxxing PATH line found in the shell rc)"));
@@ -125,8 +147,8 @@ async function main(): Promise<number> {
       printHelp();
       return 0;
     default:
-      console.error(c.red(`unknown command: ${sub}`));
-      printHelp();
+      emitError({ json, message: `unknown command: ${sub}` });
+      if (!json) printHelp();
       return 2;
   }
 }
@@ -134,6 +156,6 @@ async function main(): Promise<number> {
 try {
   process.exit(await main());
 } catch (e) {
-  console.error(c.red(e instanceof Error ? e.message : String(e)));
+  emitError({ json: jsonMode, message: e instanceof Error ? e.message : String(e) });
   process.exit(1);
 }
