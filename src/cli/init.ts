@@ -1,14 +1,14 @@
 import { mkdirSync } from "node:fs";
 import { isApiKeyMode, readOAuthAccount } from "../lib/claudejson.ts";
-import { readItem, writeItem, liveTarget, parkedTarget, mergeIntoLive } from "../lib/credstore.ts";
-import { refreshCredential, isAccessTokenExpiring, isDeadCredential, fetchTokenIdentity, describeIdentity } from "../lib/oauth.ts";
-import { withClaudeRefreshLock } from "../lib/claudelock.ts";
-import { loadAccounts, saveAccounts, loadConfig, pinBinOverride } from "../lib/state.ts";
+import { readItem, writeItem, liveTarget, parkedTarget, parseBlob } from "../lib/credstore.ts";
+import { isAccessTokenExpiring, isDeadCredential, fetchTokenIdentity, describeIdentity } from "../lib/oauth.ts";
+import { ensureLiveTokenFresh } from "../lib/swap.ts";
+import { importedAccount, loadAccounts, saveAccounts, loadConfig, pinBinOverride, upsertAccount } from "../lib/state.ts";
 import { withLock } from "../lib/lock.ts";
 import { installSupervisor, shellRcPath, ensurePathInRc, managedShellRcSkipLines, timerActivationHint, type InstallOutcome } from "../lib/install.ts";
 import { resolveVerifiedClaude } from "../lib/claudebin.ts";
 import { credItemFor, paths } from "../lib/paths.ts";
-import { CredentialBlobSchema, type Account } from "../lib/types.ts";
+import type { OAuthCreds } from "../lib/types.ts";
 import { c, claudeTierLabel } from "./render.ts";
 
 function ensurePathAhead(): void {
@@ -74,30 +74,23 @@ export async function cmdInit(): Promise<number> {
     return 1;
   }
 
-  let blob;
+  let creds: OAuthCreds;
   try {
-    blob = CredentialBlobSchema.parse(JSON.parse(liveRaw));
+    creds = parseBlob(liveRaw).claudeAiOauth;
   } catch {
     console.error(c.red("the live credential is not a recognizable Claude OAuth blob."));
     return 1;
   }
 
-  let creds = blob.claudeAiOauth;
   if (isDeadCredential(creds)) {
     console.error(c.red("the live credential was cleared after a failed refresh."));
     console.error(`Run ${c.cyan("claude")} → ${c.cyan("/login")} first, then re-run ${c.cyan("tokenmaxxing init")}.`);
     return 1;
   }
   if (isAccessTokenExpiring(creds)) {
-    await withClaudeRefreshLock(async (lock) => {
-      const raw2 = await readItem(liveTarget());
-      if (raw2 == null) throw new Error("live credential vanished while waiting for the refresh lock");
-      const current = CredentialBlobSchema.parse(JSON.parse(raw2)).claudeAiOauth;
-      creds = isAccessTokenExpiring(current) ? await refreshCredential(current) : current;
-      if (creds === current) return;
-      if (lock.compromised()) throw new Error("refresh lock compromised mid-refresh - discarding the live rewrite");
-      await writeItem(liveTarget(), mergeIntoLive(raw2, creds));
-    });
+    const fresh = await ensureLiveTokenFresh({ skewMs: 120_000 });
+    if (fresh == null) throw new Error("live credential vanished while waiting for the refresh lock");
+    creds = fresh;
   }
   const identity = await fetchTokenIdentity(creds.accessToken);
   if (identity.accountUuid !== oauthAccount.accountUuid) {
@@ -111,21 +104,8 @@ export async function cmdInit(): Promise<number> {
   const account = await withLock(paths.lockFile, async () => {
     await writeItem(parkedTarget(keychainItem), JSON.stringify({ claudeAiOauth: creds }));
     const idx = loadAccounts();
-    const existing = idx.accounts.find((a) => a.accountUuid === uuid);
-    const imported: Account = {
-      accountUuid: uuid,
-      email: oauthAccount.emailAddress,
-      organizationUuid: oauthAccount.organizationUuid,
-      label: existing?.label ?? oauthAccount.emailAddress,
-      keychainItem,
-      oauthAccount,
-      addedAt: existing?.addedAt ?? new Date().toISOString(),
-      subscriptionType: blob.claudeAiOauth.subscriptionType,
-      rateLimitTier: blob.claudeAiOauth.rateLimitTier,
-      needsReauth: false,
-    };
-    if (existing) Object.assign(existing, imported);
-    else idx.accounts.push(imported);
+    const imported = importedAccount({ existing: idx.accounts.find((a) => a.accountUuid === uuid), oauthAccount, keychainItem, creds, sampled: null });
+    upsertAccount(idx, imported);
     idx.activeAccountUuid = uuid;
     saveAccounts(idx);
     return imported;

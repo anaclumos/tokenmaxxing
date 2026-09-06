@@ -1,13 +1,11 @@
 import { sortBy } from "es-toolkit";
-import { nextWeeklyReset } from "./picker.ts";
+import { liveUsed, nextWeeklyReset } from "./picker.ts";
 import { isSessionWindow, weeklyWindowOf } from "./codexusage.ts";
 import type { CodexAccount, CodexWindow, Thresholds } from "./types.ts";
 
-function liveUsed(input: { window: CodexWindow; now: number; sampledAt: number | null }): number {
+function codexLiveUsed(input: { window: CodexWindow; now: number; sampledAt: number | null }): number {
   const { window, now, sampledAt } = input;
-  if (window.resetsAt != null) return window.resetsAt <= now ? 0 : window.usedPercentage;
-  if (sampledAt != null && window.windowSeconds != null && now >= sampledAt + window.windowSeconds * 1000) return 0;
-  return window.usedPercentage;
+  return liveUsed({ window, windowMs: window.windowSeconds == null ? null : window.windowSeconds * 1000, sampledAt, now });
 }
 
 function allWindows(account: CodexAccount): CodexWindow[] {
@@ -24,7 +22,7 @@ export function isCodexExhausted(input: { account: CodexAccount; thresholds: Thr
   const { account, thresholds, now } = input;
   const sampledAt = account.lastUsageAt ?? null;
   return allWindows(account).some(
-    (window) => liveUsed({ window, now, sampledAt }) >= barFor({ window, thresholds }),
+    (window) => codexLiveUsed({ window, now, sampledAt }) >= barFor({ window, thresholds }),
   );
 }
 
@@ -34,7 +32,7 @@ export function codexPacePressure(input: { account: CodexAccount; now: number })
   if (!weekly) return 0;
   const reset = nextWeeklyReset(weekly.resetsAt, now);
   if (reset == null) return 0;
-  return Math.max(0, 100 - liveUsed({ window: weekly, now, sampledAt: account.lastUsageAt ?? null })) / Math.max(1, reset - now);
+  return Math.max(0, 100 - codexLiveUsed({ window: weekly, now, sampledAt: account.lastUsageAt ?? null })) / Math.max(1, reset - now);
 }
 
 function weeklyExpiryOf(input: { account: CodexAccount; now: number }): number {
@@ -82,5 +80,5 @@ export function codexCurrentWins(input: {
 export function isCodexEngaged(input: { account: CodexAccount; floor: number; now: number }): boolean {
   const { account, floor, now } = input;
   const sampledAt = account.lastUsageAt ?? null;
-  return allWindows(account).some((window) => liveUsed({ window, now, sampledAt }) >= floor);
+  return allWindows(account).some((window) => codexLiveUsed({ window, now, sampledAt }) >= floor);
 }

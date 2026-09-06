@@ -1,26 +1,22 @@
-import { existsSync, readFileSync } from "node:fs";
 import { z } from "zod";
 import { paths } from "./paths.ts";
 import { writeFileAtomic } from "./atomic.ts";
+import { readJson } from "./json.ts";
 import { OAuthAccountSchema, type OAuthAccount } from "./types.ts";
 
 const ClaudeJsonSchema = z.record(z.string(), z.unknown());
 
 function readClaudeJson(): Record<string, unknown> {
-  if (!existsSync(paths.claudeJson)) return {};
-  return ClaudeJsonSchema.parse(JSON.parse(readFileSync(paths.claudeJson, "utf8")));
+  return readJson(paths.claudeJson, ClaudeJsonSchema) ?? {};
 }
 
 export function readOAuthAccount(): OAuthAccount | null {
-  const parsed = OAuthAccountSchema.safeParse(readClaudeJson()["oauthAccount"]);
-  return parsed.success ? parsed.data : null;
+  return OAuthAccountSchema.nullish().parse(readClaudeJson()["oauthAccount"]) ?? null;
 }
 
 export function isApiKeyMode(): boolean {
   if (process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN) return true;
-  const j = readClaudeJson();
-  if (z.string().min(1).safeParse(j["apiKeyHelper"]).success) return true;
-  return false;
+  return z.string().min(1).safeParse(readClaudeJson()["apiKeyHelper"]).success;
 }
 
 export function swapOAuthAccount(next: OAuthAccount): void {

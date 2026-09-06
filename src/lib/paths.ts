@@ -4,13 +4,21 @@ import { z } from "zod";
 
 const HOME = homedir();
 
-const EnvOverrideSchema = z.string().min(1).optional().catch(undefined);
+const EnvOverrideSchema = z.string().min(1).optional();
+const ExternalEnvSchema = z.string().min(1).optional().catch(undefined);
 
-function env(name: string, fallback: string): string {
-  return EnvOverrideSchema.parse(process.env[name]) ?? fallback;
+export function envOverride(name: string): string | undefined {
+  const parsed = EnvOverrideSchema.safeParse(process.env[name]);
+  if (!parsed.success) throw new Error(`${name} is set but empty - unset it or give it a value`);
+  return parsed.data;
 }
 
-const TM_HOME = env("TOKENMAXXING_HOME", join(HOME, ".config", "tokenmaxxing"));
+function externalEnv(name: string): string | undefined {
+  return ExternalEnvSchema.parse(process.env[name]);
+}
+
+const TM_HOME = envOverride("TOKENMAXXING_HOME") ?? join(HOME, ".config", "tokenmaxxing");
+const CLAUDE_DIR = externalEnv("CLAUDE_CONFIG_DIR") ?? join(HOME, ".claude");
 
 export const paths = {
   home: TM_HOME,
@@ -30,18 +38,15 @@ export const paths = {
   sampleDir: join(TM_HOME, "sample"),
   credsDir: join(TM_HOME, "creds"),
 
-  claudeJson: env("TOKENMAXXING_CLAUDE_JSON", join(HOME, ".claude.json")),
-  claudeSettings: env(
-    "TOKENMAXXING_CLAUDE_SETTINGS",
-    join(env("CLAUDE_CONFIG_DIR", join(HOME, ".claude")), "settings.json"),
-  ),
-  claudeDir: env("CLAUDE_CONFIG_DIR", join(HOME, ".claude")),
+  claudeJson: envOverride("TOKENMAXXING_CLAUDE_JSON") ?? join(HOME, ".claude.json"),
+  claudeSettings: envOverride("TOKENMAXXING_CLAUDE_SETTINGS") ?? join(CLAUDE_DIR, "settings.json"),
+  claudeDir: CLAUDE_DIR,
 
-  launchdAgentsDir: env("TOKENMAXXING_LAUNCHD_DIR", join(HOME, "Library", "LaunchAgents")),
-  systemdUserDir: env("TOKENMAXXING_SYSTEMD_USER_DIR", join(HOME, ".config", "systemd", "user")),
+  launchdAgentsDir: envOverride("TOKENMAXXING_LAUNCHD_DIR") ?? join(HOME, "Library", "LaunchAgents"),
+  systemdUserDir: envOverride("TOKENMAXXING_SYSTEMD_USER_DIR") ?? join(HOME, ".config", "systemd", "user"),
 } as const;
 
-const CODEX_HOME = env("TOKENMAXXING_CODEX_HOME", env("CODEX_HOME", join(HOME, ".codex")));
+const CODEX_HOME = envOverride("TOKENMAXXING_CODEX_HOME") ?? externalEnv("CODEX_HOME") ?? join(HOME, ".codex");
 
 export const codexPaths = {
   home: CODEX_HOME,
@@ -61,10 +66,11 @@ export function codexCredItemFor(accountId: string): string {
   return `tokenmaxxing-codex-${accountId.slice(0, 8)}`;
 }
 
-export const keychain = {
-  service: env("TOKENMAXXING_KEYCHAIN_SERVICE", "Claude Code-credentials"),
-  account: env("TOKENMAXXING_KEYCHAIN_ACCOUNT", process.env.USER ?? "unknown"),
-} as const;
+export function keychainNames(): { service: string; account: string } {
+  const account = envOverride("TOKENMAXXING_KEYCHAIN_ACCOUNT") ?? externalEnv("USER");
+  if (account === undefined) throw new Error("USER is unset - the macOS keychain account name cannot be resolved; set TOKENMAXXING_KEYCHAIN_ACCOUNT");
+  return { service: envOverride("TOKENMAXXING_KEYCHAIN_SERVICE") ?? "Claude Code-credentials", account };
+}
 
 export function credItemFor(accountUuid: string): string {
   return `tokenmaxxing-cred-${accountUuid.slice(0, 8)}`;
@@ -76,6 +82,14 @@ export function credDir(): string {
   return paths.claudeDir;
 }
 
+export function ambientStoreDir(): { name: string; value: string } | null {
+  for (const name of ["CLAUDE_SECURESTORAGE_CONFIG_DIR", "CLAUDE_CONFIG_DIR"]) {
+    const value = externalEnv(name);
+    if (value !== undefined) return { name, value };
+  }
+  return null;
+}
+
 export function namespacedCredService(configDirRaw: string): string {
   const h = new Bun.CryptoHasher("sha256");
   h.update(configDirRaw.normalize("NFC"));
@@ -83,11 +97,11 @@ export function namespacedCredService(configDirRaw: string): string {
 }
 
 export function realClaudeBinFromEnv(): string | undefined {
-  return EnvOverrideSchema.parse(process.env.TOKENMAXXING_CLAUDE_BIN);
+  return envOverride("TOKENMAXXING_CLAUDE_BIN");
 }
 
 export function realCodexBinFromEnv(): string | undefined {
-  return EnvOverrideSchema.parse(process.env.TOKENMAXXING_CODEX_BIN);
+  return envOverride("TOKENMAXXING_CODEX_BIN");
 }
 
 export { HOME };

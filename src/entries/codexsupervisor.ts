@@ -1,14 +1,15 @@
-import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
-import { z } from "zod";
 import { codexPaths, paths } from "../lib/paths.ts";
 import { withLock } from "../lib/lock.ts";
-import { LOOP_DIAGNOSIS, MAX_WRAP_DEPTH, UNMANAGED_ENV, WRAP_DEPTH_ENV, WRAP_RATE_MAX, WRAP_RATE_WINDOW_MS, wrapDepth, wrapperEntryRateTripped } from "../lib/claudebin.ts";
-import { resolveRealCodex } from "../lib/codexbin.ts";
+import { LOOP_DIAGNOSIS, MAX_WRAP_DEPTH, UNMANAGED_ENV, WRAP_DEPTH_ENV, WRAP_RATE_MAX, WRAP_RATE_WINDOW_MS, resolveRealCodex, wrapDepth, wrapperEntryRateTripped } from "../lib/claudebin.ts";
 import { clearCodexPresence, writeCodexPresence } from "../lib/codexpresence.ts";
 import { liveCodexAccountId } from "../lib/codexsample.ts";
+import { errorMessage } from "../lib/errors.ts";
+import { tryReadJson } from "../lib/json.ts";
+import { awaitExitOrMarker } from "../lib/proc.ts";
 import { saveTermios, restoreTermios } from "../lib/tty.ts";
-import { CodexRespawnMarkerSchema } from "../lib/types.ts";
+import { CodexRespawnMarkerSchema, type CodexRespawnMarker } from "../lib/types.ts";
 import { log } from "../lib/log.ts";
 
 export const CODEX_SUPERVISOR_ID_ENV = "TOKENMAXXING_CODEX_SUPERVISOR_ID";
@@ -21,14 +22,13 @@ const NONINTERACTIVE_SUBCMDS = new Set([
 
 const PASSTHROUGH_FLAGS = new Set(["--version", "-V", "--help", "-h"]);
 
-function consumableCodexMarker(marker: string): z.infer<typeof CodexRespawnMarkerSchema> | null {
-  try {
-    return CodexRespawnMarkerSchema.parse(JSON.parse(readFileSync(marker, "utf8")));
-  } catch (e) {
+function consumableCodexMarker(marker: string): CodexRespawnMarker | null {
+  const payload = tryReadJson(marker, CodexRespawnMarkerSchema);
+  if (!payload) {
     rmSync(marker, { force: true });
-    log("codexsupervisor.marker_invalid", { err: e instanceof Error ? e.message : String(e) });
-    return null;
+    log("codexsupervisor.marker_invalid", {});
   }
+  return payload;
 }
 
 const VALUE_TAKING_ROOT_FLAGS = new Set([
@@ -91,7 +91,7 @@ export async function runCodexSupervisor(input: { argv: string[] }): Promise<num
   let launchArgs = argv;
   let respawns = 0;
   while (true) {
-    if (existsSync(marker)) rmSync(marker, { force: true });
+    rmSync(marker, { force: true });
     log("codexsupervisor.launch", { supervisorId: supervisorId.slice(0, 8), respawns, args: launchArgs.join(" ") });
 
     const child = await withLock(codexPaths.lockFile, async () => {
@@ -110,7 +110,7 @@ export async function runCodexSupervisor(input: { argv: string[] }): Promise<num
           } catch (e) {
             if (spawned.exitCode !== null || spawned.signalCode !== null) break;
             if (attempt === 9) {
-              log("codexsupervisor.presence_failed", { err: e instanceof Error ? e.message : String(e) });
+              log("codexsupervisor.presence_failed", { err: errorMessage(e) });
               spawned.kill();
               await spawned.exited;
               restoreTermios(savedTermios);
@@ -123,26 +123,7 @@ export async function runCodexSupervisor(input: { argv: string[] }): Promise<num
       return spawned;
     });
 
-    let done = false;
-    const markerWatch = (async () => {
-      while (!done) {
-        if (existsSync(marker) && consumableCodexMarker(marker) != null) return true;
-        await Bun.sleep(150);
-      }
-      return false;
-    })();
-    const exited = child.exited.then(() => {
-      done = true;
-      return "exit";
-    });
-    const winner = await Promise.race([exited, markerWatch.then((found) => (found ? "marker" : "exit"))]);
-
-    if (winner === "marker") {
-      child.kill();
-    }
-    await child.exited;
-    done = true;
-    await markerWatch.catch(() => false);
+    await awaitExitOrMarker({ child, markerReady: () => existsSync(marker) && consumableCodexMarker(marker) != null });
     restoreTermios(savedTermios);
 
     const payload = existsSync(marker) ? consumableCodexMarker(marker) : null;

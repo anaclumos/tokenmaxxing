@@ -1,7 +1,6 @@
 import { minBy, sortBy } from "es-toolkit";
-import { z } from "zod";
 import { familyTokens } from "./usage.ts";
-import { AccountSchema, ThresholdsSchema, type Account, type Config, type Thresholds, type UsageWindow } from "./types.ts";
+import type { Account, Config, Thresholds, UsageWindow } from "./types.ts";
 
 export function sessionLadder(cfg: Config): number[] {
   return cfg.thresholds.session.map((rung) => rung - cfg.policy.projectionMargin);
@@ -30,14 +29,20 @@ export function hardBars(cfg: Config): Thresholds {
   };
 }
 
-const PickCtxSchema = z.object({
-  now: z.number(),
-  thresholds: ThresholdsSchema,
-  currentAccountUuid: z.string().nullable(),
-  switchFamilies: z.array(z.string()),
-  holdMargin: z.number().min(0).optional(),
-});
-export type PickCtx = z.infer<typeof PickCtxSchema>;
+export type PickCtx = {
+  now: number;
+  thresholds: Thresholds;
+  currentAccountUuid: string | null;
+  switchFamilies: string[];
+  holdMargin?: number;
+};
+
+export function liveUsed(input: { window: { usedPercentage: number; resetsAt: number | null }; windowMs: number | null; sampledAt: number | null; now: number }): number {
+  const { window: w, windowMs, sampledAt, now } = input;
+  if (w.resetsAt != null) return w.resetsAt <= now ? 0 : w.usedPercentage;
+  if (sampledAt != null && windowMs != null && now >= sampledAt + windowMs) return 0;
+  return w.usedPercentage;
+}
 
 function gatedPerModelWindows(a: Account, families: string[]): UsageWindow[] {
   return Object.entries(a.lastPerModel ?? {})
@@ -45,8 +50,8 @@ function gatedPerModelWindows(a: Account, families: string[]): UsageWindow[] {
     .map(([, w]) => w);
 }
 
-const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
-const FIVE_HOURS_MS = 5 * 60 * 60 * 1000;
+export const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+export const FIVE_HOURS_MS = 5 * 60 * 60 * 1000;
 
 function blockedUntil(w: UsageWindow, windowMs: number, sampledAt: number | undefined, threshold: number): number {
   if (w.usedPercentage < threshold) return 0;
@@ -122,8 +127,7 @@ export function usableAt(a: Account, ctx: PickCtx): number {
   return blocking.length ? Math.max(...blocking) : ctx.now;
 }
 
-const EarliestResetSchema = z.object({ account: AccountSchema, availableAt: z.number() });
-export type EarliestReset = z.infer<typeof EarliestResetSchema>;
+export type EarliestReset = { account: Account; availableAt: number };
 
 export function pickEarliestReset(accounts: Account[], ctx: PickCtx): EarliestReset | null {
   const mapped = accounts

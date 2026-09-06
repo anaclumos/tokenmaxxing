@@ -1,16 +1,19 @@
-import { checkDelayMs, evaluateAndMaybeSwap } from "../lib/decide.ts";
+import { checkDelayMs, evaluateAndMaybeSwap, type SwapDecision } from "../lib/decide.ts";
 import { readOAuthAccount } from "../lib/claudejson.ts";
+import { errorMessage } from "../lib/errors.ts";
 import { log } from "../lib/log.ts";
 import { loadConfig, loadNextCheckDueAt, saveNextCheckDueAt } from "../lib/state.ts";
+import type { Config } from "../lib/types.ts";
 import { c, emitError, emitJson, fmtReset } from "./render.ts";
 
-export async function cmdCheck(args: string[] = [], json = false): Promise<number> {
+export async function cmdCheck(input: { ifDue?: boolean; json?: boolean } = {}): Promise<number> {
+  const { ifDue = false, json = false } = input;
   const now = Date.now();
-  let cfg;
-  let d;
+  let cfg: Config;
+  let d: SwapDecision;
   try {
     cfg = loadConfig();
-    const dueAt = args.includes("--if-due") ? loadNextCheckDueAt({ now, cfg }) : null;
+    const dueAt = ifDue ? loadNextCheckDueAt({ now, cfg }) : null;
     if (dueAt != null && now + cfg.policy.checkIntervalMs / 2 < dueAt) {
       if (json) emitJson({ ok: true, due: false, nextCheckAt: dueAt });
       else console.log(c.dim(`not due (${Math.ceil((dueAt - now) / 1000)}s)`));
@@ -18,7 +21,7 @@ export async function cmdCheck(args: string[] = [], json = false): Promise<numbe
     }
     d = await evaluateAndMaybeSwap(now);
   } catch (e) {
-    const detail = e instanceof Error ? e.message : String(e);
+    const detail = errorMessage(e);
     log("check.error", { err: detail });
     emitError({ json, message: `check failed: ${detail}` });
     return 1;

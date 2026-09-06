@@ -46,9 +46,8 @@ async function renameCodexAccount(input: { selector: string; newLabel: string; j
   });
 }
 
-export async function cmdRename(argv: string[], json = false): Promise<number> {
-  const codex = argv.includes("--codex");
-  const [selector, newLabel] = argv.filter((a) => a !== "--codex");
+export async function cmdRename(input: { selector: string | undefined; newLabel: string | undefined; codex: boolean; json: boolean }): Promise<number> {
+  const { selector, newLabel, codex, json } = input;
   if (!selector || !newLabel) {
     emitError({ json, message: "usage: tokenmaxxing rename [--codex] <email|label|id> <new-label>", paint: plain });
     return 2;

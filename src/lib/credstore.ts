@@ -2,30 +2,23 @@ import { mkdirSync, readFileSync, unlinkSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { z } from "zod";
 import { writeFileAtomic } from "./atomic.ts";
+import { errnoCode } from "./errors.ts";
 import * as kc from "./keychain.ts";
-import { credDir, keychain as kcNames, namespacedCredService, paths } from "./paths.ts";
-import { CredentialBlobSchema } from "./types.ts";
+import { credDir, keychainNames, namespacedCredService, paths } from "./paths.ts";
+import { CredentialBlobSchema, type CredentialBlob } from "./types.ts";
 
-const CredTargetSchema = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("keychain"), service: z.string(), account: z.string() }),
-  z.object({ kind: z.literal("file"), path: z.string() }),
-]);
-export type CredTarget = z.infer<typeof CredTargetSchema>;
+export type CredTarget = { kind: "keychain"; service: string; account: string } | { kind: "file"; path: string };
 
 const darwin = process.platform === "darwin";
 
 const BlobRecordSchema = z.record(z.string(), z.unknown());
-
-function isEnoent(e: unknown): boolean {
-  return e instanceof Error && "code" in e && e.code === "ENOENT";
-}
 
 export async function readItem(t: CredTarget): Promise<string | null> {
   if (t.kind === "keychain") return kc.readItem(t);
   try {
     return readFileSync(t.path, "utf8");
   } catch (e) {
-    if (isEnoent(e)) return null;
+    if (errnoCode(e) === "ENOENT") return null;
     throw e;
   }
 }
@@ -42,32 +35,35 @@ export async function deleteItem(t: CredTarget): Promise<boolean> {
     unlinkSync(t.path);
     return true;
   } catch (e) {
-    if (isEnoent(e)) return false;
+    if (errnoCode(e) === "ENOENT") return false;
     throw e;
   }
 }
 
 export function liveTarget(): CredTarget {
   return darwin
-    ? { kind: "keychain", service: kcNames.service, account: kcNames.account }
+    ? { kind: "keychain", ...keychainNames() }
     : { kind: "file", path: join(credDir(), ".credentials.json") };
 }
 
 export function parkedTarget(itemName: string): CredTarget {
   return darwin
-    ? { kind: "keychain", service: itemName, account: kcNames.account }
+    ? { kind: "keychain", service: itemName, account: keychainNames().account }
     : { kind: "file", path: join(paths.credsDir, `${itemName}.json`) };
 }
 
 export function isolatedTarget(configDirRaw: string): CredTarget {
   return darwin
-    ? { kind: "keychain", service: namespacedCredService(configDirRaw), account: kcNames.account }
+    ? { kind: "keychain", service: namespacedCredService(configDirRaw), account: keychainNames().account }
     : { kind: "file", path: join(configDirRaw, ".credentials.json") };
 }
 
+export function parseBlob(raw: string): CredentialBlob {
+  return CredentialBlobSchema.parse(JSON.parse(raw));
+}
+
 export function claudeAiOauthOnly(fullBlobRaw: string): string {
-  const b = CredentialBlobSchema.parse(JSON.parse(fullBlobRaw));
-  return JSON.stringify({ claudeAiOauth: b.claudeAiOauth });
+  return JSON.stringify({ claudeAiOauth: parseBlob(fullBlobRaw).claudeAiOauth });
 }
 
 export function mergeIntoLive(currentLiveRaw: string | null, freshClaudeAiOauth: unknown): string {

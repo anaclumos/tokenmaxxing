@@ -1,6 +1,8 @@
 #!/usr/bin/env bun
 
 import { basename } from "node:path";
+import { parseArgs } from "node:util";
+import { z } from "zod";
 import { runSupervisor } from "./entries/supervisor.ts";
 import { runStatusline } from "./entries/statusline.ts";
 import { runSubagentStatusline } from "./entries/subagentstatusline.ts";
@@ -26,9 +28,10 @@ import { cmdSwitch } from "./cli/switch.ts";
 import { cmdCheck } from "./cli/check.ts";
 import { cmdConfig } from "./cli/config.ts";
 import { timerDeactivationHint, uninstallSupervisor } from "./lib/install.ts";
+import { errorMessage } from "./lib/errors.ts";
+import { ambientStoreDir } from "./lib/paths.ts";
 import { c, emitError, emitJson } from "./cli/render.ts";
 
-const JSON_FLAG = "--json";
 const INTERACTIVE_COMMANDS = new Set(["init", "add", "auth"]);
 
 function printHelp(): void {
@@ -58,29 +61,37 @@ function printHelp(): void {
   ${c.dim("(aliased as")} ${c.cyan("xx")}${c.dim(")")} - then just run ${c.bold("claude")} as always; it switches accounts near quota automatically.`);
 }
 
-let jsonMode = false;
-
-function statusFlags(rest: string[]): { ping: boolean; pingCount: number | undefined } | { error: string } {
-  let ping = false;
-  let pingCount: number | undefined;
-  for (let i = 0; i < rest.length; i++) {
-    const arg = rest[i]!;
-    if (arg === "--ping") {
-      ping = true;
-      continue;
-    }
-    if (arg === "--count") {
-      if (pingCount != null) return { error: "--count may only be given once" };
-      const raw = rest[++i];
-      pingCount = Number(raw);
-      if (!Number.isInteger(pingCount) || pingCount < 1) return { error: `--count needs a positive whole number of accounts, got: ${raw ?? "nothing"}` };
-      continue;
-    }
-    return { error: `unknown status option: ${arg} (status takes --ping and --count N)` };
-  }
-  if (pingCount != null && !ping) return { error: "--count only applies together with --ping" };
-  return { ping, pingCount };
+function parseCli(argv: string[]) {
+  return parseArgs({
+    args: argv,
+    options: {
+      json: { type: "boolean" },
+      codex: { type: "boolean" },
+      ping: { type: "boolean" },
+      count: { type: "string", multiple: true },
+      "if-due": { type: "boolean" },
+      all: { type: "boolean" },
+      help: { type: "boolean", short: "h" },
+    },
+    allowPositionals: true,
+    strict: true,
+  });
 }
+
+const CountSchema = z.coerce.number().int().min(1);
+
+function statusFlags(values: { ping?: boolean; count?: string[] }): { ping: boolean; pingCount: number | undefined } | { error: string } {
+  const ping = values.ping === true;
+  const counts = values.count ?? [];
+  if (counts.length > 1) return { error: "--count may only be given once" };
+  if (counts.length === 0) return { ping, pingCount: undefined };
+  if (!ping) return { error: "--count only applies together with --ping" };
+  const count = CountSchema.safeParse(counts[0]);
+  if (!count.success) return { error: `--count needs a positive whole number of accounts, got: ${counts[0]}` };
+  return { ping, pingCount: count.data };
+}
+
+let jsonMode = false;
 
 async function main(): Promise<number> {
   if (process.platform !== "darwin" && process.platform !== "linux") {
@@ -97,25 +108,37 @@ async function main(): Promise<number> {
     return runCodexSupervisor({ argv: argv[0] === "__supervise-codex" ? argv.slice(1) : argv });
   }
 
-  jsonMode = argv.includes(JSON_FLAG);
+  let cli: ReturnType<typeof parseCli>;
+  try {
+    cli = parseCli(argv);
+  } catch (e) {
+    emitError({ json: argv.includes("--json"), message: errorMessage(e) });
+    return 2;
+  }
+  const { values, positionals } = cli;
+  jsonMode = values.json === true;
   const json = jsonMode;
-  const args = argv.filter((a) => a !== JSON_FLAG);
-  const sub = args[0];
+  const codex = values.codex === true;
+  const sub = positionals[0];
+  const rest = positionals.slice(1);
 
   if (json && sub != null && INTERACTIVE_COMMANDS.has(sub)) {
     emitError({ json, message: `${sub} is interactive (it runs a login flow) and has no --json form` });
     return 2;
   }
   if (!(sub != null && sub.startsWith("__")) && !process.env.TOKENMAXXING_PROBE) {
-    const nonEmpty = (v: string | undefined) => (v != null && v !== "" ? v : null);
-    const ambient = nonEmpty(process.env.CLAUDE_SECURESTORAGE_CONFIG_DIR) ?? nonEmpty(process.env.CLAUDE_CONFIG_DIR);
+    const ambient = ambientStoreDir();
     if (ambient != null) {
       emitError({
         json,
-        message: `CLAUDE_CONFIG_DIR / CLAUDE_SECURESTORAGE_CONFIG_DIR is set (${ambient}): claude uses a namespaced credential store there that tokenmaxxing does not manage - unset it (or run from a clean shell) and retry.`,
+        message: `CLAUDE_CONFIG_DIR / CLAUDE_SECURESTORAGE_CONFIG_DIR is set (${ambient.value}): claude uses a namespaced credential store there that tokenmaxxing does not manage - unset it (or run from a clean shell) and retry.`,
       });
       return 1;
     }
+  }
+  if (values.help === true) {
+    printHelp();
+    return 0;
   }
 
   switch (sub) {
@@ -126,33 +149,25 @@ async function main(): Promise<number> {
     case "__session-start": return runSessionStart();
     case "__codex-stop-hook": return runCodexStopHook();
     case undefined:
-    case "status":
-    case "--ping":
-    case "--count": {
-      const flags = statusFlags(sub === "status" ? args.slice(1) : args);
+    case "status": {
+      const flags = statusFlags(values);
       if ("error" in flags) {
         emitError({ json, message: flags.error });
         return 2;
       }
       return cmdStatus({ ...flags, json });
     }
-    case "switch": {
-      const rest = args.slice(1).filter((a) => a !== "--codex");
-      return args.includes("--codex") ? cmdCodexSwitch(rest[0], json) : cmdSwitch(rest[0], json);
-    }
-    case "check": return cmdCheck(args.slice(1), json);
-    case "config": return cmdConfig(args.slice(1), json);
-    case "init": return args.includes("--codex") ? cmdCodexInit() : cmdInit();
-    case "add": return args.includes("--codex") ? cmdCodexAdd() : cmdAdd();
-    case "auth": return cmdAuth(args.slice(1));
+    case "switch": return codex ? cmdCodexSwitch(rest[0], json) : cmdSwitch(rest[0], json);
+    case "check": return cmdCheck({ ifDue: values["if-due"] === true, json });
+    case "config": return cmdConfig(rest, json);
+    case "init": return codex ? cmdCodexInit() : cmdInit();
+    case "add": return codex ? cmdCodexAdd() : cmdAdd();
+    case "auth": return cmdAuth({ all: values.all === true, rest });
     case "ls": return cmdLs(json);
-    case "watch": return cmdWatch(args[1], json);
+    case "watch": return cmdWatch(rest[0], json);
     case "doctor": return cmdDoctor(json);
-    case "rm": {
-      const rest = args.slice(1).filter((a) => a !== "--codex");
-      return args.includes("--codex") ? cmdCodexRm(rest[0], json) : cmdRm(rest[0], json);
-    }
-    case "rename": return cmdRename(args.slice(1), json);
+    case "rm": return codex ? cmdCodexRm(rest[0], json) : cmdRm(rest[0], json);
+    case "rename": return cmdRename({ selector: rest[0], newLabel: rest[1], codex, json });
     case "uninstall": {
       const out = uninstallSupervisor();
       const removed = [
@@ -172,8 +187,6 @@ async function main(): Promise<number> {
       return 0;
     }
     case "help":
-    case "-h":
-    case "--help":
       printHelp();
       return 0;
     default:
@@ -186,6 +199,6 @@ async function main(): Promise<number> {
 try {
   process.exit(await main());
 } catch (e) {
-  emitError({ json: jsonMode, message: e instanceof Error ? e.message : String(e) });
+  emitError({ json: jsonMode, message: errorMessage(e) });
   process.exit(1);
 }

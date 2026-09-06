@@ -1,8 +1,9 @@
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { statSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
 import { paths } from "./paths.ts";
 import { writeFileAtomic } from "./atomic.ts";
+import { readJson, tryParseJson } from "./json.ts";
 
 export function installedBin(): string {
   return join(paths.binDir, "tokenmaxxing");
@@ -30,12 +31,11 @@ const SUBCMD = {
 const STOP_FAILURE_MATCHER = "rate_limit";
 
 function readSettings(): Settings {
-  if (!existsSync(paths.claudeSettings)) return {};
-  return SettingsSchema.parse(JSON.parse(readFileSync(paths.claudeSettings, "utf8")));
+  return readJson(paths.claudeSettings, SettingsSchema) ?? {};
 }
 
 function writeSettings(s: Settings): void {
-  const mode = existsSync(paths.claudeSettings) ? statSync(paths.claudeSettings).mode & 0o777 : 0o600;
+  const mode = (statSync(paths.claudeSettings, { throwIfNoEntry: false })?.mode ?? 0o600) & 0o777;
   writeFileAtomic(paths.claudeSettings, JSON.stringify(s, null, 2) + "\n", mode);
 }
 
@@ -71,14 +71,8 @@ export function isOurHookCommand(cmd: string, sub: string): boolean {
   if (!cmd.endsWith(` ${sub}`)) return false;
   const quotedPath = cmd.slice(0, cmd.length - (sub.length + 1));
   if (!quotedPath.startsWith('"') || !quotedPath.endsWith('"')) return false;
-  let path: unknown;
-  try {
-    path = JSON.parse(quotedPath);
-  } catch {
-    return false;
-  }
-  const parsed = z.string().safeParse(path);
-  return parsed.success && parsed.data.endsWith("/tokenmaxxing");
+  const path = tryParseJson(z.string(), quotedPath);
+  return path != null && path.endsWith("/tokenmaxxing");
 }
 
 function removeHook(s: Settings, event: string, sub: string): void {
@@ -112,14 +106,13 @@ export function uninstallSettings(): void {
   writeSettings(s);
 }
 
-const SettingsCheckSchema = z.object({
-  statusLineOk: z.boolean(),
-  subagentStatusLineOk: z.boolean(),
-  stopOk: z.boolean(),
-  stopFailureOk: z.boolean(),
-  sessionStartOk: z.boolean(),
-});
-export type SettingsCheck = z.infer<typeof SettingsCheckSchema>;
+export type SettingsCheck = {
+  statusLineOk: boolean;
+  subagentStatusLineOk: boolean;
+  stopOk: boolean;
+  stopFailureOk: boolean;
+  sessionStartOk: boolean;
+};
 
 export function checkSettings(): SettingsCheck {
   const s = readSettings();

@@ -1,11 +1,13 @@
-import { closeSync, existsSync, fstatSync, mkdirSync, openSync, readSync } from "node:fs";
+import { closeSync, fstatSync, mkdirSync, openSync, readSync } from "node:fs";
 import { join } from "node:path";
 import { delay } from "es-toolkit";
 import { z } from "zod";
 import { MAX_WRAP_DEPTH, WRAP_DEPTH_ENV, resolveRealClaude } from "./claudebin.ts";
+import { errnoCode, errorMessage } from "./errors.ts";
+import { tryParseJson } from "./json.ts";
 import { log } from "./log.ts";
 import { paths } from "./paths.ts";
-import { RateLimitsStdinSchema, UsageWindowSchema, type ModelInfo, type UsageWindow, type UsageWindows } from "./types.ts";
+import { RateLimitsStdinSchema, type ModelInfo, type UsageWindow, type UsageWindows } from "./types.ts";
 
 export function normalizeResetsAt(v: unknown): number | null {
   const num = z.number().finite().safeParse(v);
@@ -59,12 +61,11 @@ export function gatedFamilies(model: ModelInfo | null, families: string[]): stri
   return family ? [family] : [];
 }
 
-export const FullUsageSchema = z.object({
-  session: UsageWindowSchema,
-  weekAll: UsageWindowSchema,
-  perModel: z.record(z.string(), UsageWindowSchema),
-});
-export type FullUsage = z.infer<typeof FullUsageSchema>;
+export type FullUsage = {
+  session: UsageWindow;
+  weekAll: UsageWindow;
+  perModel: Record<string, UsageWindow>;
+};
 
 const MONTHS: Record<string, number> = {
   jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11,
@@ -143,29 +144,29 @@ export type TranscriptRow = z.infer<typeof TranscriptRowSchema>;
 const TRANSCRIPT_TAIL_BYTES = 256 * 1024;
 
 export function readTranscriptTail(path: string, maxBytes = TRANSCRIPT_TAIL_BYTES): TranscriptRow[] {
+  let fd: number;
+  try {
+    fd = openSync(path, "r");
+  } catch (e) {
+    if (errnoCode(e) === "ENOENT") return [];
+    throw e;
+  }
   let text: string;
   try {
-    const fd = openSync(path, "r");
-    try {
-      const size = fstatSync(fd).size;
-      const start = Math.max(0, size - maxBytes);
-      const buf = Buffer.alloc(size - start);
-      readSync(fd, buf, 0, buf.length, start);
-      text = buf.toString("utf8");
-      if (start > 0) text = text.slice(text.indexOf("\n") + 1);
-    } finally {
-      closeSync(fd);
-    }
-  } catch {
-    return [];
+    const size = fstatSync(fd).size;
+    const start = Math.max(0, size - maxBytes);
+    const buf = Buffer.alloc(size - start);
+    readSync(fd, buf, 0, buf.length, start);
+    text = buf.toString("utf8");
+    if (start > 0) text = text.slice(text.indexOf("\n") + 1);
+  } finally {
+    closeSync(fd);
   }
   const rows: TranscriptRow[] = [];
   for (const line of text.split("\n")) {
     if (line.trim() === "") continue;
-    try {
-      const parsed = TranscriptRowSchema.safeParse(JSON.parse(line));
-      if (parsed.success) rows.push(parsed.data);
-    } catch {}
+    const row = tryParseJson(TranscriptRowSchema, line);
+    if (row) rows.push(row);
   }
   return rows;
 }
@@ -178,11 +179,7 @@ export function transcriptRowText(row: TranscriptRow): string {
 
 const ROW_RECENCY_MS = 60_000;
 
-const EnforcedRowSchema = z.object({
-  row: TranscriptRowSchema,
-  errorAt: z.number().nullable(),
-});
-export type EnforcedRow = z.infer<typeof EnforcedRowSchema>;
+export type EnforcedRow = { row: TranscriptRow; errorAt: number | null };
 
 export function findEnforcedRow(input: { rows: TranscriptRow[]; lastAssistantMessage: string | undefined; now: number }): EnforcedRow | null {
   const { rows, lastAssistantMessage, now } = input;
@@ -198,12 +195,10 @@ export function findEnforcedRow(input: { rows: TranscriptRow[]; lastAssistantMes
   return null;
 }
 
-export const EnforcedClassSchema = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("session"), resetsAt: z.number().nullable() }),
-  z.object({ kind: z.literal("weekly"), resetsAt: z.number().nullable() }),
-  z.object({ kind: z.literal("model"), family: z.string(), resetsAt: z.number().nullable() }),
-]);
-export type EnforcedClass = z.infer<typeof EnforcedClassSchema>;
+export type EnforcedClass =
+  | { kind: "session"; resetsAt: number | null }
+  | { kind: "weekly"; resetsAt: number | null }
+  | { kind: "model"; family: string; resetsAt: number | null };
 
 const ErrorBodySchema = z.looseObject({
   error: z.looseObject({ type: z.string().optional(), details: z.looseObject({ error_code: z.string().optional() }).optional() }).optional(),
@@ -215,12 +210,7 @@ export function parseErrorBody(errorDetails: string | undefined): z.infer<typeof
   if (!errorDetails) return null;
   const at = errorDetails.indexOf("{");
   if (at < 0) return null;
-  try {
-    const body = ErrorBodySchema.safeParse(JSON.parse(errorDetails.slice(at)));
-    return body.success ? body.data : null;
-  } catch {
-    return null;
-  }
+  return tryParseJson(ErrorBodySchema, errorDetails.slice(at));
 }
 
 export function classifyEnforcedLimit(row: TranscriptRow, switchModels: string[]): EnforcedClass | null {
@@ -275,34 +265,19 @@ export const CRED_ENV_OVERRIDES = [
 const PROBE_KILL_MS = 60_000;
 const PIPE_GRACE_MS = 2_000;
 
-const SpawnResultSchema = z.object({
-  exitCode: z.number().nullable(),
-  stdout: z.string(),
-  stderr: z.string(),
-});
-type SpawnResult = z.infer<typeof SpawnResultSchema>;
+type SpawnResult = { exitCode: number | null; stdout: string; stderr: string };
 
-async function spawnClaudeBounded(
-  cmd: string[],
-  env: Record<string, string>,
-  cwd?: string,
-): Promise<SpawnResult | null> {
-  const p = Bun.spawn(cmd, { env, cwd, stdout: "pipe", stderr: "pipe" });
-  const killer = setTimeout(() => p.kill("SIGKILL"), PROBE_KILL_MS);
-  try {
-    const reads = Promise.all([new Response(p.stdout).text(), new Response(p.stderr).text()]);
-    const settled = await Promise.race([
-      reads,
-      p.exited.then(() => delay(PIPE_GRACE_MS)).then(() => null),
-    ]);
-    if (settled === null) return null;
-    const [stdout, stderr] = settled;
-    await p.exited;
-    return { exitCode: p.exitCode, stdout, stderr };
-  } finally {
-    clearTimeout(killer);
-  }
+async function spawnClaudeBounded(cmd: string[], env: Record<string, string>, cwd?: string): Promise<SpawnResult | null> {
+  const p = Bun.spawn(cmd, { env, cwd, stdout: "pipe", stderr: "pipe", timeout: PROBE_KILL_MS, killSignal: "SIGKILL" });
+  const reads = Promise.all([new Response(p.stdout).text(), new Response(p.stderr).text()]);
+  const settled = await Promise.race([reads, p.exited.then(() => delay(PIPE_GRACE_MS)).then(() => null)]);
+  if (settled === null) return null;
+  const [stdout, stderr] = settled;
+  await p.exited;
+  return { exitCode: p.exitCode, stdout, stderr };
 }
+
+const ProbeOutputSchema = z.object({ result: z.string() });
 
 async function probeUsageOnce(env: Record<string, string>, now: number): Promise<FullUsage | null> {
   let out: string;
@@ -318,12 +293,11 @@ async function probeUsageOnce(env: Record<string, string>, now: number): Promise
     }
     out = r.stdout;
   } catch (e) {
-    log("usage.probe_failed", { err: e instanceof Error ? e.message : String(e) });
+    log("usage.probe_failed", { err: errorMessage(e) });
     return null;
   }
 
-  const j = z.object({ result: z.string() }).safeParse((() => { try { return JSON.parse(out); } catch { return null; } })());
-  const text = j.success ? j.data.result : out;
+  const text = tryParseJson(ProbeOutputSchema, out)?.result ?? out;
   const full = parseUsageTextFull(text, now);
   if (!full) {
     log("usage.probe_unparsed", { sample: text.trim().slice(0, 200) });
@@ -368,8 +342,7 @@ const PING_ARGS = [
 
 const PingResultSchema = z.looseObject({ is_error: z.boolean().optional(), result: z.string().optional(), session_id: z.string().optional() });
 
-export const PingFailureSchema = z.object({ reason: z.string(), rejected: z.boolean() });
-export type PingFailure = z.infer<typeof PingFailureSchema>;
+export type PingFailure = { reason: string; rejected: boolean };
 
 export function transcriptSlug(cwd: string): string {
   return cwd.replace(/[^a-zA-Z0-9]/g, "-");
@@ -402,18 +375,17 @@ export async function pingSession(configDir?: string): Promise<PingFailure | nul
     mkdirSync(cwd, { recursive: true });
     r = await spawnClaudeBounded([resolveRealClaude(), ...PING_ARGS], probeEnv(configDir), cwd);
   } catch (e) {
-    return fail(e instanceof Error ? e.message : String(e));
+    return fail(errorMessage(e));
   }
   if (r === null) return fail("output pipes still open after child exit (leaked descendant)");
-  const parsed = PingResultSchema.safeParse((() => { try { return JSON.parse(r.stdout); } catch { return null; } })());
-  const result = parsed.success ? parsed.data : null;
+  const result = tryParseJson(PingResultSchema, r.stdout);
   if (r.exitCode === 0 && result?.is_error === false) {
     log("usage.ping_ok", { dir: configDir ?? "live" });
     return null;
   }
   if (result?.session_id) {
     const transcript = pingTranscriptPath({ configDir: configDir ?? paths.claudeDir, cwd, sessionId: result.session_id });
-    const rejection = existsSync(transcript) ? pingRejection(readTranscriptTail(transcript)) : null;
+    const rejection = pingRejection(readTranscriptTail(transcript));
     if (rejection) return fail(`rejected at the ${rejection}`.slice(0, 200), true);
   }
   if (r.exitCode !== 0) {

@@ -26,10 +26,9 @@ export function makeUsagePaint(input: { enabled: boolean; truecolor: boolean }) 
     (s: string): string => {
       if (!input.enabled) return s;
       const { r, g } = rampRgb(usedPct);
-      const code = input.truecolor
-        ? `38;2;${r};${g};0`
-        : `38;5;${16 + 36 * Math.round(r / 51) + 6 * Math.round(g / 51)}`;
-      return `\x1b[${code}m${s}\x1b[0m`;
+      const code = Bun.color({ r, g, b: 0 }, input.truecolor ? "ansi-16m" : "ansi-256");
+      if (code == null) throw new Error(`Bun.color rejected rgb(${r}, ${g}, 0)`);
+      return `${code}${s}\x1b[0m`;
     };
 }
 
@@ -94,4 +93,20 @@ export function emitError(input: {
   }
   console.error((input.paint ?? c.red)(input.message));
   for (const note of input.notes ?? []) console.error(c.dim(note));
+}
+
+export function switchReporter(input: { json: boolean }) {
+  const deadGrants: string[] = [];
+  const withDeadGrants = (report: Record<string, unknown>) => (deadGrants.length > 0 ? { ...report, deadGrants } : report);
+  return {
+    deadGrants,
+    emit(text: string, report: Record<string, unknown>): void {
+      if (input.json) emitJson({ ok: true, ...withDeadGrants(report) });
+      else console.log(text);
+    },
+    fail(message: string, opts: { paint?: (s: string) => string; notes?: string[]; extra?: Record<string, unknown> } = {}): number {
+      emitError({ json: input.json, message, paint: opts.paint, notes: opts.notes, extra: withDeadGrants(opts.extra ?? {}) });
+      return 1;
+    },
+  };
 }

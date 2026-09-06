@@ -1,8 +1,9 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, rmSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
 import { paths } from "./paths.ts";
 import { writeFileAtomic } from "./atomic.ts";
+import { readJson } from "./json.ts";
 
 const SessionSchema = z.object({ flags: z.array(z.string()), cwd: z.string() });
 
@@ -18,9 +19,7 @@ export function saveSessionFlags(sid: string, flags: string[], cwd: string): voi
 }
 
 export function loadSessionFlags(sid: string): string[] | null {
-  const f = sessionFile(sid);
-  if (!existsSync(f)) return null;
-  return SessionSchema.parse(JSON.parse(readFileSync(f, "utf8"))).flags;
+  return readJson(sessionFile(sid), SessionSchema)?.flags ?? null;
 }
 
 export function pruneStaleSessions(now: number): void {
@@ -28,9 +27,7 @@ export function pruneStaleSessions(now: number): void {
   if (!existsSync(dir)) return;
   for (const f of readdirSync(dir)) {
     const p = join(dir, f);
-    try {
-      if (now - statSync(p).mtimeMs > SESSION_RETENTION_MS) rmSync(p, { force: true });
-    } catch {
-    }
+    const st = statSync(p, { throwIfNoEntry: false });
+    if (st && now - st.mtimeMs > SESSION_RETENTION_MS) rmSync(p, { force: true });
   }
 }

@@ -4,9 +4,11 @@ import { paths } from "../lib/paths.ts";
 import { writeFileAtomic } from "../lib/atomic.ts";
 import { readOAuthAccount } from "../lib/claudejson.ts";
 import { enforcedWindowMs, evaluateAndMaybeSwap, postSwapProof, recordEnforcedLimit } from "../lib/decide.ts";
+import { errorMessage } from "../lib/errors.ts";
+import { tryParseJson } from "../lib/json.ts";
 import { loadConfig, loadLastSwapAt } from "../lib/state.ts";
 import { classifyEnforcedLimit, findEnforcedRow, parseErrorBody, readTranscriptTail } from "../lib/usage.ts";
-import { RespawnMarkerSchema, type EnforcedLimit } from "../lib/types.ts";
+import type { EnforcedLimit, RespawnMarker } from "../lib/types.ts";
 import { log } from "../lib/log.ts";
 
 export const RETRIGGER_PROMPT = "Continue where the previous turn left off; it was interrupted by a usage limit and tokenmaxxing switched accounts.";
@@ -19,22 +21,14 @@ const StopFailureStdin = z.looseObject({
   last_assistant_message: z.string().optional().catch(undefined),
 });
 
-const LaunchedAtSchema = z.coerce.number().finite().optional().catch(undefined);
-
-async function readStdin(): Promise<string> {
-  const chunks: Uint8Array[] = [];
-  for await (const c of Bun.stdin.stream()) chunks.push(c);
-  return Buffer.concat(chunks).toString("utf8");
-}
+const LaunchedAtSchema = z.coerce.number().finite().optional();
 
 export async function runStopFailureHook(): Promise<number> {
   if (process.env.TOKENMAXXING_PROBE) return 0;
 
   const account = readOAuthAccount()?.accountUuid ?? null;
   const now = Date.now();
-  const raw = await readStdin();
-  const parsed = StopFailureStdin.safeParse((() => { try { return JSON.parse(raw); } catch { return {}; } })());
-  const stdin = parsed.success ? parsed.data : {};
+  const stdin = tryParseJson(StopFailureStdin, await Bun.stdin.text()) ?? {};
   if (stdin.error !== undefined && stdin.error !== "rate_limit") return 0;
 
   const stdinSid = stdin.session_id;
@@ -73,21 +67,21 @@ export async function runStopFailureHook(): Promise<number> {
     const decision = await evaluateAndMaybeSwap(now, canPause && enforced != null, enforced);
     if (enforced && canPause && pinnedSid && decision.account && (decision.swapped || decision.waitUntil !== undefined)) {
       const marker = join(paths.respawnDir, pinnedSid);
-      const payload = RespawnMarkerSchema.parse({
+      const payload: RespawnMarker = {
         account: decision.account.label,
         ts: Date.now(),
         waitUntil: decision.waitUntil ?? now,
         sessionId: stdinSid ?? pinnedSid,
         prompt: RETRIGGER_PROMPT,
         ...(launchedAt != null ? { launchedAt } : {}),
-      });
+      };
       writeFileAtomic(marker, JSON.stringify(payload));
       log("stopfailure.marker", { session: (stdinSid ?? pinnedSid).slice(0, 8), account: decision.account.accountUuid.slice(0, 8), waitUntil: payload.waitUntil });
     } else {
       log("stopfailure.decision", { reason: decision.reason, swapped: decision.swapped, account: decision.account?.accountUuid.slice(0, 8), waitUntil: decision.waitUntil });
     }
   } catch (e) {
-    log("stopfailure.error", { err: e instanceof Error ? e.message : String(e) });
+    log("stopfailure.error", { err: errorMessage(e) });
   }
   return 0;
 }

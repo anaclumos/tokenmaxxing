@@ -3,13 +3,8 @@ import { CodexInvalidGrantError, CodexRefreshFailedError, refreshCodexAuth } fro
 import { CodexUsageReadError, fetchCodexUsage } from "./codexusage.ts";
 import { presentCodexAccountIds } from "./codexpresence.ts";
 import type { CodexAccount, CodexUsage } from "./types.ts";
-import { z } from "zod";
 
-const CodexSampleOutcomeSchema = z.union([
-  z.object({ ok: z.literal(true), usage: z.custom<CodexUsage>() }),
-  z.object({ ok: z.literal(false), reason: z.string(), deadGrant: z.boolean() }),
-]);
-export type CodexSampleOutcome = z.infer<typeof CodexSampleOutcomeSchema>;
+export type CodexSampleOutcome = { ok: true; usage: CodexUsage } | { ok: false; reason: string; deadGrant: boolean };
 
 export function liveCodexAccountId(): string | null {
   const live = readLiveCodexAuth();

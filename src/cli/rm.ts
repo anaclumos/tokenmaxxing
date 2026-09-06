@@ -1,11 +1,11 @@
 import { rmSync } from "node:fs";
 import { join } from "node:path";
-import { deleteItem, isolatedTarget, liveTarget, parkedTarget, readItem } from "../lib/credstore.ts";
+import { deleteItem, isolatedTarget, liveTarget, parkedTarget, parseBlob, readItem } from "../lib/credstore.ts";
+import { errorMessage } from "../lib/errors.ts";
 import { fetchTokenIdentity } from "../lib/oauth.ts";
 import { withLock } from "../lib/lock.ts";
 import { credItemFor, paths } from "../lib/paths.ts";
 import { loadAccounts, saveAccounts } from "../lib/state.ts";
-import { CredentialBlobSchema } from "../lib/types.ts";
 import { findAccount } from "./rename.ts";
 import { c, emitError, emitJson, plain } from "./render.ts";
 
@@ -29,12 +29,11 @@ export async function cmdRm(selector?: string, json = false): Promise<number> {
     if (live != null) {
       let liveAccount: string;
       try {
-        const liveCreds = CredentialBlobSchema.parse(JSON.parse(live)).claudeAiOauth;
-        liveAccount = (await fetchTokenIdentity(liveCreds.accessToken)).accountUuid;
+        liveAccount = (await fetchTokenIdentity(parseBlob(live).claudeAiOauth.accessToken)).accountUuid;
       } catch (e) {
         emitError({
           json,
-          message: `cannot verify which account the LIVE credential belongs to (${e instanceof Error ? e.message : String(e)}) - refusing to remove while the live owner is unknown; repair the live credential or retry once the profile endpoint is reachable.`,
+          message: `cannot verify which account the LIVE credential belongs to (${errorMessage(e)}) - refusing to remove while the live owner is unknown; repair the live credential or retry once the profile endpoint is reachable.`,
         });
         return 1;
       }

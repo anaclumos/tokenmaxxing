@@ -1,11 +1,12 @@
-import { z } from "zod";
-import { http, oauthErrorCode, safeErrorDetail } from "./http.ts";
-import { ProfileResponseSchema, RefreshResponseSchema, TokenIdentitySchema, type OAuthCreds, type TokenIdentity } from "./types.ts";
+import { HTTPError, NetworkError, TimeoutError } from "ky";
+import { errorMessage } from "./errors.ts";
+import { errorCodes, http, safeErrorDetail } from "./http.ts";
+import { envOverride } from "./paths.ts";
+import { ProfileResponseSchema, RefreshResponseSchema, type OAuthCreds, type TokenIdentity } from "./types.ts";
 
-const EnvOverrideSchema = z.string().min(1).optional().catch(undefined);
-const TOKEN_URL = EnvOverrideSchema.parse(process.env.TOKENMAXXING_OAUTH_TOKEN_URL) ?? "https://platform.claude.com/v1/oauth/token";
-const CLIENT_ID = EnvOverrideSchema.parse(process.env.TOKENMAXXING_OAUTH_CLIENT_ID) ?? "9d1c250a-e61b-44d9-88ed-5944d1962f5e";
-const PROFILE_URL = EnvOverrideSchema.parse(process.env.TOKENMAXXING_OAUTH_PROFILE_URL) ?? "https://api.anthropic.com/api/oauth/profile";
+const TOKEN_URL = envOverride("TOKENMAXXING_OAUTH_TOKEN_URL") ?? "https://platform.claude.com/v1/oauth/token";
+const CLIENT_ID = envOverride("TOKENMAXXING_OAUTH_CLIENT_ID") ?? "9d1c250a-e61b-44d9-88ed-5944d1962f5e";
+const PROFILE_URL = envOverride("TOKENMAXXING_OAUTH_PROFILE_URL") ?? "https://api.anthropic.com/api/oauth/profile";
 
 const DEFAULT_SCOPES = [
   "user:profile",
@@ -42,50 +43,30 @@ export function isDeadCredential(creds: OAuthCreds): boolean {
 
 export async function refreshCredential(creds: OAuthCreds, now = Date.now()): Promise<OAuthCreds> {
   if (isDeadCredential(creds)) throw new InvalidGrantError("credential was cleared after a failed refresh");
-  const scope = (creds.scopes?.length ? creds.scopes : DEFAULT_SCOPES).join(" ");
-  const body = {
-    grant_type: "refresh_token",
-    refresh_token: creds.refreshToken,
-    client_id: CLIENT_ID,
-    scope,
-  };
-
-  let res: Response;
+  const scope = (creds.scopes.length > 0 ? creds.scopes : DEFAULT_SCOPES).join(" ");
+  let body: unknown;
   try {
-    res = await http.post(TOKEN_URL, {
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
+    body = await http.post(TOKEN_URL, { json: { grant_type: "refresh_token", refresh_token: creds.refreshToken, client_id: CLIENT_ID, scope } }).json();
   } catch (e) {
-    throw new Error(`token endpoint unreachable: ${e instanceof Error ? e.message : String(e)}`);
+    if (e instanceof HTTPError) {
+      const status = e.response.status;
+      const detail = safeErrorDetail(e.data);
+      if (status === 400 && errorCodes(e.data).includes("invalid_grant")) throw new InvalidGrantError(detail);
+      if (status < 500) throw new RefreshRejectedError(status, detail);
+      throw new Error(`token refresh failed (HTTP ${status}): ${detail}`);
+    }
+    if (e instanceof NetworkError || e instanceof TimeoutError) throw new Error(`token endpoint unreachable: ${errorMessage(e)}`);
+    throw new Error("token endpoint returned an unrecognized body (withheld)");
   }
-
-  const text = await res.text();
-  if (!res.ok) {
-    const detail = safeErrorDetail({ text });
-    if (res.status === 400 && oauthErrorCode({ text }) === "invalid_grant") throw new InvalidGrantError(detail);
-    if (res.status >= 400 && res.status < 500) throw new RefreshRejectedError(res.status, detail);
-    throw new Error(`token refresh failed (HTTP ${res.status}): ${detail}`);
-  }
-
-  const parsed = RefreshResponseSchema.safeParse((() => {
-    try { return JSON.parse(text); } catch { return null; }
-  })());
-  if (!parsed.success) {
-    throw new Error(`token endpoint returned an unrecognized body (${text.length} bytes, withheld)`);
-  }
+  const parsed = RefreshResponseSchema.safeParse(body);
+  if (!parsed.success) throw new Error("token endpoint returned an unrecognized body (withheld)");
   const json = parsed.data;
-
-  const expiresIn = json.expires_in ?? 8 * 3600;
-  const refreshExpiresIn = json.refresh_token_expires_in;
-
   return {
     ...creds,
     accessToken: json.access_token,
     refreshToken: json.refresh_token ?? creds.refreshToken,
-    expiresAt: now + expiresIn * 1000,
-    refreshTokenExpiresAt:
-      refreshExpiresIn != null ? now + refreshExpiresIn * 1000 : creds.refreshTokenExpiresAt,
+    expiresAt: now + json.expires_in * 1000,
+    refreshTokenExpiresAt: json.refresh_token_expires_in != null ? now + json.refresh_token_expires_in * 1000 : creds.refreshTokenExpiresAt,
     scopes: json.scope ? json.scope.split(" ").filter(Boolean) : creds.scopes,
   };
 }
@@ -97,29 +78,25 @@ export function isAccessTokenExpiring(creds: OAuthCreds, skewMs = 120_000, now =
 export async function fetchTokenIdentity(accessToken: string): Promise<TokenIdentity> {
   let res: Response;
   try {
-    res = await http.get(PROFILE_URL, {
-      headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
-    });
+    res = await http.get(PROFILE_URL, { headers: { Authorization: `Bearer ${accessToken}` } });
   } catch (e) {
-    throw new IdentityUnavailableError(null, e instanceof Error ? e.message : String(e));
+    if (e instanceof HTTPError) throw new IdentityUnavailableError(e.response.status, safeErrorDetail(e.data));
+    throw new IdentityUnavailableError(null, errorMessage(e));
   }
-  let text: string;
+  let body: unknown;
   try {
-    text = await res.text();
-  } catch (e) {
-    throw new IdentityUnavailableError(res.status, `profile response body unreadable: ${e instanceof Error ? e.message : String(e)}`);
+    body = await res.json();
+  } catch {
+    throw new IdentityUnavailableError(res.status, "profile endpoint returned an unrecognized body (withheld)");
   }
-  if (!res.ok) throw new IdentityUnavailableError(res.status, safeErrorDetail({ text }));
-  const parsed = ProfileResponseSchema.safeParse((() => {
-    try { return JSON.parse(text); } catch { return null; }
-  })());
-  if (!parsed.success) throw new IdentityUnavailableError(res.status, `profile endpoint returned an unrecognized body (${text.length} bytes, withheld)`);
-  return TokenIdentitySchema.parse({
+  const parsed = ProfileResponseSchema.safeParse(body);
+  if (!parsed.success) throw new IdentityUnavailableError(res.status, "profile endpoint returned an unrecognized body (withheld)");
+  return {
     accountUuid: parsed.data.account.uuid,
     email: parsed.data.account.email ?? null,
     organizationUuid: parsed.data.organization.uuid,
     organizationName: parsed.data.organization.name ?? null,
-  });
+  };
 }
 
 export function describeIdentity(id: TokenIdentity): string {

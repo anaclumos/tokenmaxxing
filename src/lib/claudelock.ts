@@ -1,8 +1,8 @@
 import { mkdirSync, realpathSync, rmdirSync, statSync, utimesSync } from "node:fs";
 import { join } from "node:path";
 import { delay } from "es-toolkit";
-import { z } from "zod";
 import { credDir } from "./paths.ts";
+import { errnoCode, errorMessage } from "./errors.ts";
 import { log } from "./log.ts";
 
 const STALE_MS = 60_000;
@@ -15,8 +15,7 @@ function tryAcquire(lockDir: string): boolean {
     mkdirSync(lockDir);
     return true;
   } catch (e) {
-    const errno = z.object({ code: z.string() }).safeParse(e);
-    if (!errno.success || errno.data.code !== "EEXIST") throw e;
+    if (errnoCode(e) !== "EEXIST") throw e;
   }
   try {
     if (Date.now() - statSync(lockDir).mtimeMs > STALE_MS) {
@@ -28,18 +27,11 @@ function tryAcquire(lockDir: string): boolean {
   return false;
 }
 
-export async function withClaudeRefreshLock<T>(
-  fn: (lock: { compromised: () => boolean }) => Promise<T> | T,
-  opts: { attempts?: number; retryMs?: number; heartbeatMs?: number } = {},
-): Promise<T> {
-  const attempts = opts.attempts ?? ATTEMPTS;
-  const retryMs = opts.retryMs ?? RETRY_MS;
+export async function withClaudeRefreshLock<T>(fn: (lock: { compromised: () => boolean }) => Promise<T> | T): Promise<T> {
   const dir = credDir();
   mkdirSync(dir, { recursive: true });
   const primary = join(dir, ".oauth_refresh.lock");
-  let legacyRoot = dir;
-  try { legacyRoot = realpathSync(dir); } catch {  }
-  const legacy = `${legacyRoot}.lock`;
+  const legacy = `${realpathSync(dir)}.lock`;
 
   const held: string[] = [];
   for (let attempt = 1; held.length === 0; attempt++) {
@@ -50,19 +42,19 @@ export async function withClaudeRefreshLock<T>(
           break;
         }
       } catch (e) {
-        log("claudelock.legacy_error", { err: e instanceof Error ? e.message : String(e) });
+        log("claudelock.legacy_error", { err: errorMessage(e) });
         held.push(primary);
         break;
       }
       rmdirSync(primary);
     }
-    if (attempt >= attempts) {
+    if (attempt >= ATTEMPTS) {
       log("claudelock.contested", { attempts: attempt });
       throw new Error(
         "claude's credential-refresh lock is contested (a token refresh is likely mid-flight) - not touching the live credential store; retry shortly",
       );
     }
-    await delay(retryMs + Math.random() * retryMs);
+    await delay(RETRY_MS + Math.random() * RETRY_MS);
   }
 
   const ours = new Map<string, number>();
@@ -88,7 +80,7 @@ export async function withClaudeRefreshLock<T>(
         markCompromised();
       }
     }
-  }, opts.heartbeatMs ?? HEARTBEAT_MS);
+  }, HEARTBEAT_MS);
 
   try {
     const result = await fn({ compromised: () => compromised });

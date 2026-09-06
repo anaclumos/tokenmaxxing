@@ -1,12 +1,14 @@
-import { existsSync, mkdirSync, readFileSync, rmSync, readdirSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { maxBy } from "es-toolkit";
 import { z } from "zod";
 import { paths } from "../lib/paths.ts";
 import { LOOP_DIAGNOSIS, MAX_WRAP_DEPTH, UNMANAGED_ENV, WRAP_DEPTH_ENV, WRAP_RATE_MAX, WRAP_RATE_WINDOW_MS, resolveRealClaude, wrapDepth, wrapperEntryRateTripped } from "../lib/claudebin.ts";
+import { tryReadJson } from "../lib/json.ts";
+import { awaitExitOrMarker } from "../lib/proc.ts";
 import { saveTermios, restoreTermios } from "../lib/tty.ts";
 import { loadSessionFlags, pruneStaleSessions, saveSessionFlags } from "../lib/sessions.ts";
-import { RespawnMarkerSchema } from "../lib/types.ts";
+import { RespawnMarkerSchema, type RespawnMarker } from "../lib/types.ts";
 import { log } from "../lib/log.ts";
 
 const NONINTERACTIVE_SUBCMDS = new Set([
@@ -32,13 +34,12 @@ const OPTIONAL_VALUE_ROOT_FLAGS = new Set([
 
 const isUuid = (s: string) => z.uuid().safeParse(s).success;
 
-const AnalysisSchema = z.object({
-  manage: z.boolean(),
-  sessionId: z.string().nullable(),
-  resumeId: z.string().nullable(),
-  continueLatest: z.boolean(),
-});
-type Analysis = z.infer<typeof AnalysisSchema>;
+type Analysis = {
+  manage: boolean;
+  sessionId: string | null;
+  resumeId: string | null;
+  continueLatest: boolean;
+};
 
 export function analyzeArgs(argv: string[]): Analysis {
   let sessionId: string | null = null;
@@ -130,30 +131,23 @@ function latestSessionForCwd(): string | null {
   const slug = process.cwd().replace(/[^a-zA-Z0-9]/g, "-");
   const projDir = join(paths.claudeDir, "projects", slug);
   if (!existsSync(projDir)) return null;
-  try {
-    const files = readdirSync(projDir)
-      .filter((f) => f.endsWith(".jsonl"))
-      .map((f) => ({ f, m: statSync(join(projDir, f)).mtimeMs }));
-    const newest = maxBy(files, (x) => x.m);
-    return newest ? newest.f.replace(/\.jsonl$/, "") : null;
-  } catch {
-    return null;
-  }
+  const files = readdirSync(projDir)
+    .filter((f) => f.endsWith(".jsonl"))
+    .flatMap((f) => {
+      const st = statSync(join(projDir, f), { throwIfNoEntry: false });
+      return st ? [{ f, m: st.mtimeMs }] : [];
+    });
+  const newest = maxBy(files, (x) => x.m);
+  return newest ? newest.f.replace(/\.jsonl$/, "") : null;
 }
 
-const MarkerGateSchema = z.object({
-  launchedAt: z.number(),
-  overriddenUntil: z.number(),
-});
-type MarkerGate = z.infer<typeof MarkerGateSchema>;
+type MarkerGate = { launchedAt: number; overriddenUntil: number };
 
-function consumableMarker(marker: string, gate: MarkerGate): z.infer<typeof RespawnMarkerSchema> | null {
-  let m: z.infer<typeof RespawnMarkerSchema>;
-  try {
-    m = RespawnMarkerSchema.parse(JSON.parse(readFileSync(marker, "utf8")));
-  } catch (e) {
+function consumableMarker(marker: string, gate: MarkerGate): RespawnMarker | null {
+  const m = tryReadJson(marker, RespawnMarkerSchema);
+  if (!m) {
     rmSync(marker, { force: true });
-    log("supervisor.marker_invalid", { err: e instanceof Error ? e.message : String(e) });
+    log("supervisor.marker_invalid", {});
     return null;
   }
   if (m.launchedAt !== undefined && m.launchedAt !== gate.launchedAt) {
@@ -250,7 +244,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
   let respawns = 0;
   let overriddenUntil = 0;
   while (true) {
-    if (existsSync(marker)) rmSync(marker, { force: true });
+    rmSync(marker, { force: true });
     log("supervisor.launch", { sid, respawns, args: launchArgs.join(" ") });
 
     const gate: MarkerGate = { launchedAt: Date.now(), overriddenUntil };
@@ -261,23 +255,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
       env: { ...childEnv, TOKENMAXXING_SUPERVISED: "1", TOKENMAXXING_SESSION_ID: sid, TOKENMAXXING_LAUNCHED_AT: String(gate.launchedAt) },
     });
 
-    let done = false;
-    const markerWatch = (async () => {
-      while (!done) {
-        if (existsSync(marker) && consumableMarker(marker, gate) != null) return true;
-        await Bun.sleep(150);
-      }
-      return false;
-    })();
-    const exited = child.exited.then(() => { done = true; return "exit" as const; });
-    const winner = await Promise.race([exited, markerWatch.then((m) => (m ? "marker" : "exit"))]);
-
-    if (winner === "marker") {
-      child.kill();
-    }
-    await child.exited;
-    done = true;
-    await markerWatch.catch(() => {});
+    await awaitExitOrMarker({ child, markerReady: () => existsSync(marker) && consumableMarker(marker, gate) != null });
     restoreTermios(savedTermios);
 
     const m = existsSync(marker) ? consumableMarker(marker, gate) : null;

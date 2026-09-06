@@ -1,35 +1,38 @@
-import { existsSync, readFileSync } from "node:fs";
-import { resolveRealCodex, verifyRealCodex } from "../lib/codexbin.ts";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { z } from "zod";
+import { resolveRealCodex, verifyRealBin } from "../lib/claudebin.ts";
 import { codexIdentityOf, readLiveCodexAuth, writeParkedCodexAuth } from "../lib/codexauth.ts";
 import { CodexUsageReadError, fetchCodexUsage } from "../lib/codexusage.ts";
-import { loadCodexAccounts, saveCodexAccounts } from "../lib/codexstate.ts";
+import { importedCodexAccount, loadCodexAccounts, saveCodexAccounts, upsertCodexAccount } from "../lib/codexstate.ts";
+import { errnoCode } from "../lib/errors.ts";
 import { loadConfig, pinBinOverride } from "../lib/state.ts";
 import { installCodexSupervisor, codexSupervisorLink, ensurePathInRc, managedShellRcSkipLines, shellRcPath } from "../lib/install.ts";
 import { withLock } from "../lib/lock.ts";
 import { presentCodexAccountIds } from "../lib/codexpresence.ts";
 import { codexCredItemFor, codexPaths } from "../lib/paths.ts";
-import type { CodexAccount, CodexUsage } from "../lib/types.ts";
+import type { CodexUsage } from "../lib/types.ts";
 import { c } from "./render.ts";
 
+const CodexConfigTomlSchema = z.looseObject({ cli_auth_credentials_store: z.string().optional() });
+
 function storePinnedAwayFromFile(): boolean {
-  const configToml = `${codexPaths.home}/config.toml`;
-  if (!existsSync(configToml)) return false;
-  for (const rawLine of readFileSync(configToml, "utf8").split("\n")) {
-    const line = rawLine.trim();
-    if (!line.startsWith("cli_auth_credentials_store")) continue;
-    const rest = line.slice("cli_auth_credentials_store".length).trimStart();
-    if (!rest.startsWith("=")) continue;
-    const beforeComment = rest.slice(1).split("#", 1)[0]!;
-    const value = beforeComment.replaceAll('"', "").replaceAll("'", "").trim();
-    return value !== "file";
+  const configToml = join(codexPaths.home, "config.toml");
+  let text: string;
+  try {
+    text = readFileSync(configToml, "utf8");
+  } catch (e) {
+    if (errnoCode(e) === "ENOENT") return false;
+    throw e;
   }
-  return false;
+  const store = CodexConfigTomlSchema.parse(Bun.TOML.parse(text)).cli_auth_credentials_store;
+  return store !== undefined && store !== "file";
 }
 
 export async function cmdCodexInit(): Promise<number> {
   loadConfig();
   const real = resolveRealCodex();
-  const fail = verifyRealCodex({ bin: real });
+  const fail = verifyRealBin({ name: "codex", bin: real });
   if (fail !== null) {
     console.error(c.red(`codex binary failed verification: ${real}: ${fail}`));
     return 1;
@@ -76,20 +79,8 @@ export async function cmdCodexInit(): Promise<number> {
     }
     writeParkedCodexAuth({ credFile, auth: fresh2 });
     const index = loadCodexAccounts();
-    const existing = index.accounts.find((entry) => entry.accountId === identity.accountId);
-    const fresh: CodexAccount = {
-      accountId: identity.accountId,
-      email: usage?.email ?? identity.email,
-      label: existing?.label ?? usage?.email ?? identity.email ?? identity.accountId.slice(0, 8),
-      planType: usage?.planType ?? identity.planType,
-      credFile,
-      addedAt: existing?.addedAt ?? new Date().toISOString(),
-      needsReauth: false,
-      lastUsage: usage ? { aggregate: usage.aggregate, perLimit: usage.perLimit } : existing?.lastUsage,
-      lastUsageAt: usage ? Date.now() : existing?.lastUsageAt,
-    };
-    if (existing) Object.assign(existing, fresh);
-    else index.accounts.push(fresh);
+    const fresh = importedCodexAccount({ existing: index.accounts.find((entry) => entry.accountId === identity.accountId), identity, usage, credFile });
+    upsertCodexAccount(index, fresh);
     index.activeAccountId = identity.accountId;
     saveCodexAccounts({ index });
     return fresh;

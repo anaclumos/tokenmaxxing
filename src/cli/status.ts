@@ -1,9 +1,11 @@
 import { chunk, sampleSize, sortBy } from "es-toolkit";
-import { z } from "zod";
 import { loadAccounts, loadConfig, loadUsage, loadUsageSnapshot, loadModelUsage, saveAccounts } from "../lib/state.ts";
 import { readOAuthAccount } from "../lib/claudejson.ts";
-import { ensureLiveTokenFresh, probeActiveUsage, probeParkedUsage, type SampleOutcome } from "../lib/sample.ts";
+import { probeActiveUsage, probeParkedUsage, type SampleOutcome } from "../lib/sample.ts";
+import { ensureLiveTokenFresh } from "../lib/swap.ts";
+import { errorMessage } from "../lib/errors.ts";
 import { withLock } from "../lib/lock.ts";
+import { log } from "../lib/log.ts";
 import { codexPaths, paths } from "../lib/paths.ts";
 import { earliestReset, effectiveBars, isExhausted, nextWeeklyReset, terminalBars } from "../lib/picker.ts";
 import { loadCodexAccounts, saveCodexAccounts } from "../lib/codexstate.ts";
@@ -12,67 +14,54 @@ import { isCodexExhausted } from "../lib/codexpick.ts";
 import { codexLimitLabel, isSessionWindow } from "../lib/codexusage.ts";
 import { bar, c, claudeTierLabel, count, emitJson, fmtAgo } from "./render.ts";
 import { gatedFamilies, type FullUsage } from "../lib/usage.ts";
-import { ThresholdsSchema, UsageWindowSchema, type Account, type CodexWindow, type Config, type UsageWindow } from "../lib/types.ts";
+import type { Account, CodexWindow, Config, Thresholds, UsageWindow } from "../lib/types.ts";
 
-const SampleReportSchema = z.discriminatedUnion("ok", [
-  z.object({ ok: z.literal(true), source: z.enum(["statusline", "probe"]) }),
-  z.object({ ok: z.literal(false), reason: z.string() }),
-]);
+type SampleReport = { ok: true; source: "statusline" | "probe" } | { ok: false; reason: string };
 
-const ClaudeStatusAccountSchema = z.object({
-  label: z.string(),
-  email: z.string(),
-  accountUuid: z.string(),
-  organizationUuid: z.string(),
-  tier: z.string().nullable(),
-  active: z.boolean(),
-  needsReauth: z.boolean(),
-  exhausted: z.boolean(),
-  usage: z.object({ fiveHour: UsageWindowSchema, week: UsageWindowSchema }).nullable(),
-  perModel: z.record(z.string(), UsageWindowSchema),
-  usageAt: z.number().nullable(),
-  sample: SampleReportSchema,
-  pingError: z.string().nullable(),
-  pingRejected: z.boolean(),
-  pinged: z.boolean(),
-});
-type ClaudeStatusAccount = z.infer<typeof ClaudeStatusAccountSchema>;
+type ClaudeStatusAccount = {
+  label: string;
+  email: string;
+  accountUuid: string;
+  organizationUuid: string;
+  tier: string | null;
+  active: boolean;
+  needsReauth: boolean;
+  exhausted: boolean;
+  usage: { fiveHour: UsageWindow; week: UsageWindow } | null;
+  perModel: Record<string, UsageWindow>;
+  usageAt: number | null;
+  sample: SampleReport;
+  pingError: string | null;
+  pingRejected: boolean;
+  pinged: boolean;
+};
 
-const CodexWindowReportSchema = UsageWindowSchema.extend({ windowSeconds: z.number().nullable() });
+type CodexStatusAccount = {
+  label: string;
+  email: string | null;
+  accountId: string;
+  planType: string | null;
+  active: boolean;
+  needsReauth: boolean;
+  exhausted: boolean;
+  usage: { aggregate: CodexWindow[]; perLimit: Record<string, CodexWindow[]> } | null;
+  usageAt: number | null;
+  sample: SampleReport;
+};
 
-const CodexStatusAccountSchema = z.object({
-  label: z.string(),
-  email: z.string().nullable(),
-  accountId: z.string(),
-  planType: z.string().nullable(),
-  active: z.boolean(),
-  needsReauth: z.boolean(),
-  exhausted: z.boolean(),
-  usage: z
-    .object({
-      aggregate: z.array(CodexWindowReportSchema),
-      perLimit: z.record(z.string(), z.array(CodexWindowReportSchema)),
-    })
-    .nullable(),
-  usageAt: z.number().nullable(),
-  sample: SampleReportSchema,
-});
-type CodexStatusAccount = z.infer<typeof CodexStatusAccountSchema>;
-
-const StatusReportSchema = z.object({
-  now: z.number(),
-  claude: z.object({
-    thresholds: z.object({ session: z.array(z.number()), weekly: z.number() }),
-    bars: ThresholdsSchema,
-    projectionMargin: z.number(),
-    accounts: z.array(ClaudeStatusAccountSchema),
-  }),
-  codex: z.object({
-    bars: ThresholdsSchema,
-    accounts: z.array(CodexStatusAccountSchema),
-  }),
-});
-export type StatusReport = z.infer<typeof StatusReportSchema>;
+export type StatusReport = {
+  now: number;
+  claude: {
+    thresholds: { session: number[]; weekly: number };
+    bars: Thresholds;
+    projectionMargin: number;
+    accounts: ClaudeStatusAccount[];
+  };
+  codex: {
+    bars: Thresholds;
+    accounts: CodexStatusAccount[];
+  };
+};
 
 function currentWindow(w: UsageWindow, weekly: boolean, now: number): UsageWindow {
   const passed = w.resetsAt != null && w.resetsAt <= now;
@@ -133,7 +122,7 @@ async function collectClaude(input: { cfg: Config; ping: boolean; pingCount: num
         let outcome: SampleOutcome;
         if (pings.has(a.accountUuid)) {
           outcome = isActive ? await probeActiveUsage(a, { ping: true }) : await probeParkedUsage(a, { ping: true });
-          if (!outcome.ok && fromStatusLine && outcome.reason.includes("no limit data")) {
+          if (!outcome.ok && fromStatusLine && outcome.probeSilent) {
             const failed = outcome;
             outcome = { ok: true, usage: fromStatusLine };
             if (failed.pingError != null) {
@@ -162,8 +151,9 @@ async function collectClaude(input: { cfg: Config; ping: boolean; pingCount: num
       const activeAccount = idx.accounts.find((a) => liveAccount != null && liveAccount === a.accountUuid) ?? null;
       if (activeAccount) await probeOne(activeAccount);
       try {
-        await ensureLiveTokenFresh();
-      } catch {
+        await ensureLiveTokenFresh({ skewMs: 300_000 });
+      } catch (e) {
+        log("status.live_refresh_failed", { err: errorMessage(e) });
       }
       await Promise.all(idx.accounts.filter((a) => a !== activeAccount).map(probeOne));
       saveAccounts(idx);

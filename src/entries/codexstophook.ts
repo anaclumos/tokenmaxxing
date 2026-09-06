@@ -1,7 +1,6 @@
 import { join } from "node:path";
-import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
-import { z } from "zod";
-import { codexPaths } from "../lib/paths.ts";
+import { existsSync, mkdirSync, rmSync } from "node:fs";
+import { codexPaths, envOverride } from "../lib/paths.ts";
 import { withLock } from "../lib/lock.ts";
 import { writeFileAtomic } from "../lib/atomic.ts";
 import { evaluateAndMaybeSwapCodex } from "../lib/codexdecide.ts";
@@ -9,13 +8,13 @@ import { isCodexExhausted } from "../lib/codexpick.ts";
 import { livingCodexPresences } from "../lib/codexpresence.ts";
 import { liveCodexAccountId } from "../lib/codexsample.ts";
 import { loadCodexAccounts } from "../lib/codexstate.ts";
+import { errorMessage } from "../lib/errors.ts";
+import { tryParseJson, tryReadJson } from "../lib/json.ts";
 import { loadConfig } from "../lib/state.ts";
 import { terminalBars } from "../lib/picker.ts";
 import { CODEX_SUPERVISOR_ID_ENV } from "./codexsupervisor.ts";
-import { CodexReconcileMarkerSchema, CodexRespawnMarkerSchema, CodexStopStdinSchema, type CodexAccount } from "../lib/types.ts";
+import { CodexReconcileMarkerSchema, CodexStopStdinSchema, type CodexAccount, type CodexRespawnMarker } from "../lib/types.ts";
 import { log } from "../lib/log.ts";
-
-const SupervisorIdSchema = z.string().min(1).optional().catch(undefined);
 
 async function promoteReconcile(input: { supervisorId: string; sessionId: string | null }): Promise<boolean> {
   const markerPath = join(codexPaths.reconcileDir, input.supervisorId);
@@ -26,20 +25,14 @@ async function promoteReconcile(input: { supervisorId: string; sessionId: string
 function promoteReconcileLocked(input: { supervisorId: string; sessionId: string | null }): boolean {
   const markerPath = join(codexPaths.reconcileDir, input.supervisorId);
   if (!existsSync(markerPath)) return false;
-  const parsed = CodexReconcileMarkerSchema.safeParse((() => {
-    try {
-      return JSON.parse(readFileSync(markerPath, "utf8"));
-    } catch {
-      return null;
-    }
-  })());
-  if (!parsed.success) {
+  const marker = tryReadJson(markerPath, CodexReconcileMarkerSchema);
+  if (!marker) {
     rmSync(markerPath, { force: true });
     log("codexstop.reconcile_unparsable", {});
     return false;
   }
   const presence = livingCodexPresences().find((p) => p.supervisorId === input.supervisorId) ?? null;
-  if (presence == null || presence.accountId !== parsed.data.accountId) {
+  if (presence == null || presence.accountId !== marker.accountId) {
     rmSync(markerPath, { force: true });
     log("codexstop.reconcile_stale", {});
     return false;
@@ -66,33 +59,18 @@ function promoteReconcileLocked(input: { supervisorId: string; sessionId: string
     return false;
   }
   mkdirSync(codexPaths.respawnDir, { recursive: true });
-  writeFileAtomic(
-    join(codexPaths.respawnDir, input.supervisorId),
-    JSON.stringify(CodexRespawnMarkerSchema.parse({ account: liveAccount.label, sessionId: input.sessionId, ts: now })),
-  );
+  const respawn: CodexRespawnMarker = { account: liveAccount.label, sessionId: input.sessionId, ts: now };
+  writeFileAtomic(join(codexPaths.respawnDir, input.supervisorId), JSON.stringify(respawn));
   rmSync(markerPath, { force: true });
   log("codexstop.reconcile_respawn", { supervisorId: input.supervisorId.slice(0, 8), account: liveId.slice(0, 8) });
   return true;
 }
 
-async function readStdin(): Promise<string> {
-  const chunks: Uint8Array[] = [];
-  for await (const chunk of Bun.stdin.stream()) chunks.push(chunk);
-  return Buffer.concat(chunks).toString("utf8");
-}
-
 export async function handleCodexStop(input: { rawStdin: string }): Promise<void> {
-  const parsed = CodexStopStdinSchema.safeParse((() => {
-    try {
-      return JSON.parse(input.rawStdin);
-    } catch {
-      return {};
-    }
-  })());
-  const sessionId = parsed.success ? (parsed.data.session_id ?? null) : null;
+  const sessionId = tryParseJson(CodexStopStdinSchema, input.rawStdin)?.session_id ?? null;
 
   try {
-    const supervisorId = SupervisorIdSchema.parse(process.env[CODEX_SUPERVISOR_ID_ENV]);
+    const supervisorId = envOverride(CODEX_SUPERVISOR_ID_ENV);
     if (supervisorId === undefined) {
       log("codexstop.unsupervised_skip", {});
       return;
@@ -101,24 +79,20 @@ export async function handleCodexStop(input: { rawStdin: string }): Promise<void
     const decision = await evaluateAndMaybeSwapCodex({});
     if (decision.swapped && decision.account) {
       mkdirSync(codexPaths.respawnDir, { recursive: true });
-      const payload = CodexRespawnMarkerSchema.parse({
-        account: decision.account.label,
-        sessionId,
-        ts: Date.now(),
-      });
+      const payload: CodexRespawnMarker = { account: decision.account.label, sessionId, ts: Date.now() };
       writeFileAtomic(join(codexPaths.respawnDir, supervisorId), JSON.stringify(payload));
       log("codexstop.marker", { supervisorId: supervisorId.slice(0, 8) });
       return;
     }
     await promoteReconcile({ supervisorId, sessionId });
   } catch (e) {
-    log("codexstop.error", { err: e instanceof Error ? e.message : String(e) });
+    log("codexstop.error", { err: errorMessage(e) });
   }
 }
 
 export async function runCodexStopHook(): Promise<number> {
   if (!process.env.TOKENMAXXING_PROBE) {
-    await handleCodexStop({ rawStdin: await readStdin() });
+    await handleCodexStop({ rawStdin: await Bun.stdin.text() });
   }
   process.stdout.write("{}");
   return 0;

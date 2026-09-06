@@ -1,16 +1,17 @@
 import { existsSync, readFileSync } from "node:fs";
-import { verifyRealClaude } from "../lib/claudebin.ts";
+import { verifyRealBin } from "../lib/claudebin.ts";
 import { checkSettings, installedBin } from "../lib/settings.ts";
 import { checkTimerHealthy, findClaudeShadowers, isBinDirAhead, shellRcPath, timerActivationHint } from "../lib/install.ts";
 import { paths } from "../lib/paths.ts";
 import { loadAccounts, loadConfig } from "../lib/state.ts";
-import { readItem, liveTarget, parkedTarget } from "../lib/credstore.ts";
+import { readItem, liveTarget, parkedTarget, parseBlob } from "../lib/credstore.ts";
+import { errorMessage } from "../lib/errors.ts";
 import { isAccessTokenExpiring, fetchTokenIdentity, describeIdentity } from "../lib/oauth.ts";
-import { CredentialBlobSchema, type TokenIdentity } from "../lib/types.ts";
+import type { TokenIdentity } from "../lib/types.ts";
 import { c, emitJson } from "./render.ts";
 
 async function blobIdentity(raw: string): Promise<TokenIdentity | null> {
-  const creds = CredentialBlobSchema.parse(JSON.parse(raw)).claudeAiOauth;
+  const creds = parseBlob(raw).claudeAiOauth;
   if (isAccessTokenExpiring(creds)) return null;
   return fetchTokenIdentity(creds.accessToken);
 }
@@ -58,7 +59,7 @@ export async function cmdDoctor(json = false): Promise<number> {
       if (identity) check(identity.accountUuid === active.accountUuid, `live credential identity matches active (${active.email})`, `token belongs to ${describeIdentity(identity)} - run \`tokenmaxxing switch\``);
       else note("live credential identity unverifiable (access token expired)");
     } catch (e) {
-      check(false, `live credential identity matches active (${active.email})`, (e instanceof Error ? e.message : String(e)).slice(0, 100));
+      check(false, `live credential identity matches active (${active.email})`, errorMessage(e).slice(0, 100));
     }
   }
 
@@ -71,7 +72,7 @@ export async function cmdDoctor(json = false): Promise<number> {
         if (identity) check(identity.accountUuid === a.accountUuid, `parked credential identity matches ${a.email}`, `token belongs to ${describeIdentity(identity)} - run \`tokenmaxxing auth ${a.label}\``);
         else note(`${a.email} identity unverifiable (access token expired)`);
       } catch (e) {
-        check(false, `parked credential identity matches ${a.email}`, (e instanceof Error ? e.message : String(e)).slice(0, 100));
+        check(false, `parked credential identity matches ${a.email}`, errorMessage(e).slice(0, 100));
       }
     }
     if (a.needsReauth) check(false, `${a.email} needs re-auth`, `run \`tokenmaxxing auth ${a.label}\` to re-login`);
@@ -80,7 +81,7 @@ export async function cmdDoctor(json = false): Promise<number> {
   const cfg = loadConfig();
   check(!!cfg.claudeBin && existsSync(cfg.claudeBin), "real claude binary resolved", "set claudeBin in config.json");
   if (cfg.claudeBin && existsSync(cfg.claudeBin)) {
-    const fail = verifyRealClaude(cfg.claudeBin);
+    const fail = verifyRealBin({ name: "claude", bin: cfg.claudeBin });
     check(fail === null, "claudeBin launches the real claude", fail ?? undefined);
   }
 

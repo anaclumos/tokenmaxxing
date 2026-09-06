@@ -1,14 +1,30 @@
 import { clearDepletedWait, clearNextCheck, clearUsageSnapshots, loadAccounts, saveAccounts, saveLastSwapAt } from "./state.ts";
-import { readItem, writeItem, liveTarget, parkedTarget, claudeAiOauthOnly, mergeIntoLive } from "./credstore.ts";
+import { readItem, writeItem, liveTarget, parkedTarget, claudeAiOauthOnly, mergeIntoLive, parseBlob } from "./credstore.ts";
 import { refreshCredential, isAccessTokenExpiring, isDeadCredential, fetchTokenIdentity, describeIdentity, IdentityUnavailableError, InvalidGrantError, RefreshRejectedError } from "./oauth.ts";
 import { swapOAuthAccount } from "./claudejson.ts";
 import { withClaudeRefreshLock } from "./claudelock.ts";
+import { errorMessage } from "./errors.ts";
 import { log } from "./log.ts";
 import { pickBest, type PickCtx } from "./picker.ts";
-import { CredentialBlobSchema, type Account, type OAuthCreds, type TokenIdentity } from "./types.ts";
+import type { Account, OAuthCreds, TokenIdentity } from "./types.ts";
 
-function parseBlob(raw: string) {
-  return CredentialBlobSchema.parse(JSON.parse(raw));
+export async function ensureLiveTokenFresh(input: { skewMs: number }): Promise<OAuthCreds | null> {
+  const liveRaw = await readItem(liveTarget());
+  if (liveRaw == null) return null;
+  const creds = parseBlob(liveRaw).claudeAiOauth;
+  if (isDeadCredential(creds)) throw new InvalidGrantError("live credential was cleared after a failed refresh");
+  if (!isAccessTokenExpiring(creds, input.skewMs)) return creds;
+  return withClaudeRefreshLock(async (lock) => {
+    const raw2 = await readItem(liveTarget());
+    if (raw2 == null) throw new Error("live credential vanished while waiting for the refresh lock");
+    const current = parseBlob(raw2).claudeAiOauth;
+    if (isDeadCredential(current)) throw new InvalidGrantError("live credential was cleared after a failed refresh");
+    if (!isAccessTokenExpiring(current, input.skewMs)) return current;
+    const next = await refreshCredential(current);
+    if (lock.compromised()) throw new Error("refresh lock compromised mid-refresh - discarding the live rewrite");
+    await writeItem(liveTarget(), mergeIntoLive(raw2, next));
+    return next;
+  });
 }
 
 export async function performSwap(target: Account): Promise<void> {
@@ -26,17 +42,10 @@ export async function performSwap(target: Account): Promise<void> {
       log("swap.live_dead", {});
     } else if (isAccessTokenExpiring(liveCreds, 60_000)) {
       try {
-        await withClaudeRefreshLock(async (lock) => {
-          const raw2 = await readItem(liveTarget());
-          if (raw2 == null) throw new Error("live credential vanished while waiting for the refresh lock");
-          const current = parseBlob(raw2).claudeAiOauth;
-          const next = isAccessTokenExpiring(current, 60_000) ? await refreshCredential(current) : current;
-          liveCreds = next;
-          expectedLiveToken = next.accessToken;
-          if (next === current) return;
-          if (lock.compromised()) throw new Error("refresh lock compromised mid-refresh - discarding the live rewrite");
-          await writeItem(liveTarget(), mergeIntoLive(raw2, next));
-        });
+        const next = await ensureLiveTokenFresh({ skewMs: 60_000 });
+        if (next == null) throw new Error("live credential vanished while waiting for the refresh lock");
+        liveCreds = next;
+        expectedLiveToken = next.accessToken;
       } catch (e) {
         if (!(e instanceof InvalidGrantError)) throw e;
         liveCreds = null;
@@ -48,7 +57,7 @@ export async function performSwap(target: Account): Promise<void> {
       try {
         identity = await fetchTokenIdentity(liveCreds.accessToken);
       } catch (e) {
-        throw new Error(`cannot resolve the live credential's owner (${e instanceof Error ? e.message : String(e)}) - refusing to swap over it; the next check retries`);
+        throw new Error(`cannot resolve the live credential's owner (${errorMessage(e)}) - refusing to swap over it; the next check retries`);
       }
       liveOwner = idx.accounts.find((a) => a.accountUuid === identity.accountUuid) ?? null;
       if (!liveOwner) {
@@ -114,7 +123,7 @@ export async function performSwap(target: Account): Promise<void> {
           freshOwner = await fetchTokenIdentity(rotated.accessToken);
         } catch (e) {
           await writeItem(parkedTarget(target.keychainItem), JSON.stringify({ claudeAiOauth: rotated }));
-          throw new Error(`refreshed the parked credential but cannot verify its owner (${e instanceof Error ? e.message : String(e)}) - kept the rotated token parked; the next check retries`);
+          throw new Error(`refreshed the parked credential but cannot verify its owner (${errorMessage(e)}) - kept the rotated token parked; the next check retries`);
         }
         if (freshOwner.accountUuid !== target.accountUuid) {
           const owner = idx.accounts.find((a) => a.accountUuid === freshOwner.accountUuid) ?? null;
@@ -188,7 +197,7 @@ export async function keepRotatedPair(input: {
     return "was installed into the live store so that account's sessions continue";
   } catch (e) {
     await park();
-    return `was parked under that account (${e instanceof Error ? e.message : String(e)})`;
+    return `was parked under that account (${errorMessage(e)})`;
   }
 }
 
@@ -213,4 +222,3 @@ export async function chooseAndSwap(ctx: PickCtx, exclude: ReadonlySet<string> =
     }
   }
 }
-
