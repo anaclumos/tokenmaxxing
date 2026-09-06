@@ -277,7 +277,7 @@ type Card = { lines: string[]; notes: Note[] };
 function wrapWords(text: string, width: number): string[] {
   const out: string[] = [];
   let line = "";
-  for (const word of text.split(" ")) {
+  for (const word of text.split(" ").flatMap((token) => (Bun.stringWidth(token) > width ? chunk(Array.from(token), width).map((part) => part.join("")) : [token]))) {
     if (line !== "" && Bun.stringWidth(`${line} ${word}`) > width) {
       out.push(line);
       line = word;
