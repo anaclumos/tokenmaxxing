@@ -75,7 +75,7 @@ Source-verified against rust-v0.144.5 (2026-07-16); the installed CLI is 0.145.0
 Ship = work on a branch, bump `package.json` and `agent-plugin/plugin.json` to the same version in the same PR, open the PR, make CI pass, wait out the review window, handle every review (fix, or refute with reasons), merge, `gh release create v<version>`, verify the npm publish landed, then tear down. A merge without a publish is not shipped. This repo merges its own PRs, which overrides the global "open the PR and stop". Detail: `.memory/shipping-pr-based.md`.
 
 - Never push work directly to main.
-- The 10-minute review window is a fixed timer from the last push. It always runs its full length; green checks never shorten it, because reviewers post findings after their checks pass.
+- The review window is 10 minutes of reviewer silence, babysat every minute: poll the PR each minute for new reviews, comments, check results, and merge state, handle whatever appears (fix or refute, resolve conflicts, fix CI), and merge only after 10 consecutive quiet minutes. Every new item restarts the clock. Green checks never shorten it, because reviewers post findings after their checks pass.
 - npm trusted publishing is bound to the literal workflow filename `ci.yml`. Renaming it silently breaks publishing.
 - `bun add -g <local .tgz>` over an existing global errors `DependencyLoop`. Run `bun remove -g` first.
 
