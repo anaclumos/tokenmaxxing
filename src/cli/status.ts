@@ -1,4 +1,4 @@
-import { sampleSize, sortBy } from "es-toolkit";
+import { chunk, sampleSize, sortBy } from "es-toolkit";
 import { z } from "zod";
 import { loadAccounts, loadConfig, loadUsage, loadUsageSnapshot, loadModelUsage, saveAccounts } from "../lib/state.ts";
 import { readOAuthAccount } from "../lib/claudejson.ts";
@@ -10,7 +10,7 @@ import { loadCodexAccounts, saveCodexAccounts } from "../lib/codexstate.ts";
 import { liveCodexAccountId, sampleCodexAccount, type CodexSampleOutcome } from "../lib/codexsample.ts";
 import { isCodexExhausted } from "../lib/codexpick.ts";
 import { codexLimitLabel, isSessionWindow } from "../lib/codexusage.ts";
-import { bar, c, claudeTierLabel, count, emitJson, fmtAgo, fmtReset } from "./render.ts";
+import { bar, c, claudeTierLabel, count, emitJson, fmtAgo } from "./render.ts";
 import { gatedFamilies, type FullUsage } from "../lib/usage.ts";
 import { ThresholdsSchema, UsageWindowSchema, type Account, type CodexWindow, type Config, type UsageWindow } from "../lib/types.ts";
 
@@ -268,48 +268,124 @@ async function collectCodex(input: { cfg: Config; now: number }): Promise<Status
   return { bars, accounts };
 }
 
-function renderCodex(input: { codex: StatusReport["codex"]; now: number; row: (name: string, w: UsageWindow) => void }): void {
-  const { codex, now, row } = input;
-  if (codex.accounts.length === 0) return;
-  console.log(c.dim(`codex  (${count({ n: codex.accounts.length, noun: "account" })})`));
-  console.log();
-  const windowLabel = (window: CodexWindow) =>
-    isSessionWindow({ window }) ? `${Math.round((window.windowSeconds ?? 0) / 3600)}h` : "week";
-  for (const account of codex.accounts) {
-    const marker = account.active ? c.green("●") : c.dim("○");
-    const badges: string[] = [];
-    if (account.active) badges.push(c.green("active"));
-    if (account.needsReauth) badges.push(c.red("needs-reauth"));
-    if (account.exhausted) badges.push(c.yellow("exhausted"));
-    console.log(`${marker} ${c.bold(account.label)}${account.planType ? ` ${c.dim(account.planType)}` : ""}${badges.length ? ` ${badges.join(" ")}` : ""}`);
-    if (account.usage) {
-      for (const window of account.usage.aggregate) row(windowLabel(window), window);
-      for (const [name, windows] of Object.entries(account.usage.perLimit)) {
-        for (const window of windows) row(codexLimitLabel({ limitName: name }), window);
-      }
+const CARD_GAP = 3;
+const NOTE_INDENT = "    ";
+
+type Note = { paint: (s: string) => string; text: string };
+type Card = { lines: string[]; notes: Note[] };
+
+function wrapWords(text: string, width: number): string[] {
+  const out: string[] = [];
+  let line = "";
+  for (const word of text.split(" ")) {
+    if (line !== "" && Bun.stringWidth(`${line} ${word}`) > width) {
+      out.push(line);
+      line = word;
+    } else {
+      line = line === "" ? word : `${line} ${word}`;
     }
-    if (!account.sample.ok) {
-      const cached = account.usage ? `cached${account.usageAt != null ? ` ${fmtAgo(account.usageAt, now)}` : ""}, ` : "";
-      console.log(`    ${c.yellow(`${cached}live sample failed`)}: ${c.dim(account.sample.reason)}`);
+  }
+  if (line !== "") out.push(line);
+  return out;
+}
+
+function renderGrid(cards: Card[]): void {
+  const bodyWidth = Math.max(...cards.flatMap((card) => card.lines.map((line) => Bun.stringWidth(line))));
+  const termWidth = process.stdout.isTTY ? process.stdout.columns : Number.POSITIVE_INFINITY;
+  const columns = process.stdout.isTTY ? Math.min(cards.length, Math.max(1, Math.floor((termWidth + CARD_GAP) / (bodyWidth + CARD_GAP)))) : 1;
+  const cellWidth = columns === 1 ? termWidth : Math.floor((termWidth + CARD_GAP) / columns) - CARD_GAP;
+  const blocks = cards.map((card) => [
+    ...card.lines,
+    ...card.notes.flatMap((note) => wrapWords(note.text, cellWidth - NOTE_INDENT.length).map((line) => `${NOTE_INDENT}${note.paint(line)}`)),
+  ]);
+  const width = Math.max(...blocks.flat().map((line) => Bun.stringWidth(line)));
+  for (const rowBlocks of chunk(blocks, columns)) {
+    const height = Math.max(...rowBlocks.map((block) => block.length));
+    for (let i = 0; i < height; i++) {
+      const cells = rowBlocks.map((block) => block[i] ?? "");
+      const padded = cells.map((cell, col) => (col === cells.length - 1 ? cell : cell + " ".repeat(Math.max(0, width + CARD_GAP - Bun.stringWidth(cell)))));
+      console.log(padded.join("").trimEnd());
     }
     console.log();
   }
 }
 
-function rowPrinter(now: number): (name: string, w: UsageWindow) => void {
-  return (name, w) => {
-    console.log(`    ${name.padEnd(5)} ${bar(w.usedPercentage)}  ${c.dim(fmtReset(w.resetsAt, now))}`);
-  };
+function usageRow(name: string, w: UsageWindow): string {
+  return `${NOTE_INDENT}${name.padEnd(5)} ${bar(w.usedPercentage)}`;
 }
 
-function renderClaude(input: {
-  claude: StatusReport["claude"];
-  codexPooled: boolean;
-  now: number;
-  staleAfterMs: number;
-  row: (name: string, w: UsageWindow) => void;
-}): void {
-  const { claude, codexPooled, now, staleAfterMs, row } = input;
+function sampleFailedNotes(input: { cached: boolean; usageAt: number | null; reason: string; now: number }): Note[] {
+  const cached = input.cached ? `cached${input.usageAt != null ? ` ${fmtAgo(input.usageAt, input.now)}` : ""}, ` : "";
+  return [
+    { paint: c.yellow, text: `${cached}live sample failed:` },
+    { paint: c.dim, text: input.reason },
+  ];
+}
+
+function headerLine(input: { active: boolean; needsReauth: boolean; exhausted: boolean; name: string; tier: string | null }): string {
+  const marker = input.active ? c.green("●") : c.dim("○");
+  const badges: string[] = [];
+  if (input.active) badges.push(c.green("active"));
+  if (input.needsReauth) badges.push(c.red("needs-reauth"));
+  if (input.exhausted) badges.push(c.yellow("exhausted"));
+  return `${marker} ${c.bold(input.name)}${input.tier ? ` ${c.dim(input.tier)}` : ""}${badges.length ? ` ${badges.join(" ")}` : ""}`;
+}
+
+function codexCard(account: CodexStatusAccount, now: number): Card {
+  const windowLabel = (window: CodexWindow) =>
+    isSessionWindow({ window }) ? `${Math.round((window.windowSeconds ?? 0) / 3600)}h` : "week";
+  const lines = [headerLine({ ...account, name: account.label, tier: account.planType })];
+  if (account.usage) {
+    for (const window of account.usage.aggregate) lines.push(usageRow(windowLabel(window), window));
+    for (const [name, windows] of Object.entries(account.usage.perLimit)) {
+      for (const window of windows) lines.push(usageRow(codexLimitLabel({ limitName: name }), window));
+    }
+  }
+  const notes = account.sample.ok ? [] : sampleFailedNotes({ cached: account.usage != null, usageAt: account.usageAt, reason: account.sample.reason, now });
+  return { lines, notes };
+}
+
+function renderCodex(input: { codex: StatusReport["codex"]; now: number }): void {
+  const { codex, now } = input;
+  if (codex.accounts.length === 0) return;
+  console.log(c.dim(`codex  (${count({ n: codex.accounts.length, noun: "account" })})`));
+  console.log();
+  renderGrid(codex.accounts.map((account) => codexCard(account, now)));
+}
+
+function claudeCard(a: ClaudeStatusAccount, now: number, staleAfterMs: number): Card {
+  const lines = [headerLine({ ...a, name: a.label || a.email })];
+  if (a.usage) {
+    lines.push(usageRow("5h", a.usage.fiveHour));
+    lines.push(usageRow("week", a.usage.week));
+  }
+  for (const [name, w] of Object.entries(a.perModel)) lines.push(usageRow(name.toLowerCase(), w));
+  const notes: Note[] = [];
+  if (a.sample.ok && a.sample.source === "statusline") {
+    const stale = a.usageAt == null || now - a.usageAt > staleAfterMs;
+    const age = a.usageAt != null ? fmtAgo(a.usageAt, now) : "age unknown";
+    notes.push({ paint: stale ? c.yellow : c.dim, text: `statusline tee ${age}${stale ? " (stale)" : ""}` });
+  }
+  if (!a.sample.ok) {
+    notes.push(...sampleFailedNotes({ cached: a.usage != null || Object.keys(a.perModel).length > 0, usageAt: a.usageAt, reason: a.sample.reason, now }));
+  }
+  if (a.pingError != null && a.pingRejected) {
+    const at = a.pingError.indexOf(": ");
+    const head = at >= 0 ? a.pingError.slice(0, at) : a.pingError;
+    const tail = at >= 0 ? a.pingError.slice(at + 2) : "";
+    notes.push({ paint: c.yellow, text: `ping ${head}${tail ? ":" : ""}` });
+    if (tail) notes.push({ paint: c.dim, text: tail });
+  } else if (a.pingError != null) {
+    notes.push({ paint: c.yellow, text: "ping failed (5h timer may not have started):" }, { paint: c.dim, text: a.pingError });
+  }
+  if (a.pinged) {
+    notes.push({ paint: c.dim, text: "pinged - 5h timer started this run; the usage feed lags, re-run status shortly for the fresh window" });
+  }
+  return { lines, notes };
+}
+
+function renderClaude(input: { claude: StatusReport["claude"]; codexPooled: boolean; now: number; staleAfterMs: number }): void {
+  const { claude, codexPooled, now, staleAfterMs } = input;
   if (claude.accounts.length === 0) {
     if (!codexPooled) {
       console.log(c.dim("no accounts yet, run `tokenmaxxing init` (or `tokenmaxxing init --codex`)"));
@@ -322,40 +398,7 @@ function renderClaude(input: {
 
   console.log(c.dim(`thresholds 5h ${claude.thresholds.session.join("/")}% (at ${claude.bars.session + claude.projectionMargin}%) weekly ${claude.thresholds.weekly}%  (${count({ n: claude.accounts.length, noun: "claude account" })})`));
   console.log();
-  for (const a of claude.accounts) {
-    const marker = a.active ? c.green("●") : c.dim("○");
-    const badges: string[] = [];
-    if (a.active) badges.push(c.green("active"));
-    if (a.needsReauth) badges.push(c.red("needs-reauth"));
-    if (a.exhausted) badges.push(c.yellow("exhausted"));
-    console.log(`${marker} ${c.bold(a.label || a.email)}${a.tier ? ` ${c.dim(a.tier)}` : ""}${badges.length ? ` ${badges.join(" ")}` : ""}`);
-    if (a.usage) {
-      row("5h", a.usage.fiveHour);
-      row("week", a.usage.week);
-    }
-    for (const [name, w] of Object.entries(a.perModel)) row(name.toLowerCase(), w);
-    if (a.sample.ok && a.sample.source === "statusline") {
-      const stale = a.usageAt == null || now - a.usageAt > staleAfterMs;
-      const age = a.usageAt != null ? fmtAgo(a.usageAt, now) : "age unknown";
-      console.log(`    ${(stale ? c.yellow : c.dim)(`statusline tee ${age}${stale ? " (stale)" : ""}`)}`);
-    }
-    if (!a.sample.ok) {
-      const cached = a.usage || Object.keys(a.perModel).length > 0 ? `cached${a.usageAt != null ? ` ${fmtAgo(a.usageAt, now)}` : ""}, ` : "";
-      console.log(`    ${c.yellow(`${cached}live sample failed`)}: ${c.dim(a.sample.reason)}`);
-    }
-    if (a.pingError != null && a.pingRejected) {
-      const at = a.pingError.indexOf(": ");
-      const head = at >= 0 ? a.pingError.slice(0, at) : a.pingError;
-      const tail = at >= 0 ? a.pingError.slice(at + 2) : "";
-      console.log(`    ${c.yellow(`ping ${head}`)}${tail ? `: ${c.dim(tail)}` : ""}`);
-    } else if (a.pingError != null) {
-      console.log(`    ${c.yellow("ping failed (5h timer may not have started)")}: ${c.dim(a.pingError)}`);
-    }
-    if (a.pinged) {
-      console.log(`    ${c.dim("pinged - 5h timer started this run; the usage feed lags, re-run status shortly for the fresh window")}`);
-    }
-    console.log();
-  }
+  renderGrid(claude.accounts.map((a) => claudeCard(a, now, staleAfterMs)));
 }
 
 export async function cmdStatus(opts: { ping?: boolean; pingCount?: number; json?: boolean; preRender?: () => void } = {}): Promise<number> {
@@ -366,7 +409,7 @@ export async function cmdStatus(opts: { ping?: boolean; pingCount?: number; json
   if (!json) {
     opts.preRender?.();
     const at = Date.now();
-    renderClaude({ claude, codexPooled: loadCodexAccounts().accounts.length > 0, now: at, staleAfterMs: cfg.policy.usagePollTtlMs, row: rowPrinter(at) });
+    renderClaude({ claude, codexPooled: loadCodexAccounts().accounts.length > 0, now: at, staleAfterMs: cfg.policy.usagePollTtlMs });
   }
   const codex = await collectCodex({ cfg, now });
   if (json) {
@@ -374,7 +417,6 @@ export async function cmdStatus(opts: { ping?: boolean; pingCount?: number; json
     emitJson({ ok: true, ...report });
     return 0;
   }
-  const at = Date.now();
-  renderCodex({ codex, now: at, row: rowPrinter(at) });
+  renderCodex({ codex, now: Date.now() });
   return 0;
 }
