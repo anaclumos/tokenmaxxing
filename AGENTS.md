@@ -28,11 +28,11 @@ No external installed user base, so this is pre-production code: delete old-stat
 
 ## Credentials and identity
 
-- Identity is whatever `fetchTokenOrg` reports, never a stored label and never a blob comparison. Two rotations of one account's token differ byte-for-byte. Park a credential under its token's real owner, and commit the active label inside the same critical section as the credential writes.
+- Identity is the `accountUuid` that `fetchTokenIdentity` reports for a token (`GET /api/oauth/profile`), never the organization, never a stored label, and never a blob comparison. Team seats share one `organizationUuid`, so an org-keyed lookup collapses every seat onto the first one in the array: all seats read as active, share the tee, and the harvest lands in the wrong slot (2026-09-06). Two rotations of one account's token differ byte-for-byte. Park a credential under its token's real owner, and commit the active label inside the same critical section as the credential writes.
 - Every live-store write goes through `withClaudeRefreshLock`. A near-expiry session can rotate its own token into the live store at any moment.
 - An ambient `CLAUDE_CONFIG_DIR` or `CLAUDE_SECURESTORAGE_CONFIG_DIR` is refused, in CLI commands and in `pooledSpawnEnv` alike: on Linux the swap would write where the ambient var points while the child reads the default store, a silent wrong-account desync.
 - A missing namespaced keychain item never falls back to the live one, so isolation is sound once the probe env is scrubbed.
-- The same accounts are pooled on several hosts with no cross-host lock, so two hosts refreshing one account race: on Claude that surfaces as needs-reauth churn, on Codex it kills the grant family. Documented, not engineered around (`docs/limitations.mdx`).
+- The same accounts are pooled on several hosts with no cross-host lock, so two hosts refreshing one account race: on Claude a refresh rotation revokes the previous access token at once (verified 2026-09-06), so the other host's sessions 401 and its stale refresh token is `invalid_grant`; on Codex it kills the grant family. Documented, not engineered around (`docs/limitations.mdx`).
 
 ## Switching
 

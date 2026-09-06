@@ -42,7 +42,7 @@ const ModelInfoSchema = z.object({ id: z.string(), display: z.string() });
 export type ModelInfo = z.infer<typeof ModelInfoSchema>;
 
 export const UsageStateSchema = UsageWindowsSchema.extend({
-  org: z.string().nullable(),
+  account: z.string().nullable(),
   ts: z.number(),
   model: ModelInfoSchema.nullable().default(null),
 });
@@ -50,7 +50,7 @@ export type UsageState = z.infer<typeof UsageStateSchema>;
 
 export const ModelUsageStateSchema = z.object({
   perModel: z.record(z.string(), UsageWindowSchema).default({}),
-  org: z.string().nullable(),
+  account: z.string().nullable(),
   ts: z.number(),
   sampledAt: z.number().optional(),
 });
@@ -87,7 +87,7 @@ export type AccountsIndex = z.infer<typeof AccountsIndexSchema>;
 export const NextCheckSchema = z.object({ dueAt: z.number(), ts: z.number() });
 
 export const EnforcedLimitSchema = z.object({
-  org: z.string(),
+  account: z.string(),
   family: z.string().nullable(),
   resetsAt: z.number().nullable(),
   windowMs: z.number(),
@@ -153,7 +153,6 @@ export const RateLimitsStdinSchema = z.looseObject({
     })
     .optional(),
   model: z.looseObject({ id: z.string().optional(), display_name: z.string().optional() }).optional(),
-  organizationUuid: z.string().optional(),
 });
 
 export const StatusLineStdinSchema = RateLimitsStdinSchema.extend({
@@ -204,11 +203,18 @@ export const RefreshResponseSchema = z.looseObject({
   token_type: z.string().optional(),
 });
 
-export const RolesResponseSchema = z.looseObject({
-  organization_uuid: z.string(),
-  organization_name: z.string(),
+export const ProfileResponseSchema = z.looseObject({
+  account: z.looseObject({ uuid: z.string(), email: z.string().nullish() }),
+  organization: z.looseObject({ uuid: z.string(), name: z.string().nullish() }),
 });
-export type RolesResponse = z.infer<typeof RolesResponseSchema>;
+
+export const TokenIdentitySchema = z.object({
+  accountUuid: z.string(),
+  email: z.string().nullable(),
+  organizationUuid: z.string(),
+  organizationName: z.string().nullable(),
+});
+export type TokenIdentity = z.infer<typeof TokenIdentitySchema>;
 
 const CodexTokensSchema = z.looseObject({
   id_token: z.string(),

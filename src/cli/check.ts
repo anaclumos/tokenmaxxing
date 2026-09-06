@@ -23,7 +23,7 @@ export async function cmdCheck(args: string[] = [], json = false): Promise<numbe
     emitError({ json, message: `check failed: ${detail}` });
     return 1;
   }
-  const delayMs = checkDelayMs({ cfg, org: readOAuthAccount()?.organizationUuid ?? null, now, decision: d });
+  const delayMs = checkDelayMs({ cfg, account: readOAuthAccount()?.accountUuid ?? null, now, decision: d });
   saveNextCheckDueAt({ dueAt: now + delayMs, ts: now });
   if (json) {
     emitJson({

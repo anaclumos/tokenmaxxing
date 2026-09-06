@@ -5,14 +5,14 @@ import { checkTimerHealthy, findClaudeShadowers, isBinDirAhead, shellRcPath, tim
 import { paths } from "../lib/paths.ts";
 import { loadAccounts, loadConfig } from "../lib/state.ts";
 import { readItem, liveTarget, parkedTarget } from "../lib/credstore.ts";
-import { isAccessTokenExpiring, fetchTokenOrg } from "../lib/oauth.ts";
-import { CredentialBlobSchema, type RolesResponse } from "../lib/types.ts";
+import { isAccessTokenExpiring, fetchTokenIdentity, describeIdentity } from "../lib/oauth.ts";
+import { CredentialBlobSchema, type TokenIdentity } from "../lib/types.ts";
 import { c, emitJson } from "./render.ts";
 
-async function blobOrg(raw: string): Promise<RolesResponse | null> {
+async function blobIdentity(raw: string): Promise<TokenIdentity | null> {
   const creds = CredentialBlobSchema.parse(JSON.parse(raw)).claudeAiOauth;
   if (isAccessTokenExpiring(creds)) return null;
-  return fetchTokenOrg(creds.accessToken);
+  return fetchTokenIdentity(creds.accessToken);
 }
 
 export async function cmdDoctor(json = false): Promise<number> {
@@ -54,8 +54,8 @@ export async function cmdDoctor(json = false): Promise<number> {
   const active = idx.accounts.find((a) => a.accountUuid === idx.activeAccountUuid);
   if (live && active) {
     try {
-      const org = await blobOrg(live);
-      if (org) check(org.organization_uuid === active.organizationUuid, `live credential identity matches active (${active.email})`, `token belongs to ${org.organization_name} - run \`tokenmaxxing switch\``);
+      const identity = await blobIdentity(live);
+      if (identity) check(identity.accountUuid === active.accountUuid, `live credential identity matches active (${active.email})`, `token belongs to ${describeIdentity(identity)} - run \`tokenmaxxing switch\``);
       else note("live credential identity unverifiable (access token expired)");
     } catch (e) {
       check(false, `live credential identity matches active (${active.email})`, (e instanceof Error ? e.message : String(e)).slice(0, 100));
@@ -67,8 +67,8 @@ export async function cmdDoctor(json = false): Promise<number> {
     check(!!parked, `parked credential present for ${a.email}`, `run \`tokenmaxxing auth ${a.label}\``);
     if (parked) {
       try {
-        const org = await blobOrg(parked);
-        if (org) check(org.organization_uuid === a.organizationUuid, `parked credential identity matches ${a.email}`, `token belongs to ${org.organization_name} - run \`tokenmaxxing auth ${a.label}\``);
+        const identity = await blobIdentity(parked);
+        if (identity) check(identity.accountUuid === a.accountUuid, `parked credential identity matches ${a.email}`, `token belongs to ${describeIdentity(identity)} - run \`tokenmaxxing auth ${a.label}\``);
         else note(`${a.email} identity unverifiable (access token expired)`);
       } catch (e) {
         check(false, `parked credential identity matches ${a.email}`, (e instanceof Error ? e.message : String(e)).slice(0, 100));

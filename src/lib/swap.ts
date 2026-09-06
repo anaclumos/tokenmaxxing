@@ -1,6 +1,6 @@
 import { clearDepletedWait, clearNextCheck, clearUsageSnapshots, loadAccounts, saveAccounts, saveLastSwapAt } from "./state.ts";
 import { readItem, writeItem, liveTarget, parkedTarget, claudeAiOauthOnly, mergeIntoLive } from "./credstore.ts";
-import { refreshCredential, isAccessTokenExpiring, fetchTokenOrg, InvalidGrantError } from "./oauth.ts";
+import { refreshCredential, isAccessTokenExpiring, fetchTokenIdentity, describeIdentity, InvalidGrantError } from "./oauth.ts";
 import { swapOAuthAccount } from "./claudejson.ts";
 import { withClaudeRefreshLock } from "./claudelock.ts";
 import { log } from "./log.ts";
@@ -41,11 +41,11 @@ export async function performSwap(target: Account): Promise<void> {
       }
     }
     if (liveCreds != null) {
-      const org = await fetchTokenOrg(liveCreds.accessToken);
-      liveOwner = idx.accounts.find((a) => a.organizationUuid === org.organization_uuid) ?? null;
+      const identity = await fetchTokenIdentity(liveCreds.accessToken);
+      liveOwner = idx.accounts.find((a) => a.accountUuid === identity.accountUuid) ?? null;
       if (!liveOwner) {
         throw new Error(
-          `live credential belongs to ${org.organization_name} (org ${org.organization_uuid.slice(0, 8)}), which is not in the pool - refusing to swap over it; import it first with \`tokenmaxxing add\``,
+          `live credential belongs to ${describeIdentity(identity)}, which is not in the pool - refusing to swap over it; import it first with \`tokenmaxxing add\``,
         );
       }
       if (liveOwner.accountUuid !== idx.activeAccountUuid) {

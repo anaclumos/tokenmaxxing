@@ -1,7 +1,7 @@
 import { mkdirSync } from "node:fs";
 import { isApiKeyMode, readOAuthAccount } from "../lib/claudejson.ts";
 import { readItem, writeItem, liveTarget, parkedTarget, mergeIntoLive } from "../lib/credstore.ts";
-import { refreshCredential, isAccessTokenExpiring, fetchTokenOrg } from "../lib/oauth.ts";
+import { refreshCredential, isAccessTokenExpiring, fetchTokenIdentity, describeIdentity } from "../lib/oauth.ts";
 import { withClaudeRefreshLock } from "../lib/claudelock.ts";
 import { loadAccounts, saveAccounts, loadConfig, pinBinOverride } from "../lib/state.ts";
 import { withLock } from "../lib/lock.ts";
@@ -94,9 +94,9 @@ export async function cmdInit(): Promise<number> {
       await writeItem(liveTarget(), mergeIntoLive(raw2, creds));
     });
   }
-  const org = await fetchTokenOrg(creds.accessToken);
-  if (org.organization_uuid !== oauthAccount.organizationUuid) {
-    console.error(c.red(`the live credential belongs to ${org.organization_name}, but ~/.claude.json identifies ${oauthAccount.emailAddress} - identity drift.`));
+  const identity = await fetchTokenIdentity(creds.accessToken);
+  if (identity.accountUuid !== oauthAccount.accountUuid) {
+    console.error(c.red(`the live credential belongs to ${describeIdentity(identity)}, but ~/.claude.json identifies ${oauthAccount.emailAddress} - identity drift.`));
     console.error(`Run ${c.cyan("claude")} → ${c.cyan("/login")} to realign them, then re-run ${c.cyan("tokenmaxxing init")}.`);
     return 1;
   }

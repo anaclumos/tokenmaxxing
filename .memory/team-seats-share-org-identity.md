@@ -1,0 +1,17 @@
+---
+name: team-seats-share-org-identity
+description: 2026-09-06 incident behind 1.17.0 - six Team-plan seats share one organizationUuid, so the org-keyed identity collapsed them onto one account (all active, shared tee, harvest into the wrong slot, the live seat's own token refreshed as a target); identity is the account uuid from GET /api/oauth/profile
+metadata:
+  type: project
+---
+
+**What happened (2026-09-06, 1.15.0 on a Linux host):** the owner pooled six seats of one Claude Team organization. Every identity site keyed on `organizationUuid`: the live seat lookup (`accounts.find(a => a.organizationUuid === org)` returns the FIRST seat in array order), the tee match (`usage.json.org`), `overlayLive`, the enforced-limit stamp, `checkIdentity`, and the swap's live-owner resolution through the roles endpoint. Consequences, all observed: `status` marked every seat active and gave all six the live tee's numbers; the enforced 5h stamp landed on the first seat of the org rather than the live one; after a swap onto a second seat the hard path resolved the seat as the first one, excluded it, and picked the ACTUALLY live seat as the swap target, so `performSwap` refreshed the live seat's own parked copy; the harvest wrote the live blob into the first seat's slot, so that seat's only credential was overwritten and later revoked by a rotation (its slot now 401s "OAuth access token has been revoked"); every hook and check for four minutes failed with `token refresh failed (HTTP 400): (unparsable error body withheld)` because the 400 body was the nested Anthropic shape the error parser did not read (separate follow-up release).
+
+**Rules shipped in 1.17.0:**
+- Identity is `account.uuid` from `GET https://api.anthropic.com/api/oauth/profile` (`fetchTokenIdentity`), the endpoint Claude Code itself uses to fill `oauthAccount`. The organization is informational only. Every former `organizationUuid` comparison now compares `accountUuid`; the tee and model-usage files carry `account` instead of `org`; `EnforcedLimit.account`; the stamp outcome `org-moved` became `account-moved`.
+- The live seat without a network call is `readOAuthAccount().accountUuid` from `~/.claude.json`, which both `/login` and the swap write.
+- A refresh rotation revokes the previous access token immediately (verified by rotating a parked seat and re-reading the profile with the old token). Refreshing any copy of a credential that is live somewhere else (another host, or the live seat itself when identity mis-resolves) kills those sessions' token. Cross-host pooling on Claude therefore means 401s on the other host plus `invalid_grant` on its stale refresh token, not just churn; `docs/limitations.mdx` and AGENTS.md say so.
+
+**Repair after the incident:** the seat whose slot was overwritten needs `tokenmaxxing auth <label>`; every other slot was re-verified by resolving each parked token through the profile endpoint (a free read). A host running an older npm global keeps executing the org-keyed code until the owner updates it; the periodic timer there swapped seats twice more during the fix.
+
+**How to apply:** never key anything on the organization; a pool may hold several accounts with one `organizationUuid`. When a hermetic scenario needs the team case, seed two accounts with the same `organizationUuid` and different `accountUuid`s (see [[hermetic-ladder-verification]]). Endpoint facts and the token endpoint error shapes live in [[cc-codex-auth-mechanics]].

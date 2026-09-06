@@ -36,22 +36,22 @@ function capForFamily(mu: ModelUsageState, family: string, now: number): UsageWi
   return maxBy(rows, (w) => liveUsed({ window: w, windowMs: WEEK_MS, sampledAt: mu.sampledAt ?? mu.ts, now }));
 }
 
-function overlayLive(accounts: Account[], u: UsageState | null, mu: ModelUsageState | null, org: string | null): Account[] {
+function overlayLive(accounts: Account[], u: UsageState | null, mu: ModelUsageState | null, account: string | null): Account[] {
   return accounts.map((a) => {
-    if (org == null || a.organizationUuid !== org) return a;
-    const live = u && u.org === org ? { lastUsage: { fiveHour: u.fiveHour, sevenDay: u.sevenDay }, lastUsageAt: u.ts } : {};
-    const perModel = mu && mu.org === org && Object.keys(mu.perModel).length > 0 ? { lastPerModel: mu.perModel, lastPerModelAt: mu.sampledAt ?? mu.ts } : {};
+    if (account == null || a.accountUuid !== account) return a;
+    const live = u && u.account === account ? { lastUsage: { fiveHour: u.fiveHour, sevenDay: u.sevenDay }, lastUsageAt: u.ts } : {};
+    const perModel = mu && mu.account === account && Object.keys(mu.perModel).length > 0 ? { lastPerModel: mu.perModel, lastPerModelAt: mu.sampledAt ?? mu.ts } : {};
     return { ...a, ...live, ...perModel };
   });
 }
 
-function isOver(u: UsageState | null, mu: ModelUsageState | null, org: string | null, bars: Thresholds, cfg: Config, now: number): boolean {
-  if (!u || !org || u.org !== org) return false;
+function isOver(u: UsageState | null, mu: ModelUsageState | null, account: string | null, bars: Thresholds, cfg: Config, now: number): boolean {
+  if (!u || !account || u.account !== account) return false;
   if (
     liveUsed({ window: u.fiveHour, windowMs: FIVE_HOURS_MS, sampledAt: u.ts, now }) >= bars.session ||
     liveUsed({ window: u.sevenDay, windowMs: WEEK_MS, sampledAt: u.ts, now }) >= bars.weekly
   ) return true;
-  if (mu && mu.org === org) {
+  if (mu && mu.account === account) {
     for (const family of gatedFamilies(u.model, cfg.policy.switchModels)) {
       const cap = capForFamily(mu, family, now);
       if (cap && liveUsed({ window: cap, windowMs: WEEK_MS, sampledAt: mu.sampledAt ?? mu.ts, now }) >= bars.weekly) return true;
@@ -64,9 +64,9 @@ function needsPerModel(u: UsageState | null, cfg: Config): boolean {
   return u != null && gatedFamilies(u.model, cfg.policy.switchModels).length > 0;
 }
 
-function isEngaged(u: UsageState | null, mu: ModelUsageState | null, org: string | null, bars: Thresholds, cfg: Config, now: number): boolean {
-  if (!u || !org || u.org !== org) return false;
-  return liveUsed({ window: u.fiveHour, windowMs: FIVE_HOURS_MS, sampledAt: u.ts, now }) >= cfg.policy.greedySessionFloor || isOver(u, mu, org, bars, cfg, now);
+function isEngaged(u: UsageState | null, mu: ModelUsageState | null, account: string | null, bars: Thresholds, cfg: Config, now: number): boolean {
+  if (!u || !account || u.account !== account) return false;
+  return liveUsed({ window: u.fiveHour, windowMs: FIVE_HOURS_MS, sampledAt: u.ts, now }) >= cfg.policy.greedySessionFloor || isOver(u, mu, account, bars, cfg, now);
 }
 
 const SnapshotsSchema = z.object({
@@ -76,41 +76,41 @@ const SnapshotsSchema = z.object({
 });
 type Snapshots = z.infer<typeof SnapshotsSchema>;
 
-function usageFresh(u: UsageState | null, uAt: number | null, org: string | null, ttl: number, now: number): boolean {
-  return u != null && u.org === org && uAt != null && now - uAt <= ttl;
+function usageFresh(u: UsageState | null, uAt: number | null, account: string | null, ttl: number, now: number): boolean {
+  return u != null && u.account === account && uAt != null && now - uAt <= ttl;
 }
 
 function freshest(u: UsageState | null, uAt: number | null, account: Account | undefined): UsageState | null {
   if (!u || uAt == null) return u;
   const stored = account?.lastUsage;
-  if (stored && account.lastUsageAt != null && u.org === account.organizationUuid && uAt < account.lastUsageAt) {
+  if (stored && account.lastUsageAt != null && u.account === account.accountUuid && uAt < account.lastUsageAt) {
     return { ...u, fiveHour: stored.fiveHour, sevenDay: stored.sevenDay, ts: account.lastUsageAt };
   }
   return { ...u, ts: uAt };
 }
 
-async function loadFreshSnapshots(cfg: Config, org: string | null, now: number): Promise<Snapshots> {
+async function loadFreshSnapshots(cfg: Config, account: string | null, now: number): Promise<Snapshots> {
   const snap = loadUsageSnapshot();
   let u = snap?.state ?? null;
   let uAt = snap?.at ?? null;
   let mu = loadModelUsage();
   const ttl = cfg.policy.usagePollTtlMs;
-  const probeAttempted = mu != null && mu.org === org && now - mu.ts <= ttl;
-  if (org && !probeAttempted && (!usageFresh(u, uAt, org, ttl, now) || needsPerModel(u, cfg))) {
+  const probeAttempted = mu != null && mu.account === account && now - mu.ts <= ttl;
+  if (account && !probeAttempted && (!usageFresh(u, uAt, account, ttl, now) || needsPerModel(u, cfg))) {
     const full = await probeUsage();
     const ts = Date.now();
-    if (readOAuthAccount()?.organizationUuid === org) {
+    if (readOAuthAccount()?.accountUuid === account) {
       if (full) {
         const teed = loadUsageSnapshot();
-        if (teed && usageFresh(teed.state, teed.at, org, ttl, ts)) {
+        if (teed && usageFresh(teed.state, teed.at, account, ttl, ts)) {
           u = teed.state;
           uAt = teed.at;
         } else {
-          u = { fiveHour: full.session, sevenDay: full.weekAll, org, ts, model: null };
+          u = { fiveHour: full.session, sevenDay: full.weekAll, account, ts, model: null };
           writeUsage(u);
           uAt = ts;
         }
-        mu = { perModel: full.perModel, org, ts, sampledAt: ts };
+        mu = { perModel: full.perModel, account, ts, sampledAt: ts };
         saveModelUsage(mu);
         const expected = gatedFamilies(u?.model ?? null, cfg.policy.switchModels);
         const rows = Object.keys(full.perModel);
@@ -118,7 +118,7 @@ async function loadFreshSnapshots(cfg: Config, org: string | null, now: number):
           log("usage.no_permodel_row", { families: expected.join(","), rows: rows.join(",") });
         }
       } else {
-        mu = { perModel: mu?.org === org ? (mu?.perModel ?? {}) : {}, org, ts, sampledAt: mu?.org === org ? (mu?.sampledAt ?? mu?.ts) : undefined };
+        mu = { perModel: mu?.account === account ? (mu?.perModel ?? {}) : {}, account, ts, sampledAt: mu?.account === account ? (mu?.sampledAt ?? mu?.ts) : undefined };
         saveModelUsage(mu);
       }
     }
@@ -127,8 +127,8 @@ async function loadFreshSnapshots(cfg: Config, org: string | null, now: number):
 }
 
 export async function evaluateAndMaybeSwap(now = Date.now(), anticipatory = false, enforced: EnforcedLimit | null = null): Promise<SwapDecision> {
-  const activeOrg = readOAuthAccount()?.organizationUuid ?? null;
-  const enforced0 = enforced && enforced.org === activeOrg ? enforced : null;
+  const activeAccount = readOAuthAccount()?.accountUuid ?? null;
+  const enforced0 = enforced && enforced.account === activeAccount ? enforced : null;
 
   const lastSwapAt = loadLastSwapAt();
   if (!enforced0 && lastSwapAt != null && now - lastSwapAt < POST_SWAP_COOLDOWN_MS) {
@@ -137,17 +137,17 @@ export async function evaluateAndMaybeSwap(now = Date.now(), anticipatory = fals
 
   const cfg = loadConfig();
 
-  const { u: teeUsage, mu, uAt } = await loadFreshSnapshots(cfg, activeOrg, now);
+  const { u: teeUsage, mu, uAt } = await loadFreshSnapshots(cfg, activeAccount, now);
   const pool = loadAccounts();
-  const usage = freshest(teeUsage, uAt, pool.accounts.find((a) => a.organizationUuid === activeOrg));
+  const usage = freshest(teeUsage, uAt, pool.accounts.find((a) => a.accountUuid === activeAccount));
   const bars0 = effectiveBars(cfg, {
-    accounts: overlayLive(pool.accounts, usage, mu, activeOrg),
+    accounts: overlayLive(pool.accounts, usage, mu, activeAccount),
     now,
     switchFamilies: gatedFamilies(usage?.model ?? null, cfg.policy.switchModels),
   });
 
-  if (!enforced0 && !isEngaged(usage, mu, activeOrg, bars0, cfg, now)) {
-    const measured = usage != null && activeOrg != null && usage.org === activeOrg;
+  if (!enforced0 && !isEngaged(usage, mu, activeAccount, bars0, cfg, now)) {
+    const measured = usage != null && activeAccount != null && usage.account === activeAccount;
     if (!measured) {
       const replay = depletedReplay(now);
       if (replay) return replay;
@@ -157,25 +157,25 @@ export async function evaluateAndMaybeSwap(now = Date.now(), anticipatory = fals
 
   return withLock(paths.lockFile, async () => {
     const idx = loadAccounts();
-    const org2 = readOAuthAccount()?.organizationUuid ?? null;
-    const enforced2 = enforced0 && enforced0.org === org2 ? enforced0 : null;
+    const account2 = readOAuthAccount()?.accountUuid ?? null;
+    const enforced2 = enforced0 && enforced0.account === account2 ? enforced0 : null;
     const tee = loadUsageSnapshot();
-    const active = org2 ? idx.accounts.find((a) => a.organizationUuid === org2) : undefined;
+    const active = account2 ? idx.accounts.find((a) => a.accountUuid === account2) : undefined;
     const u2 = tee ? freshest(tee.state, tee.at, active) : usage;
     const mu2 = needsPerModel(u2, cfg) || enforced2?.family ? loadModelUsage() ?? mu : null;
 
-    if (org2 != null && !active) {
+    if (account2 != null && !active) {
       return { swapped: false, account: null, reason: "live-credential-not-in-pool" };
     }
 
     if (active) {
       let sampled = false;
-      if (tee && tee.state.org === org2 && (active.lastUsageAt == null || tee.at >= active.lastUsageAt)) {
+      if (tee && tee.state.account === account2 && (active.lastUsageAt == null || tee.at >= active.lastUsageAt)) {
         active.lastUsage = { fiveHour: tee.state.fiveHour, sevenDay: tee.state.sevenDay };
         active.lastUsageAt = tee.at;
         sampled = true;
       }
-      if (mu2 && mu2.org === org2 && Object.keys(mu2.perModel).length > 0) {
+      if (mu2 && mu2.account === account2 && Object.keys(mu2.perModel).length > 0) {
         active.lastPerModel = mu2.perModel;
         active.lastPerModelAt = mu2.sampledAt ?? mu2.ts;
         sampled = true;
@@ -188,12 +188,12 @@ export async function evaluateAndMaybeSwap(now = Date.now(), anticipatory = fals
     const barsOf = (accounts: Account[]): Thresholds => effectiveBars(cfg, { accounts, now, switchFamilies });
     const bars = barsOf(idx.accounts);
 
-    if (!enforced2 && !isEngaged(u2, mu2, org2, bars, cfg, now)) {
+    if (!enforced2 && !isEngaged(u2, mu2, account2, bars, cfg, now)) {
       return depletedReplay(now) ?? { swapped: false, account: null, reason: "raced-already-swapped" };
     }
 
     const seatOf = (idx2: { activeAccountUuid: string | null; accounts: Account[] }): Account | null =>
-      idx2.accounts.find((a) => a.organizationUuid === org2) ??
+      idx2.accounts.find((a) => a.accountUuid === account2) ??
       idx2.accounts.find((a) => a.accountUuid === idx2.activeAccountUuid) ??
       null;
 
@@ -217,7 +217,7 @@ export async function evaluateAndMaybeSwap(now = Date.now(), anticipatory = fals
         return { swapped: true, account: best, reason: "swapped" };
       }
     };
-    if (!enforced2 && !isOver(u2, mu2, org2, bars, cfg, now)) return greedy(cfg.policy.greedySwapMargin);
+    if (!enforced2 && !isOver(u2, mu2, account2, bars, cfg, now)) return greedy(cfg.policy.greedySwapMargin);
 
     while (true) {
       const cur = loadAccounts();
@@ -251,7 +251,7 @@ export async function evaluateAndMaybeSwap(now = Date.now(), anticipatory = fals
       const fresh = loadAccounts();
       const current = seatOf(fresh);
       const ctx = { now, thresholds: hardBars(cfg), currentAccountUuid: current?.accountUuid ?? null, switchFamilies };
-      const enforcedUntil = enforced2 && current && current.organizationUuid === enforced2.org ? (enforced2.resetsAt ?? now + enforced2.windowMs) : 0;
+      const enforcedUntil = enforced2 && current && current.accountUuid === enforced2.account ? (enforced2.resetsAt ?? now + enforced2.windowMs) : 0;
       const currentAt = current ? Math.max(usableAt(current, ctx), enforcedUntil) : Number.POSITIVE_INFINITY;
       const other = pickEarliestReset(fresh.accounts, ctx);
 
@@ -291,7 +291,7 @@ function depletedReplay(now: number): SwapDecision | null {
   if (!rec || rec.waitUntil <= now) return null;
   const account = loadAccounts().accounts.find((a) => a.accountUuid === rec.accountUuid) ?? null;
   if (!account) return null;
-  if (account.organizationUuid !== (readOAuthAccount()?.organizationUuid ?? null)) return null;
+  if (account.accountUuid !== (readOAuthAccount()?.accountUuid ?? null)) return null;
   return { swapped: false, account, reason: "depleted-wait", waitUntil: rec.waitUntil };
 }
 
@@ -306,19 +306,19 @@ export function postSwapProof(input: { swapAt: number | null; launchedAt: number
   return (errorAt ?? now) - swapAt >= POST_SWAP_COOLDOWN_MS;
 }
 
-const StampSchema = z.object({ outcome: z.enum(["stamped", "org-moved", "no-carrier"]), resetsAt: z.number().nullable() });
+const StampSchema = z.object({ outcome: z.enum(["stamped", "account-moved", "no-carrier"]), resetsAt: z.number().nullable() });
 export type Stamp = z.infer<typeof StampSchema>;
 
-export async function recordEnforcedLimit(input: { limit: EnforcedClass; org: string; now: number }): Promise<Stamp> {
-  const { limit, org, now } = input;
+export async function recordEnforcedLimit(input: { limit: EnforcedClass; account: string; now: number }): Promise<Stamp> {
+  const { limit, account: accountUuid, now } = input;
   return withLock(paths.lockFile, () => {
-    if ((readOAuthAccount()?.organizationUuid ?? null) !== org) return { outcome: "org-moved", resetsAt: limit.resetsAt };
+    if ((readOAuthAccount()?.accountUuid ?? null) !== accountUuid) return { outcome: "account-moved", resetsAt: limit.resetsAt };
     const prior = loadUsage();
-    const priorSame = prior && prior.org === org ? prior : null;
+    const priorSame = prior && prior.account === accountUuid ? prior : null;
     const idx = loadAccounts();
-    const account = idx.accounts.find((a) => a.organizationUuid === org);
+    const account = idx.accounts.find((a) => a.accountUuid === accountUuid);
     const mu = loadModelUsage();
-    const muSame = mu && mu.org === org ? mu : null;
+    const muSame = mu && mu.account === accountUuid ? mu : null;
     const carriedRows = muSame?.perModel ?? {};
     const sampledAt = muSame?.sampledAt ?? muSame?.ts;
     if (limit.kind === "model") {
@@ -328,14 +328,14 @@ export async function recordEnforcedLimit(input: { limit: EnforcedClass; org: st
       const resetsAt = limit.resetsAt ?? nextWeeklyReset(knownReset ?? weeklyReset, now);
       saveModelUsage({
         perModel: { ...carriedRows, [limit.family]: { usedPercentage: 100, resetsAt } },
-        org,
+        account: accountUuid,
         ts: now,
         sampledAt: resetsAt == null ? now : sampledAt ?? now,
       });
       log("usage.enforced_limit", { kind: limit.kind, family: limit.family, resetsAt });
       return { outcome: "stamped", resetsAt };
     }
-    saveModelUsage({ perModel: carriedRows, org, ts: now, sampledAt });
+    saveModelUsage({ perModel: carriedRows, account: accountUuid, ts: now, sampledAt });
     if (account && limit.resetsAt != null) {
       account.enforcedUntil = limit.resetsAt;
       saveAccounts(idx);
@@ -346,7 +346,7 @@ export async function recordEnforcedLimit(input: { limit: EnforcedClass; org: st
     writeUsage({
       fiveHour: limit.kind === "session" ? window : carrier.fiveHour,
       sevenDay: limit.kind === "weekly" ? window : carrier.sevenDay,
-      org,
+      account: accountUuid,
       ts: now,
       model: carrier.model,
     });
@@ -357,21 +357,21 @@ export async function recordEnforcedLimit(input: { limit: EnforcedClass; org: st
 
 const STAGE_CEILING_TICKS = [MAX_CHECK_DELAY_TICKS, 3, 2];
 
-export function checkDelayMs(input: { cfg: Config; org: string | null; now: number; decision: SwapDecision }): number {
-  const { cfg, org, now, decision } = input;
+export function checkDelayMs(input: { cfg: Config; account: string | null; now: number; decision: SwapDecision }): number {
+  const { cfg, account, now, decision } = input;
   const tick = cfg.policy.checkIntervalMs;
   const max = maxCheckDelayMs(cfg);
   if (decision.waitUntil !== undefined) return Math.min(max, Math.max(tick, decision.waitUntil - now));
   const swapAt = loadLastSwapAt();
   if (swapAt != null && now - swapAt < POST_SWAP_COOLDOWN_MS) return swapAt + POST_SWAP_COOLDOWN_MS - now;
   const snap = loadUsageSnapshot();
-  if (!org || !snap || !usageFresh(snap.state, snap.at, org, cfg.policy.usagePollTtlMs, now)) return 3 * tick;
+  if (!account || !snap || !usageFresh(snap.state, snap.at, account, cfg.policy.usagePollTtlMs, now)) return 3 * tick;
   const accounts = loadAccounts().accounts;
-  const u = freshest(snap.state, snap.at, accounts.find((a) => a.organizationUuid === org)) ?? { ...snap.state, ts: snap.at };
+  const u = freshest(snap.state, snap.at, accounts.find((a) => a.accountUuid === account)) ?? { ...snap.state, ts: snap.at };
   const mu = loadModelUsage();
-  const muSame = mu && mu.org === org ? mu : null;
+  const muSame = mu && mu.account === account ? mu : null;
   const families = gatedFamilies(u.model, cfg.policy.switchModels);
-  const bars = effectiveBars(cfg, { accounts: overlayLive(accounts, u, muSame, org), now, switchFamilies: families });
+  const bars = effectiveBars(cfg, { accounts: overlayLive(accounts, u, muSame, account), now, switchFamilies: families });
   const heads = [
     bars.session - liveUsed({ window: u.fiveHour, windowMs: FIVE_HOURS_MS, sampledAt: u.ts, now }),
     bars.weekly - liveUsed({ window: u.sevenDay, windowMs: WEEK_MS, sampledAt: u.ts, now }),

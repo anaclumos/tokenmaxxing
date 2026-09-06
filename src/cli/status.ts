@@ -116,17 +116,17 @@ async function collectClaude(input: { cfg: Config; ping: boolean; pingCount: num
       const teeAt = tee?.at ?? null;
       const modelUsage = loadModelUsage();
       const liveOAuth = readOAuthAccount();
-      const activeOrg = liveOAuth?.organizationUuid ?? null;
+      const liveAccount = liveOAuth?.accountUuid ?? null;
       const probeOne = async (a: Account) => {
-        const isActive = activeOrg != null && activeOrg === a.organizationUuid;
+        const isActive = liveAccount != null && liveAccount === a.accountUuid;
         if (isActive && liveOAuth?.organizationRateLimitTier != null) a.rateLimitTier = liveOAuth.organizationRateLimitTier;
         const teeCurrent = teeAt != null && (a.lastUsageAt == null || teeAt >= a.lastUsageAt);
         const fromStatusLine: FullUsage | null =
-          isActive && live && teeCurrent && live.org === a.organizationUuid
+          isActive && live && teeCurrent && live.account === a.accountUuid
             ? {
                 session: live.fiveHour,
                 weekAll: live.sevenDay,
-                perModel: modelUsage && modelUsage.org === a.organizationUuid ? modelUsage.perModel : {},
+                perModel: modelUsage && modelUsage.account === a.accountUuid ? modelUsage.perModel : {},
               }
             : null;
         let viaTee = false;
@@ -159,7 +159,7 @@ async function collectClaude(input: { cfg: Config; ping: boolean; pingCount: num
           a.lastPerModelAt = viaTee && modelUsage ? (modelUsage.sampledAt ?? modelUsage.ts) : a.lastUsageAt;
         }
       };
-      const activeAccount = idx.accounts.find((a) => activeOrg != null && activeOrg === a.organizationUuid) ?? null;
+      const activeAccount = idx.accounts.find((a) => liveAccount != null && liveAccount === a.accountUuid) ?? null;
       if (activeAccount) await probeOne(activeAccount);
       try {
         await ensureLiveTokenFresh();
@@ -172,7 +172,7 @@ async function collectClaude(input: { cfg: Config; ping: boolean; pingCount: num
 
   const families = gatedFamilies(loadUsage()?.model ?? null, cfg.policy.switchModels);
   const bars = effectiveBars(cfg, { accounts: idx.accounts, now, switchFamilies: families });
-  const activeOrg = readOAuthAccount()?.organizationUuid ?? null;
+  const liveAccount = readOAuthAccount()?.accountUuid ?? null;
   const ordered = sortBy(idx.accounts, [(a) => (a.needsReauth ? 1 : 0), (a) => earliestReset(a, now)]);
   const accounts = ordered.map((a): ClaudeStatusAccount => {
     const sampled = samples.get(a.accountUuid) ?? { outcome: { ok: false, reason: "not sampled" }, viaTee: false };
@@ -185,7 +185,7 @@ async function collectClaude(input: { cfg: Config; ping: boolean; pingCount: num
       accountUuid: a.accountUuid,
       organizationUuid: a.organizationUuid,
       tier: claudeTierLabel(a),
-      active: activeOrg != null && a.organizationUuid === activeOrg,
+      active: liveAccount != null && a.accountUuid === liveAccount,
       needsReauth: a.needsReauth === true,
       exhausted: isExhausted(a, { now, thresholds: bars, currentAccountUuid: idx.activeAccountUuid, switchFamilies: families }),
       usage: aggregate ? { fiveHour: currentWindow(aggregate.fiveHour, false, now), week: currentWindow(aggregate.sevenDay, true, now) } : null,

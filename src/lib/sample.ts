@@ -4,9 +4,9 @@ import { z } from "zod";
 import { readItem, writeItem, deleteItem, liveTarget, parkedTarget, isolatedTarget, claudeAiOauthOnly, mergeIntoLive } from "./credstore.ts";
 import { credItemFor, paths } from "./paths.ts";
 import { withClaudeRefreshLock } from "./claudelock.ts";
-import { refreshCredential, isAccessTokenExpiring, fetchTokenOrg, InvalidGrantError } from "./oauth.ts";
+import { refreshCredential, isAccessTokenExpiring, fetchTokenIdentity, describeIdentity, InvalidGrantError } from "./oauth.ts";
 import { FullUsageSchema, pingSession, probeUsage } from "./usage.ts";
-import { CredentialBlobSchema, type Account, type OAuthCreds, type RolesResponse } from "./types.ts";
+import { CredentialBlobSchema, type Account, type OAuthCreds, type TokenIdentity } from "./types.ts";
 
 const SampleOutcomeSchema = z.discriminatedUnion("ok", [
   z.object({ ok: z.literal(true), usage: FullUsageSchema, pingError: z.string().optional(), pingRejected: z.boolean().optional() }),
@@ -22,14 +22,14 @@ const IdentityCheckSchema = z.discriminatedUnion("status", [
 type IdentityCheck = z.infer<typeof IdentityCheckSchema>;
 
 async function checkIdentity(creds: OAuthCreds, account: Account): Promise<IdentityCheck> {
-  let org: RolesResponse;
+  let identity: TokenIdentity;
   try {
-    org = await fetchTokenOrg(creds.accessToken);
+    identity = await fetchTokenIdentity(creds.accessToken);
   } catch (e) {
     return { status: "unavailable", reason: `credential identity check failed: ${e instanceof Error ? e.message : String(e)}` };
   }
-  if (org.organization_uuid === account.organizationUuid) return { status: "match" };
-  return { status: "mismatch", reason: `credential actually belongs to ${org.organization_name} (org ${org.organization_uuid.slice(0, 8)})` };
+  if (identity.accountUuid === account.accountUuid) return { status: "match" };
+  return { status: "mismatch", reason: `credential actually belongs to ${describeIdentity(identity)}` };
 }
 
 function refreshPlanFields(account: Account, creds: OAuthCreds): void {
@@ -51,14 +51,14 @@ export async function probeParkedUsage(account: Account, opts: { ping?: boolean 
 
   const liveRaw = await readItem(liveTarget());
   if (liveRaw != null) {
-    let liveOrg: string;
+    let liveAccount: string;
     try {
       const liveCreds = CredentialBlobSchema.parse(JSON.parse(liveRaw)).claudeAiOauth;
-      liveOrg = (await fetchTokenOrg(liveCreds.accessToken)).organization_uuid;
+      liveAccount = (await fetchTokenIdentity(liveCreds.accessToken)).accountUuid;
     } catch (e) {
       return { ok: false, reason: `cannot verify the live credential's owner (${(e instanceof Error ? e.message : String(e)).slice(0, 80)}) - refusing to sample a possibly-live account` };
     }
-    if (liveOrg === account.organizationUuid) {
+    if (liveAccount === account.accountUuid) {
       return { ok: false, reason: "this account holds the LIVE login (active label drifted) - run `tokenmaxxing switch` to reconcile" };
     }
   }
