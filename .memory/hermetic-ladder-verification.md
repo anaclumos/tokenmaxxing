@@ -28,7 +28,7 @@ Verified 2026-09-02 for 1.10.0, defaults then 50/80/95 and floor 50. Since 1.12.
 | profile 503 for B's parked token | `decide.candidate_rejected B` with the 503 detail, B's refresh token never spent, B not stamped, `swap.done C` |
 | B's parked access token expired (profile 401) | `swap.parked_token_stale B`, token route sees B's refresh token, profile sees the refreshed token, `swap.done B` |
 | live access token expired or revoked (profile 401) | `check failed: cannot resolve the live credential's owner`, nothing written, exit 1 |
-| parked B is a stale copy of A (expired copy of A's access token, A's current refresh token) | `swap.parked_token_stale B`, A's refresh token spent once, `swap.invalid_grant B` naming A, B stamped, `swap.done C` |
+| parked B is a stale copy of A (expired copy of A's access token, A's current refresh token) while A is live | `swap.parked_token_stale B`, A's refresh token spent once, `swap.rotated_live_rescued A` (the live store now holds the rotated pair), `swap.invalid_grant B` naming A, B stamped, then `swap.harvest A` parks the rotated pair and `swap.done C` |
 
 **Why:** the review fix on the hard path (reload the pool after a dead grant, return to the greedy path when the rung climbs over the seat) is only observable with a refresh that fails, and the only safe way to fail a refresh is a stub. The keychain namespace keeps the run off the real `Claude Code-credentials` item; see [[live-pool-runs-need-permission]] for why nothing here may touch a pooled account, and [[fable-fanout-is-quota-spend]] for why verification stays hermetic.
 

@@ -108,7 +108,7 @@ export async function fetchTokenIdentity(accessToken: string): Promise<TokenIden
   const parsed = ProfileResponseSchema.safeParse((() => {
     try { return JSON.parse(text); } catch { return null; }
   })());
-  if (!parsed.success) throw new Error(`profile endpoint returned an unrecognized body (${text.length} bytes, withheld)`);
+  if (!parsed.success) throw new IdentityUnavailableError(res.status, `profile endpoint returned an unrecognized body (${text.length} bytes, withheld)`);
   return TokenIdentitySchema.parse({
     accountUuid: parsed.data.account.uuid,
     email: parsed.data.account.email ?? null,

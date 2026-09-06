@@ -2,7 +2,7 @@ import { withLock } from "../lib/lock.ts";
 import { paths } from "../lib/paths.ts";
 import { loadAccounts, loadConfig, loadUsage } from "../lib/state.ts";
 import { readOAuthAccount } from "../lib/claudejson.ts";
-import { performSwap } from "../lib/swap.ts";
+import { isSkippableSwapError, performSwap } from "../lib/swap.ts";
 import { currentWins, effectiveBars, pickBest, pickEarliestReset, weeklyExpiry, type PickCtx } from "../lib/picker.ts";
 import { InvalidGrantError } from "../lib/oauth.ts";
 import { gatedFamilies } from "../lib/usage.ts";
@@ -66,14 +66,16 @@ export async function cmdSwitch(selector?: string, json = false): Promise<number
       currentAccountUuid: null,
       switchFamilies,
     });
+    const rejected = new Set<string>();
     while (true) {
       const cur = loadAccounts();
       const everyone = everyoneIn(cur.accounts);
+      const pool = cur.accounts.filter((a) => !rejected.has(a.accountUuid));
       const active =
         (claimed != null ? cur.accounts.find((a) => a.accountUuid === claimed) : null) ??
         cur.accounts.find((a) => a.accountUuid === cur.activeAccountUuid) ??
         null;
-      if (active != null && currentWins(active, cur.accounts, everyone)) {
+      if (active != null && currentWins(active, pool, everyone)) {
         if (drifted) return swapTo(active, "drift-reconciled");
         const expiry = weeklyExpiry(active, now);
         const why = Number.isFinite(expiry) ? ` (weekly ${fmtReset(expiry, now)})` : "";
@@ -85,14 +87,19 @@ export async function cmdSwitch(selector?: string, json = false): Promise<number
         });
         return 0;
       }
-      const best = pickBest(cur.accounts, { ...everyone, currentAccountUuid: active?.accountUuid ?? null });
+      const best = pickBest(pool, { ...everyone, currentAccountUuid: active?.accountUuid ?? null });
       if (!best) break;
       try {
         await performSwap(best);
       } catch (e) {
+        rejected.add(best.accountUuid);
         if (e instanceof InvalidGrantError) {
           deadGrants.push(best.label);
           if (!json) console.error(c.red(deadGrantMessage(best)));
+          continue;
+        }
+        if (isSkippableSwapError(e)) {
+          if (!json) console.error(c.yellow(`${best.label}: ${e instanceof Error ? e.message : String(e)} - skipped for this run`));
           continue;
         }
         throw e;

@@ -104,7 +104,29 @@ export async function performSwap(target: Account): Promise<void> {
         throw new Error(`refreshed the parked credential but cannot verify its owner (${e instanceof Error ? e.message : String(e)}) - kept the rotated token parked; the next check retries`);
       }
       if (freshOwner.accountUuid !== target.accountUuid) {
-        throw markDead(`parked credential belongs to ${describeIdentity(freshOwner)}, whose grant this refresh rotated - that account's own copy is now superseded; re-auth with \`tokenmaxxing auth ${target.label}\``);
+        const owner = idx.accounts.find((a) => a.accountUuid === freshOwner.accountUuid) ?? null;
+        let kept = "could not be kept because that account is not in the pool";
+        if (owner != null && liveOwner?.accountUuid === owner.accountUuid) {
+          try {
+            await withClaudeRefreshLock(async (lock) => {
+              const currentLive = await readItem(liveTarget());
+              if (lock.compromised()) throw new Error("refresh lock compromised");
+              if (currentLive == null || parseBlob(currentLive).claudeAiOauth.accessToken !== expectedLiveToken) throw new Error("live credential changed while unlocked");
+              await writeItem(liveTarget(), mergeIntoLive(currentLive, fresh));
+            });
+            kept = "was installed into the live store so that account's sessions continue";
+            log("swap.rotated_live_rescued", { account: owner.accountUuid.slice(0, 8) });
+          } catch (e) {
+            await writeItem(parkedTarget(owner.keychainItem), JSON.stringify({ claudeAiOauth: fresh }));
+            kept = `was parked under that account (${e instanceof Error ? e.message : String(e)})`;
+            log("swap.rotated_parked_rescued", { account: owner.accountUuid.slice(0, 8) });
+          }
+        } else if (owner != null) {
+          await writeItem(parkedTarget(owner.keychainItem), JSON.stringify({ claudeAiOauth: fresh }));
+          kept = "was parked under that account";
+          log("swap.rotated_parked_rescued", { account: owner.accountUuid.slice(0, 8) });
+        }
+        throw markDead(`parked credential belongs to ${describeIdentity(freshOwner)}, whose grant this refresh rotated - the rotated token ${kept}; re-auth with \`tokenmaxxing auth ${target.label}\``);
       }
     }
     await writeItem(parkedTarget(target.keychainItem), JSON.stringify({ claudeAiOauth: fresh }));
