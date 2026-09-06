@@ -21,6 +21,7 @@ export function log(event: string, fields: Record<string, unknown> = {}): void {
   let line = "";
   try {
     line = Object.entries(fields)
+      .filter(([, v]) => v !== undefined)
       .map(([k, v]) => {
         const str = z.string().safeParse(v);
         return `${k}=${redact(str.success ? str.data : JSON.stringify(v))}`;

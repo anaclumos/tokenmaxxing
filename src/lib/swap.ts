@@ -1,6 +1,6 @@
 import { clearDepletedWait, clearNextCheck, clearUsageSnapshots, loadAccounts, saveAccounts, saveLastSwapAt } from "./state.ts";
 import { readItem, writeItem, liveTarget, parkedTarget, claudeAiOauthOnly, mergeIntoLive } from "./credstore.ts";
-import { refreshCredential, isAccessTokenExpiring, fetchTokenIdentity, describeIdentity, InvalidGrantError } from "./oauth.ts";
+import { refreshCredential, isAccessTokenExpiring, isDeadCredential, fetchTokenIdentity, describeIdentity, InvalidGrantError, RefreshRejectedError } from "./oauth.ts";
 import { swapOAuthAccount } from "./claudejson.ts";
 import { withClaudeRefreshLock } from "./claudelock.ts";
 import { log } from "./log.ts";
@@ -21,7 +21,10 @@ export async function performSwap(target: Account): Promise<void> {
   if (preLive) {
     liveCreds = parseBlob(preLive).claudeAiOauth;
     expectedLiveToken = liveCreds.accessToken;
-    if (isAccessTokenExpiring(liveCreds, 60_000)) {
+    if (isDeadCredential(liveCreds)) {
+      liveCreds = null;
+      log("swap.live_dead", {});
+    } else if (isAccessTokenExpiring(liveCreds, 60_000)) {
       try {
         await withClaudeRefreshLock(async (lock) => {
           const raw2 = await readItem(liveTarget());
@@ -62,14 +65,23 @@ export async function performSwap(target: Account): Promise<void> {
   if (!selfSwap) {
     const parkedRaw = await readItem(parkedTarget(target.keychainItem));
     if (!parkedRaw) throw new Error(`no parked credential for ${target.email}`);
+    const parked = parseBlob(parkedRaw).claudeAiOauth;
+    const markDead = (detail: string): InvalidGrantError => {
+      const t = idx.accounts.find((a) => a.accountUuid === target.accountUuid);
+      if (t) { t.needsReauth = true; saveAccounts(idx); }
+      log("swap.invalid_grant", { account: target.accountUuid.slice(0, 8), detail });
+      return new InvalidGrantError(detail);
+    };
+    if (isDeadCredential(parked)) throw markDead("parked credential was cleared after a failed refresh - re-auth with `tokenmaxxing auth`");
+    const parkedOwner = await fetchTokenIdentity(parked.accessToken).catch(() => null);
+    if (parkedOwner != null && parkedOwner.accountUuid !== target.accountUuid) {
+      throw markDead(`parked credential belongs to ${describeIdentity(parkedOwner)} - refusing to spend another account's grant; re-auth with \`tokenmaxxing auth ${target.label}\``);
+    }
     try {
-      fresh = await refreshCredential(parseBlob(parkedRaw).claudeAiOauth);
+      fresh = await refreshCredential(parked);
     } catch (e) {
-      if (e instanceof InvalidGrantError) {
-        const t = idx.accounts.find((a) => a.accountUuid === target.accountUuid);
-        if (t) { t.needsReauth = true; saveAccounts(idx); }
-        log("swap.invalid_grant", { account: target.accountUuid.slice(0, 8) });
-      }
+      if (e instanceof InvalidGrantError) throw markDead(e.detail);
+      if (e instanceof RefreshRejectedError) log("swap.refresh_rejected", { account: target.accountUuid.slice(0, 8), status: e.status, detail: e.detail });
       throw e;
     }
     await writeItem(parkedTarget(target.keychainItem), JSON.stringify({ claudeAiOauth: fresh }));
@@ -105,8 +117,12 @@ export async function performSwap(target: Account): Promise<void> {
   log("swap.done", { account: target.accountUuid.slice(0, 8), email: target.email });
 }
 
-export async function chooseAndSwap(ctx: PickCtx): Promise<Account | null> {
-  const tried = new Set<string>();
+export function isSkippableSwapError(e: unknown): boolean {
+  return e instanceof InvalidGrantError || e instanceof RefreshRejectedError;
+}
+
+export async function chooseAndSwap(ctx: PickCtx, exclude: ReadonlySet<string> = new Set()): Promise<Account | null> {
+  const tried = new Set<string>(exclude);
   while (true) {
     const idx = loadAccounts();
     const candidates = idx.accounts.filter((a) => !tried.has(a.accountUuid));
@@ -117,7 +133,7 @@ export async function chooseAndSwap(ctx: PickCtx): Promise<Account | null> {
       await performSwap(best);
       return best;
     } catch (e) {
-      if (e instanceof InvalidGrantError) continue;
+      if (isSkippableSwapError(e)) continue;
       throw e;
     }
   }
