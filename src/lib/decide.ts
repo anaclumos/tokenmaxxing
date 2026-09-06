@@ -209,7 +209,7 @@ export async function evaluateAndMaybeSwap(now = Date.now(), anticipatory = fals
         const cur = loadAccounts();
         const active = seatOf(cur);
         const pool = usable(cur.accounts);
-        const ctxAll = { now, thresholds: barsOf(pool), currentAccountUuid: null, switchFamilies, holdMargin };
+        const ctxAll = { now, thresholds: barsOf(cur.accounts), currentAccountUuid: null, switchFamilies, holdMargin };
         if (currentWins(active, pool, ctxAll)) {
           return { swapped: false, account: null, reason: "current-best" };
         }
@@ -231,7 +231,7 @@ export async function evaluateAndMaybeSwap(now = Date.now(), anticipatory = fals
       const cur = loadAccounts();
       const seat = seatOf(cur);
       const pool = usable(cur.accounts);
-      const thresholds = barsOf(pool);
+      const thresholds = barsOf(cur.accounts);
       if (!enforced2 && seat && !seat.needsReauth && !isExhausted(seat, { now, thresholds, currentAccountUuid: null, switchFamilies })) return greedy(0);
       const best = pickBest(pool, { now, thresholds, currentAccountUuid: seat?.accountUuid ?? null, switchFamilies });
       if (!best) break;

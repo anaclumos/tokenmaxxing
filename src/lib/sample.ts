@@ -4,7 +4,7 @@ import { z } from "zod";
 import { readItem, writeItem, deleteItem, liveTarget, parkedTarget, isolatedTarget, claudeAiOauthOnly, mergeIntoLive } from "./credstore.ts";
 import { credItemFor, paths } from "./paths.ts";
 import { withClaudeRefreshLock } from "./claudelock.ts";
-import { refreshCredential, isAccessTokenExpiring, isDeadCredential, fetchTokenIdentity, describeIdentity, InvalidGrantError } from "./oauth.ts";
+import { refreshCredential, isAccessTokenExpiring, isDeadCredential, fetchTokenIdentity, describeIdentity, IdentityUnavailableError, InvalidGrantError } from "./oauth.ts";
 import { FullUsageSchema, pingSession, probeUsage } from "./usage.ts";
 import { CredentialBlobSchema, type Account, type OAuthCreds, type TokenIdentity } from "./types.ts";
 
@@ -17,7 +17,7 @@ export type SampleOutcome = z.infer<typeof SampleOutcomeSchema>;
 const IdentityCheckSchema = z.discriminatedUnion("status", [
   z.object({ status: z.literal("match") }),
   z.object({ status: z.literal("mismatch"), reason: z.string() }),
-  z.object({ status: z.literal("unavailable"), reason: z.string() }),
+  z.object({ status: z.literal("unavailable"), reason: z.string(), stale: z.boolean() }),
 ]);
 type IdentityCheck = z.infer<typeof IdentityCheckSchema>;
 
@@ -26,7 +26,11 @@ async function checkIdentity(creds: OAuthCreds, account: Account): Promise<Ident
   try {
     identity = await fetchTokenIdentity(creds.accessToken);
   } catch (e) {
-    return { status: "unavailable", reason: `credential identity check failed: ${e instanceof Error ? e.message : String(e)}` };
+    return {
+      status: "unavailable",
+      reason: `credential identity check failed: ${e instanceof Error ? e.message : String(e)}`,
+      stale: e instanceof IdentityUnavailableError && e.status === 401,
+    };
   }
   if (identity.accountUuid === account.accountUuid) return { status: "match" };
   return { status: "mismatch", reason: `credential actually belongs to ${describeIdentity(identity)}` };
@@ -79,6 +83,9 @@ export async function probeParkedUsage(account: Account, opts: { ping?: boolean 
     if (owner.status === "mismatch") {
       account.needsReauth = true;
       return { ok: false, reason: `${owner.reason} - refusing to spend another account's grant; re-auth with \`tokenmaxxing auth\`` };
+    }
+    if (owner.status === "unavailable" && !owner.stale) {
+      return { ok: false, reason: `${owner.reason} - refusing to refresh a parked credential whose owner cannot be verified` };
     }
     try {
       creds = await refreshCredential(creds);

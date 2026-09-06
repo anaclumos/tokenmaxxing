@@ -16,6 +16,20 @@ Verified 2026-09-02 for 1.10.0, defaults then 50/80/95 and floor 50. Since 1.12.
 | Dead grant climbs the rung | A live 55/60, B 30/80 dead, C 70/80 | `swap.invalid_grant B`, B stamped needs-reauth, rung climbs 50 to 80, A holds on the greedy path, `no switch (current-best) next in 180s`, live unchanged |
 | Dead sibling then next | A live 96/60, B 30/80 dead, C 40/85 | `swap.invalid_grant B`, `swap.harvest A`, `swap.done C`, claude.json and accounts.json move to C, `next in 45s` |
 
+**Layer 2 on Linux (1.18.x, refresh rejections and owner gates).** On Linux no keychain is involved: the live blob is `<HOME>/.claude/.credentials.json` and each parked blob is `<TOKENMAXXING_HOME>/creds/<keychainItem>.json`, so a throwaway `HOME` and `TOKENMAXXING_HOME` are the whole isolation. The stub (a `Bun.serve` started as a separate process and killed by PID after each scenario) encodes the owner in the token text (`at-<letter>-<n>`, `rt-<letter>-<n>`) and maps letters to seeded account uuids; the token route answers a listed refresh token with the flat `invalid_grant` 400, another list with the nested `invalid_request_error` 400, an empty `refresh_token` with the nested 400 (the real endpoint's answer to Claude Code's dead-cleared blob), and everything else with a rotated pair `n+1`; the profile route answers a listed access token with 401 (expired), another list with 503 (outage), an unknown token with 401 revoked, and everything else with the owner's uuid. It appends every request it receives to a log, which is the proof that a refresh token was or was not spent. Seat A live at 96 on the 5h window, B 30, C 40; expected log lines:
+
+| Scenario | Expected |
+| --- | --- |
+| nested 400 on B | `swap.refresh_rejected B status=400`, `decide.candidate_rejected B`, B not stamped, `swap.done C` |
+| flat `invalid_grant` on B | `swap.invalid_grant B`, B stamped, `swap.done C` |
+| live blob dead-cleared (empty tokens) | `swap.live_dead`, no token request carrying an empty refresh token, no harvest, `swap.done B` |
+| parked B is a copy of A's live blob | `swap.invalid_grant B` naming A as the owner, A's refresh token never on the token route, B stamped, `swap.done C` |
+| every candidate nested-400 | one rejection each, nothing stamped, `decide.last_drop_hold A`, `next in 60s` |
+| profile 503 for B's parked token | `decide.candidate_rejected B` with the 503 detail, B's refresh token never spent, B not stamped, `swap.done C` |
+| B's parked access token expired (profile 401) | `swap.parked_token_stale B`, token route sees B's refresh token, profile sees the refreshed token, `swap.done B` |
+| live access token expired or revoked (profile 401) | `check failed: cannot resolve the live credential's owner`, nothing written, exit 1 |
+| parked B is a stale copy of A (expired copy of A's access token, A's current refresh token) | `swap.parked_token_stale B`, A's refresh token spent once, `swap.invalid_grant B` naming A, B stamped, `swap.done C` |
+
 **Why:** the review fix on the hard path (reload the pool after a dead grant, return to the greedy path when the rung climbs over the seat) is only observable with a refresh that fails, and the only safe way to fail a refresh is a stub. The keychain namespace keeps the run off the real `Claude Code-credentials` item; see [[live-pool-runs-need-permission]] for why nothing here may touch a pooled account, and [[fable-fanout-is-quota-spend]] for why verification stays hermetic.
 
 **How to apply:** run Layer 1 for every decision-path change, Layer 2 whenever the swap or refresh code moves. Keep the harness in the session scratchpad, never in the repo, per the no-test-code ruling in AGENTS.md.
