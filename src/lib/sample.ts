@@ -91,28 +91,38 @@ export async function probeParkedUsage(account: Account, opts: { ping?: boolean 
     if (owner.status === "unavailable" && !owner.stale) {
       return { ok: false, reason: `${owner.reason} - refusing to refresh a parked credential whose owner cannot be verified` };
     }
-    let fresh: OAuthCreds;
-    try {
-      fresh = await refreshCredential(creds);
-    } catch (e) {
-      if (e instanceof InvalidGrantError) {
-        account.needsReauth = true;
-        return { ok: false, reason: "refresh token dead - re-auth with `tokenmaxxing auth`" };
+    const rotate = async (): Promise<{ fresh: OAuthCreds } | { failed: SampleOutcome }> => {
+      try {
+        return { fresh: await refreshCredential(creds) };
+      } catch (e) {
+        if (e instanceof InvalidGrantError) {
+          account.needsReauth = true;
+          return { failed: { ok: false, reason: "refresh token dead - re-auth with `tokenmaxxing auth`" } };
+        }
+        return { failed: { ok: false, reason: `token refresh failed: ${e instanceof Error ? e.message : String(e)}` } };
       }
-      return { ok: false, reason: `token refresh failed: ${e instanceof Error ? e.message : String(e)}` };
-    }
-    if (owner.status === "unavailable") {
-      const verified = await checkIdentity(fresh, account);
-      if (verified.status === "mismatch") {
-        const trueOwner = loadAccounts().accounts.find((a) => a.accountUuid === verified.owner.accountUuid) ?? null;
-        const kept = trueOwner == null
-          ? "could not be kept because that account is not in the pool"
-          : await keepRotatedPair({ fresh, owner: trueOwner, liveOwnerUuid: liveAccount, expectedLiveToken: liveToken });
-        account.needsReauth = true;
-        return { ok: false, reason: `${verified.reason}, whose grant this refresh rotated - the rotated token ${kept}; re-auth with \`tokenmaxxing auth\`` };
+    };
+    let result: { fresh: OAuthCreds } | { failed: SampleOutcome };
+    if (owner.status === "match") {
+      result = await rotate();
+    } else {
+      try {
+        result = await withClaudeRefreshLock(async (lock) => {
+          const rotated = await rotate();
+          if ("failed" in rotated) return rotated;
+          const verified = await checkIdentity(rotated.fresh, account);
+          if (verified.status !== "mismatch") return rotated;
+          const trueOwner = loadAccounts().accounts.find((a) => a.accountUuid === verified.owner.accountUuid) ?? null;
+          const kept = await keepRotatedPair({ fresh: rotated.fresh, owner: trueOwner, fallback: account, liveOwnerUuid: liveAccount, expectedLiveToken: liveToken, lock });
+          account.needsReauth = true;
+          return { failed: { ok: false, reason: `${verified.reason}, whose grant this refresh rotated - the rotated token ${kept}; re-auth with \`tokenmaxxing auth\`` } };
+        });
+      } catch (e) {
+        return { ok: false, reason: `cannot arbitrate a stale parked credential: ${e instanceof Error ? e.message : String(e)}` };
       }
     }
-    creds = fresh;
+    if ("failed" in result) return result.failed;
+    creds = result.fresh;
     await writeItem(backup, JSON.stringify({ claudeAiOauth: creds }));
   }
 

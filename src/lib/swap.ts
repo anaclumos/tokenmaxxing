@@ -88,28 +88,34 @@ export async function performSwap(target: Account): Promise<void> {
     if (parkedOwner != null && parkedOwner.accountUuid !== target.accountUuid) {
       throw markDead(`parked credential belongs to ${describeIdentity(parkedOwner)} - refusing to spend another account's grant; re-auth with \`tokenmaxxing auth ${target.label}\``);
     }
-    try {
-      fresh = await refreshCredential(parked);
-    } catch (e) {
-      if (e instanceof InvalidGrantError) throw markDead(e.detail);
-      if (e instanceof RefreshRejectedError) log("swap.refresh_rejected", { account: target.accountUuid.slice(0, 8), status: e.status, detail: e.detail });
-      throw e;
-    }
-    if (parkedOwner == null) {
-      let freshOwner: TokenIdentity;
+    const refreshParked = async (): Promise<OAuthCreds> => {
       try {
-        freshOwner = await fetchTokenIdentity(fresh.accessToken);
+        return await refreshCredential(parked);
       } catch (e) {
-        await writeItem(parkedTarget(target.keychainItem), JSON.stringify({ claudeAiOauth: fresh }));
-        throw new Error(`refreshed the parked credential but cannot verify its owner (${e instanceof Error ? e.message : String(e)}) - kept the rotated token parked; the next check retries`);
+        if (e instanceof InvalidGrantError) throw markDead(e.detail);
+        if (e instanceof RefreshRejectedError) log("swap.refresh_rejected", { account: target.accountUuid.slice(0, 8), status: e.status, detail: e.detail });
+        throw e;
       }
-      if (freshOwner.accountUuid !== target.accountUuid) {
-        const owner = idx.accounts.find((a) => a.accountUuid === freshOwner.accountUuid) ?? null;
-        const kept = owner == null
-          ? "could not be kept because that account is not in the pool"
-          : await keepRotatedPair({ fresh, owner, liveOwnerUuid: liveOwner?.accountUuid ?? null, expectedLiveToken });
-        throw markDead(`parked credential belongs to ${describeIdentity(freshOwner)}, whose grant this refresh rotated - the rotated token ${kept}; re-auth with \`tokenmaxxing auth ${target.label}\``);
-      }
+    };
+    if (parkedOwner != null) {
+      fresh = await refreshParked();
+    } else {
+      fresh = await withClaudeRefreshLock(async (lock) => {
+        const rotated = await refreshParked();
+        let freshOwner: TokenIdentity;
+        try {
+          freshOwner = await fetchTokenIdentity(rotated.accessToken);
+        } catch (e) {
+          await writeItem(parkedTarget(target.keychainItem), JSON.stringify({ claudeAiOauth: rotated }));
+          throw new Error(`refreshed the parked credential but cannot verify its owner (${e instanceof Error ? e.message : String(e)}) - kept the rotated token parked; the next check retries`);
+        }
+        if (freshOwner.accountUuid !== target.accountUuid) {
+          const owner = idx.accounts.find((a) => a.accountUuid === freshOwner.accountUuid) ?? null;
+          const kept = await keepRotatedPair({ fresh: rotated, owner, fallback: target, liveOwnerUuid: liveOwner?.accountUuid ?? null, expectedLiveToken, lock });
+          throw markDead(`parked credential belongs to ${describeIdentity(freshOwner)}, whose grant this refresh rotated - the rotated token ${kept}; re-auth with \`tokenmaxxing auth ${target.label}\``);
+        }
+        return rotated;
+      });
     }
     await writeItem(parkedTarget(target.keychainItem), JSON.stringify({ claudeAiOauth: fresh }));
   }
@@ -144,8 +150,20 @@ export async function performSwap(target: Account): Promise<void> {
   log("swap.done", { account: target.accountUuid.slice(0, 8), email: target.email });
 }
 
-export async function keepRotatedPair(input: { fresh: OAuthCreds; owner: Account; liveOwnerUuid: string | null; expectedLiveToken: string | null }): Promise<string> {
+export async function keepRotatedPair(input: {
+  fresh: OAuthCreds;
+  owner: Account | null;
+  fallback: Account;
+  liveOwnerUuid: string | null;
+  expectedLiveToken: string | null;
+  lock: { compromised: () => boolean };
+}): Promise<string> {
   const { fresh, owner } = input;
+  if (owner == null) {
+    await writeItem(parkedTarget(input.fallback.keychainItem), JSON.stringify({ claudeAiOauth: fresh }));
+    log("swap.rotated_kept_in_stamped_slot", { account: input.fallback.accountUuid.slice(0, 8) });
+    return "was kept in this account's stamped slot because its owner is not in the pool";
+  }
   const park = async (): Promise<void> => {
     await writeItem(parkedTarget(owner.keychainItem), JSON.stringify({ claudeAiOauth: fresh }));
     log("swap.rotated_parked_rescued", { account: owner.accountUuid.slice(0, 8) });
@@ -155,12 +173,10 @@ export async function keepRotatedPair(input: { fresh: OAuthCreds; owner: Account
     return "was parked under that account";
   }
   try {
-    await withClaudeRefreshLock(async (lock) => {
-      const currentLive = await readItem(liveTarget());
-      if (lock.compromised()) throw new Error("refresh lock compromised");
-      if (currentLive == null || parseBlob(currentLive).claudeAiOauth.accessToken !== input.expectedLiveToken) throw new Error("live credential changed while unlocked");
-      await writeItem(liveTarget(), mergeIntoLive(currentLive, fresh));
-    });
+    const currentLive = await readItem(liveTarget());
+    if (input.lock.compromised()) throw new Error("refresh lock compromised");
+    if (currentLive == null || parseBlob(currentLive).claudeAiOauth.accessToken !== input.expectedLiveToken) throw new Error("live credential changed while unlocked");
+    await writeItem(liveTarget(), mergeIntoLive(currentLive, fresh));
     log("swap.rotated_live_rescued", { account: owner.accountUuid.slice(0, 8) });
     return "was installed into the live store so that account's sessions continue";
   } catch (e) {

@@ -108,44 +108,62 @@ export async function cmdSwitch(selector?: string, json = false): Promise<number
       return 0;
     }
 
-    const fresh = loadAccounts();
-    const earliest = pickEarliestReset(fresh.accounts, everyoneIn(fresh.accounts));
-    const reauth = fresh.accounts.filter((a) => a.needsReauth).map((a) => a.label);
-    if (!earliest) {
-      if (reauth.length > 0) {
-        return fail(`no switchable account - reauth needed (run \`tokenmaxxing auth --all\`): ${reauth.join(", ")}`, {
-          paint: c.yellow,
-          extra: { reauthNeeded: reauth },
+    while (true) {
+      const fresh = loadAccounts();
+      const pool = fresh.accounts.filter((a) => !rejected.has(a.accountUuid));
+      const earliest = pickEarliestReset(pool, everyoneIn(fresh.accounts));
+      const reauth = fresh.accounts.filter((a) => a.needsReauth).map((a) => a.label);
+      if (!earliest) {
+        if (reauth.length > 0) {
+          return fail(`no switchable account - reauth needed (run \`tokenmaxxing auth --all\`): ${reauth.join(", ")}`, {
+            paint: c.yellow,
+            extra: { reauthNeeded: reauth },
+          });
+        }
+        const freshActive = fresh.accounts.find((a) => a.accountUuid === fresh.activeAccountUuid) ?? null;
+        if (drifted && freshActive) return swapTo(freshActive, "drift-reconciled");
+        emit(c.yellow("all accounts at their limit with unknown reset times (unparsed reset clocks? see tokenmaxxing.log) - staying put"), {
+          switched: false,
+          account: freshActive?.label ?? null,
+          reason: "unknown-resets",
         });
+        return 0;
       }
-      const freshActive = fresh.accounts.find((a) => a.accountUuid === fresh.activeAccountUuid) ?? null;
-      if (drifted && freshActive) return swapTo(freshActive, "drift-reconciled");
-      emit(c.yellow("all accounts at their limit with unknown reset times (unparsed reset clocks? see tokenmaxxing.log) - staying put"), {
-        switched: false,
-        account: freshActive?.label ?? null,
-        reason: "unknown-resets",
-      });
+      const reauthNote = reauth.length ? ` - re-auth needed: ${reauth.join(", ")}` : "";
+      const availableAt = earliest.availableAt > now ? earliest.availableAt : null;
+      if (earliest.account.accountUuid === fresh.activeAccountUuid && !drifted) {
+        const msg = availableAt == null
+          ? `staying on ${c.bold(earliest.account.label)} - no usable switch target${reauthNote}`
+          : `all accounts at limit - staying on ${c.bold(earliest.account.label)} (${fmtReset(availableAt, now)})${reauthNote}`;
+        emit(c.yellow(msg), {
+          switched: false,
+          account: earliest.account.label,
+          reason: availableAt == null ? "no-target" : "all-at-limit",
+          availableAt,
+          reauthNeeded: reauth,
+        });
+        return 0;
+      }
+      try {
+        await performSwap(earliest.account);
+      } catch (e) {
+        rejected.add(earliest.account.accountUuid);
+        if (e instanceof InvalidGrantError) {
+          deadGrants.push(earliest.account.label);
+          if (!json) console.error(c.red(deadGrantMessage(earliest.account)));
+          continue;
+        }
+        if (isSkippableSwapError(e)) {
+          if (!json) console.error(c.yellow(`${earliest.account.label}: ${e instanceof Error ? e.message : String(e)} - skipped for this run`));
+          continue;
+        }
+        throw e;
+      }
+      emit(`${c.green("↻")} switched to ${c.bold(earliest.account.label)}`, { switched: true, account: earliest.account.label, reason: "earliest-reset", availableAt, reauthNeeded: reauth });
+      if (availableAt != null && !json) {
+        console.log(c.yellow(`all accounts at limit - ${c.bold(earliest.account.label)} recovers soonest (${fmtReset(availableAt, now)})${reauthNote}`));
+      }
       return 0;
     }
-    const reauthNote = reauth.length ? ` - re-auth needed: ${reauth.join(", ")}` : "";
-    const availableAt = earliest.availableAt > now ? earliest.availableAt : null;
-    if (earliest.account.accountUuid === fresh.activeAccountUuid && !drifted) {
-      const msg = availableAt == null
-        ? `staying on ${c.bold(earliest.account.label)} - no usable switch target${reauthNote}`
-        : `all accounts at limit - staying on ${c.bold(earliest.account.label)} (${fmtReset(availableAt, now)})${reauthNote}`;
-      emit(c.yellow(msg), {
-        switched: false,
-        account: earliest.account.label,
-        reason: availableAt == null ? "no-target" : "all-at-limit",
-        availableAt,
-        reauthNeeded: reauth,
-      });
-      return 0;
-    }
-    const code = await swapTo(earliest.account, "earliest-reset", { availableAt, reauthNeeded: reauth });
-    if (code === 0 && availableAt != null && !json) {
-      console.log(c.yellow(`all accounts at limit - ${c.bold(earliest.account.label)} recovers soonest (${fmtReset(availableAt, now)})${reauthNote}`));
-    }
-    return code;
   });
 }
