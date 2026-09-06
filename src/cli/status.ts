@@ -274,10 +274,24 @@ const NOTE_INDENT = "    ";
 type Note = { paint: (s: string) => string; text: string };
 type Card = { lines: string[]; notes: Note[] };
 
+function splitToWidth(token: string, width: number): string[] {
+  const parts: string[] = [];
+  let part = "";
+  for (const ch of token) {
+    if (part !== "" && Bun.stringWidth(part + ch) > width) {
+      parts.push(part);
+      part = "";
+    }
+    part += ch;
+  }
+  if (part !== "") parts.push(part);
+  return parts;
+}
+
 function wrapWords(text: string, width: number): string[] {
   const out: string[] = [];
   let line = "";
-  for (const word of text.split(" ").flatMap((token) => (Bun.stringWidth(token) > width ? chunk(Array.from(token), width).map((part) => part.join("")) : [token]))) {
+  for (const word of text.split(" ").flatMap((token) => splitToWidth(token, width))) {
     if (line !== "" && Bun.stringWidth(`${line} ${word}`) > width) {
       out.push(line);
       line = word;
