@@ -4,9 +4,8 @@ import { withLock } from "./lock.ts";
 import { paths } from "./paths.ts";
 import { MAX_CHECK_DELAY_TICKS, POST_SWAP_COOLDOWN_MS, maxCheckDelayMs, loadAccounts, loadConfig, loadDepletedWait, loadLastSwapAt, loadUsage, loadUsageSnapshot, loadModelUsage, saveAccounts, saveDepletedWait, saveModelUsage, writeUsage } from "./state.ts";
 import { readOAuthAccount } from "./claudejson.ts";
-import { chooseAndSwap, performSwap } from "./swap.ts";
+import { chooseAndSwap, isSkippableSwapError, performSwap } from "./swap.ts";
 import { currentWins, effectiveBars, hardBars, isExhausted, nextWeeklyReset, pickBest, pickEarliestReset, sessionLadder, usableAt } from "./picker.ts";
-import { InvalidGrantError } from "./oauth.ts";
 import { familyTokens, gatedFamilies, probeUsage, type EnforcedClass } from "./usage.ts";
 import { log } from "./log.ts";
 import { AccountSchema, ModelUsageStateSchema, UsageStateSchema, type Account, type Config, type EnforcedLimit, type ModelUsageState, type Thresholds, type UsageState, type UsageWindow } from "./types.ts";
@@ -197,21 +196,30 @@ export async function evaluateAndMaybeSwap(now = Date.now(), anticipatory = fals
       idx2.accounts.find((a) => a.accountUuid === idx2.activeAccountUuid) ??
       null;
 
+    const rejected = new Set<string>();
+    const usable = (accounts: Account[]): Account[] => accounts.filter((a) => !rejected.has(a.accountUuid));
+    const skipOrThrow = (e: unknown, candidate: Account): void => {
+      if (!isSkippableSwapError(e)) throw e;
+      rejected.add(candidate.accountUuid);
+      log("decide.candidate_rejected", { account: candidate.accountUuid.slice(0, 8), error: e instanceof Error ? e.message : String(e) });
+    };
+
     const greedy = async (holdMargin: number): Promise<SwapDecision> => {
       while (true) {
         const cur = loadAccounts();
         const active = seatOf(cur);
-        const ctxAll = { now, thresholds: barsOf(cur.accounts), currentAccountUuid: null, switchFamilies, holdMargin };
-        if (currentWins(active, cur.accounts, ctxAll)) {
+        const pool = usable(cur.accounts);
+        const ctxAll = { now, thresholds: barsOf(pool), currentAccountUuid: null, switchFamilies, holdMargin };
+        if (currentWins(active, pool, ctxAll)) {
           return { swapped: false, account: null, reason: "current-best" };
         }
-        const best = pickBest(cur.accounts, { ...ctxAll, currentAccountUuid: active?.accountUuid ?? null });
+        const best = pickBest(pool, { ...ctxAll, currentAccountUuid: active?.accountUuid ?? null });
         if (!best) return { swapped: false, account: null, reason: "no-usable-target" };
         try {
           await performSwap(best);
         } catch (e) {
-          if (e instanceof InvalidGrantError) continue;
-          throw e;
+          skipOrThrow(e, best);
+          continue;
         }
         log("decide.greedy_swap", { account: best.accountUuid.slice(0, 8) });
         return { swapped: true, account: best, reason: "swapped" };
@@ -222,15 +230,16 @@ export async function evaluateAndMaybeSwap(now = Date.now(), anticipatory = fals
     while (true) {
       const cur = loadAccounts();
       const seat = seatOf(cur);
-      const thresholds = barsOf(cur.accounts);
+      const pool = usable(cur.accounts);
+      const thresholds = barsOf(pool);
       if (!enforced2 && seat && !seat.needsReauth && !isExhausted(seat, { now, thresholds, currentAccountUuid: null, switchFamilies })) return greedy(0);
-      const best = pickBest(cur.accounts, { now, thresholds, currentAccountUuid: seat?.accountUuid ?? null, switchFamilies });
+      const best = pickBest(pool, { now, thresholds, currentAccountUuid: seat?.accountUuid ?? null, switchFamilies });
       if (!best) break;
       try {
         await performSwap(best);
       } catch (e) {
-        if (e instanceof InvalidGrantError) continue;
-        throw e;
+        skipOrThrow(e, best);
+        continue;
       }
       return { swapped: true, account: best, reason: "swapped" };
     }
@@ -241,7 +250,7 @@ export async function evaluateAndMaybeSwap(now = Date.now(), anticipatory = fals
       log("decide.last_drop_hold", { account: seat.accountUuid.slice(0, 8) });
       return { swapped: false, account: null, reason: "last-drop-hold" };
     }
-    const squeezed = await chooseAndSwap({ ...hardCtx, currentAccountUuid: seat?.accountUuid ?? null });
+    const squeezed = await chooseAndSwap({ ...hardCtx, currentAccountUuid: seat?.accountUuid ?? null }, rejected);
     if (squeezed) {
       log("decide.last_drop_swap", { account: squeezed.accountUuid.slice(0, 8) });
       return { swapped: true, account: squeezed, reason: "last-drop-swap" };
@@ -253,7 +262,7 @@ export async function evaluateAndMaybeSwap(now = Date.now(), anticipatory = fals
       const ctx = { now, thresholds: hardBars(cfg), currentAccountUuid: current?.accountUuid ?? null, switchFamilies };
       const enforcedUntil = enforced2 && current && current.accountUuid === enforced2.account ? (enforced2.resetsAt ?? now + enforced2.windowMs) : 0;
       const currentAt = current ? Math.max(usableAt(current, ctx), enforcedUntil) : Number.POSITIVE_INFINITY;
-      const other = pickEarliestReset(fresh.accounts, ctx);
+      const other = pickEarliestReset(usable(fresh.accounts), ctx);
 
       let target: Account | null = null;
       let waitUntil = Number.POSITIVE_INFINITY;
@@ -275,8 +284,8 @@ export async function evaluateAndMaybeSwap(now = Date.now(), anticipatory = fals
         try {
           await performSwap(target);
         } catch (e) {
-          if (e instanceof InvalidGrantError) continue;
-          throw e;
+          skipOrThrow(e, target);
+          continue;
         }
       }
       saveDepletedWait({ waitUntil, accountUuid: target.accountUuid, ts: now });

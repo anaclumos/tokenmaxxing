@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { http, safeErrorDetail } from "./http.ts";
+import { http, oauthErrorCode, safeErrorDetail } from "./http.ts";
 import { ProfileResponseSchema, RefreshResponseSchema, TokenIdentitySchema, type OAuthCreds, type TokenIdentity } from "./types.ts";
 
 const EnvOverrideSchema = z.string().min(1).optional().catch(undefined);
@@ -20,6 +20,17 @@ export class InvalidGrantError extends Error {
     super(`invalid_grant: ${detail}`);
     this.name = "InvalidGrantError";
   }
+}
+
+export class RefreshRejectedError extends Error {
+  constructor(public readonly status: number, public readonly detail: string) {
+    super(`token refresh rejected (HTTP ${status}): ${detail}`);
+    this.name = "RefreshRejectedError";
+  }
+}
+
+export function isDeadCredential(creds: OAuthCreds): boolean {
+  return creds.refreshToken === "" || creds.accessToken === "";
 }
 
 export async function refreshCredential(creds: OAuthCreds, now = Date.now()): Promise<OAuthCreds> {
@@ -43,10 +54,10 @@ export async function refreshCredential(creds: OAuthCreds, now = Date.now()): Pr
 
   const text = await res.text();
   if (!res.ok) {
-    if (res.status === 400 && /invalid_grant/.test(text)) {
-      throw new InvalidGrantError(safeErrorDetail({ text }));
-    }
-    throw new Error(`token refresh failed (HTTP ${res.status}): ${safeErrorDetail({ text })}`);
+    const detail = safeErrorDetail({ text });
+    if (res.status === 400 && oauthErrorCode({ text }) === "invalid_grant") throw new InvalidGrantError(detail);
+    if (res.status >= 400 && res.status < 500) throw new RefreshRejectedError(res.status, detail);
+    throw new Error(`token refresh failed (HTTP ${res.status}): ${detail}`);
   }
 
   const parsed = RefreshResponseSchema.safeParse((() => {

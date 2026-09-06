@@ -4,7 +4,7 @@ import { z } from "zod";
 import { readItem, writeItem, deleteItem, liveTarget, parkedTarget, isolatedTarget, claudeAiOauthOnly, mergeIntoLive } from "./credstore.ts";
 import { credItemFor, paths } from "./paths.ts";
 import { withClaudeRefreshLock } from "./claudelock.ts";
-import { refreshCredential, isAccessTokenExpiring, fetchTokenIdentity, describeIdentity, InvalidGrantError } from "./oauth.ts";
+import { refreshCredential, isAccessTokenExpiring, isDeadCredential, fetchTokenIdentity, describeIdentity, InvalidGrantError } from "./oauth.ts";
 import { FullUsageSchema, pingSession, probeUsage } from "./usage.ts";
 import { CredentialBlobSchema, type Account, type OAuthCreds, type TokenIdentity } from "./types.ts";
 
@@ -48,22 +48,38 @@ export async function probeParkedUsage(account: Account, opts: { ping?: boolean 
   } catch (e) {
     return { ok: false, reason: `parked credential unreadable (${(e instanceof Error ? e.message : String(e)).slice(0, 80)}) - run \`tokenmaxxing auth\`` };
   }
+  if (isDeadCredential(creds)) {
+    account.needsReauth = true;
+    return { ok: false, reason: "parked credential was cleared after a failed refresh - re-auth with `tokenmaxxing auth`" };
+  }
 
   const liveRaw = await readItem(liveTarget());
   if (liveRaw != null) {
-    let liveAccount: string;
+    let liveCreds: OAuthCreds;
     try {
-      const liveCreds = CredentialBlobSchema.parse(JSON.parse(liveRaw)).claudeAiOauth;
-      liveAccount = (await fetchTokenIdentity(liveCreds.accessToken)).accountUuid;
+      liveCreds = CredentialBlobSchema.parse(JSON.parse(liveRaw)).claudeAiOauth;
     } catch (e) {
-      return { ok: false, reason: `cannot verify the live credential's owner (${(e instanceof Error ? e.message : String(e)).slice(0, 80)}) - refusing to sample a possibly-live account` };
+      return { ok: false, reason: `cannot read the live credential (${(e instanceof Error ? e.message : String(e)).slice(0, 80)}) - refusing to sample a possibly-live account` };
     }
-    if (liveAccount === account.accountUuid) {
-      return { ok: false, reason: "this account holds the LIVE login (active label drifted) - run `tokenmaxxing switch` to reconcile" };
+    if (!isDeadCredential(liveCreds)) {
+      let liveAccount: string;
+      try {
+        liveAccount = (await fetchTokenIdentity(liveCreds.accessToken)).accountUuid;
+      } catch (e) {
+        return { ok: false, reason: `cannot verify the live credential's owner (${(e instanceof Error ? e.message : String(e)).slice(0, 80)}) - refusing to sample a possibly-live account` };
+      }
+      if (liveAccount === account.accountUuid) {
+        return { ok: false, reason: "this account holds the LIVE login (active label drifted) - run `tokenmaxxing switch` to reconcile" };
+      }
     }
   }
 
   if (isAccessTokenExpiring(creds, 300_000)) {
+    const owner = await checkIdentity(creds, account);
+    if (owner.status === "mismatch") {
+      account.needsReauth = true;
+      return { ok: false, reason: `${owner.reason} - refusing to spend another account's grant; re-auth with \`tokenmaxxing auth\`` };
+    }
     try {
       creds = await refreshCredential(creds);
       await writeItem(backup, JSON.stringify({ claudeAiOauth: creds }));
@@ -122,11 +138,13 @@ export async function ensureLiveTokenFresh(): Promise<void> {
   } catch {
     return;
   }
+  if (isDeadCredential(creds)) throw new InvalidGrantError("live credential was cleared after a failed refresh");
   if (!isAccessTokenExpiring(creds, 300_000)) return;
   await withClaudeRefreshLock(async (lock) => {
     const raw2 = await readItem(liveTarget());
     if (raw2 == null) throw new Error("live credential vanished while waiting for the refresh lock");
     const current = CredentialBlobSchema.parse(JSON.parse(raw2)).claudeAiOauth;
+    if (isDeadCredential(current)) throw new InvalidGrantError("live credential was cleared after a failed refresh");
     const next = isAccessTokenExpiring(current, 300_000) ? await refreshCredential(current) : current;
     if (next === current) return;
     if (lock.compromised()) throw new Error("refresh lock compromised mid-refresh - discarding the live rewrite");

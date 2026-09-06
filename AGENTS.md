@@ -30,6 +30,8 @@ No external installed user base, so this is pre-production code: delete old-stat
 ## Credentials and identity
 
 - Identity is the `accountUuid` that `fetchTokenIdentity` reports for a token (`GET /api/oauth/profile`), never the organization, never a stored label, and never a blob comparison. Team seats share one `organizationUuid`, so an org-keyed lookup collapses every seat onto the first one in the array: all seats read as active, share the tee, and the harvest lands in the wrong slot (2026-09-06). Two rotations of one account's token differ byte-for-byte. Park a credential under its token's real owner, and commit the active label inside the same critical section as the credential writes.
+- Resolve a parked token's owner through the profile endpoint before spending its refresh grant, never by comparing tokens. A parked slot can hold a copy of another account's live credential (the org-keyed harvest wrote one there, 2026-09-06), and refreshing it revokes that account's sessions; Claude Code then force-refreshes its superseded refresh token, gets `invalid_grant`, and dead-clears the live blob to empty `accessToken` and `refreshToken`. `isDeadCredential` names that state, and no code path refreshes it (the token endpoint answers an empty `refresh_token` with the nested `invalid_request_error` 400, not `invalid_grant`).
+- Only `invalid_grant` stamps `needsReauth`. Any other token endpoint 4xx is `RefreshRejectedError` and skips the candidate for the rest of that evaluation (the `rejected` set in `decide.ts`, passed into `chooseAndSwap`). The loops used to continue only on `InvalidGrantError`, so one non-grant 400 aborted every evaluation and the hooks livelocked for 4.5 minutes (2026-09-06).
 - Every live-store write goes through `withClaudeRefreshLock`. A near-expiry session can rotate its own token into the live store at any moment.
 - An ambient `CLAUDE_CONFIG_DIR` or `CLAUDE_SECURESTORAGE_CONFIG_DIR` is refused, in CLI commands and in `pooledSpawnEnv` alike: on Linux the swap would write where the ambient var points while the child reads the default store, a silent wrong-account desync.
 - A missing namespaced keychain item never falls back to the live one, so isolation is sound once the probe env is scrubbed.
@@ -76,6 +78,7 @@ Ship = work on a branch, bump `package.json` and `agent-plugin/plugin.json` to t
 
 - Never push work directly to main.
 - The review window is 10 minutes of reviewer silence, babysat every minute: poll the PR each minute for new reviews, comments, check results, and merge state, handle whatever appears (fix or refute, resolve conflicts, fix CI), and merge only after 10 consecutive quiet minutes. Every new item restarts the clock. Green checks never shorten it, because reviewers post findings after their checks pass.
+- The PR review bots are the adversarial pass. Do not run a separate local adversarial-review workflow before opening the PR (owner, 2026-09-06); spend the effort on hermetic verification instead.
 - npm trusted publishing is bound to the literal workflow filename `ci.yml`. Renaming it silently breaks publishing.
 - `bun add -g <local .tgz>` over an existing global errors `DependencyLoop`. Run `bun remove -g` first.
 

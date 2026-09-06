@@ -1,7 +1,7 @@
 import { mkdirSync } from "node:fs";
 import { isApiKeyMode, readOAuthAccount } from "../lib/claudejson.ts";
 import { readItem, writeItem, liveTarget, parkedTarget, mergeIntoLive } from "../lib/credstore.ts";
-import { refreshCredential, isAccessTokenExpiring, fetchTokenIdentity, describeIdentity } from "../lib/oauth.ts";
+import { refreshCredential, isAccessTokenExpiring, isDeadCredential, fetchTokenIdentity, describeIdentity } from "../lib/oauth.ts";
 import { withClaudeRefreshLock } from "../lib/claudelock.ts";
 import { loadAccounts, saveAccounts, loadConfig, pinBinOverride } from "../lib/state.ts";
 import { withLock } from "../lib/lock.ts";
@@ -83,6 +83,11 @@ export async function cmdInit(): Promise<number> {
   }
 
   let creds = blob.claudeAiOauth;
+  if (isDeadCredential(creds)) {
+    console.error(c.red("the live credential was cleared after a failed refresh."));
+    console.error(`Run ${c.cyan("claude")} → ${c.cyan("/login")} first, then re-run ${c.cyan("tokenmaxxing init")}.`);
+    return 1;
+  }
   if (isAccessTokenExpiring(creds)) {
     await withClaudeRefreshLock(async (lock) => {
       const raw2 = await readItem(liveTarget());
