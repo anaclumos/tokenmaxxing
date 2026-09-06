@@ -14,7 +14,7 @@ description: "每個 tokenmaxxing 指令同佢做啲乜"
 | `tokenmaxxing switch --codex [sel]` | 切換 Codex 帳戶池（喺下一次 codex 啟動時生效） |
 | `tokenmaxxing ls` | 列出帳戶池內嘅帳戶 |
 | `tokenmaxxing status` | 帳戶連同 5h / 每週 / 每模型嘅用量條、活躍中同耗盡直至重設 |
-| `tokenmaxxing status --force` | 額外 ping 每個帳戶（每個一次極細嘅 haiku 請求），令所有 5h session 計時器即刻開始，然後重新採樣 |
+| `tokenmaxxing status --ping` | 額外 ping 每個帳戶（每個一次極細嘅 haiku 請求），令所有 5h session 計時器即刻開始，然後重新採樣 |
 | `tokenmaxxing watch [seconds]` | 即時狀態，每 N 秒重新渲染一次（預設 120，下限 30；永遠唔 ping） |
 | `tokenmaxxing config [get\|set\|unset\|tidy]` | 連同來源嘅有效設定；編輯點分隔嘅 key；`tidy` 會刪走未知嘅 key |
 | `tokenmaxxing check` | 評估切換決定一次（呢個就係定期計時器會行嘅） |

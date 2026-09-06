@@ -14,7 +14,7 @@ description: "每一个 tokenmaxxing 命令及其作用"
 | `tokenmaxxing switch --codex [sel]` | 切换 Codex 账户池（在下一次 codex 启动时生效） |
 | `tokenmaxxing ls` | 列出池内账户 |
 | `tokenmaxxing status` | 展示各账户的 5 小时 / 周 / 按模型用量条，以及活动和已耗尽到重置的状态 |
-| `tokenmaxxing status --force` | 额外对每个账户发一次 ping（每个一个极小的 haiku 请求），让所有 5 小时会话计时器立即开始，然后重新采样 |
+| `tokenmaxxing status --ping` | 额外对每个账户发一次 ping（每个一个极小的 haiku 请求），让所有 5 小时会话计时器立即开始，然后重新采样 |
 | `tokenmaxxing watch [seconds]` | 实时状态，每 N 秒重新渲染一次（默认 120，最低 30；从不 ping） |
 | `tokenmaxxing config [get\|set\|unset\|tidy]` | 显示带来源的有效配置；编辑点分键；`tidy` 清除未知键 |
 | `tokenmaxxing check` | 评估一次切换决策（这正是周期性定时器所运行的） |

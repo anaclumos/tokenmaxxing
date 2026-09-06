@@ -9,11 +9,11 @@ description: Safely change and ship tokenmaxxing (verification without a test su
 
 - The repo carries no test code and no comments (owner ruling 2026-09-02). Never add tests, a test script, or comments.
 - Verify with `bun run typecheck`, then hermetic CLI runs: `TOKENMAXXING_HOME=/tmp/xx-test bun run src/main.ts ...` (for decision-path changes, write accounts.json, usage.json, config.json, and a claude.json under that root and run `check`; point `TOKENMAXXING_KEYCHAIN_SERVICE` and `TOKENMAXXING_KEYCHAIN_ACCOUNT` at throwaway names and `TOKENMAXXING_CLAUDE_JSON` at that claude.json, because the CLI resolves claude.json from HOME, not from `TOKENMAXXING_HOME`).
-- Ask before any run that meters real quota (`status --force`, live-pool inference). Free `/usage` / plain status is fine.
+- Ask before any run that meters real quota (`status --ping`, live-pool inference). Free `/usage` / plain status is fine.
 
 ## Ship
 
-- Work on a branch; bump `package.json` in the same PR; open PR; wait the full review window; handle every review; merge; `gh release create v<version>`; verify npm publish.
+- Work on a branch; bump `package.json` and `agent-plugin/plugin.json` to the same version in the same PR; open PR; wait the full review window; handle every review; merge; `gh release create v<version>`; verify npm publish.
 - Never push directly to main. npm trusted publishing is bound to workflow filename `ci.yml`.
 
 ## Machine gotchas

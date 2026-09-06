@@ -18,7 +18,7 @@ Vì đó không phải là tài khoản có nguy cơ bị mất hạn ngạch ca
 **Nó vừa chuyển đổi mà statusline vẫn hiển thị tài khoản cũ.**
 Điều này bình thường trong tối đa khoảng 30 giây trên macOS: phiên đang chạy tiếp nhận thông tin xác thực đã hoán đổi ở lần làm mới bộ nhớ đệm thông tin xác thực tiếp theo của nó. Bộ tee sử dụng bị chặn trong 45 giây sau một lần hoán đổi chính vì lý do này.
 
-**`status --force` có tốn phí gì không?**
+**`status --ping` có tốn phí gì không?**
 Có, một cách chủ ý: nó gửi một yêu cầu haiku tối thiểu có tính phí cho mỗi tài khoản để mọi cửa sổ phiên 5 giờ bắt đầu ngay khoảnh khắc đó thay vì nằm im lìm, rồi lấy mẫu mới. `status` và `watch` thông thường không bao giờ ping; các lần đọc `/usage` là miễn phí. Lưu ý rằng nguồn cấp sử dụng của máy chủ có thể trễ một cửa sổ vừa mở từ vài giây đến vài phút, nên một phép thăm dò ngay sau lần ping có thể vẫn hiển thị trạng thái trước ping: `status` kết xuất một ghi chú thay vì giả vờ rằng lần ping đã thất bại.
 
 **Phép thăm dò `/usage` không trả về gì cho tài khoản đang hoạt động.**

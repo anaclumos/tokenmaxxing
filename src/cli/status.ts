@@ -1,4 +1,4 @@
-import { sortBy } from "es-toolkit";
+import { sampleSize, sortBy } from "es-toolkit";
 import { z } from "zod";
 import { loadAccounts, loadConfig, loadUsage, loadUsageSnapshot, loadModelUsage, saveAccounts } from "../lib/state.ts";
 import { readOAuthAccount } from "../lib/claudejson.ts";
@@ -86,14 +86,31 @@ function currentCodexWindow(w: CodexWindow, now: number): CodexWindow {
   return { ...currentWindow(w, !isSessionWindow({ window: w }), now), windowSeconds: w.windowSeconds };
 }
 
-async function collectClaude(input: { cfg: Config; force: boolean; now: number }): Promise<StatusReport["claude"]> {
-  const { cfg, force, now } = input;
+function pickForPing(accounts: Account[], pingCount: number | undefined): Account[] {
+  if (pingCount == null) return accounts;
+  const usable = accounts.filter((a) => a.needsReauth !== true);
+  return sampleSize(usable, Math.min(pingCount, usable.length));
+}
+
+function progressNote(input: { ping: boolean; pingCount: number | undefined; picked: Account[]; total: number }): string {
+  const { ping, pingCount, picked, total } = input;
+  if (!ping) return "sampling live usage...";
+  if (pingCount == null) return "pinging every account (starts each 5h session timer) + sampling live usage...";
+  if (picked.length === 0) return "no account to ping (every account needs reauth), sampling live usage...";
+  return `pinging ${picked.length} of ${count({ n: total, noun: "account" })} (${picked.map((a) => a.label || a.email).join(", ")}) so their 5h session timers start now + sampling live usage...`;
+}
+
+async function collectClaude(input: { cfg: Config; ping: boolean; pingCount: number | undefined; now: number }): Promise<StatusReport["claude"]> {
+  const { cfg, ping, pingCount, now } = input;
   let idx = loadAccounts();
   const samples = new Map<string, { outcome: SampleOutcome; viaTee: boolean }>();
+  let pings = new Set<string>();
   if (idx.accounts.length > 0) {
-    console.error(c.dim(force ? "pinging every account (starts each 5h session timer) + sampling live usage..." : "sampling live usage..."));
     await withLock(paths.lockFile, async () => {
       idx = loadAccounts();
+      const picked = ping ? pickForPing(idx.accounts, pingCount) : [];
+      pings = new Set(picked.map((a) => a.accountUuid));
+      console.error(c.dim(progressNote({ ping, pingCount, picked, total: idx.accounts.length })));
       const tee = loadUsageSnapshot();
       const live = tee?.state ?? null;
       const teeAt = tee?.at ?? null;
@@ -114,7 +131,7 @@ async function collectClaude(input: { cfg: Config; force: boolean; now: number }
             : null;
         let viaTee = false;
         let outcome: SampleOutcome;
-        if (force) {
+        if (pings.has(a.accountUuid)) {
           outcome = isActive ? await probeActiveUsage(a, { ping: true }) : await probeParkedUsage(a, { ping: true });
           if (!outcome.ok && fromStatusLine && outcome.reason.includes("no limit data")) {
             const failed = outcome;
@@ -177,7 +194,7 @@ async function collectClaude(input: { cfg: Config; force: boolean; now: number }
       sample: sampled.outcome.ok ? { ok: true, source: sampled.viaTee ? "statusline" : "probe" } : { ok: false, reason: sampled.outcome.reason },
       pingError: sampled.outcome.pingError ?? null,
       pingRejected: sampled.outcome.pingRejected === true,
-      pinged: force && sampled.outcome.ok && sampled.outcome.pingError == null && aggregate != null && aggregate.fiveHour.resetsAt == null,
+      pinged: pings.has(a.accountUuid) && sampled.outcome.ok && sampled.outcome.pingError == null && aggregate != null && aggregate.fiveHour.resetsAt == null,
     };
   });
   return {
@@ -341,11 +358,11 @@ function renderClaude(input: {
   }
 }
 
-export async function cmdStatus(opts: { force?: boolean; json?: boolean; preRender?: () => void } = {}): Promise<number> {
-  const { force = false, json = false } = opts;
+export async function cmdStatus(opts: { ping?: boolean; pingCount?: number; json?: boolean; preRender?: () => void } = {}): Promise<number> {
+  const { ping = false, pingCount, json = false } = opts;
   const cfg = loadConfig();
   const now = Date.now();
-  const claude = await collectClaude({ cfg, force, now });
+  const claude = await collectClaude({ cfg, ping, pingCount, now });
   if (!json) {
     opts.preRender?.();
     const at = Date.now();

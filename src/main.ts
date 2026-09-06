@@ -45,7 +45,7 @@ function printHelp(): void {
   ${c.cyan("tokenmaxxing switch --codex")} [sel]  switch the codex pool (takes effect on next codex start)
   ${c.cyan("tokenmaxxing ls")}         list pooled accounts
   ${c.cyan("tokenmaxxing status")}     accounts with 5h / weekly / per-model usage bars
-  ${c.cyan("tokenmaxxing status --force")}  ping every account (one tiny haiku request each) so all 5h session timers start now, then sample fresh; ${c.cyan("xx --force")} works too
+  ${c.cyan("tokenmaxxing status --ping")} [--count N]  ping every account (one tiny haiku request each) so all 5h session timers start now, then sample fresh; ${c.cyan("--count N")} pings N randomly picked accounts instead, to stagger the resets; ${c.cyan("xx --ping")} works too
   ${c.cyan("tokenmaxxing watch")} [seconds]  live status: re-render every N seconds (default 120, never pings)
   ${c.cyan("tokenmaxxing config")} [get|set|unset|tidy]  inspect and edit config.json (bare = effective config with sources)
   ${c.cyan("tokenmaxxing doctor")}     verify the install is intact
@@ -59,6 +59,28 @@ function printHelp(): void {
 }
 
 let jsonMode = false;
+
+function statusFlags(rest: string[]): { ping: boolean; pingCount: number | undefined } | { error: string } {
+  let ping = false;
+  let pingCount: number | undefined;
+  for (let i = 0; i < rest.length; i++) {
+    const arg = rest[i]!;
+    if (arg === "--ping") {
+      ping = true;
+      continue;
+    }
+    if (arg === "--count") {
+      if (pingCount != null) return { error: "--count may only be given once" };
+      const raw = rest[++i];
+      pingCount = Number(raw);
+      if (!Number.isInteger(pingCount) || pingCount < 1) return { error: `--count needs a positive whole number of accounts, got: ${raw ?? "nothing"}` };
+      continue;
+    }
+    return { error: `unknown status option: ${arg} (status takes --ping and --count N)` };
+  }
+  if (pingCount != null && !ping) return { error: "--count only applies together with --ping" };
+  return { ping, pingCount };
+}
 
 async function main(): Promise<number> {
   if (process.platform !== "darwin" && process.platform !== "linux") {
@@ -103,8 +125,17 @@ async function main(): Promise<number> {
     case "__stop-failure-hook": return runStopFailureHook();
     case "__session-start": return runSessionStart();
     case "__codex-stop-hook": return runCodexStopHook();
-    case undefined: return cmdStatus({ json });
-    case "--force": return cmdStatus({ force: true, json });
+    case undefined:
+    case "status":
+    case "--ping":
+    case "--count": {
+      const flags = statusFlags(sub === "status" ? args.slice(1) : args);
+      if ("error" in flags) {
+        emitError({ json, message: flags.error });
+        return 2;
+      }
+      return cmdStatus({ ...flags, json });
+    }
     case "switch": {
       const rest = args.slice(1).filter((a) => a !== "--codex");
       return args.includes("--codex") ? cmdCodexSwitch(rest[0], json) : cmdSwitch(rest[0], json);
@@ -115,7 +146,6 @@ async function main(): Promise<number> {
     case "add": return args.includes("--codex") ? cmdCodexAdd() : cmdAdd();
     case "auth": return cmdAuth(args.slice(1));
     case "ls": return cmdLs(json);
-    case "status": return cmdStatus({ force: args.includes("--force"), json });
     case "watch": return cmdWatch(args[1], json);
     case "doctor": return cmdDoctor(json);
     case "rm": {

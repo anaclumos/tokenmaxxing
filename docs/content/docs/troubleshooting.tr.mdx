@@ -18,7 +18,7 @@ Yenileme token'ı ölü (iptal edilmiş veya yedeğinin altından döndürülmü
 **Az önce geçti ve statusline hâlâ eski hesabı gösteriyor.**
 macOS'ta ~30 saniyeye kadar beklenir: çalışan oturum, değiştirilen kimlik bilgisini bir sonraki kimlik bilgisi önbellek yenilemesinde benimser. Kullanım tee'si tam olarak bu nedenle bir geçişten sonra 45 saniye boyunca bastırılır.
 
-**`status --force` bir maliyeti var mı?**
+**`status --ping` bir maliyeti var mı?**
 Evet, kasıtlı olarak: her hesaba minimal ölçülen bir haiku isteği gönderir, böylece her 5 saatlik oturum penceresi atıl yatmak yerine o anda başlar, ardından taze örnekler. Sade `status` ve `watch` asla ping atmaz; `/usage` okumaları ücretsizdir. Sunucu kullanım beslemesinin taze açılmış bir pencereyi saniyelerden dakikalara kadar geciktirebileceğini unutmayın, bu nedenle ping'in hemen ardından bir probe hâlâ ping öncesi durumu gösterebilir - `status`, ping'in başarısız olduğunu iddia etmek yerine bir not işler.
 
 **`/usage` probe'u aktif hesap için hiçbir şey döndürmedi.**

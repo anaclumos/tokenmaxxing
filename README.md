@@ -70,7 +70,7 @@ claude                  # use claude as always
 | `tokenmaxxing switch --codex [sel]` | switch the codex pool (takes effect on the next codex start) |
 | `tokenmaxxing ls` | list pooled accounts |
 | `tokenmaxxing status` | accounts with 5h / weekly usage bars, active + exhausted-until-reset |
-| `tokenmaxxing status --force` | additionally ping every account (one tiny haiku request each) so all 5h session timers start now, then sample fresh |
+| `tokenmaxxing status --ping [--count N]` | additionally ping every account (one tiny haiku request each) so all 5h session timers start now, then sample fresh; `--count N` pings N randomly picked accounts instead, to stagger the resets |
 | `tokenmaxxing watch [seconds]` | live status: re-render every N seconds (default 120, floor 30; never pings) |
 | `tokenmaxxing config` | effective config with sources; `get`/`set`/`unset` dotted keys, `tidy` prunes unknown keys |
 | `tokenmaxxing doctor` | verify the supervisor + settings entries survived |

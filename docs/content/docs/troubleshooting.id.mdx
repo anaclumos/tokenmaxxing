@@ -18,7 +18,7 @@ Karena itu bukan akun yang paling berisiko menghanguskan kuota. Target adalah ak
 **Baru saja berpindah dan statusline masih menampilkan akun lama.**
 Diperkirakan hingga ~30 detik di macOS: sesi yang berjalan mengadopsi kredensial yang ditukar pada penyegaran cache-kredensial berikutnya. Tee penggunaan ditekan selama 45 detik setelah sebuah pertukaran justru karena alasan ini.
 
-**Apakah `status --force` memakan biaya?**
+**Apakah `status --ping` memakan biaya?**
 Ya, dengan sengaja: ia mengirim satu permintaan haiku terukur minimal per akun sehingga setiap jendela sesi 5 jam mulai pada saat itu alih-alih diam terlelap, lalu mengambil sampel segar. `status` biasa dan `watch` tidak pernah memberi ping; pembacaan `/usage` gratis. Perhatikan umpan penggunaan server bisa terlambat mencerminkan jendela yang baru dibuka dalam hitungan detik hingga menit, jadi sebuah probe langsung setelah ping mungkin masih menampilkan keadaan pra-ping - `status` merender sebuah catatan alih-alih berpura-pura ping gagal.
 
 **Probe `/usage` tidak mengembalikan apa pun untuk akun aktif.**

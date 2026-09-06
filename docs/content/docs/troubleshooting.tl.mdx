@@ -18,7 +18,7 @@ Dahil hindi iyon ang account na may pinakamalaking panganib na mawalan ng quota.
 **Kalilipat lang at ipinapakita pa rin ng statusline ang lumang account.**
 Inaasahan sa hanggang ~30 segundo sa macOS: ina-adopt ng tumatakbong session ang naipalit na credential sa susunod nitong credential-cache refresh. Ang usage tee ay pinipigilan sa loob ng 45 segundo pagkatapos ng isang pagpapalit para sa mismong dahilang ito.
 
-**May gastos ba ang `status --force`?**
+**May gastos ba ang `status --ping`?**
 Oo, sinadya: nagpapadala ito ng isang minimal na metered na haiku request bawat account upang magsimula ang bawat 5-oras na session window sa sandaling iyon sa halip na manatiling nakatulog, pagkatapos ay kumukuha ng sariwang sample. Ang payak na `status` at `watch` ay hindi kailanman nag-ping; libre ang mga pagbasa ng `/usage`. Tandaan na maaaring ma-lag ng server usage feed ang isang bagong-buksang window nang segundo hanggang minuto, kaya't ang isang probe kaagad pagkatapos ng ping ay maaari pa ring magpakita ng pre-ping na estado - nagre-render ang `status` ng isang tala sa halip na magpanggap na nabigo ang ping.
 
 **Walang ibinalik ang `/usage` probe para sa aktibong account.**

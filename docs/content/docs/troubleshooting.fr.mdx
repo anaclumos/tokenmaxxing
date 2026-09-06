@@ -18,7 +18,7 @@ Parce que ce n'est pas le compte le plus exposé au risque de perdre du quota. L
 **Il vient de basculer et la statusline affiche toujours l'ancien compte.**
 Attendu pendant jusqu'à ~30 secondes sur macOS : la session en cours adopte l'identifiant échangé lors de son prochain rafraîchissement du cache d'identifiants. Le tee d'utilisation est suspendu pendant 45 secondes après une bascule pour exactement cette raison.
 
-**Est-ce que `status --force` coûte quelque chose ?**
+**Est-ce que `status --ping` coûte quelque chose ?**
 Oui, délibérément : il envoie une requête haiku comptabilisée minimale par compte afin que chaque fenêtre de session de 5 heures démarre à cet instant au lieu de rester dormante, puis échantillonne à neuf. Le `status` simple et `watch` ne ping jamais ; les lectures `/usage` sont gratuites. Notez que le flux d'utilisation du serveur peut retarder de quelques secondes à quelques minutes une fenêtre fraîchement ouverte, de sorte qu'une sonde immédiatement après le ping peut encore afficher l'état d'avant le ping : `status` rend une note au lieu de prétendre que le ping a échoué.
 
 **La sonde `/usage` n'a rien renvoyé pour le compte actif.**
