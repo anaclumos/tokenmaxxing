@@ -8,6 +8,7 @@ import { refreshCredential, isAccessTokenExpiring, isDeadCredential, fetchTokenI
 import { FullUsageSchema, pingSession, probeUsage } from "./usage.ts";
 import { loadAccounts } from "./state.ts";
 import { keepRotatedPair } from "./swap.ts";
+import { log } from "./log.ts";
 import { CredentialBlobSchema, TokenIdentitySchema, type Account, type OAuthCreds, type TokenIdentity } from "./types.ts";
 
 const SampleOutcomeSchema = z.discriminatedUnion("ok", [
@@ -82,11 +83,20 @@ export async function probeParkedUsage(account: Account, opts: { ping?: boolean 
     }
   }
 
+  const relocate = async (owner: TokenIdentity): Promise<string> => {
+    const pooled = loadAccounts().accounts.find((a) => a.accountUuid === owner.accountUuid) ?? null;
+    if (pooled == null || pooled.accountUuid === liveAccount) return "was left in place";
+    await writeItem(parkedTarget(pooled.keychainItem), JSON.stringify({ claudeAiOauth: creds }));
+    log("swap.parked_relocated", { account: pooled.accountUuid.slice(0, 8) });
+    return "was copied to that account's slot";
+  };
+
   if (isAccessTokenExpiring(creds, 300_000)) {
     const owner = await checkIdentity(creds, account);
     if (owner.status === "mismatch") {
+      const kept = await relocate(owner.owner);
       account.needsReauth = true;
-      return { ok: false, reason: `${owner.reason} - refusing to spend another account's grant; re-auth with \`tokenmaxxing auth\`` };
+      return { ok: false, reason: `${owner.reason} - refusing to spend another account's grant; the pair ${kept}; re-auth with \`tokenmaxxing auth\`` };
     }
     if (owner.status === "unavailable" && !owner.stale) {
       return { ok: false, reason: `${owner.reason} - refusing to refresh a parked credential whose owner cannot be verified` };
@@ -128,8 +138,9 @@ export async function probeParkedUsage(account: Account, opts: { ping?: boolean 
 
   const identity = await checkIdentity(creds, account);
   if (identity.status === "mismatch") {
+    const kept = await relocate(identity.owner);
     account.needsReauth = true;
-    return { ok: false, reason: `${identity.reason} - this account's own credential is gone; re-auth with \`tokenmaxxing auth\`` };
+    return { ok: false, reason: `${identity.reason} - this account's own credential is gone; the pair ${kept}; re-auth with \`tokenmaxxing auth\`` };
   }
   if (identity.status === "unavailable") {
     return { ok: false, reason: identity.reason };

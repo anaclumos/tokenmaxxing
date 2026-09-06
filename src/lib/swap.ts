@@ -86,7 +86,14 @@ export async function performSwap(target: Account): Promise<void> {
       log("swap.parked_token_stale", { account: target.accountUuid.slice(0, 8) });
     }
     if (parkedOwner != null && parkedOwner.accountUuid !== target.accountUuid) {
-      throw markDead(`parked credential belongs to ${describeIdentity(parkedOwner)} - refusing to spend another account's grant; re-auth with \`tokenmaxxing auth ${target.label}\``);
+      const owner = idx.accounts.find((a) => a.accountUuid === parkedOwner.accountUuid) ?? null;
+      let kept = "was left in place";
+      if (owner != null && owner.accountUuid !== liveOwner?.accountUuid) {
+        await writeItem(parkedTarget(owner.keychainItem), JSON.stringify({ claudeAiOauth: parked }));
+        log("swap.parked_relocated", { account: owner.accountUuid.slice(0, 8) });
+        kept = "was copied to that account's slot";
+      }
+      throw markDead(`parked credential belongs to ${describeIdentity(parkedOwner)} - refusing to spend another account's grant; the pair ${kept}; re-auth with \`tokenmaxxing auth ${target.label}\``);
     }
     const refreshParked = async (): Promise<OAuthCreds> => {
       try {

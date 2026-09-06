@@ -24,6 +24,7 @@ Verified 2026-09-02 for 1.10.0, defaults then 50/80/95 and floor 50. Since 1.12.
 | flat `invalid_grant` on B | `swap.invalid_grant B`, B stamped, `swap.done C` |
 | live blob dead-cleared (empty tokens) | `swap.live_dead`, no token request carrying an empty refresh token, no harvest, `swap.done B` |
 | parked B is a copy of A's live blob | `swap.invalid_grant B` naming A as the owner, A's refresh token never on the token route, B stamped, `swap.done C` |
+| parked B is a validating copy of C while C is not live and C's own slot is dead-cleared | `swap.parked_relocated C` (the pair is copied to C's slot before B is stamped), `swap.invalid_grant B` naming C, then C swaps in on that pair, `swap.done C` |
 | every candidate nested-400 | one rejection each, nothing stamped, `decide.last_drop_hold A`, `next in 60s` |
 | profile 503 for B's parked token | `decide.candidate_rejected B` with the 503 detail, B's refresh token never spent, B not stamped, `swap.done C` |
 | B's parked access token expired (profile 401) | `swap.parked_token_stale B`, token route sees B's refresh token, profile sees the refreshed token, `swap.done B` |
