@@ -60,14 +60,24 @@ function printHelp(): void {
 
 let jsonMode = false;
 
-function statusFlags(rest: string[]): { ping: boolean; pingCount?: number } | { error: string } {
-  const ping = rest.includes("--ping");
-  const at = rest.indexOf("--count");
-  if (at < 0) return { ping };
-  const raw = rest[at + 1];
-  const pingCount = Number(raw);
-  if (!Number.isInteger(pingCount) || pingCount < 1) return { error: `--count needs a positive whole number of accounts, got: ${raw ?? "nothing"}` };
-  if (!ping) return { error: "--count only applies together with --ping" };
+function statusFlags(rest: string[]): { ping: boolean; pingCount: number | undefined } | { error: string } {
+  let ping = false;
+  let pingCount: number | undefined;
+  for (let i = 0; i < rest.length; i++) {
+    const arg = rest[i]!;
+    if (arg === "--ping") {
+      ping = true;
+      continue;
+    }
+    if (arg === "--count") {
+      const raw = rest[++i];
+      pingCount = Number(raw);
+      if (!Number.isInteger(pingCount) || pingCount < 1) return { error: `--count needs a positive whole number of accounts, got: ${raw ?? "nothing"}` };
+      continue;
+    }
+    return { error: `unknown status option: ${arg} (status takes --ping and --count N)` };
+  }
+  if (pingCount != null && !ping) return { error: "--count only applies together with --ping" };
   return { ping, pingCount };
 }
 
