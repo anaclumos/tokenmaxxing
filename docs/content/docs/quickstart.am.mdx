@@ -18,7 +18,7 @@ tokenmaxxing init
 2. የ `claude` supervisor shim ን ይጭናል።
 3. በ Claude Code `settings.json` ውስጥ አራት ግቤቶችን ይጭናል፦ statusLine፣ Stop hook፣ StopFailure hook፣ እና SessionStart hook (በተጨማሪም subagentStatusLine ግቤት)።
 4. የ supervisor ን bin directory ወደ shell rc ዎ PATH ላይ ያክላል (idempotent፣ በ `# tokenmaxxing PATH` አስተያየት ምልክት የተደረገበት)። ትክክለኛውን `claude` ለመጥለፍ በ PATH ላይ ከሱ ፊት መቀመጥ አለበት።
-5. በየ60 ሰከንዱ `tokenmaxxing check --if-due` ን የሚያሄድ ወቅታዊ የፍተሻ timer (በ macOS ላይ launchd agent፣ በ Linux ላይ systemd user timer) ይጭናል፤ ፍተሻው ከቀጥታው መለያ ክፍተት አንጻር ራሱን በአንድ እና በአምስት ደቂቃ መካከል ያስተካክላል።
+5. `tokenmaxxing check --if-due` ን በየ tick ው የሚያሄድ ወቅታዊ የፍተሻ timer (በ macOS ላይ launchd agent፣ በ Linux ላይ systemd user timer) ይጭናል (`policy.checkIntervalMs`፣ በነባሪ 60 ሰከንድ)፤ ፍተሻው ከቀጥታው መለያ ክፍተት አንጻር ራሱን በአንድ እና በአምስት tick መካከል ያስተካክላል።
 
 shell ዎን ዳግም ያስጀምሩ፣ ከዚያ ተጨማሪ መለያዎችን ይጨምሩ እና ይቀጥሉ፦
 

@@ -14,9 +14,11 @@ description: "config.json 嘅 schema、閾值同策略選項"
   "policy": {
     "projectionMargin": 0,
     "greedySessionFloor": 80,
+    "greedySwapMargin": 0.15,
     "switchModels": ["fable"],
     "usagePollTtlMs": 90000,
-    "maxWaitMs": 3600000
+    "maxWaitMs": 3600000,
+    "checkIntervalMs": 60000
   }
 }
 ```
@@ -27,8 +29,10 @@ description: "config.json 嘅 schema、閾值同策略選項"
 - `claudeBin` / `codexBin`：釘死監督者實際會 spawn 嘅真身 binary（由 `init` / `init --codex` 寫入;當防遞歸嘅診斷話你知 `claudeBin` 唔再指向真身 Claude binary 嘅時候，就要嚟呢度改）。
 - `policy.projectionMargin`：會喺每一級 session 級數、每週界線同撞牆界線各自減走，得出有效界線。
 - `policy.greedySessionFloor`：session 已用百分比去到幾多，貪婪收斂就會啟動。
+- `policy.greedySwapMargin`：貪婪路徑上面對現任嘅遲滯，係一個 0 到 1 之間嘅分數（預設 0.15）。除非有個泊存帳戶嘅步伐壓力高過當前帳戶超過呢個分數，否則當前帳戶就會守住個位，噉近乎打和嘅帳戶就唔會再將個位換嚟換去，搞爆每個組織嘅提示快取。設做 0 就會返到以前永遠攞最好嗰個嘅行為。佢永遠唔會放鬆一條已經跨過嘅界線或者撞牆，淨係管全部都喺界線之下嘅帳戶之間嘅橫向切換。手動行 `tokenmaxxing switch` 唔會理佢，永遠收斂到最佳嘅帳戶。
 - `policy.switchModels`：每模型每週上限會閘住切換嘅模型系列（載入時項目會轉做細楷）。
 - `policy.usagePollTtlMs`：`/usage` 每模型輪詢保持新鮮嘅時間。
 - `policy.maxWaitMs`：帳戶池耗盡時自動等待嘅上限。
+- `policy.checkIntervalMs`：定期檢查嘅 tick（預設 60000，最低 10000，因為 launchd 預設唔會喺 10 秒之內生成多過一次 job）。`init` 會將佢向上取整到成秒，寫做計時器嘅間隔（喺 Linux，systemd 嘅 `AccuracySec` 係佢嘅十二分之一，最少一秒），而每一檔餘裕都係佢嘅倍數：貼近一條界線就一下 tick，餘裕大把就最多五下 tick（睇[檢查節奏](/yue/switching)）。耗盡等待同切換後冷卻就唔跟呢個，各自瞓到自己嘅死線。個排程會喺下一次檢查讀到新值，但已經安裝咗嘅計時器會維持舊嗰個 tick，直到你再行一次 `tokenmaxxing init`；而到期時間嘅寬限係設定咗嘅 tick 嘅一半，所以改咗嘅 tick 要行完嗰次先至完全生效。如果個計時器由 Nix 管，就將 `checkTimer.intervalSeconds` 設成同一個值；嗰個選項有同樣嘅 10 秒底線。
 
 `tokenmaxxing config` 會顯示連同來源嘅有效設定；`config set`/`unset` 編輯點分隔嘅 key；`config tidy` 刪走未知嘅 key。

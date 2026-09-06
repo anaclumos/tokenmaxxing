@@ -53,7 +53,7 @@ Home Manager (پیکیج واضح طور پر سیٹ کریں، یا اس flake 
 }
 ```
 
-Nix صرف CLI کو PATH پر رکھتا ہے۔ اکاؤنٹ درآمد، PATH پر `claude` سپروائزر shim، `settings.json` ہکس، اور (ڈیفالٹ طور پر) وقفہ وقفے سے چیک ٹائمر اب بھی `tokenmaxxing init` سے آتے ہیں۔ یہ اسناد اور صارف کی اپنی سیٹنگز کو چھوتے ہیں جنہیں خالص ماڈیول کو دوبارہ نہیں لکھنا چاہیے۔ `programs.tokenmaxxing.checkTimer.enable = true` صرف تب سیٹ کریں جب آپ چاہیں کہ ٹائمر init کے بجائے Nix کے پاس ہو (اس سے `TOKENMAXXING_SKIP_TIMER=1` بھی ایکسپورٹ ہوتا ہے تاکہ init دوسرا یونٹ نہ لکھے)۔ اعلانی ٹائمر بھی init کی طرح یوزر-سیشن ٹائمر ہے۔ ہیڈ لیس Linux پر اسے لاگ اِن کے بغیر چلانے کے لیے `loginctl enable-linger` درکار ہے۔
+Nix صرف CLI کو PATH پر رکھتا ہے۔ اکاؤنٹ درآمد، PATH پر `claude` سپروائزر shim، `settings.json` ہکس، اور (ڈیفالٹ طور پر) وقفہ وقفے سے چیک ٹائمر اب بھی `tokenmaxxing init` سے آتے ہیں۔ یہ اسناد اور صارف کی اپنی سیٹنگز کو چھوتے ہیں جنہیں خالص ماڈیول کو دوبارہ نہیں لکھنا چاہیے۔ `programs.tokenmaxxing.checkTimer.enable = true` صرف تب سیٹ کریں جب آپ چاہیں کہ ٹائمر init کے بجائے Nix کے پاس ہو (اس سے `TOKENMAXXING_SKIP_TIMER=1` بھی ایکسپورٹ ہوتا ہے تاکہ init دوسرا یونٹ نہ لکھے)۔ اعلانی ٹائمر بھی init کی طرح یوزر-سیشن ٹائمر ہے۔ ہیڈ لیس Linux پر اسے لاگ اِن کے بغیر چلانے کے لیے `loginctl enable-linger` درکار ہے۔ `checkTimer.intervalSeconds` کو `policy.checkIntervalMs` کے برابر سیکنڈوں میں رکھیں، کیونکہ خود سے طے ہونے والا شیڈول کنفیگ کی کلید پڑھتا ہے جبکہ یونٹ Nix والی قدر پر چلتا ہے۔
 
 `bun.lock` بدلنے پر Nix انحصار اظہار دوبارہ بنائیں:
 

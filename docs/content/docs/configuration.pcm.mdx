@@ -14,9 +14,11 @@ Config na JSON for `~/.config/tokenmaxxing/config.json`. Every field na optional
   "policy": {
     "projectionMargin": 0,
     "greedySessionFloor": 80,
+    "greedySwapMargin": 0.15,
     "switchModels": ["fable"],
     "usagePollTtlMs": 90000,
-    "maxWaitMs": 3600000
+    "maxWaitMs": 3600000,
+    "checkIntervalMs": 60000
   }
 }
 ```
@@ -27,8 +29,10 @@ Config na JSON for `~/.config/tokenmaxxing/config.json`. Every field na optional
 - `claudeBin` / `codexBin`: e dey pin to the REAL binaries wey the supervisors dey spawn (`init` / `init --codex` dey write am; if the recursion-guard diagnostic talk say make you fix `claudeBin` for here, na because e don stop to point to the real Claude binary).
 - `policy.projectionMargin`: dem dey subtract am from every session rung, the weekly bar, and the wall bars to form the effective bars.
 - `policy.greedySessionFloor`: session-used percent wey the greedy convergence go engage.
+- `policy.greedySwapMargin`: na incumbent hysteresis for the greedy path, one fraction from 0 to 1 (default 0.15). The current account dey hold im seat unless one parked account im pace pressure pass am by more than dis fraction, so accounts wey near-tie go stop to dey trade the seat back and forth and dey bust the per-organization prompt cache. Set am to 0 if you want the old always-take-the-best behavior. E no dey ever soften one bar wey don cross or the wall - na only lateral swaps between accounts wey all dey under the bars. Manual `tokenmaxxing switch` dey ignore am and e dey always converge on the best account.
 - `policy.switchModels`: model families wey dia per-model weekly cap dey gate a switch (dem dey lowercase the entries on load).
 - `policy.usagePollTtlMs`: how long one `/usage` per-model poll go stay fresh.
 - `policy.maxWaitMs`: the depleted-pool auto-wait bound.
+- `policy.checkIntervalMs`: na the periodic check tick (default 60000, minimum 10000 because launchd no dey spawn one job more than once every 10 seconds by default). `init` dey write am, round am up to whole seconds, as the timer im interval (for Linux the systemd `AccuracySec` na one twelfth of am, at least one second), and every headroom band na multiple of am: one tick when e near one bar, up to five ticks when plenty headroom dey (check [Check cadence](/pcm/switching)). One depleted wait and the post-swap cooldown dey sleep to dia own deadlines instead. The schedule dey read the new value for the next check, but the timer wey dem don install dey keep im old tick until you run `tokenmaxxing init` again, and the due-time slack na half of the tick wey you configure, so a tick wey change go only dey fully honored after dat re-run. With one Nix-managed timer, set `checkTimer.intervalSeconds` to the same value; dat option get the same 10-second floor.
 
 `tokenmaxxing config` dey show the effective config with sources; `config set`/`unset` dey edit dotted keys; `config tidy` dey prune unknown keys.

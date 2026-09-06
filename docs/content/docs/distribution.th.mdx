@@ -53,7 +53,7 @@ Home Manager (ตั้งแพ็กเกจแบบชัดเจน ห�
 }
 ```
 
-Nix ใส่แค่ CLI บน PATH การนำเข้าบัญชี, shim supervisor `claude` บน PATH, hook ใน `settings.json` และ (โดยค่าเริ่มต้น) ตัวจับเวลาตรวจสอบเป็นระยะ ยังมาจาก `tokenmaxxing init` สิ่งเหล่านี้แตะข้อมูลรับรองและการตั้งค่าที่เป็นของยูสเซอร์ ซึ่งโมดูลแบบ pure ไม่ควรเขียนทับ ตั้ง `programs.tokenmaxxing.checkTimer.enable = true` เฉพาะเมื่อต้องการให้ Nix เป็นเจ้าของตัวจับเวลาแทน init (การตั้งค่านี้จะ export `TOKENMAXXING_SKIP_TIMER=1` ไปด้วย เพื่อไม่ให้ init เขียน unit ซ้ำอีกอัน) ตัวจับเวลาแบบ declarative นี้เป็นตัวจับเวลาระดับ user session เช่นเดียวกับที่ init เขียน บน Linux แบบ headless จึงต้องใช้ `loginctl enable-linger` เพื่อให้มันทำงานได้โดยไม่ต้องล็อกอิน
+Nix ใส่แค่ CLI บน PATH การนำเข้าบัญชี, shim supervisor `claude` บน PATH, hook ใน `settings.json` และ (โดยค่าเริ่มต้น) ตัวจับเวลาตรวจสอบเป็นระยะ ยังมาจาก `tokenmaxxing init` สิ่งเหล่านี้แตะข้อมูลรับรองและการตั้งค่าที่เป็นของยูสเซอร์ ซึ่งโมดูลแบบ pure ไม่ควรเขียนทับ ตั้ง `programs.tokenmaxxing.checkTimer.enable = true` เฉพาะเมื่อต้องการให้ Nix เป็นเจ้าของตัวจับเวลาแทน init (การตั้งค่านี้จะ export `TOKENMAXXING_SKIP_TIMER=1` ไปด้วย เพื่อไม่ให้ init เขียน unit ซ้ำอีกอัน) ตัวจับเวลาแบบ declarative นี้เป็นตัวจับเวลาระดับ user session เช่นเดียวกับที่ init เขียน บน Linux แบบ headless จึงต้องใช้ `loginctl enable-linger` เพื่อให้มันทำงานได้โดยไม่ต้องล็อกอิน ให้ตั้ง `checkTimer.intervalSeconds` ให้เท่ากับ `policy.checkIntervalMs` ในหน่วยวินาทีเสมอ เพราะตารางเวลาที่กำหนดจังหวะเองอ่านค่าจากคีย์ใน config ขณะที่ unit ทำงานตามค่าที่ตั้งไว้ใน Nix
 
 เมื่อ `bun.lock` เปลี่ยน ให้สร้างนิพจน์ dependency ของ Nix ใหม่:
 

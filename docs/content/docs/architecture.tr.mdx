@@ -40,7 +40,7 @@ Yalnızca havuzdaki her hesap kendi çubuklarının üzerinde olduğunda Stop ho
 
 ## Periyodik denetim zamanlayıcısı
 
-Hook'lar yalnızca tur sınırlarında tetiklenir ve uzun bir agentic tur, tek bir sınır olmadan bir pencereyi sağlıklıdan tükenmişe yakabilir. Bu nedenle `init` ayrıca, tur etkinliğinden bağımsız olarak her 60 saniyede bir `tokenmaxxing check --if-due` çalıştıran periyodik bir zamanlayıcı (macOS'ta bir launchd agent, Linux'ta bir systemd kullanıcı zamanlayıcısı) kurar. Denetim kendi temposunu canlı hesabın kalan boşluğuna göre ayarlar: her çubuğa bol yer varken beş dakikada bir, bir çubuğa yaklaşınca her tikte değerlendirir (bkz. [Geçişe nasıl karar verilir](/tr/switching)).
+Hook'lar yalnızca tur sınırlarında tetiklenir ve uzun bir agentic tur, tek bir sınır olmadan bir pencereyi sağlıklıdan tükenmişe yakabilir. Bu nedenle `init` ayrıca, tur etkinliğinden bağımsız olarak `tokenmaxxing check --if-due` komutunu tikte bir (`policy.checkIntervalMs`, varsayılan 60 saniye) çalıştıran periyodik bir zamanlayıcı (macOS'ta bir launchd agent, Linux'ta bir systemd kullanıcı zamanlayıcısı) kurar. Denetim kendi temposunu canlı hesabın kalan boşluğuna göre ayarlar: her çubuğa bol yer varken beş tikte bir, bir çubuğa yaklaşınca her tikte değerlendirir (bkz. [Geçişe nasıl karar verilir](/tr/switching)).
 
 ## SessionStart hook
 

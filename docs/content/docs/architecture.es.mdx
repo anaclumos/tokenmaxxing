@@ -40,7 +40,7 @@ Solo cuando todas las cuentas del grupo superan sus barras el hook Stop escribe 
 
 ## El temporizador de comprobación periódica
 
-Los hooks solo se disparan en los límites de turno, y un turno agéntico largo puede quemar una ventana de sana a agotada sin un solo límite. Por eso `init` también instala un temporizador periódico - un agente launchd en macOS, un temporizador de usuario systemd en Linux - que ejecuta `tokenmaxxing check --if-due` cada 60 segundos independientemente de la actividad de turnos. La comprobación marca su propio ritmo a partir del margen de la cuenta en vivo: con mucho espacio hasta cada barra evalúa cada cinco minutos, y cerca de una barra en cada tick (consulta [Cómo se decide el cambio](/es/switching)).
+Los hooks solo se disparan en los límites de turno, y un turno agéntico largo puede quemar una ventana de sana a agotada sin un solo límite. Por eso `init` también instala un temporizador periódico - un agente launchd en macOS, un temporizador de usuario systemd en Linux - que ejecuta `tokenmaxxing check --if-due` una vez por tick (`policy.checkIntervalMs`, 60 segundos por defecto) independientemente de la actividad de turnos. La comprobación marca su propio ritmo a partir del margen de la cuenta en vivo: con mucho espacio hasta cada barra evalúa cada cinco ticks, y cerca de una barra en cada tick (consulta [Cómo se decide el cambio](/es/switching)).
 
 ## Un hook SessionStart
 

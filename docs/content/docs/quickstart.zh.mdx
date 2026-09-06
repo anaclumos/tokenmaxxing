@@ -18,7 +18,7 @@ tokenmaxxing init
 2. 安装 `claude` 监督进程 shim。
 3. 在 Claude Code 的 `settings.json` 中安装四个条目：statusLine、Stop hook、StopFailure hook 和 SessionStart hook（另加一个 subagentStatusLine 条目）。
 4. 把监督进程的 bin 目录追加到 shell rc 的 PATH 中（幂等操作，用 `# tokenmaxxing PATH` 注释标记）。它必须排在真正的 `claude` 之前才能拦截。
-5. 安装周期性检查定时器（macOS 上为 launchd agent，Linux 上为 systemd 用户定时器），每 60 秒运行一次 `tokenmaxxing check --if-due`；这项检查会依据活动账户的余量，把自己的节奏调在一到五分钟之间。
+5. 安装周期性检查定时器（macOS 上为 launchd agent，Linux 上为 systemd 用户定时器），每一跳运行一次 `tokenmaxxing check --if-due`（`policy.checkIntervalMs`，默认 60 秒）；这项检查会依据活动账户的余量，把自己的节奏调在一到五跳之间。
 
 重启 shell，然后添加更多账户即可开始：
 

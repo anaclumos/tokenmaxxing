@@ -53,7 +53,7 @@ Home Manager(패키지를 직접 지정하거나, Home Manager가 쓰는 pkgs에
 }
 ```
 
-Nix가 하는 일은 CLI를 PATH에 올리는 것뿐입니다. 계정 가져오기, PATH의 `claude` 슈퍼바이저 shim, `settings.json` 훅, (기본값으로는) 주기적 점검 타이머는 여전히 `tokenmaxxing init`에서 옵니다. 자격 증명과 사용자가 소유한 설정을 건드리는 부분이라 순수 모듈이 덮어쓰면 안 됩니다. 타이머를 init 대신 Nix가 맡게 하고 싶을 때만 `programs.tokenmaxxing.checkTimer.enable = true`를 켜세요(이 옵션은 `TOKENMAXXING_SKIP_TIMER=1`도 함께 내보내므로 init이 두 번째 유닛을 쓰지 않습니다). 선언적 타이머도 init과 마찬가지로 사용자 세션 타이머입니다. 헤드리스 Linux에서 로그인 없이 발동하게 하려면 `loginctl enable-linger`가 필요합니다.
+Nix가 하는 일은 CLI를 PATH에 올리는 것뿐입니다. 계정 가져오기, PATH의 `claude` 슈퍼바이저 shim, `settings.json` 훅, (기본값으로는) 주기적 점검 타이머는 여전히 `tokenmaxxing init`에서 옵니다. 자격 증명과 사용자가 소유한 설정을 건드리는 부분이라 순수 모듈이 덮어쓰면 안 됩니다. 타이머를 init 대신 Nix가 맡게 하고 싶을 때만 `programs.tokenmaxxing.checkTimer.enable = true`를 켜세요(이 옵션은 `TOKENMAXXING_SKIP_TIMER=1`도 함께 내보내므로 init이 두 번째 유닛을 쓰지 않습니다). 선언적 타이머도 init과 마찬가지로 사용자 세션 타이머입니다. 헤드리스 Linux에서 로그인 없이 발동하게 하려면 `loginctl enable-linger`가 필요합니다. `checkTimer.intervalSeconds`는 `policy.checkIntervalMs`를 초로 환산한 값과 같게 유지하세요. 스스로 주기를 조절하는 일정은 설정 키를 읽는 반면 유닛은 Nix 값에 맞춰 발동하기 때문입니다.
 
 `bun.lock`이 바뀌면 Nix 의존성 식을 다시 만듭니다:
 

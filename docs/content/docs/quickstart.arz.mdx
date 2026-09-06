@@ -18,7 +18,7 @@ tokenmaxxing init
 2. بيثبّت الـ `claude` supervisor shim.
 3. بيثبّت أربع مدخلات في الـ `settings.json` بتاع Claude Code: statusLine، و Stop hook، و StopFailure hook، و SessionStart hook (بالإضافة لمدخل subagentStatusLine).
 4. بيضيف مجلد الـ bin بتاع الـ supervisor لـ PATH في الـ shell rc بتاعك (idempotent، ومتعلّم عليه بتعليق `# tokenmaxxing PATH`). لازم يبقى قدّام الـ `claude` الحقيقي في الـ PATH عشان يعترضه.
-5. بيثبّت timer للفحص الدوري (launchd agent على macOS، و systemd user timer على Linux) بيشغّل `tokenmaxxing check --if-due` كل 60 ثانية؛ والفحص بيظبط إيقاعه بنفسه بين دقيقة وخمس دقايق حسب المساحة الفاضية بتاعت الحساب الحي.
+5. بيثبّت timer للفحص الدوري (launchd agent على macOS، و systemd user timer على Linux) بيشغّل `tokenmaxxing check --if-due` مرة كل tick (`policy.checkIntervalMs`، 60 ثانية افتراضيًا)؛ والفحص بيظبط إيقاعه بنفسه بين tick وخمس ticks حسب المساحة الفاضية بتاعت الحساب الحي.
 
 اعمل restart للـ shell بتاعك، وبعدين ضيف حسابات أكتر واتفضّل:
 

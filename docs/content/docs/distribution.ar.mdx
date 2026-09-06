@@ -53,7 +53,7 @@ Home Manager (عيّن الحزمة صراحةً، أو طبّق overlay هذا 
 }
 ```
 
-يضع Nix واجهة سطر الأوامر في PATH فحسب. أمّا استيراد الحسابات، وshim المشرف `claude` على PATH، وhooks في `settings.json`، ومؤقّت الفحص الدوري (افتراضيًا)، فما زالت تأتي من `tokenmaxxing init`، لأنها تمسّ بيانات الاعتماد وإعدادات يملكها المستخدم، ولا ينبغي لوحدة نقية أن تعيد كتابتها. اضبط `programs.tokenmaxxing.checkTimer.enable = true` فقط عندما تريد أن يملك Nix المؤقّت بدل init (وهذا يصدّر أيضًا `TOKENMAXXING_SKIP_TIMER=1` حتى لا يكتب init وحدة ثانية). والمؤقّت التصريحي مؤقّت جلسة مستخدم، مطابقًا لما يفعله init، ويحتاج Linux بلا واجهة إلى `loginctl enable-linger` لكي يعمل دون تسجيل دخول.
+يضع Nix واجهة سطر الأوامر في PATH فحسب. أمّا استيراد الحسابات، وshim المشرف `claude` على PATH، وhooks في `settings.json`، ومؤقّت الفحص الدوري (افتراضيًا)، فما زالت تأتي من `tokenmaxxing init`، لأنها تمسّ بيانات الاعتماد وإعدادات يملكها المستخدم، ولا ينبغي لوحدة نقية أن تعيد كتابتها. اضبط `programs.tokenmaxxing.checkTimer.enable = true` فقط عندما تريد أن يملك Nix المؤقّت بدل init (وهذا يصدّر أيضًا `TOKENMAXXING_SKIP_TIMER=1` حتى لا يكتب init وحدة ثانية). والمؤقّت التصريحي مؤقّت جلسة مستخدم، مطابقًا لما يفعله init، ويحتاج Linux بلا واجهة إلى `loginctl enable-linger` لكي يعمل دون تسجيل دخول. وأبقِ `checkTimer.intervalSeconds` مساويًا لـ `policy.checkIntervalMs` بالثواني، لأن الجدولة ذاتية الوتيرة تقرأ مفتاح الإعداد بينما تنطلق الوحدة على قيمة Nix.
 
 عند تغيّر `bun.lock`، أعد توليد تعبير اعتماديات Nix:
 

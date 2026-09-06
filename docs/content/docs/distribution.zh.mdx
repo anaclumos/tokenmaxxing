@@ -53,7 +53,7 @@ Home Manager（显式指定 package，或者把这个 flake 的 overlay 应用�
 }
 ```
 
-Nix 只负责把 CLI 放进 PATH。账户导入、PATH 上的 `claude` 监督进程 shim、`settings.json` 里的 hook，以及（默认情况下）周期性检查定时器，仍由 `tokenmaxxing init` 负责，这些会碰到凭证和用户自己的配置，纯模块不该去改写。只有当你希望定时器由 Nix 接管、而不是由 init 接管时，才设置 `programs.tokenmaxxing.checkTimer.enable = true`（它同时会导出 `TOKENMAXXING_SKIP_TIMER=1`，这样 init 就不会再写第二个单元）。声明式定时器和 init 一样，都是用户会话级的定时器，无头 Linux 需要 `loginctl enable-linger`，它才能在没有登录的情况下触发。
+Nix 只负责把 CLI 放进 PATH。账户导入、PATH 上的 `claude` 监督进程 shim、`settings.json` 里的 hook，以及（默认情况下）周期性检查定时器，仍由 `tokenmaxxing init` 负责，这些会碰到凭证和用户自己的配置，纯模块不该去改写。只有当你希望定时器由 Nix 接管、而不是由 init 接管时，才设置 `programs.tokenmaxxing.checkTimer.enable = true`（它同时会导出 `TOKENMAXXING_SKIP_TIMER=1`，这样 init 就不会再写第二个单元）。声明式定时器和 init 一样，都是用户会话级的定时器，无头 Linux 需要 `loginctl enable-linger`，它才能在没有登录的情况下触发。请让 `checkTimer.intervalSeconds` 与换算成秒的 `policy.checkIntervalMs` 保持一致，因为自调节的排期读的是配置键，而单元触发用的是 Nix 里的那个值。
 
 `bun.lock` 有变动时，重新生成 Nix 依赖表达式：
 

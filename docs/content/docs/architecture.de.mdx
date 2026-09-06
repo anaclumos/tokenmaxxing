@@ -40,7 +40,7 @@ Nur wenn jedes Konto im Pool über seinen Schranken liegt, schreibt der Stop-Hoo
 
 ## Der periodische Prüf-Timer
 
-Hooks feuern nur an Zuggrenzen, und ein langer agentischer Zug kann ein Fenster von gesund bis erschöpft verbrennen, ohne eine einzige Grenze. `init` installiert daher auch einen periodischen Timer - ein launchd-Agent auf macOS, ein systemd-Benutzer-Timer auf Linux - der unabhängig von der Zugaktivität alle 60 Sekunden `tokenmaxxing check --if-due` ausführt. Die Prüfung taktet sich anhand des Spielraums des Live-Kontos selbst: Bei reichlich Luft bis zu jeder Schranke wertet sie alle fünf Minuten aus, nahe an einer Schranke bei jedem Takt (siehe [Wie der Wechsel entschieden wird](/de/switching)).
+Hooks feuern nur an Zuggrenzen, und ein langer agentischer Zug kann ein Fenster von gesund bis erschöpft verbrennen, ohne eine einzige Grenze. `init` installiert daher auch einen periodischen Timer - ein launchd-Agent auf macOS, ein systemd-Benutzer-Timer auf Linux - der unabhängig von der Zugaktivität einmal pro Takt (`policy.checkIntervalMs`, standardmäßig 60 Sekunden) `tokenmaxxing check --if-due` ausführt. Die Prüfung taktet sich anhand des Spielraums des Live-Kontos selbst: Bei reichlich Luft bis zu jeder Schranke wertet sie alle fünf Takte aus, nahe an einer Schranke bei jedem Takt (siehe [Wie der Wechsel entschieden wird](/de/switching)).
 
 ## Ein SessionStart-Hook
 

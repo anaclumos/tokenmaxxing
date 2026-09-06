@@ -8,7 +8,7 @@ description: "الفرق بين macOS و Linux في التخزين، والتب�
 | الـ credential الحي | عنصر generic-password في الـ login keychain | ملف `.credentials.json` بصلاحية 0600 |
 | الـ credentials المركونة | عناصر keychain لكل حساب | ملفات 0600 في مجلد 0700 |
 | التبني بعد التبديل | خلال حوالي 30 ثانية (كاش قراءة الـ keychain) | الطلب اللي بعده (poll لـ mtime الملف) |
-| الفحص الدوري | launchd agent، tick أرضي كل 60 ثانية، وبإيقاع ذاتي من 60 لـ 300 ثانية | systemd user timer، tick أرضي كل 60 ثانية، وبإيقاع ذاتي من 60 لـ 300 ثانية |
+| الفحص الدوري | launchd agent، tick أرضي بـ `policy.checkIntervalMs` (60 ثانية افتراضيًا)، وبإيقاع ذاتي من tick لخمس ticks | systemd user timer، tick أرضي بـ `policy.checkIntervalMs` (60 ثانية افتراضيًا)، وبإيقاع ذاتي من tick لخمس ticks |
 | مخزن تسجيل الدخول المعزول | خدمة keychain باسم مساحة مبني على hash لكل مجلد إعدادات | ملف جوّا مجلد الإعدادات المعزول |
 
 تفصيلتين خاصين بـ Linux يستاهلوا تعرفهم: claude بيحدّد مجلد الـ credential بتاعه من `CLAUDE_SECURESTORAGE_CONFIG_DIR` الأول (وبعدين `CLAUDE_CONFIG_DIR`، وبعدين `~/.claude`)، و tokenmaxxing بيطابق التحديد ده بالظبط عشان الاتنين عمرهم ما يختلفوا. وبناءات الـ OS الاتنين لنفس نسخة claude بينسّقوا ساعات الـ reset بتاعت `/usage` بشكل مختلف (واحد بيستخدم رابط `" at "`، والتاني فاصلة)؛ الـ parser بتاع tokenmaxxing بيقبل الشكلين دول بالظبط وبيسجّل في اللوج، بدل ما يخمّن، لو لقى أي شكل تالت.

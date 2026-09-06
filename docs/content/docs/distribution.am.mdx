@@ -53,7 +53,7 @@ Home Manager (ጥቅሉን በግልጽ ያዘጋጁ፣ ወይም የዚህን f
 }
 ```
 
-Nix CLI ን በ PATH ላይ ብቻ ያስቀምጣል። የመለያ ማስመጣት፣ በ PATH ላይ ያለው የ `claude` supervisor shim፣ የ `settings.json` hooks፣ እና (በነባሪ) ወቅታዊ የፍተሻ ሰዓት ቆጣሪ አሁንም ከ `tokenmaxxing init` ይመጣሉ። እነዚህ ምስክርነቶችን እና የተጠቃሚ ባለቤትነት ያላቸውን ቅንብሮች ይነካሉ፣ ንጹህ ሞጁል መልሶ መጻፍ የለበትም። ሰዓት ቆጣሪውን ከ init ይልቅ Nix እንዲይዘው ሲፈልጉ ብቻ `programs.tokenmaxxing.checkTimer.enable = true` ያዘጋጁ (ይህም `TOKENMAXXING_SKIP_TIMER=1` ን ስለሚልክ init ሁለተኛ unit አይጽፍም)። declarative ሰዓት ቆጣሪው ልክ እንደ init የ user-session ሰዓት ቆጣሪ ነው። headless Linux ያለ login እንዲቀሰቀስ `loginctl enable-linger` ይፈልጋል።
+Nix CLI ን በ PATH ላይ ብቻ ያስቀምጣል። የመለያ ማስመጣት፣ በ PATH ላይ ያለው የ `claude` supervisor shim፣ የ `settings.json` hooks፣ እና (በነባሪ) ወቅታዊ የፍተሻ ሰዓት ቆጣሪ አሁንም ከ `tokenmaxxing init` ይመጣሉ። እነዚህ ምስክርነቶችን እና የተጠቃሚ ባለቤትነት ያላቸውን ቅንብሮች ይነካሉ፣ ንጹህ ሞጁል መልሶ መጻፍ የለበትም። ሰዓት ቆጣሪውን ከ init ይልቅ Nix እንዲይዘው ሲፈልጉ ብቻ `programs.tokenmaxxing.checkTimer.enable = true` ያዘጋጁ (ይህም `TOKENMAXXING_SKIP_TIMER=1` ን ስለሚልክ init ሁለተኛ unit አይጽፍም)። declarative ሰዓት ቆጣሪው ልክ እንደ init የ user-session ሰዓት ቆጣሪ ነው። headless Linux ያለ login እንዲቀሰቀስ `loginctl enable-linger` ይፈልጋል። `checkTimer.intervalSeconds` ን ከ `policy.checkIntervalMs` ጋር በሰከንድ እኩል አድርገው ያቆዩ፣ ምክንያቱም ራስ-ተስተካካዩ መርሃ ግብር የ config key ውን ያነባል፣ unit ው ግን በ Nix ዋጋው ላይ ይቀሰቀሳል።
 
 `bun.lock` ሲቀየር የ Nix ጥገኝነት አገላለጹን እንደገና ይፍጠሩ፦
 

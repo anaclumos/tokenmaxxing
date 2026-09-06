@@ -53,7 +53,7 @@ Home Manager (set paketnya secara eksplisit, atau terapkan overlay flake ini ke 
 }
 ```
 
-Nix hanya menaruh CLI di PATH. Impor akun, shim supervisor `claude` di PATH, hook `settings.json`, dan (secara default) timer pemeriksaan berkala tetap dari `tokenmaxxing init`. Semua itu menyentuh kredensial dan pengaturan milik pengguna yang tidak seharusnya ditulis ulang oleh modul murni. Set `programs.tokenmaxxing.checkTimer.enable = true` hanya jika ingin Nix yang mengelola timer, bukan init (itu juga mengekspor `TOKENMAXXING_SKIP_TIMER=1` agar init tidak menulis unit kedua). Timer deklaratif itu adalah timer sesi-pengguna, sama seperti init. Linux tanpa kepala membutuhkan `loginctl enable-linger` agar timer itu menyala tanpa login.
+Nix hanya menaruh CLI di PATH. Impor akun, shim supervisor `claude` di PATH, hook `settings.json`, dan (secara default) timer pemeriksaan berkala tetap dari `tokenmaxxing init`. Semua itu menyentuh kredensial dan pengaturan milik pengguna yang tidak seharusnya ditulis ulang oleh modul murni. Set `programs.tokenmaxxing.checkTimer.enable = true` hanya jika ingin Nix yang mengelola timer, bukan init (itu juga mengekspor `TOKENMAXXING_SKIP_TIMER=1` agar init tidak menulis unit kedua). Timer deklaratif itu adalah timer sesi-pengguna, sama seperti init. Linux tanpa kepala membutuhkan `loginctl enable-linger` agar timer itu menyala tanpa login. Jaga `checkTimer.intervalSeconds` tetap sama dengan `policy.checkIntervalMs` dalam satuan detik, karena jadwal berlaju-mandiri membaca kunci konfigurasi itu sementara unitnya menyala berdasarkan nilai Nix.
 
 Ketika `bun.lock` berubah, regenerasi ekspresi dependensi Nix:
 

@@ -53,7 +53,7 @@ Home Manager (đặt package tường minh, hoặc áp dụng overlay của flak
 }
 ```
 
-Nix chỉ đưa CLI lên PATH. Việc nhập tài khoản, shim giám sát `claude` trên PATH, hook trong `settings.json`, và (mặc định) timer kiểm tra định kỳ vẫn đến từ `tokenmaxxing init`: những thứ đó chạm vào thông tin đăng nhập và cài đặt thuộc về người dùng mà một module thuần không nên ghi đè. Chỉ đặt `programs.tokenmaxxing.checkTimer.enable = true` khi bạn muốn Nix quản lý timer thay cho init (việc đó cũng xuất `TOKENMAXXING_SKIP_TIMER=1` để init không ghi thêm một unit thứ hai). Timer khai báo là một timer theo phiên người dùng, khớp với init, nên Linux không đầu cần `loginctl enable-linger` để nó kích hoạt mà không cần đăng nhập.
+Nix chỉ đưa CLI lên PATH. Việc nhập tài khoản, shim giám sát `claude` trên PATH, hook trong `settings.json`, và (mặc định) timer kiểm tra định kỳ vẫn đến từ `tokenmaxxing init`: những thứ đó chạm vào thông tin đăng nhập và cài đặt thuộc về người dùng mà một module thuần không nên ghi đè. Chỉ đặt `programs.tokenmaxxing.checkTimer.enable = true` khi bạn muốn Nix quản lý timer thay cho init (việc đó cũng xuất `TOKENMAXXING_SKIP_TIMER=1` để init không ghi thêm một unit thứ hai). Timer khai báo là một timer theo phiên người dùng, khớp với init, nên Linux không đầu cần `loginctl enable-linger` để nó kích hoạt mà không cần đăng nhập. Hãy giữ `checkTimer.intervalSeconds` bằng `policy.checkIntervalMs` quy ra giây, vì lịch trình tự điều nhịp đọc khóa cấu hình còn unit thì kích hoạt theo giá trị bên Nix.
 
 Khi `bun.lock` thay đổi, tạo lại biểu thức phụ thuộc Nix:
 

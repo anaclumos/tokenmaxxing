@@ -14,9 +14,11 @@ Usanidi ni JSON katika `~/.config/tokenmaxxing/config.json`. Kila uga ni wa hiar
   "policy": {
     "projectionMargin": 0,
     "greedySessionFloor": 80,
+    "greedySwapMargin": 0.15,
     "switchModels": ["fable"],
     "usagePollTtlMs": 90000,
-    "maxWaitMs": 3600000
+    "maxWaitMs": 3600000,
+    "checkIntervalMs": 60000
   }
 }
 ```
@@ -27,8 +29,10 @@ Usanidi ni JSON katika `~/.config/tokenmaxxing/config.json`. Kila uga ni wa hiar
 - `claudeBin` / `codexBin`: hupachika kwenye faili za kutekeleza HALISI ambazo wasimamizi huzalisha (huandikwa na `init` / `init --codex`; utambuzi wa kinga ya urejeleaji hukuambia urekebishe `claudeBin` hapa pale isipoelekeza tena kwenye faili halisi ya Claude).
 - `policy.projectionMargin`: hutolewa kutoka kwa kila daraja la kikao, baa ya wiki, na baa za ukuta ili kuunda baa zinazotumika.
 - `policy.greedySessionFloor`: asilimia ya kikao kilichotumika ambapo muungano wa greedy hujihusisha.
+- `policy.greedySwapMargin`: histeresi ya akaunti iliyopo kwenye njia ya greedy, sehemu kutoka 0 hadi 1 (chaguo-msingi 0.15). Akaunti ya sasa hushikilia kiti chake isipokuwa shinikizo la mwendo la akaunti iliyoegeshwa liizidi kwa zaidi ya sehemu hii, hivyo akaunti zilizo karibu kusare huacha kupokezana kiti mbele na nyuma na kuharibu kache ya kidokezo ya kila shirika. Iweke 0 kupata tabia ya zamani ya kuchukua-bora-kila-mara. Kamwe hailegezi baa iliyovukwa wala ukuta - ubadilishaji wa kando pekee kati ya akaunti ambazo zote ziko chini ya baa. `tokenmaxxing switch` ya mkono huipuuza na hukusanyika kila mara kwenye akaunti bora kabisa.
 - `policy.switchModels`: familia za miundo ambazo kikomo chao cha kila wiki cha kila muundo hulinda ubadilishaji (viingizo hufanywa herufi ndogo wakati wa kupakia).
 - `policy.usagePollTtlMs`: muda ambao uchunguzi wa `/usage` wa kila muundo hubaki bichi.
 - `policy.maxWaitMs`: mpaka wa kusubiri otomatiki kwa mkusanyiko uliokwisha.
+- `policy.checkIntervalMs`: tiki ya ukaguzi wa mara kwa mara (chaguo-msingi 60000, kiwango cha chini 10000 kwa sababu launchd haizalishi kazi zaidi ya mara moja kila sekunde 10 kwa chaguo-msingi). `init` huiandika, ikizungushwa juu hadi sekunde kamili, kama muda wa kipima muda (kwenye Linux `AccuracySec` ya systemd ni sehemu ya kumi na mbili yake, angalau sekunde moja), na kila bendi ya nafasi ni kizidishi chake: tiki moja karibu na baa, hadi tiki tano ukiwa na nafasi kubwa (ona [Mwendo wa ukaguzi](/sw/switching)). Kusubiri kwa kukwisha na kipindi cha kupoa baada ya ubadilishaji hulala hadi tarehe zao za mwisho badala yake. Ratiba husoma thamani mpya kwenye ukaguzi unaofuata, lakini kipima muda kilichosakinishwa hubaki na tiki yake ya zamani hadi uendeshe `tokenmaxxing init` tena, na uvumilivu wa muda wa kustahili ni nusu ya tiki iliyosanidiwa, hivyo tiki iliyobadilishwa huheshimiwa kikamilifu baada ya uendeshaji huo tu. Kwa kipima muda kinachosimamiwa na Nix, weka `checkTimer.intervalSeconds` kwa thamani ile ile; chaguo hilo lina sakafu ile ile ya sekunde 10.
 
 `tokenmaxxing config` huonyesha usanidi unaotumika pamoja na vyanzo; `config set`/`unset` huhariri funguo zenye nukta; `config tidy` hupogoa funguo zisizojulikana.

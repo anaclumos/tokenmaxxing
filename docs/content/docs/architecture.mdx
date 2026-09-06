@@ -40,7 +40,7 @@ Only when every account in the pool is over its bars does the Stop hook write a 
 
 ## The periodic check timer
 
-Hooks only fire at turn boundaries, and one long agentic turn can burn a window from healthy to depleted without a single boundary. `init` therefore also installs a periodic timer - a launchd agent on macOS, a systemd user timer on Linux - that runs `tokenmaxxing check --if-due` once per tick (`policy.checkIntervalMs`, 60 seconds by default) regardless of turn activity. The check paces itself from the live account's headroom: with plenty of room to every bar it evaluates every five ticks, and near a bar on every tick (see [How switching decides](/docs/switching)).
+Hooks only fire at turn boundaries, and one long agentic turn can burn a window from healthy to depleted without a single boundary. `init` therefore also installs a periodic timer - a launchd agent on macOS, a systemd user timer on Linux - that runs `tokenmaxxing check --if-due` once per tick (`policy.checkIntervalMs`, 60 seconds by default) regardless of turn activity. The check paces itself from the live account's headroom: with plenty of room to every bar it evaluates every five ticks, and near a bar on every tick (see [How switching decides](/switching)).
 
 ## A SessionStart hook
 

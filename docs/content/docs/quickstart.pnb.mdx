@@ -18,7 +18,7 @@ Nix ورتن والے Bun والا قدم `nix profile install github:anaclumos/
 2. `claude` سُپروائزر شِم انسٹال کردا اے۔
 3. Claude Code دی `settings.json` وچ چار اِندراج انسٹال کردا اے: اک statusLine، اک Stop ہُک، اک StopFailure ہُک، تے اک SessionStart ہُک (نال اک subagentStatusLine اِندراج وی)۔
 4. سُپروائزر دی bin ڈائریکٹری نوں تہاڈے شیل rc دے PATH نال جوڑدا اے (idempotent، اک `# tokenmaxxing PATH` تبصرے نال نشان زدہ)۔ اصل `claude` نوں روکن لئی ایہنوں PATH تے اوہدے توں اگے بیٹھنا پیندا اے۔
-5. اک وقفے وار جانچ ٹائمر انسٹال کردا اے (macOS تے اک launchd ایجنٹ، Linux تے اک systemd یوزر ٹائمر) جیہڑا ہر 60 سیکنڈ بعد `tokenmaxxing check --if-due` چلاندا اے؛ جانچ لائیو اکاؤنٹ دی گنجائش دے حساب نال اپنی چال اک توں پنج منٹ دے وچکار آپ رکھدی اے۔
+5. اک وقفے وار جانچ ٹائمر انسٹال کردا اے (macOS تے اک launchd ایجنٹ، Linux تے اک systemd یوزر ٹائمر) جیہڑا ہر ٹِک تے اک واری `tokenmaxxing check --if-due` چلاندا اے (`policy.checkIntervalMs`، طے شدہ 60 سیکنڈ)؛ جانچ لائیو اکاؤنٹ دی گنجائش دے حساب نال اپنی چال اک توں پنج ٹِک دے وچکار آپ رکھدی اے۔
 
 اپنا شیل مُڑ چالو کرو، فیر ہور اکاؤنٹ شامل کرو تے چل پوو:
 

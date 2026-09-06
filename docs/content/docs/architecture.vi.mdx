@@ -40,7 +40,7 @@ Chỉ khi mọi tài khoản trong nhóm đều vượt qua các ngưỡng của
 
 ## Bộ hẹn giờ kiểm tra định kỳ
 
-Các hook chỉ kích hoạt tại các ranh giới lượt, và một lượt agentic dài có thể đốt một cửa sổ từ khỏe mạnh đến cạn kiệt mà không có một ranh giới nào. Do đó `init` cũng cài đặt một bộ hẹn giờ định kỳ (một launchd agent trên macOS, một systemd user timer trên Linux) chạy `tokenmaxxing check --if-due` mỗi 60 giây bất kể hoạt động lượt như thế nào. Phép kiểm tra tự điều chỉnh nhịp dựa trên khoảng dư của tài khoản đang hoạt động: khi còn nhiều dư địa tới mọi ngưỡng thì nó đánh giá mỗi năm phút, còn khi ở gần một ngưỡng thì đánh giá ở mỗi nhịp (xem [Cách chuyển đổi được quyết định](/vi/switching)).
+Các hook chỉ kích hoạt tại các ranh giới lượt, và một lượt agentic dài có thể đốt một cửa sổ từ khỏe mạnh đến cạn kiệt mà không có một ranh giới nào. Do đó `init` cũng cài đặt một bộ hẹn giờ định kỳ (một launchd agent trên macOS, một systemd user timer trên Linux) chạy `tokenmaxxing check --if-due` một lần mỗi nhịp (`policy.checkIntervalMs`, mặc định 60 giây) bất kể hoạt động lượt như thế nào. Phép kiểm tra tự điều chỉnh nhịp dựa trên khoảng dư của tài khoản đang hoạt động: khi còn nhiều dư địa tới mọi ngưỡng thì nó đánh giá mỗi năm nhịp, còn khi ở gần một ngưỡng thì đánh giá ở mỗi nhịp (xem [Cách chuyển đổi được quyết định](/vi/switching)).
 
 ## Một SessionStart hook
 

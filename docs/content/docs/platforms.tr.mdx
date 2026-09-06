@@ -8,7 +8,7 @@ description: "Depolama, benimseme ve zamanlayıcılarda macOS ile Linux nasıl f
 | Canlı kimlik bilgisi | Oturum açma anahtar zinciri generic-password öğesi | 0600 `.credentials.json` dosyası |
 | Park edilmiş kimlik bilgileri | Hesap başına anahtar zinciri öğeleri | 0700 dizininde 0600 dosyaları |
 | Bir geçişten sonra benimseme | ~30 saniye içinde (anahtar zinciri okuma önbelleği) | Sonraki istek (dosya mtime poll'ü) |
-| Periyodik denetim | launchd agent, 60s taban tik, 60s ile 300s arasında kendi tempolu | systemd kullanıcı zamanlayıcısı, 60s taban tik, 60s ile 300s arasında kendi tempolu |
+| Periyodik denetim | launchd agent, `policy.checkIntervalMs` taban tiki (varsayılan 60s), kendi tempolu bir ila beş tik | systemd kullanıcı zamanlayıcısı, `policy.checkIntervalMs` taban tiki (varsayılan 60s), kendi tempolu bir ila beş tik |
 | İzole oturum açma deposu | Yapılandırma dizini başına hash ad alanlı anahtar zinciri hizmeti | İzole yapılandırma dizini içinde bir dosya |
 
 Bilmeye değer iki Linux'a özgü ayrıntı: claude kimlik bilgisi dizinini önce `CLAUDE_SECURESTORAGE_CONFIG_DIR`'den (ardından `CLAUDE_CONFIG_DIR`, ardından `~/.claude`) çözer ve tokenmaxxing o çözümlemeyi tam olarak taklit eder, böylece ikisi asla senkronizasyonu kaybetmez. Ve aynı claude sürümünün iki OS derlemesi `/usage` sıfırlama saatlerini farklı biçimlendirir (biri " at " birleştirmesi, diğeri bir virgül kullanır); tokenmaxxing'in ayrıştırıcısı tam olarak bu iki formu kabul eder ve herhangi bir üçüncüsünde tahmin etmek yerine günlüğe kaydeder.

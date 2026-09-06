@@ -40,7 +40,7 @@ Hanya ketika setiap akun dalam gabungan melewati bilahnya, hook Stop menulis pen
 
 ## Pengatur waktu pemeriksaan berkala
 
-Hook hanya menyala di batas giliran, dan satu giliran agentic yang panjang bisa membakar sebuah jendela dari sehat menjadi habis tanpa satu batas pun. Karena itu `init` juga memasang pengatur waktu berkala - agen launchd di macOS, pengatur waktu pengguna systemd di Linux - yang menjalankan `tokenmaxxing check --if-due` setiap 60 detik tanpa memandang aktivitas giliran. Pemeriksaan itu mengatur lajunya sendiri dari ruang tersisa akun langsung: dengan ruang berlimpah ke setiap bilah ia mengevaluasi setiap lima menit, dan di dekat sebuah bilah pada setiap detak (lihat [Cara pertukaran diputuskan](/id/switching)).
+Hook hanya menyala di batas giliran, dan satu giliran agentic yang panjang bisa membakar sebuah jendela dari sehat menjadi habis tanpa satu batas pun. Karena itu `init` juga memasang pengatur waktu berkala - agen launchd di macOS, pengatur waktu pengguna systemd di Linux - yang menjalankan `tokenmaxxing check --if-due` sekali per detak (`policy.checkIntervalMs`, 60 detik secara default) tanpa memandang aktivitas giliran. Pemeriksaan itu mengatur lajunya sendiri dari ruang tersisa akun langsung: dengan ruang berlimpah ke setiap bilah ia mengevaluasi setiap lima detak, dan di dekat sebuah bilah pada setiap detak (lihat [Cara pertukaran diputuskan](/id/switching)).
 
 ## Sebuah hook SessionStart
 

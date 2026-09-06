@@ -40,7 +40,7 @@ Somente quando todas as contas do grupo estão acima de suas barras é que o hoo
 
 ## O timer de verificação periódica
 
-Os hooks só disparam em limites de turno, e um único turno agêntico longo pode queimar uma janela de saudável a esgotada sem um único limite. Portanto, `init` também instala um timer periódico - um agente launchd no macOS, um timer de usuário systemd no Linux - que executa `tokenmaxxing check --if-due` a cada 60 segundos independentemente da atividade de turno. A verificação se autorregula conforme a folga da conta ativa: com bastante espaço até todas as barras, ela avalia a cada cinco minutos, e perto de uma barra, a cada tick (veja [Como a troca decide](/pt/switching)).
+Os hooks só disparam em limites de turno, e um único turno agêntico longo pode queimar uma janela de saudável a esgotada sem um único limite. Portanto, `init` também instala um timer periódico - um agente launchd no macOS, um timer de usuário systemd no Linux - que executa `tokenmaxxing check --if-due` uma vez por tick (`policy.checkIntervalMs`, 60 segundos por padrão) independentemente da atividade de turno. A verificação se autorregula conforme a folga da conta ativa: com bastante espaço até todas as barras, ela avalia a cada cinco ticks, e perto de uma barra, a cada tick (veja [Como a troca decide](/pt/switching)).
 
 ## Um hook SessionStart
 

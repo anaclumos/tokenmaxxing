@@ -14,9 +14,11 @@ La configuration est du JSON dans `~/.config/tokenmaxxing/config.json`. Chaque c
   "policy": {
     "projectionMargin": 0,
     "greedySessionFloor": 80,
+    "greedySwapMargin": 0.15,
     "switchModels": ["fable"],
     "usagePollTtlMs": 90000,
-    "maxWaitMs": 3600000
+    "maxWaitMs": 3600000,
+    "checkIntervalMs": 60000
   }
 }
 ```
@@ -27,8 +29,10 @@ La configuration est du JSON dans `~/.config/tokenmaxxing/config.json`. Chaque c
 - `claudeBin` / `codexBin` : épingle les VRAIS binaires que les superviseurs lancent (écrit par `init` / `init --codex` ; le diagnostic du garde-fou anti-récursion vous dit de corriger `claudeBin` ici quand il ne pointe plus vers le vrai binaire Claude).
 - `policy.projectionMargin` : soustrait de chaque échelon de session, de la barre hebdomadaire et des barres de mur pour former les barres effectives.
 - `policy.greedySessionFloor` : pourcentage de session utilisé auquel la convergence gloutonne s'engage.
+- `policy.greedySwapMargin` : l'hystérésis en faveur du compte en place sur le chemin glouton, une fraction de 0 à 1 (par défaut 0.15). Le compte actuel garde sa place à moins que la pression de rythme d'un compte parqué ne dépasse la sienne de plus que cette fraction, de sorte que des comptes quasi à égalité cessent de s'échanger la place et de casser le cache d'invites par organisation. Mettez 0 pour retrouver l'ancien comportement qui prend toujours le meilleur. Cela n'assouplit jamais une barre franchie ni le mur : seulement les bascules latérales entre des comptes tous sous les barres. Le `tokenmaxxing switch` manuel l'ignore et converge toujours vers le meilleur compte.
 - `policy.switchModels` : familles de modèles dont le plafond hebdomadaire par modèle verrouille une bascule (les entrées sont mises en minuscules au chargement).
 - `policy.usagePollTtlMs` : durée pendant laquelle une interrogation `/usage` par modèle reste fraîche.
 - `policy.maxWaitMs` : la borne de l'attente automatique sur pool épuisé.
+- `policy.checkIntervalMs` : le tick de la vérification périodique (par défaut 60000, minimum 10000 car launchd ne lance pas une tâche plus d'une fois toutes les 10 secondes par défaut). `init` l'écrit, arrondi à la seconde supérieure, comme intervalle de la minuterie (sur Linux, l'`AccuracySec` systemd en vaut un douzième, avec un minimum d'une seconde), et chaque bande de marge en est un multiple : un tick près d'une barre, jusqu'à cinq ticks avec beaucoup de marge (voir [Cadence de vérification](/fr/switching)). Une attente sur épuisement et le délai de récupération post-bascule dorment plutôt jusqu'à leur propre échéance. La planification lit la nouvelle valeur à la vérification suivante, mais la minuterie installée conserve son ancien tick jusqu'à ce que vous relanciez `tokenmaxxing init`, et la tolérance sur l'heure d'échéance vaut la moitié du tick configuré, de sorte qu'un tick modifié n'est pleinement respecté qu'après cette relance. Avec une minuterie gérée par Nix, définissez `checkTimer.intervalSeconds` à la même valeur ; cette option a le même plancher de 10 secondes.
 
 `tokenmaxxing config` affiche la configuration effective avec ses sources ; `config set`/`unset` modifient les clés à points ; `config tidy` élague les clés inconnues.

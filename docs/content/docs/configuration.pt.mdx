@@ -14,9 +14,11 @@ A config é JSON em `~/.config/tokenmaxxing/config.json`. Todo campo é opcional
   "policy": {
     "projectionMargin": 0,
     "greedySessionFloor": 80,
+    "greedySwapMargin": 0.15,
     "switchModels": ["fable"],
     "usagePollTtlMs": 90000,
-    "maxWaitMs": 3600000
+    "maxWaitMs": 3600000,
+    "checkIntervalMs": 60000
   }
 }
 ```
@@ -27,8 +29,10 @@ A config é JSON em `~/.config/tokenmaxxing/config.json`. Todo campo é opcional
 - `claudeBin` / `codexBin`: fixa os binários REAIS que os supervisores geram (escritos por `init` / `init --codex`; o diagnóstico do guarda-recursão indica para corrigir `claudeBin` aqui quando ele parar de apontar para o binário real do Claude).
 - `policy.projectionMargin`: subtraído de cada degrau de sessão, da barra semanal e das barras de parede para formar as barras efetivas.
 - `policy.greedySessionFloor`: porcentagem de sessão usada em que a convergência gulosa se engaja.
+- `policy.greedySwapMargin`: histerese do titular no caminho guloso, uma fração de 0 a 1 (padrão 0.15). A conta atual mantém seu lugar a menos que a pressão de ritmo de uma conta estacionada a supere por mais que essa fração, de modo que contas quase empatadas param de trocar o lugar de um lado para o outro e de invalidar o cache de prompt por organização. Defina 0 para o antigo comportamento de sempre pegar a melhor. Ela nunca afrouxa uma barra cruzada nem a parede, apenas trocas laterais entre contas que estão todas abaixo das barras. O `tokenmaxxing switch` manual a ignora e sempre converge para a melhor conta.
 - `policy.switchModels`: famílias de modelos cujo limite semanal por modelo controla uma troca (as entradas são convertidas para minúsculas ao carregar).
 - `policy.usagePollTtlMs`: por quanto tempo uma consulta por modelo do `/usage` permanece fresca.
 - `policy.maxWaitMs`: o limite da espera automática por grupo esgotado.
+- `policy.checkIntervalMs`: o tick da verificação periódica (padrão 60000, mínimo 10000 porque o launchd, por padrão, não gera um job mais de uma vez a cada 10 segundos). O `init` o grava, arredondado para cima em segundos inteiros, como o intervalo do timer (no Linux o `AccuracySec` do systemd é um doze avos disso, com no mínimo um segundo), e toda faixa de folga é um múltiplo dele: um tick perto de uma barra, até cinco ticks com bastante folga (veja [Cadência de verificação](/pt/switching)). Uma espera por esgotamento e o cooldown pós-troca dormem até seus próprios prazos em vez disso. O agendamento lê o novo valor na verificação seguinte, mas o timer instalado mantém seu tick antigo até você rodar `tokenmaxxing init` de novo, e a tolerância do horário previsto é metade do tick configurado, então um tick alterado só é totalmente respeitado depois dessa nova execução. Com um timer gerenciado pelo Nix, defina `checkTimer.intervalSeconds` com o mesmo valor; essa opção tem o mesmo piso de 10 segundos.
 
 `tokenmaxxing config` mostra a config efetiva com as fontes; `config set`/`unset` editam chaves com pontos; `config tidy` remove chaves desconhecidas.

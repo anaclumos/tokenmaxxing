@@ -18,7 +18,7 @@ Masu amfani da Nix suna maye gurbin matakin Bun da `nix profile install github:a
 2. Yana shigar da shim na mai kula na `claude`.
 3. Yana shigar da shigarwa guda huɗu a cikin `settings.json` na Claude Code: statusLine, Stop hook, StopFailure hook, da SessionStart hook (tare da shigarwar subagentStatusLine).
 4. Yana ƙara babban shirin (bin directory) na mai kula zuwa PATH na shell rc ɗinka (idempotent, an yiwa alama da sharhin `# tokenmaxxing PATH`). Dole ne ya kasance gaban ainihin `claude` a kan PATH domin ya tsare shi.
-5. Yana shigar da agogon dubawa na lokaci-lokaci (launchd agent a kan macOS, systemd user timer a kan Linux) da ke gudanar da `tokenmaxxing check --if-due` kowace daƙiƙa 60; dubawar tana daidaita saurin kanta tsakanin minti ɗaya zuwa biyar bisa sararin asusun da ke aiki.
+5. Yana shigar da agogon dubawa na lokaci-lokaci (launchd agent a kan macOS, systemd user timer a kan Linux) da ke gudanar da `tokenmaxxing check --if-due` sau ɗaya a kowane tick (`policy.checkIntervalMs`, daƙiƙa 60 ta tsoho); dubawar tana daidaita saurin kanta tsakanin tick ɗaya zuwa biyar bisa sararin asusun da ke aiki.
 
 Sake fara shell ɗinka, sannan ka ƙara ƙarin asusu ka ci gaba:
 

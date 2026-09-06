@@ -14,9 +14,11 @@ Ang config ay JSON sa `~/.config/tokenmaxxing/config.json`. Opsyonal ang bawat f
   "policy": {
     "projectionMargin": 0,
     "greedySessionFloor": 80,
+    "greedySwapMargin": 0.15,
     "switchModels": ["fable"],
     "usagePollTtlMs": 90000,
-    "maxWaitMs": 3600000
+    "maxWaitMs": 3600000,
+    "checkIntervalMs": 60000
   }
 }
 ```
@@ -27,8 +29,10 @@ Ang config ay JSON sa `~/.config/tokenmaxxing/config.json`. Opsyonal ang bawat f
 - `claudeBin` / `codexBin`: nagtutumbas sa TUNAY na mga binary na ipinapasimula ng mga supervisor (isinusulat ng `init` / `init --codex`; sinasabi sa iyo ng diagnostic ng recursion-guard na ayusin ang `claudeBin` dito kapag tumigil ito sa pagturo sa tunay na Claude binary).
 - `policy.projectionMargin`: ibinabawas sa bawat session rung, sa lingguhang bar, at sa mga bar ng dingding upang buuin ang mga epektibong bar.
 - `policy.greedySessionFloor`: ang porsyento ng nagamit na session kung saan nag-e-engage ang greedy convergence.
+- `policy.greedySwapMargin`: hysteresis para sa kasalukuyang account sa greedy path, isang fraction mula 0 hanggang 1 (default na 0.15). Hinahawakan ng kasalukuyang account ang upuan nito maliban kung lumampas dito ang pace pressure ng isang naka-park na account nang higit sa fraction na ito, kaya't tumitigil na ang halos magkatabing account sa paghahalinhinan ng upuan at sa pagsira sa per-organization na prompt cache. Itakda ito sa 0 para sa lumang kilos na laging kunin ang pinakamahusay. Hindi nito kailanman pinapaluwag ang isang na-cross na bar o ang dingding - mga lateral na pagpapalit lamang sa pagitan ng mga account na pawang nasa ilalim ng mga bar. Hindi ito pinapansin ng manu-manong `tokenmaxxing switch` at palagi itong nagko-converge sa pinakamahusay na account.
 - `policy.switchModels`: mga pamilya ng modelo na ang per-model na lingguhang cap ay nagse-set ng gate sa isang pagpapalit (ang mga entry ay ginagawang lowercase sa pag-load).
 - `policy.usagePollTtlMs`: kung gaano katagal nananatiling sariwa ang isang `/usage` per-model poll.
 - `policy.maxWaitMs`: ang hangganan ng auto-wait para sa naubos na pool.
+- `policy.checkIntervalMs`: ang tick ng pana-panahong pagsusuri (default na 60000, minimum na 10000 dahil hindi nagbubuo ang launchd ng isang job nang mas madalas sa isang beses kada 10 segundo sa default). Isinusulat ito ng `init`, binibilog paitaas sa buong segundo, bilang interval ng timer (sa Linux, ang systemd `AccuracySec` ay ikalabindalawang bahagi nito, hindi bababa sa isang segundo), at ang bawat banda ng headroom ay isang multiplo nito: isang tick kapag malapit sa isang bar, hanggang limang tick kapag maluwag ang headroom (tingnan ang [Ritmo ng pagsusuri](/tl/switching)). Ang paghihintay sa naubos na pool at ang post-swap cooldown ay natutulog patungo sa sarili nilang deadline sa halip. Binabasa ng iskedyul ang bagong halaga sa susunod na pagsusuri, ngunit pinapanatili ng naka-install na timer ang lumang tick nito hanggang sa muli mong patakbuhin ang `tokenmaxxing init`, at ang slack sa takdang oras ay kalahati ng naka-configure na tick, kaya't ganap lamang na sinusunod ang isang binagong tick pagkatapos ng muling pagtakbong iyon. Sa isang timer na pinamamahalaan ng Nix, itakda ang `checkTimer.intervalSeconds` sa parehong halaga; may parehong 10-segundong floor ang opsyong iyon.
 
 Ipinapakita ng `tokenmaxxing config` ang epektibong config na may mga pinagmulan; ini-edit ng `config set`/`unset` ang mga dotted key; pinuputol ng `config tidy` ang mga hindi kilalang key.

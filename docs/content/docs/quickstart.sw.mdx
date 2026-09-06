@@ -18,7 +18,7 @@ Watumiaji wa Nix hubadilisha hatua ya Bun na `nix profile install github:anaclum
 2. Inasakinisha shim ya msimamizi ya `claude`.
 3. Inasakinisha viingizo vinne katika `settings.json` ya Claude Code: statusLine, Stop hook, StopFailure hook, na SessionStart hook (pamoja na kiingizo cha subagentStatusLine).
 4. Inaongeza saraka ya bin ya msimamizi kwenye PATH ya rc ya shell yako (idempotent, iliyowekwa alama na maoni ya `# tokenmaxxing PATH`). Ni lazima ikae mbele ya `claude` halisi kwenye PATH ili kuikamata.
-5. Inasakinisha kipima muda cha ukaguzi wa mara kwa mara (launchd agent kwenye macOS, systemd user timer kwenye Linux) kinachoendesha `tokenmaxxing check --if-due` kila sekunde 60; ukaguzi hujipangia mwendo wake kati ya dakika moja na tano kutokana na nafasi ya akaunti hai.
+5. Inasakinisha kipima muda cha ukaguzi wa mara kwa mara (launchd agent kwenye macOS, systemd user timer kwenye Linux) kinachoendesha `tokenmaxxing check --if-due` mara moja kila tiki (`policy.checkIntervalMs`, sekunde 60 kwa chaguo-msingi); ukaguzi hujipangia mwendo wake kati ya tiki moja na tano kutokana na nafasi ya akaunti hai.
 
 Anzisha upya shell yako, kisha ongeza akaunti zaidi na uendelee:
 

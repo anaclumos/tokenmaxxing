@@ -40,7 +40,7 @@ Tanging kapag lampas na sa mga bar nito ang bawat account sa pool ay nagsusulat 
 
 ## Ang pana-panahong check timer
 
-Ang mga hook ay pumuputok lamang sa mga turn boundary, at ang isang mahabang agentic na turn ay maaaring masunog ang isang window mula sa malusog patungong naubos nang walang kahit isang boundary. Kaya't nag-i-install din ang `init` ng isang pana-panahong timer - isang launchd agent sa macOS, isang systemd user timer sa Linux - na nagpapatakbo ng `tokenmaxxing check --if-due` tuwing 60 segundo anuman ang aktibidad ng turn. Ang check mismo ang nagtatakda ng sarili nitong bilis batay sa headroom ng live na account: kapag maluwag pa ito sa bawat bar ay nagsusuri ito tuwing limang minuto, at kapag malapit na sa isang bar ay sa bawat tick (tingnan ang [Paano nagpapasya ang pagpapalit](/tl/switching)).
+Ang mga hook ay pumuputok lamang sa mga turn boundary, at ang isang mahabang agentic na turn ay maaaring masunog ang isang window mula sa malusog patungong naubos nang walang kahit isang boundary. Kaya't nag-i-install din ang `init` ng isang pana-panahong timer - isang launchd agent sa macOS, isang systemd user timer sa Linux - na nagpapatakbo ng `tokenmaxxing check --if-due` isang beses kada tick (`policy.checkIntervalMs`, 60 segundo sa default) anuman ang aktibidad ng turn. Ang check mismo ang nagtatakda ng sarili nitong bilis batay sa headroom ng live na account: kapag maluwag pa ito sa bawat bar ay nagsusuri ito tuwing limang tick, at kapag malapit na sa isang bar ay sa bawat tick (tingnan ang [Paano nagpapasya ang pagpapalit](/tl/switching)).
 
 ## Isang SessionStart hook
 

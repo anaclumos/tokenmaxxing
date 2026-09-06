@@ -18,7 +18,7 @@ Nix kullanıcıları Bun adımının yerine `nix profile install github:anaclumo
 2. `claude` gözetmen shim'ini kurar.
 3. Claude Code'un `settings.json` dosyasına dört giriş kurar: bir statusLine, bir Stop hook, bir StopFailure hook ve bir SessionStart hook (artı bir subagentStatusLine girişi).
 4. Gözetmenin bin dizinini kabuk rc dosyanızın PATH'ine ekler (idempotent, `# tokenmaxxing PATH` yorumuyla işaretlenmiş). Onu yakalayabilmek için PATH üzerinde gerçek `claude`'un önünde durması gerekir.
-5. Her 60 saniyede bir `tokenmaxxing check --if-due` çalıştıran periyodik bir denetim zamanlayıcısı kurar (macOS'ta bir launchd agent, Linux'ta bir systemd kullanıcı zamanlayıcısı); denetim, canlı hesabın kalan boşluğuna göre kendi temposunu bir ile beş dakika arasında ayarlar.
+5. `tokenmaxxing check --if-due` komutunu tikte bir (`policy.checkIntervalMs`, varsayılan 60 saniye) çalıştıran periyodik bir denetim zamanlayıcısı kurar (macOS'ta bir launchd agent, Linux'ta bir systemd kullanıcı zamanlayıcısı); denetim, canlı hesabın kalan boşluğuna göre kendi temposunu bir ile beş tik arasında ayarlar.
 
 Kabuğunuzu yeniden başlatın, ardından daha fazla hesap ekleyin ve başlayın:
 

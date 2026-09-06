@@ -18,7 +18,7 @@ tokenmaxxing init
 2. 装好 `claude` supervisor 垫片。
 3. 勒 Claude Code 嗰 `settings.json` 里向装四条条目：一条 statusLine、一条 Stop hook、一条 StopFailure hook，搭一条 SessionStart hook（另外还有一条 subagentStatusLine 条目）。
 4. 拿 supervisor 嗰 bin 目录加到侬 shell rc 嗰 PATH 高头（幂等嗰，用 `# tokenmaxxing PATH` 注释标牢）。伊必须勒 PATH 高头排勒真嗰 `claude` 前头，先拦得牢伊。
-5. 装一个定期检查嗰定时器（macOS 高头是 launchd agent，Linux 高头是 systemd 用户定时器），每 60 秒跑一趟 `tokenmaxxing check --if-due`；搿趟检查会照活跃账户嗰余量，自家勒一分钟到五分钟当中调节节奏。
+5. 装一个定期检查嗰定时器（macOS 高头是 launchd agent，Linux 高头是 systemd 用户定时器），每一跳跑一趟 `tokenmaxxing check --if-due`（`policy.checkIntervalMs`，默认 60 秒）；搿趟检查会照活跃账户嗰余量，自家勒一跳到五跳当中调节节奏。
 
 重启侬嗰 shell，然后再添几个账户就好开跑：
 

@@ -53,7 +53,7 @@ Home Manager (weka kifurushi waziwazi, au tumia overlay ya flake hii kwenye pkgs
 }
 ```
 
-Nix inaweka tu CLI kwenye PATH. Uingizaji wa akaunti, shim ya supervisor ya `claude` kwenye PATH, hooks za `settings.json`, na (kwa chaguo-msingi) kipima muda cha ukaguzi wa mara kwa mara bado vinatoka kwa `tokenmaxxing init`. Hivi hugusa vitambulisho na mipangilio ya mtumiaji ambayo moduli safi haipaswi kuandika upya. Weka `programs.tokenmaxxing.checkTimer.enable = true` tu unapotaka Nix imiliki kipima muda badala ya init (hiyo pia husafirisha `TOKENMAXXING_SKIP_TIMER=1` ili init isiandike kitengo cha pili). Kipima muda cha declarative ni cha kikao cha mtumiaji, sawa na init. Linux isiyo na kichwa inahitaji `loginctl enable-linger` ili kiweze kuwaka bila kuingia.
+Nix inaweka tu CLI kwenye PATH. Uingizaji wa akaunti, shim ya supervisor ya `claude` kwenye PATH, hooks za `settings.json`, na (kwa chaguo-msingi) kipima muda cha ukaguzi wa mara kwa mara bado vinatoka kwa `tokenmaxxing init`. Hivi hugusa vitambulisho na mipangilio ya mtumiaji ambayo moduli safi haipaswi kuandika upya. Weka `programs.tokenmaxxing.checkTimer.enable = true` tu unapotaka Nix imiliki kipima muda badala ya init (hiyo pia husafirisha `TOKENMAXXING_SKIP_TIMER=1` ili init isiandike kitengo cha pili). Kipima muda cha declarative ni cha kikao cha mtumiaji, sawa na init. Linux isiyo na kichwa inahitaji `loginctl enable-linger` ili kiweze kuwaka bila kuingia. Weka `checkTimer.intervalSeconds` sawa na `policy.checkIntervalMs` kwa sekunde, kwa sababu ratiba inayojipangia mwendo husoma ufunguo wa usanidi wakati kitengo huwaka kwa thamani ya Nix.
 
 Wakati `bun.lock` inabadilika, tengeneza upya usemi wa tegemezi wa Nix:
 

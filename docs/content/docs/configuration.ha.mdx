@@ -14,9 +14,11 @@ Saituna JSON ne a `~/.config/tokenmaxxing/config.json`. Kowane fili na zaɓi ne;
   "policy": {
     "projectionMargin": 0,
     "greedySessionFloor": 80,
+    "greedySwapMargin": 0.15,
     "switchModels": ["fable"],
     "usagePollTtlMs": 90000,
-    "maxWaitMs": 3600000
+    "maxWaitMs": 3600000,
+    "checkIntervalMs": 60000
   }
 }
 ```
@@ -27,8 +29,10 @@ Saituna JSON ne a `~/.config/tokenmaxxing/config.json`. Kowane fili na zaɓi ne;
 - `claudeBin` / `codexBin`: yana daure zuwa AINIHIN binaries da masu kula ke ƙaddamarwa (an rubuta su ta `init` / `init --codex`; ganewar-matsalar na kariyar sake-kira ta gaya maka ka gyara `claudeBin` a nan idan ya daina nunawa zuwa ainihin binary na Claude).
 - `policy.projectionMargin`: ana rage shi daga kowane matakin zama, sandar mako, da sandunan bango don samar da sandunan da ke aiki.
 - `policy.greedySessionFloor`: kason da aka yi amfani-zama a wanda haɗuwar greedy ke shiga.
+- `policy.greedySwapMargin`: hysteresis na asusun da ke zaune a kan hanyar greedy, kaso daga 0 zuwa 1 (tsohuwa 0.15). Asusun yanzu yana riƙe wurin zamansa sai idan matsin saurin wani asusu da aka ajiye ya zarce nasa da fiye da wannan kaso, don haka asusun da suka kusa daidaita su daina musanya wurin zama gaba da baya suna ɓata cache na prompt na kowace ƙungiya. Saita shi zuwa 0 don tsohuwar ɗabi'ar koyaushe-ɗauki-mafi-kyau. Ba ya taɓa sassauta sandar da aka ƙetare ko bango, sai dai musanya a gefe tsakanin asusun da duk suke ƙasa da sandunan. `tokenmaxxing switch` na hannu yana yin watsi da shi kuma koyaushe yana haɗuwa a kan asusu mafi kyau.
 - `policy.switchModels`: iyalan model waɗanda iyakar mako na kowane-model ɗinsu ke toshe musanya (ana mai da shigarwa ƙananan haruffa lokacin lodi).
 - `policy.usagePollTtlMs`: tsawon lokacin da dubawar kowane-model na `/usage` ke ci gaba da sabo.
 - `policy.maxWaitMs`: iyakar jiran atomatik na tafki da ya ƙare.
+- `policy.checkIntervalMs`: tick ɗin dubawa na lokaci-lokaci (tsohuwa 60000, mafi ƙaranci 10000 domin launchd ba ya ƙaddamar da aiki fiye da sau ɗaya a kowane daƙiƙa 10 ta tsoho). `init` yana rubuta shi, an ɗaga shi zuwa cikakkun daƙiƙu, a matsayin tazarar agogon (a kan Linux `AccuracySec` na systemd shi ne kashi ɗaya bisa goma sha biyu nasa, aƙalla daƙiƙa ɗaya), kuma kowace band na sarari yawa ne nasa: tick guda kusa da sanda, har zuwa tick biyar idan akwai sarari mai yawa (duba [Yawan dubawa](/ha/switching)). Jiran ƙarewa da sanyaya bayan-musanya suna barci zuwa nasu wa'adin maimakon haka. Jadawalin yana karanta sabuwar ƙimar a dubawa ta gaba, amma agogon da aka shigar yana riƙe tsohon tick ɗinsa har sai ka sake gudanar da `tokenmaxxing init`, kuma sassaucin lokacin da ya dace rabin tick ɗin da aka saita ne, don haka ana girmama tick da aka canza gaba ɗaya bayan wannan sake gudanarwa kawai. Da agogon da Nix ke sarrafawa, saita `checkTimer.intervalSeconds` zuwa ƙima ɗaya; wannan zaɓi yana da ƙasan daƙiƙa 10 iri ɗaya.
 
 `tokenmaxxing config` yana nuna saitunan da ke aiki tare da tushe; `config set`/`unset` suna gyara maɓallan da aka raba da aya; `config tidy` yana yanke maɓallan da ba a sani ba.
