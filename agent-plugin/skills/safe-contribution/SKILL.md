@@ -13,7 +13,7 @@ description: Safely change and ship tokenmaxxing (verification without a test su
 
 ## Ship
 
-- Work on a branch; bump `package.json` in the same PR; open PR; wait the full review window; handle every review; merge; `gh release create v<version>`; verify npm publish.
+- Work on a branch; bump `package.json` and `agent-plugin/plugin.json` to the same version in the same PR; open PR; wait the full review window; handle every review; merge; `gh release create v<version>`; verify npm publish.
 - Never push directly to main. npm trusted publishing is bound to workflow filename `ci.yml`.
 
 ## Machine gotchas
