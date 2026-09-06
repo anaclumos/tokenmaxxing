@@ -70,6 +70,7 @@ function statusFlags(rest: string[]): { ping: boolean; pingCount: number | undef
       continue;
     }
     if (arg === "--count") {
+      if (pingCount != null) return { error: "--count may only be given once" };
       const raw = rest[++i];
       pingCount = Number(raw);
       if (!Number.isInteger(pingCount) || pingCount < 1) return { error: `--count needs a positive whole number of accounts, got: ${raw ?? "nothing"}` };

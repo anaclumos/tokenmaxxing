@@ -104,12 +104,13 @@ async function collectClaude(input: { cfg: Config; ping: boolean; pingCount: num
   const { cfg, ping, pingCount, now } = input;
   let idx = loadAccounts();
   const samples = new Map<string, { outcome: SampleOutcome; viaTee: boolean }>();
-  const picked = ping ? pickForPing(idx.accounts, pingCount) : [];
-  const pings = new Set(picked.map((a) => a.accountUuid));
+  let pings = new Set<string>();
   if (idx.accounts.length > 0) {
-    console.error(c.dim(progressNote({ ping, pingCount, picked, total: idx.accounts.length })));
     await withLock(paths.lockFile, async () => {
       idx = loadAccounts();
+      const picked = ping ? pickForPing(idx.accounts, pingCount) : [];
+      pings = new Set(picked.map((a) => a.accountUuid));
+      console.error(c.dim(progressNote({ ping, pingCount, picked, total: idx.accounts.length })));
       const tee = loadUsageSnapshot();
       const live = tee?.state ?? null;
       const teeAt = tee?.at ?? null;
