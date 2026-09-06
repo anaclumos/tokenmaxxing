@@ -103,7 +103,12 @@ export async function fetchTokenIdentity(accessToken: string): Promise<TokenIden
   } catch (e) {
     throw new IdentityUnavailableError(null, e instanceof Error ? e.message : String(e));
   }
-  const text = await res.text();
+  let text: string;
+  try {
+    text = await res.text();
+  } catch (e) {
+    throw new IdentityUnavailableError(res.status, `profile response body unreadable: ${e instanceof Error ? e.message : String(e)}`);
+  }
   if (!res.ok) throw new IdentityUnavailableError(res.status, safeErrorDetail({ text }));
   const parsed = ProfileResponseSchema.safeParse((() => {
     try { return JSON.parse(text); } catch { return null; }
