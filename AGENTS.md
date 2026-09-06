@@ -17,6 +17,7 @@ No external installed user base, so this is pre-production code: delete old-stat
 - Never print credential material: keychain blobs, `.credentials.json`, `auth.json`, OAuth access or refresh tokens. Report account labels and status only. A ky error carries its request, Authorization header included.
 - Ask before any run that meters real quota or opens a session window (`status --ping`, live-pool runs). Free `/usage` reads are fine.
 - This repo is PUBLIC. The no-Slack-info and no-device-info rule covers PR bodies, commit messages, review replies, release notes, and docs, not just `.memory`.
+- Pool account labels are personal data, the same as emails and organization names: the owner names seats after people. Never paste `status`, `ls`, `doctor`, or log output that carries labels, emails, or org names into a PR body, commit, review reply, doc, memory, or subagent prompt. Mask or count them ("six team seats", "15 accounts") the way emails are masked (owner correction 2026-09-06).
 - `rm` is aliased to `rm -i` on the owner's Mac. In a non-TTY shell the prompt gets EOF, nothing is deleted, and it still exits 0, so `rm f && echo ok` lies. Deletion is the owner's call except for artifacts this session created; when you must, pass `-f` and verify the path is gone.
 - macOS has no `/bin/true`. Use `/usr/bin/true` in tests.
 - Env overrides parse through zod at the read site rather than a central `env.ts`, because the CLI's knobs are all optional. Unset parses to undefined and the feature degrades there.
