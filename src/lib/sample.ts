@@ -6,7 +6,9 @@ import { credItemFor, paths } from "./paths.ts";
 import { withClaudeRefreshLock } from "./claudelock.ts";
 import { refreshCredential, isAccessTokenExpiring, isDeadCredential, fetchTokenIdentity, describeIdentity, IdentityUnavailableError, InvalidGrantError } from "./oauth.ts";
 import { FullUsageSchema, pingSession, probeUsage } from "./usage.ts";
-import { CredentialBlobSchema, type Account, type OAuthCreds, type TokenIdentity } from "./types.ts";
+import { loadAccounts } from "./state.ts";
+import { keepRotatedPair } from "./swap.ts";
+import { CredentialBlobSchema, TokenIdentitySchema, type Account, type OAuthCreds, type TokenIdentity } from "./types.ts";
 
 const SampleOutcomeSchema = z.discriminatedUnion("ok", [
   z.object({ ok: z.literal(true), usage: FullUsageSchema, pingError: z.string().optional(), pingRejected: z.boolean().optional() }),
@@ -16,7 +18,7 @@ export type SampleOutcome = z.infer<typeof SampleOutcomeSchema>;
 
 const IdentityCheckSchema = z.discriminatedUnion("status", [
   z.object({ status: z.literal("match") }),
-  z.object({ status: z.literal("mismatch"), reason: z.string() }),
+  z.object({ status: z.literal("mismatch"), reason: z.string(), owner: TokenIdentitySchema }),
   z.object({ status: z.literal("unavailable"), reason: z.string(), stale: z.boolean() }),
 ]);
 type IdentityCheck = z.infer<typeof IdentityCheckSchema>;
@@ -33,7 +35,7 @@ async function checkIdentity(creds: OAuthCreds, account: Account): Promise<Ident
     };
   }
   if (identity.accountUuid === account.accountUuid) return { status: "match" };
-  return { status: "mismatch", reason: `credential actually belongs to ${describeIdentity(identity)}` };
+  return { status: "mismatch", reason: `credential actually belongs to ${describeIdentity(identity)}`, owner: identity };
 }
 
 function refreshPlanFields(account: Account, creds: OAuthCreds): void {
@@ -58,6 +60,8 @@ export async function probeParkedUsage(account: Account, opts: { ping?: boolean 
   }
 
   const liveRaw = await readItem(liveTarget());
+  let liveAccount: string | null = null;
+  let liveToken: string | null = null;
   if (liveRaw != null) {
     let liveCreds: OAuthCreds;
     try {
@@ -66,7 +70,7 @@ export async function probeParkedUsage(account: Account, opts: { ping?: boolean 
       return { ok: false, reason: `cannot read the live credential (${(e instanceof Error ? e.message : String(e)).slice(0, 80)}) - refusing to sample a possibly-live account` };
     }
     if (!isDeadCredential(liveCreds)) {
-      let liveAccount: string;
+      liveToken = liveCreds.accessToken;
       try {
         liveAccount = (await fetchTokenIdentity(liveCreds.accessToken)).accountUuid;
       } catch (e) {
@@ -87,9 +91,9 @@ export async function probeParkedUsage(account: Account, opts: { ping?: boolean 
     if (owner.status === "unavailable" && !owner.stale) {
       return { ok: false, reason: `${owner.reason} - refusing to refresh a parked credential whose owner cannot be verified` };
     }
+    let fresh: OAuthCreds;
     try {
-      creds = await refreshCredential(creds);
-      await writeItem(backup, JSON.stringify({ claudeAiOauth: creds }));
+      fresh = await refreshCredential(creds);
     } catch (e) {
       if (e instanceof InvalidGrantError) {
         account.needsReauth = true;
@@ -97,6 +101,19 @@ export async function probeParkedUsage(account: Account, opts: { ping?: boolean 
       }
       return { ok: false, reason: `token refresh failed: ${e instanceof Error ? e.message : String(e)}` };
     }
+    if (owner.status === "unavailable") {
+      const verified = await checkIdentity(fresh, account);
+      if (verified.status === "mismatch") {
+        const trueOwner = loadAccounts().accounts.find((a) => a.accountUuid === verified.owner.accountUuid) ?? null;
+        const kept = trueOwner == null
+          ? "could not be kept because that account is not in the pool"
+          : await keepRotatedPair({ fresh, owner: trueOwner, liveOwnerUuid: liveAccount, expectedLiveToken: liveToken });
+        account.needsReauth = true;
+        return { ok: false, reason: `${verified.reason}, whose grant this refresh rotated - the rotated token ${kept}; re-auth with \`tokenmaxxing auth\`` };
+      }
+    }
+    creds = fresh;
+    await writeItem(backup, JSON.stringify({ claudeAiOauth: creds }));
   }
 
   const identity = await checkIdentity(creds, account);

@@ -29,6 +29,9 @@ Verified 2026-09-02 for 1.10.0, defaults then 50/80/95 and floor 50. Since 1.12.
 | B's parked access token expired (profile 401) | `swap.parked_token_stale B`, token route sees B's refresh token, profile sees the refreshed token, `swap.done B` |
 | live access token expired or revoked (profile 401) | `check failed: cannot resolve the live credential's owner`, nothing written, exit 1 |
 | parked B is a stale copy of A (expired copy of A's access token, A's current refresh token) while A is live | `swap.parked_token_stale B`, A's refresh token spent once, `swap.rotated_live_rescued A` (the live store now holds the rotated pair), `swap.invalid_grant B` naming A, B stamped, then `swap.harvest A` parks the rotated pair and `swap.done C` |
+| `status --json` with parked B a near-expiry stale copy of A while A is live (`TOKENMAXXING_CLAUDE_BIN=/usr/bin/true`, so the `/usage` probe itself reports no data) | the parked probe's 401-gated refresh spends A's refresh token once, `swap.rotated_live_rescued A`, the live store holds the rotated pair, B stamped, B's slot untouched |
+
+The stub revokes the prior access token on every successful refresh (the real endpoint does), so a scenario that leans on a token the refresh invalidated fails with a 401 instead of passing by accident.
 
 **Why:** the review fix on the hard path (reload the pool after a dead grant, return to the greedy path when the rung climbs over the seat) is only observable with a refresh that fails, and the only safe way to fail a refresh is a stub. The keychain namespace keeps the run off the real `Claude Code-credentials` item; see [[live-pool-runs-need-permission]] for why nothing here may touch a pooled account, and [[fable-fanout-is-quota-spend]] for why verification stays hermetic.
 
