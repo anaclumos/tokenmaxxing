@@ -29,11 +29,19 @@ export class RefreshRejectedError extends Error {
   }
 }
 
+export class IdentityUnavailableError extends Error {
+  constructor(public readonly status: number | null, public readonly detail: string) {
+    super(status == null ? `profile endpoint unreachable: ${detail}` : `identity check failed (HTTP ${status}): ${detail}`);
+    this.name = "IdentityUnavailableError";
+  }
+}
+
 export function isDeadCredential(creds: OAuthCreds): boolean {
   return creds.refreshToken === "" || creds.accessToken === "";
 }
 
 export async function refreshCredential(creds: OAuthCreds, now = Date.now()): Promise<OAuthCreds> {
+  if (isDeadCredential(creds)) throw new InvalidGrantError("credential was cleared after a failed refresh");
   const scope = (creds.scopes?.length ? creds.scopes : DEFAULT_SCOPES).join(" ");
   const body = {
     grant_type: "refresh_token",
@@ -93,14 +101,19 @@ export async function fetchTokenIdentity(accessToken: string): Promise<TokenIden
       headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
     });
   } catch (e) {
-    throw new Error(`profile endpoint unreachable: ${e instanceof Error ? e.message : String(e)}`);
+    throw new IdentityUnavailableError(null, e instanceof Error ? e.message : String(e));
   }
-  const text = await res.text();
-  if (!res.ok) throw new Error(`identity check failed (HTTP ${res.status}): ${safeErrorDetail({ text })}`);
+  let text: string;
+  try {
+    text = await res.text();
+  } catch (e) {
+    throw new IdentityUnavailableError(res.status, `profile response body unreadable: ${e instanceof Error ? e.message : String(e)}`);
+  }
+  if (!res.ok) throw new IdentityUnavailableError(res.status, safeErrorDetail({ text }));
   const parsed = ProfileResponseSchema.safeParse((() => {
     try { return JSON.parse(text); } catch { return null; }
   })());
-  if (!parsed.success) throw new Error(`profile endpoint returned an unrecognized body (${text.length} bytes, withheld)`);
+  if (!parsed.success) throw new IdentityUnavailableError(res.status, `profile endpoint returned an unrecognized body (${text.length} bytes, withheld)`);
   return TokenIdentitySchema.parse({
     accountUuid: parsed.data.account.uuid,
     email: parsed.data.account.email ?? null,
