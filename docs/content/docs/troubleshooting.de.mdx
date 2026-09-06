@@ -18,7 +18,7 @@ Weil das nicht das Konto ist, dessen Kontingent am meisten vom Verfall bedroht i
 **Es hat gerade gewechselt und die Statusline zeigt noch das alte Konto.**
 Zu erwarten für bis zu ~30 Sekunden auf macOS: Die laufende Sitzung übernimmt die ausgetauschte Anmeldeinformation bei ihrer nächsten Anmeldeinformations-Cache-Auffrischung. Der Nutzungs-Tee wird nach einem Wechsel genau aus diesem Grund für 45 Sekunden unterdrückt.
 
-**Kostet `status --force` etwas?**
+**Kostet `status --ping` etwas?**
 Ja, absichtlich: Es sendet eine minimale gemessene haiku-Anfrage pro Konto, sodass jedes 5-Stunden-Sitzungsfenster in diesem Augenblick startet, statt untätig zu ruhen, und tastet dann frisch ab. Ein einfaches `status` und `watch` pingen nie; `/usage`-Lesevorgänge sind kostenlos. Beachten Sie, dass die Server-Nutzungszufuhr ein frisch geöffnetes Fenster um Sekunden bis Minuten hinterherhinken kann, sodass eine Probe unmittelbar nach dem Ping noch den Vor-Ping-Zustand zeigen kann - `status` rendert einen Hinweis, statt so zu tun, als sei der Ping fehlgeschlagen.
 
 **Die `/usage`-Probe hat für das aktive Konto nichts zurückgegeben.**

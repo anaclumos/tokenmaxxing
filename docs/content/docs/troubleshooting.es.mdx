@@ -18,7 +18,7 @@ Porque esa no es la cuenta con más riesgo de perder cuota. El destino es la cue
 **Acaba de cambiar y la statusline aún muestra la cuenta vieja.**
 Esperado durante hasta ~30 segundos en macOS: la sesión en ejecución adopta la credencial cambiada en su siguiente refresco de caché de credenciales. El tee de uso se suprime durante 45 segundos tras un cambio precisamente por esta razón.
 
-**¿`status --force` cuesta algo?**
+**¿`status --ping` cuesta algo?**
 Sí, deliberadamente: envía una solicitud haiku medida mínima por cuenta para que cada ventana de sesión de 5 horas arranque en ese instante en vez de yacer dormida, luego muestrea en fresco. `status` y `watch` a secas nunca hacen ping; las lecturas de `/usage` son gratis. Ten en cuenta que el feed de uso del servidor puede retrasar una ventana recién abierta de segundos a minutos, así que una sonda inmediatamente después del ping aún puede mostrar el estado previo al ping - `status` renderiza una nota en vez de fingir que el ping falló.
 
 **La sonda `/usage` no devolvió nada para la cuenta activa.**

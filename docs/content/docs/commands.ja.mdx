@@ -14,7 +14,7 @@ description: "すべての tokenmaxxing コマンドとその動作"
 | `tokenmaxxing switch --codex [sel]` | Codex プールを切り替える (次の codex 起動時に反映される) |
 | `tokenmaxxing ls` | プール内のアカウントを一覧表示する |
 | `tokenmaxxing status` | 各アカウントの 5h / 週次 / モデルごとの使用量バーと、アクティブかどうか、リセットまで枯渇しているかを表示する |
-| `tokenmaxxing status --force` | さらに各アカウントに ping を送り (それぞれ小さな haiku リクエスト1回)、すべての5hセッションタイマーを今開始させてから新しくサンプリングする |
+| `tokenmaxxing status --ping` | さらに各アカウントに ping を送り (それぞれ小さな haiku リクエスト1回)、すべての5hセッションタイマーを今開始させてから新しくサンプリングする |
 | `tokenmaxxing watch [seconds]` | ライブステータスを N 秒ごとに再描画する (デフォルト120、下限30、ping は決して送らない) |
 | `tokenmaxxing config [get\|set\|unset\|tidy]` | 有効な設定とそのソースを表示する。ドット区切りキーを編集する。`tidy` は不明なキーを削除する |
 | `tokenmaxxing check` | 切り替えの判断を1回評価する (定期タイマーが実行するのはこれ) |

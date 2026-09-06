@@ -37,7 +37,7 @@ export function printUsage(): void {
   console.log(`  ${c.bold("how to use")} - ${c.cyan("xx")} is shorthand for ${c.cyan("tokenmaxxing")}:`);
   console.log(`    ${c.cyan("claude")}             use claude as always; it switches accounts near quota automatically`);
   console.log(`    ${c.cyan("xx")}                 show the pool with usage bars (same as ${c.cyan("xx status")})`);
-  console.log(`    ${c.cyan("xx status --force")}  ping every account (one tiny haiku request each) so all 5h timers start now, then sample fresh`);
+  console.log(`    ${c.cyan("xx status --ping")}   ping every account (one tiny haiku request each) so all 5h timers start now, then sample fresh; ${c.cyan("--count N")} pings N random accounts instead`);
   console.log(`    ${c.cyan("xx add")}             log in and pool another account`);
   console.log(`    ${c.cyan("xx switch")}          hop to the best account right now (the automatic switching needs no command)`);
   console.log(`    ${c.cyan("xx help")}            everything else`);

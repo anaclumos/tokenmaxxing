@@ -18,7 +18,7 @@ Because dat one no be the account wey dey most at risk to forfeit quota. The tar
 **E just switch and the statusline still dey show the old account.**
 Na wetin we expect for up to ~30 seconds for macOS: the session wey dey run dey adopt the swapped credential for im next credential-cache refresh. Dem dey suppress the usage tee for 45 seconds after a swap for exactly dis reason.
 
-**E `status --force` dey cost anything?**
+**E `status --ping` dey cost anything?**
 Yes, deliberately: e dey send one minimal metered haiku request per account so every 5-hour session window go start for dat instant instead of to lie dormant, then e dey sample fresh. Plain `status` and `watch` no dey ever ping; `/usage` reads na free. Note say the server usage feed fit lag one freshly opened window by seconds to minutes, so one probe immediately after the ping fit still show the pre-ping state - `status` dey render one note instead of to pretend say the ping fail.
 
 **The `/usage` probe return nothing for the active account.**

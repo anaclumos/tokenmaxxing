@@ -14,7 +14,7 @@ description: "Chaque commande tokenmaxxing et ce qu'elle fait"
 | `tokenmaxxing switch --codex [sel]` | Bascule le pool Codex (prend effet au prochain démarrage de codex) |
 | `tokenmaxxing ls` | Liste les comptes du pool |
 | `tokenmaxxing status` | Comptes avec barres d'utilisation 5h / hebdomadaire / par modèle, actifs et épuisés jusqu'à réinitialisation |
-| `tokenmaxxing status --force` | Ping en plus chaque compte (une minuscule requête haiku chacun) pour que toutes les minuteries de session 5h démarrent maintenant, puis échantillonne à neuf |
+| `tokenmaxxing status --ping` | Ping en plus chaque compte (une minuscule requête haiku chacun) pour que toutes les minuteries de session 5h démarrent maintenant, puis échantillonne à neuf |
 | `tokenmaxxing watch [seconds]` | Statut en direct, réaffiché toutes les N secondes (par défaut 120, plancher 30 ; ne ping jamais) |
 | `tokenmaxxing config [get\|set\|unset\|tidy]` | Config effective avec ses sources ; modifie les clés à points ; `tidy` élague les clés inconnues |
 | `tokenmaxxing check` | Évalue la décision de bascule une fois (c'est ce qu'exécute la minuterie périodique) |

@@ -18,11 +18,11 @@ Because that is not the account most at risk of forfeiting quota. The target is 
 **It just switched and the statusline still shows the old account.**
 Expected for up to ~30 seconds on macOS: the running session adopts the swapped credential on its next credential-cache refresh. The usage tee is suppressed for 45 seconds after a swap for exactly this reason.
 
-**Does `status --force` cost anything?**
-Yes, deliberately: it sends one minimal metered haiku request per account so every 5-hour session window starts at that instant instead of lying dormant, then samples fresh. Plain `status` and `watch` never ping; `/usage` reads are free. Note the server usage feed can lag a freshly opened window by seconds to minutes, so a probe immediately after the ping may still show the pre-ping state - `status` renders a note instead of pretending the ping failed.
+**Does `status --ping` cost anything?**
+Yes, deliberately: it sends one minimal metered haiku request per account so every 5-hour session window starts at that instant instead of lying dormant, then samples fresh. `--count N` limits that to N randomly picked accounts, so the windows do not all reset at the same time. Plain `status` and `watch` never ping; `/usage` reads are free. Note the server usage feed can lag a freshly opened window by seconds to minutes, so a probe immediately after the ping may still show the pre-ping state - `status` renders a note instead of pretending the ping failed.
 
 **The `/usage` probe returned nothing for the active account.**
-That is a known claude behavior: when its internal usage fetch fails or is rate-limited, `/usage` prints only local session stats with no percentage lines. tokenmaxxing samples the active account from the statusline push whenever that feed is at least as fresh as the stored sample (the row shows the feed's age) and probes the live login only when the feed is missing or older, or under `--force`; a silent probe leaves the cached sample in place with its age shown.
+That is a known claude behavior: when its internal usage fetch fails or is rate-limited, `/usage` prints only local session stats with no percentage lines. tokenmaxxing samples the active account from the statusline push whenever that feed is at least as fresh as the stored sample (the row shows the feed's age) and probes the live login only when the feed is missing or older, or under `--ping`; a silent probe leaves the cached sample in place with its age shown.
 
 **Background claude sessions.**
 Claude's background daemon spawns the real versioned binary by absolute path, bypassing PATH shims, so background sessions are unsupervised. Hooks still fire via `settings.json`, and credential adoption plus the periodic timer cover switching, but there is no marker-driven respawn for them.
