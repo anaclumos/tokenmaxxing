@@ -40,7 +40,7 @@ Claude Code بيدفع بيانات حدود المعدل (`rate_limits.five_hou
 
 ## تايمر الفحص الدوري
 
-الـ hooks بتشتغل بس عند حدود الـ turn، و turn واحد طويل من نوع agentic ممكن يحرق نافذة من سليمة لمستنفدة من غير أي حدود. عشان كده `init` كمان بيثبّت timer دوري (launchd agent على macOS، و systemd user timer على Linux) بيشغّل `tokenmaxxing check --if-due` كل 60 ثانية بغض النظر عن نشاط الـ turn. الفحص بيظبط إيقاعه بنفسه حسب المساحة الفاضية بتاعت الحساب الحي: لما تكون المساحة لكل الشرايط واسعة بيقيّم كل خمس دقايق، ولما يقرّب من bar بيقيّم كل tick (بص [إزاي بيتقرّر التبديل](/arz/switching)).
+الـ hooks بتشتغل بس عند حدود الـ turn، و turn واحد طويل من نوع agentic ممكن يحرق نافذة من سليمة لمستنفدة من غير أي حدود. عشان كده `init` كمان بيثبّت timer دوري (launchd agent على macOS، و systemd user timer على Linux) بيشغّل `tokenmaxxing check --if-due` مرة كل tick (`policy.checkIntervalMs`، 60 ثانية افتراضيًا) بغض النظر عن نشاط الـ turn. الفحص بيظبط إيقاعه بنفسه حسب المساحة الفاضية بتاعت الحساب الحي: لما تكون المساحة لكل الشرايط واسعة بيقيّم كل خمس ticks، ولما يقرّب من bar بيقيّم كل tick (بص [إزاي بيتقرّر التبديل](/arz/switching)).
 
 ## هوك SessionStart
 

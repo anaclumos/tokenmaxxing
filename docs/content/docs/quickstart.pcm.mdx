@@ -18,7 +18,7 @@ Nix users go replace the Bun step with `nix profile install github:anaclumos/tok
 2. E dey install the `claude` supervisor shim.
 3. E dey install four entries for Claude Code im `settings.json`: one statusLine, one Stop hook, one StopFailure hook, and one SessionStart hook (plus one subagentStatusLine entry).
 4. E dey append the supervisor im bin directory go your shell rc im PATH (idempotent, wey dem mark with `# tokenmaxxing PATH` comment). E must sit ahead of the real `claude` for PATH make e fit intercept am.
-5. E dey install one periodic check timer (launchd agent for macOS, systemd user timer for Linux) wey dey run `tokenmaxxing check --if-due` every 60 seconds; the check dey pace imself between one and five minutes based on the live account im headroom.
+5. E dey install one periodic check timer (launchd agent for macOS, systemd user timer for Linux) wey dey run `tokenmaxxing check --if-due` once per tick (`policy.checkIntervalMs`, 60 seconds by default); the check dey pace imself between one and five ticks based on the live account im headroom.
 
 Restart your shell, then add more accounts and go:
 

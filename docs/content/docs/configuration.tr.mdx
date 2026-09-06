@@ -14,9 +14,11 @@ Yapılandırma `~/.config/tokenmaxxing/config.json` konumunda JSON'dur. Her alan
   "policy": {
     "projectionMargin": 0,
     "greedySessionFloor": 80,
+    "greedySwapMargin": 0.15,
     "switchModels": ["fable"],
     "usagePollTtlMs": 90000,
-    "maxWaitMs": 3600000
+    "maxWaitMs": 3600000,
+    "checkIntervalMs": 60000
   }
 }
 ```
@@ -27,8 +29,10 @@ Yapılandırma `~/.config/tokenmaxxing/config.json` konumunda JSON'dur. Her alan
 - `claudeBin` / `codexBin`: gözetmenlerin başlattığı GERÇEK ikili dosyalara sabitler (`init` / `init --codex` tarafından yazılır; recursion-guard tanısı, `claudeBin` gerçek Claude ikili dosyasını göstermemeye başladığında bunu burada düzeltmenizi söyler).
 - `policy.projectionMargin`: etkin çubukları oluşturmak için her oturum basamağından, haftalık çubuktan ve duvar çubuklarından çıkarılır.
 - `policy.greedySessionFloor`: açgözlü yakınsamanın devreye girdiği oturum-kullanılmış yüzdesi.
+- `policy.greedySwapMargin`: açgözlü yolda mevcut hesap lehine histerezis, 0 ile 1 arasında bir kesir (varsayılan 0.15). Park edilmiş bir hesabın tempo baskısı mevcut hesabınkini bu kesirden fazla aşmadıkça mevcut hesap koltuğunu korur; böylece neredeyse berabere olan hesaplar koltuğu ileri geri takas etmeyi ve organizasyon başına istem önbelleğini bozmayı bırakır. Eski her zaman en iyisini al davranışı için 0 ayarlayın. Aşılmış bir çubuğu ya da duvarı asla yumuşatmaz - yalnızca hepsi çubukların altında olan hesaplar arasındaki yanal geçişleri kapsar. Manuel `tokenmaxxing switch` bunu yok sayar ve her zaman en iyi hesapta yakınsar.
 - `policy.switchModels`: model başına haftalık üst sınırı bir geçişi kapatan model aileleri (girişler yüklemede küçük harfe çevrilir).
 - `policy.usagePollTtlMs`: bir `/usage` model başına poll'ünün ne kadar süre taze kaldığı.
 - `policy.maxWaitMs`: tükenmiş havuz otomatik bekleme sınırı.
+- `policy.checkIntervalMs`: periyodik denetim tiki (varsayılan 60000, en az 10000, çünkü launchd varsayılan olarak bir işi 10 saniyede birden sık başlatmaz). `init` bunu, tam saniyeye yukarı yuvarlayarak, zamanlayıcının aralığı olarak yazar (Linux'ta systemd `AccuracySec` değeri bunun on ikide biridir, en az bir saniye) ve her boşluk bandı bunun bir katıdır: bir çubuğa yakınken bir tik, bol boşluk varken en çok beş tik (bkz. [Denetim temposu](/tr/switching)). Tükenmiş bir bekleme ile geçiş sonrası bekleme süresi ise bunun yerine kendi son tarihlerine kadar uyur. Zamanlama yeni değeri bir sonraki denetimde okur, ancak kurulu zamanlayıcı siz `tokenmaxxing init`'i yeniden çalıştırana kadar eski tikini korur ve vade payı yapılandırılan tikin yarısıdır; bu yüzden değişen bir tik ancak o yeniden çalıştırmadan sonra tam olarak uygulanır. Nix yönetimli bir zamanlayıcıda `checkTimer.intervalSeconds` değerini aynı değere ayarlayın; o seçeneğin de aynı 10 saniyelik tabanı vardır.
 
 `tokenmaxxing config` etkin yapılandırmayı kaynaklarıyla gösterir; `config set`/`unset` noktalı anahtarları düzenler; `config tidy` bilinmeyen anahtarları budar.

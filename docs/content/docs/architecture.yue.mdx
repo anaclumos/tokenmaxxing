@@ -40,7 +40,7 @@ Claude Code 每個回合都會將速率限制數據（`rate_limits.five_hour` �
 
 ## 定期檢查計時器
 
-Hook 只會喺回合邊界觸發，而一個長嘅 agentic 回合可以一個邊界都冇，就將個窗口由健康燒到耗盡。所以 `init` 亦都會安裝一個定期計時器 - macOS 上面係一個 launchd agent，Linux 上面係一個 systemd user timer - 每 60 秒行一次 `tokenmaxxing check --if-due`，唔理回合有冇活動。個檢查會按活躍帳戶嘅餘裕自己調節節奏：距離每一條界線都仲有大把位嗰陣就每五分鐘評估一次，貼近一條界線就每一下 tick 都評估（睇[切換點樣決定](/yue/switching)）。
+Hook 只會喺回合邊界觸發，而一個長嘅 agentic 回合可以一個邊界都冇，就將個窗口由健康燒到耗盡。所以 `init` 亦都會安裝一個定期計時器 - macOS 上面係一個 launchd agent，Linux 上面係一個 systemd user timer - 每一下 tick 行一次 `tokenmaxxing check --if-due`（`policy.checkIntervalMs`，預設 60 秒），唔理回合有冇活動。個檢查會按活躍帳戶嘅餘裕自己調節節奏：距離每一條界線都仲有大把位嗰陣就每五下 tick 評估一次，貼近一條界線就每一下 tick 都評估（睇[切換點樣決定](/yue/switching)）。
 
 ## 一個 SessionStart hook
 

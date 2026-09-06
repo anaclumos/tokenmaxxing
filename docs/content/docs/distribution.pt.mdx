@@ -53,7 +53,7 @@ Home Manager (defina o pacote explicitamente, ou aplique o overlay deste flake a
 }
 ```
 
-O Nix só coloca a CLI no PATH. A importação de contas, o shim supervisor `claude` no PATH, os hooks de `settings.json` e (por omissão) o timer de verificação periódica continuam a vir de `tokenmaxxing init`. Todos eles mexem em credenciais e definições do utilizador que um módulo puro não deve reescrever. Defina `programs.tokenmaxxing.checkTimer.enable = true` só quando quiser que o Nix controle o timer em vez do init (isso também exporta `TOKENMAXXING_SKIP_TIMER=1` para que o init não grave uma segunda unidade). O timer declarativo é um timer de sessão do utilizador, igual ao do init, e no Linux headless ele precisa de `loginctl enable-linger` para disparar sem um login.
+O Nix só coloca a CLI no PATH. A importação de contas, o shim supervisor `claude` no PATH, os hooks de `settings.json` e (por omissão) o timer de verificação periódica continuam a vir de `tokenmaxxing init`. Todos eles mexem em credenciais e definições do utilizador que um módulo puro não deve reescrever. Defina `programs.tokenmaxxing.checkTimer.enable = true` só quando quiser que o Nix controle o timer em vez do init (isso também exporta `TOKENMAXXING_SKIP_TIMER=1` para que o init não grave uma segunda unidade). O timer declarativo é um timer de sessão do utilizador, igual ao do init, e no Linux headless ele precisa de `loginctl enable-linger` para disparar sem um login. Mantenha `checkTimer.intervalSeconds` igual a `policy.checkIntervalMs` em segundos, porque o agendamento autorregulado lê a chave da config enquanto a unidade dispara com o valor do Nix.
 
 Quando `bun.lock` mudar, regenera a expressão de dependências do Nix:
 

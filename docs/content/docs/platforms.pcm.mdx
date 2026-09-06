@@ -8,7 +8,7 @@ description: "How macOS and Linux different for storage, adoption, and timers"
 | Live credential | Login keychain generic-password item | 0600 `.credentials.json` file |
 | Parked credentials | Per-account keychain items | 0600 files inside 0700 directory |
 | Adoption after a swap | Within ~30 seconds (keychain read cache) | Next request (file mtime poll) |
-| Periodic check | launchd agent, 60s floor tick, self-paced 60s to 300s | systemd user timer, 60s floor tick, self-paced 60s to 300s |
+| Periodic check | launchd agent, `policy.checkIntervalMs` floor tick (60s default), self-paced one to five ticks | systemd user timer, `policy.checkIntervalMs` floor tick (60s default), self-paced one to five ticks |
 | Isolated-login store | Hash-namespaced keychain service per config dir | One file inside the isolated config dir |
 
 Two Linux-specific details wey worth to know: claude dey resolve im credential directory from `CLAUDE_SECURESTORAGE_CONFIG_DIR` first (then `CLAUDE_CONFIG_DIR`, then `~/.claude`), and tokenmaxxing dey mirror dat resolution exactly so the two no dey ever desync. And the two OS builds of the same claude version dey format `/usage` reset clocks differently (one dey use " at " glue, the other one comma); tokenmaxxing im parser dey accept exactly those two forms and dey log, rather than guess, on any third one.

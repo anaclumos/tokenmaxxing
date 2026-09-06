@@ -40,7 +40,7 @@ Claude Code 每个回合都会把速率限制数据（`rate_limits.five_hour` �
 
 ## 周期性检查定时器
 
-Hooks 只在回合边界触发，而一个漫长的 agent 式回合可能在没有任何边界的情况下，把一个窗口从健康烧到耗尽。因此 `init` 还会安装一个周期性定时器 - macOS 上为 launchd agent，Linux 上为 systemd 用户定时器 - 无论回合活动如何，每 60 秒运行一次 `tokenmaxxing check --if-due`。这项检查会依据活动账户的余量自行调节节奏：距离每道阈值条都还很宽裕时，每五分钟评估一次；逼近某道阈值条时，则每一跳都评估（参见[切换如何决策](/zh/switching)）。
+Hooks 只在回合边界触发，而一个漫长的 agent 式回合可能在没有任何边界的情况下，把一个窗口从健康烧到耗尽。因此 `init` 还会安装一个周期性定时器 - macOS 上为 launchd agent，Linux 上为 systemd 用户定时器 - 无论回合活动如何，每一跳运行一次 `tokenmaxxing check --if-due`（`policy.checkIntervalMs`，默认 60 秒）。这项检查会依据活动账户的余量自行调节节奏：距离每道阈值条都还很宽裕时，每五跳评估一次；逼近某道阈值条时，则每一跳都评估（参见[切换如何决策](/zh/switching)）。
 
 ## 一个 SessionStart hook
 

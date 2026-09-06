@@ -40,7 +40,7 @@ Ni pale tu kila akaunti kwenye mkusanyiko inapozidi baa zake ndipo Stop hook hua
 
 ## Kipima muda cha ukaguzi wa mara kwa mara
 
-Hooks huwaka tu kwenye mipaka ya zamu, na zamu moja ndefu ya agent inaweza kuchoma dirisha kutoka afya hadi kwisha bila mpaka hata mmoja. Kwa hiyo `init` pia husakinisha kipima muda cha mara kwa mara - launchd agent kwenye macOS, systemd user timer kwenye Linux - kinachoendesha `tokenmaxxing check --if-due` kila sekunde 60 bila kujali shughuli ya zamu. Ukaguzi hujipangia mwendo wake kutokana na nafasi ya akaunti hai: ukiwa na nafasi kubwa hadi kila baa hutathmini kila dakika tano, na ukiwa karibu na baa hutathmini kila tiki (angalia [Jinsi kubadilisha kunavyoamua](/sw/switching)).
+Hooks huwaka tu kwenye mipaka ya zamu, na zamu moja ndefu ya agent inaweza kuchoma dirisha kutoka afya hadi kwisha bila mpaka hata mmoja. Kwa hiyo `init` pia husakinisha kipima muda cha mara kwa mara - launchd agent kwenye macOS, systemd user timer kwenye Linux - kinachoendesha `tokenmaxxing check --if-due` mara moja kila tiki (`policy.checkIntervalMs`, sekunde 60 kwa chaguo-msingi) bila kujali shughuli ya zamu. Ukaguzi hujipangia mwendo wake kutokana na nafasi ya akaunti hai: ukiwa na nafasi kubwa hadi kila baa hutathmini kila tiki tano, na ukiwa karibu na baa hutathmini kila tiki (angalia [Jinsi kubadilisha kunavyoamua](/sw/switching)).
 
 ## SessionStart hook
 

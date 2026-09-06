@@ -53,7 +53,7 @@ Home Manager (das Paket explizit setzen oder das Overlay dieses Flakes auf die p
 }
 ```
 
-Nix legt nur die CLI auf den PATH. Kontoimport, der `claude`-Supervisor-Shim auf dem PATH, `settings.json`-Hooks und (standardmäßig) der periodische Check-Timer kommen weiterhin von `tokenmaxxing init`. Diese greifen auf Anmeldedaten und benutzereigene Einstellungen zu, die ein reines Modul nicht überschreiben sollte. Setze `programs.tokenmaxxing.checkTimer.enable = true` nur, wenn Nix den Timer statt init verwalten soll (das exportiert zugleich `TOKENMAXXING_SKIP_TIMER=1`, damit init keine zweite Unit schreibt). Der deklarative Timer ist ein Benutzersitzungs-Timer, genau wie bei init. Auf kopflosem Linux braucht es `loginctl enable-linger`, damit er ohne Anmeldung feuert.
+Nix legt nur die CLI auf den PATH. Kontoimport, der `claude`-Supervisor-Shim auf dem PATH, `settings.json`-Hooks und (standardmäßig) der periodische Check-Timer kommen weiterhin von `tokenmaxxing init`. Diese greifen auf Anmeldedaten und benutzereigene Einstellungen zu, die ein reines Modul nicht überschreiben sollte. Setze `programs.tokenmaxxing.checkTimer.enable = true` nur, wenn Nix den Timer statt init verwalten soll (das exportiert zugleich `TOKENMAXXING_SKIP_TIMER=1`, damit init keine zweite Unit schreibt). Der deklarative Timer ist ein Benutzersitzungs-Timer, genau wie bei init. Auf kopflosem Linux braucht es `loginctl enable-linger`, damit er ohne Anmeldung feuert. Halten Sie `checkTimer.intervalSeconds` gleich `policy.checkIntervalMs` in Sekunden, denn der selbstgetaktete Zeitplan liest den Konfigurationsschlüssel, während die Unit auf dem Nix-Wert feuert.
 
 Wenn sich `bun.lock` ändert, die Nix-Abhängigkeitsexpression neu erzeugen:
 

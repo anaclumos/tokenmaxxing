@@ -8,7 +8,7 @@ description: "Jinsi macOS na Linux zinavyotofautiana katika uhifadhi, upokeaji, 
 | Kitambulisho hai | Kitu cha generic-password cha keychain ya kuingia | Faili ya `.credentials.json` ya 0600 |
 | Vitambulisho vilivyoegeshwa | Vitu vya keychain vya kila akaunti | Faili za 0600 katika saraka ya 0700 |
 | Upokeaji baada ya ubadilishaji | Ndani ya sekunde 30 hivi (kache ya usomaji ya keychain) | Ombi linalofuata (uchunguzi wa mtime ya faili) |
-| Ukaguzi wa mara kwa mara | launchd agent, tiki ya sakafu ya 60s, ikijipangia mwendo 60s hadi 300s | systemd user timer, tiki ya sakafu ya 60s, ikijipangia mwendo 60s hadi 300s |
+| Ukaguzi wa mara kwa mara | launchd agent, tiki ya sakafu ya `policy.checkIntervalMs` (chaguo-msingi 60s), ikijipangia mwendo tiki moja hadi tano | systemd user timer, tiki ya sakafu ya `policy.checkIntervalMs` (chaguo-msingi 60s), ikijipangia mwendo tiki moja hadi tano |
 | Hifadhi ya uingiaji uliojitenga | Huduma ya keychain yenye nafasi-ya-majina ya hash kwa kila saraka ya usanidi | Faili ndani ya saraka ya usanidi iliyojitenga |
 
 Maelezo mawili mahususi ya Linux yanayostahili kujua: claude hutatua saraka yake ya vitambulisho kutoka `CLAUDE_SECURESTORAGE_CONFIG_DIR` kwanza (kisha `CLAUDE_CONFIG_DIR`, kisha `~/.claude`), na tokenmaxxing huakisi utatuzi huo hasa ili hizo mbili zisiache kupatana kamwe. Na builds mbili za OS za toleo lile lile la claude huumbiza saa za kujiweka upya za `/usage` kwa njia tofauti (moja hutumia gundi ya " at ", nyingine koma); kichanganuzi cha tokenmaxxing hukubali hasa fomu hizo mbili na huweka kumbukumbu, badala ya kubahatisha, kwa fomu yoyote ya tatu.

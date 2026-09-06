@@ -18,7 +18,7 @@ Nix ユーザーは Bun のステップを `nix profile install github:anaclumos
 2. `claude` スーパーバイザーのシムをインストールします。
 3. Claude Code の `settings.json` に4つのエントリをインストールします。statusLine、Stop フック、StopFailure フック、SessionStart フック (加えて subagentStatusLine エントリ)。
 4. スーパーバイザーの bin ディレクトリをシェル rc の PATH に追記します (冪等で、`# tokenmaxxing PATH` コメントで印を付けます)。本物の `claude` より前に PATH 上に置いてインターセプトする必要があります。
-5. `tokenmaxxing check --if-due` を60秒ごとに実行する定期チェックタイマーをインストールします (macOS では launchd エージェント、Linux では systemd ユーザータイマー)。チェックはライブアカウントの余裕に応じて、1分から5分の間で自らペースを調整します。
+5. `tokenmaxxing check --if-due` を1ティックに1回 (`policy.checkIntervalMs`、デフォルトは60秒) 実行する定期チェックタイマーをインストールします (macOS では launchd エージェント、Linux では systemd ユーザータイマー)。チェックはライブアカウントの余裕に応じて、1から5ティックの間で自らペースを調整します。
 
 シェルを再起動してから、アカウントを追加して始めます。
 

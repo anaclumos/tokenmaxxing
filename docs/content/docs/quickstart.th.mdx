@@ -18,7 +18,7 @@ tokenmaxxing init
 2. ติดตั้ง shim ของ supervisor สำหรับ `claude`
 3. ติดตั้งสี่รายการใน `settings.json` ของ Claude Code ได้แก่ statusLine, Stop hook, StopFailure hook และ SessionStart hook (พร้อมกับรายการ subagentStatusLine)
 4. เพิ่มไดเรกทอรี bin ของ supervisor เข้าไปใน PATH ของไฟล์ rc ของเชลล์คุณ (ทำซ้ำได้โดยไม่เปลี่ยนผล มีคอมเมนต์ `# tokenmaxxing PATH` กำกับไว้) มันต้องอยู่ก่อน `claude` ตัวจริงใน PATH เพื่อดักจับ
-5. ติดตั้งตัวจับเวลาตรวจสอบเป็นระยะ (launchd agent บน macOS และ systemd user timer บน Linux) ที่รัน `tokenmaxxing check --if-due` ทุก 60 วินาที ส่วนตัวการตรวจสอบเองจะกำหนดจังหวะของมันไว้ระหว่างหนึ่งถึงห้านาทีจากพื้นที่เหลือของบัญชีที่ใช้งานอยู่
+5. ติดตั้งตัวจับเวลาตรวจสอบเป็นระยะ (launchd agent บน macOS และ systemd user timer บน Linux) ที่รัน `tokenmaxxing check --if-due` ทุกหนึ่ง tick (`policy.checkIntervalMs` ค่าเริ่มต้น 60 วินาที) ส่วนตัวการตรวจสอบเองจะกำหนดจังหวะของมันไว้ระหว่างหนึ่งถึงห้า tick จากพื้นที่เหลือของบัญชีที่ใช้งานอยู่
 
 รีสตาร์ทเชลล์ของคุณ จากนั้นเพิ่มบัญชีและเริ่มใช้งานได้เลย:
 

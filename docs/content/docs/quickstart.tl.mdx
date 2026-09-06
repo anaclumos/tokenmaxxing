@@ -18,7 +18,7 @@ May limang bagay na ginagawa ang `init`:
 2. Ini-install ang `claude` supervisor shim.
 3. Nag-i-install ng apat na entry sa `settings.json` ng Claude Code: isang statusLine, isang Stop hook, isang StopFailure hook, at isang SessionStart hook (kasama ang isang subagentStatusLine entry).
 4. Idinaragdag ang bin directory ng supervisor sa PATH ng iyong shell rc (idempotent, minarkahan ng isang `# tokenmaxxing PATH` na komento). Kailangan itong nasa unahan ng tunay na `claude` sa PATH upang ma-intercept ito.
-5. Nag-i-install ng isang pana-panahong check timer (isang launchd agent sa macOS, isang systemd user timer sa Linux) na nagpapatakbo ng `tokenmaxxing check --if-due` tuwing 60 segundo; ang check mismo ang nagtatakda ng sarili nitong bilis sa pagitan ng isa at limang minuto batay sa headroom ng live na account.
+5. Nag-i-install ng isang pana-panahong check timer (isang launchd agent sa macOS, isang systemd user timer sa Linux) na nagpapatakbo ng `tokenmaxxing check --if-due` isang beses kada tick (`policy.checkIntervalMs`, 60 segundo sa default); ang check mismo ang nagtatakda ng sarili nitong bilis sa pagitan ng isa at limang tick batay sa headroom ng live na account.
 
 I-restart ang iyong shell, pagkatapos ay magdagdag ng higit pang mga account at magsimula:
 

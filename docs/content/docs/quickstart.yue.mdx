@@ -18,7 +18,7 @@ tokenmaxxing init
 2. 安裝 `claude` 監督者 shim。
 3. 喺 Claude Code 嘅 `settings.json` 入面安裝四個項目：statusLine、Stop hook、StopFailure hook 同 SessionStart hook（仲會加埋一個 subagentStatusLine 項目）。
 4. 將監督者嘅 bin 目錄加去 shell rc 嘅 PATH（冪等，會用 `# tokenmaxxing PATH` 註解標記）。佢喺 PATH 上面必須排喺真正嘅 `claude` 前面，先至攔截到。
-5. 安裝定期檢查計時器（macOS 上面係 launchd agent，Linux 上面係 systemd user timer），每 60 秒行一次 `tokenmaxxing check --if-due`；個檢查會按活躍帳戶嘅餘裕，喺一分鐘到五分鐘之間自己調節節奏。
+5. 安裝定期檢查計時器（macOS 上面係 launchd agent，Linux 上面係 systemd user timer），每一下 tick 行一次 `tokenmaxxing check --if-due`（`policy.checkIntervalMs`，預設 60 秒）；個檢查會按活躍帳戶嘅餘裕，喺一到五下 tick 之間自己調節節奏。
 
 重新啟動 shell，然後加多啲帳戶就開始用：
 

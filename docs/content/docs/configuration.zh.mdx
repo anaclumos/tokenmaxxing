@@ -14,9 +14,11 @@ description: "config.json 的结构、阈值与策略旋钮"
   "policy": {
     "projectionMargin": 0,
     "greedySessionFloor": 80,
+    "greedySwapMargin": 0.15,
     "switchModels": ["fable"],
     "usagePollTtlMs": 90000,
-    "maxWaitMs": 3600000
+    "maxWaitMs": 3600000,
+    "checkIntervalMs": 60000
   }
 }
 ```
@@ -27,8 +29,10 @@ description: "config.json 的结构、阈值与策略旋钮"
 - `claudeBin` / `codexBin`：钉定监督进程实际生成的真实二进制文件（由 `init` / `init --codex` 写入；当递归防护诊断提示 `claudeBin` 不再指向真实的 Claude 二进制文件时，就在这里修正它）。
 - `policy.projectionMargin`：从每一档会话档位、周阈值条和上限墙阈值条中减去，得到有效阈值条。
 - `policy.greedySessionFloor`：贪心收敛开始介入时的会话已用百分比。
+- `policy.greedySwapMargin`：贪心路径上对在任账户的迟滞量，取 0 到 1 之间的比例（默认 0.15）。除非某个停放账户的进度压力超出当前账户的幅度大于这个比例，否则当前账户保住自己的席位，这样进度压力接近持平的账户就不会来回交换席位、反复冲掉按组织划分的提示词缓存。设为 0 即恢复以往总是选最优账户的行为。它绝不会放宽已越过的阈值条，也不会放宽上限墙，只作用于全都在阈值条之下的账户之间的横向切换。手动执行 `tokenmaxxing switch` 会忽略它，始终收敛到最优账户。
 - `policy.switchModels`：单模型周上限会为切换设定门槛的模型家族（加载时条目转为小写）。
 - `policy.usagePollTtlMs`：`/usage` 按模型轮询保持新鲜的时长。
 - `policy.maxWaitMs`：账户池耗尽后自动等待的上限。
+- `policy.checkIntervalMs`：周期性检查的一跳时长（默认 60000，最小 10000，因为 launchd 默认不会以快于每 10 秒一次的频率启动任务）。`init` 会把它向上取整到整秒，写成定时器的间隔（在 Linux 上，systemd 的 `AccuracySec` 取其十二分之一，且至少为 1 秒），而每一档余量档次都是它的整数倍：逼近某道阈值条时为一跳，余量充裕时最多五跳（参见[检查节奏](/zh/switching)）。耗尽等待和切换后的冷却期不走这套档次，而是各自睡到自己的截止时刻。排期会在下一次检查时读到新值，但已安装的定时器仍沿用旧的一跳时长，直到你再次运行 `tokenmaxxing init`；而到期时间的宽限是所配置一跳时长的一半，所以改动后的跳动时长要在重新运行之后才被完全遵守。定时器若由 Nix 管理，请把 `checkTimer.intervalSeconds` 设为同一个值；该选项同样有 10 秒的下限。
 
 `tokenmaxxing config` 显示有效配置及其来源；`config set`/`unset` 编辑点分键；`config tidy` 清除未知键。

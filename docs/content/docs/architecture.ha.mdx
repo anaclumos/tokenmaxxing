@@ -40,7 +40,7 @@ Sai lokacin da kowane asusu a cikin tafki ya wuce sandunansa ne Stop hook ke rub
 
 ## Agogon dubawa na lokaci-lokaci
 
-Hooks suna aiki ne kawai a iyakokin zagaye, kuma zagaye guda mai tsawo na agent na iya ƙona taga daga lafiya zuwa ƙarewa ba tare da iyaka guda ɗaya ba. Saboda haka `init` yana kuma shigar da agogon lokaci-lokaci - launchd agent a kan macOS, systemd user timer a kan Linux - da ke gudanar da `tokenmaxxing check --if-due` kowace daƙiƙa 60 ba tare da la'akari da ayyukan zagaye ba. Dubawar tana daidaita saurin kanta bisa sararin asusun da ke aiki: idan akwai sarari mai yawa zuwa kowace sanda tana auna kowane minti biyar, kuma kusa da sanda tana auna a kowane tick (duba [Yadda musanya ke yanke shawara](/ha/switching)).
+Hooks suna aiki ne kawai a iyakokin zagaye, kuma zagaye guda mai tsawo na agent na iya ƙona taga daga lafiya zuwa ƙarewa ba tare da iyaka guda ɗaya ba. Saboda haka `init` yana kuma shigar da agogon lokaci-lokaci - launchd agent a kan macOS, systemd user timer a kan Linux - da ke gudanar da `tokenmaxxing check --if-due` sau ɗaya a kowane tick (`policy.checkIntervalMs`, daƙiƙa 60 ta tsoho) ba tare da la'akari da ayyukan zagaye ba. Dubawar tana daidaita saurin kanta bisa sararin asusun da ke aiki: idan akwai sarari mai yawa zuwa kowace sanda tana auna kowane tick biyar, kuma kusa da sanda tana auna a kowane tick (duba [Yadda musanya ke yanke shawara](/ha/switching)).
 
 ## SessionStart hook
 

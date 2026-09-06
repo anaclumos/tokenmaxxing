@@ -14,9 +14,11 @@ Die Konfiguration ist JSON unter `~/.config/tokenmaxxing/config.json`. Jedes Fel
   "policy": {
     "projectionMargin": 0,
     "greedySessionFloor": 80,
+    "greedySwapMargin": 0.15,
     "switchModels": ["fable"],
     "usagePollTtlMs": 90000,
-    "maxWaitMs": 3600000
+    "maxWaitMs": 3600000,
+    "checkIntervalMs": 60000
   }
 }
 ```
@@ -27,8 +29,10 @@ Die Konfiguration ist JSON unter `~/.config/tokenmaxxing/config.json`. Jedes Fel
 - `claudeBin` / `codexBin`: pinnt auf die ECHTEN Binaries, die die Supervisoren starten (geschrieben von `init` / `init --codex`; die Rekursionsschutz-Diagnose weist Sie darauf hin, hier `claudeBin` zu korrigieren, wenn es nicht mehr auf die echte Claude-Binary zeigt).
 - `policy.projectionMargin`: von jeder Sitzungsstufe, der Wochenschranke und den Wandschranken abgezogen, um die effektiven Schranken zu bilden.
 - `policy.greedySessionFloor`: der Sitzungsnutzungsprozentsatz, bei dem die greedy-Konvergenz greift.
+- `policy.greedySwapMargin`: die Hysterese zugunsten des amtierenden Kontos auf dem greedy-Pfad, ein Bruchteil von 0 bis 1 (Standard 0.15). Das aktuelle Konto behält seinen Platz, sofern nicht der Tempodruck eines geparkten Kontos den seinen um mehr als diesen Bruchteil übersteigt, sodass nahezu gleichauf liegende Konten den Platz nicht mehr hin und her tauschen und dabei den Prompt-Cache pro Organisation zerstören. Auf 0 setzen für das alte Verhalten, immer das beste Konto zu nehmen. Sie weicht nie eine überschrittene Schranke oder die Wand auf, sie gilt nur für seitliche Wechsel zwischen Konten, die alle unter den Schranken liegen. Ein manuelles `tokenmaxxing switch` ignoriert sie und konvergiert immer auf das beste Konto.
 - `policy.switchModels`: Modellfamilien, deren wöchentliche Pro-Modell-Obergrenze einen Wechsel gated (Einträge werden beim Laden kleingeschrieben).
 - `policy.usagePollTtlMs`: wie lange eine `/usage`-Pro-Modell-Abfrage frisch bleibt.
 - `policy.maxWaitMs`: die Warteobergrenze für den automatischen Erschöpft-Pool.
+- `policy.checkIntervalMs`: der Takt der periodischen Prüfung (Standard 60000, Minimum 10000, weil launchd einen Job standardmäßig nicht öfter als alle 10 Sekunden startet). `init` schreibt ihn, auf ganze Sekunden aufgerundet, als Intervall des Timers (auf Linux beträgt die systemd-`AccuracySec` ein Zwölftel davon, mindestens eine Sekunde), und jedes Spielraumband ist ein Vielfaches davon: ein Takt nahe an einer Schranke, bis zu fünf Takte bei reichlich Spielraum (siehe [Prüfkadenz](/de/switching)). Ein Erschöpft-Warten und die Abkühlzeit nach dem Wechsel schlafen stattdessen auf ihre eigenen Fristen hin. Der Zeitplan liest den neuen Wert bei der nächsten Prüfung, aber der installierte Timer behält seinen alten Takt, bis Sie `tokenmaxxing init` erneut ausführen, und der Spielraum auf die Fälligkeitszeit beträgt die Hälfte des konfigurierten Takts, sodass ein geänderter Takt erst nach diesem erneuten Lauf vollständig wirksam wird. Bei einem von Nix verwalteten Timer setzen Sie `checkTimer.intervalSeconds` auf denselben Wert; diese Option hat dieselbe 10-Sekunden-Untergrenze.
 
 `tokenmaxxing config` zeigt die effektive Konfiguration mit Quellen; `config set`/`unset` bearbeiten punktierte Schlüssel; `config tidy` entfernt unbekannte Schlüssel.

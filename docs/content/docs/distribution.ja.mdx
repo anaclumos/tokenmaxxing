@@ -53,7 +53,7 @@ Home Manager (パッケージを明示するか、Home Manager が使う pkgs �
 }
 ```
 
-Nix がやるのは CLI を PATH に載せるところまでです。アカウント取り込み、PATH 上の `claude` スーパーバイザーシム、`settings.json` のフック、(既定では) 定期チェックタイマーは、いままでどおり `tokenmaxxing init` 側です。これらは認証情報やユーザー所有の設定に触れるので、純粋なモジュールが書き換えるべきではありません。タイマーを init ではなく Nix に持たせたいときだけ `programs.tokenmaxxing.checkTimer.enable = true` にしてください (この設定は `TOKENMAXXING_SKIP_TIMER=1` もエクスポートするので、init が2つ目のユニットを書き込むことはありません)。宣言的なタイマーは init と同じくユーザーセッションのタイマーです。ヘッドレスな Linux では、ログインなしで発火させるために `loginctl enable-linger` が必要です。
+Nix がやるのは CLI を PATH に載せるところまでです。アカウント取り込み、PATH 上の `claude` スーパーバイザーシム、`settings.json` のフック、(既定では) 定期チェックタイマーは、いままでどおり `tokenmaxxing init` 側です。これらは認証情報やユーザー所有の設定に触れるので、純粋なモジュールが書き換えるべきではありません。タイマーを init ではなく Nix に持たせたいときだけ `programs.tokenmaxxing.checkTimer.enable = true` にしてください (この設定は `TOKENMAXXING_SKIP_TIMER=1` もエクスポートするので、init が2つ目のユニットを書き込むことはありません)。宣言的なタイマーは init と同じくユーザーセッションのタイマーです。ヘッドレスな Linux では、ログインなしで発火させるために `loginctl enable-linger` が必要です。`checkTimer.intervalSeconds` は `policy.checkIntervalMs` を秒に直した値と同じに保ってください。自己ペース調整のスケジュールは設定キーを読む一方、ユニットは Nix 側の値で発火するからです。
 
 `bun.lock` が変わったら、Nix の依存式を作り直します:
 

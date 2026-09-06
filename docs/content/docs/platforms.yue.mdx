@@ -8,7 +8,7 @@ description: "macOS 同 Linux 喺儲存、採用同計時器上面點樣唔同"
 | 活躍憑證 | 登入 keychain 通用密碼項目 | 0600 `.credentials.json` 檔案 |
 | 泊存憑證 | 每帳戶 keychain 項目 | 一個 0700 目錄入面嘅 0600 檔案 |
 | 切換後採用 | ~30 秒之內（keychain 讀取快取） | 下一次請求（檔案 mtime 輪詢） |
-| 定期檢查 | launchd agent，60 秒底線 tick，自行調節 60 秒到 300 秒 | systemd user timer，60 秒底線 tick，自行調節 60 秒到 300 秒 |
+| 定期檢查 | launchd agent，`policy.checkIntervalMs` 底線 tick（預設 60 秒），自行調節一到五下 tick | systemd user timer，`policy.checkIntervalMs` 底線 tick（預設 60 秒），自行調節一到五下 tick |
 | 隔離登入儲存 | 每設定目錄有 hash 命名空間嘅 keychain 服務 | 隔離設定目錄入面嘅一個檔案 |
 
 有兩個 Linux 專屬細節值得知：claude 解析憑證目錄嗰陣，會先睇 `CLAUDE_SECURESTORAGE_CONFIG_DIR`（然後 `CLAUDE_CONFIG_DIR`，再然後 `~/.claude`），而 tokenmaxxing 完全跟足同一套解析，令兩邊永遠唔會失步。仲有，同一個 claude 版本嘅兩個 OS build 格式化 `/usage` 重設時鐘嘅方式唔同（一個用 " at " 黐埋，另一個用逗號）；tokenmaxxing 嘅解析器就係接受嗰兩種形式，遇到任何第三種就記錄低，而唔係靠估。

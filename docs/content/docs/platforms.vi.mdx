@@ -8,7 +8,7 @@ description: "macOS và Linux khác nhau thế nào về lưu trữ, tiếp nh�
 | Thông tin xác thực đang hoạt động | Mục generic-password trong login keychain | Tệp `.credentials.json` 0600 |
 | Thông tin xác thực dự trữ | Các mục keychain theo từng tài khoản | Các tệp 0600 trong một thư mục 0700 |
 | Tiếp nhận sau một lần hoán đổi | Trong khoảng 30 giây (bộ nhớ đệm đọc keychain) | Yêu cầu tiếp theo (thăm dò mtime tệp) |
-| Kiểm tra định kỳ | launchd agent, nhịp sàn 60s, tự điều nhịp từ 60s tới 300s | systemd user timer, nhịp sàn 60s, tự điều nhịp từ 60s tới 300s |
+| Kiểm tra định kỳ | launchd agent, nhịp sàn `policy.checkIntervalMs` (mặc định 60s), tự điều nhịp từ một tới năm nhịp | systemd user timer, nhịp sàn `policy.checkIntervalMs` (mặc định 60s), tự điều nhịp từ một tới năm nhịp |
 | Kho đăng nhập biệt lập | Dịch vụ keychain đặt tên theo hash cho mỗi thư mục cấu hình | Một tệp bên trong thư mục cấu hình biệt lập |
 
 Hai chi tiết riêng của Linux đáng biết: claude phân giải thư mục thông tin xác thực của nó từ `CLAUDE_SECURESTORAGE_CONFIG_DIR` trước (rồi `CLAUDE_CONFIG_DIR`, rồi `~/.claude`), và tokenmaxxing phản chiếu chính xác cách phân giải đó để hai bên không bao giờ mất đồng bộ. Và hai bản dựng hệ điều hành của cùng một phiên bản claude định dạng đồng hồ đặt lại `/usage` khác nhau (một bản dùng chuỗi nối " at ", bản kia dùng dấu phẩy); trình phân tích của tokenmaxxing chấp nhận chính xác hai dạng đó và ghi nhật ký, thay vì đoán, khi gặp bất kỳ dạng thứ ba nào.

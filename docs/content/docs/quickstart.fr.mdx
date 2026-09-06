@@ -18,7 +18,7 @@ Les utilisateurs de Nix remplacent l'étape Bun par `nix profile install github:
 2. Installe le shim superviseur `claude`.
 3. Installe quatre entrées dans le `settings.json` de Claude Code : une statusLine, un hook Stop, un hook StopFailure et un hook SessionStart (plus une entrée subagentStatusLine).
 4. Ajoute le répertoire bin du superviseur au PATH du fichier rc de votre shell (idempotent, marqué d'un commentaire `# tokenmaxxing PATH`). Il doit se placer avant le vrai `claude` dans le PATH pour l'intercepter.
-5. Installe une minuterie de vérification périodique (un agent launchd sur macOS, une minuterie utilisateur systemd sur Linux) qui exécute `tokenmaxxing check --if-due` toutes les 60 secondes ; la vérification s'auto-rythme entre une et cinq minutes d'après la marge du compte actif.
+5. Installe une minuterie de vérification périodique (un agent launchd sur macOS, une minuterie utilisateur systemd sur Linux) qui exécute `tokenmaxxing check --if-due` une fois par tick (`policy.checkIntervalMs`, 60 secondes par défaut) ; la vérification s'auto-rythme entre un et cinq ticks d'après la marge du compte actif.
 
 Redémarrez votre shell, puis ajoutez d'autres comptes et lancez-vous :
 

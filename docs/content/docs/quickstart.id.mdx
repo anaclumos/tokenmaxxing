@@ -18,7 +18,7 @@ Pengguna Nix mengganti langkah Bun dengan `nix profile install github:anaclumos/
 2. Memasang shim supervisor `claude`.
 3. Memasang empat entri di `settings.json` milik Claude Code: sebuah statusLine, sebuah hook Stop, sebuah hook StopFailure, dan sebuah hook SessionStart (ditambah sebuah entri subagentStatusLine).
 4. Menambahkan direktori bin supervisor ke PATH pada shell rc Anda (idempoten, ditandai dengan komentar `# tokenmaxxing PATH`). Ia harus berada di depan `claude` yang asli di PATH agar dapat mencegatnya.
-5. Memasang pengatur waktu pemeriksaan berkala (agen launchd di macOS, pengatur waktu pengguna systemd di Linux) yang menjalankan `tokenmaxxing check --if-due` setiap 60 detik. Pemeriksaan itu mengatur lajunya sendiri antara satu dan lima menit dari ruang tersisa akun langsung.
+5. Memasang pengatur waktu pemeriksaan berkala (agen launchd di macOS, pengatur waktu pengguna systemd di Linux) yang menjalankan `tokenmaxxing check --if-due` sekali per detak (`policy.checkIntervalMs`, 60 detik secara default); pemeriksaan itu mengatur lajunya sendiri antara satu dan lima detak dari ruang tersisa akun langsung.
 
 Mulai ulang shell Anda, lalu tambahkan lebih banyak akun dan mulai:
 

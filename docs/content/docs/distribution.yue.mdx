@@ -53,7 +53,7 @@ Home Manager（明確指定個 package，又或者將呢個 flake 嘅 overlay �
 }
 ```
 
-Nix 淨係將 CLI 放落 PATH。帳戶匯入、PATH 上面嘅 `claude` supervisor shim、`settings.json` 嘅 hook，同埋（預設）定期檢查計時器，仍然嚟自 `tokenmaxxing init`。呢啲會掂到憑證同用戶自己嘅設定，一個純模組唔應該改寫。只有你想計時器由 Nix 管、而唔係 init 嗰陣，先至設 `programs.tokenmaxxing.checkTimer.enable = true`（噉亦都會匯出 `TOKENMAXXING_SKIP_TIMER=1`，等 init 唔會再寫多一個 unit）。呢個聲明式計時器同 init 一樣係 user session 計時器。無頭 Linux 要行 `loginctl enable-linger`，佢先至可以喺冇登入嘅情況下觸發。
+Nix 淨係將 CLI 放落 PATH。帳戶匯入、PATH 上面嘅 `claude` supervisor shim、`settings.json` 嘅 hook，同埋（預設）定期檢查計時器，仍然嚟自 `tokenmaxxing init`。呢啲會掂到憑證同用戶自己嘅設定，一個純模組唔應該改寫。只有你想計時器由 Nix 管、而唔係 init 嗰陣，先至設 `programs.tokenmaxxing.checkTimer.enable = true`（噉亦都會匯出 `TOKENMAXXING_SKIP_TIMER=1`，等 init 唔會再寫多一個 unit）。呢個聲明式計時器同 init 一樣係 user session 計時器。無頭 Linux 要行 `loginctl enable-linger`，佢先至可以喺冇登入嘅情況下觸發。要令 `checkTimer.intervalSeconds` 同 `policy.checkIntervalMs` 換算成秒之後保持一樣，因為自行調節嘅排程讀嘅係設定嗰個 key，但個 unit 係按 Nix 嗰個值觸發。
 
 `bun.lock` 有變就重新產生 Nix 依賴表達式：
 

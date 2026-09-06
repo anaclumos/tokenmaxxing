@@ -40,7 +40,7 @@ Ce n'est que lorsque chaque compte du pool dépasse ses barres que le hook Stop 
 
 ## La minuterie de vérification périodique
 
-Les hooks ne se déclenchent qu'aux frontières de tour, et un long tour agentique peut consumer une fenêtre, la faisant passer de saine à épuisée, sans une seule frontière. `init` installe donc aussi une minuterie périodique (un agent launchd sur macOS, une minuterie utilisateur systemd sur Linux) qui exécute `tokenmaxxing check --if-due` toutes les 60 secondes, indépendamment de l'activité des tours. La vérification s'auto-rythme d'après la marge du compte actif : avec beaucoup de place jusqu'à chaque barre, elle évalue toutes les cinq minutes, et près d'une barre à chaque tick (voir [Comment la bascule décide](/fr/switching)).
+Les hooks ne se déclenchent qu'aux frontières de tour, et un long tour agentique peut consumer une fenêtre, la faisant passer de saine à épuisée, sans une seule frontière. `init` installe donc aussi une minuterie périodique (un agent launchd sur macOS, une minuterie utilisateur systemd sur Linux) qui exécute `tokenmaxxing check --if-due` une fois par tick (`policy.checkIntervalMs`, 60 secondes par défaut), indépendamment de l'activité des tours. La vérification s'auto-rythme d'après la marge du compte actif : avec beaucoup de place jusqu'à chaque barre, elle évalue tous les cinq ticks, et près d'une barre à chaque tick (voir [Comment la bascule décide](/fr/switching)).
 
 ## Un hook SessionStart
 

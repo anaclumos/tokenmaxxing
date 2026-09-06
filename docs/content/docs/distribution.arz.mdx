@@ -53,7 +53,7 @@ Home Manager (حدد الباكدج صراحة، أو طبّق الـ overlay ب
 }
 ```
 
-Nix بيحط الـ CLI على PATH بس. استيراد الحسابات، وshim المشرف `claude` على PATH، وhooks بتاعة `settings.json`، ومؤقت الفحص الدوري (افتراضيًا) لسه بيجوا من `tokenmaxxing init`. دول بيلمسوا بيانات الاعتماد وإعدادات المستخدم اللي موديول نقي ما ينفعش يعيد كتابتها. حط `programs.tokenmaxxing.checkTimer.enable = true` بس لما تكون عايز Nix يملك المؤقت بدل init (وده كمان بيصدّر `TOKENMAXXING_SKIP_TIMER=1` عشان init مايكتبش unit تاني). المؤقت التصريحي هو مؤقت على مستوى session المستخدم، زي init بالظبط. Linux من غير واجهة محتاج `loginctl enable-linger` عشان يشتغل من غير تسجيل دخول.
+Nix بيحط الـ CLI على PATH بس. استيراد الحسابات، وshim المشرف `claude` على PATH، وhooks بتاعة `settings.json`، ومؤقت الفحص الدوري (افتراضيًا) لسه بيجوا من `tokenmaxxing init`. دول بيلمسوا بيانات الاعتماد وإعدادات المستخدم اللي موديول نقي ما ينفعش يعيد كتابتها. حط `programs.tokenmaxxing.checkTimer.enable = true` بس لما تكون عايز Nix يملك المؤقت بدل init (وده كمان بيصدّر `TOKENMAXXING_SKIP_TIMER=1` عشان init مايكتبش unit تاني). المؤقت التصريحي هو مؤقت على مستوى session المستخدم، زي init بالظبط. Linux من غير واجهة محتاج `loginctl enable-linger` عشان يشتغل من غير تسجيل دخول. خلّي `checkTimer.intervalSeconds` مساوي لـ `policy.checkIntervalMs` بالثواني، لأن الجدول اللي بيظبط إيقاعه بنفسه بيقرا مفتاح الإعدادات، والـ unit بيشتغل على قيمة Nix.
 
 لما `bun.lock` يتغيّر، ولّد تعبير اعتماديات Nix من تاني:
 

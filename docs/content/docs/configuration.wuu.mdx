@@ -14,9 +14,11 @@ description: "config.json 嗰结构、阈值搭策略旋钮。"
   "policy": {
     "projectionMargin": 0,
     "greedySessionFloor": 80,
+    "greedySwapMargin": 0.15,
     "switchModels": ["fable"],
     "usagePollTtlMs": 90000,
-    "maxWaitMs": 3600000
+    "maxWaitMs": 3600000,
+    "checkIntervalMs": 60000
   }
 }
 ```
@@ -27,8 +29,10 @@ description: "config.json 嗰结构、阈值搭策略旋钮。"
 - `claudeBin` / `codexBin`：钉牢 supervisor 起动嗰真身二进制（勒 `init` / `init --codex` 辰光写落嗰；辰光递归防护嗰诊断讲侬去修 `claudeBin`，就是伊勿再指牢真嗰 Claude 二进制嗰辰光）。
 - `policy.projectionMargin`：从每一档会话阈值、礼拜阈值搭墙壁阈值里向侪减脱，得出有效阈值。
 - `policy.greedySessionFloor`：贪心收敛开始运作嗰会话已用百分比。
+- `policy.greedySwapMargin`：贪心路径高头对当前账户嗰迟滞，是一个 0 到 1 当中嗰分数（默认 0.15）。除非一个停放嗰账户嗰进度压力超过当前账户超出搿个分数，否则当前账户就守牢自家嗰座位，搿么咬得老牢嗰几个账户勿会再来回抢座位、拿每个组织嗰提示词缓存打脱。设成 0 就是老早埃种一径挑顶好嗰做法。伊从来勿会拿越过嗰阈值或者墙壁放松：只管每个账户侪还勒阈值底下嗰辰光埃种横向切换。手动嗰 `tokenmaxxing switch` 勿睬伊，一直收敛到顶好嗰账户高头。
 - `policy.switchModels`：哪几个模型系列嗰分模型礼拜上限会给切换把关（条目加载嗰辰光会转成小写）。
 - `policy.usagePollTtlMs`：一趟 `/usage` 分模型轮询保持新鲜多少辰光。
 - `policy.maxWaitMs`：耗光池子自动等待嗰上限。
+- `policy.checkIntervalMs`：定期检查嗰一跳（默认 60000，顶少 10000，因为 launchd 默认勿会勒 10 秒里向生出多过一趟嗰作业）。`init` 拿伊往上取整到整秒，当作定时器嗰间隔写落去（Linux 高头 systemd 嗰 `AccuracySec` 是伊嗰十二分之一，顶少一秒），而且每一段余量嗰间隔侪是伊嗰倍数：贴牢一条阈值嗰辰光一跳，余量老多嗰辰光顶多五跳（看[检查节奏](/wuu/switching)）。耗光等待搭切换之后嗰冷却勿照搿套走，是困到伊拉自家嗰截止辰光。排期勒下一趟检查嗰辰光就读到新值，不过装好嗰定时器一直用老嗰一跳，一直到侬再跑一趟 `tokenmaxxing init` 为止；而且到期辰光嗰宽限是配置嗰一跳嗰一半，所以改脱嗰一跳只有勒再跑一趟之后才完全生效。碰着 Nix 管嗰定时器，拿 `checkTimer.intervalSeconds` 设成同一个数字；搿项选项有同样嗰 10 秒下限。
 
 `tokenmaxxing config` 显示带来源嗰有效配置；`config set`/`unset` 编辑带点嗰键；`config tidy` 剪脱勿认得嗰键。

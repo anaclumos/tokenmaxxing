@@ -14,9 +14,11 @@ Konfigurasi berupa JSON di `~/.config/tokenmaxxing/config.json`. Setiap bidang o
   "policy": {
     "projectionMargin": 0,
     "greedySessionFloor": 80,
+    "greedySwapMargin": 0.15,
     "switchModels": ["fable"],
     "usagePollTtlMs": 90000,
-    "maxWaitMs": 3600000
+    "maxWaitMs": 3600000,
+    "checkIntervalMs": 60000
   }
 }
 ```
@@ -27,8 +29,10 @@ Konfigurasi berupa JSON di `~/.config/tokenmaxxing/config.json`. Setiap bidang o
 - `claudeBin` / `codexBin`: menetapkan biner ASLI yang dijalankan oleh para supervisor (ditulis oleh `init` / `init --codex`; diagnostik penjaga-rekursi memberitahumu untuk memperbaiki `claudeBin` di sini saat berhenti menunjuk ke biner Claude yang asli).
 - `policy.projectionMargin`: dikurangkan dari setiap anak tangga sesi, bilah mingguan, dan bilah dinding untuk membentuk bilah efektif.
 - `policy.greedySessionFloor`: persen sesi-terpakai saat konvergensi rakus terlibat.
+- `policy.greedySwapMargin`: histeresis petahana pada jalur rakus, sebuah pecahan dari 0 sampai 1 (default 0.15). Akun saat ini mempertahankan kursinya kecuali tekanan laju sebuah akun terparkir melampauinya lebih dari pecahan ini, sehingga akun-akun yang nyaris seri berhenti saling menukar kursi bolak-balik dan merusak cache prompt per-organisasi. Setel ke 0 untuk perilaku lama yang selalu mengambil yang terbaik. Ia tidak pernah melunakkan bilah yang dilewati atau dinding - hanya pertukaran menyamping antar akun yang semuanya berada di bawah bilah. `tokenmaxxing switch` manual mengabaikannya dan selalu konvergen ke akun terbaik.
 - `policy.switchModels`: keluarga model yang batas mingguan per-model-nya menggerbangi sebuah pertukaran (entri dijadikan huruf kecil saat dimuat).
 - `policy.usagePollTtlMs`: berapa lama sebuah poll `/usage` per-model tetap segar.
 - `policy.maxWaitMs`: batas penungguan-otomatis gabungan-habis.
+- `policy.checkIntervalMs`: detak pemeriksaan berkala (default 60000, minimum 10000 karena secara default launchd tidak menjalankan sebuah job lebih sering dari sekali tiap 10 detik). `init` menuliskannya, dibulatkan ke atas menjadi detik penuh, sebagai interval pengatur waktu (di Linux `AccuracySec` systemd adalah seperdua belas dari nilai itu, minimal satu detik), dan setiap jenjang ruang tersisa adalah kelipatannya: satu detak di dekat sebuah bilah, sampai lima detak ketika ruang tersisa berlimpah (lihat [Irama pemeriksaan](/id/switching)). Penungguan gabungan-habis dan cooldown pasca-pertukaran justru tidur sampai tenggatnya masing-masing. Jadwal membaca nilai baru pada pemeriksaan berikutnya, tetapi pengatur waktu yang terpasang mempertahankan detak lamanya sampai Anda menjalankan `tokenmaxxing init` lagi, dan kelonggaran waktu jatuh tempo adalah setengah dari detak yang dikonfigurasi, jadi detak yang diubah baru sepenuhnya dihormati setelah eksekusi ulang itu. Dengan pengatur waktu yang dikelola Nix, setel `checkTimer.intervalSeconds` ke nilai yang sama; opsi itu memiliki batas bawah 10 detik yang sama.
 
 `tokenmaxxing config` menampilkan konfigurasi efektif beserta sumbernya; `config set`/`unset` menyunting kunci bertitik; `config tidy` memangkas kunci yang tidak dikenal.

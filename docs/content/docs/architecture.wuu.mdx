@@ -40,7 +40,7 @@ Claude Code 每一个回合侪拿限速数据（`rate_limits.five_hour` 搭 `rat
 
 ## 定期检查定时器
 
-Hook 只勒回合边界高头触发，而一趟长嗰 agentic 回合，连一个边界侪呒没，就好拿窗口从健康烧到耗光。所以 `init` 还装一个定期定时器（macOS 高头是 launchd agent，Linux 高头是 systemd 用户定时器），勿管回合活动哪能，每 60 秒跑一趟 `tokenmaxxing check --if-due`。搿趟检查会照活跃账户嗰余量自家调节节奏：离每条阈值侪还有老多空档嗰辰光，五分钟评估一趟；贴牢一条阈值嗰辰光，每一跳侪评估（看[切换是哪能决定嗰](/wuu/switching)）。
+Hook 只勒回合边界高头触发，而一趟长嗰 agentic 回合，连一个边界侪呒没，就好拿窗口从健康烧到耗光。所以 `init` 还装一个定期定时器（macOS 高头是 launchd agent，Linux 高头是 systemd 用户定时器），勿管回合活动哪能，每一跳跑一趟 `tokenmaxxing check --if-due`（`policy.checkIntervalMs`，默认 60 秒）。搿趟检查会照活跃账户嗰余量自家调节节奏：离每条阈值侪还有老多空档嗰辰光，五跳评估一趟；贴牢一条阈值嗰辰光，每一跳侪评估（看[切换是哪能决定嗰](/wuu/switching)）。
 
 ## 一个 SessionStart hook
 
