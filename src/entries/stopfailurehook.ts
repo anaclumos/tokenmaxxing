@@ -30,7 +30,7 @@ async function readStdin(): Promise<string> {
 export async function runStopFailureHook(): Promise<number> {
   if (process.env.TOKENMAXXING_PROBE) return 0;
 
-  const org = readOAuthAccount()?.organizationUuid ?? null;
+  const account = readOAuthAccount()?.accountUuid ?? null;
   const now = Date.now();
   const raw = await readStdin();
   const parsed = StopFailureStdin.safeParse((() => { try { return JSON.parse(raw); } catch { return {}; } })());
@@ -51,12 +51,12 @@ export async function runStopFailureHook(): Promise<number> {
     const limit = found ? classifyEnforcedLimit(found.row, cfg.policy.switchModels) : null;
 
     let enforced: EnforcedLimit | null = null;
-    if (limit && found && org) {
+    if (limit && found && account) {
       if (postSwapProof({ swapAt: loadLastSwapAt(), launchedAt, errorAt: found.errorAt, now })) {
-        const stamp = await recordEnforcedLimit({ limit, org, now });
+        const stamp = await recordEnforcedLimit({ limit, account, now });
         log("stopfailure.enforced", { kind: limit.kind, family: limit.kind === "model" ? limit.family : undefined, outcome: stamp.outcome, resetsAt: stamp.resetsAt, subagent: !mainLoop });
-        if (stamp.outcome !== "org-moved") {
-          enforced = { org, family: limit.kind === "model" ? limit.family : null, resetsAt: stamp.resetsAt, windowMs: enforcedWindowMs(limit) };
+        if (stamp.outcome !== "account-moved") {
+          enforced = { account, family: limit.kind === "model" ? limit.family : null, resetsAt: stamp.resetsAt, windowMs: enforcedWindowMs(limit) };
         }
       } else {
         log("stopfailure.unproven", { kind: limit.kind });

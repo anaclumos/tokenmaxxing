@@ -17,6 +17,7 @@ No external installed user base, so this is pre-production code: delete old-stat
 - Never print credential material: keychain blobs, `.credentials.json`, `auth.json`, OAuth access or refresh tokens. Report account labels and status only. A ky error carries its request, Authorization header included.
 - Ask before any run that meters real quota or opens a session window (`status --ping`, live-pool runs). Free `/usage` reads are fine.
 - This repo is PUBLIC. The no-Slack-info and no-device-info rule covers PR bodies, commit messages, review replies, release notes, and docs, not just `.memory`.
+- Pool account labels are personal data, the same as emails and organization names: the owner names seats after people. Never paste `status`, `ls`, `doctor`, or log output that carries labels, emails, or org names into a PR body, commit, review reply, doc, memory, or subagent prompt. Mask or count them ("six team seats", "15 accounts") the way emails are masked (owner correction 2026-09-06).
 - `rm` is aliased to `rm -i` on the owner's Mac. In a non-TTY shell the prompt gets EOF, nothing is deleted, and it still exits 0, so `rm f && echo ok` lies. Deletion is the owner's call except for artifacts this session created; when you must, pass `-f` and verify the path is gone.
 - macOS has no `/bin/true`. Use `/usr/bin/true` in tests.
 - Env overrides parse through zod at the read site rather than a central `env.ts`, because the CLI's knobs are all optional. Unset parses to undefined and the feature degrades there.
@@ -28,11 +29,11 @@ No external installed user base, so this is pre-production code: delete old-stat
 
 ## Credentials and identity
 
-- Identity is whatever `fetchTokenOrg` reports, never a stored label and never a blob comparison. Two rotations of one account's token differ byte-for-byte. Park a credential under its token's real owner, and commit the active label inside the same critical section as the credential writes.
+- Identity is the `accountUuid` that `fetchTokenIdentity` reports for a token (`GET /api/oauth/profile`), never the organization, never a stored label, and never a blob comparison. Team seats share one `organizationUuid`, so an org-keyed lookup collapses every seat onto the first one in the array: all seats read as active, share the tee, and the harvest lands in the wrong slot (2026-09-06). Two rotations of one account's token differ byte-for-byte. Park a credential under its token's real owner, and commit the active label inside the same critical section as the credential writes.
 - Every live-store write goes through `withClaudeRefreshLock`. A near-expiry session can rotate its own token into the live store at any moment.
 - An ambient `CLAUDE_CONFIG_DIR` or `CLAUDE_SECURESTORAGE_CONFIG_DIR` is refused, in CLI commands and in `pooledSpawnEnv` alike: on Linux the swap would write where the ambient var points while the child reads the default store, a silent wrong-account desync.
 - A missing namespaced keychain item never falls back to the live one, so isolation is sound once the probe env is scrubbed.
-- The same accounts are pooled on several hosts with no cross-host lock, so two hosts refreshing one account race: on Claude that surfaces as needs-reauth churn, on Codex it kills the grant family. Documented, not engineered around (`docs/limitations.mdx`).
+- The same accounts are pooled on several hosts with no cross-host lock, so two hosts refreshing one account race: on Claude a refresh rotation revokes the previous access token at once (verified 2026-09-06), so the other host's sessions 401 and its stale refresh token is `invalid_grant`; on Codex it kills the grant family. Documented, not engineered around (`docs/limitations.mdx`).
 
 ## Switching
 
@@ -74,7 +75,7 @@ Source-verified against rust-v0.144.5 (2026-07-16); the installed CLI is 0.145.0
 Ship = work on a branch, bump `package.json` and `agent-plugin/plugin.json` to the same version in the same PR, open the PR, make CI pass, wait out the review window, handle every review (fix, or refute with reasons), merge, `gh release create v<version>`, verify the npm publish landed, then tear down. A merge without a publish is not shipped. This repo merges its own PRs, which overrides the global "open the PR and stop". Detail: `.memory/shipping-pr-based.md`.
 
 - Never push work directly to main.
-- The 10-minute review window is a fixed timer from the last push. It always runs its full length; green checks never shorten it, because reviewers post findings after their checks pass.
+- The review window is 10 minutes of reviewer silence, babysat every minute: poll the PR each minute for new reviews, comments, check results, and merge state, handle whatever appears (fix or refute, resolve conflicts, fix CI), and merge only after 10 consecutive quiet minutes. Every new item restarts the clock. Green checks never shorten it, because reviewers post findings after their checks pass.
 - npm trusted publishing is bound to the literal workflow filename `ci.yml`. Renaming it silently breaks publishing.
 - `bun add -g <local .tgz>` over an existing global errors `DependencyLoop`. Run `bun remove -g` first.
 

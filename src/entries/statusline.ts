@@ -9,7 +9,6 @@ import { makeColors, makeUsagePaint } from "../cli/render.ts";
 import { fmtResetShort } from "../lib/usage.ts";
 import {
   AccountsIndexSchema,
-  RateLimitsStdinSchema,
   StatusLineStdinSchema,
   UsageWindowSchema,
   type Account,
@@ -24,7 +23,7 @@ const RenderCtxSchema = z.object({
   perModel: z.record(z.string(), UsageWindowSchema),
   switchModels: z.array(z.string()),
   worktree: z.string().nullable(),
-  liveOrg: z.string().nullable(),
+  liveAccount: z.string().nullable(),
   now: z.number(),
   color: z.boolean(),
   truecolor: z.boolean(),
@@ -79,7 +78,7 @@ export function renderStatusline(stdinObj: unknown, ctx: RenderCtx): string {
     windows.push(seg("", wins.sevenDay, wins.sevenDay.resetsAt));
   }
   const seatUuid =
-    (ctx.liveOrg != null ? ctx.accounts.accounts.find((a) => a.organizationUuid === ctx.liveOrg)?.accountUuid : undefined) ??
+    (ctx.liveAccount != null && ctx.accounts.accounts.some((a) => a.accountUuid === ctx.liveAccount) ? ctx.liveAccount : null) ??
     ctx.accounts.activeAccountUuid;
   const active =
     windows.length > 0
@@ -120,17 +119,13 @@ export async function runStatusline(): Promise<number> {
   }
   const now = Date.now();
 
-  let stdinOrg: string | null = null;
-
-  let org: string | null = null;
+  let account: string | null = null;
   try {
-    org = readOAuthAccount()?.organizationUuid ?? null;
+    account = readOAuthAccount()?.accountUuid ?? null;
     const windows = obj == null ? null : parseStatusLineStdin(obj);
     const lastSwapAt = loadLastSwapAt();
-    stdinOrg = windows != null ? (RateLimitsStdinSchema.safeParse(obj).data?.organizationUuid ?? null) : null;
-    const teeOrg = stdinOrg ?? org;
-    if (windows && (stdinOrg != null || lastSwapAt == null || now - lastSwapAt >= ADOPTION_GRACE_MS)) {
-      const state: UsageState = { ...windows, org: teeOrg, ts: now, model: parseStatusLineModel(obj) };
+    if (windows && (lastSwapAt == null || now - lastSwapAt >= ADOPTION_GRACE_MS)) {
+      const state: UsageState = { ...windows, account, ts: now, model: parseStatusLineModel(obj) };
       writeUsage(state);
     }
   } catch {
@@ -145,10 +140,10 @@ export async function runStatusline(): Promise<number> {
     const colorterm = z.string().optional().parse(process.env.COLORTERM);
     const ctx: RenderCtx = {
       accounts: loadAccounts(),
-      perModel: modelUsage && modelUsage.org === (stdinOrg ?? org) ? modelUsage.perModel : {},
+      perModel: modelUsage && modelUsage.account === account ? modelUsage.perModel : {},
       switchModels: cfg.policy.switchModels,
       worktree: dir == null ? null : worktreeName(dir),
-      liveOrg: stdinOrg ?? org,
+      liveAccount: account,
       now,
       color: !process.env.NO_COLOR,
       truecolor: colorterm != null && (colorterm.includes("truecolor") || colorterm.includes("24bit")),

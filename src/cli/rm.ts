@@ -1,7 +1,7 @@
 import { rmSync } from "node:fs";
 import { join } from "node:path";
 import { deleteItem, isolatedTarget, liveTarget, parkedTarget, readItem } from "../lib/credstore.ts";
-import { fetchTokenOrg } from "../lib/oauth.ts";
+import { fetchTokenIdentity } from "../lib/oauth.ts";
 import { withLock } from "../lib/lock.ts";
 import { credItemFor, paths } from "../lib/paths.ts";
 import { loadAccounts, saveAccounts } from "../lib/state.ts";
@@ -27,18 +27,18 @@ export async function cmdRm(selector?: string, json = false): Promise<number> {
     }
     const live = await readItem(liveTarget());
     if (live != null) {
-      let liveOrg: string;
+      let liveAccount: string;
       try {
         const liveCreds = CredentialBlobSchema.parse(JSON.parse(live)).claudeAiOauth;
-        liveOrg = (await fetchTokenOrg(liveCreds.accessToken)).organization_uuid;
+        liveAccount = (await fetchTokenIdentity(liveCreds.accessToken)).accountUuid;
       } catch (e) {
         emitError({
           json,
-          message: `cannot verify which account the LIVE credential belongs to (${e instanceof Error ? e.message : String(e)}) - refusing to remove while the live owner is unknown; repair the live credential or retry once the roles endpoint is reachable.`,
+          message: `cannot verify which account the LIVE credential belongs to (${e instanceof Error ? e.message : String(e)}) - refusing to remove while the live owner is unknown; repair the live credential or retry once the profile endpoint is reachable.`,
         });
         return 1;
       }
-      if (liveOrg === a.organizationUuid) {
+      if (liveAccount === a.accountUuid) {
         emitError({ json, message: `${a.email}'s credential is currently LIVE (the active label is stale - a manual /login drifted it); run \`tokenmaxxing switch\` to move off it first.` });
         return 1;
       }

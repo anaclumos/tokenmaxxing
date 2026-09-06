@@ -32,7 +32,6 @@ export async function cmdSwitch(selector?: string, json = false): Promise<number
     const idx = loadAccounts();
     const liveClaim = readOAuthAccount();
     const claimed = liveClaim?.accountUuid ?? null;
-    const claimedOrg = liveClaim?.organizationUuid ?? null;
     const drifted = claimed != null && claimed !== idx.activeAccountUuid;
 
     const swapTo = async (target: Account, reason: string, extra: Record<string, unknown> = {}): Promise<number> => {
@@ -71,7 +70,7 @@ export async function cmdSwitch(selector?: string, json = false): Promise<number
       const cur = loadAccounts();
       const everyone = everyoneIn(cur.accounts);
       const active =
-        (claimedOrg != null ? cur.accounts.find((a) => a.organizationUuid === claimedOrg) : null) ??
+        (claimed != null ? cur.accounts.find((a) => a.accountUuid === claimed) : null) ??
         cur.accounts.find((a) => a.accountUuid === cur.activeAccountUuid) ??
         null;
       if (active != null && currentWins(active, cur.accounts, everyone)) {

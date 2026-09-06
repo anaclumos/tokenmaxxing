@@ -1,11 +1,11 @@
 import { z } from "zod";
 import { http, safeErrorDetail } from "./http.ts";
-import { RefreshResponseSchema, RolesResponseSchema, type OAuthCreds, type RolesResponse } from "./types.ts";
+import { ProfileResponseSchema, RefreshResponseSchema, TokenIdentitySchema, type OAuthCreds, type TokenIdentity } from "./types.ts";
 
 const EnvOverrideSchema = z.string().min(1).optional().catch(undefined);
 const TOKEN_URL = EnvOverrideSchema.parse(process.env.TOKENMAXXING_OAUTH_TOKEN_URL) ?? "https://platform.claude.com/v1/oauth/token";
 const CLIENT_ID = EnvOverrideSchema.parse(process.env.TOKENMAXXING_OAUTH_CLIENT_ID) ?? "9d1c250a-e61b-44d9-88ed-5944d1962f5e";
-const ROLES_URL = EnvOverrideSchema.parse(process.env.TOKENMAXXING_OAUTH_ROLES_URL) ?? "https://api.anthropic.com/api/oauth/claude_cli/roles";
+const PROFILE_URL = EnvOverrideSchema.parse(process.env.TOKENMAXXING_OAUTH_PROFILE_URL) ?? "https://api.anthropic.com/api/oauth/profile";
 
 const DEFAULT_SCOPES = [
   "user:profile",
@@ -75,20 +75,29 @@ export function isAccessTokenExpiring(creds: OAuthCreds, skewMs = 120_000, now =
   return !creds.expiresAt || creds.expiresAt - now <= skewMs;
 }
 
-export async function fetchTokenOrg(accessToken: string): Promise<RolesResponse> {
+export async function fetchTokenIdentity(accessToken: string): Promise<TokenIdentity> {
   let res: Response;
   try {
-    res = await http.get(ROLES_URL, {
-      headers: { Authorization: `Bearer ${accessToken}`, "anthropic-beta": "oauth-2025-04-20" },
+    res = await http.get(PROFILE_URL, {
+      headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
     });
   } catch (e) {
-    throw new Error(`roles endpoint unreachable: ${e instanceof Error ? e.message : String(e)}`);
+    throw new Error(`profile endpoint unreachable: ${e instanceof Error ? e.message : String(e)}`);
   }
   const text = await res.text();
-  if (!res.ok) throw new Error(`roles check failed (HTTP ${res.status}): ${safeErrorDetail({ text })}`);
-  const parsed = RolesResponseSchema.safeParse((() => {
+  if (!res.ok) throw new Error(`identity check failed (HTTP ${res.status}): ${safeErrorDetail({ text })}`);
+  const parsed = ProfileResponseSchema.safeParse((() => {
     try { return JSON.parse(text); } catch { return null; }
   })());
-  if (!parsed.success) throw new Error(`roles endpoint returned an unrecognized body (${text.length} bytes, withheld)`);
-  return parsed.data;
+  if (!parsed.success) throw new Error(`profile endpoint returned an unrecognized body (${text.length} bytes, withheld)`);
+  return TokenIdentitySchema.parse({
+    accountUuid: parsed.data.account.uuid,
+    email: parsed.data.account.email ?? null,
+    organizationUuid: parsed.data.organization.uuid,
+    organizationName: parsed.data.organization.name ?? null,
+  });
+}
+
+export function describeIdentity(id: TokenIdentity): string {
+  return `${id.email ?? id.organizationName ?? "unknown"} (account ${id.accountUuid.slice(0, 8)})`;
 }
