@@ -2,14 +2,14 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { z } from "zod";
 import { MAX_WRAP_DEPTH, WRAP_DEPTH_ENV, resolveRealClaude } from "./claudebin.ts";
-import { liveTarget, readItem } from "./credstore.ts";
+import { withClaudeRefreshLock } from "./claudelock.ts";
+import { liveTarget, mergeIntoLive, readItem, writeItem } from "./credstore.ts";
 import { http, safeErrorDetail } from "./http.ts";
 import { log } from "./log.ts";
-import { InvalidGrantError, fetchTokenIdentity } from "./oauth.ts";
-import { ensureLiveTokenFresh } from "./sample.ts";
+import { InvalidGrantError, fetchTokenIdentity, isAccessTokenExpiring, isDeadCredential, refreshCredential } from "./oauth.ts";
 import { clearDepletedWait, clearNextCheck, loadAccounts, loadUsage, saveAccounts, saveLastResetAt, writeUsage } from "./state.ts";
 import { normalizeResetsAt } from "./usage.ts";
-import { CredentialBlobSchema, type Account, type BankedResetOutcome, type BankedResetRecord } from "./types.ts";
+import { CredentialBlobSchema, type Account, type BankedResetOutcome, type BankedResetRecord, type OAuthCreds } from "./types.ts";
 
 const EnvOverrideSchema = z.string().min(1).optional().catch(undefined);
 const API_BASE_URL = EnvOverrideSchema.parse(process.env.TOKENMAXXING_OAUTH_API_BASE_URL) ?? "https://api.anthropic.com";
@@ -17,6 +17,7 @@ const OAUTH_BETA = "oauth-2025-04-20";
 const RESET_PROGRAM = "juniper_tide";
 const CLAIM_TIMEOUT_MS = 25_000;
 const VERSION_PROBE_TIMEOUT_MS = 5_000;
+const REFRESH_SKEW_MS = 300_000;
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 const INELIGIBLE_TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -79,31 +80,45 @@ const LiveTokenSchema = z.discriminatedUnion("ok", [
 ]);
 type LiveToken = z.infer<typeof LiveTokenSchema>;
 
-async function liveTokenFor(account: Account): Promise<LiveToken> {
-  try {
-    await ensureLiveTokenFresh();
-  } catch (e) {
-    const detail = e instanceof Error ? e.message : String(e);
-    return { ok: false, outcome: e instanceof InvalidGrantError ? "auth_error" : "error", detail };
-  }
+function liveAccessToken(raw: string | null): string | null {
+  if (raw == null) return null;
+  const parsed = CredentialBlobSchema.safeParse((() => {
+    try { return JSON.parse(raw); } catch { return null; }
+  })());
+  return parsed.success ? parsed.data.claudeAiOauth.accessToken : null;
+}
+
+async function liveTokenLocked(account: Account, lock: { compromised: () => boolean }): Promise<LiveToken> {
   const raw = await readItem(liveTarget());
   if (!raw) return { ok: false, outcome: "auth_error", detail: "no live credential" };
-  let accessToken: string;
+  let creds: OAuthCreds;
   try {
-    accessToken = CredentialBlobSchema.parse(JSON.parse(raw)).claudeAiOauth.accessToken;
+    creds = CredentialBlobSchema.parse(JSON.parse(raw)).claudeAiOauth;
   } catch (e) {
     return { ok: false, outcome: "error", detail: `live credential blob unreadable (${(e instanceof Error ? e.message : String(e)).slice(0, 80)})` };
   }
+  if (isDeadCredential(creds)) return { ok: false, outcome: "auth_error", detail: "live credential was cleared after a failed refresh" };
+  if (isAccessTokenExpiring(creds, REFRESH_SKEW_MS)) {
+    try {
+      const next = await refreshCredential(creds);
+      if (lock.compromised()) return { ok: false, outcome: "error", detail: "refresh lock compromised mid-refresh - discarding the live rewrite" };
+      await writeItem(liveTarget(), mergeIntoLive(raw, next));
+      creds = next;
+    } catch (e) {
+      const detail = e instanceof Error ? e.message : String(e);
+      return { ok: false, outcome: e instanceof InvalidGrantError ? "auth_error" : "error", detail };
+    }
+  }
   let identity;
   try {
-    identity = await fetchTokenIdentity(accessToken);
+    identity = await fetchTokenIdentity(creds.accessToken);
   } catch (e) {
     return { ok: false, outcome: "error", detail: e instanceof Error ? e.message : String(e) };
   }
   if (identity.accountUuid !== account.accountUuid) {
     return { ok: false, outcome: "error", detail: `live credential belongs to account ${identity.accountUuid.slice(0, 8)}, not the seat` };
   }
-  return { ok: true, accessToken, organizationUuid: identity.organizationUuid };
+  return { ok: true, accessToken: creds.accessToken, organizationUuid: identity.organizationUuid };
 }
 
 const PostResultSchema = z.object({ outcome: z.enum(["reset", "already_used", "not_limited", "ineligible", "unavailable", "rate_limited", "auth_error", "error"]), nextAvailableAt: z.number().nullable(), detail: z.string() });
@@ -166,19 +181,17 @@ function record(accountUuid: string, rec: BankedResetRecord, reset: boolean, now
 export async function claimBankedReset(input: { account: Account }): Promise<Claim> {
   const { account } = input;
   const short = account.accountUuid.slice(0, 8);
-  const token = await liveTokenFor(account);
   let result: PostResult;
-  if (!token.ok) {
-    result = { outcome: token.outcome, nextAvailableAt: null, detail: token.detail };
-  } else {
-    result = await postClaim({ accessToken: token.accessToken, organizationUuid: token.organizationUuid });
-    if (result.outcome === "auth_error") {
-      const rotated = await liveTokenFor(account);
-      if (rotated.ok && rotated.accessToken !== token.accessToken) {
-        log("bankedreset.retry_rotated", { account: short });
-        result = await postClaim({ accessToken: rotated.accessToken, organizationUuid: rotated.organizationUuid });
-      }
-    }
+  let moved = false;
+  try {
+    ({ result, moved } = await withClaudeRefreshLock(async (lock) => {
+      const token = await liveTokenLocked(account, lock);
+      if (!token.ok) return { result: { outcome: token.outcome, nextAvailableAt: null, detail: token.detail }, moved: false };
+      const posted = await postClaim({ accessToken: token.accessToken, organizationUuid: token.organizationUuid });
+      return { result: posted, moved: liveAccessToken(await readItem(liveTarget())) !== token.accessToken };
+    }));
+  } catch (e) {
+    result = { outcome: "error", nextAvailableAt: null, detail: `claim aborted: ${e instanceof Error ? e.message : String(e)}` };
   }
   const outcome: BankedResetOutcome = result.outcome;
   const reset = outcome === "reset";
@@ -188,7 +201,8 @@ export async function claimBankedReset(input: { account: Account }): Promise<Cla
     account: short,
     outcome,
     nextAvailableAt: result.nextAvailableAt,
+    moved,
     detail: reset ? undefined : result.detail.slice(0, 200),
   });
-  return reset ? "reset" : "pass";
+  return reset && !moved ? "reset" : "pass";
 }
