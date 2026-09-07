@@ -123,8 +123,11 @@ export async function runCodexSupervisor(input: { argv: string[] }): Promise<num
       return spawned;
     });
 
-    await awaitExitOrMarker({ child, markerReady: () => existsSync(marker) && consumableCodexMarker(marker) != null });
-    restoreTermios(savedTermios);
+    try {
+      await awaitExitOrMarker({ child, markerReady: () => existsSync(marker) && consumableCodexMarker(marker) != null });
+    } finally {
+      restoreTermios(savedTermios);
+    }
 
     const payload = existsSync(marker) ? consumableCodexMarker(marker) : null;
     if (payload) {

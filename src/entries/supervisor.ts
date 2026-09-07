@@ -255,8 +255,11 @@ export async function runSupervisor(argv: string[]): Promise<number> {
       env: { ...childEnv, TOKENMAXXING_SUPERVISED: "1", TOKENMAXXING_SESSION_ID: sid, TOKENMAXXING_LAUNCHED_AT: String(gate.launchedAt) },
     });
 
-    await awaitExitOrMarker({ child, markerReady: () => existsSync(marker) && consumableMarker(marker, gate) != null });
-    restoreTermios(savedTermios);
+    try {
+      await awaitExitOrMarker({ child, markerReady: () => existsSync(marker) && consumableMarker(marker, gate) != null });
+    } finally {
+      restoreTermios(savedTermios);
+    }
 
     const m = existsSync(marker) ? consumableMarker(marker, gate) : null;
     if (m) {

@@ -34,6 +34,17 @@ import { c, emitError, emitJson } from "./cli/render.ts";
 
 const INTERACTIVE_COMMANDS = new Set(["init", "add", "auth"]);
 
+const FLAGS_BY_COMMAND: Record<string, string[]> = {
+  status: ["ping", "count"],
+  switch: ["codex"],
+  check: ["if-due"],
+  init: ["codex"],
+  add: ["codex"],
+  auth: ["all"],
+  rm: ["codex"],
+  rename: ["codex"],
+};
+
 function printHelp(): void {
   console.log(`${c.bold("tokenmaxxing")} - automatic Claude Code account switching
 
@@ -122,6 +133,13 @@ async function main(): Promise<number> {
   const sub = positionals[0];
   const rest = positionals.slice(1);
 
+  const command = sub ?? "status";
+  const allowed = new Set(["json", "help", ...(FLAGS_BY_COMMAND[command] ?? [])]);
+  const stray = Object.keys(values).find((flag) => !allowed.has(flag));
+  if (stray != null) {
+    emitError({ json, message: `--${stray} does not apply to ${command}` });
+    return 2;
+  }
   if (json && sub != null && INTERACTIVE_COMMANDS.has(sub)) {
     emitError({ json, message: `${sub} is interactive (it runs a login flow) and has no --json form` });
     return 2;

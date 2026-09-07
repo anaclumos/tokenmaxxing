@@ -34,7 +34,13 @@ export async function awaitExitOrMarker(input: { child: { exited: Promise<number
     done = true;
     return false;
   });
-  if (await Promise.race([exited, watch])) input.child.kill();
+  try {
+    if (await Promise.race([exited, watch])) input.child.kill();
+  } catch (e) {
+    input.child.kill();
+    await input.child.exited;
+    throw e;
+  }
   await input.child.exited;
   done = true;
   await watch;
