@@ -47,6 +47,7 @@ export async function consumeCodexBankedReset(input: { auth: CodexAuthJson; idem
   const { auth, idempotencyKey } = input;
   const identity = codexIdentityOf({ auth });
   let res: Response;
+  let text: string;
   try {
     res = await http.post(CONSUME_URL, {
       headers: {
@@ -58,10 +59,10 @@ export async function consumeCodexBankedReset(input: { auth: CodexAuthJson; idem
       body: JSON.stringify({ redeem_request_id: idempotencyKey }),
       timeout: CONSUME_TIMEOUT_MS,
     });
+    text = await res.text();
   } catch (e) {
     return { outcome: "error", detail: `reset endpoint unreachable: ${e instanceof Error ? e.message : String(e)}` };
   }
-  const text = await res.text();
   if (!res.ok) {
     const detail = `HTTP ${res.status}: ${safeErrorDetail({ text })}`;
     if (res.status === 401 || res.status === 403) return { outcome: "auth_error", detail };
@@ -78,6 +79,14 @@ export async function consumeCodexBankedReset(input: { auth: CodexAuthJson; idem
   return { outcome: parsed.data.code, detail: `${parsed.data.code} (windows reset: ${parsed.data.windows_reset ?? "unknown"})` };
 }
 
+function rememberPendingKey(accountId: string, key: string, now: number): void {
+  const index = loadCodexAccounts();
+  const entry = index.accounts.find((a) => a.accountId === accountId);
+  if (!entry) return;
+  entry.bankedReset = { outcome: "error", at: now, key };
+  saveCodexAccounts({ index });
+}
+
 export async function consumeLiveCodexBankedReset(input: { account: CodexAccount; now: number }): Promise<CodexBankedClaim> {
   const { account, now } = input;
   const short = account.accountId.slice(0, 8);
@@ -92,6 +101,7 @@ export async function consumeLiveCodexBankedReset(input: { account: CodexAccount
     const prior = account.bankedReset;
     const retrying = prior != null && prior.outcome === "error" && prior.key != null && now - prior.at < RETRY_KEY_TTL_MS;
     idempotencyKey = retrying ? prior.key! : crypto.randomUUID();
+    if (!retrying) rememberPendingKey(account.accountId, idempotencyKey, now);
     result = await consumeCodexBankedReset({ auth: live, idempotencyKey });
     if (result.outcome === "already_redeemed" && retrying) result = { outcome: "reset", detail: `${result.detail}; the retried key had already completed` };
   }

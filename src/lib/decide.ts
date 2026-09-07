@@ -85,12 +85,16 @@ function bankedResetVerdict(input: {
   if (u.sampledAt == null || now - u.sampledAt > cfg.policy.usagePollTtlMs) return "pass";
   const cost = u.sessionWindowWeeklyCost ?? seat.sessionWindowWeeklyCost;
   if (cost == null) return "pass";
-  if (liveUsed({ window: u.sevenDay, windowMs: WEEK_MS, sampledAt: u.ts, now }) + cost > bars.weekly) return "pass";
+  const weeklyUsed = liveUsed({ window: u.sevenDay, windowMs: WEEK_MS, sampledAt: u.ts, now });
+  if (weeklyUsed + cost > bars.weekly) return "pass";
   const muSame = mu && mu.account === seat.accountUuid && now - (mu.sampledAt ?? mu.ts) <= cfg.policy.usagePollTtlMs ? mu : null;
   for (const family of switchFamilies) {
     const cap = muSame ? capForFamily(muSame, family, now) : undefined;
     if (!cap || !muSame) return "pass";
-    if (liveUsed({ window: cap, windowMs: WEEK_MS, sampledAt: muSame.sampledAt ?? muSame.ts, now }) + cost > bars.weekly) return "pass";
+    if (weeklyUsed <= 0) return "pass";
+    const capUsed = liveUsed({ window: cap, windowMs: WEEK_MS, sampledAt: muSame.sampledAt ?? muSame.ts, now });
+    const familyCost = cost * Math.max(1, capUsed / weeklyUsed);
+    if (capUsed + familyCost > bars.weekly) return "pass";
   }
   const atWall = enforced?.kind === "session" || liveUsed({ window: u.fiveHour, windowMs: FIVE_HOURS_MS, sampledAt: u.ts, now }) >= hardBars(cfg).session;
   return atWall ? "claim" : "hold";
