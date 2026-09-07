@@ -27,7 +27,6 @@ const CodexSwapDecisionSchema = z.object({
 export type CodexSwapDecision = z.infer<typeof CodexSwapDecisionSchema>;
 
 const POST_SWAP_COOLDOWN_MS = 45_000;
-const HOLD_RESAMPLE_MS = 10_000;
 
 async function sampleLiveOntoOwner(input: { now: number }): Promise<string | null> {
   const { now } = input;
@@ -141,12 +140,7 @@ export async function evaluateAndMaybeSwapCodex(input: { now?: number }): Promis
     if (!engaged) return { swapped: false, account: null, reason: "under-threshold-or-stale" };
 
     if (cfg.policy.preferToUseBankedReset.includes("codex") && active.needsReauth !== true) {
-      let seat = active;
-      if (isCodexExhausted({ account: seat, thresholds: bars, now }) && (seat.lastUsageAt == null || now - seat.lastUsageAt > HOLD_RESAMPLE_MS)) {
-        if ((await sampleLiveOntoOwner({ now })) != null) {
-          seat = loadCodexAccounts().accounts.find((account) => account.accountId === activeId) ?? seat;
-        }
-      }
+      const seat = active;
       const verdict = codexBankedResetVerdict({ account: seat, thresholds: bars, now, pollTtlMs: cfg.policy.usagePollTtlMs });
       if (verdict === "hold") {
         log("codexdecide.banked_reset_hold", { account: seat.accountId.slice(0, 8) });

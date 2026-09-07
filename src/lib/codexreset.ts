@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { codexIdentityOf, readLiveCodexAuth } from "./codexauth.ts";
-import { barFor, liveUsed } from "./codexpick.ts";
+import { allWindows, barFor, liveUsed } from "./codexpick.ts";
 import { loadCodexAccounts, saveCodexAccounts } from "./codexstate.ts";
 import { http, safeErrorDetail } from "./http.ts";
 import { log } from "./log.ts";
@@ -28,9 +28,10 @@ export function codexBankedResetVerdict(input: { account: CodexAccount; threshol
   const rec = account.bankedReset;
   if (rec != null && rec.outcome !== "reset" && now - rec.at < pollTtlMs) return "pass";
   const sampledAt = account.lastUsageAt ?? null;
-  const over = usage.aggregate.some((window) => liveUsed({ window, now, sampledAt }) >= barFor({ window, thresholds }));
+  const windows = allWindows(account);
+  const over = windows.some((window) => liveUsed({ window, now, sampledAt }) >= barFor({ window, thresholds }));
   if (!over) return "pass";
-  const atWall = usage.reachedType === LIMIT_REACHED || usage.aggregate.some((window) => liveUsed({ window, now, sampledAt }) >= WALL_PERCENT);
+  const atWall = usage.reachedType === LIMIT_REACHED || windows.some((window) => liveUsed({ window, now, sampledAt }) >= WALL_PERCENT);
   return atWall ? "claim" : "hold";
 }
 
@@ -100,8 +101,14 @@ export async function consumeLiveCodexBankedReset(input: { account: CodexAccount
   const entry = index.accounts.find((a) => a.accountId === account.accountId);
   if (entry) {
     entry.bankedReset = { outcome, at: now, ...(outcome === "error" && idempotencyKey != null ? { key: idempotencyKey } : {}) };
-    if (reset && entry.lastUsage && entry.lastUsage.resetCredits != null) {
-      entry.lastUsage = { ...entry.lastUsage, resetCredits: Math.max(0, entry.lastUsage.resetCredits - 1), reachedType: null };
+    if (reset && entry.lastUsage) {
+      entry.lastUsage = {
+        ...entry.lastUsage,
+        aggregate: entry.lastUsage.aggregate.map((window) => ({ ...window, usedPercentage: 0, resetsAt: null })),
+        resetCredits: entry.lastUsage.resetCredits != null ? Math.max(0, entry.lastUsage.resetCredits - 1) : null,
+        reachedType: null,
+      };
+      entry.lastUsageAt = now;
     }
     saveCodexAccounts({ index });
   }

@@ -10,7 +10,7 @@ export function liveUsed(input: { window: CodexWindow; now: number; sampledAt: n
   return window.usedPercentage;
 }
 
-function allWindows(account: CodexAccount): CodexWindow[] {
+export function allWindows(account: CodexAccount): CodexWindow[] {
   const usage = account.lastUsage;
   if (!usage) return [];
   return [...usage.aggregate, ...Object.values(usage.perLimit).flat()];

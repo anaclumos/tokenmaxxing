@@ -85,7 +85,7 @@ function bankedResetVerdict(input: {
   const cost = u.sessionWindowWeeklyCost ?? seat.sessionWindowWeeklyCost;
   if (cost == null) return "pass";
   if (liveUsed({ window: u.sevenDay, windowMs: WEEK_MS, sampledAt: u.ts, now }) + cost > bars.weekly) return "pass";
-  const muSame = mu && mu.account === seat.accountUuid ? mu : null;
+  const muSame = mu && mu.account === seat.accountUuid && now - (mu.sampledAt ?? mu.ts) <= cfg.policy.usagePollTtlMs ? mu : null;
   for (const family of switchFamilies) {
     const cap = muSame ? capForFamily(muSame, family, now) : undefined;
     if (!cap || !muSame) return "pass";
