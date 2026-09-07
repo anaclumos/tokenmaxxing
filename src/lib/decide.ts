@@ -276,7 +276,7 @@ export async function evaluateAndMaybeSwap(now = Date.now(), anticipatory = fals
         }
         if (verdict === "claim") {
           resetTried = true;
-          const claim = await claimBankedReset({ account: seat, now });
+          const claim = await claimBankedReset({ account: seat });
           if (claim === "reset") return { swapped: false, account: seat, reason: "banked-reset", reset: true };
         }
       }

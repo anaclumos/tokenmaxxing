@@ -163,8 +163,8 @@ function record(accountUuid: string, rec: BankedResetRecord, reset: boolean, now
   clearNextCheck();
 }
 
-export async function claimBankedReset(input: { account: Account; now: number }): Promise<Claim> {
-  const { account, now } = input;
+export async function claimBankedReset(input: { account: Account }): Promise<Claim> {
+  const { account } = input;
   const short = account.accountUuid.slice(0, 8);
   const token = await liveTokenFor(account);
   let result: PostResult;
@@ -172,10 +172,18 @@ export async function claimBankedReset(input: { account: Account; now: number })
     result = { outcome: token.outcome, nextAvailableAt: null, detail: token.detail };
   } else {
     result = await postClaim({ accessToken: token.accessToken, organizationUuid: token.organizationUuid });
+    if (result.outcome === "auth_error") {
+      const rotated = await liveTokenFor(account);
+      if (rotated.ok && rotated.accessToken !== token.accessToken) {
+        log("bankedreset.retry_rotated", { account: short });
+        result = await postClaim({ accessToken: rotated.accessToken, organizationUuid: rotated.organizationUuid });
+      }
+    }
   }
   const outcome: BankedResetOutcome = result.outcome;
   const reset = outcome === "reset";
-  record(account.accountUuid, { outcome, at: now, nextAvailableAt: result.nextAvailableAt }, reset, now);
+  const completedAt = Date.now();
+  record(account.accountUuid, { outcome, at: completedAt, nextAvailableAt: result.nextAvailableAt }, reset, completedAt);
   log(reset ? "bankedreset.claimed" : "bankedreset.refused", {
     account: short,
     outcome,
