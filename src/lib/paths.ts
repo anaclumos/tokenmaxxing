@@ -5,7 +5,6 @@ import { z } from "zod";
 const HOME = homedir();
 
 const EnvOverrideSchema = z.string().min(1).optional();
-const ExternalEnvSchema = z.string().min(1).optional().catch(undefined);
 
 export function envOverride(name: string): string | undefined {
   const parsed = EnvOverrideSchema.safeParse(process.env[name]);
@@ -14,7 +13,8 @@ export function envOverride(name: string): string | undefined {
 }
 
 function externalEnv(name: string): string | undefined {
-  return ExternalEnvSchema.parse(process.env[name]);
+  const value = process.env[name];
+  return value === "" ? undefined : value;
 }
 
 const TM_HOME = envOverride("TOKENMAXXING_HOME") ?? join(HOME, ".config", "tokenmaxxing");

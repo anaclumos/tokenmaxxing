@@ -4,7 +4,7 @@ import { maxBy } from "es-toolkit";
 import { z } from "zod";
 import { paths } from "../lib/paths.ts";
 import { LOOP_DIAGNOSIS, MAX_WRAP_DEPTH, UNMANAGED_ENV, WRAP_DEPTH_ENV, WRAP_RATE_MAX, WRAP_RATE_WINDOW_MS, resolveRealClaude, wrapDepth, wrapperEntryRateTripped } from "../lib/claudebin.ts";
-import { tryReadJson } from "../lib/json.ts";
+import { readJson } from "../lib/json.ts";
 import { awaitExitOrMarker } from "../lib/proc.ts";
 import { saveTermios, restoreTermios } from "../lib/tty.ts";
 import { loadSessionFlags, pruneStaleSessions, saveSessionFlags } from "../lib/sessions.ts";
@@ -144,12 +144,8 @@ function latestSessionForCwd(): string | null {
 type MarkerGate = { launchedAt: number; overriddenUntil: number };
 
 function consumableMarker(marker: string, gate: MarkerGate): RespawnMarker | null {
-  const m = tryReadJson(marker, RespawnMarkerSchema);
-  if (!m) {
-    rmSync(marker, { force: true });
-    log("supervisor.marker_invalid", {});
-    return null;
-  }
+  const m = readJson(marker, RespawnMarkerSchema);
+  if (m == null) return null;
   if (m.launchedAt !== undefined && m.launchedAt !== gate.launchedAt) {
     rmSync(marker, { force: true });
     log("supervisor.marker_stale", { markerLaunch: m.launchedAt, childLaunch: gate.launchedAt });
@@ -261,7 +257,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
       restoreTermios(savedTermios);
     }
 
-    const m = existsSync(marker) ? consumableMarker(marker, gate) : null;
+    const m = consumableMarker(marker, gate);
     if (m) {
       rmSync(marker, { force: true });
       respawns++;

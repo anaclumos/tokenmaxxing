@@ -6,7 +6,7 @@ import { LOOP_DIAGNOSIS, MAX_WRAP_DEPTH, UNMANAGED_ENV, WRAP_DEPTH_ENV, WRAP_RAT
 import { clearCodexPresence, writeCodexPresence } from "../lib/codexpresence.ts";
 import { liveCodexAccountId } from "../lib/codexsample.ts";
 import { errorMessage } from "../lib/errors.ts";
-import { tryReadJson } from "../lib/json.ts";
+import { readJson } from "../lib/json.ts";
 import { awaitExitOrMarker } from "../lib/proc.ts";
 import { saveTermios, restoreTermios } from "../lib/tty.ts";
 import { CodexRespawnMarkerSchema, type CodexRespawnMarker } from "../lib/types.ts";
@@ -21,15 +21,6 @@ const NONINTERACTIVE_SUBCMDS = new Set([
 ]);
 
 const PASSTHROUGH_FLAGS = new Set(["--version", "-V", "--help", "-h"]);
-
-function consumableCodexMarker(marker: string): CodexRespawnMarker | null {
-  const payload = tryReadJson(marker, CodexRespawnMarkerSchema);
-  if (!payload) {
-    rmSync(marker, { force: true });
-    log("codexsupervisor.marker_invalid", {});
-  }
-  return payload;
-}
 
 const VALUE_TAKING_ROOT_FLAGS = new Set([
   "-c", "--config", "-i", "--image", "-m", "--model", "--local-provider", "-p", "--profile",
@@ -124,12 +115,12 @@ export async function runCodexSupervisor(input: { argv: string[] }): Promise<num
     });
 
     try {
-      await awaitExitOrMarker({ child, markerReady: () => existsSync(marker) && consumableCodexMarker(marker) != null });
+      await awaitExitOrMarker({ child, markerReady: () => existsSync(marker) && readJson(marker, CodexRespawnMarkerSchema) != null });
     } finally {
       restoreTermios(savedTermios);
     }
 
-    const payload = existsSync(marker) ? consumableCodexMarker(marker) : null;
+    const payload = readJson(marker, CodexRespawnMarkerSchema);
     if (payload) {
       rmSync(marker, { force: true });
       respawns++;

@@ -9,7 +9,7 @@ import { livingCodexPresences } from "../lib/codexpresence.ts";
 import { liveCodexAccountId } from "../lib/codexsample.ts";
 import { loadCodexAccounts } from "../lib/codexstate.ts";
 import { errorMessage } from "../lib/errors.ts";
-import { tryParseJson, tryReadJson } from "../lib/json.ts";
+import { readJson, tryParseJson } from "../lib/json.ts";
 import { loadConfig } from "../lib/state.ts";
 import { terminalBars } from "../lib/picker.ts";
 import { CODEX_SUPERVISOR_ID_ENV } from "./codexsupervisor.ts";
@@ -24,13 +24,8 @@ async function promoteReconcile(input: { supervisorId: string; sessionId: string
 
 function promoteReconcileLocked(input: { supervisorId: string; sessionId: string | null }): boolean {
   const markerPath = join(codexPaths.reconcileDir, input.supervisorId);
-  if (!existsSync(markerPath)) return false;
-  const marker = tryReadJson(markerPath, CodexReconcileMarkerSchema);
-  if (!marker) {
-    rmSync(markerPath, { force: true });
-    log("codexstop.reconcile_unparsable", {});
-    return false;
-  }
+  const marker = readJson(markerPath, CodexReconcileMarkerSchema);
+  if (marker == null) return false;
   const presence = livingCodexPresences().find((p) => p.supervisorId === input.supervisorId) ?? null;
   if (presence == null || presence.accountId !== marker.accountId) {
     rmSync(markerPath, { force: true });
