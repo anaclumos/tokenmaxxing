@@ -18,7 +18,8 @@ Config na JSON for `~/.config/tokenmaxxing/config.json`. Every field na optional
     "switchModels": ["fable"],
     "usagePollTtlMs": 90000,
     "maxWaitMs": 3600000,
-    "checkIntervalMs": 60000
+    "checkIntervalMs": 60000,
+    "preferToUseBankedReset": []
   }
 }
 ```
@@ -34,5 +35,6 @@ Config na JSON for `~/.config/tokenmaxxing/config.json`. Every field na optional
 - `policy.usagePollTtlMs`: how long one `/usage` per-model poll go stay fresh.
 - `policy.maxWaitMs`: the depleted-pool auto-wait bound.
 - `policy.checkIntervalMs`: na the periodic check tick (default 60000, minimum 10000 because launchd no dey spawn one job more than once every 10 seconds by default). `init` dey write am, round am up to whole seconds, as the timer im interval (for Linux the systemd `AccuracySec` na one twelfth of am, at least one second), and every headroom band na multiple of am: one tick when e near one bar, up to five ticks when plenty headroom dey (check [Check cadence](/pcm/switching)). One depleted wait and the post-swap cooldown dey sleep to dia own deadlines instead. The schedule dey read the new value for the next check, but the timer wey dem don install dey keep im old tick until you run `tokenmaxxing init` again, and the due-time slack na half of the tick wey you configure, so a tick wey change go only dey fully honored after dat re-run. With one Nix-managed timer, set `checkTimer.intervalSeconds` to the same value; dat option get the same 10-second floor.
+- `policy.preferToUseBankedReset`: the providers (`"claude"`, `"codex"`, default `[]`) wey dia banked reset dem go spend before the seat swap. Claude Code im `/limit-reset` and Codex im banked reset both dey refresh the 5-hour window for the same account, and dat one dey keep the per-organization prompt cache warm for where one swap go cold-start am. If `claude` dey listed, one seat wey pass im session rung go hold instead of swap while dem believe say one reset dey available and the account get weekly room for one more 5-hour window at im measured rate (the weekly points wey the last full session window cost, wey dem learn from the statusline tee; one unmeasured account go swap as before), then e go claim the reset for the wall and continue for im place. The claim na once every week per account, and the reset window still dey count toward the weekly limit. If `codex` dey listed, one codex seat dey ride go im wall while the account dey hold one reset credit, then e go consume one, wey go refresh the 5-hour and weekly windows together with no restart. Check [Banked resets](/pcm/switching#banked-resets) and [Codex support](/pcm/codex).
 
 `tokenmaxxing config` dey show the effective config with sources; `config set`/`unset` dey edit dotted keys; `config tidy` dey prune unknown keys.

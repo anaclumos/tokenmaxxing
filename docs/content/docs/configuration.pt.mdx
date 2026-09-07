@@ -18,7 +18,8 @@ A config é JSON em `~/.config/tokenmaxxing/config.json`. Todo campo é opcional
     "switchModels": ["fable"],
     "usagePollTtlMs": 90000,
     "maxWaitMs": 3600000,
-    "checkIntervalMs": 60000
+    "checkIntervalMs": 60000,
+    "preferToUseBankedReset": []
   }
 }
 ```
@@ -34,5 +35,6 @@ A config é JSON em `~/.config/tokenmaxxing/config.json`. Todo campo é opcional
 - `policy.usagePollTtlMs`: por quanto tempo uma consulta por modelo do `/usage` permanece fresca.
 - `policy.maxWaitMs`: o limite da espera automática por grupo esgotado.
 - `policy.checkIntervalMs`: o tick da verificação periódica (padrão 60000, mínimo 10000 porque o launchd, por padrão, não gera um job mais de uma vez a cada 10 segundos). O `init` o grava, arredondado para cima em segundos inteiros, como o intervalo do timer (no Linux o `AccuracySec` do systemd é um doze avos disso, com no mínimo um segundo), e toda faixa de folga é um múltiplo dele: um tick perto de uma barra, até cinco ticks com bastante folga (veja [Cadência de verificação](/pt/switching)). Uma espera por esgotamento e o cooldown pós-troca dormem até seus próprios prazos em vez disso. O agendamento lê o novo valor na verificação seguinte, mas o timer instalado mantém seu tick antigo até você rodar `tokenmaxxing init` de novo, e a tolerância do horário previsto é metade do tick configurado, então um tick alterado só é totalmente respeitado depois dessa nova execução. Com um timer gerenciado pelo Nix, defina `checkTimer.intervalSeconds` com o mesmo valor; essa opção tem o mesmo piso de 10 segundos.
+- `policy.preferToUseBankedReset`: os provedores (`"claude"`, `"codex"`, padrão `[]`) cuja redefinição de limite reservada é gasta antes de o lugar trocar. O `/limit-reset` do Claude Code e a redefinição reservada do Codex atualizam ambos a janela de 5 horas na mesma conta, o que mantém aquecido o cache de prompt por organização que uma troca inicia a frio. Com `claude` na lista, um lugar acima do seu degrau de sessão se mantém em vez de trocar enquanto uma redefinição é considerada disponível e a conta tem espaço semanal para mais uma janela de 5 horas no seu ritmo medido (os pontos semanais que a última janela de sessão completa custou, aprendidos a partir do tee do statusline; uma conta não medida troca como antes), depois solicita a redefinição na parede e continua no lugar. A solicitação é uma vez por semana por conta, e a janela redefinida continua contando para o limite semanal. Com `codex` na lista, um lugar codex vai até sua parede enquanto a conta tem um crédito de redefinição, então consome um, o que atualiza juntas as janelas de 5 horas e semanal sem reiniciar. Veja [Redefinições reservadas](/pt/switching#banked-resets) e [Suporte a Codex](/pt/codex).
 
 `tokenmaxxing config` mostra a config efetiva com as fontes; `config set`/`unset` editam chaves com pontos; `config tidy` remove chaves desconhecidas.

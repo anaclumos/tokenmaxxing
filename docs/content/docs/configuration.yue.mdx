@@ -18,7 +18,8 @@ description: "config.json 嘅 schema、閾值同策略選項"
     "switchModels": ["fable"],
     "usagePollTtlMs": 90000,
     "maxWaitMs": 3600000,
-    "checkIntervalMs": 60000
+    "checkIntervalMs": 60000,
+    "preferToUseBankedReset": []
   }
 }
 ```
@@ -34,5 +35,6 @@ description: "config.json 嘅 schema、閾值同策略選項"
 - `policy.usagePollTtlMs`：`/usage` 每模型輪詢保持新鮮嘅時間。
 - `policy.maxWaitMs`：帳戶池耗盡時自動等待嘅上限。
 - `policy.checkIntervalMs`：定期檢查嘅 tick（預設 60000，最低 10000，因為 launchd 預設唔會喺 10 秒之內生成多過一次 job）。`init` 會將佢向上取整到成秒，寫做計時器嘅間隔（喺 Linux，systemd 嘅 `AccuracySec` 係佢嘅十二分之一，最少一秒），而每一檔餘裕都係佢嘅倍數：貼近一條界線就一下 tick，餘裕大把就最多五下 tick（睇[檢查節奏](/yue/switching)）。耗盡等待同切換後冷卻就唔跟呢個，各自瞓到自己嘅死線。個排程會喺下一次檢查讀到新值，但已經安裝咗嘅計時器會維持舊嗰個 tick，直到你再行一次 `tokenmaxxing init`；而到期時間嘅寬限係設定咗嘅 tick 嘅一半，所以改咗嘅 tick 要行完嗰次先至完全生效。如果個計時器由 Nix 管，就將 `checkTimer.intervalSeconds` 設成同一個值；嗰個選項有同樣嘅 10 秒底線。
+- `policy.preferToUseBankedReset`：邊啲提供方（`"claude"`、`"codex"`，預設 `[]`）會喺切換之前先洗咗一次儲備重設。Claude Code 嘅 `/limit-reset` 同 Codex 嘅儲備重設都會喺同一個帳戶度刷新 5 小時窗口，噉就可以令切換本來會冷啟動嘅每個組織提示快取保持暖住。列咗 `claude` 之後，只要相信嗰個帳戶仲有重設可以用，而且帳戶仲有每週餘裕頂得順多一個按量度到嘅速率算出嚟嘅 5 小時窗口（呢個速率係由 statusline tee 學返嚟、上一個完整 session 窗口洗咗幾多每週分數；未量度嘅帳戶就照舊切換），超咗 session 級數嘅個位就會守住而唔切換，跟住喺撞牆嗰陣攞個重設，然後留喺度繼續。呢次攞每個帳戶每個禮拜得一次，而重設咗嘅窗口仍然計落每週限額度。列咗 `codex` 之後，只要帳戶仲揸住一份重設額度，codex 個位就會一直踩到自己嗰撞牆；跟住用咗一份額度，將 5 小時窗口同每週窗口一齊刷新，唔使重新啟動。睇[儲備重設](/yue/switching#banked-resets)同[Codex 支援](/yue/codex)。
 
 `tokenmaxxing config` 會顯示連同來源嘅有效設定；`config set`/`unset` 編輯點分隔嘅 key；`config tidy` 刪走未知嘅 key。

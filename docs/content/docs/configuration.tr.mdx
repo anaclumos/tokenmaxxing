@@ -18,7 +18,8 @@ Yapılandırma `~/.config/tokenmaxxing/config.json` konumunda JSON'dur. Her alan
     "switchModels": ["fable"],
     "usagePollTtlMs": 90000,
     "maxWaitMs": 3600000,
-    "checkIntervalMs": 60000
+    "checkIntervalMs": 60000,
+    "preferToUseBankedReset": []
   }
 }
 ```
@@ -34,5 +35,6 @@ Yapılandırma `~/.config/tokenmaxxing/config.json` konumunda JSON'dur. Her alan
 - `policy.usagePollTtlMs`: bir `/usage` model başına poll'ünün ne kadar süre taze kaldığı.
 - `policy.maxWaitMs`: tükenmiş havuz otomatik bekleme sınırı.
 - `policy.checkIntervalMs`: periyodik denetim tiki (varsayılan 60000, en az 10000, çünkü launchd varsayılan olarak bir işi 10 saniyede birden sık başlatmaz). `init` bunu, tam saniyeye yukarı yuvarlayarak, zamanlayıcının aralığı olarak yazar (Linux'ta systemd `AccuracySec` değeri bunun on ikide biridir, en az bir saniye) ve her boşluk bandı bunun bir katıdır: bir çubuğa yakınken bir tik, bol boşluk varken en çok beş tik (bkz. [Denetim temposu](/tr/switching)). Tükenmiş bir bekleme ile geçiş sonrası bekleme süresi ise bunun yerine kendi son tarihlerine kadar uyur. Zamanlama yeni değeri bir sonraki denetimde okur, ancak kurulu zamanlayıcı siz `tokenmaxxing init`'i yeniden çalıştırana kadar eski tikini korur ve vade payı yapılandırılan tikin yarısıdır; bu yüzden değişen bir tik ancak o yeniden çalıştırmadan sonra tam olarak uygulanır. Nix yönetimli bir zamanlayıcıda `checkTimer.intervalSeconds` değerini aynı değere ayarlayın; o seçeneğin de aynı 10 saniyelik tabanı vardır.
+- `policy.preferToUseBankedReset`: koltuk geçiş yapmadan önce biriktirilmiş limit sıfırlaması harcanacak sağlayıcılar (`"claude"`, `"codex"`, varsayılan `[]`). Claude Code'un `/limit-reset`'i ve Codex'in biriktirilmiş sıfırlaması, ikisi de aynı hesapta 5 saatlik pencereyi tazeler; bu da bir geçişin sıfırdan başlattığı organizasyon başına istem önbelleğini sıcak tutar. Listede `claude` varken, bir sıfırlamanın kullanılabilir olduğuna inanılırken ve hesabın ölçülen hızında bir 5 saatlik pencere daha için haftalık yeri varken (haftalık puanlar, son tam oturum penceresinin mal olduğu ve statusline tee'sinden öğrenilen değerdir; ölçülmemiş bir hesap eskisi gibi geçiş yapar), oturum basamağının üzerindeki bir koltuk geçiş yapmak yerine korunur, ardından duvarda sıfırlamayı talep eder ve yerinde devam eder. Talep, hesap başına haftada bir kez mümkündür ve sıfırlanan pencere yine de haftalık limite sayılır. Listede `codex` varken, hesapta bir sıfırlama kredisi varken bir codex koltuğu duvarına kadar ilerler, ardından birini tüketir; bu da 5 saatlik ve haftalık pencereleri yeniden başlatma olmadan birlikte tazeler. Bkz. [Biriktirilmiş sıfırlamalar](/tr/switching#banked-resets) ve [Codex desteği](/tr/codex).
 
 `tokenmaxxing config` etkin yapılandırmayı kaynaklarıyla gösterir; `config set`/`unset` noktalı anahtarları düzenler; `config tidy` bilinmeyen anahtarları budar.

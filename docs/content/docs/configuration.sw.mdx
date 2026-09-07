@@ -18,7 +18,8 @@ Usanidi ni JSON katika `~/.config/tokenmaxxing/config.json`. Kila uga ni wa hiar
     "switchModels": ["fable"],
     "usagePollTtlMs": 90000,
     "maxWaitMs": 3600000,
-    "checkIntervalMs": 60000
+    "checkIntervalMs": 60000,
+    "preferToUseBankedReset": []
   }
 }
 ```
@@ -34,5 +35,6 @@ Usanidi ni JSON katika `~/.config/tokenmaxxing/config.json`. Kila uga ni wa hiar
 - `policy.usagePollTtlMs`: muda ambao uchunguzi wa `/usage` wa kila muundo hubaki bichi.
 - `policy.maxWaitMs`: mpaka wa kusubiri otomatiki kwa mkusanyiko uliokwisha.
 - `policy.checkIntervalMs`: tiki ya ukaguzi wa mara kwa mara (chaguo-msingi 60000, kiwango cha chini 10000 kwa sababu launchd haizalishi kazi zaidi ya mara moja kila sekunde 10 kwa chaguo-msingi). `init` huiandika, ikizungushwa juu hadi sekunde kamili, kama muda wa kipima muda (kwenye Linux `AccuracySec` ya systemd ni sehemu ya kumi na mbili yake, angalau sekunde moja), na kila bendi ya nafasi ni kizidishi chake: tiki moja karibu na baa, hadi tiki tano ukiwa na nafasi kubwa (ona [Mwendo wa ukaguzi](/sw/switching)). Kusubiri kwa kukwisha na kipindi cha kupoa baada ya ubadilishaji hulala hadi tarehe zao za mwisho badala yake. Ratiba husoma thamani mpya kwenye ukaguzi unaofuata, lakini kipima muda kilichosakinishwa hubaki na tiki yake ya zamani hadi uendeshe `tokenmaxxing init` tena, na uvumilivu wa muda wa kustahili ni nusu ya tiki iliyosanidiwa, hivyo tiki iliyobadilishwa huheshimiwa kikamilifu baada ya uendeshaji huo tu. Kwa kipima muda kinachosimamiwa na Nix, weka `checkTimer.intervalSeconds` kwa thamani ile ile; chaguo hilo lina sakafu ile ile ya sekunde 10.
+- `policy.preferToUseBankedReset`: watoa huduma (`"claude"`, `"codex"`, chaguo-msingi `[]`) ambao kujiweka upya kulikohifadhiwa hutumiwa kabla kiti hakijabadilishwa. `/limit-reset` ya Claude Code na kujiweka upya kulikohifadhiwa kwa Codex vyote hufanya upya dirisha la saa 5 kwenye akaunti ile ile, jambo linalohifadhi kache ya kidokezo ya kila shirika ikiwa na uvuguvugu pale ambapo ubadilishaji ungeianzisha kwa ubaridi. Ikiwa `claude` imeorodheshwa, kiti kilichopita daraja lake la kikao hushikilia badala ya kubadilisha wakati kujiweka upya kunaaminika kupatikana na akaunti ina nafasi ya wiki kwa dirisha moja zaidi la saa 5 kwa kiwango chake kilichopimwa (pointi za wiki ambazo dirisha kamili la kikao la mwisho liligharimu, zilizojifunzwa kutoka kwa tee ya statusline; akaunti isiyopimwa hubadilisha kama kawaida), kisha hudai kujiweka upya ukutani na huendelea palepale. Dai ni mara moja kwa wiki kwa kila akaunti, na dirisha la kujiweka upya bado linahesabiwa kwenye kikomo cha wiki. Ikiwa `codex` imeorodheshwa, kiti cha codex huelekea ukutani wake wakati akaunti inashikilia salio la kujiweka upya, kisha hutumia moja, jambo linalofanya upya dirisha la saa 5 na la wiki pamoja bila kuanzisha upya. Ona [Kujiweka upya kulikohifadhiwa](/sw/switching#banked-resets) na [Msaada wa Codex](/sw/codex).
 
 `tokenmaxxing config` huonyesha usanidi unaotumika pamoja na vyanzo; `config set`/`unset` huhariri funguo zenye nukta; `config tidy` hupogoa funguo zisizojulikana.

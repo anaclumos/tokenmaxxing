@@ -25,3 +25,4 @@ tokenmaxxing 用一個 codex 監督者 shim 嚟處理呢樣嘢：Stop hook 會�
 - Codex 刷新 token 會輪換，而一旦重用咗一個已經被取代嘅，就會殺死成個授權系列。每次輪換一返到就即刻保存；活躍帳戶淨係會透過 live blob 採樣（絕對唔會用過時嘅泊存副本）；而逐 session 嘅存在檔案就確保一個喺活躍兄弟 session 行緊嘅帳戶永遠唔會成為切換目標，個泊存 token 亦都唔會俾人刷新。
 - Codex 需要用檔案憑證儲存：如果 keyring 儲存俾人固定咗，`init --codex` 就會快速失敗；而 `add --codex` 會將檔案模式設定寫入隔離嘅入職 home，令個登入落到可以收集嘅狀態。
 - 一個手動步驟：codex 會跳過啲未叫佢信任嘅 hook。行完 `init --codex` 之後，開一次 codex，用 `/hooks` 信任 tokenmaxxing Stop hook，否則自動切換就會靜靜哋一直都唔生效。`init --codex` 會印呢個提醒出嚟。
+- Codex 會喺個帳戶度儲住一次性嘅用量限額重設（會過期嘅推廣或者推薦額度）；洗咗一份就會將 5 小時窗口同每週窗口一齊刷新，仲會郁埋每週重設日期。當 `policy.preferToUseBankedReset` 入面有 `codex`，超咗頂級嘅個位就會一直踩到自己嗰撞牆，淨係要用量端點仲話有額度，就用咗一份，令個 session 繼續行落去，唔使重新啟動：睇[儲備重設](/yue/switching#banked-resets)。tokenmaxxing 永遠唔會課錢買個即時重設。

@@ -18,7 +18,8 @@ Die Konfiguration ist JSON unter `~/.config/tokenmaxxing/config.json`. Jedes Fel
     "switchModels": ["fable"],
     "usagePollTtlMs": 90000,
     "maxWaitMs": 3600000,
-    "checkIntervalMs": 60000
+    "checkIntervalMs": 60000,
+    "preferToUseBankedReset": []
   }
 }
 ```
@@ -34,5 +35,6 @@ Die Konfiguration ist JSON unter `~/.config/tokenmaxxing/config.json`. Jedes Fel
 - `policy.usagePollTtlMs`: wie lange eine `/usage`-Pro-Modell-Abfrage frisch bleibt.
 - `policy.maxWaitMs`: die Warteobergrenze für den automatischen Erschöpft-Pool.
 - `policy.checkIntervalMs`: der Takt der periodischen Prüfung (Standard 60000, Minimum 10000, weil launchd einen Job standardmäßig nicht öfter als alle 10 Sekunden startet). `init` schreibt ihn, auf ganze Sekunden aufgerundet, als Intervall des Timers (auf Linux beträgt die systemd-`AccuracySec` ein Zwölftel davon, mindestens eine Sekunde), und jedes Spielraumband ist ein Vielfaches davon: ein Takt nahe an einer Schranke, bis zu fünf Takte bei reichlich Spielraum (siehe [Prüfkadenz](/de/switching)). Ein Erschöpft-Warten und die Abkühlzeit nach dem Wechsel schlafen stattdessen auf ihre eigenen Fristen hin. Der Zeitplan liest den neuen Wert bei der nächsten Prüfung, aber der installierte Timer behält seinen alten Takt, bis Sie `tokenmaxxing init` erneut ausführen, und der Spielraum auf die Fälligkeitszeit beträgt die Hälfte des konfigurierten Takts, sodass ein geänderter Takt erst nach diesem erneuten Lauf vollständig wirksam wird. Bei einem von Nix verwalteten Timer setzen Sie `checkTimer.intervalSeconds` auf denselben Wert; diese Option hat dieselbe 10-Sekunden-Untergrenze.
+- `policy.preferToUseBankedReset`: die Anbieter (`"claude"`, `"codex"`, Standard `[]`), deren gespeicherte Limit-Zurücksetzung ausgegeben wird, bevor der Platz wechselt. Claude Codes `/limit-reset` und Codex' gespeicherte Zurücksetzung frischen beide das 5-Stunden-Fenster auf demselben Konto auf, was den Prompt-Cache pro Organisation warm hält, den ein Wechsel sonst kalt startet. Mit `claude` in der Liste hält ein Platz über seiner Sitzungsstufe, statt zu wechseln, solange eine Zurücksetzung als verfügbar angenommen wird und das Konto wöchentlich noch Raum für ein weiteres 5-Stunden-Fenster bei seiner gemessenen Rate hat (die Wochenpunkte, die das letzte volle Sitzungsfenster gekostet hat, gelernt aus dem Statusline-Tee; ein ungemessenes Konto wechselt wie zuvor), und beansprucht dann die Zurücksetzung an der Wand und bleibt an Ort und Stelle. Die Beanspruchung ist einmal pro Woche und Konto möglich, und das zurückgesetzte Fenster zählt weiterhin auf das Wochenlimit. Mit `codex` in der Liste reitet ein Codex-Platz bis zu seiner Wand, solange das Konto ein Zurücksetzungs-Guthaben hat, verbraucht dann eines, was das 5-Stunden- und das Wochenfenster gemeinsam ohne Neustart auffrischt. Siehe [Gespeicherte Zurücksetzungen](/de/switching#banked-resets) und [Codex-Unterstützung](/de/codex).
 
 `tokenmaxxing config` zeigt die effektive Konfiguration mit Quellen; `config set`/`unset` bearbeiten punktierte Schlüssel; `config tidy` entfernt unbekannte Schlüssel.
