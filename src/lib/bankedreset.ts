@@ -8,6 +8,7 @@ import { http, safeErrorDetail } from "./http.ts";
 import { log } from "./log.ts";
 import { InvalidGrantError, fetchTokenIdentity, isAccessTokenExpiring, isDeadCredential, refreshCredential } from "./oauth.ts";
 import { clearDepletedWait, clearNextCheck, loadAccounts, loadUsage, saveAccounts, saveLastResetAt, writeUsage } from "./state.ts";
+import { keepRotatedPair } from "./swap.ts";
 import { normalizeResetsAt } from "./usage.ts";
 import { CredentialBlobSchema, type Account, type BankedResetOutcome, type BankedResetRecord, type OAuthCreds } from "./types.ts";
 
@@ -99,15 +100,25 @@ async function liveTokenLocked(account: Account, lock: { compromised: () => bool
   }
   if (isDeadCredential(creds)) return { ok: false, outcome: "auth_error", detail: "live credential was cleared after a failed refresh" };
   if (isAccessTokenExpiring(creds, REFRESH_SKEW_MS)) {
+    let next: OAuthCreds;
     try {
-      const next = await refreshCredential(creds);
-      if (lock.compromised()) return { ok: false, outcome: "error", detail: "refresh lock compromised mid-refresh - discarding the live rewrite" };
-      await writeItem(liveTarget(), mergeIntoLive(raw, next));
-      creds = next;
+      next = await refreshCredential(creds);
     } catch (e) {
       const detail = e instanceof Error ? e.message : String(e);
       return { ok: false, outcome: e instanceof InvalidGrantError ? "auth_error" : "error", detail };
     }
+    if (lock.compromised()) {
+      let owner: Account | null = null;
+      try {
+        const id = await fetchTokenIdentity(next.accessToken);
+        owner = loadAccounts().accounts.find((a) => a.accountUuid === id.accountUuid) ?? null;
+      } catch {
+      }
+      const kept = await keepRotatedPair({ fresh: next, owner, fallback: account, liveOwnerUuid: account.accountUuid, expectedLiveToken: creds.accessToken, lock });
+      return { ok: false, outcome: "error", detail: `refresh lock compromised mid-refresh - the rotated token ${kept}` };
+    }
+    await writeItem(liveTarget(), mergeIntoLive(raw, next));
+    creds = next;
   }
   let identity;
   try {
@@ -164,7 +175,6 @@ function record(accountUuid: string, rec: BankedResetRecord, reset: boolean, now
     delete account.enforcedUntil;
     if (account.lastUsage) {
       account.lastUsage = { ...account.lastUsage, fiveHour: { usedPercentage: 0, resetsAt: null } };
-      account.lastUsageAt = now;
     }
   }
   saveAccounts(idx);

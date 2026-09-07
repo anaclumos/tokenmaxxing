@@ -82,7 +82,7 @@ function bankedResetVerdict(input: {
   if (enforced && enforced.kind !== "session") return "pass";
   if (!u || u.account !== seat.accountUuid) return "pass";
   if (!bankedResetBelievedAvailable(seat, now)) return "pass";
-  if (now - (u.sampledAt ?? u.ts) > cfg.policy.usagePollTtlMs) return "pass";
+  if (u.sampledAt == null || now - u.sampledAt > cfg.policy.usagePollTtlMs) return "pass";
   const cost = u.sessionWindowWeeklyCost ?? seat.sessionWindowWeeklyCost;
   if (cost == null) return "pass";
   if (liveUsed({ window: u.sevenDay, windowMs: WEEK_MS, sampledAt: u.ts, now }) + cost > bars.weekly) return "pass";
@@ -402,6 +402,7 @@ export async function recordEnforcedLimit(input: { limit: EnforcedClass; account
     const window: UsageWindow = { usedPercentage: 100, resetsAt: limit.resetsAt };
     writeUsage({
       ...(priorSame ?? {}),
+      ...(priorSame == null && account?.lastUsageAt != null ? { sampledAt: account.lastUsageAt } : {}),
       fiveHour: limit.kind === "session" ? window : carrier.fiveHour,
       sevenDay: limit.kind === "weekly" ? window : carrier.sevenDay,
       account: accountUuid,

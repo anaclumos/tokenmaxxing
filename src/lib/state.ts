@@ -298,7 +298,7 @@ export function writeUsage(input: UsageState, opts: { stamp?: boolean } = {}): b
   const prev = loadUsage();
   const stamp = opts.stamp === true;
   const carriedSampleAt = prev != null && prev.account === input.account ? (prev.sampledAt ?? prev.ts) : undefined;
-  const sampledAt = stamp ? carriedSampleAt : input.ts;
+  const sampledAt = stamp ? (carriedSampleAt ?? input.sampledAt) : input.ts;
   const next: UsageState = { ...input, ...measureSessionWindow(prev, input, stamp), ...(sampledAt != null ? { sampledAt } : {}) };
   if (
     prev &&

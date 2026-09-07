@@ -4,7 +4,7 @@ import { allWindows, barFor, liveUsed } from "./codexpick.ts";
 import { loadCodexAccounts, saveCodexAccounts } from "./codexstate.ts";
 import { http, safeErrorDetail } from "./http.ts";
 import { log } from "./log.ts";
-import type { CodexAccount, CodexAuthJson, CodexBankedResetOutcome, CodexWindow, Thresholds } from "./types.ts";
+import type { CodexAccount, CodexAuthJson, CodexBankedResetOutcome, Thresholds } from "./types.ts";
 
 const EnvOverrideSchema = z.string().min(1).optional().catch(undefined);
 const CONSUME_URL =
@@ -101,16 +101,9 @@ export async function consumeLiveCodexBankedReset(input: { account: CodexAccount
   const entry = index.accounts.find((a) => a.accountId === account.accountId);
   if (entry) {
     entry.bankedReset = { outcome, at: now, ...(outcome === "error" && idempotencyKey != null ? { key: idempotencyKey } : {}) };
-    if (reset && entry.lastUsage) {
-      const cleared = (window: CodexWindow): CodexWindow => ({ ...window, usedPercentage: 0, resetsAt: null });
-      entry.lastUsage = {
-        ...entry.lastUsage,
-        aggregate: entry.lastUsage.aggregate.map(cleared),
-        perLimit: Object.fromEntries(Object.entries(entry.lastUsage.perLimit).map(([name, windows]) => [name, windows.map(cleared)])),
-        resetCredits: entry.lastUsage.resetCredits != null ? Math.max(0, entry.lastUsage.resetCredits - 1) : null,
-        reachedType: null,
-      };
-      entry.lastUsageAt = now;
+    if (reset) {
+      delete entry.lastUsage;
+      delete entry.lastUsageAt;
     }
     saveCodexAccounts({ index });
   }
