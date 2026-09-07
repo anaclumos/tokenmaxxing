@@ -4,6 +4,7 @@ import { withLock } from "./lock.ts";
 import { paths } from "./paths.ts";
 import { MAX_CHECK_DELAY_TICKS, POST_SWAP_COOLDOWN_MS, maxCheckDelayMs, loadAccounts, loadConfig, loadDepletedWait, loadLastSwapAt, loadUsage, loadUsageSnapshot, loadModelUsage, saveAccounts, saveDepletedWait, saveModelUsage, writeUsage } from "./state.ts";
 import { readOAuthAccount } from "./claudejson.ts";
+import { bankedResetBelievedAvailable, claimBankedReset } from "./bankedreset.ts";
 import { chooseAndSwap, isSkippableSwapError, performSwap } from "./swap.ts";
 import { currentWins, effectiveBars, hardBars, isExhausted, nextWeeklyReset, pickBest, pickEarliestReset, sessionLadder, usableAt } from "./picker.ts";
 import { familyTokens, gatedFamilies, probeUsage, type EnforcedClass } from "./usage.ts";
@@ -15,6 +16,7 @@ const SwapDecisionSchema = z.object({
   account: AccountSchema.nullable(),
   reason: z.string(),
   waitUntil: z.number().optional(),
+  reset: z.boolean().optional(),
 });
 export type SwapDecision = z.infer<typeof SwapDecisionSchema>;
 
@@ -61,6 +63,36 @@ function isOver(u: UsageState | null, mu: ModelUsageState | null, account: strin
 
 function needsPerModel(u: UsageState | null, cfg: Config): boolean {
   return u != null && gatedFamilies(u.model, cfg.policy.switchModels).length > 0;
+}
+
+const BankedVerdictSchema = z.enum(["hold", "claim", "pass"]);
+type BankedVerdict = z.infer<typeof BankedVerdictSchema>;
+
+function bankedResetVerdict(input: {
+  seat: Account;
+  u: UsageState | null;
+  mu: ModelUsageState | null;
+  enforced: EnforcedLimit | null;
+  cfg: Config;
+  bars: Thresholds;
+  switchFamilies: string[];
+  now: number;
+}): BankedVerdict {
+  const { seat, u, mu, enforced, cfg, bars, switchFamilies, now } = input;
+  if (enforced && enforced.kind !== "session") return "pass";
+  if (!u || u.account !== seat.accountUuid) return "pass";
+  if (!bankedResetBelievedAvailable(seat, now)) return "pass";
+  const cost = u.sessionWindowWeeklyCost ?? seat.sessionWindowWeeklyCost;
+  if (cost == null) return "pass";
+  if (liveUsed({ window: u.sevenDay, windowMs: WEEK_MS, sampledAt: u.ts, now }) + cost > bars.weekly) return "pass";
+  const muSame = mu && mu.account === seat.accountUuid ? mu : null;
+  for (const family of switchFamilies) {
+    const cap = muSame ? capForFamily(muSame, family, now) : undefined;
+    if (!cap || !muSame) return "pass";
+    if (liveUsed({ window: cap, windowMs: WEEK_MS, sampledAt: muSame.sampledAt ?? muSame.ts, now }) + cost > bars.weekly) return "pass";
+  }
+  const atWall = enforced?.kind === "session" || liveUsed({ window: u.fiveHour, windowMs: FIVE_HOURS_MS, sampledAt: u.ts, now }) >= hardBars(cfg).session;
+  return atWall ? "claim" : "hold";
 }
 
 function isEngaged(u: UsageState | null, mu: ModelUsageState | null, account: string | null, bars: Thresholds, cfg: Config, now: number): boolean {
@@ -172,6 +204,7 @@ export async function evaluateAndMaybeSwap(now = Date.now(), anticipatory = fals
       if (tee && tee.state.account === account2 && (active.lastUsageAt == null || tee.at >= active.lastUsageAt)) {
         active.lastUsage = { fiveHour: tee.state.fiveHour, sevenDay: tee.state.sevenDay };
         active.lastUsageAt = tee.at;
+        if (tee.state.sessionWindowWeeklyCost != null) active.sessionWindowWeeklyCost = tee.state.sessionWindowWeeklyCost;
         sampled = true;
       }
       if (mu2 && mu2.account === account2 && Object.keys(mu2.perModel).length > 0) {
@@ -227,12 +260,26 @@ export async function evaluateAndMaybeSwap(now = Date.now(), anticipatory = fals
     };
     if (!enforced2 && !isOver(u2, mu2, account2, bars, cfg, now)) return greedy(cfg.policy.greedySwapMargin);
 
+    const resetPreferred = cfg.policy.preferToUseBankedReset.includes("claude");
+    let resetTried = false;
     while (true) {
       const cur = loadAccounts();
       const seat = seatOf(cur);
       const pool = usable(cur.accounts);
       const thresholds = barsOf(cur.accounts);
       if (!enforced2 && seat && !seat.needsReauth && !isExhausted(seat, { now, thresholds, currentAccountUuid: null, switchFamilies })) return greedy(0);
+      if (resetPreferred && !resetTried && seat && !seat.needsReauth) {
+        const verdict = bankedResetVerdict({ seat, u: u2, mu: mu2, enforced: enforced2, cfg, bars: thresholds, switchFamilies, now });
+        if (verdict === "hold") {
+          log("decide.banked_reset_hold", { account: seat.accountUuid.slice(0, 8), enforced: enforced2 != null });
+          return { swapped: false, account: seat, reason: "banked-reset-hold" };
+        }
+        if (verdict === "claim") {
+          resetTried = true;
+          const claim = await claimBankedReset({ account: seat, now });
+          if (claim === "reset") return { swapped: false, account: seat, reason: "banked-reset", reset: true };
+        }
+      }
       const best = pickBest(pool, { now, thresholds, currentAccountUuid: seat?.accountUuid ?? null, switchFamilies });
       if (!best) break;
       try {
@@ -353,12 +400,13 @@ export async function recordEnforcedLimit(input: { limit: EnforcedClass; account
     if (!carrier) return { outcome: "no-carrier", resetsAt: limit.resetsAt };
     const window: UsageWindow = { usedPercentage: 100, resetsAt: limit.resetsAt };
     writeUsage({
+      ...(priorSame ?? {}),
       fiveHour: limit.kind === "session" ? window : carrier.fiveHour,
       sevenDay: limit.kind === "weekly" ? window : carrier.sevenDay,
       account: accountUuid,
       ts: now,
       model: carrier.model,
-    });
+    }, { stamp: true });
     log("usage.enforced_limit", { kind: limit.kind, resetsAt: limit.resetsAt });
     return { outcome: "stamped", resetsAt: limit.resetsAt };
   });

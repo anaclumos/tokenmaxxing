@@ -18,7 +18,8 @@ Config is JSON at `~/.config/tokenmaxxing/config.json`. Every field is optional;
     "switchModels": ["fable"],
     "usagePollTtlMs": 90000,
     "maxWaitMs": 3600000,
-    "checkIntervalMs": 60000
+    "checkIntervalMs": 60000,
+    "preferToUseBankedReset": []
   }
 }
 ```
@@ -34,5 +35,6 @@ Config is JSON at `~/.config/tokenmaxxing/config.json`. Every field is optional;
 - `policy.usagePollTtlMs`: how long a `/usage` per-model poll stays fresh.
 - `policy.maxWaitMs`: the depleted-pool auto-wait bound.
 - `policy.checkIntervalMs`: the periodic check tick (default 60000, minimum 10000 because launchd does not spawn a job more than once every 10 seconds by default). `init` writes it, rounded up to whole seconds, as the timer's interval (on Linux the systemd `AccuracySec` is a twelfth of it, at least one second), and every headroom band is a multiple of it: one tick near a bar, up to five ticks with plenty of headroom (see [Check cadence](/switching)). A depleted wait and the post-swap cooldown sleep to their own deadlines instead. The schedule reads the new value on the next check, but the installed timer keeps its old tick until you run `tokenmaxxing init` again, and the due-time slack is half the configured tick, so a changed tick is only fully honored after that re-run. With a Nix-managed timer, set `checkTimer.intervalSeconds` to the same value; that option has the same 10-second floor.
+- `policy.preferToUseBankedReset`: the providers (`"claude"`, `"codex"`, default `[]`) whose banked limit reset is spent before the seat swaps. Claude Code's `/limit-reset` and Codex's banked reset both refresh the 5-hour window on the same account, which keeps the per-organization prompt cache warm where a swap cold-starts it. With `claude` listed, a seat over its session rung holds instead of swapping while a reset is believed available and the account has weekly room for one more 5-hour window at its measured rate (the weekly points the last full session window cost, learned from the statusline tee; an unmeasured account swaps as before), then claims the reset at the wall and continues in place. The claim is once a week per account, and the reset window still counts toward the weekly limit. With `codex` listed, a codex seat rides to its wall while the account holds a reset credit, then consumes one, which refreshes the 5-hour and weekly windows together with no restart. See [Banked resets](/switching#banked-resets) and [Codex support](/codex).
 
 `tokenmaxxing config` shows the effective config with sources; `config set`/`unset` edit dotted keys; `config tidy` prunes unknown keys.

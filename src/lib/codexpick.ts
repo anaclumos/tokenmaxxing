@@ -3,7 +3,7 @@ import { nextWeeklyReset } from "./picker.ts";
 import { isSessionWindow, weeklyWindowOf } from "./codexusage.ts";
 import type { CodexAccount, CodexWindow, Thresholds } from "./types.ts";
 
-function liveUsed(input: { window: CodexWindow; now: number; sampledAt: number | null }): number {
+export function liveUsed(input: { window: CodexWindow; now: number; sampledAt: number | null }): number {
   const { window, now, sampledAt } = input;
   if (window.resetsAt != null) return window.resetsAt <= now ? 0 : window.usedPercentage;
   if (sampledAt != null && window.windowSeconds != null && now >= sampledAt + window.windowSeconds * 1000) return 0;
@@ -16,7 +16,7 @@ function allWindows(account: CodexAccount): CodexWindow[] {
   return [...usage.aggregate, ...Object.values(usage.perLimit).flat()];
 }
 
-function barFor(input: { window: CodexWindow; thresholds: Thresholds }): number {
+export function barFor(input: { window: CodexWindow; thresholds: Thresholds }): number {
   return isSessionWindow({ window: input.window }) ? input.thresholds.session : input.thresholds.weekly;
 }
 

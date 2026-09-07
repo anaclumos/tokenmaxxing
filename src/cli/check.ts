@@ -30,6 +30,7 @@ export async function cmdCheck(args: string[] = [], json = false): Promise<numbe
       ok: true,
       due: true,
       swapped: d.swapped,
+      reset: d.reset === true,
       account: d.account?.label ?? null,
       reason: d.reason,
       waitUntil: d.waitUntil ?? null,
@@ -40,6 +41,8 @@ export async function cmdCheck(args: string[] = [], json = false): Promise<numbe
   const next = c.dim(`next in ${Math.round(delayMs / 1000)}s`);
   if (d.swapped && d.account) {
     console.log(`${c.green("↻")} switched to ${c.bold(d.account.label)} ${next}`);
+  } else if (d.reset && d.account) {
+    console.log(`${c.green("↻")} reset the session limit on ${c.bold(d.account.label)} ${next}`);
   } else if (d.waitUntil !== undefined && d.account) {
     console.log(c.yellow(`all accounts at limit - staying on ${c.bold(d.account.label)} (${fmtReset(d.waitUntil)})`) + ` ${next}`);
   } else {

@@ -286,7 +286,8 @@ export async function runSupervisor(argv: string[]): Promise<number> {
       respawns++;
       if (m.waitUntil > Date.now()) {
         if (await countdownWait(m.account, m.waitUntil)) overriddenUntil = m.waitUntil;
-      } else process.stdout.write(`\n\x1b[36m↻ tokenmaxxing: switched to ${m.account} - resuming...\x1b[0m\n`);
+      } else if (m.reset) process.stdout.write(`\n\x1b[36m↻ tokenmaxxing: reset the session limit on ${m.account} - resuming...\x1b[0m\n`);
+      else process.stdout.write(`\n\x1b[36m↻ tokenmaxxing: switched to ${m.account} - resuming...\x1b[0m\n`);
       saveSessionFlags(m.sessionId, persistable, process.cwd());
       launchArgs = ["--resume", m.sessionId, ...persistable, ...(m.prompt ? ["--", m.prompt] : [])];
       continue;
