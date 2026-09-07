@@ -208,7 +208,7 @@ export async function evaluateAndMaybeSwap(now = Date.now(), anticipatory = fals
       let sampled = false;
       if (tee && tee.state.account === account2 && (active.lastUsageAt == null || tee.at >= active.lastUsageAt)) {
         active.lastUsage = { fiveHour: tee.state.fiveHour, sevenDay: tee.state.sevenDay };
-        active.lastUsageAt = tee.at;
+        active.lastUsageAt = tee.state.sampledAt ?? tee.at;
         if (tee.state.sessionWindowWeeklyCost != null) active.sessionWindowWeeklyCost = tee.state.sessionWindowWeeklyCost;
         sampled = true;
       }
