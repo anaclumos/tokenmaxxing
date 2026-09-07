@@ -41,20 +41,50 @@ export type UsageWindows = z.infer<typeof UsageWindowsSchema>;
 const ModelInfoSchema = z.object({ id: z.string(), display: z.string() });
 export type ModelInfo = z.infer<typeof ModelInfoSchema>;
 
+const WindowAnchorSchema = z.object({
+  fiveHourResetsAt: z.number().nullable(),
+  sevenDayResetsAt: z.number().nullable(),
+  session: z.number(),
+  weekly: z.number(),
+});
+export type WindowAnchor = z.infer<typeof WindowAnchorSchema>;
+
 export const UsageStateSchema = UsageWindowsSchema.extend({
   account: z.string().nullable(),
   ts: z.number(),
   model: ModelInfoSchema.nullable().default(null),
+  anchor: WindowAnchorSchema.optional(),
+  sessionWindowWeeklyCost: z.number().positive().optional(),
+  sampledAt: z.number().optional(),
 });
 export type UsageState = z.infer<typeof UsageStateSchema>;
+
+const FamilyAnchorSchema = z.object({
+  fiveHourResetsAt: z.number().nullable(),
+  session: z.number(),
+  caps: z.record(z.string(), z.number()),
+});
+export type FamilyAnchor = z.infer<typeof FamilyAnchorSchema>;
 
 export const ModelUsageStateSchema = z.object({
   perModel: z.record(z.string(), UsageWindowSchema).default({}),
   account: z.string().nullable(),
   ts: z.number(),
   sampledAt: z.number().optional(),
+  anchor: FamilyAnchorSchema.optional(),
+  familyCosts: z.record(z.string(), z.number()).optional(),
 });
 export type ModelUsageState = z.infer<typeof ModelUsageStateSchema>;
+
+export const BankedResetOutcomeSchema = z.enum(["reset", "already_used", "not_limited", "ineligible", "unavailable", "rate_limited", "auth_error", "error"]);
+export type BankedResetOutcome = z.infer<typeof BankedResetOutcomeSchema>;
+
+export const BankedResetRecordSchema = z.object({
+  outcome: BankedResetOutcomeSchema,
+  at: z.number(),
+  nextAvailableAt: z.number().nullable(),
+});
+export type BankedResetRecord = z.infer<typeof BankedResetRecordSchema>;
 
 export const AccountSchema = z.object({
   accountUuid: z.string(),
@@ -72,6 +102,8 @@ export const AccountSchema = z.object({
   needsReauth: z.boolean().optional(),
   subscriptionType: z.string().optional(),
   rateLimitTier: z.string().optional(),
+  sessionWindowWeeklyCost: z.number().positive().optional(),
+  bankedReset: BankedResetRecordSchema.optional(),
 });
 export type Account = z.infer<typeof AccountSchema>;
 
@@ -88,6 +120,7 @@ export const NextCheckSchema = z.object({ dueAt: z.number(), ts: z.number() });
 
 export const EnforcedLimitSchema = z.object({
   account: z.string(),
+  kind: z.enum(["session", "weekly", "model"]),
   family: z.string().nullable(),
   resetsAt: z.number().nullable(),
   windowMs: z.number(),
@@ -112,6 +145,10 @@ export const ScreeningThresholdsSchema = z.object({
   weekly: z.number().min(0).max(100),
 });
 
+export const BankedResetProviderSchema = z.enum(["claude", "codex"]);
+export type BankedResetProvider = z.infer<typeof BankedResetProviderSchema>;
+export const BankedResetProvidersSchema = z.array(BankedResetProviderSchema);
+
 export const ConfigSchema = z
   .object({
     thresholds: ScreeningThresholdsSchema,
@@ -126,6 +163,7 @@ export const ConfigSchema = z
       usagePollTtlMs: z.number().int().positive(),
       maxWaitMs: z.number().int().positive(),
       checkIntervalMs: z.number().int().min(10_000),
+      preferToUseBankedReset: BankedResetProvidersSchema,
     }),
   })
   .refine((cfg) => cfg.policy.projectionMargin < Math.min(...cfg.thresholds.session, cfg.thresholds.weekly), {
@@ -143,6 +181,7 @@ export const RespawnMarkerSchema = z.object({
   sessionId: z.string(),
   prompt: z.string().optional(),
   launchedAt: z.number().optional(),
+  reset: z.boolean().optional(),
 });
 
 export const RateLimitsStdinSchema = z.looseObject({
@@ -242,8 +281,20 @@ export const CodexUsageSchema = z.object({
   planType: z.string().nullable(),
   aggregate: z.array(CodexWindowSchema),
   perLimit: z.record(z.string(), z.array(CodexWindowSchema)),
+  resetCredits: z.number().int().nullable(),
+  reachedType: z.string().nullable(),
 });
 export type CodexUsage = z.infer<typeof CodexUsageSchema>;
+
+export const CodexBankedResetOutcomeSchema = z.enum(["reset", "nothing_to_reset", "no_credit", "already_redeemed", "auth_error", "error"]);
+export type CodexBankedResetOutcome = z.infer<typeof CodexBankedResetOutcomeSchema>;
+
+export const CodexBankedResetRecordSchema = z.object({
+  outcome: CodexBankedResetOutcomeSchema,
+  at: z.number(),
+  key: z.string().optional(),
+});
+export type CodexBankedResetRecord = z.infer<typeof CodexBankedResetRecordSchema>;
 
 const BareFileNameSchema = z
   .string()
@@ -263,9 +314,12 @@ export const CodexAccountSchema = z.object({
     .object({
       aggregate: z.array(CodexWindowSchema),
       perLimit: z.record(z.string(), z.array(CodexWindowSchema)),
+      resetCredits: z.number().int().nullable().optional(),
+      reachedType: z.string().nullable().optional(),
     })
     .optional(),
   lastUsageAt: z.number().optional(),
+  bankedReset: CodexBankedResetRecordSchema.optional(),
 });
 export type CodexAccount = z.infer<typeof CodexAccountSchema>;
 

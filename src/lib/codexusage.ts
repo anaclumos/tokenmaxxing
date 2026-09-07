@@ -25,6 +25,8 @@ const WireRateLimitSchema = z.looseObject({
   secondary_window: WireWindowSchema.nullish(),
 });
 
+const WireReachedTypeSchema = z.union([z.string(), z.looseObject({ type: z.string().nullish(), kind: z.string().nullish() })]).nullish().catch(null);
+
 const WireUsageSchema = z.looseObject({
   account_id: z.string(),
   email: z.string().nullish(),
@@ -33,6 +35,8 @@ const WireUsageSchema = z.looseObject({
   additional_rate_limits: z
     .array(z.looseObject({ limit_name: z.string(), rate_limit: WireRateLimitSchema.nullish() }))
     .nullish(),
+  rate_limit_reset_credits: z.looseObject({ available_count: z.number().int().nullish() }).nullish(),
+  rate_limit_reached_type: WireReachedTypeSchema,
 });
 
 function toWindows(rateLimit: z.infer<typeof WireRateLimitSchema> | null | undefined): CodexWindow[] {
@@ -92,6 +96,11 @@ export async function fetchCodexUsage(input: { auth: CodexAuthJson }): Promise<C
     planType: wire.plan_type ?? null,
     aggregate: toWindows(wire.rate_limit),
     perLimit,
+    resetCredits: wire.rate_limit_reset_credits?.available_count ?? null,
+    reachedType:
+      typeof wire.rate_limit_reached_type === "string"
+        ? wire.rate_limit_reached_type
+        : (wire.rate_limit_reached_type?.type ?? wire.rate_limit_reached_type?.kind ?? null),
   });
 }
 

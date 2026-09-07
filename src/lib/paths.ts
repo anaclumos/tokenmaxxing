@@ -19,6 +19,7 @@ export const paths = {
   usageJson: join(TM_HOME, "usage.json"),
   modelUsageJson: join(TM_HOME, "model-usage.json"),
   lastSwapJson: join(TM_HOME, "lastswap.json"),
+  lastResetJson: join(TM_HOME, "lastreset.json"),
   depletedJson: join(TM_HOME, "depleted.json"),
   nextCheckJson: join(TM_HOME, "nextcheck.json"),
   respawnDir: join(TM_HOME, "respawn"),

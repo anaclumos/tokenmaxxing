@@ -25,6 +25,7 @@ export async function runStopHook(): Promise<number> {
   try {
     const canPause = process.env.TOKENMAXXING_SUPERVISED === "1" && pinnedSid != null;
     const decision = await evaluateAndMaybeSwap(Date.now(), canPause);
+    if (decision.reset && decision.account) log("stop.reset", { account: decision.account.accountUuid.slice(0, 8) });
     if (decision.account && (decision.swapped || decision.waitUntil !== undefined)) {
       log(decision.swapped ? "stop.swapped" : "stop.wait", { account: decision.account.accountUuid.slice(0, 8), waitUntil: decision.waitUntil });
       if (decision.waitUntil !== undefined && canPause && pinnedSid) {

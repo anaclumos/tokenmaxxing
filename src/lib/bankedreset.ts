@@ -1,0 +1,234 @@
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { z } from "zod";
+import { MAX_WRAP_DEPTH, WRAP_DEPTH_ENV, resolveRealClaude } from "./claudebin.ts";
+import { withClaudeRefreshLock } from "./claudelock.ts";
+import { liveTarget, mergeIntoLive, readItem, writeItem } from "./credstore.ts";
+import { http, safeErrorDetail } from "./http.ts";
+import { log } from "./log.ts";
+import { InvalidGrantError, fetchTokenIdentity, isAccessTokenExpiring, isDeadCredential, refreshCredential } from "./oauth.ts";
+import { clearDepletedWait, clearNextCheck, loadAccounts, loadUsage, saveAccounts, saveLastResetAt, writeUsage } from "./state.ts";
+import { keepRotatedPair } from "./swap.ts";
+import { normalizeResetsAt } from "./usage.ts";
+import { CredentialBlobSchema, type Account, type BankedResetOutcome, type BankedResetRecord, type OAuthCreds } from "./types.ts";
+
+const EnvOverrideSchema = z.string().min(1).optional().catch(undefined);
+const API_BASE_URL = EnvOverrideSchema.parse(process.env.TOKENMAXXING_OAUTH_API_BASE_URL) ?? "https://api.anthropic.com";
+const OAUTH_BETA = "oauth-2025-04-20";
+const RESET_PROGRAM = "juniper_tide";
+const CLAIM_TIMEOUT_MS = 25_000;
+const VERSION_PROBE_TIMEOUT_MS = 5_000;
+const REFRESH_SKEW_MS = 300_000;
+const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+const INELIGIBLE_TTL_MS = 24 * 60 * 60 * 1000;
+
+const ClaimResponseSchema = z.looseObject({
+  result: z.enum(["reset", "already_used", "not_limited", "ineligible", "unavailable"]).catch("unavailable"),
+  next_available_at: z.union([z.string(), z.number()]).nullable().optional().catch(null),
+});
+
+const ClaimSchema = z.object({ outcome: z.enum(["reset", "pass"]) });
+export type Claim = z.infer<typeof ClaimSchema>["outcome"];
+
+export function bankedResetBelievedAvailable(account: Account, now: number): boolean {
+  const rec = account.bankedReset;
+  if (!rec) return true;
+  if (rec.nextAvailableAt != null) return rec.nextAvailableAt <= now;
+  if (rec.outcome === "reset" || rec.outcome === "already_used") return now - rec.at >= WEEK_MS;
+  if (rec.outcome === "ineligible") return now - rec.at >= INELIGIBLE_TTL_MS;
+  return true;
+}
+
+const VersionSchema = z.string().regex(/^\d+\.\d+\.\d+\S*$/);
+const PackageJsonSchema = z.looseObject({ version: VersionSchema });
+
+function claudeVersion(): string | undefined {
+  const bin = resolveRealClaude();
+  const fromPath = VersionSchema.safeParse(bin.match(/\/versions\/(\d+\.\d+\.\d+[^/]*)$/)?.[1]);
+  if (fromPath.success) return fromPath.data;
+  try {
+    const pkg = PackageJsonSchema.safeParse(JSON.parse(readFileSync(join(dirname(bin), "package.json"), "utf8")));
+    if (pkg.success) return pkg.data.version;
+  } catch {
+  }
+  try {
+    const r = Bun.spawnSync([bin, "--version"], {
+      env: { ...process.env, TOKENMAXXING_PROBE: "1", [WRAP_DEPTH_ENV]: String(MAX_WRAP_DEPTH) },
+      stdout: "pipe",
+      stderr: "pipe",
+      timeout: VERSION_PROBE_TIMEOUT_MS,
+    });
+    const spawned = VersionSchema.safeParse(r.stdout.toString("utf8").trim().match(/^(\d+\.\d+\.\d+\S*)/)?.[1]);
+    if (spawned.success) return spawned.data;
+  } catch {
+  }
+  return undefined;
+}
+
+function claudeUserAgent(): string {
+  const version = claudeVersion();
+  return version ? `claude-cli/${version} (external, cli)` : "claude-cli (external, cli)";
+}
+
+const LiveTokenSchema = z.discriminatedUnion("ok", [
+  z.object({ ok: z.literal(true), accessToken: z.string(), organizationUuid: z.string() }),
+  z.object({ ok: z.literal(false), outcome: z.enum(["auth_error", "error"]), detail: z.string() }),
+]);
+type LiveToken = z.infer<typeof LiveTokenSchema>;
+
+function liveAccessToken(raw: string | null): string | null {
+  if (raw == null) return null;
+  const parsed = CredentialBlobSchema.safeParse((() => {
+    try { return JSON.parse(raw); } catch { return null; }
+  })());
+  return parsed.success ? parsed.data.claudeAiOauth.accessToken : null;
+}
+
+async function liveTokenLocked(account: Account, lock: { compromised: () => boolean }): Promise<LiveToken> {
+  const raw = await readItem(liveTarget());
+  if (!raw) return { ok: false, outcome: "auth_error", detail: "no live credential" };
+  let creds: OAuthCreds;
+  try {
+    creds = CredentialBlobSchema.parse(JSON.parse(raw)).claudeAiOauth;
+  } catch (e) {
+    return { ok: false, outcome: "error", detail: `live credential blob unreadable (${(e instanceof Error ? e.message : String(e)).slice(0, 80)})` };
+  }
+  if (isDeadCredential(creds)) return { ok: false, outcome: "auth_error", detail: "live credential was cleared after a failed refresh" };
+  if (isAccessTokenExpiring(creds, REFRESH_SKEW_MS)) {
+    let next: OAuthCreds;
+    try {
+      next = await refreshCredential(creds);
+    } catch (e) {
+      const detail = e instanceof Error ? e.message : String(e);
+      return { ok: false, outcome: e instanceof InvalidGrantError ? "auth_error" : "error", detail };
+    }
+    if (lock.compromised()) {
+      let owner: Account | null = null;
+      try {
+        const id = await fetchTokenIdentity(next.accessToken);
+        owner = loadAccounts().accounts.find((a) => a.accountUuid === id.accountUuid) ?? null;
+      } catch {
+      }
+      const kept = await keepRotatedPair({ fresh: next, owner, fallback: account, liveOwnerUuid: account.accountUuid, expectedLiveToken: creds.accessToken, lock });
+      return { ok: false, outcome: "error", detail: `refresh lock compromised mid-refresh - the rotated token ${kept}` };
+    }
+    await writeItem(liveTarget(), mergeIntoLive(raw, next));
+    creds = next;
+  }
+  let identity;
+  try {
+    identity = await fetchTokenIdentity(creds.accessToken);
+  } catch (e) {
+    return { ok: false, outcome: "error", detail: e instanceof Error ? e.message : String(e) };
+  }
+  if (identity.accountUuid !== account.accountUuid) {
+    return { ok: false, outcome: "error", detail: `live credential belongs to account ${identity.accountUuid.slice(0, 8)}, not the seat` };
+  }
+  return { ok: true, accessToken: creds.accessToken, organizationUuid: identity.organizationUuid };
+}
+
+const PostResultSchema = z.object({
+  outcome: z.enum(["reset", "already_used", "not_limited", "ineligible", "unavailable", "rate_limited", "auth_error", "error"]),
+  nextAvailableAt: z.number().nullable(),
+  detail: z.string(),
+  ambiguous: z.boolean().optional(),
+});
+type PostResult = z.infer<typeof PostResultSchema>;
+
+async function postClaim(input: { accessToken: string; organizationUuid: string; userAgent: string }): Promise<PostResult> {
+  const url = `${API_BASE_URL}/api/organizations/${input.organizationUuid}/reset_rate_limits`;
+  let res: Response;
+  try {
+    res = await http.post(url, {
+      headers: {
+        Authorization: `Bearer ${input.accessToken}`,
+        "anthropic-beta": OAUTH_BETA,
+        "Content-Type": "application/json",
+        "User-Agent": input.userAgent,
+      },
+      body: JSON.stringify({ program: RESET_PROGRAM }),
+      timeout: CLAIM_TIMEOUT_MS,
+    });
+  } catch (e) {
+    return { outcome: "error", nextAvailableAt: null, detail: `reset endpoint unreachable: ${e instanceof Error ? e.message : String(e)}` };
+  }
+  let text: string;
+  try {
+    text = await res.text();
+  } catch (e) {
+    return { outcome: "error", nextAvailableAt: null, detail: `reset endpoint answered HTTP ${res.status} but the body could not be read: ${e instanceof Error ? e.message : String(e)}`, ambiguous: true };
+  }
+  if (!res.ok) {
+    const detail = `HTTP ${res.status}: ${safeErrorDetail({ text })}`;
+    if (res.status === 429) return { outcome: "rate_limited", nextAvailableAt: null, detail };
+    if (res.status === 401 || res.status === 403) return { outcome: "auth_error", nextAvailableAt: null, detail };
+    return { outcome: "error", nextAvailableAt: null, detail };
+  }
+  const parsed = ClaimResponseSchema.safeParse((() => {
+    try { return JSON.parse(text); } catch { return null; }
+  })());
+  if (!parsed.success) {
+    return { outcome: "error", nextAvailableAt: null, detail: `reset endpoint answered HTTP ${res.status} with an unrecognized body (${text.length} bytes, withheld)`, ambiguous: true };
+  }
+  return { outcome: parsed.data.result, nextAvailableAt: normalizeResetsAt(parsed.data.next_available_at), detail: parsed.data.result };
+}
+
+function record(accountUuid: string, rec: BankedResetRecord, reset: boolean, now: number): void {
+  const idx = loadAccounts();
+  const account = idx.accounts.find((a) => a.accountUuid === accountUuid);
+  if (!account) return;
+  account.bankedReset = rec;
+  if (reset) {
+    delete account.enforcedUntil;
+    if (account.lastUsage) {
+      account.lastUsage = { ...account.lastUsage, fiveHour: { usedPercentage: 0, resetsAt: null } };
+    }
+  }
+  saveAccounts(idx);
+  if (!reset) return;
+  const u = loadUsage();
+  if (u && u.account === accountUuid) {
+    writeUsage({ ...u, fiveHour: { usedPercentage: 0, resetsAt: null }, ts: now }, { stamp: true });
+  }
+  saveLastResetAt(now);
+  clearDepletedWait();
+  clearNextCheck();
+}
+
+export async function claimBankedReset(input: { account: Account }): Promise<Claim> {
+  const { account } = input;
+  const short = account.accountUuid.slice(0, 8);
+  let result: PostResult;
+  let moved = false;
+  try {
+    const userAgent = claudeUserAgent();
+    ({ result, moved } = await withClaudeRefreshLock(async (lock) => {
+      const token = await liveTokenLocked(account, lock);
+      if (!token.ok) return { result: { outcome: token.outcome, nextAvailableAt: null, detail: token.detail }, moved: false };
+      let posted = await postClaim({ accessToken: token.accessToken, organizationUuid: token.organizationUuid, userAgent });
+      if (posted.ambiguous) {
+        const again = await postClaim({ accessToken: token.accessToken, organizationUuid: token.organizationUuid, userAgent });
+        posted =
+          again.outcome === "already_used"
+            ? { outcome: "reset", nextAvailableAt: again.nextAvailableAt, detail: "already_used on the confirming claim, so the ambiguous claim was the reset", ambiguous: true }
+            : again;
+      }
+      return { result: posted, moved: liveAccessToken(await readItem(liveTarget())) !== token.accessToken };
+    }));
+  } catch (e) {
+    result = { outcome: "error", nextAvailableAt: null, detail: `claim aborted: ${e instanceof Error ? e.message : String(e)}` };
+  }
+  const outcome: BankedResetOutcome = result.outcome;
+  const reset = outcome === "reset";
+  const completedAt = Date.now();
+  record(account.accountUuid, { outcome, at: completedAt, nextAvailableAt: result.nextAvailableAt }, reset, completedAt);
+  log(reset ? "bankedreset.claimed" : "bankedreset.refused", {
+    account: short,
+    outcome,
+    nextAvailableAt: result.nextAvailableAt,
+    moved,
+    ambiguous: result.ambiguous === true ? true : undefined,
+    detail: reset && result.ambiguous !== true ? undefined : result.detail.slice(0, 200),
+  });
+  return reset && !moved ? "reset" : "pass";
+}
