@@ -82,6 +82,7 @@ function bankedResetVerdict(input: {
   if (enforced && enforced.kind !== "session") return "pass";
   if (!u || u.account !== seat.accountUuid) return "pass";
   if (!bankedResetBelievedAvailable(seat, now)) return "pass";
+  if (now - (u.sampledAt ?? u.ts) > cfg.policy.usagePollTtlMs) return "pass";
   const cost = u.sessionWindowWeeklyCost ?? seat.sessionWindowWeeklyCost;
   if (cost == null) return "pass";
   if (liveUsed({ window: u.sevenDay, windowMs: WEEK_MS, sampledAt: u.ts, now }) + cost > bars.weekly) return "pass";

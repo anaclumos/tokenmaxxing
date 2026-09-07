@@ -4,7 +4,7 @@ import { paths } from "../lib/paths.ts";
 import { writeFileAtomic } from "../lib/atomic.ts";
 import { readOAuthAccount } from "../lib/claudejson.ts";
 import { enforcedWindowMs, evaluateAndMaybeSwap, postSwapProof, recordEnforcedLimit } from "../lib/decide.ts";
-import { loadConfig, loadLastSeatChangeAt } from "../lib/state.ts";
+import { loadConfig, loadLastSeatChangeAt, loadLastSwapAt } from "../lib/state.ts";
 import { classifyEnforcedLimit, findEnforcedRow, parseErrorBody, readTranscriptTail } from "../lib/usage.ts";
 import { RespawnMarkerSchema, type EnforcedLimit } from "../lib/types.ts";
 import { log } from "../lib/log.ts";
@@ -53,7 +53,7 @@ export async function runStopFailureHook(): Promise<number> {
 
     let enforced: EnforcedLimit | null = null;
     if (limit && found && account) {
-      if (postSwapProof({ swapAt: loadLastSeatChangeAt(), launchedAt, errorAt: found.errorAt, now })) {
+      if (postSwapProof({ swapAt: limit.kind === "session" ? loadLastSeatChangeAt() : loadLastSwapAt(), launchedAt, errorAt: found.errorAt, now })) {
         const stamp = await recordEnforcedLimit({ limit, account, now });
         log("stopfailure.enforced", { kind: limit.kind, family: limit.kind === "model" ? limit.family : undefined, outcome: stamp.outcome, resetsAt: stamp.resetsAt, subagent: !mainLoop });
         if (stamp.outcome !== "account-moved") {

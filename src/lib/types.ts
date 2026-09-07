@@ -55,6 +55,7 @@ export const UsageStateSchema = UsageWindowsSchema.extend({
   model: ModelInfoSchema.nullable().default(null),
   anchor: WindowAnchorSchema.optional(),
   sessionWindowWeeklyCost: z.number().positive().optional(),
+  sampledAt: z.number().optional(),
 });
 export type UsageState = z.infer<typeof UsageStateSchema>;
 

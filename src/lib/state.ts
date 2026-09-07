@@ -267,6 +267,7 @@ export function clearNextCheck(): void {
 }
 
 const USAGE_TS_REFRESH_MS = 10 * 60_000;
+const SAMPLED_AT_REFRESH_MS = 30_000;
 const SESSION_COST_MIN_DELTA = 25;
 
 function anchorHolds(anchor: WindowAnchor, next: UsageState): boolean {
@@ -295,8 +296,16 @@ export function measureSessionWindow(prev: UsageState | null, next: UsageState, 
 
 export function writeUsage(input: UsageState, opts: { stamp?: boolean } = {}): boolean {
   const prev = loadUsage();
-  const next: UsageState = { ...input, ...measureSessionWindow(prev, input, opts.stamp === true) };
-  if (prev && isEqual({ ...prev, ts: 0 }, { ...next, ts: 0 }) && next.ts - prev.ts < USAGE_TS_REFRESH_MS) {
+  const stamp = opts.stamp === true;
+  const carriedSampleAt = prev != null && prev.account === input.account ? (prev.sampledAt ?? prev.ts) : undefined;
+  const sampledAt = stamp ? carriedSampleAt : input.ts;
+  const next: UsageState = { ...input, ...measureSessionWindow(prev, input, stamp), ...(sampledAt != null ? { sampledAt } : {}) };
+  if (
+    prev &&
+    isEqual({ ...prev, ts: 0, sampledAt: 0 }, { ...next, ts: 0, sampledAt: 0 }) &&
+    next.ts - prev.ts < USAGE_TS_REFRESH_MS &&
+    (stamp || next.ts - (prev.sampledAt ?? prev.ts) < SAMPLED_AT_REFRESH_MS)
+  ) {
     try {
       utimesSync(paths.usageJson, new Date(next.ts), new Date(next.ts));
     } catch (e) {
