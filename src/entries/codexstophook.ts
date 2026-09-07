@@ -13,7 +13,7 @@ import { readJson, tryParseJson } from "../lib/json.ts";
 import { loadConfig } from "../lib/state.ts";
 import { terminalBars } from "../lib/picker.ts";
 import { CODEX_SUPERVISOR_ID_ENV } from "./codexsupervisor.ts";
-import { CodexReconcileMarkerSchema, CodexStopStdinSchema, type CodexAccount, type CodexRespawnMarker } from "../lib/types.ts";
+import { CodexReconcileMarkerSchema, CodexStopStdinSchema, type CodexAccount, type CodexReconcileMarker, type CodexRespawnMarker } from "../lib/types.ts";
 import { log } from "../lib/log.ts";
 
 async function promoteReconcile(input: { supervisorId: string; sessionId: string | null }): Promise<boolean> {
@@ -24,7 +24,14 @@ async function promoteReconcile(input: { supervisorId: string; sessionId: string
 
 function promoteReconcileLocked(input: { supervisorId: string; sessionId: string | null }): boolean {
   const markerPath = join(codexPaths.reconcileDir, input.supervisorId);
-  const marker = readJson(markerPath, CodexReconcileMarkerSchema);
+  let marker: CodexReconcileMarker | null;
+  try {
+    marker = readJson(markerPath, CodexReconcileMarkerSchema);
+  } catch (e) {
+    rmSync(markerPath, { force: true });
+    log("codexstop.reconcile_unparsable", { err: errorMessage(e) });
+    return false;
+  }
   if (marker == null) return false;
   const presence = livingCodexPresences().find((p) => p.supervisorId === input.supervisorId) ?? null;
   if (presence == null || presence.accountId !== marker.accountId) {
