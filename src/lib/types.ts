@@ -59,11 +59,20 @@ export const UsageStateSchema = UsageWindowsSchema.extend({
 });
 export type UsageState = z.infer<typeof UsageStateSchema>;
 
+const FamilyAnchorSchema = z.object({
+  fiveHourResetsAt: z.number().nullable(),
+  session: z.number(),
+  caps: z.record(z.string(), z.number()),
+});
+export type FamilyAnchor = z.infer<typeof FamilyAnchorSchema>;
+
 export const ModelUsageStateSchema = z.object({
   perModel: z.record(z.string(), UsageWindowSchema).default({}),
   account: z.string().nullable(),
   ts: z.number(),
   sampledAt: z.number().optional(),
+  anchor: FamilyAnchorSchema.optional(),
+  familyCosts: z.record(z.string(), z.number()).optional(),
 });
 export type ModelUsageState = z.infer<typeof ModelUsageStateSchema>;
 

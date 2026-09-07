@@ -2,7 +2,7 @@ import { maxBy } from "es-toolkit";
 import { z } from "zod";
 import { withLock } from "./lock.ts";
 import { paths } from "./paths.ts";
-import { MAX_CHECK_DELAY_TICKS, POST_SWAP_COOLDOWN_MS, maxCheckDelayMs, loadAccounts, loadConfig, loadDepletedWait, loadLastSwapAt, loadUsage, loadUsageSnapshot, loadModelUsage, saveAccounts, saveDepletedWait, saveModelUsage, writeUsage } from "./state.ts";
+import { MAX_CHECK_DELAY_TICKS, POST_SWAP_COOLDOWN_MS, maxCheckDelayMs, loadAccounts, loadConfig, loadDepletedWait, loadLastSwapAt, loadUsage, loadUsageSnapshot, loadModelUsage, measureFamilyWindow, saveAccounts, saveDepletedWait, saveModelUsage, writeUsage } from "./state.ts";
 import { readOAuthAccount } from "./claudejson.ts";
 import { bankedResetBelievedAvailable, claimBankedReset } from "./bankedreset.ts";
 import { chooseAndSwap, isSkippableSwapError, performSwap } from "./swap.ts";
@@ -35,6 +35,17 @@ function capForFamily(mu: ModelUsageState, family: string, now: number): UsageWi
     .filter(([k]) => familyTokens(k).includes(family))
     .map(([, w]) => w);
   return maxBy(rows, (w) => liveUsed({ window: w, windowMs: WEEK_MS, sampledAt: mu.sampledAt ?? mu.ts, now }));
+}
+
+function familyCaps(perModel: Record<string, UsageWindow>, families: string[]): Record<string, number> {
+  return Object.fromEntries(
+    families.flatMap((family) => {
+      const rows = Object.entries(perModel)
+        .filter(([k]) => familyTokens(k).includes(family))
+        .map(([, w]) => w.usedPercentage);
+      return rows.length > 0 ? [[family, Math.max(...rows)] as const] : [];
+    }),
+  );
 }
 
 function overlayLive(accounts: Account[], u: UsageState | null, mu: ModelUsageState | null, account: string | null): Account[] {
@@ -91,9 +102,9 @@ function bankedResetVerdict(input: {
   for (const family of switchFamilies) {
     const cap = muSame ? capForFamily(muSame, family, now) : undefined;
     if (!cap || !muSame) return "pass";
-    if (weeklyUsed <= 0) return "pass";
+    const familyCost = muSame.familyCosts?.[family];
+    if (familyCost == null) return "pass";
     const capUsed = liveUsed({ window: cap, windowMs: WEEK_MS, sampledAt: muSame.sampledAt ?? muSame.ts, now });
-    const familyCost = cost * Math.max(1, capUsed / weeklyUsed);
     if (capUsed + familyCost > bars.weekly) return "pass";
   }
   const atWall = enforced?.kind === "session" || liveUsed({ window: u.fiveHour, windowMs: FIVE_HOURS_MS, sampledAt: u.ts, now }) >= hardBars(cfg).session;
@@ -135,6 +146,7 @@ async function loadFreshSnapshots(cfg: Config, account: string | null, now: numb
   if (account && !probeAttempted && (!usageFresh(u, uAt, account, ttl, now) || needsPerModel(u, cfg))) {
     const full = await probeUsage();
     const ts = Date.now();
+    const prevMu = mu;
     if (readOAuthAccount()?.accountUuid === account) {
       if (full) {
         const teed = loadUsageSnapshot();
@@ -146,7 +158,7 @@ async function loadFreshSnapshots(cfg: Config, account: string | null, now: numb
           writeUsage(u);
           uAt = ts;
         }
-        mu = { perModel: full.perModel, account, ts, sampledAt: ts };
+        mu = { perModel: full.perModel, account, ts, sampledAt: ts, ...measureFamilyWindow(prevMu, account, full.session, familyCaps(full.perModel, cfg.policy.switchModels)) };
         saveModelUsage(mu);
         const expected = gatedFamilies(u?.model ?? null, cfg.policy.switchModels);
         const rows = Object.keys(full.perModel);
@@ -154,7 +166,7 @@ async function loadFreshSnapshots(cfg: Config, account: string | null, now: numb
           log("usage.no_permodel_row", { families: expected.join(","), rows: rows.join(",") });
         }
       } else {
-        mu = { perModel: mu?.account === account ? (mu?.perModel ?? {}) : {}, account, ts, sampledAt: mu?.account === account ? (mu?.sampledAt ?? mu?.ts) : undefined };
+        mu = { perModel: mu?.account === account ? (mu?.perModel ?? {}) : {}, account, ts, sampledAt: mu?.account === account ? (mu?.sampledAt ?? mu?.ts) : undefined, ...measureFamilyWindow(prevMu, account, null, {}) };
         saveModelUsage(mu);
       }
     }
@@ -392,11 +404,12 @@ export async function recordEnforcedLimit(input: { limit: EnforcedClass; account
         account: accountUuid,
         ts: now,
         sampledAt: resetsAt == null ? now : sampledAt ?? now,
+        ...measureFamilyWindow(muSame, accountUuid, null, {}),
       });
       log("usage.enforced_limit", { kind: limit.kind, family: limit.family, resetsAt });
       return { outcome: "stamped", resetsAt };
     }
-    saveModelUsage({ perModel: carriedRows, account: accountUuid, ts: now, sampledAt });
+    saveModelUsage({ perModel: carriedRows, account: accountUuid, ts: now, sampledAt, ...measureFamilyWindow(muSame, accountUuid, null, {}) });
     if (account && limit.resetsAt != null) {
       account.enforcedUntil = limit.resetsAt;
       saveAccounts(idx);

@@ -127,7 +127,12 @@ async function liveTokenLocked(account: Account, lock: { compromised: () => bool
   return { ok: true, accessToken: creds.accessToken, organizationUuid: identity.organizationUuid };
 }
 
-const PostResultSchema = z.object({ outcome: z.enum(["reset", "already_used", "not_limited", "ineligible", "unavailable", "rate_limited", "auth_error", "error"]), nextAvailableAt: z.number().nullable(), detail: z.string() });
+const PostResultSchema = z.object({
+  outcome: z.enum(["reset", "already_used", "not_limited", "ineligible", "unavailable", "rate_limited", "auth_error", "error"]),
+  nextAvailableAt: z.number().nullable(),
+  detail: z.string(),
+  ambiguous: z.boolean().optional(),
+});
 type PostResult = z.infer<typeof PostResultSchema>;
 
 async function postClaim(input: { accessToken: string; organizationUuid: string; userAgent: string }): Promise<PostResult> {
@@ -147,7 +152,12 @@ async function postClaim(input: { accessToken: string; organizationUuid: string;
   } catch (e) {
     return { outcome: "error", nextAvailableAt: null, detail: `reset endpoint unreachable: ${e instanceof Error ? e.message : String(e)}` };
   }
-  const text = await res.text();
+  let text: string;
+  try {
+    text = await res.text();
+  } catch (e) {
+    return { outcome: "error", nextAvailableAt: null, detail: `reset endpoint answered HTTP ${res.status} but the body could not be read: ${e instanceof Error ? e.message : String(e)}`, ambiguous: true };
+  }
   if (!res.ok) {
     const detail = `HTTP ${res.status}: ${safeErrorDetail({ text })}`;
     if (res.status === 429) return { outcome: "rate_limited", nextAvailableAt: null, detail };
@@ -157,7 +167,9 @@ async function postClaim(input: { accessToken: string; organizationUuid: string;
   const parsed = ClaimResponseSchema.safeParse((() => {
     try { return JSON.parse(text); } catch { return null; }
   })());
-  if (!parsed.success) return { outcome: "error", nextAvailableAt: null, detail: `reset endpoint returned an unrecognized body (${text.length} bytes, withheld)` };
+  if (!parsed.success) {
+    return { outcome: "error", nextAvailableAt: null, detail: `reset endpoint answered HTTP ${res.status} with an unrecognized body (${text.length} bytes, withheld)`, ambiguous: true };
+  }
   return { outcome: parsed.data.result, nextAvailableAt: normalizeResetsAt(parsed.data.next_available_at), detail: parsed.data.result };
 }
 
@@ -193,7 +205,14 @@ export async function claimBankedReset(input: { account: Account }): Promise<Cla
     ({ result, moved } = await withClaudeRefreshLock(async (lock) => {
       const token = await liveTokenLocked(account, lock);
       if (!token.ok) return { result: { outcome: token.outcome, nextAvailableAt: null, detail: token.detail }, moved: false };
-      const posted = await postClaim({ accessToken: token.accessToken, organizationUuid: token.organizationUuid, userAgent });
+      let posted = await postClaim({ accessToken: token.accessToken, organizationUuid: token.organizationUuid, userAgent });
+      if (posted.ambiguous) {
+        const again = await postClaim({ accessToken: token.accessToken, organizationUuid: token.organizationUuid, userAgent });
+        posted =
+          again.outcome === "already_used"
+            ? { outcome: "reset", nextAvailableAt: again.nextAvailableAt, detail: "already_used on the confirming claim, so the ambiguous claim was the reset", ambiguous: true }
+            : again;
+      }
       return { result: posted, moved: liveAccessToken(await readItem(liveTarget())) !== token.accessToken };
     }));
   } catch (e) {
@@ -208,7 +227,8 @@ export async function claimBankedReset(input: { account: Account }): Promise<Cla
     outcome,
     nextAvailableAt: result.nextAvailableAt,
     moved,
-    detail: reset ? undefined : result.detail.slice(0, 200),
+    ambiguous: result.ambiguous === true ? true : undefined,
+    detail: reset && result.ambiguous !== true ? undefined : result.detail.slice(0, 200),
   });
   return reset && !moved ? "reset" : "pass";
 }

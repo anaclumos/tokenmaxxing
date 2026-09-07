@@ -14,8 +14,10 @@ import {
   UsageStateSchema,
   type AccountsIndex,
   type Config,
+  type FamilyAnchor,
   type ModelUsageState,
   type UsageState,
+  type UsageWindow,
   type WindowAnchor,
 } from "./types.ts";
 
@@ -292,6 +294,29 @@ export function measureSessionWindow(prev: UsageState | null, next: UsageState, 
   const measured = sessionDelta >= SESSION_COST_MIN_DELTA && weeklyDelta > 0 ? (100 * weeklyDelta) / sessionDelta : undefined;
   const cost = measured ?? carried;
   return { anchor, ...(cost != null ? { sessionWindowWeeklyCost: cost } : {}) };
+}
+
+function familyAnchorHolds(anchor: FamilyAnchor, session: UsageWindow, caps: Record<string, number>): boolean {
+  return (
+    anchor.fiveHourResetsAt === session.resetsAt &&
+    session.usedPercentage >= anchor.session &&
+    Object.entries(caps).every(([family, used]) => anchor.caps[family] == null || used >= anchor.caps[family])
+  );
+}
+
+export function measureFamilyWindow(prev: ModelUsageState | null, account: string | null, session: UsageWindow | null, caps: Record<string, number>): Pick<ModelUsageState, "anchor" | "familyCosts"> {
+  const same = prev != null && prev.account === account;
+  const carried = same ? prev.familyCosts : undefined;
+  if (session == null) return { ...(same && prev.anchor ? { anchor: prev.anchor } : {}), ...(carried != null ? { familyCosts: carried } : {}) };
+  const held = same && prev.anchor && familyAnchorHolds(prev.anchor, session, caps) ? prev.anchor : null;
+  const anchor: FamilyAnchor = held ? { ...held, caps: { ...caps, ...held.caps } } : { fiveHourResetsAt: session.resetsAt, session: session.usedPercentage, caps };
+  const sessionDelta = session.usedPercentage - anchor.session;
+  const measured = Object.entries(caps).flatMap(([family, used]) => {
+    const capDelta = used - (anchor.caps[family] ?? used);
+    return sessionDelta >= SESSION_COST_MIN_DELTA && capDelta > 0 ? [[family, (100 * capDelta) / sessionDelta] as const] : [];
+  });
+  const familyCosts = { ...carried, ...Object.fromEntries(measured) };
+  return { anchor, ...(Object.keys(familyCosts).length > 0 ? { familyCosts } : {}) };
 }
 
 export function writeUsage(input: UsageState, opts: { stamp?: boolean } = {}): boolean {

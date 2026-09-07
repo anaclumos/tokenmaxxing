@@ -155,6 +155,7 @@ export async function evaluateAndMaybeSwapCodex(input: { now?: number }): Promis
             log("codexdecide.resample_failed", { err: e instanceof Error ? e.message : String(e) });
           }
           const fresh = loadCodexAccounts().accounts.find((account) => account.accountId === activeId) ?? seat;
+          if (fresh.lastUsage) postSwapResweep({ liveAccountId: activeId, bars, now });
           return { swapped: false, account: fresh, reason: "banked-reset", reset: true };
         }
       }

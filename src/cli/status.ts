@@ -37,6 +37,7 @@ const ClaudeStatusAccountSchema = z.object({
   pinged: z.boolean(),
   bankedReset: BankedResetRecordSchema.nullable(),
   sessionWindowWeeklyCost: z.number().nullable(),
+  sessionWindowFamilyCosts: z.record(z.string(), z.number()).nullable(),
 });
 type ClaudeStatusAccount = z.infer<typeof ClaudeStatusAccountSchema>;
 
@@ -177,6 +178,7 @@ async function collectClaude(input: { cfg: Config; ping: boolean; pingCount: num
   const families = gatedFamilies(loadUsage()?.model ?? null, cfg.policy.switchModels);
   const bars = effectiveBars(cfg, { accounts: idx.accounts, now, switchFamilies: families });
   const liveAccount = readOAuthAccount()?.accountUuid ?? null;
+  const liveModelUsage = loadModelUsage();
   const ordered = sortBy(idx.accounts, [(a) => (a.needsReauth ? 1 : 0), (a) => earliestReset(a, now)]);
   const accounts = ordered.map((a): ClaudeStatusAccount => {
     const sampled = samples.get(a.accountUuid) ?? { outcome: { ok: false, reason: "not sampled" }, viaTee: false };
@@ -201,6 +203,7 @@ async function collectClaude(input: { cfg: Config; ping: boolean; pingCount: num
       pinged: pings.has(a.accountUuid) && sampled.outcome.ok && sampled.outcome.pingError == null && aggregate != null && aggregate.fiveHour.resetsAt == null,
       bankedReset: a.bankedReset ?? null,
       sessionWindowWeeklyCost: a.sessionWindowWeeklyCost ?? null,
+      sessionWindowFamilyCosts: liveModelUsage && liveModelUsage.account === a.accountUuid ? (liveModelUsage.familyCosts ?? null) : null,
     };
   });
   return {
