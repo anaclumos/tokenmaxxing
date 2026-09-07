@@ -43,12 +43,7 @@ const VersionSchema = z.string().regex(/^\d+\.\d+\.\d+\S*$/);
 const PackageJsonSchema = z.looseObject({ version: VersionSchema });
 
 function claudeVersion(): string | undefined {
-  let bin: string;
-  try {
-    bin = resolveRealClaude();
-  } catch {
-    return undefined;
-  }
+  const bin = resolveRealClaude();
   const fromPath = VersionSchema.safeParse(bin.match(/\/versions\/(\d+\.\d+\.\d+[^/]*)$/)?.[1]);
   if (fromPath.success) return fromPath.data;
   try {
@@ -135,7 +130,7 @@ async function liveTokenLocked(account: Account, lock: { compromised: () => bool
 const PostResultSchema = z.object({ outcome: z.enum(["reset", "already_used", "not_limited", "ineligible", "unavailable", "rate_limited", "auth_error", "error"]), nextAvailableAt: z.number().nullable(), detail: z.string() });
 type PostResult = z.infer<typeof PostResultSchema>;
 
-async function postClaim(input: { accessToken: string; organizationUuid: string }): Promise<PostResult> {
+async function postClaim(input: { accessToken: string; organizationUuid: string; userAgent: string }): Promise<PostResult> {
   const url = `${API_BASE_URL}/api/organizations/${input.organizationUuid}/reset_rate_limits`;
   let res: Response;
   try {
@@ -144,7 +139,7 @@ async function postClaim(input: { accessToken: string; organizationUuid: string 
         Authorization: `Bearer ${input.accessToken}`,
         "anthropic-beta": OAUTH_BETA,
         "Content-Type": "application/json",
-        "User-Agent": claudeUserAgent(),
+        "User-Agent": input.userAgent,
       },
       body: JSON.stringify({ program: RESET_PROGRAM }),
       timeout: CLAIM_TIMEOUT_MS,
@@ -194,10 +189,11 @@ export async function claimBankedReset(input: { account: Account }): Promise<Cla
   let result: PostResult;
   let moved = false;
   try {
+    const userAgent = claudeUserAgent();
     ({ result, moved } = await withClaudeRefreshLock(async (lock) => {
       const token = await liveTokenLocked(account, lock);
       if (!token.ok) return { result: { outcome: token.outcome, nextAvailableAt: null, detail: token.detail }, moved: false };
-      const posted = await postClaim({ accessToken: token.accessToken, organizationUuid: token.organizationUuid });
+      const posted = await postClaim({ accessToken: token.accessToken, organizationUuid: token.organizationUuid, userAgent });
       return { result: posted, moved: liveAccessToken(await readItem(liveTarget())) !== token.accessToken };
     }));
   } catch (e) {
