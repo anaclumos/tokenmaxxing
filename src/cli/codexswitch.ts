@@ -8,19 +8,11 @@ import { CodexInvalidGrantError } from "../lib/codexoauth.ts";
 import { liveCodexAccountId } from "../lib/codexsample.ts";
 import { presentCodexAccountIds, targetableCodexAccounts } from "../lib/codexpresence.ts";
 import { terminalBars } from "../lib/picker.ts";
-import { c, emitError, emitJson } from "./render.ts";
+import { findCodexAccount } from "./rename.ts";
+import { c, emitJson, switchReporter } from "./render.ts";
 
 export async function cmdCodexSwitch(sel?: string, json = false): Promise<number> {
-  const deadGrants: string[] = [];
-  const withDeadGrants = (report: Record<string, unknown>) => (deadGrants.length > 0 ? { ...report, deadGrants } : report);
-  const emit = (text: string, report: Record<string, unknown>): void => {
-    if (json) emitJson({ ok: true, ...withDeadGrants(report) });
-    else console.log(text);
-  };
-  const fail = (message: string, opts: { paint?: (s: string) => string; notes?: string[]; extra?: Record<string, unknown> } = {}): number => {
-    emitError({ json, message, paint: opts.paint, notes: opts.notes, extra: withDeadGrants(opts.extra ?? {}) });
-    return 1;
-  };
+  const { deadGrants, emit, fail } = switchReporter({ json });
   const deadGrantMessage = (label: string) => `${label}'s refresh token is dead - re-add it with \`tokenmaxxing add --codex\``;
   const cfg = loadConfig();
   const bars = terminalBars(cfg);
@@ -36,9 +28,7 @@ export async function cmdCodexSwitch(sel?: string, json = false): Promise<number
     const currentId = liveCodexAccountId();
 
     if (sel) {
-      const target = index.accounts.find(
-        (account) => account.label === sel || account.email === sel || account.accountId.startsWith(sel),
-      );
+      const target = findCodexAccount(index.accounts, sel);
       if (!target) {
         return fail(`no codex account matches "${sel}"`, {
           notes: index.accounts.map((account) => `  ${account.label} (${account.accountId.slice(0, 8)})`),

@@ -5,22 +5,14 @@ import { readOAuthAccount } from "../lib/claudejson.ts";
 import { isSkippableSwapError, performSwap } from "../lib/swap.ts";
 import { currentWins, effectiveBars, pickBest, pickEarliestReset, weeklyExpiry, type PickCtx } from "../lib/picker.ts";
 import { InvalidGrantError } from "../lib/oauth.ts";
+import { errorMessage } from "../lib/errors.ts";
 import { gatedFamilies } from "../lib/usage.ts";
 import { findAccount } from "./rename.ts";
-import { c, emitError, emitJson, fmtReset } from "./render.ts";
+import { c, fmtReset, switchReporter } from "./render.ts";
 import type { Account } from "../lib/types.ts";
 
 export async function cmdSwitch(selector?: string, json = false): Promise<number> {
-  const deadGrants: string[] = [];
-  const withDeadGrants = (report: Record<string, unknown>) => (deadGrants.length > 0 ? { ...report, deadGrants } : report);
-  const emit = (text: string, report: Record<string, unknown>): void => {
-    if (json) emitJson({ ok: true, ...withDeadGrants(report) });
-    else console.log(text);
-  };
-  const fail = (message: string, opts: { paint?: (s: string) => string; extra?: Record<string, unknown> } = {}): number => {
-    emitError({ json, message, paint: opts.paint, extra: withDeadGrants(opts.extra ?? {}) });
-    return 1;
-  };
+  const { deadGrants, emit, fail } = switchReporter({ json });
   const deadGrantMessage = (a: Account) => `${a.label}'s refresh token is dead - run \`tokenmaxxing auth ${a.label}\``;
 
   const idx0 = loadAccounts();
@@ -99,7 +91,7 @@ export async function cmdSwitch(selector?: string, json = false): Promise<number
           continue;
         }
         if (isSkippableSwapError(e)) {
-          if (!json) console.error(c.yellow(`${best.label}: ${e instanceof Error ? e.message : String(e)} - skipped for this run`));
+          if (!json) console.error(c.yellow(`${best.label}: ${errorMessage(e)} - skipped for this run`));
           continue;
         }
         throw e;
@@ -154,7 +146,7 @@ export async function cmdSwitch(selector?: string, json = false): Promise<number
           continue;
         }
         if (isSkippableSwapError(e)) {
-          if (!json) console.error(c.yellow(`${earliest.account.label}: ${e instanceof Error ? e.message : String(e)} - skipped for this run`));
+          if (!json) console.error(c.yellow(`${earliest.account.label}: ${errorMessage(e)} - skipped for this run`));
           continue;
         }
         throw e;

@@ -1,10 +1,10 @@
 import { existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
-import { z } from "zod";
 import { withLock } from "./lock.ts";
 import { writeFileAtomic } from "./atomic.ts";
+import { errorMessage } from "./errors.ts";
 import { codexPaths } from "./paths.ts";
-import { loadConfig } from "./state.ts";
+import { loadConfig, POST_SWAP_COOLDOWN_MS } from "./state.ts";
 import { loadCodexAccounts, loadCodexLastSwapAt, saveCodexAccounts } from "./codexstate.ts";
 import { codexCurrentWins, isCodexEngaged, isCodexExhausted, pickBestCodex } from "./codexpick.ts";
 import { performCodexSwap } from "./codexswap.ts";
@@ -15,16 +15,13 @@ import { liveCodexAccountId } from "./codexsample.ts";
 import { livingCodexPresences, presentCodexAccountIds, targetableCodexAccounts } from "./codexpresence.ts";
 import { terminalBars } from "./picker.ts";
 import { log } from "./log.ts";
-import { CodexAccountSchema, CodexReconcileMarkerSchema, type CodexAccount } from "./types.ts";
+import type { CodexAccount, CodexReconcileMarker, Thresholds } from "./types.ts";
 
-const CodexSwapDecisionSchema = z.object({
-  swapped: z.boolean(),
-  account: CodexAccountSchema.nullable(),
-  reason: z.string(),
-});
-export type CodexSwapDecision = z.infer<typeof CodexSwapDecisionSchema>;
-
-const POST_SWAP_COOLDOWN_MS = 45_000;
+export type CodexSwapDecision = {
+  swapped: boolean;
+  account: CodexAccount | null;
+  reason: string;
+};
 
 async function sampleLiveOntoOwner(input: { now: number }): Promise<string | null> {
   const { now } = input;
@@ -62,7 +59,7 @@ async function sampleLiveOntoOwner(input: { now: number }): Promise<string | nul
 function reconcileNonLiveSiblings(input: {
   index: { accounts: CodexAccount[] };
   liveAccountId: string;
-  bars: { session: number; weekly: number };
+  bars: Thresholds;
   now: number;
 }): void {
   const { index, liveAccountId, bars, now } = input;
@@ -84,16 +81,17 @@ function reconcileNonLiveSiblings(input: {
     const markerPath = join(codexPaths.reconcileDir, presence.supervisorId);
     if (existsSync(markerPath)) continue;
     mkdirSync(codexPaths.reconcileDir, { recursive: true });
-    writeFileAtomic(markerPath, JSON.stringify(CodexReconcileMarkerSchema.parse({ accountId: presence.accountId, ts: now })));
+    const marker: CodexReconcileMarker = { accountId: presence.accountId, ts: now };
+    writeFileAtomic(markerPath, JSON.stringify(marker));
     log("codexdecide.reconcile_signal", { supervisorId: presence.supervisorId.slice(0, 8), account: presence.accountId.slice(0, 8) });
   }
 }
 
-function postSwapResweep(input: { liveAccountId: string; bars: { session: number; weekly: number }; now: number }): void {
+function postSwapResweep(input: { liveAccountId: string; bars: Thresholds; now: number }): void {
   try {
     reconcileNonLiveSiblings({ index: loadCodexAccounts(), liveAccountId: input.liveAccountId, bars: input.bars, now: input.now });
   } catch (e) {
-    log("codexdecide.resweep_failed", { err: e instanceof Error ? e.message : String(e) });
+    log("codexdecide.resweep_failed", { err: errorMessage(e) });
   }
 }
 

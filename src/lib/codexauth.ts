@@ -1,26 +1,14 @@
-import { readFileSync, rmSync } from "node:fs";
+import { rmSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
 import { writeFileAtomic } from "./atomic.ts";
+import { readJson } from "./json.ts";
 import { codexPaths } from "./paths.ts";
-import { CodexAuthJsonSchema, type CodexAuthJson } from "./types.ts";
-
-function isEnoent(e: unknown): boolean {
-  return e instanceof Error && "code" in e && e.code === "ENOENT";
-}
+import { CodexAuthFileSchema, CodexAuthJsonSchema, type CodexAuthJson } from "./types.ts";
 
 export function readCodexAuthAt(input: { path: string }): CodexAuthJson | null {
-  let raw: string;
-  try {
-    raw = readFileSync(input.path, "utf8");
-  } catch (e) {
-    if (isEnoent(e)) return null;
-    throw e;
-  }
-  const parsed = JSON.parse(raw);
-  const probe = z.looseObject({ tokens: z.unknown().optional() }).parse(parsed);
-  if (probe.tokens === undefined || probe.tokens === null) return null;
-  return CodexAuthJsonSchema.parse(parsed);
+  const file = readJson(input.path, CodexAuthFileSchema);
+  return file?.tokens == null ? null : { ...file, tokens: file.tokens };
 }
 
 export function readLiveCodexAuth(): CodexAuthJson | null {
@@ -28,7 +16,7 @@ export function readLiveCodexAuth(): CodexAuthJson | null {
 }
 
 export function writeLiveCodexAuth(input: { auth: CodexAuthJson }): void {
-  writeFileAtomic(codexPaths.authJson, JSON.stringify(CodexAuthJsonSchema.parse(input.auth), null, 2), 0o600);
+  writeFileAtomic(codexPaths.authJson, JSON.stringify(input.auth, null, 2), 0o600);
 }
 
 function parkedPath(input: { credFile: string }): string {
@@ -36,18 +24,11 @@ function parkedPath(input: { credFile: string }): string {
 }
 
 export function readParkedCodexAuth(input: { credFile: string }): CodexAuthJson | null {
-  let raw: string;
-  try {
-    raw = readFileSync(parkedPath(input), "utf8");
-  } catch (e) {
-    if (isEnoent(e)) return null;
-    throw e;
-  }
-  return CodexAuthJsonSchema.parse(JSON.parse(raw));
+  return readJson(parkedPath(input), CodexAuthJsonSchema);
 }
 
 export function writeParkedCodexAuth(input: { credFile: string; auth: CodexAuthJson }): void {
-  writeFileAtomic(parkedPath(input), JSON.stringify(CodexAuthJsonSchema.parse(input.auth), null, 2), 0o600);
+  writeFileAtomic(parkedPath(input), JSON.stringify(input.auth, null, 2), 0o600);
 }
 
 export function deleteParkedCodexAuth(input: { credFile: string }): void {
@@ -73,12 +54,7 @@ function decodeJwtPayload(input: { jwt: string }): unknown {
   return JSON.parse(payload);
 }
 
-const CodexIdentitySchema = z.object({
-  accountId: z.string(),
-  email: z.string().nullable(),
-  planType: z.string().nullable(),
-});
-export type CodexIdentity = z.infer<typeof CodexIdentitySchema>;
+export type CodexIdentity = { accountId: string; email: string | null; planType: string | null };
 
 export function codexIdentityOf(input: { auth: CodexAuthJson }): CodexIdentity {
   const { auth } = input;
@@ -88,11 +64,7 @@ export function codexIdentityOf(input: { auth: CodexAuthJson }): CodexIdentity {
   if (!accountId) {
     throw new Error("codex credential carries no account id (neither tokens.account_id nor the id_token claim)");
   }
-  return CodexIdentitySchema.parse({
-    accountId,
-    email: claims.email ?? null,
-    planType: authClaims?.chatgpt_plan_type ?? null,
-  });
+  return { accountId, email: claims.email ?? null, planType: authClaims?.chatgpt_plan_type ?? null };
 }
 
 export function isCodexAccessExpiring(input: { auth: CodexAuthJson; skewMs?: number; now?: number }): boolean {

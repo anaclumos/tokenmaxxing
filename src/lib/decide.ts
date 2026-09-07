@@ -1,32 +1,21 @@
 import { maxBy } from "es-toolkit";
-import { z } from "zod";
 import { withLock } from "./lock.ts";
+import { errorMessage } from "./errors.ts";
 import { paths } from "./paths.ts";
 import { MAX_CHECK_DELAY_TICKS, POST_SWAP_COOLDOWN_MS, maxCheckDelayMs, loadAccounts, loadConfig, loadDepletedWait, loadLastSwapAt, loadUsage, loadUsageSnapshot, loadModelUsage, saveAccounts, saveDepletedWait, saveModelUsage, writeUsage } from "./state.ts";
 import { readOAuthAccount } from "./claudejson.ts";
 import { chooseAndSwap, isSkippableSwapError, performSwap } from "./swap.ts";
-import { currentWins, effectiveBars, hardBars, isExhausted, nextWeeklyReset, pickBest, pickEarliestReset, sessionLadder, usableAt } from "./picker.ts";
+import { FIVE_HOURS_MS, WEEK_MS, currentWins, effectiveBars, hardBars, isExhausted, liveUsed, nextWeeklyReset, pickBest, pickEarliestReset, sessionLadder, usableAt } from "./picker.ts";
 import { familyTokens, gatedFamilies, probeUsage, type EnforcedClass } from "./usage.ts";
 import { log } from "./log.ts";
-import { AccountSchema, ModelUsageStateSchema, UsageStateSchema, type Account, type Config, type EnforcedLimit, type ModelUsageState, type Thresholds, type UsageState, type UsageWindow } from "./types.ts";
+import type { Account, Config, EnforcedLimit, ModelUsageState, Thresholds, UsageState, UsageWindow } from "./types.ts";
 
-const SwapDecisionSchema = z.object({
-  swapped: z.boolean(),
-  account: AccountSchema.nullable(),
-  reason: z.string(),
-  waitUntil: z.number().optional(),
-});
-export type SwapDecision = z.infer<typeof SwapDecisionSchema>;
-
-const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
-const FIVE_HOURS_MS = 5 * 60 * 60 * 1000;
-
-function liveUsed(input: { window: UsageWindow; windowMs: number; sampledAt: number; now: number }): number {
-  const { window: w, windowMs, sampledAt, now } = input;
-  if (w.resetsAt != null) return w.resetsAt <= now ? 0 : w.usedPercentage;
-  if (now >= sampledAt + windowMs) return 0;
-  return w.usedPercentage;
-}
+export type SwapDecision = {
+  swapped: boolean;
+  account: Account | null;
+  reason: string;
+  waitUntil?: number;
+};
 
 function capForFamily(mu: ModelUsageState, family: string, now: number): UsageWindow | undefined {
   const rows = Object.entries(mu.perModel)
@@ -68,12 +57,7 @@ function isEngaged(u: UsageState | null, mu: ModelUsageState | null, account: st
   return liveUsed({ window: u.fiveHour, windowMs: FIVE_HOURS_MS, sampledAt: u.ts, now }) >= cfg.policy.greedySessionFloor || isOver(u, mu, account, bars, cfg, now);
 }
 
-const SnapshotsSchema = z.object({
-  u: UsageStateSchema.nullable(),
-  mu: ModelUsageStateSchema.nullable(),
-  uAt: z.number().nullable(),
-});
-type Snapshots = z.infer<typeof SnapshotsSchema>;
+type Snapshots = { u: UsageState | null; mu: ModelUsageState | null; uAt: number | null };
 
 function usageFresh(u: UsageState | null, uAt: number | null, account: string | null, ttl: number, now: number): boolean {
   return u != null && u.account === account && uAt != null && now - uAt <= ttl;
@@ -201,7 +185,7 @@ export async function evaluateAndMaybeSwap(now = Date.now(), anticipatory = fals
     const skipOrThrow = (e: unknown, candidate: Account): void => {
       if (!isSkippableSwapError(e)) throw e;
       rejected.add(candidate.accountUuid);
-      log("decide.candidate_rejected", { account: candidate.accountUuid.slice(0, 8), error: e instanceof Error ? e.message : String(e) });
+      log("decide.candidate_rejected", { account: candidate.accountUuid.slice(0, 8), error: errorMessage(e) });
     };
 
     const greedy = async (holdMargin: number): Promise<SwapDecision> => {
@@ -315,8 +299,7 @@ export function postSwapProof(input: { swapAt: number | null; launchedAt: number
   return (errorAt ?? now) - swapAt >= POST_SWAP_COOLDOWN_MS;
 }
 
-const StampSchema = z.object({ outcome: z.enum(["stamped", "account-moved", "no-carrier"]), resetsAt: z.number().nullable() });
-export type Stamp = z.infer<typeof StampSchema>;
+export type Stamp = { outcome: "stamped" | "account-moved" | "no-carrier"; resetsAt: number | null };
 
 export async function recordEnforcedLimit(input: { limit: EnforcedClass; account: string; now: number }): Promise<Stamp> {
   const { limit, account: accountUuid, now } = input;

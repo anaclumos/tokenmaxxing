@@ -7,7 +7,7 @@ const OAuthErrorBodySchema = z.looseObject({
 });
 
 const NestedErrorBodySchema = z.looseObject({
-  error: z.looseObject({ type: z.string().optional(), message: z.string().optional() }),
+  error: z.looseObject({ type: z.string().nullish(), code: z.string().nullish(), message: z.string().nullish() }),
   request_id: z.string().nullish(),
 });
 
@@ -16,42 +16,35 @@ const PlainErrorBodySchema = z.looseObject({
   message: z.string().optional(),
 });
 
-const ErrorDetailSchema = z.object({ code: z.string().nullable(), fields: z.array(z.string()) });
-type ErrorDetail = z.infer<typeof ErrorDetailSchema>;
+type ErrorDetail = { codes: string[]; fields: string[] };
 
-function parseErrorBody(text: string): ErrorDetail | null {
-  let json: unknown;
-  try {
-    json = JSON.parse(text);
-  } catch {
-    return null;
-  }
-  const oauth = OAuthErrorBodySchema.safeParse(json);
-  if (oauth.success) return { code: oauth.data.error, fields: [oauth.data.error, oauth.data.error_description ?? ""] };
-  const nested = NestedErrorBodySchema.safeParse(json);
+function parseErrorBody(body: unknown): ErrorDetail | null {
+  const oauth = OAuthErrorBodySchema.safeParse(body);
+  if (oauth.success) return { codes: [oauth.data.error], fields: [oauth.data.error, oauth.data.error_description ?? ""] };
+  const nested = NestedErrorBodySchema.safeParse(body);
   if (nested.success) {
+    const { type, code, message } = nested.data.error;
     const requestId = nested.data.request_id ? ` (${nested.data.request_id})` : "";
-    return { code: nested.data.error.type ?? null, fields: [nested.data.error.type ?? "", (nested.data.error.message ?? "") + requestId] };
+    return { codes: [code, type].filter((c): c is string => c != null), fields: [type ?? "", (message ?? "") + requestId] };
   }
-  const plain = PlainErrorBodySchema.safeParse(json);
-  if (plain.success) return { code: null, fields: [plain.data.detail ?? "", plain.data.message ?? ""] };
+  const plain = PlainErrorBodySchema.safeParse(body);
+  if (plain.success) return { codes: [], fields: [plain.data.detail ?? "", plain.data.message ?? ""] };
   return null;
 }
 
-export function oauthErrorCode(input: { text: string }): string | null {
-  return parseErrorBody(input.text)?.code ?? null;
+export function errorCodes(body: unknown): string[] {
+  return parseErrorBody(body)?.codes ?? [];
 }
 
-export function safeErrorDetail(input: { text: string }): string {
-  const body = parseErrorBody(input.text);
-  if (!body) return `(unrecognized error body, ${input.text.length} bytes, content withheld)`;
-  const detail = body.fields.filter((field) => field.length > 0).join(": ");
+export function safeErrorDetail(body: unknown): string {
+  const parsed = parseErrorBody(body);
+  if (!parsed) return "(unrecognized error body, content withheld)";
+  const detail = parsed.fields.filter((field) => field.length > 0).join(": ");
   return detail.length > 0 ? detail.slice(0, 240) : "(no error detail)";
 }
 
 export const http = ky.create({
   timeout: 15_000,
-  throwHttpErrors: false,
   retry: {
     limit: 2,
     methods: ["get"],

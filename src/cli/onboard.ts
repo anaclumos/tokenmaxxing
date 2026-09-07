@@ -1,30 +1,27 @@
-import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
+import { mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
-import { readItem, deleteItem, isolatedTarget } from "../lib/credstore.ts";
+import { readItem, deleteItem, isolatedTarget, parseBlob } from "../lib/credstore.ts";
 import { resolveRealClaude } from "../lib/claudebin.ts";
-import { CRED_ENV_OVERRIDES, probeUsage, FullUsageSchema } from "../lib/usage.ts";
+import { readJson, tryReadJson } from "../lib/json.ts";
+import { CRED_ENV_OVERRIDES, probeUsage, type FullUsage } from "../lib/usage.ts";
 import { saveTermios, restoreTermios } from "../lib/tty.ts";
 import { paths } from "../lib/paths.ts";
-import { CredentialBlobSchema, OAuthAccountSchema } from "../lib/types.ts";
+import { OAuthAccountSchema, type CredentialBlob, type OAuthAccount } from "../lib/types.ts";
 import { c } from "./render.ts";
 
-const HarvestedLoginSchema = z.object({
-  blobRaw: z.string(),
-  blob: CredentialBlobSchema,
-  oauthAccount: OAuthAccountSchema,
-  sampled: FullUsageSchema.nullable(),
-});
-export type HarvestedLogin = z.infer<typeof HarvestedLoginSchema>;
+export type HarvestedLogin = {
+  blobRaw: string;
+  blob: CredentialBlob;
+  oauthAccount: OAuthAccount;
+  sampled: FullUsage | null;
+};
+
+const IdentityReadySchema = z.looseObject({ oauthAccount: z.looseObject({ accountUuid: z.string().min(1) }) });
+const OnboardedClaudeJsonSchema = z.looseObject({ oauthAccount: OAuthAccountSchema });
 
 function identityReady(cjPath: string): boolean {
-  if (!existsSync(cjPath)) return false;
-  try {
-    const oauthAccount = JSON.parse(readFileSync(cjPath, "utf8")).oauthAccount;
-    return z.object({ accountUuid: z.string().min(1) }).safeParse(oauthAccount).success;
-  } catch {
-    return false;
-  }
+  return tryReadJson(cjPath, IdentityReadySchema) != null;
 }
 
 export async function harvestIsolatedLogin(): Promise<HarvestedLogin | null> {
@@ -66,10 +63,13 @@ export async function harvestIsolatedLogin(): Promise<HarvestedLogin | null> {
       return null;
     }
 
-    let blob, oauthAccount;
+    let blob: CredentialBlob;
+    let oauthAccount: OAuthAccount;
     try {
-      blob = CredentialBlobSchema.parse(JSON.parse(blobRaw));
-      oauthAccount = OAuthAccountSchema.parse(JSON.parse(readFileSync(cjPath, "utf8")).oauthAccount);
+      blob = parseBlob(blobRaw);
+      const claudeJson = readJson(cjPath, OnboardedClaudeJsonSchema);
+      if (claudeJson == null) throw new Error(`${cjPath} vanished after the login`);
+      oauthAccount = claudeJson.oauthAccount;
     } catch {
       console.error(c.red("could not parse the onboarded account's credential/identity."));
       return null;

@@ -1,4 +1,5 @@
 import { clamp, delay } from "es-toolkit";
+import { errorMessage } from "../lib/errors.ts";
 import { loadAccounts } from "../lib/state.ts";
 import { loadCodexAccounts } from "../lib/codexstate.ts";
 import { cmdStatus } from "./status.ts";
@@ -33,7 +34,7 @@ export async function cmdWatch(intervalArg?: string, json = false): Promise<numb
     try {
       await cmdStatus(json ? { json } : { preRender: paintHeader });
     } catch (e) {
-      const message = `status failed this tick: ${e instanceof Error ? e.message : String(e)}`;
+      const message = `status failed this tick: ${errorMessage(e)}`;
       if (json) {
         emitJson({ ok: false, error: message });
       } else {

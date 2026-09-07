@@ -1,10 +1,12 @@
-import { existsSync, readFileSync } from "node:fs";
-import { isPlainObject } from "es-toolkit";
+import { isJSON, isPlainObject } from "es-toolkit";
 import { get, set, unset } from "es-toolkit/compat";
 import { z } from "zod";
 import { paths, realClaudeBinFromEnv, realCodexBinFromEnv } from "../lib/paths.ts";
-import { ConfigFileSchema, loadConfig, mergeConfigFile } from "../lib/state.ts";
+import { loadConfig } from "../lib/state.ts";
 import { writeFileAtomic } from "../lib/atomic.ts";
+import { errorMessage } from "../lib/errors.ts";
+import { readJson } from "../lib/json.ts";
+import { ConfigSchema } from "../lib/types.ts";
 import { c, emitError, emitJson } from "./render.ts";
 
 export const KNOWN_KEYS = [
@@ -28,8 +30,7 @@ const TIMER_REWRITE_NOTE = "note: run `tokenmaxxing init` to rewrite the periodi
 const RawFileSchema = z.record(z.string(), z.unknown());
 
 function readRawFile(): Record<string, unknown> {
-  if (!existsSync(paths.configJson)) return {};
-  return RawFileSchema.parse(JSON.parse(readFileSync(paths.configJson, "utf8")));
+  return readJson(paths.configJson, RawFileSchema) ?? {};
 }
 
 function writeRawFile(input: { raw: Record<string, unknown> }): void {
@@ -79,6 +80,10 @@ function unknownKey(input: { key: string; json: boolean }): number {
   return 1;
 }
 
+function rejection(error: z.ZodError): string {
+  return error.issues.map((issue) => (issue.path.length > 0 ? `${issue.path.join(".")}: ${issue.message}` : issue.message)).join("; ");
+}
+
 function printEffective(json: boolean): number {
   const effective = loadConfig();
   const raw = readRawFile();
@@ -120,11 +125,7 @@ function cmdGet(key: string, json: boolean): number {
 }
 
 function parseValue(text: string): unknown {
-  try {
-    return JSON.parse(text);
-  } catch {
-    return text;
-  }
+  return isJSON(text) ? JSON.parse(text) : text;
 }
 
 function cmdSet(key: string, valueText: string, json: boolean): number {
@@ -132,14 +133,9 @@ function cmdSet(key: string, valueText: string, json: boolean): number {
   const raw = readRawFile();
   const next = structuredClone(raw);
   set(next, key, parseValue(valueText));
-  const validated = ConfigFileSchema.safeParse(next);
+  const validated = ConfigSchema.safeParse(next);
   if (!validated.success) {
-    emitError({ json, message: `rejected: ${validated.error.issues.map((issue) => `${issue.path.join(".")}: ${issue.message}`).join("; ")}` });
-    return 1;
-  }
-  const mergedCheck = mergeConfigFile(validated.data);
-  if (!mergedCheck.ok) {
-    emitError({ json, message: `rejected: ${mergedCheck.detail}` });
+    emitError({ json, message: `rejected: ${rejection(validated.error)}` });
     return 1;
   }
   writeRawFile({ raw: next });
@@ -176,14 +172,9 @@ function cmdUnset(key: string, json: boolean): number {
   const next = structuredClone(raw);
   unset(next, key);
   pruneEmptyParents(next);
-  const validated = ConfigFileSchema.safeParse(next);
+  const validated = ConfigSchema.safeParse(next);
   if (!validated.success) {
-    emitError({ json, message: `rejected: ${validated.error.issues.map((issue) => `${issue.path.join(".")}: ${issue.message}`).join("; ")}` });
-    return 1;
-  }
-  const mergedCheck = mergeConfigFile(validated.data);
-  if (!mergedCheck.ok) {
-    emitError({ json, message: `rejected: ${mergedCheck.detail} (adjust the conflicting override before unsetting ${key})` });
+    emitError({ json, message: `rejected: ${rejection(validated.error)} (adjust the conflicting override before unsetting ${key})` });
     return 1;
   }
   writeRawFile({ raw: next });
@@ -200,8 +191,12 @@ function cmdUnset(key: string, json: boolean): number {
 function cmdTidy(json: boolean): number {
   const raw = readRawFile();
   const dropped = unknownFileKeys(raw);
-  const parsed = ConfigFileSchema.parse(raw);
-  const next = RawFileSchema.parse(JSON.parse(JSON.stringify(parsed)));
+  const next: Record<string, unknown> = {};
+  for (const key of KNOWN_KEYS) {
+    const value = get(raw, key);
+    if (value !== undefined) set(next, key, value);
+  }
+  ConfigSchema.parse(next);
   const models = get(next, "policy.switchModels");
   const normalized = Array.isArray(models) ? models.map((model) => String(model).toLowerCase()) : null;
   const casingChanged = normalized != null && JSON.stringify(normalized) !== JSON.stringify(models);
@@ -235,7 +230,7 @@ export function cmdConfig(args: string[], json = false): number {
   } catch (e) {
     emitError({
       json,
-      message: `config.json is unreadable: ${e instanceof Error ? e.message : String(e)}`,
+      message: `config.json is unreadable: ${errorMessage(e)}`,
       notes: [`fix or delete ${paths.configJson} (defaults apply when it is absent), then re-run`],
       extra: { path: paths.configJson },
     });

@@ -1,39 +1,35 @@
 import { sortBy } from "es-toolkit";
 import { z } from "zod";
 import { readOAuthAccount } from "../lib/claudejson.ts";
+import { errorMessage } from "../lib/errors.ts";
+import { tryParseJson } from "../lib/json.ts";
 import { loadAccounts, loadConfig, loadLastSwapAt, loadModelUsage, writeUsage } from "../lib/state.ts";
 import { familyTokens, matchedFamily, parseStatusLineStdin, parseStatusLineModel } from "../lib/usage.ts";
 import { earliestReset, weeklyExpiry } from "../lib/picker.ts";
 import { worktreeName } from "../lib/worktree.ts";
 import { makeColors, makeUsagePaint } from "../cli/render.ts";
 import { fmtResetShort } from "../lib/usage.ts";
-import {
-  AccountsIndexSchema,
-  StatusLineStdinSchema,
-  UsageWindowSchema,
-  type Account,
-  type UsageState,
-  type UsageWindow,
-} from "../lib/types.ts";
+import { StatusLineStdinSchema, type Account, type AccountsIndex, type UsageState, type UsageWindow } from "../lib/types.ts";
 
 const ADOPTION_GRACE_MS = 45_000;
 
-const RenderCtxSchema = z.object({
-  accounts: AccountsIndexSchema,
-  perModel: z.record(z.string(), UsageWindowSchema),
-  switchModels: z.array(z.string()),
-  worktree: z.string().nullable(),
-  liveAccount: z.string().nullable(),
-  now: z.number(),
-  color: z.boolean(),
-  truecolor: z.boolean(),
-});
-export type RenderCtx = z.infer<typeof RenderCtxSchema>;
+export type RenderCtx = {
+  accounts: AccountsIndex;
+  perModel: Record<string, UsageWindow>;
+  switchModels: string[];
+  worktree: string | null;
+  liveAccount: string | null;
+  now: number;
+  color: boolean;
+  truecolor: boolean;
+};
 
-export async function readStdin(): Promise<string> {
-  const chunks: Uint8Array[] = [];
-  for await (const c of Bun.stdin.stream()) chunks.push(c);
-  return Buffer.concat(chunks).toString("utf8");
+export function terminalPalette(): { color: boolean; truecolor: boolean } {
+  const colorterm = process.env.COLORTERM;
+  return {
+    color: !process.env.NO_COLOR,
+    truecolor: colorterm != null && (colorterm.includes("truecolor") || colorterm.includes("24bit")),
+  };
 }
 
 export function renderStatusline(stdinObj: unknown, ctx: RenderCtx): string {
@@ -111,12 +107,7 @@ export function renderStatusline(stdinObj: unknown, ctx: RenderCtx): string {
 }
 
 export async function runStatusline(): Promise<number> {
-  const raw = await readStdin();
-  let obj: unknown = null;
-  try {
-    obj = JSON.parse(raw);
-  } catch {
-  }
+  const obj = tryParseJson(z.unknown(), await Bun.stdin.text());
   const now = Date.now();
 
   let account: string | null = null;
@@ -137,7 +128,6 @@ export async function runStatusline(): Promise<number> {
     const modelUsage = loadModelUsage();
     const stdin = StatusLineStdinSchema.safeParse(obj);
     const dir = stdin.success ? (stdin.data.workspace?.current_dir ?? stdin.data.workspace?.project_dir ?? null) : null;
-    const colorterm = z.string().optional().parse(process.env.COLORTERM);
     const ctx: RenderCtx = {
       accounts: loadAccounts(),
       perModel: modelUsage && modelUsage.account === account ? modelUsage.perModel : {},
@@ -145,12 +135,11 @@ export async function runStatusline(): Promise<number> {
       worktree: dir == null ? null : worktreeName(dir),
       liveAccount: account,
       now,
-      color: !process.env.NO_COLOR,
-      truecolor: colorterm != null && (colorterm.includes("truecolor") || colorterm.includes("24bit")),
+      ...terminalPalette(),
     };
     line = renderStatusline(obj, ctx);
   } catch (e) {
-    line = `tokenmaxxing: ${e instanceof Error ? e.message : String(e)}`;
+    line = `tokenmaxxing: ${errorMessage(e)}`;
   }
   process.stdout.write(line + "\n");
   return 0;

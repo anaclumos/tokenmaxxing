@@ -1,5 +1,4 @@
 import { partition } from "es-toolkit";
-import { z } from "zod";
 import { withLock } from "../lib/lock.ts";
 import { loadAccounts, saveAccounts } from "../lib/state.ts";
 import { paths } from "../lib/paths.ts";
@@ -11,17 +10,14 @@ import type { Account, AccountsIndex } from "../lib/types.ts";
 
 const AUTH_USAGE = "usage: tokenmaxxing auth [<email|label|id> | --all]";
 
-const AuthPlanSchema = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("usage") }),
-  z.object({ kind: z.literal("error"), message: z.string() }),
-  z.object({ kind: z.literal("pick") }),
-  z.object({ kind: z.literal("targets"), uuids: z.array(z.string()) }),
-]);
-export type AuthPlan = z.infer<typeof AuthPlanSchema>;
+export type AuthPlan =
+  | { kind: "usage" }
+  | { kind: "error"; message: string }
+  | { kind: "pick" }
+  | { kind: "targets"; uuids: string[] };
 
-export function planAuth(input: { accounts: Account[]; argv: string[] }): AuthPlan {
-  const all = input.argv.includes("--all");
-  const rest = input.argv.filter((a) => a !== "--all");
+export function planAuth(input: { accounts: Account[]; all: boolean; rest: string[] }): AuthPlan {
+  const { all, rest } = input;
   if ((all && rest.length > 0) || rest.length > 1) return { kind: "usage" };
   if (input.accounts.length === 0) return { kind: "error", message: "no accounts in the pool - run `tokenmaxxing init` first" };
   if (all) {
@@ -122,9 +118,9 @@ async function reauthOne(target: Account): Promise<boolean> {
   return true;
 }
 
-export async function cmdAuth(argv: string[]): Promise<number> {
+export async function cmdAuth(input: { all: boolean; rest: string[] }): Promise<number> {
   const idx = loadAccounts();
-  const plan = planAuth({ accounts: idx.accounts, argv });
+  const plan = planAuth({ accounts: idx.accounts, all: input.all, rest: input.rest });
   if (plan.kind === "usage") {
     console.error(AUTH_USAGE);
     return 2;

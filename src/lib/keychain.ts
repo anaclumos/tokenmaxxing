@@ -1,7 +1,4 @@
-import { z } from "zod";
-
-const KeychainTargetSchema = z.object({ service: z.string(), account: z.string() });
-export type KeychainTarget = z.infer<typeof KeychainTargetSchema>;
+export type KeychainTarget = { service: string; account: string };
 
 const SECURITY = "/usr/bin/security";
 const INTERACTIVE_MAX_LINE = 4000;

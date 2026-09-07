@@ -1,10 +1,9 @@
 import { mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
-import { MAX_WRAP_DEPTH, WRAP_DEPTH_ENV } from "../lib/claudebin.ts";
-import { resolveRealCodex } from "../lib/codexbin.ts";
+import { MAX_WRAP_DEPTH, WRAP_DEPTH_ENV, resolveRealCodex } from "../lib/claudebin.ts";
 import { codexIdentityOf, readCodexAuthAt, writeParkedCodexAuth } from "../lib/codexauth.ts";
 import { CodexUsageReadError, fetchCodexUsage } from "../lib/codexusage.ts";
-import { loadCodexAccounts, saveCodexAccounts } from "../lib/codexstate.ts";
+import { importedCodexAccount, loadCodexAccounts, saveCodexAccounts, upsertCodexAccount } from "../lib/codexstate.ts";
 import { saveTermios, restoreTermios } from "../lib/tty.ts";
 import { withLock } from "../lib/lock.ts";
 import { codexCredItemFor, codexPaths } from "../lib/paths.ts";
@@ -62,20 +61,8 @@ export async function cmdCodexAdd(): Promise<number> {
 
     ({ account, poolSize } = await withLock(codexPaths.lockFile, () => {
       const index = loadCodexAccounts();
-      const existing = index.accounts.find((entry) => entry.accountId === identity.accountId);
-      const fresh: CodexAccount = {
-        accountId: identity.accountId,
-        email: usage?.email ?? identity.email,
-        label: existing?.label ?? usage?.email ?? identity.email ?? identity.accountId.slice(0, 8),
-        planType: usage?.planType ?? identity.planType,
-        credFile,
-        addedAt: existing?.addedAt ?? new Date().toISOString(),
-        needsReauth: false,
-        lastUsage: usage ? { aggregate: usage.aggregate, perLimit: usage.perLimit } : existing?.lastUsage,
-        lastUsageAt: usage ? Date.now() : existing?.lastUsageAt,
-      };
-      if (existing) Object.assign(existing, fresh);
-      else index.accounts.push(fresh);
+      const fresh = importedCodexAccount({ existing: index.accounts.find((entry) => entry.accountId === identity.accountId), identity, usage, credFile });
+      upsertCodexAccount(index, fresh);
       saveCodexAccounts({ index });
       return { account: fresh, poolSize: index.accounts.length };
     }));

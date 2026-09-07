@@ -1,28 +1,26 @@
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { z } from "zod";
-import { readItem, writeItem, deleteItem, liveTarget, parkedTarget, isolatedTarget, claudeAiOauthOnly, mergeIntoLive } from "./credstore.ts";
+import { readItem, writeItem, deleteItem, liveTarget, parkedTarget, isolatedTarget, claudeAiOauthOnly, parseBlob } from "./credstore.ts";
 import { credItemFor, paths } from "./paths.ts";
 import { withClaudeRefreshLock } from "./claudelock.ts";
+import { errorMessage } from "./errors.ts";
 import { refreshCredential, isAccessTokenExpiring, isDeadCredential, fetchTokenIdentity, describeIdentity, IdentityUnavailableError, InvalidGrantError } from "./oauth.ts";
-import { FullUsageSchema, pingSession, probeUsage } from "./usage.ts";
+import { pingSession, probeUsage, type FullUsage } from "./usage.ts";
 import { loadAccounts } from "./state.ts";
-import { keepRotatedPair } from "./swap.ts";
+import { ensureLiveTokenFresh, keepRotatedPair } from "./swap.ts";
 import { log } from "./log.ts";
-import { CredentialBlobSchema, TokenIdentitySchema, type Account, type OAuthCreds, type TokenIdentity } from "./types.ts";
+import type { Account, OAuthCreds, TokenIdentity } from "./types.ts";
 
-const SampleOutcomeSchema = z.discriminatedUnion("ok", [
-  z.object({ ok: z.literal(true), usage: FullUsageSchema, pingError: z.string().optional(), pingRejected: z.boolean().optional() }),
-  z.object({ ok: z.literal(false), reason: z.string(), pingError: z.string().optional(), pingRejected: z.boolean().optional() }),
-]);
-export type SampleOutcome = z.infer<typeof SampleOutcomeSchema>;
+export type SampleOutcome =
+  | { ok: true; usage: FullUsage; pingError?: string; pingRejected?: boolean }
+  | { ok: false; reason: string; probeSilent?: boolean; pingError?: string; pingRejected?: boolean };
 
-const IdentityCheckSchema = z.discriminatedUnion("status", [
-  z.object({ status: z.literal("match") }),
-  z.object({ status: z.literal("mismatch"), reason: z.string(), owner: TokenIdentitySchema }),
-  z.object({ status: z.literal("unavailable"), reason: z.string(), stale: z.boolean() }),
-]);
-type IdentityCheck = z.infer<typeof IdentityCheckSchema>;
+type IdentityCheck =
+  | { status: "match" }
+  | { status: "mismatch"; reason: string; owner: TokenIdentity }
+  | { status: "unavailable"; reason: string; stale: boolean };
+
+const NO_LIMIT_DATA: SampleOutcome = { ok: false, reason: "`/usage` returned no limit data (see log)", probeSilent: true };
 
 async function checkIdentity(creds: OAuthCreds, account: Account): Promise<IdentityCheck> {
   let identity: TokenIdentity;
@@ -31,7 +29,7 @@ async function checkIdentity(creds: OAuthCreds, account: Account): Promise<Ident
   } catch (e) {
     return {
       status: "unavailable",
-      reason: `credential identity check failed: ${e instanceof Error ? e.message : String(e)}`,
+      reason: `credential identity check failed: ${errorMessage(e)}`,
       stale: e instanceof IdentityUnavailableError && e.status === 401,
     };
   }
@@ -44,6 +42,10 @@ function refreshPlanFields(account: Account, creds: OAuthCreds): void {
   if (creds.rateLimitTier != null) account.rateLimitTier = creds.rateLimitTier;
 }
 
+function withPing(outcome: SampleOutcome, ping: { reason: string; rejected: boolean } | null): SampleOutcome {
+  return ping == null ? outcome : { ...outcome, pingError: ping.reason, pingRejected: ping.rejected };
+}
+
 export async function probeParkedUsage(account: Account, opts: { ping?: boolean } = {}): Promise<SampleOutcome> {
   const backup = parkedTarget(account.keychainItem);
   const parkedRaw = await readItem(backup);
@@ -51,9 +53,9 @@ export async function probeParkedUsage(account: Account, opts: { ping?: boolean 
 
   let creds: OAuthCreds;
   try {
-    creds = CredentialBlobSchema.parse(JSON.parse(parkedRaw)).claudeAiOauth;
+    creds = parseBlob(parkedRaw).claudeAiOauth;
   } catch (e) {
-    return { ok: false, reason: `parked credential unreadable (${(e instanceof Error ? e.message : String(e)).slice(0, 80)}) - run \`tokenmaxxing auth\`` };
+    return { ok: false, reason: `parked credential unreadable (${errorMessage(e).slice(0, 80)}) - run \`tokenmaxxing auth\`` };
   }
   if (isDeadCredential(creds)) {
     account.needsReauth = true;
@@ -66,16 +68,16 @@ export async function probeParkedUsage(account: Account, opts: { ping?: boolean 
   if (liveRaw != null) {
     let liveCreds: OAuthCreds;
     try {
-      liveCreds = CredentialBlobSchema.parse(JSON.parse(liveRaw)).claudeAiOauth;
+      liveCreds = parseBlob(liveRaw).claudeAiOauth;
     } catch (e) {
-      return { ok: false, reason: `cannot read the live credential (${(e instanceof Error ? e.message : String(e)).slice(0, 80)}) - refusing to sample a possibly-live account` };
+      return { ok: false, reason: `cannot read the live credential (${errorMessage(e).slice(0, 80)}) - refusing to sample a possibly-live account` };
     }
     if (!isDeadCredential(liveCreds)) {
       liveToken = liveCreds.accessToken;
       try {
         liveAccount = (await fetchTokenIdentity(liveCreds.accessToken)).accountUuid;
       } catch (e) {
-        return { ok: false, reason: `cannot verify the live credential's owner (${(e instanceof Error ? e.message : String(e)).slice(0, 80)}) - refusing to sample a possibly-live account` };
+        return { ok: false, reason: `cannot verify the live credential's owner (${errorMessage(e).slice(0, 80)}) - refusing to sample a possibly-live account` };
       }
       if (liveAccount === account.accountUuid) {
         return { ok: false, reason: "this account holds the LIVE login (active label drifted) - run `tokenmaxxing switch` to reconcile" };
@@ -109,7 +111,7 @@ export async function probeParkedUsage(account: Account, opts: { ping?: boolean 
           account.needsReauth = true;
           return { failed: { ok: false, reason: "refresh token dead - re-auth with `tokenmaxxing auth`" } };
         }
-        return { failed: { ok: false, reason: `token refresh failed: ${e instanceof Error ? e.message : String(e)}` } };
+        return { failed: { ok: false, reason: `token refresh failed: ${errorMessage(e)}` } };
       }
     };
     let result: { fresh: OAuthCreds } | { failed: SampleOutcome };
@@ -128,7 +130,7 @@ export async function probeParkedUsage(account: Account, opts: { ping?: boolean 
           return { failed: { ok: false, reason: `${verified.reason}, whose grant this refresh rotated - the rotated token ${kept}; re-auth with \`tokenmaxxing auth\`` } };
         });
       } catch (e) {
-        return { ok: false, reason: `cannot arbitrate a stale parked credential: ${e instanceof Error ? e.message : String(e)}` };
+        return { ok: false, reason: `cannot arbitrate a stale parked credential: ${errorMessage(e)}` };
       }
     }
     if ("failed" in result) return result.failed;
@@ -158,14 +160,7 @@ export async function probeParkedUsage(account: Account, opts: { ping?: boolean 
     writeFileSync(join(dir, ".claude.json"), JSON.stringify({ oauthAccount: account.oauthAccount, hasCompletedOnboarding: true }));
     const ping = opts.ping ? await pingSession(dir) : null;
     const usage = await probeUsage(dir);
-    const outcome: SampleOutcome = usage
-      ? { ok: true, usage }
-      : { ok: false, reason: "`/usage` returned no limit data (see log)" };
-    if (ping != null) {
-      outcome.pingError = ping.reason;
-      outcome.pingRejected = ping.rejected;
-    }
-    return outcome;
+    return withPing(usage ? { ok: true, usage } : NO_LIMIT_DATA, ping);
   } finally {
     const afterIso = await readItem(isoTarget);
     if (afterIso && afterIso !== installed) await writeItem(backup, claudeAiOauthOnly(afterIso));
@@ -174,43 +169,20 @@ export async function probeParkedUsage(account: Account, opts: { ping?: boolean 
   }
 }
 
-export async function ensureLiveTokenFresh(): Promise<void> {
-  const liveRaw = await readItem(liveTarget());
-  if (!liveRaw) return;
-  let creds: OAuthCreds;
-  try {
-    creds = CredentialBlobSchema.parse(JSON.parse(liveRaw)).claudeAiOauth;
-  } catch {
-    return;
-  }
-  if (isDeadCredential(creds)) throw new InvalidGrantError("live credential was cleared after a failed refresh");
-  if (!isAccessTokenExpiring(creds, 300_000)) return;
-  await withClaudeRefreshLock(async (lock) => {
-    const raw2 = await readItem(liveTarget());
-    if (raw2 == null) throw new Error("live credential vanished while waiting for the refresh lock");
-    const current = CredentialBlobSchema.parse(JSON.parse(raw2)).claudeAiOauth;
-    if (isDeadCredential(current)) throw new InvalidGrantError("live credential was cleared after a failed refresh");
-    const next = isAccessTokenExpiring(current, 300_000) ? await refreshCredential(current) : current;
-    if (next === current) return;
-    if (lock.compromised()) throw new Error("refresh lock compromised mid-refresh - discarding the live rewrite");
-    await writeItem(liveTarget(), mergeIntoLive(raw2, next));
-  });
-}
-
 export async function probeActiveUsage(account: Account, opts: { ping?: boolean } = {}): Promise<SampleOutcome> {
   try {
-    await ensureLiveTokenFresh();
+    await ensureLiveTokenFresh({ skewMs: 300_000 });
   } catch (e) {
     if (e instanceof InvalidGrantError) return { ok: false, reason: "live refresh token dead - run `claude` and `/login`" };
-    return { ok: false, reason: `token refresh failed: ${e instanceof Error ? e.message : String(e)}` };
+    return { ok: false, reason: `token refresh failed: ${errorMessage(e)}` };
   }
   const liveRaw = await readItem(liveTarget());
   if (!liveRaw) return { ok: false, reason: "no live credential - run `claude` and `/login`" };
   let creds: OAuthCreds;
   try {
-    creds = CredentialBlobSchema.parse(JSON.parse(liveRaw)).claudeAiOauth;
+    creds = parseBlob(liveRaw).claudeAiOauth;
   } catch (e) {
-    return { ok: false, reason: `live credential blob unreadable (${(e instanceof Error ? e.message : String(e)).slice(0, 80)})` };
+    return { ok: false, reason: `live credential blob unreadable (${errorMessage(e).slice(0, 80)})` };
   }
 
   const identity = await checkIdentity(creds, account);
@@ -220,10 +192,5 @@ export async function probeActiveUsage(account: Account, opts: { ping?: boolean 
 
   const ping = opts.ping ? await pingSession() : null;
   const usage = await probeUsage();
-  const outcome: SampleOutcome = usage ? { ok: true, usage } : { ok: false, reason: "`/usage` returned no limit data (see log)" };
-  if (ping != null) {
-    outcome.pingError = ping.reason;
-    outcome.pingRejected = ping.rejected;
-  }
-  return outcome;
+  return withPing(usage ? { ok: true, usage } : NO_LIMIT_DATA, ping);
 }

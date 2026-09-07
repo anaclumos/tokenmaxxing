@@ -13,6 +13,7 @@ const OAuthCredsSchema = z.looseObject({
 export type OAuthCreds = z.infer<typeof OAuthCredsSchema>;
 
 export const CredentialBlobSchema = z.looseObject({ claudeAiOauth: OAuthCredsSchema });
+export type CredentialBlob = z.infer<typeof CredentialBlobSchema>;
 
 export const OAuthAccountSchema = z.looseObject({
   accountUuid: z.string(),
@@ -80,53 +81,47 @@ export const AccountsIndexSchema = z.object({
   activeAccountUuid: z.string().nullable(),
   accounts: z.array(AccountSchema).default([]),
 });
+export type AccountsIndex = z.infer<typeof AccountsIndexSchema>;
 
 export const LastSwapSchema = z.object({ ts: z.number() });
-export type AccountsIndex = z.infer<typeof AccountsIndexSchema>;
 
 export const NextCheckSchema = z.object({ dueAt: z.number(), ts: z.number() });
 
-export const EnforcedLimitSchema = z.object({
-  account: z.string(),
-  family: z.string().nullable(),
-  resetsAt: z.number().nullable(),
-  windowMs: z.number(),
-});
-export type EnforcedLimit = z.infer<typeof EnforcedLimitSchema>;
+export type EnforcedLimit = {
+  account: string;
+  family: string | null;
+  resetsAt: number | null;
+  windowMs: number;
+};
 
-export const ThresholdsSchema = z.object({
-  session: z.number().min(0).max(100),
-  weekly: z.number().min(0).max(100),
-});
-export type Thresholds = z.infer<typeof ThresholdsSchema>;
+export type Thresholds = { session: number; weekly: number };
+
+const PercentSchema = z.number().min(0).max(100);
 
 export const SessionLadderSchema = z
-  .array(z.number().min(0).max(100))
+  .array(PercentSchema)
   .min(1)
   .refine((rungs) => isEqual(rungs, uniq(rungs).toSorted((a, b) => a - b)), {
     message: "thresholds.session rungs must be strictly ascending",
   });
 
-export const ScreeningThresholdsSchema = z.object({
-  session: SessionLadderSchema,
-  weekly: z.number().min(0).max(100),
-});
-
 export const ConfigSchema = z
   .object({
-    thresholds: ScreeningThresholdsSchema,
-    hardThresholds: ThresholdsSchema,
-    claudeBin: z.string(),
-    codexBin: z.string(),
-    policy: z.object({
-      projectionMargin: z.number().min(0).max(100),
-      greedySessionFloor: z.number().min(0).max(100),
-      greedySwapMargin: z.number().min(0).max(1),
-      switchModels: z.array(z.string()),
-      usagePollTtlMs: z.number().int().positive(),
-      maxWaitMs: z.number().int().positive(),
-      checkIntervalMs: z.number().int().min(10_000),
-    }),
+    thresholds: z.object({ session: SessionLadderSchema.default([90]), weekly: PercentSchema.default(98) }).prefault({}),
+    hardThresholds: z.object({ session: PercentSchema.default(100), weekly: PercentSchema.default(100) }).prefault({}),
+    claudeBin: z.string().default(""),
+    codexBin: z.string().default(""),
+    policy: z
+      .object({
+        projectionMargin: PercentSchema.default(0),
+        greedySessionFloor: PercentSchema.default(80),
+        greedySwapMargin: z.number().min(0).max(1).default(0.15),
+        switchModels: z.array(z.string()).default(["fable"]).transform((models) => models.map((model) => model.toLowerCase())),
+        usagePollTtlMs: z.number().int().positive().default(90_000),
+        maxWaitMs: z.number().int().positive().default(3_600_000),
+        checkIntervalMs: z.number().int().min(10_000).default(60_000),
+      })
+      .prefault({}),
   })
   .refine((cfg) => cfg.policy.projectionMargin < Math.min(...cfg.thresholds.session, cfg.thresholds.weekly), {
     message: "policy.projectionMargin must be strictly below every threshold (effectiveBars would hit zero and every account would read as exhausted)",
@@ -134,7 +129,7 @@ export const ConfigSchema = z
   .refine((cfg) => cfg.hardThresholds.session >= Math.max(...cfg.thresholds.session) && cfg.hardThresholds.weekly >= cfg.thresholds.weekly, {
     message: "hardThresholds (the Layer 2 wall) must be at or above thresholds (the Layer 1 screening bars, the top session rung) for both windows",
   });
-export type Config = z.infer<typeof ConfigSchema>;
+export type Config = z.output<typeof ConfigSchema>;
 
 export const RespawnMarkerSchema = z.object({
   account: z.string(),
@@ -144,6 +139,7 @@ export const RespawnMarkerSchema = z.object({
   prompt: z.string().optional(),
   launchedAt: z.number().optional(),
 });
+export type RespawnMarker = z.infer<typeof RespawnMarkerSchema>;
 
 export const RateLimitsStdinSchema = z.looseObject({
   rate_limits: z
@@ -197,7 +193,7 @@ export const SubagentStatusLineStdinSchema = z.looseObject({
 export const RefreshResponseSchema = z.looseObject({
   access_token: z.string(),
   refresh_token: z.string().optional(),
-  expires_in: z.number().optional(),
+  expires_in: z.number(),
   refresh_token_expires_in: z.number().optional(),
   scope: z.string().optional(),
   token_type: z.string().optional(),
@@ -208,13 +204,12 @@ export const ProfileResponseSchema = z.looseObject({
   organization: z.looseObject({ uuid: z.string(), name: z.string().nullish() }),
 });
 
-export const TokenIdentitySchema = z.object({
-  accountUuid: z.string(),
-  email: z.string().nullable(),
-  organizationUuid: z.string(),
-  organizationName: z.string().nullable(),
-});
-export type TokenIdentity = z.infer<typeof TokenIdentitySchema>;
+export type TokenIdentity = {
+  accountUuid: string;
+  email: string | null;
+  organizationUuid: string;
+  organizationName: string | null;
+};
 
 const CodexTokensSchema = z.looseObject({
   id_token: z.string(),
@@ -229,6 +224,11 @@ export const CodexAuthJsonSchema = z.looseObject({
 });
 export type CodexAuthJson = z.infer<typeof CodexAuthJsonSchema>;
 
+export const CodexAuthFileSchema = z.looseObject({
+  tokens: CodexTokensSchema.nullish(),
+  last_refresh: z.string().optional(),
+});
+
 const CodexWindowSchema = z.object({
   usedPercentage: z.number(),
   resetsAt: z.number().nullable(),
@@ -236,14 +236,13 @@ const CodexWindowSchema = z.object({
 });
 export type CodexWindow = z.infer<typeof CodexWindowSchema>;
 
-export const CodexUsageSchema = z.object({
-  accountId: z.string(),
-  email: z.string().nullable(),
-  planType: z.string().nullable(),
-  aggregate: z.array(CodexWindowSchema),
-  perLimit: z.record(z.string(), z.array(CodexWindowSchema)),
-});
-export type CodexUsage = z.infer<typeof CodexUsageSchema>;
+export type CodexUsage = {
+  accountId: string;
+  email: string | null;
+  planType: string | null;
+  aggregate: CodexWindow[];
+  perLimit: Record<string, CodexWindow[]>;
+};
 
 const BareFileNameSchema = z
   .string()
@@ -286,8 +285,10 @@ export const CodexRespawnMarkerSchema = z.object({
   sessionId: z.string().nullable(),
   ts: z.number(),
 });
+export type CodexRespawnMarker = z.infer<typeof CodexRespawnMarkerSchema>;
 
 export const CodexReconcileMarkerSchema = z.object({
   accountId: z.string(),
   ts: z.number(),
 });
+export type CodexReconcileMarker = z.infer<typeof CodexReconcileMarkerSchema>;

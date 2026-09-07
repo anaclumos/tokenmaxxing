@@ -2,20 +2,21 @@ import { accessSync, appendFileSync, constants, existsSync, mkdirSync, readFileS
 import { basename, dirname, join } from "node:path";
 import { escape } from "es-toolkit";
 import { z } from "zod";
-import { codexPaths, HOME, paths } from "./paths.ts";
+import { codexPaths, envOverride, HOME, paths } from "./paths.ts";
 import { writeFileAtomic } from "./atomic.ts";
+import { errnoCode } from "./errors.ts";
+import { readJson } from "./json.ts";
 import { installedBin, installSettings, isOurHookCommand, uninstallSettings } from "./settings.ts";
 import { resolveRealClaude } from "./claudebin.ts";
 import { loadConfig } from "./state.ts";
 
-const InstallOutcomeSchema = z.object({
-  claudeWrapper: z.string(),
-  installedBin: z.string(),
-  pathAhead: z.boolean(),
-  timerLoaded: z.boolean(),
-  checkIntervalS: z.number().int().positive(),
-});
-export type InstallOutcome = z.infer<typeof InstallOutcomeSchema>;
+export type InstallOutcome = {
+  claudeWrapper: string;
+  installedBin: string;
+  pathAhead: boolean;
+  timerLoaded: boolean;
+  checkIntervalS: number;
+};
 
 export function isBinDirAhead(): boolean {
   const dirs = (process.env.PATH ?? "").split(":");
@@ -30,31 +31,26 @@ export function isBinDirAhead(): boolean {
   }
 }
 
-const EnvFlagSchema = z.enum(["1", "true", "yes"]).optional().catch(undefined);
+const EnvFlagSchema = z.stringbool().optional();
+
+function envFlag(name: string): boolean {
+  return EnvFlagSchema.parse(process.env[name]) === true;
+}
 
 export function isNixPackaged(): boolean {
-  if (EnvFlagSchema.parse(process.env.TOKENMAXXING_NIX) != null) return true;
-  try {
-    return realpathSync(Bun.main).startsWith("/nix/store/");
-  } catch {
-    return false;
-  }
+  return envFlag("TOKENMAXXING_NIX") || realpathSync(Bun.main).startsWith("/nix/store/");
 }
 
 export function skipImperativeTimer(): boolean {
-  return EnvFlagSchema.parse(process.env.TOKENMAXXING_SKIP_TIMER) != null;
+  return envFlag("TOKENMAXXING_SKIP_TIMER");
 }
 
 function isNixStorePath(path: string): boolean {
   return path === "/nix/store" || path.startsWith("/nix/store/");
 }
 
-function isEacces(e: unknown): boolean {
-  return typeof e === "object" && e != null && "code" in e && e.code === "EACCES";
-}
-
 function cannotWriteRcTarget(target: string): boolean {
-  if (EnvFlagSchema.parse(process.env.TOKENMAXXING_SKIP_SHELL_RC) != null) return true;
+  if (envFlag("TOKENMAXXING_SKIP_SHELL_RC")) return true;
   if (isNixStorePath(target)) return true;
   if (!existsSync(target)) return false;
   try {
@@ -138,9 +134,7 @@ function withoutOurCodexStopHooks(groups: { hooks: { type?: string; command?: st
 }
 
 export function installCodexStopHook(): void {
-  const current = existsSync(codexPaths.hooksJson)
-    ? CodexHooksFileSchema.parse(JSON.parse(readFileSync(codexPaths.hooksJson, "utf8")))
-    : CodexHooksFileSchema.parse({});
+  const current = readJson(codexPaths.hooksJson, CodexHooksFileSchema) ?? CodexHooksFileSchema.parse({});
   const next = {
     ...current,
     hooks: {
@@ -156,8 +150,8 @@ export function installCodexStopHook(): void {
 }
 
 export function uninstallCodexStopHook(): void {
-  if (!existsSync(codexPaths.hooksJson)) return;
-  const current = CodexHooksFileSchema.parse(JSON.parse(readFileSync(codexPaths.hooksJson, "utf8")));
+  const current = readJson(codexPaths.hooksJson, CodexHooksFileSchema);
+  if (!current) return;
   const next = {
     ...current,
     hooks: {
@@ -180,7 +174,7 @@ export function installCodexSupervisor(): void {
 
 export function uninstallCodexSupervisor(): void {
   uninstallCodexStopHook();
-  if (existsSync(codexSupervisorLink())) rmSync(codexSupervisorLink(), { force: true });
+  rmSync(codexSupervisorLink(), { force: true });
 }
 
 const LAUNCHD_LABEL = "com.tokenmaxxing.check";
@@ -330,8 +324,8 @@ function uninstallCheckTimer(): boolean {
 }
 
 export function shellRcPath(): string | null {
-  const override = process.env.TOKENMAXXING_SHELL_RC;
-  if (override && override.length > 0) return override;
+  const override = envOverride("TOKENMAXXING_SHELL_RC");
+  if (override !== undefined) return override;
   const shell = basename(process.env.SHELL ?? "");
   if (shell === "zsh") return join(process.env.ZDOTDIR || HOME, ".zshrc");
   if (shell === "bash") return join(HOME, ".bashrc");
@@ -339,6 +333,16 @@ export function shellRcPath(): string | null {
 }
 
 const PATH_LINE_MARK = "# tokenmaxxing PATH";
+
+function writeRcOrSkip(target: string, body: string): "added" | "skipped" {
+  try {
+    writeFileAtomic(target, body, statSync(target).mode & 0o777);
+  } catch (e) {
+    if (errnoCode(e) === "EACCES") return "skipped";
+    throw e;
+  }
+  return "added";
+}
 
 export function ensurePathInRc(rc: string): "added" | "present" | "skipped" {
   const dir = paths.binDir.startsWith(`${HOME}/`) ? `$HOME${paths.binDir.slice(HOME.length)}` : paths.binDir;
@@ -352,13 +356,7 @@ export function ensurePathInRc(rc: string): "added" | "present" | "skipped" {
     const body = kept.join("\n");
     const sep0 = body === "" || body.endsWith("\n") ? "" : "\n";
     const addition = kept.some(isCurrentExport) ? "" : `export PATH="${dir}:$PATH" ${PATH_LINE_MARK}\n`;
-    try {
-      writeFileAtomic(target, `${body}${sep0}${addition}`, statSync(target).mode & 0o777);
-    } catch (e) {
-      if (isEacces(e)) return "skipped";
-      throw e;
-    }
-    return "added";
+    return writeRcOrSkip(target, `${body}${sep0}${addition}`);
   }
   if (lines.some(isCurrentExport)) return "present";
   if (cannotWriteRcTarget(target)) return "skipped";
@@ -366,18 +364,13 @@ export function ensurePathInRc(rc: string): "added" | "present" | "skipped" {
   try {
     appendFileSync(target, `${sep}export PATH="${dir}:$PATH" ${PATH_LINE_MARK}\n`);
   } catch (e) {
-    if (isEacces(e)) return "skipped";
+    if (errnoCode(e) === "EACCES") return "skipped";
     throw e;
   }
   return "added";
 }
 
-const ShellShadowerSchema = z.object({
-  kind: z.enum(["shadow", "bypass"]),
-  name: z.string(),
-  line: z.string(),
-});
-export type ShellShadower = z.infer<typeof ShellShadowerSchema>;
+export type ShellShadower = { kind: "shadow" | "bypass"; name: string; line: string };
 
 export function findClaudeShadowers(rcText: string): ShellShadower[] {
   const out: ShellShadower[] = [];
@@ -388,14 +381,14 @@ export function findClaudeShadowers(rcText: string): ShellShadower[] {
     const alias = line.match(/^alias\s+([A-Za-z0-9_-]+)=(.*)$/);
     if (alias) {
       if (alias[1] === "claude") {
-        out.push(ShellShadowerSchema.parse({ kind: "shadow", name: "claude", line }));
+        out.push({ kind: "shadow", name: "claude", line });
       } else if (absClaude.test(alias[2]!)) {
-        out.push(ShellShadowerSchema.parse({ kind: "bypass", name: alias[1]!, line }));
+        out.push({ kind: "bypass", name: alias[1]!, line });
       }
       continue;
     }
     if (/^(?:function\s+)?claude\s*\(\)/.test(line)) {
-      out.push(ShellShadowerSchema.parse({ kind: "shadow", name: "claude", line }));
+      out.push({ kind: "shadow", name: "claude", line });
     }
   }
   return out;
@@ -408,25 +401,16 @@ export function removePathFromRc(rc: string): boolean {
   const kept = lines.filter((line) => !line.includes(PATH_LINE_MARK));
   if (kept.length === lines.length) return false;
   if (cannotWriteRcTarget(target)) return false;
-  try {
-    writeFileAtomic(target, kept.join("\n"), statSync(target).mode & 0o777);
-  } catch (e) {
-    if (isEacces(e)) return false;
-    throw e;
-  }
-  return true;
+  return writeRcOrSkip(target, kept.join("\n")) === "added";
 }
 
-const UninstallOutcomeSchema = z.object({ timerDeactivated: z.boolean(), pathLineRemoved: z.boolean() });
-export type UninstallOutcome = z.infer<typeof UninstallOutcomeSchema>;
+export type UninstallOutcome = { timerDeactivated: boolean; pathLineRemoved: boolean };
 
 export function uninstallSupervisor(): UninstallOutcome {
   uninstallSettings();
   const timerDeactivated = uninstallCheckTimer();
   uninstallCodexSupervisor();
-  for (const f of [paths.supervisorLink, join(paths.binDir, "xx"), installedBin()]) {
-    if (existsSync(f)) rmSync(f, { force: true });
-  }
+  for (const f of [paths.supervisorLink, join(paths.binDir, "xx"), installedBin()]) rmSync(f, { force: true });
   const rc = shellRcPath();
   const pathLineRemoved = rc != null && removePathFromRc(rc);
   return { timerDeactivated, pathLineRemoved };

@@ -1,8 +1,8 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { Mutex } from "es-toolkit";
 import { z } from "zod";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import pkg from "../../package.json" with { type: "json" };
 import { cmdLs } from "../cli/ls.ts";
 import { cmdStatus } from "../cli/status.ts";
 import { cmdDoctor } from "../cli/doctor.ts";
@@ -10,63 +10,38 @@ import { cmdConfig } from "../cli/config.ts";
 import { cmdSwitch } from "../cli/switch.ts";
 import { cmdCodexSwitch } from "../cli/codexswitch.ts";
 import { cmdCheck } from "../cli/check.ts";
+import { errorMessage } from "../lib/errors.ts";
+import { redact } from "../lib/log.ts";
+import { ambientStoreDir } from "../lib/paths.ts";
 
 const MUTATIONS_ENV = "TOKENMAXXING_AGENT_MUTATIONS";
-const PACKAGE_ROOT = join(import.meta.dir, "../..");
-
-function packageVersion(): string {
-  try {
-    const raw = JSON.parse(readFileSync(join(PACKAGE_ROOT, "package.json"), "utf8")) as { version?: string };
-    return raw.version ?? "0.0.0";
-  } catch {
-    return "0.0.0";
-  }
-}
-
-export function refuseAmbientStoreEnv(): string | null {
-  const nonEmpty = (v: string | undefined) => (v != null && v !== "" ? v : null);
-  return nonEmpty(process.env.CLAUDE_SECURESTORAGE_CONFIG_DIR) ?? nonEmpty(process.env.CLAUDE_CONFIG_DIR);
-}
-
-export function scrubSecrets(text: string): string {
-  return text
-    .replace(/\b(Bearer\s+)[A-Za-z0-9._\-+/=]+/gi, "$1[redacted]")
-    .replace(/\b(sk-ant-[A-Za-z0-9_-]+)\b/g, "[redacted]")
-    .replace(/\b(accessToken|refreshToken|claudeAiOauth)\b\s*[:=]\s*["']?[^"'}\s,]+/gi, "$1=[redacted]");
-}
 
 type CaptureResult = { code: number; stdout: string; stderr: string };
 
-let captureChain: Promise<unknown> = Promise.resolve();
+const captureGate = new Mutex();
 
 export async function captureCli(run: () => number | Promise<number>): Promise<CaptureResult> {
-  const job = async (): Promise<CaptureResult> => {
-    const out: string[] = [];
-    const err: string[] = [];
-    const joinArgs = (args: unknown[]) => args.map((a) => (typeof a === "string" ? a : String(a))).join(" ");
-    const log = console.log;
-    const error = console.error;
-    console.log = (...args: unknown[]) => { out.push(joinArgs(args)); };
-    console.error = (...args: unknown[]) => { err.push(joinArgs(args)); };
-    try {
-      const code = await run();
-      return { code, stdout: out.join("\n"), stderr: err.join("\n") };
-    } finally {
-      console.log = log;
-      console.error = error;
-    }
-  };
-  const next = captureChain.then(job, job);
-  captureChain = next.then(
-    () => undefined,
-    () => undefined,
-  );
-  return next;
+  await captureGate.acquire();
+  const out: string[] = [];
+  const err: string[] = [];
+  const joinArgs = (args: unknown[]) => args.map((a) => (typeof a === "string" ? a : String(a))).join(" ");
+  const log = console.log;
+  const error = console.error;
+  console.log = (...args: unknown[]) => { out.push(joinArgs(args)); };
+  console.error = (...args: unknown[]) => { err.push(joinArgs(args)); };
+  try {
+    const code = await run();
+    return { code, stdout: out.join("\n"), stderr: err.join("\n") };
+  } finally {
+    console.log = log;
+    console.error = error;
+    captureGate.release();
+  }
 }
 
 function textResult(input: { text: string; isError?: boolean }) {
   return {
-    content: [{ type: "text" as const, text: scrubSecrets(input.text) }],
+    content: [{ type: "text" as const, text: redact(input.text) }],
     ...(input.isError ? { isError: true } : {}),
   };
 }
@@ -120,7 +95,7 @@ Prefer these tools over raw shell for pool ops. Honor TOKENMAXXING_HOME for herm
 export function createTokenmaxxingMcpServer(): McpServer {
   const server = new McpServer({
     name: "tokenmaxxing",
-    version: packageVersion(),
+    version: pkg.version,
   });
 
   server.registerTool(
@@ -256,10 +231,10 @@ export function createTokenmaxxingMcpServer(): McpServer {
 }
 
 export async function main(): Promise<void> {
-  const ambient = refuseAmbientStoreEnv();
+  const ambient = ambientStoreDir();
   if (ambient != null) {
     console.error(
-      `CLAUDE_CONFIG_DIR / CLAUDE_SECURESTORAGE_CONFIG_DIR is set (${ambient}): the pooled MCP surface requires the default Claude Code credential store. Unset it and retry.`,
+      `CLAUDE_CONFIG_DIR / CLAUDE_SECURESTORAGE_CONFIG_DIR is set (${ambient.value}): the pooled MCP surface requires the default Claude Code credential store. Unset it and retry.`,
     );
     process.exit(1);
   }
@@ -271,7 +246,7 @@ export async function main(): Promise<void> {
 
 if (import.meta.main) {
   main().catch((e) => {
-    console.error(e instanceof Error ? e.message : String(e));
+    console.error(errorMessage(e));
     process.exit(1);
   });
 }

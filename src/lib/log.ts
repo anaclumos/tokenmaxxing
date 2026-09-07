@@ -1,12 +1,14 @@
-import { appendFileSync, existsSync, mkdirSync, renameSync, statSync } from "node:fs";
+import { appendFileSync, mkdirSync, renameSync, statSync } from "node:fs";
 import { dirname } from "node:path";
 import { z } from "zod";
 import { paths } from "./paths.ts";
 
 const LOG_MAX_BYTES = 5_000_000;
 
-function redact(s: string): string {
+export function redact(s: string): string {
   return s
+    .replace(/\b(Bearer\s+)[A-Za-z0-9._\-+/=]+/gi, "$1[redacted]")
+    .replace(/\b(accessToken|refreshToken|claudeAiOauth)\b\s*[:=]\s*["']?[^"'}\s,]+/gi, "$1=[redacted]")
     .replace(/\b(sk-ant-[A-Za-z0-9._-]{6,})/g, "sk-ant-***")
     .replace(/\b([A-Za-z0-9_-]{40,})\b/g, (m) => `${m.slice(0, 4)}...(${m.length})`);
 }
@@ -28,7 +30,7 @@ export function log(event: string, fields: Record<string, unknown> = {}): void {
       })
       .join(" ");
     mkdirSync(dirname(paths.logFile), { recursive: true });
-    if (existsSync(paths.logFile) && statSync(paths.logFile).size > LOG_MAX_BYTES) {
+    if ((statSync(paths.logFile, { throwIfNoEntry: false })?.size ?? 0) > LOG_MAX_BYTES) {
       renameSync(paths.logFile, `${paths.logFile}.old`);
     }
     appendFileSync(paths.logFile, `${new Date().toISOString()} ${event} ${line}\n`);

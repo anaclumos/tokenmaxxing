@@ -123,3 +123,50 @@ Goal: ship 1.13.1 so the active account's status row can never silently show a s
 - [x] Review round 5 (cubic P2): `checkDelayMs` paces from the same freshest sample as the decision, so a newer near-limit record tightens the cadence even while an older low tee is inside the TTL
 - [ ] CI green, window elapsed from the last push, every reviewer finding handled
 - [ ] Merge, `gh release create v1.13.1`, `npm view tokenmaxxing version` reads 1.13.1, teardown
+
+Dated 2026-09-07. Diet pass: hand-shipped code replaced by natives, installed dependencies, and shared helpers (branch t3code/audit-native-capabilities).
+
+Natives and installed dependencies
+
+- [x] Five hand-rolled stdin readers become `Bun.stdin.text()`
+- [x] `storePinnedAwayFromFile` parses config.toml with `Bun.TOML.parse` and a zod schema; a malformed file throws
+- [x] `packageVersion()` becomes a JSON import of package.json (`resolveJsonModule` added to tsconfig); the "0.0.0" fallback is gone
+- [x] `spawnClaudeBounded` uses `Bun.spawn` `timeout` and `killSignal` instead of a kill timer
+- [x] `writeFileAtomic` writes with `writeFileSync(fd, data)` instead of a short-write loop
+- [x] One config schema with `.default()` leaves and `.prefault({})` sections replaces `DEFAULT_CONFIG`, `ConfigFileSchema`, `mergeConfigFile`, and `MergeOutcome`; `config set|unset` validate through it; `config tidy` rebuilds the file from `KNOWN_KEYS` so defaults never land in the file
+- [x] `EnvFlagSchema` becomes `z.stringbool()`
+- [x] `main.ts` parses flags with `util.parseArgs`; `--codex`, `--json`, `--ping`, `--count`, `--if-due`, `--all`, `-h` are declared once; `cmdCheck`, `cmdAuth`, and `cmdRename` take parsed inputs
+- [x] ky runs with `throwHttpErrors` on; callers classify `HTTPError` by status and `error.data`, and `NetworkError`/`TimeoutError` as unreachable
+- [x] `captureCli` serializes with es-toolkit `Mutex`
+- [x] `makeUsagePaint` gets its escape code from `Bun.color` (256-color indices follow Bun's quantization; truecolor bytes unchanged)
+- [x] Temporal for the reset-clock math: not applied. Bun 1.4.2 ships `Temporal` at runtime but neither bun-types 1.3.14 nor TypeScript 5.9 declares it, so the swap would add a hand-written ambient type. `Intl` stays.
+- [x] es-toolkit `retry` for the usage probe: not applied. `retry` needs a throwing function and sleeps after the final failure, so the null-returning probe would gain a sentinel error and a trailing delay.
+
+Reuse
+
+- [x] `readJson`, `tryReadJson`, `parseJson`, and `tryParseJson` (`src/lib/json.ts`) replace the loader family and the JSON IIFEs
+- [x] One env override reader in paths.ts (`envOverride`) replaces four schema copies and the ad hoc forms; `keychainNames()` resolves the account name at use instead of defaulting to "unknown"
+- [x] `errnoCode(e)` replaces the three errno idioms (`src/lib/errors.ts`)
+- [x] `errorMessage(e)` replaces the 42 ternaries
+- [x] `parseBlob` is exported from credstore and used at every inline site
+- [x] `ensureLiveTokenFresh({ skewMs })` in swap.ts replaces the three refresh-under-lock blocks
+- [x] `resolveRealBin` and `verifyRealBin` replace the Claude/Codex twins; codexbin.ts merged into claudebin.ts and removed; PATH scan through `Bun.which`
+- [x] `upsertAccount`/`importedAccount` and `upsertCodexAccount`/`importedCodexAccount` replace the init/add literals
+- [x] `codexswitch` uses `findCodexAccount`; `switchReporter` in render.ts is shared by both switch commands
+- [x] Ambient store check (`ambientStoreDir`), redaction (`redact` in log.ts), `POST_SWAP_COOLDOWN_MS`, the marker-watch race (`awaitExitOrMarker` in proc.ts), and `liveUsed` (picker.ts) each have one definition
+
+Delete
+
+- [x] Type-only zod schemas become `type` declarations; `.parse` on self-built literals removed
+- [x] Codex dead grants classify on the structured `error` / `error.code` / `error.type`; `SampleOutcome` carries `probeSilent` instead of matching reason text
+- [x] Env overrides no longer `.catch(undefined)`: a set-but-empty value throws at boot; `expires_in` is required; `wrapperEntryRateTripped` and `readTranscriptTail` swallow only ENOENT
+- [x] `usage.json` and `model-usage.json` throw on corrupt content like their siblings; `nextcheck.json` keeps its documented "corrupt means due now"
+- [x] `withClaudeRefreshLock` options bag, `existsSync` before `rmSync(force)`, the COLORTERM no-op parses, and the `readCodexAuthAt` double parse removed
+- [ ] `docs/lib/cn.ts` (no importers) and the `cnfast` dependency: deletion is the owner's call (hook ruling); the file was restored after an unapproved `git rm`
+- [x] Statusline and hook stdin `.catch(undefined)` rationale and the corrupt-file policy recorded in AGENTS.md and `.memory/diet-natives-over-hand-shipped.md`
+- [ ] Bun.secrets for keychain.ts: not applied. The Keychain ACL of items written by the `security` binary needs a live Mac test before the bun binary reads them; headless launchd runs cannot answer the access dialog. Owner call.
+
+Verification
+
+- [x] `bun run typecheck` clean
+- [x] Hermetic runs under a throwaway `TOKENMAXXING_HOME` with `TOKENMAXXING_CLAUDE_JSON` and `TOKENMAXXING_CLAUDE_SETTINGS` redirected: help, -h, config, config set/get/unset/tidy, config set with a refine violation, unknown key, ls and ls --json, doctor --json (11 of 13 fail on a fresh dir, as expected), status --json, status --count without --ping (exit 2), unknown flag (exit 2), check --json and check --if-due, statusline in truecolor and no-color, subagent statusline, corrupt and off-schema accounts.json (both throw with the path), empty TOKENMAXXING_HOME (throws at boot), ambient CLAUDE_CONFIG_DIR (refused)
