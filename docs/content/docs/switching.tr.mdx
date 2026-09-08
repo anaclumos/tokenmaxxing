@@ -58,7 +58,7 @@ Hook, o hesap için uygulanan pencereyi 100 olarak damgalar ve hesaba sunucu tar
 
 Bir başarısızlık yalnızca geçiş sonrası kimlik bilgisiyle gerçekleştiği kanıtlanabildiğinde sayılır: geçişten sonraki bir yeniden başlatma ya da geçiş artı bekleme süresinden sonra düşen başarısız bir istek. Aynı koltuktaki biriktirilmiş bir sıfırlama, yalnızca 5 saatlik pencereyi temizlediğinden, yalnızca oturum limiti başarısızlıkları için bir koltuk değişikliği sayılır. Hız limiti reddi isteğin başında geldiğinden, tur ne kadar sürmüş olursa olsun çıpa hata satırının kendi zamanıdır. Tek bir yeniden tetikleme dizisinin, hâlâ eski bir token tutan bir isteğin taze koltuğu damgalaması olmadan birkaç yanmış hesabı geçebilmesini sağlayan da budur.
 
-## Biriktirilmiş sıfırlamalar
+## Biriktirilmiş sıfırlamalar [#banked-resets]
 
 Her iki CLI de aynı hesapta dolan bir limiti sıfırlayabilir. Claude Code'un `/limit-reset` komutu 5 saatlik pencereyi haftada bir sıfırlar ve sıfırlanan pencere yine de haftalık limite sayılır. Codex'in biriktirilmiş sıfırlaması, 5 saatlik ve haftalık pencereleri birlikte tazeleyen, saklanmış tek seferlik bir sıfırlamadır. Bir sıfırlama koltuğu korur, onunla birlikte bir geçişin sıfırdan başlattığı organizasyon başına istem önbelleğini de korur; bu yüzden `policy.preferToUseBankedReset` (varsayılan `[]`), geçişten önce bir sıfırlama harcayan sağlayıcıları listeler. Açgözlü yol değişmez: basamakların altında koltuk hâlâ kendi haftalık temposunun en gerisinde kalan hesaba doğru hareket eder.
 

@@ -58,7 +58,7 @@ El hook marca al 100 la ventana impuesta para esa cuenta y le fija un límite de
 
 Un fallo solo cuenta cuando se puede probar que ocurrió sobre la credencial posterior al cambio: un relanzamiento tras el cambio, o una solicitud fallida que aterrizó después del cambio más el enfriamiento. Un restablecimiento reservado en el mismo asiento cuenta como un cambio de asiento solo para los fallos de límite de sesión, ya que no borra nada más que la ventana de 5 horas. Un rechazo por límite de tasa llega al inicio de la solicitud, así que el ancla es la hora de la propia fila de error, por mucho que haya durado el turno. Eso es lo que permite que una secuencia de redisparos atraviese varias cuentas quemadas sin que una solicitud que todavía sostiene un token antiguo marque el asiento fresco.
 
-## Restablecimientos reservados
+## Restablecimientos reservados [#banked-resets]
 
 Ambas CLI pueden restablecer un límite alcanzado en la misma cuenta. El `/limit-reset` de Claude Code restablece la ventana de 5 horas una vez por semana, y la ventana restablecida sigue contando para el límite semanal. El restablecimiento reservado de Codex es un restablecimiento de un solo uso guardado que refresca juntas las ventanas de 5 horas y semanal. Un restablecimiento conserva el asiento, y con él la caché de prompts por organización que un cambio arranca en frío, así que `policy.preferToUseBankedReset` (por defecto `[]`) enumera los proveedores que gastan un restablecimiento antes de cambiar. El camino voraz no cambia: por debajo de los peldaños, el asiento sigue moviéndose hacia la cuenta más atrasada respecto a su ritmo semanal.
 

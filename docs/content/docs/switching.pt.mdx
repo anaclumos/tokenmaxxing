@@ -58,7 +58,7 @@ O hook carimba a janela imposta em 100 para aquela conta e fixa nela um limite d
 
 Uma falha só conta quando é comprovável que aconteceu na credencial pós-troca: uma reinicialização depois da troca, ou uma requisição malsucedida que chegou depois da troca mais o cooldown. Uma redefinição reservada no mesmo lugar conta como uma troca de lugar somente para falhas de limite de sessão, já que ela não limpa nada além da janela de 5 horas. Uma recusa por limite de taxa chega no início da requisição, então o horário da própria linha de erro é a âncora, por mais longo que o turno tenha sido. É isso que permite que uma sequência de disparos sucessivos atravesse várias contas queimadas sem que uma requisição ainda segurando um token antigo carimbe o lugar novo.
 
-## Redefinições reservadas
+## Redefinições reservadas [#banked-resets]
 
 As duas CLIs podem redefinir um limite atingido na mesma conta. O `/limit-reset` do Claude Code redefine a janela de 5 horas uma vez por semana, e a janela redefinida continua contando para o limite semanal. A redefinição reservada do Codex é uma redefinição única guardada que atualiza juntas as janelas de 5 horas e semanal. Uma redefinição mantém o lugar e, com ele, o cache de prompt por organização que uma troca inicia a frio, então `policy.preferToUseBankedReset` (padrão `[]`) lista os provedores que gastam uma redefinição antes de trocar. O caminho guloso não muda: abaixo dos degraus, o lugar continua se movendo em direção à conta mais atrasada em relação ao seu ritmo semanal.
 

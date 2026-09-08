@@ -58,7 +58,7 @@ Tinatatakan ng hook ang ipinatupad na window sa 100 para sa account na iyon at i
 
 Binibilang lamang ang isang pagkabigo kapag napatunayang nangyari ito sa credential pagkatapos ng pagpapalit: isang relaunch matapos ang pagpapalit, o isang nabigong request na dumating matapos ang pagpapalit kasama ang cooldown. Ang isang naka-imbak na reset sa parehong upuan ay itinuturing na pagpapalit ng upuan para lamang sa mga pagkabigo sa limitasyon ng session, dahil wala itong nililinis kundi ang 5-oras na window. Dumarating ang isang rate-limit na pagtanggi sa simula ng request, kaya't ang oras mismo ng error row ang angkla, gaano man katagal tumakbo ang turn. Iyon ang nagpapahintulot sa isang retrigger sequence na tumawid sa ilang nasunog na account nang walang request na may hawak pang lumang token na tatatak sa sariwang upuan.
 
-## Mga naka-imbak na reset
+## Mga naka-imbak na reset [#banked-resets]
 
 Parehong CLI ay maaaring mag-reset ng isang limitasyong natamaan sa parehong account. Ang `/limit-reset` ng Claude Code ay nagre-reset ng 5-oras na window nang isang beses sa isang linggo, at ang na-reset na window ay patuloy pa ring binibilang tungo sa lingguhang limitasyon. Ang naka-imbak na reset ng Codex ay isang naka-imbak na reset na minsan lamang, na nagsasariwa nang magkasabay sa 5-oras at lingguhang window. Pinapanatili ng isang reset ang upuan, at kasama nito ang per-organization na prompt cache na kino-cold-start ng isang pagpapalit, kaya't inililista ng `policy.preferToUseBankedReset` (default na `[]`) ang mga provider na gumagastos ng isang reset bago lumipat. Hindi nagbabago ang greedy path: sa ilalim ng mga rung, patuloy pa ring gumagalaw ang upuan tungo sa account na pinakanahuhuli sa sarili nitong lingguhang bilis.
 

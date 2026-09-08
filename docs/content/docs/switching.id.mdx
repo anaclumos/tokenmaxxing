@@ -58,7 +58,7 @@ Hook itu menstempel jendela yang dipaksakan pada angka 100 untuk akun tersebut d
 
 Sebuah kegagalan hanya dihitung bila terbukti terjadi pada kredensial pasca-pertukaran: sebuah peluncuran ulang setelah pertukaran, atau permintaan gagal yang mendarat setelah pertukaran ditambah cooldown-nya. Sebuah reset tersimpan pada kursi yang sama dihitung sebagai perubahan kursi hanya untuk kegagalan batas-sesi, karena ia tidak menghapus apa pun selain jendela 5 jam. Penolakan batas-laju tiba di awal permintaan, jadi waktu pada baris error itu sendirilah yang menjadi jangkarnya, seberapa lama pun giliran itu berjalan. Itulah yang membuat satu rangkaian pemicu-ulang bisa melintasi beberapa akun yang sudah terbakar tanpa ada permintaan yang masih memegang token lama menstempel kursi yang segar.
 
-## Reset tersimpan
+## Reset tersimpan [#banked-resets]
 
 Kedua CLI dapat mereset sebuah batas yang tertabrak pada akun yang sama. `/limit-reset` milik Claude Code mereset jendela 5 jam sekali seminggu, dan jendela yang direset itu tetap dihitung ke arah batas mingguan. Reset tersimpan milik Codex adalah sebuah reset sekali-pakai yang disimpan, yang menyegarkan jendela 5 jam dan jendela mingguan sekaligus. Sebuah reset mempertahankan kursi, dan bersamanya cache prompt per-organisasi yang justru dimulai dingin oleh sebuah pertukaran, sehingga `policy.preferToUseBankedReset` (default `[]`) mendaftar penyedia yang menghabiskan sebuah reset sebelum berpindah. Jalur rakus tidak berubah: di bawah anak tangga, kursi tetap bergerak ke arah akun yang paling tertinggal dari laju mingguannya.
 

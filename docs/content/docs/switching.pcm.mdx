@@ -58,7 +58,7 @@ The hook dey stamp the enforced window as 100 for dat account and e dey pin one 
 
 One failure dey count only when e clear say na for the post-swap credential e happen: one relaunch after the swap, or one request wey fail wey land after the swap plus the cooldown. One banked reset for the same seat dey count as one seat change only for session-limit failures, since na only the 5-hour window e dey clear, nothing else. One rate-limit refusal dey arrive for request start, so na the error row im own time be the anchor, no matter how long the turn run. Na dat one dey make one retrigger sequence fit cross plenty burnt accounts without one request wey still dey hold old token go stamp the fresh seat.
 
-## Banked resets
+## Banked resets [#banked-resets]
 
 Both CLIs fit reset one limit wey dem hit for the same account. Claude Code im `/limit-reset` dey reset the 5-hour window once every week, and the window wey dem reset still dey count toward the weekly limit. Codex im banked reset na one saved one-time reset wey dey refresh the 5-hour and weekly windows together. One reset dey keep the seat, and with am, the per-organization prompt cache wey one swap go cold-start, so `policy.preferToUseBankedReset` (default `[]`) dey list the providers wey go spend one reset before dem swap. The greedy path no change: under the rungs, the seat still dey move toward the account wey dey furthest behind im weekly pace.
 

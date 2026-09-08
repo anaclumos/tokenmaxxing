@@ -58,7 +58,7 @@ Le hook marque la fenêtre concernée à 100 pour ce compte et lui épingle une 
 
 Un échec ne compte que s'il s'est manifestement produit sur l'identifiant d'après-bascule : un relancement après la bascule, ou une requête en échec arrivée après la bascule plus le délai de récupération. Une réinitialisation réservée sur la même place compte comme un changement de place uniquement pour les échecs de limite de session, puisqu'elle n'efface rien d'autre que la fenêtre de 5 heures. Un refus pour limite de débit arrive au début de la requête, c'est donc l'heure propre de la ligne d'erreur qui sert de repère, quelle qu'ait été la durée du tour. C'est ce qui permet à une même séquence de redéclenchements de traverser plusieurs comptes épuisés sans qu'une requête tenant encore un ancien jeton vienne marquer la place fraîche.
 
-## Réinitialisations réservées
+## Réinitialisations réservées [#banked-resets]
 
 Les deux CLI peuvent réinitialiser une limite atteinte sur le même compte. Le `/limit-reset` de Claude Code réinitialise la fenêtre de 5 heures une fois par semaine, et la fenêtre réinitialisée compte tout de même dans la limite hebdomadaire. La réinitialisation réservée de Codex est une réinitialisation à usage unique mise de côté qui rafraîchit ensemble les fenêtres de 5 heures et hebdomadaire. Une réinitialisation conserve la place, et avec elle le cache d'invites par organisation qu'une bascule démarre à froid, si bien que `policy.preferToUseBankedReset` (par défaut `[]`) énumère les fournisseurs qui dépensent une réinitialisation avant de basculer. Le chemin glouton reste inchangé : sous les échelons, la place continue de se déplacer vers le compte le plus en retard sur son rythme hebdomadaire.
 

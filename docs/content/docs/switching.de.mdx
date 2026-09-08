@@ -58,7 +58,7 @@ Der Hook stempelt das erzwungene Fenster für dieses Konto auf 100 und heftet de
 
 Ein Fehler zählt nur, wenn er nachweislich auf der Anmeldeinformation nach dem Wechsel passiert ist: bei einem Neustart nach dem Wechsel oder bei einer fehlgeschlagenen Anfrage, die nach dem Wechsel plus Abkühlzeit eintraf. Eine gespeicherte Zurücksetzung auf demselben Platz zählt nur bei Sitzungslimit-Fehlern als Platzwechsel, da sie nichts außer dem 5-Stunden-Fenster löscht. Eine Ratenbegrenzungsablehnung trifft zu Beginn der Anfrage ein, also ist die eigene Zeit der Fehlerzeile der Anker, wie lange der Zug auch lief. Genau das lässt eine Folge von Neuauslösungen mehrere verbrannte Konten durchlaufen, ohne dass eine Anfrage, die noch ein altes Token hält, den frischen Platz stempelt.
 
-## Gespeicherte Zurücksetzungen
+## Gespeicherte Zurücksetzungen [#banked-resets]
 
 Beide CLIs können ein erreichtes Limit auf demselben Konto zurücksetzen. Claude Codes `/limit-reset` setzt das 5-Stunden-Fenster einmal pro Woche zurück, und das zurückgesetzte Fenster zählt weiterhin auf das Wochenlimit. Codex' gespeicherte Zurücksetzung ist eine aufbewahrte einmalige Zurücksetzung, die das 5-Stunden- und das Wochenfenster gemeinsam auffrischt. Eine Zurücksetzung behält den Platz und mit ihm den Prompt-Cache pro Organisation, den ein Wechsel kalt startet, daher listet `policy.preferToUseBankedReset` (Standard `[]`) die Anbieter auf, die eine Zurücksetzung ausgeben, bevor gewechselt wird. Der greedy-Pfad bleibt unverändert: Unterhalb der Stufen bewegt sich der Platz weiterhin zu dem Konto, das seinem Wochentempo am weitesten hinterherhinkt.
 

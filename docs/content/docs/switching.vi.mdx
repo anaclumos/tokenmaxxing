@@ -58,7 +58,7 @@ Hook đóng dấu cửa sổ bị thực thi ở mức 100 cho tài khoản đó
 
 Một lần thất bại chỉ được tính khi có thể chứng minh nó xảy ra trên thông tin xác thực sau hoán đổi: một lần khởi động lại sau lần hoán đổi, hoặc một yêu cầu thất bại rơi vào sau lần hoán đổi cộng thời gian hồi. Một lần đặt lại để dành trên cùng một chỗ ngồi chỉ được tính là một lần đổi chỗ ngồi đối với các lỗi giới hạn phiên, vì nó không xóa gì ngoài cửa sổ 5 giờ. Một lần từ chối vì giới hạn tốc độ đến ngay lúc yêu cầu bắt đầu, nên chính thời điểm của hàng lỗi mới là mốc neo, bất kể lượt đó đã chạy lâu đến đâu. Đó là điều cho phép một chuỗi kích hoạt lại đi qua nhiều tài khoản đã cháy mà không để một yêu cầu vẫn còn giữ token cũ đóng dấu lên chỗ ngồi mới.
 
-## Đặt lại để dành
+## Đặt lại để dành [#banked-resets]
 
 Cả hai CLI đều có thể đặt lại một giới hạn đã chạm tới trên cùng một tài khoản. `/limit-reset` của Claude Code đặt lại cửa sổ 5 giờ một lần mỗi tuần, và cửa sổ được đặt lại đó vẫn được tính vào giới hạn hàng tuần. Lần đặt lại để dành của Codex là một lần đặt lại dùng-một-lần đã được lưu, làm mới cả cửa sổ 5 giờ lẫn cửa sổ hàng tuần cùng lúc. Một lần đặt lại giữ nguyên chỗ ngồi, và cùng với nó là bộ nhớ đệm lời nhắc theo từng tổ chức mà một lần hoán đổi sẽ phải khởi động lại từ đầu, nên `policy.preferToUseBankedReset` (mặc định `[]`) liệt kê các nhà cung cấp sẽ dùng một lần đặt lại trước khi hoán đổi. Lối tham lam không thay đổi: dưới các nấc, chỗ ngồi vẫn di chuyển về phía tài khoản tụt lại xa nhất so với nhịp độ hàng tuần của nó.
 
