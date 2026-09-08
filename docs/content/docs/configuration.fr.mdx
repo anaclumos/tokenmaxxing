@@ -18,7 +18,8 @@ La configuration est du JSON dans `~/.config/tokenmaxxing/config.json`. Chaque c
     "switchModels": ["fable"],
     "usagePollTtlMs": 90000,
     "maxWaitMs": 3600000,
-    "checkIntervalMs": 60000
+    "checkIntervalMs": 60000,
+    "preferToUseBankedReset": []
   }
 }
 ```
@@ -34,5 +35,6 @@ La configuration est du JSON dans `~/.config/tokenmaxxing/config.json`. Chaque c
 - `policy.usagePollTtlMs` : durée pendant laquelle une interrogation `/usage` par modèle reste fraîche.
 - `policy.maxWaitMs` : la borne de l'attente automatique sur pool épuisé.
 - `policy.checkIntervalMs` : le tick de la vérification périodique (par défaut 60000, minimum 10000 car launchd ne lance pas une tâche plus d'une fois toutes les 10 secondes par défaut). `init` l'écrit, arrondi à la seconde supérieure, comme intervalle de la minuterie (sur Linux, l'`AccuracySec` systemd en vaut un douzième, avec un minimum d'une seconde), et chaque bande de marge en est un multiple : un tick près d'une barre, jusqu'à cinq ticks avec beaucoup de marge (voir [Cadence de vérification](/fr/switching)). Une attente sur épuisement et le délai de récupération post-bascule dorment plutôt jusqu'à leur propre échéance. La planification lit la nouvelle valeur à la vérification suivante, mais la minuterie installée conserve son ancien tick jusqu'à ce que vous relanciez `tokenmaxxing init`, et la tolérance sur l'heure d'échéance vaut la moitié du tick configuré, de sorte qu'un tick modifié n'est pleinement respecté qu'après cette relance. Avec une minuterie gérée par Nix, définissez `checkTimer.intervalSeconds` à la même valeur ; cette option a le même plancher de 10 secondes.
+- `policy.preferToUseBankedReset` : les fournisseurs (`"claude"`, `"codex"`, par défaut `[]`) dont la réinitialisation de limite réservée est dépensée avant que la place ne bascule. Le `/limit-reset` de Claude Code et la réinitialisation réservée de Codex rafraîchissent tous deux la fenêtre de 5 heures sur le même compte, ce qui garde chaud le cache d'invites par organisation qu'une bascule démarre à froid. Avec `claude` dans la liste, une place au-dessus de son échelon de session se maintient au lieu de basculer tant qu'une réinitialisation est jugée disponible et que le compte a de la place hebdomadaire pour une fenêtre de 5 heures de plus à son rythme mesuré (les points hebdomadaires que la dernière fenêtre de session complète a coûtés, appris à partir du tee de la statusline ; un compte non mesuré bascule comme avant), puis demande la réinitialisation au mur et continue sur place. La demande a lieu une fois par semaine par compte, et la fenêtre réinitialisée compte toujours dans la limite hebdomadaire. Avec `codex` dans la liste, une place codex roule jusqu'à son mur tant que le compte détient un crédit de réinitialisation, puis en consomme un, ce qui rafraîchit ensemble les fenêtres de 5 heures et hebdomadaire sans redémarrage. Voir [Réinitialisations réservées](/fr/switching#banked-resets) et [Prise en charge de Codex](/fr/codex).
 
 `tokenmaxxing config` affiche la configuration effective avec ses sources ; `config set`/`unset` modifient les clés à points ; `config tidy` élague les clés inconnues.

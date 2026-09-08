@@ -18,7 +18,8 @@ Config በ `~/.config/tokenmaxxing/config.json` JSON ነው። እያንዳን�
     "switchModels": ["fable"],
     "usagePollTtlMs": 90000,
     "maxWaitMs": 3600000,
-    "checkIntervalMs": 60000
+    "checkIntervalMs": 60000,
+    "preferToUseBankedReset": []
   }
 }
 ```
@@ -34,5 +35,6 @@ Config በ `~/.config/tokenmaxxing/config.json` JSON ነው። እያንዳን�
 - `policy.usagePollTtlMs`፦ የ `/usage` በ-ሞዴል poll ምን ያህል ጊዜ ትኩስ ሆኖ እንደሚቆይ።
 - `policy.maxWaitMs`፦ የተሟጠጠ-pool በራስ-ሰር ጥበቃ ገደብ።
 - `policy.checkIntervalMs`፦ የወቅታዊው ፍተሻ tick (ነባሪ 60000፣ ዝቅተኛው 10000፣ ምክንያቱም launchd በነባሪ አንድን ስራ በየ10 ሰከንዱ ከአንድ ጊዜ በላይ አያስነሳም)። `init` ወደ ሙሉ ሰከንዶች ወደ ላይ አጠጋግቶ እንደ timer ው ክፍተት ይጽፈዋል (በ Linux ላይ የ systemd `AccuracySec` የሱ አንድ አስራ ሁለተኛ ነው፣ ቢያንስ አንድ ሰከንድ)፣ እና እያንዳንዱ የክፍተት ባንድ የሱ ብዜት ነው፦ ከ bar አጠገብ አንድ tick፣ በቂ ክፍተት ሲኖር እስከ አምስት tick ([የፍተሻ ምት](/am/switching) ይመልከቱ)። የተሟጠጠ ጥበቃ እና የ post-swap cooldown ግን ወደ ራሳቸው የመጨረሻ ሰዓቶች ይተኛሉ። መርሃ ግብሩ አዲሱን ዋጋ በሚቀጥለው ፍተሻ ያነባል፣ ነገር ግን የተጫነው timer `tokenmaxxing init` ን እንደገና እስኪያሄዱ ድረስ አሮጌውን tick ይይዛል፣ እና የመድረሻ ሰዓቱ ልቅነት የተዋቀረው tick ግማሽ ነው፣ ስለዚህ የተቀየረ tick ሙሉ በሙሉ የሚከበረው ከዚያ ዳግም ማሄድ በኋላ ብቻ ነው። በ Nix-የሚተዳደር timer ሲኖር `checkTimer.intervalSeconds` ን ወደ ተመሳሳዩ ዋጋ ያዘጋጁ፤ ያ አማራጭ ተመሳሳይ የ10-ሰከንድ ወለል አለው።
+- `policy.preferToUseBankedReset`፦ ከመቀመጫ መቀያየር በፊት የተቀማጭ ዳግም ማስጀመሪያቸው የሚወጣ አቅራቢዎች (`"claude"`፣ `"codex"`፣ ነባሪ `[]`)። የ Claude Code `/limit-reset` እና የ Codex የተቀማጭ ዳግም ማስጀመሪያ ሁለቱም በተመሳሳይ መለያ ላይ የ5-ሰዓት መስኮቱን ያድሳሉ፣ ይህም መቀያየር በቀዝቃዛ በሚያስጀምርበት ቦታ የ-ድርጅት prompt cache ን ሙቅ አድርጎ ይይዛል። `claude` ተዘርዝሮ ሲኖር፣ ዳግም ማስጀመሪያ ይገኛል ተብሎ እስከሚታመን እና መለያው በተለካው ፍጥነቱ ለተጨማሪ አንድ የ5-ሰዓት መስኮት ሳምንታዊ ቦታ እስካለው ድረስ (ካለፈው ሙሉ session መስኮት ያስከፈለው ሳምንታዊ ነጥቦች፣ ከ statusline tee የተማሩ፤ ያልተለካ መለያ እንደበፊቱ ይቀየራል)፣ ከደረጃው በላይ ያለ መቀመጫ ከመቀያየር ይልቅ ይይዛል፣ ከዚያም ግድግዳው ላይ ዳግም ማስጀመሪያውን ጠይቆ በቦታው ይቀጥላል። claim በሳምንት አንድ ጊዜ በመለያ ነው፣ እና ዳግም የተጀመረው መስኮት አሁንም ወደ ሳምንታዊው ገደብ ይቆጠራል። `codex` ተዘርዝሮ ሲኖር፣ የ codex መቀመጫ reset credit መለያው እየያዘ ወደ ግድግዳው ይጋልባል፣ ከዚያም አንዱን ይጠቀማል፣ ይህም የ5-ሰዓቱን እና ሳምንታዊውን መስኮቶች ያለ ዳግም ማስጀመር በአንድ ላይ ያድሳል። [የተቀማጭ ዳግም ማስጀመሪያዎች](/am/switching#banked-resets) እና [Codex ድጋፍ](/am/codex) ይመልከቱ።
 
 `tokenmaxxing config` ተግባራዊ config ን ከምንጮች ጋር ያሳያል፤ `config set`/`unset` በነጥብ የተለዩ keyዎችን ያርትዑ፤ `config tidy` የማይታወቁ keyዎችን ያስወግዳል።

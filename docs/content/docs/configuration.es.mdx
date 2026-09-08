@@ -18,7 +18,8 @@ La configuración es JSON en `~/.config/tokenmaxxing/config.json`. Cada campo es
     "switchModels": ["fable"],
     "usagePollTtlMs": 90000,
     "maxWaitMs": 3600000,
-    "checkIntervalMs": 60000
+    "checkIntervalMs": 60000,
+    "preferToUseBankedReset": []
   }
 }
 ```
@@ -34,5 +35,6 @@ La configuración es JSON en `~/.config/tokenmaxxing/config.json`. Cada campo es
 - `policy.usagePollTtlMs`: cuánto tiempo permanece fresco un sondeo por modelo de `/usage`.
 - `policy.maxWaitMs`: el límite de la espera automática por grupo agotado.
 - `policy.checkIntervalMs`: el tick de la comprobación periódica (por defecto 60000, mínimo 10000 porque launchd no lanza un trabajo más de una vez cada 10 segundos por defecto). `init` lo escribe, redondeado hacia arriba a segundos enteros, como el intervalo del temporizador (en Linux el `AccuracySec` de systemd es un doceavo de ese valor, con un mínimo de un segundo), y cada banda de margen es un múltiplo suyo: un tick cerca de una barra, hasta cinco ticks con margen de sobra (consulta [Cadencia de comprobación](/es/switching)). Una espera por agotamiento y el enfriamiento posterior al cambio duermen en cambio hasta sus propios plazos. La programación lee el nuevo valor en la siguiente comprobación, pero el temporizador instalado conserva su tick anterior hasta que vuelvas a ejecutar `tokenmaxxing init`, y la holgura de la hora de vencimiento es la mitad del tick configurado, así que un tick cambiado solo se respeta del todo tras esa nueva ejecución. Con un temporizador gestionado por Nix, fija `checkTimer.intervalSeconds` al mismo valor; esa opción tiene el mismo mínimo de 10 segundos.
+- `policy.preferToUseBankedReset`: los proveedores (`"claude"`, `"codex"`, por defecto `[]`) cuyo restablecimiento de límite reservado se gasta antes de que el asiento cambie. El `/limit-reset` de Claude Code y el restablecimiento reservado de Codex refrescan ambos la ventana de 5 horas en la misma cuenta, lo que mantiene caliente la caché de prompts por organización que un cambio arranca en frío. Con `claude` en la lista, un asiento por encima de su peldaño de sesión se conserva en lugar de cambiar mientras se cree que hay un restablecimiento disponible y la cuenta tiene margen semanal para una ventana de 5 horas más a su ritmo medido (los puntos semanales que costó la última ventana de sesión completa, aprendidos del tee de la statusline; una cuenta sin medir cambia como antes), y luego reclama el restablecimiento en el muro y continúa en su sitio. La reclamación es una vez por semana por cuenta, y la ventana restablecida sigue contando para el límite semanal. Con `codex` en la lista, un asiento de codex cabalga hasta su muro mientras la cuenta tiene un crédito de restablecimiento, luego consume uno, lo que refresca juntas las ventanas de 5 horas y semanal sin reinicio. Ver [Restablecimientos reservados](/es/switching#banked-resets) y [Compatibilidad con Codex](/es/codex).
 
 `tokenmaxxing config` muestra la configuración efectiva con sus fuentes; `config set`/`unset` editan claves con puntos; `config tidy` poda claves desconocidas.

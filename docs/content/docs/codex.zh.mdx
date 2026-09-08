@@ -25,3 +25,4 @@ tokenmaxxing 用 codex 监督进程 shim 来处理这一点：Stop hook 在每�
 - Codex 刷新 token 会轮换，而重用已被取代的 token 会杀掉整个授权家族。每次轮换一返回就立即持久化，活动账户只通过活动数据块采样（绝不用陈旧的停放副本），而按会话的存在文件确保：正在活动兄弟会话中运行的账户绝不会成为切换目标，其停放 token 也绝不会被刷新。
 - Codex 要求使用文件凭证存储：如果固定使用了 keyring 存储，`init --codex` 会快速失败，而 `add --codex` 会把文件模式设置写入隔离的引导 home，让登录以可收集的形态落地。
 - 一个手动步骤：codex 会跳过尚未被告知要信任的 hooks。在 `init --codex` 之后，打开一次 codex 并通过 `/hooks` 信任 tokenmaxxing 的 Stop hook，否则自动切换会一直悄悄失效。`init --codex` 会打印这条提醒。
+- Codex 会在账户上储存一次性的用量限额重置（会过期的推广或推荐额度）；消耗一份会把 5 小时窗口和周窗口一起刷新，并挪动周重置日期。当 `policy.preferToUseBankedReset` 里有 `codex` 时，超过顶档的席位会一路跑到它的上限墙，只要用量接口还报告有额度，就消耗掉一份并让会话继续运行，不用重启：参见[储备重置](/zh/switching#banked-resets)。tokenmaxxing 从不购买付费的即时重置。

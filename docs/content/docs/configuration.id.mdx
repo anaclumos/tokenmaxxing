@@ -18,7 +18,8 @@ Konfigurasi berupa JSON di `~/.config/tokenmaxxing/config.json`. Setiap bidang o
     "switchModels": ["fable"],
     "usagePollTtlMs": 90000,
     "maxWaitMs": 3600000,
-    "checkIntervalMs": 60000
+    "checkIntervalMs": 60000,
+    "preferToUseBankedReset": []
   }
 }
 ```
@@ -34,5 +35,6 @@ Konfigurasi berupa JSON di `~/.config/tokenmaxxing/config.json`. Setiap bidang o
 - `policy.usagePollTtlMs`: berapa lama sebuah poll `/usage` per-model tetap segar.
 - `policy.maxWaitMs`: batas penungguan-otomatis gabungan-habis.
 - `policy.checkIntervalMs`: detak pemeriksaan berkala (default 60000, minimum 10000 karena secara default launchd tidak menjalankan sebuah job lebih sering dari sekali tiap 10 detik). `init` menuliskannya, dibulatkan ke atas menjadi detik penuh, sebagai interval pengatur waktu (di Linux `AccuracySec` systemd adalah seperdua belas dari nilai itu, minimal satu detik), dan setiap jenjang ruang tersisa adalah kelipatannya: satu detak di dekat sebuah bilah, sampai lima detak ketika ruang tersisa berlimpah (lihat [Irama pemeriksaan](/id/switching)). Penungguan gabungan-habis dan cooldown pasca-pertukaran justru tidur sampai tenggatnya masing-masing. Jadwal membaca nilai baru pada pemeriksaan berikutnya, tetapi pengatur waktu yang terpasang mempertahankan detak lamanya sampai Anda menjalankan `tokenmaxxing init` lagi, dan kelonggaran waktu jatuh tempo adalah setengah dari detak yang dikonfigurasi, jadi detak yang diubah baru sepenuhnya dihormati setelah eksekusi ulang itu. Dengan pengatur waktu yang dikelola Nix, setel `checkTimer.intervalSeconds` ke nilai yang sama; opsi itu memiliki batas bawah 10 detik yang sama.
+- `policy.preferToUseBankedReset`: penyedia (`"claude"`, `"codex"`, default `[]`) yang reset limit tersimpannya dihabiskan sebelum kursi berpindah. `/limit-reset` milik Claude Code dan reset tersimpan milik Codex sama-sama menyegarkan jendela 5 jam pada akun yang sama, yang menjaga cache prompt per-organisasi tetap hangat di tempat yang seharusnya dimulai dingin oleh sebuah pertukaran. Dengan `claude` terdaftar, sebuah kursi yang melewati anak tangga sesinya bertahan alih-alih berpindah selama sebuah reset dipercaya tersedia dan akun itu memiliki ruang mingguan untuk satu jendela 5 jam lagi pada laju terukurnya (poin mingguan yang dihabiskan oleh jendela sesi penuh terakhir, dipelajari dari tee statusline; sebuah akun yang tidak terukur berpindah seperti sebelumnya), lalu mengklaim reset di dinding dan melanjutkan di tempat. Klaim itu sekali seminggu per akun, dan jendela yang direset tetap dihitung ke arah batas mingguan. Dengan `codex` terdaftar, sebuah kursi codex melaju ke dindingnya selagi akun itu memiliki kredit reset, lalu mengonsumsi satu, yang menyegarkan jendela 5 jam dan jendela mingguan sekaligus tanpa restart. Lihat [Reset tersimpan](/id/switching#banked-resets) dan [Dukungan Codex](/id/codex).
 
 `tokenmaxxing config` menampilkan konfigurasi efektif beserta sumbernya; `config set`/`unset` menyunting kunci bertitik; `config tidy` memangkas kunci yang tidak dikenal.

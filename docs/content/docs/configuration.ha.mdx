@@ -18,7 +18,8 @@ Saituna JSON ne a `~/.config/tokenmaxxing/config.json`. Kowane fili na zaɓi ne;
     "switchModels": ["fable"],
     "usagePollTtlMs": 90000,
     "maxWaitMs": 3600000,
-    "checkIntervalMs": 60000
+    "checkIntervalMs": 60000,
+    "preferToUseBankedReset": []
   }
 }
 ```
@@ -34,5 +35,6 @@ Saituna JSON ne a `~/.config/tokenmaxxing/config.json`. Kowane fili na zaɓi ne;
 - `policy.usagePollTtlMs`: tsawon lokacin da dubawar kowane-model na `/usage` ke ci gaba da sabo.
 - `policy.maxWaitMs`: iyakar jiran atomatik na tafki da ya ƙare.
 - `policy.checkIntervalMs`: tick ɗin dubawa na lokaci-lokaci (tsohuwa 60000, mafi ƙaranci 10000 domin launchd ba ya ƙaddamar da aiki fiye da sau ɗaya a kowane daƙiƙa 10 ta tsoho). `init` yana rubuta shi, an ɗaga shi zuwa cikakkun daƙiƙu, a matsayin tazarar agogon (a kan Linux `AccuracySec` na systemd shi ne kashi ɗaya bisa goma sha biyu nasa, aƙalla daƙiƙa ɗaya), kuma kowace band na sarari yawa ne nasa: tick guda kusa da sanda, har zuwa tick biyar idan akwai sarari mai yawa (duba [Yawan dubawa](/ha/switching)). Jiran ƙarewa da sanyaya bayan-musanya suna barci zuwa nasu wa'adin maimakon haka. Jadawalin yana karanta sabuwar ƙimar a dubawa ta gaba, amma agogon da aka shigar yana riƙe tsohon tick ɗinsa har sai ka sake gudanar da `tokenmaxxing init`, kuma sassaucin lokacin da ya dace rabin tick ɗin da aka saita ne, don haka ana girmama tick da aka canza gaba ɗaya bayan wannan sake gudanarwa kawai. Da agogon da Nix ke sarrafawa, saita `checkTimer.intervalSeconds` zuwa ƙima ɗaya; wannan zaɓi yana da ƙasan daƙiƙa 10 iri ɗaya.
+- `policy.preferToUseBankedReset`: masu-bayarwa (`"claude"`, `"codex"`, tsohuwa `[]`) waɗanda ake kashe sake saitin da aka ajiye kafin wurin zama ya musanya. `/limit-reset` na Claude Code da sake saitin da aka ajiye na Codex duka suna sabunta tagar awa 5 a kan asusu guda, wanda ke ci gaba da riƙe cache na prompt na kowace ƙungiya mai ɗumi a inda musanya za ta fara masa sabo. Da `claude` a jerin, wurin zama da ya wuce matakin zamansa yana riƙe maimakon musanya yayin da ake gaskata sake saiti yana samuwa kuma asusun yana da sarari na mako don wata tagar awa 5 guda a saurin da aka auna (makin mako da cikakkiyar tagar zama ta ƙarshe ta kashe, wanda aka koya daga tee na statusline; asusun da ba a aunawa yana musanya kamar yadda ake yi a baya), sannan yana neman sake saiti a bango kuma yana ci gaba a wurinsa. Da'awar sau ɗaya ce a mako ga kowane asusu, kuma tagar sake saiti har yanzu tana ƙidaya zuwa iyakar mako. Da `codex` a jerin, wurin zama na codex yana hawa zuwa bangonsa yayin da asusun ke da bashin sake saiti, sannan yana cinye guda, wanda ke sabunta tagar awa 5 da tagar mako tare ba tare da sake-farawa ba. Duba [Sake saitin da aka ajiye](/ha/switching#banked-resets) da [Goyon bayan Codex](/ha/codex).
 
 `tokenmaxxing config` yana nuna saitunan da ke aiki tare da tushe; `config set`/`unset` suna gyara maɓallan da aka raba da aya; `config tidy` yana yanke maɓallan da ba a sani ba.
