@@ -77,6 +77,8 @@ Source-verified against rust-v0.144.5 (2026-07-16); the installed CLI is 0.145.0
 
 Ship = work on a branch, bump `package.json` and `agent-plugin/plugin.json` to the same version in the same PR, open the PR, make CI pass, wait out the review window, handle every review (fix, or refute with reasons), merge, `gh release create v<version>`, verify the npm publish landed, then tear down. A merge without a publish is not shipped. This repo merges its own PRs, which overrides the global "open the PR and stop". Detail: `.memory/shipping-pr-based.md`.
 
+- A PR that touches no packaged file skips the bump and the release (owner, 2026-09-08): `files` is `src`, `agent-plugin`, `README.md`, `DESIGN.md`, so a docs, `.memory`, or AGENTS.md change would publish a tarball identical to the last one but for its version. Merge it and stop; the docs site deploys from main on its own. Everything else about the ship still applies, the review window included. Touch one packaged file and the full ship is back.
+
 - Never push work directly to main.
 - The review window is 10 minutes of reviewer silence, babysat every minute: poll the PR each minute for new reviews, comments, check results, and merge state, handle whatever appears (fix or refute, resolve conflicts, fix CI), and merge only after 10 consecutive quiet minutes. Every new item restarts the clock. Green checks never shorten it, because reviewers post findings after their checks pass.
 - The PR review bots are the adversarial pass. Do not run a separate local adversarial-review workflow before opening the PR (owner, 2026-09-06); spend the effort on hermetic verification instead.
