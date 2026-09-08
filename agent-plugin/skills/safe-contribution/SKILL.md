@@ -14,6 +14,7 @@ description: Safely change and ship tokenmaxxing (verification without a test su
 ## Ship
 
 - Work on a branch; bump `package.json` and `agent-plugin/plugin.json` to the same version in the same PR; open PR; wait the full review window; handle every review; merge; `gh release create v<version>`; verify npm publish.
+- A PR that changes no packed file skips the bump and the release, and merging it is shipping it. Check membership with `npm pack --dry-run`, not the `files` array: the tarball is `src`, `agent-plugin`, `README.md`, `DESIGN.md`, `LICENSE`, and `package.json`, the last two always packed though `files` never names them. So a `docs/`, `.memory/`, or AGENTS.md change is exempt, while a LICENSE or metadata change is not. Everything else, the full review window included, still applies.
 - Never push directly to main. npm trusted publishing is bound to workflow filename `ci.yml`.
 
 ## Machine gotchas
