@@ -196,7 +196,11 @@ export function isSkippableSwapError(e: unknown): boolean {
   return e instanceof InvalidGrantError || e instanceof RefreshRejectedError || e instanceof IdentityUnavailableError;
 }
 
-export async function chooseAndSwap(ctx: PickCtx, exclude: ReadonlySet<string> = new Set()): Promise<Account | null> {
+export async function chooseAndSwap(
+  ctx: PickCtx,
+  exclude: ReadonlySet<string> = new Set(),
+  verify?: (candidate: Account, ctx: PickCtx) => Promise<boolean>,
+): Promise<Account | null> {
   const tried = new Set<string>(exclude);
   while (true) {
     const idx = loadAccounts();
@@ -204,6 +208,7 @@ export async function chooseAndSwap(ctx: PickCtx, exclude: ReadonlySet<string> =
     const best = pickBest(candidates, ctx);
     if (!best) return null;
     tried.add(best.accountUuid);
+    if (verify && !(await verify(best, ctx))) continue;
     try {
       await performSwap(best);
       return best;

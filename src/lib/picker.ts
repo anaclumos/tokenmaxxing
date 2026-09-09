@@ -34,6 +34,7 @@ const PickCtxSchema = z.object({
   now: z.number(),
   thresholds: ThresholdsSchema,
   currentAccountUuid: z.string().nullable(),
+  currentOrganizationUuid: z.string().nullable().optional(),
   switchFamilies: z.array(z.string()),
   holdMargin: z.number().min(0).optional(),
 });
@@ -94,7 +95,8 @@ export function pacePressure(a: Account, now: number): number {
   return Math.max(0, 100 - used) / Math.max(1, reset - now);
 }
 
-const swapPreference = (now: number) => [
+const swapPreference = (now: number, organizationUuid: string | null | undefined) => [
+  (a: Account) => (organizationUuid != null && a.organizationUuid === organizationUuid ? 0 : 1),
   (a: Account) => -pacePressure(a, now),
   (a: Account) => weeklyExpiry(a, now),
   (a: Account) => a.lastUsage?.sevenDay.usedPercentage ?? 101,
@@ -104,7 +106,7 @@ export function pickBest(accounts: Account[], ctx: PickCtx): Account | null {
   const usable = accounts.filter(
     (a) => a.accountUuid !== ctx.currentAccountUuid && !a.needsReauth && !isExhausted(a, ctx),
   );
-  return sortBy(usable, swapPreference(ctx.now))[0] ?? null;
+  return sortBy(usable, swapPreference(ctx.now, ctx.currentOrganizationUuid))[0] ?? null;
 }
 
 export function currentWins(active: Account | null, accounts: Account[], ctx: PickCtx): boolean {
@@ -114,7 +116,7 @@ export function currentWins(active: Account | null, accounts: Account[], ctx: Pi
   const margin = ctx.holdMargin ?? 0;
   const bestPace = pacePressure(best, ctx.now);
   if (margin > 0 && bestPace > 0 && bestPace <= pacePressure(active, ctx.now) * (1 + margin)) return true;
-  return swapPreference(ctx.now).every((k) => k(active) === k(best));
+  return swapPreference(ctx.now, ctx.currentOrganizationUuid).every((k) => k(active) === k(best));
 }
 
 export function usableAt(a: Account, ctx: PickCtx): number {

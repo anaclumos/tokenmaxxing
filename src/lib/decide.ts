@@ -6,7 +6,8 @@ import { MAX_CHECK_DELAY_TICKS, POST_SWAP_COOLDOWN_MS, maxCheckDelayMs, loadAcco
 import { readOAuthAccount } from "./claudejson.ts";
 import { bankedResetBelievedAvailable, claimBankedReset } from "./bankedreset.ts";
 import { chooseAndSwap, isSkippableSwapError, performSwap } from "./swap.ts";
-import { currentWins, effectiveBars, hardBars, isExhausted, nextWeeklyReset, pickBest, pickEarliestReset, sessionLadder, usableAt } from "./picker.ts";
+import { probeParkedUsage } from "./sample.ts";
+import { currentWins, effectiveBars, hardBars, isExhausted, nextWeeklyReset, pickBest, pickEarliestReset, sessionLadder, usableAt, type PickCtx } from "./picker.ts";
 import { familyTokens, gatedFamilies, probeUsage, type EnforcedClass } from "./usage.ts";
 import { log } from "./log.ts";
 import { AccountSchema, ModelUsageStateSchema, UsageStateSchema, type Account, type Config, type EnforcedLimit, type ModelUsageState, type Thresholds, type UsageState, type UsageWindow } from "./types.ts";
@@ -253,18 +254,55 @@ export async function evaluateAndMaybeSwap(now = Date.now(), anticipatory = fals
       rejected.add(candidate.accountUuid);
       log("decide.candidate_rejected", { account: candidate.accountUuid.slice(0, 8), error: e instanceof Error ? e.message : String(e) });
     };
+    const verified = async (candidate: Account, ctx: PickCtx): Promise<boolean> => {
+      if (candidate.lastUsageAt != null && now - candidate.lastUsageAt <= cfg.policy.usagePollTtlMs) return true;
+      const short = candidate.accountUuid.slice(0, 8);
+      const idx2 = loadAccounts();
+      const stored = idx2.accounts.find((a) => a.accountUuid === candidate.accountUuid);
+      if (!stored) return true;
+      const sample = await probeParkedUsage(stored, { retries: 0 });
+      if (sample.ok) {
+        const at = Date.now();
+        stored.lastUsage = { fiveHour: sample.usage.session, sevenDay: sample.usage.weekAll };
+        stored.lastUsageAt = at;
+        if (Object.keys(sample.usage.perModel).length > 0) {
+          stored.lastPerModel = sample.usage.perModel;
+          stored.lastPerModelAt = at;
+        }
+      }
+      if (sample.ok || stored.needsReauth === true) saveAccounts(idx2);
+      if (stored.needsReauth === true) {
+        rejected.add(candidate.accountUuid);
+        log("decide.candidate_rejected", { account: short, error: sample.ok ? "needs reauth" : sample.reason });
+        return false;
+      }
+      if (!sample.ok) {
+        log("decide.candidate_unverified", { account: short, reason: sample.reason.slice(0, 160) });
+        return true;
+      }
+      const fields = { account: short, session: sample.usage.session.usedPercentage, weekly: sample.usage.weekAll.usedPercentage };
+      if (isExhausted(stored, ctx)) {
+        rejected.add(candidate.accountUuid);
+        log("decide.candidate_walled", fields);
+        return false;
+      }
+      log("decide.candidate_verified", fields);
+      return true;
+    };
 
     const greedy = async (holdMargin: number): Promise<SwapDecision> => {
       while (true) {
         const cur = loadAccounts();
         const active = seatOf(cur);
         const pool = usable(cur.accounts);
-        const ctxAll = { now, thresholds: barsOf(cur.accounts), currentAccountUuid: null, switchFamilies, holdMargin };
+        const ctxAll = { now, thresholds: barsOf(cur.accounts), currentAccountUuid: null, currentOrganizationUuid: active?.organizationUuid ?? null, switchFamilies, holdMargin };
         if (currentWins(active, pool, ctxAll)) {
           return { swapped: false, account: null, reason: "current-best" };
         }
-        const best = pickBest(pool, { ...ctxAll, currentAccountUuid: active?.accountUuid ?? null });
+        const ctx = { ...ctxAll, currentAccountUuid: active?.accountUuid ?? null };
+        const best = pickBest(pool, ctx);
         if (!best) return { swapped: false, account: null, reason: "no-usable-target" };
+        if (!(await verified(best, ctx))) continue;
         try {
           await performSwap(best);
         } catch (e) {
@@ -297,14 +335,17 @@ export async function evaluateAndMaybeSwap(now = Date.now(), anticipatory = fals
           if (claim === "reset") return { swapped: false, account: seat, reason: "banked-reset", reset: true };
         }
       }
-      const best = pickBest(pool, { now, thresholds, currentAccountUuid: seat?.accountUuid ?? null, switchFamilies });
+      const ctx = { now, thresholds, currentAccountUuid: seat?.accountUuid ?? null, currentOrganizationUuid: seat?.organizationUuid ?? null, switchFamilies };
+      const best = pickBest(pool, ctx);
       if (!best) break;
+      if (!(await verified(best, ctx))) continue;
       try {
         await performSwap(best);
       } catch (e) {
         skipOrThrow(e, best);
         continue;
       }
+      log("decide.hard_swap", { account: best.accountUuid.slice(0, 8), enforced: enforced2 != null });
       return { swapped: true, account: best, reason: "swapped" };
     }
 
@@ -314,7 +355,7 @@ export async function evaluateAndMaybeSwap(now = Date.now(), anticipatory = fals
       log("decide.last_drop_hold", { account: seat.accountUuid.slice(0, 8) });
       return { swapped: false, account: null, reason: "last-drop-hold" };
     }
-    const squeezed = await chooseAndSwap({ ...hardCtx, currentAccountUuid: seat?.accountUuid ?? null }, rejected);
+    const squeezed = await chooseAndSwap({ ...hardCtx, currentAccountUuid: seat?.accountUuid ?? null, currentOrganizationUuid: seat?.organizationUuid ?? null }, rejected, verified);
     if (squeezed) {
       log("decide.last_drop_swap", { account: squeezed.accountUuid.slice(0, 8) });
       return { swapped: true, account: squeezed, reason: "last-drop-swap" };

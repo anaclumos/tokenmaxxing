@@ -7,6 +7,7 @@ import { currentWins, effectiveBars, pickBest, pickEarliestReset, weeklyExpiry, 
 import { InvalidGrantError } from "../lib/oauth.ts";
 import { gatedFamilies } from "../lib/usage.ts";
 import { findAccount } from "./rename.ts";
+import { log } from "../lib/log.ts";
 import { c, emitError, emitJson, fmtReset } from "./render.ts";
 import type { Account } from "../lib/types.ts";
 
@@ -44,6 +45,7 @@ export async function cmdSwitch(selector?: string, json = false): Promise<number
         }
         throw e;
       }
+      log("switch.manual", { account: target.accountUuid.slice(0, 8), reason });
       emit(`${c.green("↻")} switched to ${c.bold(target.label)}`, { switched: true, account: target.label, reason, ...extra });
       return 0;
     };
@@ -60,21 +62,22 @@ export async function cmdSwitch(selector?: string, json = false): Promise<number
     }
 
     const switchFamilies = gatedFamilies(loadUsage()?.model ?? null, cfg.policy.switchModels);
-    const everyoneIn = (accounts: Account[]): PickCtx => ({
+    const everyoneIn = (accounts: Account[], active: Account | null): PickCtx => ({
       now,
       thresholds: effectiveBars(cfg, { accounts, now, switchFamilies }),
       currentAccountUuid: null,
+      currentOrganizationUuid: active?.organizationUuid ?? null,
       switchFamilies,
     });
     const rejected = new Set<string>();
     while (true) {
       const cur = loadAccounts();
-      const everyone = everyoneIn(cur.accounts);
       const pool = cur.accounts.filter((a) => !rejected.has(a.accountUuid));
       const active =
         (claimed != null ? cur.accounts.find((a) => a.accountUuid === claimed) : null) ??
         cur.accounts.find((a) => a.accountUuid === cur.activeAccountUuid) ??
         null;
+      const everyone = everyoneIn(cur.accounts, active);
       if (active != null && currentWins(active, pool, everyone)) {
         if (drifted) return swapTo(active, "drift-reconciled");
         const expiry = weeklyExpiry(active, now);
@@ -104,6 +107,7 @@ export async function cmdSwitch(selector?: string, json = false): Promise<number
         }
         throw e;
       }
+      log("switch.manual", { account: best.accountUuid.slice(0, 8), reason: "best" });
       emit(`${c.green("↻")} switched to ${c.bold(best.label)}`, { switched: true, account: best.label, reason: "best" });
       return 0;
     }
@@ -111,7 +115,7 @@ export async function cmdSwitch(selector?: string, json = false): Promise<number
     while (true) {
       const fresh = loadAccounts();
       const pool = fresh.accounts.filter((a) => !rejected.has(a.accountUuid));
-      const earliest = pickEarliestReset(pool, everyoneIn(fresh.accounts));
+      const earliest = pickEarliestReset(pool, everyoneIn(fresh.accounts, null));
       const reauth = fresh.accounts.filter((a) => a.needsReauth).map((a) => a.label);
       if (!earliest) {
         if (reauth.length > 0) {

@@ -345,17 +345,17 @@ function probeEnv(configDir?: string): Record<string, string> {
   return env;
 }
 
-export async function probeUsage(configDir?: string, now = Date.now()): Promise<FullUsage | null> {
+export async function probeUsage(configDir?: string, now = Date.now(), retries = PROBE_RETRY_DELAYS_MS.length): Promise<FullUsage | null> {
   const env = probeEnv(configDir);
 
   for (let attempt = 0; ; attempt++) {
     const full = await probeUsageOnce(env, now);
     if (full) return full;
-    if (attempt >= PROBE_RETRY_DELAYS_MS.length) {
+    if (attempt >= retries) {
       log("usage.probe_gave_up", { attempts: attempt + 1 });
       return null;
     }
-    await delay(PROBE_RETRY_DELAYS_MS[attempt]!);
+    await delay(PROBE_RETRY_DELAYS_MS[Math.min(attempt, PROBE_RETRY_DELAYS_MS.length - 1)]!);
   }
 }
 

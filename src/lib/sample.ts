@@ -44,7 +44,7 @@ function refreshPlanFields(account: Account, creds: OAuthCreds): void {
   if (creds.rateLimitTier != null) account.rateLimitTier = creds.rateLimitTier;
 }
 
-export async function probeParkedUsage(account: Account, opts: { ping?: boolean } = {}): Promise<SampleOutcome> {
+export async function probeParkedUsage(account: Account, opts: { ping?: boolean; retries?: number } = {}): Promise<SampleOutcome> {
   const backup = parkedTarget(account.keychainItem);
   const parkedRaw = await readItem(backup);
   if (!parkedRaw) return { ok: false, reason: "no parked credential - run `tokenmaxxing auth`" };
@@ -157,7 +157,7 @@ export async function probeParkedUsage(account: Account, opts: { ping?: boolean 
     await writeItem(isoTarget, installed);
     writeFileSync(join(dir, ".claude.json"), JSON.stringify({ oauthAccount: account.oauthAccount, hasCompletedOnboarding: true }));
     const ping = opts.ping ? await pingSession(dir) : null;
-    const usage = await probeUsage(dir);
+    const usage = await probeUsage(dir, Date.now(), opts.retries);
     const outcome: SampleOutcome = usage
       ? { ok: true, usage }
       : { ok: false, reason: "`/usage` returned no limit data (see log)" };

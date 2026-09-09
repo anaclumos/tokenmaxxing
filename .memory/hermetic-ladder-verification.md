@@ -34,6 +34,17 @@ Verified 2026-09-02 for 1.10.0, defaults then 50/80/95 and floor 50. Since 1.12.
 
 The stub revokes the prior access token on every successful refresh (the real endpoint does), so a scenario that leans on a token the refresh invalidated fails with a 401 instead of passing by accident.
 
+**Organization tier and pre-swap verification (1.20.0, 2026-09-10, see [[swap-cost-profile]]).** Same Layer 1 method plus a stub profile route and a fake `claudeBin` shell script that prints a `/usage` JSON result reading `Current session: 100% used`. Seat A lives in org X at 92 on the 5h window and 60 weekly; every parked sample is an hour old so the pre-swap probe runs. Each scenario ran against the working tree and against a detached HEAD worktree of the previous release, in separate throwaway roots (a first parallel run shared one root and interleaved the logs; keep the roots apart).
+
+| Scenario | Pool | Previous release | 1.20.0 |
+| --- | --- | --- | --- |
+| Hard path, org-mate below on pace | B org X 30/80, C org Y 30/20 | reaches for C | `decide.candidate_unverified B` (no parked credential), reaches for B |
+| Hard path, no org-mate | C org Y 30/20, D org Z 30/70 | reaches for C | reaches for C |
+| Greedy, cross-org C at twice the seat's pace | A 85/60, C org Y 30/20 | swaps to C | `no switch (current-best)` |
+| Greedy, org-mate B at twice the seat's pace | A 85/60, B org X 30/20 | reaches for B | reaches for B |
+| Hard path, B's parked credential seeded, probe says 100 | B org X 30/80, C org Y 30/20 | reaches for C (pace) | `decide.candidate_walled B session=100 weekly=50`, B's record rewritten to 100/50 with a fresh `lastUsageAt`, reaches for C |
+| Hard path, B the only candidate, parked credential seeded, probe says 100 | B org X 30/80 | `swap.done B`, claude.json and accounts.json move to B, the token route sees B's refresh token | `decide.candidate_walled B`, `decide.last_drop_hold A`, nothing moves, only a profile GET reaches the stub |
+
 **Why:** the review fix on the hard path (reload the pool after a dead grant, return to the greedy path when the rung climbs over the seat) is only observable with a refresh that fails, and the only safe way to fail a refresh is a stub. The keychain namespace keeps the run off the real `Claude Code-credentials` item; see [[live-pool-runs-need-permission]] for why nothing here may touch a pooled account, and [[fable-fanout-is-quota-spend]] for why verification stays hermetic.
 
 **How to apply:** run Layer 1 for every decision-path change, Layer 2 whenever the swap or refresh code moves. Keep the harness in the session scratchpad, never in the repo, per the no-test-code ruling in AGENTS.md.
