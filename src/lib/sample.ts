@@ -98,6 +98,9 @@ export async function probeParkedUsage(
   };
 
   if (isAccessTokenExpiring(creds, 300_000)) {
+    if (opts.refreshParked === false) {
+      return { ok: false, reason: "parked access token is near expiry - verification requires an unexpired token" };
+    }
     const owner = await checkIdentity(creds, account);
     if (owner.status === "mismatch") {
       const kept = await relocate(owner.owner);

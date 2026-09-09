@@ -6,8 +6,10 @@
 - Screening exhaustion is scoped to its bar and must not enter the refresh-failure exclusion set used by the wall squeeze and reset selection.
 - Bound identity requests and child execution with the same abort signal, because a child-only timeout leaves HTTP retries outside the deadline.
 - Give verification children no refresh grant and never harvest their stripped credential back into a parked slot.
+- Check refresh permission at the refresh branch itself because an identity lookup can move a token across the expiry threshold.
 - Organization affinity needs headroom in the session, aggregate weekly and gated model windows.
 - The automatic greedy path stays within the incumbent organization, while manual switching retains pure pace ranking.
+- Filter greedy candidates before ranking so an ineligible outside-organization winner cannot suppress a useful move within the organization.
 - Sample freshness and verification availability are different facts, so a failed probe must remain visible and cannot prove a target safe.
 - Timestamp-filter the request corpus, deduplicate messages, and separate temporal association from causation before quoting cache overhead.
 - API price weights do not establish subscription quota accounting.

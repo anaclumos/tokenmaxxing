@@ -300,19 +300,15 @@ export async function evaluateAndMaybeSwap(now = Date.now(), anticipatory = fals
       while (true) {
         const cur = loadAccounts();
         const active = seatOf(cur);
-        const pool = usable(cur.accounts);
         const ctxAll = { now, thresholds: barsOf(cur.accounts), currentAccountUuid: null, currentOrganizationUuid: active?.organizationUuid ?? null, orgAffinityFloor: cfg.policy.greedySessionFloor, switchFamilies, holdMargin };
+        const seatOrg = active != null && !active.needsReauth && !isExhausted(active, ctxAll) ? active.organizationUuid : null;
+        const pool = usable(cur.accounts).filter((a) => seatOrg == null || a.organizationUuid === seatOrg);
         if (currentWins(active, pool, ctxAll)) {
           return { swapped: false, account: null, reason: "current-best" };
         }
         const ctx = { ...ctxAll, currentAccountUuid: active?.accountUuid ?? null };
         const best = pickBest(pool, ctx);
         if (!best) return { swapped: false, account: null, reason: "no-usable-target" };
-        const seatOrg = active != null && !active.needsReauth && !isExhausted(active, ctxAll) ? active.organizationUuid : null;
-        if (seatOrg != null && best.organizationUuid !== seatOrg) {
-          log("decide.greedy_org_hold", { account: best.accountUuid.slice(0, 8) });
-          return { swapped: false, account: null, reason: "greedy-same-org-only" };
-        }
         if ((await verified(best, ctx)) !== "go") continue;
         try {
           await performSwap(best);
