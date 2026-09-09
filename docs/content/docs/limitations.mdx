@@ -3,7 +3,9 @@ title: Honest limitations
 description: The tradeoffs that come with pooled hot-swapping
 ---
 
-- **One cold turn.** Prompt cache is org-scoped, so the first turn on a new account re-uploads context once.
+- **Cache rewrites.** A change of organization can require every active conversation to rebuild its cache, while same-organization swaps can also miss because cache keys and workspace boundaries matter. See the [measured profile](/switching-profile).
+- **Weekly allowance tradeoff.** Automatic lateral moves stay within the current organization, so a single-seat organization may hold usable quota while another organization's allowance expires.
+- **Incomplete verification.** Candidate probes are bounded and cannot always read usage, so a handoff may still rely on stale cached figures.
 - **Depleted-pause hiccup.** Only a fully depleted pool stops the session for the countdown; anything typed in that split second is lost.
 - **Retrigger prompt.** When a supervised turn dies on an enforced limit, the relaunch on the fresh account submits one fixed continuation prompt; the model resumes from the transcript, so a turn that was mid-tool-call re-plans that step rather than replaying it.
 - **Adoption lag.** On macOS the first turn within ~30 seconds of a swap can still meter the old account; the bars' headroom absorbs it.

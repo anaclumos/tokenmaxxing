@@ -94,11 +94,12 @@ export function isAccessTokenExpiring(creds: OAuthCreds, skewMs = 120_000, now =
   return !creds.expiresAt || creds.expiresAt - now <= skewMs;
 }
 
-export async function fetchTokenIdentity(accessToken: string): Promise<TokenIdentity> {
+export async function fetchTokenIdentity(accessToken: string, signal?: AbortSignal): Promise<TokenIdentity> {
   let res: Response;
   try {
     res = await http.get(PROFILE_URL, {
       headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+      signal,
     });
   } catch (e) {
     throw new IdentityUnavailableError(null, e instanceof Error ? e.message : String(e));

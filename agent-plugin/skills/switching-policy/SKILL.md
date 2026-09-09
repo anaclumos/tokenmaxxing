@@ -8,8 +8,13 @@ description: Explain and apply tokenmaxxing switch policy (greedy vs hard path, 
 ## Vocabulary
 
 - **Engaged**: session used >= `policy.greedySessionFloor` (default 80) or any screening bar crossed.
-- **GREEDY path**: engaged but under every bar. Rank all accounts by pace pressure; keep seat on best-or-tie (`currentWins`); else swap to strictly better. Never depleted-waits or pre-parks. The automatic path adds incumbent hysteresis (`policy.greedySwapMargin`, default 0.15): hold the seat unless a parked account's pace pressure exceeds the current one's by more than that fraction, so near-tied accounts stop trading the seat and busting the per-org prompt cache. The margin gates lateral under-bar swaps only, never a crossed bar or the wall; bare `tokenmaxxing switch` uses margin 0 and always takes the strictly best account.
-- **HARD path**: a screening bar crossed. Swap to best usable target; if none, Layer 2 wall logic (Claude only).
+- **GREEDY path** permits lateral moves only within the incumbent organization and retains `greedySwapMargin` hysteresis.
+- **HARD path** starts at a crossed screening bar and may cross organizations, with Layer 2 as its fallback.
+- **Organization preference** requires measured headroom in session, aggregate weekly and gated model windows under the [policy](references/policy.md).
+- **Verification** attempts at most two stale candidates per evaluation, with a 12-second deadline covering identity reads and the CLI for each candidate.
+- **Probe results** are persisted and re-ranked, while screening exhaustion remains eligible for the wall squeeze and reset selection.
+- **Unavailable verification** leaves cached figures in force, and verification never spends a parked refresh grant.
+- **Manual switch** retains pure pace ranking with no organization preference or incumbent margin.
 - **Pace pressure**: remaining weekly percent / time to weekly reset (highest first). Not most-remaining.
 - **Effective bars**: `effectiveBars(cfg, pool)` = the active rung of the 5h ladder (`thresholds.session`, default `[90]`, a single rung: the lowest rung some pooled account, the current one included, still clears) and the weekly bar, each minus `policy.projectionMargin`. Trigger and screening must share these bars or swaps ping-pong. Codex reads `terminalBars(cfg)`, the top rung only. The check cadence is capped one band per rung climbed, and every band is a multiple of the tick `policy.checkIntervalMs` (default 60000).
 - **Banked reset**: opt-in via `policy.preferToUseBankedReset` (a provider list, default `[]`), hard path only. Claude: the seat holds between the session rung and the wall while a reset is believed available and the weekly windows have room for one more measured session window (`sessionWindowWeeklyCost`; unmeasured swaps), claims the `/limit-reset` server call at the wall, and keeps the seat on `reset` (the failed turn is retriggered in place). Codex: rides to the wall while a reset credit exists, consumes one, no restart. The greedy path never resets.

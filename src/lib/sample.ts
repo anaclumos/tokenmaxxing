@@ -24,10 +24,10 @@ const IdentityCheckSchema = z.discriminatedUnion("status", [
 ]);
 type IdentityCheck = z.infer<typeof IdentityCheckSchema>;
 
-async function checkIdentity(creds: OAuthCreds, account: Account): Promise<IdentityCheck> {
+async function checkIdentity(creds: OAuthCreds, account: Account, signal?: AbortSignal): Promise<IdentityCheck> {
   let identity: TokenIdentity;
   try {
-    identity = await fetchTokenIdentity(creds.accessToken);
+    identity = await fetchTokenIdentity(creds.accessToken, signal);
   } catch (e) {
     return {
       status: "unavailable",
@@ -44,7 +44,10 @@ function refreshPlanFields(account: Account, creds: OAuthCreds): void {
   if (creds.rateLimitTier != null) account.rateLimitTier = creds.rateLimitTier;
 }
 
-export async function probeParkedUsage(account: Account, opts: { ping?: boolean } = {}): Promise<SampleOutcome> {
+export async function probeParkedUsage(
+  account: Account,
+  opts: { ping?: boolean; retries?: number; refreshParked?: boolean; killMs?: number; signal?: AbortSignal } = {},
+): Promise<SampleOutcome> {
   const backup = parkedTarget(account.keychainItem);
   const parkedRaw = await readItem(backup);
   if (!parkedRaw) return { ok: false, reason: "no parked credential - run `tokenmaxxing auth`" };
@@ -58,6 +61,9 @@ export async function probeParkedUsage(account: Account, opts: { ping?: boolean 
   if (isDeadCredential(creds)) {
     account.needsReauth = true;
     return { ok: false, reason: "parked credential was cleared after a failed refresh - re-auth with `tokenmaxxing auth`" };
+  }
+  if (opts.refreshParked === false && isAccessTokenExpiring(creds, 300_000)) {
+    return { ok: false, reason: "parked access token is near expiry - verification requires an unexpired token" };
   }
 
   const liveRaw = await readItem(liveTarget());
@@ -73,7 +79,7 @@ export async function probeParkedUsage(account: Account, opts: { ping?: boolean 
     if (!isDeadCredential(liveCreds)) {
       liveToken = liveCreds.accessToken;
       try {
-        liveAccount = (await fetchTokenIdentity(liveCreds.accessToken)).accountUuid;
+        liveAccount = (await fetchTokenIdentity(liveCreds.accessToken, opts.signal)).accountUuid;
       } catch (e) {
         return { ok: false, reason: `cannot verify the live credential's owner (${(e instanceof Error ? e.message : String(e)).slice(0, 80)}) - refusing to sample a possibly-live account` };
       }
@@ -92,6 +98,9 @@ export async function probeParkedUsage(account: Account, opts: { ping?: boolean 
   };
 
   if (isAccessTokenExpiring(creds, 300_000)) {
+    if (opts.refreshParked === false) {
+      return { ok: false, reason: "parked access token is near expiry - verification requires an unexpired token" };
+    }
     const owner = await checkIdentity(creds, account);
     if (owner.status === "mismatch") {
       const kept = await relocate(owner.owner);
@@ -136,7 +145,7 @@ export async function probeParkedUsage(account: Account, opts: { ping?: boolean 
     await writeItem(backup, JSON.stringify({ claudeAiOauth: creds }));
   }
 
-  const identity = await checkIdentity(creds, account);
+  const identity = await checkIdentity(creds, account, opts.signal);
   if (identity.status === "mismatch") {
     const kept = await relocate(identity.owner);
     account.needsReauth = true;
@@ -151,13 +160,13 @@ export async function probeParkedUsage(account: Account, opts: { ping?: boolean 
   rmSync(dir, { recursive: true, force: true });
   mkdirSync(dir, { recursive: true });
   const isoTarget = isolatedTarget(dir);
-  const installed = JSON.stringify({ claudeAiOauth: creds });
+  const installed = JSON.stringify({ claudeAiOauth: opts.refreshParked === false ? { ...creds, refreshToken: "" } : creds });
 
   try {
     await writeItem(isoTarget, installed);
     writeFileSync(join(dir, ".claude.json"), JSON.stringify({ oauthAccount: account.oauthAccount, hasCompletedOnboarding: true }));
     const ping = opts.ping ? await pingSession(dir) : null;
-    const usage = await probeUsage(dir);
+    const usage = await probeUsage(dir, Date.now(), opts);
     const outcome: SampleOutcome = usage
       ? { ok: true, usage }
       : { ok: false, reason: "`/usage` returned no limit data (see log)" };
@@ -167,10 +176,15 @@ export async function probeParkedUsage(account: Account, opts: { ping?: boolean 
     }
     return outcome;
   } finally {
-    const afterIso = await readItem(isoTarget);
-    if (afterIso && afterIso !== installed) await writeItem(backup, claudeAiOauthOnly(afterIso));
-    await deleteItem(isoTarget);
-    rmSync(dir, { recursive: true, force: true });
+    try {
+      if (opts.refreshParked !== false) {
+        const afterIso = await readItem(isoTarget);
+        if (afterIso && afterIso !== installed) await writeItem(backup, claudeAiOauthOnly(afterIso));
+      }
+    } finally {
+      await deleteItem(isoTarget);
+      rmSync(dir, { recursive: true, force: true });
+    }
   }
 }
 

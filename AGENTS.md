@@ -1,6 +1,6 @@
 # Agent rules
 
-Repo-specific rules only. The owner's global rules load alongside this file in every session, so nothing here repeats them; where this file is silent, the global rule applies. Long-form detail lives in `DESIGN.md`, `docs/content/docs/`, and `.memory/`. The source carries no comments (owner ruling 2026-08-30), so rationale that could regress goes to `.memory/`, not the code site. Link to it, do not inline it.
+Repo-specific rules only. The owner's global rules load alongside this file in every session, so nothing here repeats them; where this file is silent, the global rule applies. Long-form detail lives in `DESIGN.md` and `docs/content/docs/`. New lessons belong in `.cursor/rules/` under the owner's 2026-09-10 instruction. Existing `.memory/` links are historical references, not an active write surface.
 
 ## The project
 
@@ -10,7 +10,7 @@ No external installed user base, so this is pre-production code: delete old-stat
 
 ## Safeguards and machine gotchas
 
-- The owner's Mac runs tokenmaxxing straight from this working tree, so a bad git operation breaks the live install.
+- Resolve the installed entry point before assuming a checkout is the active runtime.
 - This machine runs live supervisors, hooks, the periodic check, and the owner's real claude sessions. Stop processes by PID, and never kill a running session or supervisor to free a resource without asking.
 - The owner's hosts are managed environments: never run `init`, `add`, `auth`, `uninstall`, or anything that writes settings.json, launchd/systemd units, shell rc, or the global package on a live host (owner, 2026-08-30). Ship code; activation is the owner's step.
 - This working tree is a shared checkout (the owner and other agents work in it live). Stage commits by explicit path, never `git add -A`/`-u` (hook correction, 2026-08-30).
@@ -23,7 +23,7 @@ No external installed user base, so this is pre-production code: delete old-stat
 - Env overrides parse through zod at the read site rather than a central `env.ts`, because the CLI's knobs are all optional. Unset parses to undefined and the feature degrades there.
 - State files that exist but fail to parse THROW. A truncated `accounts.json` read as an empty pool once let `init` overwrite it.
 - A configured-but-missing path (`claudeBin`, `codexBin`, credential locations) fails fast. Never fall through to a PATH scan: seeding `/bin/true` as claudeBin made the scan resolve the real installed wrapper and wedge an E2E for 15 minutes, the same shape that fed the runaway-recursion incident.
-- The Mac runs the working tree, the Linux boxes run an npm global that nothing auto-updates, so version skew is chronic. For any works-on-Mac-not-Linux report, compare the box's installed version against the repo before anything else.
+- For platform-specific behavior differences, compare the installed package versions before attributing the difference to the platform.
 - Core deps are zod, es-toolkit, ky, and `@modelcontextprotocol/sdk` (stdio MCP for the Agent Plugin). The global default stack does not apply (there is no date-fns here, date math goes through `Intl` in `parseResetClock`).
 - Keep `node:fs`, which is Bun-native. `Bun.file`/`Bun.write` are async-only, non-atomic, and have no create-mode, so they cannot serve the 0600 credential store or the flock fd. When asked to simplify this, that is the answer.
 
@@ -39,9 +39,11 @@ No external installed user base, so this is pre-production code: delete old-stat
 
 ## Switching
 
-Accounts rank by pace pressure (remaining percent over time to weekly reset, highest first), not by most-remaining. Mechanics live in `src/lib/decide.ts` and `src/lib/picker.ts`; rationale and policy in `docs/switching.mdx`, `.memory/switch-policy-pace-pressure.md`, and `.memory/stopfailure-enforced-limit-signal.md`. The vocabulary below is used across both files.
+Automatic selection prefers same-organization candidates with sufficient measured headroom, then ranks by pace pressure. Manual switching uses pure pace pressure. Policy lives in `docs/content/docs/switching.mdx`, with review lessons in `.cursor/rules/switch-verification.md`.
 
-- Engaged but under every bar = the GREEDY path: `currentWins` keeps the seat on best-or-tie, else swap onto the strictly better account. It never depleted-waits or pre-parks. Only the HARD path (a bar crossed) may.
+- The GREEDY path permits lateral moves only within the incumbent organization and retains incumbent hysteresis. A pool with one account per organization holds until a bar or enforcement triggers the HARD path. The greedy path never waits or pre-parks.
+- Organization preference requires headroom in aggregate and gated model windows, not merely matching organization identity. The profile in `docs/content/docs/switching-profile.mdx` reports association, not guaranteed cache reuse or subscription savings.
+- Successful candidate probes must re-rank without adding bar-scoped exhaustion to the refresh-failure exclusion set. Verification is bounded across HTTP and child execution and must not spend a parked refresh grant. Failed probes and spent budgets use cached figures and must remain visible in logs.
 - Layer 2 is the fallback reached only when the hard path finds no usable target, judged against the wall (`hardBars` = hardThresholds minus projectionMargin). A seat under its wall HOLDS and squeezes in place, and that check runs BEFORE any swap, or equally-squeezable siblings ping-pong. A walled seat swaps onto the best under-wall account.
 - Layer 2 is CLAUDE-ONLY. A codex last-drop-swap would strand siblings on the walled account, because codex cannot hot-adopt and the reconcile only signals siblings onto a Layer-1-usable seat. Codex rides its account to the wall instead. Do not extend it.
 - Build EVERY Claude PickCtx and trigger floor from `effectiveBars(cfg, pool)`, which resolves the 5h ladder (`thresholds.session`, ascending rungs, default `[90]`) to the lowest rung some pooled account still clears, the current account included: one bar per window for trigger and screening alike, re-read from the freshly loaded pool on every retry, or a margin-triggered swap lands inside the band and ping-pongs on the cooldown beat. Codex reads `terminalBars(cfg)`, the top rung only. The check cadence is capped one band per rung climbed (`STAGE_CEILING_TICKS`), and every band is a multiple of `policy.checkIntervalMs`, the tick `init` writes into the timer unit: never reintroduce an absolute millisecond band.

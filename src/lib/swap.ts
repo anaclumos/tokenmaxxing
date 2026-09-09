@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { clearDepletedWait, clearNextCheck, clearUsageSnapshots, loadAccounts, saveAccounts, saveLastSwapAt } from "./state.ts";
 import { readItem, writeItem, liveTarget, parkedTarget, claudeAiOauthOnly, mergeIntoLive } from "./credstore.ts";
 import { refreshCredential, isAccessTokenExpiring, isDeadCredential, fetchTokenIdentity, describeIdentity, IdentityUnavailableError, InvalidGrantError, RefreshRejectedError } from "./oauth.ts";
@@ -10,6 +11,9 @@ import { CredentialBlobSchema, type Account, type OAuthCreds, type TokenIdentity
 function parseBlob(raw: string) {
   return CredentialBlobSchema.parse(JSON.parse(raw));
 }
+
+const VerifyVerdictSchema = z.enum(["go", "rerank", "skip"]);
+export type VerifyVerdict = z.infer<typeof VerifyVerdictSchema>;
 
 export async function performSwap(target: Account): Promise<void> {
   const idx = loadAccounts();
@@ -196,13 +200,25 @@ export function isSkippableSwapError(e: unknown): boolean {
   return e instanceof InvalidGrantError || e instanceof RefreshRejectedError || e instanceof IdentityUnavailableError;
 }
 
-export async function chooseAndSwap(ctx: PickCtx, exclude: ReadonlySet<string> = new Set()): Promise<Account | null> {
+export async function chooseAndSwap(
+  ctx: PickCtx,
+  exclude: ReadonlySet<string> = new Set(),
+  verify?: (candidate: Account, ctx: PickCtx) => Promise<VerifyVerdict>,
+): Promise<Account | null> {
   const tried = new Set<string>(exclude);
   while (true) {
     const idx = loadAccounts();
     const candidates = idx.accounts.filter((a) => !tried.has(a.accountUuid));
     const best = pickBest(candidates, ctx);
     if (!best) return null;
+    if (verify) {
+      const verdict = await verify(best, ctx);
+      if (verdict === "rerank") continue;
+      if (verdict === "skip") {
+        tried.add(best.accountUuid);
+        continue;
+      }
+    }
     tried.add(best.accountUuid);
     try {
       await performSwap(best);

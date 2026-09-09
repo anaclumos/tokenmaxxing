@@ -1,0 +1,89 @@
+---
+title: Switching profile
+description: A fixed transcript snapshot with descriptive cache measurements.
+---
+
+The fixed interval `[2026-08-28T00:00:00Z, 2026-09-09T17:00:00Z)` contains 197,185 measured requests and 280 completed swaps.
+
+| Coverage | Count |
+| --- | ---: |
+| Transcript files scanned without an mtime filter | 15,160 |
+| Full relative session paths with included requests | 5,523 |
+| Valid usage rows timestamped inside the interval | 418,846 |
+| Duplicate rows removed within paths | 221,536 |
+| Request copies removed across paths | 95 |
+| Distinct requests repeated across paths | 25 |
+| Conflicting request groups excluded | 8 |
+| Swaps with unknown organization relationship | 1 |
+| Swaps inferred same organization from current index | 31 |
+| Swaps inferred cross organization from current index | 248 |
+
+All 25 requests repeated across paths appeared in subagent paths, so deduplication by session basename alone was insufficient.
+
+| Raw token category | Tokens |
+| --- | ---: |
+| Uncached input | 5,745,156 |
+| Cache reads | 33,821,675,874 |
+| Cache writes, total | 1,127,346,643 |
+| Five-minute writes | 965,586,096 |
+| One-hour writes | 161,760,547 |
+| Writes with unknown duration | 0 |
+| Output | 114,058,270 |
+
+Pairs require an unchanged model, positive timestamp gap within the stated limit, and at least 20,000 previous input tokens including reads and writes.
+
+A rewrite pattern means current cache reads are below half the previous input while current uncached input plus writes reach at least half that input.
+
+| Gap limit | Swap between requests | Eligible pairs | Rewrite patterns | Rate |
+| --- | --- | ---: | ---: | ---: |
+| 300 seconds | Observed | 2,050 | 406 | 19.80% |
+| 300 seconds | None observed | 188,554 | 1,307 | 0.69% |
+| One hour, confounded sensitivity | Observed | 2,339 | 610 | 26.08% |
+| One hour, confounded sensitivity | None observed | 189,239 | 1,568 | 0.83% |
+
+The following conservative subgroups are **inferred from the current index**, with no claim that current membership establishes historical organization identity.
+
+| Conservative organization subgroup | Eligible pairs | Rewrite patterns |
+| --- | ---: | ---: |
+| Inferred same organization | 189 | 7 |
+| Inferred cross organization | 1,858 | 397 |
+| Unknown | 3 | 2 |
+
+The conservative 406 events contain 25,191 uncached input tokens, 82,059,975 cache-write tokens, and 6,455,496 cache-read tokens.
+
+These are unmatched descriptive counts with repeated sessions and shared swap events, and neither the group rates nor their differences establish a causal effect.
+
+Input weights use uncached input at 1, five-minute writes at 1.25, one-hour writes at 2, and standard reads at 0.1, following [API cache pricing](https://platform.claude.com/docs/en/build-with-claude/prompt-caching#pricing).
+
+For flagged pairs with an observed swap, the arithmetic contrast is `(1-r) × uncached + (1.25-r) × five-minute writes + (2-r) × one-hour writes`, divided by all measured weighted input under the same read weight `r`.
+
+This calculation includes new content and assumes every uncached or written token could instead be read, so it is neither a measured counterfactual nor an estimate of avoidable cost.
+
+| Read weight | Total weighted input units | 300-second contrast share | One-hour confounded share |
+| --- | ---: | ---: | ---: |
+| Standard 0.1 for every model | 4,918,416,457.400 | 2.2182% | 3.8209% |
+| Verified Fable 5.1 at 0.025, others 0.1 | 4,710,109,021.625 | 2.3784% | 4.0771% |
+| All Fable at 0.025, assumption only | 4,350,631,953.950 | 2.6105% | 4.4748% |
+| Every model at 1 | 35,357,924,744.000 | 0.0996% | 0.2041% |
+| Every model at 0 | 1,536,248,870.000 | 7.6359% | 13.0703% |
+
+[Fable 5.1 pricing](https://www.anthropic.com/claude-fable-and-mythos-5-1) confirms the 0.025 ratio for that version, represented by 16,784 requests here, while applying it to all 41,139 Fable requests remains an assumption.
+
+- Request time is the earliest assistant usage-row timestamp for the deduplicated request, a proxy for the unavailable actual request start.
+- Identities join transitively through `message.id`, `requestId`, and `uuid`, retaining full relative path membership and counting copied requests once.
+- The selected usage record has maximum reported output before the cutoff, with latest timestamp breaking ties, while groups with conflicting model or input counts are excluded.
+- Canonical ownership prefers a path outside subagents, then the shallowest full path, then lexical order, retaining copied predecessors for context.
+- Swaps qualify only when their completion timestamp falls strictly after the previous request timestamp and at or before the current one.
+- The narrow stratum excludes gaps over 300 seconds and delayed adoption whose swap predates the previous request timestamp, so it does not capture every eventual account adoption.
+- Organization inference joins logged short account IDs to unique current `accountUuid` and `organizationUuid` pairs, comparing consecutive frozen swap targets, with unknown results for missing or ambiguous matches or an unavailable predecessor.
+- The first frozen swap has no predecessor in this snapshot and stays unknown, while a pair with multiple intervening swaps is unknown if any relation is unknown, otherwise cross if any is cross, otherwise same.
+- Current membership may differ from historical membership, unlogged account changes may invalidate the predecessor assumption, and an observed global swap does not prove that a particular session adopted it.
+- Prior write type suggests five-minute TTL for 175,349 conservative pairs and one-hour TTL for 15,186 pairs, with 69 unknown, but does not establish that the same prefix remains cached.
+- [Current Claude Code defaults](https://code.claude.com/docs/en/prompt-caching#which-ttl-each-request-gets) give subscription main conversations one hour within plan usage and other requests five minutes except certain server-controlled helpers, while API and usage-credit requests default to five minutes.
+- [Cache lifetime starts at request start and refreshes on reads](https://platform.claude.com/docs/en/build-with-claude/prompt-caching#how-prompt-caching-works), so response timing and missing prefix identity confound even the 300-second stratum.
+- [Model changes, effort changes depending on model and version, and enabling fast mode](https://code.claude.com/docs/en/prompt-caching#actions-that-invalidate-the-cache) can invalidate caches, while prefix changes, compaction, concurrency, and expiry remain unmeasured explanations here.
+- Output is excluded from every weighted denominator, and these normalized input units make no claim about subscription quota or savings.
+- The earlier 8.7% figure used a different methodology and must not be cited as an estimate of switching cost, and this profile supplies no net estimate.
+- Snapshot SHA-256 is `2e85b8b916f07c3a46a324561c253823d1c580c3bc0cdc916bf7c6cecfb76258`.
+
+The historical saved `/usage` result in `probe.out` reports zero input, output, cache-read and cache-write tokens, `duration_api_ms` of 0, and `total_cost_usd` of 0 for that invocation only, which does not establish that every probe is free.
