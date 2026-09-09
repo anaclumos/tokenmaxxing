@@ -87,7 +87,14 @@ Switching engages (configurable) once the active account's 5-hour session window
 
 The bars' headroom is deliberate: it's the budget to reach a clean turn boundary (plus up to one turn of adoption lag on macOS) before the wall. The session ladder tops out lower (90) because a 5-hour reset is cheap to sit out, and any lower rungs you add keep the pool draining level by level; weekly quota is use-it-or-lose-it, so it drains closer to the wall (98). The greedy engagement floor (80) sits below both: weekly allowance is forfeited at each account's fixed reset, so once most of a session window is spent, quota is best burned on whichever account has the most at risk.
 
-The **target** is chosen greedily off each account's cached windows: among usable accounts (every window under its bar, or past its reset), the one **furthest behind its own weekly pace** - highest remaining% divided by time to its weekly reset - because unused weekly allowance is forfeited at the fixed per-account reset. Cached resets are absolute UTC epochs, so a stale snapshot still resolves correctly: a weekly reset that has passed extrapolates forward in 7-day steps, and a session window past its reset counts as empty. Both `tokenmaxxing switch` and the automatic path rank the current account too and do nothing when it already wins, so they are idempotent - evaluating periodically converges on the right account. Candidates in the current seat's own organization rank first, because the prompt cache is organization-scoped and a same-org swap keeps every running session's cache warm; pace pressure orders the accounts within that tier. Before the automatic path lands on a candidate whose cached sample is older than `usagePollTtlMs`, it probes that account's `/usage` once (free) and skips the candidate if it is really over a bar.
+Automatic selection prefers same-organization candidates with measured session and weekly headroom, then uses remaining weekly percentage divided by time to reset.
+
+- Lateral moves stay within the current organization, while a crossed bar or enforced limit may trigger a cross-organization handoff.
+- Candidate verification makes at most two bounded `/usage` attempts per evaluation and re-ranks successful samples before switching.
+- Failed verification leaves cached figures in force, so it cannot guarantee a fresh target.
+- Manual `tokenmaxxing switch` retains pure pace-pressure selection.
+
+See [How switching decides](docs/content/docs/switching.mdx) for the policy and the [cache-cost profile](docs/content/docs/switching-profile.mdx) for measurements and their limits.
 
 ## Configuration
 

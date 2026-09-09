@@ -20,22 +20,46 @@ Both are deliberately below 100: the headroom is the budget to reach a clean tur
 
 ## The target: pace pressure
 
-Among usable accounts, the target is the one furthest behind its own weekly pace: highest **pace pressure**, defined as remaining weekly percent divided by time until that account's weekly reset. The account with the most quota about to be forfeited wins. Ties break to soonest weekly expiry, then lowest 7-day usage.
+**Pace pressure** is remaining weekly percent divided by time until that account's weekly reset, with higher values preferred and ties broken by soonest reset then lowest weekly usage.
 
-The ranking runs inside an **organization tier** first. The prompt cache is scoped to the organization, so a swap onto another seat of the seat's own organization keeps every running session's cache warm, while a swap into another organization makes every hot session re-upload its whole context on its next turn, at the cache-write rate instead of the cache-read rate. A usable account in the current organization therefore always outranks one outside it, and pace pressure orders the accounts within each tier. A pool of single-seat organizations has no same-org candidates, and there the ranking is pure pace pressure. The measurements behind this rule are recorded in the repository's `.memory/swap-cost-profile.md`.
+Automatic selection prefers a candidate in the current organization when it has enough measured headroom, then ranks by pace pressure.
 
-Before an automatic swap lands, the candidate's cached windows are checked against the server. When the candidate's sample is older than `policy.usagePollTtlMs`, the decision probes that account's `/usage` once, through an isolated config dir holding its parked credential, and stores the fresh windows. A candidate that is really over a bar is skipped for the rest of the evaluation and the next one is tried. A probe that returns no data leaves the cached figures in force. This stops the seat from landing on an account another host has already drained, discovering the wall on the next tick, and busting every session's cache a second time.
+| Selection rule | Behavior |
+| --- | --- |
+| Organization preference | Requires session usage below `greedySessionFloor` and more than `max(1, session bar - greedySessionFloor)` percentage points below every applicable bar |
+| Default screening bars | Preference requires session usage below 80% and aggregate and gated weekly usage below 88% |
+| Unknown usage | Receives no organization preference |
+| Same organization, insufficient headroom | Competes by pace pressure with the other candidates |
+| Manual `tokenmaxxing switch` | Uses pace pressure without organization preference or incumbent margin |
+
+Anthropic documents cache isolation between organizations and, on some API platforms, between workspaces within an organization, so sharing an organization does not guarantee a cache hit. See the [cache documentation](https://platform.claude.com/docs/en/build-with-claude/prompt-caching#cache-storage-and-sharing) and the [measured profile](/switching-profile).
+
+Before an automatic handoff, the decision attempts to refresh a candidate's usage sample when it is older than `policy.usagePollTtlMs`.
+
+- Parked accounts usually exceed this TTL because there is no periodic parked-account sampler.
+- Each evaluation attempts at most two candidates, with one `/usage` attempt per candidate and a 12-second deadline covering identity reads and the CLI.
+- Verification skips expiring access tokens and gives the isolated CLI an access token without its refresh grant.
+- A successful sample is stored and selection runs again, including pace ranking and the current screening rung.
+- Crossing a screening bar does not remove an account from the wall squeeze or reset selection.
+- An unavailable sample or exhausted verification budget leaves cached figures in force, so stale-target swaps remain possible.
+- An account requiring reauthentication is excluded for the evaluation.
 
 Everything runs off cached windows stored as absolute UTC epochs, so a stale snapshot still resolves correctly: a weekly reset that has passed extrapolates forward in exact 7-day steps, and any window past its cached reset counts as freshly empty (never a reason to switch, never a reason to keep an account benched).
 
 ## Greedy vs hard path
 
-- **Greedy path** (engaged, but under every bar): rank every account, current included. If the current account already wins or ties, do nothing. Otherwise swap onto the strictly better account. It never waits and never pre-parks - a usable current account is not traded for a wait. Because the current account is ranked too, both the automatic path and bare `tokenmaxxing switch` are idempotent: evaluating periodically converges on the right account and then stays put.
+- **Greedy path** starts while the current account is usable and permits a lateral move only within its organization.
 
-  The automatic greedy path holds the incumbent with hysteresis. Pace pressure is a continuous value, so two near-tied accounts almost never tie exactly, and working the live account keeps nudging a parked one just ahead - which is how a pool used to ping-pong the seat every few minutes, and every swap busts the per-organization prompt cache and pays a full uncached re-read on the next turn. `policy.greedySwapMargin` (default 0.15) is the fix: a parked account must beat the current one's pace pressure by more than this fraction before the greedy path swaps. A handoff then only happens once the incumbent has drained enough to be genuinely behind, not on a rounding-level lead. The margin never softens a crossed bar, the hard path, or the wall - only lateral swaps among accounts that are all under the bars. Bare `tokenmaxxing switch` sets the margin to zero, so a manual switch still converges on the strictly best account.
+  `policy.greedySwapMargin`, default 0.15, holds the incumbent unless a positive-pace candidate exceeds its pace pressure by more than that fraction.
 
-  Because the organization tier ranks first, the greedy path never crosses organizations while the current seat is usable: a lateral move only ever happens within the seat's own organization, where it costs no cache.
-- **Hard path** (a bar crossed): swap away to the best usable candidate, same-organization seats first. If a candidate's refresh token turns out to be dead, it is flagged needs-reauth and the next candidate is tried. If nothing is usable, the wall squeeze (below) runs, and only when every usable account has hit its wall does the depleted-wait logic run; only a caller that can actually pause the session (the supervised Stop hook) is allowed to pre-park onto a still-blocked but soonest-recovering account.
+  A pool with one account per organization therefore holds until a screening bar or enforced limit triggers the hard path, which can forfeit more unused weekly allowance in exchange for fewer cross-organization handoffs.
+- **Hard path** starts when a screening bar is crossed and may cross organizations using the headroom preference above.
+
+  A dead refresh grant is marked for reauthentication and the next candidate is tried.
+
+  If no candidate clears the screening bars, the wall squeeze runs before depleted-wait selection.
+
+  Only the supervised Stop hook may pre-park onto a blocked account while pausing the session.
 
 ## The wall
 
@@ -66,7 +90,11 @@ A failure counts only when it provably happened on the post-swap credential: a r
 
 ## Banked resets
 
-Both CLIs can reset a hit limit on the same account. Claude Code's `/limit-reset` resets the 5-hour window once a week, and the reset window still counts toward the weekly limit. Codex's banked reset is a saved one-time reset that refreshes the 5-hour and weekly windows together. A reset keeps the seat, and with it the per-organization prompt cache that a swap cold-starts, so `policy.preferToUseBankedReset` (default `[]`) lists the providers that spend a reset before swapping. The greedy path is unchanged: under the rungs the seat still moves toward the account furthest behind its weekly pace.
+Both CLIs can reset a hit limit on the same account, and `policy.preferToUseBankedReset`, default `[]`, lists the providers that spend a reset before swapping.
+
+- Claude Code's `/limit-reset` resets the 5-hour window once a week and still counts toward weekly usage.
+- Codex's banked reset refreshes both windows together.
+- A reset avoids an account change, while the greedy path retains its same-organization restriction.
 
 For Claude, the hard path checks the reset before it ranks a target. The seat **holds** between the active session rung and the wall while a reset is believed available for that account and the weekly windows (the aggregate and every gated per-model cap, each sampled within the poll TTL; an enforced stamp does not count as a sample) have room for one more session window at the measured rate. That rate, the weekly points one full 5-hour window costs, is learned per account from the statusline tee within a single window. A gated per-model cap has its own denominator, so its rate is learned separately in the cap's own points, from the `/usage` per-model samples within a single window, and a cap whose rate is not yet measured swaps: the aggregate rate is never rescaled to stand in for it. An account with no measurement swaps as before: unmeasured never looks safe. At the wall (a `StopFailure` on the 5-hour window, or the tee at the session wall bar) the decision claims the reset with the live credential under Claude Code's own refresh lock, the same server call `/limit-reset` makes (the slash command itself is interactive-only). A `reset` clears the enforced stamp and the cached 5-hour window, clears the check schedule, and a supervised session whose turn failed is relaunched on the same account with a continuation prompt, so nothing swaps. A claim whose response arrives but cannot be read is confirmed with a second claim: `already_used` on that confirmation means the first claim was the reset. Every other answer falls through to the swap the hard path would have made anyway: `already_used` records the server's next availability date and `ineligible` a day of silence (no claim is retried until then), `not_limited` means the wall reading ran ahead of the server and leaves the account believed available for a later claim, and a transient error is not retried within the evaluation.
 

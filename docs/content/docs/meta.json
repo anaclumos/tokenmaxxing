@@ -5,6 +5,7 @@
     "commands",
     "architecture",
     "switching",
+    "switching-profile",
     "configuration",
     "state-directory",
     "credentials",
