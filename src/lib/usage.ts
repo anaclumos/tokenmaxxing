@@ -286,9 +286,14 @@ async function spawnClaudeBounded(
   cmd: string[],
   env: Record<string, string>,
   cwd?: string,
+  killMs = PROBE_KILL_MS,
+  signal?: AbortSignal,
 ): Promise<SpawnResult | null> {
+  signal?.throwIfAborted();
   const p = Bun.spawn(cmd, { env, cwd, stdout: "pipe", stderr: "pipe" });
-  const killer = setTimeout(() => p.kill("SIGKILL"), PROBE_KILL_MS);
+  const abort = () => p.kill("SIGKILL");
+  signal?.addEventListener("abort", abort, { once: true });
+  const killer = setTimeout(() => p.kill("SIGKILL"), killMs);
   try {
     const reads = Promise.all([new Response(p.stdout).text(), new Response(p.stderr).text()]);
     const settled = await Promise.race([
@@ -301,13 +306,14 @@ async function spawnClaudeBounded(
     return { exitCode: p.exitCode, stdout, stderr };
   } finally {
     clearTimeout(killer);
+    signal?.removeEventListener("abort", abort);
   }
 }
 
-async function probeUsageOnce(env: Record<string, string>, now: number): Promise<FullUsage | null> {
+async function probeUsageOnce(env: Record<string, string>, now: number, killMs: number, signal?: AbortSignal): Promise<FullUsage | null> {
   let out: string;
   try {
-    const r = await spawnClaudeBounded([resolveRealClaude(), "-p", "/usage", "--output-format", "json"], env);
+    const r = await spawnClaudeBounded([resolveRealClaude(), "-p", "/usage", "--output-format", "json"], env, undefined, killMs, signal);
     if (r === null) {
       log("usage.probe_failed", { err: "output pipes still open after child exit (leaked descendant)" });
       return null;
@@ -345,13 +351,13 @@ function probeEnv(configDir?: string): Record<string, string> {
   return env;
 }
 
-export async function probeUsage(configDir?: string, now = Date.now(), retries = PROBE_RETRY_DELAYS_MS.length): Promise<FullUsage | null> {
+export async function probeUsage(configDir?: string, now = Date.now(), opts: { retries?: number; killMs?: number; signal?: AbortSignal } = {}): Promise<FullUsage | null> {
   const env = probeEnv(configDir);
 
   for (let attempt = 0; ; attempt++) {
-    const full = await probeUsageOnce(env, now);
+    const full = await probeUsageOnce(env, now, opts.killMs ?? PROBE_KILL_MS, opts.signal);
     if (full) return full;
-    if (attempt >= retries) {
+    if (attempt >= (opts.retries ?? PROBE_RETRY_DELAYS_MS.length) || opts.signal?.aborted) {
       log("usage.probe_gave_up", { attempts: attempt + 1 });
       return null;
     }

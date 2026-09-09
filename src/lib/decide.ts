@@ -5,7 +5,7 @@ import { paths } from "./paths.ts";
 import { MAX_CHECK_DELAY_TICKS, POST_SWAP_COOLDOWN_MS, maxCheckDelayMs, loadAccounts, loadConfig, loadDepletedWait, loadLastSwapAt, loadUsage, loadUsageSnapshot, loadModelUsage, measureFamilyWindow, saveAccounts, saveDepletedWait, saveModelUsage, writeUsage } from "./state.ts";
 import { readOAuthAccount } from "./claudejson.ts";
 import { bankedResetBelievedAvailable, claimBankedReset } from "./bankedreset.ts";
-import { chooseAndSwap, isSkippableSwapError, performSwap } from "./swap.ts";
+import { chooseAndSwap, isSkippableSwapError, performSwap, type VerifyVerdict } from "./swap.ts";
 import { probeParkedUsage } from "./sample.ts";
 import { currentWins, effectiveBars, hardBars, isExhausted, nextWeeklyReset, pickBest, pickEarliestReset, sessionLadder, usableAt, type PickCtx } from "./picker.ts";
 import { familyTokens, gatedFamilies, probeUsage, type EnforcedClass } from "./usage.ts";
@@ -23,6 +23,8 @@ export type SwapDecision = z.infer<typeof SwapDecisionSchema>;
 
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 const FIVE_HOURS_MS = 5 * 60 * 60 * 1000;
+const VERIFY_PROBE_BUDGET = 2;
+const VERIFY_PROBE_KILL_MS = 12_000;
 
 function liveUsed(input: { window: UsageWindow; windowMs: number; sampledAt: number; now: number }): number {
   const { window: w, windowMs, sampledAt, now } = input;
@@ -254,13 +256,19 @@ export async function evaluateAndMaybeSwap(now = Date.now(), anticipatory = fals
       rejected.add(candidate.accountUuid);
       log("decide.candidate_rejected", { account: candidate.accountUuid.slice(0, 8), error: e instanceof Error ? e.message : String(e) });
     };
-    const verified = async (candidate: Account, ctx: PickCtx): Promise<boolean> => {
-      if (candidate.lastUsageAt != null && now - candidate.lastUsageAt <= cfg.policy.usagePollTtlMs) return true;
+    let probeBudget = VERIFY_PROBE_BUDGET;
+    const verified = async (candidate: Account, ctx: PickCtx): Promise<VerifyVerdict> => {
+      if (candidate.lastUsageAt != null && now - candidate.lastUsageAt <= cfg.policy.usagePollTtlMs) return "go";
       const short = candidate.accountUuid.slice(0, 8);
       const idx2 = loadAccounts();
       const stored = idx2.accounts.find((a) => a.accountUuid === candidate.accountUuid);
-      if (!stored) return true;
-      const sample = await probeParkedUsage(stored, { retries: 0 });
+      if (!stored) return "go";
+      if (probeBudget <= 0) {
+        log("decide.verify_budget_spent", { account: short });
+        return "go";
+      }
+      probeBudget -= 1;
+      const sample = await probeParkedUsage(stored, { retries: 0, refreshParked: false, killMs: VERIFY_PROBE_KILL_MS, signal: AbortSignal.timeout(VERIFY_PROBE_KILL_MS) });
       if (sample.ok) {
         const at = Date.now();
         stored.lastUsage = { fiveHour: sample.usage.session, sevenDay: sample.usage.weekAll };
@@ -273,21 +281,19 @@ export async function evaluateAndMaybeSwap(now = Date.now(), anticipatory = fals
       if (sample.ok || stored.needsReauth === true) saveAccounts(idx2);
       if (stored.needsReauth === true) {
         rejected.add(candidate.accountUuid);
-        log("decide.candidate_rejected", { account: short, error: sample.ok ? "needs reauth" : sample.reason });
-        return false;
+        log("decide.candidate_rejected", { account: short, error: "needs reauth" });
+        return "skip";
       }
       if (!sample.ok) {
-        log("decide.candidate_unverified", { account: short, reason: sample.reason.slice(0, 160) });
-        return true;
+        log("decide.candidate_unverified", { account: short });
+        return "go";
       }
-      const fields = { account: short, session: sample.usage.session.usedPercentage, weekly: sample.usage.weekAll.usedPercentage };
-      if (isExhausted(stored, ctx)) {
-        rejected.add(candidate.accountUuid);
-        log("decide.candidate_walled", fields);
-        return false;
-      }
-      log("decide.candidate_verified", fields);
-      return true;
+      log(isExhausted(stored, ctx) ? "decide.candidate_walled" : "decide.candidate_verified", {
+        account: short,
+        session: sample.usage.session.usedPercentage,
+        weekly: sample.usage.weekAll.usedPercentage,
+      });
+      return "rerank";
     };
 
     const greedy = async (holdMargin: number): Promise<SwapDecision> => {
@@ -295,14 +301,19 @@ export async function evaluateAndMaybeSwap(now = Date.now(), anticipatory = fals
         const cur = loadAccounts();
         const active = seatOf(cur);
         const pool = usable(cur.accounts);
-        const ctxAll = { now, thresholds: barsOf(cur.accounts), currentAccountUuid: null, currentOrganizationUuid: active?.organizationUuid ?? null, switchFamilies, holdMargin };
+        const ctxAll = { now, thresholds: barsOf(cur.accounts), currentAccountUuid: null, currentOrganizationUuid: active?.organizationUuid ?? null, orgAffinityFloor: cfg.policy.greedySessionFloor, switchFamilies, holdMargin };
         if (currentWins(active, pool, ctxAll)) {
           return { swapped: false, account: null, reason: "current-best" };
         }
         const ctx = { ...ctxAll, currentAccountUuid: active?.accountUuid ?? null };
         const best = pickBest(pool, ctx);
         if (!best) return { swapped: false, account: null, reason: "no-usable-target" };
-        if (!(await verified(best, ctx))) continue;
+        const seatOrg = active != null && !active.needsReauth && !isExhausted(active, ctxAll) ? active.organizationUuid : null;
+        if (seatOrg != null && best.organizationUuid !== seatOrg) {
+          log("decide.greedy_org_hold", { account: best.accountUuid.slice(0, 8) });
+          return { swapped: false, account: null, reason: "greedy-same-org-only" };
+        }
+        if ((await verified(best, ctx)) !== "go") continue;
         try {
           await performSwap(best);
         } catch (e) {
@@ -335,10 +346,10 @@ export async function evaluateAndMaybeSwap(now = Date.now(), anticipatory = fals
           if (claim === "reset") return { swapped: false, account: seat, reason: "banked-reset", reset: true };
         }
       }
-      const ctx = { now, thresholds, currentAccountUuid: seat?.accountUuid ?? null, currentOrganizationUuid: seat?.organizationUuid ?? null, switchFamilies };
+      const ctx = { now, thresholds, currentAccountUuid: seat?.accountUuid ?? null, currentOrganizationUuid: seat?.organizationUuid ?? null, orgAffinityFloor: cfg.policy.greedySessionFloor, switchFamilies };
       const best = pickBest(pool, ctx);
       if (!best) break;
-      if (!(await verified(best, ctx))) continue;
+      if ((await verified(best, ctx)) !== "go") continue;
       try {
         await performSwap(best);
       } catch (e) {
@@ -355,7 +366,7 @@ export async function evaluateAndMaybeSwap(now = Date.now(), anticipatory = fals
       log("decide.last_drop_hold", { account: seat.accountUuid.slice(0, 8) });
       return { swapped: false, account: null, reason: "last-drop-hold" };
     }
-    const squeezed = await chooseAndSwap({ ...hardCtx, currentAccountUuid: seat?.accountUuid ?? null, currentOrganizationUuid: seat?.organizationUuid ?? null }, rejected, verified);
+    const squeezed = await chooseAndSwap({ ...hardCtx, currentAccountUuid: seat?.accountUuid ?? null, currentOrganizationUuid: seat?.organizationUuid ?? null, orgAffinityFloor: cfg.policy.greedySessionFloor }, rejected, verified);
     if (squeezed) {
       log("decide.last_drop_swap", { account: squeezed.accountUuid.slice(0, 8) });
       return { swapped: true, account: squeezed, reason: "last-drop-swap" };

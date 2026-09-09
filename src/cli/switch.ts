@@ -62,11 +62,10 @@ export async function cmdSwitch(selector?: string, json = false): Promise<number
     }
 
     const switchFamilies = gatedFamilies(loadUsage()?.model ?? null, cfg.policy.switchModels);
-    const everyoneIn = (accounts: Account[], active: Account | null): PickCtx => ({
+    const everyoneIn = (accounts: Account[]): PickCtx => ({
       now,
       thresholds: effectiveBars(cfg, { accounts, now, switchFamilies }),
       currentAccountUuid: null,
-      currentOrganizationUuid: active?.organizationUuid ?? null,
       switchFamilies,
     });
     const rejected = new Set<string>();
@@ -77,7 +76,7 @@ export async function cmdSwitch(selector?: string, json = false): Promise<number
         (claimed != null ? cur.accounts.find((a) => a.accountUuid === claimed) : null) ??
         cur.accounts.find((a) => a.accountUuid === cur.activeAccountUuid) ??
         null;
-      const everyone = everyoneIn(cur.accounts, active);
+      const everyone = everyoneIn(cur.accounts);
       if (active != null && currentWins(active, pool, everyone)) {
         if (drifted) return swapTo(active, "drift-reconciled");
         const expiry = weeklyExpiry(active, now);
@@ -115,7 +114,7 @@ export async function cmdSwitch(selector?: string, json = false): Promise<number
     while (true) {
       const fresh = loadAccounts();
       const pool = fresh.accounts.filter((a) => !rejected.has(a.accountUuid));
-      const earliest = pickEarliestReset(pool, everyoneIn(fresh.accounts, null));
+      const earliest = pickEarliestReset(pool, everyoneIn(fresh.accounts));
       const reauth = fresh.accounts.filter((a) => a.needsReauth).map((a) => a.label);
       if (!earliest) {
         if (reauth.length > 0) {
@@ -163,6 +162,7 @@ export async function cmdSwitch(selector?: string, json = false): Promise<number
         }
         throw e;
       }
+      log("switch.manual", { account: earliest.account.accountUuid.slice(0, 8), reason: "earliest-reset" });
       emit(`${c.green("↻")} switched to ${c.bold(earliest.account.label)}`, { switched: true, account: earliest.account.label, reason: "earliest-reset", availableAt, reauthNeeded: reauth });
       if (availableAt != null && !json) {
         console.log(c.yellow(`all accounts at limit - ${c.bold(earliest.account.label)} recovers soonest (${fmtReset(availableAt, now)})${reauthNote}`));

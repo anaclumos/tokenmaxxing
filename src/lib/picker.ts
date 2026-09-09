@@ -35,6 +35,7 @@ const PickCtxSchema = z.object({
   thresholds: ThresholdsSchema,
   currentAccountUuid: z.string().nullable(),
   currentOrganizationUuid: z.string().nullable().optional(),
+  orgAffinityFloor: z.number().optional(),
   switchFamilies: z.array(z.string()),
   holdMargin: z.number().min(0).optional(),
 });
@@ -95,10 +96,27 @@ export function pacePressure(a: Account, now: number): number {
   return Math.max(0, 100 - used) / Math.max(1, reset - now);
 }
 
-const swapPreference = (now: number, organizationUuid: string | null | undefined) => [
-  (a: Account) => (organizationUuid != null && a.organizationUuid === organizationUuid ? 0 : 1),
-  (a: Account) => -pacePressure(a, now),
-  (a: Account) => weeklyExpiry(a, now),
+function sessionUsed(a: Account, now: number): number {
+  const w = a.lastUsage?.fiveHour;
+  if (w == null) return 101;
+  if (w.resetsAt != null) return w.resetsAt <= now ? 0 : w.usedPercentage;
+  if (a.lastUsageAt != null && now >= a.lastUsageAt + FIVE_HOURS_MS) return 0;
+  return w.usedPercentage;
+}
+
+function orgTier(a: Account, ctx: PickCtx): number {
+  if (ctx.currentOrganizationUuid == null || a.organizationUuid !== ctx.currentOrganizationUuid) return 1;
+  if (ctx.orgAffinityFloor != null && sessionUsed(a, ctx.now) >= ctx.orgAffinityFloor) return 1;
+  if (!a.lastUsage || ctx.switchFamilies.some((family) => gatedPerModelWindows(a, [family]).length === 0)) return 1;
+  const headroom = Math.max(1, ctx.thresholds.session - (ctx.orgAffinityFloor ?? ctx.thresholds.session));
+  if (isExhausted(a, { ...ctx, thresholds: { session: ctx.thresholds.session - headroom, weekly: ctx.thresholds.weekly - headroom } })) return 1;
+  return 0;
+}
+
+const swapPreference = (ctx: PickCtx) => [
+  (a: Account) => orgTier(a, ctx),
+  (a: Account) => -pacePressure(a, ctx.now),
+  (a: Account) => weeklyExpiry(a, ctx.now),
   (a: Account) => a.lastUsage?.sevenDay.usedPercentage ?? 101,
 ];
 
@@ -106,7 +124,7 @@ export function pickBest(accounts: Account[], ctx: PickCtx): Account | null {
   const usable = accounts.filter(
     (a) => a.accountUuid !== ctx.currentAccountUuid && !a.needsReauth && !isExhausted(a, ctx),
   );
-  return sortBy(usable, swapPreference(ctx.now, ctx.currentOrganizationUuid))[0] ?? null;
+  return sortBy(usable, swapPreference(ctx))[0] ?? null;
 }
 
 export function currentWins(active: Account | null, accounts: Account[], ctx: PickCtx): boolean {
@@ -116,7 +134,7 @@ export function currentWins(active: Account | null, accounts: Account[], ctx: Pi
   const margin = ctx.holdMargin ?? 0;
   const bestPace = pacePressure(best, ctx.now);
   if (margin > 0 && bestPace > 0 && bestPace <= pacePressure(active, ctx.now) * (1 + margin)) return true;
-  return swapPreference(ctx.now, ctx.currentOrganizationUuid).every((k) => k(active) === k(best));
+  return swapPreference(ctx).every((k) => k(active) === k(best));
 }
 
 export function usableAt(a: Account, ctx: PickCtx): number {
