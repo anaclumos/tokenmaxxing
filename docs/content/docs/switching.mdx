@@ -63,7 +63,13 @@ Everything runs off cached windows stored as absolute UTC epochs, so a stale sna
 
 ## The wall
 
-When the hard path finds no usable candidate - every account is over its screening bars - the automatic decision does not park right away. It first re-evaluates against the **wall bars** (`hardThresholds`, default 100, each account's real server limit): the session holds its seat and squeezes while it is still under the wall, else swaps onto the best still-under-wall account (same organization-first, pace-pressure ranking, with the same live check of a stale candidate), and only parks once every usable account has truly hit its wall. An account whose refresh token is dead is set aside for reauth, not waited on. Recovery is measured against the wall, so an account whose 5-hour window resets can be squeezed again even while its weekly window still sits above the screening bar.
+When no candidate clears the screening bars, the decision re-evaluates against the **wall bars**, set by `hardThresholds` and defaulting to 100%.
+
+- A seat below the wall holds and uses its remaining quota.
+- A walled seat selects a candidate below the wall using the headroom preference above and bounded verification of stale usage.
+- With default bars, remaining candidates have already failed the stricter headroom requirement, so wall selection ranks by pace pressure.
+- The pool parks only when every eligible account has reached its wall, while dead refresh grants are set aside for reauthentication.
+- Recovery is measured against the wall, allowing an account with a reset session window to run even while its weekly usage remains above the screening bar.
 
 This keeps the last few percent of each account's quota from going unspent. Wall reading uses the same usage source the decision already has. Statusline tee on a supervised session. `/usage` probe on a headless run. Same figures Claude's `/rate-limit-options` shows. A real max-out gets detected and skipped. A single-turn overshoot lands on the next decision. Periodic check, next spawn, or Stop boundary on a headless run.
 

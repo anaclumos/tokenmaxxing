@@ -8,6 +8,7 @@
 - Give verification children no refresh grant and never harvest their stripped credential back into a parked slot.
 - Check refresh permission at the refresh branch itself because an identity lookup can move a token across the expiry threshold.
 - Organization affinity needs headroom in the session, aggregate weekly and gated model windows.
+- Wall-squeeze descriptions must retain the headroom condition because default Layer 2 candidates receive no organization preference.
 - The automatic greedy path stays within the incumbent organization, while manual switching retains pure pace ranking.
 - Filter greedy candidates before ranking so an ineligible outside-organization winner cannot suppress a useful move within the organization.
 - Sample freshness and verification availability are different facts, so a failed probe must remain visible and cannot prove a target safe.
