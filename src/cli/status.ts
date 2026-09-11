@@ -12,7 +12,7 @@ import { isCodexExhausted } from "../lib/codexpick.ts";
 import { codexLimitLabel, isSessionWindow } from "../lib/codexusage.ts";
 import { bar, c, claudeTierLabel, count, emitJson, fmtAgo } from "./render.ts";
 import { gatedFamilies, type FullUsage } from "../lib/usage.ts";
-import { BankedResetRecordSchema, ThresholdsSchema, UsageWindowSchema, type Account, type CodexWindow, type Config, type UsageWindow } from "../lib/types.ts";
+import { ThresholdsSchema, UsageWindowSchema, type Account, type CodexWindow, type Config, type UsageWindow } from "../lib/types.ts";
 
 const SampleReportSchema = z.discriminatedUnion("ok", [
   z.object({ ok: z.literal(true), source: z.enum(["statusline", "probe"]) }),
@@ -35,9 +35,6 @@ const ClaudeStatusAccountSchema = z.object({
   pingError: z.string().nullable(),
   pingRejected: z.boolean(),
   pinged: z.boolean(),
-  bankedReset: BankedResetRecordSchema.nullable(),
-  sessionWindowWeeklyCost: z.number().nullable(),
-  sessionWindowFamilyCosts: z.record(z.string(), z.number()).nullable(),
 });
 type ClaudeStatusAccount = z.infer<typeof ClaudeStatusAccountSchema>;
 
@@ -59,7 +56,6 @@ const CodexStatusAccountSchema = z.object({
     .nullable(),
   usageAt: z.number().nullable(),
   sample: SampleReportSchema,
-  resetCredits: z.number().int().nullable(),
 });
 type CodexStatusAccount = z.infer<typeof CodexStatusAccountSchema>;
 
@@ -157,8 +153,7 @@ async function collectClaude(input: { cfg: Config; ping: boolean; pingCount: num
         samples.set(a.accountUuid, { outcome, viaTee });
         if (!outcome.ok) return;
         a.lastUsage = { fiveHour: outcome.usage.session, sevenDay: outcome.usage.weekAll };
-        a.lastUsageAt = viaTee && teeAt != null ? (live?.sampledAt ?? teeAt) : Date.now();
-        if (viaTee && live?.sessionWindowWeeklyCost != null) a.sessionWindowWeeklyCost = live.sessionWindowWeeklyCost;
+        a.lastUsageAt = viaTee && teeAt != null ? teeAt : Date.now();
         if (Object.keys(outcome.usage.perModel).length > 0) {
           a.lastPerModel = outcome.usage.perModel;
           a.lastPerModelAt = viaTee && modelUsage ? (modelUsage.sampledAt ?? modelUsage.ts) : a.lastUsageAt;
@@ -178,7 +173,6 @@ async function collectClaude(input: { cfg: Config; ping: boolean; pingCount: num
   const families = gatedFamilies(loadUsage()?.model ?? null, cfg.policy.switchModels);
   const bars = effectiveBars(cfg, { accounts: idx.accounts, now, switchFamilies: families });
   const liveAccount = readOAuthAccount()?.accountUuid ?? null;
-  const liveModelUsage = loadModelUsage();
   const ordered = sortBy(idx.accounts, [(a) => (a.needsReauth ? 1 : 0), (a) => earliestReset(a, now)]);
   const accounts = ordered.map((a): ClaudeStatusAccount => {
     const sampled = samples.get(a.accountUuid) ?? { outcome: { ok: false, reason: "not sampled" }, viaTee: false };
@@ -201,9 +195,6 @@ async function collectClaude(input: { cfg: Config; ping: boolean; pingCount: num
       pingError: sampled.outcome.pingError ?? null,
       pingRejected: sampled.outcome.pingRejected === true,
       pinged: pings.has(a.accountUuid) && sampled.outcome.ok && sampled.outcome.pingError == null && aggregate != null && aggregate.fiveHour.resetsAt == null,
-      bankedReset: a.bankedReset ?? null,
-      sessionWindowWeeklyCost: a.sessionWindowWeeklyCost ?? null,
-      sessionWindowFamilyCosts: liveModelUsage && liveModelUsage.account === a.accountUuid ? (liveModelUsage.familyCosts ?? null) : null,
     };
   });
   return {
@@ -231,7 +222,7 @@ async function collectCodex(input: { cfg: Config; now: number }): Promise<Status
         const outcome = await sampleCodexAccount({ account, liveAccountId: liveId, now });
         outcomes.set(account.accountId, outcome);
         if (outcome.ok) {
-          account.lastUsage = { aggregate: outcome.usage.aggregate, perLimit: outcome.usage.perLimit, resetCredits: outcome.usage.resetCredits, reachedType: outcome.usage.reachedType };
+          account.lastUsage = { aggregate: outcome.usage.aggregate, perLimit: outcome.usage.perLimit };
           account.lastUsageAt = Date.now();
           if (outcome.usage.email != null) account.email = outcome.usage.email;
           if (outcome.usage.planType != null) account.planType = outcome.usage.planType;
@@ -272,7 +263,6 @@ async function collectCodex(input: { cfg: Config; now: number }): Promise<Status
         : null,
       usageAt: account.lastUsageAt ?? null,
       sample: outcome.ok ? { ok: true, source: "probe" } : { ok: false, reason: outcome.reason },
-      resetCredits: usage?.resetCredits ?? null,
     };
   });
   return { bars, accounts };

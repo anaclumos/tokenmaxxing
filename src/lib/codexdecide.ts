@@ -11,7 +11,6 @@ import { performCodexSwap } from "./codexswap.ts";
 import { CodexInvalidGrantError, refreshCodexAuth } from "./codexoauth.ts";
 import { fetchCodexUsage } from "./codexusage.ts";
 import { codexIdentityOf, isCodexAccessExpiring, readLiveCodexAuth, writeLiveCodexAuth, writeParkedCodexAuth } from "./codexauth.ts";
-import { codexBankedResetVerdict, consumeLiveCodexBankedReset } from "./codexreset.ts";
 import { liveCodexAccountId } from "./codexsample.ts";
 import { livingCodexPresences, presentCodexAccountIds, targetableCodexAccounts } from "./codexpresence.ts";
 import { terminalBars } from "./picker.ts";
@@ -22,7 +21,6 @@ const CodexSwapDecisionSchema = z.object({
   swapped: z.boolean(),
   account: CodexAccountSchema.nullable(),
   reason: z.string(),
-  reset: z.boolean().optional(),
 });
 export type CodexSwapDecision = z.infer<typeof CodexSwapDecisionSchema>;
 
@@ -53,7 +51,7 @@ async function sampleLiveOntoOwner(input: { now: number }): Promise<string | nul
     writeParkedCodexAuth({ credFile: owner.credFile, auth: live });
   }
   const usage = await fetchCodexUsage({ auth: live });
-  owner.lastUsage = { aggregate: usage.aggregate, perLimit: usage.perLimit, resetCredits: usage.resetCredits, reachedType: usage.reachedType };
+  owner.lastUsage = { aggregate: usage.aggregate, perLimit: usage.perLimit };
   owner.lastUsageAt = now;
   if (usage.email != null) owner.email = usage.email;
   if (usage.planType != null) owner.planType = usage.planType;
@@ -138,28 +136,6 @@ export async function evaluateAndMaybeSwapCodex(input: { now?: number }): Promis
       isCodexEngaged({ account: active, floor: cfg.policy.greedySessionFloor, now }) ||
       isCodexExhausted({ account: active, thresholds: bars, now });
     if (!engaged) return { swapped: false, account: null, reason: "under-threshold-or-stale" };
-
-    if (cfg.policy.preferToUseBankedReset.includes("codex") && active.needsReauth !== true) {
-      const seat = active;
-      const verdict = codexBankedResetVerdict({ account: seat, thresholds: bars, now, pollTtlMs: cfg.policy.usagePollTtlMs });
-      if (verdict === "hold") {
-        log("codexdecide.banked_reset_hold", { account: seat.accountId.slice(0, 8) });
-        return { swapped: false, account: seat, reason: "banked-reset-hold" };
-      }
-      if (verdict === "claim") {
-        const claim = await consumeLiveCodexBankedReset({ account: seat, now });
-        if (claim === "reset") {
-          try {
-            await sampleLiveOntoOwner({ now: Date.now() });
-          } catch (e) {
-            log("codexdecide.resample_failed", { err: e instanceof Error ? e.message : String(e) });
-          }
-          const fresh = loadCodexAccounts().accounts.find((account) => account.accountId === activeId) ?? seat;
-          if (fresh.lastUsage) postSwapResweep({ liveAccountId: activeId, bars, now });
-          return { swapped: false, account: fresh, reason: "banked-reset", reset: true };
-        }
-      }
-    }
 
     if (!isCodexExhausted({ account: active, thresholds: bars, now })) {
       while (true) {
