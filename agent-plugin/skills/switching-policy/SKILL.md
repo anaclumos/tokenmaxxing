@@ -16,7 +16,7 @@ description: Explain and apply tokenmaxxing switch policy (greedy vs hard path, 
 - **Unavailable verification** leaves cached figures in force, and verification never spends a parked refresh grant.
 - **Manual switch** retains pure pace ranking with no organization preference or incumbent margin.
 - **Pace pressure**: remaining weekly percent / time to weekly reset (highest first). Not most-remaining.
-- **Effective bars**: `effectiveBars(cfg, pool)` = the active rung of the 5h ladder (`thresholds.session`, default `[90]`, a single rung: the lowest rung some pooled account, the current one included, still clears) and the weekly bar, each minus `policy.projectionMargin`. Trigger and screening must share these bars or swaps ping-pong. Codex reads `terminalBars(cfg)`, the top rung only. The check cadence is capped one band per rung climbed, and every band is a multiple of the tick `policy.checkIntervalMs` (default 60000).
+- **Effective bars**: `effectiveBars(cfg, pool)` = the active rung of the 5h ladder (`thresholds.session`, default `[90]`, a single rung: the lowest rung some pooled account, the current one included, still clears) and the weekly bar, each minus `policy.projectionMargin`. Trigger and screening must share these bars or swaps ping-pong. Codex reads `terminalBars(cfg)`, the top rung only. The periodic timer runs a plain `check` every `policy.checkIntervalMs` tick (default 60000); there is no self-paced cadence.
 
 ## Layer 2 (Claude only)
 
