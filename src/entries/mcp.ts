@@ -97,7 +97,7 @@ const HELP_TEXT = `tokenmaxxing agent MCP
 
 Read tools (always available):
   pool_ls       list pooled Claude and Codex accounts (labels/status only)
-  pool_status   sample usage bars (free /usage path; never --ping)
+  pool_status   sample usage bars (free /usage path)
   doctor        verify install health (labels/status only)
   config_get    read effective config, or one key when provided
   help          this catalog
@@ -109,7 +109,6 @@ Mutating tools (confirm=true AND ${MUTATIONS_ENV}=1):
   config_unset  remove a config.json override
 
 Hard deny (no tools):
-  status --ping / metered pings
   init / add / auth / rm / uninstall
   credential blobs or token values
   killing sessions or supervisors
@@ -147,7 +146,7 @@ export function createTokenmaxxingMcpServer(): McpServer {
   server.registerTool(
     "pool_status",
     {
-      description: "Show pool usage bars via the free /usage path. Never opens 5h windows. Do not request --ping; that tool does not exist.",
+      description: "Show pool usage bars via the free /usage path. Never opens 5h windows.",
       inputSchema: {},
     },
     async () => {
