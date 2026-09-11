@@ -85,8 +85,6 @@ export const AccountsIndexSchema = z.object({
 export const LastSwapSchema = z.object({ ts: z.number() });
 export type AccountsIndex = z.infer<typeof AccountsIndexSchema>;
 
-export const NextCheckSchema = z.object({ dueAt: z.number(), ts: z.number() });
-
 export const EnforcedLimitSchema = z.object({
   account: z.string(),
   family: z.string().nullable(),

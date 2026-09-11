@@ -29,7 +29,7 @@ in
       description = "tokenmaxxing account-switch check";
       serviceConfig = {
         Type = "oneshot";
-        ExecStart = "${lib.getExe package} check --if-due";
+        ExecStart = "${lib.getExe package} check";
       };
     };
 

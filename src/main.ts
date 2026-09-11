@@ -140,7 +140,7 @@ async function main(): Promise<number> {
       const rest = args.slice(1).filter((a) => a !== "--codex");
       return args.includes("--codex") ? cmdCodexSwitch(rest[0], json) : cmdSwitch(rest[0], json);
     }
-    case "check": return cmdCheck(args.slice(1), json);
+    case "check": return cmdCheck(json);
     case "config": return cmdConfig(args.slice(1), json);
     case "init": return args.includes("--codex") ? cmdCodexInit() : cmdInit();
     case "add": return args.includes("--codex") ? cmdCodexAdd() : cmdAdd();
