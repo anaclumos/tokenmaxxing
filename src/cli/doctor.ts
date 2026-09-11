@@ -81,7 +81,7 @@ export async function cmdDoctor(json = false): Promise<number> {
   if (existsSync(paths.setupTokensJson)) {
     const setupTokens = loadSetupTokens().tokens;
     for (const a of idx.accounts) {
-      const token = setupTokens.find((t) => t.label === a.label);
+      const token = setupTokens.find((t) => t.accountUuid === a.accountUuid);
       if (!token) warn(`no setup token stored for ${a.label} - run \`tokenmaxxing setup-token\` to mint one for Cursor Cloud`);
       else if (Date.now() - token.mintedAt > SETUP_TOKEN_STALE_MS) warn(`the setup token for ${a.label} was minted ${fmtAgo(token.mintedAt)} and expires a year after minting - \`tokenmaxxing setup-token rm ${a.label}\` then \`tokenmaxxing setup-token\` re-mints it`);
     }

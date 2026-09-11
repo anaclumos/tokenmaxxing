@@ -4,7 +4,8 @@ import { resolveRealClaude } from "../lib/claudebin.ts";
 import { paths } from "../lib/paths.ts";
 import { loadAccounts } from "../lib/state.ts";
 import { scrubCredentialEnv } from "../lib/usage.ts";
-import { CURSOR_SECRET_VALUE_CAP_BYTES, cursorSecretValue, loadSetupTokens, saveSetupTokens } from "../lib/setuptokens.ts";
+import { CURSOR_SECRET_VALUE_CAP_BYTES, cursorSecretValue, loadSetupTokens, saveSetupTokens, type SetupToken } from "../lib/setuptokens.ts";
+import type { Account } from "../lib/types.ts";
 import { c, emitError, emitJson } from "./render.ts";
 
 const TOKEN_BEGIN_MARKER = "Your OAuth token (valid for";
@@ -49,13 +50,14 @@ async function mint(input: { real: string; item: string }): Promise<string | nul
   return pasted;
 }
 
-function rmToken(label: string | undefined, json: boolean): number {
-  if (!label) {
-    emitError({ json, message: USAGE });
-    return 2;
-  }
+function currentTokens(tokens: SetupToken[], accounts: Account[]): { label: string; token: string }[] {
+  return tokens.map((t) => ({ label: accounts.find((a) => a.accountUuid === t.accountUuid)?.label ?? t.label, token: t.token }));
+}
+
+function rmToken(label: string, json: boolean): number {
   const store = loadSetupTokens();
-  const remaining = store.tokens.filter((t) => t.label !== label);
+  const account = loadAccounts().accounts.find((a) => a.label === label);
+  const remaining = store.tokens.filter((t) => t.label !== label && t.accountUuid !== account?.accountUuid);
   if (remaining.length === store.tokens.length) {
     emitError({ json, message: `no setup token stored for "${label}"` });
     return 1;
@@ -71,9 +73,9 @@ function rmToken(label: string | undefined, json: boolean): number {
 
 export async function cmdSetupToken(args: string[], json = false): Promise<number> {
   const [sub, label] = args;
-  if (sub === "rm") return rmToken(label, json);
-  const print = sub === "--print";
-  if (sub !== undefined && !print) {
+  if (sub === "rm" && label !== undefined && args.length === 2) return rmToken(label, json);
+  const print = sub === "--print" && args.length === 1;
+  if (args.length > 0 && !print) {
     emitError({ json, message: USAGE });
     return 2;
   }
@@ -82,21 +84,21 @@ export async function cmdSetupToken(args: string[], json = false): Promise<numbe
     return 2;
   }
   const store = loadSetupTokens();
+  const idx = loadAccounts();
   if (!print) {
-    const idx = loadAccounts();
     if (idx.accounts.length === 0) {
       emitError({ json, message: "no accounts in the pool - run `tokenmaxxing init` first" });
       return 1;
     }
     const real = resolveRealClaude();
-    const missing = idx.accounts.filter((a) => !store.tokens.some((t) => t.label === a.label));
+    const missing = idx.accounts.filter((a) => !store.tokens.some((t) => t.accountUuid === a.accountUuid));
     if (missing.length === 0) console.log(c.dim("every pooled account already has a stored setup token (`setup-token rm <label>` drops one so it can be re-minted)"));
     for (const a of missing) {
       console.log();
       console.log(`${c.bold(a.label)} - sign into this account in the browser (${a.email})`);
       const token = await mint({ real, item: a.keychainItem });
       if (!token) return 1;
-      store.tokens.push({ label: a.label, token, mintedAt: Date.now() });
+      store.tokens.push({ accountUuid: a.accountUuid, label: a.label, token, mintedAt: Date.now() });
       saveSetupTokens(store);
       console.log(`${c.green("✓")} stored the setup token for ${c.bold(a.label)} ${c.dim("(ownership not verified: an inference-only token cannot read the profile endpoint, so the label is the sign-in you chose)")}`);
     }
@@ -105,10 +107,11 @@ export async function cmdSetupToken(args: string[], json = false): Promise<numbe
     emitError({ json, message: "no setup tokens stored - run `tokenmaxxing setup-token` to mint them" });
     return 1;
   }
-  const secret = cursorSecretValue(store.tokens);
+  const tokens = currentTokens(store.tokens, idx.accounts);
+  const secret = cursorSecretValue(tokens);
   const bytes = Buffer.byteLength(secret);
   if (json) {
-    emitJson({ ok: true, tokens: store.tokens.map(({ label: l, token }) => ({ label: l, token })), bytes, cap: CURSOR_SECRET_VALUE_CAP_BYTES });
+    emitJson({ ok: true, tokens, bytes, cap: CURSOR_SECRET_VALUE_CAP_BYTES });
     return 0;
   }
   console.log();

@@ -4,11 +4,13 @@ import {
   limitWallUntil,
   loadCloudSessions,
   loadCloudWalled,
+  newReservationKey,
   pickToken,
   readCloudTokens,
   saveCloudSessions,
   saveCloudWalled,
   spawnCloudClaude,
+  transcriptBytes,
 } from "../lib/cloud.ts";
 import { c, emitError, emitJson, fmtReset } from "./render.ts";
 
@@ -51,9 +53,13 @@ export async function cmdCloudRun(args: string[], json = false): Promise<number>
   const tokens = readCloudTokens();
   let sessionId = flags.session;
   while (true) {
-    const pick = await withLock(paths.cloudLockFile, () =>
-      pickToken({ tokens, sessions: loadCloudSessions(), walled: loadCloudWalled(), sessionId, now: Date.now() }),
-    );
+    const reservation = newReservationKey();
+    const pick = await withLock(paths.cloudLockFile, () => {
+      const sessions = loadCloudSessions();
+      const picked = pickToken({ tokens, sessions, walled: loadCloudWalled(), sessionId, now: Date.now() });
+      if (picked.ok) saveCloudSessions({ ...sessions, [reservation]: picked.token.label });
+      return picked;
+    });
     if (!pick.ok) {
       emitError({
         json,
@@ -64,13 +70,24 @@ export async function cmdCloudRun(args: string[], json = false): Promise<number>
     }
     const label = pick.token.label;
     console.error(c.dim(`cloud run: ${label}${sessionId ? ` (resuming ${sessionId})` : ""}`));
-    const { exitCode, result } = await spawnCloudClaude({ token: pick.token.token, prompt, resume: sessionId, maxTurns: flags.maxTurns });
+    const transcriptBefore = transcriptBytes(sessionId);
+    let spawned: Awaited<ReturnType<typeof spawnCloudClaude>>;
+    try {
+      spawned = await spawnCloudClaude({ token: pick.token.token, prompt, resume: sessionId, maxTurns: flags.maxTurns });
+    } finally {
+      await withLock(paths.cloudLockFile, () => {
+        const sessions = loadCloudSessions();
+        delete sessions[reservation];
+        saveCloudSessions(sessions);
+      });
+    }
+    const { exitCode, result } = spawned;
     sessionId = result.session_id;
     await withLock(paths.cloudLockFile, () => {
       saveCloudSessions({ ...loadCloudSessions(), [result.session_id]: label });
     });
     if (result.is_error || result.subtype !== "success") {
-      const until = limitWallUntil({ result, now: Date.now() });
+      const until = limitWallUntil({ sessionId: result.session_id, sinceBytes: transcriptBefore, now: Date.now() });
       if (until != null) {
         await withLock(paths.cloudLockFile, () => {
           saveCloudWalled({ ...loadCloudWalled(), [label]: until });
@@ -78,7 +95,7 @@ export async function cmdCloudRun(args: string[], json = false): Promise<number>
         console.error(c.yellow(`cloud run: ${label} hit its limit (${fmtReset(until)}) - resuming the session on the next token`));
         continue;
       }
-      const errors = result.errors ?? (result.result ? [result.result] : []);
+      const errors = result.subtype === "success" ? [result.result] : result.errors;
       emitError({
         json,
         message: `claude exited ${exitCode ?? "on signal"} (${result.subtype}): ${errors.join("; ")}`,
@@ -88,10 +105,10 @@ export async function cmdCloudRun(args: string[], json = false): Promise<number>
       return 1;
     }
     if (json) {
-      emitJson({ ok: true, session_id: result.session_id, result: result.result ?? "", num_turns: result.num_turns, total_cost_usd: result.total_cost_usd });
+      emitJson({ ok: true, session_id: result.session_id, result: result.result, num_turns: result.num_turns, total_cost_usd: result.total_cost_usd });
       return 0;
     }
-    console.log(result.result ?? "");
+    console.log(result.result);
     console.log(`session ${result.session_id}`);
     return 0;
   }

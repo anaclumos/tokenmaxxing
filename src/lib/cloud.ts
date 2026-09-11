@@ -1,15 +1,17 @@
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { countBy, minBy } from "es-toolkit";
 import { z } from "zod";
 import { paths } from "./paths.ts";
 import { writeFileAtomic } from "./atomic.ts";
 import { UNMANAGED_ENV, resolveRealClaude } from "./claudebin.ts";
+import { pidExists } from "./proc.ts";
 import { CloudTokenSchema, CloudTokensSchema, type CloudToken } from "./setuptokens.ts";
 import { normalizeResetsAt, pingRejection, readTranscriptTail, scrubCredentialEnv, transcriptSlug } from "./usage.ts";
 
 export const TOKENS_ENV = "TOKENMAXXING_TOKENS";
 export const FALLBACK_WALL_MS = 5 * 3_600_000;
+const RESERVATION_PREFIX = "pending:";
 
 export function readCloudTokens(): CloudToken[] {
   const raw = process.env[TOKENS_ENV];
@@ -44,11 +46,21 @@ function loadState<T>(file: string, schema: z.ZodType<T>, empty: T): T {
 }
 
 export function loadCloudSessions(): Record<string, string> {
-  return loadState(paths.cloudSessionsJson, SessionsSchema, {});
+  const sessions = loadState(paths.cloudSessionsJson, SessionsSchema, {});
+  for (const key of Object.keys(sessions)) {
+    if (!key.startsWith(RESERVATION_PREFIX)) continue;
+    const pid = Number(key.slice(RESERVATION_PREFIX.length).split(":")[0]);
+    if (!Number.isInteger(pid) || !pidExists(pid)) delete sessions[key];
+  }
+  return sessions;
 }
 
 export function saveCloudSessions(sessions: Record<string, string>): void {
   writeFileAtomic(paths.cloudSessionsJson, JSON.stringify(SessionsSchema.parse(sessions), null, 2) + "\n");
+}
+
+export function newReservationKey(): string {
+  return `${RESERVATION_PREFIX}${process.pid}:${crypto.randomUUID().slice(0, 8)}`;
 }
 
 export function loadCloudWalled(): Record<string, number> {
@@ -86,17 +98,21 @@ export function pickToken(input: {
   return { ok: true, token: minBy(candidates, (t) => load[t.label] ?? 0) ?? candidates[0]! };
 }
 
-const CloudResultSchema = z.looseObject({
-  type: z.string(),
-  subtype: z.string(),
+const ResultBase = {
+  type: z.literal("result"),
   session_id: z.string(),
   is_error: z.boolean(),
-  api_error_status: z.number().nullish(),
-  result: z.string().optional(),
-  errors: z.array(z.string()).optional(),
   num_turns: z.number(),
   total_cost_usd: z.number(),
-});
+};
+const CloudResultSchema = z.discriminatedUnion("subtype", [
+  z.looseObject({ ...ResultBase, subtype: z.literal("success"), result: z.string(), api_error_status: z.number().nullish() }),
+  z.looseObject({
+    ...ResultBase,
+    subtype: z.enum(["error_max_turns", "error_during_execution", "error_max_budget_usd", "error_max_structured_output_retries"]),
+    errors: z.array(z.string()),
+  }),
+]);
 export type CloudResult = z.infer<typeof CloudResultSchema>;
 
 export async function spawnCloudClaude(input: {
@@ -111,7 +127,8 @@ export async function spawnCloudClaude(input: {
     ...(input.maxTurns != null ? ["--max-turns", String(input.maxTurns)] : []),
     "--", input.prompt,
   ];
-  const env = { ...scrubCredentialEnv({ ...process.env, [UNMANAGED_ENV]: "1" }), CLAUDE_CODE_OAUTH_TOKEN: input.token };
+  const env: Record<string, string> = { ...scrubCredentialEnv({ ...process.env, [UNMANAGED_ENV]: "1" }), CLAUDE_CODE_OAUTH_TOKEN: input.token };
+  delete env[TOKENS_ENV];
   const child = Bun.spawn([resolveRealClaude(), ...args], { env, stdin: "ignore", stdout: "pipe", stderr: "inherit" });
   const stdout = await new Response(child.stdout).text();
   await child.exited;
@@ -140,10 +157,15 @@ export function cloudTranscriptPath(sessionId: string): string | null {
   return null;
 }
 
-export function limitWallUntil(input: { result: CloudResult; now: number }): number | null {
-  const transcript = cloudTranscriptPath(input.result.session_id);
-  const rows = transcript ? readTranscriptTail(transcript) : [];
-  if (input.result.api_error_status !== 429 && pingRejection(rows) == null) return null;
+export function transcriptBytes(sessionId: string | null): number {
+  const transcript = sessionId ? cloudTranscriptPath(sessionId) : null;
+  return transcript ? statSync(transcript).size : 0;
+}
+
+export function limitWallUntil(input: { sessionId: string; sinceBytes: number; now: number }): number | null {
+  const transcript = cloudTranscriptPath(input.sessionId);
+  const rows = transcript ? readTranscriptTail(transcript, statSync(transcript).size - input.sinceBytes + 1) : [];
+  if (pingRejection(rows) == null) return null;
   const row = rows.findLast((r) => r.isApiErrorMessage === true);
   const resetsAt = row?.quotaLimits?.resetsAt != null ? normalizeResetsAt(row.quotaLimits.resetsAt) : null;
   return resetsAt != null && resetsAt > input.now ? resetsAt : input.now + FALLBACK_WALL_MS;

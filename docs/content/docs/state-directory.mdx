@@ -20,7 +20,7 @@ Everything lives under `~/.config/tokenmaxxing/`. Override with `TOKENMAXXING_HO
 | `respawn/<session-id>` | Respawn markers the supervisor watches: a depleted-pool wait, or a StopFailure retrigger carrying its one-shot continuation prompt |
 | `creds/` | Linux only: parked credential files, 0600 in a 0700 directory (macOS parks credentials as per-account keychain items instead) |
 | `onboard/`, `sample/` | Throwaway isolated config homes for `add`/`auth` logins and parked-account `/usage` probes; onboard homes holding plaintext credentials are deleted after harvest |
-| `setup-tokens.json` | Cursor Cloud only: `{label, token, mintedAt}` per pooled account, mode 0600, the source of the `TOKENMAXXING_TOKENS` secret value that `setup-token` prints |
+| `setup-tokens.json` | Cursor Cloud only: `{accountUuid, label, token, mintedAt}` per pooled account, mode 0600, the source of the `TOKENMAXXING_TOKENS` secret value that `setup-token` prints (keyed by account, so a rename does not orphan a token) |
 | `setup-token/` | Throwaway isolated config homes for `setup-token` mints, deleted after each run |
 | `cloud/` | On a Cursor Cloud VM only: `sessions.json` (session id to token label), `walled.json` (label to reset time), and the `lock` that serializes `cloud run` picks |
 | `codex-*` | The parallel Codex pool: `codex-accounts.json`, `codex-lastswap.json`, `codex-lock`, `codex-creds/`, `codex-onboard/`, `codex-respawn/`, `codex-reconcile/` (cross-session signals asking a sibling session's supervisor to respawn onto the live account), and `codex-live/` (one PID-validated presence file per running supervised codex session, so a live account is never a swap target) |
