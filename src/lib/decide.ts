@@ -2,7 +2,7 @@ import { maxBy } from "es-toolkit";
 import { z } from "zod";
 import { withLock } from "./lock.ts";
 import { paths } from "./paths.ts";
-import { POST_SWAP_COOLDOWN_MS, maxCheckDelayMs, loadAccounts, loadConfig, loadDepletedWait, loadLastSwapAt, loadUsage, loadUsageSnapshot, loadModelUsage, saveAccounts, saveDepletedWait, saveModelUsage, writeUsage } from "./state.ts";
+import { POST_SWAP_COOLDOWN_MS, loadAccounts, loadConfig, loadDepletedWait, loadLastSwapAt, loadUsage, loadUsageSnapshot, loadModelUsage, saveAccounts, saveDepletedWait, saveModelUsage, writeUsage } from "./state.ts";
 import { readOAuthAccount } from "./claudejson.ts";
 import { isSkippableSwapError, performSwap, type VerifyVerdict } from "./swap.ts";
 import { probeParkedUsage } from "./sample.ts";
@@ -351,34 +351,4 @@ export async function recordEnforcedLimit(input: { limit: EnforcedClass; account
     log("usage.enforced_limit", { kind: limit.kind, resetsAt: limit.resetsAt });
     return { outcome: "stamped", resetsAt: limit.resetsAt };
   });
-}
-
-export function checkDelayMs(input: { cfg: Config; account: string | null; now: number; decision: SwapDecision }): number {
-  const { cfg, account, now, decision } = input;
-  const tick = cfg.policy.checkIntervalMs;
-  const max = maxCheckDelayMs(cfg);
-  if (decision.waitUntil !== undefined) return Math.min(max, Math.max(tick, decision.waitUntil - now));
-  const swapAt = loadLastSwapAt();
-  if (swapAt != null && now - swapAt < POST_SWAP_COOLDOWN_MS) return swapAt + POST_SWAP_COOLDOWN_MS - now;
-  const snap = loadUsageSnapshot();
-  if (!account || !snap || !usageFresh(snap.state, snap.at, account, cfg.policy.usagePollTtlMs, now)) return 3 * tick;
-  const u = freshest(snap.state, snap.at, loadAccounts().accounts.find((a) => a.accountUuid === account)) ?? { ...snap.state, ts: snap.at };
-  const mu = loadModelUsage();
-  const muSame = mu && mu.account === account ? mu : null;
-  const families = gatedFamilies(u.model, cfg.policy.switchModels);
-  const bars = thresholdBars(cfg);
-  const heads = [
-    bars.session - liveUsed({ window: u.fiveHour, windowMs: FIVE_HOURS_MS, sampledAt: u.ts, now }),
-    bars.weekly - liveUsed({ window: u.sevenDay, windowMs: WEEK_MS, sampledAt: u.ts, now }),
-  ];
-  let capMissing = false;
-  const capFresh = muSame != null && now - (muSame.sampledAt ?? muSame.ts) <= cfg.policy.usagePollTtlMs;
-  for (const family of families) {
-    const cap = muSame && capFresh ? capForFamily(muSame, family, now) : undefined;
-    if (cap && muSame) heads.push(bars.weekly - liveUsed({ window: cap, windowMs: WEEK_MS, sampledAt: muSame.sampledAt ?? muSame.ts, now }));
-    else capMissing = true;
-  }
-  const headroom = Math.min(...heads);
-  const banded = headroom >= 40 ? max : headroom >= 20 ? 3 * tick : headroom >= 8 ? 2 * tick : tick;
-  return capMissing ? Math.min(banded, 2 * tick) : banded;
 }

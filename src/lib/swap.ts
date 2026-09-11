@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { clearDepletedWait, clearNextCheck, clearUsageSnapshots, loadAccounts, saveAccounts, saveLastSwapAt } from "./state.ts";
+import { clearDepletedWait, clearUsageSnapshots, loadAccounts, saveAccounts, saveLastSwapAt } from "./state.ts";
 import { readItem, writeItem, liveTarget, parkedTarget, claudeAiOauthOnly, mergeIntoLive } from "./credstore.ts";
 import { refreshCredential, isAccessTokenExpiring, isDeadCredential, fetchTokenIdentity, describeIdentity, IdentityUnavailableError, InvalidGrantError, RefreshRejectedError } from "./oauth.ts";
 import { swapOAuthAccount } from "./claudejson.ts";
@@ -154,7 +154,6 @@ export async function performSwap(target: Account): Promise<void> {
     saveAccounts(idx);
     clearUsageSnapshots();
     clearDepletedWait();
-    clearNextCheck();
     saveLastSwapAt(Date.now());
   });
   log("swap.done", { account: target.accountUuid.slice(0, 8), email: target.email });
