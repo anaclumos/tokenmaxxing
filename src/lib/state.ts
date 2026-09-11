@@ -8,7 +8,6 @@ import {
   ConfigSchema,
   LastSwapSchema,
   ModelUsageStateSchema,
-  NextCheckSchema,
   SessionLadderSchema,
   UsageStateSchema,
   type AccountsIndex,
@@ -209,32 +208,7 @@ export function clearDepletedWait(): void {
   rmSync(paths.depletedJson, { force: true });
 }
 
-export const MAX_CHECK_DELAY_TICKS = 5;
 export const POST_SWAP_COOLDOWN_MS = 45_000;
-
-export function maxCheckDelayMs(cfg: Config): number {
-  return MAX_CHECK_DELAY_TICKS * cfg.policy.checkIntervalMs;
-}
-
-export function loadNextCheckDueAt(input: { now: number; cfg: Config }): number | null {
-  if (!existsSync(paths.nextCheckJson)) return null;
-  let parsed;
-  try {
-    parsed = NextCheckSchema.safeParse(JSON.parse(readFileSync(paths.nextCheckJson, "utf8")));
-  } catch {
-    return null;
-  }
-  if (!parsed.success) return null;
-  return parsed.data.dueAt - input.now > Math.max(maxCheckDelayMs(input.cfg), POST_SWAP_COOLDOWN_MS) ? null : parsed.data.dueAt;
-}
-
-export function saveNextCheckDueAt(input: { dueAt: number; ts: number }): void {
-  writeFileAtomic(paths.nextCheckJson, JSON.stringify(NextCheckSchema.parse(input)));
-}
-
-export function clearNextCheck(): void {
-  rmSync(paths.nextCheckJson, { force: true });
-}
 
 const USAGE_TS_REFRESH_MS = 10 * 60_000;
 const SAMPLED_AT_REFRESH_MS = 30_000;

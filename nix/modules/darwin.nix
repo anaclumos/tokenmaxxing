@@ -32,7 +32,7 @@ in
     };
 
     launchd.user.agents.tokenmaxxing-check = lib.mkIf (cfg.checkTimer.enable && package != null) {
-      command = "${lib.getExe package} check --if-due";
+      command = "${lib.getExe package} check";
       serviceConfig = {
         StartInterval = cfg.checkTimer.intervalSeconds;
         StandardOutPath = "/dev/null";
