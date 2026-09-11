@@ -2,11 +2,11 @@ import { maxBy } from "es-toolkit";
 import { z } from "zod";
 import { withLock } from "./lock.ts";
 import { paths } from "./paths.ts";
-import { MAX_CHECK_DELAY_TICKS, POST_SWAP_COOLDOWN_MS, maxCheckDelayMs, loadAccounts, loadConfig, loadDepletedWait, loadLastSwapAt, loadUsage, loadUsageSnapshot, loadModelUsage, saveAccounts, saveDepletedWait, saveModelUsage, writeUsage } from "./state.ts";
+import { POST_SWAP_COOLDOWN_MS, maxCheckDelayMs, loadAccounts, loadConfig, loadDepletedWait, loadLastSwapAt, loadUsage, loadUsageSnapshot, loadModelUsage, saveAccounts, saveDepletedWait, saveModelUsage, writeUsage } from "./state.ts";
 import { readOAuthAccount } from "./claudejson.ts";
-import { chooseAndSwap, isSkippableSwapError, performSwap, type VerifyVerdict } from "./swap.ts";
+import { isSkippableSwapError, performSwap, type VerifyVerdict } from "./swap.ts";
 import { probeParkedUsage } from "./sample.ts";
-import { currentWins, effectiveBars, hardBars, isExhausted, nextWeeklyReset, pickBest, pickEarliestReset, sessionLadder, usableAt, type PickCtx } from "./picker.ts";
+import { isExhausted, nextWeeklyReset, pickBest, pickEarliestReset, thresholdBars, usableAt, type PickCtx } from "./picker.ts";
 import { familyTokens, gatedFamilies, probeUsage, type EnforcedClass } from "./usage.ts";
 import { log } from "./log.ts";
 import { AccountSchema, ModelUsageStateSchema, UsageStateSchema, type Account, type Config, type EnforcedLimit, type ModelUsageState, type Thresholds, type UsageState, type UsageWindow } from "./types.ts";
@@ -38,15 +38,6 @@ function capForFamily(mu: ModelUsageState, family: string, now: number): UsageWi
   return maxBy(rows, (w) => liveUsed({ window: w, windowMs: WEEK_MS, sampledAt: mu.sampledAt ?? mu.ts, now }));
 }
 
-function overlayLive(accounts: Account[], u: UsageState | null, mu: ModelUsageState | null, account: string | null): Account[] {
-  return accounts.map((a) => {
-    if (account == null || a.accountUuid !== account) return a;
-    const live = u && u.account === account ? { lastUsage: { fiveHour: u.fiveHour, sevenDay: u.sevenDay }, lastUsageAt: u.ts } : {};
-    const perModel = mu && mu.account === account && Object.keys(mu.perModel).length > 0 ? { lastPerModel: mu.perModel, lastPerModelAt: mu.sampledAt ?? mu.ts } : {};
-    return { ...a, ...live, ...perModel };
-  });
-}
-
 function isOver(u: UsageState | null, mu: ModelUsageState | null, account: string | null, bars: Thresholds, cfg: Config, now: number): boolean {
   if (!u || !account || u.account !== account) return false;
   if (
@@ -64,11 +55,6 @@ function isOver(u: UsageState | null, mu: ModelUsageState | null, account: strin
 
 function needsPerModel(u: UsageState | null, cfg: Config): boolean {
   return u != null && gatedFamilies(u.model, cfg.policy.switchModels).length > 0;
-}
-
-function isEngaged(u: UsageState | null, mu: ModelUsageState | null, account: string | null, bars: Thresholds, cfg: Config, now: number): boolean {
-  if (!u || !account || u.account !== account) return false;
-  return liveUsed({ window: u.fiveHour, windowMs: FIVE_HOURS_MS, sampledAt: u.ts, now }) >= cfg.policy.greedySessionFloor || isOver(u, mu, account, bars, cfg, now);
 }
 
 const SnapshotsSchema = z.object({
@@ -138,17 +124,13 @@ export async function evaluateAndMaybeSwap(now = Date.now(), anticipatory = fals
   }
 
   const cfg = loadConfig();
+  const bars = thresholdBars(cfg);
 
   const { u: teeUsage, mu, uAt } = await loadFreshSnapshots(cfg, activeAccount, now);
   const pool = loadAccounts();
   const usage = freshest(teeUsage, uAt, pool.accounts.find((a) => a.accountUuid === activeAccount));
-  const bars0 = effectiveBars(cfg, {
-    accounts: overlayLive(pool.accounts, usage, mu, activeAccount),
-    now,
-    switchFamilies: gatedFamilies(usage?.model ?? null, cfg.policy.switchModels),
-  });
 
-  if (!enforced0 && !isEngaged(usage, mu, activeAccount, bars0, cfg, now)) {
+  if (!enforced0 && !isOver(usage, mu, activeAccount, bars, cfg, now)) {
     const measured = usage != null && activeAccount != null && usage.account === activeAccount;
     if (!measured) {
       const replay = depletedReplay(now);
@@ -187,10 +169,8 @@ export async function evaluateAndMaybeSwap(now = Date.now(), anticipatory = fals
 
     const gated = gatedFamilies(u2?.model ?? null, cfg.policy.switchModels);
     const switchFamilies = enforced2?.family && !gated.includes(enforced2.family) ? [...gated, enforced2.family] : gated;
-    const barsOf = (accounts: Account[]): Thresholds => effectiveBars(cfg, { accounts, now, switchFamilies });
-    const bars = barsOf(idx.accounts);
 
-    if (!enforced2 && !isEngaged(u2, mu2, account2, bars, cfg, now)) {
+    if (!enforced2 && !isOver(u2, mu2, account2, bars, cfg, now)) {
       return depletedReplay(now) ?? { swapped: false, account: null, reason: "raced-already-swapped" };
     }
 
@@ -246,40 +226,11 @@ export async function evaluateAndMaybeSwap(now = Date.now(), anticipatory = fals
       return "rerank";
     };
 
-    const greedy = async (holdMargin: number): Promise<SwapDecision> => {
-      while (true) {
-        const cur = loadAccounts();
-        const active = seatOf(cur);
-        const ctxAll = { now, thresholds: barsOf(cur.accounts), currentAccountUuid: null, currentOrganizationUuid: active?.organizationUuid ?? null, orgAffinityFloor: cfg.policy.greedySessionFloor, switchFamilies, holdMargin };
-        const seatOrg = active != null && !active.needsReauth && !isExhausted(active, ctxAll) ? active.organizationUuid : null;
-        const pool = usable(cur.accounts).filter((a) => seatOrg == null || a.organizationUuid === seatOrg);
-        if (currentWins(active, pool, ctxAll)) {
-          return { swapped: false, account: null, reason: "current-best" };
-        }
-        const ctx = { ...ctxAll, currentAccountUuid: active?.accountUuid ?? null };
-        const best = pickBest(pool, ctx);
-        if (!best) return { swapped: false, account: null, reason: "no-usable-target" };
-        if ((await verified(best, ctx)) !== "go") continue;
-        try {
-          await performSwap(best);
-        } catch (e) {
-          skipOrThrow(e, best);
-          continue;
-        }
-        log("decide.greedy_swap", { account: best.accountUuid.slice(0, 8) });
-        return { swapped: true, account: best, reason: "swapped" };
-      }
-    };
-    if (!enforced2 && !isOver(u2, mu2, account2, bars, cfg, now)) return greedy(cfg.policy.greedySwapMargin);
-
     while (true) {
       const cur = loadAccounts();
       const seat = seatOf(cur);
-      const pool = usable(cur.accounts);
-      const thresholds = barsOf(cur.accounts);
-      if (!enforced2 && seat && !seat.needsReauth && !isExhausted(seat, { now, thresholds, currentAccountUuid: null, switchFamilies })) return greedy(0);
-      const ctx = { now, thresholds, currentAccountUuid: seat?.accountUuid ?? null, currentOrganizationUuid: seat?.organizationUuid ?? null, orgAffinityFloor: cfg.policy.greedySessionFloor, switchFamilies };
-      const best = pickBest(pool, ctx);
+      const ctx = { now, thresholds: bars, currentAccountUuid: seat?.accountUuid ?? null, switchFamilies };
+      const best = pickBest(usable(cur.accounts), ctx);
       if (!best) break;
       if ((await verified(best, ctx)) !== "go") continue;
       try {
@@ -288,26 +239,14 @@ export async function evaluateAndMaybeSwap(now = Date.now(), anticipatory = fals
         skipOrThrow(e, best);
         continue;
       }
-      log("decide.hard_swap", { account: best.accountUuid.slice(0, 8), enforced: enforced2 != null });
+      log("decide.swap", { account: best.accountUuid.slice(0, 8), enforced: enforced2 != null });
       return { swapped: true, account: best, reason: "swapped" };
-    }
-
-    const hardCtx = { now, thresholds: hardBars(cfg), currentAccountUuid: null, switchFamilies };
-    const seat = seatOf(loadAccounts());
-    if (!enforced2 && seat && !seat.needsReauth && !isExhausted(seat, hardCtx)) {
-      log("decide.last_drop_hold", { account: seat.accountUuid.slice(0, 8) });
-      return { swapped: false, account: null, reason: "last-drop-hold" };
-    }
-    const squeezed = await chooseAndSwap({ ...hardCtx, currentAccountUuid: seat?.accountUuid ?? null, currentOrganizationUuid: seat?.organizationUuid ?? null, orgAffinityFloor: cfg.policy.greedySessionFloor }, rejected, verified);
-    if (squeezed) {
-      log("decide.last_drop_swap", { account: squeezed.accountUuid.slice(0, 8) });
-      return { swapped: true, account: squeezed, reason: "last-drop-swap" };
     }
 
     while (true) {
       const fresh = loadAccounts();
       const current = seatOf(fresh);
-      const ctx = { now, thresholds: hardBars(cfg), currentAccountUuid: current?.accountUuid ?? null, switchFamilies };
+      const ctx = { now, thresholds: bars, currentAccountUuid: current?.accountUuid ?? null, switchFamilies };
       const enforcedUntil = enforced2 && current && current.accountUuid === enforced2.account ? (enforced2.resetsAt ?? now + enforced2.windowMs) : 0;
       const currentAt = current ? Math.max(usableAt(current, ctx), enforcedUntil) : Number.POSITIVE_INFINITY;
       const other = pickEarliestReset(usable(fresh.accounts), ctx);
@@ -414,8 +353,6 @@ export async function recordEnforcedLimit(input: { limit: EnforcedClass; account
   });
 }
 
-const STAGE_CEILING_TICKS = [MAX_CHECK_DELAY_TICKS, 3, 2];
-
 export function checkDelayMs(input: { cfg: Config; account: string | null; now: number; decision: SwapDecision }): number {
   const { cfg, account, now, decision } = input;
   const tick = cfg.policy.checkIntervalMs;
@@ -425,12 +362,11 @@ export function checkDelayMs(input: { cfg: Config; account: string | null; now: 
   if (swapAt != null && now - swapAt < POST_SWAP_COOLDOWN_MS) return swapAt + POST_SWAP_COOLDOWN_MS - now;
   const snap = loadUsageSnapshot();
   if (!account || !snap || !usageFresh(snap.state, snap.at, account, cfg.policy.usagePollTtlMs, now)) return 3 * tick;
-  const accounts = loadAccounts().accounts;
-  const u = freshest(snap.state, snap.at, accounts.find((a) => a.accountUuid === account)) ?? { ...snap.state, ts: snap.at };
+  const u = freshest(snap.state, snap.at, loadAccounts().accounts.find((a) => a.accountUuid === account)) ?? { ...snap.state, ts: snap.at };
   const mu = loadModelUsage();
   const muSame = mu && mu.account === account ? mu : null;
   const families = gatedFamilies(u.model, cfg.policy.switchModels);
-  const bars = effectiveBars(cfg, { accounts: overlayLive(accounts, u, muSame, account), now, switchFamilies: families });
+  const bars = thresholdBars(cfg);
   const heads = [
     bars.session - liveUsed({ window: u.fiveHour, windowMs: FIVE_HOURS_MS, sampledAt: u.ts, now }),
     bars.weekly - liveUsed({ window: u.sevenDay, windowMs: WEEK_MS, sampledAt: u.ts, now }),
@@ -444,7 +380,5 @@ export function checkDelayMs(input: { cfg: Config; account: string | null; now: 
   }
   const headroom = Math.min(...heads);
   const banded = headroom >= 40 ? max : headroom >= 20 ? 3 * tick : headroom >= 8 ? 2 * tick : tick;
-  const stage = sessionLadder(cfg).indexOf(bars.session);
-  const staged = Math.min(banded, (STAGE_CEILING_TICKS[stage] ?? 1) * tick);
-  return capMissing ? Math.min(staged, 2 * tick) : staged;
+  return capMissing ? Math.min(banded, 2 * tick) : banded;
 }

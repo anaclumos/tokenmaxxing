@@ -10,7 +10,7 @@ description: Every tokenmaxxing command and what it does
 | `tokenmaxxing add` | Register an additional account (isolated login, harvested into the pool) |
 | `tokenmaxxing add --codex` | Register an additional Codex account (isolated login) |
 | `tokenmaxxing auth [sel \| --all]` | Reauthenticate a pooled account in place. Bare lists the pool and asks which; a selector targets one account and tells you which email to sign in with; `--all` walks every needs-reauth account one by one |
-| `tokenmaxxing switch [sel]` | Switch to the best account (greedy, idempotent) or force a specific one |
+| `tokenmaxxing switch [sel]` | Switch to the best account (idempotent) or force a specific one |
 | `tokenmaxxing switch --codex [sel]` | Switch the Codex pool (takes effect on the next codex start) |
 | `tokenmaxxing ls` | List pooled accounts |
 | `tokenmaxxing status` | Accounts with 5h / weekly / per-model usage bars, active and exhausted-until-reset |

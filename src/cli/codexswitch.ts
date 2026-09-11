@@ -7,7 +7,7 @@ import { performCodexSwap } from "../lib/codexswap.ts";
 import { CodexInvalidGrantError } from "../lib/codexoauth.ts";
 import { liveCodexAccountId } from "../lib/codexsample.ts";
 import { presentCodexAccountIds, targetableCodexAccounts } from "../lib/codexpresence.ts";
-import { terminalBars } from "../lib/picker.ts";
+import { thresholdBars } from "../lib/picker.ts";
 import { c, emitError, emitJson } from "./render.ts";
 
 export async function cmdCodexSwitch(sel?: string, json = false): Promise<number> {
@@ -23,7 +23,7 @@ export async function cmdCodexSwitch(sel?: string, json = false): Promise<number
   };
   const deadGrantMessage = (label: string) => `${label}'s refresh token is dead - re-add it with \`tokenmaxxing add --codex\``;
   const cfg = loadConfig();
-  const bars = terminalBars(cfg);
+  const bars = thresholdBars(cfg);
   const now = Date.now();
 
   return withLock(codexPaths.lockFile, async () => {

@@ -80,19 +80,18 @@ claude                  # use claude as always
 
 ## How switching decides
 
-Switching engages (configurable) once the active account's 5-hour session window is **80% used** - from there, every evaluation greedily converges on the usable account **furthest behind its own weekly pace**, and does nothing when the current account already wins. Independent of that, crossing a screening bar always forces a switch: the session bar is the active rung of a ladder (a single rung at **90** by default; with more rungs configured, each takes over once every pooled account is past the one below) and the weekly bar is **98%**. The bars also screen candidates on any of:
+One rule: while the active account is under its bars, nothing happens; once it is at or over a bar, the decision moves to the usable account **furthest behind its own weekly pace**. The session bar is **90%** of the 5-hour window and the weekly bar is **98%**. The bars also screen candidates on any of:
 
 - **Session** (5-hour) or **week (all models)** - the aggregate windows, fed free/push-based by the statusLine.
 - **Per-model weekly cap** - the most capable model (Fable) has its own tighter weekly limit that binds *before* the aggregate (per-model caps currently exist only for Sonnet and Fable, and Sonnet's is generous). tokenmaxxing reads it from `claude -p '/usage'` (free, 0 tokens, TTL-cached) whenever the active model is one of `policy.switchModels`, so a Fable session switches on the Fable cap while a Sonnet session rides the aggregate.
 
-The bars' headroom is deliberate: it's the budget to reach a clean turn boundary (plus up to one turn of adoption lag on macOS) before the wall. The session ladder tops out lower (90) because a 5-hour reset is cheap to sit out, and any lower rungs you add keep the pool draining level by level; weekly quota is use-it-or-lose-it, so it drains closer to the wall (98). The greedy engagement floor (80) sits below both: weekly allowance is forfeited at each account's fixed reset, so once most of a session window is spent, quota is best burned on whichever account has the most at risk.
+The bars' headroom is deliberate: it's the budget to reach a clean turn boundary (plus up to one turn of adoption lag on macOS) before the account's real limit. The session bar sits lower (90) because a 5-hour reset is cheap to sit out; weekly quota is use-it-or-lose-it, so it drains closer to the limit (98).
 
-Automatic selection prefers same-organization candidates with measured session and weekly headroom, then uses remaining weekly percentage divided by time to reset.
+Selection ranks usable candidates by remaining weekly percentage divided by time to reset, highest first; organization membership is not an input, and manual `tokenmaxxing switch` uses the same ranking.
 
-- Lateral moves stay within the current organization, while a crossed bar or enforced limit may trigger a cross-organization handoff.
 - Candidate verification makes at most two bounded `/usage` attempts per evaluation and re-ranks successful samples before switching.
 - Failed verification leaves cached figures in force, so it cannot guarantee a fresh target.
-- Manual `tokenmaxxing switch` retains pure pace-pressure selection.
+- When no account is usable, the session pauses until the soonest reset if that lands within `policy.maxWaitMs`, and otherwise stays put.
 
 See [How switching decides](docs/content/docs/switching.mdx) for the policy and the [cache-cost profile](docs/content/docs/switching-profile.mdx) for measurements and their limits.
 
@@ -102,10 +101,9 @@ See [How switching decides](docs/content/docs/switching.mdx) for the policy and 
 
 ```json
 {
-  "thresholds": { "session": [90], "weekly": 98 },
+  "thresholds": { "session": 90, "weekly": 98 },
   "policy": {
     "projectionMargin": 0,
-    "greedySessionFloor": 80,
     "switchModels": ["fable"],
     "usagePollTtlMs": 90000,
     "checkIntervalMs": 60000
@@ -113,7 +111,7 @@ See [How switching decides](docs/content/docs/switching.mdx) for the policy and 
 }
 ```
 
-`thresholds.session` is a ladder: the bar is the lowest rung some pooled account still clears, so the default `[90]` is one bar, while with `[50, 80, 95]` a seat past 50 hands off while a sibling is under 50, and the bar climbs to 80 and then 95 as the whole pool fills; `projectionMargin` is a fixed safety margin subtracted from each threshold bar (effective bar = threshold - margin), so a large turn is less likely to blow past a bar between checks; `greedySessionFloor` is the session-used % at which the greedy convergence engages; `switchModels` names the models whose per-model cap triggers a switch; `usagePollTtlMs` is how long a `/usage` per-model poll stays fresh; `maxWaitMs` bounds the depleted-pool countdown - a soonest reset further out than this does not pause the session (no respawn marker is written and the session simply keeps hitting its limit until an account recovers); `checkIntervalMs` is the periodic check tick (default 60s), which `init` writes into the timer and which every headroom band is a multiple of, one tick near a bar up to five with plenty of headroom (a depleted wait and the post-swap cooldown sleep to their own deadlines instead) - re-run `tokenmaxxing init` after changing it so the timer unit picks up the new tick.
+`thresholds.session` and `thresholds.weekly` are the two bars, one number each (an array `thresholds.session`, the former ladder, fails config loading with a message naming the field); `projectionMargin` is a fixed safety margin subtracted from each threshold bar (effective bar = threshold - margin), so a large turn is less likely to blow past a bar between checks; `switchModels` names the models whose per-model cap triggers a switch; `usagePollTtlMs` is how long a `/usage` per-model poll stays fresh; `maxWaitMs` bounds the depleted-pool countdown - a soonest reset further out than this does not pause the session (no respawn marker is written and the session simply keeps hitting its limit until an account recovers); `checkIntervalMs` is the periodic check tick (default 60s), which `init` writes into the timer and which every headroom band is a multiple of, one tick near a bar up to five with plenty of headroom (a depleted wait and the post-swap cooldown sleep to their own deadlines instead) - re-run `tokenmaxxing init` after changing it so the timer unit picks up the new tick.
 
 State lives entirely in `~/.config/tokenmaxxing/`. Per-account credentials follow the platform's Claude Code store: the login keychain on macOS (`tokenmaxxing-cred-<uuid8>` items, never plaintext on disk), 0600 files under `~/.config/tokenmaxxing/creds/` on Linux (the same plaintext model claude itself uses for `~/.claude/.credentials.json`).
 
@@ -139,7 +137,7 @@ for await (const message of query({
 
 The loop body receives the message stream; keep the session id from the init message if you want `resume` across swaps.
 
-The SDK reads credentials when it spawns the claude subprocess and has no statusLine, so none of the CLI-side supervisor machinery applies; the integration is boundary-driven instead. `ensureBestAccount()` runs the exact greedy decision the CLI hooks and timer run (screening bars, pace-pressure target, post-swap cooldown - all shared code); like them, it deliberately does nothing until the decision engages (the active session past `policy.greedySessionFloor`, or a bar crossed), so a fresh account rides instead of churning. `pooledOptions()` pins `pathToClaudeCodeExecutable` to the real claude binary and supplies a full replacement `env` with every ambient credential override (`ANTHROPIC_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN`, ...) scrubbed, so the subprocess resolves the pool's live credential and nothing else. The pooled surface requires the default Claude Code credential store: it fails fast if `CLAUDE_CONFIG_DIR` or `CLAUDE_SECURESTORAGE_CONFIG_DIR` is set in your app's environment, because a swap would write the live credential where those point while the spawned subprocess reads the default store. `stopHookCheck` re-runs the decision at turn boundaries; a swap it lands takes effect on the next subprocess spawn (it never yanks a mid-query token). If your app loads user settings (see the SDK's `settingSources`), the Stop hook `tokenmaxxing init` installed may already fire in SDK sessions too - `stopHookCheck` makes the check explicit and works when settings are restricted.
+The SDK reads credentials when it spawns the claude subprocess and has no statusLine, so none of the CLI-side supervisor machinery applies; the integration is boundary-driven instead. `ensureBestAccount()` runs the exact decision the CLI hooks and timer run (the bars, pace-pressure target, post-swap cooldown - all shared code); like them, it deliberately does nothing until the active account is at or over a bar, so a fresh account rides instead of churning. `pooledOptions()` pins `pathToClaudeCodeExecutable` to the real claude binary and supplies a full replacement `env` with every ambient credential override (`ANTHROPIC_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN`, ...) scrubbed, so the subprocess resolves the pool's live credential and nothing else. The pooled surface requires the default Claude Code credential store: it fails fast if `CLAUDE_CONFIG_DIR` or `CLAUDE_SECURESTORAGE_CONFIG_DIR` is set in your app's environment, because a swap would write the live credential where those point while the spawned subprocess reads the default store. `stopHookCheck` re-runs the decision at turn boundaries; a swap it lands takes effect on the next subprocess spawn (it never yanks a mid-query token). If your app loads user settings (see the SDK's `settingSources`), the Stop hook `tokenmaxxing init` installed may already fire in SDK sessions too - `stopHookCheck` makes the check explicit and works when settings are restricted.
 
 This is for pooling **your own** subscription accounts in agents you run yourself - the same personal-use posture as the CLI. Anthropic does not allow third-party products to offer claude.ai login or rate limits, including agents built on the Agent SDK; don't ship this surface to third parties.
 
@@ -153,7 +151,7 @@ tokenmaxxing add --codex    # log in another account, isolated - your primary lo
 codex                       # use codex as always
 ```
 
-Codex mechanics differ from Claude Code in one hard way: a running codex process refuses a credential swapped to a different account, so **a restart is the switch**. The installed Stop hook runs the same greedy pace-pressure decision at each turn boundary (usage read free from codex's own rate-limit endpoint: percentages plus absolute reset times, weekly aggregate and per-model caps alike); when it swaps, the supervisor relaunches `codex resume <session-id>` on the fresh account with the transcript intact. `tokenmaxxing switch --codex [sel]` does it manually, `status`/`watch`/`ls` show both pools.
+Codex mechanics differ from Claude Code in one hard way: a running codex process refuses a credential swapped to a different account, so **a restart is the switch**. The installed Stop hook runs the same pace-pressure decision at each turn boundary (usage read free from codex's own rate-limit endpoint: percentages plus absolute reset times, weekly aggregate and per-model caps alike); when it swaps, the supervisor relaunches `codex resume <session-id>` on the fresh account with the transcript intact. `tokenmaxxing switch --codex [sel]` does it manually, `status`/`watch`/`ls` show both pools.
 
 Two codex-specific facts worth knowing: codex does not run hooks it has not been told to trust, so after `init --codex` you must open codex once and trust the tokenmaxxing Stop hook via `/hooks` (auto-switching is inert until then); and codex has no cross-process lock on `auth.json`, so tokenmaxxing serializes all of its own credential writes behind its own lock and swaps only at idle turn boundaries.
 

@@ -9,7 +9,6 @@ import {
   LastSwapSchema,
   ModelUsageStateSchema,
   NextCheckSchema,
-  SessionLadderSchema,
   UsageStateSchema,
   type AccountsIndex,
   type Config,
@@ -18,14 +17,11 @@ import {
 } from "./types.ts";
 
 const DEFAULT_CONFIG: Config = {
-  thresholds: { session: [90], weekly: 98 },
-  hardThresholds: { session: 100, weekly: 100 },
+  thresholds: { session: 90, weekly: 98 },
   claudeBin: "",
   codexBin: "",
   policy: {
     projectionMargin: 0,
-    greedySessionFloor: 80,
-    greedySwapMargin: 0.15,
     switchModels: ["fable"],
     usagePollTtlMs: 90_000,
     maxWaitMs: 3_600_000,
@@ -37,15 +33,12 @@ const PercentSchema = z.number().min(0).max(100);
 
 export const ConfigFileSchema = z
   .object({
-    thresholds: z.object({ session: SessionLadderSchema, weekly: PercentSchema }).partial(),
-    hardThresholds: z.object({ session: PercentSchema, weekly: PercentSchema }).partial(),
+    thresholds: z.object({ session: PercentSchema, weekly: PercentSchema }).partial(),
     claudeBin: z.string(),
     codexBin: z.string(),
     policy: z
       .object({
         projectionMargin: PercentSchema,
-        greedySessionFloor: PercentSchema,
-        greedySwapMargin: z.number().min(0).max(1),
         switchModels: z.array(z.string()),
         usagePollTtlMs: z.number().int().positive(),
         maxWaitMs: z.number().int().positive(),
@@ -65,18 +58,13 @@ export function mergeConfigFile(p: z.infer<typeof ConfigFileSchema>): MergeOutco
   const cfg: Config = {
     ...DEFAULT_CONFIG,
     thresholds: { ...DEFAULT_CONFIG.thresholds },
-    hardThresholds: { ...DEFAULT_CONFIG.hardThresholds },
     policy: { ...DEFAULT_CONFIG.policy },
   };
   cfg.thresholds.session = p.thresholds?.session ?? cfg.thresholds.session;
   cfg.thresholds.weekly = p.thresholds?.weekly ?? cfg.thresholds.weekly;
-  cfg.hardThresholds.session = p.hardThresholds?.session ?? cfg.hardThresholds.session;
-  cfg.hardThresholds.weekly = p.hardThresholds?.weekly ?? cfg.hardThresholds.weekly;
   cfg.claudeBin = p.claudeBin ?? cfg.claudeBin;
   cfg.codexBin = p.codexBin ?? cfg.codexBin;
   cfg.policy.projectionMargin = p.policy?.projectionMargin ?? cfg.policy.projectionMargin;
-  cfg.policy.greedySessionFloor = p.policy?.greedySessionFloor ?? cfg.policy.greedySessionFloor;
-  cfg.policy.greedySwapMargin = p.policy?.greedySwapMargin ?? cfg.policy.greedySwapMargin;
   cfg.policy.usagePollTtlMs = p.policy?.usagePollTtlMs ?? cfg.policy.usagePollTtlMs;
   cfg.policy.maxWaitMs = p.policy?.maxWaitMs ?? cfg.policy.maxWaitMs;
   cfg.policy.checkIntervalMs = p.policy?.checkIntervalMs ?? cfg.policy.checkIntervalMs;
@@ -105,7 +93,7 @@ export function loadConfig(): Config {
     }
     const parsed = ConfigFileSchema.safeParse(raw);
     if (!parsed.success) {
-      const fields = parsed.error.issues.map((issue) => issue.path.join(".")).join(", ");
+      const fields = parsed.error.issues.map((issue) => `${issue.path.join(".")}: ${issue.message}`).join(", ");
       throw new Error(`${paths.configJson} has wrong-typed values (${fields}) - fix or remove them`);
     }
     fileData = parsed.data;

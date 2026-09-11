@@ -1,6 +1,6 @@
 ---
 name: codex-pool
-description: Operate the Codex side of the pool (restart-is-switch, no Layer 2, never target a running sibling). Use for codex init/switch/status questions or MCP pool_switch with codex=true.
+description: Operate the Codex side of the pool (restart-is-switch, no depleted pause, never target a running sibling). Use for codex init/switch/status questions or MCP pool_switch with codex=true.
 ---
 
 # Codex pool
@@ -12,7 +12,7 @@ description: Operate the Codex side of the pool (restart-is-switch, no Layer 2, 
 - Refresh-token reuse is punished; a superseded token can kill the grant family. Persist every rotation immediately.
 - An account running in another supervised session is never a swap target and never sampler-refreshed. Parked does not mean idle.
 - Classify windows by DURATION, never by position. Some plans have no 5h window.
-- Layer 2 wall squeeze is Claude-only. Do not extend it to Codex.
+- The depleted pause is Claude-only. Codex rides its account until the server refuses it; do not add a codex pause or pre-park.
 
 ## Agent actions
 

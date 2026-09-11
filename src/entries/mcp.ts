@@ -103,7 +103,7 @@ Read tools (always available):
   help          this catalog
 
 Mutating tools (confirm=true AND ${MUTATIONS_ENV}=1):
-  pool_switch   Claude greedy/forced switch, or Codex when codex=true
+  pool_switch   Claude best-account or forced switch, or Codex when codex=true
   pool_check    one evaluate-and-maybe-swap pass
   config_set    write a config.json override
   config_unset  remove a config.json override
@@ -189,7 +189,7 @@ export function createTokenmaxxingMcpServer(): McpServer {
       description: "Switch the Claude pool (or Codex when codex=true). Requires confirm=true and TOKENMAXXING_AGENT_MUTATIONS=1. Hot-swaps live Claude; Codex takes effect on next start.",
       inputSchema: {
         confirm: z.boolean().describe("Must be true after the user approves the mutation"),
-        selector: z.string().optional().describe("Optional account selector; omit for greedy best"),
+        selector: z.string().optional().describe("Optional account selector; omit for the best account"),
         codex: z.boolean().optional().describe("When true, run the Codex pool switch instead"),
       },
     },
