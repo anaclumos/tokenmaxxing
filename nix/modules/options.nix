@@ -37,7 +37,7 @@
       intervalSeconds = lib.mkOption {
         type = lib.types.addCheck lib.types.ints.positive (s: s >= 10);
         default = 60;
-        description = "The floor tick for `tokenmaxxing check`, at least 10 seconds (launchd does not spawn a job more often than that by default); keep it equal to `policy.checkIntervalMs` in seconds. The check itself sleeps longer while the live account has headroom.";
+        description = "The tick for `tokenmaxxing check`, at least 10 seconds (launchd does not spawn a job more often than that by default); keep it equal to `policy.checkIntervalMs` in seconds.";
       };
     };
   };
