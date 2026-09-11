@@ -153,7 +153,7 @@ async function collectClaude(input: { cfg: Config; ping: boolean; pingCount: num
         samples.set(a.accountUuid, { outcome, viaTee });
         if (!outcome.ok) return;
         a.lastUsage = { fiveHour: outcome.usage.session, sevenDay: outcome.usage.weekAll };
-        a.lastUsageAt = viaTee && teeAt != null ? teeAt : Date.now();
+        a.lastUsageAt = viaTee && teeAt != null ? (live?.sampledAt ?? teeAt) : Date.now();
         if (Object.keys(outcome.usage.perModel).length > 0) {
           a.lastPerModel = outcome.usage.perModel;
           a.lastPerModelAt = viaTee && modelUsage ? (modelUsage.sampledAt ?? modelUsage.ts) : a.lastUsageAt;
