@@ -214,7 +214,7 @@ function installCheckTimer(intervalS: number): boolean {
 <plist version="1.0">
 <dict>
   <key>Label</key><string>${LAUNCHD_LABEL}</string>
-  <key>ProgramArguments</key><array><string>${escape(installedBin())}</string><string>check</string><string>--if-due</string></array>
+  <key>ProgramArguments</key><array><string>${escape(installedBin())}</string><string>check</string></array>
   <key>StartInterval</key><integer>${intervalS}</integer>
   <key>StandardOutPath</key><string>/dev/null</string>
   <key>StandardErrorPath</key><string>${escape(join(paths.home, "check.stderr.log"))}</string>
@@ -229,7 +229,7 @@ function installCheckTimer(intervalS: number): boolean {
     return run(["launchctl", "bootstrap", domain, plist]) || checkTimerHealthy();
   }
 
-  const exec = `"${installedBin().replaceAll("%", "%%")}" check --if-due`;
+  const exec = `"${installedBin().replaceAll("%", "%%")}" check`;
   writeFileAtomic(
     join(paths.systemdUserDir, "tokenmaxxing-check.service"),
     `[Unit]
