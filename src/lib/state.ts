@@ -1,11 +1,10 @@
 import { closeSync, existsSync, fstatSync, openSync, readFileSync, rmSync, utimesSync } from "node:fs";
-import { isEqual, uniq } from "es-toolkit";
+import { isEqual } from "es-toolkit";
 import { z } from "zod";
 import { paths, realClaudeBinFromEnv, realCodexBinFromEnv } from "./paths.ts";
 import { writeFileAtomic } from "./atomic.ts";
 import {
   AccountsIndexSchema,
-  BankedResetProvidersSchema,
   ConfigSchema,
   LastSwapSchema,
   ModelUsageStateSchema,
@@ -14,11 +13,8 @@ import {
   UsageStateSchema,
   type AccountsIndex,
   type Config,
-  type FamilyAnchor,
   type ModelUsageState,
   type UsageState,
-  type UsageWindow,
-  type WindowAnchor,
 } from "./types.ts";
 
 const DEFAULT_CONFIG: Config = {
@@ -34,7 +30,6 @@ const DEFAULT_CONFIG: Config = {
     usagePollTtlMs: 90_000,
     maxWaitMs: 3_600_000,
     checkIntervalMs: 60_000,
-    preferToUseBankedReset: [],
   },
 };
 
@@ -55,7 +50,6 @@ export const ConfigFileSchema = z
         usagePollTtlMs: z.number().int().positive(),
         maxWaitMs: z.number().int().positive(),
         checkIntervalMs: z.number().int().min(10_000),
-        preferToUseBankedReset: BankedResetProvidersSchema,
       })
       .partial(),
   })
@@ -88,9 +82,6 @@ export function mergeConfigFile(p: z.infer<typeof ConfigFileSchema>): MergeOutco
   cfg.policy.checkIntervalMs = p.policy?.checkIntervalMs ?? cfg.policy.checkIntervalMs;
   if (p.policy?.switchModels) {
     cfg.policy.switchModels = p.policy.switchModels.map((s) => s.toLowerCase());
-  }
-  if (p.policy?.preferToUseBankedReset) {
-    cfg.policy.preferToUseBankedReset = uniq(p.policy.preferToUseBankedReset);
   }
   const envBin = realClaudeBinFromEnv();
   if (envBin) cfg.claudeBin = envBin;
@@ -196,29 +187,6 @@ export function saveLastSwapAt(ts: number): void {
   writeFileAtomic(paths.lastSwapJson, JSON.stringify(LastSwapSchema.parse({ ts })));
 }
 
-export function loadLastResetAt(): number | null {
-  if (!existsSync(paths.lastResetJson)) return null;
-  let json: unknown;
-  try {
-    json = JSON.parse(readFileSync(paths.lastResetJson, "utf8"));
-  } catch {
-    throw new Error(`${paths.lastResetJson} is corrupt (unparsable JSON) - refusing to treat a damaged reset clock as never-reset; repair or remove the file`);
-  }
-  return LastSwapSchema.parse(json).ts;
-}
-
-export function saveLastResetAt(ts: number): void {
-  writeFileAtomic(paths.lastResetJson, JSON.stringify(LastSwapSchema.parse({ ts })));
-}
-
-export function loadLastSeatChangeAt(): number | null {
-  const swapAt = loadLastSwapAt();
-  const resetAt = loadLastResetAt();
-  if (swapAt == null) return resetAt;
-  if (resetAt == null) return swapAt;
-  return Math.max(swapAt, resetAt);
-}
-
 const DepletedWaitSchema = z.object({ waitUntil: z.number(), accountUuid: z.string(), ts: z.number() });
 export type DepletedWait = z.infer<typeof DepletedWaitSchema>;
 
@@ -270,61 +238,13 @@ export function clearNextCheck(): void {
 
 const USAGE_TS_REFRESH_MS = 10 * 60_000;
 const SAMPLED_AT_REFRESH_MS = 30_000;
-const SESSION_COST_MIN_DELTA = 25;
-
-function anchorHolds(anchor: WindowAnchor, next: UsageState): boolean {
-  return (
-    anchor.fiveHourResetsAt === next.fiveHour.resetsAt &&
-    anchor.sevenDayResetsAt === next.sevenDay.resetsAt &&
-    next.fiveHour.usedPercentage >= anchor.session &&
-    next.sevenDay.usedPercentage >= anchor.weekly
-  );
-}
-
-export function measureSessionWindow(prev: UsageState | null, next: UsageState, stamp: boolean): Pick<UsageState, "anchor" | "sessionWindowWeeklyCost"> {
-  const same = prev != null && prev.account === next.account;
-  const carried = same ? prev.sessionWindowWeeklyCost : undefined;
-  if (stamp) return { ...(same && prev.anchor ? { anchor: prev.anchor } : {}), ...(carried != null ? { sessionWindowWeeklyCost: carried } : {}) };
-  const anchor: WindowAnchor =
-    same && prev.anchor && anchorHolds(prev.anchor, next)
-      ? prev.anchor
-      : { fiveHourResetsAt: next.fiveHour.resetsAt, sevenDayResetsAt: next.sevenDay.resetsAt, session: next.fiveHour.usedPercentage, weekly: next.sevenDay.usedPercentage };
-  const sessionDelta = next.fiveHour.usedPercentage - anchor.session;
-  const weeklyDelta = next.sevenDay.usedPercentage - anchor.weekly;
-  const measured = sessionDelta >= SESSION_COST_MIN_DELTA && weeklyDelta > 0 ? (100 * weeklyDelta) / sessionDelta : undefined;
-  const cost = measured ?? carried;
-  return { anchor, ...(cost != null ? { sessionWindowWeeklyCost: cost } : {}) };
-}
-
-function familyAnchorHolds(anchor: FamilyAnchor, session: UsageWindow, caps: Record<string, number>): boolean {
-  return (
-    anchor.fiveHourResetsAt === session.resetsAt &&
-    session.usedPercentage >= anchor.session &&
-    Object.entries(caps).every(([family, used]) => anchor.caps[family] == null || used >= anchor.caps[family])
-  );
-}
-
-export function measureFamilyWindow(prev: ModelUsageState | null, account: string | null, session: UsageWindow | null, caps: Record<string, number>): Pick<ModelUsageState, "anchor" | "familyCosts"> {
-  const same = prev != null && prev.account === account;
-  const carried = same ? prev.familyCosts : undefined;
-  if (session == null) return { ...(same && prev.anchor ? { anchor: prev.anchor } : {}), ...(carried != null ? { familyCosts: carried } : {}) };
-  const held = same && prev.anchor && familyAnchorHolds(prev.anchor, session, caps) ? prev.anchor : null;
-  const anchor: FamilyAnchor = held ? { ...held, caps: { ...caps, ...held.caps } } : { fiveHourResetsAt: session.resetsAt, session: session.usedPercentage, caps };
-  const sessionDelta = session.usedPercentage - anchor.session;
-  const measured = Object.entries(caps).flatMap(([family, used]) => {
-    const capDelta = used - (anchor.caps[family] ?? used);
-    return sessionDelta >= SESSION_COST_MIN_DELTA && capDelta > 0 ? [[family, (100 * capDelta) / sessionDelta] as const] : [];
-  });
-  const familyCosts = { ...carried, ...Object.fromEntries(measured) };
-  return { anchor, ...(Object.keys(familyCosts).length > 0 ? { familyCosts } : {}) };
-}
 
 export function writeUsage(input: UsageState, opts: { stamp?: boolean } = {}): boolean {
   const prev = loadUsage();
   const stamp = opts.stamp === true;
   const carriedSampleAt = prev != null && prev.account === input.account ? (prev.sampledAt ?? prev.ts) : undefined;
   const sampledAt = stamp ? (carriedSampleAt ?? input.sampledAt) : input.ts;
-  const next: UsageState = { ...input, ...measureSessionWindow(prev, input, stamp), ...(sampledAt != null ? { sampledAt } : {}) };
+  const next: UsageState = { ...input, ...(sampledAt != null ? { sampledAt } : {}) };
   if (
     prev &&
     isEqual({ ...prev, ts: 0, sampledAt: 0 }, { ...next, ts: 0, sampledAt: 0 }) &&

@@ -21,7 +21,6 @@ export const KNOWN_KEYS = [
   "policy.usagePollTtlMs",
   "policy.maxWaitMs",
   "policy.checkIntervalMs",
-  "policy.preferToUseBankedReset",
 ] as const;
 
 const TIMER_REWRITE_NOTE = "note: run `tokenmaxxing init` to rewrite the periodic timer at the new tick";
