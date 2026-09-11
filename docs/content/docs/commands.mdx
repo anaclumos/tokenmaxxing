@@ -22,7 +22,10 @@ description: Every tokenmaxxing command and what it does
 | `tokenmaxxing rename [--codex] <sel> <label>` | Relabel a pooled account |
 | `tokenmaxxing rm [--codex] <sel>` | Remove an account (and its parked credential) from the claude or codex pool |
 | `tokenmaxxing uninstall` | Remove the supervisor and settings entries (accounts and credentials are kept) |
-| `--json` | Print one JSON document on stdout instead of text (one per tick for `watch`). Works with `status`, `ls`, `config`, `doctor`, `check`, `switch`, `watch`, `rename`, `rm`, and `uninstall`; position-independent (`xx --json`, `xx status --json`). See [JSON output](#json-output) |
+| `tokenmaxxing setup-token [--print \| rm <label>]` | Cursor Cloud only. Mint one `claude setup-token` per pooled account that has no stored token (a browser sign-in each), store them in `setup-tokens.json`, and print the `TOKENMAXXING_TOKENS` secret value; `--print` skips minting, `rm` drops a stored token (local only). See [Cursor Cloud](/cursor-cloud) |
+| `tokenmaxxing cursor init [dir]` | Write the Claude relay subagent (`.cursor/agents/claude.md`) and `.cursor/environment.json` into a repo. Idempotent; an existing `environment.json` is left alone and the install line to add is printed |
+| `tokenmaxxing cloud run [--session <id>] [--max-turns <n>] "<prompt>"` | On a Cursor Cloud VM: run `claude -p` on a setup token from `TOKENMAXXING_TOKENS`, keep a session on its token, and rotate to the next token when a run ends on a usage limit. The prompt is also read from stdin |
+| `--json` | Print one JSON document on stdout instead of text (one per tick for `watch`). Works with `status`, `ls`, `config`, `doctor`, `check`, `switch`, `watch`, `rename`, `rm`, `uninstall`, `setup-token --print`, `setup-token rm`, `cursor init`, and `cloud run`; position-independent (`xx --json`, `xx status --json`). See [JSON output](#json-output) |
 
 ## JSON output
 
@@ -44,4 +47,8 @@ What each command reports:
 - `switch`: `switched`, `account`, and a short `reason` (`selected`, `best`, `already-on`, `current-wins`, `drift-reconciled`, `earliest-reset`, `no-target`, `all-at-limit`, `unknown-resets`), plus `weeklyResetsAt` on `current-wins`, `reauthNeeded` and `deadGrants` (the accounts whose refresh token died while the switch was trying them) when they apply. `availableAt` is Claude-only: the Codex pool has no earliest-reset fallback, so a Codex pick with no usable target fails with `reauthNeeded` instead.
 - `rename` and `rm`: what changed (`from`/`to`, `removed`/`remaining`). `uninstall`: the steps it went through (`removed` always names the wrapper and settings entries, plus the timer and rc line when those steps reported success), `timerDeactivated`, and `pathLineRemoved`. It is destructive and the one `--json` command that writes outside the state root: `~/.claude/settings.json`, codex `hooks.json`, the shell rc, and the timer unit live under `HOME`, so `TOKENMAXXING_HOME` does not make it hermetic.
 
-`init`, `add`, and `auth` run a login flow and refuse `--json` with exit code 2. Account identifiers (labels, emails, uuids) appear in the documents; credential material never does.
+- `setup-token --print`: `tokens` (the `{label, token}` array that is the secret value), `bytes`, and `cap` (the 4096-byte value cap Cursor documents for API-created variables). `setup-token rm`: `removed` and `remaining`. A minting run has no `--json` form and refuses the flag with exit code 2.
+- `cursor init`: `dir`, `agent` (`written` or `unchanged`), `environment` (`written` or `exists`), and `install` (the install line).
+- `cloud run`: `session_id`, `result`, `num_turns`, and `total_cost_usd`. A failed run adds `session_id`, `subtype`, and `errors`; when every token is walled it adds `earliestReset` instead.
+
+`init`, `add`, and `auth` run a login flow and refuse `--json` with exit code 2, and so does a minting `setup-token`. Account identifiers (labels, emails, uuids) appear in the documents; credential material never does, except in `setup-token --print`, which prints the setup tokens by design.
