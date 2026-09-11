@@ -21,14 +21,14 @@ The tee is write-on-change: when figures are unchanged it only bumps the file's 
 
 ## The Stop hook and the swap
 
-At every turn boundary, the Stop hook runs the switch decision (see [How switching decides](/switching)). When a swap is warranted, it happens under a `flock(2)` exclusive lock (taken via `bun:ffi`, since macOS ships no `flock(1)` binary), and the credential writes additionally interlock with Claude Code's own refresh lock. Inside the critical section, one swap:
+At every turn boundary, the Stop hook runs the switch decision (see [How switching decides](/switching)). When a swap is warranted, it happens under the pool lock (a proper-lockfile directory lock with a 60-second stale bar and a 5-second heartbeat, the same library Claude Code embeds), and the credential writes additionally interlock with Claude Code's own refresh lock. Inside the critical section, one swap:
 
 1. Harvests the current live credential into its true owner's parked backup.
-2. Installs the target account's freshly refreshed credential as the live one, merging into the existing live blob so sibling state (such as per-MCP-server OAuth tokens) survives. (The target's rotated refresh token was already persisted to its own backup the instant the refresh returned, under the flock but before this refresh-lock critical section.)
+2. Installs the target account's freshly refreshed credential as the live one, merging into the existing live blob so sibling state (such as per-MCP-server OAuth tokens) survives. (The target's rotated refresh token was already persisted to its own backup the instant the refresh returned, under the pool lock but before this refresh-lock critical section.)
 3. Atomically rewrites the `oauthAccount` field in `~/.claude.json`.
 4. Commits the new active label and clears stale usage snapshots before the lock releases. These files cannot be crash-atomic together, so a crash may leave intermediate state; the next swap resolves the live credential's true owner independently of the label and logs any detected drift.
 
-Because all default-profile sessions share the one live credential, a single swap migrates every session at once, and the flock plus a re-check under the lock keeps racing hooks from burning two accounts.
+Because all default-profile sessions share the one live credential, a single swap migrates every session at once, and the pool lock plus a re-check under it keeps racing hooks from burning two accounts.
 
 ## In-place adoption
 

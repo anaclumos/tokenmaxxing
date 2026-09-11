@@ -163,13 +163,13 @@ Two codex-specific facts worth knowing: codex does not run hooks it has not been
 - **One cold turn.** The first turn on a new account re-uploads context once (prompt cache is org-scoped).
 - **Depleted-pause hiccup.** Plain swaps never restart the session. Only when the whole pool is at its limit does `claude` stop for the countdown; anything typed in that split second is lost.
 - **Adoption lag.** On macOS the first turn within ~30s of a swap can still meter the old account; the bars' headroom absorbs it.
-- **Shared blast radius.** All default-profile sessions share one live credential, so a swap moves them all together (each adopts in place). A `flock` + re-check keeps racing hooks from burning two accounts.
+- **Shared blast radius.** All default-profile sessions share one live credential, so a swap moves them all together (each adopts in place). A pool lock + re-check keeps racing hooks from burning two accounts.
 - **Keychain ACL (macOS).** `init`/`add` touch the keychain interactively so the first `security` access isn't cold inside a headless hook.
 - **Plaintext credentials (Linux).** Claude Code itself stores Linux credentials as a 0600 plaintext file; tokenmaxxing's parked copies follow the same model.
 
 ## How it's built
 
-TypeScript on Bun. One multi-call entry (`src/main.ts`) runs the CLI, the `claude` supervisor, and the hook/statusLine shims. [Zod](https://zod.dev) validates every external-boundary payload (credential blobs, hook/statusLine stdin, OAuth responses, config). [es-toolkit](https://es-toolkit.dev) for utilities. The supervisor is process/terminal-only. It never proxies API traffic or touches tokens in flight. Cross-process coordination uses `flock(2)` via `bun:ffi` (macOS has no `flock(1)`; one codepath for both platforms). Credential I/O goes through one platform-selected store: `security(1)` generic-passwords on macOS, atomic 0600 file writes on Linux.
+TypeScript on Bun. One multi-call entry (`src/main.ts`) runs the CLI, the `claude` supervisor, and the hook/statusLine shims. [Zod](https://zod.dev) validates every external-boundary payload (credential blobs, hook/statusLine stdin, OAuth responses, config). [es-toolkit](https://es-toolkit.dev) for utilities. The supervisor is process/terminal-only. It never proxies API traffic or touches tokens in flight. Cross-process coordination uses proper-lockfile directory locks (the library Claude Code embeds for its own refresh lock; one codepath for both platforms). Credential I/O goes through one platform-selected store: `security(1)` generic-passwords on macOS, atomic 0600 file writes on Linux.
 
 ## License
 

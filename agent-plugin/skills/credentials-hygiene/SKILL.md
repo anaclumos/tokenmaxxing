@@ -1,6 +1,6 @@
 ---
 name: credentials-hygiene
-description: Credential and identity rules for tokenmaxxing (fetchTokenIdentity account-uuid identity, flock, no blob compare, never print secrets). Use before any auth, swap, or credential-touching change.
+description: Credential and identity rules for tokenmaxxing (fetchTokenIdentity account-uuid identity, the pool lock, no blob compare, never print secrets). Use before any auth, swap, or credential-touching change.
 ---
 
 # Credentials hygiene

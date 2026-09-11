@@ -26,7 +26,7 @@ No external installed user base, so this is pre-production code: delete old-stat
 - A configured-but-missing path (`claudeBin`, `codexBin`, credential locations) fails fast. Never fall through to a PATH scan: seeding `/bin/true` as claudeBin made the scan resolve the real installed wrapper and wedge an E2E for 15 minutes, the same shape that fed the runaway-recursion incident.
 - For platform-specific behavior differences, compare the installed package versions before attributing the difference to the platform.
 - Core deps are zod, es-toolkit, ky, and `@modelcontextprotocol/sdk` (stdio MCP for the Agent Plugin). The global default stack does not apply (there is no date-fns here, date math goes through `Intl` in `parseResetClock`).
-- Keep `node:fs`, which is Bun-native. `Bun.file`/`Bun.write` are async-only, non-atomic, and have no create-mode, so they cannot serve the 0600 credential store or the flock fd. When asked to simplify this, that is the answer.
+- Keep `node:fs`, which is Bun-native. `Bun.file`/`Bun.write` are async-only, non-atomic, and have no create-mode, so they cannot serve the 0600 credential store. When asked to simplify this, that is the answer.
 
 ## Credentials and identity
 
@@ -69,7 +69,7 @@ Source-verified against rust-v0.144.5 (2026-07-16); the installed CLI is 0.145.0
 
 - No hot-swap: restart IS the switch (`codex resume <sid>`).
 - Refresh-token reuse is punished, and a superseded token kills the whole grant family. Harvest by true owner and persist every rotation the instant it returns.
-- An idle codex still touches tokens: the Apps surface builds throwaway auth managers and can rotate `auth.json` outside our flock. Read the live blob at the last moment.
+- An idle codex still touches tokens: the Apps surface builds throwaway auth managers and can rotate `auth.json` outside our pool lock. Read the live blob at the last moment.
 - An account running in another supervised session is never a swap target and never sampler-refreshed. Parked does not imply not running.
 - Classify windows by DURATION, never by position. Current plans may have no 5h window at all.
 - Codex silently skips untrusted hooks until the user runs `/hooks`, so auto-switching never engages until they do. Never clobber the user's `notify` key in `config.toml`; nothing in code guards it.
@@ -92,7 +92,7 @@ Ship = work on a branch, bump `package.json` and `agent-plugin/plugin.json` to t
 
 Short pointers.
 
-- Statusline: `src/entries/statusline.ts` renders natively and tees `usage.json`; subagent rows in `src/entries/subagentstatusline.ts`. Format spec in `docs/statusline.mdx`. statusLine stdin sends top-level sub-objects as JSON `null`, so their schemas need `.nullable().optional()`, not `.optional()`. The main payload can never reflect the focused subagent; the subagent rows are the only such surface. This runs every turn, so keep it O(ms) and off flock and oauth: read the HEAD file, never spawn a git subprocess.
+- Statusline: `src/entries/statusline.ts` renders natively and tees `usage.json`; subagent rows in `src/entries/subagentstatusline.ts`. Format spec in `docs/statusline.mdx`. statusLine stdin sends top-level sub-objects as JSON `null`, so their schemas need `.nullable().optional()`, not `.optional()`. The main payload can never reflect the focused subagent; the subagent rows are the only such surface. This runs every turn, so keep it O(ms) and off the pool lock and oauth: read the HEAD file, never spawn a git subprocess.
 - SDK: `src/sdk.ts` is the programmatic entry and is self-documenting. `docs/sdk.mdx`, `.memory/agent-sdk-auth-surface.md`. Pooling subscription logins is framed as the owner using their own accounts in agents they run themselves; offering it to third parties is a ToS problem (`docs/terms.mdx`).
 
 ## CLI output
