@@ -66,7 +66,7 @@ claude                  # use claude as always
 | `tokenmaxxing add` | register an additional account (isolated login, harvested into the pool) |
 | `tokenmaxxing add --codex` | register an additional codex account (isolated login) |
 | `tokenmaxxing auth [sel \| --all]` | reauthenticate a pooled account in place: bare lists the pool (emails shown) and asks which; a selector targets one account and tells you the email to sign in with; `--all` walks every needs-reauth account one by one |
-| `tokenmaxxing switch [sel]` | switch the claude pool: bare picks the best account greedily (no-op when the current one wins), a selector targets one |
+| `tokenmaxxing switch [sel]` | switch the claude pool: bare picks the best account (no-op when the current one wins), a selector targets one |
 | `tokenmaxxing switch --codex [sel]` | switch the codex pool (takes effect on the next codex start) |
 | `tokenmaxxing ls` | list pooled accounts |
 | `tokenmaxxing status` | accounts with 5h / weekly usage bars, active + exhausted-until-reset |
@@ -114,32 +114,6 @@ See [How switching decides](docs/content/docs/switching.mdx) for the policy and 
 `thresholds.session` and `thresholds.weekly` are the two bars, one number each (an array `thresholds.session`, the former ladder, fails config loading with a message naming the field); `projectionMargin` is a fixed safety margin subtracted from each threshold bar (effective bar = threshold - margin), so a large turn is less likely to blow past a bar between checks; `switchModels` names the models whose per-model cap triggers a switch; `usagePollTtlMs` is how long a `/usage` per-model poll stays fresh; `maxWaitMs` bounds the depleted-pool countdown - a soonest reset further out than this does not pause the session (no respawn marker is written and the session simply keeps hitting its limit until an account recovers); `checkIntervalMs` is the periodic check tick (default 60s), which `init` writes into the timer and which every headroom band is a multiple of, one tick near a bar up to five with plenty of headroom (a depleted wait and the post-swap cooldown sleep to their own deadlines instead) - re-run `tokenmaxxing init` after changing it so the timer unit picks up the new tick.
 
 State lives entirely in `~/.config/tokenmaxxing/`. Per-account credentials follow the platform's Claude Code store: the login keychain on macOS (`tokenmaxxing-cred-<uuid8>` items, never plaintext on disk), 0600 files under `~/.config/tokenmaxxing/creds/` on Linux (the same plaintext model claude itself uses for `~/.claude/.credentials.json`).
-
-## Pairing with the Claude Agent SDK
-
-For agents you build on the [Claude Agent SDK](https://docs.claude.com/en/api/agent-sdk/overview) against **your own** pooled accounts, `tokenmaxxing` is importable as a library (your agent app must run under Bun: tokenmaxxing ships TypeScript source and uses `bun:ffi`):
-
-```ts
-import { query } from "@anthropic-ai/claude-agent-sdk";
-import { ensureBestAccount, pooledOptions, stopHookCheck } from "tokenmaxxing";
-
-await ensureBestAccount();
-
-for await (const message of query({
-  prompt: "...",
-  options: {
-    ...pooledOptions(),
-    hooks: { Stop: [{ hooks: [stopHookCheck] }] },
-  },
-})) {
-}
-```
-
-The loop body receives the message stream; keep the session id from the init message if you want `resume` across swaps.
-
-The SDK reads credentials when it spawns the claude subprocess and has no statusLine, so none of the CLI-side supervisor machinery applies; the integration is boundary-driven instead. `ensureBestAccount()` runs the exact decision the CLI hooks and timer run (the bars, pace-pressure target, post-swap cooldown - all shared code); like them, it deliberately does nothing until the active account is at or over a bar, so a fresh account rides instead of churning. `pooledOptions()` pins `pathToClaudeCodeExecutable` to the real claude binary and supplies a full replacement `env` with every ambient credential override (`ANTHROPIC_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN`, ...) scrubbed, so the subprocess resolves the pool's live credential and nothing else. The pooled surface requires the default Claude Code credential store: it fails fast if `CLAUDE_CONFIG_DIR` or `CLAUDE_SECURESTORAGE_CONFIG_DIR` is set in your app's environment, because a swap would write the live credential where those point while the spawned subprocess reads the default store. `stopHookCheck` re-runs the decision at turn boundaries; a swap it lands takes effect on the next subprocess spawn (it never yanks a mid-query token). If your app loads user settings (see the SDK's `settingSources`), the Stop hook `tokenmaxxing init` installed may already fire in SDK sessions too - `stopHookCheck` makes the check explicit and works when settings are restricted.
-
-This is for pooling **your own** subscription accounts in agents you run yourself - the same personal-use posture as the CLI. Anthropic does not allow third-party products to offer claude.ai login or rate limits, including agents built on the Agent SDK; don't ship this surface to third parties.
 
 ## Codex support
 

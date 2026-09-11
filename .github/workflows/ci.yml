@@ -22,7 +22,6 @@ jobs:
         run: |
           npm pack
           tar tvf tokenmaxxing-*.tgz > /tmp/tarlist.txt
-          grep -F "package/agent-plugin/plugin.json" /tmp/tarlist.txt
           grep -E "^-rwx[-rwx]+ .* package/src/main.ts$" /tmp/tarlist.txt
           bun add -g "$PWD"/tokenmaxxing-*.tgz
           tokenmaxxing help
