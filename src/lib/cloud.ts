@@ -1,0 +1,150 @@
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import { countBy, minBy } from "es-toolkit";
+import { z } from "zod";
+import { paths } from "./paths.ts";
+import { writeFileAtomic } from "./atomic.ts";
+import { UNMANAGED_ENV, resolveRealClaude } from "./claudebin.ts";
+import { CloudTokenSchema, CloudTokensSchema, type CloudToken } from "./setuptokens.ts";
+import { normalizeResetsAt, pingRejection, readTranscriptTail, scrubCredentialEnv, transcriptSlug } from "./usage.ts";
+
+export const TOKENS_ENV = "TOKENMAXXING_TOKENS";
+export const FALLBACK_WALL_MS = 5 * 3_600_000;
+
+export function readCloudTokens(): CloudToken[] {
+  const raw = process.env[TOKENS_ENV];
+  if (raw == null || raw === "") {
+    throw new Error(`${TOKENS_ENV} is not set - add it as a user-scoped Runtime Secret with the value \`tokenmaxxing setup-token --print\` prints`);
+  }
+  let json: unknown;
+  try {
+    json = JSON.parse(raw);
+  } catch {
+    throw new Error(`${TOKENS_ENV} is not valid JSON`);
+  }
+  const parsed = CloudTokensSchema.safeParse(json);
+  if (!parsed.success) throw new Error(`${TOKENS_ENV} must be a non-empty JSON array of {label, token} objects`);
+  const labels = parsed.data.map((t) => t.label);
+  if (new Set(labels).size !== labels.length) throw new Error(`${TOKENS_ENV} carries a duplicate label`);
+  return parsed.data;
+}
+
+const SessionsSchema = z.record(z.string(), z.string());
+const WalledSchema = z.record(z.string(), z.number());
+
+function loadState<T>(file: string, schema: z.ZodType<T>, empty: T): T {
+  if (!existsSync(file)) return empty;
+  let json: unknown;
+  try {
+    json = JSON.parse(readFileSync(file, "utf8"));
+  } catch {
+    throw new Error(`${file} is corrupt (unparsable JSON) - repair or remove the file`);
+  }
+  return schema.parse(json);
+}
+
+export function loadCloudSessions(): Record<string, string> {
+  return loadState(paths.cloudSessionsJson, SessionsSchema, {});
+}
+
+export function saveCloudSessions(sessions: Record<string, string>): void {
+  writeFileAtomic(paths.cloudSessionsJson, JSON.stringify(SessionsSchema.parse(sessions), null, 2) + "\n");
+}
+
+export function loadCloudWalled(): Record<string, number> {
+  return loadState(paths.cloudWalledJson, WalledSchema, {});
+}
+
+export function saveCloudWalled(walled: Record<string, number>): void {
+  writeFileAtomic(paths.cloudWalledJson, JSON.stringify(WalledSchema.parse(walled), null, 2) + "\n");
+}
+
+const PickSchema = z.discriminatedUnion("ok", [
+  z.object({ ok: z.literal(true), token: CloudTokenSchema }),
+  z.object({ ok: z.literal(false), earliestReset: z.number() }),
+]);
+export type Pick = z.infer<typeof PickSchema>;
+
+export function pickToken(input: {
+  tokens: CloudToken[];
+  sessions: Record<string, string>;
+  walled: Record<string, number>;
+  sessionId: string | null;
+  now: number;
+}): Pick {
+  const open = (label: string) => (input.walled[label] ?? 0) <= input.now;
+  if (input.sessionId != null) {
+    const pinned = input.sessions[input.sessionId];
+    const token = input.tokens.find((t) => t.label === pinned);
+    if (token && open(token.label)) return { ok: true, token };
+  }
+  const candidates = input.tokens.filter((t) => open(t.label));
+  if (candidates.length === 0) {
+    return { ok: false, earliestReset: Math.min(...input.tokens.map((t) => input.walled[t.label] ?? input.now)) };
+  }
+  const load = countBy(Object.values(input.sessions), (label) => label);
+  return { ok: true, token: minBy(candidates, (t) => load[t.label] ?? 0) ?? candidates[0]! };
+}
+
+const CloudResultSchema = z.looseObject({
+  type: z.string(),
+  subtype: z.string(),
+  session_id: z.string(),
+  is_error: z.boolean(),
+  api_error_status: z.number().nullish(),
+  result: z.string().optional(),
+  errors: z.array(z.string()).optional(),
+  num_turns: z.number(),
+  total_cost_usd: z.number(),
+});
+export type CloudResult = z.infer<typeof CloudResultSchema>;
+
+export async function spawnCloudClaude(input: {
+  token: string;
+  prompt: string;
+  resume: string | null;
+  maxTurns: number | null;
+}): Promise<{ exitCode: number | null; result: CloudResult }> {
+  const args = [
+    "-p", "--output-format", "json", "--dangerously-skip-permissions",
+    ...(input.resume ? ["--resume", input.resume] : []),
+    ...(input.maxTurns != null ? ["--max-turns", String(input.maxTurns)] : []),
+    "--", input.prompt,
+  ];
+  const env = { ...scrubCredentialEnv({ ...process.env, [UNMANAGED_ENV]: "1" }), CLAUDE_CODE_OAUTH_TOKEN: input.token };
+  const child = Bun.spawn([resolveRealClaude(), ...args], { env, stdin: "ignore", stdout: "pipe", stderr: "inherit" });
+  const stdout = await new Response(child.stdout).text();
+  await child.exited;
+  let json: unknown;
+  try {
+    json = JSON.parse(stdout);
+  } catch {
+    throw new Error(`claude exited ${child.exitCode ?? "on signal"} without a JSON result: ${stdout.trim().slice(0, 200)}`);
+  }
+  const parsed = CloudResultSchema.safeParse(json);
+  if (!parsed.success) {
+    throw new Error(`claude exited ${child.exitCode ?? "on signal"} with a result that does not match the documented result message: ${stdout.trim().slice(0, 200)}`);
+  }
+  return { exitCode: child.exitCode, result: parsed.data };
+}
+
+export function cloudTranscriptPath(sessionId: string): string | null {
+  const projects = join(paths.claudeDir, "projects");
+  const direct = join(projects, transcriptSlug(process.cwd()), `${sessionId}.jsonl`);
+  if (existsSync(direct)) return direct;
+  if (!existsSync(projects)) return null;
+  for (const dir of readdirSync(projects)) {
+    const candidate = join(projects, dir, `${sessionId}.jsonl`);
+    if (existsSync(candidate)) return candidate;
+  }
+  return null;
+}
+
+export function limitWallUntil(input: { result: CloudResult; now: number }): number | null {
+  const transcript = cloudTranscriptPath(input.result.session_id);
+  const rows = transcript ? readTranscriptTail(transcript) : [];
+  if (input.result.api_error_status !== 429 && pingRejection(rows) == null) return null;
+  const row = rows.findLast((r) => r.isApiErrorMessage === true);
+  const resetsAt = row?.quotaLimits?.resetsAt != null ? normalizeResetsAt(row.quotaLimits.resetsAt) : null;
+  return resetsAt != null && resetsAt > input.now ? resetsAt : input.now + FALLBACK_WALL_MS;
+}
