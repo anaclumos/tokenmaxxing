@@ -13,7 +13,6 @@ Everything lives under `~/.config/tokenmaxxing/`. Override with `TOKENMAXXING_HO
 | `model-usage.json` | TTL-cached per-model weekly caps from `/usage` |
 | `lastswap.json` | Epoch timestamp of the last swap; drives the 45-second cooldown |
 | `depleted.json` | The recorded depleted-pool wait, replayed by sibling hooks until the reset passes, the live seat moves, or any swap completes |
-| `nextcheck.json` | When the periodic check is next due; absent, corrupt, or implausibly far ahead all mean due now, and any swap clears it |
 | `lock` | The `flock` file that serializes swaps |
 | `sessions/<session-id>.json` | Per-managed-session launch flags the supervisor persists for respawns; pruned after 30 days idle (matching claude's own transcript retention) |
 | `tokenmaxxing.log` | Append-only event log |
