@@ -4,7 +4,7 @@ import { delay } from "es-toolkit";
 import { lock } from "proper-lockfile";
 import { z } from "zod";
 import { credDir } from "./paths.ts";
-import { STALE_MS, UPDATE_MS, releaseLease, watchLease } from "./lock.ts";
+import { STALE_MS, UPDATE_MS, releaseLease, watchLease, type Lease } from "./lock.ts";
 import { log } from "./log.ts";
 
 const LOCK_NAME = "claude-refresh";
@@ -37,21 +37,21 @@ export async function withClaudeRefreshLock<T>(
     realpath: false,
     stale: STALE_MS,
     update: UPDATE_MS,
-    onCompromised: watch.onCompromised,
+    onCompromised: watch.onCompromised(lockfilePath),
   });
 
-  const releases: Array<() => Promise<void>> = [];
-  for (let attempt = 1; releases.length === 0; attempt++) {
+  const leases: Lease[] = [];
+  for (let attempt = 1; leases.length === 0; attempt++) {
     let releasePrimary: (() => Promise<void>) | null = null;
     try {
       releasePrimary = await lock(dir, options(primary));
       try {
-        releases.push(await lock(legacy, options(legacy)), releasePrimary);
+        leases.push({ path: legacy, release: await lock(legacy, options(legacy)) }, { path: primary, release: releasePrimary });
         break;
       } catch (e) {
         if (!isLocked(e)) {
           log("claudelock.legacy_error", { err: e instanceof Error ? e.message : String(e) });
-          releases.push(releasePrimary);
+          leases.push({ path: primary, release: releasePrimary });
           break;
         }
         await releasePrimary();
@@ -79,6 +79,6 @@ export async function withClaudeRefreshLock<T>(
     if (lost != null) throw new Error(`claude's credential-refresh lock was reclaimed while held (${lost}) - treat this critical section as failed`);
     return result;
   } finally {
-    await releaseLease(LOCK_NAME, watch, releases);
+    await releaseLease(LOCK_NAME, watch, leases);
   }
 }
