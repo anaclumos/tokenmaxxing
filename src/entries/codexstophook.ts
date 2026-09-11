@@ -99,7 +99,6 @@ export async function handleCodexStop(input: { rawStdin: string }): Promise<void
     }
     if (await promoteReconcile({ supervisorId, sessionId })) return;
     const decision = await evaluateAndMaybeSwapCodex({});
-    if (decision.reset && decision.account) log("codexstop.reset", { account: decision.account.accountId.slice(0, 8) });
     if (decision.swapped && decision.account) {
       mkdirSync(codexPaths.respawnDir, { recursive: true });
       const payload = CodexRespawnMarkerSchema.parse({

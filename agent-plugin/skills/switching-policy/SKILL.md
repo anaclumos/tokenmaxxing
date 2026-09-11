@@ -17,7 +17,6 @@ description: Explain and apply tokenmaxxing switch policy (greedy vs hard path, 
 - **Manual switch** retains pure pace ranking with no organization preference or incumbent margin.
 - **Pace pressure**: remaining weekly percent / time to weekly reset (highest first). Not most-remaining.
 - **Effective bars**: `effectiveBars(cfg, pool)` = the active rung of the 5h ladder (`thresholds.session`, default `[90]`, a single rung: the lowest rung some pooled account, the current one included, still clears) and the weekly bar, each minus `policy.projectionMargin`. Trigger and screening must share these bars or swaps ping-pong. Codex reads `terminalBars(cfg)`, the top rung only. The check cadence is capped one band per rung climbed, and every band is a multiple of the tick `policy.checkIntervalMs` (default 60000).
-- **Banked reset**: opt-in via `policy.preferToUseBankedReset` (a provider list, default `[]`), hard path only. Claude: the seat holds between the session rung and the wall while a reset is believed available and the weekly windows have room for one more measured session window (`sessionWindowWeeklyCost`; unmeasured swaps), claims the `/limit-reset` server call at the wall, and keeps the seat on `reset` (the failed turn is retriggered in place). Codex: rides to the wall while a reset credit exists, consumes one, no restart. The greedy path never resets.
 
 ## Layer 2 (Claude only)
 
