@@ -74,6 +74,7 @@ export async function withClaudeRefreshLock<T>(
 
   try {
     const result = await fn({ compromised: () => watch.lost() != null });
+    await watch.settle();
     const lost = watch.lost();
     if (lost != null) throw new Error(`claude's credential-refresh lock was reclaimed while held (${lost}) - treat this critical section as failed`);
     return result;

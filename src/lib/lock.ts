@@ -1,23 +1,33 @@
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
+import { delay } from "es-toolkit";
 import { lock } from "proper-lockfile";
 import { log } from "./log.ts";
 
 export const STALE_MS = 60_000;
 export const UPDATE_MS = 5_000;
 const STALL_MS = STALE_MS - UPDATE_MS;
+const VERDICT_POLL_MS = 50;
 const RETRIES = { retries: 600, minTimeout: 75, maxTimeout: 500, randomize: true } as const;
 
 export type LeaseWatch = {
   onCompromised: (e: Error) => void;
   lost: () => string | null;
+  settle: () => Promise<void>;
   stop: () => void;
 };
 
 export function watchLease(name: string): LeaseWatch {
   let compromised: Error | null = null;
+  let stalledMs = 0;
+  let settled = false;
   let lastTick = Date.now();
+  const noteStall = () => {
+    const gap = Date.now() - lastTick;
+    if (gap > STALL_MS) stalledMs = Math.max(stalledMs, gap);
+  };
   const ticker = setInterval(() => {
+    noteStall();
     lastTick = Date.now();
   }, UPDATE_MS);
   ticker.unref();
@@ -26,10 +36,14 @@ export function watchLease(name: string): LeaseWatch {
       if (compromised == null) log("lock.compromised", { lock: name, err: e.message });
       compromised ??= e;
     },
-    lost: () => {
-      if (compromised) return compromised.message;
-      const stall = Date.now() - lastTick;
-      return stall > STALL_MS ? `this process stalled ${Math.round(stall / 1000)}s, past the ${STALE_MS / 1000}s stale bar, so another holder may own the lock` : null;
+    lost: () => compromised?.message ?? null,
+    settle: async () => {
+      if (settled) return;
+      settled = true;
+      noteStall();
+      if (stalledMs === 0) return;
+      log("lock.stalled", { lock: name, stalledMs });
+      for (let waited = 0; compromised == null && waited < 2 * UPDATE_MS; waited += VERDICT_POLL_MS) await delay(VERDICT_POLL_MS);
     },
     stop: () => clearInterval(ticker),
   };
@@ -37,6 +51,7 @@ export function watchLease(name: string): LeaseWatch {
 
 export async function releaseLease(name: string, watch: LeaseWatch, releases: Array<() => Promise<void>>): Promise<void> {
   watch.stop();
+  await watch.settle();
   const lost = watch.lost();
   if (lost != null) {
     log("lock.release_skipped", { lock: name, why: lost });
@@ -65,6 +80,7 @@ export async function withLock<T>(lockPath: string, fn: () => Promise<T> | T): P
   }
   try {
     const result = await fn();
+    await watch.settle();
     const lost = watch.lost();
     if (lost != null) throw new Error(`the pool lock ${lockPath} was reclaimed while held (${lost}) - treat this critical section as failed`);
     return result;
