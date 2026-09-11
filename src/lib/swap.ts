@@ -4,6 +4,7 @@ import { readItem, writeItem, liveTarget, parkedTarget, claudeAiOauthOnly, merge
 import { refreshCredential, isAccessTokenExpiring, isDeadCredential, fetchTokenIdentity, describeIdentity, IdentityUnavailableError, InvalidGrantError, RefreshRejectedError } from "./oauth.ts";
 import { swapOAuthAccount } from "./claudejson.ts";
 import { withClaudeRefreshLock } from "./claudelock.ts";
+import { assertHeld, type PoolLock } from "./lock.ts";
 import { log } from "./log.ts";
 import { pickBest, type PickCtx } from "./picker.ts";
 import { CredentialBlobSchema, type Account, type OAuthCreds, type TokenIdentity } from "./types.ts";
@@ -15,7 +16,7 @@ function parseBlob(raw: string) {
 const VerifyVerdictSchema = z.enum(["go", "rerank", "skip"]);
 export type VerifyVerdict = z.infer<typeof VerifyVerdictSchema>;
 
-export async function performSwap(target: Account): Promise<void> {
+export async function performSwap(target: Account, pool: PoolLock): Promise<void> {
   const idx = loadAccounts();
 
   const preLive = await readItem(liveTarget());
@@ -39,6 +40,7 @@ export async function performSwap(target: Account): Promise<void> {
           expectedLiveToken = next.accessToken;
           if (next === current) return;
           if (lock.compromised()) throw new Error("refresh lock compromised mid-refresh - discarding the live rewrite");
+          assertHeld(pool, "the live rewrite");
           await writeItem(liveTarget(), mergeIntoLive(raw2, next));
         });
       } catch (e) {
@@ -76,6 +78,7 @@ export async function performSwap(target: Account): Promise<void> {
     if (!parkedRaw) throw new Error(`no parked credential for ${target.email}`);
     const parked = parseBlob(parkedRaw).claudeAiOauth;
     const markDead = (detail: string): InvalidGrantError => {
+      assertHeld(pool, "the needs-reauth stamp");
       const t = idx.accounts.find((a) => a.accountUuid === target.accountUuid);
       if (t) { t.needsReauth = true; saveAccounts(idx); }
       log("swap.invalid_grant", { account: target.accountUuid.slice(0, 8), detail });
@@ -89,6 +92,7 @@ export async function performSwap(target: Account): Promise<void> {
       if (!(e instanceof IdentityUnavailableError && e.status === 401)) throw e;
       log("swap.parked_token_stale", { account: target.accountUuid.slice(0, 8) });
     }
+    assertHeld(pool, "the swap");
     if (parkedOwner != null && parkedOwner.accountUuid !== target.accountUuid) {
       const owner = idx.accounts.find((a) => a.accountUuid === parkedOwner.accountUuid) ?? null;
       let kept = "was left in place";
@@ -120,20 +124,23 @@ export async function performSwap(target: Account): Promise<void> {
           await writeItem(parkedTarget(target.keychainItem), JSON.stringify({ claudeAiOauth: rotated }));
           throw new Error(`refreshed the parked credential but cannot verify its owner (${e instanceof Error ? e.message : String(e)}) - kept the rotated token parked; the next check retries`);
         }
+        assertHeld(pool, "the rotated-pair write");
         if (freshOwner.accountUuid !== target.accountUuid) {
           const owner = idx.accounts.find((a) => a.accountUuid === freshOwner.accountUuid) ?? null;
-          const kept = await keepRotatedPair({ fresh: rotated, owner, fallback: target, liveOwnerUuid: liveOwner?.accountUuid ?? null, expectedLiveToken, lock });
+          const kept = await keepRotatedPair({ fresh: rotated, owner, fallback: target, liveOwnerUuid: liveOwner?.accountUuid ?? null, expectedLiveToken, lock: { compromised: () => lock.compromised() || pool.compromised() } });
           throw markDead(`parked credential belongs to ${describeIdentity(freshOwner)}, whose grant this refresh rotated - the rotated token ${kept}; re-auth with \`tokenmaxxing auth ${target.label}\``);
         }
         return rotated;
       });
     }
+    assertHeld(pool, "the parked write");
     await writeItem(parkedTarget(target.keychainItem), JSON.stringify({ claudeAiOauth: fresh }));
   }
 
   await withClaudeRefreshLock(async (lock) => {
     const currentLive = await readItem(liveTarget());
     if (lock.compromised()) throw new Error("refresh lock compromised - aborting the swap before any write");
+    assertHeld(pool, "the swap");
 
     const currentToken = currentLive == null ? null : parseBlob(currentLive).claudeAiOauth.accessToken;
     if (currentToken !== expectedLiveToken) {
@@ -203,7 +210,8 @@ export function isSkippableSwapError(e: unknown): boolean {
 export async function chooseAndSwap(
   ctx: PickCtx,
   exclude: ReadonlySet<string> = new Set(),
-  verify?: (candidate: Account, ctx: PickCtx) => Promise<VerifyVerdict>,
+  verify: ((candidate: Account, ctx: PickCtx) => Promise<VerifyVerdict>) | undefined,
+  pool: PoolLock,
 ): Promise<Account | null> {
   const tried = new Set<string>(exclude);
   while (true) {
@@ -221,7 +229,7 @@ export async function chooseAndSwap(
     }
     tried.add(best.accountUuid);
     try {
-      await performSwap(best);
+      await performSwap(best, pool);
       return best;
     } catch (e) {
       if (isSkippableSwapError(e)) continue;

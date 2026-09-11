@@ -263,7 +263,7 @@ export async function evaluateAndMaybeSwap(now = Date.now(), anticipatory = fals
         if ((await verified(best, ctx)) !== "go") continue;
         assertHeld(lock, "the swap");
         try {
-          await performSwap(best);
+          await performSwap(best, lock);
         } catch (e) {
           skipOrThrow(e, best);
           continue;
@@ -286,7 +286,7 @@ export async function evaluateAndMaybeSwap(now = Date.now(), anticipatory = fals
       if ((await verified(best, ctx)) !== "go") continue;
       assertHeld(lock, "the swap");
       try {
-        await performSwap(best);
+        await performSwap(best, lock);
       } catch (e) {
         skipOrThrow(e, best);
         continue;
@@ -301,7 +301,7 @@ export async function evaluateAndMaybeSwap(now = Date.now(), anticipatory = fals
       log("decide.last_drop_hold", { account: seat.accountUuid.slice(0, 8) });
       return { swapped: false, account: null, reason: "last-drop-hold" };
     }
-    const squeezed = await chooseAndSwap({ ...hardCtx, currentAccountUuid: seat?.accountUuid ?? null, currentOrganizationUuid: seat?.organizationUuid ?? null, orgAffinityFloor: cfg.policy.greedySessionFloor }, rejected, verified);
+    const squeezed = await chooseAndSwap({ ...hardCtx, currentAccountUuid: seat?.accountUuid ?? null, currentOrganizationUuid: seat?.organizationUuid ?? null, orgAffinityFloor: cfg.policy.greedySessionFloor }, rejected, verified, lock);
     if (squeezed) {
       log("decide.last_drop_swap", { account: squeezed.accountUuid.slice(0, 8) });
       return { swapped: true, account: squeezed, reason: "last-drop-swap" };
@@ -334,7 +334,7 @@ export async function evaluateAndMaybeSwap(now = Date.now(), anticipatory = fals
       assertHeld(lock, "the depleted wait");
       if (!isCurrent) {
         try {
-          await performSwap(target);
+          await performSwap(target, lock);
         } catch (e) {
           skipOrThrow(e, target);
           continue;

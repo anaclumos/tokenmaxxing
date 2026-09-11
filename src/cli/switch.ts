@@ -38,7 +38,7 @@ export async function cmdSwitch(selector?: string, json = false): Promise<number
     const swapTo = async (target: Account, reason: string, extra: Record<string, unknown> = {}): Promise<number> => {
       assertHeld(lock, "the manual switch");
       try {
-        await performSwap(target);
+        await performSwap(target, lock);
       } catch (e) {
         if (e instanceof InvalidGrantError) {
           deadGrants.push(target.label);
@@ -94,7 +94,7 @@ export async function cmdSwitch(selector?: string, json = false): Promise<number
       if (!best) break;
       assertHeld(lock, "the manual switch");
       try {
-        await performSwap(best);
+        await performSwap(best, lock);
       } catch (e) {
         rejected.add(best.accountUuid);
         if (e instanceof InvalidGrantError) {
@@ -151,7 +151,7 @@ export async function cmdSwitch(selector?: string, json = false): Promise<number
       }
       assertHeld(lock, "the manual switch");
       try {
-        await performSwap(earliest.account);
+        await performSwap(earliest.account, lock);
       } catch (e) {
         rejected.add(earliest.account.accountUuid);
         if (e instanceof InvalidGrantError) {

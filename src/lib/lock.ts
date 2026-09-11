@@ -61,7 +61,7 @@ export function watchLease(name: string): LeaseWatch {
       noteStall();
       if (stalledMs === 0) return;
       log("lock.stalled", { lock: name, stalledMs });
-      for (let waited = 0; compromised.size === 0 && waited < 2 * UPDATE_MS; waited += VERDICT_POLL_MS) await delay(VERDICT_POLL_MS);
+      for (let waited = 0; waited < 2 * UPDATE_MS; waited += VERDICT_POLL_MS) await delay(VERDICT_POLL_MS);
       if (compromised.size === 0) verified = true;
     },
     stop: () => clearInterval(ticker),
