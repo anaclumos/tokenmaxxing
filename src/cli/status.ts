@@ -5,7 +5,7 @@ import { readOAuthAccount } from "../lib/claudejson.ts";
 import { ensureLiveTokenFresh, probeActiveUsage, probeParkedUsage, type SampleOutcome } from "../lib/sample.ts";
 import { withLock } from "../lib/lock.ts";
 import { codexPaths, paths } from "../lib/paths.ts";
-import { earliestReset, effectiveBars, isExhausted, nextWeeklyReset, terminalBars } from "../lib/picker.ts";
+import { earliestReset, isExhausted, nextWeeklyReset, thresholdBars } from "../lib/picker.ts";
 import { loadCodexAccounts, saveCodexAccounts } from "../lib/codexstate.ts";
 import { liveCodexAccountId, sampleCodexAccount, type CodexSampleOutcome } from "../lib/codexsample.ts";
 import { isCodexExhausted } from "../lib/codexpick.ts";
@@ -62,7 +62,7 @@ type CodexStatusAccount = z.infer<typeof CodexStatusAccountSchema>;
 const StatusReportSchema = z.object({
   now: z.number(),
   claude: z.object({
-    thresholds: z.object({ session: z.array(z.number()), weekly: z.number() }),
+    thresholds: ThresholdsSchema,
     bars: ThresholdsSchema,
     projectionMargin: z.number(),
     accounts: z.array(ClaudeStatusAccountSchema),
@@ -171,7 +171,7 @@ async function collectClaude(input: { cfg: Config; ping: boolean; pingCount: num
   }
 
   const families = gatedFamilies(loadUsage()?.model ?? null, cfg.policy.switchModels);
-  const bars = effectiveBars(cfg, { accounts: idx.accounts, now, switchFamilies: families });
+  const bars = thresholdBars(cfg);
   const liveAccount = readOAuthAccount()?.accountUuid ?? null;
   const ordered = sortBy(idx.accounts, [(a) => (a.needsReauth ? 1 : 0), (a) => earliestReset(a, now)]);
   const accounts = ordered.map((a): ClaudeStatusAccount => {
@@ -207,7 +207,7 @@ async function collectClaude(input: { cfg: Config; ping: boolean; pingCount: num
 
 async function collectCodex(input: { cfg: Config; now: number }): Promise<StatusReport["codex"]> {
   const { cfg, now } = input;
-  const bars = terminalBars(cfg);
+  const bars = thresholdBars(cfg);
   let index = loadCodexAccounts();
   if (index.accounts.length === 0) return { bars, accounts: [] };
 
@@ -410,7 +410,7 @@ function renderClaude(input: { claude: StatusReport["claude"]; codexPooled: bool
     return;
   }
 
-  console.log(c.dim(`thresholds 5h ${claude.thresholds.session.join("/")}% (at ${claude.bars.session + claude.projectionMargin}%) weekly ${claude.thresholds.weekly}%  (${count({ n: claude.accounts.length, noun: "claude account" })})`));
+  console.log(c.dim(`thresholds 5h ${claude.thresholds.session}% weekly ${claude.thresholds.weekly}%  (${count({ n: claude.accounts.length, noun: "claude account" })})`));
   console.log();
   renderGrid(claude.accounts.map((a) => claudeCard(a, now, staleAfterMs)));
 }
