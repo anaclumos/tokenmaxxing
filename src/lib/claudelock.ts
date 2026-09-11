@@ -45,6 +45,7 @@ export async function withClaudeRefreshLock<T>(
     let releasePrimary: (() => Promise<void>) | null = null;
     try {
       releasePrimary = await lock(dir, options(primary));
+      watch.reset();
       try {
         leases.push({ path: legacy, release: await lock(legacy, options(legacy)) }, { path: primary, release: releasePrimary });
         break;

@@ -147,13 +147,19 @@ export async function performSwap(target: Account, pool: PoolLock): Promise<void
       throw new Error("live credential changed while unlocked (concurrent /login or refresh) - aborting this swap; the next check re-resolves the owner and retries");
     }
 
+    const stillHeld = (what: string) => {
+      if (lock.compromised()) throw new Error(`refresh lock compromised - aborting ${what}`);
+      assertHeld(pool, what);
+    };
     if (liveOwner && currentLive) {
       await writeItem(parkedTarget(liveOwner.keychainItem), claudeAiOauthOnly(currentLive));
       log("swap.harvest", { account: liveOwner.accountUuid.slice(0, 8) });
+      stillHeld("the live install after the harvest");
     }
 
     if (fresh != null) {
       await writeItem(liveTarget(), mergeIntoLive(currentLive, fresh));
+      stillHeld("the pool update after the live install");
     }
     swapOAuthAccount(target.oauthAccount);
     idx.activeAccountUuid = target.accountUuid;

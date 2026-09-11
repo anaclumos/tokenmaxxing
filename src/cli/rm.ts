@@ -48,6 +48,7 @@ export async function cmdRm(selector?: string, json = false): Promise<number> {
     const sampleDir = join(paths.sampleDir, credItemFor(a.accountUuid));
     await deleteItem(isolatedTarget(sampleDir));
     rmSync(sampleDir, { recursive: true, force: true });
+    assertHeld(lock, "the pool write");
     idx.accounts = idx.accounts.filter((x) => x.accountUuid !== a.accountUuid);
     saveAccounts(idx);
     if (json) emitJson({ ok: true, pool: "claude", removed: a.label, remaining: idx.accounts.length });
