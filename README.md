@@ -119,7 +119,7 @@ State lives entirely in `~/.config/tokenmaxxing/`. Per-account credentials follo
 
 ## Pairing with the Claude Agent SDK
 
-For agents you build on the [Claude Agent SDK](https://docs.claude.com/en/api/agent-sdk/overview) against **your own** pooled accounts, `tokenmaxxing` is importable as a library (your agent app must run under Bun: tokenmaxxing ships TypeScript source and uses `bun:ffi`):
+For agents you build on the [Claude Agent SDK](https://docs.claude.com/en/api/agent-sdk/overview) against **your own** pooled accounts, `tokenmaxxing` is importable as a library (your agent app must run under Bun: tokenmaxxing ships TypeScript source with Bun-only APIs):
 
 ```ts
 import { query } from "@anthropic-ai/claude-agent-sdk";

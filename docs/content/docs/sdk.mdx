@@ -3,7 +3,7 @@ title: The Agent SDK surface
 description: Pair the pool with the Claude Agent SDK in agents you run yourself
 ---
 
-The package's programmatic entry (`exports["."]` points at `src/sdk.ts`) pairs tokenmaxxing with the Claude Agent SDK for agents you build against your own pooled accounts. Your app must run under Bun (tokenmaxxing ships TypeScript source and uses `bun:ffi`).
+The package's programmatic entry (`exports["."]` points at `src/sdk.ts`) pairs tokenmaxxing with the Claude Agent SDK for agents you build against your own pooled accounts. Your app must run under Bun (tokenmaxxing ships TypeScript source with Bun-only APIs).
 
 ```ts
 import { query } from "@anthropic-ai/claude-agent-sdk";
