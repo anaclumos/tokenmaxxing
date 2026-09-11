@@ -154,7 +154,7 @@ function consumableMarker(marker: string, gate: MarkerGate): z.infer<typeof Resp
   } catch (e) {
     log("supervisor.marker_invalid", { err: e instanceof Error ? e.message : String(e) });
     throw new Error(
-      `${marker} is corrupt (unparsable JSON or off-schema) - the session was stopped instead of guessing whether the pool is depleted; fix or remove the marker, then run \`claude --resume ${basename(marker)}\``,
+      `${marker} is corrupt (unparsable JSON or off-schema) - the session was stopped instead of guessing whether the pool is depleted; inspect the marker, then run \`claude --resume ${basename(marker)}\` (a fresh launch clears it)`,
     );
   }
   if (m.launchedAt !== undefined && m.launchedAt !== gate.launchedAt) {

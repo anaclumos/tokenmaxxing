@@ -7,7 +7,7 @@ const OAuthErrorBodySchema = z.looseObject({
 });
 
 const NestedErrorBodySchema = z.looseObject({
-  error: z.looseObject({ code: z.string().optional(), type: z.string().optional(), message: z.string().optional() }),
+  error: z.looseObject({ code: z.string().nullish(), type: z.string().optional(), message: z.string().optional() }),
   request_id: z.string().nullish(),
 });
 

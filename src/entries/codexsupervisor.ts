@@ -27,7 +27,7 @@ function readCodexMarker(marker: string): z.infer<typeof CodexRespawnMarkerSchem
   } catch (e) {
     log("codexsupervisor.marker_invalid", { err: e instanceof Error ? e.message : String(e) });
     throw new Error(
-      `${marker} is corrupt (unparsable JSON or off-schema) - auth.json may already hold another account, so the codex session was stopped instead of resumed on stale credentials; fix or remove the marker, then run \`codex resume\``,
+      `${marker} is corrupt (unparsable JSON or off-schema) - auth.json may already hold another account, so the codex session was stopped instead of resumed on stale credentials; inspect the marker, then run \`codex resume\` (a fresh launch clears it)`,
     );
   }
 }
