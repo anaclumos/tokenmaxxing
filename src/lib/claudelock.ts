@@ -4,10 +4,10 @@ import { delay } from "es-toolkit";
 import { lock } from "proper-lockfile";
 import { z } from "zod";
 import { credDir } from "./paths.ts";
+import { STALE_MS, UPDATE_MS, releaseLease, watchLease } from "./lock.ts";
 import { log } from "./log.ts";
 
-const STALE_MS = 60_000;
-const UPDATE_MS = 5_000;
+const LOCK_NAME = "claude-refresh";
 const ATTEMPTS = 5;
 const RETRY_MS = 1_000;
 
@@ -31,16 +31,13 @@ export async function withClaudeRefreshLock<T>(
   try { legacyRoot = realpathSync(dir); } catch {  }
   const legacy = `${legacyRoot}.lock`;
 
-  let compromised = false;
+  const watch = watchLease(LOCK_NAME);
   const options = (lockfilePath: string) => ({
     lockfilePath,
     realpath: false,
     stale: STALE_MS,
     update: UPDATE_MS,
-    onCompromised: (e: Error) => {
-      if (!compromised) log("claudelock.compromised", { err: e.message });
-      compromised = true;
-    },
+    onCompromised: watch.onCompromised,
   });
 
   const releases: Array<() => Promise<void>> = [];
@@ -60,9 +57,13 @@ export async function withClaudeRefreshLock<T>(
         await releasePrimary();
       }
     } catch (e) {
-      if (!isLocked(e)) throw e;
+      if (!isLocked(e)) {
+        watch.stop();
+        throw e;
+      }
     }
     if (attempt >= attempts) {
+      watch.stop();
       log("claudelock.contested", { attempts: attempt });
       throw new Error(
         "claude's credential-refresh lock is contested (a token refresh is likely mid-flight) - not touching the live credential store; retry shortly",
@@ -72,14 +73,11 @@ export async function withClaudeRefreshLock<T>(
   }
 
   try {
-    const result = await fn({ compromised: () => compromised });
-    if (compromised) {
-      throw new Error("claude's credential-refresh lock was reclaimed while held (this process stalled past the 60s stale bar) - treat this critical section as failed");
-    }
+    const result = await fn({ compromised: () => watch.lost() != null });
+    const lost = watch.lost();
+    if (lost != null) throw new Error(`claude's credential-refresh lock was reclaimed while held (${lost}) - treat this critical section as failed`);
     return result;
   } finally {
-    for (const release of releases) {
-      await release().catch((e: unknown) => log("claudelock.release_failed", { err: e instanceof Error ? e.message : String(e) }));
-    }
+    await releaseLease(LOCK_NAME, watch, releases);
   }
 }
