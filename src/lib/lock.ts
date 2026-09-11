@@ -11,6 +11,11 @@ const VERDICT_POLL_MS = 50;
 const RETRIES = { retries: 600, minTimeout: 75, maxTimeout: 500, randomize: true } as const;
 
 export type Lease = { path: string; release: () => Promise<void> };
+export type PoolLock = { compromised: () => boolean };
+
+export function assertHeld(lock: PoolLock, what: string): void {
+  if (lock.compromised()) throw new Error(`the pool lock was reclaimed while held - refusing ${what}; the next evaluation retries`);
+}
 
 export type LeaseWatch = {
   onCompromised: (path: string) => (e: Error) => void;
@@ -75,7 +80,7 @@ export async function releaseLease(name: string, watch: LeaseWatch, leases: Leas
   }
 }
 
-export async function withLock<T>(lockPath: string, fn: () => Promise<T> | T): Promise<T> {
+export async function withLock<T>(lockPath: string, fn: (lock: PoolLock) => Promise<T> | T): Promise<T> {
   mkdirSync(dirname(lockPath), { recursive: true });
   const watch = watchLease(lockPath);
   let release: () => Promise<void>;
@@ -92,7 +97,7 @@ export async function withLock<T>(lockPath: string, fn: () => Promise<T> | T): P
     throw e;
   }
   try {
-    const result = await fn();
+    const result = await fn({ compromised: () => watch.lost() != null });
     await watch.settle();
     const lost = watch.lost();
     if (lost != null) throw new Error(`the pool lock ${lockPath} was reclaimed while held (${lost}) - treat this critical section as failed`);

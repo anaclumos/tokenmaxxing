@@ -2,7 +2,7 @@ import { rmSync } from "node:fs";
 import { join } from "node:path";
 import { deleteItem, isolatedTarget, liveTarget, parkedTarget, readItem } from "../lib/credstore.ts";
 import { fetchTokenIdentity } from "../lib/oauth.ts";
-import { withLock } from "../lib/lock.ts";
+import { assertHeld, withLock } from "../lib/lock.ts";
 import { credItemFor, paths } from "../lib/paths.ts";
 import { loadAccounts, saveAccounts } from "../lib/state.ts";
 import { CredentialBlobSchema } from "../lib/types.ts";
@@ -14,7 +14,7 @@ export async function cmdRm(selector?: string, json = false): Promise<number> {
     emitError({ json, message: "usage: tokenmaxxing rm <email|label|uuid>", paint: plain });
     return 2;
   }
-  return withLock(paths.lockFile, async () => {
+  return withLock(paths.lockFile, async (lock) => {
     const idx = loadAccounts();
     const a = findAccount(idx.accounts, selector);
     if (!a) {
@@ -43,6 +43,7 @@ export async function cmdRm(selector?: string, json = false): Promise<number> {
         return 1;
       }
     }
+    assertHeld(lock, "the removal");
     await deleteItem(parkedTarget(a.keychainItem));
     const sampleDir = join(paths.sampleDir, credItemFor(a.accountUuid));
     await deleteItem(isolatedTarget(sampleDir));

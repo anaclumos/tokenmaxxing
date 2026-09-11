@@ -1,4 +1,4 @@
-import { withLock } from "../lib/lock.ts";
+import { assertHeld, withLock } from "../lib/lock.ts";
 import { loadAccounts, saveAccounts } from "../lib/state.ts";
 import { credItemFor, paths } from "../lib/paths.ts";
 import { writeItem, parkedTarget, claudeAiOauthOnly } from "../lib/credstore.ts";
@@ -18,8 +18,9 @@ export async function cmdAdd(): Promise<number> {
   const uuid = oauthAccount.accountUuid;
   const keychainItem = credItemFor(uuid);
 
-  const { account, poolSize } = await withLock(paths.lockFile, async () => {
+  const { account, poolSize } = await withLock(paths.lockFile, async (lock) => {
     await writeItem(parkedTarget(keychainItem), claudeAiOauthOnly(blobRaw));
+    assertHeld(lock, "the pool write");
     const idx = loadAccounts();
     const existing = idx.accounts.find((a) => a.accountUuid === uuid);
     const fresh: Account = {

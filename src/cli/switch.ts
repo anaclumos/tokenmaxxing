@@ -1,4 +1,4 @@
-import { withLock } from "../lib/lock.ts";
+import { assertHeld, withLock } from "../lib/lock.ts";
 import { paths } from "../lib/paths.ts";
 import { loadAccounts, loadConfig, loadUsage } from "../lib/state.ts";
 import { readOAuthAccount } from "../lib/claudejson.ts";
@@ -29,13 +29,14 @@ export async function cmdSwitch(selector?: string, json = false): Promise<number
   const cfg = loadConfig();
   const now = Date.now();
 
-  return withLock(paths.lockFile, async () => {
+  return withLock(paths.lockFile, async (lock) => {
     const idx = loadAccounts();
     const liveClaim = readOAuthAccount();
     const claimed = liveClaim?.accountUuid ?? null;
     const drifted = claimed != null && claimed !== idx.activeAccountUuid;
 
     const swapTo = async (target: Account, reason: string, extra: Record<string, unknown> = {}): Promise<number> => {
+      assertHeld(lock, "the manual switch");
       try {
         await performSwap(target);
       } catch (e) {
@@ -91,6 +92,7 @@ export async function cmdSwitch(selector?: string, json = false): Promise<number
       }
       const best = pickBest(pool, { ...everyone, currentAccountUuid: active?.accountUuid ?? null });
       if (!best) break;
+      assertHeld(lock, "the manual switch");
       try {
         await performSwap(best);
       } catch (e) {
@@ -147,6 +149,7 @@ export async function cmdSwitch(selector?: string, json = false): Promise<number
         });
         return 0;
       }
+      assertHeld(lock, "the manual switch");
       try {
         await performSwap(earliest.account);
       } catch (e) {

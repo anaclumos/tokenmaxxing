@@ -4,7 +4,7 @@ import { readItem, writeItem, liveTarget, parkedTarget, mergeIntoLive } from "..
 import { refreshCredential, isAccessTokenExpiring, isDeadCredential, fetchTokenIdentity, describeIdentity } from "../lib/oauth.ts";
 import { withClaudeRefreshLock } from "../lib/claudelock.ts";
 import { loadAccounts, saveAccounts, loadConfig, pinBinOverride } from "../lib/state.ts";
-import { withLock } from "../lib/lock.ts";
+import { assertHeld, withLock } from "../lib/lock.ts";
 import { installSupervisor, shellRcPath, ensurePathInRc, managedShellRcSkipLines, timerActivationHint, type InstallOutcome } from "../lib/install.ts";
 import { resolveVerifiedClaude } from "../lib/claudebin.ts";
 import { credItemFor, paths } from "../lib/paths.ts";
@@ -108,8 +108,9 @@ export async function cmdInit(): Promise<number> {
 
   const uuid = oauthAccount.accountUuid;
   const keychainItem = credItemFor(uuid);
-  const account = await withLock(paths.lockFile, async () => {
+  const account = await withLock(paths.lockFile, async (lock) => {
     await writeItem(parkedTarget(keychainItem), JSON.stringify({ claudeAiOauth: creds }));
+    assertHeld(lock, "the pool write");
     const idx = loadAccounts();
     const existing = idx.accounts.find((a) => a.accountUuid === uuid);
     const imported: Account = {

@@ -1,6 +1,6 @@
 import { partition } from "es-toolkit";
 import { z } from "zod";
-import { withLock } from "../lib/lock.ts";
+import { assertHeld, withLock } from "../lib/lock.ts";
 import { loadAccounts, saveAccounts } from "../lib/state.ts";
 import { paths } from "../lib/paths.ts";
 import { writeItem, parkedTarget, claudeAiOauthOnly } from "../lib/credstore.ts";
@@ -86,7 +86,7 @@ async function reauthOne(target: Account): Promise<boolean> {
     return false;
   }
 
-  const isActive = await withLock(paths.lockFile, async () => {
+  const isActive = await withLock(paths.lockFile, async (lock) => {
     const idx = loadAccounts();
     const account = idx.accounts.find((a) => a.accountUuid === target.accountUuid);
     if (!account) {
@@ -108,6 +108,7 @@ async function reauthOne(target: Account): Promise<boolean> {
         account.lastPerModelAt = account.lastUsageAt;
       }
     }
+    assertHeld(lock, "the reauth write");
     saveAccounts(idx);
     return idx.activeAccountUuid === target.accountUuid;
   });

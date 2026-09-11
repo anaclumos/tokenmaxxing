@@ -1,6 +1,6 @@
 import { maxBy } from "es-toolkit";
 import { z } from "zod";
-import { withLock } from "./lock.ts";
+import { assertHeld, withLock } from "./lock.ts";
 import { paths } from "./paths.ts";
 import { MAX_CHECK_DELAY_TICKS, POST_SWAP_COOLDOWN_MS, maxCheckDelayMs, loadAccounts, loadConfig, loadDepletedWait, loadLastSwapAt, loadUsage, loadUsageSnapshot, loadModelUsage, saveAccounts, saveDepletedWait, saveModelUsage, writeUsage } from "./state.ts";
 import { readOAuthAccount } from "./claudejson.ts";
@@ -157,7 +157,7 @@ export async function evaluateAndMaybeSwap(now = Date.now(), anticipatory = fals
     return { swapped: false, account: null, reason: "under-threshold-or-stale" };
   }
 
-  return withLock(paths.lockFile, async () => {
+  return withLock(paths.lockFile, async (lock) => {
     const idx = loadAccounts();
     const account2 = readOAuthAccount()?.accountUuid ?? null;
     const enforced2 = enforced0 && enforced0.account === account2 ? enforced0 : null;
@@ -219,6 +219,7 @@ export async function evaluateAndMaybeSwap(now = Date.now(), anticipatory = fals
       }
       probeBudget -= 1;
       const sample = await probeParkedUsage(stored, { retries: 0, refreshParked: false, killMs: VERIFY_PROBE_KILL_MS, signal: AbortSignal.timeout(VERIFY_PROBE_KILL_MS) });
+      assertHeld(lock, "the candidate verification");
       if (sample.ok) {
         const at = Date.now();
         stored.lastUsage = { fiveHour: sample.usage.session, sevenDay: sample.usage.weekAll };
@@ -260,6 +261,7 @@ export async function evaluateAndMaybeSwap(now = Date.now(), anticipatory = fals
         const best = pickBest(pool, ctx);
         if (!best) return { swapped: false, account: null, reason: "no-usable-target" };
         if ((await verified(best, ctx)) !== "go") continue;
+        assertHeld(lock, "the swap");
         try {
           await performSwap(best);
         } catch (e) {
@@ -282,6 +284,7 @@ export async function evaluateAndMaybeSwap(now = Date.now(), anticipatory = fals
       const best = pickBest(pool, ctx);
       if (!best) break;
       if ((await verified(best, ctx)) !== "go") continue;
+      assertHeld(lock, "the swap");
       try {
         await performSwap(best);
       } catch (e) {
@@ -328,6 +331,7 @@ export async function evaluateAndMaybeSwap(now = Date.now(), anticipatory = fals
         log("decide.depleted_no_park", { account: target.accountUuid.slice(0, 8), waitUntil });
         return { swapped: false, account: null, reason: "all-depleted", waitUntil };
       }
+      assertHeld(lock, "the depleted wait");
       if (!isCurrent) {
         try {
           await performSwap(target);

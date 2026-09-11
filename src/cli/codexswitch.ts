@@ -26,7 +26,7 @@ export async function cmdCodexSwitch(sel?: string, json = false): Promise<number
   const bars = terminalBars(cfg);
   const now = Date.now();
 
-  return withLock(codexPaths.lockFile, async () => {
+  return withLock(codexPaths.lockFile, async (lock) => {
     const index = loadCodexAccounts();
     if (index.accounts.length === 0) {
       if (json) emitJson({ ok: false, error: "no codex accounts yet - run `tokenmaxxing init --codex`" });
@@ -56,7 +56,7 @@ export async function cmdCodexSwitch(sel?: string, json = false): Promise<number
         return fail(`${target.label} needs re-auth - run \`codex login\` in an isolated home and \`tokenmaxxing add --codex\``);
       }
       try {
-        await performCodexSwap({ target });
+        await performCodexSwap({ target, lock });
       } catch (e) {
         if (e instanceof CodexInvalidGrantError) {
           deadGrants.push(target.label);
@@ -93,7 +93,7 @@ export async function cmdCodexSwitch(sel?: string, json = false): Promise<number
         return 1;
       }
       try {
-        await performCodexSwap({ target: best });
+        await performCodexSwap({ target: best, lock });
       } catch (e) {
         if (e instanceof CodexInvalidGrantError) {
           deadGrants.push(best.label);

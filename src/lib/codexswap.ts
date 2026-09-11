@@ -1,11 +1,12 @@
 import { codexIdentityOf, readLiveCodexAuth, readParkedCodexAuth, writeLiveCodexAuth, writeParkedCodexAuth } from "./codexauth.ts";
 import { CodexInvalidGrantError, refreshCodexAuth } from "./codexoauth.ts";
 import { loadCodexAccounts, saveCodexAccounts, saveCodexLastSwapAt } from "./codexstate.ts";
+import { assertHeld, type PoolLock } from "./lock.ts";
 import { log } from "./log.ts";
 import type { CodexAccount } from "./types.ts";
 
-export async function performCodexSwap(input: { target: CodexAccount }): Promise<void> {
-  const { target } = input;
+export async function performCodexSwap(input: { target: CodexAccount; lock: PoolLock }): Promise<void> {
+  const { target, lock } = input;
   const index = loadCodexAccounts();
 
   const parked = readParkedCodexAuth({ credFile: target.credFile });
@@ -38,6 +39,7 @@ export async function performCodexSwap(input: { target: CodexAccount }): Promise
   try {
     fresh = await refreshCodexAuth({ auth: parked });
   } catch (e) {
+    assertHeld(lock, "the codex swap");
     if (e instanceof CodexInvalidGrantError) {
       const entry = index.accounts.find((account) => account.accountId === target.accountId);
       if (entry) {
@@ -48,6 +50,7 @@ export async function performCodexSwap(input: { target: CodexAccount }): Promise
     }
     throw e;
   }
+  assertHeld(lock, "the codex swap");
   writeParkedCodexAuth({ credFile: target.credFile, auth: fresh });
 
   if (live && liveOwner) {

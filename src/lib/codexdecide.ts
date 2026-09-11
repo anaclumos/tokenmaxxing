@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
-import { withLock } from "./lock.ts";
+import { assertHeld, withLock, type PoolLock } from "./lock.ts";
 import { writeFileAtomic } from "./atomic.ts";
 import { codexPaths } from "./paths.ts";
 import { loadConfig } from "./state.ts";
@@ -26,8 +26,8 @@ export type CodexSwapDecision = z.infer<typeof CodexSwapDecisionSchema>;
 
 const POST_SWAP_COOLDOWN_MS = 45_000;
 
-async function sampleLiveOntoOwner(input: { now: number }): Promise<string | null> {
-  const { now } = input;
+async function sampleLiveOntoOwner(input: { now: number; lock: PoolLock }): Promise<string | null> {
+  const { now, lock } = input;
   let live = readLiveCodexAuth();
   if (!live) return null;
   const index = loadCodexAccounts();
@@ -39,6 +39,7 @@ async function sampleLiveOntoOwner(input: { now: number }): Promise<string | nul
     try {
       live = await refreshCodexAuth({ auth: live, now });
     } catch (e) {
+      assertHeld(lock, "the live codex sample");
       if (e instanceof CodexInvalidGrantError) {
         owner.needsReauth = true;
         saveCodexAccounts({ index });
@@ -47,10 +48,12 @@ async function sampleLiveOntoOwner(input: { now: number }): Promise<string | nul
       }
       throw e;
     }
+    assertHeld(lock, "the live codex sample");
     writeLiveCodexAuth({ auth: live });
     writeParkedCodexAuth({ credFile: owner.credFile, auth: live });
   }
   const usage = await fetchCodexUsage({ auth: live });
+  assertHeld(lock, "the live codex sample");
   owner.lastUsage = { aggregate: usage.aggregate, perLimit: usage.perLimit };
   owner.lastUsageAt = now;
   if (usage.email != null) owner.email = usage.email;
@@ -102,7 +105,7 @@ export async function evaluateAndMaybeSwapCodex(input: { now?: number }): Promis
   const cfg = loadConfig();
   const bars = terminalBars(cfg);
 
-  return withLock(codexPaths.lockFile, async () => {
+  return withLock(codexPaths.lockFile, async (lock) => {
     let index = loadCodexAccounts();
     if (index.accounts.length === 0) return { swapped: false, account: null, reason: "no-pool" };
 
@@ -121,7 +124,7 @@ export async function evaluateAndMaybeSwapCodex(input: { now?: number }): Promis
     const activeEntry = index.accounts.find((account) => account.accountId === activeId);
     const stale = activeEntry?.lastUsageAt == null || now - activeEntry.lastUsageAt > cfg.policy.usagePollTtlMs;
     if (stale) {
-      const sampledId = await sampleLiveOntoOwner({ now });
+      const sampledId = await sampleLiveOntoOwner({ now, lock });
       if (sampledId == null) {
         return { swapped: false, account: null, reason: "live-credential-not-in-pool" };
       }
@@ -148,7 +151,7 @@ export async function evaluateAndMaybeSwapCodex(input: { now?: number }): Promis
         const best = pickBestCodex({ accounts: candidates, thresholds: bars, now, currentAccountId: activeId });
         if (!best) return { swapped: false, account: null, reason: "no-usable-target" };
         try {
-          await performCodexSwap({ target: best });
+          await performCodexSwap({ target: best, lock });
         } catch (e) {
           if (e instanceof CodexInvalidGrantError) continue;
           throw e;
@@ -169,7 +172,7 @@ export async function evaluateAndMaybeSwapCodex(input: { now?: number }): Promis
       if (!best) return { swapped: false, account: null, reason: "all-depleted" };
       tried.add(best.accountId);
       try {
-        await performCodexSwap({ target: best });
+        await performCodexSwap({ target: best, lock });
       } catch (e) {
         if (e instanceof CodexInvalidGrantError) continue;
         throw e;

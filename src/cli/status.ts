@@ -3,7 +3,7 @@ import { z } from "zod";
 import { loadAccounts, loadConfig, loadUsage, loadUsageSnapshot, loadModelUsage, saveAccounts } from "../lib/state.ts";
 import { readOAuthAccount } from "../lib/claudejson.ts";
 import { ensureLiveTokenFresh, probeActiveUsage, probeParkedUsage, type SampleOutcome } from "../lib/sample.ts";
-import { withLock } from "../lib/lock.ts";
+import { assertHeld, withLock } from "../lib/lock.ts";
 import { codexPaths, paths } from "../lib/paths.ts";
 import { earliestReset, effectiveBars, isExhausted, nextWeeklyReset, terminalBars } from "../lib/picker.ts";
 import { loadCodexAccounts, saveCodexAccounts } from "../lib/codexstate.ts";
@@ -106,7 +106,7 @@ async function collectClaude(input: { cfg: Config; ping: boolean; pingCount: num
   const samples = new Map<string, { outcome: SampleOutcome; viaTee: boolean }>();
   let pings = new Set<string>();
   if (idx.accounts.length > 0) {
-    await withLock(paths.lockFile, async () => {
+    await withLock(paths.lockFile, async (lock) => {
       idx = loadAccounts();
       const picked = ping ? pickForPing(idx.accounts, pingCount) : [];
       pings = new Set(picked.map((a) => a.accountUuid));
@@ -166,6 +166,7 @@ async function collectClaude(input: { cfg: Config; ping: boolean; pingCount: num
       } catch {
       }
       await Promise.all(idx.accounts.filter((a) => a !== activeAccount).map(probeOne));
+      assertHeld(lock, "the sample write");
       saveAccounts(idx);
     });
   }
@@ -214,7 +215,7 @@ async function collectCodex(input: { cfg: Config; now: number }): Promise<Status
   console.error(c.dim("sampling codex usage..."));
   const outcomes = new Map<string, CodexSampleOutcome>();
   let liveId: string | null = null;
-  await withLock(codexPaths.lockFile, async () => {
+  await withLock(codexPaths.lockFile, async (lock) => {
     index = loadCodexAccounts();
     liveId = liveCodexAccountId();
     await Promise.all(
@@ -231,6 +232,7 @@ async function collectCodex(input: { cfg: Config; now: number }): Promise<Status
         }
       }),
     );
+    assertHeld(lock, "the codex sample write");
     saveCodexAccounts({ index });
   });
 
