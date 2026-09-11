@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { http, safeErrorDetail } from "./http.ts";
+import { http, oauthErrorCode, safeErrorDetail } from "./http.ts";
 import { CodexAuthJsonSchema, type CodexAuthJson } from "./types.ts";
 
 const EnvOverrideSchema = z.string().min(1).optional().catch(undefined);
@@ -26,12 +26,12 @@ const CodexRefreshResponseSchema = z.looseObject({
   refresh_token: z.string().optional(),
 });
 
-const DEAD_GRANT_MARKERS = [
+const DEAD_GRANT_CODES = new Set([
   "invalid_grant",
   "refresh_token_reused",
   "refresh_token_expired",
   "refresh_token_invalidated",
-];
+]);
 
 export async function refreshCodexAuth(input: { auth: CodexAuthJson; now?: number }): Promise<CodexAuthJson> {
   const { auth, now = Date.now() } = input;
@@ -53,7 +53,8 @@ export async function refreshCodexAuth(input: { auth: CodexAuthJson; now?: numbe
   const text = await res.text();
   if (!res.ok) {
     const detail = safeErrorDetail({ text });
-    if (DEAD_GRANT_MARKERS.some((marker) => text.includes(marker))) {
+    const code = oauthErrorCode({ text })?.toLowerCase();
+    if (code != null && DEAD_GRANT_CODES.has(code)) {
       throw new CodexInvalidGrantError(detail);
     }
     throw new CodexRefreshFailedError(`HTTP ${res.status}: ${detail}`);
