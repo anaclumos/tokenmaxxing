@@ -108,7 +108,7 @@ The [profile](docs/content/docs/switching-profile.mdx) records observed cache re
 ---
 
 ## 7. Scope
-**v1:** `tokenmaxxing init` / `add` / `ls` / `status` / `doctor`; the supervisor; statusLine shim + Stop/SessionStart hooks; threshold swap with `flock` + reset-aware picker; platform credential store (macOS keychain / Linux 0600 files, one facade); auto-respawn across concurrent sessions. macOS + Linux.
+**v1:** `tokenmaxxing init` / `add` / `ls` (removed in 1.30.0, `status --cached` covers it) / `status` / `doctor`; the supervisor; statusLine shim + Stop/SessionStart hooks; threshold swap with `flock` + reset-aware picker; platform credential store (macOS keychain / Linux 0600 files, one facade); auto-respawn across concurrent sessions. macOS + Linux.
 
 **v2:** projected-threshold pre-emption; a `UserPromptSubmit` guard that respawns *before* a turn starts when already over; Windows.
 
