@@ -81,11 +81,16 @@ export function renderStatusline(stdinObj: unknown, ctx: RenderCtx): string {
   const seatUuid =
     (ctx.liveAccount != null && ctx.accounts.accounts.some((a) => a.id === ctx.liveAccount) ? ctx.liveAccount : null) ??
     ctx.accounts.activeId;
+  const walled = (a: Account) => a.enforcedUntil != null && a.enforcedUntil > ctx.now;
+  const wallSeg = (wall: number) => seg("", { usedPercentage: 100, resetsAt: wall }, wall);
+  const seat = ctx.accounts.accounts.find((a) => a.id === seatUuid);
+  if (seat?.enforcedUntil != null && walled(seat)) windows.push(wallSeg(seat.enforcedUntil));
+  const seatMarker = seat && walled(seat) ? paint(100)("◆") : col.green("◆");
   const active =
     windows.length > 0
-      ? `${col.green("◆")} ${windows.join(" ")}`
+      ? `${seatMarker} ${windows.join(" ")}`
       : seatUuid != null
-        ? `${col.green("◆")} ?`
+        ? `${seatMarker} ?`
         : "";
 
   const parked = sortBy(
@@ -93,7 +98,8 @@ export function renderStatusline(stdinObj: unknown, ctx: RenderCtx): string {
     [(a) => (a.needsReauth ? 1 : 0), (a) => earliestReset(a, ctx.now)],
   );
   const poolSeg = (a: Account): string => {
-    const marker = a.needsReauth ? col.red("✗") : col.cyan("◇");
+    const marker = a.needsReauth ? col.red("✗") : walled(a) ? paint(100)("◇") : col.cyan("◇");
+    if (a.enforcedUntil != null && walled(a)) return `${marker} ${wallSeg(a.enforcedUntil)}`;
     const week = weeklyWindow(a);
     if (week == null) return `${marker} ?`;
     const weekUsed = used(week);
