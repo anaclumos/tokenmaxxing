@@ -1,79 +1,40 @@
 ---
 title: How switching decides
-description: Engagement, screening bars, pace pressure, and the greedy vs hard paths
+description: One bar per window, pace pressure, and the depleted wait
 ---
 
-The decision has two layers: an engagement gate, and then a greedy or hard path.
+The automatic decision runs at every turn boundary (the Stop hook), on session start, and on the periodic check. It has one rule: while the live account is under its bars, hold; once it is at or over any bar, move to the usable account with the highest pace pressure; when no account is usable, wait for the soonest reset.
 
-## Engagement
+## The bars
 
-Below `policy.greedySessionFloor` (default 80, in percent of the 5-hour session window), the decision does not run at all - a fresh session rides its account. Once the active session window is 80% used, or any bar is crossed, the decision engages.
+- `thresholds.session`: 90, in percent of the 5-hour session window.
+- `thresholds.weekly`: 98. This one bar covers both the 7-day aggregate and every gated per-model weekly cap. Weekly quota is use-it-or-lose-it, so it drains close to the limit.
 
-## Screening bars
+`policy.projectionMargin` is subtracted from both, so the effective bars are `thresholds - projectionMargin`. Both sit below 100 because the headroom is the budget to reach a clean turn boundary (plus up to one turn of adoption lag on macOS) before the account hits its real limit. Codex reads the same two bars.
 
-The thresholds are screening bars, not the trigger for panic:
+The same bars gate the trigger and screen the candidates: the decision engages when the live account's measured usage is at or over a bar, and a candidate is usable when none of its cached windows (session, weekly aggregate, gated per-model caps, and any server-pinned enforcement) is at or over one. A screen laxer than the trigger would land swaps on accounts the trigger immediately re-flags, so there is exactly one bar per window. Unmeasured usage never reads as safe: an account with no sample ranks last, and a live account with no fresh tee or probe does not trigger.
 
-- `thresholds.session`: a ladder, default `[90]`, a single rung. Each evaluation resolves one active rung: the lowest rung at which some pooled account, the current one included, is still usable. With a multi-rung ladder such as `[50, 80, 95]`, while any account sits under 50, the bar is 50, so a seat that crosses 50 hands off to that account. Once every account is past 50 the bar climbs to 80, and past 80 everywhere it climbs to 95. The top rung is the terminal bar; beyond it the wall (below) takes over. A 5-hour reset is cheap to sit out, so a multi-rung pool drains level by level and no account runs far ahead of its siblings.
-- `thresholds.weekly`: 98. This one bar covers both the 7-day aggregate and every per-model weekly cap. Weekly quota is use-it-or-lose-it, so it drains close to the wall.
-
-Both are deliberately below 100: the headroom is the budget to reach a clean turn boundary (plus up to one turn of adoption lag on macOS) before the account actually hits its limit. The same bars screen swap candidates: an account over any of its bars is not a valid target. Trigger and screening always use the same effective bars (the active rung and the weekly bar, each minus `policy.projectionMargin`), because a screen laxer than the trigger would land swaps on accounts the trigger immediately re-flags, ping-ponging the pool. A rung counts only accounts that are usable at it: a dead grant, a burnt gated per-model cap, or a server-pinned enforcement does not hold the bar down, and the rung is re-read from the pool on every retry inside one evaluation. Codex reads the top rung only, because restart is its switch.
+Older versions carried a session ladder, an engagement floor, organization affinity, incumbent hysteresis, and wall bars. Their config keys are gone: an array `thresholds.session` fails config loading with a zod message naming the field, and `hardThresholds`, `policy.greedySessionFloor`, and `policy.greedySwapMargin` are ignored and listed as unknown keys by `tokenmaxxing config`.
 
 ## The target: pace pressure
 
-**Pace pressure** is remaining weekly percent divided by time until that account's weekly reset, with higher values preferred and ties broken by soonest reset then lowest weekly usage.
+**Pace pressure** is remaining weekly percent divided by time until that account's weekly reset. The usable candidate with the highest pace pressure wins; ties break by soonest weekly reset, then lowest weekly usage. Organization membership is not a ranking input. Manual `tokenmaxxing switch` uses the same ranking and reports the live account as already best when it ties the winner.
 
-Automatic selection prefers a candidate in the current organization when it has enough measured headroom, then ranks by pace pressure.
-
-| Selection rule | Behavior |
-| --- | --- |
-| Organization preference | Requires session usage below `greedySessionFloor` and more than `max(1, session bar - greedySessionFloor)` percentage points below every applicable bar |
-| Default screening bars | Preference requires session usage below 80% and aggregate and gated weekly usage below 88% |
-| Unknown usage | Receives no organization preference |
-| Same organization, insufficient headroom | Competes by pace pressure with the other candidates |
-| Manual `tokenmaxxing switch` | Uses pace pressure without organization preference or incumbent margin |
-
-Anthropic documents cache isolation between organizations and, on some API platforms, between workspaces within an organization, so sharing an organization does not guarantee a cache hit. See the [cache documentation](https://platform.claude.com/docs/en/build-with-claude/prompt-caching#cache-storage-and-sharing) and the [measured profile](/switching-profile).
+Everything runs off cached windows stored as absolute UTC epochs, so a stale snapshot still resolves correctly: a weekly reset that has passed extrapolates forward in exact 7-day steps, and any window past its cached reset counts as freshly empty (never a reason to switch, never a reason to keep an account benched).
 
 Before an automatic handoff, the decision attempts to refresh a candidate's usage sample when it is older than `policy.usagePollTtlMs`.
 
 - Parked accounts usually exceed this TTL because there is no periodic parked-account sampler.
 - Each evaluation attempts at most two candidates, with one `/usage` attempt per candidate and a 12-second deadline covering identity reads and the CLI.
 - Verification skips expiring access tokens and gives the isolated CLI an access token without its refresh grant.
-- A successful sample is stored and selection runs again, including pace ranking and the current screening rung.
-- Crossing a screening bar does not remove an account from the wall squeeze or reset selection.
+- A successful sample is stored and selection runs again.
 - An unavailable sample or exhausted verification budget leaves cached figures in force, so stale-target swaps remain possible.
 - An account requiring reauthentication is excluded for the evaluation.
+- A dead refresh grant is marked for reauthentication and the next candidate is tried.
 
-Everything runs off cached windows stored as absolute UTC epochs, so a stale snapshot still resolves correctly: a weekly reset that has passed extrapolates forward in exact 7-day steps, and any window past its cached reset counts as freshly empty (never a reason to switch, never a reason to keep an account benched).
+## When nothing is usable
 
-## Greedy vs hard path
-
-- **Greedy path** starts while the current account is usable and permits a lateral move only within its organization.
-
-  `policy.greedySwapMargin`, default 0.15, holds the incumbent unless a positive-pace candidate exceeds its pace pressure by more than that fraction.
-
-  A pool with one account per organization therefore holds until a screening bar or enforced limit triggers the hard path, which can forfeit more unused weekly allowance in exchange for fewer cross-organization handoffs.
-- **Hard path** starts when a screening bar is crossed and may cross organizations using the headroom preference above.
-
-  A dead refresh grant is marked for reauthentication and the next candidate is tried.
-
-  If no candidate clears the screening bars, the wall squeeze runs before depleted-wait selection.
-
-  Only the supervised Stop hook may pre-park onto a blocked account while pausing the session.
-
-## The wall
-
-When no candidate clears the screening bars, the decision re-evaluates against the **wall bars**, set by `hardThresholds` and defaulting to 100%.
-
-- A seat below the wall holds and uses its remaining quota.
-- A walled seat selects a candidate below the wall using the headroom preference above and bounded verification of stale usage.
-- With default bars, remaining candidates have already failed the stricter headroom requirement, so wall selection ranks by pace pressure.
-- The pool parks only when every eligible account has reached its wall, while dead refresh grants are set aside for reauthentication.
-- Recovery is measured against the wall, allowing an account with a reset session window to run even while its weekly usage remains above the screening bar.
-
-This keeps the last few percent of each account's quota from going unspent. Wall reading uses the same usage source the decision already has. Statusline tee on a supervised session. `/usage` probe on a headless run. Same figures Claude's `/rate-limit-options` shows. A real max-out gets detected and skipped. A single-turn overshoot lands on the next decision. Periodic check, next spawn, or Stop boundary on a headless run.
-
-`hardThresholds` subtracts `policy.projectionMargin` the same way the screening bars do, so setting it equal to `thresholds` disables the wall squeeze. This is a Claude-only path: bare `tokenmaxxing switch` keeps its cache-only park, and Codex ignores `hardThresholds` entirely - a running Codex cannot adopt a swapped credential mid-session, so it stays on its current account until the real server limit (a custom wall below 100 does not apply to Codex).
+When every account is at or over a bar, the decision picks the soonest recovery: the live account's own reset, or another account's earliest reset when that comes first. If that reset lands within `policy.maxWaitMs` (default 1 hour), the supervised session pauses until it (see [Architecture](/architecture)); only the supervised Stop hook may pre-park the pool onto the other account while pausing, so the resumed session starts there. Further out, the decision reports the pool as depleted and the session stays put, keeps running into its real limit, and the enforced-limit path below takes over. The pause happens at the bar, not at 100: the unspent headroom is the same budget that set the bar. Codex has no pause; it rides its account until the server refuses it.
 
 ## Per-model caps
 
@@ -90,10 +51,10 @@ A 45-second post-swap cooldown gates the automatic path. The statusline tee is s
 
 The cached figures can lag reality: the live account's per-model cap comes only from a `/usage` probe of the busy live token, which often prints nothing under session load. When the server actually refuses a turn, Claude Code ends it on an API error and fires its `StopFailure` hook instead of `Stop`. tokenmaxxing installs that hook with a `rate_limit` matcher, and it reads the transcript's structured error row (the same row Claude Code marks `isApiErrorMessage`): a `quotaLimits` block names the window (`five_hour`, `seven_day`, or a per-model type) with the server's reset, and the Fable cap failure, which carries no `quotaLimits`, is recognized from the client's own error rendering plus the 429 body. Model prose is never read.
 
-The hook stamps the enforced window at 100 for that account and pins a server-dated session or weekly limit on the account until that reset, so an account with no usage sample yet cannot be picked straight back. It hands the enforcement to the decision as a fact stronger than any cached window (it bypasses the post-swap cooldown, gates candidates by the tripped family, and never holds the seat), and the hard path swaps away. In a supervised session whose main turn failed, it also drops a respawn marker: the supervisor relaunches `--resume` on the fresh account and submits one continuation prompt so the interrupted work picks back up. A failure inside a subagent swaps but never respawns (the parent turn is still running), and an unsupervised session gets the swap and adopts it on its next request.
+The hook stamps the enforced window at 100 for that account and pins a server-dated session or weekly limit on the account until that reset, so an account with no usage sample yet cannot be picked straight back. It hands the enforcement to the decision as a fact stronger than any cached window (it bypasses the post-swap cooldown, gates candidates by the tripped family, and never holds the seat), and the decision swaps away. In a supervised session whose main turn failed, it also drops a respawn marker: the supervisor relaunches `--resume` on the fresh account and submits one continuation prompt so the interrupted work picks back up. A failure inside a subagent swaps but never respawns (the parent turn is still running), and an unsupervised session gets the swap and adopts it on its next request.
 
 A failure counts only when it provably happened on the post-swap credential: a relaunch after the swap, or a failing request that landed after the swap plus the cooldown. A rate-limit refusal arrives at request start, so the error row's own time is the anchor, however long the turn ran. That is what lets one retrigger sequence cross several burnt accounts without a request still holding an old token stamping the fresh seat.
 
 ## Periodic check
 
-The timer runs `tokenmaxxing check` once per tick (`policy.checkIntervalMs`, 60 seconds by default) and every tick evaluates. Below the engagement floor the evaluation reads the tee and returns in milliseconds, so a tick costs nothing worth skipping. The live `/usage` probe is bounded by `policy.usagePollTtlMs` regardless of tick rate: an attempt, successful or not, is recorded, and no second probe runs inside the TTL. A tick that lands inside the post-swap cooldown returns at once, and a tick during a depleted wait replays the recorded wait. launchd and systemd both skip a firing while the previous check is still running, so evaluations never overlap.
+The timer runs `tokenmaxxing check` once per tick (`policy.checkIntervalMs`, 60 seconds by default) and every tick evaluates. Under both bars the evaluation reads the tee and returns in milliseconds, so a tick costs nothing worth skipping. The live `/usage` probe is bounded by `policy.usagePollTtlMs` regardless of tick rate: an attempt, successful or not, is recorded, and no second probe runs inside the TTL. A tick that lands inside the post-swap cooldown returns at once, and a tick during a depleted wait replays the recorded wait. launchd and systemd both skip a firing while the previous check is still running, so evaluations never overlap.

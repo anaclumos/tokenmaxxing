@@ -6,14 +6,14 @@ import { writeFileAtomic } from "./atomic.ts";
 import { codexPaths } from "./paths.ts";
 import { loadConfig } from "./state.ts";
 import { loadCodexAccounts, loadCodexLastSwapAt, saveCodexAccounts } from "./codexstate.ts";
-import { codexCurrentWins, isCodexEngaged, isCodexExhausted, pickBestCodex } from "./codexpick.ts";
+import { isCodexExhausted, pickBestCodex } from "./codexpick.ts";
 import { performCodexSwap } from "./codexswap.ts";
 import { CodexInvalidGrantError, refreshCodexAuth } from "./codexoauth.ts";
 import { fetchCodexUsage } from "./codexusage.ts";
 import { codexIdentityOf, isCodexAccessExpiring, readLiveCodexAuth, writeLiveCodexAuth, writeParkedCodexAuth } from "./codexauth.ts";
 import { liveCodexAccountId } from "./codexsample.ts";
 import { livingCodexPresences, presentCodexAccountIds, targetableCodexAccounts } from "./codexpresence.ts";
-import { terminalBars } from "./picker.ts";
+import { thresholdBars } from "./picker.ts";
 import { log } from "./log.ts";
 import { CodexAccountSchema, CodexReconcileMarkerSchema, type CodexAccount } from "./types.ts";
 
@@ -100,7 +100,7 @@ function postSwapResweep(input: { liveAccountId: string; bars: { session: number
 export async function evaluateAndMaybeSwapCodex(input: { now?: number }): Promise<CodexSwapDecision> {
   const now = input.now ?? Date.now();
   const cfg = loadConfig();
-  const bars = terminalBars(cfg);
+  const bars = thresholdBars(cfg);
 
   return withLock(codexPaths.lockFile, async () => {
     let index = loadCodexAccounts();
@@ -131,33 +131,8 @@ export async function evaluateAndMaybeSwapCodex(input: { now?: number }): Promis
     const active = index.accounts.find((account) => account.accountId === activeId) ?? null;
     if (!active) return { swapped: false, account: null, reason: "no-active-account" };
 
-    const engaged =
-      active.needsReauth === true ||
-      isCodexEngaged({ account: active, floor: cfg.policy.greedySessionFloor, now }) ||
-      isCodexExhausted({ account: active, thresholds: bars, now });
+    const engaged = active.needsReauth === true || isCodexExhausted({ account: active, thresholds: bars, now });
     if (!engaged) return { swapped: false, account: null, reason: "under-threshold-or-stale" };
-
-    if (!isCodexExhausted({ account: active, thresholds: bars, now })) {
-      while (true) {
-        const current = loadCodexAccounts();
-        const candidates = targetableCodexAccounts({ accounts: current.accounts, activeAccountId: activeId });
-        const cur = candidates.find((account) => account.accountId === activeId) ?? null;
-        if (codexCurrentWins({ active: cur, accounts: candidates, thresholds: bars, now })) {
-          return { swapped: false, account: null, reason: "current-best" };
-        }
-        const best = pickBestCodex({ accounts: candidates, thresholds: bars, now, currentAccountId: activeId });
-        if (!best) return { swapped: false, account: null, reason: "no-usable-target" };
-        try {
-          await performCodexSwap({ target: best });
-        } catch (e) {
-          if (e instanceof CodexInvalidGrantError) continue;
-          throw e;
-        }
-        log("codexdecide.greedy_swap", { account: best.accountId.slice(0, 8) });
-        postSwapResweep({ liveAccountId: best.accountId, bars, now });
-        return { swapped: true, account: best, reason: "swapped" };
-      }
-    }
 
     const tried = new Set<string>();
     while (true) {
@@ -174,7 +149,7 @@ export async function evaluateAndMaybeSwapCodex(input: { now?: number }): Promis
         if (e instanceof CodexInvalidGrantError) continue;
         throw e;
       }
-      log("codexdecide.hard_swap", { account: best.accountId.slice(0, 8) });
+      log("codexdecide.swap", { account: best.accountId.slice(0, 8) });
       postSwapResweep({ liveAccountId: best.accountId, bars, now });
       return { swapped: true, account: best, reason: "swapped" };
     }

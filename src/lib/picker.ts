@@ -3,30 +3,10 @@ import { z } from "zod";
 import { familyTokens } from "./usage.ts";
 import { AccountSchema, ThresholdsSchema, type Account, type Config, type Thresholds, type UsageWindow } from "./types.ts";
 
-export function sessionLadder(cfg: Config): number[] {
-  return cfg.thresholds.session.map((rung) => rung - cfg.policy.projectionMargin);
-}
-
-export function terminalBars(cfg: Config): Thresholds {
+export function thresholdBars(cfg: Config): Thresholds {
   return {
-    session: Math.max(...sessionLadder(cfg)),
+    session: cfg.thresholds.session - cfg.policy.projectionMargin,
     weekly: cfg.thresholds.weekly - cfg.policy.projectionMargin,
-  };
-}
-
-export function effectiveBars(cfg: Config, pool: { accounts: Account[]; now: number; switchFamilies: string[] }): Thresholds {
-  const top = terminalBars(cfg);
-  const holdsAt = (session: number) =>
-    pool.accounts.some(
-      (a) => !a.needsReauth && !isExhausted(a, { now: pool.now, thresholds: { session, weekly: top.weekly }, currentAccountUuid: null, switchFamilies: pool.switchFamilies }),
-    );
-  return { session: sessionLadder(cfg).find(holdsAt) ?? top.session, weekly: top.weekly };
-}
-
-export function hardBars(cfg: Config): Thresholds {
-  return {
-    session: cfg.hardThresholds.session - cfg.policy.projectionMargin,
-    weekly: cfg.hardThresholds.weekly - cfg.policy.projectionMargin,
   };
 }
 
@@ -34,10 +14,7 @@ const PickCtxSchema = z.object({
   now: z.number(),
   thresholds: ThresholdsSchema,
   currentAccountUuid: z.string().nullable(),
-  currentOrganizationUuid: z.string().nullable().optional(),
-  orgAffinityFloor: z.number().optional(),
   switchFamilies: z.array(z.string()),
-  holdMargin: z.number().min(0).optional(),
 });
 export type PickCtx = z.infer<typeof PickCtxSchema>;
 
@@ -96,25 +73,7 @@ export function pacePressure(a: Account, now: number): number {
   return Math.max(0, 100 - used) / Math.max(1, reset - now);
 }
 
-function sessionUsed(a: Account, now: number): number {
-  const w = a.lastUsage?.fiveHour;
-  if (w == null) return 101;
-  if (w.resetsAt != null) return w.resetsAt <= now ? 0 : w.usedPercentage;
-  if (a.lastUsageAt != null && now >= a.lastUsageAt + FIVE_HOURS_MS) return 0;
-  return w.usedPercentage;
-}
-
-function orgTier(a: Account, ctx: PickCtx): number {
-  if (ctx.currentOrganizationUuid == null || a.organizationUuid !== ctx.currentOrganizationUuid) return 1;
-  if (ctx.orgAffinityFloor != null && sessionUsed(a, ctx.now) >= ctx.orgAffinityFloor) return 1;
-  if (!a.lastUsage || ctx.switchFamilies.some((family) => gatedPerModelWindows(a, [family]).length === 0)) return 1;
-  const headroom = Math.max(1, ctx.thresholds.session - (ctx.orgAffinityFloor ?? ctx.thresholds.session));
-  if (isExhausted(a, { ...ctx, thresholds: { session: ctx.thresholds.session - headroom, weekly: ctx.thresholds.weekly - headroom } })) return 1;
-  return 0;
-}
-
 const swapPreference = (ctx: PickCtx) => [
-  (a: Account) => orgTier(a, ctx),
   (a: Account) => -pacePressure(a, ctx.now),
   (a: Account) => weeklyExpiry(a, ctx.now),
   (a: Account) => a.lastUsage?.sevenDay.usedPercentage ?? 101,
@@ -131,9 +90,6 @@ export function currentWins(active: Account | null, accounts: Account[], ctx: Pi
   if (!active || active.needsReauth || isExhausted(active, ctx)) return false;
   const best = pickBest(accounts, { ...ctx, currentAccountUuid: null });
   if (best == null || best.accountUuid === active.accountUuid) return true;
-  const margin = ctx.holdMargin ?? 0;
-  const bestPace = pacePressure(best, ctx.now);
-  if (margin > 0 && bestPace > 0 && bestPace <= pacePressure(active, ctx.now) * (1 + margin)) return true;
   return swapPreference(ctx).every((k) => k(active) === k(best));
 }
 

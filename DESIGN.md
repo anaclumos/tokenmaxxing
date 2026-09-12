@@ -1,6 +1,6 @@
 # tokenmaxxing - design
 
-Automatic Claude Code account switching. You run `claude` exactly as always; when the active account crosses its swap threshold (the active rung of the 5h session ladder, **90** by default, or **98%** of a weekly window), tokenmaxxing swaps the credential to a fresh account at a safe turn boundary and **your running session adopts it in place - no restart**. Works across many concurrent sessions at once; a fully depleted pool pauses with a countdown and auto-resumes at the soonest reset when it lands within `policy.maxWaitMs` (default 1h; further out, the session stays put rather than parking for hours).
+Automatic Claude Code account switching. You run `claude` exactly as always; when the active account crosses its swap threshold (**90%** of the 5h session window or **98%** of a weekly window), tokenmaxxing swaps the credential to a fresh account at a safe turn boundary and **your running session adopts it in place - no restart**. Works across many concurrent sessions at once; a fully depleted pool pauses with a countdown and auto-resumes at the soonest reset when it lands within `policy.maxWaitMs` (default 1h; further out, the session stays put rather than parking for hours).
 
 > Scope: **Claude Code first (macOS + Linux, the latter since 2026-07-09).** Codex support landed in 0.13.0 (2026-07-16) with its own parallel state, decision engine, and supervisor; its verified internals live in AGENTS.md's Codex sections.
 >
@@ -10,9 +10,9 @@ Automatic Claude Code account switching. You run `claude` exactly as always; whe
 
 ## 1. Why there is a thin supervisor (and why that's the whole trick)
 
-A **running** `claude` DOES adopt an externally swapped credential (verified live 2026-07-10, correcting this document's original claim): an ensure-fresh poll re-reads the credential store around every request, so a swap lands within ~30s on macOS (raw keychain cache) and on the next request on Linux. A plain swap therefore needs no process management at all (since 0.15.0, 2026-07-16; earlier versions respawned on every swap): the Stop hook swaps the credential and the session keeps running. What adoption cannot give you is the depleted case: when every account is at the wall the session must be PAUSED until something resets, and a live `claude` cannot pause itself.
+A **running** `claude` DOES adopt an externally swapped credential (verified live 2026-07-10, correcting this document's original claim): an ensure-fresh poll re-reads the credential store around every request, so a swap lands within ~30s on macOS (raw keychain cache) and on the next request on Linux. A plain swap therefore needs no process management at all (since 0.15.0, 2026-07-16; earlier versions respawned on every swap): the Stop hook swaps the credential and the session keeps running. What adoption cannot give you is the depleted case: when every account is over its bar the session must be PAUSED until something resets, and a live `claude` cannot pause itself.
 
-So the supervisor's job is narrow: on a depleted pool it **replaces the process at a salvageable moment** - after a turn completes, the conversation is fully written to the transcript JSONL and `claude` is idle at the prompt, so killing it there loses nothing - shows an interruptible countdown to the soonest reset, and relaunches `claude --resume <session-id>` when it passes. **Thresholds still sit below 100%: the headroom is the budget to reach a clean turn boundary (plus up to one turn of adoption lag on macOS) before the account actually hits the wall.** The session window screens on a ladder, a single rung at 90 by default; a configured ladder like 50 then 80 then 95 has each rung take over once every pooled account is past the one below (a 5h reset is cheap to sit out, so a multi-rung pool drains level by level), while the weekly windows drain to 98 (weekly allowance is use-it-or-lose-it).
+So the supervisor's job is narrow: on a depleted pool it **replaces the process at a salvageable moment** - after a turn completes, the conversation is fully written to the transcript JSONL and `claude` is idle at the prompt, so killing it there loses nothing - shows an interruptible countdown to the soonest reset, and relaunches `claude --resume <session-id>` when it passes. **Thresholds still sit below 100%: the headroom is the budget to reach a clean turn boundary (plus up to one turn of adoption lag on macOS) before the account actually hits its real limit.** The session window swaps at 90 (a 5h reset is cheap to sit out), while the weekly windows drain to 98 (weekly allowance is use-it-or-lose-it).
 
 A hook can't do the pause-and-relaunch - when `claude` exits, the shell owns the terminal. So tokenmaxxing installs a **supervisor** (aliased to `claude`) that owns the process lifecycle:
 
@@ -49,7 +49,7 @@ The switching path runs no long-lived daemon. The statusline pushes usage. Hooks
 The Stop hook's stdin has no usage data, but the **statusLine does** (`rate_limits.{five_hour,seven_day}.{used_percentage,resets_at}`, after every turn, 300ms debounce, zero cost). tokenmaxxing's statusLine tees that to `usage.json` (write-on-change, O(ms)) and renders its own native line (it replaced the earlier pass-through delegation on 2026-07-11: install takes the statusLine slot outright, so a pre-existing custom statusline command is overwritten). Cold-start fallback if `usage.json` is absent: `TOKENMAXXING_PROBE=1 claude -p '/usage'`, with `[ -n "$TOKENMAXXING_PROBE" ] && exit 0` as the hook's first line to stop the nested process recursing (hooks fire in `-p` too). The probe scrubs every ambient credential override claude reads before the keychain (`CLAUDE_CODE_OAUTH_TOKEN`, `CLAUDE_SECURESTORAGE_CONFIG_DIR`, etc.) so it can only meter the credential in the keychain item, and retries the transient empty-footer case (claude prints local stats with no percentages when its own usage fetch throttles).
 
 ### 3.2 Detect + swap + signal (Stop hook, per turn)
-1. Read `usage.json` and exit below the engagement floor unless a screening bar is crossed, then follow the greedy or hard path defined in the [switching policy](docs/content/docs/switching.mdx).
+1. Read `usage.json` and exit while the live account is under both bars, as defined in the [switching policy](docs/content/docs/switching.mdx).
 2. Take the pool lock, re-check state, select a candidate under the [switching policy](docs/content/docs/switching.mdx), and attempt bounded verification of stale usage before swapping the credential.
 3. Done - the running session adopts the new credential on its own within a request or two. Only when the pool is depleted (the decision returned a `waitUntil`: pre-parked on the soonest-recovering account, or staying on the current one when it recovers first) does the hook write `respawn/<session_id>` (atomic temp+rename).
 
@@ -79,24 +79,18 @@ Each terminal ran the supervisor, so each has its own child `claude` and its own
 ---
 
 ## 5. Rotation policy
-The [switching policy](docs/content/docs/switching.mdx) defines engagement, screening bars, organization preference, incumbent hysteresis and the wall squeeze.
+The [switching policy](docs/content/docs/switching.mdx) is one rule: under both bars, hold; at or over a bar, move to the usable account with the highest pace pressure; nothing usable, wait for the soonest reset.
 
-- Automatic lateral moves stay within the incumbent organization, and a crossed bar can trigger a cross-organization handoff.
-- Organization preference requires measured headroom in every applicable window and is an optimization heuristic, not a cache-hit guarantee.
-- Manual switching retains pure pace-pressure ranking.
-- Successful candidate probes persist their results and restart selection, preserving candidates that fail a screening bar but still clear the wall.
+- Automatic and manual switching rank by pace pressure alone; organization membership is not an input.
+- Successful candidate probes persist their results and restart selection.
 - Verification attempts at most two candidates with a shared 12-second deadline per candidate for identity reads and CLI execution.
 - Expiring access tokens are not refreshed for verification, and the isolated CLI receives no refresh grant.
 - Failed or budget-limited verification uses the existing cached data, so stale-target handoffs remain possible.
+- The depleted pause happens at the bar, not at 100; Codex has no pause and rides its account until the server refuses it, because a running sibling cannot adopt another account without restarting.
 
-The [profile](docs/content/docs/switching-profile.mdx) distinguishes observed cache rewrites from pricing-weighted estimates and does not infer subscription quota savings.
+The [profile](docs/content/docs/switching-profile.mdx) records observed cache rewrites across swaps and does not infer subscription quota savings.
 
-The [wall policy](docs/content/docs/switching.mdx#the-wall) defines Layer 2 recovery and its conditional headroom preference, with pace-only selection under default bars.
-
-- Layer 2 is Claude-only because its running sessions can adopt a credential change.
-- Codex keeps its current account until the wall because a running sibling cannot adopt another account without restarting.
-
-**Model-aware trigger.** Claude subscriptions also enforce **per-model weekly caps** - currently only for Sonnet and Fable (there is no Opus-only quota), and Fable's tighter limit binds *before* the aggregate (e.g. 80% week-Fable at only 50% week-all-models). This cap isn't in statusLine stdin, so when the active model is in `policy.switchModels` we read it from `claude -p '/usage'` (free, 0 tokens, TTL-cached) and add `week(<activeModel>) >= threshold` to the trigger. A Fable session switches on the Fable cap; a Sonnet session rides the aggregate. Both layers apply the per-model gate: a burnt Fable cap screens an account out of a Layer 1 switch, and a Fable cap at the wall screens it out of the Layer 2 squeeze too.
+**Model-aware trigger.** Claude subscriptions also enforce **per-model weekly caps** - currently only for Sonnet and Fable (there is no Opus-only quota), and Fable's tighter limit binds *before* the aggregate (e.g. 80% week-Fable at only 50% week-all-models). This cap isn't in statusLine stdin, so when the active model is in `policy.switchModels` we read it from `claude -p '/usage'` (free, 0 tokens, TTL-cached) and add `week(<activeModel>) >= threshold` to the trigger. A Fable session switches on the Fable cap; a Sonnet session rides the aggregate. Candidate screening applies the same per-model gate: a burnt Fable cap screens an account out of a switch.
 
 ---
 

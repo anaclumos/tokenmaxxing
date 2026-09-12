@@ -78,9 +78,3 @@ export function codexCurrentWins(input: {
   if (best == null || best.accountId === active.accountId) return true;
   return codexPacePressure({ account: best, now }) <= codexPacePressure({ account: active, now }) * CODEX_SWAP_IMPROVEMENT;
 }
-
-export function isCodexEngaged(input: { account: CodexAccount; floor: number; now: number }): boolean {
-  const { account, floor, now } = input;
-  const sampledAt = account.lastUsageAt ?? null;
-  return allWindows(account).some((window) => liveUsed({ window, now, sampledAt }) >= floor);
-}
