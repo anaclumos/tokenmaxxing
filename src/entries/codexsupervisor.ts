@@ -21,13 +21,14 @@ const NONINTERACTIVE_SUBCMDS = new Set([
 
 const PASSTHROUGH_FLAGS = new Set(["--version", "-V", "--help", "-h"]);
 
-function consumableCodexMarker(marker: string): z.infer<typeof CodexRespawnMarkerSchema> | null {
+function readCodexMarker(marker: string): z.infer<typeof CodexRespawnMarkerSchema> {
   try {
     return CodexRespawnMarkerSchema.parse(JSON.parse(readFileSync(marker, "utf8")));
   } catch (e) {
-    rmSync(marker, { force: true });
     log("codexsupervisor.marker_invalid", { err: e instanceof Error ? e.message : String(e) });
-    return null;
+    throw new Error(
+      `${marker} is corrupt (unparsable JSON or off-schema) - auth.json may already hold another account, so the codex session was stopped instead of resumed on stale credentials; inspect and remove the marker, then run \`codex resume\``,
+    );
   }
 }
 
@@ -126,7 +127,10 @@ export async function runCodexSupervisor(input: { argv: string[] }): Promise<num
     let done = false;
     const markerWatch = (async () => {
       while (!done) {
-        if (existsSync(marker) && consumableCodexMarker(marker) != null) return true;
+        if (existsSync(marker)) {
+          readCodexMarker(marker);
+          return true;
+        }
         await Bun.sleep(150);
       }
       return false;
@@ -135,17 +139,20 @@ export async function runCodexSupervisor(input: { argv: string[] }): Promise<num
       done = true;
       return "exit";
     });
-    const winner = await Promise.race([exited, markerWatch.then((found) => (found ? "marker" : "exit"))]);
-
-    if (winner === "marker") {
+    try {
+      const winner = await Promise.race([exited, markerWatch.then((found) => (found ? "marker" : "exit"))]);
+      if (winner === "marker") child.kill();
+    } catch (e) {
       child.kill();
+      throw e;
+    } finally {
+      await child.exited;
+      done = true;
+      await markerWatch.catch(() => false);
+      restoreTermios(savedTermios);
     }
-    await child.exited;
-    done = true;
-    await markerWatch.catch(() => false);
-    restoreTermios(savedTermios);
 
-    const payload = existsSync(marker) ? consumableCodexMarker(marker) : null;
+    const payload = existsSync(marker) ? readCodexMarker(marker) : null;
     if (payload) {
       rmSync(marker, { force: true });
       respawns++;

@@ -7,7 +7,7 @@ import { writeFileAtomic } from "./atomic.ts";
 import { UNMANAGED_ENV, resolveRealClaude } from "./claudebin.ts";
 import { pidExists } from "./proc.ts";
 import { CloudTokenSchema, CloudTokensSchema, type CloudToken } from "./setuptokens.ts";
-import { normalizeResetsAt, pingRejection, readTranscriptTail, scrubCredentialEnv, transcriptSlug } from "./usage.ts";
+import { normalizeResetsAt, parseErrorBody, readTranscriptTail, scrubCredentialEnv } from "./usage.ts";
 
 export const TOKENS_ENV = "TOKENMAXXING_TOKENS";
 export const FALLBACK_WALL_MS = 5 * 3_600_000;
@@ -152,8 +152,6 @@ export async function spawnCloudClaude(input: {
 
 export function cloudTranscriptPath(sessionId: string): string | null {
   const projects = join(paths.claudeDir, "projects");
-  const direct = join(projects, transcriptSlug(process.cwd()), `${sessionId}.jsonl`);
-  if (existsSync(direct)) return direct;
   if (!existsSync(projects)) return null;
   for (const dir of readdirSync(projects)) {
     const candidate = join(projects, dir, `${sessionId}.jsonl`);
@@ -170,8 +168,9 @@ export function transcriptBytes(sessionId: string | null): number {
 export function limitWallUntil(input: { sessionId: string; sinceBytes: number; now: number }): number | null {
   const transcript = cloudTranscriptPath(input.sessionId);
   const rows = transcript ? readTranscriptTail(transcript, statSync(transcript).size - input.sinceBytes + 1) : [];
-  if (pingRejection(rows) == null) return null;
   const row = rows.findLast((r) => r.isApiErrorMessage === true);
-  const resetsAt = row?.quotaLimits?.resetsAt != null ? normalizeResetsAt(row.quotaLimits.resetsAt) : null;
+  if (!row || row.error !== "rate_limit" || row.apiErrorIsTransient === true) return null;
+  if ((row.quotaLimits?.rateLimitType ?? "") === "" && parseErrorBody(row.errorDetails)?.error?.type !== "rate_limit_error") return null;
+  const resetsAt = row.quotaLimits?.resetsAt != null ? normalizeResetsAt(row.quotaLimits.resetsAt) : null;
   return resetsAt != null && resetsAt > input.now ? resetsAt : input.now + FALLBACK_WALL_MS;
 }

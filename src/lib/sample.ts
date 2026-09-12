@@ -5,15 +5,15 @@ import { readItem, writeItem, deleteItem, liveTarget, parkedTarget, isolatedTarg
 import { credItemFor, paths } from "./paths.ts";
 import { withClaudeRefreshLock } from "./claudelock.ts";
 import { refreshCredential, isAccessTokenExpiring, isDeadCredential, fetchTokenIdentity, describeIdentity, IdentityUnavailableError, InvalidGrantError } from "./oauth.ts";
-import { FullUsageSchema, pingSession, probeUsage } from "./usage.ts";
+import { FullUsageSchema, probeUsage } from "./usage.ts";
 import { loadAccounts } from "./state.ts";
 import { keepRotatedPair } from "./swap.ts";
 import { log } from "./log.ts";
 import { CredentialBlobSchema, TokenIdentitySchema, type Account, type OAuthCreds, type TokenIdentity } from "./types.ts";
 
 const SampleOutcomeSchema = z.discriminatedUnion("ok", [
-  z.object({ ok: z.literal(true), usage: FullUsageSchema, pingError: z.string().optional(), pingRejected: z.boolean().optional() }),
-  z.object({ ok: z.literal(false), reason: z.string(), pingError: z.string().optional(), pingRejected: z.boolean().optional() }),
+  z.object({ ok: z.literal(true), usage: FullUsageSchema }),
+  z.object({ ok: z.literal(false), reason: z.string() }),
 ]);
 export type SampleOutcome = z.infer<typeof SampleOutcomeSchema>;
 
@@ -46,7 +46,7 @@ function refreshPlanFields(account: Account, creds: OAuthCreds): void {
 
 export async function probeParkedUsage(
   account: Account,
-  opts: { ping?: boolean; retries?: number; refreshParked?: boolean; killMs?: number; signal?: AbortSignal } = {},
+  opts: { retries?: number; refreshParked?: boolean; killMs?: number; signal?: AbortSignal } = {},
 ): Promise<SampleOutcome> {
   const backup = parkedTarget(account.keychainItem);
   const parkedRaw = await readItem(backup);
@@ -165,16 +165,8 @@ export async function probeParkedUsage(
   try {
     await writeItem(isoTarget, installed);
     writeFileSync(join(dir, ".claude.json"), JSON.stringify({ oauthAccount: account.oauthAccount, hasCompletedOnboarding: true }));
-    const ping = opts.ping ? await pingSession(dir) : null;
     const usage = await probeUsage(dir, Date.now(), opts);
-    const outcome: SampleOutcome = usage
-      ? { ok: true, usage }
-      : { ok: false, reason: "`/usage` returned no limit data (see log)" };
-    if (ping != null) {
-      outcome.pingError = ping.reason;
-      outcome.pingRejected = ping.rejected;
-    }
-    return outcome;
+    return usage ? { ok: true, usage } : { ok: false, reason: "`/usage` returned no limit data (see log)" };
   } finally {
     try {
       if (opts.refreshParked !== false) {
@@ -211,7 +203,7 @@ export async function ensureLiveTokenFresh(): Promise<void> {
   });
 }
 
-export async function probeActiveUsage(account: Account, opts: { ping?: boolean } = {}): Promise<SampleOutcome> {
+export async function probeActiveUsage(account: Account): Promise<SampleOutcome> {
   try {
     await ensureLiveTokenFresh();
   } catch (e) {
@@ -232,12 +224,6 @@ export async function probeActiveUsage(account: Account, opts: { ping?: boolean 
   if (identity.status === "unavailable") return { ok: false, reason: identity.reason };
   refreshPlanFields(account, creds);
 
-  const ping = opts.ping ? await pingSession() : null;
   const usage = await probeUsage();
-  const outcome: SampleOutcome = usage ? { ok: true, usage } : { ok: false, reason: "`/usage` returned no limit data (see log)" };
-  if (ping != null) {
-    outcome.pingError = ping.reason;
-    outcome.pingRejected = ping.rejected;
-  }
-  return outcome;
+  return usage ? { ok: true, usage } : { ok: false, reason: "`/usage` returned no limit data (see log)" };
 }

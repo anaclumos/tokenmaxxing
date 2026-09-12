@@ -1,10 +1,8 @@
-import { closeSync, existsSync, fstatSync, mkdirSync, openSync, readSync } from "node:fs";
-import { join } from "node:path";
+import { closeSync, fstatSync, openSync, readSync } from "node:fs";
 import { delay } from "es-toolkit";
 import { z } from "zod";
 import { MAX_WRAP_DEPTH, WRAP_DEPTH_ENV, resolveRealClaude } from "./claudebin.ts";
 import { log } from "./log.ts";
-import { paths } from "./paths.ts";
 import { RateLimitsStdinSchema, UsageWindowSchema, type ModelInfo, type UsageWindow, type UsageWindows } from "./types.ts";
 
 export function normalizeResetsAt(v: unknown): number | null {
@@ -285,12 +283,11 @@ type SpawnResult = z.infer<typeof SpawnResultSchema>;
 async function spawnClaudeBounded(
   cmd: string[],
   env: Record<string, string>,
-  cwd?: string,
   killMs = PROBE_KILL_MS,
   signal?: AbortSignal,
 ): Promise<SpawnResult | null> {
   signal?.throwIfAborted();
-  const p = Bun.spawn(cmd, { env, cwd, stdout: "pipe", stderr: "pipe" });
+  const p = Bun.spawn(cmd, { env, stdout: "pipe", stderr: "pipe" });
   const abort = () => p.kill("SIGKILL");
   signal?.addEventListener("abort", abort, { once: true });
   const killer = setTimeout(() => p.kill("SIGKILL"), killMs);
@@ -313,7 +310,7 @@ async function spawnClaudeBounded(
 async function probeUsageOnce(env: Record<string, string>, now: number, killMs: number, signal?: AbortSignal): Promise<FullUsage | null> {
   let out: string;
   try {
-    const r = await spawnClaudeBounded([resolveRealClaude(), "-p", "/usage", "--output-format", "json"], env, undefined, killMs, signal);
+    const r = await spawnClaudeBounded([resolveRealClaude(), "-p", "/usage", "--output-format", "json"], env, killMs, signal);
     if (r === null) {
       log("usage.probe_failed", { err: "output pipes still open after child exit (leaked descendant)" });
       return null;
@@ -368,69 +365,4 @@ export async function probeUsage(configDir?: string, now = Date.now(), opts: { r
     }
     await delay(PROBE_RETRY_DELAYS_MS[Math.min(attempt, PROBE_RETRY_DELAYS_MS.length - 1)]!);
   }
-}
-
-const PING_ARGS = [
-  "-p", "Reply with exactly: ok",
-  "--model", "haiku",
-  "--settings", '{"disableAllHooks":true}',
-  "--output-format", "json",
-];
-
-const PingResultSchema = z.looseObject({ is_error: z.boolean().optional(), result: z.string().optional(), session_id: z.string().optional() });
-
-export const PingFailureSchema = z.object({ reason: z.string(), rejected: z.boolean() });
-export type PingFailure = z.infer<typeof PingFailureSchema>;
-
-export function transcriptSlug(cwd: string): string {
-  return cwd.replace(/[^a-zA-Z0-9]/g, "-");
-}
-
-export function pingTranscriptPath(input: { configDir: string; cwd: string; sessionId: string }): string {
-  return join(input.configDir, "projects", transcriptSlug(input.cwd), `${input.sessionId}.jsonl`);
-}
-
-const LIMIT_LABELS: Record<string, string> = { five_hour: "5h", seven_day: "weekly" };
-
-export function pingRejection(rows: TranscriptRow[]): string | null {
-  const row = rows.findLast((r) => r.isApiErrorMessage === true);
-  if (!row || row.error !== "rate_limit" || row.apiErrorIsTransient === true) return null;
-  const type = row.quotaLimits?.rateLimitType ?? "";
-  if (type === "" && parseErrorBody(row.errorDetails)?.error?.type !== "rate_limit_error") return null;
-  const label = LIMIT_LABELS[type] ?? (type !== "" ? type.replace(/_/g, " ") : "usage");
-  const text = transcriptRowText(row);
-  return `${label} limit${text ? `: ${text}` : ""}`;
-}
-
-export async function pingSession(configDir?: string): Promise<PingFailure | null> {
-  const cwd = join(paths.sampleDir, "ping-cwd");
-  const fail = (reason: string, rejected = false): PingFailure => {
-    log("usage.ping_failed", { dir: configDir ?? "live", rejected, reason: reason.slice(0, 200) });
-    return { reason, rejected };
-  };
-  let r: SpawnResult | null;
-  try {
-    mkdirSync(cwd, { recursive: true });
-    r = await spawnClaudeBounded([resolveRealClaude(), ...PING_ARGS], probeEnv(configDir), cwd);
-  } catch (e) {
-    return fail(e instanceof Error ? e.message : String(e));
-  }
-  if (r === null) return fail("output pipes still open after child exit (leaked descendant)");
-  const parsed = PingResultSchema.safeParse((() => { try { return JSON.parse(r.stdout); } catch { return null; } })());
-  const result = parsed.success ? parsed.data : null;
-  if (r.exitCode === 0 && result?.is_error === false) {
-    log("usage.ping_ok", { dir: configDir ?? "live" });
-    return null;
-  }
-  if (result?.session_id) {
-    const transcript = pingTranscriptPath({ configDir: configDir ?? paths.claudeDir, cwd, sessionId: result.session_id });
-    const rejection = existsSync(transcript) ? pingRejection(readTranscriptTail(transcript)) : null;
-    if (rejection) return fail(`rejected at the ${rejection}`.slice(0, 200), true);
-  }
-  if (r.exitCode !== 0) {
-    const detail = result?.result?.trim() || r.stderr.trim() || r.stdout.trim();
-    return fail(`claude exited ${r.exitCode ?? "on signal"}: ${detail.slice(0, 160)}`);
-  }
-  if (result?.is_error === true) return fail((result.result?.trim() || "request errored").slice(0, 160));
-  return fail(`unrecognized ping output: ${r.stdout.trim().slice(0, 120)}`);
 }
