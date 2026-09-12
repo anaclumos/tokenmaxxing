@@ -6,6 +6,7 @@ import { paths } from "../lib/paths.ts";
 import { writeItem, parkedTarget, claudeAiOauthOnly } from "../lib/credstore.ts";
 import { findAccount } from "./rename.ts";
 import { harvestIsolatedLogin } from "./onboard.ts";
+import { keepRows } from "../lib/usage.ts";
 import { c, claudeTierLabel, count } from "./render.ts";
 import type { Account, AccountsIndex } from "../lib/types.ts";
 
@@ -101,19 +102,15 @@ async function reauthOne(target: Account): Promise<boolean> {
     account.rateLimitTier = blob.claudeAiOauth.rateLimitTier;
     account.needsReauth = false;
     if (sampled) {
-      account.lastUsage = { fiveHour: sampled.session, sevenDay: sampled.weekAll };
       account.lastUsageAt = Date.now();
-      if (Object.keys(sampled.perModel).length > 0) {
-        account.lastPerModel = sampled.perModel;
-        account.lastPerModelAt = account.lastUsageAt;
-      }
+      account.lastUsage = keepRows(sampled, account.lastUsage, account.lastUsageAt);
     }
     saveAccounts(idx);
     return idx.activeAccountUuid === target.accountUuid;
   });
   if (isActive === null) return false;
 
-  const usageNote = sampled ? ` (session ${sampled.session.usedPercentage}% / week ${sampled.weekAll.usedPercentage}%)` : "";
+  const usageNote = sampled ? ` (session ${sampled.fiveHour.usedPercentage}% / week ${sampled.sevenDay.usedPercentage}%)` : "";
   const tier = claudeTierLabel(blob.claudeAiOauth) ?? "?";
   console.log(`${c.green("✓")} reauthed ${c.bold(oauthAccount.emailAddress)} (${tier})${usageNote}`);
   if (isActive) {

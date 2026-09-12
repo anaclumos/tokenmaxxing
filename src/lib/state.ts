@@ -7,11 +7,9 @@ import {
   AccountsIndexSchema,
   ConfigSchema,
   LastSwapSchema,
-  ModelUsageStateSchema,
   UsageStateSchema,
   type AccountsIndex,
   type Config,
-  type ModelUsageState,
   type UsageState,
 } from "./types.ts";
 
@@ -91,7 +89,6 @@ export function loadUsage(): UsageState | null {
 
 export function clearUsageSnapshots(): void {
   rmSync(paths.usageJson, { force: true });
-  rmSync(paths.modelUsageJson, { force: true });
 }
 
 export function loadLastSwapAt(): number | null {
@@ -158,18 +155,4 @@ export function writeUsage(input: UsageState, opts: { stamp?: boolean } = {}): b
   }
   writeFileAtomic(paths.usageJson, JSON.stringify(next));
   return true;
-}
-
-export function loadModelUsage(): ModelUsageState | null {
-  if (!existsSync(paths.modelUsageJson)) return null;
-  try {
-    const parsed = ModelUsageStateSchema.safeParse(JSON.parse(readFileSync(paths.modelUsageJson, "utf8")));
-    return parsed.success ? parsed.data : null;
-  } catch {
-    return null;
-  }
-}
-
-export function saveModelUsage(next: ModelUsageState): void {
-  writeFileAtomic(paths.modelUsageJson, JSON.stringify(next));
 }

@@ -1,7 +1,7 @@
 import { sortBy } from "es-toolkit";
 import { z } from "zod";
 import { readOAuthAccount } from "../lib/claudejson.ts";
-import { loadAccounts, loadConfig, loadLastSwapAt, loadModelUsage, writeUsage } from "../lib/state.ts";
+import { loadAccounts, loadConfig, loadLastSwapAt, writeUsage } from "../lib/state.ts";
 import { familyTokens, matchedFamily, parseStatusLineStdin, parseStatusLineModel } from "../lib/usage.ts";
 import { earliestReset, weeklyExpiry } from "../lib/picker.ts";
 import { worktreeName } from "../lib/worktree.ts";
@@ -99,7 +99,7 @@ export function renderStatusline(stdinObj: unknown, ctx: RenderCtx): string {
     if (Math.round(weekUsed) <= 0) return `${marker} ${paint(0)("full")}`;
 
     const parts: string[] = [];
-    for (const [name, w] of Object.entries(a.lastPerModel ?? {})) {
+    for (const [name, w] of Object.entries(a.lastUsage?.perModel ?? {})) {
       if (used(w) > weekUsed) parts.push(seg(initial(name), w, null));
     }
     const expiry = weeklyExpiry(a, ctx.now);
@@ -125,7 +125,7 @@ export async function runStatusline(): Promise<number> {
     const windows = obj == null ? null : parseStatusLineStdin(obj);
     const lastSwapAt = loadLastSwapAt();
     if (windows && (lastSwapAt == null || now - lastSwapAt >= ADOPTION_GRACE_MS)) {
-      const state: UsageState = { ...windows, account, ts: now, model: parseStatusLineModel(obj) };
+      const state: UsageState = { fiveHour: windows.fiveHour, sevenDay: windows.sevenDay, account, ts: now, model: parseStatusLineModel(obj) };
       writeUsage(state);
     }
   } catch {
@@ -134,13 +134,13 @@ export async function runStatusline(): Promise<number> {
   let line: string;
   try {
     const cfg = loadConfig();
-    const modelUsage = loadModelUsage();
+    const accounts = loadAccounts();
     const stdin = StatusLineStdinSchema.safeParse(obj);
     const dir = stdin.success ? (stdin.data.workspace?.current_dir ?? stdin.data.workspace?.project_dir ?? null) : null;
     const colorterm = z.string().optional().parse(process.env.COLORTERM);
     const ctx: RenderCtx = {
-      accounts: loadAccounts(),
-      perModel: modelUsage && modelUsage.account === account ? modelUsage.perModel : {},
+      accounts,
+      perModel: accounts.accounts.find((a) => a.accountUuid === account)?.lastUsage?.perModel ?? {},
       switchModels: cfg.policy.switchModels,
       worktree: dir == null ? null : worktreeName(dir),
       liveAccount: account,

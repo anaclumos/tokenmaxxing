@@ -2,13 +2,13 @@ import { maxBy } from "es-toolkit";
 import { z } from "zod";
 import { withLock } from "./lock.ts";
 import { paths } from "./paths.ts";
-import { POST_SWAP_COOLDOWN_MS, loadAccounts, loadConfig, loadDepletedWait, loadLastSwapAt, loadUsage, loadUsageSnapshot, loadModelUsage, saveAccounts, saveDepletedWait, saveModelUsage, writeUsage } from "./state.ts";
+import { POST_SWAP_COOLDOWN_MS, loadAccounts, loadConfig, loadDepletedWait, loadLastSwapAt, loadUsage, loadUsageSnapshot, saveAccounts, saveDepletedWait, writeUsage } from "./state.ts";
 import { readOAuthAccount } from "./claudejson.ts";
 import { isSkippableSwapError, performSwap } from "./swap.ts";
 import { nextWeeklyReset, pickBest, pickEarliestReset, thresholdBars, usableAt } from "./picker.ts";
-import { familyTokens, gatedFamilies, probeUsage, type EnforcedClass } from "./usage.ts";
+import { familyTokens, gatedFamilies, keepRows, probeUsage, type EnforcedClass } from "./usage.ts";
 import { log } from "./log.ts";
-import { AccountSchema, ModelUsageStateSchema, UsageStateSchema, type Account, type Config, type EnforcedLimit, type ModelUsageState, type Thresholds, type UsageState, type UsageWindow } from "./types.ts";
+import { AccountSchema, UsageStateSchema, type Account, type Config, type EnforcedLimit, type Thresholds, type UsageState, type UsageWindow } from "./types.ts";
 
 const SwapDecisionSchema = z.object({
   swapped: z.boolean(),
@@ -28,24 +28,26 @@ function liveUsed(input: { window: UsageWindow; windowMs: number; sampledAt: num
   return w.usedPercentage;
 }
 
-function capForFamily(mu: ModelUsageState, family: string, now: number): UsageWindow | undefined {
-  const rows = Object.entries(mu.perModel)
-    .filter(([k]) => familyTokens(k).includes(family))
-    .map(([, w]) => w);
-  return maxBy(rows, (w) => liveUsed({ window: w, windowMs: WEEK_MS, sampledAt: mu.sampledAt ?? mu.ts, now }));
+function rowsSampledAt(account: Account, now: number): number {
+  return account.lastUsage?.rowsAt ?? account.lastUsageAt ?? now;
 }
 
-function isOver(u: UsageState | null, mu: ModelUsageState | null, account: string | null, bars: Thresholds, cfg: Config, now: number): boolean {
-  if (!u || !account || u.account !== account) return false;
+function capForFamily(account: Account, family: string, now: number): UsageWindow | undefined {
+  const rows = Object.entries(account.lastUsage?.perModel ?? {})
+    .filter(([k]) => familyTokens(k).includes(family))
+    .map(([, w]) => w);
+  return maxBy(rows, (w) => liveUsed({ window: w, windowMs: WEEK_MS, sampledAt: rowsSampledAt(account, now), now }));
+}
+
+function isOver(u: UsageState | null, account: Account | undefined, bars: Thresholds, cfg: Config, now: number): boolean {
+  if (!u || !account || u.account !== account.accountUuid) return false;
   if (
     liveUsed({ window: u.fiveHour, windowMs: FIVE_HOURS_MS, sampledAt: u.ts, now }) >= bars.session ||
     liveUsed({ window: u.sevenDay, windowMs: WEEK_MS, sampledAt: u.ts, now }) >= bars.weekly
   ) return true;
-  if (mu && mu.account === account) {
-    for (const family of gatedFamilies(u.model, cfg.policy.switchModels)) {
-      const cap = capForFamily(mu, family, now);
-      if (cap && liveUsed({ window: cap, windowMs: WEEK_MS, sampledAt: mu.sampledAt ?? mu.ts, now }) >= bars.weekly) return true;
-    }
+  for (const family of gatedFamilies(u.model, cfg.policy.switchModels)) {
+    const cap = capForFamily(account, family, now);
+    if (cap && liveUsed({ window: cap, windowMs: WEEK_MS, sampledAt: rowsSampledAt(account, now), now }) >= bars.weekly) return true;
   }
   return false;
 }
@@ -56,7 +58,6 @@ function needsPerModel(u: UsageState | null, cfg: Config): boolean {
 
 const SnapshotsSchema = z.object({
   u: UsageStateSchema.nullable(),
-  mu: ModelUsageStateSchema.nullable(),
   uAt: z.number().nullable(),
 });
 type Snapshots = z.infer<typeof SnapshotsSchema>;
@@ -78,10 +79,11 @@ async function loadFreshSnapshots(cfg: Config, account: string | null, now: numb
   const snap = loadUsageSnapshot();
   let u = snap?.state ?? null;
   let uAt = snap?.at ?? null;
-  let mu = loadModelUsage();
   const ttl = cfg.policy.usagePollTtlMs;
-  const probeAttempted = mu != null && mu.account === account && now - mu.ts <= ttl;
-  if (account && !probeAttempted && (!usageFresh(u, uAt, account, ttl, now) || needsPerModel(u, cfg))) {
+  const stored = loadAccounts().accounts.find((a) => a.accountUuid === account);
+  const probeAttempted = stored?.lastProbeAt != null && now - stored.lastProbeAt <= ttl;
+  if (account && stored && !probeAttempted && (!usageFresh(u, uAt, account, ttl, now) || needsPerModel(u, cfg))) {
+    const startedAt = Date.now();
     const full = await probeUsage();
     const ts = Date.now();
     if (readOAuthAccount()?.accountUuid === account) {
@@ -91,24 +93,30 @@ async function loadFreshSnapshots(cfg: Config, account: string | null, now: numb
           u = teed.state;
           uAt = teed.at;
         } else {
-          u = { fiveHour: full.session, sevenDay: full.weekAll, account, ts, model: null };
+          u = { fiveHour: full.fiveHour, sevenDay: full.sevenDay, account, ts, model: null };
           writeUsage(u);
           uAt = ts;
         }
-        mu = { perModel: full.perModel, account, ts, sampledAt: ts };
-        saveModelUsage(mu);
         const expected = gatedFamilies(u?.model ?? null, cfg.policy.switchModels);
         const rows = Object.keys(full.perModel);
         if (expected.length > 0 && !expected.some((f) => rows.some((k) => familyTokens(k).includes(f)))) {
           log("usage.no_permodel_row", { families: expected.join(","), rows: rows.join(",") });
         }
-      } else {
-        mu = { perModel: mu?.account === account ? (mu?.perModel ?? {}) : {}, account, ts, sampledAt: mu?.account === account ? (mu?.sampledAt ?? mu?.ts) : undefined };
-        saveModelUsage(mu);
       }
+      await withLock(paths.lockFile, () => {
+        const idx = loadAccounts();
+        const a = idx.accounts.find((x) => x.accountUuid === account);
+        if (!a) return;
+        a.lastProbeAt = startedAt;
+        if (full) {
+          if (!a.lastUsage) a.lastUsageAt = startedAt;
+          a.lastUsage = keepRows({ ...(a.lastUsage ?? full), perModel: full.perModel }, a.lastUsage, startedAt);
+        }
+        saveAccounts(idx);
+      });
     }
   }
-  return { u, mu, uAt };
+  return { u, uAt };
 }
 
 export async function evaluateAndMaybeSwap(now = Date.now(), anticipatory = false, enforced: EnforcedLimit | null = null): Promise<SwapDecision> {
@@ -123,11 +131,11 @@ export async function evaluateAndMaybeSwap(now = Date.now(), anticipatory = fals
   const cfg = loadConfig();
   const bars = thresholdBars(cfg);
 
-  const { u: teeUsage, mu, uAt } = await loadFreshSnapshots(cfg, activeAccount, now);
-  const pool = loadAccounts();
-  const usage = freshest(teeUsage, uAt, pool.accounts.find((a) => a.accountUuid === activeAccount));
+  const { u: teeUsage, uAt } = await loadFreshSnapshots(cfg, activeAccount, now);
+  const stored = loadAccounts().accounts.find((a) => a.accountUuid === activeAccount);
+  const usage = freshest(teeUsage, uAt, stored);
 
-  if (!enforced0 && !isOver(usage, mu, activeAccount, bars, cfg, now)) {
+  if (!enforced0 && !isOver(usage, stored, bars, cfg, now)) {
     const measured = usage != null && activeAccount != null && usage.account === activeAccount;
     if (!measured) {
       const replay = depletedReplay(now);
@@ -143,31 +151,21 @@ export async function evaluateAndMaybeSwap(now = Date.now(), anticipatory = fals
     const tee = loadUsageSnapshot();
     const active = account2 ? idx.accounts.find((a) => a.accountUuid === account2) : undefined;
     const u2 = tee ? freshest(tee.state, tee.at, active) : usage;
-    const mu2 = needsPerModel(u2, cfg) || enforced2?.family ? loadModelUsage() ?? mu : null;
 
     if (account2 != null && !active) {
       return { swapped: false, account: null, reason: "live-credential-not-in-pool" };
     }
 
-    if (active) {
-      let sampled = false;
-      if (tee && tee.state.account === account2 && (active.lastUsageAt == null || tee.at >= active.lastUsageAt)) {
-        active.lastUsage = { fiveHour: tee.state.fiveHour, sevenDay: tee.state.sevenDay };
-        active.lastUsageAt = tee.state.sampledAt ?? tee.at;
-        sampled = true;
-      }
-      if (mu2 && mu2.account === account2 && Object.keys(mu2.perModel).length > 0) {
-        active.lastPerModel = mu2.perModel;
-        active.lastPerModelAt = mu2.sampledAt ?? mu2.ts;
-        sampled = true;
-      }
-      if (sampled) saveAccounts(idx);
+    if (active && tee && tee.state.account === account2 && (active.lastUsageAt == null || tee.at >= active.lastUsageAt)) {
+      active.lastUsageAt = tee.state.sampledAt ?? tee.at;
+      active.lastUsage = keepRows({ fiveHour: tee.state.fiveHour, sevenDay: tee.state.sevenDay, perModel: {} }, active.lastUsage, active.lastUsageAt);
+      saveAccounts(idx);
     }
 
     const gated = gatedFamilies(u2?.model ?? null, cfg.policy.switchModels);
     const switchFamilies = enforced2?.family && !gated.includes(enforced2.family) ? [...gated, enforced2.family] : gated;
 
-    if (!enforced2 && !isOver(u2, mu2, account2, bars, cfg, now)) {
+    if (!enforced2 && !isOver(u2, active, bars, cfg, now)) {
       return depletedReplay(now) ?? { swapped: false, account: null, reason: "raced-already-swapped" };
     }
 
@@ -269,27 +267,26 @@ export async function recordEnforcedLimit(input: { limit: EnforcedClass; account
     const priorSame = prior && prior.account === accountUuid ? prior : null;
     const idx = loadAccounts();
     const account = idx.accounts.find((a) => a.accountUuid === accountUuid);
-    const mu = loadModelUsage();
-    const muSame = mu && mu.account === accountUuid ? mu : null;
-    const carriedRows = muSame?.perModel ?? {};
-    const sampledAt = muSame?.sampledAt ?? muSame?.ts;
     if (limit.kind === "model") {
-      const rowsFor = (rows: Record<string, UsageWindow>) => Object.entries(rows).filter(([k]) => familyTokens(k).includes(limit.family)).map(([, w]) => w);
-      const knownReset = [...rowsFor(carriedRows), ...rowsFor(account?.lastPerModel ?? {})].map((w) => w.resetsAt).find((r): r is number => r != null) ?? null;
+      const rows = account?.lastUsage?.perModel ?? {};
+      const knownReset = Object.entries(rows).filter(([k]) => familyTokens(k).includes(limit.family)).map(([, w]) => w.resetsAt).find((r): r is number => r != null) ?? null;
       const weeklyReset = priorSame?.sevenDay.resetsAt ?? account?.lastUsage?.sevenDay.resetsAt ?? null;
       const resetsAt = limit.resetsAt ?? nextWeeklyReset(knownReset ?? weeklyReset, now);
-      saveModelUsage({
-        perModel: { ...carriedRows, [limit.family]: { usedPercentage: 100, resetsAt } },
-        account: accountUuid,
-        ts: now,
-        sampledAt: resetsAt == null ? now : sampledAt ?? now,
-      });
+      if (!account) return { outcome: "no-carrier", resetsAt };
+      if (account.lastUsage) {
+        const others = Object.fromEntries(Object.entries(rows).filter(([k]) => !familyTokens(k).includes(limit.family)));
+        account.lastUsage = { ...account.lastUsage, perModel: { ...others, [limit.family]: { usedPercentage: 100, resetsAt } }, ...(resetsAt == null ? { rowsAt: now } : {}) };
+      } else {
+        account.enforcedUntil = resetsAt ?? now + WEEK_MS;
+      }
+      account.lastProbeAt = now;
+      saveAccounts(idx);
       log("usage.enforced_limit", { kind: limit.kind, family: limit.family, resetsAt });
       return { outcome: "stamped", resetsAt };
     }
-    saveModelUsage({ perModel: carriedRows, account: accountUuid, ts: now, sampledAt });
-    if (account && limit.resetsAt != null) {
-      account.enforcedUntil = limit.resetsAt;
+    if (account) {
+      account.lastProbeAt = now;
+      if (limit.resetsAt != null) account.enforcedUntil = limit.resetsAt;
       saveAccounts(idx);
     }
     const carrier = priorSame ?? (account?.lastUsage ? { ...account.lastUsage, model: null } : null);

@@ -4,6 +4,7 @@ import { credItemFor, paths } from "../lib/paths.ts";
 import { writeItem, parkedTarget, claudeAiOauthOnly } from "../lib/credstore.ts";
 import { harvestIsolatedLogin } from "./onboard.ts";
 import { type Account } from "../lib/types.ts";
+import { keepRows } from "../lib/usage.ts";
 import { c, claudeTierLabel, count } from "./render.ts";
 
 export async function cmdAdd(): Promise<number> {
@@ -22,6 +23,7 @@ export async function cmdAdd(): Promise<number> {
     await writeItem(parkedTarget(keychainItem), claudeAiOauthOnly(blobRaw));
     const idx = loadAccounts();
     const existing = idx.accounts.find((a) => a.accountUuid === uuid);
+    const sampledAt = Date.now();
     const fresh: Account = {
       accountUuid: uuid,
       email: oauthAccount.emailAddress,
@@ -33,10 +35,8 @@ export async function cmdAdd(): Promise<number> {
       subscriptionType: blob.claudeAiOauth.subscriptionType,
       rateLimitTier: blob.claudeAiOauth.rateLimitTier,
       needsReauth: false,
-      lastUsage: sampled ? { fiveHour: sampled.session, sevenDay: sampled.weekAll } : existing?.lastUsage,
-      lastPerModel: sampled && Object.keys(sampled.perModel).length > 0 ? sampled.perModel : existing?.lastPerModel,
-      lastPerModelAt: sampled && Object.keys(sampled.perModel).length > 0 ? Date.now() : existing?.lastPerModelAt,
-      lastUsageAt: sampled ? Date.now() : existing?.lastUsageAt,
+      lastUsage: sampled ? keepRows(sampled, existing?.lastUsage, sampledAt) : existing?.lastUsage,
+      lastUsageAt: sampled ? sampledAt : existing?.lastUsageAt,
     };
     if (existing) Object.assign(existing, fresh);
     else idx.accounts.push(fresh);
@@ -45,7 +45,7 @@ export async function cmdAdd(): Promise<number> {
   });
 
   console.log();
-  const usageNote = sampled ? ` (session ${sampled.session.usedPercentage}% / week ${sampled.weekAll.usedPercentage}%)` : "";
+  const usageNote = sampled ? ` (session ${sampled.fiveHour.usedPercentage}% / week ${sampled.sevenDay.usedPercentage}%)` : "";
   console.log(`${c.green("✓")} added ${c.bold(account.email)} (${claudeTierLabel(account) ?? "?"})${usageNote} → pool now has ${count({ n: poolSize, noun: "account" })}`);
   return 0;
 }

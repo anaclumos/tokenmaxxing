@@ -15,7 +15,7 @@ Print-mode invocations (`claude -p`, `--version`, `--help`), non-interactive sub
 
 ## The statusline tee
 
-Claude Code pushes rate-limit data (`rate_limits.five_hour` and `rate_limits.seven_day`) into the statusline's stdin every turn. tokenmaxxing owns the statusline slot, so its renderer doubles as a free, push-based usage feed: each tick it tees the aggregate windows plus the active model into `usage.json`. Per-model caps are not in statusline stdin; they come only from `claude -p '/usage'` (free, zero tokens), which is polled with a TTL and cached into `model-usage.json` when the active model is capacity-constrained.
+Claude Code pushes rate-limit data (`rate_limits.five_hour` and `rate_limits.seven_day`) into the statusline's stdin every turn. tokenmaxxing owns the statusline slot, so its renderer doubles as a free, push-based usage feed: each tick it tees the aggregate windows plus the active model into `usage.json`. Per-model caps are not in statusline stdin; they come only from `claude -p '/usage'` (free, zero tokens), which is polled with a TTL when the active model is capacity-constrained; its rows are stored on the account record in `accounts.json` next to the aggregate windows, so the tee never carries them.
 
 The tee is write-on-change: when figures are unchanged it only bumps the file's mtime, which acts as the feed's liveness heartbeat. Freshness is always judged by mtime, never by the embedded timestamp.
 

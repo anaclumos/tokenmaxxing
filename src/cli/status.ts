@@ -1,6 +1,6 @@
 import { chunk, sortBy } from "es-toolkit";
 import { z } from "zod";
-import { loadAccounts, loadConfig, loadUsage, loadUsageSnapshot, loadModelUsage, saveAccounts } from "../lib/state.ts";
+import { loadAccounts, loadConfig, loadUsage, loadUsageSnapshot, saveAccounts } from "../lib/state.ts";
 import { readOAuthAccount } from "../lib/claudejson.ts";
 import { ensureLiveTokenFresh, probeActiveUsage, probeParkedUsage, type SampleOutcome } from "../lib/sample.ts";
 import { withLock } from "../lib/lock.ts";
@@ -11,8 +11,8 @@ import { liveCodexAccountId, sampleCodexAccount, type CodexSampleOutcome } from 
 import { isCodexExhausted } from "../lib/codexpick.ts";
 import { codexLimitLabel, isSessionWindow } from "../lib/codexusage.ts";
 import { bar, c, claudeTierLabel, count, emitJson, fmtAgo } from "./render.ts";
-import { gatedFamilies, type FullUsage } from "../lib/usage.ts";
-import { ThresholdsSchema, UsageWindowSchema, type Account, type CodexWindow, type Config, type UsageWindow } from "../lib/types.ts";
+import { gatedFamilies, keepRows } from "../lib/usage.ts";
+import { ThresholdsSchema, UsageWindowSchema, type Account, type CodexWindow, type Config, type UsageWindow, type UsageWindows } from "../lib/types.ts";
 
 const SampleReportSchema = z.discriminatedUnion("ok", [
   z.object({ ok: z.literal(true), source: z.enum(["statusline", "probe", "cached"]) }),
@@ -95,21 +95,14 @@ async function collectClaude(input: { cfg: Config; now: number; cached: boolean 
       const tee = loadUsageSnapshot();
       const live = tee?.state ?? null;
       const teeAt = tee?.at ?? null;
-      const modelUsage = loadModelUsage();
       const liveOAuth = readOAuthAccount();
       const liveAccount = liveOAuth?.accountUuid ?? null;
       const probeOne = async (a: Account) => {
         const isActive = liveAccount != null && liveAccount === a.accountUuid;
         if (isActive && liveOAuth?.organizationRateLimitTier != null) a.rateLimitTier = liveOAuth.organizationRateLimitTier;
         const teeCurrent = teeAt != null && (a.lastUsageAt == null || teeAt >= a.lastUsageAt);
-        const fromStatusLine: FullUsage | null =
-          isActive && live && teeCurrent && live.account === a.accountUuid
-            ? {
-                session: live.fiveHour,
-                weekAll: live.sevenDay,
-                perModel: modelUsage && modelUsage.account === a.accountUuid ? modelUsage.perModel : {},
-              }
-            : null;
+        const fromStatusLine: UsageWindows | null =
+          isActive && live && teeCurrent && live.account === a.accountUuid ? { fiveHour: live.fiveHour, sevenDay: live.sevenDay, perModel: {} } : null;
         const viaTee = fromStatusLine != null;
         const outcome: SampleOutcome = fromStatusLine
           ? { ok: true, usage: fromStatusLine }
@@ -118,12 +111,8 @@ async function collectClaude(input: { cfg: Config; now: number; cached: boolean 
             : await probeParkedUsage(a);
         samples.set(a.accountUuid, { outcome, viaTee });
         if (!outcome.ok) return;
-        a.lastUsage = { fiveHour: outcome.usage.session, sevenDay: outcome.usage.weekAll };
         a.lastUsageAt = viaTee && teeAt != null ? (live?.sampledAt ?? teeAt) : Date.now();
-        if (Object.keys(outcome.usage.perModel).length > 0) {
-          a.lastPerModel = outcome.usage.perModel;
-          a.lastPerModelAt = viaTee && modelUsage ? (modelUsage.sampledAt ?? modelUsage.ts) : a.lastUsageAt;
-        }
+        a.lastUsage = keepRows(outcome.usage, a.lastUsage, a.lastUsageAt);
       };
       const activeAccount = idx.accounts.find((a) => liveAccount != null && liveAccount === a.accountUuid) ?? null;
       if (activeAccount) await probeOne(activeAccount);
@@ -142,9 +131,8 @@ async function collectClaude(input: { cfg: Config; now: number; cached: boolean 
   const ordered = sortBy(idx.accounts, [(a) => (a.needsReauth ? 1 : 0), (a) => earliestReset(a, now)]);
   const accounts = ordered.map((a): ClaudeStatusAccount => {
     const sampled = samples.get(a.accountUuid);
-    const usage = sampled?.outcome.ok ? sampled.outcome.usage : undefined;
-    const aggregate = usage ? { fiveHour: usage.session, sevenDay: usage.weekAll } : a.lastUsage;
-    const perModel = usage ? usage.perModel : (a.lastPerModel ?? {});
+    const aggregate = a.lastUsage;
+    const perModel = aggregate?.perModel ?? {};
     return {
       label: a.label,
       email: a.email,
@@ -157,7 +145,7 @@ async function collectClaude(input: { cfg: Config; now: number; cached: boolean 
       usage: aggregate ? { fiveHour: currentWindow(aggregate.fiveHour, false, now), week: currentWindow(aggregate.sevenDay, true, now) } : null,
       perModel: Object.fromEntries(Object.entries(perModel).map(([name, w]) => [name, currentWindow(w, true, now)])),
       usageAt: a.lastUsageAt ?? null,
-      perModelAt: a.lastPerModelAt ?? null,
+      perModelAt: aggregate?.rowsAt ?? null,
       sample: sampled
         ? sampled.outcome.ok
           ? { ok: true, source: sampled.viaTee ? "statusline" : "probe" }

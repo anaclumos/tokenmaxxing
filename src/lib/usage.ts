@@ -3,7 +3,7 @@ import { delay } from "es-toolkit";
 import { z } from "zod";
 import { MAX_WRAP_DEPTH, WRAP_DEPTH_ENV, resolveRealClaude } from "./claudebin.ts";
 import { log } from "./log.ts";
-import { RateLimitsStdinSchema, UsageWindowSchema, type ModelInfo, type UsageWindow, type UsageWindows } from "./types.ts";
+import { RateLimitsStdinSchema, type ModelInfo, type UsageWindow, type UsageWindows } from "./types.ts";
 
 export function normalizeResetsAt(v: unknown): number | null {
   const num = z.number().finite().safeParse(v);
@@ -30,7 +30,7 @@ export function parseStatusLineStdin(obj: unknown): UsageWindows | null {
   if (!parsed.success) return null;
   const rl = parsed.data.rate_limits;
   if (!rl?.five_hour || !rl.seven_day) return null;
-  return { fiveHour: win(rl.five_hour), sevenDay: win(rl.seven_day) };
+  return { fiveHour: win(rl.five_hour), sevenDay: win(rl.seven_day), perModel: {} };
 }
 
 export function parseStatusLineModel(obj: unknown): ModelInfo | null {
@@ -56,13 +56,6 @@ export function gatedFamilies(model: ModelInfo | null, families: string[]): stri
   const family = matchedFamily(model, families);
   return family ? [family] : [];
 }
-
-export const FullUsageSchema = z.object({
-  session: UsageWindowSchema,
-  weekAll: UsageWindowSchema,
-  perModel: z.record(z.string(), UsageWindowSchema),
-});
-export type FullUsage = z.infer<typeof FullUsageSchema>;
 
 const MONTHS: Record<string, number> = {
   jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11,
@@ -237,26 +230,25 @@ export function classifyEnforcedLimit(row: TranscriptRow, switchModels: string[]
   return family ? { kind: "model", family, resetsAt: null } : null;
 }
 
-export function parseUsageTextFull(text: string, now = Date.now()): FullUsage | null {
+export function parseUsageText(text: string, now = Date.now()): UsageWindows | null {
   if (!text) return null;
   const re = /current (session|week \(([^)]+)\)):\s*(\d+)\s*%(?:(?:(?!current)[^\n])*?\bresets\s+([A-Z][a-z]{2,8}\s+\d{1,2}(?:[^\S\n]+at[^\S\n]+|,[^\S\n]*)\d{1,2}(?::\d{2})?\s*[ap]m\s*\([^)]+\)))?/gi;
-  let session: UsageWindow | null = null;
-  let weekAll: UsageWindow | null = null;
+  let fiveHour: UsageWindow | null = null;
+  let sevenDay: UsageWindow | null = null;
   const perModel: Record<string, UsageWindow> = {};
   for (let m = re.exec(text); m !== null; m = re.exec(text)) {
     const window: UsageWindow = { usedPercentage: Number(m[3]), resetsAt: m[4] ? parseResetClock(m[4], now) : null };
-    if (m[1]!.toLowerCase() === "session") session = window;
-    else if (/^all models$/i.test(m[2]!.trim())) weekAll = window;
+    if (m[1]!.toLowerCase() === "session") fiveHour = window;
+    else if (/^all models$/i.test(m[2]!.trim())) sevenDay = window;
     else perModel[m[2]!.trim()] = window;
   }
-  if (!session || !weekAll) return null;
-  return { session, weekAll, perModel };
+  if (!fiveHour || !sevenDay) return null;
+  return { fiveHour, sevenDay, perModel };
 }
 
-export function parseUsageText(text: string, now = Date.now()): UsageWindows | null {
-  const f = parseUsageTextFull(text, now);
-  if (!f) return null;
-  return { fiveHour: f.session, sevenDay: f.weekAll };
+export function keepRows(next: UsageWindows, prev: UsageWindows | undefined, at: number): UsageWindows {
+  if (Object.keys(next.perModel).length > 0 && (prev?.rowsAt == null || prev.rowsAt <= at)) return { ...next, rowsAt: at };
+  return { ...next, perModel: prev?.perModel ?? {}, ...(prev?.rowsAt != null ? { rowsAt: prev.rowsAt } : {}) };
 }
 
 export const CRED_ENV_OVERRIDES = [
@@ -298,7 +290,7 @@ async function spawnClaudeBounded(cmd: string[], env: Record<string, string>): P
   }
 }
 
-async function probeUsageOnce(env: Record<string, string>, now: number): Promise<FullUsage | null> {
+async function probeUsageOnce(env: Record<string, string>, now: number): Promise<UsageWindows | null> {
   let out: string;
   try {
     const r = await spawnClaudeBounded([resolveRealClaude(), "-p", "/usage", "--output-format", "json"], env);
@@ -318,12 +310,12 @@ async function probeUsageOnce(env: Record<string, string>, now: number): Promise
 
   const j = z.object({ result: z.string() }).safeParse((() => { try { return JSON.parse(out); } catch { return null; } })());
   const text = j.success ? j.data.result : out;
-  const full = parseUsageTextFull(text, now);
+  const full = parseUsageText(text, now);
   if (!full) {
     log("usage.probe_unparsed", { sample: text.trim().slice(0, 200) });
   } else {
     const clockLine = text.split("\n").find((l) => /^current /i.test(l) && /\bresets\b/i.test(l));
-    if (clockLine && [full.session, full.weekAll, ...Object.values(full.perModel)].every((w) => w.resetsAt === null)) {
+    if (clockLine && [full.fiveHour, full.sevenDay, ...Object.values(full.perModel)].every((w) => w.resetsAt === null)) {
       log("usage.reset_clock_unparsed", { sample: clockLine.slice(0, 120) });
     }
   }
@@ -344,7 +336,7 @@ function probeEnv(configDir?: string): Record<string, string> {
   return env;
 }
 
-export async function probeUsage(configDir?: string, now = Date.now(), opts: { retries?: number } = {}): Promise<FullUsage | null> {
+export async function probeUsage(configDir?: string, now = Date.now(), opts: { retries?: number } = {}): Promise<UsageWindows | null> {
   const env = probeEnv(configDir);
 
   for (let attempt = 0; ; attempt++) {

@@ -8,14 +8,14 @@ import { withClaudeRefreshLock } from "./claudelock.ts";
 import { withLock } from "./lock.ts";
 import { readOAuthAccount } from "./claudejson.ts";
 import { refreshCredential, isAccessTokenExpiring, isDeadCredential, fetchTokenIdentity, describeIdentity, IdentityUnavailableError, InvalidGrantError } from "./oauth.ts";
-import { FullUsageSchema, probeUsage } from "./usage.ts";
+import { keepRows, probeUsage } from "./usage.ts";
 import { POST_SWAP_COOLDOWN_MS, loadAccounts, loadLastSwapAt, saveAccounts } from "./state.ts";
 import { keepRotatedPair } from "./swap.ts";
 import { log } from "./log.ts";
-import { CredentialBlobSchema, TokenIdentitySchema, type Account, type Config, type OAuthCreds, type TokenIdentity } from "./types.ts";
+import { CredentialBlobSchema, TokenIdentitySchema, UsageWindowsSchema, type Account, type Config, type OAuthCreds, type TokenIdentity } from "./types.ts";
 
 const SampleOutcomeSchema = z.discriminatedUnion("ok", [
-  z.object({ ok: z.literal(true), usage: FullUsageSchema }),
+  z.object({ ok: z.literal(true), usage: UsageWindowsSchema }),
   z.object({ ok: z.literal(false), reason: z.string() }),
 ]);
 export type SampleOutcome = z.infer<typeof SampleOutcomeSchema>;
@@ -246,12 +246,8 @@ export async function sampleOldestParked(cfg: Config): Promise<void> {
       const idx = loadAccounts();
       const stored = idx.accounts.find((a) => a.accountUuid === account.accountUuid);
       if (stored && outcome.ok && (stored.lastUsageAt == null || startedAt > stored.lastUsageAt)) {
-        stored.lastUsage = { fiveHour: outcome.usage.session, sevenDay: outcome.usage.weekAll };
+        stored.lastUsage = keepRows(outcome.usage, stored.lastUsage, startedAt);
         stored.lastUsageAt = startedAt;
-        if (Object.keys(outcome.usage.perModel).length > 0) {
-          stored.lastPerModel = outcome.usage.perModel;
-          stored.lastPerModelAt = startedAt;
-        }
         saveAccounts(idx);
       }
       log(outcome.ok ? "sample.parked_ok" : "sample.parked_failed", {
