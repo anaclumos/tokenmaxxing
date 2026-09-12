@@ -1,6 +1,5 @@
 import { existsSync, lstatSync, readFileSync, realpathSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { delay } from "es-toolkit";
 import { z } from "zod";
 import { writeFileAtomic } from "./atomic.ts";
 import { http } from "./http.ts";
@@ -95,16 +94,12 @@ async function updateToLatest(root: string): Promise<void> {
     cwd: paths.home,
     env: { ...process.env, BUN_INSTALL_GLOBAL_DIR: root },
     stdout: "ignore",
-    stderr: "pipe",
+    stderr: "inherit",
     timeout: INSTALL_DEADLINE_MS,
     killSignal: "SIGKILL",
   });
-  const stderrText = new Response(child.stderr).text();
   await child.exited;
-  const stderr = await Promise.race([stderrText, delay(1_000).then(() => "")]);
-  if (child.exitCode !== 0) {
-    throw new Error(`bun add -g tokenmaxxing@${latest.version} exited ${child.signalCode ?? child.exitCode}: ${stderr.trim().slice(0, 240)}`);
-  }
+  if (child.exitCode !== 0) throw new Error(`bun add -g tokenmaxxing@${latest.version} exited ${child.signalCode ?? child.exitCode}`);
   const installed = installedVersion(root);
   if (installed !== latest.version) throw new Error(`bun add -g tokenmaxxing@${latest.version} left ${installed} installed`);
   log("update.done", { from: current, to: latest.version });
