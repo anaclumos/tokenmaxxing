@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, readdirSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { maxBy } from "es-toolkit";
 import { z } from "zod";
 import { paths } from "../lib/paths.ts";
@@ -152,9 +152,10 @@ function consumableMarker(marker: string, gate: MarkerGate): z.infer<typeof Resp
   try {
     m = RespawnMarkerSchema.parse(JSON.parse(readFileSync(marker, "utf8")));
   } catch (e) {
-    rmSync(marker, { force: true });
     log("supervisor.marker_invalid", { err: e instanceof Error ? e.message : String(e) });
-    return null;
+    throw new Error(
+      `${marker} is corrupt (unparsable JSON or off-schema) - the session was stopped instead of guessing whether the pool is depleted; inspect the marker, then run \`claude --resume ${basename(marker)}\` (a fresh launch clears it)`,
+    );
   }
   if (m.launchedAt !== undefined && m.launchedAt !== gate.launchedAt) {
     rmSync(marker, { force: true });
@@ -270,15 +271,18 @@ export async function runSupervisor(argv: string[]): Promise<number> {
       return false;
     })();
     const exited = child.exited.then(() => { done = true; return "exit" as const; });
-    const winner = await Promise.race([exited, markerWatch.then((m) => (m ? "marker" : "exit"))]);
-
-    if (winner === "marker") {
+    try {
+      const winner = await Promise.race([exited, markerWatch.then((m) => (m ? "marker" : "exit"))]);
+      if (winner === "marker") child.kill();
+    } catch (e) {
       child.kill();
+      throw e;
+    } finally {
+      await child.exited;
+      done = true;
+      await markerWatch.catch(() => {});
+      restoreTermios(savedTermios);
     }
-    await child.exited;
-    done = true;
-    await markerWatch.catch(() => {});
-    restoreTermios(savedTermios);
 
     const m = existsSync(marker) ? consumableMarker(marker, gate) : null;
     if (m) {
