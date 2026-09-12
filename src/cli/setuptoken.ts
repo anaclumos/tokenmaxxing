@@ -11,7 +11,7 @@ import { c, emitError, emitJson } from "./render.ts";
 
 const TOKEN_BEGIN_MARKER = "Your OAuth token (valid for";
 const TOKEN_END_MARKER = "Store this token securely";
-const USAGE = "usage: tokenmaxxing setup-token [--print] | tokenmaxxing setup-token rm <label>";
+const USAGE = "usage: tokenmaxxing setup-token [--print] | tokenmaxxing setup-token rm <label|uuid>";
 
 export function extractSetupToken(output: string): string | null {
   const lines = Bun.stripANSI(output).split("\n").map((line) => line.trim());
@@ -58,23 +58,24 @@ function currentTokens(tokens: SetupToken[], accounts: Account[]): { label: stri
   });
 }
 
-function rmToken(label: string, json: boolean): number {
+function rmToken(selector: string, json: boolean): number {
   const store = loadSetupTokens();
   const accounts = loadAccounts().accounts;
-  const pooled = accounts.find((a) => a.label === label);
+  const pooled = accounts.find((a) => a.label === selector);
+  const orphan = (t: SetupToken) => !accounts.some((a) => a.accountUuid === t.accountUuid);
   const remaining = store.tokens.filter((t) =>
-    pooled ? t.accountUuid !== pooled.accountUuid : t.label !== label || accounts.some((a) => a.accountUuid === t.accountUuid),
+    pooled ? t.accountUuid !== pooled.accountUuid : t.accountUuid !== selector && (t.label !== selector || !orphan(t)),
   );
   if (remaining.length === store.tokens.length) {
-    emitError({ json, message: `no setup token stored for "${label}"` });
+    emitError({ json, message: `no setup token stored for "${selector}"` });
     return 1;
   }
   saveSetupTokens({ ...store, tokens: remaining });
   if (json) {
-    emitJson({ ok: true, removed: label, remaining: remaining.map((t) => t.label) });
+    emitJson({ ok: true, removed: selector, remaining: remaining.map((t) => t.label) });
     return 0;
   }
-  console.log(`removed the setup token for ${label} (local only: Claude Code documents no revocation for setup tokens)`);
+  console.log(`removed the setup token for ${selector} (local only: Claude Code documents no revocation for setup tokens)`);
   return 0;
 }
 
@@ -126,7 +127,9 @@ export async function cmdSetupToken(args: string[], json = false): Promise<numbe
     return 1;
   }
   const tokens = currentTokens(store.tokens, idx.accounts);
-  const orphaned = store.tokens.filter((t) => !idx.accounts.some((a) => a.accountUuid === t.accountUuid)).map((t) => t.label);
+  const orphaned = store.tokens
+    .filter((t) => !idx.accounts.some((a) => a.accountUuid === t.accountUuid))
+    .map((t) => ({ label: t.label, accountUuid: t.accountUuid }));
   if (tokens.length === 0) {
     emitError({ json, message: "no stored setup token belongs to a pooled account - run `tokenmaxxing setup-token` to mint them" });
     return 1;
@@ -138,7 +141,9 @@ export async function cmdSetupToken(args: string[], json = false): Promise<numbe
     return 0;
   }
   console.log();
-  if (orphaned.length > 0) console.log(c.dim(`left out of the secret (no longer in the pool): ${orphaned.join(", ")}; \`setup-token rm <label>\` drops one`));
+  if (orphaned.length > 0) {
+    console.log(c.dim(`left out of the secret (no longer in the pool): ${orphaned.map((t) => `${t.label} (${t.accountUuid})`).join(", ")}; \`setup-token rm <label|uuid>\` drops one`));
+  }
   console.log(`${c.bold("TOKENMAXXING_TOKENS")} ${c.dim("(user-scoped Runtime Secret at cursor.com/dashboard/cloud-agents)")}`);
   console.log(secret);
   if (bytes > CURSOR_SECRET_VALUE_CAP_BYTES) {

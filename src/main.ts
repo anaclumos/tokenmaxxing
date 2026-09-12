@@ -55,7 +55,7 @@ function printHelp(): void {
   ${c.cyan("tokenmaxxing rename")} [--codex] <sel> <label>
   ${c.cyan("tokenmaxxing rm")} [--codex] <sel>
   ${c.cyan("tokenmaxxing uninstall")}  remove supervisor + settings entries
-  ${c.cyan("tokenmaxxing setup-token")} [--print | rm <label>]  Cursor Cloud only: mint one \`claude setup-token\` per pooled account (browser sign-in each) and print the TOKENMAXXING_TOKENS secret value; ${c.cyan("--print")} prints the stored set, ${c.cyan("rm")} drops one
+  ${c.cyan("tokenmaxxing setup-token")} [--print | rm <label|uuid>]  Cursor Cloud only: mint one \`claude setup-token\` per pooled account (browser sign-in each) and print the TOKENMAXXING_TOKENS secret value; ${c.cyan("--print")} prints the stored set, ${c.cyan("rm")} drops one
   ${c.cyan("tokenmaxxing cursor init")} [dir]  write the Claude relay subagent (.cursor/agents/claude.md) and .cursor/environment.json into a repo
   ${c.cyan("tokenmaxxing cloud run")} [--session <id>] [--max-turns <n>] "<prompt>"  on a Cursor Cloud VM: run claude -p on a setup token from TOKENMAXXING_TOKENS, rotate to the next token on a usage limit
 
