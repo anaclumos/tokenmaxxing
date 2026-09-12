@@ -246,8 +246,9 @@ export function parseUsageText(text: string, now = Date.now()): UsageWindows | n
   return { fiveHour, sevenDay, perModel };
 }
 
-export function keepRows(next: UsageWindows, prev: UsageWindows | undefined): UsageWindows {
-  return Object.keys(next.perModel).length > 0 ? next : { ...next, perModel: prev?.perModel ?? {} };
+export function keepRows(next: UsageWindows, prev: UsageWindows | undefined, at: number): UsageWindows {
+  if (Object.keys(next.perModel).length > 0) return { ...next, rowsAt: at };
+  return { ...next, perModel: prev?.perModel ?? {}, ...(prev?.rowsAt != null ? { rowsAt: prev.rowsAt } : {}) };
 }
 
 export const CRED_ENV_OVERRIDES = [

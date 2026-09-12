@@ -246,7 +246,7 @@ export async function sampleOldestParked(cfg: Config): Promise<void> {
       const idx = loadAccounts();
       const stored = idx.accounts.find((a) => a.accountUuid === account.accountUuid);
       if (stored && outcome.ok && (stored.lastUsageAt == null || startedAt > stored.lastUsageAt)) {
-        stored.lastUsage = keepRows(outcome.usage, stored.lastUsage);
+        stored.lastUsage = keepRows(outcome.usage, stored.lastUsage, startedAt);
         stored.lastUsageAt = startedAt;
         saveAccounts(idx);
       }

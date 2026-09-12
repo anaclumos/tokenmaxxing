@@ -1,7 +1,7 @@
 import { sortBy } from "es-toolkit";
 import { z } from "zod";
 import { readOAuthAccount } from "../lib/claudejson.ts";
-import { loadAccounts, loadConfig, loadLastSwapAt, loadUsage, writeUsage } from "../lib/state.ts";
+import { loadAccounts, loadConfig, loadLastSwapAt, writeUsage } from "../lib/state.ts";
 import { familyTokens, matchedFamily, parseStatusLineStdin, parseStatusLineModel } from "../lib/usage.ts";
 import { earliestReset, weeklyExpiry } from "../lib/picker.ts";
 import { worktreeName } from "../lib/worktree.ts";
@@ -125,7 +125,7 @@ export async function runStatusline(): Promise<number> {
     const windows = obj == null ? null : parseStatusLineStdin(obj);
     const lastSwapAt = loadLastSwapAt();
     if (windows && (lastSwapAt == null || now - lastSwapAt >= ADOPTION_GRACE_MS)) {
-      const state: UsageState = { ...windows, account, ts: now, model: parseStatusLineModel(obj) };
+      const state: UsageState = { fiveHour: windows.fiveHour, sevenDay: windows.sevenDay, account, ts: now, model: parseStatusLineModel(obj) };
       writeUsage(state);
     }
   } catch {
@@ -134,13 +134,13 @@ export async function runStatusline(): Promise<number> {
   let line: string;
   try {
     const cfg = loadConfig();
-    const usage = loadUsage();
+    const accounts = loadAccounts();
     const stdin = StatusLineStdinSchema.safeParse(obj);
     const dir = stdin.success ? (stdin.data.workspace?.current_dir ?? stdin.data.workspace?.project_dir ?? null) : null;
     const colorterm = z.string().optional().parse(process.env.COLORTERM);
     const ctx: RenderCtx = {
-      accounts: loadAccounts(),
-      perModel: usage && usage.account === account ? usage.perModel : {},
+      accounts,
+      perModel: accounts.accounts.find((a) => a.accountUuid === account)?.lastUsage?.perModel ?? {},
       switchModels: cfg.policy.switchModels,
       worktree: dir == null ? null : worktreeName(dir),
       liveAccount: account,

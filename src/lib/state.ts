@@ -198,14 +198,12 @@ export const POST_SWAP_COOLDOWN_MS = 45_000;
 const USAGE_TS_REFRESH_MS = 10 * 60_000;
 const SAMPLED_AT_REFRESH_MS = 30_000;
 
-export function writeUsage(input: UsageState, opts: { stamp?: boolean } = {}): UsageState {
+export function writeUsage(input: UsageState, opts: { stamp?: boolean } = {}): boolean {
   const prev = loadUsage();
-  const same = prev != null && prev.account === input.account ? prev : null;
   const stamp = opts.stamp === true;
-  const sampledAt = stamp ? (same ? (same.sampledAt ?? same.ts) : input.sampledAt) : (input.sampledAt ?? input.ts);
-  const perModel = Object.keys(input.perModel).length > 0 ? input.perModel : (same?.perModel ?? {});
-  const probedAt = input.probedAt ?? same?.probedAt;
-  const next: UsageState = { ...input, perModel, ...(sampledAt != null ? { sampledAt } : {}), ...(probedAt != null ? { probedAt } : {}) };
+  const carriedSampleAt = prev != null && prev.account === input.account ? (prev.sampledAt ?? prev.ts) : undefined;
+  const sampledAt = stamp ? (carriedSampleAt ?? input.sampledAt) : input.ts;
+  const next: UsageState = { ...input, ...(sampledAt != null ? { sampledAt } : {}) };
   if (
     prev &&
     isEqual({ ...prev, ts: 0, sampledAt: 0 }, { ...next, ts: 0, sampledAt: 0 }) &&
@@ -218,8 +216,8 @@ export function writeUsage(input: UsageState, opts: { stamp?: boolean } = {}): U
       const errno = z.object({ code: z.string() }).safeParse(e);
       if (!errno.success || errno.data.code !== "ENOENT") throw e;
     }
-    return prev;
+    return false;
   }
   writeFileAtomic(paths.usageJson, JSON.stringify(next));
-  return next;
+  return true;
 }

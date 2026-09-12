@@ -8,8 +8,8 @@ Everything lives under `~/.config/tokenmaxxing/`. Override with `TOKENMAXXING_HO
 | Path | What it holds |
 |---|---|
 | `config.json` | Your configuration (sparse; defaults apply per field) |
-| `accounts.json` | Non-secret index of pooled Claude accounts: labels, ids, cached usage windows. Never tokens |
-| `usage.json` | The live account's usage snapshot: the statusline tee's aggregate windows plus the per-model weekly caps the `/usage` probe adds as rows on the same account; its mtime is the feed's liveness heartbeat |
+| `accounts.json` | Non-secret index of pooled Claude accounts: labels, ids, cached usage windows (aggregate and per-model caps). Never tokens |
+| `usage.json` | The statusline tee's aggregate window snapshot; its mtime is the feed's liveness heartbeat |
 | `lastswap.json` | Epoch timestamp of the last swap; drives the 45-second cooldown |
 | `depleted.json` | The recorded depleted-pool wait, replayed by sibling hooks until the reset passes, the live seat moves, or any swap completes |
 | `lock` | The `flock` file that serializes swaps |

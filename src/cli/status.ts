@@ -101,7 +101,7 @@ async function collectClaude(input: { cfg: Config; now: number }): Promise<Statu
         if (isActive && liveOAuth?.organizationRateLimitTier != null) a.rateLimitTier = liveOAuth.organizationRateLimitTier;
         const teeCurrent = teeAt != null && (a.lastUsageAt == null || teeAt >= a.lastUsageAt);
         const fromStatusLine: UsageWindows | null =
-          isActive && live && teeCurrent && live.account === a.accountUuid ? { fiveHour: live.fiveHour, sevenDay: live.sevenDay, perModel: live.perModel } : null;
+          isActive && live && teeCurrent && live.account === a.accountUuid ? { fiveHour: live.fiveHour, sevenDay: live.sevenDay, perModel: {} } : null;
         const viaTee = fromStatusLine != null;
         const outcome: SampleOutcome = fromStatusLine
           ? { ok: true, usage: fromStatusLine }
@@ -110,8 +110,8 @@ async function collectClaude(input: { cfg: Config; now: number }): Promise<Statu
             : await probeParkedUsage(a);
         samples.set(a.accountUuid, { outcome, viaTee });
         if (!outcome.ok) return;
-        a.lastUsage = keepRows(outcome.usage, a.lastUsage);
         a.lastUsageAt = viaTee && teeAt != null ? (live?.sampledAt ?? teeAt) : Date.now();
+        a.lastUsage = keepRows(outcome.usage, a.lastUsage, a.lastUsageAt);
       };
       const activeAccount = idx.accounts.find((a) => liveAccount != null && liveAccount === a.accountUuid) ?? null;
       if (activeAccount) await probeOne(activeAccount);
@@ -130,8 +130,7 @@ async function collectClaude(input: { cfg: Config; now: number }): Promise<Statu
   const ordered = sortBy(idx.accounts, [(a) => (a.needsReauth ? 1 : 0), (a) => earliestReset(a, now)]);
   const accounts = ordered.map((a): ClaudeStatusAccount => {
     const sampled = samples.get(a.accountUuid) ?? { outcome: { ok: false, reason: "not sampled" }, viaTee: false };
-    const usage = sampled.outcome.ok ? sampled.outcome.usage : undefined;
-    const aggregate = usage ?? a.lastUsage;
+    const aggregate = a.lastUsage;
     const perModel = aggregate?.perModel ?? {};
     return {
       label: a.label,

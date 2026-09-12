@@ -31,22 +31,25 @@ export const UsageWindowSchema = z.object({
 });
 export type UsageWindow = z.infer<typeof UsageWindowSchema>;
 
-export const UsageWindowsSchema = z.object({
+const AggregateWindowsSchema = z.object({
   fiveHour: UsageWindowSchema,
   sevenDay: UsageWindowSchema,
+});
+
+export const UsageWindowsSchema = AggregateWindowsSchema.extend({
   perModel: z.record(z.string(), UsageWindowSchema).default({}),
+  rowsAt: z.number().optional(),
 });
 export type UsageWindows = z.infer<typeof UsageWindowsSchema>;
 
 const ModelInfoSchema = z.object({ id: z.string(), display: z.string() });
 export type ModelInfo = z.infer<typeof ModelInfoSchema>;
 
-export const UsageStateSchema = UsageWindowsSchema.extend({
+export const UsageStateSchema = AggregateWindowsSchema.extend({
   account: z.string().nullable(),
   ts: z.number(),
   model: ModelInfoSchema.nullable().default(null),
   sampledAt: z.number().optional(),
-  probedAt: z.number().optional(),
 });
 export type UsageState = z.infer<typeof UsageStateSchema>;
 

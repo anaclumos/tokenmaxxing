@@ -23,6 +23,7 @@ export async function cmdAdd(): Promise<number> {
     await writeItem(parkedTarget(keychainItem), claudeAiOauthOnly(blobRaw));
     const idx = loadAccounts();
     const existing = idx.accounts.find((a) => a.accountUuid === uuid);
+    const sampledAt = Date.now();
     const fresh: Account = {
       accountUuid: uuid,
       email: oauthAccount.emailAddress,
@@ -34,8 +35,8 @@ export async function cmdAdd(): Promise<number> {
       subscriptionType: blob.claudeAiOauth.subscriptionType,
       rateLimitTier: blob.claudeAiOauth.rateLimitTier,
       needsReauth: false,
-      lastUsage: sampled ? keepRows(sampled, existing?.lastUsage) : existing?.lastUsage,
-      lastUsageAt: sampled ? Date.now() : existing?.lastUsageAt,
+      lastUsage: sampled ? keepRows(sampled, existing?.lastUsage, sampledAt) : existing?.lastUsage,
+      lastUsageAt: sampled ? sampledAt : existing?.lastUsageAt,
     };
     if (existing) Object.assign(existing, fresh);
     else idx.accounts.push(fresh);

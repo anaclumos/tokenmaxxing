@@ -102,8 +102,8 @@ async function reauthOne(target: Account): Promise<boolean> {
     account.rateLimitTier = blob.claudeAiOauth.rateLimitTier;
     account.needsReauth = false;
     if (sampled) {
-      account.lastUsage = keepRows(sampled, account.lastUsage);
       account.lastUsageAt = Date.now();
+      account.lastUsage = keepRows(sampled, account.lastUsage, account.lastUsageAt);
     }
     saveAccounts(idx);
     return idx.activeAccountUuid === target.accountUuid;

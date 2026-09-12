@@ -28,22 +28,26 @@ function liveUsed(input: { window: UsageWindow; windowMs: number; sampledAt: num
   return w.usedPercentage;
 }
 
-function capForFamily(u: UsageState, family: string, now: number): UsageWindow | undefined {
-  const rows = Object.entries(u.perModel)
-    .filter(([k]) => familyTokens(k).includes(family))
-    .map(([, w]) => w);
-  return maxBy(rows, (w) => liveUsed({ window: w, windowMs: WEEK_MS, sampledAt: u.sampledAt ?? u.ts, now }));
+function rowsSampledAt(account: Account, now: number): number {
+  return account.lastUsage?.rowsAt ?? account.lastUsageAt ?? now;
 }
 
-function isOver(u: UsageState | null, account: string | null, bars: Thresholds, cfg: Config, now: number): boolean {
-  if (!u || !account || u.account !== account) return false;
+function capForFamily(account: Account, family: string, now: number): UsageWindow | undefined {
+  const rows = Object.entries(account.lastUsage?.perModel ?? {})
+    .filter(([k]) => familyTokens(k).includes(family))
+    .map(([, w]) => w);
+  return maxBy(rows, (w) => liveUsed({ window: w, windowMs: WEEK_MS, sampledAt: rowsSampledAt(account, now), now }));
+}
+
+function isOver(u: UsageState | null, account: Account | undefined, bars: Thresholds, cfg: Config, now: number): boolean {
+  if (!u || !account || u.account !== account.accountUuid) return false;
   if (
     liveUsed({ window: u.fiveHour, windowMs: FIVE_HOURS_MS, sampledAt: u.ts, now }) >= bars.session ||
     liveUsed({ window: u.sevenDay, windowMs: WEEK_MS, sampledAt: u.ts, now }) >= bars.weekly
   ) return true;
   for (const family of gatedFamilies(u.model, cfg.policy.switchModels)) {
-    const cap = capForFamily(u, family, now);
-    if (cap && liveUsed({ window: cap, windowMs: WEEK_MS, sampledAt: u.sampledAt ?? u.ts, now }) >= bars.weekly) return true;
+    const cap = capForFamily(account, family, now);
+    if (cap && liveUsed({ window: cap, windowMs: WEEK_MS, sampledAt: rowsSampledAt(account, now), now }) >= bars.weekly) return true;
   }
   return false;
 }
@@ -76,25 +80,39 @@ async function loadFreshSnapshots(cfg: Config, account: string | null, now: numb
   let u = snap?.state ?? null;
   let uAt = snap?.at ?? null;
   const ttl = cfg.policy.usagePollTtlMs;
-  const probeAttempted = u != null && u.account === account && u.probedAt != null && now - u.probedAt <= ttl;
-  if (account && !probeAttempted && (!usageFresh(u, uAt, account, ttl, now) || needsPerModel(u, cfg))) {
+  const stored = loadAccounts().accounts.find((a) => a.accountUuid === account);
+  const probeAttempted = stored?.lastProbeAt != null && now - stored.lastProbeAt <= ttl;
+  if (account && stored && !probeAttempted && (!usageFresh(u, uAt, account, ttl, now) || needsPerModel(u, cfg))) {
     const full = await probeUsage();
     const ts = Date.now();
     if (readOAuthAccount()?.accountUuid === account) {
-      const teed = loadUsageSnapshot();
-      const carrier = teed && usageFresh(teed.state, teed.at, account, ttl, ts) ? teed : null;
       if (full) {
-        u = writeUsage(carrier ? { ...carrier.state, perModel: full.perModel, ts, probedAt: ts } : { ...full, account, ts, model: null, probedAt: ts });
-        uAt = carrier ? carrier.at : ts;
-        const expected = gatedFamilies(u.model, cfg.policy.switchModels);
+        const teed = loadUsageSnapshot();
+        if (teed && usageFresh(teed.state, teed.at, account, ttl, ts)) {
+          u = teed.state;
+          uAt = teed.at;
+        } else {
+          u = { fiveHour: full.fiveHour, sevenDay: full.sevenDay, account, ts, model: null };
+          writeUsage(u);
+          uAt = ts;
+        }
+        const expected = gatedFamilies(u?.model ?? null, cfg.policy.switchModels);
         const rows = Object.keys(full.perModel);
         if (expected.length > 0 && !expected.some((f) => rows.some((k) => familyTokens(k).includes(f)))) {
           log("usage.no_permodel_row", { families: expected.join(","), rows: rows.join(",") });
         }
-      } else if (teed && teed.state.account === account) {
-        u = writeUsage({ ...teed.state, ts, probedAt: ts });
-        uAt = teed.at;
       }
+      await withLock(paths.lockFile, () => {
+        const idx = loadAccounts();
+        const a = idx.accounts.find((x) => x.accountUuid === account);
+        if (!a) return;
+        a.lastProbeAt = ts;
+        if (full) {
+          a.lastUsage = keepRows(full, a.lastUsage, ts);
+          a.lastUsageAt = ts;
+        }
+        saveAccounts(idx);
+      });
     }
   }
   return { u, uAt };
@@ -113,10 +131,10 @@ export async function evaluateAndMaybeSwap(now = Date.now(), anticipatory = fals
   const bars = thresholdBars(cfg);
 
   const { u: teeUsage, uAt } = await loadFreshSnapshots(cfg, activeAccount, now);
-  const pool = loadAccounts();
-  const usage = freshest(teeUsage, uAt, pool.accounts.find((a) => a.accountUuid === activeAccount));
+  const stored = loadAccounts().accounts.find((a) => a.accountUuid === activeAccount);
+  const usage = freshest(teeUsage, uAt, stored);
 
-  if (!enforced0 && !isOver(usage, activeAccount, bars, cfg, now)) {
+  if (!enforced0 && !isOver(usage, stored, bars, cfg, now)) {
     const measured = usage != null && activeAccount != null && usage.account === activeAccount;
     if (!measured) {
       const replay = depletedReplay(now);
@@ -138,15 +156,15 @@ export async function evaluateAndMaybeSwap(now = Date.now(), anticipatory = fals
     }
 
     if (active && tee && tee.state.account === account2 && (active.lastUsageAt == null || tee.at >= active.lastUsageAt)) {
-      active.lastUsage = keepRows({ fiveHour: tee.state.fiveHour, sevenDay: tee.state.sevenDay, perModel: tee.state.perModel }, active.lastUsage);
       active.lastUsageAt = tee.state.sampledAt ?? tee.at;
+      active.lastUsage = keepRows({ fiveHour: tee.state.fiveHour, sevenDay: tee.state.sevenDay, perModel: {} }, active.lastUsage, active.lastUsageAt);
       saveAccounts(idx);
     }
 
     const gated = gatedFamilies(u2?.model ?? null, cfg.policy.switchModels);
     const switchFamilies = enforced2?.family && !gated.includes(enforced2.family) ? [...gated, enforced2.family] : gated;
 
-    if (!enforced2 && !isOver(u2, account2, bars, cfg, now)) {
+    if (!enforced2 && !isOver(u2, active, bars, cfg, now)) {
       return depletedReplay(now) ?? { swapped: false, account: null, reason: "raced-already-swapped" };
     }
 
@@ -248,45 +266,38 @@ export async function recordEnforcedLimit(input: { limit: EnforcedClass; account
     const priorSame = prior && prior.account === accountUuid ? prior : null;
     const idx = loadAccounts();
     const account = idx.accounts.find((a) => a.accountUuid === accountUuid);
-    const carrier = priorSame ?? (account?.lastUsage ? { ...account.lastUsage, model: null } : null);
     if (limit.kind === "model") {
-      const rowsFor = (rows: Record<string, UsageWindow>) => Object.entries(rows).filter(([k]) => familyTokens(k).includes(limit.family)).map(([, w]) => w);
-      const knownReset = [...rowsFor(priorSame?.perModel ?? {}), ...rowsFor(account?.lastUsage?.perModel ?? {})].map((w) => w.resetsAt).find((r): r is number => r != null) ?? null;
+      const rows = account?.lastUsage?.perModel ?? {};
+      const knownReset = Object.entries(rows).filter(([k]) => familyTokens(k).includes(limit.family)).map(([, w]) => w.resetsAt).find((r): r is number => r != null) ?? null;
       const weeklyReset = priorSame?.sevenDay.resetsAt ?? account?.lastUsage?.sevenDay.resetsAt ?? null;
       const resetsAt = limit.resetsAt ?? nextWeeklyReset(knownReset ?? weeklyReset, now);
-      if (carrier) {
-        writeUsage(
-          {
-            ...carrier,
-            ...(resetsAt == null ? { sampledAt: now } : {}),
-            perModel: { ...carrier.perModel, [limit.family]: { usedPercentage: 100, resetsAt } },
-            account: accountUuid,
-            ts: now,
-            probedAt: now,
-          },
-          { stamp: resetsAt != null },
-        );
-      } else if (account) {
+      if (!account) return { outcome: "no-carrier", resetsAt };
+      if (account.lastUsage) {
+        account.lastUsage = { ...account.lastUsage, perModel: { ...rows, [limit.family]: { usedPercentage: 100, resetsAt } }, rowsAt: now };
+      } else {
         account.enforcedUntil = resetsAt ?? now + WEEK_MS;
-        saveAccounts(idx);
-      } else return { outcome: "no-carrier", resetsAt };
+      }
+      account.lastProbeAt = now;
+      saveAccounts(idx);
       log("usage.enforced_limit", { kind: limit.kind, family: limit.family, resetsAt });
       return { outcome: "stamped", resetsAt };
     }
-    if (account && limit.resetsAt != null) {
-      account.enforcedUntil = limit.resetsAt;
+    if (account) {
+      account.lastProbeAt = now;
+      if (limit.resetsAt != null) account.enforcedUntil = limit.resetsAt;
       saveAccounts(idx);
     }
+    const carrier = priorSame ?? (account?.lastUsage ? { ...account.lastUsage, model: null } : null);
     if (!carrier) return { outcome: "no-carrier", resetsAt: limit.resetsAt };
     const window: UsageWindow = { usedPercentage: 100, resetsAt: limit.resetsAt };
     writeUsage({
-      ...carrier,
+      ...(priorSame ?? {}),
       ...(priorSame == null && account?.lastUsageAt != null ? { sampledAt: account.lastUsageAt } : {}),
       fiveHour: limit.kind === "session" ? window : carrier.fiveHour,
       sevenDay: limit.kind === "weekly" ? window : carrier.sevenDay,
       account: accountUuid,
       ts: now,
-      probedAt: now,
+      model: carrier.model,
     }, { stamp: true });
     log("usage.enforced_limit", { kind: limit.kind, resetsAt: limit.resetsAt });
     return { outcome: "stamped", resetsAt: limit.resetsAt };
