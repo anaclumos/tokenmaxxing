@@ -82,9 +82,10 @@ export type AccountsIndex = z.infer<typeof AccountsIndexSchema>;
 
 export const EnforcedLimitSchema = z.object({
   account: z.string(),
+  kind: z.enum(["session", "weekly", "model"]),
   family: z.string().nullable(),
   resetsAt: z.number().nullable(),
-  windowMs: z.number(),
+  blind: z.boolean(),
 });
 export type EnforcedLimit = z.infer<typeof EnforcedLimitSchema>;
 
@@ -128,7 +129,6 @@ export const RespawnMarkerSchema = z.object({
   ts: z.number(),
   waitUntil: z.number(),
   sessionId: z.string(),
-  prompt: z.string().optional(),
   launchedAt: z.number().optional(),
 });
 
