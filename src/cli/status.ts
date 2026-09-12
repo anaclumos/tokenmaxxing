@@ -1,4 +1,4 @@
-import { chunk, sampleSize, sortBy } from "es-toolkit";
+import { chunk, sortBy } from "es-toolkit";
 import { z } from "zod";
 import { loadAccounts, loadConfig, loadUsage, loadUsageSnapshot, loadModelUsage, saveAccounts } from "../lib/state.ts";
 import { readOAuthAccount } from "../lib/claudejson.ts";
@@ -32,9 +32,6 @@ const ClaudeStatusAccountSchema = z.object({
   perModel: z.record(z.string(), UsageWindowSchema),
   usageAt: z.number().nullable(),
   sample: SampleReportSchema,
-  pingError: z.string().nullable(),
-  pingRejected: z.boolean(),
-  pinged: z.boolean(),
 });
 type ClaudeStatusAccount = z.infer<typeof ClaudeStatusAccountSchema>;
 
@@ -86,31 +83,14 @@ function currentCodexWindow(w: CodexWindow, now: number): CodexWindow {
   return { ...currentWindow(w, !isSessionWindow({ window: w }), now), windowSeconds: w.windowSeconds };
 }
 
-function pickForPing(accounts: Account[], pingCount: number | undefined): Account[] {
-  if (pingCount == null) return accounts;
-  const usable = accounts.filter((a) => a.needsReauth !== true);
-  return sampleSize(usable, Math.min(pingCount, usable.length));
-}
-
-function progressNote(input: { ping: boolean; pingCount: number | undefined; picked: Account[]; total: number }): string {
-  const { ping, pingCount, picked, total } = input;
-  if (!ping) return "sampling live usage...";
-  if (pingCount == null) return "pinging every account (starts each 5h session timer) + sampling live usage...";
-  if (picked.length === 0) return "no account to ping (every account needs reauth), sampling live usage...";
-  return `pinging ${picked.length} of ${count({ n: total, noun: "account" })} (${picked.map((a) => a.label || a.email).join(", ")}) so their 5h session timers start now + sampling live usage...`;
-}
-
-async function collectClaude(input: { cfg: Config; ping: boolean; pingCount: number | undefined; now: number }): Promise<StatusReport["claude"]> {
-  const { cfg, ping, pingCount, now } = input;
+async function collectClaude(input: { cfg: Config; now: number }): Promise<StatusReport["claude"]> {
+  const { cfg, now } = input;
   let idx = loadAccounts();
   const samples = new Map<string, { outcome: SampleOutcome; viaTee: boolean }>();
-  let pings = new Set<string>();
   if (idx.accounts.length > 0) {
     await withLock(paths.lockFile, async () => {
       idx = loadAccounts();
-      const picked = ping ? pickForPing(idx.accounts, pingCount) : [];
-      pings = new Set(picked.map((a) => a.accountUuid));
-      console.error(c.dim(progressNote({ ping, pingCount, picked, total: idx.accounts.length })));
+      console.error(c.dim("sampling live usage..."));
       const tee = loadUsageSnapshot();
       const live = tee?.state ?? null;
       const teeAt = tee?.at ?? null;
@@ -129,27 +109,12 @@ async function collectClaude(input: { cfg: Config; ping: boolean; pingCount: num
                 perModel: modelUsage && modelUsage.account === a.accountUuid ? modelUsage.perModel : {},
               }
             : null;
-        let viaTee = false;
-        let outcome: SampleOutcome;
-        if (pings.has(a.accountUuid)) {
-          outcome = isActive ? await probeActiveUsage(a, { ping: true }) : await probeParkedUsage(a, { ping: true });
-          if (!outcome.ok && fromStatusLine && outcome.reason.includes("no limit data")) {
-            const failed = outcome;
-            outcome = { ok: true, usage: fromStatusLine };
-            if (failed.pingError != null) {
-              outcome.pingError = failed.pingError;
-              outcome.pingRejected = failed.pingRejected;
-            }
-            viaTee = true;
-          }
-        } else {
-          viaTee = fromStatusLine != null;
-          outcome = fromStatusLine
-            ? { ok: true, usage: fromStatusLine }
-            : isActive
-              ? await probeActiveUsage(a)
-              : await probeParkedUsage(a);
-        }
+        const viaTee = fromStatusLine != null;
+        const outcome: SampleOutcome = fromStatusLine
+          ? { ok: true, usage: fromStatusLine }
+          : isActive
+            ? await probeActiveUsage(a)
+            : await probeParkedUsage(a);
         samples.set(a.accountUuid, { outcome, viaTee });
         if (!outcome.ok) return;
         a.lastUsage = { fiveHour: outcome.usage.session, sevenDay: outcome.usage.weekAll };
@@ -192,9 +157,6 @@ async function collectClaude(input: { cfg: Config; ping: boolean; pingCount: num
       perModel: Object.fromEntries(Object.entries(perModel).map(([name, w]) => [name, currentWindow(w, true, now)])),
       usageAt: a.lastUsageAt ?? null,
       sample: sampled.outcome.ok ? { ok: true, source: sampled.viaTee ? "statusline" : "probe" } : { ok: false, reason: sampled.outcome.reason },
-      pingError: sampled.outcome.pingError ?? null,
-      pingRejected: sampled.outcome.pingRejected === true,
-      pinged: pings.has(a.accountUuid) && sampled.outcome.ok && sampled.outcome.pingError == null && aggregate != null && aggregate.fiveHour.resetsAt == null,
     };
   });
   return {
@@ -383,18 +345,6 @@ function claudeCard(a: ClaudeStatusAccount, now: number, staleAfterMs: number): 
   if (!a.sample.ok) {
     notes.push(...sampleFailedNotes({ cached: a.usage != null || Object.keys(a.perModel).length > 0, usageAt: a.usageAt, reason: a.sample.reason, now }));
   }
-  if (a.pingError != null && a.pingRejected) {
-    const at = a.pingError.indexOf(": ");
-    const head = at >= 0 ? a.pingError.slice(0, at) : a.pingError;
-    const tail = at >= 0 ? a.pingError.slice(at + 2) : "";
-    notes.push({ paint: c.yellow, text: `ping ${head}${tail ? ":" : ""}` });
-    if (tail) notes.push({ paint: c.dim, text: tail });
-  } else if (a.pingError != null) {
-    notes.push({ paint: c.yellow, text: "ping failed (5h timer may not have started):" }, { paint: c.dim, text: a.pingError });
-  }
-  if (a.pinged) {
-    notes.push({ paint: c.dim, text: "pinged - 5h timer started this run; the usage feed lags, re-run status shortly for the fresh window" });
-  }
   return { lines, notes };
 }
 
@@ -415,11 +365,11 @@ function renderClaude(input: { claude: StatusReport["claude"]; codexPooled: bool
   renderGrid(claude.accounts.map((a) => claudeCard(a, now, staleAfterMs)));
 }
 
-export async function cmdStatus(opts: { ping?: boolean; pingCount?: number; json?: boolean; preRender?: () => void } = {}): Promise<number> {
-  const { ping = false, pingCount, json = false } = opts;
+export async function cmdStatus(opts: { json?: boolean; preRender?: () => void } = {}): Promise<number> {
+  const { json = false } = opts;
   const cfg = loadConfig();
   const now = Date.now();
-  const claude = await collectClaude({ cfg, ping, pingCount, now });
+  const claude = await collectClaude({ cfg, now });
   if (!json) {
     opts.preRender?.();
     const at = Date.now();

@@ -7,7 +7,7 @@ const OAuthErrorBodySchema = z.looseObject({
 });
 
 const NestedErrorBodySchema = z.looseObject({
-  error: z.looseObject({ type: z.string().optional(), message: z.string().optional() }),
+  error: z.looseObject({ code: z.string().nullish(), type: z.string().optional(), message: z.string().optional() }),
   request_id: z.string().nullish(),
 });
 
@@ -31,7 +31,8 @@ function parseErrorBody(text: string): ErrorDetail | null {
   const nested = NestedErrorBodySchema.safeParse(json);
   if (nested.success) {
     const requestId = nested.data.request_id ? ` (${nested.data.request_id})` : "";
-    return { code: nested.data.error.type ?? null, fields: [nested.data.error.type ?? "", (nested.data.error.message ?? "") + requestId] };
+    const code = nested.data.error.code ?? nested.data.error.type ?? null;
+    return { code, fields: [code ?? "", (nested.data.error.message ?? "") + requestId] };
   }
   const plain = PlainErrorBodySchema.safeParse(json);
   if (plain.success) return { code: null, fields: [plain.data.detail ?? "", plain.data.message ?? ""] };
