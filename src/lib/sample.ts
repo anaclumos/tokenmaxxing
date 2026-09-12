@@ -52,7 +52,7 @@ type ProbeFailure = z.infer<typeof ProbeFailureSchema>;
 const PreparedProbeSchema = z.discriminatedUnion("ok", [z.object({ ok: z.literal(true), dir: z.string(), installed: z.string() }), ProbeFailureSchema]);
 type PreparedProbe = z.infer<typeof PreparedProbeSchema>;
 
-async function prepareParkedProbe(account: Account): Promise<PreparedProbe> {
+async function prepareParkedProbe(account: Account, dir: string): Promise<PreparedProbe> {
   const backup = parkedTarget(account.keychainItem);
   const parkedRaw = await readItem(backup);
   if (!parkedRaw) return { ok: false, reason: "no parked credential - run `tokenmaxxing auth`" };
@@ -155,7 +155,6 @@ async function prepareParkedProbe(account: Account): Promise<PreparedProbe> {
   }
   refreshPlanFields(account, creds);
 
-  const dir = join(paths.sampleDir, credItemFor(account.accountUuid));
   rmSync(dir, { recursive: true, force: true });
   mkdirSync(dir, { recursive: true });
   const installed = JSON.stringify({ claudeAiOauth: creds });
@@ -169,9 +168,9 @@ async function prepareParkedProbe(account: Account): Promise<PreparedProbe> {
   return { ok: true, dir, installed };
 }
 
-async function runParkedProbe(dir: string, opts: { ping?: boolean }): Promise<SampleOutcome> {
+async function runParkedProbe(dir: string, opts: { ping?: boolean; retries?: number }): Promise<SampleOutcome> {
   const ping = opts.ping ? await pingSession(dir) : null;
-  const usage = await probeUsage(dir, Date.now());
+  const usage = await probeUsage(dir, Date.now(), { retries: opts.retries });
   const outcome: SampleOutcome = usage
     ? { ok: true, usage }
     : { ok: false, reason: "`/usage` returned no limit data (see log)" };
@@ -184,9 +183,16 @@ async function runParkedProbe(dir: string, opts: { ping?: boolean }): Promise<Sa
 
 async function finishParkedProbe(account: Account, prepared: { dir: string; installed: string }): Promise<void> {
   const isoTarget = isolatedTarget(prepared.dir);
+  const backup = parkedTarget(account.keychainItem);
   try {
     const afterIso = await readItem(isoTarget);
-    if (afterIso && afterIso !== prepared.installed) await writeItem(parkedTarget(account.keychainItem), claudeAiOauthOnly(afterIso));
+    if (afterIso && afterIso !== prepared.installed) {
+      const parkedNow = await readItem(backup);
+      const installedToken = CredentialBlobSchema.parse(JSON.parse(prepared.installed)).claudeAiOauth.accessToken;
+      const parkedToken = parkedNow == null ? null : CredentialBlobSchema.parse(JSON.parse(parkedNow)).claudeAiOauth.accessToken;
+      if (parkedToken === installedToken) await writeItem(backup, claudeAiOauthOnly(afterIso));
+      else log("sample.harvest_skipped", { account: account.accountUuid.slice(0, 8) });
+    }
   } finally {
     await deleteItem(isoTarget);
     rmSync(prepared.dir, { recursive: true, force: true });
@@ -194,7 +200,7 @@ async function finishParkedProbe(account: Account, prepared: { dir: string; inst
 }
 
 export async function probeParkedUsage(account: Account, opts: { ping?: boolean } = {}): Promise<SampleOutcome> {
-  const prepared = await prepareParkedProbe(account);
+  const prepared = await prepareParkedProbe(account, join(paths.sampleDir, credItemFor(account.accountUuid)));
   if (!prepared.ok) return prepared;
   try {
     return await runParkedProbe(prepared.dir, opts);
@@ -215,7 +221,7 @@ export async function sampleOldestParked(input: { cfg: Config; now: number }): P
     const target = minBy(stale, sampledAt);
     if (!target) return null;
     target.lastProbeAt = now;
-    const prepared = await prepareParkedProbe(target);
+    const prepared = await prepareParkedProbe(target, join(paths.sampleDir, `${credItemFor(target.accountUuid)}-tick`));
     saveAccounts(idx);
     if (!prepared.ok) {
       log("sample.parked_failed", { account: target.accountUuid.slice(0, 8), reason: prepared.reason.slice(0, 200) });
@@ -225,22 +231,22 @@ export async function sampleOldestParked(input: { cfg: Config; now: number }): P
   });
   if (!reserved) return;
   const { account, prepared } = reserved;
+  const startedAt = Date.now();
   let outcome: SampleOutcome | null = null;
   try {
-    outcome = await runParkedProbe(prepared.dir, {});
+    outcome = await runParkedProbe(prepared.dir, { retries: 0 });
   } finally {
     await withLock(paths.lockFile, async () => {
       await finishParkedProbe(account, prepared);
       if (outcome == null) return;
       const idx = loadAccounts();
       const stored = idx.accounts.find((a) => a.accountUuid === account.accountUuid);
-      if (stored && outcome.ok) {
-        const at = Date.now();
+      if (stored && outcome.ok && (stored.lastUsageAt == null || startedAt > stored.lastUsageAt)) {
         stored.lastUsage = { fiveHour: outcome.usage.session, sevenDay: outcome.usage.weekAll };
-        stored.lastUsageAt = at;
+        stored.lastUsageAt = startedAt;
         if (Object.keys(outcome.usage.perModel).length > 0) {
           stored.lastPerModel = outcome.usage.perModel;
-          stored.lastPerModelAt = at;
+          stored.lastPerModelAt = startedAt;
         }
         saveAccounts(idx);
       }

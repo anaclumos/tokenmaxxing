@@ -341,13 +341,13 @@ function probeEnv(configDir?: string): Record<string, string> {
   return env;
 }
 
-export async function probeUsage(configDir?: string, now = Date.now()): Promise<FullUsage | null> {
+export async function probeUsage(configDir?: string, now = Date.now(), opts: { retries?: number } = {}): Promise<FullUsage | null> {
   const env = probeEnv(configDir);
 
   for (let attempt = 0; ; attempt++) {
     const full = await probeUsageOnce(env, now);
     if (full) return full;
-    if (attempt >= PROBE_RETRY_DELAYS_MS.length) {
+    if (attempt >= (opts.retries ?? PROBE_RETRY_DELAYS_MS.length)) {
       log("usage.probe_gave_up", { attempts: attempt + 1 });
       return null;
     }
