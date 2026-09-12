@@ -26,7 +26,7 @@ description: Every tokenmaxxing command and what it does
 
 ## JSON output
 
-Add `--json` to `status`, `config`, `check`, or `switch` and it prints one JSON document on stdout instead of text (`help` ignores the flag). Progress notices such as `sampling live usage...` still go to stderr, so `xx status --json | jq` stays clean. Every document carries `ok`, which is `true` exactly when the exit code is 0; a failure keeps its non-zero exit code and adds `error` with the same message the text form prints.
+Add `--json` to `status`, `config`, `check`, or `switch` and it prints one JSON document on stdout instead of text. Progress notices such as `sampling live usage...` still go to stderr, so `xx status --json | jq` stays clean. Every document carries `ok`, which is `true` exactly when the exit code is 0; a failure keeps its non-zero exit code and adds `error` with the same message the text form prints.
 
 ```sh
 xx status --json | jq '.claude.accounts[] | {label, active, exhausted, fiveHour: .usage.fiveHour.usedPercentage}'
