@@ -40,7 +40,7 @@ export function isDeadCredential(creds: OAuthCreds): boolean {
   return creds.refreshToken === "" || creds.accessToken === "";
 }
 
-export async function refreshCredential(creds: OAuthCreds, now = Date.now()): Promise<OAuthCreds> {
+export async function refreshCredential(creds: OAuthCreds, now = Date.now(), signal?: AbortSignal): Promise<OAuthCreds> {
   if (isDeadCredential(creds)) throw new InvalidGrantError("credential was cleared after a failed refresh");
   const scope = (creds.scopes?.length ? creds.scopes : DEFAULT_SCOPES).join(" ");
   const body = {
@@ -55,6 +55,7 @@ export async function refreshCredential(creds: OAuthCreds, now = Date.now()): Pr
     res = await http.post(TOKEN_URL, {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
+      signal,
     });
   } catch (e) {
     throw new Error(`token endpoint unreachable: ${e instanceof Error ? e.message : String(e)}`);

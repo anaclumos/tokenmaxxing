@@ -111,7 +111,7 @@ async function prepareParkedProbe(account: Account, dir: string, signal?: AbortS
     }
     const rotate = async (): Promise<{ fresh: OAuthCreds } | { failed: ProbeFailure }> => {
       try {
-        return { fresh: await refreshCredential(creds) };
+        return { fresh: await refreshCredential(creds, Date.now(), signal) };
       } catch (e) {
         if (e instanceof InvalidGrantError) {
           account.needsReauth = true;
@@ -125,6 +125,7 @@ async function prepareParkedProbe(account: Account, dir: string, signal?: AbortS
       result = await rotate();
     } else {
       try {
+        signal?.throwIfAborted();
         result = await withClaudeRefreshLock(async (lock) => {
           const rotated = await rotate();
           if ("failed" in rotated) return rotated;
