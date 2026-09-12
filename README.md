@@ -68,14 +68,12 @@ claude                  # use claude as always
 | `tokenmaxxing auth [sel \| --all]` | reauthenticate a pooled account in place: bare lists the pool (emails shown) and asks which; a selector targets one account and tells you the email to sign in with; `--all` walks every needs-reauth account one by one |
 | `tokenmaxxing switch [sel]` | switch the claude pool: bare picks the best account (no-op when the current one wins), a selector targets one |
 | `tokenmaxxing switch --codex [sel]` | switch the codex pool (takes effect on the next codex start) |
-| `tokenmaxxing ls` | list pooled accounts |
-| `tokenmaxxing status` | accounts with 5h / weekly usage bars, active + exhausted-until-reset |
-| `tokenmaxxing watch [seconds]` | live status: re-render every N seconds (default 120, floor 30) |
+| `tokenmaxxing status [--cached]` | accounts with 5h / weekly usage bars, active + exhausted-until-reset; `--cached` renders the stored figures without sampling |
 | `tokenmaxxing config` | effective config with sources; `get`/`set`/`unset` dotted keys, `tidy` prunes unknown keys |
 | `tokenmaxxing doctor` | verify the supervisor + settings entries survived |
 | `tokenmaxxing rename [--codex] <sel> <label>` / `rm [--codex] <sel>` | manage the pool (`--codex` targets the codex pool: one email can hold both a claude and a codex account) |
 | `tokenmaxxing uninstall` | remove supervisor + settings entries (accounts/credentials kept) |
-| `--json` | machine-readable output: one JSON document on stdout for `status`, `ls`, `config`, `doctor`, `check`, `switch`, `rename`, `rm`, `uninstall`, and one per tick for `watch` (`ok` mirrors the exit code, failures add `error`) |
+| `--json` | machine-readable output: one JSON document on stdout for `status`, `config`, `doctor`, `check`, `switch`, `rename`, `rm`, and `uninstall` (`ok` mirrors the exit code, failures add `error`) |
 
 ## How switching decides
 
