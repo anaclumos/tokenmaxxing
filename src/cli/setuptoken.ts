@@ -2,7 +2,7 @@ import { mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { resolveRealClaude } from "../lib/claudebin.ts";
 import { withLock } from "../lib/lock.ts";
-import { paths } from "../lib/paths.ts";
+import { claudePool, credItemFor, paths } from "../lib/paths.ts";
 import { loadAccounts } from "../lib/state.ts";
 import { scrubCredentialEnv } from "../lib/usage.ts";
 import { CURSOR_SECRET_VALUE_CAP_BYTES, cursorSecretValue, loadSetupTokens, saveSetupTokens, type SetupToken } from "../lib/setuptokens.ts";
@@ -53,19 +53,19 @@ async function mint(input: { real: string; item: string }): Promise<string | nul
 
 function currentTokens(tokens: SetupToken[], accounts: Account[]): { label: string; token: string }[] {
   return accounts.flatMap((a) => {
-    const stored = tokens.find((t) => t.accountUuid === a.accountUuid);
+    const stored = tokens.find((t) => t.accountUuid === a.id);
     return stored ? [{ label: a.label, token: stored.token }] : [];
   });
 }
 
 async function rmToken(selector: string): Promise<number> {
-  const outcome = await withLock(paths.lockFile, async (): Promise<{ error: string } | { kept: SetupToken[] }> => {
+  const outcome = await withLock(claudePool.lockFile, async (): Promise<{ error: string } | { kept: SetupToken[] }> => {
     const store = loadSetupTokens();
-    const accounts = loadAccounts().accounts;
+    const accounts = loadAccounts(claudePool).accounts;
     const pooled = accounts.find((a) => a.label === selector);
-    const orphan = (t: SetupToken) => !accounts.some((a) => a.accountUuid === t.accountUuid);
+    const orphan = (t: SetupToken) => !accounts.some((a) => a.id === t.accountUuid);
     const targets = store.tokens.filter((t) =>
-      t.accountUuid === selector || (pooled ? t.accountUuid === pooled.accountUuid : t.label === selector && orphan(t)),
+      t.accountUuid === selector || (pooled ? t.accountUuid === pooled.id : t.label === selector && orphan(t)),
     );
     if (targets.length === 0) return { error: `no setup token stored for "${selector}"` };
     if (targets.length > 1) return { error: `"${selector}" matches ${targets.length} stored tokens (${targets.map((t) => `${t.label} ${t.accountUuid}`).join(", ")}) - nothing removed` };
@@ -90,25 +90,25 @@ export async function cmdSetupToken(args: string[]): Promise<number> {
     return 2;
   }
   let store = loadSetupTokens();
-  let idx = loadAccounts();
+  let idx = loadAccounts(claudePool);
   if (!print) {
     if (idx.accounts.length === 0) {
       emitError({ message: "no accounts in the pool - run `tokenmaxxing init` first" });
       return 1;
     }
     const real = resolveRealClaude();
-    const missing = idx.accounts.filter((a) => !store.tokens.some((t) => t.accountUuid === a.accountUuid));
+    const missing = idx.accounts.filter((a) => !store.tokens.some((t) => t.accountUuid === a.id));
     if (missing.length === 0) console.log(c.dim("every pooled account already has a stored setup token (`setup-token rm <label>` drops one so it can be re-minted)"));
     for (const a of missing) {
       console.log();
-      console.log(`${c.bold(a.label)} - sign into this account in the browser (${a.email})`);
-      const token = await mint({ real, item: a.keychainItem });
+      console.log(`${c.bold(a.label)} - sign into this account in the browser (${a.email ?? a.label})`);
+      const token = await mint({ real, item: credItemFor(a.id) });
       if (!token) return 1;
-      const stored = await withLock(paths.lockFile, async () => {
-        if (!loadAccounts().accounts.some((x) => x.accountUuid === a.accountUuid)) return false;
+      const stored = await withLock(claudePool.lockFile, async () => {
+        if (!loadAccounts(claudePool).accounts.some((x) => x.id === a.id)) return false;
         const fresh = loadSetupTokens();
-        const tokens = fresh.tokens.filter((t) => t.accountUuid !== a.accountUuid);
-        saveSetupTokens({ ...fresh, tokens: [...tokens, { accountUuid: a.accountUuid, label: a.label, token, mintedAt: Date.now() }] });
+        const tokens = fresh.tokens.filter((t) => t.accountUuid !== a.id);
+        saveSetupTokens({ ...fresh, tokens: [...tokens, { accountUuid: a.id, label: a.label, token, mintedAt: Date.now() }] });
         return true;
       });
       if (!stored) {
@@ -118,7 +118,7 @@ export async function cmdSetupToken(args: string[]): Promise<number> {
       console.log(`${c.green("✓")} stored the setup token for ${c.bold(a.label)} ${c.dim("(ownership not verified: an inference-only token cannot read the profile endpoint, so the label is the sign-in you chose)")}`);
     }
     store = loadSetupTokens();
-    idx = loadAccounts();
+    idx = loadAccounts(claudePool);
   }
   if (store.tokens.length === 0) {
     emitError({ message: "no setup tokens stored - run `tokenmaxxing setup-token` to mint them" });
@@ -126,7 +126,7 @@ export async function cmdSetupToken(args: string[]): Promise<number> {
   }
   const tokens = currentTokens(store.tokens, idx.accounts);
   const orphaned = store.tokens
-    .filter((t) => !idx.accounts.some((a) => a.accountUuid === t.accountUuid))
+    .filter((t) => !idx.accounts.some((a) => a.id === t.accountUuid))
     .map((t) => ({ label: t.label, accountUuid: t.accountUuid }));
   if (tokens.length === 0) {
     emitError({ message: "no stored setup token belongs to a pooled account - run `tokenmaxxing setup-token` to mint them" });

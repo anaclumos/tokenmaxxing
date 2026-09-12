@@ -37,6 +37,7 @@ When every account is at or over a bar, the decision picks the soonest recovery:
 
 - An unknown active model gates every configured family. Right after a swap clears snapshots, a headless machine can run model-blind; treating unknown as unconstrained once let an account sit at its Fable cap for hours unnoticed.
 - Candidate screening counts gated per-model caps too, so a pool where every account has burnt its Fable cap does not round-robin.
+- Codex has no model in its usage feed, so every named Codex limit window screens and triggers against its own bar (session or weekly by duration); `policy.switchModels` gates Claude per-model rows only.
 
 ## Cooldown
 

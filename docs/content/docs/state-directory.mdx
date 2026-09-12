@@ -8,7 +8,7 @@ Everything lives under `~/.config/tokenmaxxing/`. Override with `TOKENMAXXING_HO
 | Path | What it holds |
 |---|---|
 | `config.json` | Your configuration (sparse; defaults apply per field) |
-| `accounts.json` | Non-secret index of pooled Claude accounts: labels, ids, cached usage windows (aggregate and per-model caps). Never tokens |
+| `accounts.json` | Non-secret index of pooled Claude accounts: `id`, `label`, `email`, `tier`, the cached `windows` (the session and weekly windows unnamed, per-model caps named, each with its duration and sample time), `lastUsageAt`, `lastProbeAt`, `enforcedUntil`, `needsReauth`, and the `oauthAccount` object a swap writes into `~/.claude.json`. Never tokens |
 | `usage.json` | The statusline tee's aggregate window snapshot; its mtime is the feed's liveness heartbeat |
 | `lastswap.json` | Epoch timestamp of the last swap; drives the 45-second cooldown |
 | `depleted.json` | The recorded depleted-pool wait, replayed by sibling hooks until the reset passes, the live seat moves, or any swap completes |
@@ -22,6 +22,6 @@ Everything lives under `~/.config/tokenmaxxing/`. Override with `TOKENMAXXING_HO
 | `setup-tokens.json` | Cursor Cloud only: `{accountUuid, label, token, mintedAt}` per pooled account, mode 0600, the source of the `TOKENMAXXING_TOKENS` secret value that `setup-token` prints (keyed by account, so a rename does not orphan a token) |
 | `setup-token/` | Throwaway isolated config homes for `setup-token` mints, deleted after each run |
 | `cloud/` | On a Cursor Cloud VM only: `sessions.json` (session id to token label), `walled.json` (label to reset time), and the `lock` that serializes `cloud run` picks |
-| `codex-*` | The parallel Codex pool: `codex-accounts.json`, `codex-lastswap.json`, `codex-lock`, `codex-creds/`, `codex-onboard/`, `codex-respawn/`, `codex-reconcile/` (cross-session signals asking a sibling session's supervisor to respawn onto the live account), and `codex-live/` (one PID-validated presence file per running supervised codex session, so a live account is never a swap target) |
+| `codex-*` | The Codex pool's own state: `codex-accounts.json` (the same index shape as `accounts.json`, without `oauthAccount`), `codex-lastswap.json`, `codex-lock`, `codex-creds/`, `codex-onboard/`, `codex-respawn/`, `codex-reconcile/` (cross-session signals asking a sibling session's supervisor to respawn onto the live account), and `codex-live/` (one PID-validated presence file per running supervised codex session, so a live account is never a swap target) |
 
 Outside its own directory, tokenmaxxing touches exactly: `~/.claude.json` (the `oauthAccount` swap), Claude Code's `settings.json` (the hook and statusline entries), the live credential store (the `Claude Code-credentials` keychain item on macOS, `.credentials.json` on Linux), claude's own refresh locks taken during swaps (the primary `.oauth_refresh.lock` inside claude's config dir, plus the legacy `~/.claude.lock` sibling), codex's `auth.json` and `hooks.json`, and the periodic-check unit in launchd or systemd. `cursor init` additionally writes `.cursor/agents/claude.md` and `.cursor/environment.json` into the repo you point it at.

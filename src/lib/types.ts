@@ -38,9 +38,17 @@ const AggregateWindowsSchema = z.object({
 
 export const UsageWindowsSchema = AggregateWindowsSchema.extend({
   perModel: z.record(z.string(), UsageWindowSchema).default({}),
-  rowsAt: z.number().optional(),
 });
 export type UsageWindows = z.infer<typeof UsageWindowsSchema>;
+
+export const WindowSchema = z.object({
+  name: z.string().nullable(),
+  usedPercentage: z.number(),
+  resetsAt: z.number().nullable(),
+  windowSeconds: z.number().nullable(),
+  sampledAt: z.number(),
+});
+export type Window = z.infer<typeof WindowSchema>;
 
 const ModelInfoSchema = z.object({ id: z.string(), display: z.string() });
 export type ModelInfo = z.infer<typeof ModelInfoSchema>;
@@ -54,26 +62,23 @@ export const UsageStateSchema = AggregateWindowsSchema.extend({
 export type UsageState = z.infer<typeof UsageStateSchema>;
 
 export const AccountSchema = z.object({
-  accountUuid: z.string(),
-  email: z.string(),
-  organizationUuid: z.string(),
+  id: z.string(),
   label: z.string(),
-  keychainItem: z.string(),
-  oauthAccount: OAuthAccountSchema,
+  email: z.string().nullable(),
+  tier: z.string().nullable(),
   addedAt: z.string(),
-  lastUsage: UsageWindowsSchema.optional(),
+  windows: z.array(WindowSchema).default([]),
   lastUsageAt: z.number().optional(),
   lastProbeAt: z.number().optional(),
   enforcedUntil: z.number().optional(),
   needsReauth: z.boolean().optional(),
-  subscriptionType: z.string().optional(),
-  rateLimitTier: z.string().optional(),
+  oauthAccount: OAuthAccountSchema.optional(),
 });
 export type Account = z.infer<typeof AccountSchema>;
 
 export const AccountsIndexSchema = z.object({
-  version: z.literal(1),
-  activeAccountUuid: z.string().nullable(),
+  version: z.literal(2),
+  activeId: z.string().nullable(),
   accounts: z.array(AccountSchema).default([]),
 });
 
@@ -216,52 +221,13 @@ export const CodexAuthJsonSchema = z.looseObject({
 });
 export type CodexAuthJson = z.infer<typeof CodexAuthJsonSchema>;
 
-const CodexWindowSchema = z.object({
-  usedPercentage: z.number(),
-  resetsAt: z.number().nullable(),
-  windowSeconds: z.number().nullable(),
-});
-export type CodexWindow = z.infer<typeof CodexWindowSchema>;
-
 export const CodexUsageSchema = z.object({
   accountId: z.string(),
   email: z.string().nullable(),
   planType: z.string().nullable(),
-  aggregate: z.array(CodexWindowSchema),
-  perLimit: z.record(z.string(), z.array(CodexWindowSchema)),
+  windows: z.array(WindowSchema),
 });
 export type CodexUsage = z.infer<typeof CodexUsageSchema>;
-
-const BareFileNameSchema = z
-  .string()
-  .refine((s) => s.length > 0 && s !== "." && s !== ".." && !s.includes("/") && !s.includes("\\"), {
-    message: "credFile must be a bare file name, not a path",
-  });
-
-export const CodexAccountSchema = z.object({
-  accountId: z.string(),
-  email: z.string().nullable(),
-  label: z.string(),
-  planType: z.string().nullable(),
-  credFile: BareFileNameSchema,
-  addedAt: z.string(),
-  needsReauth: z.boolean().optional(),
-  lastUsage: z
-    .object({
-      aggregate: z.array(CodexWindowSchema),
-      perLimit: z.record(z.string(), z.array(CodexWindowSchema)),
-    })
-    .optional(),
-  lastUsageAt: z.number().optional(),
-});
-export type CodexAccount = z.infer<typeof CodexAccountSchema>;
-
-export const CodexAccountsIndexSchema = z.object({
-  version: z.literal(1),
-  activeAccountId: z.string().nullable(),
-  accounts: z.array(CodexAccountSchema).default([]),
-});
-export type CodexAccountsIndex = z.infer<typeof CodexAccountsIndexSchema>;
 
 export const CodexStopStdinSchema = z.looseObject({
   session_id: z.string().optional(),

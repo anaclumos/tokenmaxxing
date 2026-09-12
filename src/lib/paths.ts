@@ -15,14 +15,11 @@ const TM_HOME = env("TOKENMAXXING_HOME", join(HOME, ".config", "tokenmaxxing"));
 export const paths = {
   home: TM_HOME,
   configJson: join(TM_HOME, "config.json"),
-  accountsJson: join(TM_HOME, "accounts.json"),
   usageJson: join(TM_HOME, "usage.json"),
-  lastSwapJson: join(TM_HOME, "lastswap.json"),
   depletedJson: join(TM_HOME, "depleted.json"),
   respawnDir: join(TM_HOME, "respawn"),
   binDir: join(TM_HOME, "bin"),
   supervisorLink: join(TM_HOME, "bin", "claude"),
-  lockFile: join(TM_HOME, "lock"),
   logFile: join(TM_HOME, "tokenmaxxing.log"),
   onboardDir: join(TM_HOME, "onboard"),
   sampleDir: join(TM_HOME, "sample"),
@@ -44,15 +41,26 @@ export const paths = {
   systemdUserDir: env("TOKENMAXXING_SYSTEMD_USER_DIR", join(HOME, ".config", "systemd", "user")),
 } as const;
 
+export const claudePool = {
+  accountsJson: join(TM_HOME, "accounts.json"),
+  lastSwapJson: join(TM_HOME, "lastswap.json"),
+  lockFile: join(TM_HOME, "lock"),
+} as const;
+
+export const codexPool = {
+  accountsJson: join(TM_HOME, "codex-accounts.json"),
+  lastSwapJson: join(TM_HOME, "codex-lastswap.json"),
+  lockFile: join(TM_HOME, "codex-lock"),
+} as const;
+
+export type PoolPaths = { accountsJson: string; lastSwapJson: string; lockFile: string };
+
 const CODEX_HOME = env("TOKENMAXXING_CODEX_HOME", env("CODEX_HOME", join(HOME, ".codex")));
 
 export const codexPaths = {
   home: CODEX_HOME,
   authJson: join(CODEX_HOME, "auth.json"),
   hooksJson: join(CODEX_HOME, "hooks.json"),
-  accountsJson: join(TM_HOME, "codex-accounts.json"),
-  lastSwapJson: join(TM_HOME, "codex-lastswap.json"),
-  lockFile: join(TM_HOME, "codex-lock"),
   credsDir: join(TM_HOME, "codex-creds"),
   onboardDir: join(TM_HOME, "codex-onboard"),
   respawnDir: join(TM_HOME, "codex-respawn"),

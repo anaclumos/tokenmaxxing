@@ -40,6 +40,13 @@ export function isDeadCredential(creds: OAuthCreds): boolean {
   return creds.refreshToken === "" || creds.accessToken === "";
 }
 
+export function claudeTierLabel(input: { subscriptionType?: string; rateLimitTier?: string }): string | null {
+  const segments = input.rateLimitTier?.split("_") ?? [];
+  const multiplier = segments.find((seg) => seg.length > 1 && seg.endsWith("x") && Number.isInteger(Number(seg.slice(0, -1))));
+  if (input.subscriptionType == null) return multiplier ?? null;
+  return multiplier ? `${input.subscriptionType} ${multiplier}` : input.subscriptionType;
+}
+
 export async function refreshCredential(creds: OAuthCreds, now = Date.now(), signal?: AbortSignal): Promise<OAuthCreds> {
   if (isDeadCredential(creds)) throw new InvalidGrantError("credential was cleared after a failed refresh");
   const scope = (creds.scopes?.length ? creds.scopes : DEFAULT_SCOPES).join(" ");

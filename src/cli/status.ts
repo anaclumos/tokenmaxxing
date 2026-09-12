@@ -1,158 +1,113 @@
 import { chunk, sortBy } from "es-toolkit";
 import { z } from "zod";
-import { loadAccounts, loadConfig, loadUsage, loadUsageSnapshot, saveAccounts } from "../lib/state.ts";
-import { readOAuthAccount } from "../lib/claudejson.ts";
-import { ensureLiveTokenFresh, probeActiveUsage, probeParkedUsage, type SampleOutcome } from "../lib/sample.ts";
+import { claude } from "../lib/claude.ts";
+import { codex } from "../lib/codex.ts";
+import { loadAccounts, loadConfig, saveAccounts } from "../lib/state.ts";
 import { withLock } from "../lib/lock.ts";
-import { codexPaths, paths } from "../lib/paths.ts";
-import { earliestReset, isExhausted, nextWeeklyReset, thresholdBars } from "../lib/picker.ts";
-import { loadCodexAccounts, saveCodexAccounts } from "../lib/codexstate.ts";
-import { liveCodexAccountId, sampleCodexAccount, type CodexSampleOutcome } from "../lib/codexsample.ts";
-import { isCodexExhausted } from "../lib/codexpick.ts";
-import { codexLimitLabel, isSessionWindow } from "../lib/codexusage.ts";
-import { bar, c, claudeTierLabel, count, emitJson, fmtAgo } from "./render.ts";
-import { gatedFamilies, keepRows } from "../lib/usage.ts";
-import { ThresholdsSchema, UsageWindowSchema, type Account, type CodexWindow, type Config, type UsageWindow, type UsageWindows } from "../lib/types.ts";
+import { codexPool } from "../lib/paths.ts";
+import { earliestReset, isExhausted, isSessionWindow, limitWindows, nextWeeklyReset, sessionWindow, thresholdBars, weeklyWindow } from "../lib/picker.ts";
+import type { Provider, SampleReport } from "../lib/provider.ts";
+import { bar, c, count, emitJson, fmtAgo } from "./render.ts";
+import { ThresholdsSchema, type Account, type Config, type Window } from "../lib/types.ts";
 
 const SampleReportSchema = z.discriminatedUnion("ok", [
   z.object({ ok: z.literal(true), source: z.enum(["statusline", "probe", "cached"]) }),
   z.object({ ok: z.literal(false), reason: z.string() }),
 ]);
 
-const ClaudeStatusAccountSchema = z.object({
-  label: z.string(),
-  email: z.string(),
-  accountUuid: z.string(),
-  organizationUuid: z.string(),
-  tier: z.string().nullable(),
-  active: z.boolean(),
-  needsReauth: z.boolean(),
-  exhausted: z.boolean(),
-  usage: z.object({ fiveHour: UsageWindowSchema, week: UsageWindowSchema }).nullable(),
-  perModel: z.record(z.string(), UsageWindowSchema),
-  usageAt: z.number().nullable(),
-  perModelAt: z.number().nullable(),
-  sample: SampleReportSchema,
+const WindowReportSchema = z.object({
+  usedPercentage: z.number(),
+  resetsAt: z.number().nullable(),
+  windowSeconds: z.number().nullable(),
 });
-type ClaudeStatusAccount = z.infer<typeof ClaudeStatusAccountSchema>;
+type WindowReport = z.infer<typeof WindowReportSchema>;
 
-const CodexWindowReportSchema = UsageWindowSchema.extend({ windowSeconds: z.number().nullable() });
-
-const CodexStatusAccountSchema = z.object({
+const StatusAccountSchema = z.object({
   label: z.string(),
   email: z.string().nullable(),
-  accountId: z.string(),
-  planType: z.string().nullable(),
+  id: z.string(),
+  tier: z.string().nullable(),
   active: z.boolean(),
   needsReauth: z.boolean(),
   exhausted: z.boolean(),
   usage: z
     .object({
-      aggregate: z.array(CodexWindowReportSchema),
-      perLimit: z.record(z.string(), z.array(CodexWindowReportSchema)),
+      fiveHour: WindowReportSchema.nullable(),
+      week: WindowReportSchema.nullable(),
+      limits: z.array(WindowReportSchema.extend({ name: z.string() })),
     })
     .nullable(),
   usageAt: z.number().nullable(),
+  limitsAt: z.number().nullable(),
   sample: SampleReportSchema,
 });
-type CodexStatusAccount = z.infer<typeof CodexStatusAccountSchema>;
+type StatusAccount = z.infer<typeof StatusAccountSchema>;
 
-const StatusReportSchema = z.object({
-  now: z.number(),
-  claude: z.object({
-    thresholds: ThresholdsSchema,
-    bars: ThresholdsSchema,
-    projectionMargin: z.number(),
-    accounts: z.array(ClaudeStatusAccountSchema),
-  }),
-  codex: z.object({
-    bars: ThresholdsSchema,
-    accounts: z.array(CodexStatusAccountSchema),
-  }),
+const PoolReportSchema = z.object({
+  thresholds: ThresholdsSchema,
+  bars: ThresholdsSchema,
+  projectionMargin: z.number(),
+  accounts: z.array(StatusAccountSchema),
 });
+type PoolReport = z.infer<typeof PoolReportSchema>;
+
+const StatusReportSchema = z.object({ now: z.number(), claude: PoolReportSchema, codex: PoolReportSchema });
 export type StatusReport = z.infer<typeof StatusReportSchema>;
 
-function currentWindow(w: UsageWindow, weekly: boolean, now: number): UsageWindow {
+function currentWindow(w: Window, now: number): WindowReport {
   const passed = w.resetsAt != null && w.resetsAt <= now;
   return {
     usedPercentage: passed ? 0 : w.usedPercentage,
-    resetsAt: weekly ? nextWeeklyReset(w.resetsAt, now) : passed ? null : w.resetsAt,
+    resetsAt: isSessionWindow(w) ? (passed ? null : w.resetsAt) : nextWeeklyReset(w.resetsAt, now),
+    windowSeconds: w.windowSeconds,
   };
 }
 
-function currentCodexWindow(w: CodexWindow, now: number): CodexWindow {
-  return { ...currentWindow(w, !isSessionWindow({ window: w }), now), windowSeconds: w.windowSeconds };
+function usageReport(a: Account, now: number): StatusAccount["usage"] {
+  if (a.lastUsageAt == null) return null;
+  const session = sessionWindow(a);
+  const week = weeklyWindow(a);
+  return {
+    fiveHour: session ? currentWindow(session, now) : null,
+    week: week ? currentWindow(week, now) : null,
+    limits: limitWindows(a).map((w) => ({ name: w.name ?? "", ...currentWindow(w, now) })),
+  };
 }
 
-async function collectClaude(input: { cfg: Config; now: number; cached: boolean }): Promise<StatusReport["claude"]> {
-  const { cfg, now, cached } = input;
-  let idx = loadAccounts();
-  const samples = new Map<string, { outcome: SampleOutcome; viaTee: boolean }>();
-  if (idx.accounts.length > 0 && !cached) {
-    await withLock(paths.lockFile, async () => {
-      idx = loadAccounts();
-      console.error(c.dim("sampling live usage..."));
-      const tee = loadUsageSnapshot();
-      const live = tee?.state ?? null;
-      const teeAt = tee?.at ?? null;
-      const liveOAuth = readOAuthAccount();
-      const liveAccount = liveOAuth?.accountUuid ?? null;
-      const probeOne = async (a: Account) => {
-        const isActive = liveAccount != null && liveAccount === a.accountUuid;
-        if (isActive && liveOAuth?.organizationRateLimitTier != null) a.rateLimitTier = liveOAuth.organizationRateLimitTier;
-        const teeCurrent = teeAt != null && (a.lastUsageAt == null || teeAt >= a.lastUsageAt);
-        const fromStatusLine: UsageWindows | null =
-          isActive && live && teeCurrent && live.account === a.accountUuid ? { fiveHour: live.fiveHour, sevenDay: live.sevenDay, perModel: {} } : null;
-        const viaTee = fromStatusLine != null;
-        const outcome: SampleOutcome = fromStatusLine
-          ? { ok: true, usage: fromStatusLine }
-          : isActive
-            ? await probeActiveUsage(a)
-            : await probeParkedUsage(a);
-        samples.set(a.accountUuid, { outcome, viaTee });
-        if (!outcome.ok) return;
-        a.lastUsageAt = viaTee && teeAt != null ? (live?.sampledAt ?? teeAt) : Date.now();
-        a.lastUsage = keepRows(outcome.usage, a.lastUsage, a.lastUsageAt);
-      };
-      const activeAccount = idx.accounts.find((a) => liveAccount != null && liveAccount === a.accountUuid) ?? null;
-      if (activeAccount) await probeOne(activeAccount);
-      try {
-        await ensureLiveTokenFresh();
-      } catch {
-      }
-      await Promise.all(idx.accounts.filter((a) => a !== activeAccount).map(probeOne));
-      saveAccounts(idx);
-    });
+async function collect(p: Provider, cfg: Config, now: number, cached: boolean): Promise<PoolReport> {
+  let idx = loadAccounts(p.pool);
+  let reports = new Map<string, SampleReport>();
+  let liveId: string | null = idx.activeId;
+  if (!cached) {
+    liveId = null;
+    if (idx.accounts.length > 0) {
+      await withLock(p.pool.lockFile, async () => {
+        idx = loadAccounts(p.pool);
+        console.error(c.dim(`sampling ${p.name} usage...`));
+        liveId = p.liveId();
+        reports = await p.samplePool(idx.accounts, liveId, now);
+        saveAccounts(p.pool, idx);
+      });
+    }
   }
 
-  const families = gatedFamilies(loadUsage()?.model ?? null, cfg.policy.switchModels);
   const bars = thresholdBars(cfg);
-  const liveAccount = cached ? idx.activeAccountUuid : (readOAuthAccount()?.accountUuid ?? null);
+  const ctx = { now, thresholds: bars, currentId: idx.activeId, families: p.gatedFamilies(cfg) };
   const ordered = sortBy(idx.accounts, [(a) => (a.needsReauth ? 1 : 0), (a) => earliestReset(a, now)]);
-  const accounts = ordered.map((a): ClaudeStatusAccount => {
-    const sampled = samples.get(a.accountUuid);
-    const aggregate = a.lastUsage;
-    const perModel = aggregate?.perModel ?? {};
+  const accounts = ordered.map((a): StatusAccount => {
+    const limits = limitWindows(a);
     return {
       label: a.label,
       email: a.email,
-      accountUuid: a.accountUuid,
-      organizationUuid: a.organizationUuid,
-      tier: claudeTierLabel(a),
-      active: liveAccount != null && a.accountUuid === liveAccount,
+      id: a.id,
+      tier: a.tier,
+      active: liveId != null && a.id === liveId,
       needsReauth: a.needsReauth === true,
-      exhausted: isExhausted(a, { now, thresholds: bars, currentAccountUuid: idx.activeAccountUuid, switchFamilies: families }),
-      usage: aggregate ? { fiveHour: currentWindow(aggregate.fiveHour, false, now), week: currentWindow(aggregate.sevenDay, true, now) } : null,
-      perModel: Object.fromEntries(Object.entries(perModel).map(([name, w]) => [name, currentWindow(w, true, now)])),
+      exhausted: isExhausted(a, ctx),
+      usage: usageReport(a, now),
       usageAt: a.lastUsageAt ?? null,
-      perModelAt: aggregate?.rowsAt ?? null,
-      sample: sampled
-        ? sampled.outcome.ok
-          ? { ok: true, source: sampled.viaTee ? "statusline" : "probe" }
-          : { ok: false, reason: sampled.outcome.reason }
-        : cached
-          ? { ok: true, source: "cached" }
-          : { ok: false, reason: "not sampled" },
+      limitsAt: limits.length > 0 ? Math.max(...limits.map((w) => w.sampledAt)) : null,
+      sample: reports.get(a.id) ?? (cached ? { ok: true, source: "cached" } : { ok: false, reason: "not sampled" }),
     };
   });
   return {
@@ -161,79 +116,6 @@ async function collectClaude(input: { cfg: Config; now: number; cached: boolean 
     projectionMargin: cfg.policy.projectionMargin,
     accounts,
   };
-}
-
-async function collectCodex(input: { cfg: Config; now: number; cached: boolean }): Promise<StatusReport["codex"]> {
-  const { cfg, now, cached } = input;
-  const bars = thresholdBars(cfg);
-  let index = loadCodexAccounts();
-  if (index.accounts.length === 0) return { bars, accounts: [] };
-
-  const outcomes = new Map<string, CodexSampleOutcome>();
-  let liveId: string | null = null;
-  if (cached) {
-    liveId = index.activeAccountId;
-  } else {
-    console.error(c.dim("sampling codex usage..."));
-    await withLock(codexPaths.lockFile, async () => {
-      index = loadCodexAccounts();
-      liveId = liveCodexAccountId();
-      await Promise.all(
-        index.accounts.map(async (account) => {
-          const outcome = await sampleCodexAccount({ account, liveAccountId: liveId, now });
-          outcomes.set(account.accountId, outcome);
-          if (outcome.ok) {
-            account.lastUsage = { aggregate: outcome.usage.aggregate, perLimit: outcome.usage.perLimit };
-            account.lastUsageAt = Date.now();
-            if (outcome.usage.email != null) account.email = outcome.usage.email;
-            if (outcome.usage.planType != null) account.planType = outcome.usage.planType;
-          } else if (outcome.deadGrant) {
-            account.needsReauth = true;
-          }
-        }),
-      );
-      saveCodexAccounts({ index });
-    });
-  }
-
-  const ordered = sortBy(index.accounts, [
-    (a) => (a.needsReauth ? 1 : 0),
-    (a) => {
-      const windows = [...(a.lastUsage?.aggregate ?? []), ...Object.values(a.lastUsage?.perLimit ?? {}).flat()];
-      const resets = windows.flatMap((w) => (w.resetsAt != null && w.resetsAt > now ? [w.resetsAt] : []));
-      return resets.length > 0 ? Math.min(...resets) : Number.POSITIVE_INFINITY;
-    },
-  ]);
-  const accounts = ordered.map((account): CodexStatusAccount => {
-    const outcome = outcomes.get(account.accountId);
-    const usage = account.lastUsage;
-    return {
-      label: account.label,
-      email: account.email,
-      accountId: account.accountId,
-      planType: account.planType,
-      active: account.accountId === liveId,
-      needsReauth: account.needsReauth === true,
-      exhausted: isCodexExhausted({ account, thresholds: bars, now }),
-      usage: usage
-        ? {
-            aggregate: usage.aggregate.map((w) => currentCodexWindow(w, now)),
-            perLimit: Object.fromEntries(
-              Object.entries(usage.perLimit).map(([name, windows]) => [name, windows.map((w) => currentCodexWindow(w, now))]),
-            ),
-          }
-        : null,
-      usageAt: account.lastUsageAt ?? null,
-      sample: outcome
-        ? outcome.ok
-          ? { ok: true, source: "probe" }
-          : { ok: false, reason: outcome.reason }
-        : cached
-          ? { ok: true, source: "cached" }
-          : { ok: false, reason: "not sampled" },
-    };
-  });
-  return { bars, accounts };
 }
 
 const CARD_GAP = 3;
@@ -292,7 +174,7 @@ function renderGrid(cards: Card[]): void {
   }
 }
 
-function usageRow(name: string, w: UsageWindow): string {
+function usageRow(name: string, w: WindowReport): string {
   return `${NOTE_INDENT}${name.padEnd(5)} ${bar(w.usedPercentage)}`;
 }
 
@@ -317,39 +199,13 @@ function headerLine(input: { active: boolean; needsReauth: boolean; exhausted: b
   return `${marker} ${c.bold(input.name)}${input.tier ? ` ${c.dim(input.tier)}` : ""}${badges.length ? ` ${badges.join(" ")}` : ""}`;
 }
 
-function codexCard(account: CodexStatusAccount, now: number): Card {
-  const windowLabel = (window: CodexWindow) =>
-    isSessionWindow({ window }) ? `${Math.round((window.windowSeconds ?? 0) / 3600)}h` : "week";
-  const lines = [headerLine({ ...account, name: account.label, tier: account.planType })];
-  if (account.usage) {
-    for (const window of account.usage.aggregate) lines.push(usageRow(windowLabel(window), window));
-    for (const [name, windows] of Object.entries(account.usage.perLimit)) {
-      for (const window of windows) lines.push(usageRow(codexLimitLabel({ limitName: name }), window));
-    }
-  }
-  const notes = account.sample.ok
-    ? account.sample.source === "cached"
-      ? [cachedNote(account.usageAt, now)]
-      : []
-    : sampleFailedNotes({ cached: account.usage != null, usageAt: account.usageAt, reason: account.sample.reason, now });
-  return { lines, notes };
-}
-
-function renderCodex(input: { codex: StatusReport["codex"]; now: number }): void {
-  const { codex, now } = input;
-  if (codex.accounts.length === 0) return;
-  console.log(c.dim(`codex  (${count({ n: codex.accounts.length, noun: "account" })})`));
-  console.log();
-  renderGrid(codex.accounts.map((account) => codexCard(account, now)));
-}
-
-function claudeCard(a: ClaudeStatusAccount, now: number, staleAfterMs: number): Card {
-  const lines = [headerLine({ ...a, name: a.label || a.email })];
+function card(p: Provider, a: StatusAccount, now: number, staleAfterMs: number): Card {
+  const lines = [headerLine({ ...a, name: a.label })];
   if (a.usage) {
-    lines.push(usageRow("5h", a.usage.fiveHour));
-    lines.push(usageRow("week", a.usage.week));
+    if (a.usage.fiveHour) lines.push(usageRow(`${Math.round((a.usage.fiveHour.windowSeconds ?? 0) / 3600)}h`, a.usage.fiveHour));
+    if (a.usage.week) lines.push(usageRow("week", a.usage.week));
+    for (const w of a.usage.limits) lines.push(usageRow(p.windowLabel(w.name), w));
   }
-  for (const [name, w] of Object.entries(a.perModel)) lines.push(usageRow(name.toLowerCase(), w));
   const notes: Note[] = [];
   if (a.sample.ok && a.sample.source === "statusline") {
     const stale = a.usageAt == null || now - a.usageAt > staleAfterMs;
@@ -358,46 +214,47 @@ function claudeCard(a: ClaudeStatusAccount, now: number, staleAfterMs: number): 
   }
   if (a.sample.ok && a.sample.source === "cached") {
     const note = cachedNote(a.usageAt, now);
-    const perModelAged = Object.keys(a.perModel).length > 0 && a.perModelAt !== a.usageAt;
-    notes.push(perModelAged ? { ...note, text: `${note.text}, per-model ${a.perModelAt != null ? fmtAgo(a.perModelAt, now) : "age unknown"}` } : note);
+    notes.push(a.limitsAt != null && a.limitsAt !== a.usageAt ? { ...note, text: `${note.text}, per-model ${fmtAgo(a.limitsAt, now)}` } : note);
   }
   if (!a.sample.ok) {
-    notes.push(...sampleFailedNotes({ cached: a.usage != null || Object.keys(a.perModel).length > 0, usageAt: a.usageAt, reason: a.sample.reason, now }));
+    notes.push(...sampleFailedNotes({ cached: a.usage != null, usageAt: a.usageAt, reason: a.sample.reason, now }));
   }
   return { lines, notes };
 }
 
-function renderClaude(input: { claude: StatusReport["claude"]; codexPooled: boolean; now: number; staleAfterMs: number }): void {
-  const { claude, codexPooled, now, staleAfterMs } = input;
-  if (claude.accounts.length === 0) {
-    if (!codexPooled) {
-      console.log(c.dim("no accounts yet, run `tokenmaxxing init` (or `tokenmaxxing init --codex`)"));
-      return;
-    }
-    console.log(c.dim("no claude accounts (run `tokenmaxxing init` to pool claude too)"));
-    console.log();
-    return;
-  }
-
-  console.log(c.dim(`thresholds 5h ${claude.thresholds.session}% weekly ${claude.thresholds.weekly}%  (${count({ n: claude.accounts.length, noun: "claude account" })})`));
+function renderPool(p: Provider, pool: PoolReport, header: string, now: number, staleAfterMs: number): void {
+  console.log(c.dim(header));
   console.log();
-  renderGrid(claude.accounts.map((a) => claudeCard(a, now, staleAfterMs)));
+  renderGrid(pool.accounts.map((a) => card(p, a, now, staleAfterMs)));
 }
 
 export async function cmdStatus(opts: { json?: boolean; cached?: boolean } = {}): Promise<number> {
   const { json = false, cached = false } = opts;
   const cfg = loadConfig();
   const now = Date.now();
-  const claude = await collectClaude({ cfg, now, cached });
+  const claudeReport = await collect(claude, cfg, now, cached);
   if (!json) {
-    renderClaude({ claude, codexPooled: loadCodexAccounts().accounts.length > 0, now: Date.now(), staleAfterMs: cfg.policy.usagePollTtlMs });
+    const codexPooled = loadAccounts(codexPool).accounts.length > 0;
+    if (claudeReport.accounts.length === 0) {
+      if (!codexPooled) {
+        console.log(c.dim("no accounts yet, run `tokenmaxxing init` (or `tokenmaxxing init --codex`)"));
+        return 0;
+      }
+      console.log(c.dim("no claude accounts (run `tokenmaxxing init` to pool claude too)"));
+      console.log();
+    } else {
+      const header = `thresholds 5h ${claudeReport.thresholds.session}% weekly ${claudeReport.thresholds.weekly}%  (${count({ n: claudeReport.accounts.length, noun: "claude account" })})`;
+      renderPool(claude, claudeReport, header, Date.now(), cfg.policy.usagePollTtlMs);
+    }
   }
-  const codex = await collectCodex({ cfg, now, cached });
+  const codexReport = await collect(codex, cfg, now, cached);
   if (json) {
-    const report: StatusReport = { now, claude, codex };
+    const report: StatusReport = { now, claude: claudeReport, codex: codexReport };
     emitJson({ ok: true, ...report });
     return 0;
   }
-  renderCodex({ codex, now: Date.now() });
+  if (codexReport.accounts.length > 0) {
+    renderPool(codex, codexReport, `codex  (${count({ n: codexReport.accounts.length, noun: "account" })})`, Date.now(), cfg.policy.usagePollTtlMs);
+  }
   return 0;
 }

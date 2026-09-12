@@ -5,6 +5,8 @@ description: The supervisor shim, statusline tee, Stop hook swap, and adoption m
 
 tokenmaxxing is one multi-call entry point (`src/main.ts`) that behaves as the `claude` supervisor when invoked under that name, serves the hook and statusline shims via internal subcommands, and otherwise dispatches the CLI. It runs directly under Bun; the npm package ships TypeScript source, not a build.
 
+One switching engine serves both pools. The account model, the picker, the decision, and the account commands take a provider (`src/lib/provider.ts`): the Claude provider (`src/lib/claude.ts`) wires the credential store, the OAuth profile and refresh endpoints, the statusline tee, and the `/usage` probe; the Codex provider (`src/lib/codex.ts`) wires `auth.json`, its id token, the usage GET, presence, and restart on swap (see [Codex support](/codex)). Everything below describes the Claude provider unless it says otherwise.
+
 The moving parts:
 
 ## The supervisor shim

@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { verifyRealClaude } from "../lib/claudebin.ts";
 import { checkSettings, installedBin } from "../lib/settings.ts";
 import { checkTimerHealthy, findClaudeShadowers, isBinDirAhead, shellRcPath, timerActivationHint } from "../lib/install.ts";
-import { paths } from "../lib/paths.ts";
+import { claudePool, credItemFor, paths } from "../lib/paths.ts";
 import { loadAccounts, loadConfig } from "../lib/state.ts";
 import { readItem, liveTarget, parkedTarget } from "../lib/credstore.ts";
 import { isAccessTokenExpiring, fetchTokenIdentity, describeIdentity } from "../lib/oauth.ts";
@@ -37,43 +37,43 @@ export async function cmdDoctor(): Promise<number> {
   check(s.sessionStartOk, "SessionStart hook installed in settings.json", "run `tokenmaxxing init`");
   check(checkTimerHealthy(), "periodic check timer active", timerActivationHint());
 
-  const idx = loadAccounts();
+  const idx = loadAccounts(claudePool);
   check(idx.accounts.length > 0, "at least one account in the pool", "run `tokenmaxxing init`");
-  check(!!idx.activeAccountUuid, "an active account is set");
+  check(!!idx.activeId, "an active account is set");
 
   const live = await readItem(liveTarget());
   check(!!live, "live credential readable");
 
-  const active = idx.accounts.find((a) => a.accountUuid === idx.activeAccountUuid);
+  const active = idx.accounts.find((a) => a.id === idx.activeId);
   if (live && active) {
     try {
       const identity = await blobIdentity(live);
-      if (identity) check(identity.accountUuid === active.accountUuid, `live credential identity matches active (${active.email})`, `token belongs to ${describeIdentity(identity)} - run \`tokenmaxxing switch\``);
+      if (identity) check(identity.accountUuid === active.id, `live credential identity matches active (${active.label})`, `token belongs to ${describeIdentity(identity)} - run \`tokenmaxxing switch\``);
       else note("live credential identity unverifiable (access token expired)");
     } catch (e) {
-      check(false, `live credential identity matches active (${active.email})`, (e instanceof Error ? e.message : String(e)).slice(0, 100));
+      check(false, `live credential identity matches active (${active.label})`, (e instanceof Error ? e.message : String(e)).slice(0, 100));
     }
   }
 
   for (const a of idx.accounts) {
-    const parked = await readItem(parkedTarget(a.keychainItem));
-    check(!!parked, `parked credential present for ${a.email}`, `run \`tokenmaxxing auth ${a.label}\``);
+    const parked = await readItem(parkedTarget(credItemFor(a.id)));
+    check(!!parked, `parked credential present for ${a.label}`, `run \`tokenmaxxing auth ${a.label}\``);
     if (parked) {
       try {
         const identity = await blobIdentity(parked);
-        if (identity) check(identity.accountUuid === a.accountUuid, `parked credential identity matches ${a.email}`, `token belongs to ${describeIdentity(identity)} - run \`tokenmaxxing auth ${a.label}\``);
-        else note(`${a.email} identity unverifiable (access token expired)`);
+        if (identity) check(identity.accountUuid === a.id, `parked credential identity matches ${a.label}`, `token belongs to ${describeIdentity(identity)} - run \`tokenmaxxing auth ${a.label}\``);
+        else note(`${a.label} identity unverifiable (access token expired)`);
       } catch (e) {
-        check(false, `parked credential identity matches ${a.email}`, (e instanceof Error ? e.message : String(e)).slice(0, 100));
+        check(false, `parked credential identity matches ${a.label}`, (e instanceof Error ? e.message : String(e)).slice(0, 100));
       }
     }
-    if (a.needsReauth) check(false, `${a.email} needs re-auth`, `run \`tokenmaxxing auth ${a.label}\` to re-login`);
+    if (a.needsReauth) check(false, `${a.label} needs re-auth`, `run \`tokenmaxxing auth ${a.label}\` to re-login`);
   }
 
   if (existsSync(paths.setupTokensJson)) {
     const setupTokens = loadSetupTokens().tokens;
     for (const a of idx.accounts) {
-      const token = setupTokens.find((t) => t.accountUuid === a.accountUuid);
+      const token = setupTokens.find((t) => t.accountUuid === a.id);
       if (!token) warn(`no setup token stored for ${a.label} - run \`tokenmaxxing setup-token\` to mint one for Cursor Cloud`);
       else if (Date.now() - token.mintedAt > SETUP_TOKEN_STALE_MS) warn(`the setup token for ${a.label} was minted ${fmtAgo(token.mintedAt)} and expires a year after minting - \`tokenmaxxing setup-token rm ${a.label}\` then \`tokenmaxxing setup-token\` re-mints it`);
     }

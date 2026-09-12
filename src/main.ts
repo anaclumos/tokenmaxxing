@@ -7,18 +7,16 @@ import { runSubagentStatusline } from "./entries/subagentstatusline.ts";
 import { runStopHook } from "./entries/stophook.ts";
 import { runStopFailureHook } from "./entries/stopfailurehook.ts";
 import { runSessionStart } from "./entries/sessionstart.ts";
+import { runCodexSupervisor } from "./entries/codexsupervisor.ts";
+import { runCodexStopHook } from "./entries/codexstophook.ts";
+import { claude } from "./lib/claude.ts";
+import { codex } from "./lib/codex.ts";
 import { cmdInit } from "./cli/init.ts";
 import { cmdAdd } from "./cli/add.ts";
 import { cmdAuth } from "./cli/auth.ts";
-import { cmdCodexAdd } from "./cli/codexadd.ts";
-import { cmdCodexInit } from "./cli/codexinit.ts";
-import { cmdCodexSwitch } from "./cli/codexswitch.ts";
-import { runCodexSupervisor } from "./entries/codexsupervisor.ts";
-import { runCodexStopHook } from "./entries/codexstophook.ts";
 import { cmdStatus } from "./cli/status.ts";
 import { cmdDoctor } from "./cli/doctor.ts";
 import { cmdRm } from "./cli/rm.ts";
-import { cmdCodexRm } from "./cli/codexrm.ts";
 import { cmdRename } from "./cli/rename.ts";
 import { cmdSwitch } from "./cli/switch.ts";
 import { cmdCheck } from "./cli/check.ts";
@@ -31,7 +29,9 @@ import { c, emitError } from "./cli/render.ts";
 
 const JSON_FLAG = "--json";
 const CACHED_FLAG = "--cached";
+const CODEX_FLAG = "--codex";
 const JSON_COMMANDS = new Set(["status", "config", "check", "switch"]);
+const CODEX_COMMANDS = new Set(["init", "add", "auth", "switch", "rm", "rename"]);
 
 function printHelp(): void {
   console.log(`${c.bold("tokenmaxxing")} - automatic Claude Code account switching
@@ -43,7 +43,7 @@ function printHelp(): void {
   ${c.cyan("tokenmaxxing init --codex")}  same for codex: import login, install codex supervisor + Stop hook (trust it via /hooks)
   ${c.cyan("tokenmaxxing add")}        register an additional account (isolated login)
   ${c.cyan("tokenmaxxing add --codex")}   register an additional codex account (isolated login)
-  ${c.cyan("tokenmaxxing auth")} [sel | --all]  reauthenticate a pooled account in place (bare = pick from a list; --all = every needs-reauth account, one by one)
+  ${c.cyan("tokenmaxxing auth")} [--codex] [sel | --all]  reauthenticate a pooled account in place (bare = pick from a list; --all = every needs-reauth account, one by one)
   ${c.cyan("tokenmaxxing switch --codex")} [sel]  switch the codex pool (takes effect on next codex start)
   ${c.cyan("tokenmaxxing status")} [--cached]  accounts with 5h / weekly / per-model usage bars (--cached: the stored figures, no sampling)
   ${c.cyan("tokenmaxxing config")}     print the config path and the effective values (edit the file in an editor)
@@ -80,11 +80,17 @@ async function main(): Promise<number> {
   jsonMode = argv.includes(JSON_FLAG);
   const json = jsonMode;
   const cached = argv.includes(CACHED_FLAG);
-  const args = argv.filter((a) => a !== JSON_FLAG && a !== CACHED_FLAG);
+  const provider = argv.includes(CODEX_FLAG) ? codex : claude;
+  const args = argv.filter((a) => a !== JSON_FLAG && a !== CACHED_FLAG && a !== CODEX_FLAG);
   const sub = args[0];
 
   if (cached && sub != null && sub !== "status") {
     emitError({ json, message: `${CACHED_FLAG} applies to status only, not ${sub}` });
+    return 2;
+  }
+
+  if (provider === codex && (sub == null || !CODEX_COMMANDS.has(sub))) {
+    emitError({ json, message: `${CODEX_FLAG} applies to ${[...CODEX_COMMANDS].join(", ")}, not ${sub ?? "status"}` });
     return 2;
   }
 
@@ -120,10 +126,7 @@ async function main(): Promise<number> {
       }
       return cmdStatus({ json, cached });
     }
-    case "switch": {
-      const rest = args.slice(1).filter((a) => a !== "--codex");
-      return args.includes("--codex") ? cmdCodexSwitch(rest[0], json) : cmdSwitch(rest[0], json);
-    }
+    case "switch": return cmdSwitch(provider, args[1], json);
     case "check": {
       if (args.length > 1) {
         emitError({ json, message: `unknown check option: ${args[1]} (check takes no options; the timer runs a plain check every tick)` });
@@ -132,15 +135,12 @@ async function main(): Promise<number> {
       return cmdCheck(json);
     }
     case "config": return cmdConfig(args.slice(1), json);
-    case "init": return args.includes("--codex") ? cmdCodexInit() : cmdInit();
-    case "add": return args.includes("--codex") ? cmdCodexAdd() : cmdAdd();
-    case "auth": return cmdAuth(args.slice(1));
+    case "init": return cmdInit(provider);
+    case "add": return cmdAdd(provider);
+    case "auth": return cmdAuth(provider, args.slice(1));
     case "doctor": return cmdDoctor();
-    case "rm": {
-      const rest = args.slice(1).filter((a) => a !== "--codex");
-      return args.includes("--codex") ? cmdCodexRm(rest[0]) : cmdRm(rest[0]);
-    }
-    case "rename": return cmdRename(args.slice(1));
+    case "rm": return cmdRm(provider, args[1]);
+    case "rename": return cmdRename(provider, args.slice(1));
     case "setup-token": return cmdSetupToken(args.slice(1));
     case "cursor": {
       if (args[1] === "init") return cmdCursorInit(args.slice(2));

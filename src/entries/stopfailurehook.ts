@@ -2,8 +2,10 @@ import { join } from "node:path";
 import { z } from "zod";
 import { paths } from "../lib/paths.ts";
 import { writeFileAtomic } from "../lib/atomic.ts";
+import { claude } from "../lib/claude.ts";
 import { readOAuthAccount } from "../lib/claudejson.ts";
 import { enforcedWindowMs, evaluateAndMaybeSwap, recordEnforcedLimit } from "../lib/decide.ts";
+import { claudePool } from "../lib/paths.ts";
 import { POST_SWAP_COOLDOWN_MS, loadConfig, loadLastSwapAt } from "../lib/state.ts";
 import { classifyEnforcedLimit, findEnforcedRow, parseErrorBody, readTranscriptTail } from "../lib/usage.ts";
 import { RespawnMarkerSchema, type EnforcedLimit } from "../lib/types.ts";
@@ -42,7 +44,7 @@ export async function runStopFailureHook(): Promise<number> {
   const canPause = process.env.TOKENMAXXING_SUPERVISED === "1" && pinnedSid != null && mainLoop;
 
   try {
-    const lastSwapAt = loadLastSwapAt();
+    const lastSwapAt = loadLastSwapAt(claudePool);
     if (lastSwapAt != null && now - lastSwapAt < POST_SWAP_COOLDOWN_MS) {
       log("stopfailure.cooldown", { sinceSwapMs: now - lastSwapAt });
       return 0;
@@ -69,7 +71,7 @@ export async function runStopFailureHook(): Promise<number> {
       });
     }
 
-    const decision = await evaluateAndMaybeSwap(now, canPause && enforced != null, enforced);
+    const decision = await evaluateAndMaybeSwap(claude, now, canPause && enforced != null, enforced);
     if (enforced && canPause && pinnedSid && decision.account && (decision.swapped || decision.waitUntil !== undefined)) {
       const marker = join(paths.respawnDir, pinnedSid);
       const payload = RespawnMarkerSchema.parse({
@@ -80,9 +82,9 @@ export async function runStopFailureHook(): Promise<number> {
         ...(launchedAt != null ? { launchedAt } : {}),
       });
       writeFileAtomic(marker, JSON.stringify(payload));
-      log("stopfailure.marker", { session: (stdinSid ?? pinnedSid).slice(0, 8), account: decision.account.accountUuid.slice(0, 8), waitUntil: payload.waitUntil });
+      log("stopfailure.marker", { session: (stdinSid ?? pinnedSid).slice(0, 8), account: decision.account.id.slice(0, 8), waitUntil: payload.waitUntil });
     } else {
-      log("stopfailure.decision", { reason: decision.reason, swapped: decision.swapped, account: decision.account?.accountUuid.slice(0, 8), waitUntil: decision.waitUntil });
+      log("stopfailure.decision", { reason: decision.reason, swapped: decision.swapped, account: decision.account?.id.slice(0, 8), waitUntil: decision.waitUntil });
     }
   } catch (e) {
     log("stopfailure.error", { err: e instanceof Error ? e.message : String(e) });

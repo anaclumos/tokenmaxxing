@@ -3,7 +3,7 @@ import { delay } from "es-toolkit";
 import { z } from "zod";
 import { MAX_WRAP_DEPTH, WRAP_DEPTH_ENV, resolveRealClaude } from "./claudebin.ts";
 import { log } from "./log.ts";
-import { RateLimitsStdinSchema, type ModelInfo, type UsageWindow, type UsageWindows } from "./types.ts";
+import { RateLimitsStdinSchema, type ModelInfo, type UsageWindow, type UsageWindows, type Window } from "./types.ts";
 
 export function normalizeResetsAt(v: unknown): number | null {
   const num = z.number().finite().safeParse(v);
@@ -239,9 +239,22 @@ export function parseUsageText(text: string, now = Date.now()): UsageWindows | n
   return { fiveHour, sevenDay, perModel };
 }
 
-export function keepRows(next: UsageWindows, prev: UsageWindows | undefined, at: number): UsageWindows {
-  if (Object.keys(next.perModel).length > 0 && (prev?.rowsAt == null || prev.rowsAt <= at)) return { ...next, rowsAt: at };
-  return { ...next, perModel: prev?.perModel ?? {}, ...(prev?.rowsAt != null ? { rowsAt: prev.rowsAt } : {}) };
+const FIVE_HOURS_S = 5 * 3600;
+const WEEK_S = 7 * 24 * 3600;
+
+export function windowsOf(u: UsageWindows, at: number): Window[] {
+  return [
+    { name: null, ...u.fiveHour, windowSeconds: FIVE_HOURS_S, sampledAt: at },
+    { name: null, ...u.sevenDay, windowSeconds: WEEK_S, sampledAt: at },
+    ...Object.entries(u.perModel).map(([name, w]) => ({ name, ...w, windowSeconds: WEEK_S, sampledAt: at })),
+  ];
+}
+
+export function mergeWindows(next: Window[], prev: Window[]): Window[] {
+  const named = (ws: Window[]) => ws.filter((w) => w.name != null);
+  const newest = (ws: Window[]) => Math.max(0, ...ws.map((w) => w.sampledAt));
+  const rows = named(next).length > 0 && newest(named(prev)) <= newest(named(next)) ? named(next) : named(prev);
+  return [...next.filter((w) => w.name == null), ...rows];
 }
 
 export const CRED_ENV_OVERRIDES = [

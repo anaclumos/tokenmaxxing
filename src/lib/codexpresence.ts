@@ -68,13 +68,3 @@ export function livingCodexPresences(): LivingPresence[] {
 export function presentCodexAccountIds(): Set<string> {
   return new Set(livingCodexPresences().map((presence) => presence.accountId));
 }
-
-export function targetableCodexAccounts<T extends { accountId: string }>(input: {
-  accounts: T[];
-  activeAccountId: string | null;
-}): T[] {
-  const present = presentCodexAccountIds();
-  return input.accounts.filter(
-    (account) => account.accountId === input.activeAccountId || !present.has(account.accountId),
-  );
-}
