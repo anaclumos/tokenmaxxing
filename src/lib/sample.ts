@@ -130,7 +130,11 @@ async function prepareParkedProbe(account: Account, dir: string, signal?: AbortS
           const rotated = await rotate();
           if ("failed" in rotated) return rotated;
           const verified = await checkIdentity(rotated.fresh, account, signal);
-          if (verified.status !== "mismatch") return rotated;
+          if (verified.status === "match") return rotated;
+          if (verified.status === "unavailable") {
+            await writeItem(backup, JSON.stringify({ claudeAiOauth: rotated.fresh }));
+            return { failed: { ok: false, reason: `${verified.reason} - the rotated pair stays in this slot unverified until the next pass` } };
+          }
           const trueOwner = loadAccounts().accounts.find((a) => a.accountUuid === verified.owner.accountUuid) ?? null;
           const kept = await keepRotatedPair({ fresh: rotated.fresh, owner: trueOwner, fallback: account, liveOwnerUuid: liveAccount, expectedLiveToken: liveToken, lock });
           account.needsReauth = true;
