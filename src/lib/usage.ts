@@ -169,13 +169,7 @@ export function transcriptRowText(row: TranscriptRow): string {
 
 const ROW_RECENCY_MS = 60_000;
 
-const EnforcedRowSchema = z.object({
-  row: TranscriptRowSchema,
-  errorAt: z.number().nullable(),
-});
-export type EnforcedRow = z.infer<typeof EnforcedRowSchema>;
-
-export function findEnforcedRow(input: { rows: TranscriptRow[]; lastAssistantMessage: string | undefined; now: number }): EnforcedRow | null {
+export function findEnforcedRow(input: { rows: TranscriptRow[]; lastAssistantMessage: string | undefined; now: number }): TranscriptRow | null {
   const { rows, lastAssistantMessage, now } = input;
   for (let i = rows.length - 1; i >= 0; i--) {
     const row = rows[i]!;
@@ -183,8 +177,7 @@ export function findEnforcedRow(input: { rows: TranscriptRow[]; lastAssistantMes
     const ts = row.timestamp ? Date.parse(row.timestamp) : Number.NaN;
     const byContent = lastAssistantMessage != null && lastAssistantMessage !== "" && transcriptRowText(row) === lastAssistantMessage;
     const byRecency = Number.isFinite(ts) && Math.abs(now - ts) <= ROW_RECENCY_MS;
-    if (!byContent && !byRecency) continue;
-    return { row, errorAt: Number.isFinite(ts) ? ts : null };
+    if (byContent || byRecency) return row;
   }
   return null;
 }

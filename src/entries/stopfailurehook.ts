@@ -3,13 +3,12 @@ import { z } from "zod";
 import { paths } from "../lib/paths.ts";
 import { writeFileAtomic } from "../lib/atomic.ts";
 import { readOAuthAccount } from "../lib/claudejson.ts";
-import { enforcedWindowMs, evaluateAndMaybeSwap, postSwapProof, recordEnforcedLimit } from "../lib/decide.ts";
-import { loadConfig, loadLastSwapAt } from "../lib/state.ts";
+import { evaluateAndMaybeSwap } from "../lib/decide.ts";
+import { withLock } from "../lib/lock.ts";
+import { POST_SWAP_COOLDOWN_MS, loadConfig, loadLastSwapAt } from "../lib/state.ts";
 import { classifyEnforcedLimit, findEnforcedRow, parseErrorBody, readTranscriptTail } from "../lib/usage.ts";
 import { RespawnMarkerSchema, type EnforcedLimit } from "../lib/types.ts";
 import { log } from "../lib/log.ts";
-
-export const RETRIGGER_PROMPT = "Continue where the previous turn left off; it was interrupted by a usage limit and tokenmaxxing switched accounts.";
 
 const StopFailureStdin = z.looseObject({
   session_id: z.uuid().optional().catch(undefined),
@@ -30,7 +29,8 @@ async function readStdin(): Promise<string> {
 export async function runStopFailureHook(): Promise<number> {
   if (process.env.TOKENMAXXING_PROBE) return 0;
 
-  const account = readOAuthAccount()?.accountUuid ?? null;
+  const entry = await withLock(paths.lockFile, () => ({ swapClock: loadLastSwapAt(), account: readOAuthAccount()?.accountUuid ?? null }));
+  const account = entry.account;
   const now = Date.now();
   const raw = await readStdin();
   const parsed = StopFailureStdin.safeParse((() => { try { return JSON.parse(raw); } catch { return {}; } })());
@@ -44,29 +44,27 @@ export async function runStopFailureHook(): Promise<number> {
   const canPause = process.env.TOKENMAXXING_SUPERVISED === "1" && pinnedSid != null && mainLoop;
 
   try {
+    const lastSwapAt = loadLastSwapAt();
+    if (lastSwapAt != null && lastSwapAt === entry.swapClock && now - lastSwapAt < POST_SWAP_COOLDOWN_MS) {
+      log("stopfailure.cooldown", { sinceSwapMs: now - lastSwapAt });
+      return 0;
+    }
     const cfg = loadConfig();
-    const found = stdin.transcript_path
+    const row = stdin.transcript_path
       ? findEnforcedRow({ rows: readTranscriptTail(stdin.transcript_path), lastAssistantMessage: stdin.last_assistant_message, now })
       : null;
-    const limit = found ? classifyEnforcedLimit(found.row, cfg.policy.switchModels) : null;
+    const limit = row ? classifyEnforcedLimit(row, cfg.policy.switchModels) : null;
 
     let enforced: EnforcedLimit | null = null;
-    if (limit && found && account) {
-      if (postSwapProof({ swapAt: loadLastSwapAt(), launchedAt, errorAt: found.errorAt, now })) {
-        const stamp = await recordEnforcedLimit({ limit, account, now });
-        log("stopfailure.enforced", { kind: limit.kind, family: limit.kind === "model" ? limit.family : undefined, outcome: stamp.outcome, resetsAt: stamp.resetsAt, subagent: !mainLoop });
-        if (stamp.outcome !== "account-moved") {
-          enforced = { account, family: limit.kind === "model" ? limit.family : null, resetsAt: stamp.resetsAt, windowMs: enforcedWindowMs(limit) };
-        }
-      } else {
-        log("stopfailure.unproven", { kind: limit.kind });
-      }
+    if (limit && account) {
+      enforced = { account, kind: limit.kind, family: limit.kind === "model" ? limit.family : null, resetsAt: limit.resetsAt, blind: !mainLoop && limit.kind !== "model" };
+      log("stopfailure.enforced", { kind: limit.kind, family: enforced.family ?? undefined, resetsAt: limit.resetsAt, subagent: !mainLoop });
     } else {
       log("stopfailure.unclassified", {
-        row: found != null,
-        type: found?.row.quotaLimits?.rateLimitType,
-        transient: found?.row.apiErrorIsTransient,
-        body: found ? parseErrorBody(found.row.errorDetails)?.error?.type : undefined,
+        row: row != null,
+        type: row?.quotaLimits?.rateLimitType,
+        transient: row?.apiErrorIsTransient,
+        body: row ? parseErrorBody(row.errorDetails)?.error?.type : undefined,
       });
     }
 
@@ -78,7 +76,6 @@ export async function runStopFailureHook(): Promise<number> {
         ts: Date.now(),
         waitUntil: decision.waitUntil ?? now,
         sessionId: stdinSid ?? pinnedSid,
-        prompt: RETRIGGER_PROMPT,
         ...(launchedAt != null ? { launchedAt } : {}),
       });
       writeFileAtomic(marker, JSON.stringify(payload));

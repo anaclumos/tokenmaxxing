@@ -2,11 +2,11 @@ import { maxBy } from "es-toolkit";
 import { z } from "zod";
 import { withLock } from "./lock.ts";
 import { paths } from "./paths.ts";
-import { POST_SWAP_COOLDOWN_MS, loadAccounts, loadConfig, loadDepletedWait, loadLastSwapAt, loadUsage, loadUsageSnapshot, saveAccounts, saveDepletedWait, writeUsage } from "./state.ts";
+import { POST_SWAP_COOLDOWN_MS, loadAccounts, loadConfig, loadDepletedWait, loadLastSwapAt, loadUsageSnapshot, saveAccounts, saveDepletedWait, writeUsage } from "./state.ts";
 import { readOAuthAccount } from "./claudejson.ts";
 import { isSkippableSwapError, performSwap } from "./swap.ts";
-import { nextWeeklyReset, pickBest, pickEarliestReset, thresholdBars, usableAt } from "./picker.ts";
-import { familyTokens, gatedFamilies, keepRows, probeUsage, type EnforcedClass } from "./usage.ts";
+import { isExhausted, nextWeeklyReset, pickBest, pickEarliestReset, thresholdBars, usableAt } from "./picker.ts";
+import { familyTokens, gatedFamilies, keepRows, probeUsage } from "./usage.ts";
 import { log } from "./log.ts";
 import { AccountSchema, UsageStateSchema, type Account, type Config, type EnforcedLimit, type Thresholds, type UsageState, type UsageWindow } from "./types.ts";
 
@@ -40,7 +40,9 @@ function capForFamily(account: Account, family: string, now: number): UsageWindo
 }
 
 function isOver(u: UsageState | null, account: Account | undefined, bars: Thresholds, cfg: Config, now: number): boolean {
-  if (!u || !account || u.account !== account.accountUuid) return false;
+  if (!account) return false;
+  if (account.enforcedUntil != null && account.enforcedUntil > now) return true;
+  if (!u || u.account !== account.accountUuid) return false;
   if (
     liveUsed({ window: u.fiveHour, windowMs: FIVE_HOURS_MS, sampledAt: u.ts, now }) >= bars.session ||
     liveUsed({ window: u.sevenDay, windowMs: WEEK_MS, sampledAt: u.ts, now }) >= bars.weekly
@@ -75,14 +77,15 @@ function freshest(u: UsageState | null, uAt: number | null, account: Account | u
   return { ...u, ts: uAt };
 }
 
-async function loadFreshSnapshots(cfg: Config, account: string | null, now: number): Promise<Snapshots> {
+async function loadFreshSnapshots(cfg: Config, account: string | null, now: number, probe: boolean): Promise<Snapshots> {
   const snap = loadUsageSnapshot();
   let u = snap?.state ?? null;
   let uAt = snap?.at ?? null;
   const ttl = cfg.policy.usagePollTtlMs;
   const stored = loadAccounts().accounts.find((a) => a.accountUuid === account);
   const probeAttempted = stored?.lastProbeAt != null && now - stored.lastProbeAt <= ttl;
-  if (account && stored && !probeAttempted && (!usageFresh(u, uAt, account, ttl, now) || needsPerModel(u, cfg))) {
+  const walled = stored?.enforcedUntil != null && stored.enforcedUntil > now;
+  if (probe && account && stored && !walled && !probeAttempted && (!usageFresh(u, uAt, account, ttl, now) || needsPerModel(u, cfg))) {
     const startedAt = Date.now();
     const full = await probeUsage();
     const ts = Date.now();
@@ -121,21 +124,20 @@ async function loadFreshSnapshots(cfg: Config, account: string | null, now: numb
 
 export async function evaluateAndMaybeSwap(now = Date.now(), anticipatory = false, enforced: EnforcedLimit | null = null): Promise<SwapDecision> {
   const activeAccount = readOAuthAccount()?.accountUuid ?? null;
-  const enforced0 = enforced && enforced.account === activeAccount ? enforced : null;
 
   const lastSwapAt = loadLastSwapAt();
-  if (!enforced0 && lastSwapAt != null && now - lastSwapAt < POST_SWAP_COOLDOWN_MS) {
+  if (!enforced && lastSwapAt != null && now - lastSwapAt < POST_SWAP_COOLDOWN_MS) {
     return depletedReplay(now) ?? { swapped: false, account: null, reason: "post-swap-cooldown" };
   }
 
   const cfg = loadConfig();
   const bars = thresholdBars(cfg);
 
-  const { u: teeUsage, uAt } = await loadFreshSnapshots(cfg, activeAccount, now);
+  const { u: teeUsage, uAt } = await loadFreshSnapshots(cfg, activeAccount, now, enforced == null);
   const stored = loadAccounts().accounts.find((a) => a.accountUuid === activeAccount);
   const usage = freshest(teeUsage, uAt, stored);
 
-  if (!enforced0 && !isOver(usage, stored, bars, cfg, now)) {
+  if (!enforced && !isOver(usage, stored, bars, cfg, now)) {
     const measured = usage != null && activeAccount != null && usage.account === activeAccount;
     if (!measured) {
       const replay = depletedReplay(now);
@@ -147,10 +149,19 @@ export async function evaluateAndMaybeSwap(now = Date.now(), anticipatory = fals
   return withLock(paths.lockFile, async () => {
     const idx = loadAccounts();
     const account2 = readOAuthAccount()?.accountUuid ?? null;
-    const enforced2 = enforced0 && enforced0.account === account2 ? enforced0 : null;
     const tee = loadUsageSnapshot();
     const active = account2 ? idx.accounts.find((a) => a.accountUuid === account2) : undefined;
     const u2 = tee ? freshest(tee.state, tee.at, active) : usage;
+
+    const origin = enforced ? idx.accounts.find((a) => a.accountUuid === enforced.account) : undefined;
+    const prior = origin?.enforcedUntil != null && origin.enforcedUntil > now;
+    if (enforced && origin) {
+      origin.enforcedUntil = Math.max(origin.enforcedUntil ?? 0, enforcedWall(enforced, origin, now));
+      origin.lastProbeAt = now;
+      saveAccounts(idx);
+      log("usage.enforced_limit", { kind: enforced.kind, family: enforced.family ?? undefined, resetsAt: origin.enforcedUntil, blind: prior || enforced.blind, live: origin === active });
+    }
+    const enforced2 = enforced && origin && origin === active ? enforced : null;
 
     if (account2 != null && !active) {
       return { swapped: false, account: null, reason: "live-credential-not-in-pool" };
@@ -162,10 +173,14 @@ export async function evaluateAndMaybeSwap(now = Date.now(), anticipatory = fals
       saveAccounts(idx);
     }
 
-    const gated = gatedFamilies(u2?.model ?? null, cfg.policy.switchModels);
-    const switchFamilies = enforced2?.family && !gated.includes(enforced2.family) ? [...gated, enforced2.family] : gated;
+    const walled = active?.enforcedUntil != null && active.enforcedUntil > now;
+    const blindScreen = (enforced != null && (prior || enforced.blind)) || (walled && !enforced2);
+    const gated = blindScreen ? cfg.policy.switchModels : gatedFamilies(u2?.model ?? null, cfg.policy.switchModels);
+    const family = enforced?.family ?? null;
+    const switchFamilies = family != null && !gated.includes(family) ? [...gated, family] : gated;
 
-    if (!enforced2 && !isOver(u2, active, bars, cfg, now)) {
+    const seatExhausted = active != null && isExhausted(active, { now, thresholds: bars, currentAccountUuid: account2, switchFamilies });
+    if (!enforced2 && !isOver(u2, active, bars, cfg, now) && !(enforced && seatExhausted)) {
       return depletedReplay(now) ?? { swapped: false, account: null, reason: "raced-already-swapped" };
     }
 
@@ -201,8 +216,7 @@ export async function evaluateAndMaybeSwap(now = Date.now(), anticipatory = fals
       const fresh = loadAccounts();
       const current = seatOf(fresh);
       const ctx = { now, thresholds: bars, currentAccountUuid: current?.accountUuid ?? null, switchFamilies };
-      const enforcedUntil = enforced2 && current && current.accountUuid === enforced2.account ? (enforced2.resetsAt ?? now + enforced2.windowMs) : 0;
-      const currentAt = current ? Math.max(usableAt(current, ctx), enforcedUntil) : Number.POSITIVE_INFINITY;
+      const currentAt = current ? usableAt(current, ctx) : Number.POSITIVE_INFINITY;
       const other = pickEarliestReset(usable(fresh.accounts), ctx);
 
       let target: Account | null = null;
@@ -245,63 +259,19 @@ function depletedReplay(now: number): SwapDecision | null {
   return { swapped: false, account, reason: "depleted-wait", waitUntil: rec.waitUntil };
 }
 
-export function enforcedWindowMs(limit: EnforcedClass): number {
-  return limit.kind === "session" ? FIVE_HOURS_MS : WEEK_MS;
-}
-
-export function postSwapProof(input: { swapAt: number | null; launchedAt: number | null; errorAt: number | null; now: number }): boolean {
-  const { swapAt, launchedAt, errorAt, now } = input;
-  if (swapAt == null) return true;
-  if (launchedAt != null && launchedAt > swapAt) return true;
-  return (errorAt ?? now) - swapAt >= POST_SWAP_COOLDOWN_MS;
-}
-
-const StampSchema = z.object({ outcome: z.enum(["stamped", "account-moved", "no-carrier"]), resetsAt: z.number().nullable() });
-export type Stamp = z.infer<typeof StampSchema>;
-
-export async function recordEnforcedLimit(input: { limit: EnforcedClass; account: string; now: number }): Promise<Stamp> {
-  const { limit, account: accountUuid, now } = input;
-  return withLock(paths.lockFile, () => {
-    if ((readOAuthAccount()?.accountUuid ?? null) !== accountUuid) return { outcome: "account-moved", resetsAt: limit.resetsAt };
-    const prior = loadUsage();
-    const priorSame = prior && prior.account === accountUuid ? prior : null;
-    const idx = loadAccounts();
-    const account = idx.accounts.find((a) => a.accountUuid === accountUuid);
-    if (limit.kind === "model") {
-      const rows = account?.lastUsage?.perModel ?? {};
-      const knownReset = Object.entries(rows).filter(([k]) => familyTokens(k).includes(limit.family)).map(([, w]) => w.resetsAt).find((r): r is number => r != null) ?? null;
-      const weeklyReset = priorSame?.sevenDay.resetsAt ?? account?.lastUsage?.sevenDay.resetsAt ?? null;
-      const resetsAt = limit.resetsAt ?? nextWeeklyReset(knownReset ?? weeklyReset, now);
-      if (!account) return { outcome: "no-carrier", resetsAt };
-      if (account.lastUsage) {
-        const others = Object.fromEntries(Object.entries(rows).filter(([k]) => !familyTokens(k).includes(limit.family)));
-        account.lastUsage = { ...account.lastUsage, perModel: { ...others, [limit.family]: { usedPercentage: 100, resetsAt } }, ...(resetsAt == null ? { rowsAt: now } : {}) };
-      } else {
-        account.enforcedUntil = resetsAt ?? now + WEEK_MS;
-      }
-      account.lastProbeAt = now;
-      saveAccounts(idx);
-      log("usage.enforced_limit", { kind: limit.kind, family: limit.family, resetsAt });
-      return { outcome: "stamped", resetsAt };
-    }
-    if (account) {
-      account.lastProbeAt = now;
-      if (limit.resetsAt != null) account.enforcedUntil = limit.resetsAt;
-      saveAccounts(idx);
-    }
-    const carrier = priorSame ?? (account?.lastUsage ? { ...account.lastUsage, model: null } : null);
-    if (!carrier) return { outcome: "no-carrier", resetsAt: limit.resetsAt };
-    const window: UsageWindow = { usedPercentage: 100, resetsAt: limit.resetsAt };
-    writeUsage({
-      ...(priorSame ?? {}),
-      ...(priorSame == null && account?.lastUsageAt != null ? { sampledAt: account.lastUsageAt } : {}),
-      fiveHour: limit.kind === "session" ? window : carrier.fiveHour,
-      sevenDay: limit.kind === "weekly" ? window : carrier.sevenDay,
-      account: accountUuid,
-      ts: now,
-      model: carrier.model,
-    }, { stamp: true });
-    log("usage.enforced_limit", { kind: limit.kind, resetsAt: limit.resetsAt });
-    return { outcome: "stamped", resetsAt: limit.resetsAt };
-  });
+function enforcedWall(limit: EnforcedLimit, account: Account, now: number): number {
+  const cached = account.lastUsage;
+  const { family } = limit;
+  const familyReset =
+    family == null
+      ? null
+      : Object.entries(cached?.perModel ?? {})
+          .filter(([k]) => familyTokens(k).includes(family))
+          .map(([, w]) => w.resetsAt)
+          .find((r): r is number => r != null) ?? null;
+  const cachedReset =
+    limit.kind === "session"
+      ? cached?.fiveHour.resetsAt != null && cached.fiveHour.resetsAt > now ? cached.fiveHour.resetsAt : null
+      : nextWeeklyReset(familyReset ?? cached?.sevenDay.resetsAt ?? null, now);
+  return limit.resetsAt ?? cachedReset ?? now + (limit.kind === "session" ? FIVE_HOURS_MS : WEEK_MS);
 }
