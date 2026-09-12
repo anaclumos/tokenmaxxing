@@ -8,22 +8,22 @@ import { loadSetupTokens, saveSetupTokens } from "../lib/setuptokens.ts";
 import { loadAccounts, saveAccounts } from "../lib/state.ts";
 import { CredentialBlobSchema } from "../lib/types.ts";
 import { findAccount } from "./rename.ts";
-import { c, emitError, emitJson, plain } from "./render.ts";
+import { c, emitError, plain } from "./render.ts";
 
-export async function cmdRm(selector?: string, json = false): Promise<number> {
+export async function cmdRm(selector?: string): Promise<number> {
   if (!selector) {
-    emitError({ json, message: "usage: tokenmaxxing rm <email|label|uuid>", paint: plain });
+    emitError({ message: "usage: tokenmaxxing rm <email|label|uuid>", paint: plain });
     return 2;
   }
   return withLock(paths.lockFile, async () => {
     const idx = loadAccounts();
     const a = findAccount(idx.accounts, selector);
     if (!a) {
-      emitError({ json, message: `no account matches "${selector}"` });
+      emitError({ message: `no account matches "${selector}"` });
       return 1;
     }
     if (a.accountUuid === idx.activeAccountUuid) {
-      emitError({ json, message: `${a.email} is the ACTIVE account - switch away before removing it.` });
+      emitError({ message: `${a.email} is the ACTIVE account - switch away before removing it.` });
       return 1;
     }
     const live = await readItem(liveTarget());
@@ -34,13 +34,12 @@ export async function cmdRm(selector?: string, json = false): Promise<number> {
         liveAccount = (await fetchTokenIdentity(liveCreds.accessToken)).accountUuid;
       } catch (e) {
         emitError({
-          json,
           message: `cannot verify which account the LIVE credential belongs to (${e instanceof Error ? e.message : String(e)}) - refusing to remove while the live owner is unknown; repair the live credential or retry once the profile endpoint is reachable.`,
         });
         return 1;
       }
       if (liveAccount === a.accountUuid) {
-        emitError({ json, message: `${a.email}'s credential is currently LIVE (the active label is stale - a manual /login drifted it); run \`tokenmaxxing switch\` to move off it first.` });
+        emitError({ message: `${a.email}'s credential is currently LIVE (the active label is stale - a manual /login drifted it); run \`tokenmaxxing switch\` to move off it first.` });
         return 1;
       }
     }
@@ -56,8 +55,7 @@ export async function cmdRm(selector?: string, json = false): Promise<number> {
     if (setupTokens.tokens.some((t) => t.accountUuid === a.accountUuid)) {
       saveSetupTokens({ ...setupTokens, tokens: setupTokens.tokens.filter((t) => t.accountUuid !== a.accountUuid) });
     }
-    if (json) emitJson({ ok: true, pool: "claude", removed: a.label, remaining: idx.accounts.length });
-    else console.log(`removed ${c.bold(a.label)} from the pool (${idx.accounts.length} left)`);
+    console.log(`removed ${c.bold(a.label)} from the pool (${idx.accounts.length} left)`);
     return 0;
   });
 }

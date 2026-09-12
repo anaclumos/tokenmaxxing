@@ -27,11 +27,11 @@ import { cmdSetupToken } from "./cli/setuptoken.ts";
 import { cmdCloudRun } from "./cli/cloudrun.ts";
 import { cmdCursorInit } from "./cli/cursorinit.ts";
 import { timerDeactivationHint, uninstallSupervisor } from "./lib/install.ts";
-import { c, emitError, emitJson } from "./cli/render.ts";
+import { c, emitError } from "./cli/render.ts";
 
 const JSON_FLAG = "--json";
 const CACHED_FLAG = "--cached";
-const INTERACTIVE_COMMANDS = new Set(["init", "add", "auth"]);
+const JSON_COMMANDS = new Set(["status", "config", "check", "switch"]);
 
 function printHelp(): void {
   console.log(`${c.bold("tokenmaxxing")} - automatic Claude Code account switching
@@ -55,7 +55,7 @@ function printHelp(): void {
   ${c.cyan("tokenmaxxing cursor init")} [dir]  write the Claude relay subagent (.cursor/agents/claude.md) and .cursor/environment.json into a repo
   ${c.cyan("tokenmaxxing cloud run")} [--session <id>] [--max-turns <n>] "<prompt>"  on a Cursor Cloud VM: run claude -p on a setup token from TOKENMAXXING_TOKENS, rotate to the next token on a usage limit
 
-  ${c.cyan("--json")}                  print one JSON document on stdout instead of text (status, config, doctor, check, switch, rename, rm, uninstall, setup-token --print, cursor init, cloud run); every document carries ${c.bold("ok")}, failures add ${c.bold("error")}
+  ${c.cyan("--json")}                  print one JSON document on stdout instead of text (status, config, check, switch); every document carries ${c.bold("ok")}, failures add ${c.bold("error")}
 
   ${c.dim("(aliased as")} ${c.cyan("xx")}${c.dim(")")} - then just run ${c.bold("claude")} as always; it switches accounts near quota automatically.`);
 }
@@ -88,8 +88,8 @@ async function main(): Promise<number> {
     return 2;
   }
 
-  if (json && sub != null && INTERACTIVE_COMMANDS.has(sub)) {
-    emitError({ json, message: `${sub} is interactive (it runs a login flow) and has no --json form` });
+  if (json && sub != null && !JSON_COMMANDS.has(sub)) {
+    emitError({ json, message: `${sub} has no ${JSON_FLAG} form (${JSON_FLAG} applies to ${[...JSON_COMMANDS].join(", ")})` });
     return 2;
   }
   if (!(sub != null && sub.startsWith("__")) && !process.env.TOKENMAXXING_PROBE) {
@@ -135,21 +135,21 @@ async function main(): Promise<number> {
     case "init": return args.includes("--codex") ? cmdCodexInit() : cmdInit();
     case "add": return args.includes("--codex") ? cmdCodexAdd() : cmdAdd();
     case "auth": return cmdAuth(args.slice(1));
-    case "doctor": return cmdDoctor(json);
+    case "doctor": return cmdDoctor();
     case "rm": {
       const rest = args.slice(1).filter((a) => a !== "--codex");
-      return args.includes("--codex") ? cmdCodexRm(rest[0], json) : cmdRm(rest[0], json);
+      return args.includes("--codex") ? cmdCodexRm(rest[0]) : cmdRm(rest[0]);
     }
-    case "rename": return cmdRename(args.slice(1), json);
-    case "setup-token": return cmdSetupToken(args.slice(1), json);
+    case "rename": return cmdRename(args.slice(1));
+    case "setup-token": return cmdSetupToken(args.slice(1));
     case "cursor": {
-      if (args[1] === "init") return cmdCursorInit(args.slice(2), json);
-      emitError({ json, message: "usage: tokenmaxxing cursor init [dir]" });
+      if (args[1] === "init") return cmdCursorInit(args.slice(2));
+      emitError({ message: "usage: tokenmaxxing cursor init [dir]" });
       return 2;
     }
     case "cloud": {
-      if (args[1] === "run") return cmdCloudRun(args.slice(2), json);
-      emitError({ json, message: 'usage: tokenmaxxing cloud run [--session <id>] [--max-turns <n>] "<prompt>"' });
+      if (args[1] === "run") return cmdCloudRun(args.slice(2));
+      emitError({ message: 'usage: tokenmaxxing cloud run [--session <id>] [--max-turns <n>] "<prompt>"' });
       return 2;
     }
     case "uninstall": {
@@ -160,10 +160,6 @@ async function main(): Promise<number> {
         ...(out.timerDeactivated ? ["check timer"] : []),
         ...(out.pathLineRemoved ? ["rc PATH line"] : []),
       ];
-      if (json) {
-        emitJson({ ok: true, removed, timerDeactivated: out.timerDeactivated, pathLineRemoved: out.pathLineRemoved });
-        return 0;
-      }
       console.log(`removed ${removed.join(", ")}`);
       if (!out.timerDeactivated) console.log(c.yellow(`⚠ the check job may still be loaded - run: ${timerDeactivationHint()}`));
       if (!out.pathLineRemoved) console.log(c.dim("(no tokenmaxxing PATH line found in the shell rc)"));
@@ -176,8 +172,8 @@ async function main(): Promise<number> {
       printHelp();
       return 0;
     default:
-      emitError({ json, message: `unknown command: ${sub}` });
-      if (!json) printHelp();
+      emitError({ message: `unknown command: ${sub}` });
+      printHelp();
       return 2;
   }
 }

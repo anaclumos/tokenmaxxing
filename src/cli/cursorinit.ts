@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { z } from "zod";
 import { writeFileAtomic } from "../lib/atomic.ts";
-import { c, emitError, emitJson } from "./render.ts";
+import { c, emitError } from "./render.ts";
 
 export const CLOUD_INSTALL_LINE =
   'curl -fsSL https://bun.sh/install | bash && curl -fsSL https://claude.ai/install.sh | bash && "$HOME/.bun/bin/bun" add -g tokenmaxxing && test -x "$HOME/.bun/bin/bun" && test -x "$HOME/.local/bin/claude" && test -e "$HOME/.bun/bin/tokenmaxxing"';
@@ -42,14 +42,14 @@ const ExistingEnvironmentSchema = z.looseObject({ user: z.string().optional() })
 const REPO_FILE_MODE = 0o644;
 const USAGE = "usage: tokenmaxxing cursor init [dir]";
 
-export function cmdCursorInit(args: string[], json = false): number {
+export function cmdCursorInit(args: string[]): number {
   if (args.length > 1) {
-    emitError({ json, message: USAGE });
+    emitError({ message: USAGE });
     return 2;
   }
   const dir = resolve(args[0] ?? ".");
   if (!existsSync(dir)) {
-    emitError({ json, message: `no such directory: ${dir}` });
+    emitError({ message: `no such directory: ${dir}` });
     return 1;
   }
   const agentFile = join(dir, ".cursor", "agents", "claude.md");
@@ -63,10 +63,6 @@ export function cmdCursorInit(args: string[], json = false): number {
     writeFileAtomic(environmentFile, ENVIRONMENT_JSON, REPO_FILE_MODE);
   } else if (existing.user === "root" || existing.user === "0") {
     warnings.push(".cursor/environment.json sets user to root; Claude Code refuses --dangerously-skip-permissions under root, so every relay call fails until user is a non-root account");
-  }
-  if (json) {
-    emitJson({ ok: true, dir, agent, environment, install: CLOUD_INSTALL_LINE, warnings });
-    return 0;
   }
   console.log(`${c.green("✓")} .cursor/agents/claude.md ${agent}`);
   if (environment === "written") {

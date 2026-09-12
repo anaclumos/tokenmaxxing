@@ -7,7 +7,7 @@ import { loadAccounts } from "../lib/state.ts";
 import { scrubCredentialEnv } from "../lib/usage.ts";
 import { CURSOR_SECRET_VALUE_CAP_BYTES, cursorSecretValue, loadSetupTokens, saveSetupTokens, type SetupToken } from "../lib/setuptokens.ts";
 import type { Account } from "../lib/types.ts";
-import { c, emitError, emitJson } from "./render.ts";
+import { c, emitError } from "./render.ts";
 
 const TOKEN_BEGIN_MARKER = "Your OAuth token (valid for";
 const TOKEN_END_MARKER = "Store this token securely";
@@ -58,7 +58,7 @@ function currentTokens(tokens: SetupToken[], accounts: Account[]): { label: stri
   });
 }
 
-async function rmToken(selector: string, json: boolean): Promise<number> {
+async function rmToken(selector: string): Promise<number> {
   const outcome = await withLock(paths.lockFile, async (): Promise<{ error: string } | { kept: SetupToken[] }> => {
     const store = loadSetupTokens();
     const accounts = loadAccounts().accounts;
@@ -74,35 +74,26 @@ async function rmToken(selector: string, json: boolean): Promise<number> {
     return { kept };
   });
   if ("error" in outcome) {
-    emitError({ json, message: outcome.error });
+    emitError({ message: outcome.error });
     return 1;
-  }
-  const remaining = outcome.kept;
-  if (json) {
-    emitJson({ ok: true, removed: selector, remaining: remaining.map((t) => t.label) });
-    return 0;
   }
   console.log(`removed the setup token for ${selector} (local only: Claude Code documents no revocation for setup tokens)`);
   return 0;
 }
 
-export async function cmdSetupToken(args: string[], json = false): Promise<number> {
+export async function cmdSetupToken(args: string[]): Promise<number> {
   const [sub, label] = args;
-  if (sub === "rm" && label !== undefined && args.length === 2) return rmToken(label, json);
+  if (sub === "rm" && label !== undefined && args.length === 2) return rmToken(label);
   const print = sub === "--print" && args.length === 1;
   if (args.length > 0 && !print) {
-    emitError({ json, message: USAGE });
-    return 2;
-  }
-  if (json && !print) {
-    emitError({ json, message: "setup-token mints through a browser login flow and has no --json form; `setup-token --print --json` prints the stored set" });
+    emitError({ message: USAGE });
     return 2;
   }
   let store = loadSetupTokens();
   let idx = loadAccounts();
   if (!print) {
     if (idx.accounts.length === 0) {
-      emitError({ json, message: "no accounts in the pool - run `tokenmaxxing init` first" });
+      emitError({ message: "no accounts in the pool - run `tokenmaxxing init` first" });
       return 1;
     }
     const real = resolveRealClaude();
@@ -130,7 +121,7 @@ export async function cmdSetupToken(args: string[], json = false): Promise<numbe
     idx = loadAccounts();
   }
   if (store.tokens.length === 0) {
-    emitError({ json, message: "no setup tokens stored - run `tokenmaxxing setup-token` to mint them" });
+    emitError({ message: "no setup tokens stored - run `tokenmaxxing setup-token` to mint them" });
     return 1;
   }
   const tokens = currentTokens(store.tokens, idx.accounts);
@@ -138,15 +129,11 @@ export async function cmdSetupToken(args: string[], json = false): Promise<numbe
     .filter((t) => !idx.accounts.some((a) => a.accountUuid === t.accountUuid))
     .map((t) => ({ label: t.label, accountUuid: t.accountUuid }));
   if (tokens.length === 0) {
-    emitError({ json, message: "no stored setup token belongs to a pooled account - run `tokenmaxxing setup-token` to mint them" });
+    emitError({ message: "no stored setup token belongs to a pooled account - run `tokenmaxxing setup-token` to mint them" });
     return 1;
   }
   const secret = cursorSecretValue(tokens);
   const bytes = Buffer.byteLength(secret);
-  if (json) {
-    emitJson({ ok: true, tokens, orphaned, bytes, cap: CURSOR_SECRET_VALUE_CAP_BYTES });
-    return 0;
-  }
   console.log();
   if (orphaned.length > 0) {
     console.log(c.dim(`left out of the secret (no longer in the pool): ${orphaned.map((t) => `${t.label} (${t.accountUuid})`).join(", ")}; \`setup-token rm <label|uuid>\` drops one`));

@@ -76,7 +76,7 @@ claude                  # use claude as always
 | `tokenmaxxing setup-token [--print \| rm <label\|uuid>]` | Cursor Cloud only: mint one `claude setup-token` per pooled account (a browser sign-in each) and print the `TOKENMAXXING_TOKENS` secret value; `--print` prints the stored set, `rm` drops one |
 | `tokenmaxxing cursor init [dir]` | write the Claude relay subagent and `.cursor/environment.json` into a repo |
 | `tokenmaxxing cloud run [--session <id>] [--max-turns <n>] "<prompt>"` | on a Cursor Cloud VM: run `claude -p` on a setup token, rotate to the next token on a usage limit |
-| `--json` | machine-readable output: one JSON document on stdout for `status`, `config`, `doctor`, `check`, `switch`, `rename`, `rm`, `uninstall`, `setup-token --print`, `cursor init`, and `cloud run` (`ok` mirrors the exit code, failures add `error`) |
+| `--json` | machine-readable output: one JSON document on stdout for `status`, `config`, `check`, and `switch` (`ok` mirrors the exit code, failures add `error`) |
 
 ## How switching decides
 

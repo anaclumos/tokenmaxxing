@@ -12,7 +12,7 @@ import {
   spawnCloudClaude,
   transcriptBytes,
 } from "../lib/cloud.ts";
-import { c, emitError, emitJson, fmtReset } from "./render.ts";
+import { c, emitError, fmtReset } from "./render.ts";
 
 const USAGE = "usage: tokenmaxxing cloud run [--session <id>] [--max-turns <n>] \"<prompt>\" (the prompt is also read from stdin)";
 
@@ -39,15 +39,15 @@ function parseFlags(args: string[]): { session: string | null; maxTurns: number 
   return { session, maxTurns, prompt: positional.length > 0 ? positional.join(" ") : null };
 }
 
-export async function cmdCloudRun(args: string[], json = false): Promise<number> {
+export async function cmdCloudRun(args: string[]): Promise<number> {
   const flags = parseFlags(args);
   if ("error" in flags) {
-    emitError({ json, message: `${flags.error} - ${USAGE}` });
+    emitError({ message: `${flags.error} - ${USAGE}` });
     return 2;
   }
   const prompt = flags.prompt ?? (process.stdin.isTTY ? null : await Bun.stdin.text());
   if (prompt == null || prompt.trim() === "") {
-    emitError({ json, message: USAGE });
+    emitError({ message: USAGE });
     return 2;
   }
   const tokens = readCloudTokens();
@@ -61,11 +61,7 @@ export async function cmdCloudRun(args: string[], json = false): Promise<number>
       return picked;
     });
     if (!pick.ok) {
-      emitError({
-        json,
-        message: `every token is at its limit - earliest ${fmtReset(pick.earliestReset)}`,
-        extra: { earliestReset: pick.earliestReset, session_id: sessionId },
-      });
+      emitError({ message: `every token is at its limit - earliest ${fmtReset(pick.earliestReset)}` });
       return 1;
     }
     const label = pick.token.label;
@@ -99,16 +95,10 @@ export async function cmdCloudRun(args: string[], json = false): Promise<number>
       }
       const errors = result.subtype === "success" ? [result.result] : result.errors;
       emitError({
-        json,
         message: `claude exited ${exitCode ?? "on signal"} (${result.subtype}): ${errors.join("; ")}`,
         notes: [`session ${result.session_id}`],
-        extra: { session_id: result.session_id, subtype: result.subtype, errors },
       });
       return 1;
-    }
-    if (json) {
-      emitJson({ ok: true, session_id: result.session_id, result: result.result, num_turns: result.num_turns, total_cost_usd: result.total_cost_usd });
-      return 0;
     }
     console.log(result.result);
     console.log(`session ${result.session_id}`);

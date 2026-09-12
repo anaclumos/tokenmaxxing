@@ -104,7 +104,7 @@ Short pointers.
 
 ## CLI output
 
-Every reporting command has a text form and a `--json` form (`ok` mirrors exit 0, failures add `error`, progress on stderr only; contract in `docs/commands.mdx`). Route every new success line through `emitJson` behind the `json` flag and every error through `emitError` (`notes` are text-only hints, `extra` is structured data). A bare `console.log` on a `--json`-capable command breaks the contract for scripts, and the text form must stay byte-identical: `status` renders from the same report the JSON prints, so change the collect step, not the renderer, when a number is wrong.
+`status`, `config`, `check`, and `switch` have a text form and a `--json` form (`ok` mirrors exit 0, failures add `error`, progress on stderr only; contract in `docs/commands.mdx`); every other command is text only and `main.ts` refuses the flag for it before dispatch (decided 2026-09-12, issue #88: the CI smoke step parses `config --json`, the docs give `jq` recipes for the other three, and nothing consumes the rest). On those four, route every new success line through `emitJson` behind the `json` flag and every error through `emitError` (`notes` are text-only hints, `extra` is structured data). A bare `console.log` on a `--json`-capable command breaks the contract for scripts, and the text form must stay byte-identical: `status` renders from the same report the JSON prints, so change the collect step, not the renderer, when a number is wrong. Do not add `--json` to another command without a consumer.
 
 ## Do not reintroduce
 
