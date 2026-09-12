@@ -3,7 +3,7 @@ import { paths } from "../lib/paths.ts";
 import { loadAccounts, loadConfig, loadUsage } from "../lib/state.ts";
 import { readOAuthAccount } from "../lib/claudejson.ts";
 import { isSkippableSwapError, performSwap } from "../lib/swap.ts";
-import { currentWins, effectiveBars, pickBest, pickEarliestReset, weeklyExpiry, type PickCtx } from "../lib/picker.ts";
+import { currentWins, pickBest, pickEarliestReset, thresholdBars, weeklyExpiry, type PickCtx } from "../lib/picker.ts";
 import { InvalidGrantError } from "../lib/oauth.ts";
 import { gatedFamilies } from "../lib/usage.ts";
 import { findAccount } from "./rename.ts";
@@ -62,12 +62,7 @@ export async function cmdSwitch(selector?: string, json = false): Promise<number
     }
 
     const switchFamilies = gatedFamilies(loadUsage()?.model ?? null, cfg.policy.switchModels);
-    const everyoneIn = (accounts: Account[]): PickCtx => ({
-      now,
-      thresholds: effectiveBars(cfg, { accounts, now, switchFamilies }),
-      currentAccountUuid: null,
-      switchFamilies,
-    });
+    const everyone: PickCtx = { now, thresholds: thresholdBars(cfg), currentAccountUuid: null, switchFamilies };
     const rejected = new Set<string>();
     while (true) {
       const cur = loadAccounts();
@@ -76,7 +71,6 @@ export async function cmdSwitch(selector?: string, json = false): Promise<number
         (claimed != null ? cur.accounts.find((a) => a.accountUuid === claimed) : null) ??
         cur.accounts.find((a) => a.accountUuid === cur.activeAccountUuid) ??
         null;
-      const everyone = everyoneIn(cur.accounts);
       if (active != null && currentWins(active, pool, everyone)) {
         if (drifted) return swapTo(active, "drift-reconciled");
         const expiry = weeklyExpiry(active, now);
@@ -114,7 +108,7 @@ export async function cmdSwitch(selector?: string, json = false): Promise<number
     while (true) {
       const fresh = loadAccounts();
       const pool = fresh.accounts.filter((a) => !rejected.has(a.accountUuid));
-      const earliest = pickEarliestReset(pool, everyoneIn(fresh.accounts));
+      const earliest = pickEarliestReset(pool, everyone);
       const reauth = fresh.accounts.filter((a) => a.needsReauth).map((a) => a.label);
       if (!earliest) {
         if (reauth.length > 0) {
