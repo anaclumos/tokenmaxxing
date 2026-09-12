@@ -49,8 +49,13 @@ function installedVersion(): string {
 
 function isDue(now: number): boolean {
   if (!existsSync(updateJson)) return true;
-  const attempt = AttemptSchema.parse(JSON.parse(readFileSync(updateJson, "utf8")));
-  return now - attempt.attemptedAt >= UPDATE_INTERVAL_MS;
+  let json: unknown;
+  try {
+    json = JSON.parse(readFileSync(updateJson, "utf8"));
+  } catch {
+    throw new Error(`${updateJson} is corrupt (unparsable JSON) - repair or remove the file`);
+  }
+  return now - AttemptSchema.parse(json).attemptedAt >= UPDATE_INTERVAL_MS;
 }
 
 async function updateToLatest(): Promise<void> {
