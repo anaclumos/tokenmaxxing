@@ -9,6 +9,7 @@ import { log } from "./log.ts";
 import { HOME, paths } from "./paths.ts";
 
 const UPDATE_INTERVAL_MS = 24 * 60 * 60 * 1000;
+const INSTALL_DEADLINE_MS = 60_000;
 const LATEST_URL = "https://registry.npmjs.org/tokenmaxxing/latest";
 
 const DirOverrideSchema = z.string().min(1).optional().catch(undefined);
@@ -64,10 +65,17 @@ async function updateToLatest(): Promise<void> {
   if (!response.ok) throw new Error(`${LATEST_URL} answered HTTP ${response.status}`);
   const latest = VersionSchema.parse(await response.json()).version;
   if (Bun.semver.order(latest, current) <= 0) return;
-  const child = Bun.spawn([process.execPath, "add", "-g", `tokenmaxxing@${latest}`], { stdout: "ignore", stderr: "pipe" });
+  const child = Bun.spawn([process.execPath, "add", "-g", `tokenmaxxing@${latest}`], {
+    cwd: paths.home,
+    env: { ...process.env, BUN_INSTALL_GLOBAL_DIR: bunGlobalRoot() },
+    stdout: "ignore",
+    stderr: "pipe",
+    timeout: INSTALL_DEADLINE_MS,
+    killSignal: "SIGKILL",
+  });
   const stderr = await new Response(child.stderr).text();
-  const code = await child.exited;
-  if (code !== 0) throw new Error(`bun add -g tokenmaxxing@${latest} exited ${code}: ${stderr.trim().slice(0, 240)}`);
+  await child.exited;
+  if (child.exitCode !== 0) throw new Error(`bun add -g tokenmaxxing@${latest} exited ${child.signalCode ?? child.exitCode}: ${stderr.trim().slice(0, 240)}`);
   const installed = installedVersion();
   if (installed !== latest) throw new Error(`bun add -g tokenmaxxing@${latest} left ${installed} installed`);
   log("update.done", { from: current, to: latest });
