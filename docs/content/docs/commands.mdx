@@ -15,7 +15,7 @@ description: Every tokenmaxxing command and what it does
 | `tokenmaxxing ls` | List pooled accounts |
 | `tokenmaxxing status` | Accounts with 5h / weekly / per-model usage bars, active and exhausted-until-reset |
 | `tokenmaxxing watch [seconds]` | Live status, re-rendered every N seconds (default 120, floor 30) |
-| `tokenmaxxing config [get\|set\|unset\|tidy]` | Effective config with sources; edit dotted keys; `tidy` prunes unknown keys |
+| `tokenmaxxing config` | The config path and the effective values; edit the file in an editor |
 | `tokenmaxxing check` | Evaluate the switch decision once; the periodic timer runs this every tick |
 | `tokenmaxxing doctor` | Verify the supervisor and settings entries survived |
 | `tokenmaxxing rename [--codex] <sel> <label>` | Relabel a pooled account |
@@ -37,7 +37,7 @@ What each command reports:
 
 - `status` / bare `xx`: `now` (the reference time in epoch ms), `claude.thresholds`, the effective `claude.bars` and `claude.projectionMargin`, then one entry per account with `usage.fiveHour`, `usage.week`, `perModel`, `exhausted`, `needsReauth`, and `sample` (`{ok, source}` for a fresh read from the statusline tee or a probe, `{ok: false, reason}` when the live sample failed and `usage` is the cached value from `usageAt`). Windows are normalized the way the bars are drawn: a passed reset reads as 0 with the weekly reset rolled forward. `codex` mirrors this with `aggregate` and `perLimit` windows that keep their `windowSeconds`. `watch --json` prints one such document per tick and never clears the screen.
 - `ls`: both pools with `active`, `needsReauth`, `tier` or `planType`, and `addedAt`, no usage. `active` here is the pool's stored active label, while `status` computes `active` from the credential that is actually live, so the two disagree after a manual `/login` drifted the live account (`switch` reconciles that).
-- `config`: `path`, `config` (the effective object), `sources` per dotted key (`env`, `file`, or `default`), `envOverrides` (the variable name behind each `env` source), and `unknownKeys`; `get` adds `value` and `source`, `set` reports `before`, `after`, and `envOverride` (the variable that still overrides the file value, else null), `unset` reports whether an override was removed (`unset`) and the resulting `value`, `tidy` reports `changed`, `droppedKeys`, and `casingNormalized`.
+- `config`: `path` and `effective` (the config as loaded: file values over defaults, with `TOKENMAXXING_CLAUDE_BIN` and `TOKENMAXXING_CODEX_BIN` applied on top). A file that fails to load exits 1 with the zod message naming the field.
 - `doctor`: `checks` (each `{ok, label, hint}`), `notes`, and `warnings`; `ok` is the overall verdict, so when any check fails the document also carries `error` and the exit code is 1.
 - `check`: `swapped`, `account`, `reason`, and `waitUntil`.
 - `switch`: `switched`, `account`, and a short `reason` (`selected`, `best`, `already-on`, `current-wins`, `drift-reconciled`, `earliest-reset`, `no-target`, `all-at-limit`, `unknown-resets`), plus `weeklyResetsAt` on `current-wins`, `reauthNeeded` and `deadGrants` (the accounts whose refresh token died while the switch was trying them) when they apply. `availableAt` is Claude-only: the Codex pool has no earliest-reset fallback, so a Codex pick with no usable target fails with `reauthNeeded` instead.

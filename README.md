@@ -71,7 +71,7 @@ claude                  # use claude as always
 | `tokenmaxxing ls` | list pooled accounts |
 | `tokenmaxxing status` | accounts with 5h / weekly usage bars, active + exhausted-until-reset |
 | `tokenmaxxing watch [seconds]` | live status: re-render every N seconds (default 120, floor 30) |
-| `tokenmaxxing config` | effective config with sources; `get`/`set`/`unset` dotted keys, `tidy` prunes unknown keys |
+| `tokenmaxxing config` | the config path and the effective values; edit the file in an editor, a bad value fails the next load with the field name |
 | `tokenmaxxing doctor` | verify the supervisor + settings entries survived |
 | `tokenmaxxing rename [--codex] <sel> <label>` / `rm [--codex] <sel>` | manage the pool (`--codex` targets the codex pool: one email can hold both a claude and a codex account) |
 | `tokenmaxxing uninstall` | remove supervisor + settings entries (accounts/credentials kept) |
