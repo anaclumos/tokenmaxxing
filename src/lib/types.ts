@@ -85,7 +85,7 @@ export const EnforcedLimitSchema = z.object({
   family: z.string().nullable(),
   resetsAt: z.number().nullable(),
   windowMs: z.number(),
-  subagent: z.boolean(),
+  blind: z.boolean(),
 });
 export type EnforcedLimit = z.infer<typeof EnforcedLimitSchema>;
 
