@@ -4,9 +4,8 @@ import { withLock } from "./lock.ts";
 import { paths } from "./paths.ts";
 import { POST_SWAP_COOLDOWN_MS, loadAccounts, loadConfig, loadDepletedWait, loadLastSwapAt, loadUsage, loadUsageSnapshot, loadModelUsage, saveAccounts, saveDepletedWait, saveModelUsage, writeUsage } from "./state.ts";
 import { readOAuthAccount } from "./claudejson.ts";
-import { isSkippableSwapError, performSwap, type VerifyVerdict } from "./swap.ts";
-import { probeParkedUsage } from "./sample.ts";
-import { isExhausted, nextWeeklyReset, pickBest, pickEarliestReset, thresholdBars, usableAt, type PickCtx } from "./picker.ts";
+import { isSkippableSwapError, performSwap } from "./swap.ts";
+import { nextWeeklyReset, pickBest, pickEarliestReset, thresholdBars, usableAt } from "./picker.ts";
 import { familyTokens, gatedFamilies, probeUsage, type EnforcedClass } from "./usage.ts";
 import { log } from "./log.ts";
 import { AccountSchema, ModelUsageStateSchema, UsageStateSchema, type Account, type Config, type EnforcedLimit, type ModelUsageState, type Thresholds, type UsageState, type UsageWindow } from "./types.ts";
@@ -21,8 +20,6 @@ export type SwapDecision = z.infer<typeof SwapDecisionSchema>;
 
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 const FIVE_HOURS_MS = 5 * 60 * 60 * 1000;
-const VERIFY_PROBE_BUDGET = 2;
-const VERIFY_PROBE_KILL_MS = 12_000;
 
 function liveUsed(input: { window: UsageWindow; windowMs: number; sampledAt: number; now: number }): number {
   const { window: w, windowMs, sampledAt, now } = input;
@@ -186,53 +183,12 @@ export async function evaluateAndMaybeSwap(now = Date.now(), anticipatory = fals
       rejected.add(candidate.accountUuid);
       log("decide.candidate_rejected", { account: candidate.accountUuid.slice(0, 8), error: e instanceof Error ? e.message : String(e) });
     };
-    let probeBudget = VERIFY_PROBE_BUDGET;
-    const verified = async (candidate: Account, ctx: PickCtx): Promise<VerifyVerdict> => {
-      if (candidate.lastUsageAt != null && now - candidate.lastUsageAt <= cfg.policy.usagePollTtlMs) return "go";
-      const short = candidate.accountUuid.slice(0, 8);
-      const idx2 = loadAccounts();
-      const stored = idx2.accounts.find((a) => a.accountUuid === candidate.accountUuid);
-      if (!stored) return "go";
-      if (probeBudget <= 0) {
-        log("decide.verify_budget_spent", { account: short });
-        return "go";
-      }
-      probeBudget -= 1;
-      const sample = await probeParkedUsage(stored, { retries: 0, refreshParked: false, killMs: VERIFY_PROBE_KILL_MS, signal: AbortSignal.timeout(VERIFY_PROBE_KILL_MS) });
-      if (sample.ok) {
-        const at = Date.now();
-        stored.lastUsage = { fiveHour: sample.usage.session, sevenDay: sample.usage.weekAll };
-        stored.lastUsageAt = at;
-        if (Object.keys(sample.usage.perModel).length > 0) {
-          stored.lastPerModel = sample.usage.perModel;
-          stored.lastPerModelAt = at;
-        }
-      }
-      if (sample.ok || stored.needsReauth === true) saveAccounts(idx2);
-      if (stored.needsReauth === true) {
-        rejected.add(candidate.accountUuid);
-        log("decide.candidate_rejected", { account: short, error: "needs reauth" });
-        return "skip";
-      }
-      if (!sample.ok) {
-        log("decide.candidate_unverified", { account: short });
-        return "go";
-      }
-      log(isExhausted(stored, ctx) ? "decide.candidate_walled" : "decide.candidate_verified", {
-        account: short,
-        session: sample.usage.session.usedPercentage,
-        weekly: sample.usage.weekAll.usedPercentage,
-      });
-      return "rerank";
-    };
-
     while (true) {
       const cur = loadAccounts();
       const seat = seatOf(cur);
       const ctx = { now, thresholds: bars, currentAccountUuid: seat?.accountUuid ?? null, switchFamilies };
       const best = pickBest(usable(cur.accounts), ctx);
       if (!best) break;
-      if ((await verified(best, ctx)) !== "go") continue;
       try {
         await performSwap(best);
       } catch (e) {

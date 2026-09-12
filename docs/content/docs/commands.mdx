@@ -17,7 +17,7 @@ description: Every tokenmaxxing command and what it does
 | `tokenmaxxing status --ping [--count N]` | Additionally ping every account (one tiny haiku request each) so all 5h session timers start now, then sample fresh. `--count N` pings N randomly picked accounts (needs-reauth accounts excluded) instead of every one, so repeated runs stagger the 5h resets across the pool; the picked labels are named on stderr |
 | `tokenmaxxing watch [seconds]` | Live status, re-rendered every N seconds (default 120, floor 30; never pings) |
 | `tokenmaxxing config [get\|set\|unset\|tidy]` | Effective config with sources; edit dotted keys; `tidy` prunes unknown keys |
-| `tokenmaxxing check` | Evaluate the switch decision once; the periodic timer runs this every tick |
+| `tokenmaxxing check` | Evaluate the switch decision once and sample the stalest parked account; the periodic timer runs this every tick |
 | `tokenmaxxing doctor` | Verify the supervisor and settings entries survived |
 | `tokenmaxxing rename [--codex] <sel> <label>` | Relabel a pooled account |
 | `tokenmaxxing rm [--codex] <sel>` | Remove an account (and its parked credential) from the claude or codex pool |

@@ -4,7 +4,7 @@ description: The tradeoffs that come with pooled hot-swapping
 ---
 
 - **Cache rewrites.** A swap can require every active conversation to rebuild its prompt cache: caches are never shared across organizations, and a same-organization swap can miss too because workspace boundaries matter. Selection ranks by pace pressure alone and does not try to stay within an organization. See the [measured profile](/switching-profile).
-- **Incomplete verification.** Candidate probes are bounded and cannot always read usage, so a handoff may still rely on stale cached figures.
+- **Cached targets.** A handoff reads cached figures; the periodic check samples one parked account per tick, so a parked figure can be as old as one tick per pooled account, and older when its probes keep failing.
 - **Depleted-pause hiccup.** Only a fully depleted pool stops the session for the countdown; anything typed in that split second is lost.
 - **Retrigger prompt.** When a supervised turn dies on an enforced limit, the relaunch on the fresh account submits one fixed continuation prompt; the model resumes from the transcript, so a turn that was mid-tool-call re-plans that step rather than replaying it.
 - **Adoption lag.** On macOS the first turn within ~30 seconds of a swap can still meter the old account; the bars' headroom absorbs it.

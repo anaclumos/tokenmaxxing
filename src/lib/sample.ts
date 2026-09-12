@@ -1,15 +1,18 @@
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { minBy } from "es-toolkit";
 import { z } from "zod";
 import { readItem, writeItem, deleteItem, liveTarget, parkedTarget, isolatedTarget, claudeAiOauthOnly, mergeIntoLive } from "./credstore.ts";
 import { credItemFor, paths } from "./paths.ts";
 import { withClaudeRefreshLock } from "./claudelock.ts";
+import { withLock } from "./lock.ts";
+import { readOAuthAccount } from "./claudejson.ts";
 import { refreshCredential, isAccessTokenExpiring, isDeadCredential, fetchTokenIdentity, describeIdentity, IdentityUnavailableError, InvalidGrantError } from "./oauth.ts";
 import { FullUsageSchema, pingSession, probeUsage } from "./usage.ts";
-import { loadAccounts } from "./state.ts";
+import { loadAccounts, saveAccounts } from "./state.ts";
 import { keepRotatedPair } from "./swap.ts";
 import { log } from "./log.ts";
-import { CredentialBlobSchema, TokenIdentitySchema, type Account, type OAuthCreds, type TokenIdentity } from "./types.ts";
+import { CredentialBlobSchema, TokenIdentitySchema, type Account, type Config, type OAuthCreds, type TokenIdentity } from "./types.ts";
 
 const SampleOutcomeSchema = z.discriminatedUnion("ok", [
   z.object({ ok: z.literal(true), usage: FullUsageSchema, pingError: z.string().optional(), pingRejected: z.boolean().optional() }),
@@ -24,10 +27,10 @@ const IdentityCheckSchema = z.discriminatedUnion("status", [
 ]);
 type IdentityCheck = z.infer<typeof IdentityCheckSchema>;
 
-async function checkIdentity(creds: OAuthCreds, account: Account, signal?: AbortSignal): Promise<IdentityCheck> {
+async function checkIdentity(creds: OAuthCreds, account: Account): Promise<IdentityCheck> {
   let identity: TokenIdentity;
   try {
-    identity = await fetchTokenIdentity(creds.accessToken, signal);
+    identity = await fetchTokenIdentity(creds.accessToken);
   } catch (e) {
     return {
       status: "unavailable",
@@ -44,10 +47,7 @@ function refreshPlanFields(account: Account, creds: OAuthCreds): void {
   if (creds.rateLimitTier != null) account.rateLimitTier = creds.rateLimitTier;
 }
 
-export async function probeParkedUsage(
-  account: Account,
-  opts: { ping?: boolean; retries?: number; refreshParked?: boolean; killMs?: number; signal?: AbortSignal } = {},
-): Promise<SampleOutcome> {
+export async function probeParkedUsage(account: Account, opts: { ping?: boolean } = {}): Promise<SampleOutcome> {
   const backup = parkedTarget(account.keychainItem);
   const parkedRaw = await readItem(backup);
   if (!parkedRaw) return { ok: false, reason: "no parked credential - run `tokenmaxxing auth`" };
@@ -61,9 +61,6 @@ export async function probeParkedUsage(
   if (isDeadCredential(creds)) {
     account.needsReauth = true;
     return { ok: false, reason: "parked credential was cleared after a failed refresh - re-auth with `tokenmaxxing auth`" };
-  }
-  if (opts.refreshParked === false && isAccessTokenExpiring(creds, 300_000)) {
-    return { ok: false, reason: "parked access token is near expiry - verification requires an unexpired token" };
   }
 
   const liveRaw = await readItem(liveTarget());
@@ -79,7 +76,7 @@ export async function probeParkedUsage(
     if (!isDeadCredential(liveCreds)) {
       liveToken = liveCreds.accessToken;
       try {
-        liveAccount = (await fetchTokenIdentity(liveCreds.accessToken, opts.signal)).accountUuid;
+        liveAccount = (await fetchTokenIdentity(liveCreds.accessToken)).accountUuid;
       } catch (e) {
         return { ok: false, reason: `cannot verify the live credential's owner (${(e instanceof Error ? e.message : String(e)).slice(0, 80)}) - refusing to sample a possibly-live account` };
       }
@@ -98,9 +95,6 @@ export async function probeParkedUsage(
   };
 
   if (isAccessTokenExpiring(creds, 300_000)) {
-    if (opts.refreshParked === false) {
-      return { ok: false, reason: "parked access token is near expiry - verification requires an unexpired token" };
-    }
     const owner = await checkIdentity(creds, account);
     if (owner.status === "mismatch") {
       const kept = await relocate(owner.owner);
@@ -145,7 +139,7 @@ export async function probeParkedUsage(
     await writeItem(backup, JSON.stringify({ claudeAiOauth: creds }));
   }
 
-  const identity = await checkIdentity(creds, account, opts.signal);
+  const identity = await checkIdentity(creds, account);
   if (identity.status === "mismatch") {
     const kept = await relocate(identity.owner);
     account.needsReauth = true;
@@ -160,13 +154,13 @@ export async function probeParkedUsage(
   rmSync(dir, { recursive: true, force: true });
   mkdirSync(dir, { recursive: true });
   const isoTarget = isolatedTarget(dir);
-  const installed = JSON.stringify({ claudeAiOauth: opts.refreshParked === false ? { ...creds, refreshToken: "" } : creds });
+  const installed = JSON.stringify({ claudeAiOauth: creds });
 
   try {
     await writeItem(isoTarget, installed);
     writeFileSync(join(dir, ".claude.json"), JSON.stringify({ oauthAccount: account.oauthAccount, hasCompletedOnboarding: true }));
     const ping = opts.ping ? await pingSession(dir) : null;
-    const usage = await probeUsage(dir, Date.now(), opts);
+    const usage = await probeUsage(dir, Date.now());
     const outcome: SampleOutcome = usage
       ? { ok: true, usage }
       : { ok: false, reason: "`/usage` returned no limit data (see log)" };
@@ -177,15 +171,41 @@ export async function probeParkedUsage(
     return outcome;
   } finally {
     try {
-      if (opts.refreshParked !== false) {
-        const afterIso = await readItem(isoTarget);
-        if (afterIso && afterIso !== installed) await writeItem(backup, claudeAiOauthOnly(afterIso));
-      }
+      const afterIso = await readItem(isoTarget);
+      if (afterIso && afterIso !== installed) await writeItem(backup, claudeAiOauthOnly(afterIso));
     } finally {
       await deleteItem(isoTarget);
       rmSync(dir, { recursive: true, force: true });
     }
   }
+}
+
+export async function sampleOldestParked(input: { cfg: Config; now: number }): Promise<void> {
+  const { cfg, now } = input;
+  await withLock(paths.lockFile, async () => {
+    const idx = loadAccounts();
+    const live = readOAuthAccount()?.accountUuid ?? null;
+    const sampledAt = (a: Account) => Math.max(a.lastUsageAt ?? 0, a.lastProbeAt ?? 0);
+    const stale = idx.accounts.filter((a) => a.accountUuid !== live && a.needsReauth !== true && now - sampledAt(a) > cfg.policy.usagePollTtlMs);
+    const target = minBy(stale, sampledAt);
+    if (!target) return;
+    target.lastProbeAt = now;
+    const outcome = await probeParkedUsage(target);
+    if (outcome.ok) {
+      const at = Date.now();
+      target.lastUsage = { fiveHour: outcome.usage.session, sevenDay: outcome.usage.weekAll };
+      target.lastUsageAt = at;
+      if (Object.keys(outcome.usage.perModel).length > 0) {
+        target.lastPerModel = outcome.usage.perModel;
+        target.lastPerModelAt = at;
+      }
+    }
+    saveAccounts(idx);
+    log(outcome.ok ? "sample.parked_ok" : "sample.parked_failed", {
+      account: target.accountUuid.slice(0, 8),
+      ...(outcome.ok ? {} : { reason: outcome.reason.slice(0, 200) }),
+    });
+  });
 }
 
 export async function ensureLiveTokenFresh(): Promise<void> {
