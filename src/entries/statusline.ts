@@ -10,6 +10,7 @@ import { makeColors, makeUsagePaint } from "../cli/render.ts";
 import { fmtResetShort } from "../lib/usage.ts";
 import {
   AccountsIndexSchema,
+  JsonTextSchema,
   StatusLineStdinSchema,
   WindowSchema,
   type Account,
@@ -118,12 +119,7 @@ export function renderStatusline(stdinObj: unknown, ctx: RenderCtx): string {
 }
 
 export async function runStatusline(): Promise<number> {
-  const raw = await readStdin();
-  let obj: unknown = null;
-  try {
-    obj = JSON.parse(raw);
-  } catch {
-  }
+  const obj = JsonTextSchema.safeParse(await readStdin()).data ?? null;
   const now = Date.now();
 
   let account: string | null = null;

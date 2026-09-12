@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { makeColors, makeUsagePaint } from "../cli/render.ts";
 import { readStdin } from "./statusline.ts";
-import { SubagentStatusLineStdinSchema } from "../lib/types.ts";
+import { JsonTextSchema, SubagentStatusLineStdinSchema } from "../lib/types.ts";
 
 const RowCtxSchema = z.object({ color: z.boolean(), truecolor: z.boolean() });
 export type RowCtx = z.infer<typeof RowCtxSchema>;
@@ -43,12 +43,7 @@ export function renderSubagentRows(stdinObj: unknown, ctx: RowCtx): string[] {
 }
 
 export async function runSubagentStatusline(): Promise<number> {
-  const raw = await readStdin();
-  let obj: unknown = null;
-  try {
-    obj = JSON.parse(raw);
-  } catch {
-  }
+  const obj = JsonTextSchema.safeParse(await readStdin()).data ?? null;
   const colorterm = z.string().optional().parse(process.env.COLORTERM);
   const rows = renderSubagentRows(obj, {
     color: !process.env.NO_COLOR,

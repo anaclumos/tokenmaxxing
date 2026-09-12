@@ -9,7 +9,7 @@ import { withLock } from "../lib/lock.ts";
 import { claudePool } from "../lib/paths.ts";
 import { POST_SWAP_COOLDOWN_MS, loadConfig, loadLastSwapAt } from "../lib/state.ts";
 import { classifyEnforcedLimit, findEnforcedRow, parseErrorBody, readTranscriptTail } from "../lib/usage.ts";
-import { RespawnMarkerSchema, type EnforcedLimit } from "../lib/types.ts";
+import { JsonTextSchema, RespawnMarkerSchema, type EnforcedLimit } from "../lib/types.ts";
 import { log } from "../lib/log.ts";
 
 const StopFailureStdin = z.looseObject({
@@ -35,7 +35,7 @@ export async function runStopFailureHook(): Promise<number> {
   const account = entry.account;
   const now = Date.now();
   const raw = await readStdin();
-  const parsed = StopFailureStdin.safeParse((() => { try { return JSON.parse(raw); } catch { return {}; } })());
+  const parsed = StopFailureStdin.safeParse(JsonTextSchema.safeParse(raw).data);
   const stdin = parsed.success ? parsed.data : {};
   if (stdin.error !== undefined && stdin.error !== "rate_limit") return 0;
 
