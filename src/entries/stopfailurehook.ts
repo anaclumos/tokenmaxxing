@@ -4,7 +4,7 @@ import { evaluateAndMaybeSwap } from "../lib/decide.ts";
 import { supervisedSession, writeRespawnMarker } from "../lib/sessions.ts";
 import { loadConfig } from "../lib/state.ts";
 import { classifyEnforcedLimit, findEnforcedRow, parseErrorBody, readTranscriptTail } from "../lib/usage.ts";
-import type { EnforcedLimit } from "../lib/types.ts";
+import { JsonTextSchema, type EnforcedLimit } from "../lib/types.ts";
 import { log } from "../lib/log.ts";
 import { readStdin } from "./statusline.ts";
 
@@ -22,7 +22,7 @@ export async function runStopFailureHook(): Promise<number> {
   const account = claude.liveId();
   const now = Date.now();
   const raw = await readStdin();
-  const parsed = StopFailureStdin.safeParse((() => { try { return JSON.parse(raw); } catch { return {}; } })());
+  const parsed = StopFailureStdin.safeParse(JsonTextSchema.safeParse(raw).data);
   const stdin = parsed.success ? parsed.data : {};
   if (stdin.error !== undefined && stdin.error !== "rate_limit") return 0;
 

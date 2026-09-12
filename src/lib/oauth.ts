@@ -1,9 +1,8 @@
-import { z } from "zod";
 import { http, safeErrorDetail } from "./http.ts";
-import { ProfileResponseSchema, TokenIdentitySchema, type OAuthCreds, type TokenIdentity } from "./types.ts";
+import { env } from "./paths.ts";
+import { JsonTextSchema, ProfileResponseSchema, TokenIdentitySchema, type OAuthCreds, type TokenIdentity } from "./types.ts";
 
-const EnvOverrideSchema = z.string().min(1).optional().catch(undefined);
-const PROFILE_URL = EnvOverrideSchema.parse(process.env.TOKENMAXXING_OAUTH_PROFILE_URL) ?? "https://api.anthropic.com/api/oauth/profile";
+const PROFILE_URL = env("TOKENMAXXING_OAUTH_PROFILE_URL", "https://api.anthropic.com/api/oauth/profile");
 
 export class InvalidGrantError extends Error {
   constructor(public readonly detail: string) {
@@ -51,9 +50,7 @@ export async function fetchTokenIdentity(accessToken: string, signal?: AbortSign
     throw new IdentityUnavailableError(res.status, `profile response body unreadable: ${e instanceof Error ? e.message : String(e)}`);
   }
   if (!res.ok) throw new IdentityUnavailableError(res.status, safeErrorDetail({ text }));
-  const parsed = ProfileResponseSchema.safeParse((() => {
-    try { return JSON.parse(text); } catch { return null; }
-  })());
+  const parsed = ProfileResponseSchema.safeParse(JsonTextSchema.safeParse(text).data);
   if (!parsed.success) throw new IdentityUnavailableError(res.status, `profile endpoint returned an unrecognized body (${text.length} bytes, withheld)`);
   return TokenIdentitySchema.parse({
     accountUuid: parsed.data.account.uuid,

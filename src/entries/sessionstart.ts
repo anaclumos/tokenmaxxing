@@ -4,6 +4,7 @@ import { evaluateAndMaybeSwap } from "../lib/decide.ts";
 import { supervisedSession, writeRespawnMarker } from "../lib/sessions.ts";
 import { log } from "../lib/log.ts";
 import { readStdin } from "./statusline.ts";
+import { JsonTextSchema } from "../lib/types.ts";
 
 const SessionStartStdin = z.looseObject({
   source: z.string().optional(),
@@ -14,7 +15,7 @@ export async function runSessionStart(): Promise<number> {
   if (process.env.TOKENMAXXING_PROBE) return 0;
 
   const raw = await readStdin();
-  const parsed = SessionStartStdin.safeParse((() => { try { return JSON.parse(raw); } catch { return {}; } })());
+  const parsed = SessionStartStdin.safeParse(JsonTextSchema.safeParse(raw).data);
   const source = parsed.success ? parsed.data.source : undefined;
   const stdinSid = parsed.success ? parsed.data.session_id : undefined;
   const session = supervisedSession();

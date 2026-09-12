@@ -6,7 +6,7 @@ const HOME = homedir();
 
 const EnvOverrideSchema = z.string().min(1).optional().catch(undefined);
 
-function env(name: string, fallback: string): string {
+export function env(name: string, fallback: string): string {
   return EnvOverrideSchema.parse(process.env[name]) ?? fallback;
 }
 

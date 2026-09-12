@@ -1,8 +1,8 @@
 import { mkdirSync, realpathSync, rmdirSync, statSync, utimesSync } from "node:fs";
 import { join } from "node:path";
 import { delay } from "es-toolkit";
-import { z } from "zod";
 import { log } from "./log.ts";
+import { ErrnoSchema } from "./types.ts";
 
 const STALE_MS = 60_000;
 const HEARTBEAT_MS = 5_000;
@@ -14,8 +14,7 @@ function tryAcquire(lockDir: string): boolean {
     mkdirSync(lockDir);
     return true;
   } catch (e) {
-    const errno = z.object({ code: z.string() }).safeParse(e);
-    if (!errno.success || errno.data.code !== "EEXIST") throw e;
+    if (ErrnoSchema.safeParse(e).data?.code !== "EEXIST") throw e;
   }
   try {
     if (Date.now() - statSync(lockDir).mtimeMs > STALE_MS) {

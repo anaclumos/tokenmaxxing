@@ -2,6 +2,7 @@ import { z } from "zod";
 import { claude } from "../lib/claude.ts";
 import { evaluateAndMaybeSwap } from "../lib/decide.ts";
 import { supervisedSession, writeRespawnMarker } from "../lib/sessions.ts";
+import { JsonTextSchema } from "../lib/types.ts";
 import { log } from "../lib/log.ts";
 import { readStdin } from "./statusline.ts";
 
@@ -11,7 +12,7 @@ export async function runStopHook(): Promise<number> {
   if (process.env.TOKENMAXXING_PROBE) return 0;
 
   const raw = await readStdin();
-  const parsed = StopStdin.safeParse((() => { try { return JSON.parse(raw); } catch { return {}; } })());
+  const parsed = StopStdin.safeParse(JsonTextSchema.safeParse(raw).data);
   const stdinSid = parsed.success ? parsed.data.session_id : undefined;
   const session = supervisedSession();
 
