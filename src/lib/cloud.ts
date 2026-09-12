@@ -28,6 +28,8 @@ export function readCloudTokens(): CloudToken[] {
   if (!parsed.success) throw new Error(`${TOKENS_ENV} must be a non-empty JSON array of {label, token} objects`);
   const labels = parsed.data.map((t) => t.label);
   if (new Set(labels).size !== labels.length) throw new Error(`${TOKENS_ENV} carries a duplicate label`);
+  const reserved = labels.find((label) => label in {});
+  if (reserved != null) throw new Error(`${TOKENS_ENV} carries the label "${reserved}", which is a reserved object property name`);
   return parsed.data;
 }
 
