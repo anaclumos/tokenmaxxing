@@ -5,7 +5,7 @@ import { paths } from "./paths.ts";
 import { POST_SWAP_COOLDOWN_MS, loadAccounts, loadConfig, loadDepletedWait, loadLastSwapAt, loadUsageSnapshot, saveAccounts, saveDepletedWait, writeUsage } from "./state.ts";
 import { readOAuthAccount } from "./claudejson.ts";
 import { isSkippableSwapError, performSwap } from "./swap.ts";
-import { nextWeeklyReset, pickBest, pickEarliestReset, thresholdBars, usableAt } from "./picker.ts";
+import { isExhausted, nextWeeklyReset, pickBest, pickEarliestReset, thresholdBars, usableAt } from "./picker.ts";
 import { familyTokens, gatedFamilies, keepRows, probeUsage } from "./usage.ts";
 import { log } from "./log.ts";
 import { AccountSchema, UsageStateSchema, type Account, type Config, type EnforcedLimit, type Thresholds, type UsageState, type UsageWindow } from "./types.ts";
@@ -164,20 +164,23 @@ export async function evaluateAndMaybeSwap(now = Date.now(), anticipatory = fals
       saveAccounts(idx);
     }
 
-    const prior = active?.enforcedUntil != null && active.enforcedUntil > now;
-    if (enforced2 && active) {
-      active.enforcedUntil = Math.max(active.enforcedUntil ?? 0, enforcedWall(enforced2, active, now));
-      active.lastProbeAt = now;
+    const origin = enforced0 ? idx.accounts.find((a) => a.accountUuid === enforced0.account) : undefined;
+    const prior = origin?.enforcedUntil != null && origin.enforcedUntil > now;
+    if (enforced0 && origin) {
+      origin.enforcedUntil = Math.max(origin.enforcedUntil ?? 0, enforcedWall(enforced0, origin, now));
+      origin.lastProbeAt = now;
       saveAccounts(idx);
-      log("usage.enforced_limit", { kind: enforced2.kind, family: enforced2.family ?? undefined, resetsAt: active.enforcedUntil, blind: prior || enforced2.blind });
+      log("usage.enforced_limit", { kind: enforced0.kind, family: enforced0.family ?? undefined, resetsAt: origin.enforcedUntil, blind: prior || enforced0.blind, live: origin === active });
     }
 
     const walled = active?.enforcedUntil != null && active.enforcedUntil > now;
     const blind = !enforced2 || prior || enforced2.blind;
     const gated = walled && blind ? cfg.policy.switchModels : gatedFamilies(u2?.model ?? null, cfg.policy.switchModels);
-    const switchFamilies = enforced2?.family != null && !gated.includes(enforced2.family) ? [...gated, enforced2.family] : gated;
+    const family = enforced0?.family ?? null;
+    const switchFamilies = family != null && !gated.includes(family) ? [...gated, family] : gated;
 
-    if (!enforced2 && !isOver(u2, active, bars, cfg, now)) {
+    const seatExhausted = active != null && isExhausted(active, { now, thresholds: bars, currentAccountUuid: account2, switchFamilies });
+    if (!enforced2 && !isOver(u2, active, bars, cfg, now) && !(enforced0 && seatExhausted)) {
       return depletedReplay(now) ?? { swapped: false, account: null, reason: "raced-already-swapped" };
     }
 
