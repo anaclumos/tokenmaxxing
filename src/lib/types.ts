@@ -247,7 +247,7 @@ export const CodexReconcileMarkerSchema = z.object({
 
 export const ErrnoSchema = z.object({ code: z.string() });
 
-export const JsonTextSchema = z.codec(z.string(), z.json(), {
+export const JsonTextSchema = z.codec(z.string(), z.unknown(), {
   decode: (text, ctx) => {
     try {
       return JSON.parse(text);
