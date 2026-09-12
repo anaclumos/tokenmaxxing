@@ -50,7 +50,7 @@ The Stop hook's stdin has no usage data, but the **statusLine does** (`rate_limi
 
 ### 3.2 Detect + swap + signal (Stop hook, per turn)
 1. Read `usage.json` and exit while the live account is under both bars, as defined in the [switching policy](docs/content/docs/switching.mdx).
-2. Take the pool lock, re-check state, select a candidate under the [switching policy](docs/content/docs/switching.mdx), and attempt bounded verification of stale usage before swapping the credential.
+2. Take the pool lock, re-check state, select a candidate under the [switching policy](docs/content/docs/switching.mdx) from the cached usage figures, and swap the credential.
 3. Done - the running session adopts the new credential on its own within a request or two. Only when the pool is depleted (the decision returned a `waitUntil`: pre-parked on the soonest-recovering account, or staying on the current one when it recovers first) does the hook write `respawn/<session_id>` (atomic temp+rename).
 
 ### 3.3 Depleted-pool pause (supervisor)
@@ -82,10 +82,7 @@ Each terminal ran the supervisor, so each has its own child `claude` and its own
 The [switching policy](docs/content/docs/switching.mdx) is one rule: under both bars, hold; at or over a bar, move to the usable account with the highest pace pressure; nothing usable, wait for the soonest reset.
 
 - Automatic and manual switching rank by pace pressure alone; organization membership is not an input.
-- Successful candidate probes persist their results and restart selection.
-- Verification attempts at most two candidates with a shared 12-second deadline per candidate for identity reads and CLI execution.
-- Expiring access tokens are not refreshed for verification, and the isolated CLI receives no refresh grant.
-- Failed or budget-limited verification uses the existing cached data, so stale-target handoffs remain possible.
+- Selection reads the cached figures only. Each periodic check tick samples the parked account whose last `/usage` attempt is oldest, skipping any attempted within `policy.usagePollTtlMs`, so every parked account is attempted about once per tick per pooled account, or once per `policy.usagePollTtlMs` plus a tick when that is longer, and its cached figure is as fresh as its last successful attempt. No sample runs inside the post-swap cooldown. The pool lock covers only the reservation (its owner lookups and refresh under one 20-second deadline) and the result write, never the `/usage` child.
 - The depleted pause happens at the bar, not at 100; Codex has no pause and rides its account until the server refuses it, because a running sibling cannot adopt another account without restarting.
 
 The [profile](docs/content/docs/switching-profile.mdx) records observed cache rewrites across swaps and does not infer subscription quota savings.

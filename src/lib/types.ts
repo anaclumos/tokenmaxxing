@@ -68,6 +68,7 @@ export const AccountSchema = z.object({
   lastPerModel: z.record(z.string(), UsageWindowSchema).optional(),
   lastPerModelAt: z.number().optional(),
   lastUsageAt: z.number().optional(),
+  lastProbeAt: z.number().optional(),
   enforcedUntil: z.number().optional(),
   needsReauth: z.boolean().optional(),
   subscriptionType: z.string().optional(),

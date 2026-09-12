@@ -1,15 +1,18 @@
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { minBy } from "es-toolkit";
 import { z } from "zod";
 import { readItem, writeItem, deleteItem, liveTarget, parkedTarget, isolatedTarget, claudeAiOauthOnly, mergeIntoLive } from "./credstore.ts";
 import { credItemFor, paths } from "./paths.ts";
 import { withClaudeRefreshLock } from "./claudelock.ts";
+import { withLock } from "./lock.ts";
+import { readOAuthAccount } from "./claudejson.ts";
 import { refreshCredential, isAccessTokenExpiring, isDeadCredential, fetchTokenIdentity, describeIdentity, IdentityUnavailableError, InvalidGrantError } from "./oauth.ts";
 import { FullUsageSchema, probeUsage } from "./usage.ts";
-import { loadAccounts } from "./state.ts";
+import { POST_SWAP_COOLDOWN_MS, loadAccounts, loadLastSwapAt, saveAccounts } from "./state.ts";
 import { keepRotatedPair } from "./swap.ts";
 import { log } from "./log.ts";
-import { CredentialBlobSchema, TokenIdentitySchema, type Account, type OAuthCreds, type TokenIdentity } from "./types.ts";
+import { CredentialBlobSchema, TokenIdentitySchema, type Account, type Config, type OAuthCreds, type TokenIdentity } from "./types.ts";
 
 const SampleOutcomeSchema = z.discriminatedUnion("ok", [
   z.object({ ok: z.literal(true), usage: FullUsageSchema }),
@@ -44,10 +47,12 @@ function refreshPlanFields(account: Account, creds: OAuthCreds): void {
   if (creds.rateLimitTier != null) account.rateLimitTier = creds.rateLimitTier;
 }
 
-export async function probeParkedUsage(
-  account: Account,
-  opts: { retries?: number; refreshParked?: boolean; killMs?: number; signal?: AbortSignal } = {},
-): Promise<SampleOutcome> {
+const ProbeFailureSchema = z.object({ ok: z.literal(false), reason: z.string() });
+type ProbeFailure = z.infer<typeof ProbeFailureSchema>;
+const PreparedProbeSchema = z.discriminatedUnion("ok", [z.object({ ok: z.literal(true), dir: z.string(), installed: z.string() }), ProbeFailureSchema]);
+type PreparedProbe = z.infer<typeof PreparedProbeSchema>;
+
+async function prepareParkedProbe(account: Account, dir: string, signal?: AbortSignal): Promise<PreparedProbe> {
   const backup = parkedTarget(account.keychainItem);
   const parkedRaw = await readItem(backup);
   if (!parkedRaw) return { ok: false, reason: "no parked credential - run `tokenmaxxing auth`" };
@@ -62,13 +67,11 @@ export async function probeParkedUsage(
     account.needsReauth = true;
     return { ok: false, reason: "parked credential was cleared after a failed refresh - re-auth with `tokenmaxxing auth`" };
   }
-  if (opts.refreshParked === false && isAccessTokenExpiring(creds, 300_000)) {
-    return { ok: false, reason: "parked access token is near expiry - verification requires an unexpired token" };
-  }
 
   const liveRaw = await readItem(liveTarget());
   let liveAccount: string | null = null;
   let liveToken: string | null = null;
+  let liveRefresh: string | null = null;
   if (liveRaw != null) {
     let liveCreds: OAuthCreds;
     try {
@@ -78,8 +81,9 @@ export async function probeParkedUsage(
     }
     if (!isDeadCredential(liveCreds)) {
       liveToken = liveCreds.accessToken;
+      liveRefresh = liveCreds.refreshToken;
       try {
-        liveAccount = (await fetchTokenIdentity(liveCreds.accessToken, opts.signal)).accountUuid;
+        liveAccount = (await fetchTokenIdentity(liveCreds.accessToken, signal)).accountUuid;
       } catch (e) {
         return { ok: false, reason: `cannot verify the live credential's owner (${(e instanceof Error ? e.message : String(e)).slice(0, 80)}) - refusing to sample a possibly-live account` };
       }
@@ -98,10 +102,7 @@ export async function probeParkedUsage(
   };
 
   if (isAccessTokenExpiring(creds, 300_000)) {
-    if (opts.refreshParked === false) {
-      return { ok: false, reason: "parked access token is near expiry - verification requires an unexpired token" };
-    }
-    const owner = await checkIdentity(creds, account);
+    const owner = await checkIdentity(creds, account, signal);
     if (owner.status === "mismatch") {
       const kept = await relocate(owner.owner);
       account.needsReauth = true;
@@ -110,9 +111,9 @@ export async function probeParkedUsage(
     if (owner.status === "unavailable" && !owner.stale) {
       return { ok: false, reason: `${owner.reason} - refusing to refresh a parked credential whose owner cannot be verified` };
     }
-    const rotate = async (): Promise<{ fresh: OAuthCreds } | { failed: SampleOutcome }> => {
+    const rotate = async (): Promise<{ fresh: OAuthCreds } | { failed: ProbeFailure }> => {
       try {
-        return { fresh: await refreshCredential(creds) };
+        return { fresh: await refreshCredential(creds, Date.now(), signal) };
       } catch (e) {
         if (e instanceof InvalidGrantError) {
           account.needsReauth = true;
@@ -121,16 +122,24 @@ export async function probeParkedUsage(
         return { failed: { ok: false, reason: `token refresh failed: ${e instanceof Error ? e.message : String(e)}` } };
       }
     };
-    let result: { fresh: OAuthCreds } | { failed: SampleOutcome };
+    let result: { fresh: OAuthCreds } | { failed: ProbeFailure };
     if (owner.status === "match") {
       result = await rotate();
     } else {
+      if (liveRefresh != null && creds.refreshToken === liveRefresh) {
+        return { ok: false, reason: "this slot holds a copy of the LIVE login's grant - refusing to rotate it from a parked slot; run `tokenmaxxing switch` to reconcile" };
+      }
       try {
+        signal?.throwIfAborted();
         result = await withClaudeRefreshLock(async (lock) => {
           const rotated = await rotate();
           if ("failed" in rotated) return rotated;
-          const verified = await checkIdentity(rotated.fresh, account);
-          if (verified.status !== "mismatch") return rotated;
+          const verified = await checkIdentity(rotated.fresh, account, signal);
+          if (verified.status === "match") return rotated;
+          if (verified.status === "unavailable") {
+            await writeItem(backup, JSON.stringify({ claudeAiOauth: rotated.fresh }));
+            return { failed: { ok: false, reason: `${verified.reason} - the rotated pair stays in this slot unverified until the next pass` } };
+          }
           const trueOwner = loadAccounts().accounts.find((a) => a.accountUuid === verified.owner.accountUuid) ?? null;
           const kept = await keepRotatedPair({ fresh: rotated.fresh, owner: trueOwner, fallback: account, liveOwnerUuid: liveAccount, expectedLiveToken: liveToken, lock });
           account.needsReauth = true;
@@ -145,7 +154,7 @@ export async function probeParkedUsage(
     await writeItem(backup, JSON.stringify({ claudeAiOauth: creds }));
   }
 
-  const identity = await checkIdentity(creds, account, opts.signal);
+  const identity = await checkIdentity(creds, account, signal);
   if (identity.status === "mismatch") {
     const kept = await relocate(identity.owner);
     account.needsReauth = true;
@@ -156,27 +165,100 @@ export async function probeParkedUsage(
   }
   refreshPlanFields(account, creds);
 
-  const dir = join(paths.sampleDir, credItemFor(account.accountUuid));
   rmSync(dir, { recursive: true, force: true });
   mkdirSync(dir, { recursive: true });
-  const isoTarget = isolatedTarget(dir);
-  const installed = JSON.stringify({ claudeAiOauth: opts.refreshParked === false ? { ...creds, refreshToken: "" } : creds });
-
+  const installed = JSON.stringify({ claudeAiOauth: creds });
   try {
-    await writeItem(isoTarget, installed);
+    await writeItem(isolatedTarget(dir), installed);
     writeFileSync(join(dir, ".claude.json"), JSON.stringify({ oauthAccount: account.oauthAccount, hasCompletedOnboarding: true }));
-    const usage = await probeUsage(dir, Date.now(), opts);
-    return usage ? { ok: true, usage } : { ok: false, reason: "`/usage` returned no limit data (see log)" };
-  } finally {
-    try {
-      if (opts.refreshParked !== false) {
-        const afterIso = await readItem(isoTarget);
-        if (afterIso && afterIso !== installed) await writeItem(backup, claudeAiOauthOnly(afterIso));
-      }
-    } finally {
-      await deleteItem(isoTarget);
-      rmSync(dir, { recursive: true, force: true });
+  } catch (e) {
+    await finishParkedProbe(account, { dir, installed });
+    throw e;
+  }
+  return { ok: true, dir, installed };
+}
+
+async function runParkedProbe(dir: string, opts: { retries?: number }): Promise<SampleOutcome> {
+  const usage = await probeUsage(dir, Date.now(), { retries: opts.retries });
+  return usage ? { ok: true, usage } : { ok: false, reason: "`/usage` returned no limit data (see log)" };
+}
+
+async function finishParkedProbe(account: Account, prepared: { dir: string; installed: string }): Promise<void> {
+  const isoTarget = isolatedTarget(prepared.dir);
+  const backup = parkedTarget(account.keychainItem);
+  try {
+    const afterIso = await readItem(isoTarget);
+    if (afterIso && afterIso !== prepared.installed) {
+      const parkedNow = await readItem(backup);
+      const installedToken = CredentialBlobSchema.parse(JSON.parse(prepared.installed)).claudeAiOauth.accessToken;
+      const parkedToken = parkedNow == null ? null : CredentialBlobSchema.parse(JSON.parse(parkedNow)).claudeAiOauth.accessToken;
+      if (parkedToken === installedToken) await writeItem(backup, claudeAiOauthOnly(afterIso));
+      else log("sample.harvest_skipped", { account: account.accountUuid.slice(0, 8) });
     }
+  } finally {
+    await deleteItem(isoTarget);
+    rmSync(prepared.dir, { recursive: true, force: true });
+  }
+}
+
+export async function probeParkedUsage(account: Account): Promise<SampleOutcome> {
+  const prepared = await prepareParkedProbe(account, join(paths.sampleDir, credItemFor(account.accountUuid)));
+  if (!prepared.ok) return prepared;
+  try {
+    return await runParkedProbe(prepared.dir, {});
+  } finally {
+    await finishParkedProbe(account, prepared);
+  }
+}
+
+const PREPARE_DEADLINE_MS = 20_000;
+
+export async function sampleOldestParked(cfg: Config): Promise<void> {
+  const reserved = await withLock(paths.lockFile, async () => {
+    const now = Date.now();
+    const lastSwapAt = loadLastSwapAt();
+    if (lastSwapAt != null && now - lastSwapAt < POST_SWAP_COOLDOWN_MS) return null;
+    const idx = loadAccounts();
+    const live = readOAuthAccount()?.accountUuid ?? null;
+    const sampledAt = (a: Account) => Math.max(a.lastUsageAt ?? 0, a.lastProbeAt ?? 0);
+    const stale = idx.accounts.filter((a) => a.accountUuid !== live && a.needsReauth !== true && now - sampledAt(a) > cfg.policy.usagePollTtlMs);
+    const target = minBy(stale, sampledAt);
+    if (!target) return null;
+    target.lastProbeAt = now;
+    const prepared = await prepareParkedProbe(target, join(paths.sampleDir, `${credItemFor(target.accountUuid)}-tick`), AbortSignal.timeout(PREPARE_DEADLINE_MS));
+    saveAccounts(idx);
+    if (!prepared.ok) {
+      log("sample.parked_failed", { account: target.accountUuid.slice(0, 8), reason: prepared.reason.slice(0, 200) });
+      return null;
+    }
+    return { account: target, prepared };
+  });
+  if (!reserved) return;
+  const { account, prepared } = reserved;
+  const startedAt = Date.now();
+  let outcome: SampleOutcome | null = null;
+  try {
+    outcome = await runParkedProbe(prepared.dir, { retries: 0 });
+  } finally {
+    await withLock(paths.lockFile, async () => {
+      await finishParkedProbe(account, prepared);
+      if (outcome == null) return;
+      const idx = loadAccounts();
+      const stored = idx.accounts.find((a) => a.accountUuid === account.accountUuid);
+      if (stored && outcome.ok && (stored.lastUsageAt == null || startedAt > stored.lastUsageAt)) {
+        stored.lastUsage = { fiveHour: outcome.usage.session, sevenDay: outcome.usage.weekAll };
+        stored.lastUsageAt = startedAt;
+        if (Object.keys(outcome.usage.perModel).length > 0) {
+          stored.lastPerModel = outcome.usage.perModel;
+          stored.lastPerModelAt = startedAt;
+        }
+        saveAccounts(idx);
+      }
+      log(outcome.ok ? "sample.parked_ok" : "sample.parked_failed", {
+        account: account.accountUuid.slice(0, 8),
+        ...(outcome.ok ? {} : { reason: outcome.reason.slice(0, 200) }),
+      });
+    });
   }
 }
 
