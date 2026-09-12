@@ -3,7 +3,7 @@ title: Build and distribution
 description: TypeScript source on npm and Nix, run by Bun, published with provenance
 ---
 
-The npm package ships TypeScript source, not a build: the `tokenmaxxing` bin points straight at `src/main.ts` with a Bun shebang, and Bun 1.2.6 or newer runs it as-is. That is why Bun is a hard requirement. There are no compiled binaries by design: an early release shipped a single 61 MB macOS binary to every platform and failed on Linux with `exec format error`, and per-platform compiled packages would each need their own release pipeline, so source-run-by-Bun became the distribution model.
+The npm package ships TypeScript source, not a build: the `tokenmaxxing` bin points straight at `src/main.ts` with a Bun shebang, and Bun 1.3.6 or newer runs it as-is (the floor is where `Bun.JSONC` arrived, which `cursor init` reads Cursor's commented environment file with). That is why Bun is a hard requirement. There are no compiled binaries by design: an early release shipped a single 61 MB macOS binary to every platform and failed on Linux with `exec format error`, and per-platform compiled packages would each need their own release pipeline, so source-run-by-Bun became the distribution model.
 
 Releases are tagged `v<version>` on GitHub; CI publishes to npm via trusted publishing (OIDC, with provenance), and the publish gate runs the typecheck first.
 

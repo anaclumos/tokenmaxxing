@@ -19,7 +19,7 @@
     "DESIGN.md"
   ],
   "engines": {
-    "bun": ">=1.2.6"
+    "bun": ">=1.3.6"
   },
   "os": [
     "darwin",

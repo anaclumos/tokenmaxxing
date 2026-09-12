@@ -323,9 +323,14 @@ async function probeUsageOnce(env: Record<string, string>, now: number): Promise
 
 const PROBE_RETRY_DELAYS_MS = [2000, 5000];
 
+export function scrubCredentialEnv(env: Record<string, string>): Record<string, string> {
+  const scrubbed = { ...env };
+  for (const k of CRED_ENV_OVERRIDES) delete scrubbed[k];
+  return scrubbed;
+}
+
 function probeEnv(configDir?: string): Record<string, string> {
-  const env: Record<string, string> = { ...process.env, TOKENMAXXING_PROBE: "1", [WRAP_DEPTH_ENV]: String(MAX_WRAP_DEPTH) };
-  for (const k of CRED_ENV_OVERRIDES) delete env[k];
+  const env = scrubCredentialEnv({ ...process.env, TOKENMAXXING_PROBE: "1", [WRAP_DEPTH_ENV]: String(MAX_WRAP_DEPTH) });
   if (configDir) env.CLAUDE_CONFIG_DIR = configDir;
   return env;
 }
