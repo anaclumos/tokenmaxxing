@@ -247,7 +247,7 @@ export function parseUsageText(text: string, now = Date.now()): UsageWindows | n
 }
 
 export function keepRows(next: UsageWindows, prev: UsageWindows | undefined, at: number): UsageWindows {
-  if (Object.keys(next.perModel).length > 0) return { ...next, rowsAt: at };
+  if (Object.keys(next.perModel).length > 0 && (prev?.rowsAt == null || prev.rowsAt <= at)) return { ...next, rowsAt: at };
   return { ...next, perModel: prev?.perModel ?? {}, ...(prev?.rowsAt != null ? { rowsAt: prev.rowsAt } : {}) };
 }
 

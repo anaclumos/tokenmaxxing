@@ -83,6 +83,7 @@ async function loadFreshSnapshots(cfg: Config, account: string | null, now: numb
   const stored = loadAccounts().accounts.find((a) => a.accountUuid === account);
   const probeAttempted = stored?.lastProbeAt != null && now - stored.lastProbeAt <= ttl;
   if (account && stored && !probeAttempted && (!usageFresh(u, uAt, account, ttl, now) || needsPerModel(u, cfg))) {
+    const startedAt = Date.now();
     const full = await probeUsage();
     const ts = Date.now();
     if (readOAuthAccount()?.accountUuid === account) {
@@ -106,10 +107,10 @@ async function loadFreshSnapshots(cfg: Config, account: string | null, now: numb
         const idx = loadAccounts();
         const a = idx.accounts.find((x) => x.accountUuid === account);
         if (!a) return;
-        a.lastProbeAt = ts;
+        a.lastProbeAt = startedAt;
         if (full) {
-          a.lastUsage = keepRows(full, a.lastUsage, ts);
-          a.lastUsageAt = ts;
+          if (!a.lastUsage) a.lastUsageAt = startedAt;
+          a.lastUsage = keepRows({ ...(a.lastUsage ?? full), perModel: full.perModel }, a.lastUsage, startedAt);
         }
         saveAccounts(idx);
       });
