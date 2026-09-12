@@ -9,7 +9,7 @@ import { withLock } from "./lock.ts";
 import { readOAuthAccount } from "./claudejson.ts";
 import { refreshCredential, isAccessTokenExpiring, isDeadCredential, fetchTokenIdentity, describeIdentity, IdentityUnavailableError, InvalidGrantError } from "./oauth.ts";
 import { FullUsageSchema, pingSession, probeUsage } from "./usage.ts";
-import { loadAccounts, saveAccounts } from "./state.ts";
+import { POST_SWAP_COOLDOWN_MS, loadAccounts, loadLastSwapAt, saveAccounts } from "./state.ts";
 import { keepRotatedPair } from "./swap.ts";
 import { log } from "./log.ts";
 import { CredentialBlobSchema, TokenIdentitySchema, type Account, type Config, type OAuthCreds, type TokenIdentity } from "./types.ts";
@@ -206,6 +206,8 @@ export async function probeParkedUsage(account: Account, opts: { ping?: boolean 
 export async function sampleOldestParked(input: { cfg: Config; now: number }): Promise<void> {
   const { cfg, now } = input;
   const reserved = await withLock(paths.lockFile, async () => {
+    const lastSwapAt = loadLastSwapAt();
+    if (lastSwapAt != null && now - lastSwapAt < POST_SWAP_COOLDOWN_MS) return null;
     const idx = loadAccounts();
     const live = readOAuthAccount()?.accountUuid ?? null;
     const sampledAt = (a: Account) => Math.max(a.lastUsageAt ?? 0, a.lastProbeAt ?? 0);

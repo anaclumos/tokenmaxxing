@@ -89,7 +89,7 @@ The bars' headroom is deliberate: it's the budget to reach a clean turn boundary
 
 Selection ranks usable candidates by remaining weekly percentage divided by time to reset, highest first; organization membership is not an input, and manual `tokenmaxxing switch` uses the same ranking.
 
-- Every periodic check tick samples the parked account whose last `/usage` attempt is oldest, skipping any attempted within `policy.usagePollTtlMs`, so every parked account is attempted about once per tick per pooled account; the swap reads the cached figures, which are as fresh as each account's last successful attempt.
+- Every periodic check tick samples the parked account whose last `/usage` attempt is oldest, skipping any attempted within `policy.usagePollTtlMs`, so every parked account is attempted about once per tick per pooled account, or once per `usagePollTtlMs` plus a tick when that is longer; the swap reads the cached figures, which are as fresh as each account's last successful attempt. No sample runs inside the 45-second post-swap cooldown.
 - When no account is usable, the session pauses until the soonest reset if that lands within `policy.maxWaitMs`, and otherwise stays put.
 
 See [How switching decides](docs/content/docs/switching.mdx) for the policy and the [cache-cost profile](docs/content/docs/switching-profile.mdx) for measurements and their limits.
