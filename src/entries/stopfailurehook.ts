@@ -3,7 +3,7 @@ import { z } from "zod";
 import { paths } from "../lib/paths.ts";
 import { writeFileAtomic } from "../lib/atomic.ts";
 import { readOAuthAccount } from "../lib/claudejson.ts";
-import { enforcedWindowMs, evaluateAndMaybeSwap, recordEnforcedLimit } from "../lib/decide.ts";
+import { evaluateAndMaybeSwap } from "../lib/decide.ts";
 import { POST_SWAP_COOLDOWN_MS, loadConfig, loadLastSwapAt } from "../lib/state.ts";
 import { classifyEnforcedLimit, findEnforcedRow, parseErrorBody, readTranscriptTail } from "../lib/usage.ts";
 import { RespawnMarkerSchema, type EnforcedLimit } from "../lib/types.ts";
@@ -55,11 +55,8 @@ export async function runStopFailureHook(): Promise<number> {
 
     let enforced: EnforcedLimit | null = null;
     if (limit && account) {
-      const stamp = await recordEnforcedLimit({ limit, account, now });
-      log("stopfailure.enforced", { kind: limit.kind, family: limit.kind === "model" ? limit.family : undefined, outcome: stamp.outcome, resetsAt: stamp.resetsAt, subagent: !mainLoop });
-      if (stamp.outcome === "stamped") {
-        enforced = { account, family: limit.kind === "model" ? limit.family : null, resetsAt: stamp.resetsAt, windowMs: enforcedWindowMs(limit), blind: !stamp.sole || (!mainLoop && limit.kind !== "model") };
-      }
+      enforced = { account, kind: limit.kind, family: limit.kind === "model" ? limit.family : null, resetsAt: limit.resetsAt, blind: !mainLoop && limit.kind !== "model" };
+      log("stopfailure.enforced", { kind: limit.kind, family: enforced.family ?? undefined, resetsAt: limit.resetsAt, subagent: !mainLoop });
     } else {
       log("stopfailure.unclassified", {
         row: row != null,
