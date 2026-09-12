@@ -54,13 +54,14 @@ export function cmdCursorInit(args: string[], json = false): number {
   }
   const agentFile = join(dir, ".cursor", "agents", "claude.md");
   const environmentFile = join(dir, ".cursor", "environment.json");
+  const existing = existsSync(environmentFile) ? ExistingEnvironmentSchema.parse(Bun.JSONC.parse(readFileSync(environmentFile, "utf8"))) : null;
   const agent = existsSync(agentFile) && readFileSync(agentFile, "utf8") === RELAY_AGENT ? "unchanged" : "written";
   if (agent === "written") writeFileAtomic(agentFile, RELAY_AGENT, REPO_FILE_MODE);
-  const environment = existsSync(environmentFile) ? "exists" : "written";
+  const environment = existing == null ? "written" : "exists";
   const warnings: string[] = [];
-  if (environment === "written") {
+  if (existing == null) {
     writeFileAtomic(environmentFile, ENVIRONMENT_JSON, REPO_FILE_MODE);
-  } else if (ExistingEnvironmentSchema.parse(JSON.parse(readFileSync(environmentFile, "utf8"))).user === "root") {
+  } else if (existing.user === "root") {
     warnings.push(".cursor/environment.json sets user to root; Claude Code refuses --dangerously-skip-permissions under root, so every relay call fails until user is a non-root account");
   }
   if (json) {

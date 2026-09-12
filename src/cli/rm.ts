@@ -4,6 +4,7 @@ import { deleteItem, isolatedTarget, liveTarget, parkedTarget, readItem } from "
 import { fetchTokenIdentity } from "../lib/oauth.ts";
 import { withLock } from "../lib/lock.ts";
 import { credItemFor, paths } from "../lib/paths.ts";
+import { loadSetupTokens, saveSetupTokens } from "../lib/setuptokens.ts";
 import { loadAccounts, saveAccounts } from "../lib/state.ts";
 import { CredentialBlobSchema } from "../lib/types.ts";
 import { findAccount } from "./rename.ts";
@@ -49,6 +50,10 @@ export async function cmdRm(selector?: string, json = false): Promise<number> {
     rmSync(sampleDir, { recursive: true, force: true });
     idx.accounts = idx.accounts.filter((x) => x.accountUuid !== a.accountUuid);
     saveAccounts(idx);
+    const setupTokens = loadSetupTokens();
+    if (setupTokens.tokens.some((t) => t.accountUuid === a.accountUuid)) {
+      saveSetupTokens({ ...setupTokens, tokens: setupTokens.tokens.filter((t) => t.accountUuid !== a.accountUuid) });
+    }
     if (json) emitJson({ ok: true, pool: "claude", removed: a.label, remaining: idx.accounts.length });
     else console.log(`removed ${c.bold(a.label)} from the pool (${idx.accounts.length} left)`);
     return 0;

@@ -51,13 +51,19 @@ async function mint(input: { real: string; item: string }): Promise<string | nul
 }
 
 function currentTokens(tokens: SetupToken[], accounts: Account[]): { label: string; token: string }[] {
-  return tokens.map((t) => ({ label: accounts.find((a) => a.accountUuid === t.accountUuid)?.label ?? t.label, token: t.token }));
+  return accounts.flatMap((a) => {
+    const stored = tokens.find((t) => t.accountUuid === a.accountUuid);
+    return stored ? [{ label: a.label, token: stored.token }] : [];
+  });
 }
 
 function rmToken(label: string, json: boolean): number {
   const store = loadSetupTokens();
-  const account = loadAccounts().accounts.find((a) => a.label === label);
-  const remaining = store.tokens.filter((t) => t.label !== label && t.accountUuid !== account?.accountUuid);
+  const accounts = loadAccounts().accounts;
+  const pooled = accounts.find((a) => a.label === label);
+  const remaining = store.tokens.filter((t) =>
+    pooled ? t.accountUuid !== pooled.accountUuid : t.label !== label || accounts.some((a) => a.accountUuid === t.accountUuid),
+  );
   if (remaining.length === store.tokens.length) {
     emitError({ json, message: `no setup token stored for "${label}"` });
     return 1;
@@ -108,13 +114,19 @@ export async function cmdSetupToken(args: string[], json = false): Promise<numbe
     return 1;
   }
   const tokens = currentTokens(store.tokens, idx.accounts);
+  const orphaned = store.tokens.filter((t) => !idx.accounts.some((a) => a.accountUuid === t.accountUuid)).map((t) => t.label);
+  if (tokens.length === 0) {
+    emitError({ json, message: "no stored setup token belongs to a pooled account - run `tokenmaxxing setup-token` to mint them" });
+    return 1;
+  }
   const secret = cursorSecretValue(tokens);
   const bytes = Buffer.byteLength(secret);
   if (json) {
-    emitJson({ ok: true, tokens, bytes, cap: CURSOR_SECRET_VALUE_CAP_BYTES });
+    emitJson({ ok: true, tokens, orphaned, bytes, cap: CURSOR_SECRET_VALUE_CAP_BYTES });
     return 0;
   }
   console.log();
+  if (orphaned.length > 0) console.log(c.dim(`left out of the secret (no longer in the pool): ${orphaned.join(", ")}; \`setup-token rm <label>\` drops one`));
   console.log(`${c.bold("TOKENMAXXING_TOKENS")} ${c.dim("(user-scoped Runtime Secret at cursor.com/dashboard/cloud-agents)")}`);
   console.log(secret);
   if (bytes > CURSOR_SECRET_VALUE_CAP_BYTES) {

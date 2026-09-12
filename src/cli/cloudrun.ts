@@ -45,8 +45,8 @@ export async function cmdCloudRun(args: string[], json = false): Promise<number>
     emitError({ json, message: `${flags.error} - ${USAGE}` });
     return 2;
   }
-  const prompt = flags.prompt ?? (process.stdin.isTTY ? null : (await Bun.stdin.text()).trim());
-  if (prompt == null || prompt === "") {
+  const prompt = flags.prompt ?? (process.stdin.isTTY ? null : await Bun.stdin.text());
+  if (prompt == null || prompt.trim() === "") {
     emitError({ json, message: USAGE });
     return 2;
   }
@@ -74,17 +74,20 @@ export async function cmdCloudRun(args: string[], json = false): Promise<number>
     let spawned: Awaited<ReturnType<typeof spawnCloudClaude>>;
     try {
       spawned = await spawnCloudClaude({ token: pick.token.token, prompt, resume: sessionId, maxTurns: flags.maxTurns });
-    } finally {
+    } catch (e) {
       await withLock(paths.cloudLockFile, () => {
         const sessions = loadCloudSessions();
         delete sessions[reservation];
         saveCloudSessions(sessions);
       });
+      throw e;
     }
     const { exitCode, result } = spawned;
     sessionId = result.session_id;
     await withLock(paths.cloudLockFile, () => {
-      saveCloudSessions({ ...loadCloudSessions(), [result.session_id]: label });
+      const sessions = loadCloudSessions();
+      delete sessions[reservation];
+      saveCloudSessions({ ...sessions, [result.session_id]: label });
     });
     if (result.is_error || result.subtype !== "success") {
       const until = limitWallUntil({ sessionId: result.session_id, sinceBytes: transcriptBefore, now: Date.now() });
