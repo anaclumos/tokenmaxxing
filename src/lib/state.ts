@@ -15,91 +15,26 @@ import {
   type UsageState,
 } from "./types.ts";
 
-const DEFAULT_CONFIG: Config = {
-  thresholds: { session: 90, weekly: 98 },
-  claudeBin: "",
-  codexBin: "",
-  policy: {
-    projectionMargin: 0,
-    switchModels: ["fable"],
-    usagePollTtlMs: 90_000,
-    maxWaitMs: 3_600_000,
-    checkIntervalMs: 60_000,
-  },
-};
-
-const PercentSchema = z.number().min(0).max(100);
-
-export const ConfigFileSchema = z
-  .object({
-    thresholds: z.object({ session: PercentSchema, weekly: PercentSchema }).partial(),
-    claudeBin: z.string(),
-    codexBin: z.string(),
-    policy: z
-      .object({
-        projectionMargin: PercentSchema,
-        switchModels: z.array(z.string()),
-        usagePollTtlMs: z.number().int().positive(),
-        maxWaitMs: z.number().int().positive(),
-        checkIntervalMs: z.number().int().min(10_000),
-      })
-      .partial(),
-  })
-  .partial();
-
-const MergeOutcomeSchema = z.union([
-  z.object({ ok: z.literal(true), config: ConfigSchema }),
-  z.object({ ok: z.literal(false), detail: z.string() }),
-]);
-export type MergeOutcome = z.infer<typeof MergeOutcomeSchema>;
-
-export function mergeConfigFile(p: z.infer<typeof ConfigFileSchema>): MergeOutcome {
-  const cfg: Config = {
-    ...DEFAULT_CONFIG,
-    thresholds: { ...DEFAULT_CONFIG.thresholds },
-    policy: { ...DEFAULT_CONFIG.policy },
-  };
-  cfg.thresholds.session = p.thresholds?.session ?? cfg.thresholds.session;
-  cfg.thresholds.weekly = p.thresholds?.weekly ?? cfg.thresholds.weekly;
-  cfg.claudeBin = p.claudeBin ?? cfg.claudeBin;
-  cfg.codexBin = p.codexBin ?? cfg.codexBin;
-  cfg.policy.projectionMargin = p.policy?.projectionMargin ?? cfg.policy.projectionMargin;
-  cfg.policy.usagePollTtlMs = p.policy?.usagePollTtlMs ?? cfg.policy.usagePollTtlMs;
-  cfg.policy.maxWaitMs = p.policy?.maxWaitMs ?? cfg.policy.maxWaitMs;
-  cfg.policy.checkIntervalMs = p.policy?.checkIntervalMs ?? cfg.policy.checkIntervalMs;
-  if (p.policy?.switchModels) {
-    cfg.policy.switchModels = p.policy.switchModels.map((s) => s.toLowerCase());
-  }
-  const envBin = realClaudeBinFromEnv();
-  if (envBin) cfg.claudeBin = envBin;
-  const envCodexBin = realCodexBinFromEnv();
-  if (envCodexBin) cfg.codexBin = envCodexBin;
-  const merged = ConfigSchema.safeParse(cfg);
-  if (!merged.success) {
-    return { ok: false, detail: merged.error.issues.map((issue) => issue.message).join("; ") };
-  }
-  return { ok: true, config: merged.data };
-}
-
 export function loadConfig(): Config {
-  let fileData: z.infer<typeof ConfigFileSchema> = {};
+  let raw: unknown = {};
   if (existsSync(paths.configJson)) {
-    let raw: unknown;
     try {
       raw = JSON.parse(readFileSync(paths.configJson, "utf8"));
     } catch {
       throw new Error(`${paths.configJson} is corrupt (unparsable JSON) - fix or remove it`);
     }
-    const parsed = ConfigFileSchema.safeParse(raw);
-    if (!parsed.success) {
-      const fields = parsed.error.issues.map((issue) => `${issue.path.join(".")}: ${issue.message}`).join(", ");
-      throw new Error(`${paths.configJson} has wrong-typed values (${fields}) - fix or remove them`);
-    }
-    fileData = parsed.data;
   }
-  const outcome = mergeConfigFile(fileData);
-  if (!outcome.ok) throw new Error(`${paths.configJson} is invalid: ${outcome.detail} - fix or remove the offending values`);
-  return outcome.config;
+  const parsed = ConfigSchema.safeParse(raw);
+  if (!parsed.success) {
+    const fields = parsed.error.issues.map((issue) => `${issue.path.join(".")}: ${issue.message}`).join(", ");
+    throw new Error(`${paths.configJson} is invalid (${fields}) - fix or remove the offending values`);
+  }
+  const cfg = parsed.data;
+  const envBin = realClaudeBinFromEnv();
+  if (envBin) cfg.claudeBin = envBin;
+  const envCodexBin = realCodexBinFromEnv();
+  if (envCodexBin) cfg.codexBin = envCodexBin;
+  return cfg;
 }
 
 export function pinBinOverride(input: { key: "claudeBin" | "codexBin"; bin: string }): void {
