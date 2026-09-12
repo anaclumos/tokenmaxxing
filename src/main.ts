@@ -27,6 +27,7 @@ import { timerDeactivationHint, uninstallSupervisor } from "./lib/install.ts";
 import { c, emitError, emitJson } from "./cli/render.ts";
 
 const JSON_FLAG = "--json";
+const CACHED_FLAG = "--cached";
 const INTERACTIVE_COMMANDS = new Set(["init", "add", "auth"]);
 
 function printHelp(): void {
@@ -72,8 +73,14 @@ async function main(): Promise<number> {
 
   jsonMode = argv.includes(JSON_FLAG);
   const json = jsonMode;
-  const args = argv.filter((a) => a !== JSON_FLAG);
+  const cached = argv.includes(CACHED_FLAG);
+  const args = argv.filter((a) => a !== JSON_FLAG && a !== CACHED_FLAG);
   const sub = args[0];
+
+  if (cached && sub != null && sub !== "status") {
+    emitError({ json, message: `${CACHED_FLAG} applies to status only, not ${sub}` });
+    return 2;
+  }
 
   if (json && sub != null && INTERACTIVE_COMMANDS.has(sub)) {
     emitError({ json, message: `${sub} is interactive (it runs a login flow) and has no --json form` });
@@ -100,12 +107,12 @@ async function main(): Promise<number> {
     case "__codex-stop-hook": return runCodexStopHook();
     case undefined:
     case "status": {
-      const extra = args.slice(1).find((a) => a !== "--cached");
+      const extra = args[1];
       if (extra != null) {
-        emitError({ json, message: `unknown status option: ${extra} (status takes only --cached)` });
+        emitError({ json, message: `unknown status option: ${extra} (status takes only ${CACHED_FLAG})` });
         return 2;
       }
-      return cmdStatus({ json, cached: args.includes("--cached") });
+      return cmdStatus({ json, cached });
     }
     case "switch": {
       const rest = args.slice(1).filter((a) => a !== "--codex");

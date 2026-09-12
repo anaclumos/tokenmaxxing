@@ -31,6 +31,7 @@ const ClaudeStatusAccountSchema = z.object({
   usage: z.object({ fiveHour: UsageWindowSchema, week: UsageWindowSchema }).nullable(),
   perModel: z.record(z.string(), UsageWindowSchema),
   usageAt: z.number().nullable(),
+  perModelAt: z.number().nullable(),
   sample: SampleReportSchema,
 });
 type ClaudeStatusAccount = z.infer<typeof ClaudeStatusAccountSchema>;
@@ -137,7 +138,7 @@ async function collectClaude(input: { cfg: Config; now: number; cached: boolean 
 
   const families = gatedFamilies(loadUsage()?.model ?? null, cfg.policy.switchModels);
   const bars = thresholdBars(cfg);
-  const liveAccount = readOAuthAccount()?.accountUuid ?? null;
+  const liveAccount = cached ? idx.activeAccountUuid : (readOAuthAccount()?.accountUuid ?? null);
   const ordered = sortBy(idx.accounts, [(a) => (a.needsReauth ? 1 : 0), (a) => earliestReset(a, now)]);
   const accounts = ordered.map((a): ClaudeStatusAccount => {
     const sampled = samples.get(a.accountUuid);
@@ -156,6 +157,7 @@ async function collectClaude(input: { cfg: Config; now: number; cached: boolean 
       usage: aggregate ? { fiveHour: currentWindow(aggregate.fiveHour, false, now), week: currentWindow(aggregate.sevenDay, true, now) } : null,
       perModel: Object.fromEntries(Object.entries(perModel).map(([name, w]) => [name, currentWindow(w, true, now)])),
       usageAt: a.lastUsageAt ?? null,
+      perModelAt: a.lastPerModelAt ?? null,
       sample: sampled
         ? sampled.outcome.ok
           ? { ok: true, source: sampled.viaTee ? "statusline" : "probe" }
@@ -182,7 +184,7 @@ async function collectCodex(input: { cfg: Config; now: number; cached: boolean }
   const outcomes = new Map<string, CodexSampleOutcome>();
   let liveId: string | null = null;
   if (cached) {
-    liveId = liveCodexAccountId();
+    liveId = index.activeAccountId;
   } else {
     console.error(c.dim("sampling codex usage..."));
     await withLock(codexPaths.lockFile, async () => {
@@ -366,7 +368,11 @@ function claudeCard(a: ClaudeStatusAccount, now: number, staleAfterMs: number): 
     const age = a.usageAt != null ? fmtAgo(a.usageAt, now) : "age unknown";
     notes.push({ paint: stale ? c.yellow : c.dim, text: `statusline tee ${age}${stale ? " (stale)" : ""}` });
   }
-  if (a.sample.ok && a.sample.source === "cached") notes.push(cachedNote(a.usageAt, now));
+  if (a.sample.ok && a.sample.source === "cached") {
+    const note = cachedNote(a.usageAt, now);
+    const perModelAged = Object.keys(a.perModel).length > 0 && a.perModelAt !== a.usageAt;
+    notes.push(perModelAged ? { ...note, text: `${note.text}, per-model ${a.perModelAt != null ? fmtAgo(a.perModelAt, now) : "age unknown"}` } : note);
+  }
   if (!a.sample.ok) {
     notes.push(...sampleFailedNotes({ cached: a.usage != null || Object.keys(a.perModel).length > 0, usageAt: a.usageAt, reason: a.sample.reason, now }));
   }
