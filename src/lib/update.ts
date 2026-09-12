@@ -1,5 +1,6 @@
 import { existsSync, readFileSync, realpathSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { delay } from "es-toolkit";
 import { z } from "zod";
 import { writeFileAtomic } from "./atomic.ts";
 import { http } from "./http.ts";
@@ -19,16 +20,6 @@ const VersionSchema = z.object({ version: z.string().min(1) });
 const updateJson = join(paths.home, "update.json");
 const updateLock = join(paths.home, "update.lock");
 
-function bunGlobalRoot(): string {
-  const globalDir = DirOverrideSchema.parse(process.env.BUN_INSTALL_GLOBAL_DIR);
-  if (globalDir != null) return globalDir;
-  return join(DirOverrideSchema.parse(process.env.BUN_INSTALL) ?? join(HOME, ".bun"), "install", "global");
-}
-
-function installedPackageDir(): string {
-  return join(bunGlobalRoot(), "node_modules", "tokenmaxxing");
-}
-
 function realOrNull(path: string): string | null {
   try {
     return realpathSync(path);
@@ -37,15 +28,30 @@ function realOrNull(path: string): string | null {
   }
 }
 
-export function detectInstallKind(): "bun-global" | "nix" | "other" {
-  if (isNixPackaged()) return "nix";
-  const entry = realOrNull(Bun.main);
-  return entry != null && entry === realOrNull(join(installedPackageDir(), "src", "main.ts")) ? "bun-global" : "other";
+function globalRootCandidates(): string[] {
+  const globalDir = DirOverrideSchema.parse(process.env.BUN_INSTALL_GLOBAL_DIR);
+  const bunInstall = DirOverrideSchema.parse(process.env.BUN_INSTALL);
+  return [
+    ...(globalDir != null ? [globalDir] : []),
+    ...(bunInstall != null ? [join(bunInstall, "install", "global")] : []),
+    join(dirname(dirname(process.execPath)), "install", "global"),
+    join(HOME, ".bun", "install", "global"),
+  ];
 }
 
-function installedVersion(): string {
-  const file = join(installedPackageDir(), "package.json");
-  return VersionSchema.parse(JSON.parse(readFileSync(file, "utf8"))).version;
+function packageDir(root: string): string {
+  return join(root, "node_modules", "tokenmaxxing");
+}
+
+function detectGlobalRoot(): string | null {
+  if (isNixPackaged()) return null;
+  const entry = realOrNull(Bun.main);
+  if (entry == null) return null;
+  return globalRootCandidates().find((root) => entry === realOrNull(join(packageDir(root), "src", "main.ts"))) ?? null;
+}
+
+function installedVersion(root: string): string {
+  return VersionSchema.parse(JSON.parse(readFileSync(join(packageDir(root), "package.json"), "utf8"))).version;
 }
 
 function isDue(now: number): boolean {
@@ -59,36 +65,38 @@ function isDue(now: number): boolean {
   return now - AttemptSchema.parse(json).attemptedAt >= UPDATE_INTERVAL_MS;
 }
 
-async function updateToLatest(): Promise<void> {
-  const current = installedVersion();
+async function updateToLatest(root: string): Promise<void> {
+  const current = installedVersion(root);
   const response = await http.get(LATEST_URL);
   if (!response.ok) throw new Error(`${LATEST_URL} answered HTTP ${response.status}`);
   const latest = VersionSchema.parse(await response.json()).version;
   if (Bun.semver.order(latest, current) <= 0) return;
   const child = Bun.spawn([process.execPath, "add", "-g", `tokenmaxxing@${latest}`], {
     cwd: paths.home,
-    env: { ...process.env, BUN_INSTALL_GLOBAL_DIR: bunGlobalRoot() },
+    env: { ...process.env, BUN_INSTALL_GLOBAL_DIR: root },
     stdout: "ignore",
     stderr: "pipe",
     timeout: INSTALL_DEADLINE_MS,
     killSignal: "SIGKILL",
   });
-  const stderr = await new Response(child.stderr).text();
+  const stderrText = new Response(child.stderr).text();
   await child.exited;
+  const stderr = await Promise.race([stderrText, delay(1_000).then(() => "")]);
   if (child.exitCode !== 0) throw new Error(`bun add -g tokenmaxxing@${latest} exited ${child.signalCode ?? child.exitCode}: ${stderr.trim().slice(0, 240)}`);
-  const installed = installedVersion();
+  const installed = installedVersion(root);
   if (installed !== latest) throw new Error(`bun add -g tokenmaxxing@${latest} left ${installed} installed`);
   log("update.done", { from: current, to: latest });
 }
 
 export async function maybeAutoUpdate(): Promise<void> {
-  if (detectInstallKind() !== "bun-global") return;
+  const root = detectGlobalRoot();
+  if (root == null) return;
   await withLock(updateLock, async () => {
     const now = Date.now();
     if (!isDue(now)) return;
     writeFileAtomic(updateJson, JSON.stringify({ attemptedAt: now }) + "\n");
     try {
-      await updateToLatest();
+      await updateToLatest(root);
     } catch (e) {
       throw new Error(`self-update from npm failed: ${e instanceof Error ? e.message : String(e)}`);
     }
