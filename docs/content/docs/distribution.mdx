@@ -7,6 +7,20 @@ The npm package ships TypeScript source, not a build: the `tokenmaxxing` bin poi
 
 Releases are tagged `v<version>` on GitHub; CI publishes to npm via trusted publishing (OIDC, with provenance), and the publish gate runs the typecheck first.
 
+## Automatic updates
+
+A Bun global install keeps itself current. After the periodic account check finishes its evaluation, and at most once every 24 hours, it reads the `latest` version of `tokenmaxxing` from the npm registry and runs `bun add -g tokenmaxxing@<version>` when that version is newer than the installed one. A successful update appends an `update.done` line with the old and the new version to `tokenmaxxing.log`. A failed update makes that check exit non-zero and report the reason, and the quota evaluation it already ran still stands. The 24-hour clock lives in `update.json` in the state directory, and the attempt is recorded before the registry request, so a failing update waits out the day instead of retrying every tick.
+
+The install is detected from the running entry, not from the environment alone: the global root is the first of `BUN_INSTALL_GLOBAL_DIR`, `BUN_INSTALL/install/global`, the `install/global` directory beside the running Bun executable's `bin` directory, and `~/.bun/install/global` whose `node_modules/tokenmaxxing/src/main.ts` is the file that is running, so a timer unit that carries no `BUN_INSTALL` still finds a Bun installed under a custom root. A global directory set only through `BUN_INSTALL_GLOBAL_DIR` is invisible to a timer that does not carry that variable; such an install reads as unmanaged there and does not self-update. A package directory that is a symlink (the shape `bun link` creates for a checkout) reads as unmanaged too, so a linked checkout is never replaced by registry contents.
+
+Both the version read and the install use the public npm registry (`bun add` gets `--registry` explicitly), so a registry mirror configured for Bun through `.npmrc`, `bunfig.toml`, or the environment cannot lag behind the version the check selected. A release whose `engines.bun` floor the running Bun does not satisfy is not installed; that check fails visibly with the required range instead, once a day, until Bun is upgraded.
+
+The install child runs from the state directory with the detected global root pinned in its environment (`BUN_INSTALL_GLOBAL_DIR`), so a `bunfig.toml` in the check's working directory cannot redirect it, and it is killed after 60 seconds, so a stalled registry or package-manager lock cannot hold the check open and block the next tick; its error output is read for at most one second after it exits, so a descendant that inherited the pipe cannot hold the check either. A killed install fails that check like any other update failure and waits out the day.
+
+Checkout and Nix installs are left alone; their owner updates them. A Codex-only install (`init --codex` without the Claude `init`) has no periodic check, because Codex never pre-parks and needs no tick, so it does not self-update either; the Claude `init` installs the timer that drives the update.
+
+An update replaces the installed files in place. A supervisor or session that is already running keeps the version it loaded until it restarts, and a hook or supervisor that starts while the replacement is in flight can see a partial tree. An ordinary package update needs no rerun of `init`: the supervisor shim, the settings entries, and the timer unit all point at the package rather than at a version.
+
 ## Nix / nix-darwin
 
 The same source tree is also a flake. It keeps the source-run-by-Bun model (via [bun2nix](https://github.com/nix-community/bun2nix) `writeBunApplication`) and exposes:
