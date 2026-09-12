@@ -1,5 +1,5 @@
 import { existsSync, lstatSync, readFileSync, realpathSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { z } from "zod";
 import { writeFileAtomic } from "./atomic.ts";
 import { http } from "./http.ts";
@@ -16,10 +16,20 @@ const AttemptSchema = z.object({ attemptedAt: z.number() });
 const VersionSchema = z.object({ version: z.string().min(1) });
 const LatestSchema = z.object({ version: z.string().min(1), engines: z.looseObject({ bun: z.string().min(1).optional() }).optional() });
 
-const registry = OverrideSchema.parse(process.env.TOKENMAXXING_NPM_REGISTRY) ?? "https://registry.npmjs.org";
-const latestUrl = new URL("tokenmaxxing/latest", registry.endsWith("/") ? registry : `${registry}/`).href;
 const updateJson = join(paths.home, "update.json");
 const updateLock = join(paths.home, "update.lock");
+
+function registryBase(): string {
+  const registry = OverrideSchema.parse(process.env.TOKENMAXXING_NPM_REGISTRY) ?? "https://registry.npmjs.org";
+  return registry.endsWith("/") ? registry : `${registry}/`;
+}
+
+function withoutCredentials(url: URL): string {
+  const clean = new URL(url.href);
+  clean.username = "";
+  clean.password = "";
+  return clean.href;
+}
 
 function realOrNull(path: string): string | null {
   try {
@@ -37,7 +47,7 @@ function globalRootCandidates(): string[] {
     ...(bunInstall != null ? [join(bunInstall, "install", "global")] : []),
     join(dirname(dirname(process.execPath)), "install", "global"),
     join(HOME, ".bun", "install", "global"),
-  ];
+  ].map((candidate) => resolve(candidate));
 }
 
 function packageDir(root: string): string {
@@ -82,15 +92,17 @@ function isDue(now: number): boolean {
 
 async function updateToLatest(root: string): Promise<void> {
   const current = installedVersion(root);
-  const response = await http.get(latestUrl);
-  if (!response.ok) throw new Error(`${latestUrl} answered HTTP ${response.status}`);
+  const base = registryBase();
+  const latestUrl = new URL("tokenmaxxing/latest", base);
+  const response = await http.get(latestUrl.href);
+  if (!response.ok) throw new Error(`${withoutCredentials(latestUrl)} answered HTTP ${response.status}`);
   const latest = LatestSchema.parse(await response.json());
   if (Bun.semver.order(latest.version, current) <= 0) return;
   const floor = latest.engines?.bun;
   if (floor != null && !Bun.semver.satisfies(Bun.version, floor)) {
     throw new Error(`tokenmaxxing@${latest.version} needs bun ${floor}, this is bun ${Bun.version}`);
   }
-  const child = Bun.spawn([process.execPath, "add", "-g", "--registry", registry, `tokenmaxxing@${latest.version}`], {
+  const child = Bun.spawn([process.execPath, "add", "-g", "--registry", base, `tokenmaxxing@${latest.version}`], {
     cwd: paths.home,
     env: { ...process.env, BUN_INSTALL_GLOBAL_DIR: root },
     stdout: "ignore",
