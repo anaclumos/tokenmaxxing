@@ -82,7 +82,7 @@ export function emitJson(value: unknown): void {
 }
 
 export function emitError(input: {
-  json: boolean;
+  json?: boolean;
   message: string;
   notes?: string[];
   extra?: Record<string, unknown>;
