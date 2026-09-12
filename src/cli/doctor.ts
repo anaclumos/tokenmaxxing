@@ -8,7 +8,7 @@ import { readItem, liveTarget, parkedTarget } from "../lib/credstore.ts";
 import { isAccessTokenExpiring, fetchTokenIdentity, describeIdentity } from "../lib/oauth.ts";
 import { CredentialBlobSchema, type TokenIdentity } from "../lib/types.ts";
 import { SETUP_TOKEN_STALE_MS, loadSetupTokens } from "../lib/setuptokens.ts";
-import { c, emitJson, fmtAgo } from "./render.ts";
+import { c, fmtAgo } from "./render.ts";
 
 async function blobIdentity(raw: string): Promise<TokenIdentity | null> {
   const creds = CredentialBlobSchema.parse(JSON.parse(raw)).claudeAiOauth;
@@ -16,22 +16,14 @@ async function blobIdentity(raw: string): Promise<TokenIdentity | null> {
   return fetchTokenIdentity(creds.accessToken);
 }
 
-export async function cmdDoctor(json = false): Promise<number> {
-  const checks: { ok: boolean; label: string; hint: string | null }[] = [];
-  const notes: string[] = [];
-  const warnings: string[] = [];
+export async function cmdDoctor(): Promise<number> {
+  let failed = 0;
   const check = (cond: boolean, label: string, hint?: string) => {
-    checks.push({ ok: cond, label, hint: cond ? null : (hint ?? null) });
-    if (!json) console.log(`${cond ? c.green("✓") : c.red("✗")} ${label}${!cond && hint ? c.dim(`  - ${hint}`) : ""}`);
+    if (!cond) failed++;
+    console.log(`${cond ? c.green("✓") : c.red("✗")} ${label}${!cond && hint ? c.dim(`  - ${hint}`) : ""}`);
   };
-  const note = (text: string) => {
-    notes.push(text);
-    if (!json) console.log(c.dim(`  - ${text}`));
-  };
-  const warn = (text: string) => {
-    warnings.push(text);
-    if (!json) console.log(c.yellow(`⚠ ${text}`));
-  };
+  const note = (text: string) => console.log(c.dim(`  - ${text}`));
+  const warn = (text: string) => console.log(c.yellow(`⚠ ${text}`));
 
   check(existsSync(paths.supervisorLink), "claude supervisor wrapper present", "run `tokenmaxxing init`");
   check(existsSync(installedBin()), "tokenmaxxing binary installed", "run `tokenmaxxing init`");
@@ -102,13 +94,7 @@ export async function cmdDoctor(json = false): Promise<number> {
     }
   }
 
-  const failed = checks.filter((entry) => !entry.ok).length;
-  const ok = failed === 0;
-  if (json) {
-    emitJson(ok ? { ok, checks, notes, warnings } : { ok, error: `issues found - ${failed} of ${checks.length} checks failed`, checks, notes, warnings });
-    return ok ? 0 : 1;
-  }
   console.log();
-  console.log(ok ? c.green("all good ✓") : c.yellow("issues found - see above"));
-  return ok ? 0 : 1;
+  console.log(failed === 0 ? c.green("all good ✓") : c.yellow("issues found - see above"));
+  return failed === 0 ? 0 : 1;
 }
