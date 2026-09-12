@@ -14,7 +14,7 @@ The automatic decision runs at every turn boundary (the Stop hook), on session s
 
 The same bars gate the trigger and screen the candidates: the decision engages when the live account's measured usage is at or over a bar, and a candidate is usable when none of its cached windows (session, weekly aggregate, gated per-model caps, and any server-pinned enforcement) is at or over one. A screen laxer than the trigger would land swaps on accounts the trigger immediately re-flags, so there is exactly one bar per window. Unmeasured usage never reads as safe: an account with no sample ranks last, and a live account with no fresh tee or probe does not trigger.
 
-Older versions carried a session ladder, an engagement floor, organization affinity, incumbent hysteresis, and wall bars. Their config keys are gone: an array `thresholds.session` fails config loading with a zod message naming the field, and `hardThresholds`, `policy.greedySessionFloor`, and `policy.greedySwapMargin` are ignored and listed as unknown keys by `tokenmaxxing config`.
+Older versions carried a session ladder, an engagement floor, organization affinity, incumbent hysteresis, and wall bars. Their config keys are gone: an array `thresholds.session` fails config loading with a zod message naming the field, and `hardThresholds`, `policy.greedySessionFloor`, and `policy.greedySwapMargin` are ignored by the loader.
 
 ## The target: pace pressure
 
