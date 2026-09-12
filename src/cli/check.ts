@@ -1,3 +1,4 @@
+import { claude } from "../lib/claude.ts";
 import { evaluateAndMaybeSwap } from "../lib/decide.ts";
 import { sampleOldestParked } from "../lib/sample.ts";
 import { loadConfig } from "../lib/state.ts";
@@ -9,7 +10,7 @@ export async function cmdCheck(json = false): Promise<number> {
   const now = Date.now();
   let d;
   try {
-    d = await evaluateAndMaybeSwap(now);
+    d = await evaluateAndMaybeSwap(claude, now);
     await sampleOldestParked(loadConfig());
     await maybeAutoUpdate();
   } catch (e) {

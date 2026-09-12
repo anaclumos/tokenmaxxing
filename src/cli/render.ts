@@ -33,13 +33,6 @@ export function makeUsagePaint(input: { enabled: boolean; truecolor: boolean }) 
     };
 }
 
-export function claudeTierLabel(input: { subscriptionType?: string; rateLimitTier?: string }): string | null {
-  const segments = input.rateLimitTier?.split("_") ?? [];
-  const multiplier = segments.find((seg) => seg.length > 1 && seg.endsWith("x") && Number.isInteger(Number(seg.slice(0, -1))));
-  if (input.subscriptionType == null) return multiplier ?? null;
-  return multiplier ? `${input.subscriptionType} ${multiplier}` : input.subscriptionType;
-}
-
 export function count(input: { n: number; noun: string }): string {
   return `${input.n} ${input.noun}${input.n === 1 ? "" : "s"}`;
 }

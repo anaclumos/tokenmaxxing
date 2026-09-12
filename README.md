@@ -65,7 +65,7 @@ claude                  # use claude as always
 | `tokenmaxxing init --codex` | same for codex: import login, install codex supervisor + Stop hook |
 | `tokenmaxxing add` | register an additional account (isolated login, harvested into the pool) |
 | `tokenmaxxing add --codex` | register an additional codex account (isolated login) |
-| `tokenmaxxing auth [sel \| --all]` | reauthenticate a pooled account in place: bare lists the pool (emails shown) and asks which; a selector targets one account and tells you the email to sign in with; `--all` walks every needs-reauth account one by one |
+| `tokenmaxxing auth [--codex] [sel \| --all]` | reauthenticate a pooled account in place: bare lists the pool (emails shown) and asks which; a selector targets one account and tells you the email to sign in with; `--all` walks every needs-reauth account one by one; `--codex` does the same for the codex pool |
 | `tokenmaxxing switch [sel]` | switch the claude pool: bare picks the best account (no-op when the current one wins), a selector targets one |
 | `tokenmaxxing switch --codex [sel]` | switch the codex pool (takes effect on the next codex start) |
 | `tokenmaxxing status [--cached]` | accounts with 5h / weekly usage bars, active + exhausted-until-reset; `--cached` renders the stored figures without sampling |

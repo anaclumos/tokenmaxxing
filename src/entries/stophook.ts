@@ -2,6 +2,7 @@ import { join } from "node:path";
 import { z } from "zod";
 import { paths } from "../lib/paths.ts";
 import { writeFileAtomic } from "../lib/atomic.ts";
+import { claude } from "../lib/claude.ts";
 import { evaluateAndMaybeSwap } from "../lib/decide.ts";
 import { RespawnMarkerSchema } from "../lib/types.ts";
 import { log } from "../lib/log.ts";
@@ -24,9 +25,9 @@ export async function runStopHook(): Promise<number> {
 
   try {
     const canPause = process.env.TOKENMAXXING_SUPERVISED === "1" && pinnedSid != null;
-    const decision = await evaluateAndMaybeSwap(Date.now(), canPause);
+    const decision = await evaluateAndMaybeSwap(claude, Date.now(), canPause);
     if (decision.account && (decision.swapped || decision.waitUntil !== undefined)) {
-      log(decision.swapped ? "stop.swapped" : "stop.wait", { account: decision.account.accountUuid.slice(0, 8), waitUntil: decision.waitUntil });
+      log(decision.swapped ? "stop.swapped" : "stop.wait", { account: decision.account.id.slice(0, 8), waitUntil: decision.waitUntil });
       if (decision.waitUntil !== undefined && canPause && pinnedSid) {
         const marker = join(paths.respawnDir, pinnedSid);
         const launchedAt = z.coerce.number().finite().optional().catch(undefined).parse(process.env.TOKENMAXXING_LAUNCHED_AT);

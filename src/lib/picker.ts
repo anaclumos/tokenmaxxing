@@ -1,7 +1,7 @@
-import { minBy, sortBy } from "es-toolkit";
+import { maxBy, minBy, sortBy } from "es-toolkit";
 import { z } from "zod";
 import { familyTokens } from "./usage.ts";
-import { AccountSchema, ThresholdsSchema, type Account, type Config, type Thresholds, type UsageWindow } from "./types.ts";
+import { AccountSchema, ThresholdsSchema, type Account, type Config, type Thresholds, type Window } from "./types.ts";
 
 export function thresholdBars(cfg: Config): Thresholds {
   return {
@@ -13,36 +13,57 @@ export function thresholdBars(cfg: Config): Thresholds {
 const PickCtxSchema = z.object({
   now: z.number(),
   thresholds: ThresholdsSchema,
-  currentAccountUuid: z.string().nullable(),
-  switchFamilies: z.array(z.string()),
+  currentId: z.string().nullable(),
+  families: z.array(z.string()).nullable(),
 });
 export type PickCtx = z.infer<typeof PickCtxSchema>;
 
-function gatedPerModelWindows(a: Account, families: string[]): UsageWindow[] {
-  return Object.entries(a.lastUsage?.perModel ?? {})
-    .filter(([model]) => families.some((f) => familyTokens(model).includes(f)))
-    .map(([, w]) => w);
+const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+const SESSION_WINDOW_MAX_S = 6 * 3600;
+
+export function isSessionWindow(w: Window): boolean {
+  return w.windowSeconds != null && w.windowSeconds <= SESSION_WINDOW_MAX_S;
 }
 
-const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
-const FIVE_HOURS_MS = 5 * 60 * 60 * 1000;
+export function sessionWindow(a: Account): Window | undefined {
+  return a.windows.find((w) => w.name == null && isSessionWindow(w));
+}
 
-function blockedUntil(w: UsageWindow, windowMs: number, sampledAt: number | undefined, threshold: number): number {
-  if (w.usedPercentage < threshold) return 0;
+export function weeklyWindow(a: Account): Window | undefined {
+  return maxBy(a.windows.filter((w) => w.name == null && !isSessionWindow(w)), (w) => w.windowSeconds ?? 0);
+}
+
+export function limitWindows(a: Account): Window[] {
+  return a.windows.filter((w) => w.name != null);
+}
+
+export function gatedWindows(a: Account, families: string[] | null): Window[] {
+  return a.windows.filter((w) => {
+    const name = w.name;
+    return name != null && (families == null || families.some((f) => familyTokens(name).includes(f)));
+  });
+}
+
+export function liveUsed(w: Window, now: number): number {
+  if (w.resetsAt != null) return w.resetsAt <= now ? 0 : w.usedPercentage;
+  if (w.windowSeconds != null && now >= w.sampledAt + w.windowSeconds * 1000) return 0;
+  return w.usedPercentage;
+}
+
+function barFor(w: Window, thresholds: Thresholds): number {
+  return isSessionWindow(w) ? thresholds.session : thresholds.weekly;
+}
+
+function blockedUntil(w: Window, bar: number): number {
+  if (w.usedPercentage < bar) return 0;
   if (w.resetsAt != null) return w.resetsAt;
-  return sampledAt != null ? sampledAt + windowMs : Number.POSITIVE_INFINITY;
+  return w.windowSeconds != null ? w.sampledAt + w.windowSeconds * 1000 : Number.POSITIVE_INFINITY;
 }
 
 function blockingUntil(a: Account, ctx: PickCtx): number[] {
-  const u = a.lastUsage;
   return [
-    ...(u
-      ? [
-          blockedUntil(u.fiveHour, FIVE_HOURS_MS, a.lastUsageAt, ctx.thresholds.session),
-          blockedUntil(u.sevenDay, WEEK_MS, a.lastUsageAt, ctx.thresholds.weekly),
-        ]
-      : []),
-    ...gatedPerModelWindows(a, ctx.switchFamilies).map((w) => blockedUntil(w, WEEK_MS, u?.rowsAt ?? a.lastUsageAt, ctx.thresholds.weekly)),
+    ...a.windows.filter((w) => w.name == null).map((w) => blockedUntil(w, barFor(w, ctx.thresholds))),
+    ...gatedWindows(a, ctx.families).map((w) => blockedUntil(w, barFor(w, ctx.thresholds))),
     ...(a.enforcedUntil != null ? [a.enforcedUntil] : []),
   ];
 }
@@ -57,39 +78,37 @@ export function nextWeeklyReset(resetsAt: number | null, now: number): number | 
 }
 
 export function weeklyExpiry(a: Account, now: number): number {
-  return nextWeeklyReset(a.lastUsage?.sevenDay.resetsAt ?? null, now) ?? Number.POSITIVE_INFINITY;
+  return nextWeeklyReset(weeklyWindow(a)?.resetsAt ?? null, now) ?? Number.POSITIVE_INFINITY;
 }
 
 export function earliestReset(a: Account, now: number): number {
-  const fiveHour = a.lastUsage?.fiveHour.resetsAt;
-  return Math.min(fiveHour != null && fiveHour > now ? fiveHour : Number.POSITIVE_INFINITY, weeklyExpiry(a, now));
+  const session = sessionWindow(a)?.resetsAt;
+  return Math.min(session != null && session > now ? session : Number.POSITIVE_INFINITY, weeklyExpiry(a, now));
 }
 
 export function pacePressure(a: Account, now: number): number {
-  const cached = a.lastUsage?.sevenDay;
-  const reset = nextWeeklyReset(cached?.resetsAt ?? null, now);
-  if (cached == null || reset == null) return 0;
-  const used = cached.resetsAt != null && cached.resetsAt <= now ? 0 : cached.usedPercentage;
-  return Math.max(0, 100 - used) / Math.max(1, reset - now);
+  const weekly = weeklyWindow(a);
+  const reset = nextWeeklyReset(weekly?.resetsAt ?? null, now);
+  if (weekly == null || reset == null) return 0;
+  return Math.max(0, 100 - liveUsed(weekly, now)) / Math.max(1, reset - now);
 }
 
 const swapPreference = (ctx: PickCtx) => [
   (a: Account) => -pacePressure(a, ctx.now),
   (a: Account) => weeklyExpiry(a, ctx.now),
-  (a: Account) => a.lastUsage?.sevenDay.usedPercentage ?? 101,
+  (a: Account) => weeklyWindow(a)?.usedPercentage ?? 101,
 ];
 
 export function pickBest(accounts: Account[], ctx: PickCtx): Account | null {
-  const usable = accounts.filter(
-    (a) => a.accountUuid !== ctx.currentAccountUuid && !a.needsReauth && !isExhausted(a, ctx),
-  );
+  const usable = accounts.filter((a) => a.id !== ctx.currentId && !a.needsReauth && !isExhausted(a, ctx));
   return sortBy(usable, swapPreference(ctx))[0] ?? null;
 }
 
-export function currentWins(active: Account | null, accounts: Account[], ctx: PickCtx): boolean {
+export function currentWins(active: Account | null, accounts: Account[], ctx: PickCtx, margin = 1): boolean {
   if (!active || active.needsReauth || isExhausted(active, ctx)) return false;
-  const best = pickBest(accounts, { ...ctx, currentAccountUuid: null });
-  if (best == null || best.accountUuid === active.accountUuid) return true;
+  const best = pickBest(accounts, { ...ctx, currentId: null });
+  if (best == null || best.id === active.id) return true;
+  if (margin > 1) return pacePressure(best, ctx.now) <= pacePressure(active, ctx.now) * margin;
   return swapPreference(ctx).every((k) => k(active) === k(best));
 }
 
@@ -103,7 +122,7 @@ export type EarliestReset = z.infer<typeof EarliestResetSchema>;
 
 export function pickEarliestReset(accounts: Account[], ctx: PickCtx): EarliestReset | null {
   const mapped = accounts
-    .filter((a) => a.accountUuid !== ctx.currentAccountUuid && !a.needsReauth)
+    .filter((a) => a.id !== ctx.currentId && !a.needsReauth)
     .map((a) => ({ account: a, availableAt: usableAt(a, ctx) }))
     .filter((x) => Number.isFinite(x.availableAt));
   return minBy(mapped, (x) => x.availableAt) ?? null;

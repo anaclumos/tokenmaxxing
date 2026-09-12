@@ -11,7 +11,7 @@ tokenmaxxing add --codex    # log in another account, isolated - your primary lo
 codex                       # use codex as always
 ```
 
-The Codex pool is fully parallel state: its own accounts index, its own parked credential files (0600 files on both platforms, since codex's own store is a plaintext file), its own lock, its own last-swap timestamp. Nothing is shared with the Claude pool except the decision-policy code.
+The Codex pool is separate state: its own accounts index, its own parked credential files (0600 files on both platforms, since codex's own store is a plaintext file), its own lock, its own last-swap timestamp. The engine is shared: one account model (`id`, `label`, `email`, `tier`, cached `windows`), one picker, one decision, and one set of account commands (`init`, `add`, `auth`, `switch`, `rm`, `rename`, and `status`) run against a Codex provider when you pass `--codex`. The provider holds only what differs: identity from the `auth.json` id token, the usage GET, the credential file, presence, and restart on swap.
 
 ## Why hot-swap is impossible on Codex
 
@@ -23,5 +23,7 @@ Other codex-specific mechanics:
 
 - Usage is read from a free authenticated GET against codex's own rate-limit endpoint (the same call the CLI's `/status` makes): percentages plus absolute epoch reset times, aggregate windows and per-model caps alike. Window classification is duration-driven, never position-driven, because current plans may have no 5-hour window at all and the weekly window sits in the primary slot.
 - Codex refresh tokens rotate, and reusing a superseded one kills the whole grant family. Every rotation is persisted the instant it returns, the active account is only ever sampled through the live blob (never a stale parked copy), and per-session presence files ensure an account running in a live sibling session is never a swap target and never gets its parked token refreshed.
-- Codex requires the file credential store: `init --codex` fails fast if the keyring store is pinned, and `add --codex` writes the file-mode setting into the isolated onboarding home so the login lands harvestable.
+- Codex requires the file credential store: `init --codex` fails fast if the keyring store is pinned, and `add --codex` writes the file-mode setting into the isolated onboarding home so the login lands harvestable. `auth --codex <sel>` reauthenticates a pooled Codex account in place through the same isolated login and refuses a login that lands on a different account.
+- Parked Codex figures refresh when `status` samples the pool or `add --codex` re-adds an account; the periodic check tick samples parked Claude accounts only, so the Codex decision reads whatever figure the last `status` left behind, with a passed reset reading as empty.
+- A manual `switch --codex` whose live login is already the winner reconciles the stored active label without refreshing anything: the live credential is parked under its owner and the label follows it.
 - One manual step: codex skips hooks it has not been told to trust. After `init --codex`, open codex once and trust the tokenmaxxing Stop hook via `/hooks`, or auto-switching stays silently inert. `init --codex` prints this reminder.
