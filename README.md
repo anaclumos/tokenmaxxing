@@ -75,7 +75,10 @@ claude                  # use claude as always
 | `tokenmaxxing doctor` | verify the supervisor + settings entries survived |
 | `tokenmaxxing rename [--codex] <sel> <label>` / `rm [--codex] <sel>` | manage the pool (`--codex` targets the codex pool: one email can hold both a claude and a codex account) |
 | `tokenmaxxing uninstall` | remove supervisor + settings entries (accounts/credentials kept) |
-| `--json` | machine-readable output: one JSON document on stdout for `status`, `ls`, `config`, `doctor`, `check`, `switch`, `rename`, `rm`, `uninstall`, and one per tick for `watch` (`ok` mirrors the exit code, failures add `error`) |
+| `tokenmaxxing setup-token [--print \| rm <label\|uuid>]` | Cursor Cloud only: mint one `claude setup-token` per pooled account (a browser sign-in each) and print the `TOKENMAXXING_TOKENS` secret value; `--print` prints the stored set, `rm` drops one |
+| `tokenmaxxing cursor init [dir]` | write the Claude relay subagent and `.cursor/environment.json` into a repo |
+| `tokenmaxxing cloud run [--session <id>] [--max-turns <n>] "<prompt>"` | on a Cursor Cloud VM: run `claude -p` on a setup token, rotate to the next token on a usage limit |
+| `--json` | machine-readable output: one JSON document on stdout for `status`, `ls`, `config`, `doctor`, `check`, `switch`, `rename`, `rm`, `uninstall`, `setup-token --print`, `cursor init`, `cloud run`, and one per tick for `watch` (`ok` mirrors the exit code, failures add `error`) |
 
 ## How switching decides
 
@@ -126,6 +129,10 @@ codex                       # use codex as always
 Codex mechanics differ from Claude Code in one hard way: a running codex process refuses a credential swapped to a different account, so **a restart is the switch**. The installed Stop hook runs the same pace-pressure decision at each turn boundary (usage read free from codex's own rate-limit endpoint: percentages plus absolute reset times, weekly aggregate and per-model caps alike); when it swaps, the supervisor relaunches `codex resume <session-id>` on the fresh account with the transcript intact. `tokenmaxxing switch --codex [sel]` does it manually, `status`/`watch`/`ls` show both pools.
 
 Two codex-specific facts worth knowing: codex does not run hooks it has not been told to trust, so after `init --codex` you must open codex once and trust the tokenmaxxing Stop hook via `/hooks` (auto-switching is inert until then); and codex has no cross-process lock on `auth.json`, so tokenmaxxing serializes all of its own credential writes behind its own lock and swaps only at idle turn boundaries.
+
+## Cursor Cloud
+
+A Cursor Cloud Agent can hand substantial work to Claude Code running on your own accounts. The VM has no keychain and no hot swap, so this path uses setup tokens instead. `tokenmaxxing setup-token` mints one `claude setup-token` per pooled account on your machine and prints the value for a user-scoped Runtime Secret named `TOKENMAXXING_TOKENS`; `tokenmaxxing cursor init` writes a `claude` project subagent and an `environment.json` install line into the repo; on the VM, the subagent forwards each task to `tokenmaxxing cloud run`, which runs `claude -p` on one token per thread and moves the thread to the next token when a run ends on a usage limit. Setup tokens are inference-only and report no usage percentages, so cloud rotation is reactive and the local switching engine never reads one. Details and limits in [Cursor Cloud](docs/content/docs/cursor-cloud.mdx).
 
 ## Honest limitations
 
