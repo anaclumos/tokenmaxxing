@@ -28,6 +28,7 @@ async function readStdin(): Promise<string> {
 export async function runStopFailureHook(): Promise<number> {
   if (process.env.TOKENMAXXING_PROBE) return 0;
 
+  const swapClockAtEntry = loadLastSwapAt();
   const account = readOAuthAccount()?.accountUuid ?? null;
   const now = Date.now();
   const raw = await readStdin();
@@ -43,7 +44,7 @@ export async function runStopFailureHook(): Promise<number> {
 
   try {
     const lastSwapAt = loadLastSwapAt();
-    if (lastSwapAt != null && now - lastSwapAt < POST_SWAP_COOLDOWN_MS && (readOAuthAccount()?.accountUuid ?? null) === account) {
+    if (lastSwapAt != null && lastSwapAt === swapClockAtEntry && now - lastSwapAt < POST_SWAP_COOLDOWN_MS) {
       log("stopfailure.cooldown", { sinceSwapMs: now - lastSwapAt });
       return 0;
     }
