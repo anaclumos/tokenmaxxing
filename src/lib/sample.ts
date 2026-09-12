@@ -71,6 +71,7 @@ async function prepareParkedProbe(account: Account, dir: string, signal?: AbortS
   const liveRaw = await readItem(liveTarget());
   let liveAccount: string | null = null;
   let liveToken: string | null = null;
+  let liveRefresh: string | null = null;
   if (liveRaw != null) {
     let liveCreds: OAuthCreds;
     try {
@@ -80,6 +81,7 @@ async function prepareParkedProbe(account: Account, dir: string, signal?: AbortS
     }
     if (!isDeadCredential(liveCreds)) {
       liveToken = liveCreds.accessToken;
+      liveRefresh = liveCreds.refreshToken;
       try {
         liveAccount = (await fetchTokenIdentity(liveCreds.accessToken, signal)).accountUuid;
       } catch (e) {
@@ -124,6 +126,9 @@ async function prepareParkedProbe(account: Account, dir: string, signal?: AbortS
     if (owner.status === "match") {
       result = await rotate();
     } else {
+      if (liveRefresh != null && creds.refreshToken === liveRefresh) {
+        return { ok: false, reason: "this slot holds a copy of the LIVE login's grant - refusing to rotate it from a parked slot; run `tokenmaxxing switch` to reconcile" };
+      }
       try {
         signal?.throwIfAborted();
         result = await withClaudeRefreshLock(async (lock) => {
