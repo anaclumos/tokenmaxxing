@@ -43,7 +43,7 @@ export async function runStopFailureHook(): Promise<number> {
 
   try {
     const lastSwapAt = loadLastSwapAt();
-    if (lastSwapAt != null && now - lastSwapAt < POST_SWAP_COOLDOWN_MS) {
+    if (lastSwapAt != null && lastSwapAt <= now && now - lastSwapAt < POST_SWAP_COOLDOWN_MS) {
       log("stopfailure.cooldown", { sinceSwapMs: now - lastSwapAt });
       return 0;
     }

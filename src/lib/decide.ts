@@ -84,7 +84,8 @@ async function loadFreshSnapshots(cfg: Config, account: string | null, now: numb
   const ttl = cfg.policy.usagePollTtlMs;
   const stored = loadAccounts().accounts.find((a) => a.accountUuid === account);
   const probeAttempted = stored?.lastProbeAt != null && now - stored.lastProbeAt <= ttl;
-  if (probe && account && stored && !probeAttempted && (!usageFresh(u, uAt, account, ttl, now) || needsPerModel(u, cfg))) {
+  const walled = stored?.enforcedUntil != null && stored.enforcedUntil > now;
+  if (probe && account && stored && !walled && !probeAttempted && (!usageFresh(u, uAt, account, ttl, now) || needsPerModel(u, cfg))) {
     const startedAt = Date.now();
     const full = await probeUsage();
     const ts = Date.now();
