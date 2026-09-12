@@ -5,6 +5,7 @@ import { writeFileAtomic } from "../lib/atomic.ts";
 import { claude } from "../lib/claude.ts";
 import { readOAuthAccount } from "../lib/claudejson.ts";
 import { evaluateAndMaybeSwap } from "../lib/decide.ts";
+import { withLock } from "../lib/lock.ts";
 import { claudePool } from "../lib/paths.ts";
 import { POST_SWAP_COOLDOWN_MS, loadConfig, loadLastSwapAt } from "../lib/state.ts";
 import { classifyEnforcedLimit, findEnforcedRow, parseErrorBody, readTranscriptTail } from "../lib/usage.ts";
@@ -30,7 +31,8 @@ async function readStdin(): Promise<string> {
 export async function runStopFailureHook(): Promise<number> {
   if (process.env.TOKENMAXXING_PROBE) return 0;
 
-  const account = readOAuthAccount()?.accountUuid ?? null;
+  const entry = await withLock(claudePool.lockFile, () => ({ swapClock: loadLastSwapAt(claudePool), account: readOAuthAccount()?.accountUuid ?? null }));
+  const account = entry.account;
   const now = Date.now();
   const raw = await readStdin();
   const parsed = StopFailureStdin.safeParse((() => { try { return JSON.parse(raw); } catch { return {}; } })());
@@ -45,7 +47,7 @@ export async function runStopFailureHook(): Promise<number> {
 
   try {
     const lastSwapAt = loadLastSwapAt(claudePool);
-    if (lastSwapAt != null && now - lastSwapAt < POST_SWAP_COOLDOWN_MS && (readOAuthAccount()?.accountUuid ?? null) === account) {
+    if (lastSwapAt != null && lastSwapAt === entry.swapClock && now - lastSwapAt < POST_SWAP_COOLDOWN_MS) {
       log("stopfailure.cooldown", { sinceSwapMs: now - lastSwapAt });
       return 0;
     }
