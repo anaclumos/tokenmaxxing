@@ -7,14 +7,11 @@ Config is JSON at `~/.config/tokenmaxxing/config.json`. Every field is optional;
 
 ```json
 {
-  "thresholds": { "session": [90], "weekly": 98 },
-  "hardThresholds": { "session": 100, "weekly": 100 },
+  "thresholds": { "session": 90, "weekly": 98 },
   "claudeBin": "/path/to/real/claude",
   "codexBin": "/path/to/real/codex",
   "policy": {
     "projectionMargin": 0,
-    "greedySessionFloor": 80,
-    "greedySwapMargin": 0.15,
     "switchModels": ["fable"],
     "usagePollTtlMs": 90000,
     "maxWaitMs": 3600000,
@@ -23,16 +20,13 @@ Config is JSON at `~/.config/tokenmaxxing/config.json`. Every field is optional;
 }
 ```
 
-- `thresholds.session`: the 5-hour ladder, an ascending list of screening rungs. Each evaluation resolves one active rung, the lowest rung some pooled account still clears, and that rung is both the trigger and the candidate screen. Codex reads the top rung only. See [How switching decides](/switching).
-- `thresholds.weekly`: the weekly screening bar, covering the 7-day aggregate and every per-model weekly cap.
-- `hardThresholds.session` / `hardThresholds.weekly`: the wall bars (default 100, each account's real server limit). `hardThresholds.session` must be at or above the top session rung. When every account is over its screening bar, the automatic Claude decision squeezes each one up to its wall before parking - see [The wall](/switching). Set equal to the top rung and the weekly bar to disable; Codex ignores this setting.
+- `thresholds.session`: the 5-hour session bar, one number (default 90). It is both the trigger and the candidate screen, for Claude and Codex alike. See [How switching decides](/switching). The former array form (the session ladder) is rejected: config loading fails with a zod message naming `thresholds.session`.
+- `thresholds.weekly`: the weekly bar (default 98), covering the 7-day aggregate and every per-model weekly cap.
 - `claudeBin` / `codexBin`: pins to the REAL binaries the supervisors spawn (written by `init` / `init --codex`; the recursion-guard diagnostic tells you to fix `claudeBin` here when it stops pointing at the real Claude binary).
-- `policy.projectionMargin`: subtracted from every session rung, the weekly bar, and the wall bars to form the effective bars.
-- `policy.greedySessionFloor`: session-used percent at which the greedy convergence engages.
-- `policy.greedySwapMargin` is incumbent hysteresis from 0 to 1, default 0.15, for automatic lateral moves within the same organization. Setting it to 0 removes that margin but retains the organization restriction. Manual `tokenmaxxing switch` ignores both under the [switching policy](/switching).
+- `policy.projectionMargin`: subtracted from both thresholds to form the effective bars; it must stay below both.
 - `policy.switchModels`: model families whose per-model weekly cap gates a switch (entries are lowercased on load).
 - `policy.usagePollTtlMs`: how long a `/usage` per-model poll stays fresh.
 - `policy.maxWaitMs`: the depleted-pool auto-wait bound.
 - `policy.checkIntervalMs`: the periodic check tick (default 60000, minimum 10000 because launchd does not spawn a job more than once every 10 seconds by default). `init` writes it, rounded up to whole seconds, as the timer's interval (on Linux the systemd `AccuracySec` is a twelfth of it, at least one second), and every tick evaluates (see [Periodic check](/switching)). The installed timer keeps its old tick until you run `tokenmaxxing init` again. With a Nix-managed timer, set `checkTimer.intervalSeconds` to the same value; that option has the same 10-second floor.
 
-`tokenmaxxing config` shows the effective config with sources; `config set`/`unset` edit dotted keys; `config tidy` prunes unknown keys.
+`tokenmaxxing config` shows the effective config with sources; `config set`/`unset` edit dotted keys; `config tidy` prunes unknown keys. The removed keys `hardThresholds`, `policy.greedySessionFloor`, and `policy.greedySwapMargin` are unknown keys now: ignored by the loader, listed by `config`, dropped by `config tidy`.

@@ -10,13 +10,9 @@ import { c, emitError, emitJson } from "./render.ts";
 export const KNOWN_KEYS = [
   "thresholds.session",
   "thresholds.weekly",
-  "hardThresholds.session",
-  "hardThresholds.weekly",
   "claudeBin",
   "codexBin",
   "policy.projectionMargin",
-  "policy.greedySessionFloor",
-  "policy.greedySwapMargin",
   "policy.switchModels",
   "policy.usagePollTtlMs",
   "policy.maxWaitMs",
