@@ -254,18 +254,22 @@ export async function recordEnforcedLimit(input: { limit: EnforcedClass; account
       const knownReset = [...rowsFor(priorSame?.perModel ?? {}), ...rowsFor(account?.lastUsage?.perModel ?? {})].map((w) => w.resetsAt).find((r): r is number => r != null) ?? null;
       const weeklyReset = priorSame?.sevenDay.resetsAt ?? account?.lastUsage?.sevenDay.resetsAt ?? null;
       const resetsAt = limit.resetsAt ?? nextWeeklyReset(knownReset ?? weeklyReset, now);
-      if (!carrier) return { outcome: "no-carrier", resetsAt };
-      writeUsage(
-        {
-          ...carrier,
-          ...(resetsAt == null ? { sampledAt: now } : {}),
-          perModel: { ...carrier.perModel, [limit.family]: { usedPercentage: 100, resetsAt } },
-          account: accountUuid,
-          ts: now,
-          probedAt: now,
-        },
-        { stamp: resetsAt != null },
-      );
+      if (carrier) {
+        writeUsage(
+          {
+            ...carrier,
+            ...(resetsAt == null ? { sampledAt: now } : {}),
+            perModel: { ...carrier.perModel, [limit.family]: { usedPercentage: 100, resetsAt } },
+            account: accountUuid,
+            ts: now,
+            probedAt: now,
+          },
+          { stamp: resetsAt != null },
+        );
+      } else if (account) {
+        account.enforcedUntil = resetsAt ?? now + WEEK_MS;
+        saveAccounts(idx);
+      } else return { outcome: "no-carrier", resetsAt };
       log("usage.enforced_limit", { kind: limit.kind, family: limit.family, resetsAt });
       return { outcome: "stamped", resetsAt };
     }
