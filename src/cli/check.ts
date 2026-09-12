@@ -1,6 +1,7 @@
 import { evaluateAndMaybeSwap } from "../lib/decide.ts";
 import { sampleOldestParked } from "../lib/sample.ts";
 import { loadConfig } from "../lib/state.ts";
+import { maybeAutoUpdate } from "../lib/update.ts";
 import { log } from "../lib/log.ts";
 import { c, emitError, emitJson, fmtReset } from "./render.ts";
 
@@ -10,6 +11,7 @@ export async function cmdCheck(json = false): Promise<number> {
   try {
     d = await evaluateAndMaybeSwap(now);
     await sampleOldestParked(loadConfig());
+    await maybeAutoUpdate();
   } catch (e) {
     const detail = e instanceof Error ? e.message : String(e);
     log("check.error", { err: detail });

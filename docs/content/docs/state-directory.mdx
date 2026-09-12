@@ -13,6 +13,7 @@ Everything lives under `~/.config/tokenmaxxing/`. Override with `TOKENMAXXING_HO
 | `lastswap.json` | Epoch timestamp of the last swap; drives the 45-second cooldown |
 | `depleted.json` | The recorded depleted-pool wait, replayed by sibling hooks until the reset passes, the live seat moves, or any swap completes |
 | `lock` | The `flock` file that serializes swaps |
+| `update.json`, `update.lock` | The last self-update attempt's timestamp and the `flock` file that serializes it (Bun global installs only; see [Automatic updates](/distribution#automatic-updates)) |
 | `sessions/<session-id>.json` | Per-managed-session launch flags the supervisor persists for respawns; pruned after 30 days idle (matching claude's own transcript retention) |
 | `tokenmaxxing.log` | Append-only event log |
 | `bin/` | The PATH shims: `claude`, `codex`, and the `tokenmaxxing` / `xx` entry points |

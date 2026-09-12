@@ -14,7 +14,7 @@ description: Every tokenmaxxing command and what it does
 | `tokenmaxxing switch --codex [sel]` | Switch the Codex pool (takes effect on the next codex start) |
 | `tokenmaxxing status [--cached]` | Accounts with 5h / weekly / per-model usage bars, active and exhausted-until-reset; `--cached` renders the stored figures without sampling |
 | `tokenmaxxing config` | The config path and the effective values; edit the file in an editor |
-| `tokenmaxxing check` | Evaluate the switch decision once and sample the stalest parked account; the periodic timer runs this every tick |
+| `tokenmaxxing check` | Evaluate the switch decision once and sample the stalest parked account; the periodic timer runs this every tick. On a Bun global install it also updates the package from npm once every 24 hours (see [Automatic updates](/distribution#automatic-updates)) |
 | `tokenmaxxing doctor` | Verify the supervisor and settings entries survived |
 | `tokenmaxxing rename [--codex] <sel> <label>` | Relabel a pooled account |
 | `tokenmaxxing rm [--codex] <sel>` | Remove an account (and its parked credential) from the claude or codex pool |
