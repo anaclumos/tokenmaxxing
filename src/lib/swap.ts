@@ -1,4 +1,3 @@
-import { z } from "zod";
 import { clearDepletedWait, clearUsageSnapshots, loadAccounts, saveAccounts, saveLastSwapAt } from "./state.ts";
 import { readItem, writeItem, liveTarget, parkedTarget, claudeAiOauthOnly, mergeIntoLive } from "./credstore.ts";
 import { refreshCredential, isAccessTokenExpiring, isDeadCredential, fetchTokenIdentity, describeIdentity, IdentityUnavailableError, InvalidGrantError, RefreshRejectedError } from "./oauth.ts";
@@ -10,9 +9,6 @@ import { CredentialBlobSchema, type Account, type OAuthCreds, type TokenIdentity
 function parseBlob(raw: string) {
   return CredentialBlobSchema.parse(JSON.parse(raw));
 }
-
-const VerifyVerdictSchema = z.enum(["go", "rerank", "skip"]);
-export type VerifyVerdict = z.infer<typeof VerifyVerdictSchema>;
 
 export async function performSwap(target: Account): Promise<void> {
   const idx = loadAccounts();

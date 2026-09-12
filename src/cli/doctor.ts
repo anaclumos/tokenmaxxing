@@ -7,7 +7,8 @@ import { loadAccounts, loadConfig } from "../lib/state.ts";
 import { readItem, liveTarget, parkedTarget } from "../lib/credstore.ts";
 import { isAccessTokenExpiring, fetchTokenIdentity, describeIdentity } from "../lib/oauth.ts";
 import { CredentialBlobSchema, type TokenIdentity } from "../lib/types.ts";
-import { c, emitJson } from "./render.ts";
+import { SETUP_TOKEN_STALE_MS, loadSetupTokens } from "../lib/setuptokens.ts";
+import { c, emitJson, fmtAgo } from "./render.ts";
 
 async function blobIdentity(raw: string): Promise<TokenIdentity | null> {
   const creds = CredentialBlobSchema.parse(JSON.parse(raw)).claudeAiOauth;
@@ -75,6 +76,15 @@ export async function cmdDoctor(json = false): Promise<number> {
       }
     }
     if (a.needsReauth) check(false, `${a.email} needs re-auth`, `run \`tokenmaxxing auth ${a.label}\` to re-login`);
+  }
+
+  if (existsSync(paths.setupTokensJson)) {
+    const setupTokens = loadSetupTokens().tokens;
+    for (const a of idx.accounts) {
+      const token = setupTokens.find((t) => t.accountUuid === a.accountUuid);
+      if (!token) warn(`no setup token stored for ${a.label} - run \`tokenmaxxing setup-token\` to mint one for Cursor Cloud`);
+      else if (Date.now() - token.mintedAt > SETUP_TOKEN_STALE_MS) warn(`the setup token for ${a.label} was minted ${fmtAgo(token.mintedAt)} and expires a year after minting - \`tokenmaxxing setup-token rm ${a.label}\` then \`tokenmaxxing setup-token\` re-mints it`);
+    }
   }
 
   const cfg = loadConfig();

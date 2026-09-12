@@ -4,3 +4,5 @@ description: Pool accounts you own, in sessions and agents you run yourself
 ---
 
 tokenmaxxing pools accounts you own, in sessions and agents you run yourself. That wording is deliberate: Anthropic does not allow third-party products to offer claude.ai login or claude.ai rate limits, and that includes agents built on the Agent SDK. Do not ship anything built on tokenmaxxing to third parties. tokenmaxxing also deliberately stays on the CLI-mediated `/usage` path for quota data rather than reimplementing OAuth or proxying API traffic: it is not a proxy, and the only OAuth endpoints it touches are the standard refresh grant used during a swap and a read-only identity check (the roles endpoint) that verifies which account a token actually belongs to.
+
+A setup token stored as a Cursor Runtime Secret for the [Cursor Cloud](/cursor-cloud) path follows Anthropic's own GitHub Actions pattern, a `claude setup-token` value kept as a CI secret and billed to the subscription of the person who minted it, and stays personal use of your own accounts in agents you run yourself.
