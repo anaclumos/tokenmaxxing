@@ -84,17 +84,16 @@ export async function cmdCloudRun(args: string[], json = false): Promise<number>
     }
     const { exitCode, result } = spawned;
     sessionId = result.session_id;
+    const failed = result.is_error || result.subtype !== "success";
+    const until = failed ? limitWallUntil({ sessionId: result.session_id, sinceBytes: transcriptBefore, now: Date.now() }) : null;
     await withLock(paths.cloudLockFile, () => {
       const sessions = loadCloudSessions();
       delete sessions[reservation];
       saveCloudSessions({ ...sessions, [result.session_id]: label });
+      if (until != null) saveCloudWalled({ ...loadCloudWalled(), [label]: until });
     });
-    if (result.is_error || result.subtype !== "success") {
-      const until = limitWallUntil({ sessionId: result.session_id, sinceBytes: transcriptBefore, now: Date.now() });
+    if (failed) {
       if (until != null) {
-        await withLock(paths.cloudLockFile, () => {
-          saveCloudWalled({ ...loadCloudWalled(), [label]: until });
-        });
         console.error(c.yellow(`cloud run: ${label} hit its limit (${fmtReset(until)}) - resuming the session on the next token`));
         continue;
       }
