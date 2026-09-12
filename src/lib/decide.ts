@@ -274,7 +274,8 @@ export async function recordEnforcedLimit(input: { limit: EnforcedClass; account
       const resetsAt = limit.resetsAt ?? nextWeeklyReset(knownReset ?? weeklyReset, now);
       if (!account) return { outcome: "no-carrier", resetsAt };
       if (account.lastUsage) {
-        account.lastUsage = { ...account.lastUsage, perModel: { ...rows, [limit.family]: { usedPercentage: 100, resetsAt } }, rowsAt: now };
+        const others = Object.fromEntries(Object.entries(rows).filter(([k]) => !familyTokens(k).includes(limit.family)));
+        account.lastUsage = { ...account.lastUsage, perModel: { ...others, [limit.family]: { usedPercentage: 100, resetsAt } }, ...(resetsAt == null ? { rowsAt: now } : {}) };
       } else {
         account.enforcedUntil = resetsAt ?? now + WEEK_MS;
       }
