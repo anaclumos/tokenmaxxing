@@ -2,7 +2,7 @@ import { maxBy } from "es-toolkit";
 import { z } from "zod";
 import { withLock } from "./lock.ts";
 import { paths } from "./paths.ts";
-import { POST_SWAP_COOLDOWN_MS, loadAccounts, loadConfig, loadDepletedWait, loadLastSwapAt, loadUsage, loadUsageSnapshot, saveAccounts, saveDepletedWait, writeUsage } from "./state.ts";
+import { POST_SWAP_COOLDOWN_MS, loadAccounts, loadConfig, loadDepletedWait, loadLastSwapAt, loadUsageSnapshot, saveAccounts, saveDepletedWait, writeUsage } from "./state.ts";
 import { readOAuthAccount } from "./claudejson.ts";
 import { isSkippableSwapError, performSwap } from "./swap.ts";
 import { nextWeeklyReset, pickBest, pickEarliestReset, thresholdBars, usableAt } from "./picker.ts";
@@ -124,7 +124,7 @@ export async function evaluateAndMaybeSwap(now = Date.now(), anticipatory = fals
   const enforced0 = enforced && enforced.account === activeAccount ? enforced : null;
 
   const lastSwapAt = loadLastSwapAt();
-  if (!enforced0 && lastSwapAt != null && now - lastSwapAt < POST_SWAP_COOLDOWN_MS) {
+  if (lastSwapAt != null && now - lastSwapAt < POST_SWAP_COOLDOWN_MS) {
     return depletedReplay(now) ?? { swapped: false, account: null, reason: "post-swap-cooldown" };
   }
 
@@ -249,59 +249,29 @@ export function enforcedWindowMs(limit: EnforcedClass): number {
   return limit.kind === "session" ? FIVE_HOURS_MS : WEEK_MS;
 }
 
-export function postSwapProof(input: { swapAt: number | null; launchedAt: number | null; errorAt: number | null; now: number }): boolean {
-  const { swapAt, launchedAt, errorAt, now } = input;
-  if (swapAt == null) return true;
-  if (launchedAt != null && launchedAt > swapAt) return true;
-  return (errorAt ?? now) - swapAt >= POST_SWAP_COOLDOWN_MS;
-}
-
-const StampSchema = z.object({ outcome: z.enum(["stamped", "account-moved", "no-carrier"]), resetsAt: z.number().nullable() });
+const StampSchema = z.object({ outcome: z.enum(["stamped", "account-moved", "not-pooled"]), resetsAt: z.number() });
 export type Stamp = z.infer<typeof StampSchema>;
 
 export async function recordEnforcedLimit(input: { limit: EnforcedClass; account: string; now: number }): Promise<Stamp> {
   const { limit, account: accountUuid, now } = input;
   return withLock(paths.lockFile, () => {
-    if ((readOAuthAccount()?.accountUuid ?? null) !== accountUuid) return { outcome: "account-moved", resetsAt: limit.resetsAt };
-    const prior = loadUsage();
-    const priorSame = prior && prior.account === accountUuid ? prior : null;
+    const fallback = now + enforcedWindowMs(limit);
+    if ((readOAuthAccount()?.accountUuid ?? null) !== accountUuid) return { outcome: "account-moved", resetsAt: limit.resetsAt ?? fallback };
     const idx = loadAccounts();
     const account = idx.accounts.find((a) => a.accountUuid === accountUuid);
-    if (limit.kind === "model") {
-      const rows = account?.lastUsage?.perModel ?? {};
-      const knownReset = Object.entries(rows).filter(([k]) => familyTokens(k).includes(limit.family)).map(([, w]) => w.resetsAt).find((r): r is number => r != null) ?? null;
-      const weeklyReset = priorSame?.sevenDay.resetsAt ?? account?.lastUsage?.sevenDay.resetsAt ?? null;
-      const resetsAt = limit.resetsAt ?? nextWeeklyReset(knownReset ?? weeklyReset, now);
-      if (!account) return { outcome: "no-carrier", resetsAt };
-      if (account.lastUsage) {
-        const others = Object.fromEntries(Object.entries(rows).filter(([k]) => !familyTokens(k).includes(limit.family)));
-        account.lastUsage = { ...account.lastUsage, perModel: { ...others, [limit.family]: { usedPercentage: 100, resetsAt } }, ...(resetsAt == null ? { rowsAt: now } : {}) };
-      } else {
-        account.enforcedUntil = resetsAt ?? now + WEEK_MS;
-      }
-      account.lastProbeAt = now;
-      saveAccounts(idx);
-      log("usage.enforced_limit", { kind: limit.kind, family: limit.family, resetsAt });
-      return { outcome: "stamped", resetsAt };
-    }
-    if (account) {
-      account.lastProbeAt = now;
-      if (limit.resetsAt != null) account.enforcedUntil = limit.resetsAt;
-      saveAccounts(idx);
-    }
-    const carrier = priorSame ?? (account?.lastUsage ? { ...account.lastUsage, model: null } : null);
-    if (!carrier) return { outcome: "no-carrier", resetsAt: limit.resetsAt };
-    const window: UsageWindow = { usedPercentage: 100, resetsAt: limit.resetsAt };
-    writeUsage({
-      ...(priorSame ?? {}),
-      ...(priorSame == null && account?.lastUsageAt != null ? { sampledAt: account.lastUsageAt } : {}),
-      fiveHour: limit.kind === "session" ? window : carrier.fiveHour,
-      sevenDay: limit.kind === "weekly" ? window : carrier.sevenDay,
-      account: accountUuid,
-      ts: now,
-      model: carrier.model,
-    }, { stamp: true });
-    log("usage.enforced_limit", { kind: limit.kind, resetsAt: limit.resetsAt });
-    return { outcome: "stamped", resetsAt: limit.resetsAt };
+    if (!account) return { outcome: "not-pooled", resetsAt: limit.resetsAt ?? fallback };
+    const knownReset =
+      limit.kind === "model"
+        ? Object.entries(account.lastUsage?.perModel ?? {})
+            .filter(([k]) => familyTokens(k).includes(limit.family))
+            .map(([, w]) => w.resetsAt)
+            .find((r): r is number => r != null) ?? account.lastUsage?.sevenDay.resetsAt ?? null
+        : null;
+    const resetsAt = limit.resetsAt ?? nextWeeklyReset(knownReset, now) ?? fallback;
+    account.enforcedUntil = resetsAt;
+    account.lastProbeAt = now;
+    saveAccounts(idx);
+    log("usage.enforced_limit", { kind: limit.kind, family: limit.kind === "model" ? limit.family : undefined, resetsAt });
+    return { outcome: "stamped", resetsAt };
   });
 }
