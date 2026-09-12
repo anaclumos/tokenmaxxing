@@ -44,9 +44,11 @@ export async function cmdRm(selector?: string, json = false): Promise<number> {
       }
     }
     await deleteItem(parkedTarget(a.keychainItem));
-    const sampleDir = join(paths.sampleDir, credItemFor(a.accountUuid));
-    await deleteItem(isolatedTarget(sampleDir));
-    rmSync(sampleDir, { recursive: true, force: true });
+    const item = credItemFor(a.accountUuid);
+    for (const sampleDir of [join(paths.sampleDir, item), join(paths.sampleDir, `${item}-tick`)]) {
+      await deleteItem(isolatedTarget(sampleDir));
+      rmSync(sampleDir, { recursive: true, force: true });
+    }
     idx.accounts = idx.accounts.filter((x) => x.accountUuid !== a.accountUuid);
     saveAccounts(idx);
     if (json) emitJson({ ok: true, pool: "claude", removed: a.label, remaining: idx.accounts.length });

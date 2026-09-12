@@ -88,8 +88,7 @@ The bars' headroom is deliberate: it's the budget to reach a clean turn boundary
 
 Selection ranks usable candidates by remaining weekly percentage divided by time to reset, highest first; organization membership is not an input, and manual `tokenmaxxing switch` uses the same ranking.
 
-- Candidate verification makes at most two bounded `/usage` attempts per evaluation and re-ranks successful samples before switching.
-- Failed verification leaves cached figures in force, so it cannot guarantee a fresh target.
+- Every periodic check tick samples the parked account whose last `/usage` attempt is oldest, skipping any attempted within `policy.usagePollTtlMs`, so every parked account is attempted about once per tick per pooled account, or once per `usagePollTtlMs` plus a tick when that is longer; the swap reads the cached figures, which are as fresh as each account's last successful attempt. No sample runs inside the 45-second post-swap cooldown.
 - When no account is usable, the session pauses until the soonest reset if that lands within `policy.maxWaitMs`, and otherwise stays put.
 
 See [How switching decides](docs/content/docs/switching.mdx) for the policy and the [cache-cost profile](docs/content/docs/switching-profile.mdx) for measurements and their limits.
@@ -110,7 +109,7 @@ See [How switching decides](docs/content/docs/switching.mdx) for the policy and 
 }
 ```
 
-`thresholds.session` and `thresholds.weekly` are the two bars, one number each (an array `thresholds.session`, the former ladder, fails config loading with a message naming the field); `projectionMargin` is a fixed safety margin subtracted from each threshold bar (effective bar = threshold - margin), so a large turn is less likely to blow past a bar between checks; `switchModels` names the models whose per-model cap triggers a switch; `usagePollTtlMs` is how long a `/usage` per-model poll stays fresh; `maxWaitMs` bounds the depleted-pool countdown - a soonest reset further out than this does not pause the session (no respawn marker is written and the session simply keeps hitting its limit until an account recovers); `checkIntervalMs` is the periodic check tick (default 60s), which `init` writes into the timer - re-run `tokenmaxxing init` after changing it so the timer unit picks up the new tick.
+`thresholds.session` and `thresholds.weekly` are the two bars, one number each (an array `thresholds.session`, the former ladder, fails config loading with a message naming the field); `projectionMargin` is a fixed safety margin subtracted from each threshold bar (effective bar = threshold - margin), so a large turn is less likely to blow past a bar between checks; `switchModels` names the models whose per-model cap triggers a switch; `usagePollTtlMs` is how long a `/usage` attempt stays fresh, for the live per-model poll and for the parked account each check tick samples; `maxWaitMs` bounds the depleted-pool countdown - a soonest reset further out than this does not pause the session (no respawn marker is written and the session simply keeps hitting its limit until an account recovers); `checkIntervalMs` is the periodic check tick (default 60s), which `init` writes into the timer - re-run `tokenmaxxing init` after changing it so the timer unit picks up the new tick.
 
 State lives entirely in `~/.config/tokenmaxxing/`. Per-account credentials follow the platform's Claude Code store: the login keychain on macOS (`tokenmaxxing-cred-<uuid8>` items, never plaintext on disk), 0600 files under `~/.config/tokenmaxxing/creds/` on Linux (the same plaintext model claude itself uses for `~/.claude/.credentials.json`).
 
