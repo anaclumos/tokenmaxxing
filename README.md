@@ -68,9 +68,7 @@ claude                  # use claude as always
 | `tokenmaxxing auth [sel \| --all]` | reauthenticate a pooled account in place: bare lists the pool (emails shown) and asks which; a selector targets one account and tells you the email to sign in with; `--all` walks every needs-reauth account one by one |
 | `tokenmaxxing switch [sel]` | switch the claude pool: bare picks the best account (no-op when the current one wins), a selector targets one |
 | `tokenmaxxing switch --codex [sel]` | switch the codex pool (takes effect on the next codex start) |
-| `tokenmaxxing ls` | list pooled accounts |
-| `tokenmaxxing status` | accounts with 5h / weekly usage bars, active + exhausted-until-reset |
-| `tokenmaxxing watch [seconds]` | live status: re-render every N seconds (default 120, floor 30) |
+| `tokenmaxxing status [--cached]` | accounts with 5h / weekly usage bars, active + exhausted-until-reset; `--cached` renders the stored figures without sampling |
 | `tokenmaxxing config` | the config path and the effective values; edit the file in an editor, a bad value fails the next load with the field name |
 | `tokenmaxxing doctor` | verify the supervisor + settings entries survived |
 | `tokenmaxxing rename [--codex] <sel> <label>` / `rm [--codex] <sel>` | manage the pool (`--codex` targets the codex pool: one email can hold both a claude and a codex account) |
@@ -78,7 +76,7 @@ claude                  # use claude as always
 | `tokenmaxxing setup-token [--print \| rm <label\|uuid>]` | Cursor Cloud only: mint one `claude setup-token` per pooled account (a browser sign-in each) and print the `TOKENMAXXING_TOKENS` secret value; `--print` prints the stored set, `rm` drops one |
 | `tokenmaxxing cursor init [dir]` | write the Claude relay subagent and `.cursor/environment.json` into a repo |
 | `tokenmaxxing cloud run [--session <id>] [--max-turns <n>] "<prompt>"` | on a Cursor Cloud VM: run `claude -p` on a setup token, rotate to the next token on a usage limit |
-| `--json` | machine-readable output: one JSON document on stdout for `status`, `ls`, `config`, `doctor`, `check`, `switch`, `rename`, `rm`, `uninstall`, `setup-token --print`, `cursor init`, `cloud run`, and one per tick for `watch` (`ok` mirrors the exit code, failures add `error`) |
+| `--json` | machine-readable output: one JSON document on stdout for `status`, `config`, `doctor`, `check`, `switch`, `rename`, `rm`, `uninstall`, `setup-token --print`, `cursor init`, and `cloud run` (`ok` mirrors the exit code, failures add `error`) |
 
 ## How switching decides
 
@@ -126,7 +124,7 @@ tokenmaxxing add --codex    # log in another account, isolated - your primary lo
 codex                       # use codex as always
 ```
 
-Codex mechanics differ from Claude Code in one hard way: a running codex process refuses a credential swapped to a different account, so **a restart is the switch**. The installed Stop hook runs the same pace-pressure decision at each turn boundary (usage read free from codex's own rate-limit endpoint: percentages plus absolute reset times, weekly aggregate and per-model caps alike); when it swaps, the supervisor relaunches `codex resume <session-id>` on the fresh account with the transcript intact. `tokenmaxxing switch --codex [sel]` does it manually, `status`/`watch`/`ls` show both pools.
+Codex mechanics differ from Claude Code in one hard way: a running codex process refuses a credential swapped to a different account, so **a restart is the switch**. The installed Stop hook runs the same pace-pressure decision at each turn boundary (usage read free from codex's own rate-limit endpoint: percentages plus absolute reset times, weekly aggregate and per-model caps alike); when it swaps, the supervisor relaunches `codex resume <session-id>` on the fresh account with the transcript intact. `tokenmaxxing switch --codex [sel]` does it manually, `status` (and `status --cached`) shows both pools.
 
 Two codex-specific facts worth knowing: codex does not run hooks it has not been told to trust, so after `init --codex` you must open codex once and trust the tokenmaxxing Stop hook via `/hooks` (auto-switching is inert until then); and codex has no cross-process lock on `auth.json`, so tokenmaxxing serializes all of its own credential writes behind its own lock and swaps only at idle turn boundaries.
 

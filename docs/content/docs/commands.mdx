@@ -12,9 +12,7 @@ description: Every tokenmaxxing command and what it does
 | `tokenmaxxing auth [sel \| --all]` | Reauthenticate a pooled account in place. Bare lists the pool and asks which; a selector targets one account and tells you which email to sign in with; `--all` walks every needs-reauth account one by one |
 | `tokenmaxxing switch [sel]` | Switch to the best account (idempotent) or force a specific one |
 | `tokenmaxxing switch --codex [sel]` | Switch the Codex pool (takes effect on the next codex start) |
-| `tokenmaxxing ls` | List pooled accounts |
-| `tokenmaxxing status` | Accounts with 5h / weekly / per-model usage bars, active and exhausted-until-reset |
-| `tokenmaxxing watch [seconds]` | Live status, re-rendered every N seconds (default 120, floor 30) |
+| `tokenmaxxing status [--cached]` | Accounts with 5h / weekly / per-model usage bars, active and exhausted-until-reset; `--cached` renders the stored figures without sampling |
 | `tokenmaxxing config` | The config path and the effective values; edit the file in an editor |
 | `tokenmaxxing check` | Evaluate the switch decision once and sample the stalest parked account; the periodic timer runs this every tick |
 | `tokenmaxxing doctor` | Verify the supervisor and settings entries survived |
@@ -24,7 +22,7 @@ description: Every tokenmaxxing command and what it does
 | `tokenmaxxing setup-token [--print \| rm <label\|uuid>]` | Cursor Cloud only. Mint one `claude setup-token` per pooled account that has no stored token (a browser sign-in each), store them in `setup-tokens.json`, and print the `TOKENMAXXING_TOKENS` secret value; `--print` skips minting, `rm` drops a stored token (local only). See [Cursor Cloud](/cursor-cloud) |
 | `tokenmaxxing cursor init [dir]` | Write the Claude relay subagent (`.cursor/agents/claude.md`) and `.cursor/environment.json` into a repo. Idempotent; an existing `environment.json` is left alone and the install line to add is printed |
 | `tokenmaxxing cloud run [--session <id>] [--max-turns <n>] "<prompt>"` | On a Cursor Cloud VM: run `claude -p` on a setup token from `TOKENMAXXING_TOKENS`, keep a session on its token, and rotate to the next token when a run ends on a usage limit. The prompt is also read from stdin |
-| `--json` | Print one JSON document on stdout instead of text (one per tick for `watch`). Works with `status`, `ls`, `config`, `doctor`, `check`, `switch`, `watch`, `rename`, `rm`, `uninstall`, `setup-token --print`, `setup-token rm`, `cursor init`, and `cloud run`; position-independent (`xx --json`, `xx status --json`). See [JSON output](#json-output) |
+| `--json` | Print one JSON document on stdout instead of text. Works with `status`, `config`, `doctor`, `check`, `switch`, `rename`, `rm`, `uninstall`, `setup-token --print`, `setup-token rm`, `cursor init`, and `cloud run`; position-independent (`xx --json`, `xx status --json`). See [JSON output](#json-output) |
 
 ## JSON output
 
@@ -38,8 +36,7 @@ xx switch --json | jq '{switched, account, reason}'
 
 What each command reports:
 
-- `status` / bare `xx`: `now` (the reference time in epoch ms), `claude.thresholds`, the effective `claude.bars` and `claude.projectionMargin`, then one entry per account with `usage.fiveHour`, `usage.week`, `perModel`, `exhausted`, `needsReauth`, and `sample` (`{ok, source}` for a fresh read from the statusline tee or a probe, `{ok: false, reason}` when the live sample failed and `usage` is the cached value from `usageAt`). Windows are normalized the way the bars are drawn: a passed reset reads as 0 with the weekly reset rolled forward. `codex` mirrors this with `aggregate` and `perLimit` windows that keep their `windowSeconds`. `watch --json` prints one such document per tick and never clears the screen.
-- `ls`: both pools with `active`, `needsReauth`, `tier` or `planType`, and `addedAt`, no usage. `active` here is the pool's stored active label, while `status` computes `active` from the credential that is actually live, so the two disagree after a manual `/login` drifted the live account (`switch` reconciles that).
+- `status` / bare `xx`: `now` (the reference time in epoch ms), `claude.thresholds`, the effective `claude.bars` and `claude.projectionMargin`, then one entry per account with `usage.fiveHour`, `usage.week`, `perModel`, `exhausted`, `needsReauth`, and `sample` (`{ok, source}` for a fresh read from the statusline tee or a probe, `{ok: false, reason}` when the live sample failed and `usage` is the cached value from `usageAt`). Windows are normalized the way the bars are drawn: a passed reset reads as 0 with the weekly reset rolled forward. `codex` mirrors this with `aggregate` and `perLimit` windows that keep their `windowSeconds`. `status --cached` (also `xx --cached`) reads only the state files: every `sample` is `{ok: true, source: "cached"}`, `usage` is the stored value as of `usageAt` (null when the account was never sampled), `perModelAt` dates the per-model rows separately, and `active` is the pool's stored active label rather than the owner of the live credential, so it can lag a manual `/login` until `switch` reconciles it.
 - `config`: `path` and `effective` (the config as loaded: file values over defaults, with `TOKENMAXXING_CLAUDE_BIN` and `TOKENMAXXING_CODEX_BIN` applied on top). A file that fails to load exits 1 with the zod message naming the field.
 - `doctor`: `checks` (each `{ok, label, hint}`), `notes`, and `warnings`; `ok` is the overall verdict, so when any check fails the document also carries `error` and the exit code is 1.
 - `check`: `swapped`, `account`, `reason`, and `waitUntil`.
