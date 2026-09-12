@@ -1,11 +1,11 @@
 import { z } from "zod";
 import { http, safeErrorDetail } from "./http.ts";
-import { CodexUsageSchema, type CodexAuthJson, type CodexUsage, type Window } from "./types.ts";
+import { env } from "./paths.ts";
+import { CodexUsageSchema, JsonTextSchema, type CodexAuthJson, type CodexUsage, type Window } from "./types.ts";
 import { codexIdentityOf } from "./codexauth.ts";
 import { familyTokens } from "./usage.ts";
 
-const EnvOverrideSchema = z.string().min(1).optional().catch(undefined);
-const USAGE_URL = EnvOverrideSchema.parse(process.env.TOKENMAXXING_CODEX_USAGE_URL) ?? "https://chatgpt.com/backend-api/wham/usage";
+const USAGE_URL = env("TOKENMAXXING_CODEX_USAGE_URL", "https://chatgpt.com/backend-api/wham/usage");
 
 export class CodexUsageReadError extends Error {
   constructor(detail: string) {
@@ -70,13 +70,7 @@ export async function fetchCodexUsage(input: { auth: CodexAuthJson; at: number }
   if (!res.ok) {
     throw new CodexUsageReadError(`HTTP ${res.status}: ${safeErrorDetail({ text })}`);
   }
-  const parsed = WireUsageSchema.safeParse((() => {
-    try {
-      return JSON.parse(text);
-    } catch {
-      return null;
-    }
-  })());
+  const parsed = WireUsageSchema.safeParse(JsonTextSchema.safeParse(text).data);
   if (!parsed.success) {
     throw new CodexUsageReadError("endpoint returned an unexpected body shape (withheld)");
   }

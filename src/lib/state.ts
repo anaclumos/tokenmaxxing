@@ -6,6 +6,7 @@ import { writeFileAtomic } from "./atomic.ts";
 import {
   AccountsIndexSchema,
   ConfigSchema,
+  ErrnoSchema,
   LastSwapSchema,
   UsageStateSchema,
   type Account,
@@ -181,8 +182,7 @@ export function writeUsage(input: UsageState, opts: { stamp?: boolean } = {}): b
     try {
       utimesSync(paths.usageJson, new Date(next.ts), new Date(next.ts));
     } catch (e) {
-      const errno = z.object({ code: z.string() }).safeParse(e);
-      if (!errno.success || errno.data.code !== "ENOENT") throw e;
+      if (ErrnoSchema.safeParse(e).data?.code !== "ENOENT") throw e;
     }
     return false;
   }

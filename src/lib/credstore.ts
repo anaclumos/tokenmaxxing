@@ -4,7 +4,7 @@ import { z } from "zod";
 import { writeFileAtomic } from "./atomic.ts";
 import * as kc from "./keychain.ts";
 import { credDir, keychain as kcNames, namespacedCredService, paths } from "./paths.ts";
-import { CredentialBlobSchema } from "./types.ts";
+import { CredentialBlobSchema, ErrnoSchema } from "./types.ts";
 
 const CredTargetSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("keychain"), service: z.string(), account: z.string() }),
@@ -16,16 +16,12 @@ const darwin = process.platform === "darwin";
 
 const BlobRecordSchema = z.record(z.string(), z.unknown());
 
-function isEnoent(e: unknown): boolean {
-  return e instanceof Error && "code" in e && e.code === "ENOENT";
-}
-
 export async function readItem(t: CredTarget): Promise<string | null> {
   if (t.kind === "keychain") return kc.readItem(t);
   try {
     return readFileSync(t.path, "utf8");
   } catch (e) {
-    if (isEnoent(e)) return null;
+    if (ErrnoSchema.safeParse(e).data?.code === "ENOENT") return null;
     throw e;
   }
 }
@@ -42,7 +38,7 @@ export async function deleteItem(t: CredTarget): Promise<boolean> {
     unlinkSync(t.path);
     return true;
   } catch (e) {
-    if (isEnoent(e)) return false;
+    if (ErrnoSchema.safeParse(e).data?.code === "ENOENT") return false;
     throw e;
   }
 }

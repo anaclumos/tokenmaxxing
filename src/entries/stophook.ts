@@ -4,7 +4,7 @@ import { paths } from "../lib/paths.ts";
 import { writeFileAtomic } from "../lib/atomic.ts";
 import { claude } from "../lib/claude.ts";
 import { evaluateAndMaybeSwap } from "../lib/decide.ts";
-import { RespawnMarkerSchema } from "../lib/types.ts";
+import { JsonTextSchema, RespawnMarkerSchema } from "../lib/types.ts";
 import { log } from "../lib/log.ts";
 
 const StopStdin = z.looseObject({ session_id: z.uuid().optional().catch(undefined) });
@@ -19,7 +19,7 @@ export async function runStopHook(): Promise<number> {
   if (process.env.TOKENMAXXING_PROBE) return 0;
 
   const raw = await readStdin();
-  const parsed = StopStdin.safeParse((() => { try { return JSON.parse(raw); } catch { return {}; } })());
+  const parsed = StopStdin.safeParse(JsonTextSchema.safeParse(raw).data);
   const stdinSid = parsed.success ? parsed.data.session_id : undefined;
   const pinnedSid = process.env.TOKENMAXXING_SESSION_ID;
 

@@ -4,6 +4,7 @@ import { z } from "zod";
 import { codexPaths } from "./paths.ts";
 import { writeFileAtomic } from "./atomic.ts";
 import { pidExists, pidStartTime } from "./proc.ts";
+import { ErrnoSchema, JsonTextSchema } from "./types.ts";
 
 const PresenceSchema = z.object({
   accountId: z.string(),
@@ -38,17 +39,10 @@ export function livingCodexPresences(): LivingPresence[] {
     try {
       raw = readFileSync(file, "utf8");
     } catch (e) {
-      const errno = z.object({ code: z.string() }).safeParse(e);
-      if (errno.success && errno.data.code === "ENOENT") continue;
+      if (ErrnoSchema.safeParse(e).data?.code === "ENOENT") continue;
       throw e;
     }
-    const parsed = PresenceSchema.safeParse((() => {
-      try {
-        return JSON.parse(raw);
-      } catch {
-        return null;
-      }
-    })());
+    const parsed = PresenceSchema.safeParse(JsonTextSchema.safeParse(raw).data);
     if (!parsed.success) {
       throw new Error(`${file} is not a readable presence record - it may belong to a RUNNING codex session, refusing to treat it as absent; remove the file (or respawn that session) to proceed`);
     }
