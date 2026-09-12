@@ -47,7 +47,12 @@ function refreshPlanFields(account: Account, creds: OAuthCreds): void {
   if (creds.rateLimitTier != null) account.rateLimitTier = creds.rateLimitTier;
 }
 
-export async function probeParkedUsage(account: Account, opts: { ping?: boolean } = {}): Promise<SampleOutcome> {
+const ProbeFailureSchema = z.object({ ok: z.literal(false), reason: z.string() });
+type ProbeFailure = z.infer<typeof ProbeFailureSchema>;
+const PreparedProbeSchema = z.discriminatedUnion("ok", [z.object({ ok: z.literal(true), dir: z.string(), installed: z.string() }), ProbeFailureSchema]);
+type PreparedProbe = z.infer<typeof PreparedProbeSchema>;
+
+async function prepareParkedProbe(account: Account): Promise<PreparedProbe> {
   const backup = parkedTarget(account.keychainItem);
   const parkedRaw = await readItem(backup);
   if (!parkedRaw) return { ok: false, reason: "no parked credential - run `tokenmaxxing auth`" };
@@ -104,7 +109,7 @@ export async function probeParkedUsage(account: Account, opts: { ping?: boolean 
     if (owner.status === "unavailable" && !owner.stale) {
       return { ok: false, reason: `${owner.reason} - refusing to refresh a parked credential whose owner cannot be verified` };
     }
-    const rotate = async (): Promise<{ fresh: OAuthCreds } | { failed: SampleOutcome }> => {
+    const rotate = async (): Promise<{ fresh: OAuthCreds } | { failed: ProbeFailure }> => {
       try {
         return { fresh: await refreshCredential(creds) };
       } catch (e) {
@@ -115,7 +120,7 @@ export async function probeParkedUsage(account: Account, opts: { ping?: boolean 
         return { failed: { ok: false, reason: `token refresh failed: ${e instanceof Error ? e.message : String(e)}` } };
       }
     };
-    let result: { fresh: OAuthCreds } | { failed: SampleOutcome };
+    let result: { fresh: OAuthCreds } | { failed: ProbeFailure };
     if (owner.status === "match") {
       result = await rotate();
     } else {
@@ -153,59 +158,96 @@ export async function probeParkedUsage(account: Account, opts: { ping?: boolean 
   const dir = join(paths.sampleDir, credItemFor(account.accountUuid));
   rmSync(dir, { recursive: true, force: true });
   mkdirSync(dir, { recursive: true });
-  const isoTarget = isolatedTarget(dir);
   const installed = JSON.stringify({ claudeAiOauth: creds });
-
   try {
-    await writeItem(isoTarget, installed);
+    await writeItem(isolatedTarget(dir), installed);
     writeFileSync(join(dir, ".claude.json"), JSON.stringify({ oauthAccount: account.oauthAccount, hasCompletedOnboarding: true }));
-    const ping = opts.ping ? await pingSession(dir) : null;
-    const usage = await probeUsage(dir, Date.now());
-    const outcome: SampleOutcome = usage
-      ? { ok: true, usage }
-      : { ok: false, reason: "`/usage` returned no limit data (see log)" };
-    if (ping != null) {
-      outcome.pingError = ping.reason;
-      outcome.pingRejected = ping.rejected;
-    }
-    return outcome;
+  } catch (e) {
+    await finishParkedProbe(account, { dir, installed });
+    throw e;
+  }
+  return { ok: true, dir, installed };
+}
+
+async function runParkedProbe(dir: string, opts: { ping?: boolean }): Promise<SampleOutcome> {
+  const ping = opts.ping ? await pingSession(dir) : null;
+  const usage = await probeUsage(dir, Date.now());
+  const outcome: SampleOutcome = usage
+    ? { ok: true, usage }
+    : { ok: false, reason: "`/usage` returned no limit data (see log)" };
+  if (ping != null) {
+    outcome.pingError = ping.reason;
+    outcome.pingRejected = ping.rejected;
+  }
+  return outcome;
+}
+
+async function finishParkedProbe(account: Account, prepared: { dir: string; installed: string }): Promise<void> {
+  const isoTarget = isolatedTarget(prepared.dir);
+  try {
+    const afterIso = await readItem(isoTarget);
+    if (afterIso && afterIso !== prepared.installed) await writeItem(parkedTarget(account.keychainItem), claudeAiOauthOnly(afterIso));
   } finally {
-    try {
-      const afterIso = await readItem(isoTarget);
-      if (afterIso && afterIso !== installed) await writeItem(backup, claudeAiOauthOnly(afterIso));
-    } finally {
-      await deleteItem(isoTarget);
-      rmSync(dir, { recursive: true, force: true });
-    }
+    await deleteItem(isoTarget);
+    rmSync(prepared.dir, { recursive: true, force: true });
+  }
+}
+
+export async function probeParkedUsage(account: Account, opts: { ping?: boolean } = {}): Promise<SampleOutcome> {
+  const prepared = await prepareParkedProbe(account);
+  if (!prepared.ok) return prepared;
+  try {
+    return await runParkedProbe(prepared.dir, opts);
+  } finally {
+    await finishParkedProbe(account, prepared);
   }
 }
 
 export async function sampleOldestParked(input: { cfg: Config; now: number }): Promise<void> {
   const { cfg, now } = input;
-  await withLock(paths.lockFile, async () => {
+  const reserved = await withLock(paths.lockFile, async () => {
     const idx = loadAccounts();
     const live = readOAuthAccount()?.accountUuid ?? null;
     const sampledAt = (a: Account) => Math.max(a.lastUsageAt ?? 0, a.lastProbeAt ?? 0);
     const stale = idx.accounts.filter((a) => a.accountUuid !== live && a.needsReauth !== true && now - sampledAt(a) > cfg.policy.usagePollTtlMs);
     const target = minBy(stale, sampledAt);
-    if (!target) return;
+    if (!target) return null;
     target.lastProbeAt = now;
-    const outcome = await probeParkedUsage(target);
-    if (outcome.ok) {
-      const at = Date.now();
-      target.lastUsage = { fiveHour: outcome.usage.session, sevenDay: outcome.usage.weekAll };
-      target.lastUsageAt = at;
-      if (Object.keys(outcome.usage.perModel).length > 0) {
-        target.lastPerModel = outcome.usage.perModel;
-        target.lastPerModelAt = at;
-      }
-    }
+    const prepared = await prepareParkedProbe(target);
     saveAccounts(idx);
-    log(outcome.ok ? "sample.parked_ok" : "sample.parked_failed", {
-      account: target.accountUuid.slice(0, 8),
-      ...(outcome.ok ? {} : { reason: outcome.reason.slice(0, 200) }),
-    });
+    if (!prepared.ok) {
+      log("sample.parked_failed", { account: target.accountUuid.slice(0, 8), reason: prepared.reason.slice(0, 200) });
+      return null;
+    }
+    return { account: target, prepared };
   });
+  if (!reserved) return;
+  const { account, prepared } = reserved;
+  let outcome: SampleOutcome | null = null;
+  try {
+    outcome = await runParkedProbe(prepared.dir, {});
+  } finally {
+    await withLock(paths.lockFile, async () => {
+      await finishParkedProbe(account, prepared);
+      if (outcome == null) return;
+      const idx = loadAccounts();
+      const stored = idx.accounts.find((a) => a.accountUuid === account.accountUuid);
+      if (stored && outcome.ok) {
+        const at = Date.now();
+        stored.lastUsage = { fiveHour: outcome.usage.session, sevenDay: outcome.usage.weekAll };
+        stored.lastUsageAt = at;
+        if (Object.keys(outcome.usage.perModel).length > 0) {
+          stored.lastPerModel = outcome.usage.perModel;
+          stored.lastPerModelAt = at;
+        }
+        saveAccounts(idx);
+      }
+      log(outcome.ok ? "sample.parked_ok" : "sample.parked_failed", {
+        account: account.accountUuid.slice(0, 8),
+        ...(outcome.ok ? {} : { reason: outcome.reason.slice(0, 200) }),
+      });
+    });
+  }
 }
 
 export async function ensureLiveTokenFresh(): Promise<void> {

@@ -82,7 +82,7 @@ Each terminal ran the supervisor, so each has its own child `claude` and its own
 The [switching policy](docs/content/docs/switching.mdx) is one rule: under both bars, hold; at or over a bar, move to the usable account with the highest pace pressure; nothing usable, wait for the soonest reset.
 
 - Automatic and manual switching rank by pace pressure alone; organization membership is not an input.
-- Selection reads the cached figures only. Each periodic check tick samples the parked account whose last `/usage` attempt is oldest, skipping any attempted within `policy.usagePollTtlMs`, so no parked account is staler than one tick per pooled account.
+- Selection reads the cached figures only. Each periodic check tick samples the parked account whose last `/usage` attempt is oldest, skipping any attempted within `policy.usagePollTtlMs`, so every parked account is attempted about once per tick per pooled account and its cached figure is as fresh as its last successful attempt. The pool lock covers only the reservation and the result write, never the `/usage` child.
 - The depleted pause happens at the bar, not at 100; Codex has no pause and rides its account until the server refuses it, because a running sibling cannot adopt another account without restarting.
 
 The [profile](docs/content/docs/switching-profile.mdx) records observed cache rewrites across swaps and does not infer subscription quota savings.
