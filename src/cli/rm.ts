@@ -44,13 +44,13 @@ export async function cmdRm(selector?: string, json = false): Promise<number> {
         return 1;
       }
     }
+    const setupTokens = loadSetupTokens();
     await deleteItem(parkedTarget(a.keychainItem));
     const sampleDir = join(paths.sampleDir, credItemFor(a.accountUuid));
     await deleteItem(isolatedTarget(sampleDir));
     rmSync(sampleDir, { recursive: true, force: true });
     idx.accounts = idx.accounts.filter((x) => x.accountUuid !== a.accountUuid);
     saveAccounts(idx);
-    const setupTokens = loadSetupTokens();
     if (setupTokens.tokens.some((t) => t.accountUuid === a.accountUuid)) {
       saveSetupTokens({ ...setupTokens, tokens: setupTokens.tokens.filter((t) => t.accountUuid !== a.accountUuid) });
     }

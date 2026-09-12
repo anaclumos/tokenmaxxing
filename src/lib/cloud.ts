@@ -1,6 +1,6 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { countBy, minBy } from "es-toolkit";
+import { minBy } from "es-toolkit";
 import { z } from "zod";
 import { paths } from "./paths.ts";
 import { writeFileAtomic } from "./atomic.ts";
@@ -84,18 +84,21 @@ export function pickToken(input: {
   sessionId: string | null;
   now: number;
 }): Pick {
-  const open = (label: string) => (input.walled[label] ?? 0) <= input.now;
+  const walled = new Map(Object.entries(input.walled));
+  const sessions = new Map(Object.entries(input.sessions));
+  const open = (label: string) => (walled.get(label) ?? 0) <= input.now;
   if (input.sessionId != null) {
-    const pinned = input.sessions[input.sessionId];
+    const pinned = sessions.get(input.sessionId);
     const token = input.tokens.find((t) => t.label === pinned);
     if (token && open(token.label)) return { ok: true, token };
   }
   const candidates = input.tokens.filter((t) => open(t.label));
   if (candidates.length === 0) {
-    return { ok: false, earliestReset: Math.min(...input.tokens.map((t) => input.walled[t.label] ?? input.now)) };
+    return { ok: false, earliestReset: Math.min(...input.tokens.map((t) => walled.get(t.label) ?? input.now)) };
   }
-  const load = countBy(Object.values(input.sessions), (label) => label);
-  return { ok: true, token: minBy(candidates, (t) => load[t.label] ?? 0) ?? candidates[0]! };
+  const load = new Map<string, number>();
+  for (const label of sessions.values()) load.set(label, (load.get(label) ?? 0) + 1);
+  return { ok: true, token: minBy(candidates, (t) => load.get(t.label) ?? 0) ?? candidates[0]! };
 }
 
 const ResultBase = {

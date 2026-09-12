@@ -1,6 +1,7 @@
 import { mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { resolveRealClaude } from "../lib/claudebin.ts";
+import { withLock } from "../lib/lock.ts";
 import { paths } from "../lib/paths.ts";
 import { loadAccounts } from "../lib/state.ts";
 import { scrubCredentialEnv } from "../lib/usage.ts";
@@ -89,8 +90,8 @@ export async function cmdSetupToken(args: string[], json = false): Promise<numbe
     emitError({ json, message: "setup-token mints through a browser login flow and has no --json form; `setup-token --print --json` prints the stored set" });
     return 2;
   }
-  const store = loadSetupTokens();
-  const idx = loadAccounts();
+  let store = loadSetupTokens();
+  let idx = loadAccounts();
   if (!print) {
     if (idx.accounts.length === 0) {
       emitError({ json, message: "no accounts in the pool - run `tokenmaxxing init` first" });
@@ -104,10 +105,21 @@ export async function cmdSetupToken(args: string[], json = false): Promise<numbe
       console.log(`${c.bold(a.label)} - sign into this account in the browser (${a.email})`);
       const token = await mint({ real, item: a.keychainItem });
       if (!token) return 1;
-      store.tokens.push({ accountUuid: a.accountUuid, label: a.label, token, mintedAt: Date.now() });
-      saveSetupTokens(store);
+      const stored = await withLock(paths.lockFile, async () => {
+        if (!loadAccounts().accounts.some((x) => x.accountUuid === a.accountUuid)) return false;
+        const fresh = loadSetupTokens();
+        const tokens = fresh.tokens.filter((t) => t.accountUuid !== a.accountUuid);
+        saveSetupTokens({ ...fresh, tokens: [...tokens, { accountUuid: a.accountUuid, label: a.label, token, mintedAt: Date.now() }] });
+        return true;
+      });
+      if (!stored) {
+        console.log(c.yellow(`${a.label} left the pool during the login - token discarded`));
+        continue;
+      }
       console.log(`${c.green("✓")} stored the setup token for ${c.bold(a.label)} ${c.dim("(ownership not verified: an inference-only token cannot read the profile endpoint, so the label is the sign-in you chose)")}`);
     }
+    store = loadSetupTokens();
+    idx = loadAccounts();
   }
   if (store.tokens.length === 0) {
     emitError({ json, message: "no setup tokens stored - run `tokenmaxxing setup-token` to mint them" });
