@@ -20,20 +20,11 @@ export async function cmdRm(p: Provider, selector?: string): Promise<number> {
       emitError({ message: `${a.label} is the ACTIVE account - switch away before removing it.` });
       return 1;
     }
-    let liveOwner: string | null;
-    try {
-      liveOwner = await p.liveOwner();
-    } catch (e) {
-      emitError({
-        message: `cannot verify which account the LIVE credential belongs to (${e instanceof Error ? e.message : String(e)}) - refusing to remove while the live owner is unknown; repair the live credential or retry once the profile endpoint is reachable.`,
-      });
+    if (p.liveId() === a.id) {
+      emitError({ message: `${a.label} is the ${p.name} login this command runs under - remove it from a session on another account.` });
       return 1;
     }
-    if (liveOwner === a.id) {
-      emitError({ message: `${a.label}'s credential is currently LIVE (the active label is stale - a manual login drifted it); run \`tokenmaxxing switch${p.flag}\` to move off it first.` });
-      return 1;
-    }
-    if (p.presentIds().has(a.id)) {
+    if (p.presence().has(a.id)) {
       emitError({ message: `${a.label} is running in a live ${p.name} session - close that session before removing it.` });
       return 1;
     }

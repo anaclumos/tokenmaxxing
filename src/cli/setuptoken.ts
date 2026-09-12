@@ -2,7 +2,7 @@ import { mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { resolveRealClaude } from "../lib/claudebin.ts";
 import { withLock } from "../lib/lock.ts";
-import { claudePool, credItemFor, paths } from "../lib/paths.ts";
+import { claudePool, paths, shortId } from "../lib/paths.ts";
 import { loadAccounts } from "../lib/state.ts";
 import { scrubCredentialEnv } from "../lib/usage.ts";
 import { CURSOR_SECRET_VALUE_CAP_BYTES, cursorSecretValue, loadSetupTokens, saveSetupTokens, type SetupToken } from "../lib/setuptokens.ts";
@@ -102,7 +102,7 @@ export async function cmdSetupToken(args: string[]): Promise<number> {
     for (const a of missing) {
       console.log();
       console.log(`${c.bold(a.label)} - sign into this account in the browser (${a.email ?? a.label})`);
-      const token = await mint({ real, item: credItemFor(a.id) });
+      const token = await mint({ real, item: shortId(a.id) });
       if (!token) return 1;
       const stored = await withLock(claudePool.lockFile, async () => {
         if (!loadAccounts(claudePool).accounts.some((x) => x.id === a.id)) return false;

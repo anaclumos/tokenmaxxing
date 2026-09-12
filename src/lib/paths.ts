@@ -15,22 +15,21 @@ const TM_HOME = env("TOKENMAXXING_HOME", join(HOME, ".config", "tokenmaxxing"));
 export const paths = {
   home: TM_HOME,
   configJson: join(TM_HOME, "config.json"),
-  usageJson: join(TM_HOME, "usage.json"),
-  depletedJson: join(TM_HOME, "depleted.json"),
+  usageDir: join(TM_HOME, "usage"),
   respawnDir: join(TM_HOME, "respawn"),
+  presenceDir: join(TM_HOME, "live"),
   binDir: join(TM_HOME, "bin"),
   supervisorLink: join(TM_HOME, "bin", "claude"),
   logFile: join(TM_HOME, "tokenmaxxing.log"),
   onboardDir: join(TM_HOME, "onboard"),
   sampleDir: join(TM_HOME, "sample"),
-  credsDir: join(TM_HOME, "creds"),
+  storesDir: join(TM_HOME, "stores"),
   setupTokensJson: join(TM_HOME, "setup-tokens.json"),
   setupTokenDir: join(TM_HOME, "setup-token"),
   cloudSessionsJson: join(TM_HOME, "cloud", "sessions.json"),
   cloudWalledJson: join(TM_HOME, "cloud", "walled.json"),
   cloudLockFile: join(TM_HOME, "cloud", "lock"),
 
-  claudeJson: env("TOKENMAXXING_CLAUDE_JSON", join(HOME, ".claude.json")),
   claudeSettings: env(
     "TOKENMAXXING_CLAUDE_SETTINGS",
     join(env("CLAUDE_CONFIG_DIR", join(HOME, ".claude")), "settings.json"),
@@ -43,7 +42,7 @@ export const paths = {
 
 export const claudePool = {
   accountsJson: join(TM_HOME, "accounts.json"),
-  lastSwapJson: join(TM_HOME, "lastswap.json"),
+  lastSwapJson: null,
   lockFile: join(TM_HOME, "lock"),
 } as const;
 
@@ -53,7 +52,7 @@ export const codexPool = {
   lockFile: join(TM_HOME, "codex-lock"),
 } as const;
 
-export type PoolPaths = { accountsJson: string; lastSwapJson: string; lockFile: string };
+export type PoolPaths = { accountsJson: string; lastSwapJson: string | null; lockFile: string };
 
 const CODEX_HOME = env("TOKENMAXXING_CODEX_HOME", env("CODEX_HOME", join(HOME, ".codex")));
 
@@ -73,18 +72,29 @@ export function codexCredItemFor(accountId: string): string {
 }
 
 export const keychain = {
-  service: env("TOKENMAXXING_KEYCHAIN_SERVICE", "Claude Code-credentials"),
   account: env("TOKENMAXXING_KEYCHAIN_ACCOUNT", process.env.USER ?? "unknown"),
 } as const;
 
-export function credItemFor(accountUuid: string): string {
-  return `tokenmaxxing-cred-${accountUuid.slice(0, 8)}`;
+export function shortId(accountId: string): string {
+  return accountId.slice(0, 8);
 }
 
-export function credDir(): string {
-  const secure = process.env.CLAUDE_SECURESTORAGE_CONFIG_DIR;
-  if (secure !== undefined) return (secure || join(HOME, ".claude")).normalize("NFC");
-  return paths.claudeDir;
+export function storeDirFor(accountId: string): string {
+  return join(paths.storesDir, shortId(accountId));
+}
+
+export function sampleDirFor(accountId: string, suffix = ""): string {
+  return join(paths.sampleDir, `${shortId(accountId)}${suffix}`);
+}
+
+export function usageJsonFor(accountId: string): string {
+  return join(paths.usageDir, `${shortId(accountId)}.json`);
+}
+
+export function seatFromEnv(accountIds: string[], env: Record<string, string | undefined> = process.env): string | null {
+  const store = env.CLAUDE_SECURESTORAGE_CONFIG_DIR;
+  if (store == null || store === "") return null;
+  return accountIds.find((id) => storeDirFor(id) === store) ?? null;
 }
 
 export function namespacedCredService(configDirRaw: string): string {

@@ -1,6 +1,6 @@
 import { claude } from "../lib/claude.ts";
 import { evaluateAndMaybeSwap } from "../lib/decide.ts";
-import { sampleOldestParked } from "../lib/sample.ts";
+import { sampleOldest } from "../lib/sample.ts";
 import { loadConfig } from "../lib/state.ts";
 import { log } from "../lib/log.ts";
 import { c, emitError, emitJson, fmtReset } from "./render.ts";
@@ -10,7 +10,7 @@ export async function cmdCheck(json = false): Promise<number> {
   let d;
   try {
     d = await evaluateAndMaybeSwap(claude, now);
-    await sampleOldestParked(loadConfig());
+    await sampleOldest(loadConfig());
   } catch (e) {
     const detail = e instanceof Error ? e.message : String(e);
     log("check.error", { err: detail });

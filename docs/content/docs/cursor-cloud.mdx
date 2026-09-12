@@ -5,7 +5,7 @@ description: Hand work from a Cursor Cloud Agent to Claude Code running on your 
 
 A Cursor Cloud Agent runs on an isolated Ubuntu VM with no keychain, no tokenmaxxing pool state, and no hot swap. The Cursor Cloud path uses what the VM does have, environment variables, a shell, and repo files. A project subagent checked into the repo forwards a task to `tokenmaxxing cloud run`, which spawns `claude -p` under one long-lived setup token per thread and moves that thread to the next token when the account it runs on hits a usage limit.
 
-Setup tokens are for Cursor Cloud only. Regular Claude Code use stays on the keychain login. A setup token is inference-only, `/usage` reports no percentages under it, and the local switching engine never reads one.
+Setup tokens are for Cursor Cloud only. Regular Claude Code use stays on the pooled account stores. A setup token is inference-only, `/usage` reports no percentages under it, and the local switching engine never reads one.
 
 ## Setup
 

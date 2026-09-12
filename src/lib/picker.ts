@@ -15,6 +15,7 @@ const PickCtxSchema = z.object({
   thresholds: ThresholdsSchema,
   currentId: z.string().nullable(),
   families: z.array(z.string()).nullable(),
+  seats: z.map(z.string(), z.number()).nullable(),
 });
 export type PickCtx = z.infer<typeof PickCtxSchema>;
 
@@ -93,7 +94,14 @@ export function pacePressure(a: Account, now: number): number {
   return Math.max(0, 100 - liveUsed(weekly, now)) / Math.max(1, reset - now);
 }
 
+export function seatHeadroom(a: Account, ctx: PickCtx): number {
+  const session = sessionWindow(a);
+  if (session == null) return Number.NEGATIVE_INFINITY;
+  return (ctx.thresholds.session - liveUsed(session, ctx.now)) / ((ctx.seats?.get(a.id) ?? 0) + 1);
+}
+
 const swapPreference = (ctx: PickCtx) => [
+  ...(ctx.seats == null ? [] : [(a: Account) => -seatHeadroom(a, ctx)]),
   (a: Account) => -pacePressure(a, ctx.now),
   (a: Account) => weeklyExpiry(a, ctx.now),
   (a: Account) => weeklyWindow(a)?.usedPercentage ?? 101,

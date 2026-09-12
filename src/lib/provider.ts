@@ -12,12 +12,10 @@ export type Provider = {
   name: "claude" | "codex";
   flag: string;
   pool: PoolPaths;
+  seats: "shared" | "live";
   waitsWhenDepleted: boolean;
-  switchMargin: number;
-  switchNote: string;
   liveId(): string | null;
-  liveOwner(): Promise<string | null>;
-  presentIds(): Set<string>;
+  presence(): Map<string, number>;
   gatedFamilies(cfg: Config): string[] | null;
   observeLive(account: Account, cfg: Config, now: number, opts: { probe: boolean }): Promise<Observation | null>;
   samplePool(accounts: Account[], liveId: string | null, now: number): Promise<Map<string, SampleReport>>;

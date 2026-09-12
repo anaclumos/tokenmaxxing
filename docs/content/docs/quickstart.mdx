@@ -1,9 +1,9 @@
 ---
 title: Quickstart
-description: Install tokenmaxxing, import your current account, and pool more
+description: Install tokenmaxxing, log in your first pooled account, and pool more
 ---
 
-Requires [Bun](https://bun.sh) and Claude Code, on macOS or Linux. Install with Bun, or from the flake if you already use Nix / nix-darwin — put the CLI on PATH before `init` (see [Build and distribution](/distribution)):
+Requires [Bun](https://bun.sh) and Claude Code, on macOS or Linux. Install with Bun, or from the flake if you already use Nix / nix-darwin; put the CLI on PATH before `init` (see [Build and distribution](/distribution)):
 
 ```sh
 bun add -g tokenmaxxing
@@ -14,7 +14,7 @@ Nix users replace the Bun step with `nix profile install github:anaclumos/tokenm
 
 `init` does five things:
 
-1. Imports the account you are already logged in with as account #1 (there is no separate `adopt` command).
+1. Opens a browser sign-in to add your first pooled account, even if you are already signed in, while keeping your existing login available to Claude sessions started outside the supervisor. The login lands in that account's own credential store; the one you already have is never copied.
 2. Installs the `claude` supervisor shim.
 3. Installs four entries in Claude Code's `settings.json`: a statusLine, a Stop hook, a StopFailure hook, and a SessionStart hook (plus a subagentStatusLine entry).
 4. Appends the supervisor's bin directory to your shell rc's PATH (idempotent, marked with a `# tokenmaxxing PATH` comment). It has to sit ahead of the real `claude` on PATH to intercept it.
@@ -27,4 +27,4 @@ tokenmaxxing add        # logs one more account in, in isolation, and pools it
 claude                  # use claude as always
 ```
 
-`tokenmaxxing` is also aliased as `xx`. Bare `tokenmaxxing` (or `xx`) runs `status`; `switch` stays explicit.
+Each `claude` you start is placed on the pooled account with the most session headroom per running session, so two sessions land on two accounts. `tokenmaxxing` is also aliased as `xx`. Bare `tokenmaxxing` (or `xx`) runs `status`.

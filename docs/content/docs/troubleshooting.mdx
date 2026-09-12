@@ -4,31 +4,37 @@ description: Common questions and the diagnostics behind them
 ---
 
 **`claude` doesn't seem to be supervised.**
-Run `tokenmaxxing doctor`. The shim must win PATH resolution; check that the `# tokenmaxxing PATH` line in your shell rc points at the current bin directory and sits ahead of the real claude. `doctor` also warns about `alias claude=...` or a `claude()` shell function shadowing the wrapper, and about aliases that launch a claude binary by absolute path (those bypass the supervisor entirely).
+Run `tokenmaxxing doctor`. The shim must win PATH resolution; check that the `# tokenmaxxing PATH` line in your shell rc points at the current bin directory and sits ahead of the real claude. `doctor` also warns about `alias claude=...` or a `claude()` shell function shadowing the wrapper, and about aliases that launch a claude binary by absolute path (those bypass the supervisor entirely). A session that bypasses the supervisor runs on Claude Code's own login and is never moved.
 
 **Auto-switching never fires on Codex.**
 Codex skips hooks it has not been told to trust. Open codex, run `/hooks`, and trust the tokenmaxxing Stop hook. Trust is recorded against the hook's hash, so it must be re-granted if the hook is ever edited.
 
 **An account shows a red `✗` in the statusline.**
-Its refresh token is dead (revoked or rotated out from under its backup). Run `tokenmaxxing auth <sel>` to reauthenticate it in place; the command tells you which email to sign in with and refuses a login that lands on a different account.
+Its store's credential is dead (Claude Code cleared it after a refresh came back `invalid_grant`, or the store is empty). Run `tokenmaxxing auth <sel>` to reauthenticate it in place; the command tells you which email to sign in with and refuses a login that lands on a different account.
 
-**Why doesn't it switch to the account with the most remaining quota?**
-Because that is not the account most at risk of forfeiting quota. The target is the account furthest behind its own weekly pace: remaining percent divided by time to its weekly reset. With equal amounts remaining that reduces to soonest expiry first, and with equal expiry to most remaining first.
+**Which account does a new session start on?**
+The usable account with the most session-window headroom per running session: `(session bar - session used) / (sessions on it + 1)`, ties by weekly pace pressure. Two fresh accounts alternate; the third session goes to whichever has more headroom left per session. See [How switching decides](/switching).
 
-**It just switched and the statusline still shows the old account.**
-Expected for up to ~30 seconds on macOS: the running session adopts the swapped credential on its next credential-cache refresh. The usage tee is suppressed for 45 seconds after a swap for exactly this reason.
+**Why doesn't it move to the account with the most remaining weekly quota?**
+Weekly quota is the tie-break. The first key is session-window headroom per running session, because the 5-hour window is what a new or moved session drains first; among accounts with equal headroom per session the one furthest behind its own weekly pace wins: remaining percent divided by time to its weekly reset.
+
+**It moved my session and `claude` restarted.**
+Expected: a session changes account only by respawning under another account's store, at a committed turn boundary, resuming the same conversation. The statusline flips to the new seat on the first render.
+
+**`/status` shows another account's email.**
+`~/.claude.json` holds one `oauthAccount` for every session and Claude Code rewrites it after whichever session refreshed last. The credential a session actually uses is the one in its store; the statusline's `◆` marks that account.
 
 **Does `status` cost anything?**
-No. `status` reads the statusline tee and the free `/usage` probe, which sends no metered request and opens no session window, and `status --cached` reads nothing but the state files.
+No. `status` reads the statusline tees and the free `/usage` probe, which sends no metered request and opens no session window, and `status --cached` reads nothing but the state files.
 
-**The `/usage` probe returned nothing for the active account.**
-That is a known claude behavior: when its internal usage fetch fails or is rate-limited, `/usage` prints only local session stats with no percentage lines. tokenmaxxing samples the active account from the statusline push whenever that feed is at least as fresh as the stored sample (the row shows the feed's age) and probes the live login only when the feed is missing or older; a silent probe leaves the cached sample in place with its age shown.
+**The `/usage` probe returned nothing for an account with running sessions.**
+That is a known claude behavior: when its internal usage fetch fails or is rate-limited, `/usage` prints only local session stats with no percentage lines, which is common while the token is busy serving sessions. tokenmaxxing reads such an account from its statusline tee whenever that feed is at least as new as the stored sample (the row shows the feed's age) and probes the store only when the tee is missing or older; a silent probe leaves the cached sample in place with its age shown.
 
 **Background claude sessions.**
-Claude's background daemon spawns the real versioned binary by absolute path, bypassing PATH shims, so background sessions are unsupervised. Hooks still fire via `settings.json`, and credential adoption plus the periodic timer cover switching, but there is no marker-driven respawn for them.
+Claude's background daemon spawns the real versioned binary by absolute path, bypassing PATH shims, so background sessions are unsupervised. A background session spawned from a supervised session inherits its `CLAUDE_SECURESTORAGE_CONFIG_DIR` and runs on the same account; one started from elsewhere runs on Claude Code's own login. Neither is moved: there is no marker-driven respawn for them.
 
 **Something spawned a lot of processes once. Is that still possible?**
 The supervisor carries layered recursion guards against exactly that historical failure (a stale wrapper pinned as the "real" claude): a depth sentinel in the environment that aborts at 5 levels, an on-disk spawn-rate limiter, realpath identity checks that reject any candidate resolving back into tokenmaxxing's own bin directory, and a hard failure (never a silent PATH scan) when a configured claude path no longer exists. `init` and `doctor` verify a candidate actually is claude by running `--version` before pinning it.
 
 **Uninstalling.**
-`tokenmaxxing uninstall` removes the supervisor shims, settings entries, and the periodic timer, and leaves your accounts and parked credentials intact. It only removes statusline entries it recognizes as its own.
+`tokenmaxxing uninstall` removes the supervisor shims, settings entries, and the periodic timer, and leaves your accounts and their stores intact. It only removes statusline entries it recognizes as its own.

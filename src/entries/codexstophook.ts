@@ -8,7 +8,7 @@ import { codex, codexPickCtx, reconcileSiblings } from "../lib/codex.ts";
 import { liveCodexAccountId } from "../lib/codexauth.ts";
 import { evaluateAndMaybeSwap } from "../lib/decide.ts";
 import { isExhausted } from "../lib/picker.ts";
-import { livingCodexPresences } from "../lib/codexpresence.ts";
+import { livingPresences } from "../lib/presence.ts";
 import { loadAccounts } from "../lib/state.ts";
 import { CODEX_SUPERVISOR_ID_ENV } from "./codexsupervisor.ts";
 import { CodexReconcileMarkerSchema, CodexRespawnMarkerSchema, CodexStopStdinSchema } from "../lib/types.ts";
@@ -37,7 +37,7 @@ function promoteReconcileLocked(input: { supervisorId: string; sessionId: string
     log("codexstop.reconcile_unparsable", {});
     return false;
   }
-  const presence = livingCodexPresences().find((p) => p.supervisorId === input.supervisorId) ?? null;
+  const presence = livingPresences(codexPaths.presenceDir).find((p) => p.id === input.supervisorId) ?? null;
   if (presence == null || presence.accountId !== parsed.data.accountId) {
     rmSync(markerPath, { force: true });
     log("codexstop.reconcile_stale", {});

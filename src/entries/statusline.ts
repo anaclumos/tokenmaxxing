@@ -1,8 +1,7 @@
 import { sortBy } from "es-toolkit";
 import { z } from "zod";
-import { readOAuthAccount } from "../lib/claudejson.ts";
-import { claudePool } from "../lib/paths.ts";
-import { loadAccounts, loadConfig, loadLastSwapAt, writeUsage } from "../lib/state.ts";
+import { claudePool, seatFromEnv } from "../lib/paths.ts";
+import { loadAccounts, loadConfig, writeUsage } from "../lib/state.ts";
 import { familyTokens, matchedFamily, parseStatusLineStdin, parseStatusLineModel } from "../lib/usage.ts";
 import { earliestReset, limitWindows, weeklyExpiry, weeklyWindow } from "../lib/picker.ts";
 import { worktreeName } from "../lib/worktree.ts";
@@ -16,8 +15,6 @@ import {
   type UsageState,
   type UsageWindow,
 } from "../lib/types.ts";
-
-const ADOPTION_GRACE_MS = 45_000;
 
 const RenderCtxSchema = z.object({
   accounts: AccountsIndexSchema,
@@ -78,9 +75,7 @@ export function renderStatusline(stdinObj: unknown, ctx: RenderCtx): string {
     windows.push(seg("", wins.fiveHour, wins.fiveHour.resetsAt));
     windows.push(seg("", wins.sevenDay, wins.sevenDay.resetsAt));
   }
-  const seatUuid =
-    (ctx.liveAccount != null && ctx.accounts.accounts.some((a) => a.id === ctx.liveAccount) ? ctx.liveAccount : null) ??
-    ctx.accounts.activeId;
+  const seatUuid = ctx.liveAccount;
   const walled = (a: Account) => a.enforcedUntil != null && a.enforcedUntil > ctx.now;
   const wallSeg = (wall: number) => seg("", { usedPercentage: 100, resetsAt: wall }, wall);
   const seat = ctx.accounts.accounts.find((a) => a.id === seatUuid);
@@ -128,10 +123,9 @@ export async function runStatusline(): Promise<number> {
 
   let account: string | null = null;
   try {
-    account = readOAuthAccount()?.accountUuid ?? null;
+    account = seatFromEnv(loadAccounts(claudePool).accounts.map((a) => a.id));
     const windows = obj == null ? null : parseStatusLineStdin(obj);
-    const lastSwapAt = loadLastSwapAt(claudePool);
-    if (windows && (lastSwapAt == null || now - lastSwapAt >= ADOPTION_GRACE_MS)) {
+    if (windows && account != null) {
       const state: UsageState = { fiveHour: windows.fiveHour, sevenDay: windows.sevenDay, account, ts: now, model: parseStatusLineModel(obj) };
       writeUsage(state);
     }

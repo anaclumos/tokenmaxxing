@@ -1,18 +1,14 @@
 import { z } from "zod";
 import { claude } from "../lib/claude.ts";
 import { evaluateAndMaybeSwap } from "../lib/decide.ts";
+import { supervisedSession, writeRespawnMarker } from "../lib/sessions.ts";
 import { log } from "../lib/log.ts";
+import { readStdin } from "./statusline.ts";
 
 const SessionStartStdin = z.looseObject({
   source: z.string().optional(),
-  session_id: z.string().optional(),
+  session_id: z.uuid().optional().catch(undefined),
 });
-
-async function readStdin(): Promise<string> {
-  const chunks: Uint8Array[] = [];
-  for await (const c of Bun.stdin.stream()) chunks.push(c);
-  return Buffer.concat(chunks).toString("utf8");
-}
 
 export async function runSessionStart(): Promise<number> {
   if (process.env.TOKENMAXXING_PROBE) return 0;
@@ -20,11 +16,14 @@ export async function runSessionStart(): Promise<number> {
   const raw = await readStdin();
   const parsed = SessionStartStdin.safeParse((() => { try { return JSON.parse(raw); } catch { return {}; } })());
   const source = parsed.success ? parsed.data.source : undefined;
+  const stdinSid = parsed.success ? parsed.data.session_id : undefined;
+  const session = supervisedSession();
 
   try {
-    const decision = await evaluateAndMaybeSwap(claude);
-    if (decision.swapped && decision.account) {
-      log("sessionstart.swapped", { source, account: decision.account.id.slice(0, 8) });
+    const decision = await evaluateAndMaybeSwap(claude, Date.now(), session != null);
+    if (session && decision.account && (decision.swapped || decision.waitUntil !== undefined)) {
+      writeRespawnMarker({ session, sessionId: stdinSid ?? session.sid, accountId: decision.account.id, waitUntil: decision.waitUntil ?? Date.now() });
+      log("sessionstart.marker", { source, account: decision.account.id.slice(0, 8), waitUntil: decision.waitUntil });
     }
   } catch (e) {
     log("sessionstart.error", { err: e instanceof Error ? e.message : String(e) });

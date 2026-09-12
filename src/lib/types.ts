@@ -54,7 +54,7 @@ const ModelInfoSchema = z.object({ id: z.string(), display: z.string() });
 export type ModelInfo = z.infer<typeof ModelInfoSchema>;
 
 export const UsageStateSchema = AggregateWindowsSchema.extend({
-  account: z.string().nullable(),
+  account: z.string(),
   ts: z.number(),
   model: ModelInfoSchema.nullable().default(null),
   sampledAt: z.number().optional(),
@@ -130,7 +130,7 @@ export const ConfigSchema = z
 export type Config = z.infer<typeof ConfigSchema>;
 
 export const RespawnMarkerSchema = z.object({
-  account: z.string(),
+  accountId: z.string(),
   ts: z.number(),
   waitUntil: z.number(),
   sessionId: z.string(),
@@ -184,15 +184,6 @@ export const SubagentStatusLineStdinSchema = z.looseObject({
     )
     .optional()
     .catch(undefined),
-});
-
-export const RefreshResponseSchema = z.looseObject({
-  access_token: z.string(),
-  refresh_token: z.string().optional(),
-  expires_in: z.number().optional(),
-  refresh_token_expires_in: z.number().optional(),
-  scope: z.string().optional(),
-  token_type: z.string().optional(),
 });
 
 export const ProfileResponseSchema = z.looseObject({
