@@ -9,7 +9,7 @@ export async function cmdCheck(json = false): Promise<number> {
   let d;
   try {
     d = await evaluateAndMaybeSwap(now);
-    await sampleOldestParked({ cfg: loadConfig(), now });
+    await sampleOldestParked(loadConfig());
   } catch (e) {
     const detail = e instanceof Error ? e.message : String(e);
     log("check.error", { err: detail });

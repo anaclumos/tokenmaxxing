@@ -27,10 +27,10 @@ const IdentityCheckSchema = z.discriminatedUnion("status", [
 ]);
 type IdentityCheck = z.infer<typeof IdentityCheckSchema>;
 
-async function checkIdentity(creds: OAuthCreds, account: Account): Promise<IdentityCheck> {
+async function checkIdentity(creds: OAuthCreds, account: Account, signal?: AbortSignal): Promise<IdentityCheck> {
   let identity: TokenIdentity;
   try {
-    identity = await fetchTokenIdentity(creds.accessToken);
+    identity = await fetchTokenIdentity(creds.accessToken, signal);
   } catch (e) {
     return {
       status: "unavailable",
@@ -52,7 +52,7 @@ type ProbeFailure = z.infer<typeof ProbeFailureSchema>;
 const PreparedProbeSchema = z.discriminatedUnion("ok", [z.object({ ok: z.literal(true), dir: z.string(), installed: z.string() }), ProbeFailureSchema]);
 type PreparedProbe = z.infer<typeof PreparedProbeSchema>;
 
-async function prepareParkedProbe(account: Account, dir: string): Promise<PreparedProbe> {
+async function prepareParkedProbe(account: Account, dir: string, signal?: AbortSignal): Promise<PreparedProbe> {
   const backup = parkedTarget(account.keychainItem);
   const parkedRaw = await readItem(backup);
   if (!parkedRaw) return { ok: false, reason: "no parked credential - run `tokenmaxxing auth`" };
@@ -81,7 +81,7 @@ async function prepareParkedProbe(account: Account, dir: string): Promise<Prepar
     if (!isDeadCredential(liveCreds)) {
       liveToken = liveCreds.accessToken;
       try {
-        liveAccount = (await fetchTokenIdentity(liveCreds.accessToken)).accountUuid;
+        liveAccount = (await fetchTokenIdentity(liveCreds.accessToken, signal)).accountUuid;
       } catch (e) {
         return { ok: false, reason: `cannot verify the live credential's owner (${(e instanceof Error ? e.message : String(e)).slice(0, 80)}) - refusing to sample a possibly-live account` };
       }
@@ -100,7 +100,7 @@ async function prepareParkedProbe(account: Account, dir: string): Promise<Prepar
   };
 
   if (isAccessTokenExpiring(creds, 300_000)) {
-    const owner = await checkIdentity(creds, account);
+    const owner = await checkIdentity(creds, account, signal);
     if (owner.status === "mismatch") {
       const kept = await relocate(owner.owner);
       account.needsReauth = true;
@@ -128,7 +128,7 @@ async function prepareParkedProbe(account: Account, dir: string): Promise<Prepar
         result = await withClaudeRefreshLock(async (lock) => {
           const rotated = await rotate();
           if ("failed" in rotated) return rotated;
-          const verified = await checkIdentity(rotated.fresh, account);
+          const verified = await checkIdentity(rotated.fresh, account, signal);
           if (verified.status !== "mismatch") return rotated;
           const trueOwner = loadAccounts().accounts.find((a) => a.accountUuid === verified.owner.accountUuid) ?? null;
           const kept = await keepRotatedPair({ fresh: rotated.fresh, owner: trueOwner, fallback: account, liveOwnerUuid: liveAccount, expectedLiveToken: liveToken, lock });
@@ -144,7 +144,7 @@ async function prepareParkedProbe(account: Account, dir: string): Promise<Prepar
     await writeItem(backup, JSON.stringify({ claudeAiOauth: creds }));
   }
 
-  const identity = await checkIdentity(creds, account);
+  const identity = await checkIdentity(creds, account, signal);
   if (identity.status === "mismatch") {
     const kept = await relocate(identity.owner);
     account.needsReauth = true;
@@ -201,9 +201,11 @@ export async function probeParkedUsage(account: Account): Promise<SampleOutcome>
   }
 }
 
-export async function sampleOldestParked(input: { cfg: Config; now: number }): Promise<void> {
-  const { cfg, now } = input;
+const PREPARE_DEADLINE_MS = 20_000;
+
+export async function sampleOldestParked(cfg: Config): Promise<void> {
   const reserved = await withLock(paths.lockFile, async () => {
+    const now = Date.now();
     const lastSwapAt = loadLastSwapAt();
     if (lastSwapAt != null && now - lastSwapAt < POST_SWAP_COOLDOWN_MS) return null;
     const idx = loadAccounts();
@@ -213,7 +215,7 @@ export async function sampleOldestParked(input: { cfg: Config; now: number }): P
     const target = minBy(stale, sampledAt);
     if (!target) return null;
     target.lastProbeAt = now;
-    const prepared = await prepareParkedProbe(target, join(paths.sampleDir, `${credItemFor(target.accountUuid)}-tick`));
+    const prepared = await prepareParkedProbe(target, join(paths.sampleDir, `${credItemFor(target.accountUuid)}-tick`), AbortSignal.timeout(PREPARE_DEADLINE_MS));
     saveAccounts(idx);
     if (!prepared.ok) {
       log("sample.parked_failed", { account: target.accountUuid.slice(0, 8), reason: prepared.reason.slice(0, 200) });
