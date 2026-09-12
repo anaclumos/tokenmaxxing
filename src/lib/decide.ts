@@ -164,8 +164,9 @@ export async function evaluateAndMaybeSwap(now = Date.now(), anticipatory = fals
       saveAccounts(idx);
     }
 
-    const walled = !enforced2 && active?.enforcedUntil != null && active.enforcedUntil > now;
-    const gated = walled ? cfg.policy.switchModels : gatedFamilies(u2?.model ?? null, cfg.policy.switchModels);
+    const walled = active?.enforcedUntil != null && active.enforcedUntil > now;
+    const blind = !enforced2 || (enforced2.subagent && enforced2.family == null);
+    const gated = walled && blind ? cfg.policy.switchModels : gatedFamilies(u2?.model ?? null, cfg.policy.switchModels);
     const switchFamilies = enforced2?.family && !gated.includes(enforced2.family) ? [...gated, enforced2.family] : gated;
 
     if (!enforced2 && !isOver(u2, active, bars, cfg, now)) {
