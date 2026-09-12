@@ -25,6 +25,9 @@ import { cmdRename } from "./cli/rename.ts";
 import { cmdSwitch } from "./cli/switch.ts";
 import { cmdCheck } from "./cli/check.ts";
 import { cmdConfig } from "./cli/config.ts";
+import { cmdSetupToken } from "./cli/setuptoken.ts";
+import { cmdCloudRun } from "./cli/cloudrun.ts";
+import { cmdCursorInit } from "./cli/cursorinit.ts";
 import { timerDeactivationHint, uninstallSupervisor } from "./lib/install.ts";
 import { c, emitError, emitJson } from "./cli/render.ts";
 
@@ -51,8 +54,11 @@ function printHelp(): void {
   ${c.cyan("tokenmaxxing rename")} [--codex] <sel> <label>
   ${c.cyan("tokenmaxxing rm")} [--codex] <sel>
   ${c.cyan("tokenmaxxing uninstall")}  remove supervisor + settings entries
+  ${c.cyan("tokenmaxxing setup-token")} [--print | rm <label|uuid>]  Cursor Cloud only: mint one \`claude setup-token\` per pooled account (browser sign-in each) and print the TOKENMAXXING_TOKENS secret value; ${c.cyan("--print")} prints the stored set, ${c.cyan("rm")} drops one
+  ${c.cyan("tokenmaxxing cursor init")} [dir]  write the Claude relay subagent (.cursor/agents/claude.md) and .cursor/environment.json into a repo
+  ${c.cyan("tokenmaxxing cloud run")} [--session <id>] [--max-turns <n>] "<prompt>"  on a Cursor Cloud VM: run claude -p on a setup token from TOKENMAXXING_TOKENS, rotate to the next token on a usage limit
 
-  ${c.cyan("--json")}                  print one JSON document on stdout instead of text (status, ls, config, doctor, check, switch, rename, rm, uninstall; one per tick for watch); every document carries ${c.bold("ok")}, failures add ${c.bold("error")}
+  ${c.cyan("--json")}                  print one JSON document on stdout instead of text (status, ls, config, doctor, check, switch, rename, rm, uninstall, setup-token --print, cursor init, cloud run; one per tick for watch); every document carries ${c.bold("ok")}, failures add ${c.bold("error")}
 
   ${c.dim("(aliased as")} ${c.cyan("xx")}${c.dim(")")} - then just run ${c.bold("claude")} as always; it switches accounts near quota automatically.`);
 }
@@ -134,6 +140,17 @@ async function main(): Promise<number> {
       return args.includes("--codex") ? cmdCodexRm(rest[0], json) : cmdRm(rest[0], json);
     }
     case "rename": return cmdRename(args.slice(1), json);
+    case "setup-token": return cmdSetupToken(args.slice(1), json);
+    case "cursor": {
+      if (args[1] === "init") return cmdCursorInit(args.slice(2), json);
+      emitError({ json, message: "usage: tokenmaxxing cursor init [dir]" });
+      return 2;
+    }
+    case "cloud": {
+      if (args[1] === "run") return cmdCloudRun(args.slice(2), json);
+      emitError({ json, message: 'usage: tokenmaxxing cloud run [--session <id>] [--max-turns <n>] "<prompt>"' });
+      return 2;
+    }
     case "uninstall": {
       const out = uninstallSupervisor();
       const removed = [

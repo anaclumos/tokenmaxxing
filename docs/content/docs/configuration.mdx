@@ -25,7 +25,7 @@ Config is JSON at `~/.config/tokenmaxxing/config.json`. Every field is optional;
 - `claudeBin` / `codexBin`: pins to the REAL binaries the supervisors spawn (written by `init` / `init --codex`; the recursion-guard diagnostic tells you to fix `claudeBin` here when it stops pointing at the real Claude binary).
 - `policy.projectionMargin`: subtracted from both thresholds to form the effective bars; it must stay below both.
 - `policy.switchModels`: model families whose per-model weekly cap gates a switch (entries are lowercased on load).
-- `policy.usagePollTtlMs`: how long a `/usage` per-model poll stays fresh.
+- `policy.usagePollTtlMs`: how long a `/usage` attempt stays fresh, for the live per-model poll and for the parked account the check tick samples.
 - `policy.maxWaitMs`: the depleted-pool auto-wait bound.
 - `policy.checkIntervalMs`: the periodic check tick (default 60000, minimum 10000 because launchd does not spawn a job more than once every 10 seconds by default). `init` writes it, rounded up to whole seconds, as the timer's interval (on Linux the systemd `AccuracySec` is a twelfth of it, at least one second), and every tick evaluates (see [Periodic check](/switching)). The installed timer keeps its old tick until you run `tokenmaxxing init` again. With a Nix-managed timer, set `checkTimer.intervalSeconds` to the same value; that option has the same 10-second floor.
 

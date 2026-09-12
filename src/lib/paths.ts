@@ -28,6 +28,11 @@ export const paths = {
   onboardDir: join(TM_HOME, "onboard"),
   sampleDir: join(TM_HOME, "sample"),
   credsDir: join(TM_HOME, "creds"),
+  setupTokensJson: join(TM_HOME, "setup-tokens.json"),
+  setupTokenDir: join(TM_HOME, "setup-token"),
+  cloudSessionsJson: join(TM_HOME, "cloud", "sessions.json"),
+  cloudWalledJson: join(TM_HOME, "cloud", "walled.json"),
+  cloudLockFile: join(TM_HOME, "cloud", "lock"),
 
   claudeJson: env("TOKENMAXXING_CLAUDE_JSON", join(HOME, ".claude.json")),
   claudeSettings: env(
