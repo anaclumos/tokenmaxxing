@@ -61,7 +61,7 @@ export function cmdCursorInit(args: string[], json = false): number {
   const warnings: string[] = [];
   if (existing == null) {
     writeFileAtomic(environmentFile, ENVIRONMENT_JSON, REPO_FILE_MODE);
-  } else if (existing.user === "root") {
+  } else if (existing.user === "root" || existing.user === "0") {
     warnings.push(".cursor/environment.json sets user to root; Claude Code refuses --dangerously-skip-permissions under root, so every relay call fails until user is a non-root account");
   }
   if (json) {
