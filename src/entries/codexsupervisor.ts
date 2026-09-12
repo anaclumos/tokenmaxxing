@@ -1,12 +1,12 @@
 import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
-import { codexPaths, paths } from "../lib/paths.ts";
+import { codexPaths, codexPool, paths } from "../lib/paths.ts";
 import { withLock } from "../lib/lock.ts";
 import { LOOP_DIAGNOSIS, MAX_WRAP_DEPTH, UNMANAGED_ENV, WRAP_DEPTH_ENV, WRAP_RATE_MAX, WRAP_RATE_WINDOW_MS, wrapDepth, wrapperEntryRateTripped } from "../lib/claudebin.ts";
 import { resolveRealCodex } from "../lib/codexbin.ts";
 import { clearCodexPresence, writeCodexPresence } from "../lib/codexpresence.ts";
-import { liveCodexAccountId } from "../lib/codexsample.ts";
+import { liveCodexAccountId } from "../lib/codexauth.ts";
 import { saveTermios, restoreTermios } from "../lib/tty.ts";
 import { CodexRespawnMarkerSchema } from "../lib/types.ts";
 import { log } from "../lib/log.ts";
@@ -95,7 +95,7 @@ export async function runCodexSupervisor(input: { argv: string[] }): Promise<num
     if (existsSync(marker)) rmSync(marker, { force: true });
     log("codexsupervisor.launch", { supervisorId: supervisorId.slice(0, 8), respawns, args: launchArgs.join(" ") });
 
-    const child = await withLock(codexPaths.lockFile, async () => {
+    const child = await withLock(codexPool.lockFile, async () => {
       const spawnAccountId = liveCodexAccountId();
       const spawned = Bun.spawn([real, ...launchArgs], {
         stdin: "inherit",

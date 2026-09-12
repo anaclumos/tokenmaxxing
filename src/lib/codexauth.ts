@@ -27,6 +27,12 @@ export function readLiveCodexAuth(): CodexAuthJson | null {
   return readCodexAuthAt({ path: codexPaths.authJson });
 }
 
+export function liveCodexAccountId(): string | null {
+  const live = readLiveCodexAuth();
+  if (!live) return null;
+  return codexIdentityOf({ auth: live }).accountId;
+}
+
 export function writeLiveCodexAuth(input: { auth: CodexAuthJson }): void {
   writeFileAtomic(codexPaths.authJson, JSON.stringify(CodexAuthJsonSchema.parse(input.auth), null, 2), 0o600);
 }

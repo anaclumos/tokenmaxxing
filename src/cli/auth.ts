@@ -1,39 +1,37 @@
 import { partition } from "es-toolkit";
 import { z } from "zod";
 import { withLock } from "../lib/lock.ts";
-import { loadAccounts, saveAccounts } from "../lib/state.ts";
-import { paths } from "../lib/paths.ts";
-import { writeItem, parkedTarget, claudeAiOauthOnly } from "../lib/credstore.ts";
+import type { Provider } from "../lib/provider.ts";
+import { loadAccounts, saveAccounts, upsertAccount } from "../lib/state.ts";
 import { findAccount } from "./rename.ts";
-import { harvestIsolatedLogin } from "./onboard.ts";
-import { keepRows } from "../lib/usage.ts";
-import { c, claudeTierLabel, count } from "./render.ts";
+import { usageNote } from "./add.ts";
+import { c, count } from "./render.ts";
 import type { Account, AccountsIndex } from "../lib/types.ts";
 
-const AUTH_USAGE = "usage: tokenmaxxing auth [<email|label|id> | --all]";
+const AUTH_USAGE = "usage: tokenmaxxing auth [--codex] [<email|label|id> | --all]";
 
 const AuthPlanSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("usage") }),
   z.object({ kind: z.literal("error"), message: z.string() }),
   z.object({ kind: z.literal("pick") }),
-  z.object({ kind: z.literal("targets"), uuids: z.array(z.string()) }),
+  z.object({ kind: z.literal("targets"), ids: z.array(z.string()) }),
 ]);
 export type AuthPlan = z.infer<typeof AuthPlanSchema>;
 
-export function planAuth(input: { accounts: Account[]; argv: string[] }): AuthPlan {
+export function planAuth(input: { p: Provider; accounts: Account[]; argv: string[] }): AuthPlan {
   const all = input.argv.includes("--all");
   const rest = input.argv.filter((a) => a !== "--all");
   if ((all && rest.length > 0) || rest.length > 1) return { kind: "usage" };
-  if (input.accounts.length === 0) return { kind: "error", message: "no accounts in the pool - run `tokenmaxxing init` first" };
+  if (input.accounts.length === 0) return { kind: "error", message: `no accounts in the pool - run \`tokenmaxxing init${input.p.flag}\` first` };
   if (all) {
     const flagged = input.accounts.filter((a) => a.needsReauth === true);
-    return { kind: "targets", uuids: flagged.map((a) => a.accountUuid) };
+    return { kind: "targets", ids: flagged.map((a) => a.id) };
   }
   const selector = rest[0];
   if (selector !== undefined) {
     const found = findAccount(input.accounts, selector);
-    if (!found) return { kind: "error", message: `no claude account matches "${selector}"` };
-    return { kind: "targets", uuids: [found.accountUuid] };
+    if (!found) return { kind: "error", message: `no ${input.p.name} account matches "${selector}"` };
+    return { kind: "targets", ids: [found.id] };
   }
   return { kind: "pick" };
 }
@@ -48,11 +46,11 @@ function askWhichAccount(idx: AccountsIndex): Account | null {
   console.log("which account do you want to reauthenticate?");
   for (const [i, a] of ordered.entries()) {
     const flags: string[] = [];
-    if (a.accountUuid === idx.activeAccountUuid) flags.push(c.green("active"));
+    if (a.id === idx.activeId) flags.push(c.green("active"));
     if (a.needsReauth) flags.push(c.red("needs-reauth"));
-    const labelNote = a.label && a.label !== a.email ? ` (${a.label})` : "";
+    const labelNote = a.email != null && a.label !== a.email ? ` (${a.label})` : "";
     const tag = flags.length ? ` ${flags.join(" ")}` : "";
-    console.log(`  ${i + 1}. ${c.bold(a.email)}${labelNote}${tag}`);
+    console.log(`  ${i + 1}. ${c.bold(a.email ?? a.label)}${labelNote}${tag}`);
   }
   const answer = prompt("account (number, email, or label):")?.trim();
   if (!answer) {
@@ -69,59 +67,47 @@ function askWhichAccount(idx: AccountsIndex): Account | null {
   return chosen;
 }
 
-async function reauthOne(target: Account): Promise<boolean> {
-  console.log(c.cyan(`Reauthenticating ${c.bold(target.label)} - sign in as  ${c.bold(target.email)}.`));
-  console.log(c.dim(`In the session that opens, run  ${c.bold("/login")}  with that account. It closes itself once you're in.`));
+async function reauthOne(p: Provider, target: Account): Promise<boolean> {
+  console.log(c.cyan(`Reauthenticating ${c.bold(target.label)} - sign in as  ${c.bold(target.email ?? target.label)}.`));
+  console.log(c.dim(p.loginStep("that account")));
   console.log();
 
-  const harvested = await harvestIsolatedLogin();
+  const harvested = await p.login();
   if (!harvested) return false;
-  const { blobRaw, blob, oauthAccount, sampled } = harvested;
 
-  if (oauthAccount.accountUuid !== target.accountUuid) {
+  if (harvested.id !== target.id) {
     console.error(
       c.red(
-        `that login is ${c.bold(oauthAccount.emailAddress)}, but ${target.label} is ${c.bold(target.email)} - nothing changed. To pool it as its own account, run \`tokenmaxxing add\`.`,
+        `that login is ${c.bold(harvested.email ?? harvested.id.slice(0, 8))}, but ${target.label} is ${c.bold(target.email ?? target.id.slice(0, 8))} - nothing changed. To pool it as its own account, run \`tokenmaxxing add${p.flag}\`.`,
       ),
     );
     return false;
   }
 
-  const isActive = await withLock(paths.lockFile, async () => {
-    const idx = loadAccounts();
-    const account = idx.accounts.find((a) => a.accountUuid === target.accountUuid);
-    if (!account) {
-      console.error(c.red(`${target.label} was removed from the pool while the login was open - nothing written; re-add it with \`tokenmaxxing add\` if wanted`));
+  const result = await withLock(p.pool.lockFile, async () => {
+    const idx = loadAccounts(p.pool);
+    if (!idx.accounts.some((a) => a.id === target.id)) {
+      console.error(c.red(`${target.label} was removed from the pool while the login was open - nothing written; re-add it with \`tokenmaxxing add${p.flag}\` if wanted`));
       return null;
     }
-    await writeItem(parkedTarget(target.keychainItem), claudeAiOauthOnly(blobRaw));
-    account.email = oauthAccount.emailAddress;
-    account.organizationUuid = oauthAccount.organizationUuid;
-    account.oauthAccount = oauthAccount;
-    account.subscriptionType = blob.claudeAiOauth.subscriptionType;
-    account.rateLimitTier = blob.claudeAiOauth.rateLimitTier;
-    account.needsReauth = false;
-    if (sampled) {
-      account.lastUsageAt = Date.now();
-      account.lastUsage = keepRows(sampled, account.lastUsage, account.lastUsageAt);
-    }
-    saveAccounts(idx);
-    return idx.activeAccountUuid === target.accountUuid;
+    await harvested.park();
+    const account = upsertAccount(idx, harvested, p.mergeWindows);
+    saveAccounts(p.pool, idx);
+    return { account, isActive: idx.activeId === target.id };
   });
-  if (isActive === null) return false;
+  if (result === null) return false;
 
-  const usageNote = sampled ? ` (session ${sampled.fiveHour.usedPercentage}% / week ${sampled.sevenDay.usedPercentage}%)` : "";
-  const tier = claudeTierLabel(blob.claudeAiOauth) ?? "?";
-  console.log(`${c.green("✓")} reauthed ${c.bold(oauthAccount.emailAddress)} (${tier})${usageNote}`);
-  if (isActive) {
+  const note = harvested.sample ? usageNote(result.account) : "";
+  console.log(`${c.green("✓")} reauthed ${c.bold(result.account.email ?? result.account.label)} (${result.account.tier ?? "?"})${note}`);
+  if (result.isActive) {
     console.log(c.dim("this account is the active one: the fresh credential is parked as its backup; the live session keeps its current token until the next swap."));
   }
   return true;
 }
 
-export async function cmdAuth(argv: string[]): Promise<number> {
-  const idx = loadAccounts();
-  const plan = planAuth({ accounts: idx.accounts, argv });
+export async function cmdAuth(p: Provider, argv: string[]): Promise<number> {
+  const idx = loadAccounts(p.pool);
+  const plan = planAuth({ p, accounts: idx.accounts, argv });
   if (plan.kind === "usage") {
     console.error(AUTH_USAGE);
     return 2;
@@ -137,8 +123,8 @@ export async function cmdAuth(argv: string[]): Promise<number> {
     if (!picked) return 1;
     targets.push(picked);
   } else {
-    for (const uuid of plan.uuids) {
-      const account = idx.accounts.find((a) => a.accountUuid === uuid);
+    for (const id of plan.ids) {
+      const account = idx.accounts.find((a) => a.id === id);
       if (account) targets.push(account);
     }
     if (targets.length === 0) {
@@ -151,7 +137,7 @@ export async function cmdAuth(argv: string[]): Promise<number> {
   for (const [i, target] of targets.entries()) {
     console.log();
     if (targets.length > 1) console.log(c.bold(`[${i + 1}/${targets.length}]`));
-    if (await reauthOne(target)) ok += 1;
+    if (await reauthOne(p, target)) ok += 1;
   }
 
   if (targets.length > 1) {

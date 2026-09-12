@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { claude } from "../lib/claude.ts";
 import { evaluateAndMaybeSwap } from "../lib/decide.ts";
 import { log } from "../lib/log.ts";
 
@@ -21,9 +22,9 @@ export async function runSessionStart(): Promise<number> {
   const source = parsed.success ? parsed.data.source : undefined;
 
   try {
-    const decision = await evaluateAndMaybeSwap();
+    const decision = await evaluateAndMaybeSwap(claude);
     if (decision.swapped && decision.account) {
-      log("sessionstart.swapped", { source, account: decision.account.accountUuid.slice(0, 8) });
+      log("sessionstart.swapped", { source, account: decision.account.id.slice(0, 8) });
     }
   } catch (e) {
     log("sessionstart.error", { err: e instanceof Error ? e.message : String(e) });

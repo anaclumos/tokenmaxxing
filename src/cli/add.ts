@@ -1,51 +1,34 @@
 import { withLock } from "../lib/lock.ts";
-import { loadAccounts, saveAccounts } from "../lib/state.ts";
-import { credItemFor, paths } from "../lib/paths.ts";
-import { writeItem, parkedTarget, claudeAiOauthOnly } from "../lib/credstore.ts";
-import { harvestIsolatedLogin } from "./onboard.ts";
-import { type Account } from "../lib/types.ts";
-import { keepRows } from "../lib/usage.ts";
-import { c, claudeTierLabel, count } from "./render.ts";
+import type { Provider } from "../lib/provider.ts";
+import { loadAccounts, saveAccounts, upsertAccount } from "../lib/state.ts";
+import { sessionWindow, weeklyWindow } from "../lib/picker.ts";
+import { c, count } from "./render.ts";
+import type { Account } from "../lib/types.ts";
 
-export async function cmdAdd(): Promise<number> {
-  console.log(c.cyan("Opening an isolated Claude login - your primary login is untouched."));
-  console.log(c.dim(`In the session that opens, run  ${c.bold("/login")}  with the account to add. It closes itself once you're in.`));
+export function usageNote(account: Account): string {
+  const session = sessionWindow(account);
+  const week = weeklyWindow(account);
+  return session && week ? ` (session ${session.usedPercentage}% / week ${week.usedPercentage}%)` : "";
+}
+
+export async function cmdAdd(p: Provider): Promise<number> {
+  console.log(c.cyan(`Opening an isolated ${p.name} login - your primary login is untouched.`));
+  console.log(c.dim(p.loginStep("the account to add")));
   console.log();
 
-  const harvested = await harvestIsolatedLogin();
+  const harvested = await p.login();
   if (!harvested) return 1;
-  const { blobRaw, blob, oauthAccount, sampled } = harvested;
 
-  const uuid = oauthAccount.accountUuid;
-  const keychainItem = credItemFor(uuid);
-
-  const { account, poolSize } = await withLock(paths.lockFile, async () => {
-    await writeItem(parkedTarget(keychainItem), claudeAiOauthOnly(blobRaw));
-    const idx = loadAccounts();
-    const existing = idx.accounts.find((a) => a.accountUuid === uuid);
-    const sampledAt = Date.now();
-    const fresh: Account = {
-      accountUuid: uuid,
-      email: oauthAccount.emailAddress,
-      organizationUuid: oauthAccount.organizationUuid,
-      label: existing?.label ?? oauthAccount.emailAddress,
-      keychainItem,
-      oauthAccount,
-      addedAt: existing?.addedAt ?? new Date().toISOString(),
-      subscriptionType: blob.claudeAiOauth.subscriptionType,
-      rateLimitTier: blob.claudeAiOauth.rateLimitTier,
-      needsReauth: false,
-      lastUsage: sampled ? keepRows(sampled, existing?.lastUsage, sampledAt) : existing?.lastUsage,
-      lastUsageAt: sampled ? sampledAt : existing?.lastUsageAt,
-    };
-    if (existing) Object.assign(existing, fresh);
-    else idx.accounts.push(fresh);
-    saveAccounts(idx);
-    return { account: fresh, poolSize: idx.accounts.length };
+  const { account, poolSize } = await withLock(p.pool.lockFile, async () => {
+    await harvested.park();
+    const idx = loadAccounts(p.pool);
+    const account = upsertAccount(idx, harvested, p.mergeWindows);
+    saveAccounts(p.pool, idx);
+    return { account, poolSize: idx.accounts.length };
   });
 
   console.log();
-  const usageNote = sampled ? ` (session ${sampled.fiveHour.usedPercentage}% / week ${sampled.sevenDay.usedPercentage}%)` : "";
-  console.log(`${c.green("✓")} added ${c.bold(account.email)} (${claudeTierLabel(account) ?? "?"})${usageNote} → pool now has ${count({ n: poolSize, noun: "account" })}`);
+  const note = harvested.sample ? usageNote(account) : "";
+  console.log(`${c.green("✓")} added ${c.bold(account.label)} (${account.tier ?? "?"})${note} → pool now has ${count({ n: poolSize, noun: "account" })}`);
   return 0;
 }

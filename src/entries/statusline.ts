@@ -1,16 +1,17 @@
 import { sortBy } from "es-toolkit";
 import { z } from "zod";
 import { readOAuthAccount } from "../lib/claudejson.ts";
+import { claudePool } from "../lib/paths.ts";
 import { loadAccounts, loadConfig, loadLastSwapAt, writeUsage } from "../lib/state.ts";
 import { familyTokens, matchedFamily, parseStatusLineStdin, parseStatusLineModel } from "../lib/usage.ts";
-import { earliestReset, weeklyExpiry } from "../lib/picker.ts";
+import { earliestReset, limitWindows, weeklyExpiry, weeklyWindow } from "../lib/picker.ts";
 import { worktreeName } from "../lib/worktree.ts";
 import { makeColors, makeUsagePaint } from "../cli/render.ts";
 import { fmtResetShort } from "../lib/usage.ts";
 import {
   AccountsIndexSchema,
   StatusLineStdinSchema,
-  UsageWindowSchema,
+  WindowSchema,
   type Account,
   type UsageState,
   type UsageWindow,
@@ -20,7 +21,7 @@ const ADOPTION_GRACE_MS = 45_000;
 
 const RenderCtxSchema = z.object({
   accounts: AccountsIndexSchema,
-  perModel: z.record(z.string(), UsageWindowSchema),
+  perModel: z.record(z.string(), WindowSchema),
   switchModels: z.array(z.string()),
   worktree: z.string().nullable(),
   liveAccount: z.string().nullable(),
@@ -78,11 +79,11 @@ export function renderStatusline(stdinObj: unknown, ctx: RenderCtx): string {
     windows.push(seg("", wins.sevenDay, wins.sevenDay.resetsAt));
   }
   const seatUuid =
-    (ctx.liveAccount != null && ctx.accounts.accounts.some((a) => a.accountUuid === ctx.liveAccount) ? ctx.liveAccount : null) ??
-    ctx.accounts.activeAccountUuid;
+    (ctx.liveAccount != null && ctx.accounts.accounts.some((a) => a.id === ctx.liveAccount) ? ctx.liveAccount : null) ??
+    ctx.accounts.activeId;
   const walled = (a: Account) => a.enforcedUntil != null && a.enforcedUntil > ctx.now;
   const wallSeg = (wall: number) => seg("", { usedPercentage: 100, resetsAt: wall }, wall);
-  const seat = ctx.accounts.accounts.find((a) => a.accountUuid === seatUuid);
+  const seat = ctx.accounts.accounts.find((a) => a.id === seatUuid);
   if (seat?.enforcedUntil != null && walled(seat)) windows.push(wallSeg(seat.enforcedUntil));
   const seatMarker = seat && walled(seat) ? paint(100)("◆") : col.green("◆");
   const active =
@@ -93,20 +94,20 @@ export function renderStatusline(stdinObj: unknown, ctx: RenderCtx): string {
         : "";
 
   const parked = sortBy(
-    ctx.accounts.accounts.filter((a) => a.accountUuid !== seatUuid),
+    ctx.accounts.accounts.filter((a) => a.id !== seatUuid),
     [(a) => (a.needsReauth ? 1 : 0), (a) => earliestReset(a, ctx.now)],
   );
   const poolSeg = (a: Account): string => {
     const marker = a.needsReauth ? col.red("✗") : walled(a) ? paint(100)("◇") : col.cyan("◇");
     if (a.enforcedUntil != null && walled(a)) return `${marker} ${wallSeg(a.enforcedUntil)}`;
-    const week = a.lastUsage?.sevenDay;
+    const week = weeklyWindow(a);
     if (week == null) return `${marker} ?`;
     const weekUsed = used(week);
     if (Math.round(weekUsed) <= 0) return `${marker} ${paint(0)("full")}`;
 
     const parts: string[] = [];
-    for (const [name, w] of Object.entries(a.lastUsage?.perModel ?? {})) {
-      if (used(w) > weekUsed) parts.push(seg(initial(name), w, null));
+    for (const w of limitWindows(a)) {
+      if (used(w) > weekUsed) parts.push(seg(initial(w.name ?? ""), w, null));
     }
     const expiry = weeklyExpiry(a, ctx.now);
     parts.push(seg("", week, Number.isFinite(expiry) ? expiry : null));
@@ -129,7 +130,7 @@ export async function runStatusline(): Promise<number> {
   try {
     account = readOAuthAccount()?.accountUuid ?? null;
     const windows = obj == null ? null : parseStatusLineStdin(obj);
-    const lastSwapAt = loadLastSwapAt();
+    const lastSwapAt = loadLastSwapAt(claudePool);
     if (windows && (lastSwapAt == null || now - lastSwapAt >= ADOPTION_GRACE_MS)) {
       const state: UsageState = { fiveHour: windows.fiveHour, sevenDay: windows.sevenDay, account, ts: now, model: parseStatusLineModel(obj) };
       writeUsage(state);
@@ -140,13 +141,14 @@ export async function runStatusline(): Promise<number> {
   let line: string;
   try {
     const cfg = loadConfig();
-    const accounts = loadAccounts();
+    const accounts = loadAccounts(claudePool);
     const stdin = StatusLineStdinSchema.safeParse(obj);
     const dir = stdin.success ? (stdin.data.workspace?.current_dir ?? stdin.data.workspace?.project_dir ?? null) : null;
     const colorterm = z.string().optional().parse(process.env.COLORTERM);
+    const live = accounts.accounts.find((a) => a.id === account);
     const ctx: RenderCtx = {
       accounts,
-      perModel: accounts.accounts.find((a) => a.accountUuid === account)?.lastUsage?.perModel ?? {},
+      perModel: Object.fromEntries((live ? limitWindows(live) : []).map((w) => [w.name ?? "", w])),
       switchModels: cfg.policy.switchModels,
       worktree: dir == null ? null : worktreeName(dir),
       liveAccount: account,

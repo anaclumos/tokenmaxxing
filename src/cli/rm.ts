@@ -1,60 +1,45 @@
-import { rmSync } from "node:fs";
-import { join } from "node:path";
-import { deleteItem, isolatedTarget, liveTarget, parkedTarget, readItem } from "../lib/credstore.ts";
-import { fetchTokenIdentity } from "../lib/oauth.ts";
 import { withLock } from "../lib/lock.ts";
-import { credItemFor, paths } from "../lib/paths.ts";
-import { loadSetupTokens, saveSetupTokens } from "../lib/setuptokens.ts";
+import type { Provider } from "../lib/provider.ts";
 import { loadAccounts, saveAccounts } from "../lib/state.ts";
-import { CredentialBlobSchema } from "../lib/types.ts";
 import { findAccount } from "./rename.ts";
 import { c, emitError, plain } from "./render.ts";
 
-export async function cmdRm(selector?: string): Promise<number> {
+export async function cmdRm(p: Provider, selector?: string): Promise<number> {
   if (!selector) {
-    emitError({ message: "usage: tokenmaxxing rm <email|label|uuid>", paint: plain });
+    emitError({ message: `usage: tokenmaxxing rm${p.flag} <email|label|id>`, paint: plain });
     return 2;
   }
-  return withLock(paths.lockFile, async () => {
-    const idx = loadAccounts();
+  return withLock(p.pool.lockFile, async () => {
+    const idx = loadAccounts(p.pool);
     const a = findAccount(idx.accounts, selector);
     if (!a) {
       emitError({ message: `no account matches "${selector}"` });
       return 1;
     }
-    if (a.accountUuid === idx.activeAccountUuid) {
-      emitError({ message: `${a.email} is the ACTIVE account - switch away before removing it.` });
+    if (a.id === idx.activeId) {
+      emitError({ message: `${a.label} is the ACTIVE account - switch away before removing it.` });
       return 1;
     }
-    const live = await readItem(liveTarget());
-    if (live != null) {
-      let liveAccount: string;
-      try {
-        const liveCreds = CredentialBlobSchema.parse(JSON.parse(live)).claudeAiOauth;
-        liveAccount = (await fetchTokenIdentity(liveCreds.accessToken)).accountUuid;
-      } catch (e) {
-        emitError({
-          message: `cannot verify which account the LIVE credential belongs to (${e instanceof Error ? e.message : String(e)}) - refusing to remove while the live owner is unknown; repair the live credential or retry once the profile endpoint is reachable.`,
-        });
-        return 1;
-      }
-      if (liveAccount === a.accountUuid) {
-        emitError({ message: `${a.email}'s credential is currently LIVE (the active label is stale - a manual /login drifted it); run \`tokenmaxxing switch\` to move off it first.` });
-        return 1;
-      }
+    let liveOwner: string | null;
+    try {
+      liveOwner = await p.liveOwner();
+    } catch (e) {
+      emitError({
+        message: `cannot verify which account the LIVE credential belongs to (${e instanceof Error ? e.message : String(e)}) - refusing to remove while the live owner is unknown; repair the live credential or retry once the profile endpoint is reachable.`,
+      });
+      return 1;
     }
-    const setupTokens = loadSetupTokens();
-    await deleteItem(parkedTarget(a.keychainItem));
-    const item = credItemFor(a.accountUuid);
-    for (const sampleDir of [join(paths.sampleDir, item), join(paths.sampleDir, `${item}-tick`)]) {
-      await deleteItem(isolatedTarget(sampleDir));
-      rmSync(sampleDir, { recursive: true, force: true });
+    if (liveOwner === a.id) {
+      emitError({ message: `${a.label}'s credential is currently LIVE (the active label is stale - a manual login drifted it); run \`tokenmaxxing switch${p.flag}\` to move off it first.` });
+      return 1;
     }
-    idx.accounts = idx.accounts.filter((x) => x.accountUuid !== a.accountUuid);
-    saveAccounts(idx);
-    if (setupTokens.tokens.some((t) => t.accountUuid === a.accountUuid)) {
-      saveSetupTokens({ ...setupTokens, tokens: setupTokens.tokens.filter((t) => t.accountUuid !== a.accountUuid) });
+    if (p.presentIds().has(a.id)) {
+      emitError({ message: `${a.label} is running in a live ${p.name} session - close that session before removing it.` });
+      return 1;
     }
+    await p.removeCredentials(a);
+    idx.accounts = idx.accounts.filter((x) => x.id !== a.id);
+    saveAccounts(p.pool, idx);
     console.log(`removed ${c.bold(a.label)} from the pool (${idx.accounts.length} left)`);
     return 0;
   });
