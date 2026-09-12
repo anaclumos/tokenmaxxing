@@ -10,6 +10,7 @@ import { HOME, paths } from "./paths.ts";
 
 const UPDATE_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const INSTALL_DEADLINE_MS = 60_000;
+const REGISTRY_DEADLINE_MS = 15_000;
 
 const OverrideSchema = z.string().min(1).optional().catch(undefined);
 const AttemptSchema = z.object({ attemptedAt: z.number() });
@@ -19,16 +20,14 @@ const LatestSchema = z.object({ version: z.string().min(1), engines: z.looseObje
 const updateJson = join(paths.home, "update.json");
 const updateLock = join(paths.home, "update.lock");
 
-function registryBase(): string {
-  const registry = OverrideSchema.parse(process.env.TOKENMAXXING_NPM_REGISTRY) ?? "https://registry.npmjs.org";
-  return registry.endsWith("/") ? registry : `${registry}/`;
-}
-
-function withoutCredentials(url: URL): string {
-  const clean = new URL(url.href);
-  clean.username = "";
-  clean.password = "";
-  return clean.href;
+function registry(): { base: URL; authorization: string | null } {
+  const raw = OverrideSchema.parse(process.env.TOKENMAXXING_NPM_REGISTRY) ?? "https://registry.npmjs.org";
+  const base = new URL(raw.endsWith("/") ? raw : `${raw}/`);
+  const authorization =
+    base.username !== "" || base.password !== "" ? `Basic ${btoa(`${decodeURIComponent(base.username)}:${decodeURIComponent(base.password)}`)}` : null;
+  base.username = "";
+  base.password = "";
+  return { base, authorization };
 }
 
 function realOrNull(path: string): string | null {
@@ -92,17 +91,18 @@ function isDue(now: number): boolean {
 
 async function updateToLatest(root: string): Promise<void> {
   const current = installedVersion(root);
-  const base = registryBase();
-  const latestUrl = new URL("tokenmaxxing/latest", base);
-  const response = await http.get(latestUrl.href);
-  if (!response.ok) throw new Error(`${withoutCredentials(latestUrl)} answered HTTP ${response.status}`);
+  const { base, authorization } = registry();
+  const latestUrl = new URL("tokenmaxxing/latest", base).href;
+  const signal = AbortSignal.timeout(REGISTRY_DEADLINE_MS);
+  const response = await http.get(latestUrl, { signal, headers: authorization ? { authorization } : undefined });
+  if (!response.ok) throw new Error(`${latestUrl} answered HTTP ${response.status}`);
   const latest = LatestSchema.parse(await response.json());
   if (Bun.semver.order(latest.version, current) <= 0) return;
   const floor = latest.engines?.bun;
   if (floor != null && !Bun.semver.satisfies(Bun.version, floor)) {
     throw new Error(`tokenmaxxing@${latest.version} needs bun ${floor}, this is bun ${Bun.version}`);
   }
-  const child = Bun.spawn([process.execPath, "add", "-g", "--registry", base, `tokenmaxxing@${latest.version}`], {
+  const child = Bun.spawn([process.execPath, "add", "-g", "--registry", base.href, `tokenmaxxing@${latest.version}`], {
     cwd: paths.home,
     env: { ...process.env, BUN_INSTALL_GLOBAL_DIR: root },
     stdout: "ignore",
