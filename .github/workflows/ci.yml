@@ -39,9 +39,9 @@ jobs:
         run: |
           ./result/bin/tokenmaxxing help
           ./result/bin/xx help >/dev/null
-          TOKENMAXXING_HOME="$RUNNER_TEMP/tm-nix" ./result/bin/tokenmaxxing config set thresholds.weekly 90
-          TOKENMAXXING_HOME="$RUNNER_TEMP/tm-nix" ./result/bin/tokenmaxxing config get thresholds.weekly | grep -qx 90
-          TOKENMAXXING_HOME="$RUNNER_TEMP/tm-nix" ./result/bin/tokenmaxxing config unset thresholds.weekly
+          mkdir -p "$RUNNER_TEMP/tm-nix"
+          printf '{"thresholds":{"weekly":95}}\n' > "$RUNNER_TEMP/tm-nix/config.json"
+          TOKENMAXXING_HOME="$RUNNER_TEMP/tm-nix" ./result/bin/tokenmaxxing config --json | jq -e '.ok == true and .effective.thresholds.weekly == 95 and .effective.thresholds.session == 90' >/dev/null
 
   publish:
     if: github.event_name == 'release'

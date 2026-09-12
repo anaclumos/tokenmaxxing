@@ -96,19 +96,30 @@ export type Thresholds = z.infer<typeof ThresholdsSchema>;
 
 export const ConfigSchema = z
   .object({
-    thresholds: ThresholdsSchema,
-    claudeBin: z.string(),
-    codexBin: z.string(),
-    policy: z.object({
-      projectionMargin: z.number().min(0).max(100),
-      switchModels: z.array(z.string()),
-      usagePollTtlMs: z.number().int().positive(),
-      maxWaitMs: z.number().int().positive(),
-      checkIntervalMs: z.number().int().min(10_000),
-    }),
+    thresholds: z
+      .object({
+        session: z.number().min(0).max(100).default(90),
+        weekly: z.number().min(0).max(100).default(98),
+      })
+      .prefault({}),
+    claudeBin: z.string().default(""),
+    codexBin: z.string().default(""),
+    policy: z
+      .object({
+        projectionMargin: z.number().min(0).max(100).default(0),
+        switchModels: z
+          .array(z.string())
+          .default(["fable"])
+          .transform((models) => models.map((model) => model.toLowerCase())),
+        usagePollTtlMs: z.number().int().positive().default(90_000),
+        maxWaitMs: z.number().int().positive().default(3_600_000),
+        checkIntervalMs: z.number().int().min(10_000).default(60_000),
+      })
+      .prefault({}),
   })
   .refine((cfg) => cfg.policy.projectionMargin < Math.min(cfg.thresholds.session, cfg.thresholds.weekly), {
-    message: "policy.projectionMargin must be strictly below both thresholds (the bars would hit zero and every account would read as exhausted)",
+    path: ["policy", "projectionMargin"],
+    message: "must be strictly below both thresholds (the bars would hit zero and every account would read as exhausted)",
   });
 export type Config = z.infer<typeof ConfigSchema>;
 
