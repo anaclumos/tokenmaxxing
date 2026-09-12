@@ -7,11 +7,9 @@ import {
   AccountsIndexSchema,
   ConfigSchema,
   LastSwapSchema,
-  ModelUsageStateSchema,
   UsageStateSchema,
   type AccountsIndex,
   type Config,
-  type ModelUsageState,
   type UsageState,
 } from "./types.ts";
 
@@ -156,7 +154,6 @@ export function loadUsage(): UsageState | null {
 
 export function clearUsageSnapshots(): void {
   rmSync(paths.usageJson, { force: true });
-  rmSync(paths.modelUsageJson, { force: true });
 }
 
 export function loadLastSwapAt(): number | null {
@@ -201,12 +198,14 @@ export const POST_SWAP_COOLDOWN_MS = 45_000;
 const USAGE_TS_REFRESH_MS = 10 * 60_000;
 const SAMPLED_AT_REFRESH_MS = 30_000;
 
-export function writeUsage(input: UsageState, opts: { stamp?: boolean } = {}): boolean {
+export function writeUsage(input: UsageState, opts: { stamp?: boolean } = {}): UsageState {
   const prev = loadUsage();
+  const same = prev != null && prev.account === input.account ? prev : null;
   const stamp = opts.stamp === true;
-  const carriedSampleAt = prev != null && prev.account === input.account ? (prev.sampledAt ?? prev.ts) : undefined;
-  const sampledAt = stamp ? (carriedSampleAt ?? input.sampledAt) : input.ts;
-  const next: UsageState = { ...input, ...(sampledAt != null ? { sampledAt } : {}) };
+  const sampledAt = stamp ? (same ? (same.sampledAt ?? same.ts) : input.sampledAt) : (input.sampledAt ?? input.ts);
+  const perModel = Object.keys(input.perModel).length > 0 ? input.perModel : (same?.perModel ?? {});
+  const probedAt = input.probedAt ?? same?.probedAt;
+  const next: UsageState = { ...input, perModel, ...(sampledAt != null ? { sampledAt } : {}), ...(probedAt != null ? { probedAt } : {}) };
   if (
     prev &&
     isEqual({ ...prev, ts: 0, sampledAt: 0 }, { ...next, ts: 0, sampledAt: 0 }) &&
@@ -219,22 +218,8 @@ export function writeUsage(input: UsageState, opts: { stamp?: boolean } = {}): b
       const errno = z.object({ code: z.string() }).safeParse(e);
       if (!errno.success || errno.data.code !== "ENOENT") throw e;
     }
-    return false;
+    return prev;
   }
   writeFileAtomic(paths.usageJson, JSON.stringify(next));
-  return true;
-}
-
-export function loadModelUsage(): ModelUsageState | null {
-  if (!existsSync(paths.modelUsageJson)) return null;
-  try {
-    const parsed = ModelUsageStateSchema.safeParse(JSON.parse(readFileSync(paths.modelUsageJson, "utf8")));
-    return parsed.success ? parsed.data : null;
-  } catch {
-    return null;
-  }
-}
-
-export function saveModelUsage(next: ModelUsageState): void {
-  writeFileAtomic(paths.modelUsageJson, JSON.stringify(next));
+  return next;
 }

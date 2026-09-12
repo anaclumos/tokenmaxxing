@@ -31,9 +31,10 @@ export const UsageWindowSchema = z.object({
 });
 export type UsageWindow = z.infer<typeof UsageWindowSchema>;
 
-const UsageWindowsSchema = z.object({
+export const UsageWindowsSchema = z.object({
   fiveHour: UsageWindowSchema,
   sevenDay: UsageWindowSchema,
+  perModel: z.record(z.string(), UsageWindowSchema).default({}),
 });
 export type UsageWindows = z.infer<typeof UsageWindowsSchema>;
 
@@ -45,16 +46,9 @@ export const UsageStateSchema = UsageWindowsSchema.extend({
   ts: z.number(),
   model: ModelInfoSchema.nullable().default(null),
   sampledAt: z.number().optional(),
+  probedAt: z.number().optional(),
 });
 export type UsageState = z.infer<typeof UsageStateSchema>;
-
-export const ModelUsageStateSchema = z.object({
-  perModel: z.record(z.string(), UsageWindowSchema).default({}),
-  account: z.string().nullable(),
-  ts: z.number(),
-  sampledAt: z.number().optional(),
-});
-export type ModelUsageState = z.infer<typeof ModelUsageStateSchema>;
 
 export const AccountSchema = z.object({
   accountUuid: z.string(),
@@ -65,8 +59,6 @@ export const AccountSchema = z.object({
   oauthAccount: OAuthAccountSchema,
   addedAt: z.string(),
   lastUsage: UsageWindowsSchema.optional(),
-  lastPerModel: z.record(z.string(), UsageWindowSchema).optional(),
-  lastPerModelAt: z.number().optional(),
   lastUsageAt: z.number().optional(),
   lastProbeAt: z.number().optional(),
   enforcedUntil: z.number().optional(),

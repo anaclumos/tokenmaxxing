@@ -17,7 +17,6 @@ export const paths = {
   configJson: join(TM_HOME, "config.json"),
   accountsJson: join(TM_HOME, "accounts.json"),
   usageJson: join(TM_HOME, "usage.json"),
-  modelUsageJson: join(TM_HOME, "model-usage.json"),
   lastSwapJson: join(TM_HOME, "lastswap.json"),
   depletedJson: join(TM_HOME, "depleted.json"),
   respawnDir: join(TM_HOME, "respawn"),

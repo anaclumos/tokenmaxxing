@@ -4,6 +4,7 @@ import { credItemFor, paths } from "../lib/paths.ts";
 import { writeItem, parkedTarget, claudeAiOauthOnly } from "../lib/credstore.ts";
 import { harvestIsolatedLogin } from "./onboard.ts";
 import { type Account } from "../lib/types.ts";
+import { keepRows } from "../lib/usage.ts";
 import { c, claudeTierLabel, count } from "./render.ts";
 
 export async function cmdAdd(): Promise<number> {
@@ -33,9 +34,7 @@ export async function cmdAdd(): Promise<number> {
       subscriptionType: blob.claudeAiOauth.subscriptionType,
       rateLimitTier: blob.claudeAiOauth.rateLimitTier,
       needsReauth: false,
-      lastUsage: sampled ? { fiveHour: sampled.session, sevenDay: sampled.weekAll } : existing?.lastUsage,
-      lastPerModel: sampled && Object.keys(sampled.perModel).length > 0 ? sampled.perModel : existing?.lastPerModel,
-      lastPerModelAt: sampled && Object.keys(sampled.perModel).length > 0 ? Date.now() : existing?.lastPerModelAt,
+      lastUsage: sampled ? keepRows(sampled, existing?.lastUsage) : existing?.lastUsage,
       lastUsageAt: sampled ? Date.now() : existing?.lastUsageAt,
     };
     if (existing) Object.assign(existing, fresh);
@@ -45,7 +44,7 @@ export async function cmdAdd(): Promise<number> {
   });
 
   console.log();
-  const usageNote = sampled ? ` (session ${sampled.session.usedPercentage}% / week ${sampled.weekAll.usedPercentage}%)` : "";
+  const usageNote = sampled ? ` (session ${sampled.fiveHour.usedPercentage}% / week ${sampled.sevenDay.usedPercentage}%)` : "";
   console.log(`${c.green("✓")} added ${c.bold(account.email)} (${claudeTierLabel(account) ?? "?"})${usageNote} → pool now has ${count({ n: poolSize, noun: "account" })}`);
   return 0;
 }

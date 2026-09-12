@@ -19,7 +19,7 @@ const PickCtxSchema = z.object({
 export type PickCtx = z.infer<typeof PickCtxSchema>;
 
 function gatedPerModelWindows(a: Account, families: string[]): UsageWindow[] {
-  return Object.entries(a.lastPerModel ?? {})
+  return Object.entries(a.lastUsage?.perModel ?? {})
     .filter(([model]) => families.some((f) => familyTokens(model).includes(f)))
     .map(([, w]) => w);
 }
@@ -42,7 +42,7 @@ function blockingUntil(a: Account, ctx: PickCtx): number[] {
           blockedUntil(u.sevenDay, WEEK_MS, a.lastUsageAt, ctx.thresholds.weekly),
         ]
       : []),
-    ...gatedPerModelWindows(a, ctx.switchFamilies).map((w) => blockedUntil(w, WEEK_MS, a.lastPerModelAt ?? a.lastUsageAt, ctx.thresholds.weekly)),
+    ...gatedPerModelWindows(a, ctx.switchFamilies).map((w) => blockedUntil(w, WEEK_MS, a.lastUsageAt, ctx.thresholds.weekly)),
     ...(a.enforcedUntil != null ? [a.enforcedUntil] : []),
   ];
 }

@@ -31,7 +31,7 @@ It is a process manager only - spawn with inherited stdio plus saved `stty -g` t
 - Four `~/.claude/settings.json` entries (merged - other settings keys are preserved, but the `statusLine` slot is taken over): the tokenmaxxing `statusLine` renderer (native since 2026-07-11; it also tees usage), a `subagentStatusLine` (per-subagent rows in the agents panel), a `Stop` hook, a `SessionStart` hook.
 - **`~/.config/tokenmaxxing/`** - the single home for config and state:
   - `config.json` - SPARSE overrides only (thresholds.session/weekly, claudeBin/codexBin pins, policy.*); defaults merge at read time, `xx config` edits it.
-  - `accounts.json` - non-secret index `{email, organizationUuid, accountUuid, label, lastUsage, lastPerModel, needsReauth, ...}` (window resets live inside lastUsage).
+  - `accounts.json` - non-secret index `{email, organizationUuid, accountUuid, label, lastUsage, needsReauth, ...}` (window resets and the per-model rows live inside lastUsage).
   - `usage.json` - live usage, written by the statusLine shim.
   - `respawn/<session-id>` - per-session respawn markers (the hook→supervisor signal, depleted-pool waits only).
   - `bin/claude` - the supervisor.

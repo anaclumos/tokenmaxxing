@@ -3,17 +3,17 @@ import { join } from "node:path";
 import { z } from "zod";
 import { readItem, deleteItem, isolatedTarget } from "../lib/credstore.ts";
 import { resolveRealClaude } from "../lib/claudebin.ts";
-import { CRED_ENV_OVERRIDES, probeUsage, FullUsageSchema } from "../lib/usage.ts";
+import { CRED_ENV_OVERRIDES, probeUsage } from "../lib/usage.ts";
 import { saveTermios, restoreTermios } from "../lib/tty.ts";
 import { paths } from "../lib/paths.ts";
-import { CredentialBlobSchema, OAuthAccountSchema } from "../lib/types.ts";
+import { CredentialBlobSchema, OAuthAccountSchema, UsageWindowsSchema } from "../lib/types.ts";
 import { c } from "./render.ts";
 
 const HarvestedLoginSchema = z.object({
   blobRaw: z.string(),
   blob: CredentialBlobSchema,
   oauthAccount: OAuthAccountSchema,
-  sampled: FullUsageSchema.nullable(),
+  sampled: UsageWindowsSchema.nullable(),
 });
 export type HarvestedLogin = z.infer<typeof HarvestedLoginSchema>;
 
