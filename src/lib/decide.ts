@@ -123,21 +123,20 @@ async function loadFreshSnapshots(cfg: Config, account: string | null, now: numb
 
 export async function evaluateAndMaybeSwap(now = Date.now(), anticipatory = false, enforced: EnforcedLimit | null = null): Promise<SwapDecision> {
   const activeAccount = readOAuthAccount()?.accountUuid ?? null;
-  const enforced0 = enforced && enforced.account === activeAccount ? enforced : null;
 
   const lastSwapAt = loadLastSwapAt();
-  if (lastSwapAt != null && now - lastSwapAt < POST_SWAP_COOLDOWN_MS) {
+  if (!enforced && lastSwapAt != null && now - lastSwapAt < POST_SWAP_COOLDOWN_MS) {
     return depletedReplay(now) ?? { swapped: false, account: null, reason: "post-swap-cooldown" };
   }
 
   const cfg = loadConfig();
   const bars = thresholdBars(cfg);
 
-  const { u: teeUsage, uAt } = await loadFreshSnapshots(cfg, activeAccount, now, enforced0 == null);
+  const { u: teeUsage, uAt } = await loadFreshSnapshots(cfg, activeAccount, now, enforced == null);
   const stored = loadAccounts().accounts.find((a) => a.accountUuid === activeAccount);
   const usage = freshest(teeUsage, uAt, stored);
 
-  if (!enforced0 && !isOver(usage, stored, bars, cfg, now)) {
+  if (!enforced && !isOver(usage, stored, bars, cfg, now)) {
     const measured = usage != null && activeAccount != null && usage.account === activeAccount;
     if (!measured) {
       const replay = depletedReplay(now);
@@ -149,10 +148,19 @@ export async function evaluateAndMaybeSwap(now = Date.now(), anticipatory = fals
   return withLock(paths.lockFile, async () => {
     const idx = loadAccounts();
     const account2 = readOAuthAccount()?.accountUuid ?? null;
-    const enforced2 = enforced0 && enforced0.account === account2 ? enforced0 : null;
     const tee = loadUsageSnapshot();
     const active = account2 ? idx.accounts.find((a) => a.accountUuid === account2) : undefined;
     const u2 = tee ? freshest(tee.state, tee.at, active) : usage;
+
+    const origin = enforced ? idx.accounts.find((a) => a.accountUuid === enforced.account) : undefined;
+    const prior = origin?.enforcedUntil != null && origin.enforcedUntil > now;
+    if (enforced && origin) {
+      origin.enforcedUntil = Math.max(origin.enforcedUntil ?? 0, enforcedWall(enforced, origin, now));
+      origin.lastProbeAt = now;
+      saveAccounts(idx);
+      log("usage.enforced_limit", { kind: enforced.kind, family: enforced.family ?? undefined, resetsAt: origin.enforcedUntil, blind: prior || enforced.blind, live: origin === active });
+    }
+    const enforced2 = enforced && origin && origin === active ? enforced : null;
 
     if (account2 != null && !active) {
       return { swapped: false, account: null, reason: "live-credential-not-in-pool" };
@@ -164,23 +172,14 @@ export async function evaluateAndMaybeSwap(now = Date.now(), anticipatory = fals
       saveAccounts(idx);
     }
 
-    const origin = enforced0 ? idx.accounts.find((a) => a.accountUuid === enforced0.account) : undefined;
-    const prior = origin?.enforcedUntil != null && origin.enforcedUntil > now;
-    if (enforced0 && origin) {
-      origin.enforcedUntil = Math.max(origin.enforcedUntil ?? 0, enforcedWall(enforced0, origin, now));
-      origin.lastProbeAt = now;
-      saveAccounts(idx);
-      log("usage.enforced_limit", { kind: enforced0.kind, family: enforced0.family ?? undefined, resetsAt: origin.enforcedUntil, blind: prior || enforced0.blind, live: origin === active });
-    }
-
     const walled = active?.enforcedUntil != null && active.enforcedUntil > now;
-    const blind = !enforced2 || prior || enforced2.blind;
-    const gated = walled && blind ? cfg.policy.switchModels : gatedFamilies(u2?.model ?? null, cfg.policy.switchModels);
-    const family = enforced0?.family ?? null;
+    const blindScreen = (enforced != null && (prior || enforced.blind)) || (walled && !enforced2);
+    const gated = blindScreen ? cfg.policy.switchModels : gatedFamilies(u2?.model ?? null, cfg.policy.switchModels);
+    const family = enforced?.family ?? null;
     const switchFamilies = family != null && !gated.includes(family) ? [...gated, family] : gated;
 
     const seatExhausted = active != null && isExhausted(active, { now, thresholds: bars, currentAccountUuid: account2, switchFamilies });
-    if (!enforced2 && !isOver(u2, active, bars, cfg, now) && !(enforced0 && seatExhausted)) {
+    if (!enforced2 && !isOver(u2, active, bars, cfg, now) && !(enforced && seatExhausted)) {
       return depletedReplay(now) ?? { swapped: false, account: null, reason: "raced-already-swapped" };
     }
 
