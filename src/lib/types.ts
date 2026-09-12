@@ -244,3 +244,17 @@ export const CodexReconcileMarkerSchema = z.object({
   accountId: z.string(),
   ts: z.number(),
 });
+
+export const ErrnoSchema = z.object({ code: z.string() });
+
+export const JsonTextSchema = z.codec(z.string(), z.json(), {
+  decode: (text, ctx) => {
+    try {
+      return JSON.parse(text);
+    } catch {
+      ctx.issues.push({ code: "invalid_format", format: "json", input: text });
+      return z.NEVER;
+    }
+  },
+  encode: (value) => JSON.stringify(value),
+});

@@ -1,11 +1,10 @@
-import { z } from "zod";
 import { http, oauthErrorCode, safeErrorDetail } from "./http.ts";
-import { ProfileResponseSchema, RefreshResponseSchema, TokenIdentitySchema, type OAuthCreds, type TokenIdentity } from "./types.ts";
+import { env } from "./paths.ts";
+import { JsonTextSchema, ProfileResponseSchema, RefreshResponseSchema, TokenIdentitySchema, type OAuthCreds, type TokenIdentity } from "./types.ts";
 
-const EnvOverrideSchema = z.string().min(1).optional().catch(undefined);
-const TOKEN_URL = EnvOverrideSchema.parse(process.env.TOKENMAXXING_OAUTH_TOKEN_URL) ?? "https://platform.claude.com/v1/oauth/token";
-const CLIENT_ID = EnvOverrideSchema.parse(process.env.TOKENMAXXING_OAUTH_CLIENT_ID) ?? "9d1c250a-e61b-44d9-88ed-5944d1962f5e";
-const PROFILE_URL = EnvOverrideSchema.parse(process.env.TOKENMAXXING_OAUTH_PROFILE_URL) ?? "https://api.anthropic.com/api/oauth/profile";
+const TOKEN_URL = env("TOKENMAXXING_OAUTH_TOKEN_URL", "https://platform.claude.com/v1/oauth/token");
+const CLIENT_ID = env("TOKENMAXXING_OAUTH_CLIENT_ID", "9d1c250a-e61b-44d9-88ed-5944d1962f5e");
+const PROFILE_URL = env("TOKENMAXXING_OAUTH_PROFILE_URL", "https://api.anthropic.com/api/oauth/profile");
 
 const DEFAULT_SCOPES = [
   "user:profile",
@@ -76,9 +75,7 @@ export async function refreshCredential(creds: OAuthCreds, now = Date.now(), sig
     throw new Error(`token refresh failed (HTTP ${res.status}): ${detail}`);
   }
 
-  const parsed = RefreshResponseSchema.safeParse((() => {
-    try { return JSON.parse(text); } catch { return null; }
-  })());
+  const parsed = RefreshResponseSchema.safeParse(JsonTextSchema.safeParse(text).data);
   if (!parsed.success) {
     throw new Error(`token endpoint returned an unrecognized body (${text.length} bytes, withheld)`);
   }
@@ -119,9 +116,7 @@ export async function fetchTokenIdentity(accessToken: string, signal?: AbortSign
     throw new IdentityUnavailableError(res.status, `profile response body unreadable: ${e instanceof Error ? e.message : String(e)}`);
   }
   if (!res.ok) throw new IdentityUnavailableError(res.status, safeErrorDetail({ text }));
-  const parsed = ProfileResponseSchema.safeParse((() => {
-    try { return JSON.parse(text); } catch { return null; }
-  })());
+  const parsed = ProfileResponseSchema.safeParse(JsonTextSchema.safeParse(text).data);
   if (!parsed.success) throw new IdentityUnavailableError(res.status, `profile endpoint returned an unrecognized body (${text.length} bytes, withheld)`);
   return TokenIdentitySchema.parse({
     accountUuid: parsed.data.account.uuid,

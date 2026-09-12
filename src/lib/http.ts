@@ -1,5 +1,6 @@
 import ky from "ky";
 import { z } from "zod";
+import { JsonTextSchema } from "./types.ts";
 
 const OAuthErrorBodySchema = z.looseObject({
   error: z.string(),
@@ -20,12 +21,8 @@ const ErrorDetailSchema = z.object({ code: z.string().nullable(), fields: z.arra
 type ErrorDetail = z.infer<typeof ErrorDetailSchema>;
 
 function parseErrorBody(text: string): ErrorDetail | null {
-  let json: unknown;
-  try {
-    json = JSON.parse(text);
-  } catch {
-    return null;
-  }
+  const json = JsonTextSchema.safeParse(text).data;
+  if (json === undefined) return null;
   const oauth = OAuthErrorBodySchema.safeParse(json);
   if (oauth.success) return { code: oauth.data.error, fields: [oauth.data.error, oauth.data.error_description ?? ""] };
   const nested = NestedErrorBodySchema.safeParse(json);

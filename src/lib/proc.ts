@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { ErrnoSchema } from "./types.ts";
 
 export function pidStartTime(pid: number): string | null {
   const res = Bun.spawnSync(["ps", "-p", String(pid), "-o", "lstart="], { env: { ...process.env, LC_ALL: "C" } });
@@ -12,9 +12,9 @@ export function pidExists(pid: number): boolean {
     process.kill(pid, 0);
     return true;
   } catch (e) {
-    const errno = z.object({ code: z.string() }).safeParse(e);
-    if (errno.success && errno.data.code === "ESRCH") return false;
-    if (errno.success && errno.data.code === "EPERM") return true;
+    const code = ErrnoSchema.safeParse(e).data?.code;
+    if (code === "ESRCH") return false;
+    if (code === "EPERM") return true;
     throw e;
   }
 }

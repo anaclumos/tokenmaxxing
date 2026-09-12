@@ -259,16 +259,8 @@ async function importLive(): Promise<Harvest | null> {
 function storePinnedAwayFromFile(): boolean {
   const configToml = `${codexPaths.home}/config.toml`;
   if (!existsSync(configToml)) return false;
-  for (const rawLine of readFileSync(configToml, "utf8").split("\n")) {
-    const line = rawLine.trim();
-    if (!line.startsWith("cli_auth_credentials_store")) continue;
-    const rest = line.slice("cli_auth_credentials_store".length).trimStart();
-    if (!rest.startsWith("=")) continue;
-    const beforeComment = rest.slice(1).split("#", 1)[0]!;
-    const value = beforeComment.replaceAll('"', "").replaceAll("'", "").trim();
-    return value !== "file";
-  }
-  return false;
+  const config = Bun.TOML.parse(readFileSync(configToml, "utf8"));
+  return "cli_auth_credentials_store" in config && config.cli_auth_credentials_store !== "file";
 }
 
 function preflight(): void {
