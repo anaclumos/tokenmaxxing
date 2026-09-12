@@ -58,7 +58,7 @@ export async function runStopFailureHook(): Promise<number> {
       const stamp = await recordEnforcedLimit({ limit, account, now });
       log("stopfailure.enforced", { kind: limit.kind, family: limit.kind === "model" ? limit.family : undefined, outcome: stamp.outcome, resetsAt: stamp.resetsAt, subagent: !mainLoop });
       if (stamp.outcome === "stamped") {
-        enforced = { account, family: limit.kind === "model" ? limit.family : null, resetsAt: stamp.resetsAt, windowMs: enforcedWindowMs(limit), blind: !stamp.owned || (!mainLoop && limit.kind !== "model") };
+        enforced = { account, family: limit.kind === "model" ? limit.family : null, resetsAt: stamp.resetsAt, windowMs: enforcedWindowMs(limit), blind: !stamp.sole || (!mainLoop && limit.kind !== "model") };
       }
     } else {
       log("stopfailure.unclassified", {

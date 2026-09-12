@@ -253,17 +253,17 @@ export function enforcedWindowMs(limit: EnforcedClass): number {
   return limit.kind === "session" ? FIVE_HOURS_MS : WEEK_MS;
 }
 
-const StampSchema = z.object({ outcome: z.enum(["stamped", "account-moved", "not-pooled"]), resetsAt: z.number(), owned: z.boolean() });
+const StampSchema = z.object({ outcome: z.enum(["stamped", "account-moved", "not-pooled"]), resetsAt: z.number(), sole: z.boolean() });
 export type Stamp = z.infer<typeof StampSchema>;
 
 export async function recordEnforcedLimit(input: { limit: EnforcedClass; account: string; now: number }): Promise<Stamp> {
   const { limit, account: accountUuid, now } = input;
   return withLock(paths.lockFile, () => {
     const fallback = now + enforcedWindowMs(limit);
-    if ((readOAuthAccount()?.accountUuid ?? null) !== accountUuid) return { outcome: "account-moved", resetsAt: limit.resetsAt ?? fallback, owned: false };
+    if ((readOAuthAccount()?.accountUuid ?? null) !== accountUuid) return { outcome: "account-moved", resetsAt: limit.resetsAt ?? fallback, sole: false };
     const idx = loadAccounts();
     const account = idx.accounts.find((a) => a.accountUuid === accountUuid);
-    if (!account) return { outcome: "not-pooled", resetsAt: limit.resetsAt ?? fallback, owned: false };
+    if (!account) return { outcome: "not-pooled", resetsAt: limit.resetsAt ?? fallback, sole: false };
     const cached = account.lastUsage;
     const familyReset =
       limit.kind === "model"
@@ -277,12 +277,12 @@ export async function recordEnforcedLimit(input: { limit: EnforcedClass; account
         ? cached?.fiveHour.resetsAt != null && cached.fiveHour.resetsAt > now ? cached.fiveHour.resetsAt : null
         : nextWeeklyReset(familyReset ?? cached?.sevenDay.resetsAt ?? null, now);
     const next = limit.resetsAt ?? cachedReset ?? fallback;
-    const owned = next >= (account.enforcedUntil ?? 0);
+    const sole = account.enforcedUntil == null || account.enforcedUntil <= now;
     const resetsAt = Math.max(account.enforcedUntil ?? 0, next);
     account.enforcedUntil = resetsAt;
     account.lastProbeAt = now;
     saveAccounts(idx);
-    log("usage.enforced_limit", { kind: limit.kind, family: limit.kind === "model" ? limit.family : undefined, resetsAt, owned });
-    return { outcome: "stamped", resetsAt, owned };
+    log("usage.enforced_limit", { kind: limit.kind, family: limit.kind === "model" ? limit.family : undefined, resetsAt, sole });
+    return { outcome: "stamped", resetsAt, sole };
   });
 }
