@@ -40,7 +40,9 @@ function capForFamily(account: Account, family: string, now: number): UsageWindo
 }
 
 function isOver(u: UsageState | null, account: Account | undefined, bars: Thresholds, cfg: Config, now: number): boolean {
-  if (!u || !account || u.account !== account.accountUuid) return false;
+  if (!account) return false;
+  if (account.enforcedUntil != null && account.enforcedUntil > now) return true;
+  if (!u || u.account !== account.accountUuid) return false;
   if (
     liveUsed({ window: u.fiveHour, windowMs: FIVE_HOURS_MS, sampledAt: u.ts, now }) >= bars.session ||
     liveUsed({ window: u.sevenDay, windowMs: WEEK_MS, sampledAt: u.ts, now }) >= bars.weekly
@@ -260,14 +262,19 @@ export async function recordEnforcedLimit(input: { limit: EnforcedClass; account
     const idx = loadAccounts();
     const account = idx.accounts.find((a) => a.accountUuid === accountUuid);
     if (!account) return { outcome: "not-pooled", resetsAt: limit.resetsAt ?? fallback };
-    const knownReset =
+    const cached = account.lastUsage;
+    const familyReset =
       limit.kind === "model"
-        ? Object.entries(account.lastUsage?.perModel ?? {})
+        ? Object.entries(cached?.perModel ?? {})
             .filter(([k]) => familyTokens(k).includes(limit.family))
             .map(([, w]) => w.resetsAt)
-            .find((r): r is number => r != null) ?? account.lastUsage?.sevenDay.resetsAt ?? null
+            .find((r): r is number => r != null) ?? null
         : null;
-    const resetsAt = limit.resetsAt ?? nextWeeklyReset(knownReset, now) ?? fallback;
+    const cachedReset =
+      limit.kind === "session"
+        ? cached?.fiveHour.resetsAt != null && cached.fiveHour.resetsAt > now ? cached.fiveHour.resetsAt : null
+        : nextWeeklyReset(familyReset ?? cached?.sevenDay.resetsAt ?? null, now);
+    const resetsAt = Math.max(account.enforcedUntil ?? 0, limit.resetsAt ?? cachedReset ?? fallback);
     account.enforcedUntil = resetsAt;
     account.lastProbeAt = now;
     saveAccounts(idx);
