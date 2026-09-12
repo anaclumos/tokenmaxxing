@@ -59,22 +59,25 @@ function currentTokens(tokens: SetupToken[], accounts: Account[]): { label: stri
 }
 
 async function rmToken(selector: string, json: boolean): Promise<number> {
-  const remaining = await withLock(paths.lockFile, async () => {
+  const outcome = await withLock(paths.lockFile, async (): Promise<{ error: string } | { kept: SetupToken[] }> => {
     const store = loadSetupTokens();
     const accounts = loadAccounts().accounts;
     const pooled = accounts.find((a) => a.label === selector);
     const orphan = (t: SetupToken) => !accounts.some((a) => a.accountUuid === t.accountUuid);
-    const kept = store.tokens.filter((t) =>
-      pooled ? t.accountUuid !== pooled.accountUuid : t.accountUuid !== selector && (t.label !== selector || !orphan(t)),
+    const targets = store.tokens.filter((t) =>
+      t.accountUuid === selector || (pooled ? t.accountUuid === pooled.accountUuid : t.label === selector && orphan(t)),
     );
-    if (kept.length === store.tokens.length) return null;
+    if (targets.length === 0) return { error: `no setup token stored for "${selector}"` };
+    if (targets.length > 1) return { error: `"${selector}" matches ${targets.length} stored tokens (${targets.map((t) => `${t.label} ${t.accountUuid}`).join(", ")}) - nothing removed` };
+    const kept = store.tokens.filter((t) => t !== targets[0]);
     saveSetupTokens({ ...store, tokens: kept });
-    return kept;
+    return { kept };
   });
-  if (remaining == null) {
-    emitError({ json, message: `no setup token stored for "${selector}"` });
+  if ("error" in outcome) {
+    emitError({ json, message: outcome.error });
     return 1;
   }
+  const remaining = outcome.kept;
   if (json) {
     emitJson({ ok: true, removed: selector, remaining: remaining.map((t) => t.label) });
     return 0;
