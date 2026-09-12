@@ -7,6 +7,7 @@ import { writeFileAtomic } from "./atomic.ts";
 import { installedBin, installSettings, isOurHookCommand, uninstallSettings } from "./settings.ts";
 import { resolveRealClaude } from "./claudebin.ts";
 import { loadConfig } from "./state.ts";
+import { ErrnoSchema } from "./types.ts";
 
 const InstallOutcomeSchema = z.object({
   claudeWrapper: z.string(),
@@ -47,10 +48,6 @@ export function skipImperativeTimer(): boolean {
 
 function isNixStorePath(path: string): boolean {
   return path === "/nix/store" || path.startsWith("/nix/store/");
-}
-
-function isEacces(e: unknown): boolean {
-  return typeof e === "object" && e != null && "code" in e && e.code === "EACCES";
 }
 
 function cannotWriteRcTarget(target: string): boolean {
@@ -355,7 +352,7 @@ export function ensurePathInRc(rc: string): "added" | "present" | "skipped" {
     try {
       writeFileAtomic(target, `${body}${sep0}${addition}`, statSync(target).mode & 0o777);
     } catch (e) {
-      if (isEacces(e)) return "skipped";
+      if (ErrnoSchema.safeParse(e).data?.code === "EACCES") return "skipped";
       throw e;
     }
     return "added";
@@ -366,7 +363,7 @@ export function ensurePathInRc(rc: string): "added" | "present" | "skipped" {
   try {
     appendFileSync(target, `${sep}export PATH="${dir}:$PATH" ${PATH_LINE_MARK}\n`);
   } catch (e) {
-    if (isEacces(e)) return "skipped";
+    if (ErrnoSchema.safeParse(e).data?.code === "EACCES") return "skipped";
     throw e;
   }
   return "added";
@@ -411,7 +408,7 @@ export function removePathFromRc(rc: string): boolean {
   try {
     writeFileAtomic(target, kept.join("\n"), statSync(target).mode & 0o777);
   } catch (e) {
-    if (isEacces(e)) return false;
+    if (ErrnoSchema.safeParse(e).data?.code === "EACCES") return false;
     throw e;
   }
   return true;

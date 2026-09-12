@@ -3,7 +3,7 @@ import { delay } from "es-toolkit";
 import { z } from "zod";
 import { MAX_WRAP_DEPTH, WRAP_DEPTH_ENV, resolveRealClaude } from "./claudebin.ts";
 import { log } from "./log.ts";
-import { RateLimitsStdinSchema, type ModelInfo, type UsageWindow, type UsageWindows, type Window } from "./types.ts";
+import { JsonTextSchema, RateLimitsStdinSchema, type ModelInfo, type UsageWindow, type UsageWindows, type Window } from "./types.ts";
 
 export function normalizeResetsAt(v: unknown): number | null {
   const num = z.number().finite().safeParse(v);
@@ -279,21 +279,16 @@ const SpawnResultSchema = z.object({
 type SpawnResult = z.infer<typeof SpawnResultSchema>;
 
 async function spawnClaudeBounded(cmd: string[], env: Record<string, string>): Promise<SpawnResult | null> {
-  const p = Bun.spawn(cmd, { env, stdout: "pipe", stderr: "pipe" });
-  const killer = setTimeout(() => p.kill("SIGKILL"), PROBE_KILL_MS);
-  try {
-    const reads = Promise.all([new Response(p.stdout).text(), new Response(p.stderr).text()]);
-    const settled = await Promise.race([
-      reads,
-      p.exited.then(() => delay(PIPE_GRACE_MS)).then(() => null),
-    ]);
-    if (settled === null) return null;
-    const [stdout, stderr] = settled;
-    await p.exited;
-    return { exitCode: p.exitCode, stdout, stderr };
-  } finally {
-    clearTimeout(killer);
-  }
+  const p = Bun.spawn(cmd, { env, stdout: "pipe", stderr: "pipe", timeout: PROBE_KILL_MS, killSignal: "SIGKILL" });
+  const reads = Promise.all([new Response(p.stdout).text(), new Response(p.stderr).text()]);
+  const settled = await Promise.race([
+    reads,
+    p.exited.then(() => delay(PIPE_GRACE_MS)).then(() => null),
+  ]);
+  if (settled === null) return null;
+  const [stdout, stderr] = settled;
+  await p.exited;
+  return { exitCode: p.exitCode, stdout, stderr };
 }
 
 async function probeUsageOnce(env: Record<string, string>, now: number): Promise<UsageWindows | null> {
@@ -314,7 +309,7 @@ async function probeUsageOnce(env: Record<string, string>, now: number): Promise
     return null;
   }
 
-  const j = z.object({ result: z.string() }).safeParse((() => { try { return JSON.parse(out); } catch { return null; } })());
+  const j = z.object({ result: z.string() }).safeParse(JsonTextSchema.safeParse(out).data);
   const text = j.success ? j.data.result : out;
   const full = parseUsageText(text, now);
   if (!full) {

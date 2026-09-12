@@ -1,10 +1,10 @@
 import { z } from "zod";
 import { http, oauthErrorCode, safeErrorDetail } from "./http.ts";
-import { CodexAuthJsonSchema, type CodexAuthJson } from "./types.ts";
+import { env } from "./paths.ts";
+import { CodexAuthJsonSchema, JsonTextSchema, type CodexAuthJson } from "./types.ts";
 
-const EnvOverrideSchema = z.string().min(1).optional().catch(undefined);
-const TOKEN_URL = EnvOverrideSchema.parse(process.env.TOKENMAXXING_CODEX_TOKEN_URL) ?? "https://auth.openai.com/oauth/token";
-const CLIENT_ID = EnvOverrideSchema.parse(process.env.TOKENMAXXING_CODEX_CLIENT_ID) ?? "app_EMoamEEZ73f0CkXaXp7hrann";
+const TOKEN_URL = env("TOKENMAXXING_CODEX_TOKEN_URL", "https://auth.openai.com/oauth/token");
+const CLIENT_ID = env("TOKENMAXXING_CODEX_CLIENT_ID", "app_EMoamEEZ73f0CkXaXp7hrann");
 
 export class CodexInvalidGrantError extends Error {
   constructor(detail: string) {
@@ -60,13 +60,7 @@ export async function refreshCodexAuth(input: { auth: CodexAuthJson; now?: numbe
     throw new CodexRefreshFailedError(`HTTP ${res.status}: ${detail}`);
   }
 
-  const parsed = CodexRefreshResponseSchema.safeParse((() => {
-    try {
-      return JSON.parse(text);
-    } catch {
-      return null;
-    }
-  })());
+  const parsed = CodexRefreshResponseSchema.safeParse(JsonTextSchema.safeParse(text).data);
   if (!parsed.success) {
     throw new CodexRefreshFailedError("endpoint returned an unexpected body shape (withheld: may carry tokens)");
   }

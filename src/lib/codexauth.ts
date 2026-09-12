@@ -3,18 +3,14 @@ import { join } from "node:path";
 import { z } from "zod";
 import { writeFileAtomic } from "./atomic.ts";
 import { codexPaths } from "./paths.ts";
-import { CodexAuthJsonSchema, type CodexAuthJson } from "./types.ts";
-
-function isEnoent(e: unknown): boolean {
-  return e instanceof Error && "code" in e && e.code === "ENOENT";
-}
+import { CodexAuthJsonSchema, ErrnoSchema, type CodexAuthJson } from "./types.ts";
 
 export function readCodexAuthAt(input: { path: string }): CodexAuthJson | null {
   let raw: string;
   try {
     raw = readFileSync(input.path, "utf8");
   } catch (e) {
-    if (isEnoent(e)) return null;
+    if (ErrnoSchema.safeParse(e).data?.code === "ENOENT") return null;
     throw e;
   }
   const parsed = JSON.parse(raw);
@@ -46,7 +42,7 @@ export function readParkedCodexAuth(input: { credFile: string }): CodexAuthJson 
   try {
     raw = readFileSync(parkedPath(input), "utf8");
   } catch (e) {
-    if (isEnoent(e)) return null;
+    if (ErrnoSchema.safeParse(e).data?.code === "ENOENT") return null;
     throw e;
   }
   return CodexAuthJsonSchema.parse(JSON.parse(raw));

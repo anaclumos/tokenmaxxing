@@ -11,7 +11,7 @@ import { isExhausted } from "../lib/picker.ts";
 import { livingCodexPresences } from "../lib/codexpresence.ts";
 import { loadAccounts } from "../lib/state.ts";
 import { CODEX_SUPERVISOR_ID_ENV } from "./codexsupervisor.ts";
-import { CodexReconcileMarkerSchema, CodexRespawnMarkerSchema, CodexStopStdinSchema } from "../lib/types.ts";
+import { CodexReconcileMarkerSchema, CodexRespawnMarkerSchema, CodexStopStdinSchema, JsonTextSchema } from "../lib/types.ts";
 import { log } from "../lib/log.ts";
 
 const SupervisorIdSchema = z.string().min(1).optional().catch(undefined);
@@ -85,13 +85,7 @@ async function readStdin(): Promise<string> {
 }
 
 export async function handleCodexStop(input: { rawStdin: string }): Promise<void> {
-  const parsed = CodexStopStdinSchema.safeParse((() => {
-    try {
-      return JSON.parse(input.rawStdin);
-    } catch {
-      return {};
-    }
-  })());
+  const parsed = CodexStopStdinSchema.safeParse(JsonTextSchema.safeParse(input.rawStdin).data);
   const sessionId = parsed.success ? (parsed.data.session_id ?? null) : null;
 
   try {
