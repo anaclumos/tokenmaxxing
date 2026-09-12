@@ -15,7 +15,7 @@ import { gatedFamilies, keepRows } from "../lib/usage.ts";
 import { ThresholdsSchema, UsageWindowSchema, type Account, type CodexWindow, type Config, type UsageWindow, type UsageWindows } from "../lib/types.ts";
 
 const SampleReportSchema = z.discriminatedUnion("ok", [
-  z.object({ ok: z.literal(true), source: z.enum(["statusline", "probe"]) }),
+  z.object({ ok: z.literal(true), source: z.enum(["statusline", "probe", "cached"]) }),
   z.object({ ok: z.literal(false), reason: z.string() }),
 ]);
 
@@ -31,6 +31,7 @@ const ClaudeStatusAccountSchema = z.object({
   usage: z.object({ fiveHour: UsageWindowSchema, week: UsageWindowSchema }).nullable(),
   perModel: z.record(z.string(), UsageWindowSchema),
   usageAt: z.number().nullable(),
+  perModelAt: z.number().nullable(),
   sample: SampleReportSchema,
 });
 type ClaudeStatusAccount = z.infer<typeof ClaudeStatusAccountSchema>;
@@ -83,11 +84,11 @@ function currentCodexWindow(w: CodexWindow, now: number): CodexWindow {
   return { ...currentWindow(w, !isSessionWindow({ window: w }), now), windowSeconds: w.windowSeconds };
 }
 
-async function collectClaude(input: { cfg: Config; now: number }): Promise<StatusReport["claude"]> {
-  const { cfg, now } = input;
+async function collectClaude(input: { cfg: Config; now: number; cached: boolean }): Promise<StatusReport["claude"]> {
+  const { cfg, now, cached } = input;
   let idx = loadAccounts();
   const samples = new Map<string, { outcome: SampleOutcome; viaTee: boolean }>();
-  if (idx.accounts.length > 0) {
+  if (idx.accounts.length > 0 && !cached) {
     await withLock(paths.lockFile, async () => {
       idx = loadAccounts();
       console.error(c.dim("sampling live usage..."));
@@ -126,10 +127,10 @@ async function collectClaude(input: { cfg: Config; now: number }): Promise<Statu
 
   const families = gatedFamilies(loadUsage()?.model ?? null, cfg.policy.switchModels);
   const bars = thresholdBars(cfg);
-  const liveAccount = readOAuthAccount()?.accountUuid ?? null;
+  const liveAccount = cached ? idx.activeAccountUuid : (readOAuthAccount()?.accountUuid ?? null);
   const ordered = sortBy(idx.accounts, [(a) => (a.needsReauth ? 1 : 0), (a) => earliestReset(a, now)]);
   const accounts = ordered.map((a): ClaudeStatusAccount => {
-    const sampled = samples.get(a.accountUuid) ?? { outcome: { ok: false, reason: "not sampled" }, viaTee: false };
+    const sampled = samples.get(a.accountUuid);
     const aggregate = a.lastUsage;
     const perModel = aggregate?.perModel ?? {};
     return {
@@ -144,7 +145,14 @@ async function collectClaude(input: { cfg: Config; now: number }): Promise<Statu
       usage: aggregate ? { fiveHour: currentWindow(aggregate.fiveHour, false, now), week: currentWindow(aggregate.sevenDay, true, now) } : null,
       perModel: Object.fromEntries(Object.entries(perModel).map(([name, w]) => [name, currentWindow(w, true, now)])),
       usageAt: a.lastUsageAt ?? null,
-      sample: sampled.outcome.ok ? { ok: true, source: sampled.viaTee ? "statusline" : "probe" } : { ok: false, reason: sampled.outcome.reason },
+      perModelAt: aggregate?.rowsAt ?? null,
+      sample: sampled
+        ? sampled.outcome.ok
+          ? { ok: true, source: sampled.viaTee ? "statusline" : "probe" }
+          : { ok: false, reason: sampled.outcome.reason }
+        : cached
+          ? { ok: true, source: "cached" }
+          : { ok: false, reason: "not sampled" },
     };
   });
   return {
@@ -155,34 +163,38 @@ async function collectClaude(input: { cfg: Config; now: number }): Promise<Statu
   };
 }
 
-async function collectCodex(input: { cfg: Config; now: number }): Promise<StatusReport["codex"]> {
-  const { cfg, now } = input;
+async function collectCodex(input: { cfg: Config; now: number; cached: boolean }): Promise<StatusReport["codex"]> {
+  const { cfg, now, cached } = input;
   const bars = thresholdBars(cfg);
   let index = loadCodexAccounts();
   if (index.accounts.length === 0) return { bars, accounts: [] };
 
-  console.error(c.dim("sampling codex usage..."));
   const outcomes = new Map<string, CodexSampleOutcome>();
   let liveId: string | null = null;
-  await withLock(codexPaths.lockFile, async () => {
-    index = loadCodexAccounts();
-    liveId = liveCodexAccountId();
-    await Promise.all(
-      index.accounts.map(async (account) => {
-        const outcome = await sampleCodexAccount({ account, liveAccountId: liveId, now });
-        outcomes.set(account.accountId, outcome);
-        if (outcome.ok) {
-          account.lastUsage = { aggregate: outcome.usage.aggregate, perLimit: outcome.usage.perLimit };
-          account.lastUsageAt = Date.now();
-          if (outcome.usage.email != null) account.email = outcome.usage.email;
-          if (outcome.usage.planType != null) account.planType = outcome.usage.planType;
-        } else if (outcome.deadGrant) {
-          account.needsReauth = true;
-        }
-      }),
-    );
-    saveCodexAccounts({ index });
-  });
+  if (cached) {
+    liveId = index.activeAccountId;
+  } else {
+    console.error(c.dim("sampling codex usage..."));
+    await withLock(codexPaths.lockFile, async () => {
+      index = loadCodexAccounts();
+      liveId = liveCodexAccountId();
+      await Promise.all(
+        index.accounts.map(async (account) => {
+          const outcome = await sampleCodexAccount({ account, liveAccountId: liveId, now });
+          outcomes.set(account.accountId, outcome);
+          if (outcome.ok) {
+            account.lastUsage = { aggregate: outcome.usage.aggregate, perLimit: outcome.usage.perLimit };
+            account.lastUsageAt = Date.now();
+            if (outcome.usage.email != null) account.email = outcome.usage.email;
+            if (outcome.usage.planType != null) account.planType = outcome.usage.planType;
+          } else if (outcome.deadGrant) {
+            account.needsReauth = true;
+          }
+        }),
+      );
+      saveCodexAccounts({ index });
+    });
+  }
 
   const ordered = sortBy(index.accounts, [
     (a) => (a.needsReauth ? 1 : 0),
@@ -193,7 +205,7 @@ async function collectCodex(input: { cfg: Config; now: number }): Promise<Status
     },
   ]);
   const accounts = ordered.map((account): CodexStatusAccount => {
-    const outcome = outcomes.get(account.accountId) ?? { ok: false, reason: "not sampled", deadGrant: false };
+    const outcome = outcomes.get(account.accountId);
     const usage = account.lastUsage;
     return {
       label: account.label,
@@ -212,7 +224,13 @@ async function collectCodex(input: { cfg: Config; now: number }): Promise<Status
           }
         : null,
       usageAt: account.lastUsageAt ?? null,
-      sample: outcome.ok ? { ok: true, source: "probe" } : { ok: false, reason: outcome.reason },
+      sample: outcome
+        ? outcome.ok
+          ? { ok: true, source: "probe" }
+          : { ok: false, reason: outcome.reason }
+        : cached
+          ? { ok: true, source: "cached" }
+          : { ok: false, reason: "not sampled" },
     };
   });
   return { bars, accounts };
@@ -286,6 +304,10 @@ function sampleFailedNotes(input: { cached: boolean; usageAt: number | null; rea
   ];
 }
 
+function cachedNote(usageAt: number | null, now: number): Note {
+  return { paint: c.dim, text: usageAt != null ? `cached ${fmtAgo(usageAt, now)}` : "never sampled" };
+}
+
 function headerLine(input: { active: boolean; needsReauth: boolean; exhausted: boolean; name: string; tier: string | null }): string {
   const marker = input.active ? c.green("●") : c.dim("○");
   const badges: string[] = [];
@@ -305,7 +327,11 @@ function codexCard(account: CodexStatusAccount, now: number): Card {
       for (const window of windows) lines.push(usageRow(codexLimitLabel({ limitName: name }), window));
     }
   }
-  const notes = account.sample.ok ? [] : sampleFailedNotes({ cached: account.usage != null, usageAt: account.usageAt, reason: account.sample.reason, now });
+  const notes = account.sample.ok
+    ? account.sample.source === "cached"
+      ? [cachedNote(account.usageAt, now)]
+      : []
+    : sampleFailedNotes({ cached: account.usage != null, usageAt: account.usageAt, reason: account.sample.reason, now });
   return { lines, notes };
 }
 
@@ -330,6 +356,11 @@ function claudeCard(a: ClaudeStatusAccount, now: number, staleAfterMs: number): 
     const age = a.usageAt != null ? fmtAgo(a.usageAt, now) : "age unknown";
     notes.push({ paint: stale ? c.yellow : c.dim, text: `statusline tee ${age}${stale ? " (stale)" : ""}` });
   }
+  if (a.sample.ok && a.sample.source === "cached") {
+    const note = cachedNote(a.usageAt, now);
+    const perModelAged = Object.keys(a.perModel).length > 0 && a.perModelAt !== a.usageAt;
+    notes.push(perModelAged ? { ...note, text: `${note.text}, per-model ${a.perModelAt != null ? fmtAgo(a.perModelAt, now) : "age unknown"}` } : note);
+  }
   if (!a.sample.ok) {
     notes.push(...sampleFailedNotes({ cached: a.usage != null || Object.keys(a.perModel).length > 0, usageAt: a.usageAt, reason: a.sample.reason, now }));
   }
@@ -353,17 +384,15 @@ function renderClaude(input: { claude: StatusReport["claude"]; codexPooled: bool
   renderGrid(claude.accounts.map((a) => claudeCard(a, now, staleAfterMs)));
 }
 
-export async function cmdStatus(opts: { json?: boolean; preRender?: () => void } = {}): Promise<number> {
-  const { json = false } = opts;
+export async function cmdStatus(opts: { json?: boolean; cached?: boolean } = {}): Promise<number> {
+  const { json = false, cached = false } = opts;
   const cfg = loadConfig();
   const now = Date.now();
-  const claude = await collectClaude({ cfg, now });
+  const claude = await collectClaude({ cfg, now, cached });
   if (!json) {
-    opts.preRender?.();
-    const at = Date.now();
-    renderClaude({ claude, codexPooled: loadCodexAccounts().accounts.length > 0, now: at, staleAfterMs: cfg.policy.usagePollTtlMs });
+    renderClaude({ claude, codexPooled: loadCodexAccounts().accounts.length > 0, now: Date.now(), staleAfterMs: cfg.policy.usagePollTtlMs });
   }
-  const codex = await collectCodex({ cfg, now });
+  const codex = await collectCodex({ cfg, now, cached });
   if (json) {
     const report: StatusReport = { now, claude, codex };
     emitJson({ ok: true, ...report });
