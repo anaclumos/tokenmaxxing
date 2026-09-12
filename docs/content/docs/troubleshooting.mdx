@@ -19,7 +19,7 @@ Because that is not the account most at risk of forfeiting quota. The target is 
 Expected for up to ~30 seconds on macOS: the running session adopts the swapped credential on its next credential-cache refresh. The usage tee is suppressed for 45 seconds after a swap for exactly this reason.
 
 **Does `status` cost anything?**
-No. `status` and `watch` read the statusline tee and the free `/usage` probe, which sends no metered request and opens no session window.
+No. `status` reads the statusline tee and the free `/usage` probe, which sends no metered request and opens no session window, and `status --cached` reads nothing but the state files.
 
 **The `/usage` probe returned nothing for the active account.**
 That is a known claude behavior: when its internal usage fetch fails or is rate-limited, `/usage` prints only local session stats with no percentage lines. tokenmaxxing samples the active account from the statusline push whenever that feed is at least as fresh as the stored sample (the row shows the feed's age) and probes the live login only when the feed is missing or older; a silent probe leaves the cached sample in place with its age shown.

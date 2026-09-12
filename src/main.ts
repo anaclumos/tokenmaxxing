@@ -15,9 +15,7 @@ import { cmdCodexInit } from "./cli/codexinit.ts";
 import { cmdCodexSwitch } from "./cli/codexswitch.ts";
 import { runCodexSupervisor } from "./entries/codexsupervisor.ts";
 import { runCodexStopHook } from "./entries/codexstophook.ts";
-import { cmdLs } from "./cli/ls.ts";
 import { cmdStatus } from "./cli/status.ts";
-import { cmdWatch } from "./cli/watch.ts";
 import { cmdDoctor } from "./cli/doctor.ts";
 import { cmdRm } from "./cli/rm.ts";
 import { cmdCodexRm } from "./cli/codexrm.ts";
@@ -32,6 +30,7 @@ import { timerDeactivationHint, uninstallSupervisor } from "./lib/install.ts";
 import { c, emitError, emitJson } from "./cli/render.ts";
 
 const JSON_FLAG = "--json";
+const CACHED_FLAG = "--cached";
 const INTERACTIVE_COMMANDS = new Set(["init", "add", "auth"]);
 
 function printHelp(): void {
@@ -46,9 +45,7 @@ function printHelp(): void {
   ${c.cyan("tokenmaxxing add --codex")}   register an additional codex account (isolated login)
   ${c.cyan("tokenmaxxing auth")} [sel | --all]  reauthenticate a pooled account in place (bare = pick from a list; --all = every needs-reauth account, one by one)
   ${c.cyan("tokenmaxxing switch --codex")} [sel]  switch the codex pool (takes effect on next codex start)
-  ${c.cyan("tokenmaxxing ls")}         list pooled accounts
-  ${c.cyan("tokenmaxxing status")}     accounts with 5h / weekly / per-model usage bars
-  ${c.cyan("tokenmaxxing watch")} [seconds]  live status: re-render every N seconds (default 120)
+  ${c.cyan("tokenmaxxing status")} [--cached]  accounts with 5h / weekly / per-model usage bars (--cached: the stored figures, no sampling)
   ${c.cyan("tokenmaxxing config")} [get|set|unset|tidy]  inspect and edit config.json (bare = effective config with sources)
   ${c.cyan("tokenmaxxing doctor")}     verify the install is intact
   ${c.cyan("tokenmaxxing rename")} [--codex] <sel> <label>
@@ -58,7 +55,7 @@ function printHelp(): void {
   ${c.cyan("tokenmaxxing cursor init")} [dir]  write the Claude relay subagent (.cursor/agents/claude.md) and .cursor/environment.json into a repo
   ${c.cyan("tokenmaxxing cloud run")} [--session <id>] [--max-turns <n>] "<prompt>"  on a Cursor Cloud VM: run claude -p on a setup token from TOKENMAXXING_TOKENS, rotate to the next token on a usage limit
 
-  ${c.cyan("--json")}                  print one JSON document on stdout instead of text (status, ls, config, doctor, check, switch, rename, rm, uninstall, setup-token --print, cursor init, cloud run; one per tick for watch); every document carries ${c.bold("ok")}, failures add ${c.bold("error")}
+  ${c.cyan("--json")}                  print one JSON document on stdout instead of text (status, config, doctor, check, switch, rename, rm, uninstall, setup-token --print, cursor init, cloud run); every document carries ${c.bold("ok")}, failures add ${c.bold("error")}
 
   ${c.dim("(aliased as")} ${c.cyan("xx")}${c.dim(")")} - then just run ${c.bold("claude")} as always; it switches accounts near quota automatically.`);
 }
@@ -82,8 +79,14 @@ async function main(): Promise<number> {
 
   jsonMode = argv.includes(JSON_FLAG);
   const json = jsonMode;
-  const args = argv.filter((a) => a !== JSON_FLAG);
+  const cached = argv.includes(CACHED_FLAG);
+  const args = argv.filter((a) => a !== JSON_FLAG && a !== CACHED_FLAG);
   const sub = args[0];
+
+  if (cached && sub != null && sub !== "status") {
+    emitError({ json, message: `${CACHED_FLAG} applies to status only, not ${sub}` });
+    return 2;
+  }
 
   if (json && sub != null && INTERACTIVE_COMMANDS.has(sub)) {
     emitError({ json, message: `${sub} is interactive (it runs a login flow) and has no --json form` });
@@ -112,10 +115,10 @@ async function main(): Promise<number> {
     case "status": {
       const extra = args[1];
       if (extra != null) {
-        emitError({ json, message: `unknown status option: ${extra} (status takes no options)` });
+        emitError({ json, message: `unknown status option: ${extra} (status takes only ${CACHED_FLAG})` });
         return 2;
       }
-      return cmdStatus({ json });
+      return cmdStatus({ json, cached });
     }
     case "switch": {
       const rest = args.slice(1).filter((a) => a !== "--codex");
@@ -132,8 +135,6 @@ async function main(): Promise<number> {
     case "init": return args.includes("--codex") ? cmdCodexInit() : cmdInit();
     case "add": return args.includes("--codex") ? cmdCodexAdd() : cmdAdd();
     case "auth": return cmdAuth(args.slice(1));
-    case "ls": return cmdLs(json);
-    case "watch": return cmdWatch(args[1], json);
     case "doctor": return cmdDoctor(json);
     case "rm": {
       const rest = args.slice(1).filter((a) => a !== "--codex");
