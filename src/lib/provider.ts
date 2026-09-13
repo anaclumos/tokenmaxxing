@@ -9,11 +9,12 @@ export type SampleReport = { ok: true; source: "statusline" | "probe" } | { ok: 
 export type SwapFailure = "dead-grant" | "skip" | "fatal";
 
 export type Provider = {
-  name: "claude" | "codex";
+  name: "claude" | "codex" | "grok" | "opencode-go";
   flag: string;
   pool: PoolPaths;
   seats: "shared" | "live";
   waitsWhenDepleted: boolean;
+  statusOnly: boolean;
   liveId(): string | null;
   presence(): Map<string, number>;
   gatedFamilies(cfg: Config): string[] | null;
