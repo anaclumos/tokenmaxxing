@@ -15,7 +15,6 @@ export function printUsage(p: Provider): void {
   }
   console.log(`    ${c.cyan("xx")}                 show the pool with usage bars (same as ${c.cyan("xx status")})`);
   console.log(`    ${c.cyan(`xx add${p.flag}`)}             log in and pool another account`);
-  console.log(`    ${c.cyan(`xx switch${p.flag}`)}          hop to the best account right now (the automatic switching needs no command)`);
   console.log(`    ${c.cyan("xx help")}            everything else`);
 }
 
@@ -27,9 +26,7 @@ export async function cmdInit(p: Provider): Promise<number> {
   const existing = loadAccounts(p.pool);
   if (existing.accounts.length > 0) {
     p.install();
-    const active = existing.accounts.find((a) => a.id === existing.activeId);
     console.log(`${c.green("✓")} re-installed (pool already has ${count({ n: existing.accounts.length, noun: "account" })} - not re-importing)`);
-    if (active && p.seats === "live") console.log(`  active: ${c.bold(active.label)}`);
     printUsage(p);
     return 0;
   }
@@ -41,7 +38,7 @@ export async function cmdInit(p: Provider): Promise<number> {
     await harvested.park();
     const idx = loadAccounts(p.pool);
     const imported = upsertAccount(idx, harvested, p.mergeWindows);
-    idx.activeId = !p.statusOnly && p.seats === "live" ? harvested.id : null;
+    idx.activeId = null;
     saveAccounts(p.pool, idx);
     return imported;
   });

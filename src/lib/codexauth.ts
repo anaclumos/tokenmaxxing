@@ -1,8 +1,8 @@
-import { readFileSync, rmSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, rmSync, symlinkSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
 import { writeFileAtomic } from "./atomic.ts";
-import { codexPaths } from "./paths.ts";
+import { codexAuthJsonFor, codexPaths, codexStoreDirFor } from "./paths.ts";
 import { CodexAuthJsonSchema, ErrnoSchema, type CodexAuthJson } from "./types.ts";
 
 export function readCodexAuthAt(input: { path: string }): CodexAuthJson | null {
@@ -19,41 +19,50 @@ export function readCodexAuthAt(input: { path: string }): CodexAuthJson | null {
   return CodexAuthJsonSchema.parse(parsed);
 }
 
-export function readLiveCodexAuth(): CodexAuthJson | null {
-  return readCodexAuthAt({ path: codexPaths.authJson });
+export function readCodexStoreAuth(accountId: string): CodexAuthJson | null {
+  return readCodexAuthAt({ path: codexAuthJsonFor(accountId) });
 }
 
-export function liveCodexAccountId(): string | null {
-  const live = readLiveCodexAuth();
-  if (!live) return null;
-  return codexIdentityOf({ auth: live }).accountId;
+export function writeCodexStoreAuth(accountId: string, auth: CodexAuthJson): void {
+  mkdirSync(codexStoreDirFor(accountId), { recursive: true });
+  writeFileAtomic(codexAuthJsonFor(accountId), JSON.stringify(CodexAuthJsonSchema.parse(auth), null, 2), 0o600);
 }
 
-export function writeLiveCodexAuth(input: { auth: CodexAuthJson }): void {
-  writeFileAtomic(codexPaths.authJson, JSON.stringify(CodexAuthJsonSchema.parse(input.auth), null, 2), 0o600);
+export function deleteCodexStoreAuth(accountId: string): void {
+  rmSync(codexStoreDirFor(accountId), { recursive: true, force: true });
 }
 
-function parkedPath(input: { credFile: string }): string {
-  return join(codexPaths.credsDir, `${input.credFile}.json`);
-}
-
-export function readParkedCodexAuth(input: { credFile: string }): CodexAuthJson | null {
-  let raw: string;
+export function ensureCodexStoreHome(accountId: string): string {
+  const store = codexStoreDirFor(accountId);
+  mkdirSync(store, { recursive: true });
+  mkdirSync(codexPaths.home, { recursive: true });
+  mkdirSync(join(codexPaths.home, "sessions"), { recursive: true });
+  let names: string[] = [];
   try {
-    raw = readFileSync(parkedPath(input), "utf8");
+    names = readdirSync(codexPaths.home);
   } catch (e) {
-    if (ErrnoSchema.safeParse(e).data?.code === "ENOENT") return null;
+    if (ErrnoSchema.safeParse(e).data?.code === "ENOENT") return store;
     throw e;
   }
-  return CodexAuthJsonSchema.parse(JSON.parse(raw));
-}
-
-export function writeParkedCodexAuth(input: { credFile: string; auth: CodexAuthJson }): void {
-  writeFileAtomic(parkedPath(input), JSON.stringify(CodexAuthJsonSchema.parse(input.auth), null, 2), 0o600);
-}
-
-export function deleteParkedCodexAuth(input: { credFile: string }): void {
-  rmSync(parkedPath(input), { force: true });
+  for (const name of names) {
+    if (name === "auth.json") continue;
+    const target = join(codexPaths.home, name);
+    const link = join(store, name);
+    if (existsSync(link)) {
+      try {
+        if (lstatSync(link).isSymbolicLink()) continue;
+      } catch {
+        continue;
+      }
+      continue;
+    }
+    try {
+      symlinkSync(target, link);
+    } catch (e) {
+      if (ErrnoSchema.safeParse(e).data?.code !== "EEXIST") throw e;
+    }
+  }
+  return store;
 }
 
 const IdClaimsSchema = z.looseObject({

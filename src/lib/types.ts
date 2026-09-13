@@ -229,13 +229,8 @@ export const CodexStopStdinSchema = z.looseObject({
 });
 
 export const CodexRespawnMarkerSchema = z.object({
-  account: z.string(),
-  sessionId: z.string().nullable(),
-  ts: z.number(),
-});
-
-export const CodexReconcileMarkerSchema = z.object({
   accountId: z.string(),
+  sessionId: z.string().nullable(),
   ts: z.number(),
 });
 

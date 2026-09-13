@@ -7,7 +7,7 @@ description: Common questions and the diagnostics behind them
 Run `tokenmaxxing doctor`. The shim must win PATH resolution; check that the `# tokenmaxxing PATH` line in your shell rc points at the current bin directory and sits ahead of the real claude. `doctor` also warns about `alias claude=...` or a `claude()` shell function shadowing the wrapper, and about aliases that launch a claude binary by absolute path (those bypass the supervisor entirely). A session that bypasses the supervisor runs on Claude Code's own login and is never moved.
 
 **Auto-switching never fires on Codex.**
-Codex skips hooks it has not been told to trust. Open codex, run `/hooks`, and trust the tokenmaxxing Stop hook. Trust is recorded against the hook's hash, so it must be re-granted if the hook is ever edited.
+Codex skips hooks it has not been told to trust, and trust is recorded per store path. Open a supervised session on each pooled account, run `/hooks`, and trust the tokenmaxxing Stop hook there. Trust is recorded against the hook's hash, so it must be re-granted if the hook is ever edited. `tokenmaxxing doctor` lists seats still needing trust.
 
 **An account shows a red `✗` in the statusline.**
 Its store's credential is dead (Claude Code cleared it after a refresh came back `invalid_grant`, or the store is empty). Run `tokenmaxxing auth <sel>` to reauthenticate it in place; the command tells you which email to sign in with and refuses a login that lands on a different account.
