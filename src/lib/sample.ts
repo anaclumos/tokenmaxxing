@@ -1,6 +1,5 @@
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { minBy } from "es-toolkit";
 import { z } from "zod";
 import { writeFileAtomic } from "./atomic.ts";
 import { readStore } from "./credstore.ts";
@@ -69,10 +68,13 @@ export async function runProbe(account: Account, dir: string, opts: { retries?: 
   return usage ? { ok: true, usage } : { ok: false, reason: "`/usage` returned no limit data (see log)" };
 }
 
-export async function probeAccountUsage(account: Account): Promise<SampleOutcome> {
+export async function probeAccountUsage(account: Account, opts: { retries?: number } = {}): Promise<SampleOutcome> {
   const prepared = await prepareProbe(account);
-  return prepared.ok ? runProbe(account, prepared.dir, {}) : prepared;
+  return prepared.ok ? runProbe(account, prepared.dir, opts) : prepared;
 }
+
+const SAMPLE_BATCH = 3;
+const STORE_FAILS_REAUTH = 5;
 
 export async function sampleOldest(cfg: Config): Promise<void> {
   const reserved = await withLock(claudePool.lockFile, async () => {
@@ -81,52 +83,64 @@ export async function sampleOldest(cfg: Config): Promise<void> {
     let dirty = false;
     for (const a of idx.accounts) dirty = foldTee(a) || dirty;
     const sampledAt = (a: Account) => Math.max(a.lastUsageAt ?? 0, a.lastProbeAt ?? 0);
-    const stale = idx.accounts.filter((a) => a.needsReauth !== true && now - sampledAt(a) > cfg.policy.usagePollTtlMs);
-    const target = minBy(stale, sampledAt);
-    if (!target) {
+    const stale = idx.accounts
+      .filter((a) => a.needsReauth !== true && now - sampledAt(a) > cfg.policy.usagePollTtlMs)
+      .sort((a, b) => sampledAt(a) - sampledAt(b))
+      .slice(0, SAMPLE_BATCH);
+    if (stale.length === 0) {
       if (dirty) saveAccounts(claudePool, idx);
-      return null;
+      return [];
     }
-    target.lastProbeAt = now;
-    const prepared = await prepareProbe(target, "-tick");
+    const batch: { account: Account; dir: string; token: string | null }[] = [];
+    for (const target of stale) {
+      target.lastProbeAt = now;
+      const prepared = await prepareProbe(target, "-tick");
+      if (!prepared.ok) {
+        target.storeFails = (target.storeFails ?? 0) + 1;
+        if (target.storeFails >= STORE_FAILS_REAUTH) target.needsReauth = true;
+        log("sample.failed", { account: target.id.slice(0, 8), reason: prepared.reason.slice(0, 200) });
+        continue;
+      }
+      target.storeFails = 0;
+      let token: string | null = null;
+      if (!seatCounts(paths.presenceDir).has(target.id)) {
+        const creds = await readStore(target.id).catch(() => null);
+        if (creds && !isDeadCredential(creds) && !isAccessTokenExpiring(creds)) token = creds.accessToken;
+      }
+      batch.push({ account: target, dir: prepared.dir, token });
+    }
     saveAccounts(claudePool, idx);
-    if (!prepared.ok) {
-      log("sample.failed", { account: target.id.slice(0, 8), reason: prepared.reason.slice(0, 200) });
-      return null;
-    }
-    let token: string | null = null;
-    if (!seatCounts(paths.presenceDir).has(target.id)) {
-      const creds = await readStore(target.id).catch(() => null);
-      if (creds && !isDeadCredential(creds) && !isAccessTokenExpiring(creds)) token = creds.accessToken;
-    }
-    return { account: target, dir: prepared.dir, token };
+    return batch;
   });
-  if (!reserved) return;
-  const startedAt = Date.now();
-  let via = "probe";
-  let outcome: SampleOutcome;
-  if (reserved.token) {
-    const usage = await fetchUsageDirect(reserved.token);
-    if (usage) {
-      via = "get";
-      outcome = { ok: true, usage };
-    } else {
-      outcome = await runProbe(reserved.account, reserved.dir, { retries: 0 });
-    }
-  } else {
-    outcome = await runProbe(reserved.account, reserved.dir, { retries: 0 });
-  }
-  await withLock(claudePool.lockFile, () => {
-    const idx = loadAccounts(claudePool);
-    const stored = idx.accounts.find((a) => a.id === reserved.account.id);
-    if (stored && outcome.ok && (stored.lastUsageAt == null || startedAt > stored.lastUsageAt)) {
-      stored.windows = mergeWindows(windowsOf(outcome.usage, startedAt), stored.windows);
-      stored.lastUsageAt = startedAt;
-      saveAccounts(claudePool, idx);
-    }
-    log(outcome.ok ? "sample.ok" : "sample.failed", {
-      account: reserved.account.id.slice(0, 8),
-      ...(outcome.ok ? { via } : { reason: outcome.reason.slice(0, 200) }),
-    });
-  });
+  await Promise.all(
+    reserved.map(async ({ account, dir, token }) => {
+      const startedAt = Date.now();
+      let via = "probe";
+      let outcome: SampleOutcome;
+      if (token) {
+        const usage = await fetchUsageDirect(token);
+        if (usage) {
+          via = "get";
+          outcome = { ok: true, usage };
+        } else {
+          outcome = await runProbe(account, dir, { retries: 0 });
+        }
+      } else {
+        outcome = await runProbe(account, dir, { retries: 0 });
+      }
+      await withLock(claudePool.lockFile, () => {
+        const idx = loadAccounts(claudePool);
+        const stored = idx.accounts.find((a) => a.id === account.id);
+        if (stored && outcome.ok && (stored.lastUsageAt == null || startedAt > stored.lastUsageAt)) {
+          stored.windows = mergeWindows(windowsOf(outcome.usage, startedAt), stored.windows);
+          stored.lastUsageAt = startedAt;
+          saveAccounts(claudePool, idx);
+        }
+        log(outcome.ok ? "sample.ok" : "sample.failed", {
+          account: account.id.slice(0, 8),
+          ...(outcome.ok ? { via } : { reason: outcome.reason.slice(0, 200) }),
+        });
+      });
+    }),
+  );
 }

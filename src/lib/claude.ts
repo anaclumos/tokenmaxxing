@@ -35,15 +35,18 @@ function presence(): Map<string, number> {
   return seatCounts(paths.presenceDir);
 }
 
+const PROBE_BACKOFF_CAP_MS = 30 * 60 * 1000;
+
 async function observeLive(account: Account, cfg: Config, now: number, opts: { probe: boolean }): Promise<Observation | null> {
   const ttl = cfg.policy.usagePollTtlMs;
-  const probeAttempted = account.lastProbeAt != null && now - account.lastProbeAt <= ttl;
+  const interval = Math.min(ttl * 2 ** (account.probeFails ?? 0), PROBE_BACKOFF_CAP_MS);
+  const probeAttempted = account.lastProbeAt != null && now - account.lastProbeAt <= interval;
   const snap = loadUsageSnapshot(account.id);
   const fresh = snap != null && now - snap.at <= ttl;
   const needsPerModel = snap != null && gatedFamilies(snap.state.model, cfg.policy.switchModels).length > 0;
   if (opts.probe && !probeAttempted && (!fresh || needsPerModel)) {
     const startedAt = Date.now();
-    const outcome = await probeAccountUsage(account);
+    const outcome = await probeAccountUsage(account, { retries: 0 });
     await withLock(claudePool.lockFile, () => {
       const idx = loadAccounts(claudePool);
       const a = idx.accounts.find((x) => x.id === account.id);
@@ -51,9 +54,14 @@ async function observeLive(account: Account, cfg: Config, now: number, opts: { p
       a.lastProbeAt = startedAt;
       a.tier = account.tier;
       if (account.needsReauth) a.needsReauth = true;
-      if (outcome.ok && (a.lastUsageAt == null || startedAt > a.lastUsageAt)) {
-        a.windows = mergeWindows(windowsOf(outcome.usage, startedAt), a.windows);
-        a.lastUsageAt = startedAt;
+      if (outcome.ok) {
+        a.probeFails = 0;
+        if (a.lastUsageAt == null || startedAt > a.lastUsageAt) {
+          a.windows = mergeWindows(windowsOf(outcome.usage, startedAt), a.windows);
+          a.lastUsageAt = startedAt;
+        }
+      } else {
+        a.probeFails = (a.probeFails ?? 0) + 1;
       }
       saveAccounts(claudePool, idx);
     });

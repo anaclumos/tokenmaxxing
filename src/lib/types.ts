@@ -70,6 +70,8 @@ export const AccountSchema = z.object({
   windows: z.array(WindowSchema).default([]),
   lastUsageAt: z.number().optional(),
   lastProbeAt: z.number().optional(),
+  probeFails: z.number().optional(),
+  storeFails: z.number().optional(),
   enforcedUntil: z.number().optional(),
   needsReauth: z.boolean().optional(),
   oauthAccount: OAuthAccountSchema.optional(),
