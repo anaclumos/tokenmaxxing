@@ -7,7 +7,7 @@ import { opencodeGo } from "../lib/opencodego.ts";
 import { loadAccounts, loadConfig, saveAccounts } from "../lib/state.ts";
 import { withLock } from "../lib/lock.ts";
 import { codexPool, grokPool, opencodeGoPool } from "../lib/paths.ts";
-import { earliestReset, isExhausted, isSessionWindow, limitWindows, nextWeeklyReset, sessionWindow, thresholdBars, weeklyWindow } from "../lib/picker.ts";
+import { earliestReset, gatedWindows, isExhausted, isSessionWindow, limitWindows, liveUsed, nextWeeklyReset, sessionWindow, thresholdBars, weeklyWindow } from "../lib/picker.ts";
 import type { Provider, SampleReport } from "../lib/provider.ts";
 import { bar, c, count, emitJson, fmtAgo } from "./render.ts";
 import { ThresholdsSchema, type Account, type Config, type Window } from "../lib/types.ts";
@@ -50,6 +50,7 @@ const PoolReportSchema = z.object({
   thresholds: ThresholdsSchema,
   bars: ThresholdsSchema,
   projectionMargin: z.number(),
+  gatedNote: z.string().nullable(),
   accounts: z.array(StatusAccountSchema),
 });
 type PoolReport = z.infer<typeof PoolReportSchema>;
@@ -75,6 +76,29 @@ function usageReport(a: Account, now: number): StatusAccount["usage"] {
     week: week ? currentWindow(week, now) : null,
     limits: limitWindows(a).map((w) => ({ name: w.name ?? "", ...currentWindow(w, now) })),
   };
+}
+
+function gatedNote(accounts: Account[], families: string[] | null, weeklyBar: number, now: number): string | null {
+  const groups = new Map<string, { carriers: number; capped: number }>();
+  for (const a of accounts) {
+    if (a.needsReauth === true) continue;
+    for (const w of gatedWindows(a, families)) {
+      const key = (w.name ?? "").toLowerCase();
+      const g = groups.get(key) ?? { carriers: 0, capped: 0 };
+      g.carriers++;
+      if (liveUsed(w, now) >= weeklyBar) g.capped++;
+      groups.set(key, g);
+    }
+  }
+  const capped = [...groups.entries()].filter(([, g]) => g.capped === g.carriers).map(([name]) => name);
+  if (capped.length === 0) return null;
+  const headroom = accounts.filter((a) => {
+    if (a.needsReauth === true) return false;
+    const w = weeklyWindow(a);
+    return w != null && liveUsed(w, now) < weeklyBar;
+  }).length;
+  if (headroom === 0) return null;
+  return `every ${capped.join(", ")} cap is at the weekly bar, but ${count({ n: headroom, noun: "account" })} still ha${headroom === 1 ? "s" : "ve"} weekly aggregate headroom for other models`;
 }
 
 async function collect(p: Provider, cfg: Config, now: number, cached: boolean): Promise<PoolReport> {
@@ -119,6 +143,7 @@ async function collect(p: Provider, cfg: Config, now: number, cached: boolean): 
     thresholds: { session: cfg.thresholds.session, weekly: cfg.thresholds.weekly },
     bars,
     projectionMargin: cfg.policy.projectionMargin,
+    gatedNote: gatedNote(idx.accounts, ctx.families, bars.weekly, now),
     accounts,
   };
 }
@@ -232,6 +257,10 @@ function renderPool(p: Provider, pool: PoolReport, header: string, now: number, 
   console.log(c.dim(header));
   console.log();
   renderGrid(pool.accounts.map((a) => card(p, a, now, staleAfterMs)));
+  if (pool.gatedNote) {
+    console.log(c.yellow(pool.gatedNote));
+    console.log();
+  }
 }
 
 export async function cmdStatus(opts: { json?: boolean; cached?: boolean } = {}): Promise<number> {
