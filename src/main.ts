@@ -42,7 +42,7 @@ function printHelp(): void {
   ${c.cyan("tokenmaxxing init --codex")}  same for codex: import login, install codex supervisor + Stop hook (trust it via /hooks)
   ${c.cyan("tokenmaxxing add")}        register an additional account (isolated login)
   ${c.cyan("tokenmaxxing add --codex")}   register an additional codex account (isolated login)
-  ${c.cyan("tokenmaxxing auth")} [--codex] [sel | --all]  reauthenticate a pooled account in place (bare = pick from a list; --all = every needs-reauth account, one by one)
+  ${c.cyan("tokenmaxxing auth")} [--codex] [sel | --all]  reauthenticate a pooled account in place (bare = pick from a list; --all = every account that is flagged or has no usable credential in its store, one by one)
   ${c.cyan("tokenmaxxing switch --codex")} [sel]  switch the codex pool (takes effect on next codex start)
   ${c.cyan("tokenmaxxing status")} [--cached]  accounts with 5h / weekly / per-model usage bars (--cached: the stored figures, no sampling)
   ${c.cyan("tokenmaxxing config")}     print the config path and the effective values (edit the file in an editor)

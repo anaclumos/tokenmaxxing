@@ -66,7 +66,7 @@ claude                  # use claude as always; each session gets its own accoun
 | `tokenmaxxing init --codex` | same for codex: import login, install codex supervisor + Stop hook |
 | `tokenmaxxing add` | register an additional account (isolated login, harvested once into its own store) |
 | `tokenmaxxing add --codex` | register an additional codex account (isolated login) |
-| `tokenmaxxing auth [--codex] [sel \| --all]` | reauthenticate a pooled account in place: bare lists the pool (emails shown) and asks which; a selector targets one account and tells you the email to sign in with; `--all` walks every needs-reauth account one by one; `--codex` does the same for the codex pool |
+| `tokenmaxxing auth [--codex] [sel \| --all]` | reauthenticate a pooled account in place: bare lists the pool (emails shown) and asks which; a selector targets one account and tells you the email to sign in with; `--all` walks every account that is flagged or has no usable credential in its store, one by one; `--codex` does the same for the codex pool |
 | `tokenmaxxing switch --codex [sel]` | switch the codex pool (takes effect on the next codex start); the claude pool has no manual switch, each session is placed at launch |
 | `tokenmaxxing status [--cached]` | accounts with 5h / weekly usage bars, live session counts, exhausted-until-reset; `--cached` renders the stored figures without sampling |
 | `tokenmaxxing config` | the config path and the effective values; edit the file in an editor, a bad value fails the next load with the field name |

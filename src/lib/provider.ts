@@ -23,6 +23,7 @@ export type Provider = {
   swap(target: Account): Promise<void>;
   classifySwapError(e: unknown): SwapFailure;
   removeCredentials(account: Account): Promise<void>;
+  storeUsable(account: Account): Promise<boolean>;
   login(): Promise<Harvest | null>;
   importLive(): Promise<Harvest | null>;
   preflight(): void;

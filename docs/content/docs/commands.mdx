@@ -9,7 +9,7 @@ description: Every tokenmaxxing command and what it does
 | `tokenmaxxing init --codex` | Same for Codex: import the login, install the codex supervisor and Stop hook |
 | `tokenmaxxing add` | Register an additional account (isolated login, harvested once into its own store) |
 | `tokenmaxxing add --codex` | Register an additional Codex account (isolated login) |
-| `tokenmaxxing auth [--codex] [sel \| --all]` | Reauthenticate a pooled account in place. Bare lists the pool and asks which; a selector targets one account and tells you which email to sign in with; `--all` walks every needs-reauth account one by one. `--codex` does the same for the Codex pool |
+| `tokenmaxxing auth [--codex] [sel \| --all]` | Reauthenticate a pooled account in place. Bare lists the pool and asks which; a selector targets one account and tells you which email to sign in with; `--all` walks every account that is flagged or has no usable credential in its store (missing, unreadable, or dead), one by one. `--codex` does the same for the Codex pool |
 | `tokenmaxxing switch --codex [sel]` | Switch the Codex pool (takes effect on the next codex start). The Claude pool has no manual switch: `tokenmaxxing switch` without `--codex` exits 2, because each session is placed at launch and moves on its own |
 | `tokenmaxxing status [--cached]` | Accounts with 5h / weekly / per-model usage bars, live session counts, and exhausted-until-reset; `--cached` renders the stored figures without sampling |
 | `tokenmaxxing config` | The config path and the effective values; edit the file in an editor |

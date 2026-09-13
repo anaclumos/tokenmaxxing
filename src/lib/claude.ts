@@ -108,6 +108,15 @@ async function prepareMove(target: Account): Promise<void> {
   log("move.prepared", { account: target.id.slice(0, 8), label: target.label });
 }
 
+async function storeUsable(a: Account): Promise<boolean> {
+  try {
+    const creds = await readStore(a.id);
+    return creds != null && !isDeadCredential(creds);
+  } catch {
+    return false;
+  }
+}
+
 export function pickSeat(now: number): Account | null {
   const cfg = loadConfig();
   const idx = loadAccounts(claudePool);
@@ -277,6 +286,7 @@ export const claude: Provider = {
   swap: prepareMove,
   classifySwapError: (e) => (e instanceof InvalidGrantError ? "dead-grant" : e instanceof StoreUnusableError ? "skip" : "fatal"),
   removeCredentials,
+  storeUsable,
   login,
   importLive,
   preflight: () => pinBinOverride({ key: "claudeBin", bin: resolveVerifiedClaude() }),
