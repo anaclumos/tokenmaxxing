@@ -114,7 +114,7 @@ export const ConfigSchema = z
     opencodeBin: z.string().default(""),
     policy: z
       .object({
-        projectionMargin: z.number().min(0).max(100).default(0),
+        projectionMargin: z.number().min(0).max(100).default(3),
         switchModels: z
           .array(z.string())
           .default(["fable"])
@@ -125,9 +125,9 @@ export const ConfigSchema = z
       })
       .prefault({}),
   })
-  .refine((cfg) => cfg.policy.projectionMargin < Math.min(cfg.thresholds.session, cfg.thresholds.weekly), {
+  .refine((cfg) => cfg.policy.projectionMargin < cfg.thresholds.session, {
     path: ["policy", "projectionMargin"],
-    message: "must be strictly below both thresholds (the bars would hit zero and every account would read as exhausted)",
+    message: "must be strictly below the session threshold (the session bar would hit zero and every account would read as exhausted)",
   });
 export type Config = z.infer<typeof ConfigSchema>;
 
