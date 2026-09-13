@@ -6,11 +6,12 @@ import { writeFileAtomic } from "./atomic.ts";
 import { readStore } from "./credstore.ts";
 import { withLock } from "./lock.ts";
 import { log } from "./log.ts";
-import { claudeTierLabel, isDeadCredential } from "./oauth.ts";
-import { claudePool, sampleDirFor, storeDirFor } from "./paths.ts";
+import { claudeTierLabel, isAccessTokenExpiring, isDeadCredential } from "./oauth.ts";
+import { claudePool, paths, sampleDirFor, storeDirFor } from "./paths.ts";
+import { seatCounts } from "./presence.ts";
 import type { Observation } from "./provider.ts";
 import { loadAccounts, loadUsageSnapshot, saveAccounts } from "./state.ts";
-import { mergeWindows, probeUsage, windowsOf } from "./usage.ts";
+import { fetchUsageDirect, mergeWindows, probeUsage, windowsOf } from "./usage.ts";
 import { UsageWindowsSchema, type Account, type Config } from "./types.ts";
 
 const SampleOutcomeSchema = z.discriminatedUnion("ok", [
@@ -93,11 +94,28 @@ export async function sampleOldest(cfg: Config): Promise<void> {
       log("sample.failed", { account: target.id.slice(0, 8), reason: prepared.reason.slice(0, 200) });
       return null;
     }
-    return { account: target, dir: prepared.dir };
+    let token: string | null = null;
+    if (!seatCounts(paths.presenceDir).has(target.id)) {
+      const creds = await readStore(target.id).catch(() => null);
+      if (creds && !isDeadCredential(creds) && !isAccessTokenExpiring(creds)) token = creds.accessToken;
+    }
+    return { account: target, dir: prepared.dir, token };
   });
   if (!reserved) return;
   const startedAt = Date.now();
-  const outcome = await runProbe(reserved.account, reserved.dir, { retries: 0 });
+  let via = "probe";
+  let outcome: SampleOutcome;
+  if (reserved.token) {
+    const usage = await fetchUsageDirect(reserved.token);
+    if (usage) {
+      via = "get";
+      outcome = { ok: true, usage };
+    } else {
+      outcome = await runProbe(reserved.account, reserved.dir, { retries: 0 });
+    }
+  } else {
+    outcome = await runProbe(reserved.account, reserved.dir, { retries: 0 });
+  }
   await withLock(claudePool.lockFile, () => {
     const idx = loadAccounts(claudePool);
     const stored = idx.accounts.find((a) => a.id === reserved.account.id);
@@ -108,7 +126,7 @@ export async function sampleOldest(cfg: Config): Promise<void> {
     }
     log(outcome.ok ? "sample.ok" : "sample.failed", {
       account: reserved.account.id.slice(0, 8),
-      ...(outcome.ok ? {} : { reason: outcome.reason.slice(0, 200) }),
+      ...(outcome.ok ? { via } : { reason: outcome.reason.slice(0, 200) }),
     });
   });
 }
