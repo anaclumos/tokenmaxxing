@@ -23,7 +23,7 @@ export async function runSessionStart(): Promise<number> {
   try {
     const decision = await evaluateAndMaybeSwap(claude, Date.now(), session != null);
     if (session && decision.account && (decision.swapped || decision.waitUntil !== undefined)) {
-      writeRespawnMarker({ session, sessionId: stdinSid ?? session.sid, accountId: decision.account.id, waitUntil: decision.waitUntil ?? Date.now() });
+      writeRespawnMarker({ session, sessionId: stdinSid ?? session.sid, accountId: decision.account.id, waitUntil: decision.waitUntil ?? Date.now(), compact: true });
       log("sessionstart.marker", { source, account: decision.account.id.slice(0, 8), waitUntil: decision.waitUntil });
     }
   } catch (e) {

@@ -4,12 +4,15 @@ import { z } from "zod";
 import { codexPaths, codexPool } from "../lib/paths.ts";
 import { withLock } from "../lib/lock.ts";
 import { writeFileAtomic } from "../lib/atomic.ts";
+import { MAX_WRAP_DEPTH, WRAP_DEPTH_ENV } from "../lib/claudebin.ts";
 import { codex, codexPickCtx, reconcileSiblings } from "../lib/codex.ts";
 import { liveCodexAccountId } from "../lib/codexauth.ts";
+import { resolveRealCodex } from "../lib/codexbin.ts";
+import { compactCodexThread } from "../lib/compact.ts";
 import { evaluateAndMaybeSwap } from "../lib/decide.ts";
 import { isExhausted } from "../lib/picker.ts";
 import { livingPresences } from "../lib/presence.ts";
-import { loadAccounts } from "../lib/state.ts";
+import { POST_SWAP_COOLDOWN_MS, loadAccounts, loadConfig, loadLastSwapAt } from "../lib/state.ts";
 import { CODEX_SUPERVISOR_ID_ENV } from "./codexsupervisor.ts";
 import { CodexReconcileMarkerSchema, CodexRespawnMarkerSchema, CodexStopStdinSchema, JsonTextSchema } from "../lib/types.ts";
 import { log } from "../lib/log.ts";
@@ -78,6 +81,22 @@ async function sweepSiblings(now: number): Promise<void> {
   }
 }
 
+async function compactBeforeMove(input: { sessionId: string | null; now: number }): Promise<void> {
+  const { sessionId, now } = input;
+  if (sessionId == null || sessionId.trim() === "") return;
+  const lastSwapAt = loadLastSwapAt(codexPool);
+  if (lastSwapAt != null && now - lastSwapAt < POST_SWAP_COOLDOWN_MS) return;
+  const liveId = codex.liveId();
+  const live = loadAccounts(codexPool).accounts.find((a) => a.id === liveId);
+  if (!live || live.needsReauth === true || (live.enforcedUntil != null && live.enforcedUntil > now)) return;
+  const observed = await codex.observeLive(live, loadConfig(), now, { probe: true });
+  if (!observed || !isExhausted({ ...live, windows: observed.windows }, codexPickCtx(now, live.id))) return;
+  const env: Record<string, string | undefined> = { ...process.env, TOKENMAXXING_PROBE: "1", [WRAP_DEPTH_ENV]: String(MAX_WRAP_DEPTH) };
+  delete env[CODEX_SUPERVISOR_ID_ENV];
+  log("codexstop.compact_start", { thread: sessionId.slice(0, 8), account: live.id.slice(0, 8) });
+  await compactCodexThread({ real: resolveRealCodex(), threadId: sessionId, env });
+}
+
 async function readStdin(): Promise<string> {
   const chunks: Uint8Array[] = [];
   for await (const chunk of Bun.stdin.stream()) chunks.push(chunk);
@@ -97,6 +116,7 @@ export async function handleCodexStop(input: { rawStdin: string }): Promise<void
     if (await promoteReconcile({ supervisorId, sessionId })) return;
     const now = Date.now();
     await withLock(codexPool.lockFile, () => reconcileSiblings(now));
+    await compactBeforeMove({ sessionId, now });
     const decision = await evaluateAndMaybeSwap(codex, now);
     if (decision.swapped && decision.account) {
       await sweepSiblings(now);

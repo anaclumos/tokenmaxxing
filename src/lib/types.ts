@@ -134,6 +134,7 @@ export const RespawnMarkerSchema = z.object({
   ts: z.number(),
   waitUntil: z.number(),
   sessionId: z.string(),
+  compact: z.boolean(),
   launchedAt: z.number().optional(),
 });
 

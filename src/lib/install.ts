@@ -144,7 +144,7 @@ export function installCodexStopHook(): void {
       ...current.hooks,
       Stop: [
         ...withoutOurCodexStopHooks(current.hooks.Stop),
-        { hooks: [{ type: "command", command: codexStopHookCommand(), timeout: 120, statusMessage: "tokenmaxxing switch check" }] },
+        { hooks: [{ type: "command", command: codexStopHookCommand(), timeout: 300, statusMessage: "tokenmaxxing switch check" }] },
       ],
     },
   };

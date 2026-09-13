@@ -48,13 +48,14 @@ export function supervisedSession(env: Record<string, string | undefined> = proc
   return SupervisedSessionSchema.parse({ sid, launchedAt: LaunchedAtSchema.parse(env.TOKENMAXXING_LAUNCHED_AT) ?? null });
 }
 
-export function writeRespawnMarker(input: { session: SupervisedSession; sessionId: string; accountId: string; waitUntil: number }): void {
+export function writeRespawnMarker(input: { session: SupervisedSession; sessionId: string; accountId: string; waitUntil: number; compact: boolean }): void {
   mkdirSync(paths.respawnDir, { recursive: true });
   const payload = RespawnMarkerSchema.parse({
     accountId: input.accountId,
     ts: Date.now(),
     waitUntil: input.waitUntil,
     sessionId: input.sessionId,
+    compact: input.compact,
     ...(input.session.launchedAt != null ? { launchedAt: input.session.launchedAt } : {}),
   });
   writeFileAtomic(join(paths.respawnDir, input.session.sid), JSON.stringify(payload));
