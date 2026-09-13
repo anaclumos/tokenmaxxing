@@ -37,9 +37,8 @@ function printHelp(): void {
   console.log(`${c.bold("tokenmaxxing")} - automatic Claude Code account switching
 
   ${c.cyan("tokenmaxxing")}            show the pool with usage bars (alias of ${c.cyan("status")})
-  ${c.cyan("tokenmaxxing switch")} [sel]  switch to the best (or a specific) account; no-op when already on it
-  ${c.cyan("tokenmaxxing check")}      evaluate once, switch if over threshold (run by the periodic timer)
-  ${c.cyan("tokenmaxxing init")}       import the current account + install supervisor & hooks
+  ${c.cyan("tokenmaxxing check")}      sample the account whose usage figure is oldest (run by the periodic timer)
+  ${c.cyan("tokenmaxxing init")}       log in the first account (isolated) + install supervisor & hooks
   ${c.cyan("tokenmaxxing init --codex")}  same for codex: import login, install codex supervisor + Stop hook (trust it via /hooks)
   ${c.cyan("tokenmaxxing add")}        register an additional account (isolated login)
   ${c.cyan("tokenmaxxing add --codex")}   register an additional codex account (isolated login)
@@ -98,18 +97,6 @@ async function main(): Promise<number> {
     emitError({ json, message: `${sub} has no ${JSON_FLAG} form (${JSON_FLAG} applies to ${[...JSON_COMMANDS].join(", ")})` });
     return 2;
   }
-  if (!(sub != null && sub.startsWith("__")) && !process.env.TOKENMAXXING_PROBE) {
-    const nonEmpty = (v: string | undefined) => (v != null && v !== "" ? v : null);
-    const ambient = nonEmpty(process.env.CLAUDE_SECURESTORAGE_CONFIG_DIR) ?? nonEmpty(process.env.CLAUDE_CONFIG_DIR);
-    if (ambient != null) {
-      emitError({
-        json,
-        message: `CLAUDE_CONFIG_DIR / CLAUDE_SECURESTORAGE_CONFIG_DIR is set (${ambient}): claude uses a namespaced credential store there that tokenmaxxing does not manage - unset it (or run from a clean shell) and retry.`,
-      });
-      return 1;
-    }
-  }
-
   switch (sub) {
     case "__statusline": return runStatusline();
     case "__subagent-statusline": return runSubagentStatusline();
@@ -126,7 +113,13 @@ async function main(): Promise<number> {
       }
       return cmdStatus({ json, cached });
     }
-    case "switch": return cmdSwitch(provider, args[1], json);
+    case "switch": {
+      if (provider !== codex) {
+        emitError({ json, message: "Claude account placement is per session at launch; manual switching is available with `tokenmaxxing switch --codex`." });
+        return 2;
+      }
+      return cmdSwitch(args[1], json);
+    }
     case "check": {
       if (args.length > 1) {
         emitError({ json, message: `unknown check option: ${args[1]} (check takes no options; the timer runs a plain check every tick)` });
@@ -163,7 +156,7 @@ async function main(): Promise<number> {
       console.log(`removed ${removed.join(", ")}`);
       if (!out.timerDeactivated) console.log(c.yellow(`⚠ the check job may still be loaded - run: ${timerDeactivationHint()}`));
       if (!out.pathLineRemoved) console.log(c.dim("(no tokenmaxxing PATH line found in the shell rc)"));
-      console.log(`kept: accounts.json, config.json, and every parked credential (claude - macOS: keychain items, Linux: creds/; codex: codex-creds/) - remove accounts with \`xx rm\` to delete their credentials`);
+      console.log(`kept: accounts.json, config.json, and every account credential store (claude: stores/ and its keychain items on macOS; codex: codex-creds/) - remove accounts with \`xx rm\` to delete their credentials`);
       return 0;
     }
     case "help":

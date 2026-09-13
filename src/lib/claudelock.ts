@@ -1,7 +1,6 @@
 import { mkdirSync, realpathSync, rmdirSync, statSync, utimesSync } from "node:fs";
 import { join } from "node:path";
 import { delay } from "es-toolkit";
-import { credDir } from "./paths.ts";
 import { log } from "./log.ts";
 import { ErrnoSchema } from "./types.ts";
 
@@ -28,12 +27,12 @@ function tryAcquire(lockDir: string): boolean {
 }
 
 export async function withClaudeRefreshLock<T>(
+  dir: string,
   fn: (lock: { compromised: () => boolean }) => Promise<T> | T,
   opts: { attempts?: number; retryMs?: number; heartbeatMs?: number } = {},
 ): Promise<T> {
   const attempts = opts.attempts ?? ATTEMPTS;
   const retryMs = opts.retryMs ?? RETRY_MS;
-  const dir = credDir();
   mkdirSync(dir, { recursive: true });
   const primary = join(dir, ".oauth_refresh.lock");
   let legacyRoot = dir;
@@ -58,7 +57,7 @@ export async function withClaudeRefreshLock<T>(
     if (attempt >= attempts) {
       log("claudelock.contested", { attempts: attempt });
       throw new Error(
-        "claude's credential-refresh lock is contested (a token refresh is likely mid-flight) - not touching the live credential store; retry shortly",
+        "claude's credential-refresh lock is contested (a token refresh is likely mid-flight) - not touching the credential store; retry shortly",
       );
     }
     await delay(retryMs + Math.random() * retryMs);

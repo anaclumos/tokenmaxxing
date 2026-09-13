@@ -28,6 +28,7 @@ const StatusAccountSchema = z.object({
   id: z.string(),
   tier: z.string().nullable(),
   active: z.boolean(),
+  sessions: z.number(),
   needsReauth: z.boolean(),
   exhausted: z.boolean(),
   usage: z
@@ -77,7 +78,7 @@ function usageReport(a: Account, now: number): StatusAccount["usage"] {
 async function collect(p: Provider, cfg: Config, now: number, cached: boolean): Promise<PoolReport> {
   let idx = loadAccounts(p.pool);
   let reports = new Map<string, SampleReport>();
-  let liveId: string | null = idx.activeId;
+  let liveId: string | null = p.seats === "live" ? idx.activeId : null;
   if (!cached) {
     liveId = null;
     if (idx.accounts.length > 0) {
@@ -92,7 +93,8 @@ async function collect(p: Provider, cfg: Config, now: number, cached: boolean): 
   }
 
   const bars = thresholdBars(cfg);
-  const ctx = { now, thresholds: bars, currentId: idx.activeId, families: p.gatedFamilies(cfg) };
+  const present = p.presence();
+  const ctx = { now, thresholds: bars, currentId: idx.activeId, families: p.gatedFamilies(cfg), seats: null };
   const ordered = sortBy(idx.accounts, [(a) => (a.needsReauth ? 1 : 0), (a) => earliestReset(a, now)]);
   const accounts = ordered.map((a): StatusAccount => {
     const limits = limitWindows(a);
@@ -101,7 +103,8 @@ async function collect(p: Provider, cfg: Config, now: number, cached: boolean): 
       email: a.email,
       id: a.id,
       tier: a.tier,
-      active: liveId != null && a.id === liveId,
+      active: (liveId != null && a.id === liveId) || present.has(a.id),
+      sessions: present.get(a.id) ?? 0,
       needsReauth: a.needsReauth === true,
       exhausted: isExhausted(a, ctx),
       usage: usageReport(a, now),
@@ -190,10 +193,11 @@ function cachedNote(usageAt: number | null, now: number): Note {
   return { paint: c.dim, text: usageAt != null ? `cached ${fmtAgo(usageAt, now)}` : "never sampled" };
 }
 
-function headerLine(input: { active: boolean; needsReauth: boolean; exhausted: boolean; name: string; tier: string | null }): string {
+function headerLine(input: { active: boolean; sessions: number; needsReauth: boolean; exhausted: boolean; name: string; tier: string | null }): string {
   const marker = input.active ? c.green("●") : c.dim("○");
   const badges: string[] = [];
   if (input.active) badges.push(c.green("active"));
+  if (input.sessions > 0) badges.push(c.green(count({ n: input.sessions, noun: "session" })));
   if (input.needsReauth) badges.push(c.red("needs-reauth"));
   if (input.exhausted) badges.push(c.yellow("exhausted"));
   return `${marker} ${c.bold(input.name)}${input.tier ? ` ${c.dim(input.tier)}` : ""}${badges.length ? ` ${badges.join(" ")}` : ""}`;

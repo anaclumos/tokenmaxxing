@@ -5,7 +5,7 @@ import { codexPaths, codexPool, paths } from "../lib/paths.ts";
 import { withLock } from "../lib/lock.ts";
 import { LOOP_DIAGNOSIS, MAX_WRAP_DEPTH, UNMANAGED_ENV, WRAP_DEPTH_ENV, WRAP_RATE_MAX, WRAP_RATE_WINDOW_MS, wrapDepth, wrapperEntryRateTripped } from "../lib/claudebin.ts";
 import { resolveRealCodex } from "../lib/codexbin.ts";
-import { clearCodexPresence, writeCodexPresence } from "../lib/codexpresence.ts";
+import { clearPresence, writePresence } from "../lib/presence.ts";
 import { liveCodexAccountId } from "../lib/codexauth.ts";
 import { saveTermios, restoreTermios } from "../lib/tty.ts";
 import { CodexRespawnMarkerSchema } from "../lib/types.ts";
@@ -106,7 +106,7 @@ export async function runCodexSupervisor(input: { argv: string[] }): Promise<num
       if (spawnAccountId) {
         for (let attempt = 0; attempt < 10; attempt++) {
           try {
-            writeCodexPresence({ supervisorId, accountId: spawnAccountId, pid: spawned.pid });
+            writePresence({ dir: codexPaths.presenceDir, id: supervisorId, accountId: spawnAccountId, pid: spawned.pid });
             break;
           } catch (e) {
             if (spawned.exitCode !== null || spawned.signalCode !== null) break;
@@ -160,7 +160,7 @@ export async function runCodexSupervisor(input: { argv: string[] }): Promise<num
       launchArgs = payload.sessionId ? ["resume", payload.sessionId] : ["resume", "--last"];
       continue;
     }
-    clearCodexPresence({ supervisorId });
+    clearPresence({ dir: codexPaths.presenceDir, id: supervisorId });
     rmSync(join(codexPaths.reconcileDir, supervisorId), { force: true });
     log("codexsupervisor.exit", { supervisorId: supervisorId.slice(0, 8), respawns, code: child.exitCode, signal: child.signalCode });
     return child.exitCode ?? (child.signalCode ? 1 : 0);

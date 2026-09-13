@@ -3,7 +3,7 @@ title: The statusline
 description: Quota carried in color, one line, every account visible
 ---
 
-tokenmaxxing renders Claude Code's statusline natively (while teeing the usage feed). The design principle: quota is carried in color, not numbers. One line, for example:
+tokenmaxxing renders Claude Code's statusline natively (while teeing the usage feed into the session's account file, `usage/<uuid8>.json`). The design principle: quota is carried in color, not numbers. One line, for example:
 
 ```
 tm-wt-demo Fable 5 (high) +156/-23  ◆ 𝒇 2h 1d  ◇ 19h  ◇ 𝒇 2d  ◇ full  ✗ ?
@@ -11,7 +11,7 @@ tm-wt-demo Fable 5 (high) +156/-23  ◆ 𝒇 2h 1d  ◇ 19h  ◇ 𝒇 2d  ◇ fu
 
 - Each window token is its time-to-reset, painted on a continuous green-to-yellow-to-red ramp by used percent (truecolor when the terminal supports it, stepped onto the 256-color cube otherwise). The ramp anchors at pure green for 0, yellow at 75, and red at 95 and above, so the old severity bands survive as ramp anchors.
 - The model name is painted by context-window fill on the same ramp.
-- A green `◆` leads the active account's windows; every parked account gets its own cyan `◇` (red `✗` if it needs reauth). Accounts sort by earliest upcoming reset.
+- A green `◆` leads the windows of the session's own account, the seat the supervisor gave it; every other pooled account gets its own cyan `◇` (red `✗` if it needs reauth), sorted by earliest upcoming reset. A session started outside the supervisor has no seat: its own windows still render behind the `◆`, and every pooled account renders as `◇`.
 - An account walled by an enforced limit (a server refusal the StopFailure hook recorded) paints its marker full: a walled parked account renders one full-painted token carrying the wall's time-to-reset in place of its cached windows, and a walled active seat keeps its measured windows behind a full-painted `◆` and appends the same wall token (`3d100` without color).
 - Per-model comes first in each block as a bare painted initial: Fable renders `𝒇`; other families use their uppercased first letter, always family-matched.
 - An untouched parked account renders a green `full`. Measured usage with an unknown reset renders a painted `?`, and an unmeasured per-model cap on a gated model renders an unpainted `𝒇?` - unmeasured must never look safe.

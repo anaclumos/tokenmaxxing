@@ -25,7 +25,7 @@ export async function cmdInit(p: Provider): Promise<number> {
     p.install();
     const active = existing.accounts.find((a) => a.id === existing.activeId);
     console.log(`${c.green("✓")} re-installed (pool already has ${count({ n: existing.accounts.length, noun: "account" })} - not re-importing)`);
-    console.log(`  active: ${c.bold(active?.label ?? "unknown")}`);
+    if (active && p.seats === "live") console.log(`  active: ${c.bold(active.label)}`);
     printUsage(p);
     return 0;
   }
@@ -37,7 +37,7 @@ export async function cmdInit(p: Provider): Promise<number> {
     await harvested.park();
     const idx = loadAccounts(p.pool);
     const imported = upsertAccount(idx, harvested, p.mergeWindows);
-    idx.activeId = harvested.id;
+    idx.activeId = p.seats === "live" ? harvested.id : null;
     saveAccounts(p.pool, idx);
     return imported;
   });

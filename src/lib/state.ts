@@ -1,7 +1,7 @@
 import { closeSync, existsSync, fstatSync, openSync, readFileSync, rmSync, utimesSync } from "node:fs";
 import { isEqual } from "es-toolkit";
 import { z } from "zod";
-import { paths, realClaudeBinFromEnv, realCodexBinFromEnv, type PoolPaths } from "./paths.ts";
+import { paths, realClaudeBinFromEnv, realCodexBinFromEnv, usageJsonFor, type PoolPaths } from "./paths.ts";
 import { writeFileAtomic } from "./atomic.ts";
 import {
   AccountsIndexSchema,
@@ -99,17 +99,19 @@ export function upsertAccount(
   return existing ?? fresh;
 }
 
-export function loadUsageSnapshot(): { state: UsageState; at: number } | null {
+export type UsageSnapshot = { state: UsageState; at: number };
+
+export function loadUsageSnapshot(accountId: string): UsageSnapshot | null {
   let fd: number;
   try {
-    fd = openSync(paths.usageJson, "r");
+    fd = openSync(usageJsonFor(accountId), "r");
   } catch {
     return null;
   }
   try {
     const at = fstatSync(fd).mtimeMs;
     const parsed = UsageStateSchema.safeParse(JSON.parse(readFileSync(fd, "utf8")));
-    return parsed.success ? { state: parsed.data, at } : null;
+    return parsed.success && parsed.data.account === accountId ? { state: parsed.data, at } : null;
   } catch {
     return null;
   } finally {
@@ -117,16 +119,12 @@ export function loadUsageSnapshot(): { state: UsageState; at: number } | null {
   }
 }
 
-export function loadUsage(): UsageState | null {
-  return loadUsageSnapshot()?.state ?? null;
-}
-
-export function clearUsageSnapshots(): void {
-  rmSync(paths.usageJson, { force: true });
+export function clearUsageSnapshot(accountId: string): void {
+  rmSync(usageJsonFor(accountId), { force: true });
 }
 
 export function loadLastSwapAt(pool: PoolPaths): number | null {
-  if (!existsSync(pool.lastSwapJson)) return null;
+  if (pool.lastSwapJson == null || !existsSync(pool.lastSwapJson)) return null;
   let json: unknown;
   try {
     json = JSON.parse(readFileSync(pool.lastSwapJson, "utf8"));
@@ -137,29 +135,8 @@ export function loadLastSwapAt(pool: PoolPaths): number | null {
 }
 
 export function saveLastSwapAt(pool: PoolPaths, ts: number): void {
+  if (pool.lastSwapJson == null) throw new Error("this pool keeps no swap clock");
   writeFileAtomic(pool.lastSwapJson, JSON.stringify(LastSwapSchema.parse({ ts })));
-}
-
-const DepletedWaitSchema = z.object({ waitUntil: z.number(), id: z.string(), ts: z.number() });
-export type DepletedWait = z.infer<typeof DepletedWaitSchema>;
-
-export function loadDepletedWait(): DepletedWait | null {
-  if (!existsSync(paths.depletedJson)) return null;
-  let json: unknown;
-  try {
-    json = JSON.parse(readFileSync(paths.depletedJson, "utf8"));
-  } catch {
-    throw new Error(`${paths.depletedJson} is corrupt (unparsable JSON) - repair or remove the file`);
-  }
-  return DepletedWaitSchema.parse(json);
-}
-
-export function saveDepletedWait(rec: DepletedWait): void {
-  writeFileAtomic(paths.depletedJson, JSON.stringify(DepletedWaitSchema.parse(rec)));
-}
-
-export function clearDepletedWait(): void {
-  rmSync(paths.depletedJson, { force: true });
 }
 
 export const POST_SWAP_COOLDOWN_MS = 45_000;
@@ -167,25 +144,23 @@ export const POST_SWAP_COOLDOWN_MS = 45_000;
 const USAGE_TS_REFRESH_MS = 10 * 60_000;
 const SAMPLED_AT_REFRESH_MS = 30_000;
 
-export function writeUsage(input: UsageState, opts: { stamp?: boolean } = {}): boolean {
-  const prev = loadUsage();
-  const stamp = opts.stamp === true;
-  const carriedSampleAt = prev != null && prev.account === input.account ? (prev.sampledAt ?? prev.ts) : undefined;
-  const sampledAt = stamp ? (carriedSampleAt ?? input.sampledAt) : input.ts;
-  const next: UsageState = { ...input, ...(sampledAt != null ? { sampledAt } : {}) };
+export function writeUsage(input: UsageState): boolean {
+  const file = usageJsonFor(input.account);
+  const prev = loadUsageSnapshot(input.account)?.state ?? null;
+  const next: UsageState = { ...input, sampledAt: input.ts };
   if (
     prev &&
     isEqual({ ...prev, ts: 0, sampledAt: 0 }, { ...next, ts: 0, sampledAt: 0 }) &&
     next.ts - prev.ts < USAGE_TS_REFRESH_MS &&
-    (stamp || next.ts - (prev.sampledAt ?? prev.ts) < SAMPLED_AT_REFRESH_MS)
+    next.ts - (prev.sampledAt ?? prev.ts) < SAMPLED_AT_REFRESH_MS
   ) {
     try {
-      utimesSync(paths.usageJson, new Date(next.ts), new Date(next.ts));
+      utimesSync(file, new Date(next.ts), new Date(next.ts));
     } catch (e) {
       if (ErrnoSchema.safeParse(e).data?.code !== "ENOENT") throw e;
     }
     return false;
   }
-  writeFileAtomic(paths.usageJson, JSON.stringify(next));
+  writeFileAtomic(file, JSON.stringify(next));
   return true;
 }

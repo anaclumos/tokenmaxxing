@@ -5,7 +5,7 @@ import { MAX_WRAP_DEPTH, WRAP_DEPTH_ENV } from "./claudebin.ts";
 import { codexIdentityOf, deleteParkedCodexAuth, isCodexAccessExpiring, liveCodexAccountId, readCodexAuthAt, readLiveCodexAuth, readParkedCodexAuth, writeLiveCodexAuth, writeParkedCodexAuth } from "./codexauth.ts";
 import { resolveRealCodex, verifyRealCodex } from "./codexbin.ts";
 import { CodexInvalidGrantError, CodexRefreshFailedError, refreshCodexAuth } from "./codexoauth.ts";
-import { livingCodexPresences, presentCodexAccountIds } from "./codexpresence.ts";
+import { livingPresences, seatCounts } from "./presence.ts";
 import { CodexUsageReadError, codexLimitLabel, fetchCodexUsage } from "./codexusage.ts";
 import { codexSupervisorLink, ensurePathInRc, installCodexSupervisor, managedShellRcSkipLines, shellRcPath } from "./install.ts";
 import { withLock } from "./lock.ts";
@@ -33,7 +33,7 @@ async function sampleLiveOntoOwner(now: number): Promise<void> {
   const owner = idx.accounts.find((a) => a.id === identity.accountId);
   if (!owner) return;
 
-  if (isCodexAccessExpiring({ auth: live, now }) && !presentCodexAccountIds().has(identity.accountId)) {
+  if (isCodexAccessExpiring({ auth: live, now }) && !seatCounts(codexPaths.presenceDir).has(identity.accountId)) {
     try {
       live = await refreshCodexAuth({ auth: live, now });
     } catch (e) {
@@ -69,7 +69,7 @@ async function sampleAccount(account: Account, liveId: string | null, now: numbe
     let auth = isLive ? readLiveCodexAuth() : readParkedCodexAuth({ credFile });
     if (!auth) return { ok: false, reason: isLive ? "live auth.json vanished" : "no parked credential", deadGrant: false };
     if (isCodexAccessExpiring({ auth, now })) {
-      const running = presentCodexAccountIds().has(account.id);
+      const running = seatCounts(codexPaths.presenceDir).has(account.id);
       if (running && !isLive) {
         return { ok: false, reason: "running in a live codex session (parked token refresh unsafe)", deadGrant: false };
       }
@@ -232,7 +232,7 @@ async function importLive(): Promise<Harvest | null> {
   const identity = codexIdentityOf({ auth: live });
   const usage = await sampleLogin(live);
 
-  if (presentCodexAccountIds().has(identity.accountId)) {
+  if (seatCounts(codexPaths.presenceDir).has(identity.accountId)) {
     console.error(c.red("a live supervised codex session is running this account - its token rotates under us, so parking a snapshot now could poison the backup."));
     console.error(c.dim("close that codex session (or let it exit) and re-run `tokenmaxxing init --codex`."));
     return null;
@@ -244,7 +244,7 @@ async function importLive(): Promise<Harvest | null> {
     tier: usage?.usage.planType ?? identity.planType,
     sample: usage ? { windows: usage.usage.windows, at: usage.at } : null,
     park: async () => {
-      if (presentCodexAccountIds().has(identity.accountId)) {
+      if (seatCounts(codexPaths.presenceDir).has(identity.accountId)) {
         throw new Error("a live supervised codex session started running this account mid-init - close it and re-run `tokenmaxxing init --codex`");
       }
       const fresh2 = readLiveCodexAuth();
@@ -292,7 +292,7 @@ function install(): void {
 }
 
 export function codexPickCtx(now: number, currentId: string | null): PickCtx {
-  return { now, thresholds: thresholdBars(loadConfig()), currentId, families: null };
+  return { now, thresholds: thresholdBars(loadConfig()), currentId, families: null, seats: null };
 }
 
 export function reconcileSiblings(now: number): void {
@@ -301,9 +301,9 @@ export function reconcileSiblings(now: number): void {
   const idx = loadAccounts(codexPool);
   const liveAccount = idx.accounts.find((a) => a.id === liveId);
   if (!liveAccount || liveAccount.needsReauth === true || isExhausted(liveAccount, codexPickCtx(now, liveId))) return;
-  const living = livingCodexPresences();
+  const living = livingPresences(codexPaths.presenceDir);
   if (existsSync(codexPaths.reconcileDir)) {
-    const alive = new Set(living.map((presence) => presence.supervisorId));
+    const alive = new Set(living.map((presence) => presence.id));
     for (const name of readdirSync(codexPaths.reconcileDir)) {
       if (!alive.has(name)) rmSync(join(codexPaths.reconcileDir, name), { force: true });
     }
@@ -311,11 +311,11 @@ export function reconcileSiblings(now: number): void {
   for (const presence of living) {
     if (presence.accountId === liveId) continue;
     if (!idx.accounts.some((a) => a.id === presence.accountId)) continue;
-    const markerPath = join(codexPaths.reconcileDir, presence.supervisorId);
+    const markerPath = join(codexPaths.reconcileDir, presence.id);
     if (existsSync(markerPath)) continue;
     mkdirSync(codexPaths.reconcileDir, { recursive: true });
     writeFileAtomic(markerPath, JSON.stringify(CodexReconcileMarkerSchema.parse({ accountId: presence.accountId, ts: now })));
-    log("codex.reconcile_signal", { supervisorId: presence.supervisorId.slice(0, 8), account: presence.accountId.slice(0, 8) });
+    log("codex.reconcile_signal", { supervisorId: presence.id.slice(0, 8), account: presence.accountId.slice(0, 8) });
   }
 }
 
@@ -323,12 +323,10 @@ export const codex: Provider = {
   name: "codex",
   flag: " --codex",
   pool: codexPool,
+  seats: "live",
   waitsWhenDepleted: false,
-  switchMargin: 1.2,
-  switchNote: " (takes effect on the next codex start)",
   liveId: liveCodexAccountId,
-  liveOwner: async () => liveCodexAccountId(),
-  presentIds: presentCodexAccountIds,
+  presence: () => seatCounts(codexPaths.presenceDir),
   gatedFamilies: () => null,
   observeLive,
   samplePool,

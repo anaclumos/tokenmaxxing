@@ -1,126 +1,130 @@
 import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
-import { readItem, writeItem, deleteItem, liveTarget, parkedTarget, isolatedTarget, claudeAiOauthOnly, mergeIntoLive } from "./credstore.ts";
+import { readItem, writeItem, deleteItem, isolatedTarget, readStore, storeTarget, claudeAiOauthOnly } from "./credstore.ts";
 import { resolveRealClaude, resolveVerifiedClaude } from "./claudebin.ts";
 import { withClaudeRefreshLock } from "./claudelock.ts";
-import { isApiKeyMode, readOAuthAccount } from "./claudejson.ts";
 import { ensurePathInRc, installSupervisor, managedShellRcSkipLines, shellRcPath, timerActivationHint } from "./install.ts";
 import { withLock } from "./lock.ts";
 import { log } from "./log.ts";
-import { claudeTierLabel, describeIdentity, fetchTokenIdentity, isAccessTokenExpiring, isDeadCredential, refreshCredential, InvalidGrantError } from "./oauth.ts";
-import { claudePool, credItemFor, paths } from "./paths.ts";
+import { claudeTierLabel, describeIdentity, fetchTokenIdentity, isDeadCredential, InvalidGrantError } from "./oauth.ts";
+import { claudePool, paths, sampleDirFor, seatFromEnv, storeDirFor } from "./paths.ts";
+import { pickBest, pickEarliestReset, thresholdBars, type PickCtx } from "./picker.ts";
+import { seatCounts } from "./presence.ts";
 import type { Observation, Provider, SampleReport } from "./provider.ts";
-import { ensureLiveTokenFresh, probeActiveUsage, probeParkedUsage } from "./sample.ts";
-import { loadAccounts, loadUsage, loadUsageSnapshot, pinBinOverride, saveAccounts, writeUsage, type Harvest } from "./state.ts";
-import { isSkippableSwapError, performSwap } from "./swap.ts";
+import { foldTee, probeAccountUsage, teeObservation } from "./sample.ts";
+import { clearUsageSnapshot, loadAccounts, loadConfig, loadUsageSnapshot, pinBinOverride, saveAccounts, type Harvest } from "./state.ts";
 import { loadSetupTokens, saveSetupTokens } from "./setuptokens.ts";
 import { saveTermios, restoreTermios } from "./tty.ts";
-import { CRED_ENV_OVERRIDES, familyTokens, gatedFamilies, mergeWindows, probeUsage, windowsOf } from "./usage.ts";
-import { CredentialBlobSchema, OAuthAccountSchema, type Account, type Config, type UsageState } from "./types.ts";
+import { CRED_ENV_OVERRIDES, gatedFamilies, mergeWindows, probeUsage, windowsOf } from "./usage.ts";
+import { CredentialBlobSchema, OAuthAccountSchema, type Account, type Config } from "./types.ts";
 import { c } from "../cli/render.ts";
 
-function teeObservation(account: Account, snap: { state: UsageState; at: number } | null): Observation | null {
-  if (!snap || snap.state.account !== account.id) return null;
-  if (account.lastUsageAt != null && snap.at < account.lastUsageAt) return { windows: account.windows, at: account.lastUsageAt };
-  const at = snap.state.sampledAt ?? snap.at;
-  const aggregate = windowsOf({ fiveHour: snap.state.fiveHour, sevenDay: snap.state.sevenDay, perModel: {} }, at);
-  return { windows: mergeWindows(aggregate, account.windows), at };
+class StoreUnusableError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "StoreUnusableError";
+  }
+}
+
+function liveId(): string | null {
+  return seatFromEnv(loadAccounts(claudePool).accounts.map((a) => a.id));
+}
+
+function presence(): Map<string, number> {
+  return seatCounts(paths.presenceDir);
 }
 
 async function observeLive(account: Account, cfg: Config, now: number, opts: { probe: boolean }): Promise<Observation | null> {
-  let snap = loadUsageSnapshot();
   const ttl = cfg.policy.usagePollTtlMs;
   const probeAttempted = account.lastProbeAt != null && now - account.lastProbeAt <= ttl;
-  const fresh = snap != null && snap.state.account === account.id && now - snap.at <= ttl;
+  const snap = loadUsageSnapshot(account.id);
+  const fresh = snap != null && now - snap.at <= ttl;
   const needsPerModel = snap != null && gatedFamilies(snap.state.model, cfg.policy.switchModels).length > 0;
   if (opts.probe && !probeAttempted && (!fresh || needsPerModel)) {
     const startedAt = Date.now();
-    const full = await probeUsage();
-    const ts = Date.now();
-    if (readOAuthAccount()?.accountUuid === account.id) {
-      if (full) {
-        const teed = loadUsageSnapshot();
-        if (teed && teed.state.account === account.id && ts - teed.at <= ttl) {
-          snap = teed;
-        } else {
-          const state: UsageState = { fiveHour: full.fiveHour, sevenDay: full.sevenDay, account: account.id, ts, model: null };
-          writeUsage(state);
-          snap = { state, at: ts };
-        }
-        const expected = gatedFamilies(snap.state.model, cfg.policy.switchModels);
-        const rows = Object.keys(full.perModel);
-        if (expected.length > 0 && !expected.some((f) => rows.some((k) => familyTokens(k).includes(f)))) {
-          log("usage.no_permodel_row", { families: expected.join(","), rows: rows.join(",") });
-        }
+    const outcome = await probeAccountUsage(account);
+    await withLock(claudePool.lockFile, () => {
+      const idx = loadAccounts(claudePool);
+      const a = idx.accounts.find((x) => x.id === account.id);
+      if (!a) return;
+      a.lastProbeAt = startedAt;
+      a.tier = account.tier;
+      if (account.needsReauth) a.needsReauth = true;
+      if (outcome.ok && (a.lastUsageAt == null || startedAt > a.lastUsageAt)) {
+        a.windows = mergeWindows(windowsOf(outcome.usage, startedAt), a.windows);
+        a.lastUsageAt = startedAt;
       }
-      await withLock(claudePool.lockFile, () => {
-        const idx = loadAccounts(claudePool);
-        const a = idx.accounts.find((x) => x.id === account.id);
-        if (!a) return;
-        a.lastProbeAt = startedAt;
-        if (full) {
-          const probed = windowsOf(full, startedAt);
-          const aggregate = a.windows.some((w) => w.name == null) ? a.windows.filter((w) => w.name == null) : probed.filter((w) => w.name == null);
-          if (a.lastUsageAt == null) a.lastUsageAt = startedAt;
-          a.windows = mergeWindows([...aggregate, ...probed.filter((w) => w.name != null)], a.windows);
-        }
-        saveAccounts(claudePool, idx);
-      });
-    }
+      saveAccounts(claudePool, idx);
+    });
   }
   const current = loadAccounts(claudePool).accounts.find((a) => a.id === account.id) ?? account;
-  return teeObservation(current, snap);
+  return teeObservation(current);
 }
 
-async function samplePool(accounts: Account[], liveId: string | null): Promise<Map<string, SampleReport>> {
+async function samplePool(accounts: Account[]): Promise<Map<string, SampleReport>> {
   const reports = new Map<string, SampleReport>();
-  const tee = loadUsageSnapshot();
-  const probeOne = async (a: Account): Promise<void> => {
-    const isActive = liveId != null && liveId === a.id;
-    const teeCurrent = tee != null && (a.lastUsageAt == null || tee.at >= a.lastUsageAt);
-    if (isActive && tee && teeCurrent && tee.state.account === a.id) {
-      const at = tee.state.sampledAt ?? tee.at;
+  await Promise.all(
+    accounts.map(async (a) => {
+      const tee = loadUsageSnapshot(a.id);
+      const teeAt = tee == null ? null : (tee.state.sampledAt ?? tee.state.ts);
+      if (teeAt != null && (a.lastUsageAt == null || teeAt >= a.lastUsageAt)) {
+        foldTee(a);
+        reports.set(a.id, { ok: true, source: "statusline" });
+        return;
+      }
+      const outcome = await probeAccountUsage(a);
+      if (!outcome.ok) {
+        reports.set(a.id, { ok: false, reason: outcome.reason });
+        return;
+      }
+      const at = Date.now();
       a.lastUsageAt = at;
-      a.windows = mergeWindows(windowsOf({ fiveHour: tee.state.fiveHour, sevenDay: tee.state.sevenDay, perModel: {} }, at), a.windows);
-      reports.set(a.id, { ok: true, source: "statusline" });
-      return;
-    }
-    const outcome = isActive ? await probeActiveUsage(a) : await probeParkedUsage(a);
-    if (!outcome.ok) {
-      reports.set(a.id, { ok: false, reason: outcome.reason });
-      return;
-    }
-    const at = Date.now();
-    a.lastUsageAt = at;
-    a.windows = mergeWindows(windowsOf(outcome.usage, at), a.windows);
-    reports.set(a.id, { ok: true, source: "probe" });
-  };
-  const active = accounts.find((a) => liveId != null && liveId === a.id) ?? null;
-  if (active) await probeOne(active);
-  try {
-    await ensureLiveTokenFresh();
-  } catch {
-  }
-  await Promise.all(accounts.filter((a) => a !== active).map(probeOne));
+      a.windows = mergeWindows(windowsOf(outcome.usage, at), a.windows);
+      reports.set(a.id, { ok: true, source: "probe" });
+    }),
+  );
   return reports;
 }
 
-async function liveOwner(): Promise<string | null> {
-  const live = await readItem(liveTarget());
-  if (live == null) return null;
-  const creds = CredentialBlobSchema.parse(JSON.parse(live)).claudeAiOauth;
-  return (await fetchTokenIdentity(creds.accessToken)).accountUuid;
+async function prepareMove(target: Account): Promise<void> {
+  let creds;
+  try {
+    creds = await readStore(target.id);
+  } catch (e) {
+    throw new StoreUnusableError(`${target.label}'s store is unreadable (${e instanceof Error ? e.message : String(e)}) - re-auth with \`tokenmaxxing auth ${target.label}\``);
+  }
+  if (!creds) throw new StoreUnusableError(`${target.label} has no credential in its store - re-auth with \`tokenmaxxing auth ${target.label}\``);
+  if (isDeadCredential(creds)) {
+    const idx = loadAccounts(claudePool);
+    const t = idx.accounts.find((a) => a.id === target.id);
+    if (t) {
+      t.needsReauth = true;
+      saveAccounts(claudePool, idx);
+    }
+    log("move.invalid_grant", { account: target.id.slice(0, 8) });
+    throw new InvalidGrantError(`${target.label}'s store was cleared after a failed refresh - re-auth with \`tokenmaxxing auth ${target.label}\``);
+  }
+  log("move.prepared", { account: target.id.slice(0, 8), label: target.label });
+}
+
+export function pickSeat(now: number): Account | null {
+  const cfg = loadConfig();
+  const idx = loadAccounts(claudePool);
+  let dirty = false;
+  for (const a of idx.accounts) dirty = foldTee(a) || dirty;
+  if (dirty) saveAccounts(claudePool, idx);
+  const ctx: PickCtx = { now, thresholds: thresholdBars(cfg), currentId: null, families: cfg.policy.switchModels, seats: presence() };
+  return pickBest(idx.accounts, ctx) ?? pickEarliestReset(idx.accounts, ctx)?.account ?? null;
 }
 
 async function removeCredentials(a: Account): Promise<void> {
+  await deleteItem(storeTarget(a.id));
+  rmSync(storeDirFor(a.id), { recursive: true, force: true });
+  rmSync(`${storeDirFor(a.id)}.lock`, { recursive: true, force: true });
+  for (const dir of [sampleDirFor(a.id), sampleDirFor(a.id, "-tick")]) rmSync(dir, { recursive: true, force: true });
+  clearUsageSnapshot(a.id);
   const setupTokens = loadSetupTokens();
-  const item = credItemFor(a.id);
-  await deleteItem(parkedTarget(item));
-  for (const sampleDir of [join(paths.sampleDir, item), join(paths.sampleDir, `${item}-tick`)]) {
-    await deleteItem(isolatedTarget(sampleDir));
-    rmSync(sampleDir, { recursive: true, force: true });
-  }
   if (setupTokens.tokens.some((t) => t.accountUuid === a.id)) {
     saveSetupTokens({ ...setupTokens, tokens: setupTokens.tokens.filter((t) => t.accountUuid !== a.id) });
   }
@@ -169,7 +173,7 @@ async function login(): Promise<Harvest | null> {
     await onExit;
     restoreTermios(savedTermios);
 
-    const blobRaw = await readItem(iso);
+    const blobRaw = await withClaudeRefreshLock(onboardDir, () => readItem(iso));
     if (!blobRaw || !identityReady(cjPath)) {
       console.error(c.red("no login detected in the isolated session - nothing changed."));
       return null;
@@ -183,9 +187,20 @@ async function login(): Promise<Harvest | null> {
       console.error(c.red("could not parse the onboarded account's credential/identity."));
       return null;
     }
+    let identity;
+    try {
+      identity = await fetchTokenIdentity(blob.claudeAiOauth.accessToken);
+    } catch (e) {
+      console.error(c.red(`could not verify which account the login belongs to (${e instanceof Error ? e.message : String(e)}) - nothing changed.`));
+      return null;
+    }
+    if (identity.accountUuid !== oauthAccount.accountUuid) {
+      console.error(c.red(`the login's credential belongs to ${describeIdentity(identity)}, but its identity file names ${oauthAccount.emailAddress} - nothing changed.`));
+      return null;
+    }
 
     console.log(c.dim("sampling usage..."));
-    const sampled = await probeUsage(onboardDir);
+    const sampled = await probeUsage({ configDir: onboardDir });
     if (!sampled) console.log(c.yellow("could not sample usage now - it will fill in on first use."));
     const at = Date.now();
     const id = oauthAccount.accountUuid;
@@ -195,7 +210,7 @@ async function login(): Promise<Harvest | null> {
       tier: claudeTierLabel(blob.claudeAiOauth),
       oauthAccount,
       sample: sampled ? { windows: windowsOf(sampled, at), at } : null,
-      park: () => writeItem(parkedTarget(credItemFor(id)), claudeAiOauthOnly(blobRaw)),
+      park: () => writeItem(storeTarget(id), claudeAiOauthOnly(blobRaw)),
     };
   } finally {
     if (p.exitCode === null) {
@@ -208,63 +223,13 @@ async function login(): Promise<Harvest | null> {
   }
 }
 
+const loginStep = (who: string) => `In the session that opens, run  ${c.bold("/login")}  with ${who}. It closes itself once you're in.`;
+
 async function importLive(): Promise<Harvest | null> {
-  if (isApiKeyMode()) {
-    console.error(c.yellow("tokenmaxxing pools subscription accounts, but you're authed via API key / apiKeyHelper."));
-    console.error(`Run ${c.cyan("claude")} → ${c.cyan("/login")} with a Pro/Max account first, then re-run ${c.cyan("tokenmaxxing init")}.`);
-    return null;
-  }
-
-  const oauthAccount = readOAuthAccount();
-  const liveRaw = await readItem(liveTarget());
-  if (!oauthAccount || !liveRaw) {
-    console.error(c.red("no active Claude subscription login found (missing oauthAccount or credential)."));
-    console.error(`Run ${c.cyan("claude")} → ${c.cyan("/login")} first, then re-run ${c.cyan("tokenmaxxing init")}.`);
-    return null;
-  }
-
-  let blob;
-  try {
-    blob = CredentialBlobSchema.parse(JSON.parse(liveRaw));
-  } catch {
-    console.error(c.red("the live credential is not a recognizable Claude OAuth blob."));
-    return null;
-  }
-
-  let creds = blob.claudeAiOauth;
-  if (isDeadCredential(creds)) {
-    console.error(c.red("the live credential was cleared after a failed refresh."));
-    console.error(`Run ${c.cyan("claude")} → ${c.cyan("/login")} first, then re-run ${c.cyan("tokenmaxxing init")}.`);
-    return null;
-  }
-  if (isAccessTokenExpiring(creds)) {
-    await withClaudeRefreshLock(async (lock) => {
-      const raw2 = await readItem(liveTarget());
-      if (raw2 == null) throw new Error("live credential vanished while waiting for the refresh lock");
-      const current = CredentialBlobSchema.parse(JSON.parse(raw2)).claudeAiOauth;
-      creds = isAccessTokenExpiring(current) ? await refreshCredential(current) : current;
-      if (creds === current) return;
-      if (lock.compromised()) throw new Error("refresh lock compromised mid-refresh - discarding the live rewrite");
-      await writeItem(liveTarget(), mergeIntoLive(raw2, creds));
-    });
-  }
-  const identity = await fetchTokenIdentity(creds.accessToken);
-  if (identity.accountUuid !== oauthAccount.accountUuid) {
-    console.error(c.red(`the live credential belongs to ${describeIdentity(identity)}, but ~/.claude.json identifies ${oauthAccount.emailAddress} - identity drift.`));
-    console.error(`Run ${c.cyan("claude")} → ${c.cyan("/login")} to realign them, then re-run ${c.cyan("tokenmaxxing init")}.`);
-    return null;
-  }
-
-  const id = oauthAccount.accountUuid;
-  const parked = JSON.stringify({ claudeAiOauth: creds });
-  return {
-    id,
-    email: oauthAccount.emailAddress,
-    tier: claudeTierLabel(creds),
-    oauthAccount,
-    sample: null,
-    park: () => writeItem(parkedTarget(credItemFor(id)), parked),
-  };
+  console.log(c.cyan("Opening an isolated login for your first pooled account - the login you already have stays as it is for sessions started outside the supervisor."));
+  console.log(c.dim(loginStep("the first account to pool")));
+  console.log();
+  return login();
 }
 
 function ensurePathAhead(): void {
@@ -285,7 +250,7 @@ function ensurePathAhead(): void {
 
 function install(): void {
   const out = installSupervisor();
-  console.log(`${c.green("✓")} installed ${c.bold("claude")} supervisor + statusLine/Stop/SessionStart hooks`);
+  console.log(`${c.green("✓")} installed ${c.bold("claude")} supervisor + statusLine/Stop/StopFailure/SessionStart hooks`);
   if (out.timerLoaded) console.log(`${c.green("✓")} periodic check timer active (every ${out.checkIntervalS}s)`);
   else console.log(c.yellow(`⚠ check timer written but not activated - run: ${timerActivationHint()}`));
   if (!out.pathAhead) {
@@ -298,23 +263,24 @@ export const claude: Provider = {
   name: "claude",
   flag: "",
   pool: claudePool,
+  seats: "shared",
   waitsWhenDepleted: true,
-  switchMargin: 1,
-  switchNote: "",
-  liveId: () => readOAuthAccount()?.accountUuid ?? null,
-  liveOwner,
-  presentIds: () => new Set(),
-  gatedFamilies: (cfg) => gatedFamilies(loadUsage()?.model ?? null, cfg.policy.switchModels),
+  liveId,
+  presence,
+  gatedFamilies: (cfg) => {
+    const seat = liveId();
+    return gatedFamilies(seat == null ? null : (loadUsageSnapshot(seat)?.state.model ?? null), cfg.policy.switchModels);
+  },
   observeLive,
   samplePool,
   mergeWindows,
-  swap: performSwap,
-  classifySwapError: (e) => (e instanceof InvalidGrantError ? "dead-grant" : isSkippableSwapError(e) ? "skip" : "fatal"),
+  swap: prepareMove,
+  classifySwapError: (e) => (e instanceof InvalidGrantError ? "dead-grant" : e instanceof StoreUnusableError ? "skip" : "fatal"),
   removeCredentials,
   login,
   importLive,
   preflight: () => pinBinOverride({ key: "claudeBin", bin: resolveVerifiedClaude() }),
   install,
-  loginStep: (who) => `In the session that opens, run  ${c.bold("/login")}  with ${who}. It closes itself once you're in.`,
+  loginStep,
   windowLabel: (name) => name.toLowerCase(),
 };

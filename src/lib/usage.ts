@@ -331,14 +331,17 @@ export function scrubCredentialEnv(env: Record<string, string>): Record<string, 
   return scrubbed;
 }
 
-function probeEnv(configDir?: string): Record<string, string> {
+export type ProbeTarget = { configDir: string; store?: string };
+
+function probeEnv(target: ProbeTarget): Record<string, string> {
   const env = scrubCredentialEnv({ ...process.env, TOKENMAXXING_PROBE: "1", [WRAP_DEPTH_ENV]: String(MAX_WRAP_DEPTH) });
-  if (configDir) env.CLAUDE_CONFIG_DIR = configDir;
+  env.CLAUDE_CONFIG_DIR = target.configDir;
+  if (target.store) env.CLAUDE_SECURESTORAGE_CONFIG_DIR = target.store;
   return env;
 }
 
-export async function probeUsage(configDir?: string, now = Date.now(), opts: { retries?: number } = {}): Promise<UsageWindows | null> {
-  const env = probeEnv(configDir);
+export async function probeUsage(target: ProbeTarget, now = Date.now(), opts: { retries?: number } = {}): Promise<UsageWindows | null> {
+  const env = probeEnv(target);
 
   for (let attempt = 0; ; attempt++) {
     const full = await probeUsageOnce(env, now);

@@ -1,12 +1,17 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, readdirSync, statSync } from "node:fs";
 import { basename, join } from "node:path";
+import type { Subprocess } from "bun";
 import { maxBy } from "es-toolkit";
 import { z } from "zod";
-import { paths } from "../lib/paths.ts";
+import { claudePool, paths, storeDirFor } from "../lib/paths.ts";
 import { LOOP_DIAGNOSIS, MAX_WRAP_DEPTH, UNMANAGED_ENV, WRAP_DEPTH_ENV, WRAP_RATE_MAX, WRAP_RATE_WINDOW_MS, resolveRealClaude, wrapDepth, wrapperEntryRateTripped } from "../lib/claudebin.ts";
+import { pickSeat } from "../lib/claude.ts";
+import { withLock } from "../lib/lock.ts";
+import { clearPresence, writePresence } from "../lib/presence.ts";
 import { saveTermios, restoreTermios } from "../lib/tty.ts";
 import { loadSessionFlags, pruneStaleSessions, saveSessionFlags } from "../lib/sessions.ts";
-import { RespawnMarkerSchema } from "../lib/types.ts";
+import { loadAccounts } from "../lib/state.ts";
+import { RespawnMarkerSchema, type Account } from "../lib/types.ts";
 import { log } from "../lib/log.ts";
 
 const NONINTERACTIVE_SUBCMDS = new Set([
@@ -187,6 +192,25 @@ async function countdownWait(acct: string, until: number): Promise<boolean> {
   return aborted;
 }
 
+async function recordPresence(child: Subprocess, sid: string, seat: Account, savedTermios: string | null): Promise<void> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      writePresence({ dir: paths.presenceDir, id: sid, accountId: seat.id, pid: child.pid });
+      return;
+    } catch (e) {
+      if (child.exitCode !== null || child.signalCode !== null) return;
+      if (attempt >= 9) {
+        log("supervisor.presence_failed", { err: e instanceof Error ? e.message : String(e) });
+        child.kill();
+        await child.exited;
+        restoreTermios(savedTermios);
+        throw new Error("could not write the session presence file - refusing to run a session whose seat placement cannot see");
+      }
+      await Bun.sleep(100);
+    }
+  }
+}
+
 export async function runSupervisor(argv: string[]): Promise<number> {
   const depth = wrapDepth();
   if (depth >= MAX_WRAP_DEPTH) {
@@ -250,16 +274,28 @@ export async function runSupervisor(argv: string[]): Promise<number> {
 
   let respawns = 0;
   let overriddenUntil = 0;
+  let wanted: string | null = null;
   while (true) {
     if (existsSync(marker)) rmSync(marker, { force: true });
-    log("supervisor.launch", { sid, respawns, args: launchArgs.join(" ") });
 
     const gate: MarkerGate = { launchedAt: Date.now(), overriddenUntil };
-    const child = Bun.spawn([real, ...launchArgs], {
-      stdin: "inherit",
-      stdout: "inherit",
-      stderr: "inherit",
-      env: { ...childEnv, TOKENMAXXING_SUPERVISED: "1", TOKENMAXXING_SESSION_ID: sid, TOKENMAXXING_LAUNCHED_AT: String(gate.launchedAt) },
+    const child = await withLock(claudePool.lockFile, async () => {
+      const seat = (wanted == null ? null : (loadAccounts(claudePool).accounts.find((a) => a.id === wanted) ?? null)) ?? pickSeat(gate.launchedAt);
+      log("supervisor.launch", { sid, respawns, seat: seat?.id.slice(0, 8) ?? null, args: launchArgs.join(" ") });
+      const spawned = Bun.spawn([real, ...launchArgs], {
+        stdin: "inherit",
+        stdout: "inherit",
+        stderr: "inherit",
+        env: {
+          ...childEnv,
+          TOKENMAXXING_SUPERVISED: "1",
+          TOKENMAXXING_SESSION_ID: sid,
+          TOKENMAXXING_LAUNCHED_AT: String(gate.launchedAt),
+          ...(seat ? { CLAUDE_SECURESTORAGE_CONFIG_DIR: storeDirFor(seat.id) } : {}),
+        },
+      });
+      if (seat) await recordPresence(spawned, sid, seat, savedTermios);
+      return spawned;
     });
 
     let done = false;
@@ -276,6 +312,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
       if (winner === "marker") child.kill();
     } catch (e) {
       child.kill();
+      clearPresence({ dir: paths.presenceDir, id: sid });
       throw e;
     } finally {
       await child.exited;
@@ -288,13 +325,16 @@ export async function runSupervisor(argv: string[]): Promise<number> {
     if (m) {
       rmSync(marker, { force: true });
       respawns++;
+      const label = loadAccounts(claudePool).accounts.find((a) => a.id === m.accountId)?.label ?? m.accountId.slice(0, 8);
       if (m.waitUntil > Date.now()) {
-        if (await countdownWait(m.account, m.waitUntil)) overriddenUntil = m.waitUntil;
-      } else process.stdout.write(`\n\x1b[36m↻ tokenmaxxing: switched to ${m.account} - resuming...\x1b[0m\n`);
+        if (await countdownWait(label, m.waitUntil)) overriddenUntil = m.waitUntil;
+      } else process.stdout.write(`\n\x1b[36m↻ tokenmaxxing: moving to ${label} - resuming...\x1b[0m\n`);
+      wanted = m.accountId;
       saveSessionFlags(m.sessionId, persistable, process.cwd());
       launchArgs = ["--resume", m.sessionId, ...persistable];
       continue;
     }
+    clearPresence({ dir: paths.presenceDir, id: sid });
     log("supervisor.exit", { sid, respawns, code: child.exitCode, signal: child.signalCode });
     return child.exitCode ?? (child.signalCode ? 1 : 0);
   }

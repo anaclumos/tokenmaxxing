@@ -2,19 +2,12 @@ import { existsSync, readFileSync } from "node:fs";
 import { verifyRealClaude } from "../lib/claudebin.ts";
 import { checkSettings, installedBin } from "../lib/settings.ts";
 import { checkTimerHealthy, findClaudeShadowers, isBinDirAhead, shellRcPath, timerActivationHint } from "../lib/install.ts";
-import { claudePool, credItemFor, paths } from "../lib/paths.ts";
+import { claudePool, paths } from "../lib/paths.ts";
 import { loadAccounts, loadConfig } from "../lib/state.ts";
-import { readItem, liveTarget, parkedTarget } from "../lib/credstore.ts";
-import { isAccessTokenExpiring, fetchTokenIdentity, describeIdentity } from "../lib/oauth.ts";
-import { CredentialBlobSchema, type TokenIdentity } from "../lib/types.ts";
+import { readStore } from "../lib/credstore.ts";
+import { isAccessTokenExpiring, isDeadCredential, fetchTokenIdentity, describeIdentity } from "../lib/oauth.ts";
 import { SETUP_TOKEN_STALE_MS, loadSetupTokens } from "../lib/setuptokens.ts";
 import { c, fmtAgo } from "./render.ts";
-
-async function blobIdentity(raw: string): Promise<TokenIdentity | null> {
-  const creds = CredentialBlobSchema.parse(JSON.parse(raw)).claudeAiOauth;
-  if (isAccessTokenExpiring(creds)) return null;
-  return fetchTokenIdentity(creds.accessToken);
-}
 
 export async function cmdDoctor(): Promise<number> {
   let failed = 0;
@@ -39,32 +32,26 @@ export async function cmdDoctor(): Promise<number> {
 
   const idx = loadAccounts(claudePool);
   check(idx.accounts.length > 0, "at least one account in the pool", "run `tokenmaxxing init`");
-  check(!!idx.activeId, "an active account is set");
-
-  const live = await readItem(liveTarget());
-  check(!!live, "live credential readable");
-
-  const active = idx.accounts.find((a) => a.id === idx.activeId);
-  if (live && active) {
-    try {
-      const identity = await blobIdentity(live);
-      if (identity) check(identity.accountUuid === active.id, `live credential identity matches active (${active.label})`, `token belongs to ${describeIdentity(identity)} - run \`tokenmaxxing switch\``);
-      else note("live credential identity unverifiable (access token expired)");
-    } catch (e) {
-      check(false, `live credential identity matches active (${active.label})`, (e instanceof Error ? e.message : String(e)).slice(0, 100));
-    }
-  }
 
   for (const a of idx.accounts) {
-    const parked = await readItem(parkedTarget(credItemFor(a.id)));
-    check(!!parked, `parked credential present for ${a.label}`, `run \`tokenmaxxing auth ${a.label}\``);
-    if (parked) {
-      try {
-        const identity = await blobIdentity(parked);
-        if (identity) check(identity.accountUuid === a.id, `parked credential identity matches ${a.label}`, `token belongs to ${describeIdentity(identity)} - run \`tokenmaxxing auth ${a.label}\``);
-        else note(`${a.label} identity unverifiable (access token expired)`);
-      } catch (e) {
-        check(false, `parked credential identity matches ${a.label}`, (e instanceof Error ? e.message : String(e)).slice(0, 100));
+    let creds;
+    try {
+      creds = await readStore(a.id);
+    } catch (e) {
+      check(false, `store credential readable for ${a.label}`, (e instanceof Error ? e.message : String(e)).slice(0, 100));
+      continue;
+    }
+    check(creds != null, `store credential present for ${a.label}`, `run \`tokenmaxxing auth ${a.label}\``);
+    if (creds) {
+      if (isDeadCredential(creds)) check(false, `${a.label}'s store credential is usable`, `cleared after a failed refresh - run \`tokenmaxxing auth ${a.label}\``);
+      else if (isAccessTokenExpiring(creds)) note(`${a.label} identity unverifiable (access token expired)`);
+      else {
+        try {
+          const identity = await fetchTokenIdentity(creds.accessToken);
+          check(identity.accountUuid === a.id, `store credential identity matches ${a.label}`, `token belongs to ${describeIdentity(identity)} - run \`tokenmaxxing auth ${a.label}\``);
+        } catch (e) {
+          check(false, `store credential identity matches ${a.label}`, (e instanceof Error ? e.message : String(e)).slice(0, 100));
+        }
       }
     }
     if (a.needsReauth) check(false, `${a.label} needs re-auth`, `run \`tokenmaxxing auth ${a.label}\` to re-login`);
