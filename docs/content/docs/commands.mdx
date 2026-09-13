@@ -6,11 +6,10 @@ description: Every tokenmaxxing command and what it does
 | Command | What it does |
 |---|---|
 | `tokenmaxxing init` | Log the first account in through an isolated browser sign-in (the login you already have stays for sessions started outside the supervisor), then install the supervisor, hooks, and statusline |
-| `tokenmaxxing init --codex` | Same for Codex: import the login, install the codex supervisor and Stop hook |
+| `tokenmaxxing init --codex` | Same for Codex: log in the first account, isolated, install the codex supervisor and Stop hook |
 | `tokenmaxxing add` | Register an additional account (isolated login, harvested once into its own store) |
 | `tokenmaxxing add --codex` | Register an additional Codex account (isolated login) |
 | `tokenmaxxing auth [--codex] [sel \| --all]` | Reauthenticate a pooled account in place. Bare lists the pool and asks which; a selector targets one account and tells you which email to sign in with; `--all` walks every account that is flagged or has no usable credential in its store (missing, unreadable, or dead), one by one. `--codex` does the same for the Codex pool |
-| `tokenmaxxing switch --codex [sel]` | Switch the Codex pool (takes effect on the next codex start). The Claude pool has no manual switch: `tokenmaxxing switch` without `--codex` exits 2, because each session is placed at launch and moves on its own |
 | `tokenmaxxing status [--cached]` | Accounts with 5h / weekly / per-model usage bars, live session counts, and exhausted-until-reset; `--cached` renders the stored figures without sampling |
 | `tokenmaxxing config` | The config path and the effective values; edit the file in an editor |
 | `tokenmaxxing check` | Fold fresh statusline tees into the index and sample the account whose usage figure is oldest; the periodic timer runs this every tick |
@@ -21,27 +20,25 @@ description: Every tokenmaxxing command and what it does
 | `tokenmaxxing setup-token [--print \| rm <label\|uuid>]` | Cursor Cloud only. Mint one `claude setup-token` per pooled account that has no stored token (a browser sign-in each), store them in `setup-tokens.json`, and print the `TOKENMAXXING_TOKENS` secret value; `--print` skips minting, `rm` drops a stored token (local only). See [Cursor Cloud](/cursor-cloud) |
 | `tokenmaxxing cursor init [dir]` | Write the Claude relay subagent (`.cursor/agents/claude.md`) and `.cursor/environment.json` into a repo. Idempotent; an existing `environment.json` is left alone and the install line to add is printed |
 | `tokenmaxxing cloud run [--session <id>] [--max-turns <n>] "<prompt>"` | On a Cursor Cloud VM: run `claude -p` on a setup token from `TOKENMAXXING_TOKENS`, keep a session on its token, and rotate to the next token when a run ends on a usage limit. The prompt is also read from stdin |
-| `--json` | Print one JSON document on stdout instead of text. Works with `status`, `config`, `check`, and `switch`; position-independent (`xx --json`, `xx status --json`). See [JSON output](#json-output) |
+| `--json` | Print one JSON document on stdout instead of text. Works with `status`, `config`, and `check`; position-independent (`xx --json`, `xx status --json`). See [JSON output](#json-output) |
 
 Every command works inside a supervised session too: a `CLAUDE_SECURESTORAGE_CONFIG_DIR` inherited from the session is how the hooks know their seat, and the CLI accepts it.
 
 ## JSON output
 
-Add `--json` to `status`, `config`, `check`, or `switch` and it prints one JSON document on stdout instead of text. Progress notices such as `sampling claude usage...` still go to stderr, so `xx status --json | jq` stays clean. Every document carries `ok`, which is `true` exactly when the exit code is 0; a failure keeps its non-zero exit code and adds `error` with the same message the text form prints.
+Add `--json` to `status`, `config`, or `check` and it prints one JSON document on stdout instead of text. Progress notices such as `sampling claude usage...` still go to stderr, so `xx status --json | jq` stays clean. Every document carries `ok`, which is `true` exactly when the exit code is 0; a failure keeps its non-zero exit code and adds `error` with the same message the text form prints.
 
 ```sh
 xx status --json | jq '.claude.accounts[] | {label, sessions, exhausted, fiveHour: .usage.fiveHour.usedPercentage}'
 xx check --json | jq '{swapped, account, reason}'
-xx switch --codex --json | jq '{switched, account, reason}'
 ```
 
 What each command reports:
 
-- `status` / bare `xx`: `now` (the reference time in epoch ms), then `claude` and `codex`, one object per pool with the same shape: `thresholds`, the effective `bars` and `projectionMargin`, and one entry per account with `id`, `label`, `email`, `tier`, `active`, `sessions`, `needsReauth`, `exhausted`, `usage`, `usageAt`, `limitsAt`, and `sample` (`{ok, source}` for a fresh read from the statusline tee or a probe, `{ok: false, reason}` when the live sample failed and `usage` is the cached value from `usageAt`). `sessions` counts the running supervised sessions on the account (Claude: from the presence files; Codex: from its presence files) and `active` is `true` when that count is positive or, for Codex, when the account holds the live login. `usage` is `{fiveHour, week, limits}`: the session window and the weekly window, classified by duration and each `null` when the plan has none, plus `limits`, one entry per named window (a Claude per-model cap or a Codex additional limit) with its `name`. Every window carries `usedPercentage`, `resetsAt`, and `windowSeconds`, normalized the way the bars are drawn: a passed reset reads as 0 with the weekly reset rolled forward. `status --cached` (also `xx --cached`) reads only the state files: every `sample` is `{ok: true, source: "cached"}`, `usage` is the stored value as of `usageAt` (null when the account was never sampled), and `limitsAt` dates the named windows separately.
+- `status` / bare `xx`: `now` (the reference time in epoch ms), then `claude` and `codex`, one object per pool with the same shape: `thresholds`, the effective `bars` and `projectionMargin`, and one entry per account with `id`, `label`, `email`, `tier`, `active`, `sessions`, `needsReauth`, `exhausted`, `usage`, `usageAt`, `limitsAt`, and `sample` (`{ok, source}` for a fresh read from the statusline tee or a probe, `{ok: false, reason}` when the live sample failed and `usage` is the cached value from `usageAt`). `sessions` counts the running supervised sessions on the account and `active` is `true` when that count is positive. `usage` is `{fiveHour, week, limits}`: the session window and the weekly window, classified by duration and each `null` when the plan has none, plus `limits`, one entry per named window (a Claude per-model cap or a Codex additional limit) with its `name`. Every window carries `usedPercentage`, `resetsAt`, and `windowSeconds`, normalized the way the bars are drawn: a passed reset reads as 0 with the weekly reset rolled forward. `status --cached` (also `xx --cached`) reads only the state files: every `sample` is `{ok: true, source: "cached"}`, `usage` is the stored value as of `usageAt` (null when the account was never sampled), and `limitsAt` dates the named windows separately.
 - `config`: `path` and `effective` (the config as loaded: file values over defaults, with `TOKENMAXXING_CLAUDE_BIN` and `TOKENMAXXING_CODEX_BIN` applied on top). A file that fails to load exits 1 with the zod message naming the field.
 - `check`: `swapped`, `account`, `reason`, and `waitUntil`. A tick runs from no session, so `swapped` is `false` and `reason` is `under-threshold-or-stale`; the sampling it does is reported in the log.
-- `switch --codex`: `switched`, `account`, and a short `reason` (`selected`, `best`, `already-on`, `current-wins`, `drift-reconciled`), plus `weeklyResetsAt` on `current-wins`, and `reauthNeeded` and `deadGrants` (the accounts whose refresh token died while the switch was trying them) when they apply. Without `--codex` the command exits 2 with `error` explaining that Claude placement is per session.
 
 Every other command refuses `--json` with exit code 2. Account identifiers (labels, emails, ids) appear in the documents; credential material never does.
 
-`--codex` selects the Codex pool for `init`, `add`, `auth`, `switch`, `rm`, and `rename`; the same command runs with the Codex provider instead of the Claude one. Every other command refuses `--codex` with exit code 2. Messages name accounts by label, which defaults to the sign-in email.
+`--codex` selects the Codex pool for `init`, `add`, `auth`, `rm`, and `rename`; the same command runs with the Codex provider instead of the Claude one. Every other command refuses `--codex` with exit code 2. Messages name accounts by label, which defaults to the sign-in email.

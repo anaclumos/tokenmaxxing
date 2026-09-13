@@ -100,7 +100,7 @@ async function reauthOne(p: Provider, target: Account): Promise<boolean> {
   const note = harvested.sample ? usageNote(result.account) : "";
   console.log(`${c.green("✓")} reauthed ${c.bold(result.account.email ?? result.account.label)} (${result.account.tier ?? "?"})${note}`);
   if (result.isActive) {
-    console.log(c.dim("this account is the active one: the fresh credential is parked as its backup; the live session keeps its current token until the next swap."));
+    console.log(c.dim("this account has a running session: it keeps its current login until it respawns."));
   }
   return true;
 }
