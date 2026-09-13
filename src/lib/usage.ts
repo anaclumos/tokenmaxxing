@@ -2,7 +2,9 @@ import { closeSync, fstatSync, openSync, readSync } from "node:fs";
 import { delay } from "es-toolkit";
 import { z } from "zod";
 import { MAX_WRAP_DEPTH, WRAP_DEPTH_ENV, resolveRealClaude } from "./claudebin.ts";
+import { http } from "./http.ts";
 import { log } from "./log.ts";
+import { env } from "./paths.ts";
 import { JsonTextSchema, RateLimitsStdinSchema, type ModelInfo, type UsageWindow, type UsageWindows, type Window } from "./types.ts";
 
 export function normalizeResetsAt(v: unknown): number | null {
@@ -341,10 +343,10 @@ function probeEnv(target: ProbeTarget): Record<string, string> {
 }
 
 export async function probeUsage(target: ProbeTarget, now = Date.now(), opts: { retries?: number } = {}): Promise<UsageWindows | null> {
-  const env = probeEnv(target);
+  const probe = probeEnv(target);
 
   for (let attempt = 0; ; attempt++) {
-    const full = await probeUsageOnce(env, now);
+    const full = await probeUsageOnce(probe, now);
     if (full) return full;
     if (attempt >= (opts.retries ?? PROBE_RETRY_DELAYS_MS.length)) {
       log("usage.probe_gave_up", { attempts: attempt + 1 });
@@ -352,4 +354,43 @@ export async function probeUsage(target: ProbeTarget, now = Date.now(), opts: { 
     }
     await delay(PROBE_RETRY_DELAYS_MS[Math.min(attempt, PROBE_RETRY_DELAYS_MS.length - 1)]!);
   }
+}
+
+const USAGE_URL = env("TOKENMAXXING_OAUTH_USAGE_URL", "https://api.anthropic.com/api/oauth/usage");
+const USAGE_DEADLINE_MS = 10_000;
+
+const UsageWindowResponseSchema = z.object({ utilization: z.number(), resets_at: z.number().nullable().optional() });
+const UsageResponseSchema = z.object({
+  rate_limits: z
+    .object({ five_hour: UsageWindowResponseSchema.nullish(), seven_day: UsageWindowResponseSchema.nullish() })
+    .nullish(),
+});
+
+export async function fetchUsageDirect(accessToken: string): Promise<UsageWindows | null> {
+  let res: Response;
+  try {
+    res = await http.get(`${USAGE_URL}?at_wall=1&skip_spend=1`, {
+      headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+      signal: AbortSignal.timeout(USAGE_DEADLINE_MS),
+    });
+  } catch (e) {
+    log("usage.get_failed", { err: e instanceof Error ? e.message : String(e) });
+    return null;
+  }
+  if (!res.ok) {
+    log("usage.get_failed", { status: res.status });
+    return null;
+  }
+  const parsed = UsageResponseSchema.safeParse(JsonTextSchema.safeParse(await res.text()).data);
+  const five = parsed.success ? parsed.data.rate_limits?.five_hour : null;
+  const seven = parsed.success ? parsed.data.rate_limits?.seven_day : null;
+  if (!five || !seven) {
+    log("usage.get_incomplete", { ok: parsed.success });
+    return null;
+  }
+  const win = (w: z.infer<typeof UsageWindowResponseSchema>): UsageWindow => ({
+    usedPercentage: w.utilization * 100,
+    resetsAt: w.resets_at != null ? w.resets_at * 1000 : null,
+  });
+  return { fiveHour: win(five), sevenDay: win(seven), perModel: {} };
 }
