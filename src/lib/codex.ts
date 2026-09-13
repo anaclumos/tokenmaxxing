@@ -1,22 +1,37 @@
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { writeFileAtomic } from "./atomic.ts";
 import { MAX_WRAP_DEPTH, WRAP_DEPTH_ENV } from "./claudebin.ts";
-import { codexIdentityOf, deleteParkedCodexAuth, isCodexAccessExpiring, liveCodexAccountId, readCodexAuthAt, readLiveCodexAuth, readParkedCodexAuth, writeLiveCodexAuth, writeParkedCodexAuth } from "./codexauth.ts";
+import { codexIdentityOf, deleteCodexStoreAuth, isCodexAccessExpiring, readCodexAuthAt, readCodexStoreAuth, writeCodexStoreAuth } from "./codexauth.ts";
 import { resolveRealCodex, verifyRealCodex } from "./codexbin.ts";
 import { CodexInvalidGrantError, CodexRefreshFailedError, refreshCodexAuth } from "./codexoauth.ts";
-import { livingPresences, seatCounts } from "./presence.ts";
+import { seatCounts } from "./presence.ts";
 import { CodexUsageReadError, codexLimitLabel, fetchCodexUsage } from "./codexusage.ts";
 import { codexSupervisorLink, ensurePathInRc, installCodexSupervisor, managedShellRcSkipLines, shellRcPath } from "./install.ts";
 import { withLock } from "./lock.ts";
 import { log } from "./log.ts";
-import { codexCredItemFor, codexPaths, codexPool } from "./paths.ts";
-import { isExhausted, thresholdBars, type PickCtx } from "./picker.ts";
+import { codexPaths, codexPool, codexSeatFromEnv } from "./paths.ts";
+import { isExhausted, pickBest, pickEarliestReset, thresholdBars, type PickCtx } from "./picker.ts";
 import type { Observation, Provider, SampleReport } from "./provider.ts";
-import { loadAccounts, loadConfig, pinBinOverride, saveAccounts, saveLastSwapAt, type Harvest } from "./state.ts";
+import { loadAccounts, loadConfig, pinBinOverride, saveAccounts, type Harvest } from "./state.ts";
 import { restoreTermios, saveTermios } from "./tty.ts";
-import { CodexReconcileMarkerSchema, type Account, type CodexAuthJson, type CodexUsage, type Config } from "./types.ts";
+import type { Account, CodexAuthJson, CodexUsage, Config } from "./types.ts";
 import { c } from "../cli/render.ts";
+
+class StoreUnusableError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "StoreUnusableError";
+  }
+}
+
+function liveId(): string | null {
+  return codexSeatFromEnv(loadAccounts(codexPool).accounts.map((a) => a.id));
+}
+
+function presence(): Map<string, number> {
+  return seatCounts(codexPaths.presenceDir);
+}
 
 function applyUsage(account: Account, usage: CodexUsage, at: number): void {
   account.windows = usage.windows;
@@ -25,59 +40,23 @@ function applyUsage(account: Account, usage: CodexUsage, at: number): void {
   if (usage.planType != null) account.tier = usage.planType;
 }
 
-async function sampleLiveOntoOwner(now: number): Promise<void> {
-  let live = readLiveCodexAuth();
-  if (!live) return;
-  const idx = loadAccounts(codexPool);
-  const identity = codexIdentityOf({ auth: live });
-  const owner = idx.accounts.find((a) => a.id === identity.accountId);
-  if (!owner) return;
+type CodexReadOutcome = { ok: true; usage: CodexUsage; at: number } | { ok: false; reason: string; deadGrant: boolean };
 
-  if (isCodexAccessExpiring({ auth: live, now }) && !seatCounts(codexPaths.presenceDir).has(identity.accountId)) {
-    try {
-      live = await refreshCodexAuth({ auth: live, now });
-    } catch (e) {
-      if (e instanceof CodexInvalidGrantError) {
-        owner.needsReauth = true;
-        saveAccounts(codexPool, idx);
-        log("codex.live_invalid_grant", { account: owner.id.slice(0, 8) });
-        return;
-      }
-      throw e;
-    }
-    writeLiveCodexAuth({ auth: live });
-    writeParkedCodexAuth({ credFile: codexCredItemFor(owner.id), auth: live });
-  }
-  applyUsage(owner, await fetchCodexUsage({ auth: live, at: now }), now);
-  saveAccounts(codexPool, idx);
-}
-
-async function observeLive(account: Account, cfg: Config, now: number, opts: { probe: boolean }): Promise<Observation | null> {
-  if (opts.probe && (account.lastUsageAt == null || now - account.lastUsageAt > cfg.policy.usagePollTtlMs)) {
-    await withLock(codexPool.lockFile, () => sampleLiveOntoOwner(now));
-  }
-  const fresh = loadAccounts(codexPool).accounts.find((a) => a.id === account.id);
-  return fresh?.lastUsageAt != null ? { windows: fresh.windows, at: fresh.lastUsageAt } : null;
-}
-
-type CodexSampleOutcome = { ok: true; usage: CodexUsage; at: number } | { ok: false; reason: string; deadGrant: boolean };
-
-async function sampleAccount(account: Account, liveId: string | null, now: number): Promise<CodexSampleOutcome> {
-  const isLive = liveId != null && account.id === liveId;
-  const credFile = codexCredItemFor(account.id);
+async function readCodexUsage(account: Account, now: number): Promise<CodexReadOutcome> {
+  let auth: CodexAuthJson | null;
   try {
-    let auth = isLive ? readLiveCodexAuth() : readParkedCodexAuth({ credFile });
-    if (!auth) return { ok: false, reason: isLive ? "live auth.json vanished" : "no parked credential", deadGrant: false };
+    auth = readCodexStoreAuth(account.id);
+  } catch (e) {
+    return { ok: false, reason: `store credential unreadable (${(e instanceof Error ? e.message : String(e)).slice(0, 80)})`, deadGrant: false };
+  }
+  if (!auth) return { ok: false, reason: "no credential in this account's store - run `tokenmaxxing auth --codex`", deadGrant: false };
+  try {
     if (isCodexAccessExpiring({ auth, now })) {
-      const running = seatCounts(codexPaths.presenceDir).has(account.id);
-      if (running && !isLive) {
-        return { ok: false, reason: "running in a live codex session (parked token refresh unsafe)", deadGrant: false };
+      if (seatCounts(codexPaths.presenceDir).has(account.id)) {
+        return { ok: false, reason: "running in a live codex session (store refresh unsafe)", deadGrant: false };
       }
-      if (!running) {
-        auth = await refreshCodexAuth({ auth, now });
-        if (isLive) writeLiveCodexAuth({ auth });
-        writeParkedCodexAuth({ credFile, auth });
-      }
+      auth = await refreshCodexAuth({ auth, now });
+      writeCodexStoreAuth(account.id, auth);
     }
     const at = Date.now();
     return { ok: true, usage: await fetchCodexUsage({ auth, at }), at };
@@ -88,11 +67,32 @@ async function sampleAccount(account: Account, liveId: string | null, now: numbe
   }
 }
 
-async function samplePool(accounts: Account[], liveId: string | null, now: number): Promise<Map<string, SampleReport>> {
+async function observeLive(account: Account, cfg: Config, now: number, opts: { probe: boolean }): Promise<Observation | null> {
+  if (opts.probe && (account.lastUsageAt == null || now - account.lastUsageAt > cfg.policy.usagePollTtlMs)) {
+    const outcome = await readCodexUsage(account, now);
+    await withLock(codexPool.lockFile, () => {
+      const idx = loadAccounts(codexPool);
+      const a = idx.accounts.find((x) => x.id === account.id);
+      if (!a) return;
+      if (outcome.ok) {
+        if (a.lastUsageAt == null || outcome.at > a.lastUsageAt) {
+          applyUsage(a, outcome.usage, outcome.at);
+        }
+      } else if (outcome.deadGrant) {
+        a.needsReauth = true;
+      }
+      saveAccounts(codexPool, idx);
+    });
+  }
+  const current = loadAccounts(codexPool).accounts.find((a) => a.id === account.id) ?? account;
+  return current.lastUsageAt != null ? { windows: current.windows, at: current.lastUsageAt } : null;
+}
+
+async function samplePool(accounts: Account[], _liveId: string | null, now: number): Promise<Map<string, SampleReport>> {
   const reports = new Map<string, SampleReport>();
   await Promise.all(
     accounts.map(async (account) => {
-      const outcome = await sampleAccount(account, liveId, now);
+      const outcome = await readCodexUsage(account, now);
       if (outcome.ok) {
         applyUsage(account, outcome.usage, outcome.at);
         reports.set(account.id, { ok: true, source: "probe" });
@@ -105,68 +105,15 @@ async function samplePool(accounts: Account[], liveId: string | null, now: numbe
   return reports;
 }
 
-async function swap(target: Account): Promise<void> {
-  const idx = loadAccounts(codexPool);
-  const live = readLiveCodexAuth();
-  let liveOwner: Account | null = null;
-  if (live) {
-    const liveIdentity = codexIdentityOf({ auth: live });
-    liveOwner = idx.accounts.find((a) => a.id === liveIdentity.accountId) ?? null;
-    if (!liveOwner) {
-      throw new Error(
-        `live codex credential belongs to ${liveIdentity.email ?? liveIdentity.accountId.slice(0, 8)}, which is not in the pool - refusing to swap over it; import it first with \`tokenmaxxing add --codex\``,
-      );
-    }
-    if (liveOwner.id !== idx.activeId) {
-      log("codexswap.harvest_drift", { labeled: idx.activeId?.slice(0, 8) ?? null, actual: liveOwner.id.slice(0, 8) });
-    }
-  }
-  const commit = (): void => {
-    idx.activeId = target.id;
-    const entry = idx.accounts.find((a) => a.id === target.id);
-    if (entry) entry.needsReauth = false;
-    saveAccounts(codexPool, idx);
-  };
-
-  if (live && liveOwner && liveOwner.id === target.id) {
-    writeParkedCodexAuth({ credFile: codexCredItemFor(target.id), auth: live });
-    commit();
-    log("codexswap.reconciled", { account: target.id.slice(0, 8) });
-    return;
-  }
-
-  const parked = readParkedCodexAuth({ credFile: codexCredItemFor(target.id) });
-  if (!parked) throw new Error(`no parked codex credential for ${target.label}`);
-
-  let fresh: CodexAuthJson;
+async function prepareMove(target: Account): Promise<void> {
+  let auth: CodexAuthJson | null;
   try {
-    fresh = await refreshCodexAuth({ auth: parked });
+    auth = readCodexStoreAuth(target.id);
   } catch (e) {
-    if (e instanceof CodexInvalidGrantError) {
-      const entry = idx.accounts.find((a) => a.id === target.id);
-      if (entry) {
-        entry.needsReauth = true;
-        saveAccounts(codexPool, idx);
-      }
-      log("codexswap.invalid_grant", { account: target.id.slice(0, 8) });
-    }
-    throw e;
+    throw new StoreUnusableError(`${target.label}'s store is unreadable (${e instanceof Error ? e.message : String(e)}) - re-auth with \`tokenmaxxing auth --codex ${target.label}\``);
   }
-  writeParkedCodexAuth({ credFile: codexCredItemFor(target.id), auth: fresh });
-
-  if (live && liveOwner) {
-    const liveNow = readLiveCodexAuth();
-    if (!liveNow || codexIdentityOf({ auth: liveNow }).accountId !== liveOwner.id) {
-      throw new Error("live codex credential changed mid-swap - refusing to harvest under a stale identity; retry");
-    }
-    writeParkedCodexAuth({ credFile: codexCredItemFor(liveOwner.id), auth: liveNow });
-    log("codexswap.harvest", { account: liveOwner.id.slice(0, 8) });
-  }
-
-  writeLiveCodexAuth({ auth: fresh });
-  commit();
-  saveLastSwapAt(codexPool, Date.now());
-  log("codexswap.done", { account: target.id.slice(0, 8), label: target.label });
+  if (!auth) throw new StoreUnusableError(`${target.label} has no credential in its store - re-auth with \`tokenmaxxing auth --codex ${target.label}\``);
+  log("move.prepared", { account: target.id.slice(0, 8), label: target.label });
 }
 
 async function login(): Promise<Harvest | null> {
@@ -204,7 +151,7 @@ async function login(): Promise<Harvest | null> {
       email: usage?.usage.email ?? identity.email,
       tier: usage?.usage.planType ?? identity.planType,
       sample: usage ? { windows: usage.usage.windows, at: usage.at } : null,
-      park: async () => writeParkedCodexAuth({ credFile: codexCredItemFor(identity.accountId), auth }),
+      park: async () => writeCodexStoreAuth(identity.accountId, auth),
     };
   } finally {
     rmSync(onboardDir, { recursive: true, force: true });
@@ -224,36 +171,9 @@ async function sampleLogin(auth: CodexAuthJson): Promise<{ usage: CodexUsage; at
 }
 
 async function importLive(): Promise<Harvest | null> {
-  const live = readLiveCodexAuth();
-  if (!live) {
-    console.error(c.red(`no codex login found at ${codexPaths.authJson} - run \`codex login\` first, then re-run this.`));
-    return null;
-  }
-  const identity = codexIdentityOf({ auth: live });
-  const usage = await sampleLogin(live);
-
-  if (seatCounts(codexPaths.presenceDir).has(identity.accountId)) {
-    console.error(c.red("a live supervised codex session is running this account - its token rotates under us, so parking a snapshot now could poison the backup."));
-    console.error(c.dim("close that codex session (or let it exit) and re-run `tokenmaxxing init --codex`."));
-    return null;
-  }
-
-  return {
-    id: identity.accountId,
-    email: usage?.usage.email ?? identity.email,
-    tier: usage?.usage.planType ?? identity.planType,
-    sample: usage ? { windows: usage.usage.windows, at: usage.at } : null,
-    park: async () => {
-      if (seatCounts(codexPaths.presenceDir).has(identity.accountId)) {
-        throw new Error("a live supervised codex session started running this account mid-init - close it and re-run `tokenmaxxing init --codex`");
-      }
-      const fresh2 = readLiveCodexAuth();
-      if (!fresh2 || codexIdentityOf({ auth: fresh2 }).accountId !== identity.accountId) {
-        throw new Error("the live codex login changed while init was running (a concurrent swap?) - re-run `tokenmaxxing init --codex`");
-      }
-      writeParkedCodexAuth({ credFile: codexCredItemFor(identity.accountId), auth: fresh2 });
-    },
-  };
+  console.log(c.cyan("Opening an isolated codex login for your first pooled account - the login you already have stays as it is for sessions started outside the supervisor."));
+  console.log();
+  return login();
 }
 
 function storePinnedAwayFromFile(): boolean {
@@ -287,36 +207,26 @@ function install(): void {
   console.log(`${c.green("✓")} codex supervisor installed at ${codexSupervisorLink()}`);
   console.log(`${c.green("✓")} Stop hook declared in ${codexPaths.hooksJson}`);
   console.log();
-  console.log(c.bold(c.yellow("one manual step: codex skips untrusted hooks.")));
-  console.log(c.yellow("open codex, run /hooks, and trust the tokenmaxxing Stop hook - auto-switching is inert until then."));
+  console.log(c.bold(c.yellow("one manual step per seat: codex trusts hooks per store path.")));
+  console.log(c.yellow("open a supervised codex session on each pooled account, run /hooks, and trust the tokenmaxxing Stop hook - auto-switching stays inert on an untrusted seat."));
+  console.log(c.yellow("`tokenmaxxing doctor` lists seats still needing trust."));
 }
 
 export function codexPickCtx(now: number, currentId: string | null): PickCtx {
   return { now, thresholds: thresholdBars(loadConfig()), currentId, families: null, seats: null };
 }
 
-export function reconcileSiblings(now: number): void {
-  const liveId = liveCodexAccountId();
-  if (liveId == null) return;
+export function pickCodexSeat(now: number, wantedId: string | null = null): Account | null {
+  const cfg = loadConfig();
   const idx = loadAccounts(codexPool);
-  const liveAccount = idx.accounts.find((a) => a.id === liveId);
-  if (!liveAccount || liveAccount.needsReauth === true || isExhausted(liveAccount, codexPickCtx(now, liveId))) return;
-  const living = livingPresences(codexPaths.presenceDir);
-  if (existsSync(codexPaths.reconcileDir)) {
-    const alive = new Set(living.map((presence) => presence.id));
-    for (const name of readdirSync(codexPaths.reconcileDir)) {
-      if (!alive.has(name)) rmSync(join(codexPaths.reconcileDir, name), { force: true });
-    }
+  const ctx: PickCtx = { now, thresholds: thresholdBars(cfg), currentId: null, families: null, seats: null };
+  if (wantedId != null) {
+    const wanted = idx.accounts.find((a) => a.id === wantedId && a.needsReauth !== true && !isExhausted(a, { ...ctx, currentId: wantedId }));
+    if (wanted) return wanted;
   }
-  for (const presence of living) {
-    if (presence.accountId === liveId) continue;
-    if (!idx.accounts.some((a) => a.id === presence.accountId)) continue;
-    const markerPath = join(codexPaths.reconcileDir, presence.id);
-    if (existsSync(markerPath)) continue;
-    mkdirSync(codexPaths.reconcileDir, { recursive: true });
-    writeFileAtomic(markerPath, JSON.stringify(CodexReconcileMarkerSchema.parse({ accountId: presence.accountId, ts: now })));
-    log("codex.reconcile_signal", { supervisorId: presence.id.slice(0, 8), account: presence.accountId.slice(0, 8) });
-  }
+  const present = seatCounts(codexPaths.presenceDir);
+  const usable = idx.accounts.filter((a) => a.needsReauth !== true && !isExhausted(a, ctx) && !present.has(a.id));
+  return pickBest(usable, ctx) ?? pickEarliestReset(idx.accounts.filter((a) => a.needsReauth !== true && !present.has(a.id)), ctx)?.account ?? null;
 }
 
 export const codex: Provider = {
@@ -325,18 +235,18 @@ export const codex: Provider = {
   pool: codexPool,
   seats: "live",
   waitsWhenDepleted: false,
-  liveId: liveCodexAccountId,
-  presence: () => seatCounts(codexPaths.presenceDir),
+  liveId,
+  presence,
   gatedFamilies: () => null,
   observeLive,
   samplePool,
   mergeWindows: (next) => next,
-  swap,
-  classifySwapError: (e) => (e instanceof CodexInvalidGrantError ? "dead-grant" : "fatal"),
-  removeCredentials: async (a) => deleteParkedCodexAuth({ credFile: codexCredItemFor(a.id) }),
+  swap: prepareMove,
+  classifySwapError: (e) => (e instanceof CodexInvalidGrantError ? "dead-grant" : e instanceof StoreUnusableError ? "skip" : "fatal"),
+  removeCredentials: async (a) => deleteCodexStoreAuth(a.id),
   storeUsable: async (a) => {
     try {
-      return readParkedCodexAuth({ credFile: codexCredItemFor(a.id) }) != null;
+      return readCodexStoreAuth(a.id) != null;
     } catch {
       return false;
     }

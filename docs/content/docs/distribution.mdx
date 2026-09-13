@@ -17,7 +17,7 @@ Both the version read and the install use the public npm registry (`bun add` get
 
 The install child runs from the state directory with the detected global root pinned in its environment (`BUN_INSTALL_GLOBAL_DIR`), so a `bunfig.toml` in the check's working directory cannot redirect it, and it is killed after 60 seconds, so a stalled registry or package-manager lock cannot hold the check open and block the next tick. Its error output goes straight to the check's own stderr (the timer's `check.stderr.log` on launchd, the journal on systemd), so there is no pipe to drain and nothing a descendant of the child can hold. A killed install fails that check like any other update failure and waits out the day.
 
-Checkout and Nix installs are left alone; their owner updates them. A Codex-only install (`init --codex` without the Claude `init`) has no periodic check, because Codex never pre-parks and needs no tick, so it does not self-update either; the Claude `init` installs the timer that drives the update.
+Checkout and Nix installs are left alone; their owner updates them. A Codex-only install (`init --codex` without the Claude `init`) has no periodic check, because the Codex decision reads the figures `status` samples and needs no tick, so it does not self-update either; the Claude `init` installs the timer that drives the update.
 
 An update replaces the installed files in place. A supervisor or session that is already running keeps the version it loaded until it restarts, and a hook or supervisor that starts while the replacement is in flight can see a partial tree. An ordinary package update needs no rerun of `init`: the supervisor shim, the settings entries, and the timer unit all point at the package rather than at a version.
 

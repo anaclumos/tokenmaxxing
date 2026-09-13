@@ -1,93 +1,26 @@
 import { join } from "node:path";
-import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
+import { mkdirSync } from "node:fs";
 import { z } from "zod";
-import { codexPaths, codexPool } from "../lib/paths.ts";
-import { withLock } from "../lib/lock.ts";
+import { codexPaths } from "../lib/paths.ts";
 import { writeFileAtomic } from "../lib/atomic.ts";
 import { MAX_WRAP_DEPTH, WRAP_DEPTH_ENV } from "../lib/claudebin.ts";
-import { codex, codexPickCtx, reconcileSiblings } from "../lib/codex.ts";
-import { liveCodexAccountId } from "../lib/codexauth.ts";
+import { codex, codexPickCtx } from "../lib/codex.ts";
 import { resolveRealCodex } from "../lib/codexbin.ts";
 import { compactCodexThread } from "../lib/compact.ts";
 import { evaluateAndMaybeSwap } from "../lib/decide.ts";
 import { isExhausted } from "../lib/picker.ts";
-import { livingPresences } from "../lib/presence.ts";
-import { POST_SWAP_COOLDOWN_MS, loadAccounts, loadConfig, loadLastSwapAt } from "../lib/state.ts";
+import { loadAccounts, loadConfig } from "../lib/state.ts";
 import { CODEX_SUPERVISOR_ID_ENV } from "./codexsupervisor.ts";
-import { CodexReconcileMarkerSchema, CodexRespawnMarkerSchema, CodexStopStdinSchema, JsonTextSchema } from "../lib/types.ts";
+import { CodexRespawnMarkerSchema, CodexStopStdinSchema, JsonTextSchema } from "../lib/types.ts";
 import { log } from "../lib/log.ts";
 
 const SupervisorIdSchema = z.string().min(1).optional().catch(undefined);
 
-async function promoteReconcile(input: { supervisorId: string; sessionId: string | null }): Promise<boolean> {
-  const markerPath = join(codexPaths.reconcileDir, input.supervisorId);
-  if (!existsSync(markerPath)) return false;
-  return withLock(codexPool.lockFile, async () => promoteReconcileLocked(input));
-}
-
-function promoteReconcileLocked(input: { supervisorId: string; sessionId: string | null }): boolean {
-  const markerPath = join(codexPaths.reconcileDir, input.supervisorId);
-  if (!existsSync(markerPath)) return false;
-  const parsed = CodexReconcileMarkerSchema.safeParse((() => {
-    try {
-      return JSON.parse(readFileSync(markerPath, "utf8"));
-    } catch {
-      return null;
-    }
-  })());
-  if (!parsed.success) {
-    rmSync(markerPath, { force: true });
-    log("codexstop.reconcile_unparsable", {});
-    return false;
-  }
-  const presence = livingPresences(codexPaths.presenceDir).find((p) => p.id === input.supervisorId) ?? null;
-  if (presence == null || presence.accountId !== parsed.data.accountId) {
-    rmSync(markerPath, { force: true });
-    log("codexstop.reconcile_stale", {});
-    return false;
-  }
-  const liveId = liveCodexAccountId();
-  if (liveId == null || liveId === presence.accountId) {
-    rmSync(markerPath, { force: true });
-    log("codexstop.reconcile_moot", {});
-    return false;
-  }
-  const now = Date.now();
-  const liveAccount = loadAccounts(codexPool).accounts.find((a) => a.id === liveId);
-  if (!liveAccount || liveAccount.needsReauth === true || isExhausted(liveAccount, codexPickCtx(now, liveId))) {
-    rmSync(markerPath, { force: true });
-    log("codexstop.reconcile_blocked_target", {});
-    return false;
-  }
-  if (input.sessionId == null || input.sessionId.trim() === "") {
-    log("codexstop.reconcile_no_session", {});
-    return false;
-  }
-  mkdirSync(codexPaths.respawnDir, { recursive: true });
-  writeFileAtomic(
-    join(codexPaths.respawnDir, input.supervisorId),
-    JSON.stringify(CodexRespawnMarkerSchema.parse({ account: liveAccount.label, sessionId: input.sessionId, ts: now })),
-  );
-  rmSync(markerPath, { force: true });
-  log("codexstop.reconcile_respawn", { supervisorId: input.supervisorId.slice(0, 8), account: liveId.slice(0, 8) });
-  return true;
-}
-
-async function sweepSiblings(now: number): Promise<void> {
-  try {
-    await withLock(codexPool.lockFile, () => reconcileSiblings(now));
-  } catch (e) {
-    log("codexstop.resweep_failed", { err: e instanceof Error ? e.message : String(e) });
-  }
-}
-
 async function compactBeforeMove(input: { sessionId: string | null; now: number }): Promise<void> {
   const { sessionId, now } = input;
   if (sessionId == null || sessionId.trim() === "") return;
-  const lastSwapAt = loadLastSwapAt(codexPool);
-  if (lastSwapAt != null && now - lastSwapAt < POST_SWAP_COOLDOWN_MS) return;
   const liveId = codex.liveId();
-  const live = loadAccounts(codexPool).accounts.find((a) => a.id === liveId);
+  const live = liveId == null ? undefined : loadAccounts(codex.pool).accounts.find((a) => a.id === liveId);
   if (!live || live.needsReauth === true || (live.enforcedUntil != null && live.enforcedUntil > now)) return;
   const observed = await codex.observeLive(live, loadConfig(), now, { probe: true });
   if (!observed || !isExhausted({ ...live, windows: observed.windows }, codexPickCtx(now, live.id))) return;
@@ -113,16 +46,13 @@ export async function handleCodexStop(input: { rawStdin: string }): Promise<void
       log("codexstop.unsupervised_skip", {});
       return;
     }
-    if (await promoteReconcile({ supervisorId, sessionId })) return;
     const now = Date.now();
-    await withLock(codexPool.lockFile, () => reconcileSiblings(now));
     await compactBeforeMove({ sessionId, now });
     const decision = await evaluateAndMaybeSwap(codex, now);
     if (decision.swapped && decision.account) {
-      await sweepSiblings(now);
       mkdirSync(codexPaths.respawnDir, { recursive: true });
       const payload = CodexRespawnMarkerSchema.parse({
-        account: decision.account.label,
+        accountId: decision.account.id,
         sessionId,
         ts: Date.now(),
       });
@@ -130,7 +60,6 @@ export async function handleCodexStop(input: { rawStdin: string }): Promise<void
       log("codexstop.marker", { supervisorId: supervisorId.slice(0, 8) });
       return;
     }
-    await promoteReconcile({ supervisorId, sessionId });
   } catch (e) {
     log("codexstop.error", { err: e instanceof Error ? e.message : String(e) });
   }
