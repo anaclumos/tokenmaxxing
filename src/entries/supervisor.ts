@@ -6,6 +6,7 @@ import { z } from "zod";
 import { claudePool, paths, storeDirFor } from "../lib/paths.ts";
 import { LOOP_DIAGNOSIS, MAX_WRAP_DEPTH, UNMANAGED_ENV, WRAP_DEPTH_ENV, WRAP_RATE_MAX, WRAP_RATE_WINDOW_MS, resolveRealClaude, wrapDepth, wrapperEntryRateTripped } from "../lib/claudebin.ts";
 import { pickSeat } from "../lib/claude.ts";
+import { compactClaudeSession } from "../lib/compact.ts";
 import { withLock } from "../lib/lock.ts";
 import { clearPresence, writePresence } from "../lib/presence.ts";
 import { saveTermios, restoreTermios } from "../lib/tty.ts";
@@ -131,9 +132,16 @@ export function stripPositionals(argv: string[]): string[] {
   return out;
 }
 
+function projectDirForCwd(): string {
+  return join(paths.claudeDir, "projects", process.cwd().replace(/[^a-zA-Z0-9]/g, "-"));
+}
+
+function transcriptPath(sessionId: string): string {
+  return join(projectDirForCwd(), `${sessionId}.jsonl`);
+}
+
 function latestSessionForCwd(): string | null {
-  const slug = process.cwd().replace(/[^a-zA-Z0-9]/g, "-");
-  const projDir = join(paths.claudeDir, "projects", slug);
+  const projDir = projectDirForCwd();
   if (!existsSync(projDir)) return null;
   try {
     const files = readdirSync(projDir)
@@ -279,9 +287,9 @@ export async function runSupervisor(argv: string[]): Promise<number> {
     if (existsSync(marker)) rmSync(marker, { force: true });
 
     const gate: MarkerGate = { launchedAt: Date.now(), overriddenUntil };
-    const child = await withLock(claudePool.lockFile, async () => {
-      const seat = (wanted == null ? null : (loadAccounts(claudePool).accounts.find((a) => a.id === wanted) ?? null)) ?? pickSeat(gate.launchedAt);
-      log("supervisor.launch", { sid, respawns, seat: seat?.id.slice(0, 8) ?? null, args: launchArgs.join(" ") });
+    const { child, seat } = await withLock(claudePool.lockFile, async () => {
+      const picked = (wanted == null ? null : (loadAccounts(claudePool).accounts.find((a) => a.id === wanted) ?? null)) ?? pickSeat(gate.launchedAt);
+      log("supervisor.launch", { sid, respawns, seat: picked?.id.slice(0, 8) ?? null, args: launchArgs.join(" ") });
       const spawned = Bun.spawn([real, ...launchArgs], {
         stdin: "inherit",
         stdout: "inherit",
@@ -291,11 +299,11 @@ export async function runSupervisor(argv: string[]): Promise<number> {
           TOKENMAXXING_SUPERVISED: "1",
           TOKENMAXXING_SESSION_ID: sid,
           TOKENMAXXING_LAUNCHED_AT: String(gate.launchedAt),
-          ...(seat ? { CLAUDE_SECURESTORAGE_CONFIG_DIR: storeDirFor(seat.id) } : {}),
+          ...(picked ? { CLAUDE_SECURESTORAGE_CONFIG_DIR: storeDirFor(picked.id) } : {}),
         },
       });
-      if (seat) await recordPresence(spawned, sid, seat, savedTermios);
-      return spawned;
+      if (picked) await recordPresence(spawned, sid, picked, savedTermios);
+      return { child: spawned, seat: picked };
     });
 
     let done = false;
@@ -326,6 +334,16 @@ export async function runSupervisor(argv: string[]): Promise<number> {
       rmSync(marker, { force: true });
       respawns++;
       const label = loadAccounts(claudePool).accounts.find((a) => a.id === m.accountId)?.label ?? m.accountId.slice(0, 8);
+      if (m.compact && seat && existsSync(transcriptPath(m.sessionId))) {
+        process.stdout.write(`\n\x1b[36m↻ tokenmaxxing: compacting the conversation on ${seat.label} before the move...\x1b[0m\n`);
+        const compactEnv: Record<string, string | undefined> = { ...childEnv, TOKENMAXXING_PROBE: "1", CLAUDE_SECURESTORAGE_CONFIG_DIR: storeDirFor(seat.id) };
+        delete compactEnv.TOKENMAXXING_SUPERVISED;
+        delete compactEnv.TOKENMAXXING_SESSION_ID;
+        delete compactEnv.TOKENMAXXING_LAUNCHED_AT;
+        const outcome = await compactClaudeSession({ real, sid: m.sessionId, env: compactEnv });
+        log("supervisor.compact", { sid: m.sessionId.slice(0, 8), seat: seat.id.slice(0, 8), ok: outcome.ok, reason: outcome.ok ? undefined : outcome.reason });
+        if (!outcome.ok) process.stdout.write(`\x1b[33m   compaction did not land (${outcome.reason}) - resuming with the full context\x1b[0m\n`);
+      }
       if (m.waitUntil > Date.now()) {
         if (await countdownWait(label, m.waitUntil)) overriddenUntil = m.waitUntil;
       } else process.stdout.write(`\n\x1b[36m↻ tokenmaxxing: moving to ${label} - resuming...\x1b[0m\n`);
