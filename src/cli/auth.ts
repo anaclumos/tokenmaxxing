@@ -18,14 +18,13 @@ const AuthPlanSchema = z.discriminatedUnion("kind", [
 ]);
 export type AuthPlan = z.infer<typeof AuthPlanSchema>;
 
-export function planAuth(input: { p: Provider; accounts: Account[]; argv: string[] }): AuthPlan {
+export function planAuth(input: { p: Provider; accounts: Account[]; argv: string[]; needsAuth: Set<string> }): AuthPlan {
   const all = input.argv.includes("--all");
   const rest = input.argv.filter((a) => a !== "--all");
   if ((all && rest.length > 0) || rest.length > 1) return { kind: "usage" };
   if (input.accounts.length === 0) return { kind: "error", message: `no accounts in the pool - run \`tokenmaxxing init${input.p.flag}\` first` };
   if (all) {
-    const flagged = input.accounts.filter((a) => a.needsReauth === true);
-    return { kind: "targets", ids: flagged.map((a) => a.id) };
+    return { kind: "targets", ids: input.accounts.filter((a) => input.needsAuth.has(a.id)).map((a) => a.id) };
   }
   const selector = rest[0];
   if (selector !== undefined) {
@@ -36,18 +35,19 @@ export function planAuth(input: { p: Provider; accounts: Account[]; argv: string
   return { kind: "pick" };
 }
 
-export function pickerOrder(accounts: Account[]): Account[] {
-  const [flagged, healthy] = partition(accounts, (a) => a.needsReauth === true);
+export function pickerOrder(accounts: Account[], needsAuth: Set<string>): Account[] {
+  const [flagged, healthy] = partition(accounts, (a) => needsAuth.has(a.id));
   return [...flagged, ...healthy];
 }
 
-function askWhichAccount(idx: AccountsIndex): Account | null {
-  const ordered = pickerOrder(idx.accounts);
+function askWhichAccount(idx: AccountsIndex, needsAuth: Set<string>): Account | null {
+  const ordered = pickerOrder(idx.accounts, needsAuth);
   console.log("which account do you want to reauthenticate?");
   for (const [i, a] of ordered.entries()) {
     const flags: string[] = [];
     if (a.id === idx.activeId) flags.push(c.green("active"));
     if (a.needsReauth) flags.push(c.red("needs-reauth"));
+    else if (needsAuth.has(a.id)) flags.push(c.red("no-credential"));
     const labelNote = a.email != null && a.label !== a.email ? ` (${a.label})` : "";
     const tag = flags.length ? ` ${flags.join(" ")}` : "";
     console.log(`  ${i + 1}. ${c.bold(a.email ?? a.label)}${labelNote}${tag}`);
@@ -107,7 +107,11 @@ async function reauthOne(p: Provider, target: Account): Promise<boolean> {
 
 export async function cmdAuth(p: Provider, argv: string[]): Promise<number> {
   const idx = loadAccounts(p.pool);
-  const plan = planAuth({ p, accounts: idx.accounts, argv });
+  const needsAuth = new Set<string>();
+  for (const a of idx.accounts) {
+    if (a.needsReauth === true || !(await p.storeUsable(a))) needsAuth.add(a.id);
+  }
+  const plan = planAuth({ p, accounts: idx.accounts, argv, needsAuth });
   if (plan.kind === "usage") {
     console.error(AUTH_USAGE);
     return 2;
@@ -119,7 +123,7 @@ export async function cmdAuth(p: Provider, argv: string[]): Promise<number> {
 
   const targets: Account[] = [];
   if (plan.kind === "pick") {
-    const picked = askWhichAccount(idx);
+    const picked = askWhichAccount(idx, needsAuth);
     if (!picked) return 1;
     targets.push(picked);
   } else {
@@ -128,7 +132,7 @@ export async function cmdAuth(p: Provider, argv: string[]): Promise<number> {
       if (account) targets.push(account);
     }
     if (targets.length === 0) {
-      console.log(`${c.green("✓")} no account needs reauth`);
+      console.log(`${c.green("✓")} every account has a usable credential`);
       return 0;
     }
   }

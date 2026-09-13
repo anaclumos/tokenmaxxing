@@ -334,6 +334,13 @@ export const codex: Provider = {
   swap,
   classifySwapError: (e) => (e instanceof CodexInvalidGrantError ? "dead-grant" : "fatal"),
   removeCredentials: async (a) => deleteParkedCodexAuth({ credFile: codexCredItemFor(a.id) }),
+  storeUsable: async (a) => {
+    try {
+      return readParkedCodexAuth({ credFile: codexCredItemFor(a.id) }) != null;
+    } catch {
+      return false;
+    }
+  },
   login,
   importLive,
   preflight,
