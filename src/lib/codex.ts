@@ -234,6 +234,7 @@ export const codex: Provider = {
   pool: codexPool,
   seats: "live",
   waitsWhenDepleted: false,
+  statusOnly: false,
   liveId,
   presence,
   gatedFamilies: () => null,

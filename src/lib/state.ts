@@ -1,7 +1,7 @@
 import { closeSync, existsSync, fstatSync, openSync, readFileSync, rmSync, utimesSync } from "node:fs";
 import { isEqual } from "es-toolkit";
 import { z } from "zod";
-import { paths, realClaudeBinFromEnv, realCodexBinFromEnv, usageJsonFor, type PoolPaths } from "./paths.ts";
+import { paths, realClaudeBinFromEnv, realCodexBinFromEnv, realGrokBinFromEnv, realOpencodeBinFromEnv, usageJsonFor, type PoolPaths } from "./paths.ts";
 import { writeFileAtomic } from "./atomic.ts";
 import {
   AccountsIndexSchema,
@@ -35,10 +35,14 @@ export function loadConfig(): Config {
   if (envBin) cfg.claudeBin = envBin;
   const envCodexBin = realCodexBinFromEnv();
   if (envCodexBin) cfg.codexBin = envCodexBin;
+  const envGrokBin = realGrokBinFromEnv();
+  if (envGrokBin) cfg.grokBin = envGrokBin;
+  const envOpencodeBin = realOpencodeBinFromEnv();
+  if (envOpencodeBin) cfg.opencodeBin = envOpencodeBin;
   return cfg;
 }
 
-export function pinBinOverride(input: { key: "claudeBin" | "codexBin"; bin: string }): void {
+export function pinBinOverride(input: { key: "claudeBin" | "codexBin" | "grokBin" | "opencodeBin"; bin: string }): void {
   let raw: Record<string, unknown> = {};
   if (existsSync(paths.configJson)) {
     raw = z.record(z.string(), z.unknown()).parse(JSON.parse(readFileSync(paths.configJson, "utf8")));

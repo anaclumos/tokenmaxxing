@@ -52,6 +52,18 @@ export const codexPool = {
   lockFile: join(TM_HOME, "codex-lock"),
 } as const;
 
+export const grokPool = {
+  accountsJson: join(TM_HOME, "grok-accounts.json"),
+  lastSwapJson: null,
+  lockFile: join(TM_HOME, "grok-lock"),
+} as const;
+
+export const opencodeGoPool = {
+  accountsJson: join(TM_HOME, "opencode-go-accounts.json"),
+  lastSwapJson: null,
+  lockFile: join(TM_HOME, "opencode-go-lock"),
+} as const;
+
 export type PoolPaths = { accountsJson: string; lastSwapJson: string | null; lockFile: string };
 
 const CODEX_HOME = env("TOKENMAXXING_CODEX_HOME", env("CODEX_HOME", join(HOME, ".codex")));
@@ -78,6 +90,41 @@ export function codexSeatFromEnv(accountIds: string[], env: Record<string, strin
   const home = env.CODEX_HOME;
   if (home == null || home === "") return null;
   return accountIds.find((id) => codexStoreDirFor(id) === home) ?? null;
+}
+
+const GROK_HOME_DEFAULT = join(HOME, ".grok");
+
+export const grokPaths = {
+  home: env("GROK_HOME", GROK_HOME_DEFAULT),
+  storesDir: join(TM_HOME, "grok-stores"),
+  onboardDir: join(TM_HOME, "grok-onboard"),
+} as const;
+
+export function grokStoreDirFor(accountId: string): string {
+  return join(grokPaths.storesDir, shortId(accountId));
+}
+
+export function grokAuthJsonFor(accountId: string): string {
+  return join(grokStoreDirFor(accountId), "auth.json");
+}
+
+export function grokSeatFromEnv(accountIds: string[], env: Record<string, string | undefined> = process.env): string | null {
+  const home = env.GROK_HOME;
+  if (home == null || home === "") return null;
+  return accountIds.find((id) => grokStoreDirFor(id) === home) ?? null;
+}
+
+export const opencodeGoPaths = {
+  storesDir: join(TM_HOME, "opencode-go-stores"),
+  onboardDir: join(TM_HOME, "opencode-go-onboard"),
+} as const;
+
+export function opencodeGoStoreDirFor(accountId: string): string {
+  return join(opencodeGoPaths.storesDir, shortId(accountId));
+}
+
+export function opencodeGoAuthJsonFor(accountId: string): string {
+  return join(opencodeGoStoreDirFor(accountId), "auth.json");
 }
 
 export const keychain = {
@@ -118,6 +165,14 @@ export function realClaudeBinFromEnv(): string | undefined {
 
 export function realCodexBinFromEnv(): string | undefined {
   return EnvOverrideSchema.parse(process.env.TOKENMAXXING_CODEX_BIN);
+}
+
+export function realGrokBinFromEnv(): string | undefined {
+  return EnvOverrideSchema.parse(process.env.TOKENMAXXING_GROK_BIN);
+}
+
+export function realOpencodeBinFromEnv(): string | undefined {
+  return EnvOverrideSchema.parse(process.env.TOKENMAXXING_OPENCODE_BIN);
 }
 
 export { HOME };

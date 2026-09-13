@@ -8,7 +8,11 @@ import { c, count } from "./render.ts";
 export function printUsage(p: Provider): void {
   console.log();
   console.log(`  ${c.bold("how to use")} - ${c.cyan("xx")} is shorthand for ${c.cyan("tokenmaxxing")}:`);
-  console.log(`    ${c.cyan(p.name)}             use ${p.name} as always; it switches accounts near quota automatically`);
+  if (p.statusOnly) {
+    console.log(`    ${c.cyan(`xx status`)}         view pooled ${p.name} accounts (status-only pool: no automatic switching yet)`);
+  } else {
+    console.log(`    ${c.cyan(p.name)}             use ${p.name} as always; it switches accounts near quota automatically`);
+  }
   console.log(`    ${c.cyan("xx")}                 show the pool with usage bars (same as ${c.cyan("xx status")})`);
   console.log(`    ${c.cyan(`xx add${p.flag}`)}             log in and pool another account`);
   console.log(`    ${c.cyan("xx help")}            everything else`);
