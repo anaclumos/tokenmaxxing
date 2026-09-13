@@ -101,7 +101,7 @@ See [How switching decides](docs/content/docs/switching.mdx) for the policy and 
 {
   "thresholds": { "session": 90, "weekly": 98 },
   "policy": {
-    "projectionMargin": 0,
+    "projectionMargin": 3,
     "switchModels": ["fable"],
     "usagePollTtlMs": 90000,
     "checkIntervalMs": 60000
@@ -109,7 +109,7 @@ See [How switching decides](docs/content/docs/switching.mdx) for the policy and 
 }
 ```
 
-`thresholds.session` and `thresholds.weekly` are the two bars, one number each (an array `thresholds.session`, the former ladder, fails config loading with a message naming the field); `projectionMargin` is a fixed safety margin subtracted from each threshold bar (effective bar = threshold - margin), so a large turn is less likely to blow past a bar between checks; `switchModels` names the models whose per-model cap triggers a move; `usagePollTtlMs` is how long a `/usage` attempt stays fresh, for a seat's per-model poll and for the account each check tick samples; `maxWaitMs` bounds the depleted-pool countdown - a soonest reset further out than this does not pause the session (no respawn marker is written and the session simply keeps hitting its limit until an account recovers); `checkIntervalMs` is the periodic check tick (default 60s), which `init` writes into the timer - re-run `tokenmaxxing init` after changing it so the timer unit picks up the new tick.
+`thresholds.session` and `thresholds.weekly` are the two bars, one number each (an array `thresholds.session`, the former ladder, fails config loading with a message naming the field); `projectionMargin` is a fixed safety margin subtracted from the session bar only (default 3), so a large turn is less likely to blow past the 5-hour bar between checks; the weekly bar takes no margin because one turn cannot overshoot a week; `switchModels` names the models whose per-model cap triggers a move; `usagePollTtlMs` is how long a `/usage` attempt stays fresh, for a seat's per-model poll and for the account each check tick samples; `maxWaitMs` bounds the depleted-pool countdown - a soonest reset further out than this does not pause the session (no respawn marker is written and the session simply keeps hitting its limit until an account recovers); `checkIntervalMs` is the periodic check tick (default 60s), which `init` writes into the timer - re-run `tokenmaxxing init` after changing it so the timer unit picks up the new tick.
 
 State lives entirely in `~/.config/tokenmaxxing/`. Each account's credential store is `stores/<uuid8>/`, which Claude Code reads and refreshes as its own: on macOS the credential is a login-keychain item keyed by the store path (never plaintext on disk), on Linux a 0600 `.credentials.json` inside the store (the same plaintext model claude itself uses for `~/.claude/.credentials.json`).
 

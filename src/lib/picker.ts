@@ -6,7 +6,7 @@ import { AccountSchema, ThresholdsSchema, type Account, type Config, type Thresh
 export function thresholdBars(cfg: Config): Thresholds {
   return {
     session: cfg.thresholds.session - cfg.policy.projectionMargin,
-    weekly: cfg.thresholds.weekly - cfg.policy.projectionMargin,
+    weekly: cfg.thresholds.weekly,
   };
 }
 
@@ -87,11 +87,22 @@ export function earliestReset(a: Account, now: number): number {
   return Math.min(session != null && session > now ? session : Number.POSITIVE_INFINITY, weeklyExpiry(a, now));
 }
 
-export function pacePressure(a: Account, now: number): number {
+function windowResetAt(w: Window, now: number): number | null {
+  if (w.resetsAt != null) return nextWeeklyReset(w.resetsAt, now);
+  if (w.windowSeconds != null) return w.sampledAt + w.windowSeconds * 1000;
+  return null;
+}
+
+export function pacePressure(a: Account, ctx: PickCtx): number {
+  const binding = minBy(gatedWindows(a, ctx.families), (w) => Math.max(0, 100 - liveUsed(w, ctx.now)));
+  if (binding != null) {
+    const reset = windowResetAt(binding, ctx.now);
+    if (reset != null) return Math.max(0, 100 - liveUsed(binding, ctx.now)) / Math.max(1, reset - ctx.now);
+  }
   const weekly = weeklyWindow(a);
-  const reset = nextWeeklyReset(weekly?.resetsAt ?? null, now);
+  const reset = nextWeeklyReset(weekly?.resetsAt ?? null, ctx.now);
   if (weekly == null || reset == null) return 0;
-  return Math.max(0, 100 - liveUsed(weekly, now)) / Math.max(1, reset - now);
+  return Math.max(0, 100 - liveUsed(weekly, ctx.now)) / Math.max(1, reset - ctx.now);
 }
 
 export function seatHeadroom(a: Account, ctx: PickCtx): number {
@@ -102,7 +113,7 @@ export function seatHeadroom(a: Account, ctx: PickCtx): number {
 
 const swapPreference = (ctx: PickCtx) => [
   ...(ctx.seats == null ? [] : [(a: Account) => -seatHeadroom(a, ctx)]),
-  (a: Account) => -pacePressure(a, ctx.now),
+  (a: Account) => -pacePressure(a, ctx),
   (a: Account) => weeklyExpiry(a, ctx.now),
   (a: Account) => weeklyWindow(a)?.usedPercentage ?? 101,
 ];
@@ -116,7 +127,7 @@ export function currentWins(active: Account | null, accounts: Account[], ctx: Pi
   if (!active || active.needsReauth || isExhausted(active, ctx)) return false;
   const best = pickBest(accounts, { ...ctx, currentId: null });
   if (best == null || best.id === active.id) return true;
-  if (margin > 1) return pacePressure(best, ctx.now) <= pacePressure(active, ctx.now) * margin;
+  if (margin > 1) return pacePressure(best, ctx) <= pacePressure(active, ctx) * margin;
   return swapPreference(ctx).every((k) => k(active) === k(best));
 }
 

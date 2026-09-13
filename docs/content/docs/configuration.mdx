@@ -11,7 +11,7 @@ Config is JSON at `~/.config/tokenmaxxing/config.json`. Every field is optional;
   "claudeBin": "/path/to/real/claude",
   "codexBin": "/path/to/real/codex",
   "policy": {
-    "projectionMargin": 0,
+    "projectionMargin": 3,
     "switchModels": ["fable"],
     "usagePollTtlMs": 90000,
     "maxWaitMs": 3600000,
@@ -23,7 +23,7 @@ Config is JSON at `~/.config/tokenmaxxing/config.json`. Every field is optional;
 - `thresholds.session`: the 5-hour session bar, one number (default 90). It is both the trigger and the candidate screen, for Claude and Codex alike. See [How switching decides](/switching). The former array form (the session ladder) is rejected: config loading fails with a zod message naming `thresholds.session`.
 - `thresholds.weekly`: the weekly bar (default 98), covering the 7-day aggregate and every per-model weekly cap.
 - `claudeBin` / `codexBin`: pins to the REAL binaries the supervisors spawn (written by `init` / `init --codex`; the recursion-guard diagnostic tells you to fix `claudeBin` here when it stops pointing at the real Claude binary).
-- `policy.projectionMargin`: subtracted from both thresholds to form the effective bars; it must stay below both.
+- `policy.projectionMargin`: subtracted from the session threshold only (default 3), so one large turn is less likely to jump the 5-hour window from under the bar to over the hard limit; it must stay below the session threshold. The weekly bar takes no margin because a single turn is too small a fraction of the week to overshoot it, and margin there would only strand use-it-or-lose-it headroom.
 - `policy.switchModels`: model families whose per-model weekly cap gates a switch (entries are lowercased on load).
 - `policy.usagePollTtlMs`: how long a `/usage` attempt stays fresh, for a seat's per-model poll and for the account the check tick samples.
 - `policy.maxWaitMs`: the depleted-pool auto-wait bound.
