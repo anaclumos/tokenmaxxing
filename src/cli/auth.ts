@@ -8,7 +8,7 @@ import { usageNote } from "./add.ts";
 import { c, count } from "./render.ts";
 import type { Account, AccountsIndex } from "../lib/types.ts";
 
-const AUTH_USAGE = "usage: tokenmaxxing auth [--codex] [<email|label|id> | --all]";
+const AUTH_USAGE = "usage: tokenmaxxing auth [--codex | --grok | --opencode-go] [<email|label|id> | --all]";
 
 const AuthPlanSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("usage") }),
