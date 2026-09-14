@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, readdirSync, statSync } from "node:fs";
 import { basename, join } from "node:path";
-import type { Subprocess } from "bun";
+import type { FileSink, Subprocess } from "bun";
 import { maxBy } from "es-toolkit";
 import { z } from "zod";
 import { claudePool, paths, storeDirFor } from "../lib/paths.ts";
@@ -22,18 +22,19 @@ const NONINTERACTIVE_SUBCMDS = new Set([
 
 const VALUE_TAKING_ROOT_FLAGS = new Set([
   "--agent", "--agents", "--append-system-prompt", "--append-system-prompt-file",
-  "--debug-file", "--effort", "--fallback-model", "--input-format",
-  "--json-schema", "--max-budget-usd", "--model", "-n", "--name",
-  "--output-format", "--permission-mode", "--plugin-dir", "--plugin-url",
-  "--remote-control-session-name-prefix", "--setting-sources", "--settings",
-  "--system-prompt",
+  "--autocompact", "--debug-file", "--effort", "--environment", "--fallback-model",
+  "--input-format", "--json-schema", "--max-budget-usd", "--model", "-n", "--name",
+  "--output-format", "--permission-mode", "--permission-prompt-tool", "--permission-prompts",
+  "--plugin-dir", "--plugin-url", "--remote-control-session-name-prefix",
+  "--setting-sources", "--settings", "--system-prompt", "--system-prompt-snapshot",
 ]);
 const VARIADIC_ROOT_FLAGS = new Set([
   "--add-dir", "--allowedTools", "--allowed-tools", "--betas",
   "--disallowedTools", "--disallowed-tools", "--file", "--mcp-config", "--tools",
 ]);
 const OPTIONAL_VALUE_ROOT_FLAGS = new Set([
-  "-d", "--debug", "--from-pr", "--prompt-suggestions", "--remote-control", "-w", "--worktree",
+  "--cloud", "-d", "--debug", "--from-pr", "--prompt-suggestions", "--remote-control",
+  "--teleport", "-w", "--worktree",
 ]);
 
 const isUuid = (s: string) => z.uuid().safeParse(s).success;
@@ -43,6 +44,7 @@ const AnalysisSchema = z.object({
   sessionId: z.string().nullable(),
   resumeId: z.string().nullable(),
   continueLatest: z.boolean(),
+  streamInput: z.boolean(),
 });
 type Analysis = z.infer<typeof AnalysisSchema>;
 
@@ -50,6 +52,7 @@ export function analyzeArgs(argv: string[]): Analysis {
   let sessionId: string | null = null;
   let resumeId: string | null = null;
   let continueLatest = false;
+  let streamInput = false;
   let printMode = false;
   let invalidSessionArg = false;
   let pickerResume = false;
@@ -82,6 +85,8 @@ export function analyzeArgs(argv: string[]): Analysis {
       if (isUuid(value)) resumeId = value;
       else pickerResume = true;
     }
+    else if (a === "--input-format") streamInput = argv[++i] === "stream-json";
+    else if (a.startsWith("--input-format=")) streamInput = a.slice("--input-format=".length) === "stream-json";
     else if (VALUE_TAKING_ROOT_FLAGS.has(a)) i++;
     else if (VARIADIC_ROOT_FLAGS.has(a)) {
       while (i + 1 < argv.length && !argv[i + 1]!.startsWith("-")) i++;
@@ -97,7 +102,7 @@ export function analyzeArgs(argv: string[]): Analysis {
   const isSubcmd = firstPositional !== null && NONINTERACTIVE_SUBCMDS.has(firstPositional);
   const forkResume = forkSession && (resumeId !== null || continueLatest);
   const manage = !printMode && !isSubcmd && !invalidSessionArg && !pickerResume && !forkResume && !process.env.TOKENMAXXING_PROBE;
-  return { manage, sessionId, resumeId, continueLatest };
+  return { manage, sessionId, resumeId, continueLatest, streamInput };
 }
 
 export function stripSessionFlags(argv: string[]): string[] {
@@ -187,17 +192,94 @@ async function countdownWait(acct: string, until: number): Promise<boolean> {
   let aborted = false;
   const onInt = () => { aborted = true; };
   process.on("SIGINT", onInt);
-  process.stdout.write(`\n\x1b[36m⏳ tokenmaxxing: all accounts at their limit. Resuming on ${acct} when it resets (Ctrl-C to resume now).\x1b[0m\n`);
+  process.stderr.write(`\n\x1b[36m⏳ tokenmaxxing: all accounts at their limit. Resuming on ${acct} when it resets (Ctrl-C to resume now).\x1b[0m\n`);
   while (!aborted && Date.now() < until) {
     const left = until - Date.now();
     const m = Math.floor(left / 60000);
     const s = Math.floor((left % 60000) / 1000);
-    process.stdout.write(`\r\x1b[36m   resuming in ${m}m ${String(s).padStart(2, "0")}s \x1b[0m`);
+    process.stderr.write(`\r\x1b[36m   resuming in ${m}m ${String(s).padStart(2, "0")}s \x1b[0m`);
     await Bun.sleep(1000);
   }
   process.removeListener("SIGINT", onInt);
-  process.stdout.write(`\n\x1b[36m↻ resuming on ${acct}...\x1b[0m\n`);
+  process.stderr.write(`\n\x1b[36m↻ resuming on ${acct}...\x1b[0m\n`);
   return aborted;
+}
+
+function resumePrompt(compacted: boolean): string {
+  return compacted
+    ? "tokenmaxxing compacted this conversation and resumed the session on an account with quota headroom. Continue the task from where the previous turn left off."
+    : "tokenmaxxing resumed this session on an account with quota headroom. Continue the task from where the previous turn left off.";
+}
+
+function userLine(text: string): string {
+  return `${JSON.stringify({ type: "user", message: { role: "user", content: [{ type: "text", text }] } })}\n`;
+}
+
+class StdinRelay {
+  private sink: FileSink | null = null;
+  private queue: string[] = [];
+  private ended = false;
+
+  constructor() {
+    this.pump()
+      .catch((e: unknown) => log("supervisor.relay_read_failed", { err: e instanceof Error ? e.message : String(e) }))
+      .finally(() => {
+        this.ended = true;
+        this.close();
+      });
+  }
+
+  attach(sink: FileSink, first: string | null): void {
+    this.sink = sink;
+    const lines = first === null ? this.queue : [first, ...this.queue];
+    this.queue = [];
+    for (const line of lines) this.forward(line);
+    if (this.ended) this.close();
+  }
+
+  detach(): void {
+    this.sink = null;
+  }
+
+  private async pump(): Promise<void> {
+    const decoder = new TextDecoder();
+    let pending = "";
+    for await (const chunk of Bun.stdin.stream()) {
+      pending += decoder.decode(chunk, { stream: true });
+      let nl = pending.indexOf("\n");
+      while (nl !== -1) {
+        this.forward(pending.slice(0, nl + 1));
+        pending = pending.slice(nl + 1);
+        nl = pending.indexOf("\n");
+      }
+    }
+    pending += decoder.decode();
+    if (pending.length > 0) this.forward(`${pending}\n`);
+  }
+
+  private forward(line: string): void {
+    if (this.sink !== null) {
+      try {
+        this.sink.write(line);
+        this.sink.flush();
+        return;
+      } catch (e) {
+        log("supervisor.relay_write_failed", { err: e instanceof Error ? e.message : String(e) });
+        this.sink = null;
+      }
+    }
+    this.queue.push(line);
+  }
+
+  private close(): void {
+    if (this.sink === null) return;
+    try {
+      this.sink.end();
+    } catch (e) {
+      log("supervisor.relay_end_failed", { err: e instanceof Error ? e.message : String(e) });
+    }
+    this.sink = null;
+  }
 }
 
 async function recordPresence(child: Subprocess, sid: string, seat: Account, savedTermios: string | null): Promise<void> {
@@ -280,6 +362,8 @@ export async function runSupervisor(argv: string[]): Promise<number> {
   process.on("SIGINT", () => {});
   process.on("SIGHUP", () => {});
 
+  const relay = info.streamInput ? new StdinRelay() : null;
+  let firstLine: string | null = null;
   let respawns = 0;
   let overriddenUntil = 0;
   let wanted: string | null = null;
@@ -289,9 +373,9 @@ export async function runSupervisor(argv: string[]): Promise<number> {
     const gate: MarkerGate = { launchedAt: Date.now(), overriddenUntil };
     const { child, seat } = await withLock(claudePool.lockFile, async () => {
       const picked = (wanted == null ? null : (loadAccounts(claudePool).accounts.find((a) => a.id === wanted) ?? null)) ?? pickSeat(gate.launchedAt);
-      log("supervisor.launch", { sid, respawns, seat: picked?.id.slice(0, 8) ?? null, args: launchArgs.join(" ") });
+      log("supervisor.launch", { sid, respawns, seat: picked?.id.slice(0, 8) ?? null, args: launchArgs.join(" "), injected: firstLine !== null });
       const spawned = Bun.spawn([real, ...launchArgs], {
-        stdin: "inherit",
+        stdin: relay === null ? "inherit" : "pipe",
         stdout: "inherit",
         stderr: "inherit",
         env: {
@@ -302,6 +386,8 @@ export async function runSupervisor(argv: string[]): Promise<number> {
           ...(picked ? { CLAUDE_SECURESTORAGE_CONFIG_DIR: storeDirFor(picked.id) } : {}),
         },
       });
+      if (relay !== null) relay.attach(spawned.stdin!, firstLine);
+      firstLine = null;
       if (picked) await recordPresence(spawned, sid, picked, savedTermios);
       return { child: spawned, seat: picked };
     });
@@ -317,13 +403,18 @@ export async function runSupervisor(argv: string[]): Promise<number> {
     const exited = child.exited.then(() => { done = true; return "exit" as const; });
     try {
       const winner = await Promise.race([exited, markerWatch.then((m) => (m ? "marker" : "exit"))]);
-      if (winner === "marker") child.kill();
+      if (winner === "marker") {
+        relay?.detach();
+        child.kill();
+      }
     } catch (e) {
+      relay?.detach();
       child.kill();
       clearPresence({ dir: paths.presenceDir, id: sid });
       throw e;
     } finally {
       await child.exited;
+      relay?.detach();
       done = true;
       await markerWatch.catch(() => {});
       restoreTermios(savedTermios);
@@ -334,22 +425,27 @@ export async function runSupervisor(argv: string[]): Promise<number> {
       rmSync(marker, { force: true });
       respawns++;
       const label = loadAccounts(claudePool).accounts.find((a) => a.id === m.accountId)?.label ?? m.accountId.slice(0, 8);
-      if (m.compact && seat && existsSync(transcriptPath(m.sessionId))) {
-        process.stdout.write(`\n\x1b[36m↻ tokenmaxxing: compacting the conversation on ${seat.label} before the move...\x1b[0m\n`);
+      const resumable = existsSync(transcriptPath(m.sessionId));
+      let compacted = false;
+      if (m.compact && seat && resumable) {
+        process.stderr.write(`\n\x1b[36m↻ tokenmaxxing: compacting the conversation on ${seat.label} before the move...\x1b[0m\n`);
         const compactEnv: Record<string, string | undefined> = { ...childEnv, TOKENMAXXING_PROBE: "1", CLAUDE_SECURESTORAGE_CONFIG_DIR: storeDirFor(seat.id) };
         delete compactEnv.TOKENMAXXING_SUPERVISED;
         delete compactEnv.TOKENMAXXING_SESSION_ID;
         delete compactEnv.TOKENMAXXING_LAUNCHED_AT;
         const outcome = await compactClaudeSession({ real, sid: m.sessionId, env: compactEnv });
         log("supervisor.compact", { sid: m.sessionId.slice(0, 8), seat: seat.id.slice(0, 8), ok: outcome.ok, reason: outcome.ok ? undefined : outcome.reason });
-        if (!outcome.ok) process.stdout.write(`\x1b[33m   compaction did not land (${outcome.reason}) - resuming with the full context\x1b[0m\n`);
+        if (!outcome.ok) process.stderr.write(`\x1b[33m   compaction did not land (${outcome.reason}) - resuming with the full context\x1b[0m\n`);
+        compacted = outcome.ok;
       }
       if (m.waitUntil > Date.now()) {
         if (await countdownWait(label, m.waitUntil)) overriddenUntil = m.waitUntil;
-      } else process.stdout.write(`\n\x1b[36m↻ tokenmaxxing: moving to ${label} - resuming...\x1b[0m\n`);
+      } else process.stderr.write(`\n\x1b[36m↻ tokenmaxxing: moving to ${label} - resuming...\x1b[0m\n`);
       wanted = m.accountId;
       saveSessionFlags(m.sessionId, persistable, process.cwd());
-      launchArgs = ["--resume", m.sessionId, ...persistable];
+      const prompt = resumable ? resumePrompt(compacted) : null;
+      firstLine = relay !== null && prompt !== null ? userLine(prompt) : null;
+      launchArgs = ["--resume", m.sessionId, ...(relay === null && prompt !== null ? [prompt] : []), ...persistable];
       continue;
     }
     clearPresence({ dir: paths.presenceDir, id: sid });

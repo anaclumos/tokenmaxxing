@@ -133,7 +133,7 @@ A Cursor Cloud Agent can hand substantial work to Claude Code running on your ow
 
 ## Honest limitations
 
-- **A move restarts the process.** The session resumes the same transcript under the new account, but the process restarts and the first turn on the new account re-uploads context once (prompt cache is org-scoped).
+- **A move restarts the process.** The session resumes the same transcript under the new account and continues on its own from a first prompt the supervisor submits, but the process restarts and the first turn on the new account re-uploads context once (prompt cache is org-scoped).
 - **Depleted-pause hiccup.** When the whole pool is at its limit, `claude` stops for the countdown; anything typed in that split second is lost.
 - **Unsupervised sessions are not moved.** A claude started outside the supervisor runs on Claude Code's own login, which tokenmaxxing never writes.
 - **One shared identity file.** `~/.claude.json` holds one `oauthAccount` that Claude Code rewrites after whichever session refreshed last, so `/status` can show another session's email; the statusline's `◆` marks the account a session actually uses.
