@@ -1,10 +1,11 @@
 import { existsSync, readFileSync } from "node:fs";
 import { verifyRealClaude } from "../lib/claudebin.ts";
 import { checkSettings, installedBin } from "../lib/settings.ts";
-import { checkTimerHealthy, findClaudeShadowers, isBinDirAhead, shellRcPath, timerActivationHint } from "../lib/install.ts";
-import { claudePool, paths } from "../lib/paths.ts";
+import { checkTimerHealthy, codexStoreHookTrust, findClaudeShadowers, isBinDirAhead, shellRcPath, timerActivationHint } from "../lib/install.ts";
+import { claudePool, codexPool, paths } from "../lib/paths.ts";
 import { loadAccounts, loadConfig } from "../lib/state.ts";
 import { readStore } from "../lib/credstore.ts";
+import { codexIdentityOf, readCodexStoreAuth } from "../lib/codexauth.ts";
 import { isAccessTokenExpiring, isDeadCredential, fetchTokenIdentity, describeIdentity } from "../lib/oauth.ts";
 import { SETUP_TOKEN_STALE_MS, loadSetupTokens } from "../lib/setuptokens.ts";
 import { c, fmtAgo } from "./render.ts";
@@ -55,6 +56,36 @@ export async function cmdDoctor(): Promise<number> {
       }
     }
     if (a.needsReauth) check(false, `${a.label} needs re-auth`, `run \`tokenmaxxing auth ${a.label}\` to re-login`);
+  }
+
+  const cidx = loadAccounts(codexPool);
+  if (cidx.accounts.length === 0) {
+    note("no codex accounts in the pool (run `tokenmaxxing init --codex` to pool codex too)");
+  }
+  for (const a of cidx.accounts) {
+    let auth = null;
+    let authErr: string | null = null;
+    try {
+      auth = readCodexStoreAuth(a.id);
+    } catch (e) {
+      authErr = (e instanceof Error ? e.message : String(e)).slice(0, 100);
+    }
+    check(auth != null, `codex store credential present for ${a.label}`, authErr ?? `run \`tokenmaxxing auth --codex ${a.label}\``);
+    if (auth) {
+      let match = false;
+      let matchHint = `run \`tokenmaxxing auth --codex ${a.label}\``;
+      try {
+        match = codexIdentityOf({ auth }).accountId === a.id;
+        if (!match) matchHint = `store credential belongs to another account - ${matchHint}`;
+      } catch (e) {
+        matchHint = (e instanceof Error ? e.message : String(e)).slice(0, 100);
+      }
+      check(match, `codex store credential identity matches ${a.label}`, matchHint);
+    }
+    if (a.needsReauth) check(false, `${a.label} (codex) needs re-auth`, `run \`tokenmaxxing auth --codex ${a.label}\` to re-login`);
+    const trust = codexStoreHookTrust(a.id);
+    if (trust === "untrusted") warn(`${a.label} (codex): Stop hook not trusted for this seat - open a supervised codex session on it, run /hooks, and trust it, or auto-switching stays inert there`);
+    else if (trust === "unknown") note(`${a.label} (codex): hook trust unknown (no hooks.json or config.toml yet - launch a supervised session once, then trust via /hooks)`);
   }
 
   if (existsSync(paths.setupTokensJson)) {

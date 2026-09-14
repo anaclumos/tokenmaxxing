@@ -274,6 +274,7 @@ export const claude: Provider = {
   pool: claudePool,
   seats: "shared",
   waitsWhenDepleted: true,
+  statusOnly: false,
   liveId,
   presence,
   gatedFamilies: (cfg) => {

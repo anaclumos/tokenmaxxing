@@ -5,9 +5,11 @@ import { codexPaths, codexPool, paths } from "../lib/paths.ts";
 import { withLock } from "../lib/lock.ts";
 import { LOOP_DIAGNOSIS, MAX_WRAP_DEPTH, UNMANAGED_ENV, WRAP_DEPTH_ENV, WRAP_RATE_MAX, WRAP_RATE_WINDOW_MS, wrapDepth, wrapperEntryRateTripped } from "../lib/claudebin.ts";
 import { resolveRealCodex } from "../lib/codexbin.ts";
+import { ensureCodexStoreHome } from "../lib/codexauth.ts";
+import { pickCodexSeat } from "../lib/codex.ts";
 import { clearPresence, writePresence } from "../lib/presence.ts";
-import { liveCodexAccountId } from "../lib/codexauth.ts";
 import { saveTermios, restoreTermios } from "../lib/tty.ts";
+import { loadAccounts } from "../lib/state.ts";
 import { CodexRespawnMarkerSchema } from "../lib/types.ts";
 import { log } from "../lib/log.ts";
 
@@ -27,7 +29,7 @@ function readCodexMarker(marker: string): z.infer<typeof CodexRespawnMarkerSchem
   } catch (e) {
     log("codexsupervisor.marker_invalid", { err: e instanceof Error ? e.message : String(e) });
     throw new Error(
-      `${marker} is corrupt (unparsable JSON or off-schema) - auth.json may already hold another account, so the codex session was stopped instead of resumed on stale credentials; inspect and remove the marker, then run \`codex resume\``,
+      `${marker} is corrupt (unparsable JSON or off-schema) - the codex session was stopped instead of resumed on a stale target; inspect and remove the marker, then run \`codex resume\``,
     );
   }
 }
@@ -50,6 +52,25 @@ export function shouldManageCodex(input: { argv: string[] }): boolean {
     if (!arg.startsWith("-") && firstPositional === null) firstPositional = arg;
   }
   return firstPositional === null || !NONINTERACTIVE_SUBCMDS.has(firstPositional);
+}
+
+async function recordCodexPresence(child: { pid: number; exitCode: number | null; signalCode: string | null; kill: () => void; exited: Promise<unknown> }, supervisorId: string, seat: { id: string }, savedTermios: string | null): Promise<void> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      writePresence({ dir: codexPaths.presenceDir, id: supervisorId, accountId: seat.id, pid: child.pid });
+      return;
+    } catch (e) {
+      if (child.exitCode !== null || child.signalCode !== null) return;
+      if (attempt >= 9) {
+        log("codexsupervisor.presence_failed", { err: e instanceof Error ? e.message : String(e) });
+        child.kill();
+        await child.exited;
+        restoreTermios(savedTermios);
+        throw new Error("could not write the codex presence file - refusing to run an unprotected session (its account would look like a swap target)");
+      }
+      await Bun.sleep(100);
+    }
+  }
 }
 
 export async function runCodexSupervisor(input: { argv: string[] }): Promise<number> {
@@ -91,37 +112,27 @@ export async function runCodexSupervisor(input: { argv: string[] }): Promise<num
 
   let launchArgs = argv;
   let respawns = 0;
+  let wanted: string | null = null;
   while (true) {
     if (existsSync(marker)) rmSync(marker, { force: true });
-    log("codexsupervisor.launch", { supervisorId: supervisorId.slice(0, 8), respawns, args: launchArgs.join(" ") });
 
-    const child = await withLock(codexPool.lockFile, async () => {
-      const spawnAccountId = liveCodexAccountId();
+    const launchedAt = Date.now();
+    const { child } = await withLock(codexPool.lockFile, async () => {
+      const picked = (wanted == null ? null : (loadAccounts(codexPool).accounts.find((a) => a.id === wanted) ?? null)) ?? pickCodexSeat(launchedAt, wanted);
+      log("codexsupervisor.launch", { supervisorId: supervisorId.slice(0, 8), respawns, seat: picked?.id.slice(0, 8) ?? null, args: launchArgs.join(" ") });
+      const store = picked ? ensureCodexStoreHome(picked.id) : undefined;
       const spawned = Bun.spawn([real, ...launchArgs], {
         stdin: "inherit",
         stdout: "inherit",
         stderr: "inherit",
-        env: { ...childEnv, [CODEX_SUPERVISOR_ID_ENV]: supervisorId },
+        env: {
+          ...childEnv,
+          [CODEX_SUPERVISOR_ID_ENV]: supervisorId,
+          ...(store ? { CODEX_HOME: store } : {}),
+        },
       });
-      if (spawnAccountId) {
-        for (let attempt = 0; attempt < 10; attempt++) {
-          try {
-            writePresence({ dir: codexPaths.presenceDir, id: supervisorId, accountId: spawnAccountId, pid: spawned.pid });
-            break;
-          } catch (e) {
-            if (spawned.exitCode !== null || spawned.signalCode !== null) break;
-            if (attempt === 9) {
-              log("codexsupervisor.presence_failed", { err: e instanceof Error ? e.message : String(e) });
-              spawned.kill();
-              await spawned.exited;
-              restoreTermios(savedTermios);
-              throw new Error("could not write the codex presence file - refusing to run an unprotected session (its account would look like a swap target)");
-            }
-            await Bun.sleep(100);
-          }
-        }
-      }
-      return spawned;
+      if (picked) await recordCodexPresence(spawned, supervisorId, picked, savedTermios);
+      return { child: spawned, seat: picked };
     });
 
     let done = false;
@@ -156,12 +167,13 @@ export async function runCodexSupervisor(input: { argv: string[] }): Promise<num
     if (payload) {
       rmSync(marker, { force: true });
       respawns++;
-      process.stdout.write(`\n\x1b[36m↻ tokenmaxxing: switched codex to ${payload.account} - resuming...\x1b[0m\n`);
+      const label = loadAccounts(codexPool).accounts.find((a) => a.id === payload.accountId)?.label ?? payload.accountId.slice(0, 8);
+      process.stdout.write(`\n\x1b[36m↻ tokenmaxxing: switched codex to ${label} - resuming...\x1b[0m\n`);
+      wanted = payload.accountId;
       launchArgs = payload.sessionId ? ["resume", payload.sessionId] : ["resume", "--last"];
       continue;
     }
     clearPresence({ dir: codexPaths.presenceDir, id: supervisorId });
-    rmSync(join(codexPaths.reconcileDir, supervisorId), { force: true });
     log("codexsupervisor.exit", { supervisorId: supervisorId.slice(0, 8), respawns, code: child.exitCode, signal: child.signalCode });
     return child.exitCode ?? (child.signalCode ? 1 : 0);
   }

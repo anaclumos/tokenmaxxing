@@ -2,7 +2,7 @@ import { accessSync, appendFileSync, constants, existsSync, mkdirSync, readFileS
 import { basename, dirname, join } from "node:path";
 import { escape } from "es-toolkit";
 import { z } from "zod";
-import { codexPaths, HOME, paths } from "./paths.ts";
+import { codexPaths, codexStoreDirFor, HOME, paths } from "./paths.ts";
 import { writeFileAtomic } from "./atomic.ts";
 import { installedBin, installSettings, isOurHookCommand, uninstallSettings } from "./settings.ts";
 import { resolveRealClaude } from "./claudebin.ts";
@@ -163,6 +163,40 @@ export function uninstallCodexStopHook(): void {
     },
   };
   writeFileAtomic(codexPaths.hooksJson, JSON.stringify(next, null, 2) + "\n");
+}
+
+export function codexStopHookGroupIndex(): number | null {
+  if (!existsSync(codexPaths.hooksJson)) return null;
+  let parsed: z.infer<typeof CodexHooksFileSchema>;
+  try {
+    parsed = CodexHooksFileSchema.parse(JSON.parse(readFileSync(codexPaths.hooksJson, "utf8")));
+  } catch {
+    return null;
+  }
+  const idx = parsed.hooks.Stop.findIndex((group) => group.hooks.some((hook) => (hook.command ?? "").includes(CODEX_STOP_HOOK_SUBCOMMAND)));
+  return idx >= 0 ? idx : null;
+}
+
+export function codexStoreHookTrust(accountId: string): "trusted" | "untrusted" | "unknown" {
+  const group = codexStopHookGroupIndex();
+  if (group == null) return "unknown";
+  const key = `${join(codexStoreDirFor(accountId), "hooks.json")}:stop:${group}:0`;
+  let text: string;
+  try {
+    text = readFileSync(join(codexPaths.home, "config.toml"), "utf8");
+  } catch {
+    return "unknown";
+  }
+  let inBlock = false;
+  for (const line of text.split("\n")) {
+    const trimmed = line.trim();
+    if (trimmed.startsWith("[")) {
+      inBlock = trimmed.startsWith("[hooks.state.") && trimmed.includes(key);
+    } else if (inBlock && trimmed.startsWith("trusted_hash")) {
+      return "trusted";
+    }
+  }
+  return "untrusted";
 }
 
 export function codexSupervisorLink(): string {

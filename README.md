@@ -63,11 +63,10 @@ claude                  # use claude as always; each session gets its own accoun
 | command | what it does |
 |---|---|
 | `tokenmaxxing init` | log the first account in (isolated) + install supervisor & hooks |
-| `tokenmaxxing init --codex` | same for codex: import login, install codex supervisor + Stop hook |
+| `tokenmaxxing init --codex` | same for codex: log in the first account (isolated), install codex supervisor + Stop hook |
 | `tokenmaxxing add` | register an additional account (isolated login, harvested once into its own store) |
 | `tokenmaxxing add --codex` | register an additional codex account (isolated login) |
 | `tokenmaxxing auth [--codex] [sel \| --all]` | reauthenticate a pooled account in place: bare lists the pool (emails shown) and asks which; a selector targets one account and tells you the email to sign in with; `--all` walks every account that is flagged or has no usable credential in its store, one by one; `--codex` does the same for the codex pool |
-| `tokenmaxxing switch --codex [sel]` | switch the codex pool (takes effect on the next codex start); the claude pool has no manual switch, each session is placed at launch |
 | `tokenmaxxing status [--cached]` | accounts with 5h / weekly usage bars, live session counts, exhausted-until-reset; `--cached` renders the stored figures without sampling |
 | `tokenmaxxing config` | the config path and the effective values; edit the file in an editor, a bad value fails the next load with the field name |
 | `tokenmaxxing doctor` | verify the supervisor + settings entries survived and every store holds its account's credential |
@@ -76,7 +75,7 @@ claude                  # use claude as always; each session gets its own accoun
 | `tokenmaxxing setup-token [--print \| rm <label\|uuid>]` | Cursor Cloud only: mint one `claude setup-token` per pooled account (a browser sign-in each) and print the `TOKENMAXXING_TOKENS` secret value; `--print` prints the stored set, `rm` drops one |
 | `tokenmaxxing cursor init [dir]` | write the Claude relay subagent and `.cursor/environment.json` into a repo |
 | `tokenmaxxing cloud run [--session <id>] [--max-turns <n>] "<prompt>"` | on a Cursor Cloud VM: run `claude -p` on a setup token, rotate to the next token on a usage limit |
-| `--json` | machine-readable output: one JSON document on stdout for `status`, `config`, `check`, and `switch` (`ok` mirrors the exit code, failures add `error`) |
+| `--json` | machine-readable output: one JSON document on stdout for `status`, `config`, and `check` (`ok` mirrors the exit code, failures add `error`) |
 
 ## How switching decides
 
@@ -119,12 +118,12 @@ State lives entirely in `~/.config/tokenmaxxing/`. Each account's credential sto
 The same pooling works for OpenAI's Codex CLI (your own ChatGPT-subscription accounts):
 
 ```sh
-tokenmaxxing init --codex   # import your current codex login + install the codex supervisor & Stop hook
+tokenmaxxing init --codex   # log in the first account, isolated + install the codex supervisor & Stop hook
 tokenmaxxing add --codex    # log in another account, isolated - your primary login is untouched
 codex                       # use codex as always
 ```
 
-Codex mechanics differ from Claude Code in one hard way: a running codex process refuses a credential swapped to a different account, and codex has no per-session credential store, so **a restart is the switch** and every codex session shares one live login. The installed Stop hook runs the same pace-pressure decision at each turn boundary (usage read free from codex's own rate-limit endpoint: percentages plus absolute reset times, weekly aggregate and per-model caps alike); when it swaps, the supervisor relaunches `codex resume <session-id>` on the fresh account with the transcript intact. `tokenmaxxing switch --codex [sel]` does it manually, `status` (and `status --cached`) shows both pools.
+Codex mechanics differ from Claude Code in one hard way: a running codex process refuses a credential swapped to a different account, so **a restart is the switch**. Each codex session runs on its own account's store (`codex-stores/<uuid8>/`, only `auth.json` per account, everything else shared with `~/.codex` so resume works across stores). The installed Stop hook runs the same pace-pressure decision at each turn boundary (usage read free from codex's own rate-limit endpoint: percentages plus absolute reset times, weekly aggregate and per-model caps alike); when it moves, the supervisor relaunches `codex resume <session-id>` under the target's store with the transcript intact. `status` (and `status --cached`) shows both pools.
 
 Two codex-specific facts worth knowing: codex does not run hooks it has not been told to trust, so after `init --codex` you must open codex once and trust the tokenmaxxing Stop hook via `/hooks` (auto-switching is inert until then); and codex has no cross-process lock on `auth.json`, so tokenmaxxing serializes all of its own credential writes behind its own lock and swaps only at idle turn boundaries.
 

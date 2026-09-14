@@ -110,6 +110,8 @@ export const ConfigSchema = z
       .prefault({}),
     claudeBin: z.string().default(""),
     codexBin: z.string().default(""),
+    grokBin: z.string().default(""),
+    opencodeBin: z.string().default(""),
     policy: z
       .object({
         projectionMargin: z.number().min(0).max(100).default(0),
@@ -227,13 +229,8 @@ export const CodexStopStdinSchema = z.looseObject({
 });
 
 export const CodexRespawnMarkerSchema = z.object({
-  account: z.string(),
-  sessionId: z.string().nullable(),
-  ts: z.number(),
-});
-
-export const CodexReconcileMarkerSchema = z.object({
   accountId: z.string(),
+  sessionId: z.string().nullable(),
   ts: z.number(),
 });
 

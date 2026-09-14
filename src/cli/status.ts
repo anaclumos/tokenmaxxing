@@ -2,9 +2,11 @@ import { chunk, sortBy } from "es-toolkit";
 import { z } from "zod";
 import { claude } from "../lib/claude.ts";
 import { codex } from "../lib/codex.ts";
+import { grok } from "../lib/grok.ts";
+import { opencodeGo } from "../lib/opencodego.ts";
 import { loadAccounts, loadConfig, saveAccounts } from "../lib/state.ts";
 import { withLock } from "../lib/lock.ts";
-import { codexPool } from "../lib/paths.ts";
+import { codexPool, grokPool, opencodeGoPool } from "../lib/paths.ts";
 import { earliestReset, isExhausted, isSessionWindow, limitWindows, nextWeeklyReset, sessionWindow, thresholdBars, weeklyWindow } from "../lib/picker.ts";
 import type { Provider, SampleReport } from "../lib/provider.ts";
 import { bar, c, count, emitJson, fmtAgo } from "./render.ts";
@@ -52,7 +54,7 @@ const PoolReportSchema = z.object({
 });
 type PoolReport = z.infer<typeof PoolReportSchema>;
 
-const StatusReportSchema = z.object({ now: z.number(), claude: PoolReportSchema, codex: PoolReportSchema });
+const StatusReportSchema = z.object({ now: z.number(), claude: PoolReportSchema, codex: PoolReportSchema, grok: PoolReportSchema, opencodeGo: PoolReportSchema });
 export type StatusReport = z.infer<typeof StatusReportSchema>;
 
 function currentWindow(w: Window, now: number): WindowReport {
@@ -239,9 +241,11 @@ export async function cmdStatus(opts: { json?: boolean; cached?: boolean } = {})
   const claudeReport = await collect(claude, cfg, now, cached);
   if (!json) {
     const codexPooled = loadAccounts(codexPool).accounts.length > 0;
+    const grokPooled = loadAccounts(grokPool).accounts.length > 0;
+    const opencodeGoPooled = loadAccounts(opencodeGoPool).accounts.length > 0;
     if (claudeReport.accounts.length === 0) {
-      if (!codexPooled) {
-        console.log(c.dim("no accounts yet, run `tokenmaxxing init` (or `tokenmaxxing init --codex`)"));
+      if (!codexPooled && !grokPooled && !opencodeGoPooled) {
+        console.log(c.dim("no accounts yet, run `tokenmaxxing init` (or `tokenmaxxing init --codex`, `--grok`, `--opencode-go`)"));
         return 0;
       }
       console.log(c.dim("no claude accounts (run `tokenmaxxing init` to pool claude too)"));
@@ -252,13 +256,21 @@ export async function cmdStatus(opts: { json?: boolean; cached?: boolean } = {})
     }
   }
   const codexReport = await collect(codex, cfg, now, cached);
+  const grokReport = await collect(grok, cfg, now, cached);
+  const opencodeGoReport = await collect(opencodeGo, cfg, now, cached);
   if (json) {
-    const report: StatusReport = { now, claude: claudeReport, codex: codexReport };
+    const report: StatusReport = { now, claude: claudeReport, codex: codexReport, grok: grokReport, opencodeGo: opencodeGoReport };
     emitJson({ ok: true, ...report });
     return 0;
   }
   if (codexReport.accounts.length > 0) {
     renderPool(codex, codexReport, `codex  (${count({ n: codexReport.accounts.length, noun: "account" })})`, Date.now(), cfg.policy.usagePollTtlMs);
+  }
+  if (grokReport.accounts.length > 0) {
+    renderPool(grok, grokReport, `grok  (${count({ n: grokReport.accounts.length, noun: "account" })}, status-only)`, Date.now(), cfg.policy.usagePollTtlMs);
+  }
+  if (opencodeGoReport.accounts.length > 0) {
+    renderPool(opencodeGo, opencodeGoReport, `opencode-go  (${count({ n: opencodeGoReport.accounts.length, noun: "account" })}, status-only)`, Date.now(), cfg.policy.usagePollTtlMs);
   }
   return 0;
 }
