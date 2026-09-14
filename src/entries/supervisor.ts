@@ -23,10 +23,12 @@ const NONINTERACTIVE_SUBCMDS = new Set([
 const VALUE_TAKING_ROOT_FLAGS = new Set([
   "--agent", "--agents", "--append-system-prompt", "--append-system-prompt-file",
   "--autocompact", "--debug-file", "--effort", "--environment", "--fallback-model",
-  "--input-format", "--json-schema", "--max-budget-usd", "--model", "-n", "--name",
+  "--input-format", "--json-schema", "--managed-settings", "--max-budget-usd",
+  "--max-thinking-tokens", "--max-turns", "--model", "-n", "--name",
   "--output-format", "--permission-mode", "--permission-prompt-tool", "--permission-prompts",
-  "--plugin-dir", "--plugin-url", "--remote-control-session-name-prefix",
+  "--plugin-dir", "--plugin-dir-no-mcp", "--plugin-url", "--remote-control-session-name-prefix",
   "--setting-sources", "--settings", "--system-prompt", "--system-prompt-snapshot",
+  "--task-budget", "--thinking", "--thinking-display",
 ]);
 const VARIADIC_ROOT_FLAGS = new Set([
   "--add-dir", "--allowedTools", "--allowed-tools", "--betas",
@@ -206,9 +208,10 @@ async function countdownWait(acct: string, until: number): Promise<boolean> {
 }
 
 function resumePrompt(compacted: boolean): string {
-  return compacted
-    ? "tokenmaxxing compacted this conversation and resumed the session on an account with quota headroom. Continue the task from where the previous turn left off."
-    : "tokenmaxxing resumed this session on an account with quota headroom. Continue the task from where the previous turn left off.";
+  const moved = compacted
+    ? "tokenmaxxing compacted this conversation and resumed the session on an account with quota headroom."
+    : "tokenmaxxing resumed this session on an account with quota headroom.";
+  return `${moved} Continue the task from where the previous turn left off. If the previous turn ended waiting on the user, restate what you need and wait.`;
 }
 
 function userLine(text: string): string {
@@ -362,7 +365,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
   process.on("SIGINT", () => {});
   process.on("SIGHUP", () => {});
 
-  const relay = info.streamInput ? new StdinRelay() : null;
+  const relay = analyzeArgs(base).streamInput ? new StdinRelay() : null;
   let firstLine: string | null = null;
   let respawns = 0;
   let overriddenUntil = 0;
