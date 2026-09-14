@@ -4,6 +4,7 @@ import { evaluateAndMaybeSwap } from "../lib/decide.ts";
 import { supervisedSession, writeRespawnMarker } from "../lib/sessions.ts";
 import { loadConfig } from "../lib/state.ts";
 import { classifyEnforcedLimit, findEnforcedRow, parseErrorBody, readTranscriptTail } from "../lib/usage.ts";
+import { paths } from "../lib/paths.ts";
 import { JsonTextSchema, type EnforcedLimit } from "../lib/types.ts";
 import { log } from "../lib/log.ts";
 import { readStdin } from "./statusline.ts";
@@ -50,6 +51,16 @@ export async function runStopFailureHook(): Promise<number> {
         transient: row?.apiErrorIsTransient,
         body: row ? parseErrorBody(row.errorDetails)?.error?.type : undefined,
       });
+    }
+
+    if (session == null && limit != null) {
+      const shim = `${paths.binDir}/claude`;
+      log("stopfailure.unsupervised_hint", { sid: stdinSid });
+      process.stdout.write(
+        `${JSON.stringify({
+          systemMessage: `tokenmaxxing: this session runs outside the supervisor, so it cannot move to another account at the limit. Move it yourself: ${stdinSid ? `${shim} --resume ${stdinSid}` : `resume it through ${shim}`}`,
+        })}\n`,
+      );
     }
 
     const decision = await evaluateAndMaybeSwap(claude, now, canRespawn && enforced != null, enforced);
