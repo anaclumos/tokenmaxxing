@@ -41,7 +41,7 @@ function printHelp(): void {
   console.log(`${c.bold("tokenmaxxing")} - automatic Claude Code account switching
 
   ${c.cyan("tokenmaxxing")}            show the pool with usage bars (alias of ${c.cyan("status")})
-  ${c.cyan("tokenmaxxing check")}      sample up to three accounts whose usage figures are oldest (run by the periodic timer)
+  ${c.cyan("tokenmaxxing check")}      sample up to three accounts whose last usage attempts are oldest (run by the periodic timer)
   ${c.cyan("tokenmaxxing init")}       log in the first account (isolated) + install supervisor & hooks
   ${c.cyan("tokenmaxxing init --codex")}  same for codex: log in the first account, isolated, install codex supervisor + Stop hook
   ${c.cyan("tokenmaxxing init --grok")}   pool grok Build logins (status-only: no supervisor yet)

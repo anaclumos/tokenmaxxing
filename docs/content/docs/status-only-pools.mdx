@@ -9,7 +9,6 @@ Two more pools share the account commands, the state layout, and the `status` vi
 tokenmaxxing init --grok          # pool the first grok login (status-only)
 tokenmaxxing add --grok           # pool another one through an isolated login
 tokenmaxxing init --opencode-go   # pool the first opencode-go key (status-only)
-tokenmaxxing add --opencode-go    # pool another key
 ```
 
 `init`, `add`, `auth`, `rm`, and `rename` take `--grok` or `--opencode-go`; every other command refuses the flags with exit code 2, and the pool flags are mutually exclusive. `init` verifies the vendor CLI and pins its path (`grokBin` or `opencodeBin` in `config.json`; `TOKENMAXXING_GROK_BIN` and `TOKENMAXXING_OPENCODE_BIN` override it), then prints that the pool is status-only. `doctor`, `check`, and the periodic timer ignore both pools, and `uninstall` keeps their stores.
@@ -20,7 +19,7 @@ An account is a grok CLI login. `init --grok` imports the first entry of `~/.gro
 
 ## opencode-go
 
-An account is an opencode Zen API key for the `opencode-go` provider. `init --opencode-go` imports the key from opencode's auth file (`$XDG_DATA_HOME/opencode/auth.json`, `~/.local/share/opencode/auth.json` by default) when it holds an `opencode-go` entry of type `api`; otherwise, and for `add` and `auth`, it runs `opencode providers login -p opencode-go` in a throwaway data home and you paste the key from opencode.ai/zen when opencode asks. Identity is a hash of the key, so the account has no email and its tier reads `go`. The key is written to `opencode-go-stores/<uuid8>/auth.json` at mode 0600.
+An account is an opencode Zen API key for the `opencode-go` provider. `init --opencode-go` imports the key from opencode's auth file (`$XDG_DATA_HOME/opencode/auth.json`, `~/.local/share/opencode/auth.json` by default) when it holds an `opencode-go` entry of type `api`; otherwise, and for `add` and `auth`, it runs `opencode providers login -p opencode-go` in a throwaway data home and you paste the key from opencode.ai/zen when opencode asks. Identity is a hash of the key, so the account has no email and its tier reads `go`. The key is written to `opencode-go-stores/<uuid8>/auth.json` at mode 0600. Pool one opencode-go key per host for now: every opencode-go account id shares its first eight characters, so a second key lands in the same store directory and overwrites the first ([issue #144](https://github.com/anaclumos/tokenmaxxing/issues/144)); `add --opencode-go` exists but is not safe to use until that lands.
 
 ## What status shows
 
@@ -32,5 +31,5 @@ An account is an opencode Zen API key for the `opencode-go` provider. `init --op
 |---|---|
 | `grok-accounts.json`, `opencode-go-accounts.json` | The pool indexes, the same schema as `accounts.json`; `activeId` is always `null` |
 | `grok-lock`, `opencode-go-lock` | The `flock` files that serialize each pool's commands |
-| `grok-stores/<uuid8>/auth.json`, `opencode-go-stores/<uuid8>/auth.json` | One 0600 store per account |
+| `grok-stores/<uuid8>/auth.json`, `opencode-go-stores/<uuid8>/auth.json` | One 0600 store per account (for opencode-go, one per host until issue #144 lands) |
 | `grok-onboard/`, `opencode-go-onboard/` | Throwaway login homes, wiped before and after each isolated login |
