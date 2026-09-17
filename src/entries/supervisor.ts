@@ -50,6 +50,7 @@ const AnalysisSchema = z.object({
   resumeId: z.string().nullable(),
   continueLatest: z.boolean(),
   streamInput: z.boolean(),
+  streamOutput: z.boolean(),
 });
 type Analysis = z.infer<typeof AnalysisSchema>;
 
@@ -58,6 +59,7 @@ export function analyzeArgs(argv: string[]): Analysis {
   let resumeId: string | null = null;
   let continueLatest = false;
   let streamInput = false;
+  let streamOutput = false;
   let printMode = false;
   let invalidSessionArg = false;
   let pickerResume = false;
@@ -66,7 +68,8 @@ export function analyzeArgs(argv: string[]): Analysis {
 
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]!;
-    if (a === "-p" || a === "--print") printMode = true;
+    if (a === "--") break;
+    else if (a === "-p" || a === "--print") printMode = true;
     else if (a === "--version" || a === "-v" || a === "--help" || a === "-h") printMode = true;
     else if (a === "--session-id") {
       const next = argv[++i] ?? null;
@@ -92,6 +95,8 @@ export function analyzeArgs(argv: string[]): Analysis {
     }
     else if (a === "--input-format") streamInput = argv[++i] === "stream-json";
     else if (a.startsWith("--input-format=")) streamInput = a.slice("--input-format=".length) === "stream-json";
+    else if (a === "--output-format") streamOutput = argv[++i] === "stream-json";
+    else if (a.startsWith("--output-format=")) streamOutput = a.slice("--output-format=".length) === "stream-json";
     else if (VALUE_TAKING_ROOT_FLAGS.has(a)) i++;
     else if (VARIADIC_ROOT_FLAGS.has(a)) {
       while (i + 1 < argv.length && !argv[i + 1]!.startsWith("-")) i++;
@@ -107,7 +112,7 @@ export function analyzeArgs(argv: string[]): Analysis {
   const isSubcmd = firstPositional !== null && NONINTERACTIVE_SUBCMDS.has(firstPositional);
   const forkResume = forkSession && (resumeId !== null || continueLatest);
   const manage = !printMode && !isSubcmd && !invalidSessionArg && !pickerResume && !forkResume && !process.env.TOKENMAXXING_PROBE;
-  return { manage, sessionId, resumeId, continueLatest, streamInput };
+  return { manage, sessionId, resumeId, continueLatest, streamInput, streamOutput };
 }
 
 export function stripSessionFlags(argv: string[]): string[] {
@@ -222,20 +227,34 @@ async function moveExhaustedSeat(seat: Account, sid: string, gate: MarkerGate): 
   return true;
 }
 
-async function countdownWait(acct: string, until: number): Promise<boolean> {
+type Say = (terminal: string, text: string) => void;
+
+function systemLine(sid: string, text: string): string {
+  return `${JSON.stringify({ type: "system", subtype: "informational", content: text, level: "warning", uuid: crypto.randomUUID(), session_id: sid })}\n`;
+}
+
+const clockFmt = new Intl.DateTimeFormat("en-US", { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZoneName: "short" });
+
+async function countdownWait(acct: string, until: number, out: { stream: boolean; say: Say }): Promise<boolean> {
   let aborted = false;
   const onInt = () => { aborted = true; };
   process.on("SIGINT", onInt);
-  process.stderr.write(`\n\x1b[36m⏳ tokenmaxxing: all accounts at their limit. Resuming on ${acct} when it resets (Ctrl-C to resume now).\x1b[0m\n`);
+  const minutes = Math.max(1, Math.ceil((until - Date.now()) / 60000));
+  out.say(
+    `\n\x1b[36m⏳ tokenmaxxing: all accounts at their limit. Resuming on ${acct} when it resets (Ctrl-C to resume now).\x1b[0m\n`,
+    `tokenmaxxing: all accounts at their limit. Resuming at ${clockFmt.format(until)} (in ${minutes} min) on ${acct}.`,
+  );
   while (!aborted && Date.now() < until) {
-    const left = until - Date.now();
-    const m = Math.floor(left / 60000);
-    const s = Math.floor((left % 60000) / 1000);
-    process.stderr.write(`\r\x1b[36m   resuming in ${m}m ${String(s).padStart(2, "0")}s \x1b[0m`);
+    if (!out.stream) {
+      const left = until - Date.now();
+      const m = Math.floor(left / 60000);
+      const s = Math.floor((left % 60000) / 1000);
+      process.stderr.write(`\r\x1b[36m   resuming in ${m}m ${String(s).padStart(2, "0")}s \x1b[0m`);
+    }
     await Bun.sleep(1000);
   }
   process.removeListener("SIGINT", onInt);
-  process.stderr.write(`\n\x1b[36m↻ resuming on ${acct}...\x1b[0m\n`);
+  out.say(`\n\x1b[36m↻ resuming on ${acct}...\x1b[0m\n`, `tokenmaxxing: resuming on ${acct}.`);
   return aborted;
 }
 
@@ -406,7 +425,14 @@ export async function runSupervisor(argv: string[]): Promise<number> {
   process.on("SIGINT", () => {});
   process.on("SIGHUP", () => {});
 
-  const relay = analyzeArgs(base).streamInput ? new StdinRelay() : null;
+  const effective = analyzeArgs(base);
+  const relay = effective.streamInput ? new StdinRelay() : null;
+  const stream = effective.streamOutput;
+  let noticeSid = sid;
+  const say: Say = (terminal, text) => {
+    if (stream) process.stdout.write(systemLine(noticeSid, text));
+    else process.stderr.write(terminal);
+  };
   let firstLine: string | null = null;
   let respawns = 0;
   let overriddenUntil = 0;
@@ -475,23 +501,24 @@ export async function runSupervisor(argv: string[]): Promise<number> {
     if (m) {
       rmSync(marker, { force: true });
       respawns++;
+      noticeSid = m.sessionId;
       const label = loadAccounts(claudePool).accounts.find((a) => a.id === m.accountId)?.label ?? m.accountId.slice(0, 8);
       const resumable = existsSync(transcriptPath(m.sessionId));
       let compacted = false;
       if (m.compact && seat && resumable) {
-        process.stderr.write(`\n\x1b[36m↻ tokenmaxxing: compacting the conversation on ${seat.label} before the move...\x1b[0m\n`);
+        say(`\n\x1b[36m↻ tokenmaxxing: compacting the conversation on ${seat.label} before the move...\x1b[0m\n`, `tokenmaxxing: compacting the conversation on ${seat.label} before the move.`);
         const compactEnv: Record<string, string | undefined> = { ...childEnv, TOKENMAXXING_PROBE: "1", CLAUDE_SECURESTORAGE_CONFIG_DIR: storeDirFor(seat.id) };
         delete compactEnv.TOKENMAXXING_SUPERVISED;
         delete compactEnv.TOKENMAXXING_SESSION_ID;
         delete compactEnv.TOKENMAXXING_LAUNCHED_AT;
         const outcome = await compactClaudeSession({ real, sid: m.sessionId, env: compactEnv });
         log("supervisor.compact", { sid: m.sessionId.slice(0, 8), seat: seat.id.slice(0, 8), ok: outcome.ok, reason: outcome.ok ? undefined : outcome.reason });
-        if (!outcome.ok) process.stderr.write(`\x1b[33m   compaction did not land (${outcome.reason}) - resuming with the full context\x1b[0m\n`);
+        if (!outcome.ok) say(`\x1b[33m   compaction did not land (${outcome.reason}) - resuming with the full context\x1b[0m\n`, `tokenmaxxing: compaction did not land; resuming with the full context. (${outcome.reason})`);
         compacted = outcome.ok;
       }
       if (m.waitUntil > Date.now()) {
-        if (await countdownWait(label, m.waitUntil)) overriddenUntil = m.waitUntil;
-      } else process.stderr.write(`\n\x1b[36m↻ tokenmaxxing: moving to ${label} - resuming...\x1b[0m\n`);
+        if (await countdownWait(label, m.waitUntil, { stream, say })) overriddenUntil = m.waitUntil;
+      } else say(`\n\x1b[36m↻ tokenmaxxing: moving to ${label} - resuming...\x1b[0m\n`, `tokenmaxxing: moving to ${label} and resuming.`);
       wanted = m.accountId;
       saveSessionFlags(m.sessionId, persistable, process.cwd());
       const prompt = resumable ? resumePrompt(compacted) : null;
