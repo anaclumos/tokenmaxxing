@@ -68,7 +68,8 @@ export function analyzeArgs(argv: string[]): Analysis {
 
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]!;
-    if (a === "-p" || a === "--print") printMode = true;
+    if (a === "--") break;
+    else if (a === "-p" || a === "--print") printMode = true;
     else if (a === "--version" || a === "-v" || a === "--help" || a === "-h") printMode = true;
     else if (a === "--session-id") {
       const next = argv[++i] ?? null;
@@ -241,7 +242,7 @@ async function countdownWait(acct: string, until: number, out: { stream: boolean
   const minutes = Math.max(1, Math.ceil((until - Date.now()) / 60000));
   out.say(
     `\n\x1b[36m⏳ tokenmaxxing: all accounts at their limit. Resuming on ${acct} when it resets (Ctrl-C to resume now).\x1b[0m\n`,
-    `tokenmaxxing: all accounts at their limit. Resuming on ${acct} at ${clockFmt.format(until)} (in ${minutes} min).`,
+    `tokenmaxxing: all accounts at their limit. Resuming at ${clockFmt.format(until)} (in ${minutes} min) on ${acct}.`,
   );
   while (!aborted && Date.now() < until) {
     if (!out.stream) {
@@ -427,8 +428,9 @@ export async function runSupervisor(argv: string[]): Promise<number> {
   const effective = analyzeArgs(base);
   const relay = effective.streamInput ? new StdinRelay() : null;
   const stream = effective.streamOutput;
+  let noticeSid = sid;
   const say: Say = (terminal, text) => {
-    if (stream) process.stdout.write(systemLine(sid, text));
+    if (stream) process.stdout.write(systemLine(noticeSid, text));
     else process.stderr.write(terminal);
   };
   let firstLine: string | null = null;
@@ -499,6 +501,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
     if (m) {
       rmSync(marker, { force: true });
       respawns++;
+      noticeSid = m.sessionId;
       const label = loadAccounts(claudePool).accounts.find((a) => a.id === m.accountId)?.label ?? m.accountId.slice(0, 8);
       const resumable = existsSync(transcriptPath(m.sessionId));
       let compacted = false;
@@ -510,7 +513,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
         delete compactEnv.TOKENMAXXING_LAUNCHED_AT;
         const outcome = await compactClaudeSession({ real, sid: m.sessionId, env: compactEnv });
         log("supervisor.compact", { sid: m.sessionId.slice(0, 8), seat: seat.id.slice(0, 8), ok: outcome.ok, reason: outcome.ok ? undefined : outcome.reason });
-        if (!outcome.ok) say(`\x1b[33m   compaction did not land (${outcome.reason}) - resuming with the full context\x1b[0m\n`, `tokenmaxxing: compaction did not land (${outcome.reason}); resuming with the full context.`);
+        if (!outcome.ok) say(`\x1b[33m   compaction did not land (${outcome.reason}) - resuming with the full context\x1b[0m\n`, `tokenmaxxing: compaction did not land; resuming with the full context. (${outcome.reason})`);
         compacted = outcome.ok;
       }
       if (m.waitUntil > Date.now()) {
