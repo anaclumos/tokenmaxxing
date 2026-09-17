@@ -25,11 +25,13 @@ import { cmdConfig } from "./cli/config.ts";
 import { cmdSetupToken } from "./cli/setuptoken.ts";
 import { cmdCloudRun } from "./cli/cloudrun.ts";
 import { cmdCursorInit } from "./cli/cursorinit.ts";
-import { timerDeactivationHint, uninstallSupervisor } from "./lib/install.ts";
+import { onLoginHome, timerDeactivationHint, uninstallSupervisor, uninstallTargets } from "./lib/install.ts";
+import { HOME } from "./lib/paths.ts";
 import { c, emitError } from "./cli/render.ts";
 
 const JSON_FLAG = "--json";
 const CACHED_FLAG = "--cached";
+const YES_FLAG = "--yes";
 const CODEX_FLAG = "--codex";
 const GROK_FLAG = "--grok";
 const OPENCODE_GO_FLAG = "--opencode-go";
@@ -54,7 +56,7 @@ function printHelp(): void {
   ${c.cyan("tokenmaxxing doctor")}     verify the install is intact
   ${c.cyan("tokenmaxxing rename")} [--codex | --grok | --opencode-go] <sel> <label>
   ${c.cyan("tokenmaxxing rm")} [--codex | --grok | --opencode-go] <sel>
-  ${c.cyan("tokenmaxxing uninstall")}  remove supervisor + settings entries
+  ${c.cyan("tokenmaxxing uninstall")} [--yes]  print the targets, then remove supervisor + settings entries (refused without ${c.cyan("--yes")} when HOME is the login home)
   ${c.cyan("tokenmaxxing setup-token")} [--print | rm <label|uuid>]  Cursor Cloud only: mint one \`claude setup-token\` per pooled account (browser sign-in each) and print the TOKENMAXXING_TOKENS secret value; ${c.cyan("--print")} prints the stored set, ${c.cyan("rm")} drops one
   ${c.cyan("tokenmaxxing cursor init")} [dir]  write the Claude relay subagent (.cursor/agents/claude.md) and .cursor/environment.json into a repo
   ${c.cyan("tokenmaxxing cloud run")} [--session <id>] [--max-turns <n>] "<prompt>"  on a Cursor Cloud VM: run claude -p on a setup token from TOKENMAXXING_TOKENS, rotate to the next token on a usage limit
@@ -84,17 +86,23 @@ async function main(): Promise<number> {
   jsonMode = argv.includes(JSON_FLAG);
   const json = jsonMode;
   const cached = argv.includes(CACHED_FLAG);
+  const yes = argv.includes(YES_FLAG);
   const providerFlags = [CODEX_FLAG, GROK_FLAG, OPENCODE_GO_FLAG].filter((f) => argv.includes(f));
   if (providerFlags.length > 1) {
     emitError({ json, message: `${providerFlags.join(" and ")} are mutually exclusive - pick one pool` });
     return 2;
   }
   const provider = argv.includes(CODEX_FLAG) ? codex : argv.includes(GROK_FLAG) ? grok : argv.includes(OPENCODE_GO_FLAG) ? opencodeGo : claude;
-  const args = argv.filter((a) => a !== JSON_FLAG && a !== CACHED_FLAG && a !== CODEX_FLAG && a !== GROK_FLAG && a !== OPENCODE_GO_FLAG);
+  const args = argv.filter((a) => a !== JSON_FLAG && a !== CACHED_FLAG && a !== YES_FLAG && a !== CODEX_FLAG && a !== GROK_FLAG && a !== OPENCODE_GO_FLAG);
   const sub = args[0];
 
   if (cached && sub != null && sub !== "status") {
     emitError({ json, message: `${CACHED_FLAG} applies to status only, not ${sub}` });
+    return 2;
+  }
+
+  if (yes && sub !== "uninstall") {
+    emitError({ json, message: `${YES_FLAG} applies to uninstall only, not ${sub ?? "status"}` });
     return 2;
   }
 
@@ -155,15 +163,25 @@ async function main(): Promise<number> {
       return 2;
     }
     case "uninstall": {
-      const out = uninstallSupervisor();
+      if (args.length > 1) {
+        emitError({ message: `unknown uninstall option: ${args[1]} (uninstall takes only ${YES_FLAG})` });
+        return 2;
+      }
+      const live = onLoginHome();
+      console.log(`uninstall removes:\n${uninstallTargets(live).map((t) => `  ${t}`).join("\n")}`);
+      if (live && !yes) {
+        emitError({ message: `refused: HOME is the login home (${HOME}) - rerun with ${YES_FLAG} to remove these from the live install` });
+        return 2;
+      }
+      const out = uninstallSupervisor({ liveTimer: live });
       const removed = [
         "supervisor wrapper",
         "settings entries",
-        ...(out.timerDeactivated ? ["check timer"] : []),
+        ...(out.timer === "removed" ? ["check timer"] : []),
         ...(out.pathLineRemoved ? ["rc PATH line"] : []),
       ];
       console.log(`removed ${removed.join(", ")}`);
-      if (!out.timerDeactivated) console.log(c.yellow(`⚠ the check job may still be loaded - run: ${timerDeactivationHint()}`));
+      if (out.timer === "still-loaded") console.log(c.yellow(`⚠ the check job may still be loaded - run: ${timerDeactivationHint()}`));
       if (!out.pathLineRemoved) console.log(c.dim("(no tokenmaxxing PATH line found in the shell rc)"));
       console.log(`kept: accounts.json, config.json, and every account credential store (claude: stores/ and its keychain items on macOS; codex: codex-stores/; grok: grok-stores/; opencode-go: opencode-go-stores/) - remove accounts with \`xx rm\` to delete their credentials`);
       return 0;

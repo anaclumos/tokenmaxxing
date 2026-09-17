@@ -73,7 +73,7 @@ claude                  # use claude as always; each session gets its own accoun
 | `tokenmaxxing check` | fold fresh tees, sample up to three stale accounts, and self-update a Bun global install once a day; the periodic timer runs this every tick |
 | `tokenmaxxing doctor` | verify the install: PATH order, `claudeBin`, the five settings entries, the timer, the credential identity of every Codex store and of every Claude store whose access token is still fresh (an expiring Claude token is reported as unverifiable, not as a failure), codex hook trust, setup-token age, and shell aliases that shadow `claude` |
 | `tokenmaxxing rename [--codex \| --grok \| --opencode-go] <sel> <label>` / `rm [...] <sel>` | manage a pool (one email can hold both a claude and a codex account); `rm` is refused for an account with a running supervised session |
-| `tokenmaxxing uninstall` | remove the shims, settings entries, codex Stop hook, check timer, and rc PATH line (accounts/stores kept) |
+| `tokenmaxxing uninstall [--yes]` | print the targets, then remove the shims, settings entries, codex Stop hook, check timer, and rc PATH line (accounts/stores kept); refused without `--yes` when `HOME` is the login home |
 | `tokenmaxxing setup-token [--print \| rm <label\|uuid>]` | Cursor Cloud only: mint one `claude setup-token` per pooled account (a browser sign-in each) and print the `TOKENMAXXING_TOKENS` secret value; `--print` prints the stored set, `rm` drops one |
 | `tokenmaxxing cursor init [dir]` | write the Claude relay subagent and `.cursor/environment.json` into a repo |
 | `tokenmaxxing cloud run [--session <id>] [--max-turns <n>] "<prompt>"` | on a Cursor Cloud VM: run `claude -p` on a setup token, rotate to the next token on a usage limit |

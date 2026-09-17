@@ -1,5 +1,5 @@
 import { accessSync, appendFileSync, constants, existsSync, mkdirSync, readFileSync, realpathSync, rmSync, statSync } from "node:fs";
-import { basename, dirname, join } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { escape } from "es-toolkit";
 import { z } from "zod";
 import { codexPaths, codexStoreDirFor, HOME, paths } from "./paths.ts";
@@ -343,21 +343,35 @@ function systemdTimerActive(): "active" | "not-active" | "unavailable" {
   }
 }
 
-function uninstallCheckTimer(): boolean {
-  if (skipImperativeTimer()) return true;
+function removeTimerUnits(): void {
+  if (process.platform === "darwin") {
+    rmSync(launchdPlist(), { force: true });
+    return;
+  }
+  rmSync(join(paths.systemdUserDir, "tokenmaxxing-check.timer"), { force: true });
+  rmSync(join(paths.systemdUserDir, "tokenmaxxing-check.service"), { force: true });
+}
+
+type TimerOutcome = "removed" | "skipped" | "still-loaded";
+
+function uninstallCheckTimer(live: boolean): TimerOutcome {
+  if (skipImperativeTimer()) return "skipped";
+  if (!live) {
+    removeTimerUnits();
+    return "removed";
+  }
   if (process.platform === "darwin") {
     const domain = launchdDomain();
     const loaded = launchdJobLoaded();
     const deactivated = loaded === "loaded" && domain != null ? run(["launchctl", "bootout", `${domain}/${LAUNCHD_LABEL}`]) : loaded === "not-loaded";
-    rmSync(launchdPlist(), { force: true });
-    return deactivated;
+    removeTimerUnits();
+    return deactivated ? "removed" : "still-loaded";
   }
   const active = systemdTimerActive();
   const deactivated = active === "active" ? run(["systemctl", "--user", "disable", "--now", "tokenmaxxing-check.timer"]) : active === "not-active";
-  rmSync(join(paths.systemdUserDir, "tokenmaxxing-check.timer"), { force: true });
-  rmSync(join(paths.systemdUserDir, "tokenmaxxing-check.service"), { force: true });
+  removeTimerUnits();
   run(["systemctl", "--user", "daemon-reload"]);
-  return deactivated;
+  return deactivated ? "removed" : "still-loaded";
 }
 
 export function shellRcPath(): string | null {
@@ -448,17 +462,47 @@ export function removePathFromRc(rc: string): boolean {
   return true;
 }
 
-const UninstallOutcomeSchema = z.object({ timerDeactivated: z.boolean(), pathLineRemoved: z.boolean() });
+const UninstallOutcomeSchema = z.object({ timer: z.enum(["removed", "skipped", "still-loaded"]), pathLineRemoved: z.boolean() });
 export type UninstallOutcome = z.infer<typeof UninstallOutcomeSchema>;
 
-export function uninstallSupervisor(): UninstallOutcome {
+export function loginHome(): string {
+  const cmd = process.platform === "darwin" ? ["id", "-P"] : ["getent", "passwd", String(process.getuid?.() ?? "")];
+  const proc = Bun.spawnSync(cmd, { stdout: "pipe", stderr: "ignore", timeout: 10_000 });
+  const home = proc.stdout.toString().trim().split(":").at(-2);
+  if (proc.exitCode !== 0 || home == null || home === "") throw new Error(`cannot read the login home: ${cmd.join(" ")} failed`);
+  return home;
+}
+
+export function onLoginHome(): boolean {
+  return resolve(HOME) === resolve(loginHome());
+}
+
+export function uninstallTargets(live: boolean): string[] {
+  const timer =
+    process.platform === "darwin"
+      ? `${launchdPlist()}${live ? ` (and launchctl bootout gui/${process.getuid?.() ?? "?"}/${LAUNCHD_LABEL})` : ""}`
+      : `${join(paths.systemdUserDir, "tokenmaxxing-check.timer")} and .service${live ? " (and systemctl --user disable --now tokenmaxxing-check.timer)" : ""}`;
+  const rc = shellRcPath();
+  return [
+    `${paths.claudeSettings}: the hook and statusline entries`,
+    `${codexPaths.hooksJson}: the codex Stop hook entry`,
+    ...(skipImperativeTimer() ? [] : [timer]),
+    paths.supervisorLink,
+    codexSupervisorLink(),
+    join(paths.binDir, "xx"),
+    installedBin(),
+    ...(rc == null ? [] : [`${rc}: the ${PATH_LINE_MARK} line`]),
+  ];
+}
+
+export function uninstallSupervisor(input: { liveTimer: boolean }): UninstallOutcome {
   uninstallSettings();
-  const timerDeactivated = uninstallCheckTimer();
+  const timer = uninstallCheckTimer(input.liveTimer);
   uninstallCodexSupervisor();
   for (const f of [paths.supervisorLink, join(paths.binDir, "xx"), installedBin()]) {
     if (existsSync(f)) rmSync(f, { force: true });
   }
   const rc = shellRcPath();
   const pathLineRemoved = rc != null && removePathFromRc(rc);
-  return { timerDeactivated, pathLineRemoved };
+  return { timer, pathLineRemoved };
 }
