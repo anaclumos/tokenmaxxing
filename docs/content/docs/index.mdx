@@ -8,7 +8,7 @@ tokenmaxxing is a CLI for automatic Claude Code account switching. It pools mult
 The visible behavior is a resume: when a session moves, `claude` restarts on the same conversation under the new account. When the whole pool is at its limit, the session pauses with a countdown and auto-resumes on the next account to reset (Ctrl-C resumes immediately).
 
 <Callout>
-Scope: Claude Code on macOS and Linux, plus OpenAI's Codex CLI as a second, parallel pool. It pools subscription accounts, not API keys. This is a personal-use tool for pooling accounts you own, in sessions and agents you run yourself - see [Personal use and terms of service](/terms).
+Scope: Claude Code on macOS and Linux, plus OpenAI's Codex CLI as a second pool with its own supervisor and switching. Two more pools, grok and opencode-go, are status-only: `status` lists their accounts and nothing moves (see [Status-only pools](/status-only-pools)). It pools subscription accounts, not API keys; the opencode-go pool, which holds Zen API keys, is the one exception. This is a personal-use tool for pooling accounts you own, in sessions and agents you run yourself - see [Personal use and terms of service](/terms).
 </Callout>
 
 ## The problem
@@ -21,9 +21,9 @@ A Claude subscription meters three limits at once (all confirmed via `/usage`):
 
 Weekly quota is use-it-or-lose-it: whatever an account has not consumed by its fixed weekly reset is forfeited. If you own several accounts, the rational strategy is to spread your sessions over them so each account drains at a fraction of the pooled rate, to keep burning quota on whichever account is furthest behind its own weekly pace, and to move a session away before any single limit hits the wall.
 
-Doing that by hand means logging out, logging in, and losing your conversation. tokenmaxxing automates it: every pooled account gets its own Claude Code credential store, a thin `claude` supervisor on your PATH picks the account for each session and points `CLAUDE_SECURESTORAGE_CONFIG_DIR` at its store, and when a session must move, the supervisor stops it at a committed turn boundary (the transcript is already on disk, nothing is lost) and runs `claude --resume <id>` under another account's store. Sessions on the same account share its store, so Claude Code's own token refresh keeps them in step.
+Doing that by hand means logging out, logging in, and losing your conversation. tokenmaxxing automates it: every pooled account gets its own Claude Code credential store, a thin `claude` supervisor on your PATH picks the account for each session and points `CLAUDE_SECURESTORAGE_CONFIG_DIR` at its store, and when a session must move, the supervisor stops it at a committed turn boundary (the transcript is already on disk, nothing is lost) compacts the conversation on the account it leaves, and runs `claude --resume <id>` under another account's store with a first prompt that asks Claude to continue. Sessions on the same account share its store, so Claude Code's own token refresh keeps them in step.
 
-Everything else about `claude` is unchanged: all flags, MCP servers, hooks, and skills pass through.
+Everything else about `claude` is unchanged: all flags, MCP servers, hooks, and skills pass through. Print mode, the non-interactive subcommands, and the interactive resume picker run without a seat, on whatever login the environment names (see [Architecture](/architecture)).
 
 ## Where to go
 

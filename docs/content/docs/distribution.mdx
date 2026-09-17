@@ -29,7 +29,7 @@ The same source tree is also a flake. It keeps the source-run-by-Bun model (via 
 |---|---|
 | `packages.default` | `tokenmaxxing` + `xx` on PATH |
 | `darwinModules.default` / `withOverlay` | nix-darwin: install the CLI (optional declarative check timer) |
-| `homeManagerModules.default` | Home Manager on macOS or Linux |
+| `homeManagerModules.default` / `withOverlay` | Home Manager on macOS or Linux |
 | `nixosModules.default` / `withOverlay` | NixOS system install |
 
 Install onto a profile (so `init`'s supervisor shims can resolve a stable `tokenmaxxing` on PATH), then init:
@@ -57,7 +57,7 @@ nix-darwin (adds the overlay so `pkgs.tokenmaxxing` resolves):
 }
 ```
 
-Home Manager (set the package explicitly, or apply this flake's overlay to the pkgs Home Manager uses):
+Home Manager (set the package explicitly, or import `homeManagerModules.withOverlay`, which adds this flake's overlay to the pkgs Home Manager uses the way the darwin and NixOS variants do):
 
 ```nix
 {

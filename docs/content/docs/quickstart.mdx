@@ -12,13 +12,15 @@ tokenmaxxing init
 
 Nix users replace the Bun step with `nix profile install github:anaclumos/tokenmaxxing`, or enable `programs.tokenmaxxing` in their nix-darwin or Home Manager config.
 
-`init` does five things:
+`init` first verifies the real `claude` binary and pins its path as `claudeBin` in `config.json`, then does five things:
 
-1. Opens a browser sign-in to add your first pooled account, even if you are already signed in, while keeping your existing login available to Claude sessions started outside the supervisor. The login lands in that account's own credential store; the one you already have is never copied.
-2. Installs the `claude` supervisor shim.
-3. Installs four entries in Claude Code's `settings.json`: a statusLine, a Stop hook, a StopFailure hook, and a SessionStart hook (plus a subagentStatusLine entry).
-4. Appends the supervisor's bin directory to your shell rc's PATH (idempotent, marked with a `# tokenmaxxing PATH` comment). It has to sit ahead of the real `claude` on PATH to intercept it.
+1. Starts an isolated `claude` session in a throwaway config home and asks you to run `/login` there (the browser sign-in) for your first pooled account, even if you are already signed in, while keeping your existing login available to Claude sessions started outside the supervisor. The login lands in that account's own credential store; the one you already have is never copied.
+2. Installs the `claude` supervisor shim, beside the `tokenmaxxing` and `xx` entry points, in `~/.config/tokenmaxxing/bin/`.
+3. Installs five entries in Claude Code's `settings.json`: a statusLine, a subagentStatusLine, a Stop hook, a StopFailure hook, and a SessionStart hook.
+4. Adds the bin directory to PATH in your shell rc when it does not already sit ahead of the real `claude` (idempotent, marked with a `# tokenmaxxing PATH` comment). On a Nix-managed or unwritable rc it prints the line to add instead.
 5. Installs a periodic check timer (a launchd agent on macOS, a systemd user timer on Linux) that runs `tokenmaxxing check` once per tick (`policy.checkIntervalMs`, 60 seconds by default).
+
+A second `init` on a pool that already has accounts re-installs the shim, the entries, and the timer, and skips the login.
 
 Restart your shell, then add more accounts and go:
 
@@ -27,4 +29,4 @@ tokenmaxxing add        # logs one more account in, in isolation, and pools it
 claude                  # use claude as always
 ```
 
-Each `claude` you start is placed on the pooled account with the most session headroom per running session, so two sessions land on two accounts. `tokenmaxxing` is also aliased as `xx`. Bare `tokenmaxxing` (or `xx`) runs `status`.
+Each `claude` you start is placed on the pooled account with the most session headroom per running session, so two sessions land on two accounts. `xx` is a second entry point for `tokenmaxxing`. Bare `tokenmaxxing` (or `xx`) runs `status`.
