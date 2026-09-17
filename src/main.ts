@@ -25,7 +25,7 @@ import { cmdConfig } from "./cli/config.ts";
 import { cmdSetupToken } from "./cli/setuptoken.ts";
 import { cmdCloudRun } from "./cli/cloudrun.ts";
 import { cmdCursorInit } from "./cli/cursorinit.ts";
-import { loginHome, timerDeactivationHint, uninstallSupervisor, uninstallTargets } from "./lib/install.ts";
+import { onLoginHome, timerDeactivationHint, uninstallSupervisor, uninstallTargets } from "./lib/install.ts";
 import { HOME } from "./lib/paths.ts";
 import { c, emitError } from "./cli/render.ts";
 
@@ -86,17 +86,23 @@ async function main(): Promise<number> {
   jsonMode = argv.includes(JSON_FLAG);
   const json = jsonMode;
   const cached = argv.includes(CACHED_FLAG);
+  const yes = argv.includes(YES_FLAG);
   const providerFlags = [CODEX_FLAG, GROK_FLAG, OPENCODE_GO_FLAG].filter((f) => argv.includes(f));
   if (providerFlags.length > 1) {
     emitError({ json, message: `${providerFlags.join(" and ")} are mutually exclusive - pick one pool` });
     return 2;
   }
   const provider = argv.includes(CODEX_FLAG) ? codex : argv.includes(GROK_FLAG) ? grok : argv.includes(OPENCODE_GO_FLAG) ? opencodeGo : claude;
-  const args = argv.filter((a) => a !== JSON_FLAG && a !== CACHED_FLAG && a !== CODEX_FLAG && a !== GROK_FLAG && a !== OPENCODE_GO_FLAG);
+  const args = argv.filter((a) => a !== JSON_FLAG && a !== CACHED_FLAG && a !== YES_FLAG && a !== CODEX_FLAG && a !== GROK_FLAG && a !== OPENCODE_GO_FLAG);
   const sub = args[0];
 
   if (cached && sub != null && sub !== "status") {
     emitError({ json, message: `${CACHED_FLAG} applies to status only, not ${sub}` });
+    return 2;
+  }
+
+  if (yes && sub !== "uninstall") {
+    emitError({ json, message: `${YES_FLAG} applies to uninstall only, not ${sub ?? "status"}` });
     return 2;
   }
 
@@ -157,25 +163,25 @@ async function main(): Promise<number> {
       return 2;
     }
     case "uninstall": {
-      const extra = args.slice(1).find((a) => a !== YES_FLAG);
-      if (extra != null) {
-        emitError({ message: `unknown uninstall option: ${extra} (uninstall takes only ${YES_FLAG})` });
+      if (args.length > 1) {
+        emitError({ message: `unknown uninstall option: ${args[1]} (uninstall takes only ${YES_FLAG})` });
         return 2;
       }
-      console.log(`uninstall removes:\n${uninstallTargets().map((t) => `  ${t}`).join("\n")}`);
-      if (!args.includes(YES_FLAG) && HOME === loginHome()) {
+      const live = onLoginHome();
+      console.log(`uninstall removes:\n${uninstallTargets(live).map((t) => `  ${t}`).join("\n")}`);
+      if (live && !yes) {
         emitError({ message: `refused: HOME is the login home (${HOME}) - rerun with ${YES_FLAG} to remove these from the live install` });
         return 2;
       }
-      const out = uninstallSupervisor();
+      const out = uninstallSupervisor({ liveTimer: live });
       const removed = [
         "supervisor wrapper",
         "settings entries",
-        ...(out.timerDeactivated ? ["check timer"] : []),
+        ...(out.timer === "removed" ? ["check timer"] : []),
         ...(out.pathLineRemoved ? ["rc PATH line"] : []),
       ];
       console.log(`removed ${removed.join(", ")}`);
-      if (!out.timerDeactivated) console.log(c.yellow(`⚠ the check job may still be loaded - run: ${timerDeactivationHint()}`));
+      if (out.timer === "still-loaded") console.log(c.yellow(`⚠ the check job may still be loaded - run: ${timerDeactivationHint()}`));
       if (!out.pathLineRemoved) console.log(c.dim("(no tokenmaxxing PATH line found in the shell rc)"));
       console.log(`kept: accounts.json, config.json, and every account credential store (claude: stores/ and its keychain items on macOS; codex: codex-stores/; grok: grok-stores/; opencode-go: opencode-go-stores/) - remove accounts with \`xx rm\` to delete their credentials`);
       return 0;
