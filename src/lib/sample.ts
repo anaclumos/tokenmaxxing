@@ -83,9 +83,10 @@ export async function sampleOldest(cfg: Config): Promise<void> {
     let dirty = false;
     for (const a of idx.accounts) dirty = foldTee(a) || dirty;
     const sampledAt = (a: Account) => Math.max(a.lastUsageAt ?? 0, a.lastProbeAt ?? 0);
+    const seats = seatCounts(paths.presenceDir);
     const stale = idx.accounts
       .filter((a) => a.needsReauth !== true && now - sampledAt(a) > cfg.policy.usagePollTtlMs)
-      .sort((a, b) => sampledAt(a) - sampledAt(b))
+      .sort((a, b) => Number(seats.has(b.id)) - Number(seats.has(a.id)) || sampledAt(a) - sampledAt(b))
       .slice(0, SAMPLE_BATCH);
     if (stale.length === 0) {
       if (dirty) saveAccounts(claudePool, idx);
@@ -103,7 +104,7 @@ export async function sampleOldest(cfg: Config): Promise<void> {
       }
       target.storeFails = 0;
       let token: string | null = null;
-      if (!seatCounts(paths.presenceDir).has(target.id)) {
+      if (!seats.has(target.id)) {
         const creds = await readStore(target.id).catch(() => null);
         if (creds && !isDeadCredential(creds) && !isAccessTokenExpiring(creds)) token = creds.accessToken;
       }
