@@ -6,7 +6,8 @@ import { readStore } from "./credstore.ts";
 import { withLock } from "./lock.ts";
 import { log } from "./log.ts";
 import { claudeTierLabel, isAccessTokenExpiring, isDeadCredential } from "./oauth.ts";
-import { claudePool, sampleDirFor, storeDirFor } from "./paths.ts";
+import { claudePool, paths, sampleDirFor, storeDirFor } from "./paths.ts";
+import { seatCounts } from "./presence.ts";
 import type { Observation } from "./provider.ts";
 import { loadAccounts, loadUsageSnapshot, saveAccounts } from "./state.ts";
 import { fetchUsageDirect, mergeWindows, probeUsage, windowsOf } from "./usage.ts";
@@ -90,9 +91,10 @@ export async function sampleOldest(cfg: Config): Promise<void> {
     let dirty = false;
     for (const a of idx.accounts) dirty = foldTee(a) || dirty;
     const sampledAt = (a: Account) => Math.max(a.lastUsageAt ?? 0, a.lastProbeAt ?? 0);
+    const seats = seatCounts(paths.presenceDir);
     const stale = idx.accounts
       .filter((a) => a.needsReauth !== true && now - sampledAt(a) > cfg.policy.usagePollTtlMs)
-      .sort((a, b) => sampledAt(a) - sampledAt(b))
+      .sort((a, b) => Number(seats.has(b.id)) - Number(seats.has(a.id)) || sampledAt(a) - sampledAt(b))
       .slice(0, SAMPLE_BATCH);
     if (stale.length === 0) {
       if (dirty) saveAccounts(claudePool, idx);

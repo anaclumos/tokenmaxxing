@@ -43,8 +43,8 @@ function enforcedWall(limit: EnforcedLimit, account: Account, now: number): numb
   return limit.resetsAt ?? cachedReset ?? now + (limit.kind === "session" ? FIVE_HOURS_MS : WEEK_MS);
 }
 
-export async function evaluateAndMaybeSwap(p: Provider, now = Date.now(), canRespawn = false, enforced: EnforcedLimit | null = null): Promise<SwapDecision> {
-  const activeId = p.liveId();
+export async function evaluateAndMaybeSwap(p: Provider, now = Date.now(), canRespawn = false, enforced: EnforcedLimit | null = null, seatId: string | null = p.liveId()): Promise<SwapDecision> {
+  const activeId = seatId;
 
   const lastSwapAt = loadLastSwapAt(p.pool);
   if (!enforced && lastSwapAt != null && now - lastSwapAt < POST_SWAP_COOLDOWN_MS) {
@@ -68,7 +68,7 @@ export async function evaluateAndMaybeSwap(p: Provider, now = Date.now(), canRes
       return { swapped: false, account: null, reason: "raced-already-swapped" };
     }
     const idx = loadAccounts(p.pool);
-    const id2 = p.liveId();
+    const id2 = seatId;
     const active = id2 ? idx.accounts.find((a) => a.id === id2) : undefined;
 
     const origin = enforced ? idx.accounts.find((a) => a.id === enforced.account) : undefined;
