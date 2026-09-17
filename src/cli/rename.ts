@@ -16,7 +16,7 @@ export function findAccount(accounts: Account[], selector: string): Account | un
 export async function cmdRename(p: Provider, argv: string[]): Promise<number> {
   const [selector, newLabel] = argv;
   if (!selector || !newLabel) {
-    emitError({ message: "usage: tokenmaxxing rename [--codex] <email|label|id> <new-label>", paint: plain });
+    emitError({ message: "usage: tokenmaxxing rename [--codex | --grok | --opencode-go] <email|label|id> <new-label>", paint: plain });
     return 2;
   }
   return withLock(p.pool.lockFile, async () => {

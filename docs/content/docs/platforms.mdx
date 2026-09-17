@@ -5,12 +5,15 @@ description: How macOS and Linux differ in storage and timers
 
 | | macOS | Linux |
 |---|---|---|
-| Account store | Login keychain generic-password item keyed by the store path | 0600 `.credentials.json` inside the store's 0700 directory |
-| Who writes it | tokenmaxxing once at onboarding, Claude Code's refresh afterwards | Same |
+| Claude account store | Login keychain generic-password item keyed by the store path | 0600 `.credentials.json` inside the store's 0700 directory |
+| Codex, grok, and opencode-go stores | 0600 `auth.json` inside the store directory | Same |
+| Who writes a Claude store | tokenmaxxing once at onboarding, Claude Code's refresh afterwards | Same |
 | A session's account | `CLAUDE_SECURESTORAGE_CONFIG_DIR` set by the supervisor at launch | Same |
-| Periodic check | launchd agent, every `policy.checkIntervalMs` tick (60s default) | systemd user timer, every `policy.checkIntervalMs` tick (60s default) |
+| Periodic check | launchd agent, every `policy.checkIntervalMs` tick (60s default); stderr in `check.stderr.log` under the state directory | systemd user timer, every `policy.checkIntervalMs` tick (60s default); stderr in the journal |
 | Isolated-login home | Hash-namespaced keychain service per config dir | A file inside the isolated config dir |
 
-Claude Code resolves its credential directory from `CLAUDE_SECURESTORAGE_CONFIG_DIR` first (then `CLAUDE_CONFIG_DIR`, then `~/.claude`), and on macOS it hashes that same resolved path into the keychain item name, even when `CLAUDE_CONFIG_DIR` is also set (verified in the 2.1.269 binary); tokenmaxxing mirrors that resolution exactly so the two never desync. The two OS builds of the same claude version format `/usage` reset clocks differently (one uses " at " glue, the other a comma); tokenmaxxing's parser accepts exactly those two forms and logs, rather than guesses, on any third.
+`TOKENMAXXING_SKIP_TIMER=1` makes `init` skip the timer unit on both platforms; the Nix modules export it when they own the timer (see [Build and distribution](/distribution)).
 
-On macOS, one honest limitation: `init` and `add` touch the keychain interactively on purpose, so the first `security` access is not cold inside a headless hook.
+Claude Code resolves its credential directory from `CLAUDE_SECURESTORAGE_CONFIG_DIR` first (then `CLAUDE_CONFIG_DIR`, then `~/.claude`), and on macOS it hashes that same resolved path into the keychain item name, even when `CLAUDE_CONFIG_DIR` is also set (verified in the 2.1.269 binary); tokenmaxxing sets the store variable itself and computes the item name from the same directory, so the two never desync. The two OS builds of the same claude version format `/usage` reset clocks differently (one uses " at " glue, the other a comma); tokenmaxxing's parser accepts exactly those two forms, stores no reset for any third, and logs the unparsed line when no window's clock parsed.
+
+On macOS the first keychain access for a new store happens inside the interactive `init`, `add`, or `auth` run, where a keychain prompt can be answered, and not inside a headless hook; nothing primes the item on purpose.

@@ -41,13 +41,13 @@ function printHelp(): void {
   console.log(`${c.bold("tokenmaxxing")} - automatic Claude Code account switching
 
   ${c.cyan("tokenmaxxing")}            show the pool with usage bars (alias of ${c.cyan("status")})
-  ${c.cyan("tokenmaxxing check")}      sample the account whose usage figure is oldest (run by the periodic timer)
+  ${c.cyan("tokenmaxxing check")}      sample up to three accounts whose usage figures are oldest (run by the periodic timer)
   ${c.cyan("tokenmaxxing init")}       log in the first account (isolated) + install supervisor & hooks
   ${c.cyan("tokenmaxxing init --codex")}  same for codex: log in the first account, isolated, install codex supervisor + Stop hook
   ${c.cyan("tokenmaxxing init --grok")}   pool grok Build logins (status-only: no supervisor yet)
   ${c.cyan("tokenmaxxing init --opencode-go")}  pool opencode-go API keys (status-only: no supervisor yet)
   ${c.cyan("tokenmaxxing add")}        register an additional account (isolated login)
-  ${c.cyan("tokenmaxxing add --codex")}   register an additional codex account (isolated login)
+  ${c.cyan("tokenmaxxing add")} --codex | --grok | --opencode-go   same for the codex, grok, or opencode-go pool
   ${c.cyan("tokenmaxxing auth")} [--codex | --grok | --opencode-go] [sel | --all]  reauthenticate a pooled account in place (bare = pick from a list; --all = every account that is flagged or has no usable credential in its store, one by one)
   ${c.cyan("tokenmaxxing status")} [--cached]  accounts with 5h / weekly / per-model usage bars (--cached: the stored figures, no sampling)
   ${c.cyan("tokenmaxxing config")}     print the config path and the effective values (edit the file in an editor)
@@ -165,7 +165,7 @@ async function main(): Promise<number> {
       console.log(`removed ${removed.join(", ")}`);
       if (!out.timerDeactivated) console.log(c.yellow(`⚠ the check job may still be loaded - run: ${timerDeactivationHint()}`));
       if (!out.pathLineRemoved) console.log(c.dim("(no tokenmaxxing PATH line found in the shell rc)"));
-      console.log(`kept: accounts.json, config.json, and every account credential store (claude: stores/ and its keychain items on macOS; codex: codex-stores/) - remove accounts with \`xx rm\` to delete their credentials`);
+      console.log(`kept: accounts.json, config.json, and every account credential store (claude: stores/ and its keychain items on macOS; codex: codex-stores/; grok: grok-stores/; opencode-go: opencode-go-stores/) - remove accounts with \`xx rm\` to delete their credentials`);
       return 0;
     }
     case "help":
