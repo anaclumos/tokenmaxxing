@@ -4,3 +4,4 @@
 - [Per-account credential stores](per-account-stores.md) holds the Claude seat model's invariants (issue #79) and the lessons from its hermetic verification.
 - [Self-update on the check tick](self-update.md) records the Bun global install rules the self-update depends on.
 - [Platform idioms](platform-idioms.md) records the Bun and zod behaviors that decide which hand-rolled reads stay.
+- [The release job](release-job.md) records the npm, git, and Actions facts the `publish` job in `ci.yml` depends on.
