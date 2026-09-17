@@ -25,10 +25,10 @@ Expected: a session changes account only by respawning under another account's s
 `~/.claude.json` holds one `oauthAccount` for every session and Claude Code rewrites it after whichever session refreshed last. The credential a session actually uses is the one in its store; the statusline's `◆` marks that account.
 
 **Does `status` cost anything?**
-No. `status` reads the statusline tees and the free `/usage` probe, which sends no metered request and opens no session window, and `status --cached` reads nothing but the state files. A live `status` holds the pool lock while it probes, so prefer `--cached` while sessions are busy.
+No. `status` reads the statusline tees, the no-spend usage read, and, for a near-expiry token or a failed read, the free `/usage` probe; none of them sends a metered request or opens a session window, and `status --cached` reads nothing but the state files. A live `status` holds the pool lock while it samples, so prefer `--cached` while sessions are busy.
 
 **The `/usage` probe returned nothing for an account with running sessions.**
-That is a known claude behavior: when its internal usage fetch fails or is rate-limited, `/usage` prints only local session stats with no percentage lines, which is common while the token is busy serving sessions. tokenmaxxing reads such an account from its statusline tee whenever that feed is at least as new as the stored sample (the row shows the feed's age) and probes the store only when the tee is missing or older; a silent probe leaves the cached sample in place with its age shown.
+That is a known claude behavior: when its internal usage fetch fails or is rate-limited, `/usage` prints only local session stats with no percentage lines, which is common while the token is busy serving sessions. tokenmaxxing reads such an account from its statusline tee whenever that feed is at least as new as the stored sample (the row shows the feed's age) and samples the store (the direct read first, then the probe) only when the tee is missing or older; a silent sample leaves the cached sample in place with its age shown.
 
 **`status` says every fable cap is at the weekly bar.**
 Every account that carries a Fable cap has it at the weekly bar, while at least one account still has weekly aggregate headroom for other models. A Fable session has nowhere to move until a cap resets; a Sonnet or Opus session still has room.

@@ -20,7 +20,7 @@ Everything lives under `~/.config/tokenmaxxing/`. Override with `TOKENMAXXING_HO
 | `check.stderr.log` | macOS only: the launchd check job's stderr (systemd sends it to the journal) |
 | `bin/` | The PATH shims: `claude`, `codex`, and the `tokenmaxxing` / `xx` entry points |
 | `respawn/<session-id>` | Respawn markers the supervisor watches: the target account, the session to resume, a `waitUntil` (now for a plain move, the reset for a depleted-pool wait), whether to compact first, and the launch time of the process the marker was written for |
-| `onboard/`, `sample/` | Throwaway config homes: `onboard/` for `init`, `add`, and `auth` logins (deleted after harvest, credential included); `sample/<uuid8>` and `sample/<uuid8>-tick` for `/usage` probes (a seeded `.claude.json` only; the credential comes from the account's store) |
+| `onboard/`, `sample/` | Throwaway config homes: `onboard/` for `init`, `add`, and `auth` logins (deleted after harvest, credential included); `sample/<uuid8>` and `sample/<uuid8>-tick` for `/usage` probes, the fallback for a near-expiry token or a failed direct read (a `.claude.json` seeded when a probe runs; the credential comes from the account's store) |
 | `setup-tokens.json` | Cursor Cloud only: `{accountUuid, label, token, mintedAt}` per pooled account, mode 0600, the source of the `TOKENMAXXING_TOKENS` secret value that `setup-token` prints (keyed by account, so a rename does not orphan a token) |
 | `setup-token/` | Throwaway isolated config homes for `setup-token` mints, deleted after each run |
 | `cloud/` | On a Cursor Cloud VM only: `sessions.json` (session id to token label), `walled.json` (label to reset time), and the `lock` that serializes `cloud run` picks |

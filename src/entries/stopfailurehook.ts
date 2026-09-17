@@ -3,7 +3,7 @@ import { claude } from "../lib/claude.ts";
 import { evaluateAndMaybeSwap } from "../lib/decide.ts";
 import { supervisedSession, writeRespawnMarker } from "../lib/sessions.ts";
 import { loadConfig } from "../lib/state.ts";
-import { classifyEnforcedLimit, findEnforcedRow, parseErrorBody, readTranscriptTail } from "../lib/usage.ts";
+import { classifyEnforcedLimit, findEnforcedRow, parseErrorBody, readTranscriptTail, type TranscriptRow } from "../lib/usage.ts";
 import { paths } from "../lib/paths.ts";
 import { JsonTextSchema, type EnforcedLimit } from "../lib/types.ts";
 import { log } from "../lib/log.ts";
@@ -16,6 +16,18 @@ const StopFailureStdin = z.looseObject({
   agent_id: z.string().optional().catch(undefined),
   last_assistant_message: z.string().optional().catch(undefined),
 });
+
+const ROW_WAIT_MS = 3_000;
+const ROW_POLL_MS = 200;
+
+async function awaitEnforcedRow(input: { transcriptPath: string; lastAssistantMessage: string | undefined; now: number }): Promise<TranscriptRow | null> {
+  const deadline = Date.now() + ROW_WAIT_MS;
+  while (true) {
+    const row = findEnforcedRow({ rows: readTranscriptTail(input.transcriptPath), lastAssistantMessage: input.lastAssistantMessage, now: input.now });
+    if (row || Date.now() >= deadline) return row;
+    await Bun.sleep(ROW_POLL_MS);
+  }
+}
 
 export async function runStopFailureHook(): Promise<number> {
   if (process.env.TOKENMAXXING_PROBE) return 0;
@@ -35,7 +47,7 @@ export async function runStopFailureHook(): Promise<number> {
   try {
     const cfg = loadConfig();
     const row = stdin.transcript_path
-      ? findEnforcedRow({ rows: readTranscriptTail(stdin.transcript_path), lastAssistantMessage: stdin.last_assistant_message, now })
+      ? await awaitEnforcedRow({ transcriptPath: stdin.transcript_path, lastAssistantMessage: stdin.last_assistant_message, now })
       : null;
     const limit = row ? classifyEnforcedLimit(row, cfg.policy.switchModels) : null;
 
@@ -46,6 +58,7 @@ export async function runStopFailureHook(): Promise<number> {
     } else {
       log("stopfailure.unclassified", {
         seat: account != null,
+        subagent: !mainLoop,
         row: row != null,
         type: row?.quotaLimits?.rateLimitType,
         transient: row?.apiErrorIsTransient,
