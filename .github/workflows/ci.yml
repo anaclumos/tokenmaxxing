@@ -43,7 +43,7 @@ jobs:
           TOKENMAXXING_HOME="$RUNNER_TEMP/tm-nix" ./result/bin/tokenmaxxing config --json | jq -e '.ok == true and .effective.thresholds.weekly == 95 and .effective.thresholds.session == 90' >/dev/null
 
   publish:
-    if: github.event_name != 'pull_request'
+    if: github.ref == 'refs/heads/main'
     needs: test
     runs-on: ubuntu-latest
     concurrency:
@@ -67,14 +67,14 @@ jobs:
         id: version
         shell: bash
         run: |
-          if [ -n "$(git tag --list 'v*' --contains HEAD)" ]; then
-            echo "HEAD is already inside a release"
-            exit 0
-          fi
           current="$(node -p "require('./package.json').version")"
           versions="$(npm view tokenmaxxing versions --json)"
           if ! jq -e --arg v "$current" '[.. | strings] | index($v) != null' <<<"$versions" >/dev/null; then
             echo "version=${current}" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ -n "$(git tag --list 'v*' --contains HEAD)" ]; then
+            echo "HEAD is already inside a release"
             exit 0
           fi
           packed="$(npm pack --dry-run --json | jq -er '.. | .files? // empty | .[].path' | cut -d/ -f1 | sort -u)"
@@ -91,10 +91,10 @@ jobs:
           git push origin HEAD:main
           echo "version=${next#v}" >> "$GITHUB_OUTPUT"
       - if: steps.version.outputs.version != ''
-        run: npm publish
-      - if: steps.version.outputs.version != ''
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           tag="v${{ steps.version.outputs.version }}"
           gh release view "$tag" >/dev/null 2>&1 || gh release create "$tag" --target "$(git rev-parse HEAD)" --generate-notes
+      - if: steps.version.outputs.version != ''
+        run: npm publish
