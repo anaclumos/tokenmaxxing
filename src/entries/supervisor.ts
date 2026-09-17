@@ -5,13 +5,16 @@ import { maxBy } from "es-toolkit";
 import { z } from "zod";
 import { claudePool, paths, storeDirFor } from "../lib/paths.ts";
 import { LOOP_DIAGNOSIS, MAX_WRAP_DEPTH, UNMANAGED_ENV, WRAP_DEPTH_ENV, WRAP_RATE_MAX, WRAP_RATE_WINDOW_MS, resolveRealClaude, wrapDepth, wrapperEntryRateTripped } from "../lib/claudebin.ts";
-import { pickSeat } from "../lib/claude.ts";
+import { claude, pickSeat } from "../lib/claude.ts";
 import { compactClaudeSession } from "../lib/compact.ts";
+import { evaluateAndMaybeSwap } from "../lib/decide.ts";
 import { withLock } from "../lib/lock.ts";
+import { thresholdBars, usableAt } from "../lib/picker.ts";
 import { clearPresence, writePresence } from "../lib/presence.ts";
+import { teeObservation } from "../lib/sample.ts";
 import { saveTermios, restoreTermios } from "../lib/tty.ts";
-import { loadSessionFlags, pruneStaleSessions, saveSessionFlags } from "../lib/sessions.ts";
-import { loadAccounts } from "../lib/state.ts";
+import { loadSessionFlags, pruneStaleSessions, saveSessionFlags, writeRespawnMarker } from "../lib/sessions.ts";
+import { loadAccounts, loadConfig } from "../lib/state.ts";
 import { RespawnMarkerSchema, type Account } from "../lib/types.ts";
 import { log } from "../lib/log.ts";
 
@@ -190,6 +193,35 @@ function consumableMarker(marker: string, gate: MarkerGate): z.infer<typeof Resp
   return m;
 }
 
+const SEAT_POLL_MS = 10_000;
+const SEAT_RETRY_MS = 60_000;
+
+function seatBlockedUntil(seatId: string, now: number): number | null {
+  const account = loadAccounts(claudePool).accounts.find((a) => a.id === seatId);
+  if (!account) return null;
+  const cfg = loadConfig();
+  const observed = teeObservation(account);
+  const current = observed ? { ...account, windows: observed.windows } : account;
+  const until = usableAt(current, { now, thresholds: thresholdBars(cfg), currentId: seatId, families: cfg.policy.switchModels, seats: null });
+  return until > now ? until : null;
+}
+
+async function moveExhaustedSeat(seat: Account, sid: string, gate: MarkerGate): Promise<boolean> {
+  try {
+    const now = Date.now();
+    const until = seatBlockedUntil(seat.id, now);
+    if (until == null || until <= gate.overriddenUntil) return false;
+    const decision = await evaluateAndMaybeSwap(claude, now, true, null, seat.id);
+    log("supervisor.seat_exhausted", { seat: seat.id.slice(0, 8), until, reason: decision.reason, account: decision.account?.id.slice(0, 8), waitUntil: decision.waitUntil });
+    if (decision.account && (decision.swapped || decision.waitUntil !== undefined)) {
+      writeRespawnMarker({ session: { sid, launchedAt: gate.launchedAt }, sessionId: sid, accountId: decision.account.id, waitUntil: decision.waitUntil ?? now, compact: true });
+    }
+  } catch (e) {
+    log("supervisor.seat_watch_error", { err: e instanceof Error ? e.message : String(e) });
+  }
+  return true;
+}
+
 async function countdownWait(acct: string, until: number): Promise<boolean> {
   let aborted = false;
   const onInt = () => { aborted = true; };
@@ -324,11 +356,20 @@ export async function runSupervisor(argv: string[]): Promise<number> {
   const info = analyzeArgs(argv);
   const childEnv = { ...process.env, [WRAP_DEPTH_ENV]: String(depth + 1) };
 
+  let child: Subprocess | null = null;
+  let terminating = false;
+  process.on("SIGTERM", () => {
+    terminating = true;
+    if (child) child.kill("SIGTERM");
+    else process.exit(143);
+  });
+
   if (!info.manage || process.env[UNMANAGED_ENV]) {
     const passthroughEnv: Record<string, string | undefined> = { ...childEnv };
     delete passthroughEnv.TOKENMAXXING_SUPERVISED;
     delete passthroughEnv.TOKENMAXXING_SESSION_ID;
     const p = Bun.spawn([real, ...argv], { stdin: "inherit", stdout: "inherit", stderr: "inherit", env: passthroughEnv });
+    child = p;
     await p.exited;
     return p.exitCode ?? (p.signalCode ? 1 : 0);
   }
@@ -374,7 +415,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
     if (existsSync(marker)) rmSync(marker, { force: true });
 
     const gate: MarkerGate = { launchedAt: Date.now(), overriddenUntil };
-    const { child, seat } = await withLock(claudePool.lockFile, async () => {
+    const { child: proc, seat } = await withLock(claudePool.lockFile, async () => {
       const picked = (wanted == null ? null : (loadAccounts(claudePool).accounts.find((a) => a.id === wanted) ?? null)) ?? pickSeat(gate.launchedAt);
       log("supervisor.launch", { sid, respawns, seat: picked?.id.slice(0, 8) ?? null, args: launchArgs.join(" "), injected: firstLine !== null });
       const spawned = Bun.spawn([real, ...launchArgs], {
@@ -395,35 +436,42 @@ export async function runSupervisor(argv: string[]): Promise<number> {
       return { child: spawned, seat: picked };
     });
 
+    child = proc;
     let done = false;
+    let seatCheckAt = 0;
     const markerWatch = (async () => {
       while (!done) {
         if (existsSync(marker) && consumableMarker(marker, gate) != null) return true;
+        if (seat && !terminating && Date.now() >= seatCheckAt) {
+          const decided = await moveExhaustedSeat(seat, sid, gate);
+          seatCheckAt = Date.now() + (decided ? SEAT_RETRY_MS : SEAT_POLL_MS);
+        }
         await Bun.sleep(150);
       }
       return false;
     })();
-    const exited = child.exited.then(() => { done = true; return "exit" as const; });
+    const exited = proc.exited.then(() => { done = true; return "exit" as const; });
     try {
       const winner = await Promise.race([exited, markerWatch.then((m) => (m ? "marker" : "exit"))]);
       if (winner === "marker") {
         relay?.detach();
-        child.kill();
+        proc.kill();
       }
     } catch (e) {
       relay?.detach();
-      child.kill();
+      proc.kill();
       clearPresence({ dir: paths.presenceDir, id: sid });
       throw e;
     } finally {
-      await child.exited;
+      await proc.exited;
+      child = null;
       relay?.detach();
       done = true;
       await markerWatch.catch(() => {});
       restoreTermios(savedTermios);
     }
 
-    const m = existsSync(marker) ? consumableMarker(marker, gate) : null;
+    const m = !terminating && existsSync(marker) ? consumableMarker(marker, gate) : null;
     if (m) {
       rmSync(marker, { force: true });
       respawns++;
@@ -452,7 +500,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
       continue;
     }
     clearPresence({ dir: paths.presenceDir, id: sid });
-    log("supervisor.exit", { sid, respawns, code: child.exitCode, signal: child.signalCode });
-    return child.exitCode ?? (child.signalCode ? 1 : 0);
+    log("supervisor.exit", { sid, respawns, code: proc.exitCode, signal: proc.signalCode, terminated: terminating || undefined });
+    return proc.exitCode ?? (proc.signalCode ? 1 : 0);
   }
 }
