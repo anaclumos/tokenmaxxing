@@ -6,24 +6,23 @@ import { readStore } from "./credstore.ts";
 import { withLock } from "./lock.ts";
 import { log } from "./log.ts";
 import { claudeTierLabel, isAccessTokenExpiring, isDeadCredential } from "./oauth.ts";
-import { claudePool, paths, sampleDirFor, storeDirFor } from "./paths.ts";
-import { seatCounts } from "./presence.ts";
+import { claudePool, sampleDirFor, storeDirFor } from "./paths.ts";
 import type { Observation } from "./provider.ts";
 import { loadAccounts, loadUsageSnapshot, saveAccounts } from "./state.ts";
 import { fetchUsageDirect, mergeWindows, probeUsage, windowsOf } from "./usage.ts";
 import { UsageWindowsSchema, type Account, type Config } from "./types.ts";
 
 const SampleOutcomeSchema = z.discriminatedUnion("ok", [
-  z.object({ ok: z.literal(true), usage: UsageWindowsSchema }),
+  z.object({ ok: z.literal(true), usage: UsageWindowsSchema, via: z.enum(["get", "probe"]) }),
   z.object({ ok: z.literal(false), reason: z.string() }),
 ]);
 export type SampleOutcome = z.infer<typeof SampleOutcomeSchema>;
 
-const PreparedProbeSchema = z.discriminatedUnion("ok", [
-  z.object({ ok: z.literal(true), dir: z.string() }),
+const PreparedSampleSchema = z.discriminatedUnion("ok", [
+  z.object({ ok: z.literal(true), token: z.string().nullable() }),
   z.object({ ok: z.literal(false), reason: z.string() }),
 ]);
-type PreparedProbe = z.infer<typeof PreparedProbeSchema>;
+type PreparedSample = z.infer<typeof PreparedSampleSchema>;
 
 export function teeObservation(account: Account): Observation | null {
   const stored = account.lastUsageAt != null ? { windows: account.windows, at: account.lastUsageAt } : null;
@@ -43,7 +42,7 @@ export function foldTee(account: Account): boolean {
   return true;
 }
 
-export async function prepareProbe(account: Account, suffix = ""): Promise<PreparedProbe> {
+export async function prepareSample(account: Account): Promise<PreparedSample> {
   let creds;
   try {
     creds = await readStore(account.id);
@@ -57,20 +56,28 @@ export async function prepareProbe(account: Account, suffix = ""): Promise<Prepa
   }
   if (!account.oauthAccount) return { ok: false, reason: "account record has no oauthAccount - run `tokenmaxxing auth`" };
   account.tier = claudeTierLabel(creds) ?? account.tier;
+  return { ok: true, token: isAccessTokenExpiring(creds) ? null : creds.accessToken };
+}
+
+async function runProbe(account: Account, suffix: string, retries: number | undefined): Promise<SampleOutcome> {
   const dir = sampleDirFor(account.id, suffix);
   mkdirSync(dir, { recursive: true });
   writeFileAtomic(join(dir, ".claude.json"), JSON.stringify({ oauthAccount: account.oauthAccount, hasCompletedOnboarding: true }));
-  return { ok: true, dir };
+  const usage = await probeUsage({ configDir: dir, store: storeDirFor(account.id) }, Date.now(), { retries });
+  return usage ? { ok: true, usage, via: "probe" } : { ok: false, reason: "`/usage` returned no limit data (see log)" };
 }
 
-export async function runProbe(account: Account, dir: string, opts: { retries?: number }): Promise<SampleOutcome> {
-  const usage = await probeUsage({ configDir: dir, store: storeDirFor(account.id) }, Date.now(), { retries: opts.retries });
-  return usage ? { ok: true, usage } : { ok: false, reason: "`/usage` returned no limit data (see log)" };
+export async function runSample(account: Account, token: string | null, opts: { retries?: number; suffix?: string }): Promise<SampleOutcome> {
+  if (token) {
+    const usage = await fetchUsageDirect(token);
+    if (usage) return { ok: true, usage, via: "get" };
+  }
+  return runProbe(account, opts.suffix ?? "", opts.retries);
 }
 
-export async function probeAccountUsage(account: Account, opts: { retries?: number } = {}): Promise<SampleOutcome> {
-  const prepared = await prepareProbe(account);
-  return prepared.ok ? runProbe(account, prepared.dir, opts) : prepared;
+export async function sampleAccountUsage(account: Account, opts: { retries?: number } = {}): Promise<SampleOutcome> {
+  const prepared = await prepareSample(account);
+  return prepared.ok ? runSample(account, prepared.token, opts) : prepared;
 }
 
 const SAMPLE_BATCH = 3;
@@ -91,10 +98,10 @@ export async function sampleOldest(cfg: Config): Promise<void> {
       if (dirty) saveAccounts(claudePool, idx);
       return [];
     }
-    const batch: { account: Account; dir: string; token: string | null }[] = [];
+    const batch: { account: Account; token: string | null }[] = [];
     for (const target of stale) {
       target.lastProbeAt = now;
-      const prepared = await prepareProbe(target, "-tick");
+      const prepared = await prepareSample(target);
       if (!prepared.ok) {
         target.storeFails = (target.storeFails ?? 0) + 1;
         if (target.storeFails >= STORE_FAILS_REAUTH) target.needsReauth = true;
@@ -102,32 +109,15 @@ export async function sampleOldest(cfg: Config): Promise<void> {
         continue;
       }
       target.storeFails = 0;
-      let token: string | null = null;
-      if (!seatCounts(paths.presenceDir).has(target.id)) {
-        const creds = await readStore(target.id).catch(() => null);
-        if (creds && !isDeadCredential(creds) && !isAccessTokenExpiring(creds)) token = creds.accessToken;
-      }
-      batch.push({ account: target, dir: prepared.dir, token });
+      batch.push({ account: target, token: prepared.token });
     }
     saveAccounts(claudePool, idx);
     return batch;
   });
   await Promise.all(
-    reserved.map(async ({ account, dir, token }) => {
+    reserved.map(async ({ account, token }) => {
       const startedAt = Date.now();
-      let via = "probe";
-      let outcome: SampleOutcome;
-      if (token) {
-        const usage = await fetchUsageDirect(token);
-        if (usage) {
-          via = "get";
-          outcome = { ok: true, usage };
-        } else {
-          outcome = await runProbe(account, dir, { retries: 0 });
-        }
-      } else {
-        outcome = await runProbe(account, dir, { retries: 0 });
-      }
+      const outcome = await runSample(account, token, { retries: 0, suffix: "-tick" });
       await withLock(claudePool.lockFile, () => {
         const idx = loadAccounts(claudePool);
         const stored = idx.accounts.find((a) => a.id === account.id);
@@ -138,7 +128,7 @@ export async function sampleOldest(cfg: Config): Promise<void> {
         }
         log(outcome.ok ? "sample.ok" : "sample.failed", {
           account: account.id.slice(0, 8),
-          ...(outcome.ok ? { via } : { reason: outcome.reason.slice(0, 200) }),
+          ...(outcome.ok ? { via: outcome.via } : { reason: outcome.reason.slice(0, 200) }),
         });
       });
     }),
