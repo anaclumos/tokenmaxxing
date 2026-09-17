@@ -451,6 +451,32 @@ export function removePathFromRc(rc: string): boolean {
 const UninstallOutcomeSchema = z.object({ timerDeactivated: z.boolean(), pathLineRemoved: z.boolean() });
 export type UninstallOutcome = z.infer<typeof UninstallOutcomeSchema>;
 
+export function loginHome(): string {
+  const cmd = process.platform === "darwin" ? ["id", "-P"] : ["getent", "passwd", String(process.getuid?.() ?? "")];
+  const proc = Bun.spawnSync(cmd, { stdout: "pipe", stderr: "ignore", timeout: 10_000 });
+  const home = proc.stdout.toString().trim().split(":").at(-2);
+  if (proc.exitCode !== 0 || home == null || home === "") throw new Error(`cannot read the login home: ${cmd.join(" ")} failed`);
+  return home;
+}
+
+export function uninstallTargets(): string[] {
+  const timer =
+    process.platform === "darwin"
+      ? `${launchdPlist()} (launchd job ${LAUNCHD_LABEL} in gui/${process.getuid?.() ?? "?"})`
+      : `${join(paths.systemdUserDir, "tokenmaxxing-check.timer")} and .service (systemd user timer tokenmaxxing-check.timer)`;
+  const rc = shellRcPath();
+  return [
+    `${paths.claudeSettings}: the hook and statusline entries`,
+    `${codexPaths.hooksJson}: the codex Stop hook entry`,
+    ...(skipImperativeTimer() ? [] : [timer]),
+    paths.supervisorLink,
+    codexSupervisorLink(),
+    join(paths.binDir, "xx"),
+    installedBin(),
+    ...(rc == null ? [] : [`${rc}: the ${PATH_LINE_MARK} line`]),
+  ];
+}
+
 export function uninstallSupervisor(): UninstallOutcome {
   uninstallSettings();
   const timerDeactivated = uninstallCheckTimer();

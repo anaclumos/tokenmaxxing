@@ -3,7 +3,7 @@ title: State directory layout
 description: Every file and directory under ~/.config/tokenmaxxing
 ---
 
-Everything lives under `~/.config/tokenmaxxing/`. Override with `TOKENMAXXING_HOME`. Every external path has an env override so tests stay hermetic.
+Everything lives under `~/.config/tokenmaxxing/`. Override with `TOKENMAXXING_HOME`. Every external path has an env override so tests stay hermetic; the timer unit is not a path, so a hermetic run of `init` or `uninstall` builds a full isolated `HOME` and sets `TOKENMAXXING_SKIP_TIMER=1` (see [Troubleshooting](/troubleshooting)).
 
 | Path | What it holds |
 |---|---|

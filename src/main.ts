@@ -25,11 +25,13 @@ import { cmdConfig } from "./cli/config.ts";
 import { cmdSetupToken } from "./cli/setuptoken.ts";
 import { cmdCloudRun } from "./cli/cloudrun.ts";
 import { cmdCursorInit } from "./cli/cursorinit.ts";
-import { timerDeactivationHint, uninstallSupervisor } from "./lib/install.ts";
+import { loginHome, timerDeactivationHint, uninstallSupervisor, uninstallTargets } from "./lib/install.ts";
+import { HOME } from "./lib/paths.ts";
 import { c, emitError } from "./cli/render.ts";
 
 const JSON_FLAG = "--json";
 const CACHED_FLAG = "--cached";
+const YES_FLAG = "--yes";
 const CODEX_FLAG = "--codex";
 const GROK_FLAG = "--grok";
 const OPENCODE_GO_FLAG = "--opencode-go";
@@ -54,7 +56,7 @@ function printHelp(): void {
   ${c.cyan("tokenmaxxing doctor")}     verify the install is intact
   ${c.cyan("tokenmaxxing rename")} [--codex | --grok | --opencode-go] <sel> <label>
   ${c.cyan("tokenmaxxing rm")} [--codex | --grok | --opencode-go] <sel>
-  ${c.cyan("tokenmaxxing uninstall")}  remove supervisor + settings entries
+  ${c.cyan("tokenmaxxing uninstall")} [--yes]  print the targets, then remove supervisor + settings entries (refused without ${c.cyan("--yes")} when HOME is the login home)
   ${c.cyan("tokenmaxxing setup-token")} [--print | rm <label|uuid>]  Cursor Cloud only: mint one \`claude setup-token\` per pooled account (browser sign-in each) and print the TOKENMAXXING_TOKENS secret value; ${c.cyan("--print")} prints the stored set, ${c.cyan("rm")} drops one
   ${c.cyan("tokenmaxxing cursor init")} [dir]  write the Claude relay subagent (.cursor/agents/claude.md) and .cursor/environment.json into a repo
   ${c.cyan("tokenmaxxing cloud run")} [--session <id>] [--max-turns <n>] "<prompt>"  on a Cursor Cloud VM: run claude -p on a setup token from TOKENMAXXING_TOKENS, rotate to the next token on a usage limit
@@ -155,6 +157,16 @@ async function main(): Promise<number> {
       return 2;
     }
     case "uninstall": {
+      const extra = args.slice(1).find((a) => a !== YES_FLAG);
+      if (extra != null) {
+        emitError({ message: `unknown uninstall option: ${extra} (uninstall takes only ${YES_FLAG})` });
+        return 2;
+      }
+      console.log(`uninstall removes:\n${uninstallTargets().map((t) => `  ${t}`).join("\n")}`);
+      if (!args.includes(YES_FLAG) && HOME === loginHome()) {
+        emitError({ message: `refused: HOME is the login home (${HOME}) - rerun with ${YES_FLAG} to remove these from the live install` });
+        return 2;
+      }
       const out = uninstallSupervisor();
       const removed = [
         "supervisor wrapper",

@@ -116,7 +116,7 @@ Short pointers.
 
 ## Testing
 
-The repo carries no test code and no code comments (owner ruling 2026-09-02: "Delete all testcodes and comments from the codebase"). Do not add test files, a test script, a test CI step, or comments. Verification is `bun run typecheck` plus hermetic CLI runs under a throwaway `TOKENMAXXING_HOME` and free live reads.
+The repo carries no test code and no code comments (owner ruling 2026-09-02: "Delete all testcodes and comments from the codebase"). Do not add test files, a test script, a test CI step, or comments. Verification is `bun run typecheck` plus hermetic CLI runs under a throwaway `TOKENMAXXING_HOME` and free live reads; a mutating command runs only under a full isolated `HOME` with `TOKENMAXXING_SKIP_TIMER=1`, or in a container (see the `TOKENMAXXING_HOME` lesson below).
 
 The live interactive-PTY SIGTERM test is still owed (`DESIGN.md` §9), but the owner declined it once. Never re-run it without asking.
 
@@ -126,7 +126,7 @@ The live interactive-PTY SIGTERM test is still owed (`DESIGN.md` §9), but the o
 - A prior go-ahead does not cover collision evidence that arrives after it. Every new signal of concurrent work freezes git actions until the owner rules.
 - Never write a completion claim into docs or memory ahead of the output that proves it.
 - `status --ping` (removed 2026-09-12) opened a real 5h window on every account it pinged. A feature request is not permission to spend.
-- `TOKENMAXXING_HOME` isolates state files only. `init`, `uninstall`, and the codex hook install write settings.json, codex `hooks.json`, the shell rc, and the timer unit under `HOME` regardless, so a throwaway root does not make them hermetic: a review subagent ran `uninstall --json` under one and stripped a live install (2026-09-05). Subagent prompts must forbid those commands by name; "hermetic" is not enough. A minting `setup-token` joins that list: it opens a browser sign-in and prints credential material.
+- `TOKENMAXXING_HOME` isolates state files only. `init`, `uninstall`, and the codex hook install write settings.json, codex `hooks.json`, the shell rc, and the timer unit under `HOME` regardless, so a throwaway root does not make them hermetic: a review subagent ran `uninstall --json` under one and stripped a live install (2026-09-05, issue #149). A run of a mutating command (`init`, `add`, `auth`, `uninstall`, the codex hook install) builds a full isolated `HOME` with `TOKENMAXXING_SKIP_TIMER=1` set, or runs in a container; a single app variable is never the isolation. `HOME` alone does not cover the timer: `systemctl --user` and `launchctl` address the login user's instance under any `HOME`, so `uninstall` under an isolated `HOME` without `TOKENMAXXING_SKIP_TIMER=1` still stops the live timer. `uninstall` prints its targets first and refuses without `--yes` when `HOME` is the login home (`getent passwd` on Linux, `id -P` on macOS). Every subagent brief names the verbs the seat may not run (`init`, `add`, `auth`, `uninstall`, `setup-token`); "hermetic" is not enough. A minting `setup-token` is on that list because it opens a browser sign-in and prints credential material.
 
 ## Cursor Cloud specific instructions
 
