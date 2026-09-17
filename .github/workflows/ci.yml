@@ -4,8 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
-  release:
-    types: [published]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -44,14 +43,19 @@ jobs:
           TOKENMAXXING_HOME="$RUNNER_TEMP/tm-nix" ./result/bin/tokenmaxxing config --json | jq -e '.ok == true and .effective.thresholds.weekly == 95 and .effective.thresholds.session == 90' >/dev/null
 
   publish:
-    if: github.event_name == 'release'
+    if: github.event_name != 'pull_request'
     needs: test
     runs-on: ubuntu-latest
+    concurrency:
+      group: publish
+      cancel-in-progress: false
     permissions:
-      contents: read
+      contents: write
       id-token: write
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
       - uses: oven-sh/setup-bun@v2
       - uses: actions/setup-node@v6
         with:
@@ -59,11 +63,38 @@ jobs:
           registry-url: "https://registry.npmjs.org"
           package-manager-cache: false
       - run: bun install --frozen-lockfile
-      - name: Verify release tag matches package.json version
+      - name: Assign the version
+        id: version
+        shell: bash
         run: |
-          version="$(node -p "require('./package.json').version")"
-          if [ "v${version}" != "${GITHUB_REF_NAME}" ]; then
-            echo "release tag ${GITHUB_REF_NAME} does not match package.json v${version}" >&2
-            exit 1
+          if [ -n "$(git tag --list 'v*' --contains HEAD)" ]; then
+            echo "HEAD is already inside a release"
+            exit 0
           fi
-      - run: npm publish
+          current="$(node -p "require('./package.json').version")"
+          versions="$(npm view tokenmaxxing versions --json)"
+          if ! jq -e --arg v "$current" '[.. | strings] | index($v) != null' <<<"$versions" >/dev/null; then
+            echo "version=${current}" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          packed="$(npm pack --dry-run --json | jq -er '.. | .files? // empty | .[].path' | cut -d/ -f1 | sort -u)"
+          changed="$(git diff --name-only "v${current}" HEAD -- $packed)"
+          if [ -z "$changed" ]; then
+            echo "no packed file changed since v${current}"
+            exit 0
+          fi
+          echo "$changed"
+          next="$(npm version minor --no-git-tag-version)"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit --quiet --message "chore: release ${next#v}" -- package.json
+          git push origin HEAD:main
+          echo "version=${next#v}" >> "$GITHUB_OUTPUT"
+      - if: steps.version.outputs.version != ''
+        run: npm publish
+      - if: steps.version.outputs.version != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="v${{ steps.version.outputs.version }}"
+          gh release view "$tag" >/dev/null 2>&1 || gh release create "$tag" --target "$(git rev-parse HEAD)" --generate-notes
