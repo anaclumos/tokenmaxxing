@@ -86,7 +86,7 @@ export PATH
 if command -v tokenmaxxing >/dev/null 2>&1; then
   exec tokenmaxxing "$@"
 fi
-exec ${JSON.stringify(bun)} run ${JSON.stringify(entry)} "$@"
+exec ${JSON.stringify(bun)} --no-env-file run ${JSON.stringify(entry)} "$@"
 `;
 }
 
@@ -97,7 +97,7 @@ export function installSupervisor(): InstallOutcome {
   if (isNixPackaged()) {
     writeFileAtomic(target, nixSupervisorShim(process.execPath, entry), 0o755);
   } else {
-    writeFileAtomic(target, `#!/bin/sh\nexec ${JSON.stringify(process.execPath)} run ${JSON.stringify(entry)} "$@"\n`, 0o755);
+    writeFileAtomic(target, `#!/bin/sh\nexec ${JSON.stringify(process.execPath)} --no-env-file run ${JSON.stringify(entry)} "$@"\n`, 0o755);
   }
 
   writeFileAtomic(paths.supervisorLink, `#!/bin/sh\nexec ${JSON.stringify(target)} __supervise "$@"\n`, 0o755);

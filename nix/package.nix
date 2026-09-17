@@ -29,7 +29,7 @@ bun2nix.writeBunApplication {
 
   startScript = ''
     export TOKENMAXXING_NIX=1
-    exec bun run ./src/main.ts "$@"
+    exec bun --no-env-file run ./src/main.ts "$@"
   '';
 
   inheritPath = true;
