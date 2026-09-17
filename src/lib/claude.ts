@@ -12,11 +12,11 @@ import { claudePool, paths, sampleDirFor, seatFromEnv, storeDirFor } from "./pat
 import { pickBest, pickEarliestReset, thresholdBars, type PickCtx } from "./picker.ts";
 import { seatCounts } from "./presence.ts";
 import type { Observation, Provider, SampleReport } from "./provider.ts";
-import { foldTee, probeAccountUsage, teeObservation } from "./sample.ts";
+import { foldTee, sampleAccountUsage, teeObservation } from "./sample.ts";
 import { clearUsageSnapshot, loadAccounts, loadConfig, loadUsageSnapshot, pinBinOverride, saveAccounts, type Harvest } from "./state.ts";
 import { loadSetupTokens, saveSetupTokens } from "./setuptokens.ts";
 import { saveTermios, restoreTermios } from "./tty.ts";
-import { CRED_ENV_OVERRIDES, gatedFamilies, mergeWindows, probeUsage, windowsOf } from "./usage.ts";
+import { CRED_ENV_OVERRIDES, fetchUsageDirect, gatedFamilies, mergeWindows, windowsOf } from "./usage.ts";
 import { CredentialBlobSchema, OAuthAccountSchema, type Account, type Config } from "./types.ts";
 import { c } from "../cli/render.ts";
 
@@ -46,7 +46,7 @@ async function observeLive(account: Account, cfg: Config, now: number, opts: { p
   const needsPerModel = snap != null && gatedFamilies(snap.state.model, cfg.policy.switchModels).length > 0;
   if (opts.probe && !probeAttempted && (!fresh || needsPerModel)) {
     const startedAt = Date.now();
-    const outcome = await probeAccountUsage(account, { retries: 0 });
+    const outcome = await sampleAccountUsage(account, { retries: 0 });
     await withLock(claudePool.lockFile, () => {
       const idx = loadAccounts(claudePool);
       const a = idx.accounts.find((x) => x.id === account.id);
@@ -81,7 +81,7 @@ async function samplePool(accounts: Account[]): Promise<Map<string, SampleReport
         reports.set(a.id, { ok: true, source: "statusline" });
         return;
       }
-      const outcome = await probeAccountUsage(a);
+      const outcome = await sampleAccountUsage(a);
       if (!outcome.ok) {
         reports.set(a.id, { ok: false, reason: outcome.reason });
         return;
@@ -217,7 +217,7 @@ async function login(): Promise<Harvest | null> {
     }
 
     console.log(c.dim("sampling usage..."));
-    const sampled = await probeUsage({ configDir: onboardDir });
+    const sampled = await fetchUsageDirect(blob.claudeAiOauth.accessToken);
     if (!sampled) console.log(c.yellow("could not sample usage now - it will fill in on first use."));
     const at = Date.now();
     const id = oauthAccount.accountUuid;

@@ -359,12 +359,28 @@ export async function probeUsage(target: ProbeTarget, now = Date.now(), opts: { 
 const USAGE_URL = env("TOKENMAXXING_OAUTH_USAGE_URL", "https://api.anthropic.com/api/oauth/usage");
 const USAGE_DEADLINE_MS = 10_000;
 
-const UsageWindowResponseSchema = z.object({ utilization: z.number(), resets_at: z.number().nullable().optional() });
-const UsageResponseSchema = z.object({
-  rate_limits: z
-    .object({ five_hour: UsageWindowResponseSchema.nullish(), seven_day: UsageWindowResponseSchema.nullish() })
-    .nullish(),
+const UsageLimitSchema = z.looseObject({ utilization: z.number(), resets_at: z.unknown() });
+const UsageScopedLimitSchema = z.looseObject({
+  kind: z.string(),
+  percent: z.number(),
+  resets_at: z.unknown(),
+  scope: z.looseObject({ model: z.looseObject({ display_name: z.string() }) }),
 });
+const UsageResponseSchema = z.looseObject({
+  five_hour: UsageLimitSchema.nullish(),
+  seven_day: UsageLimitSchema.nullish(),
+  limits: z.array(z.unknown()).nullish(),
+});
+
+function scopedRows(limits: unknown[]): Record<string, UsageWindow> {
+  const perModel: Record<string, UsageWindow> = {};
+  for (const raw of limits) {
+    const row = UsageScopedLimitSchema.safeParse(raw);
+    if (!row.success || row.data.kind !== "weekly_scoped") continue;
+    perModel[row.data.scope.model.display_name] = { usedPercentage: row.data.percent, resetsAt: normalizeResetsAt(row.data.resets_at) };
+  }
+  return perModel;
+}
 
 export async function fetchUsageDirect(accessToken: string): Promise<UsageWindows | null> {
   let res: Response;
@@ -382,15 +398,10 @@ export async function fetchUsageDirect(accessToken: string): Promise<UsageWindow
     return null;
   }
   const parsed = UsageResponseSchema.safeParse(JsonTextSchema.safeParse(await res.text()).data);
-  const five = parsed.success ? parsed.data.rate_limits?.five_hour : null;
-  const seven = parsed.success ? parsed.data.rate_limits?.seven_day : null;
-  if (!five || !seven) {
+  if (!parsed.success || !parsed.data.five_hour || !parsed.data.seven_day) {
     log("usage.get_incomplete", { ok: parsed.success });
     return null;
   }
-  const win = (w: z.infer<typeof UsageWindowResponseSchema>): UsageWindow => ({
-    usedPercentage: w.utilization * 100,
-    resetsAt: w.resets_at != null ? w.resets_at * 1000 : null,
-  });
-  return { fiveHour: win(five), sevenDay: win(seven), perModel: {} };
+  const win = (w: z.infer<typeof UsageLimitSchema>): UsageWindow => ({ usedPercentage: w.utilization, resetsAt: normalizeResetsAt(w.resets_at) });
+  return { fiveHour: win(parsed.data.five_hour), sevenDay: win(parsed.data.seven_day), perModel: scopedRows(parsed.data.limits ?? []) };
 }
