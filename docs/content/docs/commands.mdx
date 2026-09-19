@@ -27,7 +27,7 @@ Every command works inside a supervised session too: a `CLAUDE_SECURESTORAGE_CON
 
 ## JSON output
 
-Add `--json` to `status`, `config`, or `check` and it prints one JSON document on stdout instead of text. Progress notices such as `sampling claude usage...` still go to stderr, so `xx status --json | jq` stays clean. Every document carries `ok`, which is `true` exactly when the exit code is 0; a failure keeps its non-zero exit code and adds `error` with the same message the text form prints.
+Add `--json` to `status`, `config`, or `check` and it prints one JSON document on stdout instead of text. The progress notice `sampling claude usage...` goes to stderr, so `xx status --json | jq` stays clean. `status` writes it only when stderr is a terminal, shows it while the sample runs, and erases it when the sample returns; a redirected stderr gets nothing. Every document carries `ok`, which is `true` exactly when the exit code is 0; a failure keeps its non-zero exit code and adds `error` with the same message the text form prints.
 
 ```sh
 xx status --json | jq '.claude.accounts[] | {label, sessions, exhausted, fiveHour: .usage.fiveHour.usedPercentage}'

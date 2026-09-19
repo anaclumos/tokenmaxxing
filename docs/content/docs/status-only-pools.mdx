@@ -23,7 +23,7 @@ An account is an opencode Zen API key for the `opencode-go` provider. `init --op
 
 ## What status shows
 
-`status` renders the two pools after Claude and Codex, each headed `<pool>  (N accounts, status-only)` and skipped when empty. An account renders as `○ <label>` with no usage bars, because neither product exposes a quota signal. The live sample is a store check, not a network read: `status` prints `sampling grok usage...` on stderr, then reports `live sample failed` when the store no longer holds a credential that matches the account (run `auth` with the pool flag); `status --cached` skips the check and notes `never sampled`. `status --json` always carries both pools under `grok` and `opencodeGo`, with the same pool shape as the others: `usage`, `usageAt`, and `limitsAt` are `null`, `sessions` is 0, and `exhausted` is `false`.
+`status` renders the two pools after Claude and Codex, each headed `<pool>  (N accounts, status-only)` and skipped when empty. An account renders as `○ <label>` with no usage bars, because neither product exposes a quota signal. The live sample is a store check, not a network read: `status` shows `sampling grok usage...` on a terminal while the check runs, erases it, then reports `live sample failed` when the store no longer holds a credential that matches the account (run `auth` with the pool flag); `status --cached` skips the check and notes `never sampled`. `status --json` always carries both pools under `grok` and `opencodeGo`, with the same pool shape as the others: `usage`, `usageAt`, and `limitsAt` are `null`, `sessions` is 0, and `exhausted` is `false`.
 
 ## State
 
