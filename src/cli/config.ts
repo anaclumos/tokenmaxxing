@@ -1,3 +1,4 @@
+import { errorMessage } from "../lib/log.ts";
 import { paths } from "../lib/paths.ts";
 import { loadConfig } from "../lib/state.ts";
 import type { Config } from "../lib/types.ts";
@@ -12,7 +13,7 @@ export function cmdConfig(args: string[], json = false): number {
   try {
     effective = loadConfig();
   } catch (e) {
-    emitError({ json, message: e instanceof Error ? e.message : String(e), extra: { path: paths.configJson } });
+    emitError({ json, message: errorMessage(e), extra: { path: paths.configJson } });
     return 1;
   }
   if (json) {

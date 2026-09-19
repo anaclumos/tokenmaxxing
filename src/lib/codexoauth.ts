@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { http, oauthErrorCode, safeErrorDetail } from "./http.ts";
+import { errorMessage } from "./log.ts";
 import { env } from "./paths.ts";
 import { CodexAuthJsonSchema, JsonTextSchema, type CodexAuthJson } from "./types.ts";
 
@@ -38,16 +39,10 @@ export async function refreshCodexAuth(input: { auth: CodexAuthJson; now?: numbe
   let res: Response;
   try {
     res = await http.post(TOKEN_URL, {
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        client_id: CLIENT_ID,
-        grant_type: "refresh_token",
-        refresh_token: auth.tokens.refresh_token,
-      }),
+      json: { client_id: CLIENT_ID, grant_type: "refresh_token", refresh_token: auth.tokens.refresh_token },
     });
   } catch (e) {
-    const message = e instanceof Error ? e.message : String(e);
-    throw new CodexRefreshFailedError(`endpoint unreachable: ${message}`);
+    throw new CodexRefreshFailedError(`endpoint unreachable: ${errorMessage(e)}`);
   }
 
   const text = await res.text();

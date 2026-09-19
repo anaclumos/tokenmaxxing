@@ -3,28 +3,13 @@ import { delay } from "es-toolkit";
 import { z } from "zod";
 import { MAX_WRAP_DEPTH, WRAP_DEPTH_ENV, resolveRealClaude } from "./claudebin.ts";
 import { http } from "./http.ts";
-import { log } from "./log.ts";
+import { errorMessage, log } from "./log.ts";
 import { env } from "./paths.ts";
-import { JsonTextSchema, RateLimitsStdinSchema, type ModelInfo, type UsageWindow, type UsageWindows, type Window } from "./types.ts";
-
-export function normalizeResetsAt(v: unknown): number | null {
-  const num = z.number().finite().safeParse(v);
-  if (num.success) {
-    return num.data < 1e12 ? Math.round(num.data * 1000) : Math.round(num.data);
-  }
-  const str = z.string().safeParse(v);
-  if (str.success && str.data.trim() !== "") {
-    const n = Number(str.data);
-    if (Number.isFinite(n)) return normalizeResetsAt(n);
-    const t = Date.parse(str.data);
-    return Number.isFinite(t) ? t : null;
-  }
-  return null;
-}
+import { EpochSecondsSchema, JsonTextSchema, RateLimitsStdinSchema, type ModelInfo, type UsageWindow, type UsageWindows, type Window } from "./types.ts";
 
 const win = (w: { used_percentage: number; resets_at?: number | null }): UsageWindow => ({
   usedPercentage: w.used_percentage,
-  resetsAt: normalizeResetsAt(w.resets_at),
+  resetsAt: w.resets_at ?? null,
 });
 
 export function parseStatusLineStdin(obj: unknown): UsageWindows | null {
@@ -59,67 +44,6 @@ export function gatedFamilies(model: ModelInfo | null, families: string[]): stri
   return family ? [family] : [];
 }
 
-const MONTHS: Record<string, number> = {
-  jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11,
-};
-
-function tzOffsetMs(utcMs: number, tz: string): number {
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone: tz,
-    hourCycle: "h23",
-    year: "numeric", month: "2-digit", day: "2-digit",
-    hour: "2-digit", minute: "2-digit", second: "2-digit",
-  }).formatToParts(new Date(utcMs));
-  const p: Record<string, number> = {};
-  for (const part of parts) if (part.type !== "literal") p[part.type] = Number(part.value);
-  const asUTC = Date.UTC(p.year!, p.month! - 1, p.day!, p.hour!, p.minute!, p.second!);
-  return asUTC - utcMs;
-}
-
-function zonedWallToEpoch(y: number, mon: number, day: number, hour: number, min: number, tz: string): number {
-  const guess = Date.UTC(y, mon, day, hour, min);
-  const off1 = tzOffsetMs(guess, tz);
-  const off2 = tzOffsetMs(guess - off1, tz);
-  return guess - off2;
-}
-
-export function parseResetClock(clock: string, now = Date.now()): number | null {
-  const m = clock.match(/\b([A-Za-z]{3,9})\s+(\d{1,2})(?:[^\S\n]+at[^\S\n]+|,[^\S\n]*)(\d{1,2})(?::(\d{2}))?\s*([ap])m\s*\(([^)]+)\)/i);
-  if (!m) return null;
-  const mon = MONTHS[m[1]!.slice(0, 3).toLowerCase()];
-  if (mon === undefined) return null;
-  const day = Number(m[2]);
-  let hour = Number(m[3]) % 12;
-  if (m[5]!.toLowerCase() === "p") hour += 12;
-  const min = m[4] ? Number(m[4]) : 0;
-  const tz = m[6]!.trim();
-
-  const baseYear = new Date(now).getUTCFullYear();
-  let best: number | null = null;
-  for (const y of [baseYear - 1, baseYear, baseYear + 1]) {
-    let epoch: number;
-    try {
-      epoch = zonedWallToEpoch(y, mon, day, hour, min, tz);
-    } catch {
-      return null;
-    }
-    if (best === null || Math.abs(epoch - now) < Math.abs(best - now)) best = epoch;
-  }
-  return best;
-}
-
-export function fmtResetShort(epochMs: number | null | undefined, now = Date.now()): string {
-  if (epochMs == null) return "";
-  const dsec = Math.round((epochMs - now) / 1000);
-  if (dsec <= 0) return "";
-  const d = Math.floor(dsec / 86400);
-  const h = Math.floor((dsec % 86400) / 3600);
-  const m = Math.floor((dsec % 3600) / 60);
-  if (d > 0) return `${d}d`;
-  if (h > 0) return `${h}h`;
-  return `${Math.max(m, 1)}m`;
-}
-
 const TranscriptBlockSchema = z.looseObject({ type: z.string().optional(), text: z.string().optional() });
 export const TranscriptRowSchema = z.looseObject({
   type: z.string().optional(),
@@ -128,7 +52,7 @@ export const TranscriptRowSchema = z.looseObject({
   apiErrorIsTransient: z.boolean().optional(),
   error: z.string().optional(),
   errorDetails: z.string().optional(),
-  quotaLimits: z.looseObject({ rateLimitType: z.string().optional(), resetsAt: z.number().optional() }).optional(),
+  quotaLimits: z.looseObject({ rateLimitType: z.string().optional(), resetsAt: EpochSecondsSchema.optional() }).optional(),
   message: z.looseObject({ content: z.unknown().optional() }).optional(),
 });
 export type TranscriptRow = z.infer<typeof TranscriptRowSchema>;
@@ -154,11 +78,8 @@ export function readTranscriptTail(path: string, maxBytes = TRANSCRIPT_TAIL_BYTE
   }
   const rows: TranscriptRow[] = [];
   for (const line of text.split("\n")) {
-    if (line.trim() === "") continue;
-    try {
-      const parsed = TranscriptRowSchema.safeParse(JSON.parse(line));
-      if (parsed.success) rows.push(parsed.data);
-    } catch {}
+    const parsed = TranscriptRowSchema.safeParse(JsonTextSchema.safeParse(line).data);
+    if (parsed.success) rows.push(parsed.data);
   }
   return rows;
 }
@@ -184,12 +105,10 @@ export function findEnforcedRow(input: { rows: TranscriptRow[]; lastAssistantMes
   return null;
 }
 
-export const EnforcedClassSchema = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("session"), resetsAt: z.number().nullable() }),
-  z.object({ kind: z.literal("weekly"), resetsAt: z.number().nullable() }),
-  z.object({ kind: z.literal("model"), family: z.string(), resetsAt: z.number().nullable() }),
-]);
-export type EnforcedClass = z.infer<typeof EnforcedClassSchema>;
+export type EnforcedClass =
+  | { kind: "session"; resetsAt: number | null }
+  | { kind: "weekly"; resetsAt: number | null }
+  | { kind: "model"; family: string; resetsAt: number | null };
 
 const ErrorBodySchema = z.looseObject({
   error: z.looseObject({ type: z.string().optional(), details: z.looseObject({ error_code: z.string().optional() }).optional() }).optional(),
@@ -201,18 +120,14 @@ export function parseErrorBody(errorDetails: string | undefined): z.infer<typeof
   if (!errorDetails) return null;
   const at = errorDetails.indexOf("{");
   if (at < 0) return null;
-  try {
-    const body = ErrorBodySchema.safeParse(JSON.parse(errorDetails.slice(at)));
-    return body.success ? body.data : null;
-  } catch {
-    return null;
-  }
+  const body = ErrorBodySchema.safeParse(JsonTextSchema.safeParse(errorDetails.slice(at)).data);
+  return body.success ? body.data : null;
 }
 
 export function classifyEnforcedLimit(row: TranscriptRow, switchModels: string[]): EnforcedClass | null {
   const q = row.quotaLimits;
   if (q) {
-    const resetsAt = q.resetsAt != null ? normalizeResetsAt(q.resetsAt) : null;
+    const resetsAt = q.resetsAt ?? null;
     const type = q.rateLimitType ?? "";
     if (type === "five_hour") return { kind: "session", resetsAt };
     if (type === "seven_day") return { kind: "weekly", resetsAt };
@@ -223,22 +138,6 @@ export function classifyEnforcedLimit(row: TranscriptRow, switchModels: string[]
   if (parseErrorBody(row.errorDetails)?.error?.type !== "rate_limit_error") return null;
   const family = switchModels.find((f) => CREDITS_GATED_FAMILIES.includes(f));
   return family ? { kind: "model", family, resetsAt: null } : null;
-}
-
-export function parseUsageText(text: string, now = Date.now()): UsageWindows | null {
-  if (!text) return null;
-  const re = /current (session|week \(([^)]+)\)):\s*(\d+)\s*%(?:(?:(?!current)[^\n])*?\bresets\s+([A-Z][a-z]{2,8}\s+\d{1,2}(?:[^\S\n]+at[^\S\n]+|,[^\S\n]*)\d{1,2}(?::\d{2})?\s*[ap]m\s*\([^)]+\)))?/gi;
-  let fiveHour: UsageWindow | null = null;
-  let sevenDay: UsageWindow | null = null;
-  const perModel: Record<string, UsageWindow> = {};
-  for (let m = re.exec(text); m !== null; m = re.exec(text)) {
-    const window: UsageWindow = { usedPercentage: Number(m[3]), resetsAt: m[4] ? parseResetClock(m[4], now) : null };
-    if (m[1]!.toLowerCase() === "session") fiveHour = window;
-    else if (/^all models$/i.test(m[2]!.trim())) sevenDay = window;
-    else perModel[m[2]!.trim()] = window;
-  }
-  if (!fiveHour || !sevenDay) return null;
-  return { fiveHour, sevenDay, perModel };
 }
 
 const FIVE_HOURS_S = 5 * 3600;
@@ -273,97 +172,46 @@ export const CRED_ENV_OVERRIDES = [
 const PROBE_KILL_MS = 60_000;
 const PIPE_GRACE_MS = 2_000;
 
-const SpawnResultSchema = z.object({
-  exitCode: z.number().nullable(),
-  stdout: z.string(),
-  stderr: z.string(),
-});
-type SpawnResult = z.infer<typeof SpawnResultSchema>;
-
-async function spawnClaudeBounded(cmd: string[], env: Record<string, string>): Promise<SpawnResult | null> {
-  const p = Bun.spawn(cmd, { env, stdout: "pipe", stderr: "pipe", timeout: PROBE_KILL_MS, killSignal: "SIGKILL" });
-  const reads = Promise.all([new Response(p.stdout).text(), new Response(p.stderr).text()]);
-  const settled = await Promise.race([
-    reads,
-    p.exited.then(() => delay(PIPE_GRACE_MS)).then(() => null),
-  ]);
-  if (settled === null) return null;
-  const [stdout, stderr] = settled;
-  await p.exited;
-  return { exitCode: p.exitCode, stdout, stderr };
-}
-
-async function probeUsageOnce(env: Record<string, string>, now: number): Promise<UsageWindows | null> {
-  let out: string;
-  try {
-    const r = await spawnClaudeBounded([resolveRealClaude(), "-p", "/usage", "--output-format", "json"], env);
-    if (r === null) {
-      log("usage.probe_failed", { err: "output pipes still open after child exit (leaked descendant)" });
-      return null;
-    }
-    if (r.exitCode !== 0) {
-      log("usage.probe_failed", { exit: r.exitCode ?? "signal", stderr: r.stderr.trim().slice(0, 200) });
-      return null;
-    }
-    out = r.stdout;
-  } catch (e) {
-    log("usage.probe_failed", { err: e instanceof Error ? e.message : String(e) });
-    return null;
-  }
-
-  const j = z.object({ result: z.string() }).safeParse(JsonTextSchema.safeParse(out).data);
-  const text = j.success ? j.data.result : out;
-  const full = parseUsageText(text, now);
-  if (!full) {
-    log("usage.probe_unparsed", { sample: text.trim().slice(0, 200) });
-  } else {
-    const clockLine = text.split("\n").find((l) => /^current /i.test(l) && /\bresets\b/i.test(l));
-    if (clockLine && [full.fiveHour, full.sevenDay, ...Object.values(full.perModel)].every((w) => w.resetsAt === null)) {
-      log("usage.reset_clock_unparsed", { sample: clockLine.slice(0, 120) });
-    }
-  }
-  return full;
-}
-
-const PROBE_RETRY_DELAYS_MS = [2000, 5000];
-
 export function scrubCredentialEnv(env: Record<string, string>): Record<string, string> {
   const scrubbed = { ...env };
   for (const k of CRED_ENV_OVERRIDES) delete scrubbed[k];
   return scrubbed;
 }
 
-export type ProbeTarget = { configDir: string; store?: string };
+export type ProbeTarget = { configDir: string; store: string };
 
-function probeEnv(target: ProbeTarget): Record<string, string> {
+export async function refreshViaProbe(target: ProbeTarget): Promise<boolean> {
   const env = scrubCredentialEnv({ ...process.env, TOKENMAXXING_PROBE: "1", [WRAP_DEPTH_ENV]: String(MAX_WRAP_DEPTH) });
   env.CLAUDE_CONFIG_DIR = target.configDir;
-  if (target.store) env.CLAUDE_SECURESTORAGE_CONFIG_DIR = target.store;
-  return env;
-}
-
-export async function probeUsage(target: ProbeTarget, now = Date.now(), opts: { retries?: number } = {}): Promise<UsageWindows | null> {
-  const probe = probeEnv(target);
-
-  for (let attempt = 0; ; attempt++) {
-    const full = await probeUsageOnce(probe, now);
-    if (full) return full;
-    if (attempt >= (opts.retries ?? PROBE_RETRY_DELAYS_MS.length)) {
-      log("usage.probe_gave_up", { attempts: attempt + 1 });
-      return null;
+  env.CLAUDE_SECURESTORAGE_CONFIG_DIR = target.store;
+  try {
+    const p = Bun.spawn([resolveRealClaude(), "-p", "/usage", "--output-format", "json"], { env, stdout: "ignore", stderr: "pipe", timeout: PROBE_KILL_MS, killSignal: "SIGKILL" });
+    const stderr = await Promise.race([new Response(p.stderr).text(), p.exited.then(() => delay(PIPE_GRACE_MS)).then(() => null)]);
+    await p.exited;
+    if (stderr === null) {
+      log("usage.probe_failed", { err: "output pipes still open after child exit (leaked descendant)" });
+      return false;
     }
-    await delay(PROBE_RETRY_DELAYS_MS[Math.min(attempt, PROBE_RETRY_DELAYS_MS.length - 1)]!);
+    if (p.exitCode !== 0) {
+      log("usage.probe_failed", { exit: p.exitCode ?? "signal", stderr: stderr.trim().slice(0, 200) });
+      return false;
+    }
+    return true;
+  } catch (e) {
+    log("usage.probe_failed", { err: errorMessage(e) });
+    return false;
   }
 }
 
 const USAGE_URL = env("TOKENMAXXING_OAUTH_USAGE_URL", "https://api.anthropic.com/api/oauth/usage");
 const USAGE_DEADLINE_MS = 10_000;
 
-const UsageLimitSchema = z.looseObject({ utilization: z.number(), resets_at: z.unknown() });
+const ResetsAtSchema = z.iso.datetime({ offset: true }).transform((iso) => Date.parse(iso)).nullish();
+const UsageLimitSchema = z.looseObject({ utilization: z.number(), resets_at: ResetsAtSchema });
 const UsageScopedLimitSchema = z.looseObject({
   kind: z.string(),
   percent: z.number(),
-  resets_at: z.unknown(),
+  resets_at: ResetsAtSchema,
   scope: z.looseObject({ model: z.looseObject({ display_name: z.string() }) }),
 });
 const UsageResponseSchema = z.looseObject({
@@ -377,7 +225,7 @@ function scopedRows(limits: unknown[]): Record<string, UsageWindow> {
   for (const raw of limits) {
     const row = UsageScopedLimitSchema.safeParse(raw);
     if (!row.success || row.data.kind !== "weekly_scoped") continue;
-    perModel[row.data.scope.model.display_name] = { usedPercentage: row.data.percent, resetsAt: normalizeResetsAt(row.data.resets_at) };
+    perModel[row.data.scope.model.display_name] = { usedPercentage: row.data.percent, resetsAt: row.data.resets_at ?? null };
   }
   return perModel;
 }
@@ -385,12 +233,13 @@ function scopedRows(limits: unknown[]): Record<string, UsageWindow> {
 export async function fetchUsageDirect(accessToken: string): Promise<UsageWindows | null> {
   let res: Response;
   try {
-    res = await http.get(`${USAGE_URL}?at_wall=1&skip_spend=1`, {
+    res = await http.get(USAGE_URL, {
+      searchParams: { at_wall: 1, skip_spend: 1 },
       headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
       signal: AbortSignal.timeout(USAGE_DEADLINE_MS),
     });
   } catch (e) {
-    log("usage.get_failed", { err: e instanceof Error ? e.message : String(e) });
+    log("usage.get_failed", { err: errorMessage(e) });
     return null;
   }
   if (!res.ok) {
@@ -399,9 +248,9 @@ export async function fetchUsageDirect(accessToken: string): Promise<UsageWindow
   }
   const parsed = UsageResponseSchema.safeParse(JsonTextSchema.safeParse(await res.text()).data);
   if (!parsed.success || !parsed.data.five_hour || !parsed.data.seven_day) {
-    log("usage.get_incomplete", { ok: parsed.success });
+    log("usage.get_incomplete", { ok: parsed.success, issue: parsed.success ? undefined : z.prettifyError(parsed.error).slice(0, 200) });
     return null;
   }
-  const win = (w: z.infer<typeof UsageLimitSchema>): UsageWindow => ({ usedPercentage: w.utilization, resetsAt: normalizeResetsAt(w.resets_at) });
+  const win = (w: z.infer<typeof UsageLimitSchema>): UsageWindow => ({ usedPercentage: w.utilization, resetsAt: w.resets_at ?? null });
   return { fiveHour: win(parsed.data.five_hour), sevenDay: win(parsed.data.seven_day), perModel: scopedRows(parsed.data.limits ?? []) };
 }

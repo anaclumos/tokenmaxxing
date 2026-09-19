@@ -1,5 +1,4 @@
 import { partition } from "es-toolkit";
-import { z } from "zod";
 import { withLock } from "../lib/lock.ts";
 import type { Provider } from "../lib/provider.ts";
 import { loadAccounts, saveAccounts, upsertAccount } from "../lib/state.ts";
@@ -10,13 +9,7 @@ import type { Account, AccountsIndex } from "../lib/types.ts";
 
 const AUTH_USAGE = "usage: tokenmaxxing auth [--codex | --grok | --opencode-go] [<email|label|id> | --all]";
 
-const AuthPlanSchema = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("usage") }),
-  z.object({ kind: z.literal("error"), message: z.string() }),
-  z.object({ kind: z.literal("pick") }),
-  z.object({ kind: z.literal("targets"), ids: z.array(z.string()) }),
-]);
-export type AuthPlan = z.infer<typeof AuthPlanSchema>;
+export type AuthPlan = { kind: "usage" } | { kind: "error"; message: string } | { kind: "pick" } | { kind: "targets"; ids: string[] };
 
 export function planAuth(input: { p: Provider; accounts: Account[]; argv: string[]; needsAuth: Set<string> }): AuthPlan {
   const all = input.argv.includes("--all");
@@ -45,7 +38,6 @@ function askWhichAccount(idx: AccountsIndex, needsAuth: Set<string>): Account | 
   console.log("which account do you want to reauthenticate?");
   for (const [i, a] of ordered.entries()) {
     const flags: string[] = [];
-    if (a.id === idx.activeId) flags.push(c.green("active"));
     if (a.needsReauth) flags.push(c.red("needs-reauth"));
     else if (needsAuth.has(a.id)) flags.push(c.red("no-credential"));
     const labelNote = a.email != null && a.label !== a.email ? ` (${a.label})` : "";
@@ -84,7 +76,7 @@ async function reauthOne(p: Provider, target: Account): Promise<boolean> {
     return false;
   }
 
-  const result = await withLock(p.pool.lockFile, async () => {
+  const account = await withLock(p.pool.lockFile, async () => {
     const idx = loadAccounts(p.pool);
     if (!idx.accounts.some((a) => a.id === target.id)) {
       console.error(c.red(`${target.label} was removed from the pool while the login was open - nothing written; re-add it with \`tokenmaxxing add${p.flag}\` if wanted`));
@@ -93,15 +85,12 @@ async function reauthOne(p: Provider, target: Account): Promise<boolean> {
     await harvested.park();
     const account = upsertAccount(idx, harvested, p.mergeWindows);
     saveAccounts(p.pool, idx);
-    return { account, isActive: idx.activeId === target.id };
+    return account;
   });
-  if (result === null) return false;
+  if (account === null) return false;
 
-  const note = harvested.sample ? usageNote(result.account) : "";
-  console.log(`${c.green("✓")} reauthed ${c.bold(result.account.email ?? result.account.label)} (${result.account.tier ?? "?"})${note}`);
-  if (result.isActive) {
-    console.log(c.dim("this account has a running session: it keeps its current login until it respawns."));
-  }
+  const note = harvested.sample ? usageNote(account) : "";
+  console.log(`${c.green("✓")} reauthed ${c.bold(account.email ?? account.label)} (${account.tier ?? "?"})${note}`);
   return true;
 }
 

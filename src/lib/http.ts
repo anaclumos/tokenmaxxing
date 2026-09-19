@@ -17,8 +17,7 @@ const PlainErrorBodySchema = z.looseObject({
   message: z.string().optional(),
 });
 
-const ErrorDetailSchema = z.object({ code: z.string().nullable(), fields: z.array(z.string()) });
-type ErrorDetail = z.infer<typeof ErrorDetailSchema>;
+type ErrorDetail = { code: string | null; fields: string[] };
 
 function parseErrorBody(text: string): ErrorDetail | null {
   const json = JsonTextSchema.safeParse(text).data;

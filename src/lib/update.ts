@@ -5,14 +5,13 @@ import { writeFileAtomic } from "./atomic.ts";
 import { http } from "./http.ts";
 import { isNixPackaged } from "./install.ts";
 import { withLock } from "./lock.ts";
-import { log } from "./log.ts";
-import { HOME, paths } from "./paths.ts";
+import { errorMessage, log } from "./log.ts";
+import { env, HOME, optionalEnv, paths } from "./paths.ts";
 
 const UPDATE_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const INSTALL_DEADLINE_MS = 60_000;
 const REGISTRY_DEADLINE_MS = 15_000;
 
-const OverrideSchema = z.string().min(1).optional().catch(undefined);
 const AttemptSchema = z.object({ attemptedAt: z.number() });
 const VersionSchema = z.object({ version: z.string().min(1) });
 const LatestSchema = z.object({ version: z.string().min(1), engines: z.looseObject({ bun: z.string().min(1).optional() }).optional() });
@@ -21,7 +20,7 @@ const updateJson = join(paths.home, "update.json");
 const updateLock = join(paths.home, "update.lock");
 
 function registry(): { base: URL; authorization: string | null } {
-  const raw = OverrideSchema.parse(process.env.TOKENMAXXING_NPM_REGISTRY) ?? "https://registry.npmjs.org";
+  const raw = env("TOKENMAXXING_NPM_REGISTRY", "https://registry.npmjs.org");
   const base = new URL(raw.endsWith("/") ? raw : `${raw}/`);
   const authorization =
     base.username !== "" || base.password !== "" ? `Basic ${btoa(`${decodeURIComponent(base.username)}:${decodeURIComponent(base.password)}`)}` : null;
@@ -39,8 +38,8 @@ function realOrNull(path: string): string | null {
 }
 
 function globalRootCandidates(): string[] {
-  const globalDir = OverrideSchema.parse(process.env.BUN_INSTALL_GLOBAL_DIR);
-  const bunInstall = OverrideSchema.parse(process.env.BUN_INSTALL);
+  const globalDir = optionalEnv("BUN_INSTALL_GLOBAL_DIR");
+  const bunInstall = optionalEnv("BUN_INSTALL");
   return [
     ...(globalDir != null ? [globalDir] : []),
     ...(bunInstall != null ? [join(bunInstall, "install", "global")] : []),
@@ -127,7 +126,7 @@ export async function maybeAutoUpdate(): Promise<void> {
     try {
       await updateToLatest(root);
     } catch (e) {
-      throw new Error(`self-update from npm failed: ${e instanceof Error ? e.message : String(e)}`);
+      throw new Error(`self-update from npm failed: ${errorMessage(e)}`);
     }
   });
 }

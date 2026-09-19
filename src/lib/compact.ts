@@ -2,14 +2,11 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { delay } from "es-toolkit";
 import { z } from "zod";
-import { log } from "./log.ts";
+import { errorMessage, log } from "./log.ts";
+import { readLines } from "./proc.ts";
 import { JsonTextSchema } from "./types.ts";
 
-const CompactOutcomeSchema = z.discriminatedUnion("ok", [
-  z.object({ ok: z.literal(true) }),
-  z.object({ ok: z.literal(false), reason: z.string() }),
-]);
-export type CompactOutcome = z.infer<typeof CompactOutcomeSchema>;
+export type CompactOutcome = { ok: true } | { ok: false; reason: string };
 
 export const CLAUDE_COMPACT_KILL_MS = 300_000;
 const PIPE_GRACE_MS = 2_000;
@@ -108,20 +105,10 @@ export async function compactCodexThread(input: { real: string; threadId: string
       }
     };
     (async () => {
-      let buffered = "";
-      for await (const chunk of p.stdout) {
-        buffered += Buffer.from(chunk).toString("utf8");
-        let nl = buffered.indexOf("\n");
-        while (nl >= 0) {
-          onLine(buffered.slice(0, nl));
-          buffered = buffered.slice(nl + 1);
-          nl = buffered.indexOf("\n");
-        }
-      }
-      if (buffered.trim() !== "") onLine(buffered);
+      for await (const line of readLines(p.stdout)) onLine(line);
       const err = (await stderrText).trim().slice(0, 200);
       finish({ ok: false, reason: p.exitCode === null ? `app-server killed after ${CODEX_COMPACT_KILL_MS / 1000}s` : `app-server exited ${p.exitCode}: ${err}` });
-    })().catch((e) => finish({ ok: false, reason: e instanceof Error ? e.message : String(e) }));
+    })().catch((e) => finish({ ok: false, reason: errorMessage(e) }));
     send({ id: INIT_ID, method: "initialize", params: { clientInfo: { name: "tokenmaxxing", version: packageVersion() } } });
   });
 

@@ -9,7 +9,7 @@ import { seatCounts } from "./presence.ts";
 import { CodexUsageReadError, codexLimitLabel, fetchCodexUsage } from "./codexusage.ts";
 import { codexSupervisorLink, ensurePathInRc, installCodexSupervisor, managedShellRcSkipLines, shellRcPath } from "./install.ts";
 import { withLock } from "./lock.ts";
-import { log } from "./log.ts";
+import { errorMessage, log } from "./log.ts";
 import { codexPaths, codexPool, codexSeatFromEnv } from "./paths.ts";
 import { isExhausted, pickBest, pickEarliestReset, thresholdBars, type PickCtx } from "./picker.ts";
 import type { Observation, Provider, SampleReport } from "./provider.ts";
@@ -47,7 +47,7 @@ async function readCodexUsage(account: Account, now: number): Promise<CodexReadO
   try {
     auth = readCodexStoreAuth(account.id);
   } catch (e) {
-    return { ok: false, reason: `store credential unreadable (${(e instanceof Error ? e.message : String(e)).slice(0, 80)})`, deadGrant: false };
+    return { ok: false, reason: `store credential unreadable (${errorMessage(e).slice(0, 80)})`, deadGrant: false };
   }
   if (!auth) return { ok: false, reason: "no credential in this account's store - run `tokenmaxxing auth --codex`", deadGrant: false };
   try {
@@ -110,7 +110,7 @@ async function prepareMove(target: Account): Promise<void> {
   try {
     auth = readCodexStoreAuth(target.id);
   } catch (e) {
-    throw new StoreUnusableError(`${target.label}'s store is unreadable (${e instanceof Error ? e.message : String(e)}) - re-auth with \`tokenmaxxing auth --codex ${target.label}\``);
+    throw new StoreUnusableError(`${target.label}'s store is unreadable (${errorMessage(e)}) - re-auth with \`tokenmaxxing auth --codex ${target.label}\``);
   }
   if (!auth) throw new StoreUnusableError(`${target.label} has no credential in its store - re-auth with \`tokenmaxxing auth --codex ${target.label}\``);
   log("move.prepared", { account: target.id.slice(0, 8), label: target.label });

@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { verifyRealClaude } from "../lib/claudebin.ts";
 import { checkSettings, installedBin } from "../lib/settings.ts";
 import { checkTimerHealthy, codexStoreHookTrust, findClaudeShadowers, isBinDirAhead, shellRcPath, timerActivationHint } from "../lib/install.ts";
+import { errorMessage } from "../lib/log.ts";
 import { claudePool, codexPool, paths } from "../lib/paths.ts";
 import { loadAccounts, loadConfig } from "../lib/state.ts";
 import { readStore } from "../lib/credstore.ts";
@@ -39,7 +40,7 @@ export async function cmdDoctor(): Promise<number> {
     try {
       creds = await readStore(a.id);
     } catch (e) {
-      check(false, `store credential readable for ${a.label}`, (e instanceof Error ? e.message : String(e)).slice(0, 100));
+      check(false, `store credential readable for ${a.label}`, errorMessage(e).slice(0, 100));
       continue;
     }
     check(creds != null, `store credential present for ${a.label}`, `run \`tokenmaxxing auth ${a.label}\``);
@@ -51,7 +52,7 @@ export async function cmdDoctor(): Promise<number> {
           const identity = await fetchTokenIdentity(creds.accessToken);
           check(identity.accountUuid === a.id, `store credential identity matches ${a.label}`, `token belongs to ${describeIdentity(identity)} - run \`tokenmaxxing auth ${a.label}\``);
         } catch (e) {
-          check(false, `store credential identity matches ${a.label}`, (e instanceof Error ? e.message : String(e)).slice(0, 100));
+          check(false, `store credential identity matches ${a.label}`, errorMessage(e).slice(0, 100));
         }
       }
     }
@@ -68,7 +69,7 @@ export async function cmdDoctor(): Promise<number> {
     try {
       auth = readCodexStoreAuth(a.id);
     } catch (e) {
-      authErr = (e instanceof Error ? e.message : String(e)).slice(0, 100);
+      authErr = errorMessage(e).slice(0, 100);
     }
     check(auth != null, `codex store credential present for ${a.label}`, authErr ?? `run \`tokenmaxxing auth --codex ${a.label}\``);
     if (auth) {
@@ -78,7 +79,7 @@ export async function cmdDoctor(): Promise<number> {
         match = codexIdentityOf({ auth }).accountId === a.id;
         if (!match) matchHint = `store credential belongs to another account - ${matchHint}`;
       } catch (e) {
-        matchHint = (e instanceof Error ? e.message : String(e)).slice(0, 100);
+        matchHint = errorMessage(e).slice(0, 100);
       }
       check(match, `codex store credential identity matches ${a.label}`, matchHint);
     }

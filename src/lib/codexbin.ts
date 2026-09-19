@@ -1,6 +1,7 @@
 import { existsSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { LOOP_DIAGNOSIS, MAX_WRAP_DEPTH, WRAP_DEPTH_ENV, pointsBackAtUs } from "./claudebin.ts";
+import { errorMessage } from "./log.ts";
 import { loadConfig } from "./state.ts";
 import { paths } from "./paths.ts";
 
@@ -41,7 +42,7 @@ export function verifyRealCodex(input: { bin: string }): string | null {
   try {
     p = Bun.spawnSync([input.bin, "--version"], { env, stdout: "pipe", stderr: "pipe", timeout: 15_000, killSignal: "SIGKILL" });
   } catch (e) {
-    return e instanceof Error ? e.message : String(e);
+    return errorMessage(e);
   }
   const outText = (p.stdout?.toString() ?? "").trim();
   const err = (p.stderr?.toString() ?? "").trim();

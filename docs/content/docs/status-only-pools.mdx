@@ -29,7 +29,7 @@ An account is an opencode Zen API key for the `opencode-go` provider. `init --op
 
 | Path | What it holds |
 |---|---|
-| `grok-accounts.json`, `opencode-go-accounts.json` | The pool indexes, the same schema as `accounts.json`; `activeId` is always `null` |
+| `grok-accounts.json`, `opencode-go-accounts.json` | The pool indexes, the same schema as `accounts.json`; neither names an active account |
 | `grok-lock`, `opencode-go-lock` | The `flock` files that serialize each pool's commands |
 | `grok-stores/<uuid8>/auth.json`, `opencode-go-stores/<uuid8>/auth.json` | One 0600 store per account (for opencode-go, one per host until issue #144 lands) |
 | `grok-onboard/`, `opencode-go-onboard/` | Throwaway login homes, wiped before and after each isolated login |
