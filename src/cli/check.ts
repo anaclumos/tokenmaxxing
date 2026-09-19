@@ -3,7 +3,7 @@ import { evaluateAndMaybeSwap } from "../lib/decide.ts";
 import { sampleOldest } from "../lib/sample.ts";
 import { loadConfig } from "../lib/state.ts";
 import { maybeAutoUpdate } from "../lib/update.ts";
-import { log } from "../lib/log.ts";
+import { errorMessage, log } from "../lib/log.ts";
 import { c, emitError, emitJson, fmtReset } from "./render.ts";
 
 export async function cmdCheck(json = false): Promise<number> {
@@ -14,7 +14,7 @@ export async function cmdCheck(json = false): Promise<number> {
     await sampleOldest(loadConfig());
     await maybeAutoUpdate();
   } catch (e) {
-    const detail = e instanceof Error ? e.message : String(e);
+    const detail = errorMessage(e);
     log("check.error", { err: detail });
     emitError({ json, message: `check failed: ${detail}` });
     return 1;

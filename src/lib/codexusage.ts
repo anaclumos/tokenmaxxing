@@ -1,7 +1,8 @@
 import { z } from "zod";
 import { http, safeErrorDetail } from "./http.ts";
+import { errorMessage } from "./log.ts";
 import { env } from "./paths.ts";
-import { CodexUsageSchema, JsonTextSchema, type CodexAuthJson, type CodexUsage, type Window } from "./types.ts";
+import { JsonTextSchema, type CodexAuthJson, type CodexUsage, type Window } from "./types.ts";
 import { codexIdentityOf } from "./codexauth.ts";
 import { familyTokens } from "./usage.ts";
 
@@ -63,8 +64,7 @@ export async function fetchCodexUsage(input: { auth: CodexAuthJson; at: number }
       },
     });
   } catch (e) {
-    const message = e instanceof Error ? e.message : String(e);
-    throw new CodexUsageReadError(`endpoint unreachable: ${message}`);
+    throw new CodexUsageReadError(`endpoint unreachable: ${errorMessage(e)}`);
   }
   const text = await res.text();
   if (!res.ok) {
@@ -76,7 +76,7 @@ export async function fetchCodexUsage(input: { auth: CodexAuthJson; at: number }
   }
   const wire = parsed.data;
 
-  return CodexUsageSchema.parse({
+  return {
     accountId: wire.account_id,
     email: wire.email ?? null,
     planType: wire.plan_type ?? null,
@@ -84,7 +84,7 @@ export async function fetchCodexUsage(input: { auth: CodexAuthJson; at: number }
       ...toWindows(wire.rate_limit, null, at),
       ...(wire.additional_rate_limits ?? []).flatMap((row) => toWindows(row.rate_limit, row.limit_name, at)),
     ],
-  });
+  };
 }
 
 const LIMIT_LABEL_ABBREVIATIONS = new Map([["reserve", "rsrv"]]);

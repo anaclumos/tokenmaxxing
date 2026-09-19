@@ -1,39 +1,32 @@
 import { sortBy } from "es-toolkit";
-import { z } from "zod";
 import { claudePool, seatFromEnv } from "../lib/paths.ts";
+import { errorMessage } from "../lib/log.ts";
 import { loadAccounts, loadConfig, writeUsage } from "../lib/state.ts";
 import { familyTokens, matchedFamily, parseStatusLineStdin, parseStatusLineModel } from "../lib/usage.ts";
 import { earliestReset, limitWindows, weeklyExpiry, weeklyWindow } from "../lib/picker.ts";
+import { readStdin } from "../lib/proc.ts";
 import { worktreeName } from "../lib/worktree.ts";
-import { makeColors, makeUsagePaint } from "../cli/render.ts";
-import { fmtResetShort } from "../lib/usage.ts";
+import { fmtResetShort, makeColors, makeUsagePaint, statuslineColor } from "../cli/render.ts";
 import {
-  AccountsIndexSchema,
   JsonTextSchema,
   StatusLineStdinSchema,
-  WindowSchema,
   type Account,
+  type AccountsIndex,
   type UsageState,
   type UsageWindow,
+  type Window,
 } from "../lib/types.ts";
 
-const RenderCtxSchema = z.object({
-  accounts: AccountsIndexSchema,
-  perModel: z.record(z.string(), WindowSchema),
-  switchModels: z.array(z.string()),
-  worktree: z.string().nullable(),
-  liveAccount: z.string().nullable(),
-  now: z.number(),
-  color: z.boolean(),
-  truecolor: z.boolean(),
-});
-export type RenderCtx = z.infer<typeof RenderCtxSchema>;
-
-export async function readStdin(): Promise<string> {
-  const chunks: Uint8Array[] = [];
-  for await (const c of Bun.stdin.stream()) chunks.push(c);
-  return Buffer.concat(chunks).toString("utf8");
-}
+export type RenderCtx = {
+  accounts: AccountsIndex;
+  perModel: Record<string, Window>;
+  switchModels: string[];
+  worktree: string | null;
+  liveAccount: string | null;
+  now: number;
+  color: boolean;
+  truecolor: boolean;
+};
 
 export function renderStatusline(stdinObj: unknown, ctx: RenderCtx): string {
   const col = makeColors(ctx.color);
@@ -134,7 +127,6 @@ export async function runStatusline(): Promise<number> {
     const accounts = loadAccounts(claudePool);
     const stdin = StatusLineStdinSchema.safeParse(obj);
     const dir = stdin.success ? (stdin.data.workspace?.current_dir ?? stdin.data.workspace?.project_dir ?? null) : null;
-    const colorterm = z.string().optional().parse(process.env.COLORTERM);
     const live = accounts.accounts.find((a) => a.id === account);
     const ctx: RenderCtx = {
       accounts,
@@ -143,12 +135,11 @@ export async function runStatusline(): Promise<number> {
       worktree: dir == null ? null : worktreeName(dir),
       liveAccount: account,
       now,
-      color: !process.env.NO_COLOR,
-      truecolor: colorterm != null && (colorterm.includes("truecolor") || colorterm.includes("24bit")),
+      ...statuslineColor(),
     };
     line = renderStatusline(obj, ctx);
   } catch (e) {
-    line = `tokenmaxxing: ${e instanceof Error ? e.message : String(e)}`;
+    line = `tokenmaxxing: ${errorMessage(e)}`;
   }
   process.stdout.write(line + "\n");
   return 0;

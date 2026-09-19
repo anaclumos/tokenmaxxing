@@ -1,13 +1,13 @@
 import { z } from "zod";
 import { claude } from "../lib/claude.ts";
 import { evaluateAndMaybeSwap } from "../lib/decide.ts";
+import { readStdin } from "../lib/proc.ts";
 import { supervisedSession, writeRespawnMarker } from "../lib/sessions.ts";
 import { loadConfig } from "../lib/state.ts";
 import { classifyEnforcedLimit, findEnforcedRow, parseErrorBody, readTranscriptTail, type TranscriptRow } from "../lib/usage.ts";
 import { paths } from "../lib/paths.ts";
 import { JsonTextSchema, type EnforcedLimit } from "../lib/types.ts";
-import { log } from "../lib/log.ts";
-import { readStdin } from "./statusline.ts";
+import { errorMessage, log } from "../lib/log.ts";
 
 const StopFailureStdin = z.looseObject({
   session_id: z.uuid().optional().catch(undefined),
@@ -34,8 +34,7 @@ export async function runStopFailureHook(): Promise<number> {
 
   const account = claude.liveId();
   const now = Date.now();
-  const raw = await readStdin();
-  const parsed = StopFailureStdin.safeParse(JsonTextSchema.safeParse(raw).data);
+  const parsed = StopFailureStdin.safeParse(JsonTextSchema.safeParse(await readStdin()).data);
   const stdin = parsed.success ? parsed.data : {};
   if (stdin.error !== undefined && stdin.error !== "rate_limit") return 0;
 
@@ -84,7 +83,7 @@ export async function runStopFailureHook(): Promise<number> {
       log("stopfailure.decision", { reason: decision.reason, swapped: decision.swapped, account: decision.account?.id.slice(0, 8), waitUntil: decision.waitUntil });
     }
   } catch (e) {
-    log("stopfailure.error", { err: e instanceof Error ? e.message : String(e) });
+    log("stopfailure.error", { err: errorMessage(e) });
   }
   return 0;
 }

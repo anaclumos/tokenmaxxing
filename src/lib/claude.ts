@@ -6,7 +6,7 @@ import { resolveRealClaude, resolveVerifiedClaude } from "./claudebin.ts";
 import { withClaudeRefreshLock } from "./claudelock.ts";
 import { ensurePathInRc, installSupervisor, managedShellRcSkipLines, shellRcPath, timerActivationHint } from "./install.ts";
 import { withLock } from "./lock.ts";
-import { log } from "./log.ts";
+import { errorMessage, log } from "./log.ts";
 import { claudeTierLabel, describeIdentity, fetchTokenIdentity, isDeadCredential, InvalidGrantError } from "./oauth.ts";
 import { claudePool, paths, sampleDirFor, seatFromEnv, storeDirFor } from "./paths.ts";
 import { pickBest, pickEarliestReset, thresholdBars, type PickCtx } from "./picker.ts";
@@ -16,8 +16,8 @@ import { foldTee, sampleAccountUsage, teeObservation } from "./sample.ts";
 import { clearUsageSnapshot, loadAccounts, loadConfig, loadUsageSnapshot, pinBinOverride, saveAccounts, type Harvest } from "./state.ts";
 import { loadSetupTokens, saveSetupTokens } from "./setuptokens.ts";
 import { saveTermios, restoreTermios } from "./tty.ts";
-import { CRED_ENV_OVERRIDES, fetchUsageDirect, gatedFamilies, mergeWindows, windowsOf } from "./usage.ts";
-import { CredentialBlobSchema, OAuthAccountSchema, type Account, type Config } from "./types.ts";
+import { fetchUsageDirect, gatedFamilies, mergeWindows, scrubCredentialEnv, windowsOf } from "./usage.ts";
+import { CredentialBlobSchema, JsonTextSchema, OAuthAccountSchema, type Account, type Config } from "./types.ts";
 import { c } from "../cli/render.ts";
 
 class StoreUnusableError extends Error {
@@ -46,7 +46,7 @@ async function observeLive(account: Account, cfg: Config, now: number, opts: { p
   const needsPerModel = snap != null && gatedFamilies(snap.state.model, cfg.policy.switchModels).length > 0;
   if (opts.probe && !probeAttempted && (!fresh || needsPerModel)) {
     const startedAt = Date.now();
-    const outcome = await sampleAccountUsage(account, { retries: 0 });
+    const outcome = await sampleAccountUsage(account);
     await withLock(claudePool.lockFile, () => {
       const idx = loadAccounts(claudePool);
       const a = idx.accounts.find((x) => x.id === account.id);
@@ -100,7 +100,7 @@ async function prepareMove(target: Account): Promise<void> {
   try {
     creds = await readStore(target.id);
   } catch (e) {
-    throw new StoreUnusableError(`${target.label}'s store is unreadable (${e instanceof Error ? e.message : String(e)}) - re-auth with \`tokenmaxxing auth ${target.label}\``);
+    throw new StoreUnusableError(`${target.label}'s store is unreadable (${errorMessage(e)}) - re-auth with \`tokenmaxxing auth ${target.label}\``);
   }
   if (!creds) throw new StoreUnusableError(`${target.label} has no credential in its store - re-auth with \`tokenmaxxing auth ${target.label}\``);
   if (isDeadCredential(creds)) {
@@ -147,14 +147,10 @@ async function removeCredentials(a: Account): Promise<void> {
   }
 }
 
+const IdentityReadySchema = z.looseObject({ oauthAccount: z.looseObject({ accountUuid: z.string().min(1) }) });
+
 function identityReady(cjPath: string): boolean {
-  if (!existsSync(cjPath)) return false;
-  try {
-    const oauthAccount = JSON.parse(readFileSync(cjPath, "utf8")).oauthAccount;
-    return z.object({ accountUuid: z.string().min(1) }).safeParse(oauthAccount).success;
-  } catch {
-    return false;
-  }
+  return existsSync(cjPath) && IdentityReadySchema.safeParse(JsonTextSchema.safeParse(readFileSync(cjPath, "utf8")).data).success;
 }
 
 async function login(): Promise<Harvest | null> {
@@ -167,8 +163,7 @@ async function login(): Promise<Harvest | null> {
   const real = resolveRealClaude();
 
   const savedTermios = saveTermios();
-  const env: Record<string, string> = { ...process.env, CLAUDE_CONFIG_DIR: onboardDir, TOKENMAXXING_PROBE: "1", TOKENMAXXING_SUPERVISED: "" };
-  for (const key of CRED_ENV_OVERRIDES) delete env[key];
+  const env = scrubCredentialEnv({ ...process.env, CLAUDE_CONFIG_DIR: onboardDir, TOKENMAXXING_PROBE: "1", TOKENMAXXING_SUPERVISED: "" });
   const p = Bun.spawn([real], {
     stdin: "inherit",
     stdout: "inherit",
@@ -208,7 +203,7 @@ async function login(): Promise<Harvest | null> {
     try {
       identity = await fetchTokenIdentity(blob.claudeAiOauth.accessToken);
     } catch (e) {
-      console.error(c.red(`could not verify which account the login belongs to (${e instanceof Error ? e.message : String(e)}) - nothing changed.`));
+      console.error(c.red(`could not verify which account the login belongs to (${errorMessage(e)}) - nothing changed.`));
       return null;
     }
     if (identity.accountUuid !== oauthAccount.accountUuid) {
