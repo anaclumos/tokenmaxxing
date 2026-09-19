@@ -18,7 +18,7 @@ export type Provider = {
   liveId(): string | null;
   presence(): Map<string, number>;
   gatedFamilies(cfg: Config): string[] | null;
-  observeLive(account: Account, cfg: Config, now: number, opts: { probe: boolean }): Promise<Observation | null>;
+  observeLive(account: Account, cfg: Config, now: number, opts: { probe: boolean; perModel: boolean }): Promise<Observation | null>;
   samplePool(accounts: Account[], liveId: string | null, now: number): Promise<Map<string, SampleReport>>;
   mergeWindows(next: Window[], prev: Window[]): Window[];
   swap(target: Account): Promise<void>;

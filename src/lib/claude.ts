@@ -37,14 +37,13 @@ function presence(): Map<string, number> {
 
 const PROBE_BACKOFF_CAP_MS = 30 * 60 * 1000;
 
-async function observeLive(account: Account, cfg: Config, now: number, opts: { probe: boolean }): Promise<Observation | null> {
+async function observeLive(account: Account, cfg: Config, now: number, opts: { probe: boolean; perModel: boolean }): Promise<Observation | null> {
   const ttl = cfg.policy.usagePollTtlMs;
   const interval = Math.min(ttl * 2 ** (account.probeFails ?? 0), PROBE_BACKOFF_CAP_MS);
   const probeAttempted = account.lastProbeAt != null && now - account.lastProbeAt <= interval;
   const snap = loadUsageSnapshot(account.id);
   const fresh = snap != null && now - snap.at <= ttl;
-  const needsPerModel = snap != null && gatedFamilies(snap.state.model, cfg.policy.switchModels).length > 0;
-  if (opts.probe && !probeAttempted && (!fresh || needsPerModel)) {
+  if (opts.probe && !probeAttempted && (!fresh || opts.perModel)) {
     const startedAt = Date.now();
     const outcome = await sampleAccountUsage(account, { retries: 0 });
     await withLock(claudePool.lockFile, () => {

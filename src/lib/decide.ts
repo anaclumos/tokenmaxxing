@@ -55,10 +55,11 @@ export async function evaluateAndMaybeSwap(p: Provider, now = Date.now(), canRes
   const bars = thresholdBars(cfg);
   const stored0 = loadAccounts(p.pool).accounts.find((a) => a.id === activeId);
   const walled0 = stored0?.enforcedUntil != null && stored0.enforcedUntil > now;
-  const observed = stored0 ? await p.observeLive(stored0, cfg, now, { probe: enforced == null && !walled0 }) : null;
+  const gated = sessionFamilies ?? p.gatedFamilies(cfg);
+  const observed = stored0 ? await p.observeLive(stored0, cfg, now, { probe: enforced == null && !walled0, perModel: gated == null || gated.length > 0 }) : null;
   const stored = loadAccounts(p.pool).accounts.find((a) => a.id === activeId);
 
-  if (!enforced && !isOver(stored, observed, { now, thresholds: bars, currentId: activeId, families: sessionFamilies ?? p.gatedFamilies(cfg), seats: null })) {
+  if (!enforced && !isOver(stored, observed, { now, thresholds: bars, currentId: activeId, families: gated, seats: null })) {
     return { swapped: false, account: null, reason: "under-threshold-or-stale" };
   }
 
@@ -87,7 +88,7 @@ export async function evaluateAndMaybeSwap(p: Provider, now = Date.now(), canRes
 
     let obs2: Observation | null = null;
     for (const a of idx.accounts) {
-      const obs = await p.observeLive(a, cfg, now, { probe: false });
+      const obs = await p.observeLive(a, cfg, now, { probe: false, perModel: false });
       if (a === active) obs2 = obs;
       if (obs && (a.lastUsageAt == null || obs.at > a.lastUsageAt)) {
         a.windows = p.mergeWindows(obs.windows, a.windows);
