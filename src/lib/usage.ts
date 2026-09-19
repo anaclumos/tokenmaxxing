@@ -44,6 +44,14 @@ export function gatedFamilies(model: ModelInfo | null, families: string[]): stri
   return family ? [family] : [];
 }
 
+const MODEL_FAMILIES = ["sonnet", "opus", "haiku", "fable"];
+
+export function modelFromFlag(value: string | null): ModelInfo | null {
+  const name = value?.split("[")[0]?.trim() ?? "";
+  const tokens = familyTokens(name);
+  return MODEL_FAMILIES.some((f) => tokens.includes(f)) ? { id: name, display: name } : null;
+}
+
 const TranscriptBlockSchema = z.looseObject({ type: z.string().optional(), text: z.string().optional() });
 export const TranscriptRowSchema = z.looseObject({
   type: z.string().optional(),

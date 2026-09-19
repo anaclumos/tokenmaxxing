@@ -17,7 +17,8 @@ import { exitStatus, loopGuardTripped, raceMarkerOrExit, recordPresenceOrStop, r
 import { saveTermios } from "../lib/tty.ts";
 import { loadSessionFlags, pruneStaleSessions, saveSessionFlags, writeRespawnMarker } from "../lib/sessions.ts";
 import { loadAccounts, loadConfig } from "../lib/state.ts";
-import { RespawnMarkerSchema, type Account } from "../lib/types.ts";
+import { gatedFamilies, modelFromFlag } from "../lib/usage.ts";
+import { RespawnMarkerSchema, type Account, type Config, type ModelInfo } from "../lib/types.ts";
 import { errorMessage, log } from "../lib/log.ts";
 
 const NONINTERACTIVE_SUBCMDS = new Set([
@@ -53,6 +54,7 @@ type Analysis = {
   continueLatest: boolean;
   streamInput: boolean;
   streamOutput: boolean;
+  model: string | null;
 };
 
 export function analyzeArgs(argv: string[]): Analysis {
@@ -61,6 +63,7 @@ export function analyzeArgs(argv: string[]): Analysis {
   let continueLatest = false;
   let streamInput = false;
   let streamOutput = false;
+  let model: string | null = null;
   let printMode = false;
   let invalidSessionArg = false;
   let pickerResume = false;
@@ -98,6 +101,8 @@ export function analyzeArgs(argv: string[]): Analysis {
     else if (a.startsWith("--input-format=")) streamInput = a.slice("--input-format=".length) === "stream-json";
     else if (a === "--output-format") streamOutput = argv[++i] === "stream-json";
     else if (a.startsWith("--output-format=")) streamOutput = a.slice("--output-format=".length) === "stream-json";
+    else if (a === "--model") model = argv[++i] ?? null;
+    else if (a.startsWith("--model=")) model = a.slice("--model=".length);
     else if (VALUE_TAKING_ROOT_FLAGS.has(a)) i++;
     else if (VARIADIC_ROOT_FLAGS.has(a)) {
       while (i + 1 < argv.length && !argv[i + 1]!.startsWith("-")) i++;
@@ -113,7 +118,7 @@ export function analyzeArgs(argv: string[]): Analysis {
   const isSubcmd = firstPositional !== null && NONINTERACTIVE_SUBCMDS.has(firstPositional);
   const forkResume = forkSession && (resumeId !== null || continueLatest);
   const manage = !printMode && !isSubcmd && !invalidSessionArg && !pickerResume && !forkResume && !process.env.TOKENMAXXING_PROBE;
-  return { manage, sessionId, resumeId, continueLatest, streamInput, streamOutput };
+  return { manage, sessionId, resumeId, continueLatest, streamInput, streamOutput, model };
 }
 
 export function stripSessionFlags(argv: string[]): string[] {
@@ -201,22 +206,23 @@ function consumableMarker(marker: string, gate: MarkerGate): z.infer<typeof Resp
 const SEAT_POLL_MS = 10_000;
 const SEAT_RETRY_MS = 60_000;
 
-function seatBlockedUntil(seatId: string, now: number): number | null {
+function seatBlockedUntil(seatId: string, now: number, families: string[], cfg: Config): number | null {
   const account = loadAccounts(claudePool).accounts.find((a) => a.id === seatId);
   if (!account) return null;
-  const cfg = loadConfig();
   const observed = teeObservation(account);
   const current = observed ? { ...account, windows: observed.windows } : account;
-  const until = usableAt(current, { now, thresholds: thresholdBars(cfg), currentId: seatId, families: cfg.policy.switchModels, seats: null });
+  const until = usableAt(current, { now, thresholds: thresholdBars(cfg), currentId: seatId, families, seats: null });
   return until > now ? until : null;
 }
 
-async function moveExhaustedSeat(seat: Account, sid: string, gate: MarkerGate): Promise<boolean> {
+async function moveExhaustedSeat(seat: Account, sid: string, gate: MarkerGate, model: ModelInfo | null): Promise<boolean> {
   try {
     const now = Date.now();
-    const until = seatBlockedUntil(seat.id, now);
+    const cfg = loadConfig();
+    const families = gatedFamilies(model, cfg.policy.switchModels);
+    const until = seatBlockedUntil(seat.id, now, families, cfg);
     if (until == null || until <= gate.overriddenUntil) return false;
-    const decision = await evaluateAndMaybeSwap(claude, now, true, null, seat.id);
+    const decision = await evaluateAndMaybeSwap(claude, now, true, null, seat.id, families);
     log("supervisor.seat_exhausted", { seat: seat.id.slice(0, 8), until, reason: decision.reason, account: decision.account?.id.slice(0, 8), waitUntil: decision.waitUntil });
     if (decision.account && (decision.swapped || decision.waitUntil !== undefined)) {
       writeRespawnMarker({ session: { sid, launchedAt: gate.launchedAt }, sessionId: sid, accountId: decision.account.id, waitUntil: decision.waitUntil ?? now, compact: true });
@@ -342,6 +348,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
     const passthroughEnv: Record<string, string | undefined> = { ...childEnv };
     delete passthroughEnv.TOKENMAXXING_SUPERVISED;
     delete passthroughEnv.TOKENMAXXING_SESSION_ID;
+    delete passthroughEnv.TOKENMAXXING_MODEL;
     return runPassthrough({ real, argv, env: passthroughEnv, onSpawn: (p) => { child = p; } });
   }
 
@@ -380,6 +387,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
   const effective = analyzeArgs(base);
   const relay = effective.streamInput ? new StdinRelay() : null;
   const stream = effective.streamOutput;
+  const model = modelFromFlag(effective.model);
   let noticeSid = sid;
   const say: Say = (terminal, text) => {
     if (stream) process.stdout.write(systemLine(noticeSid, text));
@@ -394,7 +402,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
 
     const gate: MarkerGate = { launchedAt: Date.now(), overriddenUntil };
     const { child: proc, seat } = await withLock(claudePool.lockFile, async () => {
-      const picked = (wanted == null ? null : (loadAccounts(claudePool).accounts.find((a) => a.id === wanted) ?? null)) ?? pickSeat(gate.launchedAt);
+      const picked = (wanted == null ? null : (loadAccounts(claudePool).accounts.find((a) => a.id === wanted) ?? null)) ?? pickSeat(gate.launchedAt, model);
       log("supervisor.launch", { sid, respawns, seat: picked?.id.slice(0, 8) ?? null, args: launchArgs.join(" "), injected: firstLine !== null });
       const spawned = Bun.spawn([real, ...launchArgs], {
         stdin: relay === null ? "inherit" : "pipe",
@@ -405,6 +413,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
           TOKENMAXXING_SUPERVISED: "1",
           TOKENMAXXING_SESSION_ID: sid,
           TOKENMAXXING_LAUNCHED_AT: String(gate.launchedAt),
+          TOKENMAXXING_MODEL: effective.model ?? "",
           ...(picked ? { CLAUDE_SECURESTORAGE_CONFIG_DIR: storeDirFor(picked.id) } : {}),
         },
       });
@@ -431,7 +440,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
       tick: async () => {
         if (existsSync(marker) && consumableMarker(marker, gate) != null) return true;
         if (seat && !terminating && Date.now() >= seatCheckAt) {
-          const decided = await moveExhaustedSeat(seat, sid, gate);
+          const decided = await moveExhaustedSeat(seat, sid, gate, model);
           seatCheckAt = Date.now() + (decided ? SEAT_RETRY_MS : SEAT_POLL_MS);
         }
         return false;
@@ -459,6 +468,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
         delete compactEnv.TOKENMAXXING_SUPERVISED;
         delete compactEnv.TOKENMAXXING_SESSION_ID;
         delete compactEnv.TOKENMAXXING_LAUNCHED_AT;
+        delete compactEnv.TOKENMAXXING_MODEL;
         const outcome = await compactClaudeSession({ real, sid: m.sessionId, env: compactEnv });
         log("supervisor.compact", { sid: m.sessionId.slice(0, 8), seat: seat.id.slice(0, 8), ok: outcome.ok, reason: outcome.ok ? undefined : outcome.reason });
         if (!outcome.ok) say(`\x1b[33m   compaction did not land (${outcome.reason}) - resuming with the full context\x1b[0m\n`, `tokenmaxxing: compaction did not land; resuming with the full context. (${outcome.reason})`);

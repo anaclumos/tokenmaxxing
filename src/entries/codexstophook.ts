@@ -21,7 +21,7 @@ async function compactBeforeMove(input: { sessionId: string | null; now: number 
   const liveId = codex.liveId();
   const live = liveId == null ? undefined : loadAccounts(codex.pool).accounts.find((a) => a.id === liveId);
   if (!live || live.needsReauth === true || (live.enforcedUntil != null && live.enforcedUntil > now)) return;
-  const observed = await codex.observeLive(live, loadConfig(), now, { probe: true });
+  const observed = await codex.observeLive(live, loadConfig(), now, { probe: true, perModel: false });
   if (!observed || !isExhausted({ ...live, windows: observed.windows }, codexPickCtx(now, live.id))) return;
   const env: Record<string, string | undefined> = { ...process.env, TOKENMAXXING_PROBE: "1", [WRAP_DEPTH_ENV]: String(MAX_WRAP_DEPTH) };
   delete env[CODEX_SUPERVISOR_ID_ENV];

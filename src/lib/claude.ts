@@ -8,7 +8,7 @@ import { ensurePathInRc, installSupervisor, managedShellRcSkipLines, shellRcPath
 import { withLock } from "./lock.ts";
 import { errorMessage, log } from "./log.ts";
 import { claudeTierLabel, describeIdentity, fetchTokenIdentity, isDeadCredential, InvalidGrantError } from "./oauth.ts";
-import { claudePool, paths, sampleDirFor, seatFromEnv, storeDirFor } from "./paths.ts";
+import { claudePool, env, paths, sampleDirFor, seatFromEnv, storeDirFor } from "./paths.ts";
 import { pickBest, pickEarliestReset, thresholdBars, type PickCtx } from "./picker.ts";
 import { seatCounts } from "./presence.ts";
 import type { Observation, Provider, SampleReport } from "./provider.ts";
@@ -16,8 +16,8 @@ import { foldTee, sampleAccountUsage, teeObservation } from "./sample.ts";
 import { clearUsageSnapshot, loadAccounts, loadConfig, loadUsageSnapshot, pinBinOverride, saveAccounts, type Harvest } from "./state.ts";
 import { loadSetupTokens, saveSetupTokens } from "./setuptokens.ts";
 import { saveTermios, restoreTermios } from "./tty.ts";
-import { fetchUsageDirect, gatedFamilies, mergeWindows, scrubCredentialEnv, windowsOf } from "./usage.ts";
-import { CredentialBlobSchema, JsonTextSchema, OAuthAccountSchema, type Account, type Config } from "./types.ts";
+import { fetchUsageDirect, gatedFamilies, mergeWindows, modelFromFlag, scrubCredentialEnv, windowsOf } from "./usage.ts";
+import { CredentialBlobSchema, JsonTextSchema, OAuthAccountSchema, type Account, type Config, type ModelInfo } from "./types.ts";
 import { c } from "../cli/render.ts";
 
 class StoreUnusableError extends Error {
@@ -37,14 +37,13 @@ function presence(): Map<string, number> {
 
 const PROBE_BACKOFF_CAP_MS = 30 * 60 * 1000;
 
-async function observeLive(account: Account, cfg: Config, now: number, opts: { probe: boolean }): Promise<Observation | null> {
+async function observeLive(account: Account, cfg: Config, now: number, opts: { probe: boolean; perModel: boolean }): Promise<Observation | null> {
   const ttl = cfg.policy.usagePollTtlMs;
   const interval = Math.min(ttl * 2 ** (account.probeFails ?? 0), PROBE_BACKOFF_CAP_MS);
   const probeAttempted = account.lastProbeAt != null && now - account.lastProbeAt <= interval;
   const snap = loadUsageSnapshot(account.id);
   const fresh = snap != null && now - snap.at <= ttl;
-  const needsPerModel = snap != null && gatedFamilies(snap.state.model, cfg.policy.switchModels).length > 0;
-  if (opts.probe && !probeAttempted && (!fresh || needsPerModel)) {
+  if (opts.probe && !probeAttempted && (!fresh || opts.perModel)) {
     const startedAt = Date.now();
     const outcome = await sampleAccountUsage(account);
     await withLock(claudePool.lockFile, () => {
@@ -125,13 +124,13 @@ async function storeUsable(a: Account): Promise<boolean> {
   }
 }
 
-export function pickSeat(now: number): Account | null {
+export function pickSeat(now: number, model: ModelInfo | null): Account | null {
   const cfg = loadConfig();
   const idx = loadAccounts(claudePool);
   let dirty = false;
   for (const a of idx.accounts) dirty = foldTee(a) || dirty;
   if (dirty) saveAccounts(claudePool, idx);
-  const ctx: PickCtx = { now, thresholds: thresholdBars(cfg), currentId: null, families: cfg.policy.switchModels, seats: presence() };
+  const ctx: PickCtx = { now, thresholds: thresholdBars(cfg), currentId: null, families: gatedFamilies(model, cfg.policy.switchModels), seats: presence() };
   return pickBest(idx.accounts, ctx) ?? pickEarliestReset(idx.accounts, ctx)?.account ?? null;
 }
 
@@ -286,7 +285,8 @@ export const claude: Provider = {
   presence,
   gatedFamilies: (cfg) => {
     const seat = liveId();
-    return gatedFamilies(seat == null ? null : (loadUsageSnapshot(seat)?.state.model ?? null), cfg.policy.switchModels);
+    const model = modelFromFlag(env("TOKENMAXXING_MODEL", "")) ?? (seat == null ? null : (loadUsageSnapshot(seat)?.state.model ?? null));
+    return gatedFamilies(model, cfg.policy.switchModels);
   },
   observeLive,
   samplePool,
