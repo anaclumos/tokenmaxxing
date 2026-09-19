@@ -8,7 +8,7 @@ tokenmaxxing is a CLI for automatic Claude Code account switching. It pools mult
 The visible behavior is a resume: when a session moves, `claude` restarts on the same conversation under the new account. When the whole pool is at its limit, the session pauses with a countdown and auto-resumes on the next account to reset (Ctrl-C resumes immediately).
 
 <Callout>
-Scope: Claude Code on macOS and Linux, plus OpenAI's Codex CLI as a second pool with its own supervisor and switching. Two more pools, grok and opencode-go, are status-only: `status` lists their accounts and nothing moves (see [Status-only pools](/status-only-pools)). It pools subscription accounts, not API keys; the opencode-go pool, which holds Zen API keys, is the one exception. This is a personal-use tool for pooling accounts you own, in sessions and agents you run yourself - see [Personal use and terms of service](/terms).
+Scope: Claude Code on macOS and Linux, plus OpenAI's Codex CLI as a second pool with its own supervisor and switching. Two more pools, grok and opencode-go, are status-only: `status` lists their accounts (grok with the weekly credit window) and nothing moves (see [Status-only pools](/status-only-pools)). It pools subscription accounts, not API keys; the opencode-go pool, which holds Zen API keys, is the one exception. This is a personal-use tool for pooling accounts you own, in sessions and agents you run yourself - see [Personal use and terms of service](/terms).
 </Callout>
 
 ## The problem
