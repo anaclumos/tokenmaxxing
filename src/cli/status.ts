@@ -88,9 +88,14 @@ async function collect(p: Provider, cfg: Config, now: number, cached: boolean): 
   if (!cached && idx.accounts.length > 0) {
     await withLock(p.pool.lockFile, async () => {
       idx = loadAccounts(p.pool);
-      console.error(c.dim(`sampling ${p.name} usage...`));
-      liveId = p.liveId();
-      reports = await p.samplePool(idx.accounts, liveId, now);
+      const notice = process.stderr.isTTY;
+      if (notice) process.stderr.write(c.dim(`sampling ${p.name} usage...`));
+      try {
+        liveId = p.liveId();
+        reports = await p.samplePool(idx.accounts, liveId, now);
+      } finally {
+        if (notice) process.stderr.write("\r\x1b[2K");
+      }
       saveAccounts(p.pool, idx);
     });
   }
