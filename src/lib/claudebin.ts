@@ -10,7 +10,7 @@ import { writeFileAtomic } from "./atomic.ts";
 export const WRAP_DEPTH_ENV = "TOKENMAXXING_WRAP_DEPTH";
 export const MAX_WRAP_DEPTH = 5;
 export const UNMANAGED_ENV = "TOKENMAXXING_UNMANAGED";
-export const LOOP_DIAGNOSIS = "wrapper re-entered without reaching the real claude";
+export const LOOP_DIAGNOSIS = "wrapper re-entered without reaching the real";
 
 export function wrapDepth(env: Record<string, string | undefined> = process.env): number {
   const n = Number(env[WRAP_DEPTH_ENV] ?? "");

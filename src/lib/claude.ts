@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
 import { readItem, writeItem, deleteItem, isolatedTarget, readStore, storeTarget, claudeAiOauthOnly } from "./credstore.ts";
@@ -150,7 +150,11 @@ async function removeCredentials(a: Account): Promise<void> {
 const IdentityReadySchema = z.looseObject({ oauthAccount: z.looseObject({ accountUuid: z.string().min(1) }) });
 
 function identityReady(cjPath: string): boolean {
-  return existsSync(cjPath) && IdentityReadySchema.safeParse(JsonTextSchema.safeParse(readFileSync(cjPath, "utf8")).data).success;
+  try {
+    return IdentityReadySchema.safeParse(JsonTextSchema.safeParse(readFileSync(cjPath, "utf8")).data).success;
+  } catch {
+    return false;
+  }
 }
 
 async function login(): Promise<Harvest | null> {

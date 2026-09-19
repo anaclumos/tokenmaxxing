@@ -118,11 +118,17 @@ export async function sampleOldest(cfg: Config): Promise<void> {
       await withLock(claudePool.lockFile, () => {
         const idx = loadAccounts(claudePool);
         const stored = idx.accounts.find((a) => a.id === account.id);
+        let dirty = false;
+        if (stored && account.needsReauth === true && stored.needsReauth !== true) {
+          stored.needsReauth = true;
+          dirty = true;
+        }
         if (stored && outcome.ok && (stored.lastUsageAt == null || startedAt > stored.lastUsageAt)) {
           stored.windows = mergeWindows(windowsOf(outcome.usage, startedAt), stored.windows);
           stored.lastUsageAt = startedAt;
-          saveAccounts(claudePool, idx);
+          dirty = true;
         }
+        if (dirty) saveAccounts(claudePool, idx);
         log(outcome.ok ? "sample.ok" : "sample.failed", {
           account: account.id.slice(0, 8),
           ...(outcome.ok ? { via: outcome.via } : { reason: outcome.reason.slice(0, 200) }),
