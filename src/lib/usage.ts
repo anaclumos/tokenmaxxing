@@ -59,6 +59,14 @@ export function gatedFamilies(model: ModelInfo | null, families: string[]): stri
   return family ? [family] : [];
 }
 
+const MODEL_FAMILIES = ["sonnet", "opus", "haiku", "fable"];
+
+export function modelFromFlag(value: string | null): ModelInfo | null {
+  const name = value?.split("[")[0]?.trim() ?? "";
+  const tokens = familyTokens(name);
+  return MODEL_FAMILIES.some((f) => tokens.includes(f)) ? { id: name, display: name } : null;
+}
+
 const MONTHS: Record<string, number> = {
   jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11,
 };

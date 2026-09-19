@@ -43,7 +43,7 @@ function enforcedWall(limit: EnforcedLimit, account: Account, now: number): numb
   return limit.resetsAt ?? cachedReset ?? now + (limit.kind === "session" ? FIVE_HOURS_MS : WEEK_MS);
 }
 
-export async function evaluateAndMaybeSwap(p: Provider, now = Date.now(), canRespawn = false, enforced: EnforcedLimit | null = null, seatId: string | null = p.liveId()): Promise<SwapDecision> {
+export async function evaluateAndMaybeSwap(p: Provider, now = Date.now(), canRespawn = false, enforced: EnforcedLimit | null = null, seatId: string | null = p.liveId(), sessionFamilies?: string[]): Promise<SwapDecision> {
   const activeId = seatId;
 
   const lastSwapAt = loadLastSwapAt(p.pool);
@@ -58,7 +58,7 @@ export async function evaluateAndMaybeSwap(p: Provider, now = Date.now(), canRes
   const observed = stored0 ? await p.observeLive(stored0, cfg, now, { probe: enforced == null && !walled0 }) : null;
   const stored = loadAccounts(p.pool).accounts.find((a) => a.id === activeId);
 
-  if (!enforced && !isOver(stored, observed, { now, thresholds: bars, currentId: activeId, families: p.gatedFamilies(cfg), seats: null })) {
+  if (!enforced && !isOver(stored, observed, { now, thresholds: bars, currentId: activeId, families: sessionFamilies ?? p.gatedFamilies(cfg), seats: null })) {
     return { swapped: false, account: null, reason: "under-threshold-or-stale" };
   }
 
@@ -96,7 +96,7 @@ export async function evaluateAndMaybeSwap(p: Provider, now = Date.now(), canRes
     }
     saveAccounts(p.pool, idx);
 
-    const families = p.gatedFamilies(cfg);
+    const families = sessionFamilies ?? p.gatedFamilies(cfg);
     const walled = active?.enforcedUntil != null && active.enforcedUntil > now;
     const blindScreen = (enforced != null && (prior || enforced.blind)) || (walled && !enforced2);
     const screened = blindScreen && families != null ? cfg.policy.switchModels : families;
