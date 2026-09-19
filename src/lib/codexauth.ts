@@ -84,12 +84,7 @@ function decodeJwtPayload(input: { jwt: string }): unknown {
   return JSON.parse(payload);
 }
 
-const CodexIdentitySchema = z.object({
-  accountId: z.string(),
-  email: z.string().nullable(),
-  planType: z.string().nullable(),
-});
-export type CodexIdentity = z.infer<typeof CodexIdentitySchema>;
+export type CodexIdentity = { accountId: string; email: string | null; planType: string | null };
 
 export function codexIdentityOf(input: { auth: CodexAuthJson }): CodexIdentity {
   const { auth } = input;
@@ -99,11 +94,7 @@ export function codexIdentityOf(input: { auth: CodexAuthJson }): CodexIdentity {
   if (!accountId) {
     throw new Error("codex credential carries no account id (neither tokens.account_id nor the id_token claim)");
   }
-  return CodexIdentitySchema.parse({
-    accountId,
-    email: claims.email ?? null,
-    planType: authClaims?.chatgpt_plan_type ?? null,
-  });
+  return { accountId, email: claims.email ?? null, planType: authClaims?.chatgpt_plan_type ?? null };
 }
 
 export function isCodexAccessExpiring(input: { auth: CodexAuthJson; skewMs?: number; now?: number }): boolean {

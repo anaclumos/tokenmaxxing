@@ -4,20 +4,22 @@ import type { FileSink, Subprocess } from "bun";
 import { maxBy } from "es-toolkit";
 import { z } from "zod";
 import { claudePool, paths, storeDirFor } from "../lib/paths.ts";
-import { LOOP_DIAGNOSIS, MAX_WRAP_DEPTH, UNMANAGED_ENV, WRAP_DEPTH_ENV, WRAP_RATE_MAX, WRAP_RATE_WINDOW_MS, resolveRealClaude, wrapDepth, wrapperEntryRateTripped } from "../lib/claudebin.ts";
+import { UNMANAGED_ENV, WRAP_DEPTH_ENV, resolveRealClaude, wrapDepth } from "../lib/claudebin.ts";
 import { claude, pickSeat } from "../lib/claude.ts";
 import { compactClaudeSession } from "../lib/compact.ts";
 import { evaluateAndMaybeSwap } from "../lib/decide.ts";
 import { withLock } from "../lib/lock.ts";
 import { thresholdBars, usableAt } from "../lib/picker.ts";
-import { clearPresence, writePresence } from "../lib/presence.ts";
+import { clearPresence } from "../lib/presence.ts";
+import { readLines } from "../lib/proc.ts";
 import { teeObservation } from "../lib/sample.ts";
-import { saveTermios, restoreTermios } from "../lib/tty.ts";
+import { exitStatus, loopGuardTripped, raceMarkerOrExit, recordPresenceOrStop, runPassthrough } from "../lib/supervise.ts";
+import { saveTermios } from "../lib/tty.ts";
 import { loadSessionFlags, pruneStaleSessions, saveSessionFlags, writeRespawnMarker } from "../lib/sessions.ts";
 import { loadAccounts, loadConfig } from "../lib/state.ts";
 import { gatedFamilies, modelFromFlag } from "../lib/usage.ts";
 import { RespawnMarkerSchema, type Account, type Config, type ModelInfo } from "../lib/types.ts";
-import { log } from "../lib/log.ts";
+import { errorMessage, log } from "../lib/log.ts";
 
 const NONINTERACTIVE_SUBCMDS = new Set([
   "mcp", "config", "doctor", "update", "install", "migrate-installer",
@@ -45,16 +47,15 @@ const OPTIONAL_VALUE_ROOT_FLAGS = new Set([
 
 const isUuid = (s: string) => z.uuid().safeParse(s).success;
 
-const AnalysisSchema = z.object({
-  manage: z.boolean(),
-  sessionId: z.string().nullable(),
-  resumeId: z.string().nullable(),
-  continueLatest: z.boolean(),
-  streamInput: z.boolean(),
-  streamOutput: z.boolean(),
-  model: z.string().nullable(),
-});
-type Analysis = z.infer<typeof AnalysisSchema>;
+type Analysis = {
+  manage: boolean;
+  sessionId: string | null;
+  resumeId: string | null;
+  continueLatest: boolean;
+  streamInput: boolean;
+  streamOutput: boolean;
+  model: string | null;
+};
 
 export function analyzeArgs(argv: string[]): Analysis {
   let sessionId: string | null = null;
@@ -174,18 +175,17 @@ function latestSessionForCwd(): string | null {
   }
 }
 
-const MarkerGateSchema = z.object({
-  launchedAt: z.number(),
-  overriddenUntil: z.number(),
-});
-type MarkerGate = z.infer<typeof MarkerGateSchema>;
+type MarkerGate = {
+  launchedAt: number;
+  overriddenUntil: number;
+};
 
 function consumableMarker(marker: string, gate: MarkerGate): z.infer<typeof RespawnMarkerSchema> | null {
   let m: z.infer<typeof RespawnMarkerSchema>;
   try {
     m = RespawnMarkerSchema.parse(JSON.parse(readFileSync(marker, "utf8")));
   } catch (e) {
-    log("supervisor.marker_invalid", { err: e instanceof Error ? e.message : String(e) });
+    log("supervisor.marker_invalid", { err: errorMessage(e) });
     throw new Error(
       `${marker} is corrupt (unparsable JSON or off-schema) - the session was stopped instead of guessing whether the pool is depleted; inspect the marker, then run \`claude --resume ${basename(marker)}\` (a fresh launch clears it)`,
     );
@@ -228,7 +228,7 @@ async function moveExhaustedSeat(seat: Account, sid: string, gate: MarkerGate, m
       writeRespawnMarker({ session: { sid, launchedAt: gate.launchedAt }, sessionId: sid, accountId: decision.account.id, waitUntil: decision.waitUntil ?? now, compact: true });
     }
   } catch (e) {
-    log("supervisor.seat_watch_error", { err: e instanceof Error ? e.message : String(e) });
+    log("supervisor.seat_watch_error", { err: errorMessage(e) });
   }
   return true;
 }
@@ -282,7 +282,7 @@ class StdinRelay {
 
   constructor() {
     this.pump()
-      .catch((e: unknown) => log("supervisor.relay_read_failed", { err: e instanceof Error ? e.message : String(e) }))
+      .catch((e: unknown) => log("supervisor.relay_read_failed", { err: errorMessage(e) }))
       .finally(() => {
         this.ended = true;
         this.close();
@@ -302,19 +302,7 @@ class StdinRelay {
   }
 
   private async pump(): Promise<void> {
-    const decoder = new TextDecoder();
-    let pending = "";
-    for await (const chunk of Bun.stdin.stream()) {
-      pending += decoder.decode(chunk, { stream: true });
-      let nl = pending.indexOf("\n");
-      while (nl !== -1) {
-        this.forward(pending.slice(0, nl + 1));
-        pending = pending.slice(nl + 1);
-        nl = pending.indexOf("\n");
-      }
-    }
-    pending += decoder.decode();
-    if (pending.length > 0) this.forward(`${pending}\n`);
+    for await (const line of readLines(Bun.stdin.stream())) this.forward(`${line}\n`);
   }
 
   private forward(line: string): void {
@@ -324,7 +312,7 @@ class StdinRelay {
         this.sink.flush();
         return;
       } catch (e) {
-        log("supervisor.relay_write_failed", { err: e instanceof Error ? e.message : String(e) });
+        log("supervisor.relay_write_failed", { err: errorMessage(e) });
         this.sink = null;
       }
     }
@@ -336,50 +324,17 @@ class StdinRelay {
     try {
       this.sink.end();
     } catch (e) {
-      log("supervisor.relay_end_failed", { err: e instanceof Error ? e.message : String(e) });
+      log("supervisor.relay_end_failed", { err: errorMessage(e) });
     }
     this.sink = null;
   }
 }
 
-async function recordPresence(child: Subprocess, sid: string, seat: Account, savedTermios: string | null): Promise<void> {
-  for (let attempt = 0; ; attempt++) {
-    try {
-      writePresence({ dir: paths.presenceDir, id: sid, accountId: seat.id, pid: child.pid });
-      return;
-    } catch (e) {
-      if (child.exitCode !== null || child.signalCode !== null) return;
-      if (attempt >= 9) {
-        log("supervisor.presence_failed", { err: e instanceof Error ? e.message : String(e) });
-        child.kill();
-        await child.exited;
-        restoreTermios(savedTermios);
-        throw new Error("could not write the session presence file - refusing to run a session whose seat placement cannot see");
-      }
-      await Bun.sleep(100);
-    }
-  }
-}
-
 export async function runSupervisor(argv: string[]): Promise<number> {
-  const depth = wrapDepth();
-  if (depth >= MAX_WRAP_DEPTH) {
-    console.error(
-      `tokenmaxxing: ${LOOP_DIAGNOSIS} (depth ${depth}) - claudeBin in ${paths.configJson} does not launch the real Claude binary. Fix claudeBin, then run \`tokenmaxxing doctor\`.`,
-    );
-    log("supervisor.loop_abort", { depth });
-    return 1;
-  }
-  if (wrapperEntryRateTripped(Date.now())) {
-    console.error(
-      `tokenmaxxing: ${LOOP_DIAGNOSIS} (over ${WRAP_RATE_MAX} wrapper entries in ${WRAP_RATE_WINDOW_MS / 1000}s) - claudeBin in ${paths.configJson} does not launch the real Claude binary. Fix claudeBin, then run \`tokenmaxxing doctor\`.`,
-    );
-    log("supervisor.rate_abort", { max: WRAP_RATE_MAX });
-    return 1;
-  }
+  if (loopGuardTripped("claude")) return 1;
   const real = resolveRealClaude();
   const info = analyzeArgs(argv);
-  const childEnv = { ...process.env, [WRAP_DEPTH_ENV]: String(depth + 1) };
+  const childEnv = { ...process.env, [WRAP_DEPTH_ENV]: String(wrapDepth() + 1) };
 
   let child: Subprocess | null = null;
   let terminating = false;
@@ -394,10 +349,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
     delete passthroughEnv.TOKENMAXXING_SUPERVISED;
     delete passthroughEnv.TOKENMAXXING_SESSION_ID;
     delete passthroughEnv.TOKENMAXXING_MODEL;
-    const p = Bun.spawn([real, ...argv], { stdin: "inherit", stdout: "inherit", stderr: "inherit", env: passthroughEnv });
-    child = p;
-    await p.exited;
-    return p.exitCode ?? (p.signalCode ? 1 : 0);
+    return runPassthrough({ real, argv, env: passthroughEnv, onSpawn: (p) => { child = p; } });
   }
 
   let base = stripSessionFlags(argv);
@@ -467,44 +419,40 @@ export async function runSupervisor(argv: string[]): Promise<number> {
       });
       if (relay !== null) relay.attach(spawned.stdin!, firstLine);
       firstLine = null;
-      if (picked) await recordPresence(spawned, sid, picked, savedTermios);
+      if (picked) {
+        await recordPresenceOrStop({
+          child: spawned,
+          dir: paths.presenceDir,
+          id: sid,
+          accountId: picked.id,
+          event: "supervisor.presence_failed",
+          message: "could not write the session presence file - refusing to run a session whose seat placement cannot see",
+          savedTermios,
+        });
+      }
       return { child: spawned, seat: picked };
     });
 
     child = proc;
-    let done = false;
     let seatCheckAt = 0;
-    const markerWatch = (async () => {
-      while (!done) {
+    await raceMarkerOrExit({
+      child: proc,
+      tick: async () => {
         if (existsSync(marker) && consumableMarker(marker, gate) != null) return true;
         if (seat && !terminating && Date.now() >= seatCheckAt) {
           const decided = await moveExhaustedSeat(seat, sid, gate, model);
           seatCheckAt = Date.now() + (decided ? SEAT_RETRY_MS : SEAT_POLL_MS);
         }
-        await Bun.sleep(150);
-      }
-      return false;
-    })();
-    const exited = proc.exited.then(() => { done = true; return "exit" as const; });
-    try {
-      const winner = await Promise.race([exited, markerWatch.then((m) => (m ? "marker" : "exit"))]);
-      if (winner === "marker") {
+        return false;
+      },
+      savedTermios,
+      onKill: () => relay?.detach(),
+      onError: () => clearPresence({ dir: paths.presenceDir, id: sid }),
+      onExited: () => {
+        child = null;
         relay?.detach();
-        proc.kill();
-      }
-    } catch (e) {
-      relay?.detach();
-      proc.kill();
-      clearPresence({ dir: paths.presenceDir, id: sid });
-      throw e;
-    } finally {
-      await proc.exited;
-      child = null;
-      relay?.detach();
-      done = true;
-      await markerWatch.catch(() => {});
-      restoreTermios(savedTermios);
-    }
+      },
+    });
 
     const m = !terminating && existsSync(marker) ? consumableMarker(marker, gate) : null;
     if (m) {
@@ -538,6 +486,6 @@ export async function runSupervisor(argv: string[]): Promise<number> {
     }
     clearPresence({ dir: paths.presenceDir, id: sid });
     log("supervisor.exit", { sid, respawns, code: proc.exitCode, signal: proc.signalCode, terminated: terminating || undefined });
-    return proc.exitCode ?? (proc.signalCode ? 1 : 0);
+    return exitStatus(proc);
   }
 }

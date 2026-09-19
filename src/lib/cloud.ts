@@ -6,8 +6,8 @@ import { paths } from "./paths.ts";
 import { writeFileAtomic } from "./atomic.ts";
 import { UNMANAGED_ENV, resolveRealClaude } from "./claudebin.ts";
 import { pidExists } from "./proc.ts";
-import { CloudTokenSchema, CloudTokensSchema, type CloudToken } from "./setuptokens.ts";
-import { normalizeResetsAt, parseErrorBody, readTranscriptTail, scrubCredentialEnv } from "./usage.ts";
+import { CloudTokensSchema, type CloudToken } from "./setuptokens.ts";
+import { parseErrorBody, readTranscriptTail, scrubCredentialEnv } from "./usage.ts";
 
 export const TOKENS_ENV = "TOKENMAXXING_TOKENS";
 export const FALLBACK_WALL_MS = 5 * 3_600_000;
@@ -73,11 +73,7 @@ export function saveCloudWalled(walled: Record<string, number>): void {
   writeFileAtomic(paths.cloudWalledJson, JSON.stringify(WalledSchema.parse(walled), null, 2) + "\n");
 }
 
-const PickSchema = z.discriminatedUnion("ok", [
-  z.object({ ok: z.literal(true), token: CloudTokenSchema }),
-  z.object({ ok: z.literal(false), earliestReset: z.number() }),
-]);
-export type Pick = z.infer<typeof PickSchema>;
+export type Pick = { ok: true; token: CloudToken } | { ok: false; earliestReset: number };
 
 export function pickToken(input: {
   tokens: CloudToken[];
@@ -171,6 +167,6 @@ export function limitWallUntil(input: { sessionId: string; sinceBytes: number; n
   const row = rows.findLast((r) => r.isApiErrorMessage === true);
   if (!row || row.error !== "rate_limit" || row.apiErrorIsTransient === true) return null;
   if ((row.quotaLimits?.rateLimitType ?? "") === "" && parseErrorBody(row.errorDetails)?.error?.type !== "rate_limit_error") return null;
-  const resetsAt = row.quotaLimits?.resetsAt != null ? normalizeResetsAt(row.quotaLimits.resetsAt) : null;
+  const resetsAt = row.quotaLimits?.resetsAt ?? null;
   return resetsAt != null && resetsAt > input.now ? resetsAt : input.now + FALLBACK_WALL_MS;
 }

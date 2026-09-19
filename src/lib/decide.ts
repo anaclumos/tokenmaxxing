@@ -1,19 +1,12 @@
-import { z } from "zod";
 import { withLock } from "./lock.ts";
-import { POST_SWAP_COOLDOWN_MS, loadAccounts, loadConfig, loadLastSwapAt, saveAccounts } from "./state.ts";
+import { loadAccounts, loadConfig, saveAccounts } from "./state.ts";
 import { isExhausted, limitWindows, nextWeeklyReset, pickBest, pickEarliestReset, sessionWindow, thresholdBars, usableAt, weeklyWindow, type PickCtx } from "./picker.ts";
 import { familyTokens } from "./usage.ts";
-import { log } from "./log.ts";
+import { errorMessage, log } from "./log.ts";
 import type { Observation, Provider } from "./provider.ts";
-import { AccountSchema, type Account, type EnforcedLimit } from "./types.ts";
+import type { Account, EnforcedLimit } from "./types.ts";
 
-const SwapDecisionSchema = z.object({
-  swapped: z.boolean(),
-  account: AccountSchema.nullable(),
-  reason: z.string(),
-  waitUntil: z.number().optional(),
-});
-export type SwapDecision = z.infer<typeof SwapDecisionSchema>;
+export type SwapDecision = { swapped: boolean; account: Account | null; reason: string; waitUntil?: number };
 
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 const FIVE_HOURS_MS = 5 * 60 * 60 * 1000;
@@ -45,12 +38,6 @@ function enforcedWall(limit: EnforcedLimit, account: Account, now: number): numb
 
 export async function evaluateAndMaybeSwap(p: Provider, now = Date.now(), canRespawn = false, enforced: EnforcedLimit | null = null, seatId: string | null = p.liveId(), sessionFamilies?: string[]): Promise<SwapDecision> {
   const activeId = seatId;
-
-  const lastSwapAt = loadLastSwapAt(p.pool);
-  if (!enforced && lastSwapAt != null && now - lastSwapAt < POST_SWAP_COOLDOWN_MS) {
-    return { swapped: false, account: null, reason: "post-swap-cooldown" };
-  }
-
   const cfg = loadConfig();
   const bars = thresholdBars(cfg);
   const stored0 = loadAccounts(p.pool).accounts.find((a) => a.id === activeId);
@@ -64,10 +51,6 @@ export async function evaluateAndMaybeSwap(p: Provider, now = Date.now(), canRes
   }
 
   return withLock(p.pool.lockFile, async () => {
-    const lastSwapAt2 = loadLastSwapAt(p.pool);
-    if (!enforced && lastSwapAt2 != null && now - lastSwapAt2 < POST_SWAP_COOLDOWN_MS) {
-      return { swapped: false, account: null, reason: "raced-already-swapped" };
-    }
     const idx = loadAccounts(p.pool);
     const id2 = seatId;
     const active = id2 ? idx.accounts.find((a) => a.id === id2) : undefined;
@@ -114,15 +97,14 @@ export async function evaluateAndMaybeSwap(p: Provider, now = Date.now(), canRes
       return { swapped: false, account: null, reason: "needs-respawn" };
     }
 
-    const seatOf = (cur: { activeId: string | null; accounts: Account[] }): Account | null =>
-      cur.accounts.find((a) => a.id === id2) ?? cur.accounts.find((a) => a.id === cur.activeId) ?? null;
+    const seatOf = (cur: { accounts: Account[] }): Account | null => cur.accounts.find((a) => a.id === id2) ?? null;
 
     const rejected = new Set<string>();
     const usable = (accounts: Account[]): Account[] => accounts.filter((a) => !rejected.has(a.id) && (p.seats === "shared" || a.id === id2 || !present.has(a.id)));
     const skipOrThrow = (e: unknown, candidate: Account): void => {
       if (p.classifySwapError(e) === "fatal") throw e;
       rejected.add(candidate.id);
-      log("decide.candidate_rejected", { account: candidate.id.slice(0, 8), error: e instanceof Error ? e.message : String(e) });
+      log("decide.candidate_rejected", { account: candidate.id.slice(0, 8), error: errorMessage(e) });
     };
     while (true) {
       const cur = loadAccounts(p.pool);

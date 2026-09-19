@@ -1,16 +1,11 @@
 import { mkdirSync, readFileSync, unlinkSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { z } from "zod";
 import { writeFileAtomic } from "./atomic.ts";
 import * as kc from "./keychain.ts";
 import { keychain as kcNames, namespacedCredService, storeDirFor } from "./paths.ts";
 import { CredentialBlobSchema, ErrnoSchema, type OAuthCreds } from "./types.ts";
 
-const CredTargetSchema = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("keychain"), service: z.string(), account: z.string() }),
-  z.object({ kind: z.literal("file"), path: z.string() }),
-]);
-export type CredTarget = z.infer<typeof CredTargetSchema>;
+export type CredTarget = ({ kind: "keychain" } & kc.KeychainTarget) | { kind: "file"; path: string };
 
 const darwin = process.platform === "darwin";
 

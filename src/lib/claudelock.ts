@@ -1,7 +1,7 @@
 import { mkdirSync, realpathSync, rmdirSync, statSync, utimesSync } from "node:fs";
 import { join } from "node:path";
 import { delay } from "es-toolkit";
-import { log } from "./log.ts";
+import { errorMessage, log } from "./log.ts";
 import { ErrnoSchema } from "./types.ts";
 
 const STALE_MS = 60_000;
@@ -48,7 +48,7 @@ export async function withClaudeRefreshLock<T>(
           break;
         }
       } catch (e) {
-        log("claudelock.legacy_error", { err: e instanceof Error ? e.message : String(e) });
+        log("claudelock.legacy_error", { err: errorMessage(e) });
         held.push(primary);
         break;
       }

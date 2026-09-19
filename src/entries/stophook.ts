@@ -1,29 +1,31 @@
 import { z } from "zod";
 import { claude } from "../lib/claude.ts";
 import { evaluateAndMaybeSwap } from "../lib/decide.ts";
+import { readStdin } from "../lib/proc.ts";
 import { supervisedSession, writeRespawnMarker } from "../lib/sessions.ts";
 import { JsonTextSchema } from "../lib/types.ts";
-import { log } from "../lib/log.ts";
-import { readStdin } from "./statusline.ts";
+import { errorMessage, log } from "../lib/log.ts";
 
-const StopStdin = z.looseObject({ session_id: z.uuid().optional().catch(undefined) });
+const BoundaryStdin = z.looseObject({
+  source: z.string().optional(),
+  session_id: z.uuid().optional().catch(undefined),
+});
 
-export async function runStopHook(): Promise<number> {
+export async function runBoundaryHook(event: "stop" | "sessionstart"): Promise<number> {
   if (process.env.TOKENMAXXING_PROBE) return 0;
 
-  const raw = await readStdin();
-  const parsed = StopStdin.safeParse(JsonTextSchema.safeParse(raw).data);
-  const stdinSid = parsed.success ? parsed.data.session_id : undefined;
+  const parsed = BoundaryStdin.safeParse(JsonTextSchema.safeParse(await readStdin()).data);
+  const stdin = parsed.success ? parsed.data : {};
   const session = supervisedSession();
 
   try {
     const decision = await evaluateAndMaybeSwap(claude, Date.now(), session != null);
     if (session && decision.account && (decision.swapped || decision.waitUntil !== undefined)) {
-      writeRespawnMarker({ session, sessionId: stdinSid ?? session.sid, accountId: decision.account.id, waitUntil: decision.waitUntil ?? Date.now(), compact: true });
-      log(decision.waitUntil !== undefined ? "stop.wait" : "stop.move", { account: decision.account.id.slice(0, 8), waitUntil: decision.waitUntil, session: session.sid.slice(0, 8) });
+      writeRespawnMarker({ session, sessionId: stdin.session_id ?? session.sid, accountId: decision.account.id, waitUntil: decision.waitUntil ?? Date.now(), compact: true });
+      log(`${event}.${decision.waitUntil !== undefined ? "wait" : "move"}`, { source: stdin.source, account: decision.account.id.slice(0, 8), waitUntil: decision.waitUntil, session: session.sid.slice(0, 8) });
     }
   } catch (e) {
-    log("stop.error", { err: e instanceof Error ? e.message : String(e) });
+    log(`${event}.error`, { err: errorMessage(e) });
   }
   return 0;
 }

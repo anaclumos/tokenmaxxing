@@ -36,10 +36,7 @@ const AggregateWindowsSchema = z.object({
   sevenDay: UsageWindowSchema,
 });
 
-export const UsageWindowsSchema = AggregateWindowsSchema.extend({
-  perModel: z.record(z.string(), UsageWindowSchema).default({}),
-});
-export type UsageWindows = z.infer<typeof UsageWindowsSchema>;
+export type UsageWindows = z.infer<typeof AggregateWindowsSchema> & { perModel: Record<string, UsageWindow> };
 
 export const WindowSchema = z.object({
   name: z.string().nullable(),
@@ -80,27 +77,19 @@ export type Account = z.infer<typeof AccountSchema>;
 
 export const AccountsIndexSchema = z.object({
   version: z.literal(2),
-  activeId: z.string().nullable(),
   accounts: z.array(AccountSchema).default([]),
 });
-
-export const LastSwapSchema = z.object({ ts: z.number() });
 export type AccountsIndex = z.infer<typeof AccountsIndexSchema>;
 
-export const EnforcedLimitSchema = z.object({
-  account: z.string(),
-  kind: z.enum(["session", "weekly", "model"]),
-  family: z.string().nullable(),
-  resetsAt: z.number().nullable(),
-  blind: z.boolean(),
-});
-export type EnforcedLimit = z.infer<typeof EnforcedLimitSchema>;
+export type EnforcedLimit = {
+  account: string;
+  kind: "session" | "weekly" | "model";
+  family: string | null;
+  resetsAt: number | null;
+  blind: boolean;
+};
 
-export const ThresholdsSchema = z.object({
-  session: z.number().min(0).max(100),
-  weekly: z.number().min(0).max(100),
-});
-export type Thresholds = z.infer<typeof ThresholdsSchema>;
+export type Thresholds = { session: number; weekly: number };
 
 export const ConfigSchema = z
   .object({
@@ -142,11 +131,15 @@ export const RespawnMarkerSchema = z.object({
   launchedAt: z.number().optional(),
 });
 
+export const EpochSecondsSchema = z.number().transform((seconds) => seconds * 1000);
+
+const StdinWindowSchema = z.looseObject({ used_percentage: z.number(), resets_at: EpochSecondsSchema.nullable().optional() });
+
 export const RateLimitsStdinSchema = z.looseObject({
   rate_limits: z
     .looseObject({
-      five_hour: z.looseObject({ used_percentage: z.number(), resets_at: z.number().nullable().optional() }).optional(),
-      seven_day: z.looseObject({ used_percentage: z.number(), resets_at: z.number().nullable().optional() }).optional(),
+      five_hour: StdinWindowSchema.optional(),
+      seven_day: StdinWindowSchema.optional(),
     })
     .optional(),
   model: z.looseObject({ id: z.string().optional(), display_name: z.string().optional() }).optional(),
@@ -196,13 +189,12 @@ export const ProfileResponseSchema = z.looseObject({
   organization: z.looseObject({ uuid: z.string(), name: z.string().nullish() }),
 });
 
-export const TokenIdentitySchema = z.object({
-  accountUuid: z.string(),
-  email: z.string().nullable(),
-  organizationUuid: z.string(),
-  organizationName: z.string().nullable(),
-});
-export type TokenIdentity = z.infer<typeof TokenIdentitySchema>;
+export type TokenIdentity = {
+  accountUuid: string;
+  email: string | null;
+  organizationUuid: string;
+  organizationName: string | null;
+};
 
 const CodexTokensSchema = z.looseObject({
   id_token: z.string(),
@@ -217,13 +209,12 @@ export const CodexAuthJsonSchema = z.looseObject({
 });
 export type CodexAuthJson = z.infer<typeof CodexAuthJsonSchema>;
 
-export const CodexUsageSchema = z.object({
-  accountId: z.string(),
-  email: z.string().nullable(),
-  planType: z.string().nullable(),
-  windows: z.array(WindowSchema),
-});
-export type CodexUsage = z.infer<typeof CodexUsageSchema>;
+export type CodexUsage = {
+  accountId: string;
+  email: string | null;
+  planType: string | null;
+  windows: Window[];
+};
 
 export const CodexStopStdinSchema = z.looseObject({
   session_id: z.string().optional(),

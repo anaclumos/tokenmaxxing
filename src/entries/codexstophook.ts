@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import { mkdirSync } from "node:fs";
-import { z } from "zod";
-import { codexPaths } from "../lib/paths.ts";
+import type { z } from "zod";
+import { codexPaths, optionalEnv } from "../lib/paths.ts";
 import { writeFileAtomic } from "../lib/atomic.ts";
 import { MAX_WRAP_DEPTH, WRAP_DEPTH_ENV } from "../lib/claudebin.ts";
 import { codex, codexPickCtx } from "../lib/codex.ts";
@@ -9,12 +9,11 @@ import { resolveRealCodex } from "../lib/codexbin.ts";
 import { compactCodexThread } from "../lib/compact.ts";
 import { evaluateAndMaybeSwap } from "../lib/decide.ts";
 import { isExhausted } from "../lib/picker.ts";
+import { readStdin } from "../lib/proc.ts";
 import { loadAccounts, loadConfig } from "../lib/state.ts";
 import { CODEX_SUPERVISOR_ID_ENV } from "./codexsupervisor.ts";
 import { CodexRespawnMarkerSchema, CodexStopStdinSchema, JsonTextSchema } from "../lib/types.ts";
-import { log } from "../lib/log.ts";
-
-const SupervisorIdSchema = z.string().min(1).optional().catch(undefined);
+import { errorMessage, log } from "../lib/log.ts";
 
 async function compactBeforeMove(input: { sessionId: string | null; now: number }): Promise<void> {
   const { sessionId, now } = input;
@@ -30,18 +29,12 @@ async function compactBeforeMove(input: { sessionId: string | null; now: number 
   await compactCodexThread({ real: resolveRealCodex(), threadId: sessionId, env });
 }
 
-async function readStdin(): Promise<string> {
-  const chunks: Uint8Array[] = [];
-  for await (const chunk of Bun.stdin.stream()) chunks.push(chunk);
-  return Buffer.concat(chunks).toString("utf8");
-}
-
-export async function handleCodexStop(input: { rawStdin: string }): Promise<void> {
-  const parsed = CodexStopStdinSchema.safeParse(JsonTextSchema.safeParse(input.rawStdin).data);
+async function handleCodexStop(rawStdin: string): Promise<void> {
+  const parsed = CodexStopStdinSchema.safeParse(JsonTextSchema.safeParse(rawStdin).data);
   const sessionId = parsed.success ? (parsed.data.session_id ?? null) : null;
 
   try {
-    const supervisorId = SupervisorIdSchema.parse(process.env[CODEX_SUPERVISOR_ID_ENV]);
+    const supervisorId = optionalEnv(CODEX_SUPERVISOR_ID_ENV);
     if (supervisorId === undefined) {
       log("codexstop.unsupervised_skip", {});
       return;
@@ -51,24 +44,18 @@ export async function handleCodexStop(input: { rawStdin: string }): Promise<void
     const decision = await evaluateAndMaybeSwap(codex, now);
     if (decision.swapped && decision.account) {
       mkdirSync(codexPaths.respawnDir, { recursive: true });
-      const payload = CodexRespawnMarkerSchema.parse({
-        accountId: decision.account.id,
-        sessionId,
-        ts: Date.now(),
-      });
+      const payload: z.infer<typeof CodexRespawnMarkerSchema> = { accountId: decision.account.id, sessionId, ts: Date.now() };
       writeFileAtomic(join(codexPaths.respawnDir, supervisorId), JSON.stringify(payload));
       log("codexstop.marker", { supervisorId: supervisorId.slice(0, 8) });
       return;
     }
   } catch (e) {
-    log("codexstop.error", { err: e instanceof Error ? e.message : String(e) });
+    log("codexstop.error", { err: errorMessage(e) });
   }
 }
 
 export async function runCodexStopHook(): Promise<number> {
-  if (!process.env.TOKENMAXXING_PROBE) {
-    await handleCodexStop({ rawStdin: await readStdin() });
-  }
+  if (!process.env.TOKENMAXXING_PROBE) await handleCodexStop(await readStdin());
   process.stdout.write("{}");
   return 0;
 }

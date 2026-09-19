@@ -38,7 +38,6 @@ export async function cmdInit(p: Provider): Promise<number> {
     await harvested.park();
     const idx = loadAccounts(p.pool);
     const imported = upsertAccount(idx, harvested, p.mergeWindows);
-    idx.activeId = null;
     saveAccounts(p.pool, idx);
     return imported;
   });

@@ -112,14 +112,7 @@ export function uninstallSettings(): void {
   writeSettings(s);
 }
 
-const SettingsCheckSchema = z.object({
-  statusLineOk: z.boolean(),
-  subagentStatusLineOk: z.boolean(),
-  stopOk: z.boolean(),
-  stopFailureOk: z.boolean(),
-  sessionStartOk: z.boolean(),
-});
-export type SettingsCheck = z.infer<typeof SettingsCheckSchema>;
+export type SettingsCheck = Record<"statusLineOk" | "subagentStatusLineOk" | "stopOk" | "stopFailureOk" | "sessionStartOk", boolean>;
 
 export function checkSettings(): SettingsCheck {
   const s = readSettings();

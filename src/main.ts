@@ -4,9 +4,8 @@ import { basename } from "node:path";
 import { runSupervisor } from "./entries/supervisor.ts";
 import { runStatusline } from "./entries/statusline.ts";
 import { runSubagentStatusline } from "./entries/subagentstatusline.ts";
-import { runStopHook } from "./entries/stophook.ts";
+import { runBoundaryHook } from "./entries/stophook.ts";
 import { runStopFailureHook } from "./entries/stopfailurehook.ts";
-import { runSessionStart } from "./entries/sessionstart.ts";
 import { runCodexSupervisor } from "./entries/codexsupervisor.ts";
 import { runCodexStopHook } from "./entries/codexstophook.ts";
 import { claude } from "./lib/claude.ts";
@@ -26,6 +25,7 @@ import { cmdSetupToken } from "./cli/setuptoken.ts";
 import { cmdCloudRun } from "./cli/cloudrun.ts";
 import { cmdCursorInit } from "./cli/cursorinit.ts";
 import { onLoginHome, timerDeactivationHint, uninstallSupervisor, uninstallTargets } from "./lib/install.ts";
+import { errorMessage } from "./lib/log.ts";
 import { HOME } from "./lib/paths.ts";
 import { c, emitError } from "./cli/render.ts";
 
@@ -124,9 +124,9 @@ async function main(): Promise<number> {
   switch (sub) {
     case "__statusline": return runStatusline();
     case "__subagent-statusline": return runSubagentStatusline();
-    case "__stop-hook": return runStopHook();
+    case "__stop-hook": return runBoundaryHook("stop");
     case "__stop-failure-hook": return runStopFailureHook();
-    case "__session-start": return runSessionStart();
+    case "__session-start": return runBoundaryHook("sessionstart");
     case "__codex-stop-hook": return runCodexStopHook();
     case undefined:
     case "status": {
@@ -201,6 +201,6 @@ async function main(): Promise<number> {
 try {
   process.exit(await main());
 } catch (e) {
-  emitError({ json: jsonMode, message: e instanceof Error ? e.message : String(e) });
+  emitError({ json: jsonMode, message: errorMessage(e) });
   process.exit(1);
 }
