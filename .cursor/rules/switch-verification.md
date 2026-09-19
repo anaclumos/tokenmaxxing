@@ -17,7 +17,7 @@
 - Timestamp-filter the request corpus, deduplicate messages, and separate temporal association from causation before quoting cache overhead.
 - API price weights do not establish subscription quota accounting.
 - A local test stub must remain reachable until all test children finish, with external network access denied throughout.
-- A stub proves a code path, not a contract: the 1.41.0 direct usage read was verified against a stub body whose shape was assumed, matched no real response, and failed on every tick until #148 replaced it while the CLI fallback absorbed every sample. A parser for an external body is verified against one real response before it ships.
+- A stub proves a code path, not a contract: the 1.41.0 direct usage read was verified against a stub body whose shape was assumed, matched no real response, and failed on every tick until #148 replaced it while the CLI fallback absorbed every sample. That fallback is gone: the probe only refreshes the stored token, so a direct read that keeps failing now leaves the account unmeasured. A parser for an external body is verified against one real response before it ships.
 - A race finding on the hook or the decision is answered with a hermetic reproduction, never with a timing argument: a helper process holds the pool lock and moves the live seat or the swap clock inside it while the hook or the decision runs against it.
 
 See [switching policy](../../docs/content/docs/switching.mdx) and [measurement report](../../docs/content/docs/switching-profile.mdx).

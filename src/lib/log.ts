@@ -1,9 +1,12 @@
 import { appendFileSync, existsSync, mkdirSync, renameSync, statSync } from "node:fs";
 import { dirname } from "node:path";
-import { z } from "zod";
 import { paths } from "./paths.ts";
 
 const LOG_MAX_BYTES = 5_000_000;
+
+export function errorMessage(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
+}
 
 function redact(s: string): string {
   return s
@@ -22,10 +25,7 @@ export function log(event: string, fields: Record<string, unknown> = {}): void {
   try {
     line = Object.entries(fields)
       .filter(([, v]) => v !== undefined)
-      .map(([k, v]) => {
-        const str = z.string().safeParse(v);
-        return `${k}=${redact(str.success ? str.data : JSON.stringify(v))}`;
-      })
+      .map(([k, v]) => `${k}=${redact(typeof v === "string" ? v : JSON.stringify(v))}`)
       .join(" ");
     mkdirSync(dirname(paths.logFile), { recursive: true });
     if (existsSync(paths.logFile) && statSync(paths.logFile).size > LOG_MAX_BYTES) {

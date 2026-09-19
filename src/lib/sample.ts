@@ -1,29 +1,20 @@
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { z } from "zod";
 import { writeFileAtomic } from "./atomic.ts";
 import { readStore } from "./credstore.ts";
 import { withLock } from "./lock.ts";
-import { log } from "./log.ts";
+import { errorMessage, log } from "./log.ts";
 import { claudeTierLabel, isAccessTokenExpiring, isDeadCredential } from "./oauth.ts";
 import { claudePool, paths, sampleDirFor, storeDirFor } from "./paths.ts";
 import { seatCounts } from "./presence.ts";
 import type { Observation } from "./provider.ts";
 import { loadAccounts, loadUsageSnapshot, saveAccounts } from "./state.ts";
-import { fetchUsageDirect, mergeWindows, probeUsage, windowsOf } from "./usage.ts";
-import { UsageWindowsSchema, type Account, type Config } from "./types.ts";
+import { fetchUsageDirect, mergeWindows, refreshViaProbe, windowsOf } from "./usage.ts";
+import type { Account, Config, UsageWindows } from "./types.ts";
 
-const SampleOutcomeSchema = z.discriminatedUnion("ok", [
-  z.object({ ok: z.literal(true), usage: UsageWindowsSchema, via: z.enum(["get", "probe"]) }),
-  z.object({ ok: z.literal(false), reason: z.string() }),
-]);
-export type SampleOutcome = z.infer<typeof SampleOutcomeSchema>;
+export type SampleOutcome = { ok: true; usage: UsageWindows; via: "get" | "probe" } | { ok: false; reason: string };
 
-const PreparedSampleSchema = z.discriminatedUnion("ok", [
-  z.object({ ok: z.literal(true), token: z.string().nullable() }),
-  z.object({ ok: z.literal(false), reason: z.string() }),
-]);
-type PreparedSample = z.infer<typeof PreparedSampleSchema>;
+type PreparedSample = { ok: true; token: string | null } | { ok: false; reason: string };
 
 export function teeObservation(account: Account): Observation | null {
   const stored = account.lastUsageAt != null ? { windows: account.windows, at: account.lastUsageAt } : null;
@@ -48,7 +39,7 @@ export async function prepareSample(account: Account): Promise<PreparedSample> {
   try {
     creds = await readStore(account.id);
   } catch (e) {
-    return { ok: false, reason: `store credential unreadable (${(e instanceof Error ? e.message : String(e)).slice(0, 80)}) - run \`tokenmaxxing auth\`` };
+    return { ok: false, reason: `store credential unreadable (${errorMessage(e).slice(0, 80)}) - run \`tokenmaxxing auth\`` };
   }
   if (!creds) return { ok: false, reason: "no credential in this account's store - run `tokenmaxxing auth`" };
   if (isDeadCredential(creds)) {
@@ -60,25 +51,29 @@ export async function prepareSample(account: Account): Promise<PreparedSample> {
   return { ok: true, token: isAccessTokenExpiring(creds) ? null : creds.accessToken };
 }
 
-async function runProbe(account: Account, suffix: string, retries: number | undefined): Promise<SampleOutcome> {
+async function refreshedToken(account: Account, suffix: string): Promise<string | null> {
   const dir = sampleDirFor(account.id, suffix);
   mkdirSync(dir, { recursive: true });
   writeFileAtomic(join(dir, ".claude.json"), JSON.stringify({ oauthAccount: account.oauthAccount, hasCompletedOnboarding: true }));
-  const usage = await probeUsage({ configDir: dir, store: storeDirFor(account.id) }, Date.now(), { retries });
-  return usage ? { ok: true, usage, via: "probe" } : { ok: false, reason: "`/usage` returned no limit data (see log)" };
+  if (!(await refreshViaProbe({ configDir: dir, store: storeDirFor(account.id) }))) return null;
+  const prepared = await prepareSample(account);
+  return prepared.ok ? prepared.token : null;
 }
 
-export async function runSample(account: Account, token: string | null, opts: { retries?: number; suffix?: string }): Promise<SampleOutcome> {
+export async function runSample(account: Account, token: string | null, suffix = ""): Promise<SampleOutcome> {
   if (token) {
     const usage = await fetchUsageDirect(token);
     if (usage) return { ok: true, usage, via: "get" };
   }
-  return runProbe(account, opts.suffix ?? "", opts.retries);
+  const fresh = await refreshedToken(account, suffix);
+  if (!fresh) return { ok: false, reason: "the `/usage` probe left no usable access token in the store (see log)" };
+  const usage = await fetchUsageDirect(fresh);
+  return usage ? { ok: true, usage, via: "probe" } : { ok: false, reason: "usage read failed after the `/usage` probe (see log)" };
 }
 
-export async function sampleAccountUsage(account: Account, opts: { retries?: number } = {}): Promise<SampleOutcome> {
+export async function sampleAccountUsage(account: Account): Promise<SampleOutcome> {
   const prepared = await prepareSample(account);
-  return prepared.ok ? runSample(account, prepared.token, opts) : prepared;
+  return prepared.ok ? runSample(account, prepared.token) : prepared;
 }
 
 const SAMPLE_BATCH = 3;
@@ -119,15 +114,21 @@ export async function sampleOldest(cfg: Config): Promise<void> {
   await Promise.all(
     reserved.map(async ({ account, token }) => {
       const startedAt = Date.now();
-      const outcome = await runSample(account, token, { retries: 0, suffix: "-tick" });
+      const outcome = await runSample(account, token, "-tick");
       await withLock(claudePool.lockFile, () => {
         const idx = loadAccounts(claudePool);
         const stored = idx.accounts.find((a) => a.id === account.id);
+        let dirty = false;
+        if (stored && account.needsReauth === true && stored.needsReauth !== true) {
+          stored.needsReauth = true;
+          dirty = true;
+        }
         if (stored && outcome.ok && (stored.lastUsageAt == null || startedAt > stored.lastUsageAt)) {
           stored.windows = mergeWindows(windowsOf(outcome.usage, startedAt), stored.windows);
           stored.lastUsageAt = startedAt;
-          saveAccounts(claudePool, idx);
+          dirty = true;
         }
+        if (dirty) saveAccounts(claudePool, idx);
         log(outcome.ok ? "sample.ok" : "sample.failed", {
           account: account.id.slice(0, 8),
           ...(outcome.ok ? { via: outcome.via } : { reason: outcome.reason.slice(0, 200) }),

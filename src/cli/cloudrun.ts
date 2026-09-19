@@ -1,4 +1,6 @@
+import { parseArgs } from "node:util";
 import { withLock } from "../lib/lock.ts";
+import { errorMessage } from "../lib/log.ts";
 import { paths } from "../lib/paths.ts";
 import {
   limitWallUntil,
@@ -17,26 +19,17 @@ import { c, emitError, fmtReset } from "./render.ts";
 const USAGE = "usage: tokenmaxxing cloud run [--session <id>] [--max-turns <n>] \"<prompt>\" (the prompt is also read from stdin)";
 
 function parseFlags(args: string[]): { session: string | null; maxTurns: number | null; prompt: string | null } | { error: string } {
-  let session: string | null = null;
-  let maxTurns: number | null = null;
-  const positional: string[] = [];
-  for (let i = 0; i < args.length; i++) {
-    const arg = args[i]!;
-    if (arg === "--session") {
-      const raw = args[++i];
-      if (raw == null || raw === "") return { error: "--session needs a session id" };
-      session = raw;
-      continue;
-    }
-    if (arg === "--max-turns") {
-      const raw = args[++i];
-      maxTurns = Number(raw);
-      if (!Number.isInteger(maxTurns) || maxTurns < 1) return { error: `--max-turns needs a positive whole number, got: ${raw ?? "nothing"}` };
-      continue;
-    }
-    positional.push(arg);
+  let parsed;
+  try {
+    parsed = parseArgs({ args, options: { session: { type: "string" }, "max-turns": { type: "string" } }, allowPositionals: true });
+  } catch (e) {
+    return { error: errorMessage(e) };
   }
-  return { session, maxTurns, prompt: positional.length > 0 ? positional.join(" ") : null };
+  const { session, "max-turns": rawTurns } = parsed.values;
+  if (session === "") return { error: "--session needs a session id" };
+  const maxTurns = rawTurns == null ? null : Number(rawTurns);
+  if (maxTurns != null && (!Number.isInteger(maxTurns) || maxTurns < 1)) return { error: `--max-turns needs a positive whole number, got: ${rawTurns}` };
+  return { session: session ?? null, maxTurns, prompt: parsed.positionals.length > 0 ? parsed.positionals.join(" ") : null };
 }
 
 export async function cmdCloudRun(args: string[]): Promise<number> {

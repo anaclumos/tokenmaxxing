@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { z } from "zod";
 import { writeFileAtomic } from "./atomic.ts";
 import { pidExists, pidStartTime } from "./proc.ts";
+import { ErrnoSchema } from "./types.ts";
 
 const PresenceSchema = z.object({
   accountId: z.string(),
@@ -21,8 +22,7 @@ export function clearPresence(input: { dir: string; id: string }): void {
   rmSync(join(input.dir, input.id), { force: true });
 }
 
-const LivingPresenceSchema = z.object({ id: z.string(), accountId: z.string() });
-export type LivingPresence = z.infer<typeof LivingPresenceSchema>;
+export type LivingPresence = { id: string; accountId: string };
 
 export function livingPresences(dir: string): LivingPresence[] {
   const living: LivingPresence[] = [];
@@ -33,8 +33,7 @@ export function livingPresences(dir: string): LivingPresence[] {
     try {
       raw = readFileSync(file, "utf8");
     } catch (e) {
-      const errno = z.object({ code: z.string() }).safeParse(e);
-      if (errno.success && errno.data.code === "ENOENT") continue;
+      if (ErrnoSchema.safeParse(e).data?.code === "ENOENT") continue;
       throw e;
     }
     const parsed = PresenceSchema.safeParse((() => {
@@ -55,7 +54,7 @@ export function livingPresences(dir: string): LivingPresence[] {
       rmSync(file, { force: true });
       continue;
     }
-    living.push(LivingPresenceSchema.parse({ id: name, accountId: parsed.data.accountId }));
+    living.push({ id: name, accountId: parsed.data.accountId });
   }
   return living;
 }

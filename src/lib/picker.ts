@@ -1,7 +1,6 @@
 import { maxBy, minBy, sortBy } from "es-toolkit";
-import { z } from "zod";
 import { familyTokens } from "./usage.ts";
-import { AccountSchema, ThresholdsSchema, type Account, type Config, type Thresholds, type Window } from "./types.ts";
+import type { Account, Config, Thresholds, Window } from "./types.ts";
 
 export function thresholdBars(cfg: Config): Thresholds {
   return {
@@ -10,14 +9,13 @@ export function thresholdBars(cfg: Config): Thresholds {
   };
 }
 
-const PickCtxSchema = z.object({
-  now: z.number(),
-  thresholds: ThresholdsSchema,
-  currentId: z.string().nullable(),
-  families: z.array(z.string()).nullable(),
-  seats: z.map(z.string(), z.number()).nullable(),
-});
-export type PickCtx = z.infer<typeof PickCtxSchema>;
+export type PickCtx = {
+  now: number;
+  thresholds: Thresholds;
+  currentId: string | null;
+  families: string[] | null;
+  seats: Map<string, number> | null;
+};
 
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 const SESSION_WINDOW_MAX_S = 6 * 3600;
@@ -123,21 +121,12 @@ export function pickBest(accounts: Account[], ctx: PickCtx): Account | null {
   return sortBy(usable, swapPreference(ctx))[0] ?? null;
 }
 
-export function currentWins(active: Account | null, accounts: Account[], ctx: PickCtx, margin = 1): boolean {
-  if (!active || active.needsReauth || isExhausted(active, ctx)) return false;
-  const best = pickBest(accounts, { ...ctx, currentId: null });
-  if (best == null || best.id === active.id) return true;
-  if (margin > 1) return pacePressure(best, ctx) <= pacePressure(active, ctx) * margin;
-  return swapPreference(ctx).every((k) => k(active) === k(best));
-}
-
 export function usableAt(a: Account, ctx: PickCtx): number {
   const blocking = blockingUntil(a, ctx).filter((t) => t > ctx.now);
   return blocking.length ? Math.max(...blocking) : ctx.now;
 }
 
-const EarliestResetSchema = z.object({ account: AccountSchema, availableAt: z.number() });
-export type EarliestReset = z.infer<typeof EarliestResetSchema>;
+export type EarliestReset = { account: Account; availableAt: number };
 
 export function pickEarliestReset(accounts: Account[], ctx: PickCtx): EarliestReset | null {
   const mapped = accounts

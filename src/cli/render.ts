@@ -14,6 +14,11 @@ export function makeColors(enabled: boolean) {
 
 export const c = makeColors(!process.env.NO_COLOR && !!process.stdout.isTTY);
 
+export function statuslineColor(): { color: boolean; truecolor: boolean } {
+  const colorterm = process.env.COLORTERM ?? "";
+  return { color: !process.env.NO_COLOR, truecolor: colorterm.includes("truecolor") || colorterm.includes("24bit") };
+}
+
 function rampRgb(usedPct: number): { r: number; g: number } {
   const u = clamp(usedPct, 0, 100);
   if (u >= 95) return { r: 255, g: 0 };
@@ -46,23 +51,33 @@ export function bar(pct: number, width = 16): string {
   return `${paint(body)} ${label}`;
 }
 
+function splitDuration(ms: number): { dsec: number; d: number; h: number; m: number } {
+  const dsec = Math.round(ms / 1000);
+  return { dsec, d: Math.floor(dsec / 86400), h: Math.floor((dsec % 86400) / 3600), m: Math.floor((dsec % 3600) / 60) };
+}
+
 export function fmtReset(epochMs: number | null | undefined, now = Date.now()): string {
   if (epochMs == null) return "";
-  const dsec = Math.round((epochMs - now) / 1000);
+  const { dsec, d, h, m } = splitDuration(epochMs - now);
   if (dsec <= 0) return "reset now";
-  const h = Math.floor(dsec / 3600);
-  const m = Math.floor((dsec % 3600) / 60);
-  if (h > 24) return `resets in ${Math.floor(h / 24)}d${h % 24}h`;
-  if (h > 0) return `resets in ${h}h${m}m`;
+  const hours = d * 24 + h;
+  if (hours > 24) return `resets in ${d}d${h}h`;
+  if (hours > 0) return `resets in ${hours}h${m}m`;
   return `resets in ${m}m`;
 }
 
+export function fmtResetShort(epochMs: number | null | undefined, now = Date.now()): string {
+  if (epochMs == null) return "";
+  const { dsec, d, h, m } = splitDuration(epochMs - now);
+  if (dsec <= 0) return "";
+  if (d > 0) return `${d}d`;
+  if (h > 0) return `${h}h`;
+  return `${Math.max(m, 1)}m`;
+}
+
 export function fmtAgo(epochMs: number, now = Date.now()): string {
-  const dsec = Math.max(0, Math.round((now - epochMs) / 1000));
+  const { dsec, d, h, m } = splitDuration(now - epochMs);
   if (dsec < 60) return "just now";
-  const d = Math.floor(dsec / 86400);
-  const h = Math.floor((dsec % 86400) / 3600);
-  const m = Math.floor((dsec % 3600) / 60);
   if (d > 0) return `${d}d ago`;
   if (h > 0) return `${h}h ago`;
   return `${m}m ago`;

@@ -2,21 +2,14 @@ import { accessSync, appendFileSync, constants, existsSync, mkdirSync, readFileS
 import { basename, dirname, join, resolve } from "node:path";
 import { escape } from "es-toolkit";
 import { z } from "zod";
-import { codexPaths, codexStoreDirFor, HOME, paths } from "./paths.ts";
+import { codexPaths, codexStoreDirFor, HOME, optionalEnv, paths } from "./paths.ts";
 import { writeFileAtomic } from "./atomic.ts";
 import { installedBin, installSettings, isOurHookCommand, uninstallSettings } from "./settings.ts";
 import { resolveRealClaude } from "./claudebin.ts";
 import { loadConfig } from "./state.ts";
 import { ErrnoSchema } from "./types.ts";
 
-const InstallOutcomeSchema = z.object({
-  claudeWrapper: z.string(),
-  installedBin: z.string(),
-  pathAhead: z.boolean(),
-  timerLoaded: z.boolean(),
-  checkIntervalS: z.number().int().positive(),
-});
-export type InstallOutcome = z.infer<typeof InstallOutcomeSchema>;
+export type InstallOutcome = { claudeWrapper: string; installedBin: string; pathAhead: boolean; timerLoaded: boolean; checkIntervalS: number };
 
 export function isBinDirAhead(): boolean {
   const dirs = (process.env.PATH ?? "").split(":");
@@ -31,10 +24,10 @@ export function isBinDirAhead(): boolean {
   }
 }
 
-const EnvFlagSchema = z.enum(["1", "true", "yes"]).optional().catch(undefined);
+const envFlag = (name: string): boolean => z.stringbool().optional().parse(optionalEnv(name)) === true;
 
 export function isNixPackaged(): boolean {
-  if (EnvFlagSchema.parse(process.env.TOKENMAXXING_NIX) != null) return true;
+  if (envFlag("TOKENMAXXING_NIX")) return true;
   try {
     return realpathSync(Bun.main).startsWith("/nix/store/");
   } catch {
@@ -43,7 +36,7 @@ export function isNixPackaged(): boolean {
 }
 
 export function skipImperativeTimer(): boolean {
-  return EnvFlagSchema.parse(process.env.TOKENMAXXING_SKIP_TIMER) != null;
+  return envFlag("TOKENMAXXING_SKIP_TIMER");
 }
 
 function isNixStorePath(path: string): boolean {
@@ -51,7 +44,7 @@ function isNixStorePath(path: string): boolean {
 }
 
 function cannotWriteRcTarget(target: string): boolean {
-  if (EnvFlagSchema.parse(process.env.TOKENMAXXING_SKIP_SHELL_RC) != null) return true;
+  if (envFlag("TOKENMAXXING_SKIP_SHELL_RC")) return true;
   if (isNixStorePath(target)) return true;
   if (!existsSync(target)) return false;
   try {
@@ -177,26 +170,21 @@ export function codexStopHookGroupIndex(): number | null {
   return idx >= 0 ? idx : null;
 }
 
+const CodexHookStateSchema = z.looseObject({
+  hooks: z.looseObject({ state: z.record(z.string(), z.looseObject({ trusted_hash: z.unknown().optional() })).optional() }).optional(),
+});
+
 export function codexStoreHookTrust(accountId: string): "trusted" | "untrusted" | "unknown" {
   const group = codexStopHookGroupIndex();
   if (group == null) return "unknown";
   const key = `${join(codexStoreDirFor(accountId), "hooks.json")}:stop:${group}:0`;
-  let text: string;
+  let config: z.infer<typeof CodexHookStateSchema>;
   try {
-    text = readFileSync(join(codexPaths.home, "config.toml"), "utf8");
+    config = CodexHookStateSchema.parse(Bun.TOML.parse(readFileSync(join(codexPaths.home, "config.toml"), "utf8")));
   } catch {
     return "unknown";
   }
-  let inBlock = false;
-  for (const line of text.split("\n")) {
-    const trimmed = line.trim();
-    if (trimmed.startsWith("[")) {
-      inBlock = trimmed.startsWith("[hooks.state.") && trimmed.includes(key);
-    } else if (inBlock && trimmed.startsWith("trusted_hash")) {
-      return "trusted";
-    }
-  }
-  return "untrusted";
+  return config.hooks?.state?.[key]?.trusted_hash !== undefined ? "trusted" : "untrusted";
 }
 
 export function codexSupervisorLink(): string {
@@ -375,8 +363,8 @@ function uninstallCheckTimer(live: boolean): TimerOutcome {
 }
 
 export function shellRcPath(): string | null {
-  const override = process.env.TOKENMAXXING_SHELL_RC;
-  if (override && override.length > 0) return override;
+  const override = optionalEnv("TOKENMAXXING_SHELL_RC");
+  if (override != null) return override;
   const shell = basename(process.env.SHELL ?? "");
   if (shell === "zsh") return join(process.env.ZDOTDIR || HOME, ".zshrc");
   if (shell === "bash") return join(HOME, ".bashrc");
@@ -417,12 +405,7 @@ export function ensurePathInRc(rc: string): "added" | "present" | "skipped" {
   return "added";
 }
 
-const ShellShadowerSchema = z.object({
-  kind: z.enum(["shadow", "bypass"]),
-  name: z.string(),
-  line: z.string(),
-});
-export type ShellShadower = z.infer<typeof ShellShadowerSchema>;
+export type ShellShadower = { kind: "shadow" | "bypass"; name: string; line: string };
 
 export function findClaudeShadowers(rcText: string): ShellShadower[] {
   const out: ShellShadower[] = [];
@@ -433,14 +416,14 @@ export function findClaudeShadowers(rcText: string): ShellShadower[] {
     const alias = line.match(/^alias\s+([A-Za-z0-9_-]+)=(.*)$/);
     if (alias) {
       if (alias[1] === "claude") {
-        out.push(ShellShadowerSchema.parse({ kind: "shadow", name: "claude", line }));
+        out.push({ kind: "shadow", name: "claude", line });
       } else if (absClaude.test(alias[2]!)) {
-        out.push(ShellShadowerSchema.parse({ kind: "bypass", name: alias[1]!, line }));
+        out.push({ kind: "bypass", name: alias[1]!, line });
       }
       continue;
     }
     if (/^(?:function\s+)?claude\s*\(\)/.test(line)) {
-      out.push(ShellShadowerSchema.parse({ kind: "shadow", name: "claude", line }));
+      out.push({ kind: "shadow", name: "claude", line });
     }
   }
   return out;
@@ -462,8 +445,7 @@ export function removePathFromRc(rc: string): boolean {
   return true;
 }
 
-const UninstallOutcomeSchema = z.object({ timer: z.enum(["removed", "skipped", "still-loaded"]), pathLineRemoved: z.boolean() });
-export type UninstallOutcome = z.infer<typeof UninstallOutcomeSchema>;
+export type UninstallOutcome = { timer: "removed" | "skipped" | "still-loaded"; pathLineRemoved: boolean };
 
 export function loginHome(): string {
   const cmd = process.platform === "darwin" ? ["id", "-P"] : ["getent", "passwd", String(process.getuid?.() ?? "")];

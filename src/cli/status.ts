@@ -1,5 +1,4 @@
 import { chunk, sortBy } from "es-toolkit";
-import { z } from "zod";
 import { claude } from "../lib/claude.ts";
 import { codex } from "../lib/codex.ts";
 import { grok } from "../lib/grok.ts";
@@ -10,53 +9,34 @@ import { codexPool, grokPool, opencodeGoPool } from "../lib/paths.ts";
 import { earliestReset, gatedWindows, isExhausted, isSessionWindow, limitWindows, liveUsed, nextWeeklyReset, sessionWindow, thresholdBars, weeklyWindow } from "../lib/picker.ts";
 import type { Provider, SampleReport } from "../lib/provider.ts";
 import { bar, c, count, emitJson, fmtAgo } from "./render.ts";
-import { ThresholdsSchema, type Account, type Config, type Window } from "../lib/types.ts";
+import type { Account, Config, Thresholds, Window } from "../lib/types.ts";
 
-const SampleReportSchema = z.discriminatedUnion("ok", [
-  z.object({ ok: z.literal(true), source: z.enum(["statusline", "probe", "cached"]) }),
-  z.object({ ok: z.literal(false), reason: z.string() }),
-]);
+type WindowReport = { usedPercentage: number; resetsAt: number | null; windowSeconds: number | null };
 
-const WindowReportSchema = z.object({
-  usedPercentage: z.number(),
-  resetsAt: z.number().nullable(),
-  windowSeconds: z.number().nullable(),
-});
-type WindowReport = z.infer<typeof WindowReportSchema>;
+type StatusAccount = {
+  label: string;
+  email: string | null;
+  id: string;
+  tier: string | null;
+  active: boolean;
+  sessions: number;
+  needsReauth: boolean;
+  exhausted: boolean;
+  usage: { fiveHour: WindowReport | null; week: WindowReport | null; limits: (WindowReport & { name: string })[] } | null;
+  usageAt: number | null;
+  limitsAt: number | null;
+  sample: SampleReport | { ok: true; source: "cached" };
+};
 
-const StatusAccountSchema = z.object({
-  label: z.string(),
-  email: z.string().nullable(),
-  id: z.string(),
-  tier: z.string().nullable(),
-  active: z.boolean(),
-  sessions: z.number(),
-  needsReauth: z.boolean(),
-  exhausted: z.boolean(),
-  usage: z
-    .object({
-      fiveHour: WindowReportSchema.nullable(),
-      week: WindowReportSchema.nullable(),
-      limits: z.array(WindowReportSchema.extend({ name: z.string() })),
-    })
-    .nullable(),
-  usageAt: z.number().nullable(),
-  limitsAt: z.number().nullable(),
-  sample: SampleReportSchema,
-});
-type StatusAccount = z.infer<typeof StatusAccountSchema>;
+type PoolReport = {
+  thresholds: Thresholds;
+  bars: Thresholds;
+  projectionMargin: number;
+  gatedNote: string | null;
+  accounts: StatusAccount[];
+};
 
-const PoolReportSchema = z.object({
-  thresholds: ThresholdsSchema,
-  bars: ThresholdsSchema,
-  projectionMargin: z.number(),
-  gatedNote: z.string().nullable(),
-  accounts: z.array(StatusAccountSchema),
-});
-type PoolReport = z.infer<typeof PoolReportSchema>;
-
-const StatusReportSchema = z.object({ now: z.number(), claude: PoolReportSchema, codex: PoolReportSchema, grok: PoolReportSchema, opencodeGo: PoolReportSchema });
-export type StatusReport = z.infer<typeof StatusReportSchema>;
+export type StatusReport = { now: number; claude: PoolReport; codex: PoolReport; grok: PoolReport; opencodeGo: PoolReport };
 
 function currentWindow(w: Window, now: number): WindowReport {
   const passed = w.resetsAt != null && w.resetsAt <= now;
@@ -104,23 +84,20 @@ function gatedNote(accounts: Account[], families: string[] | null, weeklyBar: nu
 async function collect(p: Provider, cfg: Config, now: number, cached: boolean): Promise<PoolReport> {
   let idx = loadAccounts(p.pool);
   let reports = new Map<string, SampleReport>();
-  let liveId: string | null = p.seats === "live" ? idx.activeId : null;
-  if (!cached) {
-    liveId = null;
-    if (idx.accounts.length > 0) {
-      await withLock(p.pool.lockFile, async () => {
-        idx = loadAccounts(p.pool);
-        console.error(c.dim(`sampling ${p.name} usage...`));
-        liveId = p.liveId();
-        reports = await p.samplePool(idx.accounts, liveId, now);
-        saveAccounts(p.pool, idx);
-      });
-    }
+  let liveId: string | null = null;
+  if (!cached && idx.accounts.length > 0) {
+    await withLock(p.pool.lockFile, async () => {
+      idx = loadAccounts(p.pool);
+      console.error(c.dim(`sampling ${p.name} usage...`));
+      liveId = p.liveId();
+      reports = await p.samplePool(idx.accounts, liveId, now);
+      saveAccounts(p.pool, idx);
+    });
   }
 
   const bars = thresholdBars(cfg);
   const present = p.presence();
-  const ctx = { now, thresholds: bars, currentId: idx.activeId, families: p.gatedFamilies(cfg), seats: null };
+  const ctx = { now, thresholds: bars, currentId: null, families: p.gatedFamilies(cfg), seats: null };
   const ordered = sortBy(idx.accounts, [(a) => (a.needsReauth ? 1 : 0), (a) => earliestReset(a, now)]);
   const accounts = ordered.map((a): StatusAccount => {
     const limits = limitWindows(a);

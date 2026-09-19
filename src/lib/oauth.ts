@@ -1,6 +1,7 @@
 import { http, safeErrorDetail } from "./http.ts";
 import { env } from "./paths.ts";
-import { JsonTextSchema, ProfileResponseSchema, TokenIdentitySchema, type OAuthCreds, type TokenIdentity } from "./types.ts";
+import { errorMessage } from "./log.ts";
+import { JsonTextSchema, ProfileResponseSchema, type OAuthCreds, type TokenIdentity } from "./types.ts";
 
 const PROFILE_URL = env("TOKENMAXXING_OAUTH_PROFILE_URL", "https://api.anthropic.com/api/oauth/profile");
 
@@ -41,23 +42,23 @@ export async function fetchTokenIdentity(accessToken: string, signal?: AbortSign
       signal,
     });
   } catch (e) {
-    throw new IdentityUnavailableError(null, e instanceof Error ? e.message : String(e));
+    throw new IdentityUnavailableError(null, errorMessage(e));
   }
   let text: string;
   try {
     text = await res.text();
   } catch (e) {
-    throw new IdentityUnavailableError(res.status, `profile response body unreadable: ${e instanceof Error ? e.message : String(e)}`);
+    throw new IdentityUnavailableError(res.status, `profile response body unreadable: ${errorMessage(e)}`);
   }
   if (!res.ok) throw new IdentityUnavailableError(res.status, safeErrorDetail({ text }));
   const parsed = ProfileResponseSchema.safeParse(JsonTextSchema.safeParse(text).data);
   if (!parsed.success) throw new IdentityUnavailableError(res.status, `profile endpoint returned an unrecognized body (${text.length} bytes, withheld)`);
-  return TokenIdentitySchema.parse({
+  return {
     accountUuid: parsed.data.account.uuid,
     email: parsed.data.account.email ?? null,
     organizationUuid: parsed.data.organization.uuid,
     organizationName: parsed.data.organization.name ?? null,
-  });
+  };
 }
 
 export function describeIdentity(id: TokenIdentity): string {

@@ -1,13 +1,12 @@
 import { closeSync, existsSync, fstatSync, openSync, readFileSync, rmSync, utimesSync } from "node:fs";
 import { isEqual } from "es-toolkit";
 import { z } from "zod";
-import { paths, realClaudeBinFromEnv, realCodexBinFromEnv, realGrokBinFromEnv, realOpencodeBinFromEnv, usageJsonFor, type PoolPaths } from "./paths.ts";
+import { optionalEnv, paths, usageJsonFor, type PoolPaths } from "./paths.ts";
 import { writeFileAtomic } from "./atomic.ts";
 import {
   AccountsIndexSchema,
   ConfigSchema,
   ErrnoSchema,
-  LastSwapSchema,
   UsageStateSchema,
   type Account,
   type AccountsIndex,
@@ -31,14 +30,10 @@ export function loadConfig(): Config {
     throw new Error(`${paths.configJson} is invalid (${fields}) - fix or remove the offending values`);
   }
   const cfg = parsed.data;
-  const envBin = realClaudeBinFromEnv();
-  if (envBin) cfg.claudeBin = envBin;
-  const envCodexBin = realCodexBinFromEnv();
-  if (envCodexBin) cfg.codexBin = envCodexBin;
-  const envGrokBin = realGrokBinFromEnv();
-  if (envGrokBin) cfg.grokBin = envGrokBin;
-  const envOpencodeBin = realOpencodeBinFromEnv();
-  if (envOpencodeBin) cfg.opencodeBin = envOpencodeBin;
+  cfg.claudeBin = optionalEnv("TOKENMAXXING_CLAUDE_BIN") ?? cfg.claudeBin;
+  cfg.codexBin = optionalEnv("TOKENMAXXING_CODEX_BIN") ?? cfg.codexBin;
+  cfg.grokBin = optionalEnv("TOKENMAXXING_GROK_BIN") ?? cfg.grokBin;
+  cfg.opencodeBin = optionalEnv("TOKENMAXXING_OPENCODE_BIN") ?? cfg.opencodeBin;
   return cfg;
 }
 
@@ -51,7 +46,7 @@ export function pinBinOverride(input: { key: "claudeBin" | "codexBin" | "grokBin
   writeFileAtomic(paths.configJson, JSON.stringify(raw, null, 2) + "\n");
 }
 
-const emptyIndex = (): AccountsIndex => ({ version: 2, activeId: null, accounts: [] });
+const emptyIndex = (): AccountsIndex => ({ version: 2, accounts: [] });
 
 export function loadAccounts(pool: PoolPaths): AccountsIndex {
   if (!existsSync(pool.accountsJson)) return emptyIndex();
@@ -126,24 +121,6 @@ export function loadUsageSnapshot(accountId: string): UsageSnapshot | null {
 export function clearUsageSnapshot(accountId: string): void {
   rmSync(usageJsonFor(accountId), { force: true });
 }
-
-export function loadLastSwapAt(pool: PoolPaths): number | null {
-  if (pool.lastSwapJson == null || !existsSync(pool.lastSwapJson)) return null;
-  let json: unknown;
-  try {
-    json = JSON.parse(readFileSync(pool.lastSwapJson, "utf8"));
-  } catch {
-    throw new Error(`${pool.lastSwapJson} is corrupt (unparsable JSON) - refusing to treat a damaged swap clock as never-swapped; repair or remove the file`);
-  }
-  return LastSwapSchema.parse(json).ts;
-}
-
-export function saveLastSwapAt(pool: PoolPaths, ts: number): void {
-  if (pool.lastSwapJson == null) throw new Error("this pool keeps no swap clock");
-  writeFileAtomic(pool.lastSwapJson, JSON.stringify(LastSwapSchema.parse({ ts })));
-}
-
-export const POST_SWAP_COOLDOWN_MS = 45_000;
 
 const USAGE_TS_REFRESH_MS = 10 * 60_000;
 const SAMPLED_AT_REFRESH_MS = 30_000;
