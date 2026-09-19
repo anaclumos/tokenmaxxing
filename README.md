@@ -142,7 +142,7 @@ A Cursor Cloud Agent can hand substantial work to Claude Code running on your ow
 - **One shared identity file.** `~/.claude.json` holds one `oauthAccount` that Claude Code rewrites after whichever session refreshed last, so `/status` can show another session's email; the statusline's `◆` marks the account a session actually uses.
 - **Keychain (macOS).** The first keychain access for a new store happens inside the interactive `init`, `add`, or `auth` run, where a prompt can be answered, not inside a headless hook.
 - **Plaintext credentials (Linux).** Claude Code itself stores Linux credentials as a 0600 plaintext file; a store follows the same model.
-- **Status-only pools carry no usage.** grok and opencode-go accounts render with no bars and never move.
+- **Status-only pools do not switch.** grok `status` shows the weekly subscription credit window; opencode-go accounts still render with no bars. Neither pool moves.
 
 ## How it's built
 

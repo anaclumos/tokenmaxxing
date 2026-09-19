@@ -3,7 +3,7 @@ title: Status-only pools
 description: grok and opencode-go accounts, pooled for inventory with no supervisor and no switching
 ---
 
-Two more pools share the account commands, the state layout, and the `status` view with the Claude and Codex pools, and nothing else: no supervisor shim, no hooks, no statusline tee, no presence, no usage source, and no switching. They keep an inventory of accounts and the credential each one holds.
+Two more pools share the account commands, the state layout, and the `status` view with the Claude and Codex pools, and nothing else: no supervisor shim, no hooks, no statusline tee, no presence, and no switching. They keep an inventory of accounts and the credential each one holds. grok `status` also reads the subscription credit window; opencode-go still has no usage source.
 
 ```sh
 tokenmaxxing init --grok          # pool the first grok login (status-only)
@@ -17,13 +17,15 @@ tokenmaxxing init --opencode-go   # pool the first opencode-go key (status-only)
 
 An account is a grok CLI login. `init --grok` imports the first entry of `~/.grok/auth.json` (`GROK_HOME` is honored) and points at `add --grok` for the rest; with no live login it runs `grok login` in a throwaway `GROK_HOME` under the state directory. `add --grok` and `auth --grok` always use the isolated login. Identity is the entry's user id, the label defaults to the email in the entry, and the harvested entry is written verbatim to `grok-stores/<uuid8>/auth.json` at mode 0600.
 
+Usage is the weekly subscription credit window from `GET https://cli-chat-proxy.grok.com/v1/billing?format=credits` (`creditUsagePercent`, classified by the period's duration). `TOKENMAXXING_GROK_USAGE_URL` overrides that URL for hermetic runs. The dollar billing body (`GET /v1/billing` without `format=credits`) is not quota: subscription accounts report `monthlyLimit` 0 there while credits remain, and a parser that treats that body as usage reports the account depleted. tokenmaxxing does not refresh grok tokens; a stored access token that has expired is retried against the live `GROK_HOME` login when that login is the same account, and a failed read leaves the account unmeasured rather than exhausted.
+
 ## opencode-go
 
 An account is an opencode Zen API key for the `opencode-go` provider. `init --opencode-go` imports the key from opencode's auth file (`$XDG_DATA_HOME/opencode/auth.json`, `~/.local/share/opencode/auth.json` by default) when it holds an `opencode-go` entry of type `api`; otherwise, and for `add` and `auth`, it runs `opencode providers login -p opencode-go` in a throwaway data home and you paste the key from opencode.ai/zen when opencode asks. Identity is a hash of the key, so the account has no email and its tier reads `go`. The key is written to `opencode-go-stores/<uuid8>/auth.json` at mode 0600. Pool one opencode-go key per host for now: every opencode-go account id shares its first eight characters, so a second key lands in the same store directory and overwrites the first ([issue #144](https://github.com/anaclumos/tokenmaxxing/issues/144)); `add --opencode-go` exists but is not safe to use until that lands.
 
 ## What status shows
 
-`status` renders the two pools after Claude and Codex, each headed `<pool>  (N accounts, status-only)` and skipped when empty. An account renders as `○ <label>` with no usage bars, because neither product exposes a quota signal. The live sample is a store check, not a network read: `status` shows `sampling grok usage...` on a terminal while the check runs, erases it, then reports `live sample failed` when the store no longer holds a credential that matches the account (run `auth` with the pool flag); `status --cached` skips the check and notes `never sampled`. `status --json` always carries both pools under `grok` and `opencodeGo`, with the same pool shape as the others: `usage`, `usageAt`, and `limitsAt` are `null`, `sessions` is 0, and `exhausted` is `false`.
+`status` renders the two pools after Claude and Codex, each headed `<pool>  (N accounts, status-only)` and skipped when empty. A grok account renders the weekly credit bar from the credits billing read. An opencode-go account renders as `○ <label>` with no usage bars, because that product exposes no quota signal. The grok live sample is the credits GET (and a live-login retry when the stored access token is expired); opencode-go still only checks the store. `status` shows `sampling grok usage...` on a terminal while the check runs, erases it, then reports `live sample failed` when the read fails (run `auth` with the pool flag when the store has no usable credential); `status --cached` skips the check and notes `never sampled` when nothing is stored. `status --json` always carries both pools under `grok` and `opencodeGo`, with the same pool shape as the others. grok `usage` is the weekly credit window when a sample has landed; opencode-go `usage`, `usageAt`, and `limitsAt` stay `null`. `sessions` is 0 for both. `exhausted` follows the same bars as the other pools when grok has a stored window, and is `false` when the account is unmeasured.
 
 ## State
 
