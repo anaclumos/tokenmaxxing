@@ -1,7 +1,8 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
-import { paths } from "./paths.ts";
+import { errorMessage, log } from "./log.ts";
+import { codexPaths, paths } from "./paths.ts";
 import { writeFileAtomic } from "./atomic.ts";
 import type { RespawnMarkerSchema } from "./types.ts";
 
@@ -9,12 +10,14 @@ const SessionSchema = z.object({ flags: z.array(z.string()), cwd: z.string() });
 
 const SESSION_RETENTION_MS = 30 * 24 * 3600 * 1000;
 
+const sessionsDir = (): string => join(paths.home, "sessions");
+
 function sessionFile(sid: string): string {
-  return join(paths.home, "sessions", `${sid}.json`);
+  return join(sessionsDir(), `${sid}.json`);
 }
 
 export function saveSessionFlags(sid: string, flags: string[], cwd: string): void {
-  mkdirSync(join(paths.home, "sessions"), { recursive: true });
+  mkdirSync(sessionsDir(), { recursive: true });
   writeFileAtomic(sessionFile(sid), JSON.stringify({ flags, cwd }));
 }
 
@@ -42,27 +45,40 @@ const DEAD_STATE_ENTRIES = [
 const TMP_MARKER = ".tmp.";
 const TMP_GRACE_MS = 3600 * 1000;
 
+const tmpSweepDirs = (): string[] => [
+  paths.home,
+  paths.usageDir,
+  paths.presenceDir,
+  paths.respawnDir,
+  sessionsDir(),
+  codexPaths.presenceDir,
+  codexPaths.respawnDir,
+];
+
 function pruneDeadState(now: number): void {
   for (const name of DEAD_STATE_ENTRIES) {
     try {
       rmSync(join(paths.home, name), { recursive: true, force: true });
-    } catch {
+    } catch (e) {
+      log("state.dead_entry_failed", { name, err: errorMessage(e) });
     }
   }
-  if (!existsSync(paths.home)) return;
-  for (const f of readdirSync(paths.home)) {
-    if (!f.includes(TMP_MARKER)) continue;
-    const p = join(paths.home, f);
-    try {
-      if (now - statSync(p).mtimeMs > TMP_GRACE_MS) rmSync(p, { force: true });
-    } catch {
+  for (const dir of tmpSweepDirs()) {
+    if (!existsSync(dir)) continue;
+    for (const f of readdirSync(dir)) {
+      if (!f.includes(TMP_MARKER)) continue;
+      const p = join(dir, f);
+      try {
+        if (now - statSync(p).mtimeMs > TMP_GRACE_MS) rmSync(p, { force: true });
+      } catch {
+      }
     }
   }
 }
 
 export function pruneStaleSessions(now: number): void {
   pruneDeadState(now);
-  const dir = join(paths.home, "sessions");
+  const dir = sessionsDir();
   if (!existsSync(dir)) return;
   for (const f of readdirSync(dir)) {
     const p = join(dir, f);
