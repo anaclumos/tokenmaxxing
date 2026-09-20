@@ -21,6 +21,7 @@ import { cmdRm } from "./cli/rm.ts";
 import { cmdRename } from "./cli/rename.ts";
 import { cmdCheck } from "./cli/check.ts";
 import { cmdConfig } from "./cli/config.ts";
+import { cmdSeat } from "./cli/seat.ts";
 import { cmdSetupToken } from "./cli/setuptoken.ts";
 import { cmdCloudRun } from "./cli/cloudrun.ts";
 import { cmdCursorInit } from "./cli/cursorinit.ts";
@@ -36,7 +37,7 @@ const CODEX_FLAG = "--codex";
 const GROK_FLAG = "--grok";
 const OPENCODE_GO_FLAG = "--opencode-go";
 const JSON_COMMANDS = new Set(["status", "config", "check"]);
-const CODEX_COMMANDS = new Set(["init", "add", "auth", "rm", "rename"]);
+const CODEX_COMMANDS = new Set(["init", "add", "auth", "rm", "rename", "seat"]);
 const STATUS_ONLY_COMMANDS = new Set(["init", "add", "auth", "rm", "rename"]);
 
 function printHelp(): void {
@@ -56,6 +57,7 @@ function printHelp(): void {
   ${c.cyan("tokenmaxxing doctor")}     verify the install is intact
   ${c.cyan("tokenmaxxing rename")} [--codex | --grok | --opencode-go] <sel> <label>
   ${c.cyan("tokenmaxxing rm")} [--codex | --grok | --opencode-go] <sel>
+  ${c.cyan("tokenmaxxing seat --codex")} <pid>  borrow one pooled codex account for an unattended consumer (plugin, script): prints the CODEX_HOME to set, reserved until <pid> exits; exit 1 = none usable, fall back to the ambient login
   ${c.cyan("tokenmaxxing uninstall")} [--yes]  print the targets, then remove supervisor + settings entries (refused without ${c.cyan("--yes")} when HOME is the login home)
   ${c.cyan("tokenmaxxing setup-token")} [--print | rm <label|uuid>]  Cursor Cloud only: mint one \`claude setup-token\` per pooled account (browser sign-in each) and print the TOKENMAXXING_TOKENS secret value; ${c.cyan("--print")} prints the stored set, ${c.cyan("rm")} drops one
   ${c.cyan("tokenmaxxing cursor init")} [dir]  write the Claude relay subagent (.cursor/agents/claude.md) and .cursor/environment.json into a repo
@@ -151,6 +153,13 @@ async function main(): Promise<number> {
     case "doctor": return cmdDoctor();
     case "rm": return cmdRm(provider, args[1]);
     case "rename": return cmdRename(provider, args.slice(1));
+    case "seat": {
+      if (provider !== codex) {
+        emitError({ message: `seat borrows a pooled codex account - pass ${CODEX_FLAG} (usage: tokenmaxxing seat ${CODEX_FLAG} <pid>)` });
+        return 2;
+      }
+      return cmdSeat(args[1], args.slice(2));
+    }
     case "setup-token": return cmdSetupToken(args.slice(1));
     case "cursor": {
       if (args[1] === "init") return cmdCursorInit(args.slice(2));
