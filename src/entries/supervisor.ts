@@ -330,16 +330,36 @@ class StdinRelay {
   }
 }
 
+function persistedStreamOutput(info: Analysis): boolean {
+  try {
+    const sid = info.resumeId ?? info.sessionId ?? (info.continueLatest ? latestSessionForCwd() : null);
+    if (sid == null) return false;
+    const persisted = loadSessionFlags(sid);
+    return persisted != null && analyzeArgs(persisted).streamOutput;
+  } catch {
+    return false;
+  }
+}
+
 export async function runSupervisor(argv: string[]): Promise<number> {
   const info = analyzeArgs(argv);
+  const earlyStream = info.streamOutput || persistedStreamOutput(info);
+  const earlySid = info.sessionId ?? info.resumeId ?? crypto.randomUUID();
   if (loopGuardTripped("claude")) {
-    if (info.streamOutput) {
-      const sid = info.sessionId ?? info.resumeId ?? crypto.randomUUID();
-      process.stdout.write(systemLine(sid, "tokenmaxxing: wrapper re-entered without reaching the real Claude. Fix claudeBin, then run tokenmaxxing doctor."));
+    if (earlyStream) {
+      process.stdout.write(systemLine(earlySid, "tokenmaxxing: wrapper re-entered without reaching the real Claude. Fix claudeBin, then run tokenmaxxing doctor."));
     }
     return 1;
   }
-  const real = resolveRealClaude();
+  let real: string;
+  try {
+    real = resolveRealClaude();
+  } catch (e) {
+    if (!earlyStream) throw e;
+    process.stdout.write(systemLine(earlySid, `tokenmaxxing: ${errorMessage(e)}`));
+    log("supervisor.resolve_failed", { err: errorMessage(e) });
+    return 1;
+  }
   const childEnv = { ...process.env, [WRAP_DEPTH_ENV]: String(wrapDepth() + 1) };
 
   let child: Subprocess | null = null;
