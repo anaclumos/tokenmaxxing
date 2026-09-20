@@ -58,7 +58,7 @@ function listDir(dir: string): string[] {
 }
 
 function tmpSweepDirs(): string[] {
-  const dirs = [paths.home, paths.usageDir, paths.presenceDir, paths.respawnDir, sessionsDir(), codexPaths.presenceDir, codexPaths.respawnDir];
+  const dirs = [paths.home, paths.usageDir, paths.presenceDir, paths.respawnDir, sessionsDir(), paths.binDir, paths.cloudDir, codexPaths.presenceDir, codexPaths.respawnDir];
   for (const parent of STORE_PARENTS) {
     for (const child of listDir(parent)) dirs.push(join(parent, child));
   }

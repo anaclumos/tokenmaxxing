@@ -29,6 +29,7 @@ export const paths = {
   storesDir: join(TM_HOME, "stores"),
   setupTokensJson: join(TM_HOME, "setup-tokens.json"),
   setupTokenDir: join(TM_HOME, "setup-token"),
+  cloudDir: join(TM_HOME, "cloud"),
   cloudSessionsJson: join(TM_HOME, "cloud", "sessions.json"),
   cloudWalledJson: join(TM_HOME, "cloud", "walled.json"),
   cloudLockFile: join(TM_HOME, "cloud", "lock"),
