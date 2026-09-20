@@ -2,7 +2,7 @@ import { z } from "zod";
 import { claude } from "../lib/claude.ts";
 import { evaluateAndMaybeSwap } from "../lib/decide.ts";
 import { readStdin } from "../lib/proc.ts";
-import { supervisedSession, writeRespawnMarker } from "../lib/sessions.ts";
+import { adoptLiveSession, supervisedSession, writeRespawnMarker } from "../lib/sessions.ts";
 import { loadConfig } from "../lib/state.ts";
 import { classifyEnforcedLimit, findEnforcedRow, parseErrorBody, readTranscriptTail, type TranscriptRow } from "../lib/usage.ts";
 import { paths } from "../lib/paths.ts";
@@ -42,9 +42,10 @@ export async function runStopFailureHook(): Promise<number> {
   const mainLoop = stdin.agent_id === undefined;
 
   try {
-    const session = supervisedSession();
-    if (stdinSid != null && session != null && stdinSid !== session.live) {
-      log("stopfailure.nested_session", { stdin: stdinSid.slice(0, 8), supervised: session.live.slice(0, 8) });
+    const supervised = supervisedSession();
+    const session = supervised == null ? null : adoptLiveSession(supervised, stdinSid);
+    if (supervised != null && session == null) {
+      log("stopfailure.nested_session", { stdin: stdinSid?.slice(0, 8), supervised: supervised.live.slice(0, 8) });
       return 0;
     }
     const canRespawn = session != null && mainLoop;

@@ -4,6 +4,8 @@ import { z } from "zod";
 import { errorMessage, log } from "./log.ts";
 import { codexPaths, grokPaths, opencodeGoPaths, paths } from "./paths.ts";
 import { writeFileAtomic } from "./atomic.ts";
+import { presencePid } from "./presence.ts";
+import { spawnedThroughShellsBy } from "./proc.ts";
 import type { RespawnMarkerSchema } from "./types.ts";
 
 const SessionSchema = z.object({ flags: z.array(z.string()), cwd: z.string(), current: z.uuid().optional() });
@@ -35,7 +37,7 @@ export function liveSessionId(sid: string): string {
   return loadSession(sid)?.current ?? sid;
 }
 
-export function recordClearedSession(sid: string, current: string): void {
+function recordLiveSession(sid: string, current: string): void {
   const session = loadSession(sid);
   if (session == null) throw new Error(`no session record for ${sid} under ${sessionsDir()}`);
   writeFileAtomic(sessionFile(sid), JSON.stringify({ ...session, current }));
@@ -130,6 +132,15 @@ export function supervisedSession(env: Record<string, string | undefined> = proc
   const sid = env.TOKENMAXXING_SESSION_ID;
   if (sid == null || sid === "") return null;
   return { sid, launchedAt: LaunchedAtSchema.parse(env.TOKENMAXXING_LAUNCHED_AT) ?? null, live: liveSessionId(sid) };
+}
+
+export function adoptLiveSession(session: SupervisedSession, stdinSid: string | undefined): SupervisedSession | null {
+  if (stdinSid == null || stdinSid === session.live) return session;
+  const child = presencePid({ dir: paths.presenceDir, id: session.sid });
+  if (child == null || !spawnedThroughShellsBy(child)) return null;
+  recordLiveSession(session.sid, stdinSid);
+  log("session.live_id", { from: session.live.slice(0, 8), to: stdinSid.slice(0, 8), session: session.sid.slice(0, 8) });
+  return { ...session, live: stdinSid };
 }
 
 export function writeRespawnMarker(input: { session: SupervisedSession; accountId: string; waitUntil: number; compact: boolean }): void {

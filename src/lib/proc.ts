@@ -1,4 +1,29 @@
+import { basename } from "node:path";
 import { ErrnoSchema } from "./types.ts";
+
+const SHELLS = new Set(["sh", "bash", "dash", "zsh", "ksh", "fish"]);
+const MAX_SHELL_HOPS = 4;
+
+function parentAndName(pid: number): { ppid: number; comm: string } | null {
+  const res = Bun.spawnSync(["ps", "-p", String(pid), "-o", "ppid=", "-o", "comm="], { env: { ...process.env, LC_ALL: "C" } });
+  if (res.exitCode !== 0) return null;
+  const row = res.stdout.toString().trim();
+  const cut = row.indexOf(" ");
+  if (cut === -1) return null;
+  const ppid = Number(row.slice(0, cut));
+  return Number.isInteger(ppid) ? { ppid, comm: row.slice(cut).trim() } : null;
+}
+
+export function spawnedThroughShellsBy(ancestor: number): boolean {
+  let cur = process.ppid;
+  for (let hop = 0; hop <= MAX_SHELL_HOPS; hop++) {
+    if (cur === ancestor) return true;
+    const proc = parentAndName(cur);
+    if (proc == null || !SHELLS.has(basename(proc.comm))) return false;
+    cur = proc.ppid;
+  }
+  return false;
+}
 
 export function pidStartTime(pid: number): string | null {
   const res = Bun.spawnSync(["ps", "-p", String(pid), "-o", "lstart="], { env: { ...process.env, LC_ALL: "C" } });

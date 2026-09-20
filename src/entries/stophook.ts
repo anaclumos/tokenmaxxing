@@ -2,7 +2,7 @@ import { z } from "zod";
 import { claude } from "../lib/claude.ts";
 import { evaluateAndMaybeSwap } from "../lib/decide.ts";
 import { readStdin } from "../lib/proc.ts";
-import { recordClearedSession, supervisedSession, writeRespawnMarker } from "../lib/sessions.ts";
+import { adoptLiveSession, supervisedSession, writeRespawnMarker } from "../lib/sessions.ts";
 import { JsonTextSchema } from "../lib/types.ts";
 import { errorMessage, log } from "../lib/log.ts";
 
@@ -18,15 +18,11 @@ export async function runBoundaryHook(event: "stop" | "sessionstart"): Promise<n
   const stdin = parsed.success ? parsed.data : {};
 
   try {
-    let session = supervisedSession();
-    if (session != null && stdin.session_id != null && stdin.session_id !== session.live) {
-      if (event !== "sessionstart" || stdin.source !== "clear") {
-        log(`${event}.nested_session`, { stdin: stdin.session_id.slice(0, 8), supervised: session.live.slice(0, 8) });
-        return 0;
-      }
-      recordClearedSession(session.sid, stdin.session_id);
-      log("sessionstart.cleared", { from: session.live.slice(0, 8), to: stdin.session_id.slice(0, 8), session: session.sid.slice(0, 8) });
-      session = { ...session, live: stdin.session_id };
+    const supervised = supervisedSession();
+    const session = supervised == null ? null : adoptLiveSession(supervised, stdin.session_id);
+    if (supervised != null && session == null) {
+      log(`${event}.nested_session`, { stdin: stdin.session_id?.slice(0, 8), supervised: supervised.live.slice(0, 8), source: stdin.source });
+      return 0;
     }
     const decision = await evaluateAndMaybeSwap(claude, Date.now(), session != null);
     if (session && decision.account && (decision.swapped || decision.waitUntil !== undefined)) {
