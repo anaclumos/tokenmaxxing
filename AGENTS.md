@@ -90,6 +90,7 @@ Source-verified against rust-v0.144.5 (2026-07-16); the installed CLI is 0.145.0
 - Classify windows by DURATION, never by position. Current plans may have no 5h window at all.
 - Codex silently skips untrusted hooks until the user runs `/hooks`, so auto-switching never engages until they do. Never clobber the user's `notify` key in `config.toml`; nothing in code guards it.
 - `~/.codex/hooks.json` is not the only hook config source: a plugin manifest can point at its own via a `hooks` path key (verified in the 0.145.0 binary). tokenmaxxing only ever writes hooks.json, so check for other sources before assuming precedence.
+- `tokenmaxxing seat --codex <pid>` is the one supported borrow for unattended consumers (plugins, SDK scripts): under the pool lock it picks a usable non-present account, writes `codex-live/seat-<pid>`, and prints the store for the consumer to pass as `CODEX_HOME`. Presence keyed to the consumer's pid self-reaps when it exits. Pointing a consumer at `codex-stores/` directly skips the lock and presence and can kill a grant family; never do it and never recommend it.
 - Codex Stop stdin carries `session_id`, `turn_id`, `transcript_path`, `stop_hook_active`, and `last_assistant_message` (all verified in the 0.145.0 binary), but no error signal, so the reverted text-sniffing failsafe below applies here too. `CodexStopStdinSchema` is a loose object declaring only `session_id` and `hook_event_name`, so it silently swallows the rest.
 
 ## Release and CI
