@@ -1,11 +1,19 @@
-import { ensureCodexStoreHome } from "../lib/codexauth.ts";
+import { ensureCodexStoreHome, readCodexStoreAuth } from "../lib/codexauth.ts";
 import { withLock } from "../lib/lock.ts";
 import { log } from "../lib/log.ts";
 import { codexPaths, codexPool } from "../lib/paths.ts";
-import { seatCounts, writePresence } from "../lib/presence.ts";
+import { livingPresences, writePresence } from "../lib/presence.ts";
 import { isExhausted, pickBest, thresholdBars, type PickCtx } from "../lib/picker.ts";
 import { loadAccounts, loadConfig } from "../lib/state.ts";
 import { emitError } from "./render.ts";
+
+function storeUsable(accountId: string): boolean {
+  try {
+    return readCodexStoreAuth(accountId) != null;
+  } catch {
+    return false;
+  }
+}
 
 export async function cmdSeat(pidRaw: string | undefined, extra: string[]): Promise<number> {
   const pid = Number(pidRaw);
@@ -16,21 +24,31 @@ export async function cmdSeat(pidRaw: string | undefined, extra: string[]): Prom
   const now = Date.now();
   const granted = await withLock(codexPool.lockFile, () => {
     const ctx: PickCtx = { now, thresholds: thresholdBars(loadConfig()), currentId: null, families: null, seats: null };
-    const present = seatCounts(codexPaths.presenceDir);
-    const usable = loadAccounts(codexPool).accounts.filter(
-      (a) => a.needsReauth !== true && !isExhausted(a, ctx) && !present.has(a.id)
+    const idx = loadAccounts(codexPool);
+    const living = livingPresences(codexPaths.presenceDir);
+    const held = living.find((p) => p.id === `seat-${pid}`);
+    if (held) {
+      const a = idx.accounts.find((x) => x.id === held.accountId);
+      if (a && a.needsReauth !== true && !isExhausted(a, ctx)) {
+        return { store: ensureCodexStoreHome(a.id), id: a.id, reused: true };
+      }
+    }
+    const present = new Map<string, number>();
+    for (const p of living) present.set(p.accountId, (present.get(p.accountId) ?? 0) + 1);
+    const usable = idx.accounts.filter(
+      (a) => a.needsReauth !== true && !isExhausted(a, ctx) && !present.has(a.id) && storeUsable(a.id)
     );
     const picked = pickBest(usable, ctx);
     if (!picked) return null;
     const store = ensureCodexStoreHome(picked.id);
     writePresence({ dir: codexPaths.presenceDir, id: `seat-${pid}`, accountId: picked.id, pid });
-    return { store, id: picked.id };
+    return { store, id: picked.id, reused: false };
   });
   if (!granted) {
     emitError({ message: "no usable codex account (pool empty, every account live in another session, or every account at a limit) - use the ambient codex login" });
     return 1;
   }
-  log("seat.grant", { account: granted.id.slice(0, 8), pid });
+  log("seat.grant", { account: granted.id.slice(0, 8), pid, reused: granted.reused });
   console.log(granted.store);
   return 0;
 }
