@@ -1,7 +1,5 @@
 import { closeSync, fstatSync, openSync, readSync } from "node:fs";
-import { delay } from "es-toolkit";
 import { z } from "zod";
-import { MAX_WRAP_DEPTH, WRAP_DEPTH_ENV, resolveRealClaude } from "./claudebin.ts";
 import { http } from "./http.ts";
 import { errorMessage, log } from "./log.ts";
 import { env } from "./paths.ts";
@@ -177,38 +175,10 @@ export const CRED_ENV_OVERRIDES = [
   "CLAUDE_CODE_USE_VERTEX",
 ] as const;
 
-const PROBE_KILL_MS = 60_000;
-const PIPE_GRACE_MS = 2_000;
-
 export function scrubCredentialEnv(env: Record<string, string>): Record<string, string> {
   const scrubbed = { ...env };
   for (const k of CRED_ENV_OVERRIDES) delete scrubbed[k];
   return scrubbed;
-}
-
-export type ProbeTarget = { configDir: string; store: string };
-
-export async function refreshViaProbe(target: ProbeTarget): Promise<boolean> {
-  const env = scrubCredentialEnv({ ...process.env, TOKENMAXXING_PROBE: "1", [WRAP_DEPTH_ENV]: String(MAX_WRAP_DEPTH) });
-  env.CLAUDE_CONFIG_DIR = target.configDir;
-  env.CLAUDE_SECURESTORAGE_CONFIG_DIR = target.store;
-  try {
-    const p = Bun.spawn([resolveRealClaude(), "-p", "/usage", "--output-format", "json"], { env, stdout: "ignore", stderr: "pipe", timeout: PROBE_KILL_MS, killSignal: "SIGKILL" });
-    const stderr = await Promise.race([new Response(p.stderr).text(), p.exited.then(() => delay(PIPE_GRACE_MS)).then(() => null)]);
-    await p.exited;
-    if (stderr === null) {
-      log("usage.probe_failed", { err: "output pipes still open after child exit (leaked descendant)" });
-      return false;
-    }
-    if (p.exitCode !== 0) {
-      log("usage.probe_failed", { exit: p.exitCode ?? "signal", stderr: stderr.trim().slice(0, 200) });
-      return false;
-    }
-    return true;
-  } catch (e) {
-    log("usage.probe_failed", { err: errorMessage(e) });
-    return false;
-  }
 }
 
 const USAGE_URL = env("TOKENMAXXING_OAUTH_USAGE_URL", "https://api.anthropic.com/api/oauth/usage");

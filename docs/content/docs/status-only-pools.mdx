@@ -21,7 +21,7 @@ Usage is the weekly subscription credit window from `GET https://cli-chat-proxy.
 
 ## opencode-go
 
-An account is an opencode Zen API key for the `opencode-go` provider. `init --opencode-go` imports the key from opencode's auth file (`$XDG_DATA_HOME/opencode/auth.json`, `~/.local/share/opencode/auth.json` by default) when it holds an `opencode-go` entry of type `api`; otherwise, and for `add` and `auth`, it runs `opencode providers login -p opencode-go` in a throwaway data home and you paste the key from opencode.ai/zen when opencode asks. Identity is a hash of the key, so the account has no email and its tier reads `go`. The key is written to `opencode-go-stores/<uuid8>/auth.json` at mode 0600. Pool one opencode-go key per host for now: every opencode-go account id shares its first eight characters, so a second key lands in the same store directory and overwrites the first ([issue #144](https://github.com/anaclumos/tokenmaxxing/issues/144)); `add --opencode-go` exists but is not safe to use until that lands.
+An account is an opencode Zen API key for the `opencode-go` provider. `init --opencode-go` imports the key from opencode's auth file (`$XDG_DATA_HOME/opencode/auth.json`, `~/.local/share/opencode/auth.json` by default) when it holds an `opencode-go` entry of type `api`; otherwise, and for `add` and `auth`, it runs `opencode providers login -p opencode-go` in a throwaway data home and you paste the key from opencode.ai/zen when opencode asks. Identity is a hash of the key, so the account has no email and its tier reads `go`. The key is written to `opencode-go-stores/<uuid8>/auth.json` at mode 0600. Each key gets its own store directory, named from the first eight characters of that hash. Keys pooled before that change keep the old `opencode-go-<hex>` id and report no usable credential: remove and add them again.
 
 ## What status shows
 
@@ -33,5 +33,5 @@ An account is an opencode Zen API key for the `opencode-go` provider. `init --op
 |---|---|
 | `grok-accounts.json`, `opencode-go-accounts.json` | The pool indexes, the same schema as `accounts.json`; neither names an active account |
 | `grok-lock`, `opencode-go-lock` | The `flock` files that serialize each pool's commands |
-| `grok-stores/<uuid8>/auth.json`, `opencode-go-stores/<uuid8>/auth.json` | One 0600 store per account (for opencode-go, one per host until issue #144 lands) |
+| `grok-stores/<uuid8>/auth.json`, `opencode-go-stores/<uuid8>/auth.json` | One 0600 store per account |
 | `grok-onboard/`, `opencode-go-onboard/` | Throwaway login homes, wiped before and after each isolated login |

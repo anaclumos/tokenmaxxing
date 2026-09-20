@@ -24,7 +24,19 @@ export function loadSessionFlags(sid: string): string[] | null {
   return SessionSchema.parse(JSON.parse(readFileSync(f, "utf8"))).flags;
 }
 
+const DEAD_STATE_FILES = ["model-usage.json", "accounts.json.v1-backup", "codex-accounts.json.v1-backup"];
+
+function pruneDeadState(): void {
+  for (const name of DEAD_STATE_FILES) {
+    try {
+      rmSync(join(paths.home, name), { force: true });
+    } catch {
+    }
+  }
+}
+
 export function pruneStaleSessions(now: number): void {
+  pruneDeadState();
   const dir = join(paths.home, "sessions");
   if (!existsSync(dir)) return;
   for (const f of readdirSync(dir)) {

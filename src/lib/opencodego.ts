@@ -23,7 +23,7 @@ function liveAuthPath(): string {
 function idOfKey(key: string): string {
   const h = new Bun.CryptoHasher("sha256");
   h.update(`opencode-go:${key}`);
-  return `opencode-go-${h.digest("hex")}`;
+  return h.digest("hex");
 }
 
 function harvestOf(key: string): Harvest {
