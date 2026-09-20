@@ -331,7 +331,7 @@ class StdinRelay {
 }
 
 function bareResumeStream(info: Analysis, argv: string[], sid: string | null): boolean {
-  if (info.sessionId != null || stripSessionFlags(argv).length !== 0 || sid == null) return false;
+  if (!info.manage || process.env[UNMANAGED_ENV] || info.sessionId != null || stripSessionFlags(argv).length !== 0 || sid == null) return false;
   try {
     const persisted = loadSessionFlags(sid);
     return persisted != null && analyzeArgs(persisted).streamOutput;
