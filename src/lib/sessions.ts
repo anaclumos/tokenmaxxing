@@ -1,5 +1,5 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, type Dirent } from "node:fs";
-import { join } from "node:path";
+import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, type Dirent } from "node:fs";
+import { join, sep } from "node:path";
 import { z } from "zod";
 import { errorMessage, log } from "./log.ts";
 import { codexPaths, grokPaths, opencodeGoPaths, paths } from "./paths.ts";
@@ -47,9 +47,11 @@ const TMP_GRACE_MS = 3600 * 1000;
 
 const STORE_PARENTS = [paths.storesDir, codexPaths.storesDir, grokPaths.storesDir, opencodeGoPaths.storesDir];
 
-function listDir(dir: string): Dirent[] {
+function listDir(dir: string, root: string): Dirent[] {
   if (!existsSync(dir)) return [];
   try {
+    const resolved = realpathSync(dir);
+    if (resolved !== root && !resolved.startsWith(root + sep)) return [];
     return readdirSync(dir, { withFileTypes: true });
   } catch (e) {
     log("state.sweep_unreadable", { dir, err: errorMessage(e) });
@@ -57,17 +59,17 @@ function listDir(dir: string): Dirent[] {
   }
 }
 
-function tmpSweepDirs(): string[] {
+function tmpSweepDirs(root: string): string[] {
   const dirs = [paths.home, paths.usageDir, paths.presenceDir, paths.respawnDir, sessionsDir(), paths.binDir, paths.cloudDir, codexPaths.presenceDir, codexPaths.respawnDir, codexPaths.onboardDir];
   for (const parent of STORE_PARENTS) {
-    for (const child of listDir(parent)) {
+    for (const child of listDir(parent, root)) {
       if (child.isDirectory()) dirs.push(join(parent, child.name));
     }
   }
   return dirs;
 }
 
-function pruneDeadState(now: number): void {
+function pruneDeadState(now: number, root: string): void {
   for (const name of DEAD_STATE_ENTRIES) {
     try {
       rmSync(join(paths.home, name), { recursive: true, force: true });
@@ -75,8 +77,8 @@ function pruneDeadState(now: number): void {
       log("state.dead_entry_failed", { name, err: errorMessage(e) });
     }
   }
-  for (const dir of tmpSweepDirs()) {
-    for (const f of listDir(dir)) {
+  for (const dir of tmpSweepDirs(root)) {
+    for (const f of listDir(dir, root)) {
       if (!f.isFile() || !f.name.includes(TMP_MARKER)) continue;
       const p = join(dir, f.name);
       try {
@@ -88,9 +90,15 @@ function pruneDeadState(now: number): void {
 }
 
 export function pruneStaleSessions(now: number): void {
-  pruneDeadState(now);
+  let root: string;
+  try {
+    root = realpathSync(paths.home);
+  } catch {
+    return;
+  }
+  pruneDeadState(now, root);
   const dir = sessionsDir();
-  for (const f of listDir(dir)) {
+  for (const f of listDir(dir, root)) {
     const p = join(dir, f.name);
     try {
       if (now - statSync(p).mtimeMs > SESSION_RETENTION_MS) rmSync(p, { force: true });
