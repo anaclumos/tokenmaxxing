@@ -63,7 +63,7 @@ export async function recordPresenceOrStop(input: { child: ChildHandle; dir: str
         input.child.kill();
         await input.child.exited;
         restoreTermios(input.savedTermios);
-        throw new Error(input.message);
+        throw new Error(input.message.startsWith("tokenmaxxing:") ? input.message : `tokenmaxxing: ${input.message}`);
       }
       await Bun.sleep(100);
     }

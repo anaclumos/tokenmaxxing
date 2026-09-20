@@ -41,6 +41,10 @@ export async function runStopFailureHook(): Promise<number> {
   const stdinSid = stdin.session_id;
   const session = supervisedSession();
   const mainLoop = stdin.agent_id === undefined;
+  if (stdinSid != null && session != null && stdinSid !== session.sid) {
+    log("stopfailure.nested_session", { stdin: stdinSid.slice(0, 8), supervised: session.sid.slice(0, 8) });
+    return 0;
+  }
   const canRespawn = session != null && mainLoop;
 
   try {

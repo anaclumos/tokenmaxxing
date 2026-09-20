@@ -1,18 +1,15 @@
-import { mkdirSync } from "node:fs";
-import { join } from "node:path";
-import { writeFileAtomic } from "./atomic.ts";
 import { readStore } from "./credstore.ts";
 import { withLock } from "./lock.ts";
 import { errorMessage, log } from "./log.ts";
-import { claudeTierLabel, isAccessTokenExpiring, isDeadCredential } from "./oauth.ts";
-import { claudePool, paths, sampleDirFor, storeDirFor } from "./paths.ts";
+import { claudeTierLabel, isDeadCredential } from "./oauth.ts";
+import { claudePool, paths } from "./paths.ts";
 import { seatCounts } from "./presence.ts";
 import type { Observation } from "./provider.ts";
 import { loadAccounts, loadUsageSnapshot, saveAccounts } from "./state.ts";
-import { fetchUsageDirect, mergeWindows, refreshViaProbe, windowsOf } from "./usage.ts";
+import { fetchUsageDirect, mergeWindows, windowsOf } from "./usage.ts";
 import type { Account, Config, UsageWindows } from "./types.ts";
 
-export type SampleOutcome = { ok: true; usage: UsageWindows; via: "get" | "probe" } | { ok: false; reason: string };
+export type SampleOutcome = { ok: true; usage: UsageWindows; via: "get" } | { ok: false; reason: string };
 
 type PreparedSample = { ok: true; token: string | null } | { ok: false; reason: string };
 
@@ -48,27 +45,13 @@ export async function prepareSample(account: Account): Promise<PreparedSample> {
   }
   if (!account.oauthAccount) return { ok: false, reason: "account record has no oauthAccount - run `tokenmaxxing auth`" };
   account.tier = claudeTierLabel(creds) ?? account.tier;
-  return { ok: true, token: isAccessTokenExpiring(creds) ? null : creds.accessToken };
+  return { ok: true, token: creds.accessToken };
 }
 
-async function refreshedToken(account: Account, suffix: string): Promise<string | null> {
-  const dir = sampleDirFor(account.id, suffix);
-  mkdirSync(dir, { recursive: true });
-  writeFileAtomic(join(dir, ".claude.json"), JSON.stringify({ oauthAccount: account.oauthAccount, hasCompletedOnboarding: true }));
-  if (!(await refreshViaProbe({ configDir: dir, store: storeDirFor(account.id) }))) return null;
-  const prepared = await prepareSample(account);
-  return prepared.ok ? prepared.token : null;
-}
-
-export async function runSample(account: Account, token: string | null, suffix = ""): Promise<SampleOutcome> {
-  if (token) {
-    const usage = await fetchUsageDirect(token);
-    if (usage) return { ok: true, usage, via: "get" };
-  }
-  const fresh = await refreshedToken(account, suffix);
-  if (!fresh) return { ok: false, reason: "the `/usage` probe left no usable access token in the store (see log)" };
-  const usage = await fetchUsageDirect(fresh);
-  return usage ? { ok: true, usage, via: "probe" } : { ok: false, reason: "usage read failed after the `/usage` probe (see log)" };
+export async function runSample(account: Account, token: string | null): Promise<SampleOutcome> {
+  if (!token) return { ok: false, reason: "no usable access token in the store - run `tokenmaxxing auth`" };
+  const usage = await fetchUsageDirect(token);
+  return usage ? { ok: true, usage, via: "get" } : { ok: false, reason: "usage read failed (see log)" };
 }
 
 export async function sampleAccountUsage(account: Account): Promise<SampleOutcome> {
@@ -114,7 +97,7 @@ export async function sampleOldest(cfg: Config): Promise<void> {
   await Promise.all(
     reserved.map(async ({ account, token }) => {
       const startedAt = Date.now();
-      const outcome = await runSample(account, token, "-tick");
+      const outcome = await runSample(account, token);
       await withLock(claudePool.lockFile, () => {
         const idx = loadAccounts(claudePool);
         const stored = idx.accounts.find((a) => a.id === account.id);

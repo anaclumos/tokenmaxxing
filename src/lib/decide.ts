@@ -1,6 +1,6 @@
 import { withLock } from "./lock.ts";
 import { loadAccounts, loadConfig, saveAccounts } from "./state.ts";
-import { isExhausted, limitWindows, nextWeeklyReset, pickBest, pickEarliestReset, sessionWindow, thresholdBars, usableAt, weeklyWindow, type PickCtx } from "./picker.ts";
+import { isExhausted, limitWindows, liveUsed, nextWeeklyReset, pickBest, pickEarliestReset, sessionWindow, thresholdBars, usableAt, weeklyWindow, type PickCtx } from "./picker.ts";
 import { familyTokens } from "./usage.ts";
 import { errorMessage, log } from "./log.ts";
 import type { Observation, Provider } from "./provider.ts";
@@ -17,6 +17,12 @@ function isOver(account: Account | undefined, observed: Observation | null, ctx:
   if (account.enforcedUntil != null && account.enforcedUntil > ctx.now) return true;
   if (!observed) return false;
   return isExhausted({ ...account, windows: observed.windows }, ctx);
+}
+
+function modelKindCovered(limit: EnforcedLimit, account: Account, now: number, weeklyBar: number): boolean {
+  if (limit.kind !== "model" || limit.family == null) return false;
+  const family = limit.family;
+  return limitWindows(account).some((w) => familyTokens(w.name ?? "").includes(family) && liveUsed(w, now) >= weeklyBar);
 }
 
 function enforcedWall(limit: EnforcedLimit, account: Account, now: number): number {
@@ -57,13 +63,18 @@ export async function evaluateAndMaybeSwap(p: Provider, now = Date.now(), canRes
 
     const origin = enforced ? idx.accounts.find((a) => a.id === enforced.account) : undefined;
     const prior = origin?.enforcedUntil != null && origin.enforcedUntil > now;
+    let stamped = false;
     if (enforced && origin) {
-      origin.enforcedUntil = Math.max(origin.enforcedUntil ?? 0, enforcedWall(enforced, origin, now));
+      const covered = modelKindCovered(enforced, origin, now, bars.weekly);
+      if (!covered || prior) {
+        origin.enforcedUntil = Math.max(origin.enforcedUntil ?? 0, enforcedWall(enforced, origin, now));
+        stamped = true;
+      }
       origin.lastProbeAt = now;
       saveAccounts(p.pool, idx);
-      log("usage.enforced_limit", { kind: enforced.kind, family: enforced.family ?? undefined, resetsAt: origin.enforcedUntil, blind: prior || enforced.blind, live: origin === active });
+      log("usage.enforced_limit", { kind: enforced.kind, family: enforced.family ?? undefined, resetsAt: origin.enforcedUntil, blind: prior || enforced.blind, live: origin === active, covered: covered && !prior });
     }
-    const enforced2 = enforced && origin && origin === active ? enforced : null;
+    const enforced2 = stamped && origin === active ? enforced : null;
 
     if (id2 != null && !active) {
       return { swapped: false, account: null, reason: "live-credential-not-in-pool" };
