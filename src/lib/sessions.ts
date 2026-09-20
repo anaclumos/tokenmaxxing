@@ -1,7 +1,8 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, type Dirent } from "node:fs";
+import { join, sep } from "node:path";
 import { z } from "zod";
-import { paths } from "./paths.ts";
+import { errorMessage, log } from "./log.ts";
+import { codexPaths, grokPaths, opencodeGoPaths, paths } from "./paths.ts";
 import { writeFileAtomic } from "./atomic.ts";
 import type { RespawnMarkerSchema } from "./types.ts";
 
@@ -9,12 +10,14 @@ const SessionSchema = z.object({ flags: z.array(z.string()), cwd: z.string() });
 
 const SESSION_RETENTION_MS = 30 * 24 * 3600 * 1000;
 
+const sessionsDir = (): string => join(paths.home, "sessions");
+
 function sessionFile(sid: string): string {
-  return join(paths.home, "sessions", `${sid}.json`);
+  return join(sessionsDir(), `${sid}.json`);
 }
 
 export function saveSessionFlags(sid: string, flags: string[], cwd: string): void {
-  mkdirSync(join(paths.home, "sessions"), { recursive: true });
+  mkdirSync(sessionsDir(), { recursive: true });
   writeFileAtomic(sessionFile(sid), JSON.stringify({ flags, cwd }));
 }
 
@@ -24,23 +27,79 @@ export function loadSessionFlags(sid: string): string[] | null {
   return SessionSchema.parse(JSON.parse(readFileSync(f, "utf8"))).flags;
 }
 
-const DEAD_STATE_FILES = ["model-usage.json", "accounts.json.v1-backup", "codex-accounts.json.v1-backup"];
+const DEAD_STATE_ENTRIES = [
+  "model-usage.json",
+  "accounts.json.v1-backup",
+  "codex-accounts.json.v1-backup",
+  "nextcheck.json",
+  "usage.json",
+  "lastswap.json",
+  "depleted.json",
+  "codex-lastswap.json",
+  "creds",
+  "codex-creds",
+  "codex-reconcile",
+  "sample",
+];
 
-function pruneDeadState(): void {
-  for (const name of DEAD_STATE_FILES) {
+const TMP_MARKER = ".tmp.";
+const TMP_GRACE_MS = 3600 * 1000;
+
+const STORE_PARENTS = [paths.storesDir, codexPaths.storesDir, grokPaths.storesDir, opencodeGoPaths.storesDir];
+
+function listDir(dir: string, root: string): Dirent[] {
+  if (!existsSync(dir)) return [];
+  try {
+    const resolved = realpathSync(dir);
+    if (resolved !== root && !resolved.startsWith(root + sep)) return [];
+    return readdirSync(dir, { withFileTypes: true });
+  } catch (e) {
+    log("state.sweep_unreadable", { dir, err: errorMessage(e) });
+    return [];
+  }
+}
+
+function tmpSweepDirs(root: string): string[] {
+  const dirs = [paths.home, paths.usageDir, paths.presenceDir, paths.respawnDir, sessionsDir(), paths.binDir, paths.cloudDir, codexPaths.presenceDir, codexPaths.respawnDir, codexPaths.onboardDir];
+  for (const parent of STORE_PARENTS) {
+    for (const child of listDir(parent, root)) {
+      if (child.isDirectory()) dirs.push(join(parent, child.name));
+    }
+  }
+  return dirs;
+}
+
+function pruneDeadState(now: number, root: string): void {
+  for (const name of DEAD_STATE_ENTRIES) {
     try {
-      rmSync(join(paths.home, name), { force: true });
-    } catch {
+      rmSync(join(paths.home, name), { recursive: true, force: true });
+    } catch (e) {
+      log("state.dead_entry_failed", { name, err: errorMessage(e) });
+    }
+  }
+  for (const dir of tmpSweepDirs(root)) {
+    for (const f of listDir(dir, root)) {
+      if (!f.isFile() || !f.name.includes(TMP_MARKER)) continue;
+      const p = join(dir, f.name);
+      try {
+        if (now - statSync(p).mtimeMs > TMP_GRACE_MS) rmSync(p, { force: true });
+      } catch {
+      }
     }
   }
 }
 
 export function pruneStaleSessions(now: number): void {
-  pruneDeadState();
-  const dir = join(paths.home, "sessions");
-  if (!existsSync(dir)) return;
-  for (const f of readdirSync(dir)) {
-    const p = join(dir, f);
+  let root: string;
+  try {
+    root = realpathSync(paths.home);
+  } catch {
+    return;
+  }
+  pruneDeadState(now, root);
+  const dir = sessionsDir();
+  for (const f of listDir(dir, root)) {
+    const p = join(dir, f.name);
     try {
       if (now - statSync(p).mtimeMs > SESSION_RETENTION_MS) rmSync(p, { force: true });
     } catch {
