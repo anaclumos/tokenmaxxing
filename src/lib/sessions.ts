@@ -137,7 +137,10 @@ export function supervisedSession(env: Record<string, string | undefined> = proc
 export function adoptLiveSession(session: SupervisedSession, stdinSid: string | undefined): SupervisedSession | null {
   if (stdinSid == null || stdinSid === session.live) return session;
   const child = presencePid({ dir: paths.presenceDir, id: session.sid });
-  if (child == null || !spawnedThroughShellsBy(child)) return null;
+  if (child == null || !spawnedThroughShellsBy(child)) {
+    log("session.live_id_refused", { reason: child == null ? "no-presence" : "not-descendant", stdin: stdinSid.slice(0, 8), live: session.live.slice(0, 8), session: session.sid.slice(0, 8) });
+    return null;
+  }
   recordLiveSession(session.sid, stdinSid);
   log("session.live_id", { from: session.live.slice(0, 8), to: stdinSid.slice(0, 8), session: session.sid.slice(0, 8) });
   return { ...session, live: stdinSid };
