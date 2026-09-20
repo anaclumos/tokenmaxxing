@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, type Dirent } from "node:fs";
-import { join, sep } from "node:path";
+import { basename, join, sep } from "node:path";
 import { z } from "zod";
 import { errorMessage, log } from "./log.ts";
 import { codexPaths, grokPaths, opencodeGoPaths, paths } from "./paths.ts";
@@ -117,6 +117,7 @@ export function pruneStaleSessions(now: number): void {
   for (const f of listDir(dir, root)) {
     const p = join(dir, f.name);
     try {
+      if (existsSync(join(paths.presenceDir, basename(f.name, ".json")))) continue;
       if (now - statSync(p).mtimeMs > SESSION_RETENTION_MS) rmSync(p, { force: true });
     } catch {
     }
