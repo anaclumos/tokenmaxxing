@@ -6,12 +6,13 @@ import { withLock } from "../lib/lock.ts";
 import { UNMANAGED_ENV, WRAP_DEPTH_ENV, wrapDepth } from "../lib/claudebin.ts";
 import { resolveRealCodex } from "../lib/codexbin.ts";
 import { ensureCodexStoreHome } from "../lib/codexauth.ts";
-import { pickCodexSeat } from "../lib/codex.ts";
-import { clearPresence } from "../lib/presence.ts";
+import { codexPickCtx, pickCodexSeat } from "../lib/codex.ts";
+import { clearPresence, livingPresences } from "../lib/presence.ts";
+import { isExhausted } from "../lib/picker.ts";
 import { exitStatus, loopGuardTripped, raceMarkerOrExit, recordPresenceOrStop, runPassthrough } from "../lib/supervise.ts";
 import { saveTermios } from "../lib/tty.ts";
 import { loadAccounts } from "../lib/state.ts";
-import { CodexRespawnMarkerSchema } from "../lib/types.ts";
+import { CodexRespawnMarkerSchema, type Account } from "../lib/types.ts";
 import { errorMessage, log } from "../lib/log.ts";
 
 export const CODEX_SUPERVISOR_ID_ENV = "TOKENMAXXING_CODEX_SUPERVISOR_ID";
@@ -55,6 +56,19 @@ export function shouldManageCodex(input: { argv: string[] }): boolean {
   return firstPositional === null || !NONINTERACTIVE_SUBCMDS.has(firstPositional);
 }
 
+function validWanted(input: { wanted: string | null; now: number; supervisorId: string }): Account | null {
+  if (input.wanted == null) return null;
+  const a = loadAccounts(codexPool).accounts.find((x) => x.id === input.wanted);
+  if (!a || a.needsReauth === true) return null;
+  if (isExhausted(a, codexPickCtx(input.now, input.wanted))) return null;
+  const foreign = livingPresences(codexPaths.presenceDir).some((p) => p.accountId === a.id && p.id !== input.supervisorId);
+  if (foreign) {
+    log("codexsupervisor.wanted_present", { account: a.id.slice(0, 8) });
+    return null;
+  }
+  return a;
+}
+
 export async function runCodexSupervisor(input: { argv: string[] }): Promise<number> {
   const { argv } = input;
   if (loopGuardTripped("codex")) return 1;
@@ -84,7 +98,7 @@ export async function runCodexSupervisor(input: { argv: string[] }): Promise<num
 
     const launchedAt = Date.now();
     const { child } = await withLock(codexPool.lockFile, async () => {
-      const picked = (wanted == null ? null : (loadAccounts(codexPool).accounts.find((a) => a.id === wanted) ?? null)) ?? pickCodexSeat(launchedAt, wanted);
+      const picked = validWanted({ wanted, now: launchedAt, supervisorId }) ?? pickCodexSeat(launchedAt, null);
       log("codexsupervisor.launch", { supervisorId: supervisorId.slice(0, 8), respawns, seat: picked?.id.slice(0, 8) ?? null, args: launchArgs.join(" ") });
       const store = picked ? ensureCodexStoreHome(picked.id) : undefined;
       const spawned = Bun.spawn([real, ...launchArgs], {

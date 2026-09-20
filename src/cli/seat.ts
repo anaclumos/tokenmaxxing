@@ -16,22 +16,27 @@ function storeUsable(accountId: string): boolean {
 }
 
 export async function cmdSeat(pidRaw: string | undefined, extra: string[]): Promise<number> {
-  const pid = Number(pidRaw);
-  if (!Number.isInteger(pid) || pid <= 1 || extra.length > 0) {
+  const pid = pidRaw != null && /^[1-9][0-9]*$/.test(pidRaw) ? Number(pidRaw) : NaN;
+  if (!Number.isSafeInteger(pid) || extra.length > 0) {
     emitError({ message: "usage: tokenmaxxing seat --codex <pid> - print the CODEX_HOME of one pooled account, reserved until <pid> exits" });
     return 2;
   }
   const now = Date.now();
-  const granted = await withLock(codexPool.lockFile, () => {
+  const seatId = `seat-${pid}`;
+  const granted = await withLock(codexPool.lockFile, (): { store: string; id: string; reused: boolean } | { denied: string } | null => {
     const ctx: PickCtx = { now, thresholds: thresholdBars(loadConfig()), currentId: null, families: null, seats: null };
     const idx = loadAccounts(codexPool);
     const living = livingPresences(codexPaths.presenceDir);
-    const held = living.find((p) => p.id === `seat-${pid}`);
-    if (held) {
-      const a = idx.accounts.find((x) => x.id === held.accountId);
-      if (a && a.needsReauth !== true && !isExhausted(a, ctx)) {
-        return { store: ensureCodexStoreHome(a.id), id: a.id, reused: true };
+    const held = living.find((p) => p.id === seatId);
+    const heldAccount = held ? (idx.accounts.find((x) => x.id === held.accountId) ?? null) : null;
+    if (heldAccount) {
+      if (heldAccount.needsReauth === true) {
+        return { denied: "the account this pid holds needs reauthentication - run `tokenmaxxing auth --codex` and borrow again" };
       }
+      if (!storeUsable(heldAccount.id)) {
+        return { denied: "the account this pid holds has no usable credential in its store - refusing to hand back a credential-less seat" };
+      }
+      return { store: ensureCodexStoreHome(heldAccount.id), id: heldAccount.id, reused: true };
     }
     const present = new Map<string, number>();
     for (const p of living) present.set(p.accountId, (present.get(p.accountId) ?? 0) + 1);
@@ -41,11 +46,15 @@ export async function cmdSeat(pidRaw: string | undefined, extra: string[]): Prom
     const picked = pickBest(usable, ctx);
     if (!picked) return null;
     const store = ensureCodexStoreHome(picked.id);
-    writePresence({ dir: codexPaths.presenceDir, id: `seat-${pid}`, accountId: picked.id, pid });
+    writePresence({ dir: codexPaths.presenceDir, id: seatId, accountId: picked.id, pid });
     return { store, id: picked.id, reused: false };
   });
   if (!granted) {
     emitError({ message: "no usable codex account (pool empty, every account live in another session, or every account at a limit) - use the ambient codex login" });
+    return 1;
+  }
+  if ("denied" in granted) {
+    emitError({ message: granted.denied });
     return 1;
   }
   log("seat.grant", { account: granted.id.slice(0, 8), pid, reused: granted.reused });
