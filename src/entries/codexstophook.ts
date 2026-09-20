@@ -9,6 +9,7 @@ import { resolveRealCodex } from "../lib/codexbin.ts";
 import { compactCodexThread } from "../lib/compact.ts";
 import { evaluateAndMaybeSwap } from "../lib/decide.ts";
 import { isExhausted } from "../lib/picker.ts";
+import { livingPresences } from "../lib/presence.ts";
 import { readStdin } from "../lib/proc.ts";
 import { loadAccounts, loadConfig } from "../lib/state.ts";
 import { CODEX_SUPERVISOR_ID_ENV } from "./codexsupervisor.ts";
@@ -37,6 +38,12 @@ async function handleCodexStop(rawStdin: string): Promise<void> {
     const supervisorId = optionalEnv(CODEX_SUPERVISOR_ID_ENV);
     if (supervisorId === undefined) {
       log("codexstop.unsupervised_skip", {});
+      return;
+    }
+    const own = livingPresences(codexPaths.presenceDir).find((p) => p.id === supervisorId);
+    const seat = codex.liveId();
+    if (own && own.accountId !== seat) {
+      log("codexstop.foreign_seat", { supervisorId: supervisorId.slice(0, 8), seat: seat?.slice(0, 8) ?? null });
       return;
     }
     const now = Date.now();

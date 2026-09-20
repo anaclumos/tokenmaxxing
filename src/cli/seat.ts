@@ -1,3 +1,4 @@
+import { codex } from "../lib/codex.ts";
 import { codexStoreUsable, ensureCodexStoreHome } from "../lib/codexauth.ts";
 import { withLock } from "../lib/lock.ts";
 import { log } from "../lib/log.ts";
@@ -15,6 +16,12 @@ export async function cmdSeat(pidRaw: string | undefined, extra: string[]): Prom
   }
   const now = Date.now();
   const seatId = `seat-${pid}`;
+  const cfg = loadConfig();
+  await Promise.all(
+    loadAccounts(codexPool)
+      .accounts.filter((a) => a.needsReauth !== true && codexStoreUsable(a.id))
+      .map((a) => codex.observeLive(a, cfg, now, { probe: true, perModel: false })),
+  );
   const granted = await withLock(codexPool.lockFile, (): { store: string; id: string; reused: boolean } | { denied: string } | null => {
     const ctx: PickCtx = { now, thresholds: thresholdBars(loadConfig()), currentId: null, families: null, seats: null };
     const idx = loadAccounts(codexPool);

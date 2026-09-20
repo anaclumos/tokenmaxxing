@@ -102,6 +102,9 @@ export async function runCodexSupervisor(input: { argv: string[] }): Promise<num
       clearPresence({ dir: codexPaths.presenceDir, id: supervisorId });
       const picked = validWanted({ wanted, now: launchedAt, supervisorId }) ?? pickCodexSeat(launchedAt);
       log("codexsupervisor.launch", { supervisorId: supervisorId.slice(0, 8), respawns, seat: picked?.id.slice(0, 8) ?? null, args: launchArgs.join(" ") });
+      if (respawns > 0) {
+        process.stdout.write(`\n\x1b[36m↻ tokenmaxxing: switched codex to ${picked?.label ?? "the ambient codex login"} - resuming...\x1b[0m\n`);
+      }
       const store = picked ? ensureCodexStoreHome(picked.id) : undefined;
       const spawned = Bun.spawn([real, ...launchArgs], {
         stdin: "inherit",
@@ -141,8 +144,6 @@ export async function runCodexSupervisor(input: { argv: string[] }): Promise<num
     if (payload) {
       rmSync(marker, { force: true });
       respawns++;
-      const label = loadAccounts(codexPool).accounts.find((a) => a.id === payload.accountId)?.label ?? payload.accountId.slice(0, 8);
-      process.stdout.write(`\n\x1b[36m↻ tokenmaxxing: switched codex to ${label} - resuming...\x1b[0m\n`);
       wanted = payload.accountId;
       launchArgs = payload.sessionId ? ["resume", payload.sessionId] : ["resume", "--last"];
       continue;
