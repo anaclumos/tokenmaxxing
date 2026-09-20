@@ -39,8 +39,8 @@ export function liveSessionId(sid: string): string {
 
 function recordLiveSession(sid: string, current: string): void {
   const session = loadSession(sid);
-  if (session == null) throw new Error(`no session record for ${sid} under ${sessionsDir()}`);
-  writeFileAtomic(sessionFile(sid), JSON.stringify({ ...session, current }));
+  mkdirSync(sessionsDir(), { recursive: true });
+  writeFileAtomic(sessionFile(sid), JSON.stringify({ flags: session?.flags ?? [], cwd: session?.cwd ?? process.cwd(), current }));
 }
 
 const DEAD_STATE_ENTRIES = [
