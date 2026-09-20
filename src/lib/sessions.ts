@@ -6,7 +6,7 @@ import { codexPaths, grokPaths, opencodeGoPaths, paths } from "./paths.ts";
 import { writeFileAtomic } from "./atomic.ts";
 import type { RespawnMarkerSchema } from "./types.ts";
 
-const SessionSchema = z.object({ flags: z.array(z.string()), cwd: z.string() });
+const SessionSchema = z.object({ flags: z.array(z.string()), cwd: z.string(), current: z.uuid().optional() });
 
 const SESSION_RETENTION_MS = 30 * 24 * 3600 * 1000;
 
@@ -21,10 +21,24 @@ export function saveSessionFlags(sid: string, flags: string[], cwd: string): voi
   writeFileAtomic(sessionFile(sid), JSON.stringify({ flags, cwd }));
 }
 
-export function loadSessionFlags(sid: string): string[] | null {
+function loadSession(sid: string): z.infer<typeof SessionSchema> | null {
   const f = sessionFile(sid);
   if (!existsSync(f)) return null;
-  return SessionSchema.parse(JSON.parse(readFileSync(f, "utf8"))).flags;
+  return SessionSchema.parse(JSON.parse(readFileSync(f, "utf8")));
+}
+
+export function loadSessionFlags(sid: string): string[] | null {
+  return loadSession(sid)?.flags ?? null;
+}
+
+export function liveSessionId(sid: string): string {
+  return loadSession(sid)?.current ?? sid;
+}
+
+export function recordClearedSession(sid: string, current: string): void {
+  const session = loadSession(sid);
+  if (session == null) throw new Error(`no session record for ${sid} under ${sessionsDir()}`);
+  writeFileAtomic(sessionFile(sid), JSON.stringify({ ...session, current }));
 }
 
 const DEAD_STATE_ENTRIES = [
@@ -107,7 +121,7 @@ export function pruneStaleSessions(now: number): void {
   }
 }
 
-export type SupervisedSession = { sid: string; launchedAt: number | null };
+export type SupervisedSession = { sid: string; launchedAt: number | null; live: string };
 
 const LaunchedAtSchema = z.coerce.number().finite().optional().catch(undefined);
 
@@ -115,16 +129,16 @@ export function supervisedSession(env: Record<string, string | undefined> = proc
   if (env.TOKENMAXXING_SUPERVISED !== "1") return null;
   const sid = env.TOKENMAXXING_SESSION_ID;
   if (sid == null || sid === "") return null;
-  return { sid, launchedAt: LaunchedAtSchema.parse(env.TOKENMAXXING_LAUNCHED_AT) ?? null };
+  return { sid, launchedAt: LaunchedAtSchema.parse(env.TOKENMAXXING_LAUNCHED_AT) ?? null, live: liveSessionId(sid) };
 }
 
-export function writeRespawnMarker(input: { session: SupervisedSession; sessionId: string; accountId: string; waitUntil: number; compact: boolean }): void {
+export function writeRespawnMarker(input: { session: SupervisedSession; accountId: string; waitUntil: number; compact: boolean }): void {
   mkdirSync(paths.respawnDir, { recursive: true });
   const payload: z.infer<typeof RespawnMarkerSchema> = {
     accountId: input.accountId,
     ts: Date.now(),
     waitUntil: input.waitUntil,
-    sessionId: input.sessionId,
+    sessionId: input.session.live,
     compact: input.compact,
     ...(input.session.launchedAt != null ? { launchedAt: input.session.launchedAt } : {}),
   };

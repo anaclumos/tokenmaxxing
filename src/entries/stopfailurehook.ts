@@ -39,15 +39,15 @@ export async function runStopFailureHook(): Promise<number> {
   if (stdin.error !== undefined && stdin.error !== "rate_limit") return 0;
 
   const stdinSid = stdin.session_id;
-  const session = supervisedSession();
   const mainLoop = stdin.agent_id === undefined;
-  if (stdinSid != null && session != null && stdinSid !== session.sid) {
-    log("stopfailure.nested_session", { stdin: stdinSid.slice(0, 8), supervised: session.sid.slice(0, 8) });
-    return 0;
-  }
-  const canRespawn = session != null && mainLoop;
 
   try {
+    const session = supervisedSession();
+    if (stdinSid != null && session != null && stdinSid !== session.live) {
+      log("stopfailure.nested_session", { stdin: stdinSid.slice(0, 8), supervised: session.live.slice(0, 8) });
+      return 0;
+    }
+    const canRespawn = session != null && mainLoop;
     const cfg = loadConfig();
     const row = stdin.transcript_path
       ? await awaitEnforcedRow({ transcriptPath: stdin.transcript_path, lastAssistantMessage: stdin.last_assistant_message, now })
@@ -81,7 +81,7 @@ export async function runStopFailureHook(): Promise<number> {
 
     const decision = await evaluateAndMaybeSwap(claude, now, canRespawn && enforced != null, enforced);
     if (enforced && session && canRespawn && decision.account && (decision.swapped || decision.waitUntil !== undefined)) {
-      writeRespawnMarker({ session, sessionId: stdinSid ?? session.sid, accountId: decision.account.id, waitUntil: decision.waitUntil ?? now, compact: false });
+      writeRespawnMarker({ session, accountId: decision.account.id, waitUntil: decision.waitUntil ?? now, compact: false });
       log("stopfailure.marker", { session: session.sid.slice(0, 8), account: decision.account.id.slice(0, 8), waitUntil: decision.waitUntil ?? now });
     } else {
       log("stopfailure.decision", { reason: decision.reason, swapped: decision.swapped, account: decision.account?.id.slice(0, 8), waitUntil: decision.waitUntil });

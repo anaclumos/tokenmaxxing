@@ -14,7 +14,7 @@ Everything lives under `~/.config/tokenmaxxing/`. Override with `TOKENMAXXING_HO
 | `live/<session-id>` | One PID-validated presence file per running supervised Claude session (the account id, the pid, and the start time); placement counts them, and `rm` refuses an account with a living session |
 | `lock` | The `flock` file that serializes decisions, placement, and sampling |
 | `update.json`, `update.lock` | The last self-update attempt's timestamp and the `flock` file that serializes it (Bun global installs only; see [Automatic updates](/distribution#automatic-updates)) |
-| `sessions/<session-id>.json` | Per-managed-session launch flags the supervisor persists for respawns; pruned after 30 days idle (matching claude's own transcript retention) |
+| `sessions/<session-id>.json` | Per-managed-session launch flags the supervisor persists for respawns, plus `current`, the live session id after a `/clear`; pruned after 30 days idle (matching claude's own transcript retention) |
 | `tokenmaxxing.log` | Append-only event log, rotated to `tokenmaxxing.log.old` once it passes 5 MB |
 | `spawnrate.json` | The supervisor's wrapper-entry rate limiter, one of the recursion guards |
 | `check.stderr.log` | macOS only: the launchd check job's stderr (systemd sends it to the journal) |

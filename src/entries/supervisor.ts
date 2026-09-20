@@ -15,7 +15,7 @@ import { readLines } from "../lib/proc.ts";
 import { teeObservation } from "../lib/sample.ts";
 import { exitStatus, loopGuardTripped, raceMarkerOrExit, recordPresenceOrStop, runPassthrough } from "../lib/supervise.ts";
 import { saveTermios } from "../lib/tty.ts";
-import { loadSessionFlags, pruneStaleSessions, saveSessionFlags, writeRespawnMarker } from "../lib/sessions.ts";
+import { liveSessionId, loadSessionFlags, pruneStaleSessions, saveSessionFlags, writeRespawnMarker } from "../lib/sessions.ts";
 import { loadAccounts, loadConfig } from "../lib/state.ts";
 import { gatedFamilies, modelFromFlag } from "../lib/usage.ts";
 import { RespawnMarkerSchema, type Account, type Config, type ModelInfo } from "../lib/types.ts";
@@ -225,7 +225,7 @@ async function moveExhaustedSeat(seat: Account, sid: string, gate: MarkerGate, m
     const decision = await evaluateAndMaybeSwap(claude, now, true, null, seat.id, families);
     log("supervisor.seat_exhausted", { seat: seat.id.slice(0, 8), until, reason: decision.reason, account: decision.account?.id.slice(0, 8), waitUntil: decision.waitUntil });
     if (decision.account && (decision.swapped || decision.waitUntil !== undefined)) {
-      writeRespawnMarker({ session: { sid, launchedAt: gate.launchedAt }, sessionId: sid, accountId: decision.account.id, waitUntil: decision.waitUntil ?? now, compact: true });
+      writeRespawnMarker({ session: { sid, launchedAt: gate.launchedAt, live: liveSessionId(sid) }, accountId: decision.account.id, waitUntil: decision.waitUntil ?? now, compact: true });
     }
   } catch (e) {
     log("supervisor.seat_watch_error", { err: errorMessage(e) });
@@ -508,7 +508,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
       saveSessionFlags(m.sessionId, persistable, process.cwd());
       const prompt = resumable ? resumePrompt(compacted) : null;
       firstLine = relay !== null && prompt !== null ? userLine(prompt) : null;
-      launchArgs = ["--resume", m.sessionId, ...(relay === null && prompt !== null ? [prompt] : []), ...persistable];
+      launchArgs = [resumable ? "--resume" : "--session-id", m.sessionId, ...(relay === null && prompt !== null ? [prompt] : []), ...persistable];
       continue;
     }
     clearPresence({ dir: paths.presenceDir, id: sid });
