@@ -8,7 +8,7 @@ import { ensurePathInRc, installSupervisor, managedShellRcSkipLines, shellRcPath
 import { withLock } from "./lock.ts";
 import { errorMessage, log } from "./log.ts";
 import { claudeTierLabel, describeIdentity, fetchTokenIdentity, isDeadCredential, InvalidGrantError } from "./oauth.ts";
-import { claudePool, env, paths, sampleDirFor, seatFromEnv, storeDirFor } from "./paths.ts";
+import { claudePool, env, paths, seatFromEnv, storeDirFor } from "./paths.ts";
 import { pickBest, pickEarliestReset, thresholdBars, type PickCtx } from "./picker.ts";
 import { seatCounts } from "./presence.ts";
 import type { Observation, Provider, SampleReport } from "./provider.ts";
@@ -138,7 +138,6 @@ async function removeCredentials(a: Account): Promise<void> {
   await deleteItem(storeTarget(a.id));
   rmSync(storeDirFor(a.id), { recursive: true, force: true });
   rmSync(`${storeDirFor(a.id)}.lock`, { recursive: true, force: true });
-  for (const dir of [sampleDirFor(a.id), sampleDirFor(a.id, "-tick")]) rmSync(dir, { recursive: true, force: true });
   clearUsageSnapshot(a.id);
   const setupTokens = loadSetupTokens();
   if (setupTokens.tokens.some((t) => t.accountUuid === a.id)) {

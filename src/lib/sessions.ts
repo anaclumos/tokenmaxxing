@@ -24,19 +24,44 @@ export function loadSessionFlags(sid: string): string[] | null {
   return SessionSchema.parse(JSON.parse(readFileSync(f, "utf8"))).flags;
 }
 
-const DEAD_STATE_FILES = ["model-usage.json", "accounts.json.v1-backup", "codex-accounts.json.v1-backup"];
+const DEAD_STATE_ENTRIES = [
+  "model-usage.json",
+  "accounts.json.v1-backup",
+  "codex-accounts.json.v1-backup",
+  "nextcheck.json",
+  "usage.json",
+  "lastswap.json",
+  "depleted.json",
+  "codex-lastswap.json",
+  "creds",
+  "codex-creds",
+  "codex-reconcile",
+  "sample",
+];
 
-function pruneDeadState(): void {
-  for (const name of DEAD_STATE_FILES) {
+const TMP_MARKER = ".tmp.";
+const TMP_GRACE_MS = 3600 * 1000;
+
+function pruneDeadState(now: number): void {
+  for (const name of DEAD_STATE_ENTRIES) {
     try {
-      rmSync(join(paths.home, name), { force: true });
+      rmSync(join(paths.home, name), { recursive: true, force: true });
+    } catch {
+    }
+  }
+  if (!existsSync(paths.home)) return;
+  for (const f of readdirSync(paths.home)) {
+    if (!f.includes(TMP_MARKER)) continue;
+    const p = join(paths.home, f);
+    try {
+      if (now - statSync(p).mtimeMs > TMP_GRACE_MS) rmSync(p, { force: true });
     } catch {
     }
   }
 }
 
 export function pruneStaleSessions(now: number): void {
-  pruneDeadState();
+  pruneDeadState(now);
   const dir = join(paths.home, "sessions");
   if (!existsSync(dir)) return;
   for (const f of readdirSync(dir)) {

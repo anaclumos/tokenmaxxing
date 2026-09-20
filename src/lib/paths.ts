@@ -26,7 +26,6 @@ export const paths = {
   supervisorLink: join(TM_HOME, "bin", "claude"),
   logFile: join(TM_HOME, "tokenmaxxing.log"),
   onboardDir: join(TM_HOME, "onboard"),
-  sampleDir: join(TM_HOME, "sample"),
   storesDir: join(TM_HOME, "stores"),
   setupTokensJson: join(TM_HOME, "setup-tokens.json"),
   setupTokenDir: join(TM_HOME, "setup-token"),
@@ -137,10 +136,6 @@ export function shortId(accountId: string): string {
 
 export function storeDirFor(accountId: string): string {
   return join(paths.storesDir, shortId(accountId));
-}
-
-export function sampleDirFor(accountId: string, suffix = ""): string {
-  return join(paths.sampleDir, `${shortId(accountId)}${suffix}`);
 }
 
 export function usageJsonFor(accountId: string): string {
