@@ -22,8 +22,7 @@ function isOver(account: Account | undefined, observed: Observation | null, ctx:
 function modelKindCovered(limit: EnforcedLimit, account: Account, now: number, weeklyBar: number): boolean {
   if (limit.kind !== "model" || limit.family == null) return false;
   const family = limit.family;
-  const row = limitWindows(account).find((w) => familyTokens(w.name ?? "").includes(family));
-  return row != null && liveUsed(row, now) >= weeklyBar;
+  return limitWindows(account).some((w) => familyTokens(w.name ?? "").includes(family) && liveUsed(w, now) >= weeklyBar);
 }
 
 function enforcedWall(limit: EnforcedLimit, account: Account, now: number): number {

@@ -137,7 +137,7 @@ Hermetic run on Linux under a throwaway `HOME` and `TOKENMAXXING_HOME`, a stub `
 1. **Placement - ✅.** The first supervised launch spawned the stub with `CLAUDE_SECURESTORAGE_CONFIG_DIR=stores/<first account>` and wrote its presence; the second launch, with equal headroom, landed on the other account.
 2. **Plain move - ✅.** A 95% session tee for the second session's account made its Stop hook write the marker; the supervisor relaunched `--resume <sid>` under the first account's store within a second and rewrote the presence file.
 3. **Wall move - ✅.** A five-hour refusal row fed to the first session's StopFailure hook stamped `enforcedUntil` on its seat and moved the session to the account that had just been freed; a Stop hook on the walled seat moved the remaining session off it too.
-4. **Sampling - ✅.** The check tick probed the stalest account under its store with the `-tick` probe home; live `status` probed the accounts without a fresh tee under their stores and read the one with a fresh tee from the tee.
+4. **Sampling - ✅.** The check tick sampled the stalest account over the direct usage GET with the stored token; live `status` sampled the accounts without a fresh tee the same way and read the one with a fresh tee from the tee.
 5. **Stores never move - ✅.** SHA-256 of every store's `.credentials.json` was identical before and after; no `creds/` directory and no root `usage.json` appeared; the SessionStart hook on a seat under its bars wrote no marker; stopping the children cleared every presence file.
 
 The `pooledSpawnEnv` helper the issue names left with the SDK surface in 1.23.0; the supervisor's launch environment is the one spawn-env site.

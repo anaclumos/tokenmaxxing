@@ -9,9 +9,9 @@ import { c, emitError, emitJson, fmtReset } from "./render.ts";
 
 export async function cmdCheck(json = false): Promise<number> {
   const now = Date.now();
-  pruneStaleSessions(now);
   let d;
   try {
+    pruneStaleSessions(now);
     d = await evaluateAndMaybeSwap(claude, now);
     await sampleOldest(loadConfig());
     await maybeAutoUpdate();

@@ -21,7 +21,7 @@ Usage is the weekly subscription credit window from `GET https://cli-chat-proxy.
 
 ## opencode-go
 
-An account is an opencode Zen API key for the `opencode-go` provider. `init --opencode-go` imports the key from opencode's auth file (`$XDG_DATA_HOME/opencode/auth.json`, `~/.local/share/opencode/auth.json` by default) when it holds an `opencode-go` entry of type `api`; otherwise, and for `add` and `auth`, it runs `opencode providers login -p opencode-go` in a throwaway data home and you paste the key from opencode.ai/zen when opencode asks. Identity is a hash of the key, so the account has no email and its tier reads `go`. The key is written to `opencode-go-stores/<uuid8>/auth.json` at mode 0600. Each key gets its own store directory, named from the first eight characters of that hash.
+An account is an opencode Zen API key for the `opencode-go` provider. `init --opencode-go` imports the key from opencode's auth file (`$XDG_DATA_HOME/opencode/auth.json`, `~/.local/share/opencode/auth.json` by default) when it holds an `opencode-go` entry of type `api`; otherwise, and for `add` and `auth`, it runs `opencode providers login -p opencode-go` in a throwaway data home and you paste the key from opencode.ai/zen when opencode asks. Identity is a hash of the key, so the account has no email and its tier reads `go`. The key is written to `opencode-go-stores/<uuid8>/auth.json` at mode 0600. Each key gets its own store directory, named from the first eight characters of that hash. Keys pooled before that change keep the old `opencode-go-<hex>` id and report no usable credential: remove and add them again.
 
 ## What status shows
 
