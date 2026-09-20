@@ -98,6 +98,7 @@ export async function runCodexSupervisor(input: { argv: string[] }): Promise<num
 
     const launchedAt = Date.now();
     const { child } = await withLock(codexPool.lockFile, async () => {
+      clearPresence({ dir: codexPaths.presenceDir, id: supervisorId });
       const picked = validWanted({ wanted, now: launchedAt, supervisorId }) ?? pickCodexSeat(launchedAt, null);
       log("codexsupervisor.launch", { supervisorId: supervisorId.slice(0, 8), respawns, seat: picked?.id.slice(0, 8) ?? null, args: launchArgs.join(" ") });
       const store = picked ? ensureCodexStoreHome(picked.id) : undefined;
