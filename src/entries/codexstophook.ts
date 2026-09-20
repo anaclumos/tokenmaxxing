@@ -42,7 +42,7 @@ async function handleCodexStop(rawStdin: string): Promise<void> {
     }
     const own = livingPresences(codexPaths.presenceDir).find((p) => p.id === supervisorId);
     const seat = codex.liveId();
-    if (own && own.accountId !== seat) {
+    if (!own || own.accountId !== seat) {
       log("codexstop.foreign_seat", { supervisorId: supervisorId.slice(0, 8), seat: seat?.slice(0, 8) ?? null });
       return;
     }

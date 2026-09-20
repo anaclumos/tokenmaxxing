@@ -98,13 +98,10 @@ export async function runCodexSupervisor(input: { argv: string[] }): Promise<num
     if (existsSync(marker)) rmSync(marker, { force: true });
 
     const launchedAt = Date.now();
-    const { child } = await withLock(codexPool.lockFile, async () => {
+    const { child, seat } = await withLock(codexPool.lockFile, async () => {
       clearPresence({ dir: codexPaths.presenceDir, id: supervisorId });
       const picked = validWanted({ wanted, now: launchedAt, supervisorId }) ?? pickCodexSeat(launchedAt);
       log("codexsupervisor.launch", { supervisorId: supervisorId.slice(0, 8), respawns, seat: picked?.id.slice(0, 8) ?? null, args: launchArgs.join(" ") });
-      if (respawns > 0) {
-        process.stdout.write(`\n\x1b[36m↻ tokenmaxxing: switched codex to ${picked?.label ?? "the ambient codex login"} - resuming...\x1b[0m\n`);
-      }
       const store = picked ? ensureCodexStoreHome(picked.id) : undefined;
       const spawned = Bun.spawn([real, ...launchArgs], {
         stdin: "inherit",
@@ -129,6 +126,9 @@ export async function runCodexSupervisor(input: { argv: string[] }): Promise<num
       }
       return { child: spawned, seat: picked };
     });
+    if (respawns > 0) {
+      process.stdout.write(`\n\x1b[36m↻ tokenmaxxing: switched codex to ${seat?.label ?? "the ambient codex login"} - resuming...\x1b[0m\n`);
+    }
 
     await raceMarkerOrExit({
       child,

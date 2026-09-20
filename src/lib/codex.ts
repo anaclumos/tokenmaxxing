@@ -42,7 +42,7 @@ function applyUsage(account: Account, usage: CodexUsage, at: number): void {
 
 type CodexReadOutcome = { ok: true; usage: CodexUsage; at: number } | { ok: false; reason: string; deadGrant: boolean };
 
-async function readCodexUsage(account: Account, now: number): Promise<CodexReadOutcome> {
+async function readCodexUsage(account: Account, now: number, refresh: boolean): Promise<CodexReadOutcome> {
   let auth: CodexAuthJson | null;
   try {
     auth = readCodexStoreAuth(account.id);
@@ -52,6 +52,9 @@ async function readCodexUsage(account: Account, now: number): Promise<CodexReadO
   if (!auth) return { ok: false, reason: "no credential in this account's store - run `tokenmaxxing auth --codex`", deadGrant: false };
   try {
     if (isCodexAccessExpiring({ auth, now })) {
+      if (!refresh) {
+        return { ok: false, reason: "stored access token is expiring and this read never refreshes a store", deadGrant: false };
+      }
       if (seatCounts(codexPaths.presenceDir).has(account.id)) {
         return { ok: false, reason: "running in a live codex session (store refresh unsafe)", deadGrant: false };
       }
@@ -67,9 +70,9 @@ async function readCodexUsage(account: Account, now: number): Promise<CodexReadO
   }
 }
 
-async function observeLive(account: Account, cfg: Config, now: number, opts: { probe: boolean }): Promise<Observation | null> {
+export async function observeCodex(account: Account, cfg: Config, now: number, opts: { probe: boolean; refresh: boolean }): Promise<Observation | null> {
   if (opts.probe && (account.lastUsageAt == null || now - account.lastUsageAt > cfg.policy.usagePollTtlMs)) {
-    const outcome = await readCodexUsage(account, now);
+    const outcome = await readCodexUsage(account, now, opts.refresh);
     await withLock(codexPool.lockFile, () => {
       const idx = loadAccounts(codexPool);
       const a = idx.accounts.find((x) => x.id === account.id);
@@ -92,7 +95,7 @@ async function samplePool(accounts: Account[], _liveId: string | null, now: numb
   const reports = new Map<string, SampleReport>();
   await Promise.all(
     accounts.map(async (account) => {
-      const outcome = await readCodexUsage(account, now);
+      const outcome = await readCodexUsage(account, now, true);
       if (outcome.ok) {
         applyUsage(account, outcome.usage, outcome.at);
         reports.set(account.id, { ok: true, source: "probe" });
@@ -233,7 +236,7 @@ export const codex: Provider = {
   liveId,
   presence,
   gatedFamilies: () => null,
-  observeLive,
+  observeLive: (account, cfg, now, opts) => observeCodex(account, cfg, now, { probe: opts.probe, refresh: true }),
   samplePool,
   mergeWindows: (next) => next,
   swap: prepareMove,
