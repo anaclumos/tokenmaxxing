@@ -330,9 +330,9 @@ class StdinRelay {
   }
 }
 
-function persistedStreamOutput(info: Analysis, sid: string | null): boolean {
+function bareResumeStream(info: Analysis, argv: string[], sid: string | null): boolean {
+  if (info.sessionId != null || stripSessionFlags(argv).length !== 0 || sid == null) return false;
   try {
-    if (sid == null) return false;
     const persisted = loadSessionFlags(sid);
     return persisted != null && analyzeArgs(persisted).streamOutput;
   } catch {
@@ -342,9 +342,9 @@ function persistedStreamOutput(info: Analysis, sid: string | null): boolean {
 
 export async function runSupervisor(argv: string[]): Promise<number> {
   const info = analyzeArgs(argv);
-  const resumedSid = info.sessionId ?? info.resumeId ?? (info.continueLatest ? latestSessionForCwd() : null);
-  const earlyStream = info.streamOutput || persistedStreamOutput(info, resumedSid);
-  const earlySid = resumedSid ?? crypto.randomUUID();
+  const drivenSid = info.sessionId ?? info.resumeId ?? (info.continueLatest ? latestSessionForCwd() : null);
+  const earlyStream = info.streamOutput || bareResumeStream(info, argv, drivenSid);
+  const earlySid = drivenSid ?? crypto.randomUUID();
   if (loopGuardTripped("claude")) {
     if (earlyStream) {
       process.stdout.write(systemLine(earlySid, "tokenmaxxing: wrapper re-entered without reaching the real Claude. Fix claudeBin, then run tokenmaxxing doctor."));
