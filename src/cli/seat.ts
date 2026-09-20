@@ -16,8 +16,8 @@ function storeUsable(accountId: string): boolean {
 }
 
 export async function cmdSeat(pidRaw: string | undefined, extra: string[]): Promise<number> {
-  const pid = pidRaw != null && /^[2-9][0-9]*$/.test(pidRaw) ? Number(pidRaw) : NaN;
-  if (!Number.isSafeInteger(pid) || extra.length > 0) {
+  const pid = pidRaw != null && /^(0|[1-9][0-9]*)$/.test(pidRaw) ? Number(pidRaw) : NaN;
+  if (!Number.isSafeInteger(pid) || pid < 2 || extra.length > 0) {
     emitError({ message: "usage: tokenmaxxing seat --codex <pid> - print the CODEX_HOME of one pooled account, reserved until <pid> exits" });
     return 2;
   }
