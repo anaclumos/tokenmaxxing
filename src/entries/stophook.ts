@@ -17,6 +17,11 @@ export async function runBoundaryHook(event: "stop" | "sessionstart"): Promise<n
   const parsed = BoundaryStdin.safeParse(JsonTextSchema.safeParse(await readStdin()).data);
   const stdin = parsed.success ? parsed.data : {};
   const session = supervisedSession();
+  const nested = stdin.session_id != null && session != null && stdin.session_id !== session.sid;
+  if (nested) {
+    log(`${event}.nested_session`, { stdin: stdin.session_id?.slice(0, 8), supervised: session?.sid.slice(0, 8) });
+    return 0;
+  }
 
   try {
     const decision = await evaluateAndMaybeSwap(claude, Date.now(), session != null);

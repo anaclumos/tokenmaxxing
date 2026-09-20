@@ -1,6 +1,7 @@
 import { claude } from "../lib/claude.ts";
 import { evaluateAndMaybeSwap } from "../lib/decide.ts";
 import { sampleOldest } from "../lib/sample.ts";
+import { pruneStaleSessions } from "../lib/sessions.ts";
 import { loadConfig } from "../lib/state.ts";
 import { maybeAutoUpdate } from "../lib/update.ts";
 import { errorMessage, log } from "../lib/log.ts";
@@ -8,6 +9,7 @@ import { c, emitError, emitJson, fmtReset } from "./render.ts";
 
 export async function cmdCheck(json = false): Promise<number> {
   const now = Date.now();
+  pruneStaleSessions(now);
   let d;
   try {
     d = await evaluateAndMaybeSwap(claude, now);

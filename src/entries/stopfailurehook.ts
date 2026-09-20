@@ -41,7 +41,8 @@ export async function runStopFailureHook(): Promise<number> {
   const stdinSid = stdin.session_id;
   const session = supervisedSession();
   const mainLoop = stdin.agent_id === undefined;
-  const canRespawn = session != null && mainLoop;
+  const nested = stdinSid != null && session != null && stdinSid !== session.sid;
+  const canRespawn = session != null && mainLoop && !nested;
 
   try {
     const cfg = loadConfig();
@@ -80,7 +81,7 @@ export async function runStopFailureHook(): Promise<number> {
       writeRespawnMarker({ session, sessionId: stdinSid ?? session.sid, accountId: decision.account.id, waitUntil: decision.waitUntil ?? now, compact: false });
       log("stopfailure.marker", { session: session.sid.slice(0, 8), account: decision.account.id.slice(0, 8), waitUntil: decision.waitUntil ?? now });
     } else {
-      log("stopfailure.decision", { reason: decision.reason, swapped: decision.swapped, account: decision.account?.id.slice(0, 8), waitUntil: decision.waitUntil });
+      log("stopfailure.decision", { reason: decision.reason, swapped: decision.swapped, account: decision.account?.id.slice(0, 8), waitUntil: decision.waitUntil, nested: nested || undefined });
     }
   } catch (e) {
     log("stopfailure.error", { err: errorMessage(e) });

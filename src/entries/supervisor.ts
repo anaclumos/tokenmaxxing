@@ -187,7 +187,7 @@ function consumableMarker(marker: string, gate: MarkerGate): z.infer<typeof Resp
   } catch (e) {
     log("supervisor.marker_invalid", { err: errorMessage(e) });
     throw new Error(
-      `${marker} is corrupt (unparsable JSON or off-schema) - the session was stopped instead of guessing whether the pool is depleted; inspect the marker, then run \`claude --resume ${basename(marker)}\` (a fresh launch clears it)`,
+      `tokenmaxxing: the session was stopped because the respawn marker is corrupt. Inspect ${marker}, then run \`claude --resume ${basename(marker)}\` (a fresh launch clears it)`,
     );
   }
   if (m.launchedAt !== undefined && m.launchedAt !== gate.launchedAt) {
@@ -331,9 +331,15 @@ class StdinRelay {
 }
 
 export async function runSupervisor(argv: string[]): Promise<number> {
-  if (loopGuardTripped("claude")) return 1;
-  const real = resolveRealClaude();
   const info = analyzeArgs(argv);
+  if (loopGuardTripped("claude")) {
+    if (info.streamOutput) {
+      const sid = info.sessionId ?? info.resumeId ?? crypto.randomUUID();
+      process.stdout.write(systemLine(sid, "tokenmaxxing: wrapper re-entered without reaching the real Claude. Fix claudeBin, then run tokenmaxxing doctor."));
+    }
+    return 1;
+  }
+  const real = resolveRealClaude();
   const childEnv = { ...process.env, [WRAP_DEPTH_ENV]: String(wrapDepth() + 1) };
 
   let child: Subprocess | null = null;
@@ -397,6 +403,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
   let respawns = 0;
   let overriddenUntil = 0;
   let wanted: string | null = null;
+  try {
   while (true) {
     if (existsSync(marker)) rmSync(marker, { force: true });
 
@@ -487,5 +494,12 @@ export async function runSupervisor(argv: string[]): Promise<number> {
     clearPresence({ dir: paths.presenceDir, id: sid });
     log("supervisor.exit", { sid, respawns, code: proc.exitCode, signal: proc.signalCode, terminated: terminating || undefined });
     return exitStatus(proc);
+  }
+  } catch (e) {
+    const msg = errorMessage(e);
+    const text = msg.startsWith("tokenmaxxing:") ? msg : `tokenmaxxing: ${msg}`;
+    say(`\n\x1b[31m${text}\x1b[0m\n`, text);
+    log("supervisor.fatal", { err: msg });
+    return 1;
   }
 }
