@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { writeFileAtomic } from "./atomic.ts";
 import { MAX_WRAP_DEPTH, WRAP_DEPTH_ENV } from "./claudebin.ts";
-import { codexIdentityOf, deleteCodexStoreAuth, isCodexAccessExpiring, readCodexAuthAt, readCodexStoreAuth, writeCodexStoreAuth } from "./codexauth.ts";
+import { codexIdentityOf, codexStoreUsable, deleteCodexStoreAuth, isCodexAccessExpiring, readCodexAuthAt, readCodexStoreAuth, writeCodexStoreAuth } from "./codexauth.ts";
 import { resolveRealCodex, verifyRealCodex } from "./codexbin.ts";
 import { CodexInvalidGrantError, CodexRefreshFailedError, refreshCodexAuth } from "./codexoauth.ts";
 import { seatCounts } from "./presence.ts";
@@ -216,17 +216,11 @@ export function codexPickCtx(now: number, currentId: string | null): PickCtx {
   return { now, thresholds: thresholdBars(loadConfig()), currentId, families: null, seats: null };
 }
 
-export function pickCodexSeat(now: number, wantedId: string | null = null): Account | null {
-  const cfg = loadConfig();
-  const idx = loadAccounts(codexPool);
-  const ctx: PickCtx = { now, thresholds: thresholdBars(cfg), currentId: null, families: null, seats: null };
-  if (wantedId != null) {
-    const wanted = idx.accounts.find((a) => a.id === wantedId && a.needsReauth !== true && !isExhausted(a, { ...ctx, currentId: wantedId }));
-    if (wanted) return wanted;
-  }
+export function pickCodexSeat(now: number): Account | null {
+  const ctx = codexPickCtx(now, null);
   const present = seatCounts(codexPaths.presenceDir);
-  const usable = idx.accounts.filter((a) => a.needsReauth !== true && !isExhausted(a, ctx) && !present.has(a.id));
-  return pickBest(usable, ctx) ?? pickEarliestReset(idx.accounts.filter((a) => a.needsReauth !== true && !present.has(a.id)), ctx)?.account ?? null;
+  const open = loadAccounts(codexPool).accounts.filter((a) => a.needsReauth !== true && !present.has(a.id) && codexStoreUsable(a.id));
+  return pickBest(open.filter((a) => !isExhausted(a, ctx)), ctx) ?? pickEarliestReset(open, ctx)?.account ?? null;
 }
 
 export const codex: Provider = {
@@ -245,13 +239,7 @@ export const codex: Provider = {
   swap: prepareMove,
   classifySwapError: (e) => (e instanceof CodexInvalidGrantError ? "dead-grant" : e instanceof StoreUnusableError ? "skip" : "fatal"),
   removeCredentials: async (a) => deleteCodexStoreAuth(a.id),
-  storeUsable: async (a) => {
-    try {
-      return readCodexStoreAuth(a.id) != null;
-    } catch {
-      return false;
-    }
-  },
+  storeUsable: async (a) => codexStoreUsable(a.id),
   login,
   importLive,
   preflight,

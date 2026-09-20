@@ -23,6 +23,14 @@ export function readCodexStoreAuth(accountId: string): CodexAuthJson | null {
   return readCodexAuthAt({ path: codexAuthJsonFor(accountId) });
 }
 
+export function codexStoreUsable(accountId: string): boolean {
+  try {
+    return readCodexStoreAuth(accountId) != null;
+  } catch {
+    return false;
+  }
+}
+
 export function writeCodexStoreAuth(accountId: string, auth: CodexAuthJson): void {
   mkdirSync(codexStoreDirFor(accountId), { recursive: true });
   writeFileAtomic(codexAuthJsonFor(accountId), JSON.stringify(CodexAuthJsonSchema.parse(auth), null, 2), 0o600);

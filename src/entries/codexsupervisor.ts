@@ -5,7 +5,7 @@ import { codexPaths, codexPool } from "../lib/paths.ts";
 import { withLock } from "../lib/lock.ts";
 import { UNMANAGED_ENV, WRAP_DEPTH_ENV, wrapDepth } from "../lib/claudebin.ts";
 import { resolveRealCodex } from "../lib/codexbin.ts";
-import { ensureCodexStoreHome, readCodexStoreAuth } from "../lib/codexauth.ts";
+import { codexStoreUsable, ensureCodexStoreHome } from "../lib/codexauth.ts";
 import { codexPickCtx, pickCodexSeat } from "../lib/codex.ts";
 import { clearPresence, livingPresences } from "../lib/presence.ts";
 import { isExhausted } from "../lib/picker.ts";
@@ -61,13 +61,7 @@ function validWanted(input: { wanted: string | null; now: number; supervisorId: 
   const a = loadAccounts(codexPool).accounts.find((x) => x.id === input.wanted);
   if (!a || a.needsReauth === true) return null;
   if (isExhausted(a, codexPickCtx(input.now, input.wanted))) return null;
-  let credential: unknown;
-  try {
-    credential = readCodexStoreAuth(a.id);
-  } catch {
-    return null;
-  }
-  if (credential == null) return null;
+  if (!codexStoreUsable(a.id)) return null;
   const foreign = livingPresences(codexPaths.presenceDir).some((p) => p.accountId === a.id && p.id !== input.supervisorId);
   if (foreign) {
     log("codexsupervisor.wanted_present", { account: a.id.slice(0, 8) });
@@ -106,7 +100,7 @@ export async function runCodexSupervisor(input: { argv: string[] }): Promise<num
     const launchedAt = Date.now();
     const { child } = await withLock(codexPool.lockFile, async () => {
       clearPresence({ dir: codexPaths.presenceDir, id: supervisorId });
-      const picked = validWanted({ wanted, now: launchedAt, supervisorId }) ?? pickCodexSeat(launchedAt, null);
+      const picked = validWanted({ wanted, now: launchedAt, supervisorId }) ?? pickCodexSeat(launchedAt);
       log("codexsupervisor.launch", { supervisorId: supervisorId.slice(0, 8), respawns, seat: picked?.id.slice(0, 8) ?? null, args: launchArgs.join(" ") });
       const store = picked ? ensureCodexStoreHome(picked.id) : undefined;
       const spawned = Bun.spawn([real, ...launchArgs], {

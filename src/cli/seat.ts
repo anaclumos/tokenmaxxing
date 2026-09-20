@@ -1,4 +1,4 @@
-import { ensureCodexStoreHome, readCodexStoreAuth } from "../lib/codexauth.ts";
+import { codexStoreUsable, ensureCodexStoreHome } from "../lib/codexauth.ts";
 import { withLock } from "../lib/lock.ts";
 import { log } from "../lib/log.ts";
 import { codexPaths, codexPool } from "../lib/paths.ts";
@@ -6,14 +6,6 @@ import { livingPresences, writePresence } from "../lib/presence.ts";
 import { isExhausted, pickBest, thresholdBars, type PickCtx } from "../lib/picker.ts";
 import { loadAccounts, loadConfig } from "../lib/state.ts";
 import { emitError } from "./render.ts";
-
-function storeUsable(accountId: string): boolean {
-  try {
-    return readCodexStoreAuth(accountId) != null;
-  } catch {
-    return false;
-  }
-}
 
 export async function cmdSeat(pidRaw: string | undefined, extra: string[]): Promise<number> {
   const pid = pidRaw != null && /^(0|[1-9][0-9]*)$/.test(pidRaw) ? Number(pidRaw) : NaN;
@@ -33,7 +25,7 @@ export async function cmdSeat(pidRaw: string | undefined, extra: string[]): Prom
       if (heldAccount.needsReauth === true) {
         return { denied: "the account this pid holds needs reauthentication - run `tokenmaxxing auth --codex` and borrow again" };
       }
-      if (!storeUsable(heldAccount.id)) {
+      if (!codexStoreUsable(heldAccount.id)) {
         return { denied: "the account this pid holds has no usable credential in its store - refusing to hand back a credential-less seat" };
       }
       return { store: ensureCodexStoreHome(heldAccount.id), id: heldAccount.id, reused: true };
@@ -41,7 +33,7 @@ export async function cmdSeat(pidRaw: string | undefined, extra: string[]): Prom
     const present = new Map<string, number>();
     for (const p of living) present.set(p.accountId, (present.get(p.accountId) ?? 0) + 1);
     const usable = idx.accounts.filter(
-      (a) => a.needsReauth !== true && !isExhausted(a, ctx) && !present.has(a.id) && storeUsable(a.id)
+      (a) => a.needsReauth !== true && !isExhausted(a, ctx) && !present.has(a.id) && codexStoreUsable(a.id)
     );
     const picked = pickBest(usable, ctx);
     if (!picked) return null;
