@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, type Dirent } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
 import { errorMessage, log } from "./log.ts";
@@ -47,10 +47,10 @@ const TMP_GRACE_MS = 3600 * 1000;
 
 const STORE_PARENTS = [paths.storesDir, codexPaths.storesDir, grokPaths.storesDir, opencodeGoPaths.storesDir];
 
-function listDir(dir: string): string[] {
+function listDir(dir: string): Dirent[] {
   if (!existsSync(dir)) return [];
   try {
-    return readdirSync(dir);
+    return readdirSync(dir, { withFileTypes: true });
   } catch (e) {
     log("state.sweep_unreadable", { dir, err: errorMessage(e) });
     return [];
@@ -58,9 +58,11 @@ function listDir(dir: string): string[] {
 }
 
 function tmpSweepDirs(): string[] {
-  const dirs = [paths.home, paths.usageDir, paths.presenceDir, paths.respawnDir, sessionsDir(), paths.binDir, paths.cloudDir, codexPaths.presenceDir, codexPaths.respawnDir];
+  const dirs = [paths.home, paths.usageDir, paths.presenceDir, paths.respawnDir, sessionsDir(), paths.binDir, paths.cloudDir, codexPaths.presenceDir, codexPaths.respawnDir, codexPaths.onboardDir];
   for (const parent of STORE_PARENTS) {
-    for (const child of listDir(parent)) dirs.push(join(parent, child));
+    for (const child of listDir(parent)) {
+      if (child.isDirectory()) dirs.push(join(parent, child.name));
+    }
   }
   return dirs;
 }
@@ -75,8 +77,8 @@ function pruneDeadState(now: number): void {
   }
   for (const dir of tmpSweepDirs()) {
     for (const f of listDir(dir)) {
-      if (!f.includes(TMP_MARKER)) continue;
-      const p = join(dir, f);
+      if (!f.isFile() || !f.name.includes(TMP_MARKER)) continue;
+      const p = join(dir, f.name);
       try {
         if (now - statSync(p).mtimeMs > TMP_GRACE_MS) rmSync(p, { force: true });
       } catch {
@@ -89,7 +91,7 @@ export function pruneStaleSessions(now: number): void {
   pruneDeadState(now);
   const dir = sessionsDir();
   for (const f of listDir(dir)) {
-    const p = join(dir, f);
+    const p = join(dir, f.name);
     try {
       if (now - statSync(p).mtimeMs > SESSION_RETENTION_MS) rmSync(p, { force: true });
     } catch {
