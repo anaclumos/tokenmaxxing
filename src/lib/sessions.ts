@@ -1,12 +1,14 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, type Dirent } from "node:fs";
-import { join, sep } from "node:path";
+import { basename, join, sep } from "node:path";
 import { z } from "zod";
 import { errorMessage, log } from "./log.ts";
 import { codexPaths, grokPaths, opencodeGoPaths, paths } from "./paths.ts";
 import { writeFileAtomic } from "./atomic.ts";
+import { presencePid } from "./presence.ts";
+import { spawnedThroughShellsBy } from "./proc.ts";
 import type { RespawnMarkerSchema } from "./types.ts";
 
-const SessionSchema = z.object({ flags: z.array(z.string()), cwd: z.string() });
+const SessionSchema = z.object({ flags: z.array(z.string()), cwd: z.string(), current: z.uuid().optional() });
 
 const SESSION_RETENTION_MS = 30 * 24 * 3600 * 1000;
 
@@ -21,10 +23,24 @@ export function saveSessionFlags(sid: string, flags: string[], cwd: string): voi
   writeFileAtomic(sessionFile(sid), JSON.stringify({ flags, cwd }));
 }
 
-export function loadSessionFlags(sid: string): string[] | null {
+function loadSession(sid: string): z.infer<typeof SessionSchema> | null {
   const f = sessionFile(sid);
   if (!existsSync(f)) return null;
-  return SessionSchema.parse(JSON.parse(readFileSync(f, "utf8"))).flags;
+  return SessionSchema.parse(JSON.parse(readFileSync(f, "utf8")));
+}
+
+export function loadSessionFlags(sid: string): string[] | null {
+  return loadSession(sid)?.flags ?? null;
+}
+
+export function liveSessionId(sid: string): string {
+  return loadSession(sid)?.current ?? sid;
+}
+
+function recordLiveSession(sid: string, current: string): void {
+  const session = loadSession(sid);
+  mkdirSync(sessionsDir(), { recursive: true });
+  writeFileAtomic(sessionFile(sid), JSON.stringify({ flags: session?.flags ?? [], cwd: session?.cwd ?? process.cwd(), current }));
 }
 
 const DEAD_STATE_ENTRIES = [
@@ -101,13 +117,14 @@ export function pruneStaleSessions(now: number): void {
   for (const f of listDir(dir, root)) {
     const p = join(dir, f.name);
     try {
+      if (existsSync(join(paths.presenceDir, basename(f.name, ".json")))) continue;
       if (now - statSync(p).mtimeMs > SESSION_RETENTION_MS) rmSync(p, { force: true });
     } catch {
     }
   }
 }
 
-export type SupervisedSession = { sid: string; launchedAt: number | null };
+export type SupervisedSession = { sid: string; launchedAt: number | null; live: string };
 
 const LaunchedAtSchema = z.coerce.number().finite().optional().catch(undefined);
 
@@ -115,16 +132,28 @@ export function supervisedSession(env: Record<string, string | undefined> = proc
   if (env.TOKENMAXXING_SUPERVISED !== "1") return null;
   const sid = env.TOKENMAXXING_SESSION_ID;
   if (sid == null || sid === "") return null;
-  return { sid, launchedAt: LaunchedAtSchema.parse(env.TOKENMAXXING_LAUNCHED_AT) ?? null };
+  return { sid, launchedAt: LaunchedAtSchema.parse(env.TOKENMAXXING_LAUNCHED_AT) ?? null, live: liveSessionId(sid) };
 }
 
-export function writeRespawnMarker(input: { session: SupervisedSession; sessionId: string; accountId: string; waitUntil: number; compact: boolean }): void {
+export function adoptLiveSession(session: SupervisedSession, stdinSid: string | undefined): SupervisedSession | null {
+  if (stdinSid == null || stdinSid === session.live) return session;
+  const child = presencePid({ dir: paths.presenceDir, id: session.sid });
+  if (child == null || !spawnedThroughShellsBy(child)) {
+    log("session.live_id_refused", { reason: child == null ? "no-presence" : "not-descendant", stdin: stdinSid.slice(0, 8), live: session.live.slice(0, 8), session: session.sid.slice(0, 8) });
+    return null;
+  }
+  recordLiveSession(session.sid, stdinSid);
+  log("session.live_id", { from: session.live.slice(0, 8), to: stdinSid.slice(0, 8), session: session.sid.slice(0, 8) });
+  return { ...session, live: stdinSid };
+}
+
+export function writeRespawnMarker(input: { session: SupervisedSession; accountId: string; waitUntil: number; compact: boolean }): void {
   mkdirSync(paths.respawnDir, { recursive: true });
   const payload: z.infer<typeof RespawnMarkerSchema> = {
     accountId: input.accountId,
     ts: Date.now(),
     waitUntil: input.waitUntil,
-    sessionId: input.sessionId,
+    sessionId: input.session.live,
     compact: input.compact,
     ...(input.session.launchedAt != null ? { launchedAt: input.session.launchedAt } : {}),
   };

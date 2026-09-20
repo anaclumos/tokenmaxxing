@@ -18,6 +18,17 @@ export function writePresence(input: { dir: string; id: string; accountId: strin
   writeFileAtomic(join(input.dir, input.id), JSON.stringify(PresenceSchema.parse({ accountId: input.accountId, pid: input.pid, startedAt })));
 }
 
+export function presencePid(input: { dir: string; id: string }): number | null {
+  let raw: string;
+  try {
+    raw = readFileSync(join(input.dir, input.id), "utf8");
+  } catch (e) {
+    if (ErrnoSchema.safeParse(e).data?.code === "ENOENT") return null;
+    throw e;
+  }
+  return PresenceSchema.parse(JSON.parse(raw)).pid;
+}
+
 export function clearPresence(input: { dir: string; id: string }): void {
   rmSync(join(input.dir, input.id), { force: true });
 }
