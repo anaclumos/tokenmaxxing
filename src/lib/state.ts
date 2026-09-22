@@ -93,7 +93,7 @@ export function upsertAccount(
     lastUsageAt: h.sample ? h.sample.at : existing?.lastUsageAt,
     needsReauth: false,
     ...(h.oauthAccount ? { oauthAccount: h.oauthAccount } : {}),
-    ...(h.usageRetryAt != null ? { usageRetryAt: h.usageRetryAt } : {}),
+    usageRetryAt: h.sample ? undefined : (h.usageRetryAt ?? existing?.usageRetryAt),
   };
   if (existing) Object.assign(existing, fresh);
   else idx.accounts.push(fresh);
