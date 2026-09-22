@@ -226,6 +226,7 @@ async function login(): Promise<Harvest | null> {
       tier: claudeTierLabel(blob.claudeAiOauth),
       oauthAccount,
       sample: sampled.ok ? { windows: windowsOf(sampled.usage, at), at } : null,
+      ...(!sampled.ok && sampled.retryAt != null ? { usageRetryAt: sampled.retryAt } : {}),
       park: () => writeItem(storeTarget(id), claudeAiOauthOnly(blobRaw)),
     };
   } finally {

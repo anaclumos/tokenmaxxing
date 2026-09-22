@@ -84,7 +84,7 @@ export async function sampleOldest(cfg: Config): Promise<void> {
     const sampledAt = (a: Account) => Math.max(a.lastUsageAt ?? 0, a.lastProbeAt ?? 0);
     const seats = seatCounts(paths.presenceDir);
     const stale = idx.accounts
-      .filter((a) => a.needsReauth !== true && usageBlockedUntil(a, now) == null && now - sampledAt(a) > cfg.policy.usagePollTtlMs)
+      .filter((a) => a.needsReauth !== true && now - sampledAt(a) > cfg.policy.usagePollTtlMs)
       .sort((a, b) => Number(seats.has(b.id)) - Number(seats.has(a.id)) || sampledAt(a) - sampledAt(b))
       .slice(0, SAMPLE_BATCH);
     if (stale.length === 0) {
@@ -102,7 +102,7 @@ export async function sampleOldest(cfg: Config): Promise<void> {
         continue;
       }
       target.storeFails = 0;
-      batch.push({ account: target, token: prepared.token });
+      if (usageBlockedUntil(target, now) == null) batch.push({ account: target, token: prepared.token });
     }
     saveAccounts(claudePool, idx);
     return batch;
