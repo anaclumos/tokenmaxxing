@@ -23,6 +23,7 @@ type HubPool = {
   provider: Provider;
   usageUrl: string;
   storeDir: (accountId: string) => string;
+  fold: (account: Account) => void;
   read: (account: Account, cfg: Config, now: number) => Promise<Account>;
   body: (usage: UsageReport, account: Account) => unknown;
 };
@@ -60,16 +61,15 @@ const POOLS: HubPool[] = [
     provider: claude,
     usageUrl: OAUTH_USAGE_URL,
     storeDir: storeDirFor,
-    read: async (account) => {
-      foldTee(account);
-      return account;
-    },
+    fold: foldTee,
+    read: async (account) => account,
     body: claudeBody,
   },
   {
     provider: codex,
     usageUrl: CODEX_USAGE_URL,
     storeDir: codexStoreDirFor,
+    fold: () => {},
     read: async (account, cfg, now) => {
       await observeCodex(account, cfg, now, { probe: true, refresh: false });
       return loadAccounts(codex.pool).accounts.find((a) => a.id === account.id) ?? account;
@@ -89,19 +89,22 @@ function json(value: unknown, status = 200): Response {
 function authFiles(cfg: Config, now: number): unknown {
   const files = POOLS.flatMap((pool) => {
     const ctx = { now, thresholds: thresholdBars(cfg), currentId: null, families: pool.provider.gatedFamilies(cfg), seats: null };
-    return loadAccounts(pool.provider.pool).accounts.map((a) => ({
-      id: a.id,
-      auth_index: authIndex(pool, a),
-      name: a.label,
-      type: pool.provider.name,
-      provider: pool.provider.name,
-      label: a.label,
-      ...(a.email ? { email: a.email } : {}),
-      status: a.needsReauth === true ? "error" : "active",
-      status_message: a.needsReauth === true ? `needs reauth - run \`tokenmaxxing auth${pool.provider.flag} ${a.label}\`` : "",
-      disabled: false,
-      unavailable: isExhausted(a, ctx),
-    }));
+    return loadAccounts(pool.provider.pool).accounts.map((a) => {
+      pool.fold(a);
+      return {
+        id: a.id,
+        auth_index: authIndex(pool, a),
+        name: a.label,
+        type: pool.provider.name,
+        provider: pool.provider.name,
+        label: a.label,
+        ...(a.email ? { email: a.email } : {}),
+        status: a.needsReauth === true ? "error" : "active",
+        status_message: a.needsReauth === true ? `needs reauth - run \`tokenmaxxing auth${pool.provider.flag} ${a.label}\`` : "",
+        disabled: false,
+        unavailable: isExhausted(a, ctx),
+      };
+    });
   });
   return { observed_at: new Date(now).toISOString(), files };
 }
@@ -136,6 +139,7 @@ async function apiCall(req: Request): Promise<Response> {
   if (!account) return json({ error: "auth credential not found for auth_index" }, 400);
   const now = Date.now();
   const current = await pool.read(account, loadConfig(), now);
+  pool.fold(current);
   const usage = current.lastUsageAt != null && now - current.lastUsageAt <= STALE_AFTER_MS ? usageReport(current, now) : null;
   if (!usage) return json({ error: `no usage figure newer than ${STALE_AFTER_MS / 3_600_000}h for this account` }, 502);
   return json({ status_code: 200, header: { "Content-Type": ["application/json"] }, body: JSON.stringify(pool.body(usage, current)) });
