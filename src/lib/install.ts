@@ -9,7 +9,7 @@ import { resolveRealClaude } from "./claudebin.ts";
 import { loadConfig } from "./state.ts";
 import { ErrnoSchema } from "./types.ts";
 
-export type InstallOutcome = { claudeWrapper: string; installedBin: string; pathAhead: boolean; timerLoaded: boolean; checkIntervalS: number };
+export type InstallOutcome = { claudeWrapper: string; installedBin: string; pathAhead: boolean; timerLoaded: boolean; hubLoaded: boolean; checkIntervalS: number };
 
 export function isBinDirAhead(): boolean {
   const dirs = (process.env.PATH ?? "").split(":");
@@ -37,6 +37,10 @@ export function isNixPackaged(): boolean {
 
 export function skipImperativeTimer(): boolean {
   return envFlag("TOKENMAXXING_SKIP_TIMER");
+}
+
+export function skipImperativeHub(): boolean {
+  return envFlag("TOKENMAXXING_SKIP_HUB");
 }
 
 function isNixStorePath(path: string): boolean {
@@ -103,6 +107,7 @@ export function installSupervisor(): InstallOutcome {
     installedBin: target,
     pathAhead: isBinDirAhead(),
     timerLoaded: installCheckTimer(checkIntervalS),
+    hubLoaded: installHubService(),
     checkIntervalS,
   };
 }
@@ -203,9 +208,11 @@ export function uninstallCodexSupervisor(): void {
 }
 
 const LAUNCHD_LABEL = "com.tokenmaxxing.check";
+const LAUNCHD_HUB_LABEL = "com.tokenmaxxing.hub";
+const HUB_UNIT = "tokenmaxxing-hub.service";
 
-function launchdPlist(): string {
-  return join(paths.launchdAgentsDir, `${LAUNCHD_LABEL}.plist`);
+function launchdPlist(label: string): string {
+  return join(paths.launchdAgentsDir, `${label}.plist`);
 }
 
 function launchdDomain(): string | null {
@@ -225,7 +232,7 @@ function installCheckTimer(intervalS: number): boolean {
   if (skipImperativeTimer()) return true;
 
   if (process.platform === "darwin") {
-    const plist = launchdPlist();
+    const plist = launchdPlist(LAUNCHD_LABEL);
     writeFileAtomic(
       plist,
       `<?xml version="1.0" encoding="UTF-8"?>
@@ -283,21 +290,37 @@ WantedBy=timers.target
 
 export function timerActivationHint(): string {
   if (process.platform === "darwin") {
-    return `launchctl bootstrap gui/$(id -u) ${launchdPlist()}`;
+    return `launchctl bootstrap gui/$(id -u) ${launchdPlist(LAUNCHD_LABEL)}`;
   }
   return "systemctl --user daemon-reload && systemctl --user enable --now tokenmaxxing-check.timer";
+}
+
+export function hubActivationHint(): string {
+  if (process.platform === "darwin") {
+    return `launchctl bootstrap gui/$(id -u) ${launchdPlist(LAUNCHD_HUB_LABEL)}`;
+  }
+  return `systemctl --user daemon-reload && systemctl --user enable --now ${HUB_UNIT}`;
 }
 
 export function checkTimerHealthy(): boolean {
   if (skipImperativeTimer()) return true;
   if (process.platform === "darwin") {
     const domain = launchdDomain();
-    return existsSync(launchdPlist()) && domain != null && run(["launchctl", "print", `${domain}/${LAUNCHD_LABEL}`]);
+    return existsSync(launchdPlist(LAUNCHD_LABEL)) && domain != null && run(["launchctl", "print", `${domain}/${LAUNCHD_LABEL}`]);
   }
   return (
     existsSync(join(paths.systemdUserDir, "tokenmaxxing-check.timer")) &&
     run(["systemctl", "--user", "is-active", "--quiet", "tokenmaxxing-check.timer"])
   );
+}
+
+export function hubServiceHealthy(): boolean {
+  if (skipImperativeHub()) return true;
+  if (process.platform === "darwin") {
+    const domain = launchdDomain();
+    return existsSync(launchdPlist(LAUNCHD_HUB_LABEL)) && domain != null && run(["launchctl", "print", `${domain}/${LAUNCHD_HUB_LABEL}`]);
+  }
+  return existsSync(join(paths.systemdUserDir, HUB_UNIT)) && run(["systemctl", "--user", "is-active", "--quiet", HUB_UNIT]);
 }
 
 export function timerDeactivationHint(): string {
@@ -307,11 +330,18 @@ export function timerDeactivationHint(): string {
   return "systemctl --user disable --now tokenmaxxing-check.timer";
 }
 
-function launchdJobLoaded(): "loaded" | "not-loaded" | "unavailable" {
+export function hubDeactivationHint(): string {
+  if (process.platform === "darwin") {
+    return `launchctl bootout gui/$(id -u)/${LAUNCHD_HUB_LABEL}`;
+  }
+  return `systemctl --user disable --now ${HUB_UNIT}`;
+}
+
+function launchdJobLoaded(label: string): "loaded" | "not-loaded" | "unavailable" {
   const domain = launchdDomain();
   if (domain == null) return "unavailable";
   try {
-    const { exitCode } = Bun.spawnSync(["launchctl", "print", `${domain}/${LAUNCHD_LABEL}`], { stdout: "ignore", stderr: "ignore", timeout: 10_000 });
+    const { exitCode } = Bun.spawnSync(["launchctl", "print", `${domain}/${label}`], { stdout: "ignore", stderr: "ignore", timeout: 10_000 });
     if (exitCode === 0) return "loaded";
     return exitCode === 113 ? "not-loaded" : "unavailable";
   } catch {
@@ -319,9 +349,9 @@ function launchdJobLoaded(): "loaded" | "not-loaded" | "unavailable" {
   }
 }
 
-function systemdTimerActive(): "active" | "not-active" | "unavailable" {
+function systemdUnitActive(unit: string): "active" | "not-active" | "unavailable" {
   try {
-    const proc = Bun.spawnSync(["systemctl", "--user", "is-active", "tokenmaxxing-check.timer"], { stdout: "pipe", stderr: "ignore", timeout: 10_000 });
+    const proc = Bun.spawnSync(["systemctl", "--user", "is-active", unit], { stdout: "pipe", stderr: "ignore", timeout: 10_000 });
     const state = proc.stdout.toString().trim();
     if (state === "active" || state === "activating" || state === "reloading") return "active";
     if (state === "inactive" || state === "failed" || state === "deactivating" || state === "unknown" || state === "maintenance") return "not-active";
@@ -333,16 +363,16 @@ function systemdTimerActive(): "active" | "not-active" | "unavailable" {
 
 function removeTimerUnits(): void {
   if (process.platform === "darwin") {
-    rmSync(launchdPlist(), { force: true });
+    rmSync(launchdPlist(LAUNCHD_LABEL), { force: true });
     return;
   }
   rmSync(join(paths.systemdUserDir, "tokenmaxxing-check.timer"), { force: true });
   rmSync(join(paths.systemdUserDir, "tokenmaxxing-check.service"), { force: true });
 }
 
-type TimerOutcome = "removed" | "skipped" | "still-loaded";
+type UnitOutcome = "removed" | "skipped" | "still-loaded";
 
-function uninstallCheckTimer(live: boolean): TimerOutcome {
+function uninstallCheckTimer(live: boolean): UnitOutcome {
   if (skipImperativeTimer()) return "skipped";
   if (!live) {
     removeTimerUnits();
@@ -350,14 +380,89 @@ function uninstallCheckTimer(live: boolean): TimerOutcome {
   }
   if (process.platform === "darwin") {
     const domain = launchdDomain();
-    const loaded = launchdJobLoaded();
+    const loaded = launchdJobLoaded(LAUNCHD_LABEL);
     const deactivated = loaded === "loaded" && domain != null ? run(["launchctl", "bootout", `${domain}/${LAUNCHD_LABEL}`]) : loaded === "not-loaded";
     removeTimerUnits();
     return deactivated ? "removed" : "still-loaded";
   }
-  const active = systemdTimerActive();
+  const active = systemdUnitActive("tokenmaxxing-check.timer");
   const deactivated = active === "active" ? run(["systemctl", "--user", "disable", "--now", "tokenmaxxing-check.timer"]) : active === "not-active";
   removeTimerUnits();
+  run(["systemctl", "--user", "daemon-reload"]);
+  return deactivated ? "removed" : "still-loaded";
+}
+
+function installHubService(): boolean {
+  if (skipImperativeHub()) return true;
+
+  if (process.platform === "darwin") {
+    const plist = launchdPlist(LAUNCHD_HUB_LABEL);
+    writeFileAtomic(
+      plist,
+      `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>${LAUNCHD_HUB_LABEL}</string>
+  <key>ProgramArguments</key><array><string>${escape(installedBin())}</string><string>serve</string></array>
+  <key>KeepAlive</key><true/>
+  <key>RunAtLoad</key><true/>
+  <key>StandardOutPath</key><string>/dev/null</string>
+  <key>StandardErrorPath</key><string>${escape(join(paths.home, "hub.stderr.log"))}</string>
+</dict>
+</plist>
+`,
+      0o644,
+    );
+    const domain = launchdDomain();
+    if (domain == null) return false;
+    run(["launchctl", "bootout", `${domain}/${LAUNCHD_HUB_LABEL}`]);
+    return run(["launchctl", "bootstrap", domain, plist]) || hubServiceHealthy();
+  }
+
+  const exec = `"${installedBin().replaceAll("%", "%%")}" serve`;
+  writeFileAtomic(
+    join(paths.systemdUserDir, HUB_UNIT),
+    `[Unit]
+Description=tokenmaxxing usage hub
+
+[Service]
+ExecStart=${exec}
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
+`,
+    0o644,
+  );
+  return run(["systemctl", "--user", "daemon-reload"]) && run(["systemctl", "--user", "enable", "--now", HUB_UNIT]);
+}
+
+function removeHubUnits(): void {
+  if (process.platform === "darwin") {
+    rmSync(launchdPlist(LAUNCHD_HUB_LABEL), { force: true });
+    return;
+  }
+  rmSync(join(paths.systemdUserDir, HUB_UNIT), { force: true });
+}
+
+function uninstallHubService(live: boolean): UnitOutcome {
+  if (skipImperativeHub()) return "skipped";
+  if (!live) {
+    removeHubUnits();
+    return "removed";
+  }
+  if (process.platform === "darwin") {
+    const domain = launchdDomain();
+    const loaded = launchdJobLoaded(LAUNCHD_HUB_LABEL);
+    const deactivated = loaded === "loaded" && domain != null ? run(["launchctl", "bootout", `${domain}/${LAUNCHD_HUB_LABEL}`]) : loaded === "not-loaded";
+    removeHubUnits();
+    return deactivated ? "removed" : "still-loaded";
+  }
+  const active = systemdUnitActive(HUB_UNIT);
+  const deactivated = active === "active" ? run(["systemctl", "--user", "disable", "--now", HUB_UNIT]) : active === "not-active";
+  removeHubUnits();
   run(["systemctl", "--user", "daemon-reload"]);
   return deactivated ? "removed" : "still-loaded";
 }
@@ -445,7 +550,7 @@ export function removePathFromRc(rc: string): boolean {
   return true;
 }
 
-export type UninstallOutcome = { timer: "removed" | "skipped" | "still-loaded"; pathLineRemoved: boolean };
+export type UninstallOutcome = { timer: UnitOutcome; hub: UnitOutcome; pathLineRemoved: boolean };
 
 export function loginHome(): string {
   const cmd = process.platform === "darwin" ? ["id", "-P"] : ["getent", "passwd", String(process.getuid?.() ?? "")];
@@ -462,13 +567,18 @@ export function onLoginHome(): boolean {
 export function uninstallTargets(live: boolean): string[] {
   const timer =
     process.platform === "darwin"
-      ? `${launchdPlist()}${live ? ` (and launchctl bootout gui/${process.getuid?.() ?? "?"}/${LAUNCHD_LABEL})` : ""}`
+      ? `${launchdPlist(LAUNCHD_LABEL)}${live ? ` (and launchctl bootout gui/${process.getuid?.() ?? "?"}/${LAUNCHD_LABEL})` : ""}`
       : `${join(paths.systemdUserDir, "tokenmaxxing-check.timer")} and .service${live ? " (and systemctl --user disable --now tokenmaxxing-check.timer)" : ""}`;
+  const hub =
+    process.platform === "darwin"
+      ? `${launchdPlist(LAUNCHD_HUB_LABEL)}${live ? ` (and launchctl bootout gui/${process.getuid?.() ?? "?"}/${LAUNCHD_HUB_LABEL})` : ""}`
+      : `${join(paths.systemdUserDir, HUB_UNIT)}${live ? ` (and systemctl --user disable --now ${HUB_UNIT})` : ""}`;
   const rc = shellRcPath();
   return [
     `${paths.claudeSettings}: the hook and statusline entries`,
     `${codexPaths.hooksJson}: the codex Stop hook entry`,
     ...(skipImperativeTimer() ? [] : [timer]),
+    ...(skipImperativeHub() ? [] : [hub]),
     paths.supervisorLink,
     codexSupervisorLink(),
     join(paths.binDir, "xx"),
@@ -477,14 +587,15 @@ export function uninstallTargets(live: boolean): string[] {
   ];
 }
 
-export function uninstallSupervisor(input: { liveTimer: boolean }): UninstallOutcome {
+export function uninstallSupervisor(input: { live: boolean }): UninstallOutcome {
   uninstallSettings();
-  const timer = uninstallCheckTimer(input.liveTimer);
+  const timer = uninstallCheckTimer(input.live);
+  const hub = uninstallHubService(input.live);
   uninstallCodexSupervisor();
   for (const f of [paths.supervisorLink, join(paths.binDir, "xx"), installedBin()]) {
     if (existsSync(f)) rmSync(f, { force: true });
   }
   const rc = shellRcPath();
   const pathLineRemoved = rc != null && removePathFromRc(rc);
-  return { timer, pathLineRemoved };
+  return { timer, hub, pathLineRemoved };
 }

@@ -24,9 +24,14 @@ in
 
     home.sessionPath = [ "${config.xdg.configHome}/tokenmaxxing/bin" ];
 
-    home.sessionVariables = lib.mkIf cfg.checkTimer.enable {
-      TOKENMAXXING_SKIP_TIMER = "1";
-    };
+    home.sessionVariables = lib.mkMerge [
+      (lib.mkIf cfg.checkTimer.enable {
+        TOKENMAXXING_SKIP_TIMER = "1";
+      })
+      (lib.mkIf cfg.hub.enable {
+        TOKENMAXXING_SKIP_HUB = "1";
+      })
+    ];
 
     launchd.agents.tokenmaxxing-check = lib.mkIf (cfg.checkTimer.enable && hostPlatform.isDarwin && package != null) {
       enable = true;
@@ -62,5 +67,31 @@ in
       };
       Install.WantedBy = [ "timers.target" ];
     };
+
+    launchd.agents.tokenmaxxing-hub = lib.mkIf (cfg.hub.enable && hostPlatform.isDarwin && package != null) {
+      enable = true;
+      config = {
+        ProgramArguments = [
+          (lib.getExe package)
+          "serve"
+        ];
+        KeepAlive = true;
+        RunAtLoad = true;
+        StandardOutPath = "/dev/null";
+        StandardErrorPath = "${config.home.homeDirectory}/.config/tokenmaxxing/hub.stderr.log";
+      };
+    };
+
+    systemd.user.services.tokenmaxxing-hub =
+      lib.mkIf (cfg.hub.enable && hostPlatform.isLinux && package != null)
+        {
+          Unit.Description = "tokenmaxxing usage hub";
+          Service = {
+            ExecStart = "${lib.getExe package} serve";
+            Restart = "on-failure";
+            RestartSec = "5";
+          };
+          Install.WantedBy = [ "default.target" ];
+        };
   };
 }

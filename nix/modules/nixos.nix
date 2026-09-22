@@ -21,9 +21,14 @@ in
 
     environment.systemPackages = lib.mkIf (package != null) [ package ];
 
-    environment.variables = lib.mkIf cfg.checkTimer.enable {
-      TOKENMAXXING_SKIP_TIMER = "1";
-    };
+    environment.variables = lib.mkMerge [
+      (lib.mkIf cfg.checkTimer.enable {
+        TOKENMAXXING_SKIP_TIMER = "1";
+      })
+      (lib.mkIf cfg.hub.enable {
+        TOKENMAXXING_SKIP_HUB = "1";
+      })
+    ];
 
     systemd.user.services.tokenmaxxing-check = lib.mkIf (cfg.checkTimer.enable && package != null) {
       description = "tokenmaxxing account-switch check";
@@ -43,6 +48,16 @@ in
         Unit = "tokenmaxxing-check.service";
       };
       wantedBy = [ "timers.target" ];
+    };
+
+    systemd.user.services.tokenmaxxing-hub = lib.mkIf (cfg.hub.enable && package != null) {
+      description = "tokenmaxxing usage hub";
+      serviceConfig = {
+        ExecStart = "${lib.getExe package} serve";
+        Restart = "on-failure";
+        RestartSec = "5";
+      };
+      wantedBy = [ "default.target" ];
     };
   };
 }

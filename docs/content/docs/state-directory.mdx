@@ -3,7 +3,7 @@ title: State directory layout
 description: Every file and directory under ~/.config/tokenmaxxing
 ---
 
-Everything lives under `~/.config/tokenmaxxing/`. Override with `TOKENMAXXING_HOME`. Every external path has an env override so tests stay hermetic; the timer unit is not a path, so a hermetic run of `init` builds a full isolated `HOME` and sets `TOKENMAXXING_SKIP_TIMER=1`, and `uninstall` addresses the login user's timer instance only when `HOME` is the login home (see [Troubleshooting](/troubleshooting)).
+Everything lives under `~/.config/tokenmaxxing/`. Override with `TOKENMAXXING_HOME`. Every external path has an env override so tests stay hermetic; the timer and hub units are not paths, so a hermetic run of `init` builds a full isolated `HOME` and sets `TOKENMAXXING_SKIP_TIMER=1` and `TOKENMAXXING_SKIP_HUB=1`, and `uninstall` addresses the login user's service instances only when `HOME` is the login home (see [Troubleshooting](/troubleshooting)).
 
 | Path | What it holds |
 |---|---|
@@ -17,7 +17,7 @@ Everything lives under `~/.config/tokenmaxxing/`. Override with `TOKENMAXXING_HO
 | `sessions/<session-id>.json` | Per-managed-session launch flags the supervisor persists for respawns, plus `current`, the live session id after a `/clear` or an in-session `/resume`; pruned after 30 days idle (matching claude's own transcript retention), never while the session's record under `live/` exists |
 | `tokenmaxxing.log` | Append-only event log, rotated to `tokenmaxxing.log.old` once it passes 5 MB |
 | `spawnrate.json` | The supervisor's wrapper-entry rate limiter, one of the recursion guards |
-| `check.stderr.log` | macOS only: the launchd check job's stderr (systemd sends it to the journal) |
+| `check.stderr.log`, `hub.stderr.log` | macOS only: the launchd check job's and hub service's stderr (systemd sends it to the journal) |
 | `bin/` | The PATH shims: `claude`, `codex`, and the `tokenmaxxing` / `xx` entry points |
 | `respawn/<session-id>` | Respawn markers the supervisor watches: the target account, the session to resume, a `waitUntil` (now for a plain move, the reset for a depleted-pool wait), whether to compact first, and the launch time of the process the marker was written for |
 | `onboard/` | Throwaway config home for `init`, `add`, and `auth` logins (deleted after harvest, credential included) |
@@ -36,4 +36,4 @@ The Codex pool moves to per-account stores the same way, and there is no migrati
 
 `accounts.json` and `codex-accounts.json` are schema version 2: `version` is `2`, `accounts` is the array, there is no active field (a file that still carries `activeId` loads and drops the key on the next save), and each account has `id`, `label`, `email`, `tier`, `addedAt`, `windows`, and the optional `lastUsageAt`, `lastProbeAt`, `probeFails`, `storeFails`, `usageRetryAt`, `enforcedUntil`, `needsReauth`, and `oauthAccount`. A window is `{name, usedPercentage, resetsAt, windowSeconds, sampledAt}`; `name` is `null` for the session and weekly windows and the limit or model name otherwise. A version 1 index fails the schema check and every command throws `does not match the accounts schema` until the file is repaired or removed.
 
-Outside its own directory, tokenmaxxing touches: Claude Code's `settings.json` (the hook and statusline entries), the keychain items of its own stores on macOS, codex's `hooks.json`, the periodic-check unit in launchd or systemd, and the `# tokenmaxxing PATH` line in your shell rc. It reads codex's `config.toml` (the credential-store setting and hook trust) and never writes it, and every onboarding login runs in a throwaway home under the state directory, never in the vendor CLI's own. It no longer writes `~/.claude.json`, Claude Code's default credential store, or codex's live `auth.json`. `cursor init` additionally writes `.cursor/agents/claude.md` and `.cursor/environment.json` into the repo you point it at.
+Outside its own directory, tokenmaxxing touches: Claude Code's `settings.json` (the hook and statusline entries), the keychain items of its own stores on macOS, codex's `hooks.json`, the periodic-check and usage-hub units in launchd or systemd, and the `# tokenmaxxing PATH` line in your shell rc. It reads codex's `config.toml` (the credential-store setting and hook trust) and never writes it, and every onboarding login runs in a throwaway home under the state directory, never in the vendor CLI's own. It no longer writes `~/.claude.json`, Claude Code's default credential store, or codex's live `auth.json`. `cursor init` additionally writes `.cursor/agents/claude.md` and `.cursor/environment.json` into the repo you point it at.

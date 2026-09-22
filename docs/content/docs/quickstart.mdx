@@ -18,9 +18,9 @@ Nix users replace the Bun step with `nix profile install github:anaclumos/tokenm
 2. Installs the `claude` supervisor shim, beside the `tokenmaxxing` and `xx` entry points, in `~/.config/tokenmaxxing/bin/`.
 3. Installs five entries in Claude Code's `settings.json`: a statusLine, a subagentStatusLine, a Stop hook, a StopFailure hook, and a SessionStart hook.
 4. Adds the bin directory to PATH in your shell rc when it does not already sit ahead of the real `claude` (idempotent, marked with a `# tokenmaxxing PATH` comment). On a Nix-managed or unwritable rc it prints the line to add instead.
-5. Installs a periodic check timer (a launchd agent on macOS, a systemd user timer on Linux) that runs `tokenmaxxing check` once per tick (`policy.checkIntervalMs`, 60 seconds by default).
+5. Installs the service units: a periodic check timer (a launchd agent on macOS, a systemd user timer on Linux) that runs `tokenmaxxing check` once per tick (`policy.checkIntervalMs`, 60 seconds by default), and a usage hub service that runs `tokenmaxxing serve` for a dashboard such as T3 Code (see [Usage hub](/hub)).
 
-A second `init` on a pool that already has accounts re-installs the shim, the entries, and the timer, and skips the login.
+A second `init` on a pool that already has accounts re-installs the shim, the entries, and the service units, and skips the login.
 
 Restart your shell, then add more accounts and go:
 

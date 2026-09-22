@@ -9,11 +9,11 @@ description: Serve the CLIProxyAPI-compatible management API so a dashboard such
 tokenmaxxing serve
 ```
 
-The server binds the hostname `localhost` on `hub.port` (default 8317, the CLIProxyAPI default; see [Configuration](/configuration)): the loopback address the machine's own resolver names, which is where a consumer on the same machine sends `http://localhost:<port>`. Point the consumer at that `localhost` form, never at the dotted loopback literal: the hub listens on the one address the resolver returns first, so `http://127.0.0.1:<port>` misses it on a machine whose resolver names `::1` first. It runs in the foreground until SIGINT or SIGTERM. The management key is the contents of `hub-key` in the state directory: the first run mints a random 64-character key into that file at mode 0600, and a key you write there yourself is used as it is when the file is mode 0600; `serve` refuses a key file that other local users can read. tokenmaxxing never prints the key; read the file and paste it into the consumer.
+The server binds the hostname `localhost` on `hub.port` (default 8317, the CLIProxyAPI default; see [Configuration](/configuration)): the loopback address the machine's own resolver names, which is where a consumer on the same machine sends `http://localhost:<port>`. Point the consumer at that `localhost` form, never at the dotted loopback literal: the hub listens on the one address the resolver returns first, so `http://127.0.0.1:<port>` misses it on a machine whose resolver names `::1` first. The Claude `init` installs a background service that runs it (a launchd agent on macOS, a systemd user service on Linux), so the hub is up whenever the machine is; `tokenmaxxing serve` in a terminal runs it in the foreground until SIGINT or SIGTERM instead. The management key is the contents of `hub-key` in the state directory: the first run mints a random 64-character key into that file at mode 0600, and a key you write there yourself is used as it is when the file is mode 0600; `serve` refuses a key file that other local users can read. tokenmaxxing never prints the key; read the file and paste it into the consumer.
 
 ## Connect T3 Code
 
-1. Run `tokenmaxxing serve` on the machine that holds the pool. The T3 Code environment that should show the accounts runs on the same machine, because the hub listens on loopback.
+1. Make sure the hub runs on the machine that holds the pool: the background service from the Claude `init` is enough (re-run `tokenmaxxing init` to install it), or run `tokenmaxxing serve` in a terminal. The T3 Code environment that should show the accounts runs on the same machine, because the hub listens on loopback.
 2. In T3 Code, open the provider settings of that environment and choose **Add a CLIProxyAPI hub**.
 3. Enter `http://localhost:8317` as the URL and the contents of `~/.config/tokenmaxxing/hub-key` as the management key.
 
@@ -33,8 +33,12 @@ The hub is a view over the cached figures and never a proxy: it ignores the `hea
 
 The protocol carries no sample age, and a stale window whose reset has passed would read as 0 percent used. Every cached window carries its own sample time (a fresh tee refreshes the session and weekly windows while the per-model rows keep the time of the last direct read), so the cutoff applies per window: a window older than two hours is left out of the answer, and an account whose session and weekly windows are both that old is reported as unreadable (`502`), which the consumer renders as an account it could not read. Keep the check timer running; `tokenmaxxing status` shows the age of every figure.
 
+## The service unit
+
+The Claude `init` writes the unit beside the check timer and activates it: `com.tokenmaxxing.hub` in `~/Library/LaunchAgents` on macOS (KeepAlive, started at load, stderr in `hub.stderr.log` under the state directory) and `tokenmaxxing-hub.service` in `~/.config/systemd/user` on Linux (restart on failure, stderr in the journal). `tokenmaxxing doctor` reports it, `tokenmaxxing uninstall` removes it, and `TOKENMAXXING_SKIP_HUB=1` makes `init` skip the unit and `uninstall` leave it alone. The Nix modules can own it instead (`programs.tokenmaxxing.hub.enable`; see [Build and distribution](/distribution)). The unit runs `tokenmaxxing serve` and needs no re-run of `init` across updates: it points at the installed entry point, not at a version.
+
 ## Limits
 
 - Loopback only. A consumer on another machine needs a tunnel; there is no `allow-remote` setting.
-- The server runs in the foreground. Start it from a terminal multiplexer or your own service unit; `init` does not install one.
+- The service unit comes with the Claude `init`. A Codex-only install (`init --codex` without the Claude `init`) gets no unit; run `tokenmaxxing serve` yourself there.
 - The Codex reset-credit reads and `reset-quota` are not served, so the consumer shows no reset credits for a Codex account.

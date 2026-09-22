@@ -26,7 +26,7 @@ import { cmdSetupToken } from "./cli/setuptoken.ts";
 import { cmdCloudRun } from "./cli/cloudrun.ts";
 import { cmdCursorInit } from "./cli/cursorinit.ts";
 import { cmdServe } from "./cli/serve.ts";
-import { onLoginHome, timerDeactivationHint, uninstallSupervisor, uninstallTargets } from "./lib/install.ts";
+import { hubDeactivationHint, onLoginHome, timerDeactivationHint, uninstallSupervisor, uninstallTargets } from "./lib/install.ts";
 import { errorMessage } from "./lib/log.ts";
 import { HOME } from "./lib/paths.ts";
 import { c, emitError } from "./cli/render.ts";
@@ -185,15 +185,17 @@ async function main(): Promise<number> {
         emitError({ message: `refused: HOME is the login home (${HOME}) - rerun with ${YES_FLAG} to remove these from the live install` });
         return 2;
       }
-      const out = uninstallSupervisor({ liveTimer: live });
+      const out = uninstallSupervisor({ live });
       const removed = [
         "supervisor wrapper",
         "settings entries",
         ...(out.timer === "removed" ? ["check timer"] : []),
+        ...(out.hub === "removed" ? ["usage hub service"] : []),
         ...(out.pathLineRemoved ? ["rc PATH line"] : []),
       ];
       console.log(`removed ${removed.join(", ")}`);
       if (out.timer === "still-loaded") console.log(c.yellow(`⚠ the check job may still be loaded - run: ${timerDeactivationHint()}`));
+      if (out.hub === "still-loaded") console.log(c.yellow(`⚠ the usage hub job may still be loaded - run: ${hubDeactivationHint()}`));
       if (!out.pathLineRemoved) console.log(c.dim("(no tokenmaxxing PATH line found in the shell rc)"));
       console.log(`kept: accounts.json, config.json, and every account credential store (claude: stores/ and its keychain items on macOS; codex: codex-stores/; grok: grok-stores/; opencode-go: opencode-go-stores/) - remove accounts with \`xx rm\` to delete their credentials`);
       return 0;

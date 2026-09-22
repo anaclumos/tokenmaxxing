@@ -40,5 +40,26 @@
         description = "The tick for `tokenmaxxing check`, at least 10 seconds (launchd does not spawn a job more often than that by default); keep it equal to `policy.checkIntervalMs` in seconds.";
       };
     };
+
+    hub = {
+      enable = lib.mkOption {
+        type = lib.types.bool;
+        default = false;
+        description = ''
+          Declaratively install the usage hub service that runs
+          `tokenmaxxing serve` (a launchd agent on nix-darwin / Home Manager
+          on macOS, a systemd user service under Home Manager / NixOS on
+          Linux). Defaults to false so `tokenmaxxing init`'s own service
+          remains the single owner.
+
+          When enabled, the module also exports `TOKENMAXXING_SKIP_HUB=1` so
+          a subsequent `tokenmaxxing init` does not write a second imperative
+          unit. If you already ran init before enabling this, remove the
+          imperative unit once (`launchctl bootout gui/$(id -u)/com.tokenmaxxing.hub`
+          on macOS, or `systemctl --user disable --now tokenmaxxing-hub.service`
+          on Linux) so only the Nix-managed unit runs.
+        '';
+      };
+    };
   };
 }

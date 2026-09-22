@@ -10,9 +10,10 @@ description: How macOS and Linux differ in storage and timers
 | Who writes a Claude store | tokenmaxxing once at onboarding, Claude Code's refresh afterwards | Same |
 | A session's account | `CLAUDE_SECURESTORAGE_CONFIG_DIR` set by the supervisor at launch | Same |
 | Periodic check | launchd agent, every `policy.checkIntervalMs` tick (60s default); stderr in `check.stderr.log` under the state directory | systemd user timer, every `policy.checkIntervalMs` tick (60s default); stderr in the journal |
+| Usage hub service | launchd agent (KeepAlive, started at load); stderr in `hub.stderr.log` under the state directory | systemd user service (restart on failure); stderr in the journal |
 | Isolated-login home | Hash-namespaced keychain service per config dir | A file inside the isolated config dir |
 
-`TOKENMAXXING_SKIP_TIMER=1` makes `init` skip the timer unit and `uninstall` leave it alone on both platforms; the Nix modules export it when they own the timer (see [Build and distribution](/distribution)).
+`TOKENMAXXING_SKIP_TIMER=1` makes `init` skip the timer unit and `uninstall` leave it alone on both platforms; `TOKENMAXXING_SKIP_HUB=1` does the same for the usage hub service. The Nix modules export each variable when they own that unit (see [Build and distribution](/distribution)).
 
 Claude Code resolves its credential directory from `CLAUDE_SECURESTORAGE_CONFIG_DIR` first (then `CLAUDE_CONFIG_DIR`, then `~/.claude`), and on macOS it hashes that same resolved path into the keychain item name, even when `CLAUDE_CONFIG_DIR` is also set (verified in the 2.1.269 binary); tokenmaxxing sets the store variable itself and computes the item name from the same directory, so the two never desync. The two OS builds of the same claude version format `/usage` reset clocks differently (one uses " at " glue, the other a comma), which nothing in tokenmaxxing reads: a reset time comes from the direct usage read as ISO 8601 with an offset, and from the transcript row and the statusline payload as epoch seconds.
 
