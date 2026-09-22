@@ -364,19 +364,27 @@ export async function runSupervisor(argv: string[]): Promise<number> {
 
   let child: Subprocess | null = null;
   let terminating = false;
-  let waitClaimSid: string | null = null;
-  const releaseClaim = (): Promise<void> => withLock(claudePool.lockFile, () => {
-    releaseWaitClaim(sid);
-    waitClaimSid = null;
-  });
+  let claimSid: string | null = null;
+  const releaseClaim = async (): Promise<void> => {
+    const claimed = claimSid;
+    if (claimed == null) return;
+    try {
+      await withLock(claudePool.lockFile, () => {
+        releaseWaitClaim(claimed);
+      });
+    } catch (e) {
+      log("supervisor.claim_release_failed", { err: errorMessage(e) });
+    }
+  };
   process.on("SIGTERM", () => {
     terminating = true;
+    const released = releaseClaim();
     if (child) {
       child.kill("SIGTERM");
-      return;
+      void released;
+    } else {
+      released.finally(() => process.exit(143));
     }
-    const pending = waitClaimSid != null ? releaseClaim() : Promise.resolve();
-    pending.catch(() => {}).finally(() => process.exit(143));
   });
 
   if (!info.manage || process.env[UNMANAGED_ENV]) {
@@ -401,6 +409,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
   } else {
     sid = crypto.randomUUID();
   }
+  claimSid = sid;
 
   if (resuming && base.length === 0) {
     const persisted = loadSessionFlags(sid);
@@ -511,7 +520,6 @@ export async function runSupervisor(argv: string[]): Promise<number> {
         compacted = outcome.ok;
       }
       if (m.waitUntil > Date.now()) {
-        waitClaimSid = sid;
         if (await countdownWait(label, m.waitUntil, { stream, say })) overriddenUntil = m.waitUntil;
       } else say(`\n\x1b[36m↻ tokenmaxxing: moving to ${label} - resuming...\x1b[0m\n`, `tokenmaxxing: moving to ${label} and resuming.`);
       await releaseClaim();
@@ -532,6 +540,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
     const text = msg.startsWith("tokenmaxxing:") ? msg : `tokenmaxxing: ${msg}`;
     say(`\n\x1b[31m${text}\x1b[0m\n`, text);
     log("supervisor.fatal", { err: msg });
+    await releaseClaim();
     return 1;
   }
 }
