@@ -9,7 +9,7 @@ description: Serve the CLIProxyAPI-compatible management API so a dashboard such
 tokenmaxxing serve
 ```
 
-The server binds the hostname `localhost` on `hub.port` (default 8317, the CLIProxyAPI default; see [Configuration](/configuration)): the loopback address the machine's own resolver names, which is where a consumer on the same machine sends `http://localhost:<port>`. It runs in the foreground until SIGINT or SIGTERM. The management key is the contents of `hub-key` in the state directory: the first run mints a random 64-character key into that file at mode 0600, and a key you write there yourself is used as it is when the file is mode 0600; `serve` refuses a key file that other local users can read. tokenmaxxing never prints the key; read the file and paste it into the consumer.
+The server binds the hostname `localhost` on `hub.port` (default 8317, the CLIProxyAPI default; see [Configuration](/configuration)): the loopback address the machine's own resolver names, which is where a consumer on the same machine sends `http://localhost:<port>`. Point the consumer at that `localhost` form, never at the dotted loopback literal: the hub listens on the one address the resolver returns first, so `http://127.0.0.1:<port>` misses it on a machine whose resolver names `::1` first. It runs in the foreground until SIGINT or SIGTERM. The management key is the contents of `hub-key` in the state directory: the first run mints a random 64-character key into that file at mode 0600, and a key you write there yourself is used as it is when the file is mode 0600; `serve` refuses a key file that other local users can read. tokenmaxxing never prints the key; read the file and paste it into the consumer.
 
 ## Connect T3 Code
 
