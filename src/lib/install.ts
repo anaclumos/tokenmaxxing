@@ -228,6 +228,14 @@ function run(cmd: string[]): boolean {
   }
 }
 
+function systemdEnv(): string {
+  return `Environment="TOKENMAXXING_HOME=${paths.home.replaceAll("%", "%%")}"\n`;
+}
+
+function launchdEnv(): string {
+  return `  <key>EnvironmentVariables</key><dict><key>TOKENMAXXING_HOME</key><string>${escape(paths.home)}</string></dict>\n`;
+}
+
 function installCheckTimer(intervalS: number): boolean {
   if (skipImperativeTimer()) return true;
 
@@ -242,7 +250,7 @@ function installCheckTimer(intervalS: number): boolean {
   <key>Label</key><string>${LAUNCHD_LABEL}</string>
   <key>ProgramArguments</key><array><string>${escape(installedBin())}</string><string>check</string></array>
   <key>StartInterval</key><integer>${intervalS}</integer>
-  <key>StandardOutPath</key><string>/dev/null</string>
+${launchdEnv()}  <key>StandardOutPath</key><string>/dev/null</string>
   <key>StandardErrorPath</key><string>${escape(join(paths.home, "check.stderr.log"))}</string>
 </dict>
 </plist>
@@ -264,7 +272,7 @@ Description=tokenmaxxing account-switch check
 [Service]
 Type=oneshot
 ExecStart=${exec}
-`,
+${systemdEnv()}`,
     0o644,
   );
   writeFileAtomic(
@@ -386,7 +394,7 @@ function uninstallCheckTimer(live: boolean): UnitOutcome {
     return deactivated ? "removed" : "still-loaded";
   }
   const active = systemdUnitActive("tokenmaxxing-check.timer");
-  const deactivated = active === "active" ? run(["systemctl", "--user", "disable", "--now", "tokenmaxxing-check.timer"]) : active === "not-active";
+  const deactivated = active !== "unavailable" && (run(["systemctl", "--user", "disable", "--now", "tokenmaxxing-check.timer"]) || active === "not-active");
   removeTimerUnits();
   run(["systemctl", "--user", "daemon-reload"]);
   return deactivated ? "removed" : "still-loaded";
@@ -405,9 +413,9 @@ function installHubService(): boolean {
 <dict>
   <key>Label</key><string>${LAUNCHD_HUB_LABEL}</string>
   <key>ProgramArguments</key><array><string>${escape(installedBin())}</string><string>serve</string></array>
-  <key>KeepAlive</key><true/>
+  <key>KeepAlive</key><dict><key>SuccessfulExit</key><false/></dict>
   <key>RunAtLoad</key><true/>
-  <key>StandardOutPath</key><string>/dev/null</string>
+${launchdEnv()}  <key>StandardOutPath</key><string>/dev/null</string>
   <key>StandardErrorPath</key><string>${escape(join(paths.home, "hub.stderr.log"))}</string>
 </dict>
 </plist>
@@ -425,10 +433,11 @@ function installHubService(): boolean {
     join(paths.systemdUserDir, HUB_UNIT),
     `[Unit]
 Description=tokenmaxxing usage hub
+StartLimitIntervalSec=0
 
 [Service]
 ExecStart=${exec}
-Restart=on-failure
+${systemdEnv()}Restart=on-failure
 RestartSec=5
 
 [Install]
@@ -461,7 +470,7 @@ function uninstallHubService(live: boolean): UnitOutcome {
     return deactivated ? "removed" : "still-loaded";
   }
   const active = systemdUnitActive(HUB_UNIT);
-  const deactivated = active === "active" ? run(["systemctl", "--user", "disable", "--now", HUB_UNIT]) : active === "not-active";
+  const deactivated = active !== "unavailable" && (run(["systemctl", "--user", "disable", "--now", HUB_UNIT]) || active === "not-active");
   removeHubUnits();
   run(["systemctl", "--user", "daemon-reload"]);
   return deactivated ? "removed" : "still-loaded";

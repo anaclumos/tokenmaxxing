@@ -52,6 +52,7 @@ in
 
     systemd.user.services.tokenmaxxing-hub = lib.mkIf (cfg.hub.enable && package != null) {
       description = "tokenmaxxing usage hub";
+      unitConfig.StartLimitIntervalSec = 0;
       serviceConfig = {
         ExecStart = "${lib.getExe package} serve";
         Restart = "on-failure";

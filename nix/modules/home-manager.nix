@@ -33,6 +33,12 @@ in
       })
     ];
 
+    home.activation.tokenmaxxingLogDir = lib.mkIf ((cfg.checkTimer.enable || cfg.hub.enable) && hostPlatform.isDarwin && package != null) (
+      lib.hm.dag.entryBefore [ "writeBoundary" ] ''
+        $DRY_RUN_CMD mkdir -p "${config.home.homeDirectory}/.config/tokenmaxxing"
+      ''
+    );
+
     launchd.agents.tokenmaxxing-check = lib.mkIf (cfg.checkTimer.enable && hostPlatform.isDarwin && package != null) {
       enable = true;
       config = {
@@ -75,7 +81,9 @@ in
           (lib.getExe package)
           "serve"
         ];
-        KeepAlive = true;
+        KeepAlive = {
+          SuccessfulExit = false;
+        };
         RunAtLoad = true;
         StandardOutPath = "/dev/null";
         StandardErrorPath = "${config.home.homeDirectory}/.config/tokenmaxxing/hub.stderr.log";
@@ -85,7 +93,10 @@ in
     systemd.user.services.tokenmaxxing-hub =
       lib.mkIf (cfg.hub.enable && hostPlatform.isLinux && package != null)
         {
-          Unit.Description = "tokenmaxxing usage hub";
+          Unit = {
+            Description = "tokenmaxxing usage hub";
+            StartLimitIntervalSec = "0";
+          };
           Service = {
             ExecStart = "${lib.getExe package} serve";
             Restart = "on-failure";

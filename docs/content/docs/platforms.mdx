@@ -10,7 +10,7 @@ description: How macOS and Linux differ in storage and timers
 | Who writes a Claude store | tokenmaxxing once at onboarding, Claude Code's refresh afterwards | Same |
 | A session's account | `CLAUDE_SECURESTORAGE_CONFIG_DIR` set by the supervisor at launch | Same |
 | Periodic check | launchd agent, every `policy.checkIntervalMs` tick (60s default); stderr in `check.stderr.log` under the state directory | systemd user timer, every `policy.checkIntervalMs` tick (60s default); stderr in the journal |
-| Usage hub service | launchd agent (KeepAlive, started at load); stderr in `hub.stderr.log` under the state directory | systemd user service (restart on failure); stderr in the journal |
+| Usage hub service | launchd agent (started at load, restarted after a failed run); stderr in `hub.stderr.log` under the state directory | systemd user service (restart on failure); stderr in the journal |
 | Isolated-login home | Hash-namespaced keychain service per config dir | A file inside the isolated config dir |
 
 `TOKENMAXXING_SKIP_TIMER=1` makes `init` skip the timer unit and `uninstall` leave it alone on both platforms; `TOKENMAXXING_SKIP_HUB=1` does the same for the usage hub service. The Nix modules export each variable when they own that unit (see [Build and distribution](/distribution)).

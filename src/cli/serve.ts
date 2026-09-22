@@ -7,6 +7,7 @@ import { claude } from "../lib/claude.ts";
 import { codex, observeCodex } from "../lib/codex.ts";
 import { CODEX_USAGE_URL } from "../lib/codexusage.ts";
 import { errorMessage, log } from "../lib/log.ts";
+import { hubDeactivationHint } from "../lib/install.ts";
 import { paths } from "../lib/paths.ts";
 import { isExhausted, thresholdBars } from "../lib/picker.ts";
 import type { Provider } from "../lib/provider.ts";
@@ -198,15 +199,21 @@ export async function cmdServe(args: string[]): Promise<number> {
   }
   const cfg = loadConfig();
   const key = managementKey();
-  const server = Bun.serve({
-    hostname: "localhost",
-    port: cfg.hub.port,
-    fetch: (req) => handle(req, key),
-    error: (e) => {
-      log("hub.error", { err: errorMessage(e) });
-      return json({ error: "internal error" }, 500);
-    },
-  });
+  let server: ReturnType<typeof Bun.serve>;
+  try {
+    server = Bun.serve({
+      hostname: "localhost",
+      port: cfg.hub.port,
+      fetch: (req) => handle(req, key),
+      error: (e) => {
+        log("hub.error", { err: errorMessage(e) });
+        return json({ error: "internal error" }, 500);
+      },
+    });
+  } catch (e) {
+    emitError({ message: `cannot bind localhost:${cfg.hub.port}: ${errorMessage(e)} (another \`tokenmaxxing serve\` or the usage hub service may already hold the port - stop it first: ${hubDeactivationHint()})` });
+    return 1;
+  }
   console.log(`${c.green("✓")} serving the CLIProxyAPI-compatible usage API at http://localhost:${server.port}/v0/management`);
   console.log(c.dim(`management key: the contents of ${paths.hubKeyFile}`));
   log("hub.started", { port: server.port });

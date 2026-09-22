@@ -36,6 +36,12 @@ in
       })
     ];
 
+    system.activationScripts.extraActivation.text = lib.mkIf ((cfg.checkTimer.enable || cfg.hub.enable) && package != null && home != null && primaryUser != null) (
+      lib.mkAfter ''
+        sudo -u ${primaryUser} mkdir -p "${home}/.config/tokenmaxxing"
+      ''
+    );
+
     launchd.user.agents.tokenmaxxing-check = lib.mkIf (cfg.checkTimer.enable && package != null) {
       command = "${lib.getExe package} check";
       serviceConfig = {
@@ -49,7 +55,9 @@ in
     launchd.user.agents.tokenmaxxing-hub = lib.mkIf (cfg.hub.enable && package != null) {
       command = "${lib.getExe package} serve";
       serviceConfig = {
-        KeepAlive = true;
+        KeepAlive = {
+          SuccessfulExit = false;
+        };
         RunAtLoad = true;
         StandardOutPath = "/dev/null";
         StandardErrorPath =
