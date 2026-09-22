@@ -208,7 +208,11 @@ function scopedRows(limits: unknown[]): Record<string, UsageWindow> {
   return perModel;
 }
 
-export async function fetchUsageDirect(accessToken: string): Promise<UsageWindows | null> {
+const RetryAfterSecondsSchema = z.coerce.number().int().positive();
+
+export type UsageRead = { ok: true; usage: UsageWindows } | { ok: false; retryAt: number | null };
+
+export async function fetchUsageDirect(accessToken: string): Promise<UsageRead> {
   let res: Response;
   try {
     res = await http.get(USAGE_URL, {
@@ -218,17 +222,18 @@ export async function fetchUsageDirect(accessToken: string): Promise<UsageWindow
     });
   } catch (e) {
     log("usage.get_failed", { err: errorMessage(e) });
-    return null;
+    return { ok: false, retryAt: null };
   }
   if (!res.ok) {
-    log("usage.get_failed", { status: res.status });
-    return null;
+    const retryAfter = res.status === 429 ? RetryAfterSecondsSchema.safeParse(res.headers.get("retry-after")).data : undefined;
+    log("usage.get_failed", { status: res.status, retryAfter });
+    return { ok: false, retryAt: retryAfter != null ? Date.now() + retryAfter * 1000 : null };
   }
   const parsed = UsageResponseSchema.safeParse(JsonTextSchema.safeParse(await res.text()).data);
   if (!parsed.success || !parsed.data.five_hour || !parsed.data.seven_day) {
     log("usage.get_incomplete", { ok: parsed.success, issue: parsed.success ? undefined : z.prettifyError(parsed.error).slice(0, 200) });
-    return null;
+    return { ok: false, retryAt: null };
   }
   const win = (w: z.infer<typeof UsageLimitSchema>): UsageWindow => ({ usedPercentage: w.utilization, resetsAt: w.resets_at ?? null });
-  return { fiveHour: win(parsed.data.five_hour), sevenDay: win(parsed.data.seven_day), perModel: scopedRows(parsed.data.limits ?? []) };
+  return { ok: true, usage: { fiveHour: win(parsed.data.five_hour), sevenDay: win(parsed.data.seven_day), perModel: scopedRows(parsed.data.limits ?? []) } };
 }

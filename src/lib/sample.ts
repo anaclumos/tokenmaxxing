@@ -9,7 +9,7 @@ import { loadAccounts, loadUsageSnapshot, saveAccounts } from "./state.ts";
 import { fetchUsageDirect, mergeWindows, windowsOf } from "./usage.ts";
 import type { Account, Config, UsageWindows } from "./types.ts";
 
-export type SampleOutcome = { ok: true; usage: UsageWindows; via: "get" } | { ok: false; reason: string };
+export type SampleOutcome = { ok: true; usage: UsageWindows; via: "get" } | { ok: false; reason: string; retryAt?: number };
 
 type PreparedSample = { ok: true; token: string | null } | { ok: false; reason: string };
 
@@ -48,13 +48,26 @@ export async function prepareSample(account: Account): Promise<PreparedSample> {
   return { ok: true, token: creds.accessToken };
 }
 
+export function usageBlockedUntil(account: Account, now: number): number | null {
+  return account.usageRetryAt != null && account.usageRetryAt > now ? account.usageRetryAt : null;
+}
+
+function rateLimitedReason(retryAt: number, now: number): string {
+  return `the usage endpoint rate limited this account, next read in ${Math.ceil((retryAt - now) / 60_000)}m`;
+}
+
 export async function runSample(account: Account, token: string | null): Promise<SampleOutcome> {
   if (!token) return { ok: false, reason: "no usable access token in the store - run `tokenmaxxing auth`" };
-  const usage = await fetchUsageDirect(token);
-  return usage ? { ok: true, usage, via: "get" } : { ok: false, reason: "usage read failed (see log)" };
+  const read = await fetchUsageDirect(token);
+  if (read.ok) return { ok: true, usage: read.usage, via: "get" };
+  if (read.retryAt == null) return { ok: false, reason: "usage read failed (see log)" };
+  return { ok: false, reason: rateLimitedReason(read.retryAt, Date.now()), retryAt: read.retryAt };
 }
 
 export async function sampleAccountUsage(account: Account): Promise<SampleOutcome> {
+  const now = Date.now();
+  const blockedUntil = usageBlockedUntil(account, now);
+  if (blockedUntil != null) return { ok: false, reason: rateLimitedReason(blockedUntil, now) };
   const prepared = await prepareSample(account);
   return prepared.ok ? runSample(account, prepared.token) : prepared;
 }
@@ -89,7 +102,7 @@ export async function sampleOldest(cfg: Config): Promise<void> {
         continue;
       }
       target.storeFails = 0;
-      batch.push({ account: target, token: prepared.token });
+      if (usageBlockedUntil(target, now) == null) batch.push({ account: target, token: prepared.token });
     }
     saveAccounts(claudePool, idx);
     return batch;
@@ -104,6 +117,10 @@ export async function sampleOldest(cfg: Config): Promise<void> {
         let dirty = false;
         if (stored && account.needsReauth === true && stored.needsReauth !== true) {
           stored.needsReauth = true;
+          dirty = true;
+        }
+        if (stored && !outcome.ok && outcome.retryAt != null) {
+          stored.usageRetryAt = outcome.retryAt;
           dirty = true;
         }
         if (stored && outcome.ok && (stored.lastUsageAt == null || startedAt > stored.lastUsageAt)) {

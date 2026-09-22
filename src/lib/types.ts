@@ -69,6 +69,7 @@ export const AccountSchema = z.object({
   lastProbeAt: z.number().optional(),
   probeFails: z.number().optional(),
   storeFails: z.number().optional(),
+  usageRetryAt: z.number().optional(),
   enforcedUntil: z.number().optional(),
   needsReauth: z.boolean().optional(),
   oauthAccount: OAuthAccountSchema.optional(),
