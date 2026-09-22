@@ -62,6 +62,11 @@ export async function evaluateAndMaybeSwap(p: Provider, now = Date.now(), canRes
   const stored = loadAccounts(p.pool).accounts.find((a) => a.id === activeId);
 
   if (!enforced && !isOver(stored, observed, { now, thresholds: bars, currentId: activeId, families: gated, seats: null })) {
+    if (waiterId != null && liveWaitClaims(now).some((c) => c.sessionId === waiterId)) {
+      await withLock(p.pool.lockFile, () => {
+        releaseWaitClaim(waiterId);
+      });
+    }
     return { swapped: false, account: null, reason: "under-threshold-or-stale" };
   }
 
@@ -157,14 +162,16 @@ export async function evaluateAndMaybeSwap(p: Provider, now = Date.now(), canRes
         if (claim.sessionId === waiterId) continue;
         waiters.set(claim.accountId, (waiters.get(claim.accountId) ?? 0) + 1);
       }
-      const target = pickWaitTarget(usable(fresh.accounts), ctx, waiters, MAX_WAITERS_PER_ACCOUNT);
-      const waitUntil = target?.availableAt ?? Number.POSITIVE_INFINITY;
+      const target = pickWaitTarget(usable(fresh.accounts), ctx, waiters, MAX_WAITERS_PER_ACCOUNT, now + cfg.policy.maxWaitMs);
 
-      if (!target || waitUntil - now > cfg.policy.maxWaitMs) {
+      if (!target) {
+        const soonest = pickWaitTarget(usable(fresh.accounts), ctx, new Map(), MAX_WAITERS_PER_ACCOUNT, Number.POSITIVE_INFINITY);
+        const waitUntil = soonest?.availableAt ?? Number.POSITIVE_INFINITY;
         log("decide.depleted", { waitUntil: Number.isFinite(waitUntil) ? waitUntil : 0 });
         return { swapped: false, account: null, reason: "all-depleted", ...(Number.isFinite(waitUntil) ? { waitUntil } : {}) };
       }
 
+      const waitUntil = target.availableAt;
       const isCurrent = target.account.id === (current?.id ?? null);
       if (!isCurrent) {
         try {
