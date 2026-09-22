@@ -51,8 +51,8 @@ function enforcedWall(limit: EnforcedLimit, account: Account, now: number): numb
 }
 
 export async function evaluateAndMaybeSwap(p: Provider, now = Date.now(), canRespawn = false, enforced: EnforcedLimit | null = null, opts: EvalOpts = {}): Promise<SwapDecision> {
-  const activeId = opts.seatId ?? p.liveId();
-  const waiterId = opts.waiterId;
+  const activeId = opts.seatId === undefined ? p.liveId() : opts.seatId;
+  const waiterId = canRespawn ? opts.waiterId : undefined;
   const cfg = loadConfig();
   const bars = thresholdBars(cfg);
   const stored0 = loadAccounts(p.pool).accounts.find((a) => a.id === activeId);

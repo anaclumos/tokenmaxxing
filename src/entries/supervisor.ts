@@ -364,10 +364,19 @@ export async function runSupervisor(argv: string[]): Promise<number> {
 
   let child: Subprocess | null = null;
   let terminating = false;
+  let waitClaimSid: string | null = null;
+  const releaseClaim = (): Promise<void> => withLock(claudePool.lockFile, () => {
+    releaseWaitClaim(sid);
+    waitClaimSid = null;
+  });
   process.on("SIGTERM", () => {
     terminating = true;
-    if (child) child.kill("SIGTERM");
-    else process.exit(143);
+    if (child) {
+      child.kill("SIGTERM");
+      return;
+    }
+    const pending = waitClaimSid != null ? releaseClaim() : Promise.resolve();
+    pending.catch(() => {}).finally(() => process.exit(143));
   });
 
   if (!info.manage || process.env[UNMANAGED_ENV]) {
@@ -502,11 +511,10 @@ export async function runSupervisor(argv: string[]): Promise<number> {
         compacted = outcome.ok;
       }
       if (m.waitUntil > Date.now()) {
+        waitClaimSid = sid;
         if (await countdownWait(label, m.waitUntil, { stream, say })) overriddenUntil = m.waitUntil;
       } else say(`\n\x1b[36m↻ tokenmaxxing: moving to ${label} - resuming...\x1b[0m\n`, `tokenmaxxing: moving to ${label} and resuming.`);
-      await withLock(claudePool.lockFile, () => {
-        releaseWaitClaim(sid);
-      });
+      await releaseClaim();
       wanted = m.accountId;
       saveSessionFlags(m.sessionId, persistable, process.cwd());
       const prompt = resumable ? resumePrompt(compacted) : null;
@@ -515,6 +523,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
       continue;
     }
     clearPresence({ dir: paths.presenceDir, id: sid });
+    await releaseClaim();
     log("supervisor.exit", { sid, respawns, code: proc.exitCode, signal: proc.signalCode, terminated: terminating || undefined });
     return exitStatus(proc);
   }
