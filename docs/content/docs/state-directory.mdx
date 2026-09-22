@@ -20,6 +20,7 @@ Everything lives under `~/.config/tokenmaxxing/`. Override with `TOKENMAXXING_HO
 | `check.stderr.log`, `hub.stderr.log` | macOS only: the launchd check job's and hub service's stderr (systemd sends it to the journal) |
 | `bin/` | The PATH shims: `claude`, `codex`, and the `tokenmaxxing` / `xx` entry points |
 | `respawn/<session-id>` | Respawn markers the supervisor watches: the target account, the session to resume, a `waitUntil` (now for a plain move, the reset for a depleted-pool wait), whether to compact first, and the launch time of the process the marker was written for |
+| `wait-queue.json` | The depleted-pool wait claims: one `{sessionId, accountId, at, waitUntil}` per waiting supervised session, so at most four sessions wait on one account and the rest take the next reset. Claims expire at `waitUntil` and are released when the countdown ends |
 | `onboard/` | Throwaway config home for `init`, `add`, and `auth` logins (deleted after harvest, credential included) |
 | `setup-tokens.json` | Cursor Cloud only: `{accountUuid, label, token, mintedAt}` per pooled account, mode 0600, the source of the `TOKENMAXXING_TOKENS` secret value that `setup-token` prints (keyed by account, so a rename does not orphan a token) |
 | `setup-token/` | Throwaway isolated config homes for `setup-token` mints, deleted after each run |

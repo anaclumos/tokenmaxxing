@@ -1,17 +1,19 @@
 import { closeSync, existsSync, fstatSync, openSync, readFileSync, rmSync, utimesSync } from "node:fs";
 import { isEqual } from "es-toolkit";
 import { z } from "zod";
-import { optionalEnv, paths, usageJsonFor, type PoolPaths } from "./paths.ts";
+import { claudePool, optionalEnv, paths, usageJsonFor, type PoolPaths } from "./paths.ts";
 import { writeFileAtomic } from "./atomic.ts";
 import {
   AccountsIndexSchema,
   ConfigSchema,
   ErrnoSchema,
   UsageStateSchema,
+  WaitQueueSchema,
   type Account,
   type AccountsIndex,
   type Config,
   type UsageState,
+  type WaitClaim,
   type Window,
 } from "./types.ts";
 
@@ -65,6 +67,41 @@ export function loadAccounts(pool: PoolPaths): AccountsIndex {
 
 export function saveAccounts(pool: PoolPaths, idx: AccountsIndex): void {
   writeFileAtomic(pool.accountsJson, JSON.stringify(AccountsIndexSchema.parse(idx), null, 2) + "\n");
+}
+
+function loadWaitQueue(): WaitClaim[] {
+  if (!existsSync(claudePool.waitQueueJson)) return [];
+  let json: unknown;
+  try {
+    json = JSON.parse(readFileSync(claudePool.waitQueueJson, "utf8"));
+  } catch {
+    throw new Error(`${claudePool.waitQueueJson} is corrupt (unparsable JSON) - refusing to treat a damaged wait queue as empty; repair or remove the file`);
+  }
+  const parsed = WaitQueueSchema.safeParse(json);
+  if (!parsed.success) {
+    throw new Error(`${claudePool.waitQueueJson} does not match the wait-queue schema - refusing to treat a damaged wait queue as empty; repair or remove the file`);
+  }
+  return parsed.data.claims;
+}
+
+function saveWaitQueue(claims: WaitClaim[]): void {
+  writeFileAtomic(claudePool.waitQueueJson, JSON.stringify(WaitQueueSchema.parse({ version: 1, claims }), null, 2) + "\n");
+}
+
+export function liveWaitClaims(now: number): WaitClaim[] {
+  return loadWaitQueue().filter((c) => c.waitUntil > now);
+}
+
+export function replaceWaitClaim(claim: WaitClaim): void {
+  saveWaitQueue([...liveWaitClaims(Date.now()).filter((c) => c.sessionId !== claim.sessionId), claim]);
+}
+
+export function releaseWaitClaim(sessionId: string): void {
+  const now = Date.now();
+  const raw = loadWaitQueue();
+  const next = raw.filter((c) => c.waitUntil > now && c.sessionId !== sessionId);
+  if (next.length === raw.length) return;
+  saveWaitQueue(next);
 }
 
 export type Harvest = {

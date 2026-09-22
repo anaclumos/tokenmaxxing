@@ -24,7 +24,7 @@ export async function runBoundaryHook(event: "stop" | "sessionstart"): Promise<n
       log(`${event}.nested_session`, { stdin: stdin.session_id?.slice(0, 8), supervised: supervised.live.slice(0, 8), source: stdin.source });
       return 0;
     }
-    const decision = await evaluateAndMaybeSwap(claude, Date.now(), session != null);
+    const decision = await evaluateAndMaybeSwap(claude, Date.now(), session != null, null, { waiterId: session?.sid });
     if (session && decision.account && (decision.swapped || decision.waitUntil !== undefined)) {
       writeRespawnMarker({ session, accountId: decision.account.id, waitUntil: decision.waitUntil ?? Date.now(), compact: true });
       log(`${event}.${decision.waitUntil !== undefined ? "wait" : "move"}`, { source: stdin.source, account: decision.account.id.slice(0, 8), waitUntil: decision.waitUntil, session: session.sid.slice(0, 8), live: session.live.slice(0, 8) });

@@ -48,6 +48,7 @@ export const paths = {
 export const claudePool = {
   accountsJson: join(TM_HOME, "accounts.json"),
   lockFile: join(TM_HOME, "lock"),
+  waitQueueJson: join(TM_HOME, "wait-queue.json"),
 } as const;
 
 export const codexPool = {

@@ -128,6 +128,19 @@ export const ConfigSchema = z
   });
 export type Config = z.infer<typeof ConfigSchema>;
 
+export const WaitClaimSchema = z.object({
+  sessionId: z.string(),
+  accountId: z.string(),
+  at: z.number(),
+  waitUntil: z.number(),
+});
+export type WaitClaim = z.infer<typeof WaitClaimSchema>;
+
+export const WaitQueueSchema = z.object({
+  version: z.literal(1),
+  claims: z.array(WaitClaimSchema).default([]),
+});
+
 export const RespawnMarkerSchema = z.object({
   accountId: z.string(),
   ts: z.number(),
