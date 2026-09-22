@@ -6,7 +6,8 @@ import { JsonTextSchema, type CodexAuthJson, type CodexUsage, type Window } from
 import { codexIdentityOf } from "./codexauth.ts";
 import { familyTokens } from "./usage.ts";
 
-const USAGE_URL = env("TOKENMAXXING_CODEX_USAGE_URL", "https://chatgpt.com/backend-api/wham/usage");
+export const CODEX_USAGE_URL = "https://chatgpt.com/backend-api/wham/usage";
+const USAGE_URL = env("TOKENMAXXING_CODEX_USAGE_URL", CODEX_USAGE_URL);
 
 export class CodexUsageReadError extends Error {
   constructor(detail: string) {
