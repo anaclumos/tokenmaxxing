@@ -12,7 +12,7 @@ import { claudePool, env, paths, seatFromEnv, storeDirFor } from "./paths.ts";
 import { pickBest, pickEarliestReset, thresholdBars, type PickCtx } from "./picker.ts";
 import { seatCounts } from "./presence.ts";
 import type { Observation, Provider, SampleReport } from "./provider.ts";
-import { foldTee, sampleAccountUsage, teeObservation } from "./sample.ts";
+import { foldTee, sampleAccountUsage, teeObservation, usageBlockedUntil } from "./sample.ts";
 import { clearUsageSnapshot, loadAccounts, loadConfig, loadUsageSnapshot, pinBinOverride, saveAccounts, type Harvest } from "./state.ts";
 import { loadSetupTokens, saveSetupTokens } from "./setuptokens.ts";
 import { saveTermios, restoreTermios } from "./tty.ts";
@@ -43,7 +43,7 @@ async function observeLive(account: Account, cfg: Config, now: number, opts: { p
   const probeAttempted = account.lastProbeAt != null && now - account.lastProbeAt <= interval;
   const snap = loadUsageSnapshot(account.id);
   const fresh = snap != null && now - snap.at <= ttl;
-  if (opts.probe && !probeAttempted && (!fresh || opts.perModel)) {
+  if (opts.probe && !probeAttempted && usageBlockedUntil(account, now) == null && (!fresh || opts.perModel)) {
     const startedAt = Date.now();
     const outcome = await sampleAccountUsage(account);
     await withLock(claudePool.lockFile, () => {
@@ -61,6 +61,7 @@ async function observeLive(account: Account, cfg: Config, now: number, opts: { p
         }
       } else {
         a.probeFails = (a.probeFails ?? 0) + 1;
+        if (outcome.retryAt != null) a.usageRetryAt = outcome.retryAt;
       }
       saveAccounts(claudePool, idx);
     });
@@ -82,6 +83,7 @@ async function samplePool(accounts: Account[]): Promise<Map<string, SampleReport
       }
       const outcome = await sampleAccountUsage(a);
       if (!outcome.ok) {
+        if (outcome.retryAt != null) a.usageRetryAt = outcome.retryAt;
         reports.set(a.id, { ok: false, reason: outcome.reason });
         return;
       }
@@ -215,7 +217,7 @@ async function login(): Promise<Harvest | null> {
 
     console.log(c.dim("sampling usage..."));
     const sampled = await fetchUsageDirect(blob.claudeAiOauth.accessToken);
-    if (!sampled) console.log(c.yellow("could not sample usage now - it will fill in on first use."));
+    if (!sampled.ok) console.log(c.yellow("could not sample usage now - it will fill in on first use."));
     const at = Date.now();
     const id = oauthAccount.accountUuid;
     return {
@@ -223,7 +225,8 @@ async function login(): Promise<Harvest | null> {
       email: oauthAccount.emailAddress,
       tier: claudeTierLabel(blob.claudeAiOauth),
       oauthAccount,
-      sample: sampled ? { windows: windowsOf(sampled, at), at } : null,
+      sample: sampled.ok ? { windows: windowsOf(sampled.usage, at), at } : null,
+      ...(!sampled.ok && sampled.retryAt != null ? { usageRetryAt: sampled.retryAt } : {}),
       park: () => writeItem(storeTarget(id), claudeAiOauthOnly(blobRaw)),
     };
   } finally {

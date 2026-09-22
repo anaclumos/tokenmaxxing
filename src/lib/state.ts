@@ -73,6 +73,7 @@ export type Harvest = {
   tier: string | null;
   oauthAccount?: Account["oauthAccount"];
   sample: { windows: Window[]; at: number } | null;
+  usageRetryAt?: number;
   park: () => Promise<void>;
 };
 
@@ -92,6 +93,7 @@ export function upsertAccount(
     lastUsageAt: h.sample ? h.sample.at : existing?.lastUsageAt,
     needsReauth: false,
     ...(h.oauthAccount ? { oauthAccount: h.oauthAccount } : {}),
+    usageRetryAt: h.sample ? undefined : (h.usageRetryAt ?? existing?.usageRetryAt),
   };
   if (existing) Object.assign(existing, fresh);
   else idx.accounts.push(fresh);
