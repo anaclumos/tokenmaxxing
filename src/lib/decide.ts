@@ -1,12 +1,20 @@
 import { withLock } from "./lock.ts";
-import { loadAccounts, loadConfig, saveAccounts } from "./state.ts";
-import { isExhausted, limitWindows, liveUsed, nextWeeklyReset, pickBest, pickEarliestReset, sessionWindow, thresholdBars, usableAt, weeklyWindow, type PickCtx } from "./picker.ts";
+import { loadAccounts, loadConfig, liveWaitClaims, releaseWaitClaim, replaceWaitClaim, saveAccounts } from "./state.ts";
+import { isExhausted, limitWindows, liveUsed, nextWeeklyReset, pickBest, pickWaitTarget, sessionWindow, thresholdBars, weeklyWindow, type PickCtx } from "./picker.ts";
 import { familyTokens } from "./usage.ts";
 import { errorMessage, log } from "./log.ts";
 import type { Observation, Provider } from "./provider.ts";
 import type { Account, EnforcedLimit } from "./types.ts";
 
 export type SwapDecision = { swapped: boolean; account: Account | null; reason: string; waitUntil?: number };
+
+export type EvalOpts = {
+  seatId?: string | null;
+  sessionFamilies?: string[];
+  waiterId?: string;
+};
+
+const MAX_WAITERS_PER_ACCOUNT = 4;
 
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 const FIVE_HOURS_MS = 5 * 60 * 60 * 1000;
@@ -42,13 +50,14 @@ function enforcedWall(limit: EnforcedLimit, account: Account, now: number): numb
   return limit.resetsAt ?? cachedReset ?? now + (limit.kind === "session" ? FIVE_HOURS_MS : WEEK_MS);
 }
 
-export async function evaluateAndMaybeSwap(p: Provider, now = Date.now(), canRespawn = false, enforced: EnforcedLimit | null = null, seatId: string | null = p.liveId(), sessionFamilies?: string[]): Promise<SwapDecision> {
-  const activeId = seatId;
+export async function evaluateAndMaybeSwap(p: Provider, now = Date.now(), canRespawn = false, enforced: EnforcedLimit | null = null, opts: EvalOpts = {}): Promise<SwapDecision> {
+  const activeId = opts.seatId ?? p.liveId();
+  const waiterId = opts.waiterId;
   const cfg = loadConfig();
   const bars = thresholdBars(cfg);
   const stored0 = loadAccounts(p.pool).accounts.find((a) => a.id === activeId);
   const walled0 = stored0?.enforcedUntil != null && stored0.enforcedUntil > now;
-  const gated = sessionFamilies ?? p.gatedFamilies(cfg);
+  const gated = opts.sessionFamilies ?? p.gatedFamilies(cfg);
   const observed = stored0 ? await p.observeLive(stored0, cfg, now, { probe: enforced == null && !walled0, perModel: gated == null || gated.length > 0 }) : null;
   const stored = loadAccounts(p.pool).accounts.find((a) => a.id === activeId);
 
@@ -57,8 +66,9 @@ export async function evaluateAndMaybeSwap(p: Provider, now = Date.now(), canRes
   }
 
   return withLock(p.pool.lockFile, async () => {
+    if (waiterId != null) releaseWaitClaim(waiterId);
     const idx = loadAccounts(p.pool);
-    const id2 = seatId;
+    const id2 = activeId;
     const active = id2 ? idx.accounts.find((a) => a.id === id2) : undefined;
 
     const origin = enforced ? idx.accounts.find((a) => a.id === enforced.account) : undefined;
@@ -91,7 +101,7 @@ export async function evaluateAndMaybeSwap(p: Provider, now = Date.now(), canRes
     }
     saveAccounts(p.pool, idx);
 
-    const families = sessionFamilies ?? p.gatedFamilies(cfg);
+    const families = opts.sessionFamilies ?? p.gatedFamilies(cfg);
     const walled = active?.enforcedUntil != null && active.enforcedUntil > now;
     const blindScreen = (enforced != null && (prior || enforced.blind)) || (walled && !enforced2);
     const screened = blindScreen && families != null ? cfg.policy.switchModels : families;
@@ -142,31 +152,33 @@ export async function evaluateAndMaybeSwap(p: Provider, now = Date.now(), canRes
       const fresh = loadAccounts(p.pool);
       const current = seatOf(fresh);
       const ctx: PickCtx = { now, thresholds: bars, currentId: current?.id ?? null, families: switchFamilies, seats };
-      const currentAt = current ? usableAt(current, ctx) : Number.POSITIVE_INFINITY;
-      const other = pickEarliestReset(usable(fresh.accounts), ctx);
-
-      let target: Account | null = null;
-      let waitUntil = Number.POSITIVE_INFINITY;
-      if (other && other.availableAt < currentAt) { target = other.account; waitUntil = other.availableAt; }
-      else if (current) { target = current; waitUntil = currentAt; }
-      else if (other) { target = other.account; waitUntil = other.availableAt; }
+      const waiters = new Map<string, number>();
+      for (const claim of liveWaitClaims(now)) {
+        if (claim.sessionId === waiterId) continue;
+        waiters.set(claim.accountId, (waiters.get(claim.accountId) ?? 0) + 1);
+      }
+      const target = pickWaitTarget(usable(fresh.accounts), ctx, waiters, MAX_WAITERS_PER_ACCOUNT);
+      const waitUntil = target?.availableAt ?? Number.POSITIVE_INFINITY;
 
       if (!target || waitUntil - now > cfg.policy.maxWaitMs) {
         log("decide.depleted", { waitUntil: Number.isFinite(waitUntil) ? waitUntil : 0 });
         return { swapped: false, account: null, reason: "all-depleted", ...(Number.isFinite(waitUntil) ? { waitUntil } : {}) };
       }
 
-      const isCurrent = target.id === (current?.id ?? null);
+      const isCurrent = target.account.id === (current?.id ?? null);
       if (!isCurrent) {
         try {
-          await p.swap(target);
+          await p.swap(target.account);
         } catch (e) {
-          skipOrThrow(e, target);
+          skipOrThrow(e, target.account);
           continue;
         }
       }
-      log("decide.depleted_wait", { account: target.id.slice(0, 8), waitUntil });
-      return { swapped: !isCurrent, account: target, reason: "depleted-wait", waitUntil };
+      if (waiterId != null) {
+        replaceWaitClaim({ sessionId: waiterId, accountId: target.account.id, at: now, waitUntil });
+      }
+      log("decide.depleted_wait", { account: target.account.id.slice(0, 8), waitUntil });
+      return { swapped: !isCurrent, account: target.account, reason: "depleted-wait", waitUntil };
     }
   });
 }

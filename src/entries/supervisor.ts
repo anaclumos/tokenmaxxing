@@ -16,7 +16,7 @@ import { teeObservation } from "../lib/sample.ts";
 import { exitStatus, loopGuardTripped, raceMarkerOrExit, recordPresenceOrStop, runPassthrough } from "../lib/supervise.ts";
 import { saveTermios } from "../lib/tty.ts";
 import { liveSessionId, loadSessionFlags, pruneStaleSessions, saveSessionFlags, writeRespawnMarker } from "../lib/sessions.ts";
-import { loadAccounts, loadConfig } from "../lib/state.ts";
+import { loadAccounts, loadConfig, releaseWaitClaim } from "../lib/state.ts";
 import { gatedFamilies, modelFromFlag } from "../lib/usage.ts";
 import { RespawnMarkerSchema, type Account, type Config, type ModelInfo } from "../lib/types.ts";
 import { errorMessage, log } from "../lib/log.ts";
@@ -222,7 +222,7 @@ async function moveExhaustedSeat(seat: Account, sid: string, gate: MarkerGate, m
     const families = gatedFamilies(model, cfg.policy.switchModels);
     const until = seatBlockedUntil(seat.id, now, families, cfg);
     if (until == null || until <= gate.overriddenUntil) return false;
-    const decision = await evaluateAndMaybeSwap(claude, now, true, null, seat.id, families);
+    const decision = await evaluateAndMaybeSwap(claude, now, true, null, { seatId: seat.id, sessionFamilies: families, waiterId: sid });
     log("supervisor.seat_exhausted", { seat: seat.id.slice(0, 8), until, reason: decision.reason, account: decision.account?.id.slice(0, 8), waitUntil: decision.waitUntil });
     if (decision.account && (decision.swapped || decision.waitUntil !== undefined)) {
       writeRespawnMarker({ session: { sid, launchedAt: gate.launchedAt, live: liveSessionId(sid) }, accountId: decision.account.id, waitUntil: decision.waitUntil ?? now, compact: true });
@@ -504,6 +504,9 @@ export async function runSupervisor(argv: string[]): Promise<number> {
       if (m.waitUntil > Date.now()) {
         if (await countdownWait(label, m.waitUntil, { stream, say })) overriddenUntil = m.waitUntil;
       } else say(`\n\x1b[36m↻ tokenmaxxing: moving to ${label} - resuming...\x1b[0m\n`, `tokenmaxxing: moving to ${label} and resuming.`);
+      await withLock(claudePool.lockFile, () => {
+        releaseWaitClaim(sid);
+      });
       wanted = m.accountId;
       saveSessionFlags(m.sessionId, persistable, process.cwd());
       const prompt = resumable ? resumePrompt(compacted) : null;
