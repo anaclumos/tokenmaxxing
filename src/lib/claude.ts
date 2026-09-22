@@ -4,7 +4,7 @@ import { z } from "zod";
 import { readItem, writeItem, deleteItem, isolatedTarget, readStore, storeTarget, claudeAiOauthOnly } from "./credstore.ts";
 import { resolveRealClaude, resolveVerifiedClaude } from "./claudebin.ts";
 import { withClaudeRefreshLock } from "./claudelock.ts";
-import { ensurePathInRc, installSupervisor, managedShellRcSkipLines, shellRcPath, timerActivationHint } from "./install.ts";
+import { ensurePathInRc, hubActivationHint, installSupervisor, managedShellRcSkipLines, shellRcPath, timerActivationHint } from "./install.ts";
 import { withLock } from "./lock.ts";
 import { errorMessage, log } from "./log.ts";
 import { claudeTierLabel, describeIdentity, fetchTokenIdentity, isDeadCredential, InvalidGrantError } from "./oauth.ts";
@@ -270,6 +270,8 @@ function install(): void {
   console.log(`${c.green("✓")} installed ${c.bold("claude")} supervisor + statusLine/Stop/StopFailure/SessionStart hooks`);
   if (out.timerLoaded) console.log(`${c.green("✓")} periodic check timer active (every ${out.checkIntervalS}s)`);
   else console.log(c.yellow(`⚠ check timer written but not activated - run: ${timerActivationHint()}`));
+  if (out.hubLoaded) console.log(`${c.green("✓")} usage hub service active`);
+  else console.log(c.yellow(`⚠ usage hub service written but not activated - run: ${hubActivationHint()}`));
   if (!out.pathAhead) {
     console.log();
     ensurePathAhead();
