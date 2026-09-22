@@ -1,12 +1,13 @@
 import { randomBytes, timingSafeEqual } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
+import { sortBy } from "es-toolkit";
 import { z } from "zod";
 import { writeFileAtomic } from "../lib/atomic.ts";
 import { claude } from "../lib/claude.ts";
 import { codex, observeCodex } from "../lib/codex.ts";
 import { CODEX_USAGE_URL } from "../lib/codexusage.ts";
 import { errorMessage, log } from "../lib/log.ts";
-import { codexStoreDirFor, paths, storeDirFor } from "../lib/paths.ts";
+import { paths } from "../lib/paths.ts";
 import { isExhausted, thresholdBars } from "../lib/picker.ts";
 import type { Provider } from "../lib/provider.ts";
 import { foldTee } from "../lib/sample.ts";
@@ -22,7 +23,6 @@ const STALE_AFTER_MS = 2 * 60 * 60_000;
 type HubPool = {
   provider: Provider;
   usageUrl: string;
-  storeDir: (accountId: string) => string;
   fold: (account: Account) => void;
   read: (account: Account, cfg: Config, now: number) => Promise<Account>;
   body: (usage: UsageReport, account: Account) => unknown;
@@ -42,7 +42,7 @@ function claudeBody(usage: UsageReport): unknown {
 }
 
 function codexBody(usage: UsageReport, account: Account): unknown {
-  const win = (w: WindowReport | null) =>
+  const win = (w: WindowReport | undefined) =>
     w
       ? {
           used_percent: w.usedPercentage,
@@ -50,9 +50,16 @@ function codexBody(usage: UsageReport, account: Account): unknown {
           ...(w.windowSeconds == null ? {} : { limit_window_seconds: w.windowSeconds }),
         }
       : null;
+  const pair = (windows: WindowReport[]) => {
+    const ordered = sortBy(windows, [(w) => w.windowSeconds ?? Number.POSITIVE_INFINITY]);
+    return { primary_window: win(ordered[0]), secondary_window: win(ordered[1]) };
+  };
+  const named = new Map<string, WindowReport[]>();
+  for (const w of usage.limits) named.set(w.name, [...(named.get(w.name) ?? []), w]);
   return {
     ...(account.tier ? { plan_type: account.tier } : {}),
-    rate_limit: { primary_window: win(usage.fiveHour), secondary_window: win(usage.week) },
+    rate_limit: pair([usage.fiveHour, usage.week].filter((w) => w != null)),
+    ...(named.size === 0 ? {} : { additional_rate_limits: [...named].map(([limit_name, windows]) => ({ limit_name, rate_limit: pair(windows) })) }),
   };
 }
 
@@ -60,7 +67,6 @@ const POOLS: HubPool[] = [
   {
     provider: claude,
     usageUrl: OAUTH_USAGE_URL,
-    storeDir: storeDirFor,
     fold: foldTee,
     read: async (account) => account,
     body: claudeBody,
@@ -68,7 +74,6 @@ const POOLS: HubPool[] = [
   {
     provider: codex,
     usageUrl: CODEX_USAGE_URL,
-    storeDir: codexStoreDirFor,
     fold: () => {},
     read: async (account, cfg, now) => {
       await observeCodex(account, cfg, now, { probe: true, refresh: false });
@@ -79,7 +84,7 @@ const POOLS: HubPool[] = [
 ];
 
 function authIndex(pool: HubPool, account: Account): string {
-  return new Bun.CryptoHasher("sha256").update(`${pool.provider.name}:${pool.storeDir(account.id)}`).digest("hex").slice(0, 16);
+  return new Bun.CryptoHasher("sha256").update(`${pool.provider.name}:${account.id}`).digest("hex").slice(0, 16);
 }
 
 function json(value: unknown, status = 200): Response {
@@ -140,8 +145,8 @@ async function apiCall(req: Request): Promise<Response> {
   const now = Date.now();
   const current = await pool.read(account, loadConfig(), now);
   pool.fold(current);
-  const usage = current.lastUsageAt != null && now - current.lastUsageAt <= STALE_AFTER_MS ? usageReport(current, now) : null;
-  if (!usage) return json({ error: `no usage figure newer than ${STALE_AFTER_MS / 3_600_000}h for this account` }, 502);
+  const usage = usageReport({ ...current, windows: current.windows.filter((w) => now - w.sampledAt <= STALE_AFTER_MS) }, now);
+  if (!usage || (!usage.fiveHour && !usage.week)) return json({ error: `no usage figure newer than ${STALE_AFTER_MS / 3_600_000}h for this account` }, 502);
   return json({ status_code: 200, header: { "Content-Type": ["application/json"] }, body: JSON.stringify(pool.body(usage, current)) });
 }
 
@@ -174,6 +179,8 @@ async function handle(req: Request, key: string): Promise<Response> {
 
 function managementKey(): string {
   if (existsSync(paths.hubKeyFile)) {
+    const mode = statSync(paths.hubKeyFile).mode & 0o777;
+    if (mode & 0o077) throw new Error(`${paths.hubKeyFile} is mode ${mode.toString(8)}, readable by other local users - chmod 600 it`);
     const key = readFileSync(paths.hubKeyFile, "utf8").trim();
     if (key === "") throw new Error(`${paths.hubKeyFile} is empty - write a management key into it, or delete it and serve mints one`);
     return key;
@@ -192,7 +199,7 @@ export async function cmdServe(args: string[]): Promise<number> {
   const cfg = loadConfig();
   const key = managementKey();
   const server = Bun.serve({
-    hostname: "127.0.0.1",
+    hostname: "localhost",
     port: cfg.hub.port,
     fetch: (req) => handle(req, key),
     error: (e) => {
