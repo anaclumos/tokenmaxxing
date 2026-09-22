@@ -116,6 +116,11 @@ export const ConfigSchema = z
         checkIntervalMs: z.number().int().min(10_000).default(60_000),
       })
       .prefault({}),
+    hub: z
+      .object({
+        port: z.number().int().min(1).max(65_535).default(8317),
+      })
+      .prefault({}),
   })
   .refine((cfg) => cfg.policy.projectionMargin < cfg.thresholds.session, {
     path: ["policy", "projectionMargin"],

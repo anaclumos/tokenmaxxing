@@ -33,6 +33,7 @@ export const paths = {
   cloudSessionsJson: join(TM_HOME, "cloud", "sessions.json"),
   cloudWalledJson: join(TM_HOME, "cloud", "walled.json"),
   cloudLockFile: join(TM_HOME, "cloud", "lock"),
+  hubKeyFile: join(TM_HOME, "hub-key"),
 
   claudeSettings: env(
     "TOKENMAXXING_CLAUDE_SETTINGS",

@@ -1,0 +1,40 @@
+---
+title: Usage hub
+description: Serve the CLIProxyAPI-compatible management API so a dashboard such as T3 Code shows the quota of every pooled account
+---
+
+`tokenmaxxing serve` serves the subset of the [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) management API that a usage dashboard reads, so a tool that already polls a CLIProxyAPI hub can show the quota of every pooled Claude and Codex account. T3 Code is the consumer this exists for: its **Add a CLIProxyAPI hub** setting takes a URL and a management key and lists every account the hub pools next to the environment's providers.
+
+```sh
+tokenmaxxing serve
+```
+
+The server binds the hostname `localhost` on `hub.port` (default 8317, the CLIProxyAPI default; see [Configuration](/configuration)): the loopback address the machine's own resolver names, which is where a consumer on the same machine sends `http://localhost:<port>`. Point the consumer at that `localhost` form, never at the dotted loopback literal: the hub listens on the one address the resolver returns first, so `http://127.0.0.1:<port>` misses it on a machine whose resolver names `::1` first. It runs in the foreground until SIGINT or SIGTERM. The management key is the contents of `hub-key` in the state directory: the first run mints a random 64-character key into that file at mode 0600, and a key you write there yourself is used as it is when the file is mode 0600; `serve` refuses a key file that other local users can read. tokenmaxxing never prints the key; read the file and paste it into the consumer.
+
+## Connect T3 Code
+
+1. Run `tokenmaxxing serve` on the machine that holds the pool. The T3 Code environment that should show the accounts runs on the same machine, because the hub listens on loopback.
+2. In T3 Code, open the provider settings of that environment and choose **Add a CLIProxyAPI hub**.
+3. Enter `http://localhost:8317` as the URL and the contents of `~/.config/tokenmaxxing/hub-key` as the management key.
+
+T3 Code polls the hub on its provider health-check interval (five minutes by default) and shows every pooled Claude and Codex account with its session, weekly, and per-model windows.
+
+## What the hub serves
+
+Authentication is CLIProxyAPI's: `Authorization: Bearer <key>` (a bare `Authorization` value is taken as the key too) or `X-Management-Key: <key>`. A request without a key gets `401 {"error":"missing management key"}` and a wrong key `401 {"error":"invalid management key"}`.
+
+- `GET /v0/management/auth-files`: `{observed_at, files}` with one entry per pooled Claude and Codex account. `id` is the account id; `auth_index` is the first 16 hex characters of the SHA-256 of `<provider>:<account id>`, stable across restarts, the shape CLIProxyAPI derives from a credential file's type and path; `name` and `label` are the tokenmaxxing label; `type` and `provider` are `claude` or `codex`; `email` is present when known; `status` is `active`, or `error` with a `status_message` when the account needs reauth; `disabled` is always `false`; `unavailable` is `true` when the account is exhausted under the configured bars, the same screen `status` reports.
+- `POST /v0/management/api-call`: the request body is CLIProxyAPI's (`auth_index`, `method`, `url`, `header`, `data`) and the answer is `{status_code, header, body}` with `body` a JSON string. Two requests are served: `GET https://api.anthropic.com/api/oauth/usage` for a Claude account and `GET https://chatgpt.com/backend-api/wham/usage` for a Codex account. The body has the shape the real endpoint returns (`five_hour`, `seven_day`, and the `weekly_scoped` rows of `limits` for Claude; `plan_type`, `rate_limit` with the cached windows in `primary_window` and `secondary_window` by ascending duration, and `additional_rate_limits` for the named Codex limits), built from the cached windows. A window older than two hours is left out. Any other URL or method answers `400`, an `auth_index` the pool does not hold answers `400 {"error":"auth credential not found for auth_index"}`, and an account whose session and weekly windows are both older than two hours answers `502`.
+- Every other management route, `reset-quota` and the Codex reset-credit reads included, answers `404`.
+
+## Where the figures come from
+
+The hub is a view over the cached figures and never a proxy: it ignores the `header` the client sends and never forwards a request. A Claude account is never read live from the hub. The usage endpoint rate limits each Claude account on its own (an HTTP 429 with a `retry-after` of about an hour), and the check tick already samples every account as often as that allows, so a Claude account answers from `accounts.json` with the statusline tee folded in: the figure the switching decision reads, at most one tick behind a running session, and `unavailable` in `auth-files` is computed from the same windows. No tick samples the Codex pool, so a Codex account is read through the no-refresh path `seat --codex` uses: when the cached figure is older than `policy.usagePollTtlMs`, one usage GET with the stored access token, stored the way a `status` sample is, never a token rotation; otherwise the cached figure.
+
+The protocol carries no sample age, and a stale window whose reset has passed would read as 0 percent used. Every cached window carries its own sample time (a fresh tee refreshes the session and weekly windows while the per-model rows keep the time of the last direct read), so the cutoff applies per window: a window older than two hours is left out of the answer, and an account whose session and weekly windows are both that old is reported as unreadable (`502`), which the consumer renders as an account it could not read. Keep the check timer running; `tokenmaxxing status` shows the age of every figure.
+
+## Limits
+
+- Loopback only. A consumer on another machine needs a tunnel; there is no `allow-remote` setting.
+- The server runs in the foreground. Start it from a terminal multiplexer or your own service unit; `init` does not install one.
+- The Codex reset-credit reads and `reset-quota` are not served, so the consumer shows no reset credits for a Codex account.

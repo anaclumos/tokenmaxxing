@@ -11,7 +11,9 @@ import type { Provider, SampleReport } from "../lib/provider.ts";
 import { bar, c, count, emitJson, fmtAgo } from "./render.ts";
 import type { Account, Config, Thresholds, Window } from "../lib/types.ts";
 
-type WindowReport = { usedPercentage: number; resetsAt: number | null; windowSeconds: number | null };
+export type WindowReport = { usedPercentage: number; resetsAt: number | null; windowSeconds: number | null };
+
+export type UsageReport = { fiveHour: WindowReport | null; week: WindowReport | null; limits: (WindowReport & { name: string })[] };
 
 type StatusAccount = {
   label: string;
@@ -22,7 +24,7 @@ type StatusAccount = {
   sessions: number;
   needsReauth: boolean;
   exhausted: boolean;
-  usage: { fiveHour: WindowReport | null; week: WindowReport | null; limits: (WindowReport & { name: string })[] } | null;
+  usage: UsageReport | null;
   usageAt: number | null;
   limitsAt: number | null;
   sample: SampleReport | { ok: true; source: "cached" };
@@ -47,7 +49,7 @@ function currentWindow(w: Window, now: number): WindowReport {
   };
 }
 
-function usageReport(a: Account, now: number): StatusAccount["usage"] {
+export function usageReport(a: Account, now: number): UsageReport | null {
   if (a.lastUsageAt == null) return null;
   const session = sessionWindow(a);
   const week = weeklyWindow(a);
