@@ -1,7 +1,6 @@
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import { delay } from "es-toolkit";
 import { z } from "zod";
+import pkg from "../../package.json" with { type: "json" };
 import { errorMessage, log } from "./log.ts";
 import { readLines } from "./proc.ts";
 import { JsonTextSchema } from "./types.ts";
@@ -47,9 +46,6 @@ const ErrorNotificationSchema = z.looseObject({ threadId: z.string().nullable().
 const INIT_ID = 1;
 const RESUME_ID = 2;
 const COMPACT_ID = 3;
-
-const packageVersion = (): string =>
-  z.object({ version: z.string().min(1) }).parse(JSON.parse(readFileSync(join(import.meta.dir, "..", "..", "package.json"), "utf8"))).version;
 
 export async function compactCodexThread(input: { real: string; threadId: string; env: Record<string, string | undefined> }): Promise<CompactOutcome> {
   const p = Bun.spawn([input.real, "app-server"], {
@@ -109,7 +105,7 @@ export async function compactCodexThread(input: { real: string; threadId: string
       const err = (await stderrText).trim().slice(0, 200);
       finish({ ok: false, reason: p.exitCode === null ? `app-server killed after ${CODEX_COMPACT_KILL_MS / 1000}s` : `app-server exited ${p.exitCode}: ${err}` });
     })().catch((e) => finish({ ok: false, reason: errorMessage(e) }));
-    send({ id: INIT_ID, method: "initialize", params: { clientInfo: { name: "tokenmaxxing", version: packageVersion() } } });
+    send({ id: INIT_ID, method: "initialize", params: { clientInfo: { name: "tokenmaxxing", version: pkg.version } } });
   });
 
   try {
