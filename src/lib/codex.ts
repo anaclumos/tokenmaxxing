@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { writeFileAtomic } from "./atomic.ts";
 import { MAX_WRAP_DEPTH, WRAP_DEPTH_ENV } from "./claudebin.ts";
@@ -116,7 +116,6 @@ async function login(): Promise<Harvest | null> {
   const real = resolveRealCodex();
   const onboardDir = codexPaths.onboardDir;
   rmSync(onboardDir, { recursive: true, force: true });
-  mkdirSync(onboardDir, { recursive: true });
   writeFileAtomic(join(onboardDir, "config.toml"), 'cli_auth_credentials_store = "file"\n');
 
   const savedTermios = saveTermios();
