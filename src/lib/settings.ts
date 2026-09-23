@@ -1,8 +1,10 @@
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { existsSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
 import { paths } from "./paths.ts";
 import { writeFileAtomic } from "./atomic.ts";
+import { readJsonFile } from "./state.ts";
+import { JsonTextSchema } from "./types.ts";
 
 export function installedBin(): string {
   return join(paths.binDir, "tokenmaxxing");
@@ -31,7 +33,7 @@ const STOP_FAILURE_MATCHER = "rate_limit";
 
 function readSettings(): Settings {
   if (!existsSync(paths.claudeSettings)) return {};
-  return SettingsSchema.parse(JSON.parse(readFileSync(paths.claudeSettings, "utf8")));
+  return readJsonFile(paths.claudeSettings, SettingsSchema);
 }
 
 function writeSettings(s: Settings): void {
@@ -71,13 +73,7 @@ export function isOurHookCommand(cmd: string, sub: string): boolean {
   if (!cmd.endsWith(` ${sub}`)) return false;
   const quotedPath = cmd.slice(0, cmd.length - (sub.length + 1));
   if (!quotedPath.startsWith('"') || !quotedPath.endsWith('"')) return false;
-  let path: unknown;
-  try {
-    path = JSON.parse(quotedPath);
-  } catch {
-    return false;
-  }
-  const parsed = z.string().safeParse(path);
+  const parsed = z.string().safeParse(JsonTextSchema.safeParse(quotedPath).data);
   return parsed.success && parsed.data.endsWith("/tokenmaxxing");
 }
 

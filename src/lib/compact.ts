@@ -1,9 +1,9 @@
-import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { delay } from "es-toolkit";
 import { z } from "zod";
 import { errorMessage, log } from "./log.ts";
 import { readLines } from "./proc.ts";
+import { readJsonFile } from "./state.ts";
 import { JsonTextSchema } from "./types.ts";
 
 export type CompactOutcome = { ok: true } | { ok: false; reason: string };
@@ -48,8 +48,7 @@ const INIT_ID = 1;
 const RESUME_ID = 2;
 const COMPACT_ID = 3;
 
-const packageVersion = (): string =>
-  z.object({ version: z.string().min(1) }).parse(JSON.parse(readFileSync(join(import.meta.dir, "..", "..", "package.json"), "utf8"))).version;
+const packageVersion = (): string => readJsonFile(join(import.meta.dir, "..", "..", "package.json"), z.object({ version: z.string().min(1) })).version;
 
 export async function compactCodexThread(input: { real: string; threadId: string; env: Record<string, string | undefined> }): Promise<CompactOutcome> {
   const p = Bun.spawn([input.real, "app-server"], {

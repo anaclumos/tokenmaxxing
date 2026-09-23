@@ -6,7 +6,7 @@ import { codexPaths, codexStoreDirFor, HOME, optionalEnv, paths } from "./paths.
 import { writeFileAtomic } from "./atomic.ts";
 import { installedBin, installSettings, isOurHookCommand, uninstallSettings } from "./settings.ts";
 import { resolveRealClaude } from "./claudebin.ts";
-import { loadConfig } from "./state.ts";
+import { loadConfig, readJsonFile } from "./state.ts";
 import { ErrnoSchema } from "./types.ts";
 
 export type InstallOutcome = { claudeWrapper: string; installedBin: string; pathAhead: boolean; timerLoaded: boolean; hubLoaded: boolean; checkIntervalS: number };
@@ -134,7 +134,7 @@ function withoutOurCodexStopHooks(groups: { hooks: { type?: string; command?: st
 
 export function installCodexStopHook(): void {
   const current = existsSync(codexPaths.hooksJson)
-    ? CodexHooksFileSchema.parse(JSON.parse(readFileSync(codexPaths.hooksJson, "utf8")))
+    ? readJsonFile(codexPaths.hooksJson, CodexHooksFileSchema)
     : CodexHooksFileSchema.parse({});
   const next = {
     ...current,
@@ -152,7 +152,7 @@ export function installCodexStopHook(): void {
 
 export function uninstallCodexStopHook(): void {
   if (!existsSync(codexPaths.hooksJson)) return;
-  const current = CodexHooksFileSchema.parse(JSON.parse(readFileSync(codexPaths.hooksJson, "utf8")));
+  const current = readJsonFile(codexPaths.hooksJson, CodexHooksFileSchema);
   const next = {
     ...current,
     hooks: {
@@ -167,7 +167,7 @@ export function codexStopHookGroupIndex(): number | null {
   if (!existsSync(codexPaths.hooksJson)) return null;
   let parsed: z.infer<typeof CodexHooksFileSchema>;
   try {
-    parsed = CodexHooksFileSchema.parse(JSON.parse(readFileSync(codexPaths.hooksJson, "utf8")));
+    parsed = readJsonFile(codexPaths.hooksJson, CodexHooksFileSchema);
   } catch {
     return null;
   }
