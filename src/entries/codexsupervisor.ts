@@ -3,8 +3,7 @@ import { join } from "node:path";
 import { z } from "zod";
 import { codexPaths, codexPool } from "../lib/paths.ts";
 import { withLock } from "../lib/lock.ts";
-import { UNMANAGED_ENV, WRAP_DEPTH_ENV, wrapDepth } from "../lib/claudebin.ts";
-import { resolveRealCodex } from "../lib/codexbin.ts";
+import { CODEX_BIN, UNMANAGED_ENV, WRAP_DEPTH_ENV, resolveRealBin, wrapDepth } from "../lib/claudebin.ts";
 import { codexStoreUsable, ensureCodexStoreHome } from "../lib/codexauth.ts";
 import { codexPickCtx, pickCodexSeat } from "../lib/codex.ts";
 import { clearPresence, livingPresences } from "../lib/presence.ts";
@@ -74,7 +73,7 @@ export async function runCodexSupervisor(input: { argv: string[] }): Promise<num
   const { argv } = input;
   if (loopGuardTripped("codex")) return 1;
 
-  const real = resolveRealCodex();
+  const real = resolveRealBin(CODEX_BIN);
   const childEnv = { ...process.env, [WRAP_DEPTH_ENV]: String(wrapDepth() + 1) };
 
   if (!shouldManageCodex({ argv }) || process.env[UNMANAGED_ENV]) {

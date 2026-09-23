@@ -2,8 +2,7 @@ import { mkdirSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
 import { readItem, writeItem, deleteItem, isolatedTarget, readStore, storeTarget, claudeAiOauthOnly } from "./credstore.ts";
-import { resolveRealClaude, resolveVerifiedClaude } from "./claudebin.ts";
-import { withClaudeRefreshLock } from "./claudelock.ts";
+import { CLAUDE_BIN, resolveRealBin, resolveVerifiedClaude } from "./claudebin.ts";
 import { ensurePathInRc, hubActivationHint, installSupervisor, managedShellRcSkipLines, shellRcPath, timerActivationHint } from "./install.ts";
 import { withLock } from "./lock.ts";
 import { errorMessage, log } from "./log.ts";
@@ -152,7 +151,7 @@ async function login(): Promise<Harvest | null> {
   const iso = isolatedTarget(onboardDir);
   await deleteItem(iso);
   const cjPath = join(onboardDir, ".claude.json");
-  const real = resolveRealClaude();
+  const real = resolveRealBin(CLAUDE_BIN);
 
   const savedTermios = saveTermios();
   const env = scrubCredentialEnv({ ...process.env, CLAUDE_CONFIG_DIR: onboardDir, TOKENMAXXING_PROBE: "1", TOKENMAXXING_SUPERVISED: "" });
@@ -177,7 +176,7 @@ async function login(): Promise<Harvest | null> {
     await onExit;
     restoreTermios(savedTermios);
 
-    const blobRaw = await withClaudeRefreshLock(onboardDir, () => readItem(iso));
+    const blobRaw = await readItem(iso);
     if (!blobRaw || !identityReady(cjPath)) {
       console.error(c.red("no login detected in the isolated session - nothing changed."));
       return null;

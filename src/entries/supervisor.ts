@@ -4,7 +4,7 @@ import type { FileSink, Subprocess } from "bun";
 import { maxBy } from "es-toolkit";
 import { z } from "zod";
 import { claudePool, paths, storeDirFor } from "../lib/paths.ts";
-import { UNMANAGED_ENV, WRAP_DEPTH_ENV, resolveRealClaude, wrapDepth } from "../lib/claudebin.ts";
+import { CLAUDE_BIN, UNMANAGED_ENV, WRAP_DEPTH_ENV, resolveRealBin, wrapDepth } from "../lib/claudebin.ts";
 import { claude, pickSeat } from "../lib/claude.ts";
 import { compactClaudeSession } from "../lib/compact.ts";
 import { evaluateAndMaybeSwap } from "../lib/decide.ts";
@@ -353,7 +353,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
   }
   let real: string;
   try {
-    real = resolveRealClaude();
+    real = resolveRealBin(CLAUDE_BIN);
   } catch (e) {
     if (!earlyStream) throw e;
     process.stdout.write(systemLine(earlySid, `tokenmaxxing: ${errorMessage(e)}`));

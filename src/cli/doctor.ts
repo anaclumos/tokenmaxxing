@@ -1,5 +1,5 @@
 import { existsSync, readFileSync } from "node:fs";
-import { verifyRealClaude } from "../lib/claudebin.ts";
+import { CLAUDE_BIN, verifyRealBin } from "../lib/claudebin.ts";
 import { checkSettings, installedBin } from "../lib/settings.ts";
 import { checkTimerHealthy, codexStoreHookTrust, findClaudeShadowers, hubServiceHealthy, isBinDirAhead, shellRcPath, skipImperativeHub, timerActivationHint } from "../lib/install.ts";
 import { errorMessage } from "../lib/log.ts";
@@ -95,7 +95,7 @@ export async function cmdDoctor(): Promise<number> {
   const cfg = loadConfig();
   check(!!cfg.claudeBin && existsSync(cfg.claudeBin), "real claude binary resolved", "set claudeBin in config.json");
   if (cfg.claudeBin && existsSync(cfg.claudeBin)) {
-    const fail = verifyRealClaude(cfg.claudeBin);
+    const fail = verifyRealBin({ ...CLAUDE_BIN, bin: cfg.claudeBin });
     check(fail === null, "claudeBin launches the real claude", fail ?? undefined);
   }
 

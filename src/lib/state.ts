@@ -38,7 +38,9 @@ export function loadConfig(): Config {
   return cfg;
 }
 
-export function pinBinOverride(input: { key: "claudeBin" | "codexBin" | "grokBin" | "opencodeBin"; bin: string }): void {
+export type BinKey = "claudeBin" | "codexBin" | "grokBin" | "opencodeBin";
+
+export function pinBinOverride(input: { key: BinKey; bin: string }): void {
   const raw: Record<string, unknown> = existsSync(paths.configJson) ? readJsonFile(paths.configJson, z.record(z.string(), z.unknown())) : {};
   raw[input.key] = input.bin;
   writeFileAtomic(paths.configJson, JSON.stringify(raw, null, 2) + "\n");

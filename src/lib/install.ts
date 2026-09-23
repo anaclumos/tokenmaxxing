@@ -6,7 +6,7 @@ import { z } from "zod";
 import { codexPaths, codexStoreDirFor, HOME, optionalEnv, paths } from "./paths.ts";
 import { writeFileAtomic } from "./atomic.ts";
 import { installedBin, installSettings, isOurHookCommand, uninstallSettings } from "./settings.ts";
-import { resolveRealClaude } from "./claudebin.ts";
+import { CLAUDE_BIN, resolveRealBin } from "./claudebin.ts";
 import { loadConfig, readJsonFile } from "./state.ts";
 import { ErrnoSchema } from "./types.ts";
 
@@ -17,7 +17,7 @@ export function isBinDirAhead(): boolean {
   const ourIdx = dirs.indexOf(paths.binDir);
   if (ourIdx < 0) return false;
   try {
-    const realDir = dirname(resolveRealClaude());
+    const realDir = dirname(resolveRealBin(CLAUDE_BIN));
     const realIdx = dirs.indexOf(realDir);
     return realIdx < 0 || ourIdx < realIdx;
   } catch {
