@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
 import { writeFileAtomic } from "./atomic.ts";
@@ -31,7 +31,6 @@ function harvestOf(id: string, key: string, entry: GrokAuthEntry): Harvest {
     tier: null,
     sample: null,
     park: async () => {
-      mkdirSync(grokStoreDirFor(id), { recursive: true });
       writeFileAtomic(grokAuthJsonFor(id), JSON.stringify({ [key]: entry }, null, 2), 0o600);
     },
   };

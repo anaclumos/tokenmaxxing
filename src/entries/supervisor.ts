@@ -169,7 +169,7 @@ function latestSessionForCwd(): string | null {
       .filter((f) => f.endsWith(".jsonl"))
       .map((f) => ({ f, m: statSync(join(projDir, f)).mtimeMs }));
     const newest = maxBy(files, (x) => x.m);
-    return newest ? newest.f.replace(/\.jsonl$/, "") : null;
+    return newest ? basename(newest.f, ".jsonl") : null;
   } catch {
     return null;
   }

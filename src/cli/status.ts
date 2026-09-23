@@ -138,35 +138,6 @@ const NOTE_INDENT = "    ";
 type Note = { paint: (s: string) => string; text: string };
 type Card = { lines: string[]; notes: Note[] };
 
-function splitToWidth(token: string, width: number): string[] {
-  const parts: string[] = [];
-  let part = "";
-  for (const ch of token) {
-    if (part !== "" && Bun.stringWidth(part + ch) > width) {
-      parts.push(part);
-      part = "";
-    }
-    part += ch;
-  }
-  if (part !== "") parts.push(part);
-  return parts;
-}
-
-function wrapWords(text: string, width: number): string[] {
-  const out: string[] = [];
-  let line = "";
-  for (const word of text.split(" ").flatMap((token) => splitToWidth(token, width))) {
-    if (line !== "" && Bun.stringWidth(`${line} ${word}`) > width) {
-      out.push(line);
-      line = word;
-    } else {
-      line = line === "" ? word : `${line} ${word}`;
-    }
-  }
-  if (line !== "") out.push(line);
-  return out;
-}
-
 function renderGrid(cards: Card[]): void {
   const bodyWidth = Math.max(...cards.flatMap((card) => card.lines.map((line) => Bun.stringWidth(line))));
   const termWidth = process.stdout.isTTY ? process.stdout.columns : Number.POSITIVE_INFINITY;
@@ -174,7 +145,7 @@ function renderGrid(cards: Card[]): void {
   const cellWidth = columns === 1 ? termWidth : Math.floor((termWidth + CARD_GAP) / columns) - CARD_GAP;
   const blocks = cards.map((card) => [
     ...card.lines,
-    ...card.notes.flatMap((note) => wrapWords(note.text, cellWidth - NOTE_INDENT.length).map((line) => `${NOTE_INDENT}${note.paint(line)}`)),
+    ...card.notes.flatMap((note) => Bun.wrapAnsi(note.text, cellWidth - NOTE_INDENT.length, { hard: true }).split("\n").map((line) => `${NOTE_INDENT}${note.paint(line)}`)),
   ]);
   const width = Math.max(...blocks.flat().map((line) => Bun.stringWidth(line)));
   for (const rowBlocks of chunk(blocks, columns)) {
