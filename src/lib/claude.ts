@@ -14,7 +14,6 @@ import { seatCounts } from "./presence.ts";
 import type { Observation, Provider, SampleReport } from "./provider.ts";
 import { foldTee, sampleAccountUsage, teeObservation, usageBlockedUntil } from "./sample.ts";
 import { clearUsageSnapshot, loadAccounts, loadConfig, loadUsageSnapshot, pinBinOverride, saveAccounts, type Harvest } from "./state.ts";
-import { loadSetupTokens, saveSetupTokens } from "./setuptokens.ts";
 import { saveTermios, restoreTermios } from "./tty.ts";
 import { fetchUsageDirect, gatedFamilies, mergeWindows, modelFromFlag, scrubCredentialEnv, windowsOf } from "./usage.ts";
 import { CredentialBlobSchema, JsonTextSchema, OAuthAccountSchema, type Account, type Config, type ModelInfo } from "./types.ts";
@@ -141,10 +140,6 @@ async function removeCredentials(a: Account): Promise<void> {
   rmSync(storeDirFor(a.id), { recursive: true, force: true });
   rmSync(`${storeDirFor(a.id)}.lock`, { recursive: true, force: true });
   clearUsageSnapshot(a.id);
-  const setupTokens = loadSetupTokens();
-  if (setupTokens.tokens.some((t) => t.accountUuid === a.id)) {
-    saveSetupTokens({ ...setupTokens, tokens: setupTokens.tokens.filter((t) => t.accountUuid !== a.id) });
-  }
 }
 
 const IdentityReadySchema = z.looseObject({ oauthAccount: z.looseObject({ accountUuid: z.string().min(1) }) });

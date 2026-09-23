@@ -22,9 +22,6 @@ import { cmdRename } from "./cli/rename.ts";
 import { cmdCheck } from "./cli/check.ts";
 import { cmdConfig } from "./cli/config.ts";
 import { cmdSeat } from "./cli/seat.ts";
-import { cmdSetupToken } from "./cli/setuptoken.ts";
-import { cmdCloudRun } from "./cli/cloudrun.ts";
-import { cmdCursorInit } from "./cli/cursorinit.ts";
 import { cmdServe } from "./cli/serve.ts";
 import { hubDeactivationHint, onLoginHome, timerDeactivationHint, uninstallSupervisor, uninstallTargets } from "./lib/install.ts";
 import { errorMessage } from "./lib/log.ts";
@@ -61,9 +58,6 @@ function printHelp(): void {
   ${c.cyan("tokenmaxxing seat --codex")} <pid>  borrow one pooled codex account for an unattended consumer (plugin, script): prints the CODEX_HOME to set, reserved until <pid> exits; exit 1 = none usable, fall back to the ambient login
   ${c.cyan("tokenmaxxing serve")}      serve the CLIProxyAPI-compatible usage API on http://localhost:<hub.port> (default 8317) so a dashboard such as T3 Code's "Add a CLIProxyAPI hub" shows every pooled Claude and Codex account's quota; the management key is the contents of hub-key in the state directory
   ${c.cyan("tokenmaxxing uninstall")} [--yes]  print the targets, then remove supervisor + settings entries (refused without ${c.cyan("--yes")} when HOME is the login home)
-  ${c.cyan("tokenmaxxing setup-token")} [--print | rm <label|uuid>]  Cursor Cloud only: mint one \`claude setup-token\` per pooled account (browser sign-in each) and print the TOKENMAXXING_TOKENS secret value; ${c.cyan("--print")} prints the stored set, ${c.cyan("rm")} drops one
-  ${c.cyan("tokenmaxxing cursor init")} [dir]  write the Claude relay subagent (.cursor/agents/claude.md) and .cursor/environment.json into a repo
-  ${c.cyan("tokenmaxxing cloud run")} [--session <id>] [--max-turns <n>] "<prompt>"  on a Cursor Cloud VM: run claude -p on a setup token from TOKENMAXXING_TOKENS, rotate to the next token on a usage limit
 
   ${c.cyan("--json")}                  print one JSON document on stdout instead of text (status, config, check); every document carries ${c.bold("ok")}, failures add ${c.bold("error")}
 
@@ -162,18 +156,7 @@ async function main(): Promise<number> {
       }
       return cmdSeat(args[1], args.slice(2));
     }
-    case "setup-token": return cmdSetupToken(args.slice(1));
     case "serve": return cmdServe(args.slice(1));
-    case "cursor": {
-      if (args[1] === "init") return cmdCursorInit(args.slice(2));
-      emitError({ message: "usage: tokenmaxxing cursor init [dir]" });
-      return 2;
-    }
-    case "cloud": {
-      if (args[1] === "run") return cmdCloudRun(args.slice(2));
-      emitError({ message: 'usage: tokenmaxxing cloud run [--session <id>] [--max-turns <n>] "<prompt>"' });
-      return 2;
-    }
     case "uninstall": {
       if (args.length > 1) {
         emitError({ message: `unknown uninstall option: ${args[1]} (uninstall takes only ${YES_FLAG})` });

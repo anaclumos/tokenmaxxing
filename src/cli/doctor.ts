@@ -8,8 +8,7 @@ import { loadAccounts, loadConfig } from "../lib/state.ts";
 import { readStore } from "../lib/credstore.ts";
 import { codexIdentityOf, readCodexStoreAuth } from "../lib/codexauth.ts";
 import { isAccessTokenExpiring, isDeadCredential, fetchTokenIdentity, describeIdentity } from "../lib/oauth.ts";
-import { SETUP_TOKEN_STALE_MS, loadSetupTokens } from "../lib/setuptokens.ts";
-import { c, fmtAgo } from "./render.ts";
+import { c } from "./render.ts";
 
 export async function cmdDoctor(): Promise<number> {
   let failed = 0;
@@ -91,15 +90,6 @@ export async function cmdDoctor(): Promise<number> {
     const trust = codexStoreHookTrust(a.id);
     if (trust === "untrusted") warn(`${a.label} (codex): Stop hook not trusted for this seat - open a supervised codex session on it, run /hooks, and trust it, or auto-switching stays inert there`);
     else if (trust === "unknown") note(`${a.label} (codex): hook trust unknown (no hooks.json or config.toml yet - launch a supervised session once, then trust via /hooks)`);
-  }
-
-  if (existsSync(paths.setupTokensJson)) {
-    const setupTokens = loadSetupTokens().tokens;
-    for (const a of idx.accounts) {
-      const token = setupTokens.find((t) => t.accountUuid === a.id);
-      if (!token) warn(`no setup token stored for ${a.label} - run \`tokenmaxxing setup-token\` to mint one for Cursor Cloud`);
-      else if (Date.now() - token.mintedAt > SETUP_TOKEN_STALE_MS) warn(`the setup token for ${a.label} was minted ${fmtAgo(token.mintedAt)} and expires a year after minting - \`tokenmaxxing setup-token rm ${a.label}\` then \`tokenmaxxing setup-token\` re-mints it`);
-    }
   }
 
   const cfg = loadConfig();
