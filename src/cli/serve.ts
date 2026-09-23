@@ -130,12 +130,8 @@ async function apiCall(req: Request): Promise<Response> {
   const method = (call.method ?? "").trim().toUpperCase();
   if (method === "") return json({ error: "missing method" }, 400);
   if (!call.url) return json({ error: "missing url" }, 400);
-  let target: URL;
-  try {
-    target = new URL(call.url);
-  } catch {
-    return json({ error: "invalid url" }, 400);
-  }
+  const target = URL.parse(call.url);
+  if (!target) return json({ error: "invalid url" }, 400);
   const pool = POOLS.find((p) => p.usageUrl === `${target.origin}${target.pathname}`);
   if (method !== "GET" || !pool) {
     return json({ error: `unsupported request: this hub serves ${POOLS.map((p) => `GET ${p.usageUrl}`).join(" and ")} only` }, 400);
@@ -166,16 +162,20 @@ function keyMatches(presented: string, key: string): boolean {
   return a.length === b.length && timingSafeEqual(a, b);
 }
 
-async function handle(req: Request, key: string): Promise<Response> {
-  const url = new URL(req.url);
-  if (!url.pathname.startsWith(MANAGEMENT_PREFIX)) return json({ error: "not found" }, 404);
+function unauthorized(req: Request, key: string): Response | null {
   const presented = presentedKey(req);
   if (presented === "") return json({ error: "missing management key" }, 401);
   if (!keyMatches(presented, key)) return json({ error: "invalid management key" }, 401);
-  const route = url.pathname.slice(MANAGEMENT_PREFIX.length);
-  if (route === "auth-files" && req.method === "GET") return json(authFiles(loadConfig(), Date.now()));
-  if (route === "api-call" && req.method === "POST") return apiCall(req);
-  return json({ error: "not found" }, 404);
+  return null;
+}
+
+function guarded(key: string, handler: (req: Request) => Response | Promise<Response>): (req: Request) => Response | Promise<Response> {
+  return (req) => unauthorized(req, key) ?? handler(req);
+}
+
+function notFound(req: Request, key: string): Response {
+  const url = new URL(req.url);
+  return (url.pathname.startsWith(MANAGEMENT_PREFIX) ? unauthorized(req, key) : null) ?? json({ error: "not found" }, 404);
 }
 
 function managementKey(): string {
@@ -204,7 +204,11 @@ export async function cmdServe(args: string[]): Promise<number> {
     server = Bun.serve({
       hostname: "localhost",
       port: cfg.hub.port,
-      fetch: (req) => handle(req, key),
+      routes: {
+        [`${MANAGEMENT_PREFIX}auth-files`]: { GET: guarded(key, () => json(authFiles(loadConfig(), Date.now()))) },
+        [`${MANAGEMENT_PREFIX}api-call`]: { POST: guarded(key, apiCall) },
+      },
+      fetch: (req) => notFound(req, key),
       error: (e) => {
         log("hub.error", { err: errorMessage(e) });
         return json({ error: "internal error" }, 500);
