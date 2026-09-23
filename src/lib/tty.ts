@@ -1,6 +1,6 @@
 export function saveTermios(): string | null {
   const p = Bun.spawnSync(["/bin/sh", "-c", "stty -g </dev/tty"]);
-  const s = p.stdout?.toString().trim();
+  const s = p.stdout.toString().trim();
   return s && p.exitCode === 0 ? s : null;
 }
 
