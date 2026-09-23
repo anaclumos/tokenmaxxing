@@ -38,7 +38,7 @@ export async function fetchTokenIdentity(accessToken: string, signal?: AbortSign
   let res: Response;
   try {
     res = await http.get(PROFILE_URL, {
-      headers: { Authorization: `Bearer ${accessToken}` },
+      headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
       signal,
     });
   } catch (e) {

@@ -218,7 +218,7 @@ export async function fetchUsageDirect(accessToken: string): Promise<UsageRead> 
   try {
     res = await http.get(USAGE_URL, {
       searchParams: { at_wall: 1, skip_spend: 1 },
-      headers: { Authorization: `Bearer ${accessToken}` },
+      headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
       signal: AbortSignal.timeout(USAGE_DEADLINE_MS),
     });
   } catch (e) {
