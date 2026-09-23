@@ -4,7 +4,7 @@ import { uniq } from "es-toolkit";
 import { z } from "zod";
 import { errorMessage } from "./log.ts";
 import { paths } from "./paths.ts";
-import { loadConfig } from "./state.ts";
+import { loadConfig, type BinKey } from "./state.ts";
 import { writeFileAtomic } from "./atomic.ts";
 
 export const WRAP_DEPTH_ENV = "TOKENMAXXING_WRAP_DEPTH";
@@ -50,75 +50,70 @@ export function pointsBackAtUs(bin: string): boolean {
   return resolved != null && binDir != null && dirname(resolved) === binDir;
 }
 
-function scanPathForClaudeCandidates(): string[] {
+function scanPathCandidates(name: string): string[] {
   const seen = new Set<string>();
   const out: string[] = [];
   for (const d of (process.env.PATH ?? "").split(":")) {
     if (!d) continue;
-    const cand = join(d, "claude");
-    try {
-      if (existsSync(cand) && statSync(cand).isFile() && !pointsBackAtUs(cand)) {
-        const key = realpathOrNull(cand) ?? cand;
-        if (!seen.has(key)) {
-          seen.add(key);
-          out.push(cand);
-        }
-      }
-    } catch {  }
+    const cand = join(d, name);
+    if (!existsSync(cand) || !statSync(cand).isFile() || pointsBackAtUs(cand)) continue;
+    const key = realpathOrNull(cand) ?? cand;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(cand);
   }
   return out;
 }
 
-export function scanPathForClaude(): string | null {
-  return scanPathForClaudeCandidates()[0] ?? null;
-}
-
-export function resolveRealClaude(): string {
-  const cfg = loadConfig();
-  if (cfg.claudeBin) {
-    if (!existsSync(cfg.claudeBin)) {
-      throw new Error(`configured claudeBin does not exist: ${cfg.claudeBin} - fix config.json`);
+export function resolveRealBin(input: { name: string; key: BinKey }): string {
+  const configured = loadConfig()[input.key];
+  if (configured) {
+    if (!existsSync(configured)) {
+      throw new Error(`configured ${input.key} does not exist: ${configured} - fix config.json`);
     }
-    if (pointsBackAtUs(cfg.claudeBin)) {
+    if (pointsBackAtUs(configured)) {
       throw new Error(
-        `configured claudeBin (${cfg.claudeBin}) is tokenmaxxing's own wrapper - spawning it recurses. Point claudeBin at the real claude binary in ${paths.configJson}`,
+        `configured ${input.key} (${configured}) is tokenmaxxing's own wrapper - spawning it recurses. Point ${input.key} at the real ${input.name} binary in ${paths.configJson}`,
       );
     }
-    return cfg.claudeBin;
+    return configured;
   }
-  const scanned = scanPathForClaude();
+  const scanned = scanPathCandidates(input.name)[0];
   if (scanned) return scanned;
-  throw new Error("could not locate the real `claude` binary (set claudeBin in config.json)");
+  throw new Error(`could not locate the real \`${input.name}\` binary (set ${input.key} in config.json)`);
 }
 
-export function verifyRealClaude(bin: string): string | null {
+export function verifyRealBin(input: { bin: string; name: string; versionOk: (versionOutput: string) => boolean }): string | null {
   const env = { ...process.env, [WRAP_DEPTH_ENV]: String(MAX_WRAP_DEPTH), TOKENMAXXING_PROBE: "1" };
   let p: ReturnType<typeof Bun.spawnSync>;
   try {
-    p = Bun.spawnSync([bin, "--version"], { env, stdout: "pipe", stderr: "pipe", timeout: 15_000, killSignal: "SIGKILL" });
+    p = Bun.spawnSync([input.bin, "--version"], { env, stdout: "pipe", stderr: "pipe", timeout: 15_000, killSignal: "SIGKILL" });
   } catch (e) {
     return errorMessage(e);
   }
   const outText = (p.stdout?.toString() ?? "").trim();
   const err = (p.stderr?.toString() ?? "").trim();
   if (p.exitCode === 0) {
-    if (/claude/i.test(outText)) return null;
-    return `--version output does not identify claude: "${outText.slice(0, 80)}"`;
+    if (input.versionOk(outText)) return null;
+    return `--version output does not identify ${input.name}: "${outText.slice(0, 80)}"`;
   }
   if (err.includes(LOOP_DIAGNOSIS)) return "it leads back into the tokenmaxxing wrapper (recursion)";
   return `--version exited ${p.exitCode ?? "on signal/timeout"}: ${(err || outText).slice(0, 160)}`;
 }
 
+export const CLAUDE_BIN = { name: "claude", key: "claudeBin", versionOk: (out: string) => out.toLowerCase().includes("claude") } as const;
+export const CODEX_BIN = { name: "codex", key: "codexBin", versionOk: (out: string) => out.toLowerCase().includes("codex") } as const;
+
 export function resolveVerifiedClaude(): string {
   const candidates: string[] = [];
   try {
-    candidates.push(resolveRealClaude());
+    candidates.push(resolveRealBin(CLAUDE_BIN));
   } catch {  }
-  candidates.push(...scanPathForClaudeCandidates());
+  candidates.push(...scanPathCandidates(CLAUDE_BIN.name));
 
   const failures: string[] = [];
   for (const cand of uniq(candidates)) {
-    const fail = verifyRealClaude(cand);
+    const fail = verifyRealBin({ ...CLAUDE_BIN, bin: cand });
     if (fail === null) return cand;
     failures.push(`${cand}: ${fail}`);
   }

@@ -1,8 +1,9 @@
-import { existsSync, mkdirSync, rmSync } from "node:fs";
+import { mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
+import { resolveRealBin, verifyRealBin } from "./claudebin.ts";
 import type { PoolPaths } from "./paths.ts";
 import type { Provider, SampleReport } from "./provider.ts";
-import { loadConfig, pinBinOverride, type Harvest } from "./state.ts";
+import { pinBinOverride, type Harvest } from "./state.ts";
 import type { Account } from "./types.ts";
 import { c } from "../cli/render.ts";
 
@@ -31,23 +32,7 @@ export type StatusOnlySpec = {
 };
 
 export function statusOnlyProvider(spec: StatusOnlySpec): Provider {
-  function resolveBin(): string {
-    const configured = loadConfig()[spec.binKey];
-    if (configured) {
-      if (!existsSync(configured)) throw new Error(`configured ${spec.binKey} does not exist: ${configured} - fix config.json`);
-      return configured;
-    }
-    for (const d of (process.env.PATH ?? "").split(":")) {
-      if (!d) continue;
-      const cand = join(d, spec.binName);
-      try {
-        if (existsSync(cand)) return cand;
-      } catch {
-        continue;
-      }
-    }
-    throw new Error(`could not locate the real \`${spec.binName}\` binary (set ${spec.binKey} in config.json)`);
-  }
+  const bin = { name: spec.binName, key: spec.binKey, versionOk: spec.versionOk };
 
   async function storeUsable(a: Account): Promise<boolean> {
     try {
@@ -66,7 +51,7 @@ export function statusOnlyProvider(spec: StatusOnlySpec): Provider {
   }
 
   async function login(): Promise<Harvest | null> {
-    const real = resolveBin();
+    const real = resolveRealBin(bin);
     const onboardDir = spec.onboardDir;
     rmSync(onboardDir, { recursive: true, force: true });
     mkdirSync(onboardDir, { recursive: true });
@@ -102,11 +87,9 @@ export function statusOnlyProvider(spec: StatusOnlySpec): Provider {
   }
 
   function preflight(): void {
-    const real = resolveBin();
-    const p = Bun.spawnSync([real, "--version"], { stdout: "pipe", stderr: "pipe", timeout: 15_000 });
-    if (p.exitCode !== 0 || !spec.versionOk(p.stdout?.toString() ?? "")) {
-      throw new Error(`${spec.binName} binary failed verification: ${real}`);
-    }
+    const real = resolveRealBin(bin);
+    const fail = verifyRealBin({ ...bin, bin: real });
+    if (fail !== null) throw new Error(`${spec.binName} binary failed verification: ${real}: ${fail}`);
     pinBinOverride({ key: spec.binKey, bin: real });
   }
 

@@ -69,7 +69,7 @@ export const opencodeGo: Provider = statusOnlyProvider({
   liveAuthPath,
   readAuth,
   liveId: () => null,
-  versionOk: (out) => out.trim() !== "",
+  versionOk: (out) => out !== "",
   importIntro: "Pooling your opencode-go API key - your existing opencode auth stays as it is.",
   foundLive: () => `found an opencode-go credential in ${liveAuthPath()} - pooling it; use \`tokenmaxxing add --opencode-go\` for more keys.`,
   installNotice: "opencode-go pool is status-only: no supervisor or hooks installed. Use `tokenmaxxing status` to view pooled keys.",
