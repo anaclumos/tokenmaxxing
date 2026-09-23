@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, type Dirent } from "node:fs";
+import { existsSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, type Dirent } from "node:fs";
 import { basename, join, sep } from "node:path";
 import { z } from "zod";
 import { errorMessage, log } from "./log.ts";
@@ -19,7 +19,6 @@ function sessionFile(sid: string): string {
 }
 
 export function saveSessionFlags(sid: string, flags: string[], cwd: string): void {
-  mkdirSync(sessionsDir(), { recursive: true });
   writeFileAtomic(sessionFile(sid), JSON.stringify({ flags, cwd }));
 }
 
@@ -39,7 +38,6 @@ export function liveSessionId(sid: string): string {
 
 function recordLiveSession(sid: string, current: string): void {
   const session = loadSession(sid);
-  mkdirSync(sessionsDir(), { recursive: true });
   writeFileAtomic(sessionFile(sid), JSON.stringify({ flags: session?.flags ?? [], cwd: session?.cwd ?? process.cwd(), current }));
 }
 
@@ -151,7 +149,6 @@ export function adoptLiveSession(session: SupervisedSession, stdinSid: string | 
 }
 
 export function writeRespawnMarker(input: { session: SupervisedSession; accountId: string; waitUntil: number; compact: boolean }): void {
-  mkdirSync(paths.respawnDir, { recursive: true });
   const payload: z.infer<typeof RespawnMarkerSchema> = {
     accountId: input.accountId,
     ts: Date.now(),

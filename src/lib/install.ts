@@ -1,4 +1,4 @@
-import { accessSync, appendFileSync, constants, existsSync, mkdirSync, readFileSync, realpathSync, rmSync, statSync } from "node:fs";
+import { accessSync, appendFileSync, constants, existsSync, readFileSync, realpathSync, rmSync, statSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { escape } from "es-toolkit";
 import { z } from "zod";
@@ -88,7 +88,6 @@ exec ${JSON.stringify(bun)} --no-env-file run ${JSON.stringify(entry)} "$@"
 }
 
 export function installSupervisor(): InstallOutcome {
-  mkdirSync(paths.binDir, { recursive: true });
   const target = installedBin();
   const entry = realpathSync(Bun.main);
   if (isNixPackaged()) {
@@ -146,7 +145,6 @@ export function installCodexStopHook(): void {
       ],
     },
   };
-  mkdirSync(codexPaths.home, { recursive: true });
   writeFileAtomic(codexPaths.hooksJson, JSON.stringify(next, null, 2) + "\n");
 }
 
@@ -197,7 +195,6 @@ export function codexSupervisorLink(): string {
 }
 
 export function installCodexSupervisor(): void {
-  mkdirSync(paths.binDir, { recursive: true });
   writeFileAtomic(codexSupervisorLink(), `#!/bin/sh\nexec ${JSON.stringify(installedBin())} __supervise-codex "$@"\n`, 0o755);
   installCodexStopHook();
 }

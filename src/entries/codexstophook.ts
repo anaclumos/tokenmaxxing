@@ -1,5 +1,4 @@
 import { join } from "node:path";
-import { mkdirSync } from "node:fs";
 import type { z } from "zod";
 import { codexPaths, optionalEnv } from "../lib/paths.ts";
 import { writeFileAtomic } from "../lib/atomic.ts";
@@ -50,7 +49,6 @@ async function handleCodexStop(rawStdin: string): Promise<void> {
     await compactBeforeMove({ sessionId, now });
     const decision = await evaluateAndMaybeSwap(codex, now);
     if (decision.swapped && decision.account) {
-      mkdirSync(codexPaths.respawnDir, { recursive: true });
       const payload: z.infer<typeof CodexRespawnMarkerSchema> = { accountId: decision.account.id, sessionId, ts: Date.now() };
       writeFileAtomic(join(codexPaths.respawnDir, supervisorId), JSON.stringify(payload));
       log("codexstop.marker", { supervisorId: supervisorId.slice(0, 8) });

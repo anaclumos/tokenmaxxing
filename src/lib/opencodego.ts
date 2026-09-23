@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
@@ -34,7 +34,6 @@ function harvestOf(key: string): Harvest {
     tier: "go",
     sample: null,
     park: async () => {
-      mkdirSync(opencodeGoStoreDirFor(id), { recursive: true });
       writeFileAtomic(opencodeGoAuthJsonFor(id), JSON.stringify({ "opencode-go": { type: "api", key } }, null, 2), 0o600);
     },
   };
