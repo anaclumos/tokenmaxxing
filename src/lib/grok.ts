@@ -2,7 +2,7 @@ import { mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
 import { writeFileAtomic } from "./atomic.ts";
-import { fetchGrokUsage, GrokUsageReadError } from "./grokusage.ts";
+import { fetchGrokUsage, GrokUsageReadError, InstantSchema, type GrokUsage } from "./grokusage.ts";
 import { errorMessage } from "./log.ts";
 import { grokAuthJsonFor, grokPaths, grokPool, grokSeatFromEnv, grokStoreDirFor } from "./paths.ts";
 import type { Provider, SampleReport } from "./provider.ts";
@@ -18,7 +18,7 @@ const GrokAuthEntrySchema = z.looseObject({
   first_name: z.string().nullish(),
   key: z.string().optional(),
   refresh_token: z.string().optional(),
-  expires_at: z.string().nullish(),
+  expires_at: InstantSchema.nullish(),
 });
 type GrokAuthEntry = z.infer<typeof GrokAuthEntrySchema>;
 
@@ -70,8 +70,7 @@ function credsIn(path: string): GrokCred[] {
     const id = entry.user_id ?? entry.principal_id ?? key;
     const token = entry.key ?? "";
     if (id === "" || token === "") continue;
-    const expiresAt = entry.expires_at != null ? Date.parse(entry.expires_at) : null;
-    out.push({ id, token, expiresAt: expiresAt != null && Number.isFinite(expiresAt) ? expiresAt : null });
+    out.push({ id, token, expiresAt: entry.expires_at ?? null });
   }
   return out;
 }
@@ -92,27 +91,21 @@ function bearerFor(accountId: string, now: number): { token: string; from: "stor
 async function readGrokUsage(account: Account, now: number): Promise<{ ok: true; at: number } | { ok: false; reason: string }> {
   const first = bearerFor(account.id, now);
   if (first == null) return { ok: false, reason: "no usable credential in this account's store - run `tokenmaxxing auth --grok`" };
+  let usage: GrokUsage;
   try {
-    const usage = await fetchGrokUsage({ token: first.token, at: now });
-    account.windows = usage.windows;
-    account.lastUsageAt = usage.at;
-    return { ok: true, at: usage.at };
+    usage = await fetchGrokUsage({ token: first.token, at: now });
   } catch (e) {
-    if (e instanceof GrokUsageReadError && e.status === 401 && first.from === "store") {
-      const live = liveCred(account.id);
-      if (live != null && live.token !== first.token) {
-        try {
-          const usage = await fetchGrokUsage({ token: live.token, at: now });
-          account.windows = usage.windows;
-          account.lastUsageAt = usage.at;
-          return { ok: true, at: usage.at };
-        } catch (retry) {
-          return { ok: false, reason: retry instanceof GrokUsageReadError ? retry.message : errorMessage(retry) };
-        }
-      }
+    const live = e instanceof GrokUsageReadError && e.status === 401 && first.from === "store" ? liveCred(account.id) : null;
+    if (live == null || live.token === first.token) return { ok: false, reason: errorMessage(e) };
+    try {
+      usage = await fetchGrokUsage({ token: live.token, at: now });
+    } catch (retry) {
+      return { ok: false, reason: errorMessage(retry) };
     }
-    return { ok: false, reason: e instanceof GrokUsageReadError ? e.message : errorMessage(e) };
   }
+  account.windows = usage.windows;
+  account.lastUsageAt = usage.at;
+  return { ok: true, at: usage.at };
 }
 
 async function samplePool(accounts: Account[], _liveId: string | null, now: number): Promise<Map<string, SampleReport>> {
