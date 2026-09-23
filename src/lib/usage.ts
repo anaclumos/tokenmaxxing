@@ -3,7 +3,7 @@ import { z } from "zod";
 import { http } from "./http.ts";
 import { errorMessage, log } from "./log.ts";
 import { env } from "./paths.ts";
-import { EpochSecondsSchema, JsonTextSchema, RateLimitsStdinSchema, type ModelInfo, type UsageWindow, type UsageWindows, type Window } from "./types.ts";
+import { EpochSecondsSchema, InstantSchema, JsonTextSchema, RateLimitsStdinSchema, type ModelInfo, type UsageWindow, type UsageWindows, type Window } from "./types.ts";
 
 const win = (w: { used_percentage: number; resets_at?: number | null }): UsageWindow => ({
   usedPercentage: w.used_percentage,
@@ -185,7 +185,7 @@ export const OAUTH_USAGE_URL = "https://api.anthropic.com/api/oauth/usage";
 const USAGE_URL = env("TOKENMAXXING_OAUTH_USAGE_URL", OAUTH_USAGE_URL);
 const USAGE_DEADLINE_MS = 10_000;
 
-const ResetsAtSchema = z.iso.datetime({ offset: true }).transform((iso) => Date.parse(iso)).nullish();
+const ResetsAtSchema = InstantSchema.nullish();
 const UsageLimitSchema = z.looseObject({ utilization: z.number(), resets_at: ResetsAtSchema });
 const UsageScopedLimitSchema = z.looseObject({
   kind: z.string(),
