@@ -1,10 +1,10 @@
-import { observeCodex } from "../lib/codex.ts";
+import { codexPickCtx, observeCodex } from "../lib/codex.ts";
 import { codexStoreUsable, ensureCodexStoreHome } from "../lib/codexauth.ts";
 import { withLock } from "../lib/lock.ts";
 import { log } from "../lib/log.ts";
 import { codexPaths, codexPool } from "../lib/paths.ts";
-import { livingPresences, writePresence } from "../lib/presence.ts";
-import { isExhausted, pickBest, thresholdBars, type PickCtx } from "../lib/picker.ts";
+import { livingPresences, seatCounts, writePresence } from "../lib/presence.ts";
+import { isExhausted, pickBest } from "../lib/picker.ts";
 import { loadAccounts, loadConfig } from "../lib/state.ts";
 import { emitError } from "./render.ts";
 
@@ -23,10 +23,9 @@ export async function cmdSeat(pidRaw: string | undefined, extra: string[]): Prom
       .map((a) => observeCodex(a, cfg, now, { probe: true, refresh: false })),
   );
   const granted = await withLock(codexPool.lockFile, (): { store: string; id: string; reused: boolean } | { denied: string } | null => {
-    const ctx: PickCtx = { now, thresholds: thresholdBars(loadConfig()), currentId: null, families: null, seats: null };
+    const ctx = codexPickCtx(now, null);
     const idx = loadAccounts(codexPool);
-    const living = livingPresences(codexPaths.presenceDir);
-    const held = living.find((p) => p.id === seatId);
+    const held = livingPresences(codexPaths.presenceDir).find((p) => p.id === seatId);
     const heldAccount = held ? (idx.accounts.find((x) => x.id === held.accountId) ?? null) : null;
     if (heldAccount) {
       if (heldAccount.needsReauth === true) {
@@ -37,7 +36,7 @@ export async function cmdSeat(pidRaw: string | undefined, extra: string[]): Prom
       }
       return { store: ensureCodexStoreHome(heldAccount.id), id: heldAccount.id, reused: true };
     }
-    const present = new Set(living.map((p) => p.accountId));
+    const present = seatCounts(codexPaths.presenceDir);
     const usable = idx.accounts.filter(
       (a) => a.needsReauth !== true && !isExhausted(a, ctx) && !present.has(a.id) && codexStoreUsable(a.id)
     );

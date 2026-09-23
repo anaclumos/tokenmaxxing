@@ -38,14 +38,14 @@ export function resolveRealCodex(): string {
 
 export function verifyRealCodex(input: { bin: string }): string | null {
   const env = { ...process.env, [WRAP_DEPTH_ENV]: String(MAX_WRAP_DEPTH), TOKENMAXXING_PROBE: "1" };
-  let p: ReturnType<typeof Bun.spawnSync>;
+  let p;
   try {
     p = Bun.spawnSync([input.bin, "--version"], { env, stdout: "pipe", stderr: "pipe", timeout: 15_000, killSignal: "SIGKILL" });
   } catch (e) {
     return errorMessage(e);
   }
-  const outText = (p.stdout?.toString() ?? "").trim();
-  const err = (p.stderr?.toString() ?? "").trim();
+  const outText = p.stdout.toString().trim();
+  const err = p.stderr.toString().trim();
   if (p.exitCode === 0) {
     if (outText.toLowerCase().includes("codex")) return null;
     return `--version output does not identify codex: "${outText.slice(0, 80)}"`;

@@ -1,7 +1,6 @@
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import { delay } from "es-toolkit";
 import { z } from "zod";
+import pkg from "../../package.json" with { type: "json" };
 import { errorMessage, log } from "./log.ts";
 import { readLines } from "./proc.ts";
 import { JsonTextSchema } from "./types.ts";
@@ -20,7 +19,7 @@ export async function compactClaudeSession(input: { real: string; sid: string; e
     timeout: CLAUDE_COMPACT_KILL_MS,
     killSignal: "SIGKILL",
   });
-  const reads = Promise.all([new Response(p.stdout).text(), new Response(p.stderr).text()]);
+  const reads = Promise.all([p.stdout.text(), p.stderr.text()]);
   const settled = await Promise.race([reads, p.exited.then(() => delay(PIPE_GRACE_MS)).then(() => null)]);
   await p.exited;
   if (settled === null) return { ok: false, reason: "output pipes still open after child exit (leaked descendant)" };
@@ -48,9 +47,6 @@ const INIT_ID = 1;
 const RESUME_ID = 2;
 const COMPACT_ID = 3;
 
-const packageVersion = (): string =>
-  z.object({ version: z.string().min(1) }).parse(JSON.parse(readFileSync(join(import.meta.dir, "..", "..", "package.json"), "utf8"))).version;
-
 export async function compactCodexThread(input: { real: string; threadId: string; env: Record<string, string | undefined> }): Promise<CompactOutcome> {
   const p = Bun.spawn([input.real, "app-server"], {
     env: input.env,
@@ -64,7 +60,7 @@ export async function compactCodexThread(input: { real: string; threadId: string
     p.stdin.write(`${JSON.stringify(msg)}\n`);
     p.stdin.flush();
   };
-  const stderrText = new Response(p.stderr).text();
+  const stderrText = p.stderr.text();
 
   const outcome = await new Promise<CompactOutcome>((resolve) => {
     let finished = false;
@@ -109,7 +105,7 @@ export async function compactCodexThread(input: { real: string; threadId: string
       const err = (await stderrText).trim().slice(0, 200);
       finish({ ok: false, reason: p.exitCode === null ? `app-server killed after ${CODEX_COMPACT_KILL_MS / 1000}s` : `app-server exited ${p.exitCode}: ${err}` });
     })().catch((e) => finish({ ok: false, reason: errorMessage(e) }));
-    send({ id: INIT_ID, method: "initialize", params: { clientInfo: { name: "tokenmaxxing", version: packageVersion() } } });
+    send({ id: INIT_ID, method: "initialize", params: { clientInfo: { name: "tokenmaxxing", version: pkg.version } } });
   });
 
   try {
