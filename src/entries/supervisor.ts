@@ -16,7 +16,7 @@ import { teeObservation } from "../lib/sample.ts";
 import { exitStatus, loopGuardTripped, raceMarkerOrExit, recordPresenceOrStop, runPassthrough } from "../lib/supervise.ts";
 import { saveTermios } from "../lib/tty.ts";
 import { liveSessionId, loadSessionFlags, pruneStaleSessions, saveSessionFlags, writeRespawnMarker } from "../lib/sessions.ts";
-import { loadAccounts, loadConfig } from "../lib/state.ts";
+import { loadAccounts, loadConfig, releaseWaitClaim } from "../lib/state.ts";
 import { gatedFamilies, modelFromFlag } from "../lib/usage.ts";
 import { RespawnMarkerSchema, type Account, type Config, type ModelInfo } from "../lib/types.ts";
 import { errorMessage, log } from "../lib/log.ts";
@@ -222,7 +222,7 @@ async function moveExhaustedSeat(seat: Account, sid: string, gate: MarkerGate, m
     const families = gatedFamilies(model, cfg.policy.switchModels);
     const until = seatBlockedUntil(seat.id, now, families, cfg);
     if (until == null || until <= gate.overriddenUntil) return false;
-    const decision = await evaluateAndMaybeSwap(claude, now, true, null, seat.id, families);
+    const decision = await evaluateAndMaybeSwap(claude, now, true, null, { seatId: seat.id, sessionFamilies: families, waiterId: sid });
     log("supervisor.seat_exhausted", { seat: seat.id.slice(0, 8), until, reason: decision.reason, account: decision.account?.id.slice(0, 8), waitUntil: decision.waitUntil });
     if (decision.account && (decision.swapped || decision.waitUntil !== undefined)) {
       writeRespawnMarker({ session: { sid, launchedAt: gate.launchedAt, live: liveSessionId(sid) }, accountId: decision.account.id, waitUntil: decision.waitUntil ?? now, compact: true });
@@ -364,10 +364,27 @@ export async function runSupervisor(argv: string[]): Promise<number> {
 
   let child: Subprocess | null = null;
   let terminating = false;
+  let claimSid: string | null = null;
+  const releaseClaim = async (): Promise<void> => {
+    const claimed = claimSid;
+    if (claimed == null) return;
+    try {
+      await withLock(claudePool.lockFile, () => {
+        releaseWaitClaim(claimed);
+      });
+    } catch (e) {
+      log("supervisor.claim_release_failed", { err: errorMessage(e) });
+    }
+  };
   process.on("SIGTERM", () => {
     terminating = true;
-    if (child) child.kill("SIGTERM");
-    else process.exit(143);
+    const released = releaseClaim();
+    if (child) {
+      child.kill("SIGTERM");
+      void released;
+    } else {
+      released.finally(() => process.exit(143));
+    }
   });
 
   if (!info.manage || process.env[UNMANAGED_ENV]) {
@@ -392,6 +409,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
   } else {
     sid = crypto.randomUUID();
   }
+  claimSid = sid;
 
   if (resuming && base.length === 0) {
     const persisted = loadSessionFlags(sid);
@@ -504,6 +522,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
       if (m.waitUntil > Date.now()) {
         if (await countdownWait(label, m.waitUntil, { stream, say })) overriddenUntil = m.waitUntil;
       } else say(`\n\x1b[36m↻ tokenmaxxing: moving to ${label} - resuming...\x1b[0m\n`, `tokenmaxxing: moving to ${label} and resuming.`);
+      await releaseClaim();
       wanted = m.accountId;
       saveSessionFlags(m.sessionId, persistable, process.cwd());
       const prompt = resumable ? resumePrompt(compacted) : null;
@@ -512,6 +531,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
       continue;
     }
     clearPresence({ dir: paths.presenceDir, id: sid });
+    await releaseClaim();
     log("supervisor.exit", { sid, respawns, code: proc.exitCode, signal: proc.signalCode, terminated: terminating || undefined });
     return exitStatus(proc);
   }
@@ -520,6 +540,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
     const text = msg.startsWith("tokenmaxxing:") ? msg : `tokenmaxxing: ${msg}`;
     say(`\n\x1b[31m${text}\x1b[0m\n`, text);
     log("supervisor.fatal", { err: msg });
+    await releaseClaim();
     return 1;
   }
 }

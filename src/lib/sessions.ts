@@ -56,6 +56,9 @@ const DEAD_STATE_ENTRIES = [
   "codex-creds",
   "codex-reconcile",
   "sample",
+  "setup-tokens.json",
+  "setup-token",
+  "cloud",
 ];
 
 const TMP_MARKER = ".tmp.";

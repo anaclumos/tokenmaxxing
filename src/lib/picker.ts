@@ -135,3 +135,12 @@ export function pickEarliestReset(accounts: Account[], ctx: PickCtx): EarliestRe
     .filter((x) => Number.isFinite(x.availableAt));
   return minBy(mapped, (x) => x.availableAt) ?? null;
 }
+
+export function pickWaitTarget(accounts: Account[], ctx: PickCtx, waiters: Map<string, number>, cap: number, deadline: number): EarliestReset | null {
+  const mapped = accounts
+    .filter((a) => !a.needsReauth)
+    .map((a) => ({ account: a, availableAt: usableAt(a, ctx) }))
+    .filter((x) => Number.isFinite(x.availableAt) && x.availableAt <= deadline)
+    .sort((x, y) => x.availableAt - y.availableAt || (x.account.id === ctx.currentId ? -1 : y.account.id === ctx.currentId ? 1 : 0));
+  return mapped.find((x) => (waiters.get(x.account.id) ?? 0) < cap) ?? mapped[0] ?? null;
+}
