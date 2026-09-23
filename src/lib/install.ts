@@ -169,7 +169,7 @@ export function codexStopHookGroupIndex(): number | null {
   } catch {
     return null;
   }
-  const idx = parsed.hooks.Stop.findIndex((group) => group.hooks.some((hook) => (hook.command ?? "").includes(CODEX_STOP_HOOK_SUBCOMMAND)));
+  const idx = parsed.hooks.Stop.findIndex((group) => group.hooks.some((hook) => isOurHookCommand(hook.command ?? "", CODEX_STOP_HOOK_SUBCOMMAND)));
   return idx >= 0 ? idx : null;
 }
 

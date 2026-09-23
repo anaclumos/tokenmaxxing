@@ -8,6 +8,13 @@ export type SampleReport = { ok: true; source: "statusline" | "probe" } | { ok: 
 
 export type SwapFailure = "dead-grant" | "skip" | "fatal";
 
+export class StoreUnusableError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "StoreUnusableError";
+  }
+}
+
 export type Provider = {
   name: "claude" | "codex" | "grok" | "opencode-go";
   flag: string;

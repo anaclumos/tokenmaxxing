@@ -12,18 +12,11 @@ import { withLock } from "./lock.ts";
 import { errorMessage, log } from "./log.ts";
 import { codexPaths, codexPool, codexSeatFromEnv } from "./paths.ts";
 import { isExhausted, pickBest, pickEarliestReset, thresholdBars, type PickCtx } from "./picker.ts";
-import type { Observation, Provider, SampleReport } from "./provider.ts";
+import { StoreUnusableError, type Observation, type Provider, type SampleReport } from "./provider.ts";
 import { loadAccounts, loadConfig, pinBinOverride, saveAccounts, type Harvest } from "./state.ts";
 import { restoreTermios, saveTermios } from "./tty.ts";
 import type { Account, CodexAuthJson, CodexUsage, Config } from "./types.ts";
 import { c } from "../cli/render.ts";
-
-class StoreUnusableError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "StoreUnusableError";
-  }
-}
 
 function liveId(): string | null {
   return codexSeatFromEnv(loadAccounts(codexPool).accounts.map((a) => a.id));

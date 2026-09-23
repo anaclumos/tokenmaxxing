@@ -1,4 +1,4 @@
-import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, rmSync, symlinkSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, symlinkSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
 import { writeFileAtomic } from "./atomic.ts";
@@ -44,25 +44,11 @@ export function ensureCodexStoreHome(accountId: string): string {
   mkdirSync(store, { recursive: true });
   mkdirSync(codexPaths.home, { recursive: true });
   mkdirSync(join(codexPaths.home, "sessions"), { recursive: true });
-  let names: string[] = [];
-  try {
-    names = readdirSync(codexPaths.home);
-  } catch (e) {
-    if (ErrnoSchema.safeParse(e).data?.code === "ENOENT") return store;
-    throw e;
-  }
-  for (const name of names) {
+  for (const name of readdirSync(codexPaths.home)) {
     if (name === "auth.json") continue;
     const target = join(codexPaths.home, name);
     const link = join(store, name);
-    if (existsSync(link)) {
-      try {
-        if (lstatSync(link).isSymbolicLink()) continue;
-      } catch {
-        continue;
-      }
-      continue;
-    }
+    if (existsSync(link)) continue;
     try {
       symlinkSync(target, link);
     } catch (e) {

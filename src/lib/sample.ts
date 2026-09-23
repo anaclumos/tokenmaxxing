@@ -11,7 +11,7 @@ import type { Account, Config, UsageWindows } from "./types.ts";
 
 export type SampleOutcome = { ok: true; usage: UsageWindows; via: "get" } | { ok: false; reason: string; retryAt?: number };
 
-type PreparedSample = { ok: true; token: string | null } | { ok: false; reason: string };
+type PreparedSample = { ok: true; token: string } | { ok: false; reason: string };
 
 export function teeObservation(account: Account): Observation | null {
   const stored = account.lastUsageAt != null ? { windows: account.windows, at: account.lastUsageAt } : null;
@@ -56,8 +56,7 @@ function rateLimitedReason(retryAt: number, now: number): string {
   return `the usage endpoint rate limited this account, next read in ${Math.ceil((retryAt - now) / 60_000)}m`;
 }
 
-export async function runSample(account: Account, token: string | null): Promise<SampleOutcome> {
-  if (!token) return { ok: false, reason: "no usable access token in the store - run `tokenmaxxing auth`" };
+export async function runSample(account: Account, token: string): Promise<SampleOutcome> {
   const read = await fetchUsageDirect(token);
   if (read.ok) return { ok: true, usage: read.usage, via: "get" };
   if (read.retryAt == null) return { ok: false, reason: "usage read failed (see log)" };
@@ -91,7 +90,7 @@ export async function sampleOldest(cfg: Config): Promise<void> {
       if (dirty) saveAccounts(claudePool, idx);
       return [];
     }
-    const batch: { account: Account; token: string | null }[] = [];
+    const batch: { account: Account; token: string }[] = [];
     for (const target of stale) {
       target.lastProbeAt = now;
       const prepared = await prepareSample(target);
