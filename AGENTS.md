@@ -129,6 +129,7 @@ Verified against Bun 1.4.x and zod 4.4.x; both move monthly, so re-verify a line
 - `z.stringbool()` reads an env flag: `1`, `true`, `yes`, `on`, `y`, and `enabled` are true, `0`, `false`, `no`, `off`, `n`, and `disabled` are false, and any other value throws. An empty value is unset because `optionalEnv` maps it to `undefined` first.
 - `z.iso.datetime({ offset: true })` accepts `Z` and a numeric offset at any fractional-second precision, which covers the `resets_at` the usage read returns.
 - `writeFileSync(fd, data)` loops over partial writes and encodes a string as UTF-8, so `writeFileAtomic` needs no write loop and no `TextEncoder`.
+- ky's `timeout` and `totalTimeout` bound a request only until the response headers arrive; a body that stalls after them stays pending forever. `AbortSignal.timeout` passed as `signal` also aborts the body read, so a read whose body must be bounded (the usage read, the registry read) keeps the signal and never swaps it for `totalTimeout`.
 - `Bun.spawn` `timeout` with `killSignal` replaces a manual `setTimeout` kill. The timer dies with the child, and a throw before the child exits no longer leaves the child running.
 
 ## Statusline
