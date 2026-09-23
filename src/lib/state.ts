@@ -39,7 +39,9 @@ export function loadConfig(): Config {
   return cfg;
 }
 
-export function pinBinOverride(input: { key: "claudeBin" | "codexBin" | "grokBin" | "opencodeBin"; bin: string }): void {
+export type BinKey = "claudeBin" | "codexBin" | "grokBin" | "opencodeBin";
+
+export function pinBinOverride(input: { key: BinKey; bin: string }): void {
   let raw: Record<string, unknown> = {};
   if (existsSync(paths.configJson)) {
     raw = z.record(z.string(), z.unknown()).parse(JSON.parse(readFileSync(paths.configJson, "utf8")));

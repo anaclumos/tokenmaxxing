@@ -1,4 +1,4 @@
-import { homedir } from "node:os";
+import { homedir, userInfo } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
 
@@ -123,8 +123,20 @@ export function opencodeGoAuthJsonFor(accountId: string): string {
   return join(opencodeGoStoreDirFor(accountId), "auth.json");
 }
 
+const CLAUDE_KEYCHAIN_ACCOUNT_PATTERN = /^[a-zA-Z0-9._-]+$/;
+
+function claudeKeychainAccount(): string {
+  let name: string;
+  try {
+    name = process.env.USER || userInfo().username;
+  } catch {
+    return "claude-code-user";
+  }
+  return CLAUDE_KEYCHAIN_ACCOUNT_PATTERN.test(name) ? name : "claude-code-user";
+}
+
 export const keychain = {
-  account: env("TOKENMAXXING_KEYCHAIN_ACCOUNT", process.env.USER ?? "unknown"),
+  account: optionalEnv("TOKENMAXXING_KEYCHAIN_ACCOUNT") ?? claudeKeychainAccount(),
 } as const;
 
 export function shortId(accountId: string): string {

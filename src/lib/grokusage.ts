@@ -2,7 +2,7 @@ import { z } from "zod";
 import { http, safeErrorDetail } from "./http.ts";
 import { errorMessage } from "./log.ts";
 import { env } from "./paths.ts";
-import { JsonTextSchema, type Window } from "./types.ts";
+import { InstantSchema, JsonTextSchema, type Window } from "./types.ts";
 
 export class GrokUsageReadError extends Error {
   status: number | null;
@@ -12,8 +12,6 @@ export class GrokUsageReadError extends Error {
     this.status = status;
   }
 }
-
-const InstantSchema = z.iso.datetime({ offset: true });
 
 const CreditsPeriodSchema = z.looseObject({
   start: InstantSchema,
@@ -57,17 +55,15 @@ export async function fetchGrokUsage(input: { token: string; at: number }): Prom
   if (!parsed.success) {
     throw new GrokUsageReadError("endpoint returned an unexpected body shape (withheld)");
   }
-  const period = parsed.data.config.currentPeriod;
-  const start = Date.parse(period.start);
-  const end = Date.parse(period.end);
+  const { start, end } = parsed.data.config.currentPeriod;
   return {
     at,
     windows: [
       {
         name: null,
         usedPercentage: parsed.data.config.creditUsagePercent,
-        resetsAt: Number.isFinite(end) ? end : null,
-        windowSeconds: Number.isFinite(start) && Number.isFinite(end) && end > start ? Math.round((end - start) / 1000) : null,
+        resetsAt: end,
+        windowSeconds: end > start ? Math.round((end - start) / 1000) : null,
         sampledAt: at,
       },
     ],

@@ -2,9 +2,8 @@ import { join } from "node:path";
 import type { z } from "zod";
 import { codexPaths, optionalEnv } from "../lib/paths.ts";
 import { writeFileAtomic } from "../lib/atomic.ts";
-import { MAX_WRAP_DEPTH, WRAP_DEPTH_ENV } from "../lib/claudebin.ts";
+import { CODEX_BIN, MAX_WRAP_DEPTH, WRAP_DEPTH_ENV, resolveRealBin } from "../lib/claudebin.ts";
 import { codex, codexPickCtx } from "../lib/codex.ts";
-import { resolveRealCodex } from "../lib/codexbin.ts";
 import { compactCodexThread } from "../lib/compact.ts";
 import { evaluateAndMaybeSwap } from "../lib/decide.ts";
 import { isExhausted } from "../lib/picker.ts";
@@ -26,7 +25,7 @@ async function compactBeforeMove(input: { sessionId: string | null; now: number 
   const env: Record<string, string | undefined> = { ...process.env, TOKENMAXXING_PROBE: "1", [WRAP_DEPTH_ENV]: String(MAX_WRAP_DEPTH) };
   delete env[CODEX_SUPERVISOR_ID_ENV];
   log("codexstop.compact_start", { thread: sessionId.slice(0, 8), account: live.id.slice(0, 8) });
-  await compactCodexThread({ real: resolveRealCodex(), threadId: sessionId, env });
+  await compactCodexThread({ real: resolveRealBin(CODEX_BIN), threadId: sessionId, env });
 }
 
 async function handleCodexStop(rawStdin: string): Promise<void> {
