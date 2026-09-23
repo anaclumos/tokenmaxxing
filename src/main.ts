@@ -23,7 +23,7 @@ import { cmdCheck } from "./cli/check.ts";
 import { cmdConfig } from "./cli/config.ts";
 import { cmdSeat } from "./cli/seat.ts";
 import { cmdServe } from "./cli/serve.ts";
-import { hubDeactivationHint, onLoginHome, timerDeactivationHint, uninstallSupervisor, uninstallTargets } from "./lib/install.ts";
+import { CHECK_JOB, deactivationHint, HUB_JOB, onLoginHome, uninstallSupervisor, uninstallTargets } from "./lib/install.ts";
 import { errorMessage } from "./lib/log.ts";
 import { HOME } from "./lib/paths.ts";
 import { c, emitError } from "./cli/render.ts";
@@ -177,8 +177,8 @@ async function main(): Promise<number> {
         ...(out.pathLineRemoved ? ["rc PATH line"] : []),
       ];
       console.log(`removed ${removed.join(", ")}`);
-      if (out.timer === "still-loaded") console.log(c.yellow(`⚠ the check job may still be loaded - run: ${timerDeactivationHint()}`));
-      if (out.hub === "still-loaded") console.log(c.yellow(`⚠ the usage hub job may still be loaded - run: ${hubDeactivationHint()}`));
+      if (out.timer === "still-loaded") console.log(c.yellow(`⚠ the check job may still be loaded - run: ${deactivationHint(CHECK_JOB)}`));
+      if (out.hub === "still-loaded") console.log(c.yellow(`⚠ the usage hub job may still be loaded - run: ${deactivationHint(HUB_JOB)}`));
       if (!out.pathLineRemoved) console.log(c.dim("(no tokenmaxxing PATH line found in the shell rc)"));
       console.log(`kept: accounts.json, config.json, and every account credential store (claude: stores/ and its keychain items on macOS; codex: codex-stores/; grok: grok-stores/; opencode-go: opencode-go-stores/) - remove accounts with \`xx rm\` to delete their credentials`);
       return 0;

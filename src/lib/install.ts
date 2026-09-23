@@ -35,11 +35,11 @@ export function isNixPackaged(): boolean {
   }
 }
 
-export function skipImperativeTimer(): boolean {
+function skipImperativeTimer(): boolean {
   return envFlag("TOKENMAXXING_SKIP_TIMER");
 }
 
-export function skipImperativeHub(): boolean {
+function skipImperativeHub(): boolean {
   return envFlag("TOKENMAXXING_SKIP_HUB");
 }
 
@@ -106,8 +106,8 @@ export function installSupervisor(): InstallOutcome {
     claudeWrapper: paths.supervisorLink,
     installedBin: target,
     pathAhead: isBinDirAhead(),
-    timerLoaded: installCheckTimer(checkIntervalS),
-    hubLoaded: installHubService(),
+    timerLoaded: installJob(CHECK_JOB, checkIntervalS),
+    hubLoaded: installJob(HUB_JOB, checkIntervalS),
     checkIntervalS,
   };
 }
@@ -207,9 +207,67 @@ export function uninstallCodexSupervisor(): void {
   if (existsSync(codexSupervisorLink())) rmSync(codexSupervisorLink(), { force: true });
 }
 
-const LAUNCHD_LABEL = "com.tokenmaxxing.check";
-const LAUNCHD_HUB_LABEL = "com.tokenmaxxing.hub";
-const HUB_UNIT = "tokenmaxxing-hub.service";
+export type UnitJob = {
+  label: string;
+  arg: string;
+  log: string;
+  skip: () => boolean;
+  unit: string;
+  launchd: (intervalS: number) => string;
+  systemd: Record<string, (exec: string, intervalS: number) => string>;
+};
+
+export const CHECK_JOB: UnitJob = {
+  label: "com.tokenmaxxing.check",
+  arg: "check",
+  log: "check.stderr.log",
+  skip: skipImperativeTimer,
+  unit: "tokenmaxxing-check.timer",
+  launchd: (intervalS) => `  <key>StartInterval</key><integer>${intervalS}</integer>\n`,
+  systemd: {
+    "tokenmaxxing-check.service": (exec) => `[Unit]
+Description=tokenmaxxing account-switch check
+
+[Service]
+Type=oneshot
+ExecStart=${exec}
+${systemdEnv()}`,
+    "tokenmaxxing-check.timer": (_exec, intervalS) => `[Unit]
+Description=tokenmaxxing periodic account-switch check
+
+[Timer]
+OnBootSec=${intervalS}
+OnUnitActiveSec=${intervalS}
+AccuracySec=${Math.max(1, Math.floor(intervalS / 12))}
+
+[Install]
+WantedBy=timers.target
+`,
+  },
+};
+
+export const HUB_JOB: UnitJob = {
+  label: "com.tokenmaxxing.hub",
+  arg: "serve",
+  log: "hub.stderr.log",
+  skip: skipImperativeHub,
+  unit: "tokenmaxxing-hub.service",
+  launchd: () => `  <key>KeepAlive</key><dict><key>SuccessfulExit</key><false/></dict>\n  <key>RunAtLoad</key><true/>\n`,
+  systemd: {
+    "tokenmaxxing-hub.service": (exec) => `[Unit]
+Description=tokenmaxxing usage hub
+StartLimitIntervalSec=0
+
+[Service]
+ExecStart=${exec}
+${systemdEnv()}Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
+`,
+  },
+};
 
 function launchdPlist(label: string): string {
   return join(paths.launchdAgentsDir, `${label}.plist`);
@@ -236,22 +294,21 @@ function launchdEnv(): string {
   return `  <key>EnvironmentVariables</key><dict><key>TOKENMAXXING_HOME</key><string>${escape(paths.home)}</string></dict>\n`;
 }
 
-function installCheckTimer(intervalS: number): boolean {
-  if (skipImperativeTimer()) return true;
+function installJob(job: UnitJob, intervalS: number): boolean {
+  if (job.skip()) return true;
 
   if (process.platform === "darwin") {
-    const plist = launchdPlist(LAUNCHD_LABEL);
+    const plist = launchdPlist(job.label);
     writeFileAtomic(
       plist,
       `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <key>Label</key><string>${LAUNCHD_LABEL}</string>
-  <key>ProgramArguments</key><array><string>${escape(installedBin())}</string><string>check</string></array>
-  <key>StartInterval</key><integer>${intervalS}</integer>
-${launchdEnv()}  <key>StandardOutPath</key><string>/dev/null</string>
-  <key>StandardErrorPath</key><string>${escape(join(paths.home, "check.stderr.log"))}</string>
+  <key>Label</key><string>${job.label}</string>
+  <key>ProgramArguments</key><array><string>${escape(installedBin())}</string><string>${job.arg}</string></array>
+${job.launchd(intervalS)}${launchdEnv()}  <key>StandardOutPath</key><string>/dev/null</string>
+  <key>StandardErrorPath</key><string>${escape(join(paths.home, job.log))}</string>
 </dict>
 </plist>
 `,
@@ -259,90 +316,36 @@ ${launchdEnv()}  <key>StandardOutPath</key><string>/dev/null</string>
     );
     const domain = launchdDomain();
     if (domain == null) return false;
-    run(["launchctl", "bootout", `${domain}/${LAUNCHD_LABEL}`]);
-    return run(["launchctl", "bootstrap", domain, plist]) || checkTimerHealthy();
+    run(["launchctl", "bootout", `${domain}/${job.label}`]);
+    return run(["launchctl", "bootstrap", domain, plist]) || jobHealthy(job);
   }
 
-  const exec = `"${installedBin().replaceAll("%", "%%")}" check`;
-  writeFileAtomic(
-    join(paths.systemdUserDir, "tokenmaxxing-check.service"),
-    `[Unit]
-Description=tokenmaxxing account-switch check
-
-[Service]
-Type=oneshot
-ExecStart=${exec}
-${systemdEnv()}`,
-    0o644,
-  );
-  writeFileAtomic(
-    join(paths.systemdUserDir, "tokenmaxxing-check.timer"),
-    `[Unit]
-Description=tokenmaxxing periodic account-switch check
-
-[Timer]
-OnBootSec=${intervalS}
-OnUnitActiveSec=${intervalS}
-AccuracySec=${Math.max(1, Math.floor(intervalS / 12))}
-
-[Install]
-WantedBy=timers.target
-`,
-    0o644,
-  );
-  return (
-    run(["systemctl", "--user", "daemon-reload"]) &&
-    run(["systemctl", "--user", "enable", "--now", "tokenmaxxing-check.timer"])
-  );
+  const exec = `"${installedBin().replaceAll("%", "%%")}" ${job.arg}`;
+  for (const [file, text] of Object.entries(job.systemd)) writeFileAtomic(join(paths.systemdUserDir, file), text(exec, intervalS), 0o644);
+  return run(["systemctl", "--user", "daemon-reload"]) && run(["systemctl", "--user", "enable", "--now", job.unit]);
 }
 
-export function timerActivationHint(): string {
+export function activationHint(job: UnitJob): string {
   if (process.platform === "darwin") {
-    return `launchctl bootstrap gui/$(id -u) ${launchdPlist(LAUNCHD_LABEL)}`;
+    return `launchctl bootstrap gui/$(id -u) ${launchdPlist(job.label)}`;
   }
-  return "systemctl --user daemon-reload && systemctl --user enable --now tokenmaxxing-check.timer";
+  return `systemctl --user daemon-reload && systemctl --user enable --now ${job.unit}`;
 }
 
-export function hubActivationHint(): string {
-  if (process.platform === "darwin") {
-    return `launchctl bootstrap gui/$(id -u) ${launchdPlist(LAUNCHD_HUB_LABEL)}`;
-  }
-  return `systemctl --user daemon-reload && systemctl --user enable --now ${HUB_UNIT}`;
-}
-
-export function checkTimerHealthy(): boolean {
-  if (skipImperativeTimer()) return true;
+export function jobHealthy(job: UnitJob): boolean {
+  if (job.skip()) return true;
   if (process.platform === "darwin") {
     const domain = launchdDomain();
-    return existsSync(launchdPlist(LAUNCHD_LABEL)) && domain != null && run(["launchctl", "print", `${domain}/${LAUNCHD_LABEL}`]);
+    return existsSync(launchdPlist(job.label)) && domain != null && run(["launchctl", "print", `${domain}/${job.label}`]);
   }
-  return (
-    existsSync(join(paths.systemdUserDir, "tokenmaxxing-check.timer")) &&
-    run(["systemctl", "--user", "is-active", "--quiet", "tokenmaxxing-check.timer"])
-  );
+  return existsSync(join(paths.systemdUserDir, job.unit)) && run(["systemctl", "--user", "is-active", "--quiet", job.unit]);
 }
 
-export function hubServiceHealthy(): boolean {
-  if (skipImperativeHub()) return true;
+export function deactivationHint(job: UnitJob): string {
   if (process.platform === "darwin") {
-    const domain = launchdDomain();
-    return existsSync(launchdPlist(LAUNCHD_HUB_LABEL)) && domain != null && run(["launchctl", "print", `${domain}/${LAUNCHD_HUB_LABEL}`]);
+    return `launchctl bootout gui/$(id -u)/${job.label}`;
   }
-  return existsSync(join(paths.systemdUserDir, HUB_UNIT)) && run(["systemctl", "--user", "is-active", "--quiet", HUB_UNIT]);
-}
-
-export function timerDeactivationHint(): string {
-  if (process.platform === "darwin") {
-    return `launchctl bootout gui/$(id -u)/${LAUNCHD_LABEL}`;
-  }
-  return "systemctl --user disable --now tokenmaxxing-check.timer";
-}
-
-export function hubDeactivationHint(): string {
-  if (process.platform === "darwin") {
-    return `launchctl bootout gui/$(id -u)/${LAUNCHD_HUB_LABEL}`;
-  }
-  return `systemctl --user disable --now ${HUB_UNIT}`;
+  return `systemctl --user disable --now ${job.unit}`;
 }
 
 function launchdJobLoaded(label: string): "loaded" | "not-loaded" | "unavailable" {
@@ -369,111 +372,43 @@ function systemdUnitActive(unit: string): "active" | "not-active" | "unavailable
   }
 }
 
-function removeTimerUnits(): void {
-  if (process.platform === "darwin") {
-    rmSync(launchdPlist(LAUNCHD_LABEL), { force: true });
-    return;
-  }
-  rmSync(join(paths.systemdUserDir, "tokenmaxxing-check.timer"), { force: true });
-  rmSync(join(paths.systemdUserDir, "tokenmaxxing-check.service"), { force: true });
+function jobFiles(job: UnitJob): string[] {
+  if (process.platform === "darwin") return [launchdPlist(job.label)];
+  return Object.keys(job.systemd).map((file) => join(paths.systemdUserDir, file));
+}
+
+function removeJobFiles(job: UnitJob): void {
+  for (const file of jobFiles(job)) rmSync(file, { force: true });
 }
 
 type UnitOutcome = "removed" | "skipped" | "still-loaded";
 
-function uninstallCheckTimer(live: boolean): UnitOutcome {
-  if (skipImperativeTimer()) return "skipped";
+function uninstallJob(job: UnitJob, live: boolean): UnitOutcome {
+  if (job.skip()) return "skipped";
   if (!live) {
-    removeTimerUnits();
+    removeJobFiles(job);
     return "removed";
   }
   if (process.platform === "darwin") {
     const domain = launchdDomain();
-    const loaded = launchdJobLoaded(LAUNCHD_LABEL);
-    const deactivated = loaded === "loaded" && domain != null ? run(["launchctl", "bootout", `${domain}/${LAUNCHD_LABEL}`]) : loaded === "not-loaded";
-    removeTimerUnits();
+    const loaded = launchdJobLoaded(job.label);
+    const deactivated = loaded === "loaded" && domain != null ? run(["launchctl", "bootout", `${domain}/${job.label}`]) : loaded === "not-loaded";
+    removeJobFiles(job);
     return deactivated ? "removed" : "still-loaded";
   }
-  const active = systemdUnitActive("tokenmaxxing-check.timer");
-  const deactivated = active !== "unavailable" && (run(["systemctl", "--user", "disable", "--now", "tokenmaxxing-check.timer"]) || active === "not-active");
-  removeTimerUnits();
+  const active = systemdUnitActive(job.unit);
+  const deactivated = active !== "unavailable" && (run(["systemctl", "--user", "disable", "--now", job.unit]) || active === "not-active");
+  removeJobFiles(job);
   run(["systemctl", "--user", "daemon-reload"]);
   return deactivated ? "removed" : "still-loaded";
 }
 
-function installHubService(): boolean {
-  if (skipImperativeHub()) return true;
-
-  if (process.platform === "darwin") {
-    const plist = launchdPlist(LAUNCHD_HUB_LABEL);
-    writeFileAtomic(
-      plist,
-      `<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>Label</key><string>${LAUNCHD_HUB_LABEL}</string>
-  <key>ProgramArguments</key><array><string>${escape(installedBin())}</string><string>serve</string></array>
-  <key>KeepAlive</key><dict><key>SuccessfulExit</key><false/></dict>
-  <key>RunAtLoad</key><true/>
-${launchdEnv()}  <key>StandardOutPath</key><string>/dev/null</string>
-  <key>StandardErrorPath</key><string>${escape(join(paths.home, "hub.stderr.log"))}</string>
-</dict>
-</plist>
-`,
-      0o644,
-    );
-    const domain = launchdDomain();
-    if (domain == null) return false;
-    run(["launchctl", "bootout", `${domain}/${LAUNCHD_HUB_LABEL}`]);
-    return run(["launchctl", "bootstrap", domain, plist]) || hubServiceHealthy();
-  }
-
-  const exec = `"${installedBin().replaceAll("%", "%%")}" serve`;
-  writeFileAtomic(
-    join(paths.systemdUserDir, HUB_UNIT),
-    `[Unit]
-Description=tokenmaxxing usage hub
-StartLimitIntervalSec=0
-
-[Service]
-ExecStart=${exec}
-${systemdEnv()}Restart=on-failure
-RestartSec=5
-
-[Install]
-WantedBy=default.target
-`,
-    0o644,
-  );
-  return run(["systemctl", "--user", "daemon-reload"]) && run(["systemctl", "--user", "enable", "--now", HUB_UNIT]);
-}
-
-function removeHubUnits(): void {
-  if (process.platform === "darwin") {
-    rmSync(launchdPlist(LAUNCHD_HUB_LABEL), { force: true });
-    return;
-  }
-  rmSync(join(paths.systemdUserDir, HUB_UNIT), { force: true });
-}
-
-function uninstallHubService(live: boolean): UnitOutcome {
-  if (skipImperativeHub()) return "skipped";
-  if (!live) {
-    removeHubUnits();
-    return "removed";
-  }
-  if (process.platform === "darwin") {
-    const domain = launchdDomain();
-    const loaded = launchdJobLoaded(LAUNCHD_HUB_LABEL);
-    const deactivated = loaded === "loaded" && domain != null ? run(["launchctl", "bootout", `${domain}/${LAUNCHD_HUB_LABEL}`]) : loaded === "not-loaded";
-    removeHubUnits();
-    return deactivated ? "removed" : "still-loaded";
-  }
-  const active = systemdUnitActive(HUB_UNIT);
-  const deactivated = active !== "unavailable" && (run(["systemctl", "--user", "disable", "--now", HUB_UNIT]) || active === "not-active");
-  removeHubUnits();
-  run(["systemctl", "--user", "daemon-reload"]);
-  return deactivated ? "removed" : "still-loaded";
+function uninstallTarget(job: UnitJob, live: boolean): string {
+  const files = jobFiles(job).join(" and ");
+  if (!live) return files;
+  return process.platform === "darwin"
+    ? `${files} (and launchctl bootout gui/${process.getuid?.() ?? "?"}/${job.label})`
+    : `${files} (and systemctl --user disable --now ${job.unit})`;
 }
 
 export function shellRcPath(): string | null {
@@ -574,20 +509,11 @@ export function onLoginHome(): boolean {
 }
 
 export function uninstallTargets(live: boolean): string[] {
-  const timer =
-    process.platform === "darwin"
-      ? `${launchdPlist(LAUNCHD_LABEL)}${live ? ` (and launchctl bootout gui/${process.getuid?.() ?? "?"}/${LAUNCHD_LABEL})` : ""}`
-      : `${join(paths.systemdUserDir, "tokenmaxxing-check.timer")} and .service${live ? " (and systemctl --user disable --now tokenmaxxing-check.timer)" : ""}`;
-  const hub =
-    process.platform === "darwin"
-      ? `${launchdPlist(LAUNCHD_HUB_LABEL)}${live ? ` (and launchctl bootout gui/${process.getuid?.() ?? "?"}/${LAUNCHD_HUB_LABEL})` : ""}`
-      : `${join(paths.systemdUserDir, HUB_UNIT)}${live ? ` (and systemctl --user disable --now ${HUB_UNIT})` : ""}`;
   const rc = shellRcPath();
   return [
     `${paths.claudeSettings}: the hook and statusline entries`,
     `${codexPaths.hooksJson}: the codex Stop hook entry`,
-    ...(skipImperativeTimer() ? [] : [timer]),
-    ...(skipImperativeHub() ? [] : [hub]),
+    ...[CHECK_JOB, HUB_JOB].filter((job) => !job.skip()).map((job) => uninstallTarget(job, live)),
     paths.supervisorLink,
     codexSupervisorLink(),
     join(paths.binDir, "xx"),
@@ -598,8 +524,8 @@ export function uninstallTargets(live: boolean): string[] {
 
 export function uninstallSupervisor(input: { live: boolean }): UninstallOutcome {
   uninstallSettings();
-  const timer = uninstallCheckTimer(input.live);
-  const hub = uninstallHubService(input.live);
+  const timer = uninstallJob(CHECK_JOB, input.live);
+  const hub = uninstallJob(HUB_JOB, input.live);
   uninstallCodexSupervisor();
   for (const f of [paths.supervisorLink, join(paths.binDir, "xx"), installedBin()]) {
     if (existsSync(f)) rmSync(f, { force: true });

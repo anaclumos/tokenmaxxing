@@ -7,7 +7,7 @@ import { claude } from "../lib/claude.ts";
 import { codex, observeCodex } from "../lib/codex.ts";
 import { CODEX_USAGE_URL } from "../lib/codexusage.ts";
 import { errorMessage, log } from "../lib/log.ts";
-import { hubDeactivationHint } from "../lib/install.ts";
+import { deactivationHint, HUB_JOB } from "../lib/install.ts";
 import { paths } from "../lib/paths.ts";
 import { isExhausted, thresholdBars } from "../lib/picker.ts";
 import type { Provider } from "../lib/provider.ts";
@@ -211,7 +211,7 @@ export async function cmdServe(args: string[]): Promise<number> {
       },
     });
   } catch (e) {
-    emitError({ message: `cannot bind localhost:${cfg.hub.port}: ${errorMessage(e)} (another \`tokenmaxxing serve\` or the usage hub service may already hold the port - stop it first: ${hubDeactivationHint()})` });
+    emitError({ message: `cannot bind localhost:${cfg.hub.port}: ${errorMessage(e)} (another \`tokenmaxxing serve\` or the usage hub service may already hold the port - stop it first: ${deactivationHint(HUB_JOB)})` });
     return 1;
   }
   console.log(`${c.green("✓")} serving the CLIProxyAPI-compatible usage API at http://localhost:${server.port}/v0/management`);
