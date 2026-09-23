@@ -1,22 +1,21 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, symlinkSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, rmSync, symlinkSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
 import { writeFileAtomic } from "./atomic.ts";
 import { codexAuthJsonFor, codexPaths, codexStoreDirFor } from "./paths.ts";
+import { readJsonFile } from "./state.ts";
 import { CodexAuthJsonSchema, ErrnoSchema, type CodexAuthJson } from "./types.ts";
 
+const CodexAuthFileSchema = CodexAuthJsonSchema.extend({ tokens: CodexAuthJsonSchema.shape.tokens.nullish() });
+
 export function readCodexAuthAt(input: { path: string }): CodexAuthJson | null {
-  let raw: string;
   try {
-    raw = readFileSync(input.path, "utf8");
+    const auth = readJsonFile(input.path, CodexAuthFileSchema);
+    return auth.tokens === undefined || auth.tokens === null ? null : { ...auth, tokens: auth.tokens };
   } catch (e) {
     if (ErrnoSchema.safeParse(e).data?.code === "ENOENT") return null;
     throw e;
   }
-  const parsed = JSON.parse(raw);
-  const probe = z.looseObject({ tokens: z.unknown().optional() }).parse(parsed);
-  if (probe.tokens === undefined || probe.tokens === null) return null;
-  return CodexAuthJsonSchema.parse(parsed);
 }
 
 export function readCodexStoreAuth(accountId: string): CodexAuthJson | null {
