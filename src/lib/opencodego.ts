@@ -1,9 +1,8 @@
 import { mkdirSync, readFileSync } from "node:fs";
-import { homedir } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
 import { writeFileAtomic } from "./atomic.ts";
-import { opencodeGoAuthJsonFor, opencodeGoPaths, opencodeGoPool, opencodeGoStoreDirFor } from "./paths.ts";
+import { env, HOME, opencodeGoAuthJsonFor, opencodeGoPaths, opencodeGoPool, opencodeGoStoreDirFor } from "./paths.ts";
 import type { Provider } from "./provider.ts";
 import { type Harvest } from "./state.ts";
 import { statusOnlyProvider, type AuthEntry } from "./statusonly.ts";
@@ -12,12 +11,8 @@ import { c } from "../cli/render.ts";
 const OpencodeAuthEntrySchema = z.looseObject({ type: z.string(), key: z.string().optional() });
 const OpencodeAuthFileSchema = z.record(z.string(), z.unknown());
 
-function dataHome(): string {
-  return process.env.XDG_DATA_HOME && process.env.XDG_DATA_HOME.length > 0 ? process.env.XDG_DATA_HOME : join(homedir(), ".local", "share");
-}
-
 function liveAuthPath(): string {
-  return join(dataHome(), "opencode", "auth.json");
+  return join(env("XDG_DATA_HOME", join(HOME, ".local", "share")), "opencode", "auth.json");
 }
 
 function idOfKey(key: string): string {
