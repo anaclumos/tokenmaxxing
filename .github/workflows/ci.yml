@@ -98,3 +98,7 @@ jobs:
           gh release view "$tag" >/dev/null 2>&1 || gh release create "$tag" --target "$(git rev-parse HEAD)" --generate-notes
       - if: steps.version.outputs.version != ''
         run: npm publish
+      - name: Wait for the registry to list the version
+        if: steps.version.outputs.version != ''
+        timeout-minutes: 30
+        run: until npm view "tokenmaxxing@${{ steps.version.outputs.version }}" version >/dev/null 2>&1; do sleep 15; done
