@@ -37,8 +37,7 @@ export async function cmdSeat(pidRaw: string | undefined, extra: string[]): Prom
       }
       return { store: ensureCodexStoreHome(heldAccount.id), id: heldAccount.id, reused: true };
     }
-    const present = new Map<string, number>();
-    for (const p of living) present.set(p.accountId, (present.get(p.accountId) ?? 0) + 1);
+    const present = new Set(living.map((p) => p.accountId));
     const usable = idx.accounts.filter(
       (a) => a.needsReauth !== true && !isExhausted(a, ctx) && !present.has(a.id) && codexStoreUsable(a.id)
     );

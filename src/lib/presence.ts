@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
+import { countBy } from "es-toolkit";
 import { z } from "zod";
 import { writeFileAtomic } from "./atomic.ts";
 import { pidExists, pidStartTime } from "./proc.ts";
@@ -71,7 +72,5 @@ export function livingPresences(dir: string): LivingPresence[] {
 }
 
 export function seatCounts(dir: string): Map<string, number> {
-  const counts = new Map<string, number>();
-  for (const presence of livingPresences(dir)) counts.set(presence.accountId, (counts.get(presence.accountId) ?? 0) + 1);
-  return counts;
+  return new Map(Object.entries(countBy(livingPresences(dir), (p) => p.accountId)));
 }
