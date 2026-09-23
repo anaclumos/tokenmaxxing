@@ -55,7 +55,7 @@ function scanPathCandidates(name: string): string[] {
   for (const d of (process.env.PATH ?? "").split(":")) {
     if (!d) continue;
     const cand = join(d, name);
-    if (!existsSync(cand) || !statSync(cand).isFile() || pointsBackAtUs(cand)) continue;
+    if (!existsSync(cand) || !statSync(cand, { throwIfNoEntry: false })?.isFile() || pointsBackAtUs(cand)) continue;
     const key = realpathOrNull(cand) ?? cand;
     if (seen.has(key)) continue;
     seen.add(key);
