@@ -1,4 +1,5 @@
-import { accessSync, appendFileSync, constants, existsSync, mkdirSync, readFileSync, realpathSync, rmSync, statSync } from "node:fs";
+import { accessSync, appendFileSync, constants, existsSync, readFileSync, realpathSync, rmSync, statSync } from "node:fs";
+import { userInfo } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { escape } from "es-toolkit";
 import { z } from "zod";
@@ -88,7 +89,6 @@ exec ${JSON.stringify(bun)} --no-env-file run ${JSON.stringify(entry)} "$@"
 }
 
 export function installSupervisor(): InstallOutcome {
-  mkdirSync(paths.binDir, { recursive: true });
   const target = installedBin();
   const entry = realpathSync(Bun.main);
   if (isNixPackaged()) {
@@ -146,7 +146,6 @@ export function installCodexStopHook(): void {
       ],
     },
   };
-  mkdirSync(codexPaths.home, { recursive: true });
   writeFileAtomic(codexPaths.hooksJson, JSON.stringify(next, null, 2) + "\n");
 }
 
@@ -171,7 +170,7 @@ export function codexStopHookGroupIndex(): number | null {
   } catch {
     return null;
   }
-  const idx = parsed.hooks.Stop.findIndex((group) => group.hooks.some((hook) => (hook.command ?? "").includes(CODEX_STOP_HOOK_SUBCOMMAND)));
+  const idx = parsed.hooks.Stop.findIndex((group) => group.hooks.some((hook) => isOurHookCommand(hook.command ?? "", CODEX_STOP_HOOK_SUBCOMMAND)));
   return idx >= 0 ? idx : null;
 }
 
@@ -197,7 +196,6 @@ export function codexSupervisorLink(): string {
 }
 
 export function installCodexSupervisor(): void {
-  mkdirSync(paths.binDir, { recursive: true });
   writeFileAtomic(codexSupervisorLink(), `#!/bin/sh\nexec ${JSON.stringify(installedBin())} __supervise-codex "$@"\n`, 0o755);
   installCodexStopHook();
 }
@@ -273,9 +271,8 @@ function launchdPlist(label: string): string {
   return join(paths.launchdAgentsDir, `${label}.plist`);
 }
 
-function launchdDomain(): string | null {
-  const uid = process.getuid?.();
-  return uid == null ? null : `gui/${uid}`;
+function launchdDomain(): string {
+  return `gui/${userInfo().uid}`;
 }
 
 function run(cmd: string[]): boolean {
@@ -315,7 +312,6 @@ ${job.launchd(intervalS)}${launchdEnv()}  <key>StandardOutPath</key><string>/dev
       0o644,
     );
     const domain = launchdDomain();
-    if (domain == null) return false;
     run(["launchctl", "bootout", `${domain}/${job.label}`]);
     return run(["launchctl", "bootstrap", domain, plist]) || jobHealthy(job);
   }
@@ -335,8 +331,7 @@ export function activationHint(job: UnitJob): string {
 export function jobHealthy(job: UnitJob): boolean {
   if (job.skip()) return true;
   if (process.platform === "darwin") {
-    const domain = launchdDomain();
-    return existsSync(launchdPlist(job.label)) && domain != null && run(["launchctl", "print", `${domain}/${job.label}`]);
+    return existsSync(launchdPlist(job.label)) && run(["launchctl", "print", `${launchdDomain()}/${job.label}`]);
   }
   return existsSync(join(paths.systemdUserDir, job.unit)) && run(["systemctl", "--user", "is-active", "--quiet", job.unit]);
 }
@@ -349,10 +344,8 @@ export function deactivationHint(job: UnitJob): string {
 }
 
 function launchdJobLoaded(label: string): "loaded" | "not-loaded" | "unavailable" {
-  const domain = launchdDomain();
-  if (domain == null) return "unavailable";
   try {
-    const { exitCode } = Bun.spawnSync(["launchctl", "print", `${domain}/${label}`], { stdout: "ignore", stderr: "ignore", timeout: 10_000 });
+    const { exitCode } = Bun.spawnSync(["launchctl", "print", `${launchdDomain()}/${label}`], { stdout: "ignore", stderr: "ignore", timeout: 10_000 });
     if (exitCode === 0) return "loaded";
     return exitCode === 113 ? "not-loaded" : "unavailable";
   } catch {
@@ -390,9 +383,8 @@ function uninstallJob(job: UnitJob, live: boolean): UnitOutcome {
     return "removed";
   }
   if (process.platform === "darwin") {
-    const domain = launchdDomain();
     const loaded = launchdJobLoaded(job.label);
-    const deactivated = loaded === "loaded" && domain != null ? run(["launchctl", "bootout", `${domain}/${job.label}`]) : loaded === "not-loaded";
+    const deactivated = loaded === "loaded" ? run(["launchctl", "bootout", `${launchdDomain()}/${job.label}`]) : loaded === "not-loaded";
     removeJobFiles(job);
     return deactivated ? "removed" : "still-loaded";
   }
@@ -407,7 +399,7 @@ function uninstallTarget(job: UnitJob, live: boolean): string {
   const files = jobFiles(job).join(" and ");
   if (!live) return files;
   return process.platform === "darwin"
-    ? `${files} (and launchctl bootout gui/${process.getuid?.() ?? "?"}/${job.label})`
+    ? `${files} (and launchctl bootout ${launchdDomain()}/${job.label})`
     : `${files} (and systemctl --user disable --now ${job.unit})`;
 }
 
@@ -497,7 +489,7 @@ export function removePathFromRc(rc: string): boolean {
 export type UninstallOutcome = { timer: UnitOutcome; hub: UnitOutcome; pathLineRemoved: boolean };
 
 export function loginHome(): string {
-  const cmd = process.platform === "darwin" ? ["id", "-P"] : ["getent", "passwd", String(process.getuid?.() ?? "")];
+  const cmd = process.platform === "darwin" ? ["id", "-P"] : ["getent", "passwd", String(userInfo().uid)];
   const proc = Bun.spawnSync(cmd, { stdout: "pipe", stderr: "ignore", timeout: 10_000 });
   const home = proc.stdout.toString().trim().split(":").at(-2);
   if (proc.exitCode !== 0 || home == null || home === "") throw new Error(`cannot read the login home: ${cmd.join(" ")} failed`);

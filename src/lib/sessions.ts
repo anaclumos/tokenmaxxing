@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, type Dirent } from "node:fs";
+import { existsSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, type Dirent } from "node:fs";
 import { basename, join, sep } from "node:path";
 import { z } from "zod";
 import { errorMessage, log } from "./log.ts";
@@ -19,7 +19,6 @@ function sessionFile(sid: string): string {
 }
 
 export function saveSessionFlags(sid: string, flags: string[], cwd: string): void {
-  mkdirSync(sessionsDir(), { recursive: true });
   writeFileAtomic(sessionFile(sid), JSON.stringify({ flags, cwd }));
 }
 
@@ -39,27 +38,8 @@ export function liveSessionId(sid: string): string {
 
 function recordLiveSession(sid: string, current: string): void {
   const session = loadSession(sid);
-  mkdirSync(sessionsDir(), { recursive: true });
   writeFileAtomic(sessionFile(sid), JSON.stringify({ flags: session?.flags ?? [], cwd: session?.cwd ?? process.cwd(), current }));
 }
-
-const DEAD_STATE_ENTRIES = [
-  "model-usage.json",
-  "accounts.json.v1-backup",
-  "codex-accounts.json.v1-backup",
-  "nextcheck.json",
-  "usage.json",
-  "lastswap.json",
-  "depleted.json",
-  "codex-lastswap.json",
-  "creds",
-  "codex-creds",
-  "codex-reconcile",
-  "sample",
-  "setup-tokens.json",
-  "setup-token",
-  "cloud",
-];
 
 const TMP_MARKER = ".tmp.";
 const TMP_GRACE_MS = 3600 * 1000;
@@ -88,14 +68,7 @@ function tmpSweepDirs(root: string): string[] {
   return dirs;
 }
 
-function pruneDeadState(now: number, root: string): void {
-  for (const name of DEAD_STATE_ENTRIES) {
-    try {
-      rmSync(join(paths.home, name), { recursive: true, force: true });
-    } catch (e) {
-      log("state.dead_entry_failed", { name, err: errorMessage(e) });
-    }
-  }
+function pruneTmpFiles(now: number, root: string): void {
   for (const dir of tmpSweepDirs(root)) {
     for (const f of listDir(dir, root)) {
       if (!f.isFile() || !f.name.includes(TMP_MARKER)) continue;
@@ -115,7 +88,7 @@ export function pruneStaleSessions(now: number): void {
   } catch {
     return;
   }
-  pruneDeadState(now, root);
+  pruneTmpFiles(now, root);
   const dir = sessionsDir();
   for (const f of listDir(dir, root)) {
     const p = join(dir, f.name);
@@ -151,7 +124,6 @@ export function adoptLiveSession(session: SupervisedSession, stdinSid: string | 
 }
 
 export function writeRespawnMarker(input: { session: SupervisedSession; accountId: string; waitUntil: number; compact: boolean }): void {
-  mkdirSync(paths.respawnDir, { recursive: true });
   const payload: z.infer<typeof RespawnMarkerSchema> = {
     accountId: input.accountId,
     ts: Date.now(),

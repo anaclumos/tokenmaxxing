@@ -1,4 +1,4 @@
-import { defineConfig, defineDocs } from 'fumadocs-mdx/config';
+import { defineDocs } from 'fumadocs-mdx/config';
 import { metaSchema, pageSchema } from 'fumadocs-core/source/schema';
 
 export const docs = defineDocs({
@@ -11,10 +11,5 @@ export const docs = defineDocs({
   },
   meta: {
     schema: metaSchema,
-  },
-});
-
-export default defineConfig({
-  mdxOptions: {
   },
 });

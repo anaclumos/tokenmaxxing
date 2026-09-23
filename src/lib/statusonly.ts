@@ -104,7 +104,7 @@ export function statusOnlyProvider(spec: StatusOnlySpec): Provider {
   function preflight(): void {
     const real = resolveBin();
     const p = Bun.spawnSync([real, "--version"], { stdout: "pipe", stderr: "pipe", timeout: 15_000 });
-    if (p.exitCode !== 0 || !spec.versionOk(p.stdout?.toString() ?? "")) {
+    if (p.exitCode !== 0 || !spec.versionOk(p.stdout.toString())) {
       throw new Error(`${spec.binName} binary failed verification: ${real}`);
     }
     pinBinOverride({ key: spec.binKey, bin: real });

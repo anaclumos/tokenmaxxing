@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, realpathSync, statSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { uniq } from "es-toolkit";
 import { z } from "zod";
@@ -30,13 +30,12 @@ export function wrapperEntryRateTripped(now: number): boolean {
   entries = entries.filter((t) => now - t < WRAP_RATE_WINDOW_MS);
   entries.push(now);
   try {
-    mkdirSync(paths.home, { recursive: true });
     writeFileAtomic(file, JSON.stringify({ entries }));
   } catch {  }
   return entries.length > WRAP_RATE_MAX;
 }
 
-function realpathOrNull(p: string): string | null {
+export function realpathOrNull(p: string): string | null {
   try {
     return realpathSync(p);
   } catch {
@@ -93,14 +92,14 @@ export function resolveRealClaude(): string {
 
 export function verifyRealClaude(bin: string): string | null {
   const env = { ...process.env, [WRAP_DEPTH_ENV]: String(MAX_WRAP_DEPTH), TOKENMAXXING_PROBE: "1" };
-  let p: ReturnType<typeof Bun.spawnSync>;
+  let p;
   try {
     p = Bun.spawnSync([bin, "--version"], { env, stdout: "pipe", stderr: "pipe", timeout: 15_000, killSignal: "SIGKILL" });
   } catch (e) {
     return errorMessage(e);
   }
-  const outText = (p.stdout?.toString() ?? "").trim();
-  const err = (p.stderr?.toString() ?? "").trim();
+  const outText = p.stdout.toString().trim();
+  const err = p.stderr.toString().trim();
   if (p.exitCode === 0) {
     if (/claude/i.test(outText)) return null;
     return `--version output does not identify claude: "${outText.slice(0, 80)}"`;
