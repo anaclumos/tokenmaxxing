@@ -1,3 +1,4 @@
+import { countBy } from "es-toolkit";
 import { withLock } from "./lock.ts";
 import { loadAccounts, loadConfig, liveWaitClaims, releaseWaitClaim, replaceWaitClaim, saveAccounts } from "./state.ts";
 import { isExhausted, limitWindows, liveUsed, nextWeeklyReset, pickBest, pickWaitTarget, sessionWindow, thresholdBars, weeklyWindow, type PickCtx } from "./picker.ts";
@@ -157,11 +158,8 @@ export async function evaluateAndMaybeSwap(p: Provider, now = Date.now(), canRes
       const fresh = loadAccounts(p.pool);
       const current = seatOf(fresh);
       const ctx: PickCtx = { now, thresholds: bars, currentId: current?.id ?? null, families: switchFamilies, seats };
-      const waiters = new Map<string, number>();
-      for (const claim of liveWaitClaims(now)) {
-        if (claim.sessionId === waiterId) continue;
-        waiters.set(claim.accountId, (waiters.get(claim.accountId) ?? 0) + 1);
-      }
+      const others = liveWaitClaims(now).filter((c) => c.sessionId !== waiterId);
+      const waiters = new Map(Object.entries(countBy(others, (c) => c.accountId)));
       const target = pickWaitTarget(usable(fresh.accounts), ctx, waiters, MAX_WAITERS_PER_ACCOUNT, now + cfg.policy.maxWaitMs);
 
       if (!target) {
