@@ -18,7 +18,7 @@ const GrokAuthEntrySchema = z.looseObject({
   first_name: z.string().nullish(),
   key: z.string().optional(),
   refresh_token: z.string().optional(),
-  expires_at: InstantSchema.nullish(),
+  expires_at: z.string().nullish(),
 });
 type GrokAuthEntry = z.infer<typeof GrokAuthEntrySchema>;
 
@@ -70,7 +70,7 @@ function credsIn(path: string): GrokCred[] {
     const id = entry.user_id ?? entry.principal_id ?? key;
     const token = entry.key ?? "";
     if (id === "" || token === "") continue;
-    out.push({ id, token, expiresAt: entry.expires_at ?? null });
+    out.push({ id, token, expiresAt: InstantSchema.safeParse(entry.expires_at).data ?? null });
   }
   return out;
 }
