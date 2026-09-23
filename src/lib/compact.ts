@@ -20,7 +20,7 @@ export async function compactClaudeSession(input: { real: string; sid: string; e
     timeout: CLAUDE_COMPACT_KILL_MS,
     killSignal: "SIGKILL",
   });
-  const reads = Promise.all([new Response(p.stdout).text(), new Response(p.stderr).text()]);
+  const reads = Promise.all([p.stdout.text(), p.stderr.text()]);
   const settled = await Promise.race([reads, p.exited.then(() => delay(PIPE_GRACE_MS)).then(() => null)]);
   await p.exited;
   if (settled === null) return { ok: false, reason: "output pipes still open after child exit (leaked descendant)" };
@@ -64,7 +64,7 @@ export async function compactCodexThread(input: { real: string; threadId: string
     p.stdin.write(`${JSON.stringify(msg)}\n`);
     p.stdin.flush();
   };
-  const stderrText = new Response(p.stderr).text();
+  const stderrText = p.stderr.text();
 
   const outcome = await new Promise<CompactOutcome>((resolve) => {
     let finished = false;
