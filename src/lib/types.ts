@@ -152,6 +152,8 @@ export const RespawnMarkerSchema = z.object({
 
 export const EpochSecondsSchema = z.number().transform((seconds) => seconds * 1000);
 
+export const InstantSchema = z.iso.datetime({ offset: true }).transform((iso) => Date.parse(iso));
+
 const StdinWindowSchema = z.looseObject({ used_percentage: z.number(), resets_at: EpochSecondsSchema.nullable().optional() });
 
 export const RateLimitsStdinSchema = z.looseObject({

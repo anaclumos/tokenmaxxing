@@ -2,7 +2,7 @@ import { z } from "zod";
 import { http, safeErrorDetail } from "./http.ts";
 import { errorMessage } from "./log.ts";
 import { env } from "./paths.ts";
-import { JsonTextSchema, type Window } from "./types.ts";
+import { InstantSchema, JsonTextSchema, type Window } from "./types.ts";
 
 export class GrokUsageReadError extends Error {
   status: number | null;
@@ -12,8 +12,6 @@ export class GrokUsageReadError extends Error {
     this.status = status;
   }
 }
-
-export const InstantSchema = z.iso.datetime({ offset: true }).transform((iso) => Date.parse(iso));
 
 const CreditsPeriodSchema = z.looseObject({
   start: InstantSchema,

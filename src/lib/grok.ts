@@ -2,13 +2,13 @@ import { mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
 import { writeFileAtomic } from "./atomic.ts";
-import { fetchGrokUsage, GrokUsageReadError, InstantSchema, type GrokUsage } from "./grokusage.ts";
+import { fetchGrokUsage, GrokUsageReadError, type GrokUsage } from "./grokusage.ts";
 import { errorMessage } from "./log.ts";
 import { grokAuthJsonFor, grokPaths, grokPool, grokSeatFromEnv, grokStoreDirFor } from "./paths.ts";
 import type { Provider, SampleReport } from "./provider.ts";
 import { loadAccounts, type Harvest } from "./state.ts";
 import { statusOnlyProvider, type AuthEntry } from "./statusonly.ts";
-import type { Account } from "./types.ts";
+import { InstantSchema, type Account } from "./types.ts";
 import { c } from "../cli/render.ts";
 
 const GrokAuthEntrySchema = z.looseObject({
