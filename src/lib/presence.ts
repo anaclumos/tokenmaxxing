@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
 import { writeFileAtomic } from "./atomic.ts";
@@ -15,7 +15,6 @@ const PresenceSchema = z.object({
 export function writePresence(input: { dir: string; id: string; accountId: string; pid: number }): void {
   const startedAt = pidStartTime(input.pid);
   if (startedAt == null) throw new Error(`could not read pid ${input.pid}'s start time (ps lstart) - refusing to write an unverifiable presence file`);
-  mkdirSync(input.dir, { recursive: true });
   writeFileAtomic(join(input.dir, input.id), JSON.stringify(PresenceSchema.parse({ accountId: input.accountId, pid: input.pid, startedAt })));
 }
 

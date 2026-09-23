@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, realpathSync, statSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { uniq } from "es-toolkit";
 import { z } from "zod";
@@ -30,7 +30,6 @@ export function wrapperEntryRateTripped(now: number): boolean {
   entries = entries.filter((t) => now - t < WRAP_RATE_WINDOW_MS);
   entries.push(now);
   try {
-    mkdirSync(paths.home, { recursive: true });
     writeFileAtomic(file, JSON.stringify({ entries }));
   } catch {  }
   return entries.length > WRAP_RATE_MAX;

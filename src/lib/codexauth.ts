@@ -32,7 +32,6 @@ export function codexStoreUsable(accountId: string): boolean {
 }
 
 export function writeCodexStoreAuth(accountId: string, auth: CodexAuthJson): void {
-  mkdirSync(codexStoreDirFor(accountId), { recursive: true });
   writeFileAtomic(codexAuthJsonFor(accountId), JSON.stringify(CodexAuthJsonSchema.parse(auth), null, 2), 0o600);
 }
 
