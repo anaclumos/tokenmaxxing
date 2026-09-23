@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { CLAUDE_BIN, verifyRealBin } from "../lib/claudebin.ts";
 import { checkSettings, installedBin } from "../lib/settings.ts";
-import { checkTimerHealthy, codexStoreHookTrust, findClaudeShadowers, hubServiceHealthy, isBinDirAhead, shellRcPath, skipImperativeHub, timerActivationHint } from "../lib/install.ts";
+import { activationHint, CHECK_JOB, codexStoreHookTrust, findClaudeShadowers, HUB_JOB, isBinDirAhead, jobHealthy, shellRcPath } from "../lib/install.ts";
 import { errorMessage } from "../lib/log.ts";
 import { claudePool, codexPool, paths } from "../lib/paths.ts";
 import { loadAccounts, loadConfig } from "../lib/state.ts";
@@ -29,10 +29,10 @@ export async function cmdDoctor(): Promise<number> {
   check(s.stopOk, "Stop hook installed in settings.json", "run `tokenmaxxing init`");
   check(s.stopFailureOk, "StopFailure hook installed in settings.json", "run `tokenmaxxing init`");
   check(s.sessionStartOk, "SessionStart hook installed in settings.json", "run `tokenmaxxing init`");
-  check(checkTimerHealthy(), "periodic check timer active", timerActivationHint());
+  check(jobHealthy(CHECK_JOB), "periodic check timer active", activationHint(CHECK_JOB));
   if (existsSync(paths.supervisorLink)) {
-    if (skipImperativeHub()) note("usage hub service is owned outside init (TOKENMAXXING_SKIP_HUB set) - not verified here");
-    else check(hubServiceHealthy(), "usage hub service active", "run `tokenmaxxing init` (it writes the unit and activates it)");
+    if (HUB_JOB.skip()) note("usage hub service is owned outside init (TOKENMAXXING_SKIP_HUB set) - not verified here");
+    else check(jobHealthy(HUB_JOB), "usage hub service active", "run `tokenmaxxing init` (it writes the unit and activates it)");
   }
 
   const idx = loadAccounts(claudePool);
