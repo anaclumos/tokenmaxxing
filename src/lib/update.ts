@@ -1,7 +1,8 @@
-import { existsSync, lstatSync, realpathSync } from "node:fs";
+import { existsSync, lstatSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { z } from "zod";
 import { writeFileAtomic } from "./atomic.ts";
+import { realpathOrNull } from "./claudebin.ts";
 import { http } from "./http.ts";
 import { isNixPackaged } from "./install.ts";
 import { withLock } from "./lock.ts";
@@ -30,14 +31,6 @@ function registry(): { base: URL; authorization: string | null } {
   return { base, authorization };
 }
 
-function realOrNull(path: string): string | null {
-  try {
-    return realpathSync(path);
-  } catch {
-    return null;
-  }
-}
-
 function globalRootCandidates(): string[] {
   const globalDir = optionalEnv("BUN_INSTALL_GLOBAL_DIR");
   const bunInstall = optionalEnv("BUN_INSTALL");
@@ -64,12 +57,12 @@ function registryPackageDir(root: string): string | null {
 
 function detectGlobalRoot(): string | null {
   if (isNixPackaged()) return null;
-  const entry = realOrNull(Bun.main);
+  const entry = realpathOrNull(Bun.main);
   if (entry == null) return null;
   return (
     globalRootCandidates().find((root) => {
       const dir = registryPackageDir(root);
-      return dir != null && entry === realOrNull(join(dir, "src", "main.ts"));
+      return dir != null && entry === realpathOrNull(join(dir, "src", "main.ts"));
     }) ?? null
   );
 }
