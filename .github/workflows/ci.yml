@@ -100,5 +100,5 @@ jobs:
         run: npm publish
       - name: Wait for the registry to list the version
         if: steps.version.outputs.version != ''
-        timeout-minutes: 15
+        timeout-minutes: 30
         run: until npm view tokenmaxxing versions --json | jq -e --arg v "${{ steps.version.outputs.version }}" '[.. | strings] | index($v) != null' >/dev/null; do sleep 15; done
