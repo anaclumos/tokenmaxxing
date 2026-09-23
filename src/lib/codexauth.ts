@@ -6,16 +6,16 @@ import { codexAuthJsonFor, codexPaths, codexStoreDirFor } from "./paths.ts";
 import { readJsonFile } from "./state.ts";
 import { CodexAuthJsonSchema, ErrnoSchema, type CodexAuthJson } from "./types.ts";
 
-const CodexAuthFileSchema = CodexAuthJsonSchema.extend({ tokens: CodexAuthJsonSchema.shape.tokens.nullish() });
-
 export function readCodexAuthAt(input: { path: string }): CodexAuthJson | null {
+  let parsed: { tokens?: unknown };
   try {
-    const auth = readJsonFile(input.path, CodexAuthFileSchema);
-    return auth.tokens === undefined || auth.tokens === null ? null : { ...auth, tokens: auth.tokens };
+    parsed = readJsonFile(input.path, z.looseObject({ tokens: z.unknown().optional() }));
   } catch (e) {
     if (ErrnoSchema.safeParse(e).data?.code === "ENOENT") return null;
     throw e;
   }
+  if (parsed.tokens === undefined || parsed.tokens === null) return null;
+  return CodexAuthJsonSchema.parse(parsed);
 }
 
 export function readCodexStoreAuth(accountId: string): CodexAuthJson | null {
