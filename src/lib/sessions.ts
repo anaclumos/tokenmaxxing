@@ -44,24 +44,6 @@ function recordLiveSession(sid: string, current: string): void {
   writeFileAtomic(sessionFile(sid), JSON.stringify({ flags: session?.flags ?? [], cwd: session?.cwd ?? process.cwd(), current }));
 }
 
-const DEAD_STATE_ENTRIES = [
-  "model-usage.json",
-  "accounts.json.v1-backup",
-  "codex-accounts.json.v1-backup",
-  "nextcheck.json",
-  "usage.json",
-  "lastswap.json",
-  "depleted.json",
-  "codex-lastswap.json",
-  "creds",
-  "codex-creds",
-  "codex-reconcile",
-  "sample",
-  "setup-tokens.json",
-  "setup-token",
-  "cloud",
-];
-
 const TMP_MARKER = ".tmp.";
 const TMP_GRACE_MS = 3600 * 1000;
 
@@ -89,14 +71,7 @@ function tmpSweepDirs(root: string): string[] {
   return dirs;
 }
 
-function pruneDeadState(now: number, root: string): void {
-  for (const name of DEAD_STATE_ENTRIES) {
-    try {
-      rmSync(join(paths.home, name), { recursive: true, force: true });
-    } catch (e) {
-      log("state.dead_entry_failed", { name, err: errorMessage(e) });
-    }
-  }
+function pruneTmpFiles(now: number, root: string): void {
   for (const dir of tmpSweepDirs(root)) {
     for (const f of listDir(dir, root)) {
       if (!f.isFile() || !f.name.includes(TMP_MARKER)) continue;
@@ -116,7 +91,7 @@ export function pruneStaleSessions(now: number): void {
   } catch {
     return;
   }
-  pruneDeadState(now, root);
+  pruneTmpFiles(now, root);
   const dir = sessionsDir();
   for (const f of listDir(dir, root)) {
     const p = join(dir, f.name);

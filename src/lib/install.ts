@@ -1,4 +1,5 @@
 import { accessSync, appendFileSync, constants, existsSync, mkdirSync, readFileSync, realpathSync, rmSync, statSync } from "node:fs";
+import { userInfo } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { escape } from "es-toolkit";
 import { z } from "zod";
@@ -215,9 +216,8 @@ function launchdPlist(label: string): string {
   return join(paths.launchdAgentsDir, `${label}.plist`);
 }
 
-function launchdDomain(): string | null {
-  const uid = process.getuid?.();
-  return uid == null ? null : `gui/${uid}`;
+function launchdDomain(): string {
+  return `gui/${userInfo().uid}`;
 }
 
 function run(cmd: string[]): boolean {
@@ -258,7 +258,6 @@ ${launchdEnv()}  <key>StandardOutPath</key><string>/dev/null</string>
       0o644,
     );
     const domain = launchdDomain();
-    if (domain == null) return false;
     run(["launchctl", "bootout", `${domain}/${LAUNCHD_LABEL}`]);
     return run(["launchctl", "bootstrap", domain, plist]) || checkTimerHealthy();
   }
@@ -313,8 +312,7 @@ export function hubActivationHint(): string {
 export function checkTimerHealthy(): boolean {
   if (skipImperativeTimer()) return true;
   if (process.platform === "darwin") {
-    const domain = launchdDomain();
-    return existsSync(launchdPlist(LAUNCHD_LABEL)) && domain != null && run(["launchctl", "print", `${domain}/${LAUNCHD_LABEL}`]);
+    return existsSync(launchdPlist(LAUNCHD_LABEL)) && run(["launchctl", "print", `${launchdDomain()}/${LAUNCHD_LABEL}`]);
   }
   return (
     existsSync(join(paths.systemdUserDir, "tokenmaxxing-check.timer")) &&
@@ -325,8 +323,7 @@ export function checkTimerHealthy(): boolean {
 export function hubServiceHealthy(): boolean {
   if (skipImperativeHub()) return true;
   if (process.platform === "darwin") {
-    const domain = launchdDomain();
-    return existsSync(launchdPlist(LAUNCHD_HUB_LABEL)) && domain != null && run(["launchctl", "print", `${domain}/${LAUNCHD_HUB_LABEL}`]);
+    return existsSync(launchdPlist(LAUNCHD_HUB_LABEL)) && run(["launchctl", "print", `${launchdDomain()}/${LAUNCHD_HUB_LABEL}`]);
   }
   return existsSync(join(paths.systemdUserDir, HUB_UNIT)) && run(["systemctl", "--user", "is-active", "--quiet", HUB_UNIT]);
 }
@@ -346,10 +343,8 @@ export function hubDeactivationHint(): string {
 }
 
 function launchdJobLoaded(label: string): "loaded" | "not-loaded" | "unavailable" {
-  const domain = launchdDomain();
-  if (domain == null) return "unavailable";
   try {
-    const { exitCode } = Bun.spawnSync(["launchctl", "print", `${domain}/${label}`], { stdout: "ignore", stderr: "ignore", timeout: 10_000 });
+    const { exitCode } = Bun.spawnSync(["launchctl", "print", `${launchdDomain()}/${label}`], { stdout: "ignore", stderr: "ignore", timeout: 10_000 });
     if (exitCode === 0) return "loaded";
     return exitCode === 113 ? "not-loaded" : "unavailable";
   } catch {
@@ -387,9 +382,8 @@ function uninstallCheckTimer(live: boolean): UnitOutcome {
     return "removed";
   }
   if (process.platform === "darwin") {
-    const domain = launchdDomain();
     const loaded = launchdJobLoaded(LAUNCHD_LABEL);
-    const deactivated = loaded === "loaded" && domain != null ? run(["launchctl", "bootout", `${domain}/${LAUNCHD_LABEL}`]) : loaded === "not-loaded";
+    const deactivated = loaded === "loaded" ? run(["launchctl", "bootout", `${launchdDomain()}/${LAUNCHD_LABEL}`]) : loaded === "not-loaded";
     removeTimerUnits();
     return deactivated ? "removed" : "still-loaded";
   }
@@ -423,7 +417,6 @@ ${launchdEnv()}  <key>StandardOutPath</key><string>/dev/null</string>
       0o644,
     );
     const domain = launchdDomain();
-    if (domain == null) return false;
     run(["launchctl", "bootout", `${domain}/${LAUNCHD_HUB_LABEL}`]);
     return run(["launchctl", "bootstrap", domain, plist]) || hubServiceHealthy();
   }
@@ -463,9 +456,8 @@ function uninstallHubService(live: boolean): UnitOutcome {
     return "removed";
   }
   if (process.platform === "darwin") {
-    const domain = launchdDomain();
     const loaded = launchdJobLoaded(LAUNCHD_HUB_LABEL);
-    const deactivated = loaded === "loaded" && domain != null ? run(["launchctl", "bootout", `${domain}/${LAUNCHD_HUB_LABEL}`]) : loaded === "not-loaded";
+    const deactivated = loaded === "loaded" ? run(["launchctl", "bootout", `${launchdDomain()}/${LAUNCHD_HUB_LABEL}`]) : loaded === "not-loaded";
     removeHubUnits();
     return deactivated ? "removed" : "still-loaded";
   }
@@ -562,7 +554,7 @@ export function removePathFromRc(rc: string): boolean {
 export type UninstallOutcome = { timer: UnitOutcome; hub: UnitOutcome; pathLineRemoved: boolean };
 
 export function loginHome(): string {
-  const cmd = process.platform === "darwin" ? ["id", "-P"] : ["getent", "passwd", String(process.getuid?.() ?? "")];
+  const cmd = process.platform === "darwin" ? ["id", "-P"] : ["getent", "passwd", String(userInfo().uid)];
   const proc = Bun.spawnSync(cmd, { stdout: "pipe", stderr: "ignore", timeout: 10_000 });
   const home = proc.stdout.toString().trim().split(":").at(-2);
   if (proc.exitCode !== 0 || home == null || home === "") throw new Error(`cannot read the login home: ${cmd.join(" ")} failed`);
@@ -576,11 +568,11 @@ export function onLoginHome(): boolean {
 export function uninstallTargets(live: boolean): string[] {
   const timer =
     process.platform === "darwin"
-      ? `${launchdPlist(LAUNCHD_LABEL)}${live ? ` (and launchctl bootout gui/${process.getuid?.() ?? "?"}/${LAUNCHD_LABEL})` : ""}`
+      ? `${launchdPlist(LAUNCHD_LABEL)}${live ? ` (and launchctl bootout ${launchdDomain()}/${LAUNCHD_LABEL})` : ""}`
       : `${join(paths.systemdUserDir, "tokenmaxxing-check.timer")} and .service${live ? " (and systemctl --user disable --now tokenmaxxing-check.timer)" : ""}`;
   const hub =
     process.platform === "darwin"
-      ? `${launchdPlist(LAUNCHD_HUB_LABEL)}${live ? ` (and launchctl bootout gui/${process.getuid?.() ?? "?"}/${LAUNCHD_HUB_LABEL})` : ""}`
+      ? `${launchdPlist(LAUNCHD_HUB_LABEL)}${live ? ` (and launchctl bootout ${launchdDomain()}/${LAUNCHD_HUB_LABEL})` : ""}`
       : `${join(paths.systemdUserDir, HUB_UNIT)}${live ? ` (and systemctl --user disable --now ${HUB_UNIT})` : ""}`;
   const rc = shellRcPath();
   return [
