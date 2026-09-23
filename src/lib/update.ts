@@ -1,4 +1,4 @@
-import { existsSync, lstatSync, readFileSync } from "node:fs";
+import { existsSync, lstatSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { z } from "zod";
 import { writeFileAtomic } from "./atomic.ts";
@@ -8,6 +8,7 @@ import { isNixPackaged } from "./install.ts";
 import { withLock } from "./lock.ts";
 import { errorMessage, log } from "./log.ts";
 import { env, HOME, optionalEnv, paths } from "./paths.ts";
+import { readJsonFile } from "./state.ts";
 
 const UPDATE_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const INSTALL_DEADLINE_MS = 60_000;
@@ -67,18 +68,12 @@ function detectGlobalRoot(): string | null {
 }
 
 function installedVersion(root: string): string {
-  return VersionSchema.parse(JSON.parse(readFileSync(join(packageDir(root), "package.json"), "utf8"))).version;
+  return readJsonFile(join(packageDir(root), "package.json"), VersionSchema).version;
 }
 
 function isDue(now: number): boolean {
   if (!existsSync(updateJson)) return true;
-  let json: unknown;
-  try {
-    json = JSON.parse(readFileSync(updateJson, "utf8"));
-  } catch {
-    throw new Error(`${updateJson} is corrupt (unparsable JSON) - repair or remove the file`);
-  }
-  return now - AttemptSchema.parse(json).attemptedAt >= UPDATE_INTERVAL_MS;
+  return now - readJsonFile(updateJson, AttemptSchema).attemptedAt >= UPDATE_INTERVAL_MS;
 }
 
 async function updateToLatest(root: string): Promise<void> {

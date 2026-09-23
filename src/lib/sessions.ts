@@ -1,10 +1,11 @@
-import { existsSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, type Dirent } from "node:fs";
+import { existsSync, readdirSync, realpathSync, rmSync, statSync, type Dirent } from "node:fs";
 import { basename, join, sep } from "node:path";
 import { z } from "zod";
 import { errorMessage, log } from "./log.ts";
 import { codexPaths, grokPaths, opencodeGoPaths, paths } from "./paths.ts";
 import { writeFileAtomic } from "./atomic.ts";
 import { presencePid } from "./presence.ts";
+import { readJsonFile } from "./state.ts";
 import { spawnedThroughShellsBy } from "./proc.ts";
 import type { RespawnMarkerSchema } from "./types.ts";
 
@@ -25,7 +26,7 @@ export function saveSessionFlags(sid: string, flags: string[], cwd: string): voi
 function loadSession(sid: string): z.infer<typeof SessionSchema> | null {
   const f = sessionFile(sid);
   if (!existsSync(f)) return null;
-  return SessionSchema.parse(JSON.parse(readFileSync(f, "utf8")));
+  return readJsonFile(f, SessionSchema);
 }
 
 export function loadSessionFlags(sid: string): string[] | null {

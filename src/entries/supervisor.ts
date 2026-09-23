@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, rmSync, readdirSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync, readdirSync, statSync } from "node:fs";
 import { basename, join } from "node:path";
 import type { FileSink, Subprocess } from "bun";
 import { maxBy } from "es-toolkit";
@@ -16,7 +16,7 @@ import { teeObservation } from "../lib/sample.ts";
 import { exitStatus, loopGuardTripped, raceMarkerOrExit, recordPresenceOrStop, runPassthrough } from "../lib/supervise.ts";
 import { saveTermios } from "../lib/tty.ts";
 import { liveSessionId, loadSessionFlags, pruneStaleSessions, saveSessionFlags, writeRespawnMarker } from "../lib/sessions.ts";
-import { loadAccounts, loadConfig, releaseWaitClaim } from "../lib/state.ts";
+import { loadAccounts, loadConfig, readJsonFile, releaseWaitClaim } from "../lib/state.ts";
 import { gatedFamilies, modelFromFlag } from "../lib/usage.ts";
 import { RespawnMarkerSchema, type Account, type Config, type ModelInfo } from "../lib/types.ts";
 import { errorMessage, log } from "../lib/log.ts";
@@ -183,7 +183,7 @@ type MarkerGate = {
 function consumableMarker(marker: string, gate: MarkerGate): z.infer<typeof RespawnMarkerSchema> | null {
   let m: z.infer<typeof RespawnMarkerSchema>;
   try {
-    m = RespawnMarkerSchema.parse(JSON.parse(readFileSync(marker, "utf8")));
+    m = readJsonFile(marker, RespawnMarkerSchema);
   } catch (e) {
     log("supervisor.marker_invalid", { err: errorMessage(e) });
     throw new Error(

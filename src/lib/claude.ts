@@ -12,7 +12,7 @@ import { pickBest, pickEarliestReset, thresholdBars, type PickCtx } from "./pick
 import { seatCounts } from "./presence.ts";
 import { StoreUnusableError, type Observation, type Provider, type SampleReport } from "./provider.ts";
 import { foldTee, sampleAccountUsage, teeObservation, usageBlockedUntil } from "./sample.ts";
-import { clearUsageSnapshot, loadAccounts, loadConfig, loadUsageSnapshot, pinBinOverride, saveAccounts, type Harvest } from "./state.ts";
+import { clearUsageSnapshot, loadAccounts, loadConfig, loadUsageSnapshot, pinBinOverride, readJsonFile, saveAccounts, type Harvest } from "./state.ts";
 import { saveTermios, restoreTermios } from "./tty.ts";
 import { fetchUsageDirect, gatedFamilies, mergeWindows, modelFromFlag, scrubCredentialEnv, windowsOf } from "./usage.ts";
 import { CredentialBlobSchema, JsonTextSchema, OAuthAccountSchema, type Account, type Config, type ModelInfo } from "./types.ts";
@@ -185,7 +185,7 @@ async function login(): Promise<Harvest | null> {
     let blob, oauthAccount;
     try {
       blob = CredentialBlobSchema.parse(JSON.parse(blobRaw));
-      oauthAccount = OAuthAccountSchema.parse(JSON.parse(readFileSync(cjPath, "utf8")).oauthAccount);
+      oauthAccount = readJsonFile(cjPath, z.object({ oauthAccount: OAuthAccountSchema })).oauthAccount;
     } catch {
       console.error(c.red("could not parse the onboarded account's credential/identity."));
       return null;

@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
 import { codexPaths, codexPool } from "../lib/paths.ts";
@@ -10,7 +10,7 @@ import { clearPresence, livingPresences } from "../lib/presence.ts";
 import { isExhausted } from "../lib/picker.ts";
 import { exitStatus, loopGuardTripped, raceMarkerOrExit, recordPresenceOrStop, runPassthrough } from "../lib/supervise.ts";
 import { saveTermios } from "../lib/tty.ts";
-import { loadAccounts } from "../lib/state.ts";
+import { loadAccounts, readJsonFile } from "../lib/state.ts";
 import { CodexRespawnMarkerSchema, type Account } from "../lib/types.ts";
 import { errorMessage, log } from "../lib/log.ts";
 
@@ -26,7 +26,7 @@ const PASSTHROUGH_FLAGS = new Set(["--version", "-V", "--help", "-h"]);
 
 function readCodexMarker(marker: string): z.infer<typeof CodexRespawnMarkerSchema> {
   try {
-    return CodexRespawnMarkerSchema.parse(JSON.parse(readFileSync(marker, "utf8")));
+    return readJsonFile(marker, CodexRespawnMarkerSchema);
   } catch (e) {
     log("codexsupervisor.marker_invalid", { err: errorMessage(e) });
     throw new Error(

@@ -4,7 +4,8 @@ import { countBy } from "es-toolkit";
 import { z } from "zod";
 import { writeFileAtomic } from "./atomic.ts";
 import { pidExists, pidStartTime } from "./proc.ts";
-import { ErrnoSchema } from "./types.ts";
+import { readJsonFile } from "./state.ts";
+import { ErrnoSchema, JsonTextSchema } from "./types.ts";
 
 const PresenceSchema = z.object({
   accountId: z.string(),
@@ -19,14 +20,12 @@ export function writePresence(input: { dir: string; id: string; accountId: strin
 }
 
 export function presencePid(input: { dir: string; id: string }): number | null {
-  let raw: string;
   try {
-    raw = readFileSync(join(input.dir, input.id), "utf8");
+    return readJsonFile(join(input.dir, input.id), PresenceSchema).pid;
   } catch (e) {
     if (ErrnoSchema.safeParse(e).data?.code === "ENOENT") return null;
     throw e;
   }
-  return PresenceSchema.parse(JSON.parse(raw)).pid;
 }
 
 export function clearPresence(input: { dir: string; id: string }): void {
@@ -47,13 +46,7 @@ export function livingPresences(dir: string): LivingPresence[] {
       if (ErrnoSchema.safeParse(e).data?.code === "ENOENT") continue;
       throw e;
     }
-    const parsed = PresenceSchema.safeParse((() => {
-      try {
-        return JSON.parse(raw);
-      } catch {
-        return null;
-      }
-    })());
+    const parsed = PresenceSchema.safeParse(JsonTextSchema.safeParse(raw).data);
     if (!parsed.success) {
       throw new Error(`${file} is not a readable presence record - it may belong to a RUNNING session, refusing to treat it as absent; remove the file (or respawn that session) to proceed`);
     }

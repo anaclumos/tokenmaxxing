@@ -7,6 +7,7 @@ import {
   AccountsIndexSchema,
   ConfigSchema,
   ErrnoSchema,
+  JsonTextSchema,
   UsageStateSchema,
   WaitQueueSchema,
   type Account,
@@ -17,21 +18,19 @@ import {
   type Window,
 } from "./types.ts";
 
-export function loadConfig(): Config {
-  let raw: unknown = {};
-  if (existsSync(paths.configJson)) {
-    try {
-      raw = JSON.parse(readFileSync(paths.configJson, "utf8"));
-    } catch {
-      throw new Error(`${paths.configJson} is corrupt (unparsable JSON) - fix or remove it`);
-    }
-  }
-  const parsed = ConfigSchema.safeParse(raw);
+export function readJsonFile<T extends z.ZodType>(path: string, schema: T): z.output<T> {
+  const json = JsonTextSchema.safeParse(readFileSync(path, "utf8"));
+  if (!json.success) throw new Error(`${path} is corrupt (unparsable JSON) - repair or remove the file`);
+  const parsed = schema.safeParse(json.data);
   if (!parsed.success) {
     const fields = parsed.error.issues.map((issue) => `${issue.path.join(".")}: ${issue.message}`).join(", ");
-    throw new Error(`${paths.configJson} is invalid (${fields}) - fix or remove the offending values`);
+    throw new Error(`${path} does not match its schema (${fields}) - repair or remove the file`);
   }
-  const cfg = parsed.data;
+  return parsed.data;
+}
+
+export function loadConfig(): Config {
+  const cfg = existsSync(paths.configJson) ? readJsonFile(paths.configJson, ConfigSchema) : ConfigSchema.parse({});
   cfg.claudeBin = optionalEnv("TOKENMAXXING_CLAUDE_BIN") ?? cfg.claudeBin;
   cfg.codexBin = optionalEnv("TOKENMAXXING_CODEX_BIN") ?? cfg.codexBin;
   cfg.grokBin = optionalEnv("TOKENMAXXING_GROK_BIN") ?? cfg.grokBin;
@@ -42,10 +41,7 @@ export function loadConfig(): Config {
 export type BinKey = "claudeBin" | "codexBin" | "grokBin" | "opencodeBin";
 
 export function pinBinOverride(input: { key: BinKey; bin: string }): void {
-  let raw: Record<string, unknown> = {};
-  if (existsSync(paths.configJson)) {
-    raw = z.record(z.string(), z.unknown()).parse(JSON.parse(readFileSync(paths.configJson, "utf8")));
-  }
+  const raw: Record<string, unknown> = existsSync(paths.configJson) ? readJsonFile(paths.configJson, z.record(z.string(), z.unknown())) : {};
   raw[input.key] = input.bin;
   writeFileAtomic(paths.configJson, JSON.stringify(raw, null, 2) + "\n");
 }
@@ -54,17 +50,7 @@ const emptyIndex = (): AccountsIndex => ({ version: 2, accounts: [] });
 
 export function loadAccounts(pool: PoolPaths): AccountsIndex {
   if (!existsSync(pool.accountsJson)) return emptyIndex();
-  let json: unknown;
-  try {
-    json = JSON.parse(readFileSync(pool.accountsJson, "utf8"));
-  } catch {
-    throw new Error(`${pool.accountsJson} is corrupt (unparsable JSON) - refusing to treat a damaged pool as empty; repair or remove the file`);
-  }
-  const parsed = AccountsIndexSchema.safeParse(json);
-  if (!parsed.success) {
-    throw new Error(`${pool.accountsJson} does not match the accounts schema - refusing to treat a damaged pool as empty; repair or remove the file`);
-  }
-  return parsed.data;
+  return readJsonFile(pool.accountsJson, AccountsIndexSchema);
 }
 
 export function saveAccounts(pool: PoolPaths, idx: AccountsIndex): void {
@@ -73,17 +59,7 @@ export function saveAccounts(pool: PoolPaths, idx: AccountsIndex): void {
 
 function loadWaitQueue(): WaitClaim[] {
   if (!existsSync(claudePool.waitQueueJson)) return [];
-  let json: unknown;
-  try {
-    json = JSON.parse(readFileSync(claudePool.waitQueueJson, "utf8"));
-  } catch {
-    throw new Error(`${claudePool.waitQueueJson} is corrupt (unparsable JSON) - refusing to treat a damaged wait queue as empty; repair or remove the file`);
-  }
-  const parsed = WaitQueueSchema.safeParse(json);
-  if (!parsed.success) {
-    throw new Error(`${claudePool.waitQueueJson} does not match the wait-queue schema - refusing to treat a damaged wait queue as empty; repair or remove the file`);
-  }
-  return parsed.data.claims;
+  return readJsonFile(claudePool.waitQueueJson, WaitQueueSchema).claims;
 }
 
 function saveWaitQueue(claims: WaitClaim[]): void {
