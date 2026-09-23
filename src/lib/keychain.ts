@@ -16,7 +16,7 @@ export async function readItem(t: KeychainTarget): Promise<string | null> {
     stdout: "pipe",
     stderr: "pipe",
   });
-  const [out, err] = await Promise.all([new Response(p.stdout).text(), new Response(p.stderr).text()]);
+  const [out, err] = await Promise.all([p.stdout.text(), p.stderr.text()]);
   await p.exited;
   if (p.exitCode === 44) return null;
   if (p.exitCode !== 0) {
@@ -38,7 +38,7 @@ async function writeViaInteractive(encodedLine: Uint8Array): Promise<void> {
     stdout: "ignore",
     stderr: "pipe",
   });
-  const err = await new Response(p.stderr).text();
+  const err = await p.stderr.text();
   await p.exited;
   if (p.exitCode !== 0) throw new Error(`keychain write (interactive) failed (exit ${p.exitCode}): ${err.trim()}`);
 }
@@ -48,7 +48,7 @@ async function writeViaArgv(t: KeychainTarget, secret: string): Promise<void> {
     stdout: "ignore",
     stderr: "pipe",
   });
-  const err = await new Response(p.stderr).text();
+  const err = await p.stderr.text();
   await p.exited;
   if (p.exitCode !== 0) throw new Error(`keychain write (argv) failed (exit ${p.exitCode}): ${err.trim()}`);
 }
