@@ -36,7 +36,7 @@ export function wrapperEntryRateTripped(now: number): boolean {
   return entries.length > WRAP_RATE_MAX;
 }
 
-function realpathOrNull(p: string): string | null {
+export function realpathOrNull(p: string): string | null {
   try {
     return realpathSync(p);
   } catch {
