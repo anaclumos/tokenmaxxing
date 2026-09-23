@@ -1,9 +1,8 @@
 import { existsSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { writeFileAtomic } from "./atomic.ts";
-import { MAX_WRAP_DEPTH, WRAP_DEPTH_ENV } from "./claudebin.ts";
+import { CODEX_BIN, MAX_WRAP_DEPTH, WRAP_DEPTH_ENV, resolveRealBin, verifyRealBin } from "./claudebin.ts";
 import { codexIdentityOf, codexStoreUsable, deleteCodexStoreAuth, isCodexAccessExpiring, readCodexAuthAt, readCodexStoreAuth, writeCodexStoreAuth } from "./codexauth.ts";
-import { resolveRealCodex, verifyRealCodex } from "./codexbin.ts";
 import { CodexInvalidGrantError, CodexRefreshFailedError, refreshCodexAuth } from "./codexoauth.ts";
 import { seatCounts } from "./presence.ts";
 import { CodexUsageReadError, codexLimitLabel, fetchCodexUsage } from "./codexusage.ts";
@@ -113,7 +112,7 @@ async function prepareMove(target: Account): Promise<void> {
 }
 
 async function login(): Promise<Harvest | null> {
-  const real = resolveRealCodex();
+  const real = resolveRealBin(CODEX_BIN);
   const onboardDir = codexPaths.onboardDir;
   rmSync(onboardDir, { recursive: true, force: true });
   writeFileAtomic(join(onboardDir, "config.toml"), 'cli_auth_credentials_store = "file"\n');
@@ -179,8 +178,8 @@ function storePinnedAwayFromFile(): boolean {
 }
 
 function preflight(): void {
-  const real = resolveRealCodex();
-  const fail = verifyRealCodex({ bin: real });
+  const real = resolveRealBin(CODEX_BIN);
+  const fail = verifyRealBin({ ...CODEX_BIN, bin: real });
   if (fail !== null) throw new Error(`codex binary failed verification: ${real}: ${fail}`);
   pinBinOverride({ key: "codexBin", bin: real });
   if (storePinnedAwayFromFile()) {
