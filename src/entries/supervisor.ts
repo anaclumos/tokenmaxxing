@@ -509,11 +509,13 @@ export async function runSupervisor(argv: string[]): Promise<number> {
       noticeSid = m.sessionId;
       const accounts = loadAccounts(claudePool).accounts;
       const label = accounts.find((a) => a.id === m.accountId)?.label ?? m.accountId.slice(0, 8);
-      const walled = accounts.some((a) => a.id === seat?.id && a.enforcedUntil != null && a.enforcedUntil > Date.now());
+      const walledUntil = accounts.find((a) => a.id === seat?.id)?.enforcedUntil ?? 0;
       const transcript = transcriptPath(m.sessionId);
       const resumable = existsSync(transcript);
       let compacted = false;
-      if (m.compact && seat && resumable && !walled) {
+      if (m.compact && seat && resumable && walledUntil > Date.now()) {
+        log("supervisor.compact_skipped", { sid: m.sessionId.slice(0, 8), seat: seat.id.slice(0, 8), until: walledUntil });
+      } else if (m.compact && seat && resumable) {
         say(`\n\x1b[36m↻ tokenmaxxing: compacting the conversation on ${seat.label} before the move...\x1b[0m\n`, `tokenmaxxing: compacting the conversation on ${seat.label} before the move.`);
         const compactEnv: Record<string, string | undefined> = { ...childEnv, TOKENMAXXING_PROBE: "1", CLAUDE_SECURESTORAGE_CONFIG_DIR: storeDirFor(seat.id) };
         delete compactEnv.TOKENMAXXING_SUPERVISED;
