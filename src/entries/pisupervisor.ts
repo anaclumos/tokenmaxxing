@@ -1,7 +1,7 @@
 import { closeSync, existsSync, openSync, readdirSync, readSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 import type { Subprocess } from "bun";
-import { sortBy } from "es-toolkit";
+import { sortBy, uniq } from "es-toolkit";
 import { z } from "zod";
 import { PI_BIN, UNMANAGED_ENV, WRAP_DEPTH_ENV, resolveRealBin, wrapDepth } from "../lib/claudebin.ts";
 import { observeCodex } from "../lib/codex.ts";
@@ -24,8 +24,6 @@ const SUBCOMMANDS = new Set(["install", "remove", "uninstall", "update", "list",
 
 const UNMANAGED_FLAGS = new Set(["-h", "--help", "-v", "--version", "-p", "--print", "-r", "--resume", "--no-session", "--api-key", "--export", "--list-models"]);
 
-const SESSION_VALUE_FLAGS = new Set(["--session", "--session-id", "--fork"]);
-
 const VALUE_FLAGS = new Set([
   "--provider", "--model", "--system-prompt", "--append-system-prompt", "-n", "--name", "--session-dir",
   "--models", "-t", "--tools", "-xt", "--exclude-tools", "--thinking", "-e", "--extension", "--skill",
@@ -44,7 +42,7 @@ type PiArgs = {
   sessionDir: string | null;
   sessionId: string | null;
   session: string | null;
-  fork: string | null;
+  fork: boolean;
   continueLatest: boolean;
   rest: string[];
   flags: string[];
@@ -52,7 +50,7 @@ type PiArgs = {
 
 export function analyzePiArgs(argv: string[]): PiArgs | null {
   if (argv[0] !== undefined && SUBCOMMANDS.has(argv[0])) return null;
-  const out: PiArgs = { provider: null, model: null, sessionDir: null, sessionId: null, session: null, fork: null, continueLatest: false, rest: [], flags: [] };
+  const out: PiArgs = { provider: null, model: null, sessionDir: null, sessionId: null, session: null, fork: false, continueLatest: false, rest: [], flags: [] };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]!;
     if (a === "--") {
@@ -64,14 +62,19 @@ export function analyzePiArgs(argv: string[]): PiArgs | null {
       out.continueLatest = true;
       continue;
     }
+    if (a === "--session-id" || a === "--session") {
+      const value = argv[++i];
+      if (value === undefined) return null;
+      if (a === "--session-id") out.sessionId = value;
+      else out.session = value;
+      continue;
+    }
     out.rest.push(a);
-    if (SESSION_VALUE_FLAGS.has(a)) {
+    if (a === "--fork") {
       const value = argv[++i];
       if (value === undefined) return null;
       out.rest.push(value);
-      if (a === "--session-id") out.sessionId = value;
-      else if (a === "--session") out.session = value;
-      else out.fork = value;
+      out.fork = true;
       continue;
     }
     if (VALUE_FLAGS.has(a)) {
@@ -101,21 +104,26 @@ export function analyzePiArgs(argv: string[]): PiArgs | null {
     }
     if (a.startsWith("-")) return null;
   }
-  const selectors = [out.sessionId, out.session, out.fork].filter((s) => s != null).length + (out.continueLatest ? 1 : 0);
+  const selectors = [out.session != null, out.continueLatest, out.sessionId != null || out.fork].filter(Boolean).length;
   return selectors > 1 ? null : out;
 }
 
 const PiSettingsSchema = z.looseObject({ defaultProvider: z.string().optional(), sessionDir: z.string().optional() });
 type PiSettings = z.infer<typeof PiSettingsSchema>;
+type PiSettingsScopes = { global: PiSettings; project: PiSettings };
 
-function piSettings(): PiSettings {
-  const file = join(piPaths.home, "settings.json");
+function readPiSettings(file: string): PiSettings {
   return existsSync(file) ? readJsonFile(file, PiSettingsSchema) : {};
 }
 
-function poolOf(args: PiArgs, settings: PiSettings): PiPool | null {
-  const modelProvider = args.model?.includes("/") ? args.model.slice(0, args.model.indexOf("/")) : null;
-  const provider = args.provider ?? modelProvider ?? settings.defaultProvider ?? null;
+function piSettings(): PiSettingsScopes {
+  return { global: readPiSettings(join(piPaths.home, "settings.json")), project: readPiSettings(join(process.cwd(), ".pi", "settings.json")) };
+}
+
+function poolOf(args: PiArgs, settings: PiSettingsScopes): PiPool | null {
+  const slash = args.model?.indexOf("/") ?? -1;
+  const modelProvider = args.model == null ? (settings.project.defaultProvider ?? settings.global.defaultProvider) : slash > 0 ? args.model.slice(0, slash) : undefined;
+  const provider = (args.provider ?? modelProvider)?.toLowerCase();
   return provider === "anthropic" ? "claude" : provider === "openai-codex" ? "codex" : null;
 }
 
@@ -128,12 +136,13 @@ function expandHome(p: string): string {
   return p === "~" ? HOME : p.startsWith("~/") ? join(HOME, p.slice(2)) : p;
 }
 
-function sessionDirOf(args: PiArgs, settings: PiSettings): string {
-  const custom = args.sessionDir ?? optionalEnv("PI_CODING_AGENT_SESSION_DIR") ?? settings.sessionDir;
-  if (custom != null) return resolve(expandHome(custom));
+function sessionDirs(args: PiArgs, settings: PiSettingsScopes): string[] {
+  const custom = [args.sessionDir, optionalEnv("PI_CODING_AGENT_SESSION_DIR"), settings.project.sessionDir, settings.global.sessionDir]
+    .filter((d): d is string => d != null && d !== "")
+    .map((d) => resolve(expandHome(d)));
   const cwd = process.cwd();
   const trimmed = cwd.startsWith("/") || cwd.startsWith("\\") ? cwd.slice(1) : cwd;
-  return join(piPaths.home, "sessions", `--${trimmed.replaceAll("/", "-").replaceAll("\\", "-").replaceAll(":", "-")}--`);
+  return uniq([...custom, join(piPaths.home, "sessions", `--${trimmed.replaceAll("/", "-").replaceAll("\\", "-").replaceAll(":", "-")}--`)]);
 }
 
 const SessionHeaderSchema = z.looseObject({ type: z.literal("session"), id: z.string(), cwd: z.string() });
@@ -163,7 +172,7 @@ function sessionFiles(dir: string): string[] {
   }
 }
 
-function latestPiSession(dir: string): string | null {
+function localSessions(dir: string): string[] {
   const cwd = resolve(process.cwd());
   const dated = sessionFiles(dir).flatMap((f) => {
     try {
@@ -172,15 +181,47 @@ function latestPiSession(dir: string): string | null {
       return [];
     }
   });
-  for (const { path } of sortBy(dated, [(x) => -x.mtime])) {
+  return sortBy(dated, [(x) => -x.mtime]).flatMap(({ path }) => {
     const header = sessionHeader(path);
-    if (header != null && resolve(header.cwd) === cwd) return header.id;
-  }
-  return null;
+    return header != null && resolve(header.cwd) === cwd ? [header.id] : [];
+  });
 }
 
-function sessionExists(dir: string, sid: string): boolean {
-  return sessionFiles(dir).some((f) => f.endsWith(`_${sid}.jsonl`));
+function sessionIdFor(args: PiArgs, dir: string): string | null {
+  if (args.sessionId != null) return args.sessionId;
+  if (args.continueLatest) return localSessions(dir)[0] ?? crypto.randomUUID();
+  if (args.session == null) return crypto.randomUUID();
+  const arg = args.session;
+  if (arg.includes("/") || arg.includes("\\") || arg.endsWith(".jsonl")) return null;
+  const ids = localSessions(dir);
+  if (ids.includes(arg)) return arg;
+  const matches = ids.filter((s) => s.startsWith(arg));
+  return matches.length === 1 ? matches[0]! : null;
+}
+
+function sessionExists(dirs: string[], sid: string): boolean {
+  return dirs.some((dir) => sessionFiles(dir).some((f) => f.includes(sid)));
+}
+
+type Launch = { args: PiArgs; pool: PiPool; dirs: string[]; sid: string };
+
+function managedLaunch(argv: string[]): Launch | null {
+  if (process.stdin.isTTY !== true || process.stdout.isTTY !== true || process.env.TOKENMAXXING_PROBE || process.env[UNMANAGED_ENV]) return null;
+  const args = analyzePiArgs(argv);
+  if (args == null) return null;
+  const settings = piSettings();
+  const pool = poolOf(args, settings);
+  if (pool == null) {
+    log("pisupervisor.unpooled", { provider: args.provider, model: args.model, defaultProvider: settings.project.defaultProvider ?? settings.global.defaultProvider });
+    return null;
+  }
+  const dirs = sessionDirs(args, settings);
+  const sid = sessionIdFor(args, dirs[0]!);
+  if (sid == null) {
+    log("pisupervisor.session_unresolved", { session: args.session });
+    return null;
+  }
+  return { args, pool, dirs, sid };
 }
 
 const RESUME_PROMPT =
@@ -203,10 +244,12 @@ async function watchSeat(input: { pool: PiPool; seatId: string; id: string; fami
     const mover = piMovers[input.pool];
     const account = loadAccounts(mover.pool).accounts.find((a) => a.id === input.seatId);
     if (!account) return { decided: false, move: null };
-    const observed = input.pool === "claude" ? teeObservation(account) : await observeCodex(account, cfg, now, { probe: true, refresh: false });
+    const observed = input.pool === "claude" ? teeObservation(account) : await observeCodex(account, cfg, now, { probe: true, refresh: true, holder: input.id });
+    const unmeasured = input.pool === "codex" && (observed == null || now - observed.at > cfg.policy.usagePollTtlMs);
+    if (unmeasured) log("pisupervisor.seat_unmeasured", { seat: account.id.slice(0, 8), usageAt: observed?.at });
     const current = observed ? { ...account, windows: observed.windows } : account;
     const until = usableAt(current, { now, thresholds: thresholdBars(cfg), currentId: account.id, families: input.families, seats: null });
-    if (until <= now || until <= input.overriddenUntil) return { decided: false, move: null };
+    if (until <= now || until <= input.overriddenUntil) return { decided: unmeasured, move: null };
     const decision = await evaluateAndMaybeSwap(mover, now, true, null, { seatId: account.id, ...(input.families ? { sessionFamilies: input.families } : {}), waiterId: input.id });
     log("pisupervisor.seat_exhausted", { pool: input.pool, seat: account.id.slice(0, 8), until, reason: decision.reason, account: decision.account?.id.slice(0, 8), waitUntil: decision.waitUntil });
     return { decided: true, move: decision.account && (decision.swapped || decision.waitUntil !== undefined) ? decision : null };
@@ -218,7 +261,13 @@ async function watchSeat(input: { pool: PiPool; seatId: string; id: string; fami
 
 export async function runPiSupervisor(argv: string[]): Promise<number> {
   if (loopGuardTripped("pi")) return 1;
-  const real = resolveRealBin(PI_BIN);
+  let real: string;
+  try {
+    real = resolveRealBin(PI_BIN);
+  } catch (e) {
+    log("pisupervisor.resolve_failed", { err: errorMessage(e) });
+    throw e;
+  }
   const childEnv = { ...process.env, [WRAP_DEPTH_ENV]: String(wrapDepth() + 1) };
 
   let child: Subprocess | null = null;
@@ -236,13 +285,9 @@ export async function runPiSupervisor(argv: string[]): Promise<number> {
     });
   });
 
-  const args = process.env.TOKENMAXXING_PROBE || process.env[UNMANAGED_ENV] ? null : analyzePiArgs(argv);
-  const settings = args == null ? null : piSettings();
-  const pool = args == null || settings == null ? null : poolOf(args, settings);
-  if (args == null || settings == null || pool == null) {
-    if (args != null) log("pisupervisor.unpooled", { provider: args.provider ?? args.model ?? settings?.defaultProvider ?? null });
-    return runPassthrough({ real, argv, env: childEnv, onSpawn: (p) => { child = p; } });
-  }
+  const launch = managedLaunch(argv);
+  if (launch == null) return runPassthrough({ real, argv, env: childEnv, onSpawn: (p) => { child = p; } });
+  const { args, pool, dirs, sid } = launch;
 
   const id = `pi-${crypto.randomUUID()}`;
   const mover = piMovers[pool];
@@ -262,12 +307,9 @@ export async function runPiSupervisor(argv: string[]): Promise<number> {
     await releaseClaim();
   };
 
-  const dir = sessionDirOf(args, settings);
   const model = sessionModel(args);
   const families = pool === "claude" ? gatedFamilies(model, loadConfig().policy.switchModels) : null;
-  const sid = args.session != null ? null : (args.sessionId ?? (args.continueLatest ? latestPiSession(dir) : null) ?? crypto.randomUUID());
-  const selector = sid == null ? ["--session", args.session!] : ["--session-id", sid];
-  const firstArgs = args.sessionId != null || args.session != null ? args.rest : [...selector, ...args.rest];
+  const firstArgs = ["--session-id", sid, ...args.rest];
   let launchArgs = firstArgs;
 
   const savedTermios = saveTermios();
@@ -344,7 +386,7 @@ export async function runPiSupervisor(argv: string[]): Promise<number> {
         } else say(`\n\x1b[36m↻ tokenmaxxing: moving pi to ${target.label} - resuming...\x1b[0m\n`);
         await releaseClaim();
         wanted = target.id;
-        launchArgs = sid == null || sessionExists(dir, sid) ? [...selector, ...args.flags, "--", RESUME_PROMPT] : firstArgs;
+        launchArgs = sessionExists(dirs, sid) ? ["--session-id", sid, ...args.flags, "--", RESUME_PROMPT] : firstArgs;
         continue;
       }
       clearPresence({ dir: presenceDir, id });

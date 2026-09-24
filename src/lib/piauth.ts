@@ -67,7 +67,7 @@ export function linkSharedPiHome(dir: string): void {
     }
   }
   for (const name of readdirSync(piPaths.home)) {
-    if (name.startsWith("auth.json")) continue;
+    if (name.startsWith("auth.json") || name.endsWith(".lock")) continue;
     const link = join(dir, name);
     if (existsSync(link)) continue;
     try {
