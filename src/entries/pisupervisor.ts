@@ -1,5 +1,5 @@
-import { closeSync, existsSync, openSync, readdirSync, readSync, statSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { closeSync, openSync, readdirSync, readFileSync, readSync, realpathSync, statSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
 import type { Subprocess } from "bun";
 import { sortBy, uniq } from "es-toolkit";
 import { z } from "zod";
@@ -16,9 +16,9 @@ import { clearPresence, livingPresences } from "../lib/presence.ts";
 import { teeObservation } from "../lib/sample.ts";
 import { countdownWait, exitStatus, loopGuardTripped, raceMarkerOrExit, recordPresenceOrStop, runPassthrough, SEAT_POLL_MS, SEAT_RETRY_MS } from "../lib/supervise.ts";
 import { saveTermios } from "../lib/tty.ts";
-import { loadAccounts, loadConfig, readJsonFile, releaseWaitClaim } from "../lib/state.ts";
+import { loadAccounts, loadConfig, releaseWaitClaim } from "../lib/state.ts";
 import { gatedFamilies, modelFromFlag } from "../lib/usage.ts";
-import { JsonTextSchema, type Account, type ModelInfo } from "../lib/types.ts";
+import { ErrnoSchema, JsonTextSchema, type Account, type ModelInfo } from "../lib/types.ts";
 
 const SUBCOMMANDS = new Set(["install", "remove", "uninstall", "update", "list", "config", "auth"]);
 
@@ -44,13 +44,14 @@ type PiArgs = {
   session: string | null;
   fork: boolean;
   continueLatest: boolean;
+  approve: boolean | null;
   rest: string[];
   flags: string[];
 };
 
 export function analyzePiArgs(argv: string[]): PiArgs | null {
   if (argv[0] !== undefined && SUBCOMMANDS.has(argv[0])) return null;
-  const out: PiArgs = { provider: null, model: null, sessionDir: null, sessionId: null, session: null, fork: false, continueLatest: false, rest: [], flags: [] };
+  const out: PiArgs = { provider: null, model: null, sessionDir: null, sessionId: null, session: null, fork: false, continueLatest: false, approve: null, rest: [], flags: [] };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]!;
     if (a === "--") {
@@ -91,6 +92,8 @@ export function analyzePiArgs(argv: string[]): PiArgs | null {
     }
     if (BOOLEAN_FLAGS.has(a)) {
       out.flags.push(a);
+      if (a === "-a" || a === "--approve") out.approve = true;
+      else if (a === "-na" || a === "--no-approve") out.approve = false;
       continue;
     }
     if (a.startsWith("--")) {
@@ -108,21 +111,53 @@ export function analyzePiArgs(argv: string[]): PiArgs | null {
   return selectors > 1 ? null : out;
 }
 
-const PiSettingsSchema = z.looseObject({ defaultProvider: z.string().optional(), sessionDir: z.string().optional() });
+const PiSettingsSchema = z.looseObject({
+  defaultProvider: z.string().optional().catch(undefined),
+  sessionDir: z.string().optional().catch(undefined),
+});
 type PiSettings = z.infer<typeof PiSettingsSchema>;
-type PiSettingsScopes = { global: PiSettings; project: PiSettings };
+type PiSettingsScopes = { global: PiSettings; project: PiSettings; projectTrusted: boolean };
 
-function readPiSettings(file: string): PiSettings {
-  return existsSync(file) ? readJsonFile(file, PiSettingsSchema) : {};
+const PiTrustSchema = z.record(z.string(), z.unknown());
+
+function readPiJson<T extends z.ZodType>(file: string, schema: T): z.output<T> | null {
+  let text: string;
+  try {
+    text = readFileSync(file, "utf8");
+  } catch (e) {
+    if (ErrnoSchema.safeParse(e).data?.code === "ENOENT") return null;
+    throw e;
+  }
+  const parsed = schema.safeParse(JsonTextSchema.safeParse(text.startsWith("﻿") ? text.slice(1) : text).data);
+  if (!parsed.success) log("pisupervisor.pi_file_unreadable", { file });
+  return parsed.success ? parsed.data : null;
 }
 
-function piSettings(): PiSettingsScopes {
-  return { global: readPiSettings(join(piPaths.home, "settings.json")), project: readPiSettings(join(process.cwd(), ".pi", "settings.json")) };
+function projectTrusted(args: PiArgs): boolean {
+  if (args.approve != null) return args.approve;
+  const trust = readPiJson(join(piPaths.home, "trust.json"), PiTrustSchema) ?? {};
+  let dir = realpathSync(process.cwd());
+  while (true) {
+    const decision = trust[dir];
+    if (decision === true || decision === false) return decision;
+    const parent = dirname(dir);
+    if (parent === dir) return false;
+    dir = parent;
+  }
+}
+
+function piSettings(args: PiArgs): PiSettingsScopes {
+  return {
+    global: readPiJson(join(piPaths.home, "settings.json"), PiSettingsSchema) ?? {},
+    project: readPiJson(join(process.cwd(), ".pi", "settings.json"), PiSettingsSchema) ?? {},
+    projectTrusted: projectTrusted(args),
+  };
 }
 
 function poolOf(args: PiArgs, settings: PiSettingsScopes): PiPool | null {
   const slash = args.model?.indexOf("/") ?? -1;
-  const modelProvider = args.model == null ? (settings.project.defaultProvider ?? settings.global.defaultProvider) : slash > 0 ? args.model.slice(0, slash) : undefined;
+  const defaultProvider = (settings.projectTrusted ? settings.project.defaultProvider : undefined) ?? settings.global.defaultProvider;
+  const modelProvider = args.model == null ? defaultProvider : slash > 0 ? args.model.slice(0, slash) : undefined;
   const provider = (args.provider ?? modelProvider)?.toLowerCase();
   return provider === "anthropic" ? "claude" : provider === "openai-codex" ? "codex" : null;
 }
@@ -200,7 +235,7 @@ function sessionIdFor(args: PiArgs, dir: string): string | null {
 }
 
 function sessionExists(dirs: string[], sid: string): boolean {
-  return dirs.some((dir) => sessionFiles(dir).some((f) => f.includes(sid)));
+  return dirs.some((dir) => sessionFiles(dir).some((f) => f.endsWith(`_${sid}.jsonl`)));
 }
 
 type Launch = { args: PiArgs; pool: PiPool; dirs: string[]; sid: string };
@@ -209,10 +244,10 @@ function managedLaunch(argv: string[]): Launch | null {
   if (process.stdin.isTTY !== true || process.stdout.isTTY !== true || process.env.TOKENMAXXING_PROBE || process.env[UNMANAGED_ENV]) return null;
   const args = analyzePiArgs(argv);
   if (args == null) return null;
-  const settings = piSettings();
+  const settings = piSettings(args);
   const pool = poolOf(args, settings);
   if (pool == null) {
-    log("pisupervisor.unpooled", { provider: args.provider, model: args.model, defaultProvider: settings.project.defaultProvider ?? settings.global.defaultProvider });
+    log("pisupervisor.unpooled", { provider: args.provider, model: args.model, projectTrusted: settings.projectTrusted });
     return null;
   }
   const dirs = sessionDirs(args, settings);
