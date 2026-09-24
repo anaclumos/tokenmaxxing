@@ -4,7 +4,7 @@ import { claude, ensurePathAhead, pickSeat } from "./claude.ts";
 import { MAX_WRAP_DEPTH, PI_BIN, WRAP_DEPTH_ENV, resolveRealBin, verifyRealBin } from "./claudebin.ts";
 import { codex, pickCodexSeat } from "./codex.ts";
 import { chatgptAccountIdOf } from "./codexauth.ts";
-import { activationHint, CHECK_JOB, installPiSupervisor, isBinDirAhead, jobHealthy, piSupervisorLink } from "./install.ts";
+import { CHECK_JOB, installPiSupervisor, isBinDirAhead, jobHealthy, piSupervisorLink } from "./install.ts";
 import { errorMessage, log } from "./log.ts";
 import { fetchTokenIdentity } from "./oauth.ts";
 import { claudePool, piPaths, type PiPool } from "./paths.ts";
@@ -127,6 +127,6 @@ export function piInstall(): void {
   console.log(`${c.green("✓")} pi supervisor installed at ${piSupervisorLink()}`);
   if (!isBinDirAhead(PI_BIN)) ensurePathAhead();
   if (loadAccounts(claudePool).accounts.length > 0 && !jobHealthy(CHECK_JOB)) {
-    console.log(c.yellow(`⚠ the check timer is not active, so pi seats on Claude accounts get no fresh usage - run \`tokenmaxxing init\` (or: ${activationHint(CHECK_JOB)})`));
+    console.log(c.yellow("⚠ the check timer is not active, so pi seats on Claude accounts get no fresh usage - run `tokenmaxxing init`"));
   }
 }
