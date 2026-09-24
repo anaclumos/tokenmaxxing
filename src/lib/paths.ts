@@ -1,5 +1,5 @@
 import { homedir, userInfo } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { z } from "zod";
 
 const HOME = homedir();
@@ -86,6 +86,26 @@ export function codexSeatFromEnv(accountIds: string[], env: Record<string, strin
   const home = env.CODEX_HOME;
   if (home == null || home === "") return null;
   return accountIds.find((id) => codexStoreDirFor(id) === home) ?? null;
+}
+
+export type PiPool = "claude" | "codex";
+
+export function expandTilde(p: string): string {
+  return p === "~" ? HOME : p.startsWith("~/") ? join(HOME, p.slice(2)) : p;
+}
+
+export const piPaths = {
+  home: resolve(expandTilde(env("PI_CODING_AGENT_DIR", join(HOME, ".pi", "agent")))),
+  storesDir: join(TM_HOME, "pi-stores"),
+  onboardDir: join(TM_HOME, "pi-onboard"),
+} as const;
+
+export function piStoreDirFor(pool: PiPool, accountId: string): string {
+  return join(piPaths.storesDir, pool, shortId(accountId));
+}
+
+export function piAuthJsonFor(pool: PiPool, accountId: string): string {
+  return join(piStoreDirFor(pool, accountId), "auth.json");
 }
 
 const GROK_HOME_DEFAULT = join(HOME, ".grok");

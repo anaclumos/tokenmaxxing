@@ -78,6 +78,14 @@ function decodeJwtPayload(input: { jwt: string }): unknown {
   return JSON.parse(payload);
 }
 
+export function chatgptAccountIdOf(input: { jwt: string }): string | null {
+  try {
+    return IdClaimsSchema.parse(decodeJwtPayload(input))["https://api.openai.com/auth"]?.chatgpt_account_id ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export type CodexIdentity = { accountId: string; email: string | null; planType: string | null };
 
 export function codexIdentityOf(input: { auth: CodexAuthJson }): CodexIdentity {

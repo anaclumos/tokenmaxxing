@@ -5,7 +5,37 @@ import { paths } from "./paths.ts";
 import { writePresence } from "./presence.ts";
 import { restoreTermios } from "./tty.ts";
 
-export type WrappedProduct = "claude" | "codex";
+export type WrappedProduct = "claude" | "codex" | "pi";
+
+export const SEAT_POLL_MS = 10_000;
+export const SEAT_RETRY_MS = 60_000;
+
+export type Say = (terminal: string, text: string) => void;
+
+const clockFmt = new Intl.DateTimeFormat("en-US", { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZoneName: "short" });
+
+export async function countdownWait(acct: string, until: number, out: { stream: boolean; say: Say }): Promise<boolean> {
+  let aborted = false;
+  const onInt = () => { aborted = true; };
+  process.on("SIGINT", onInt);
+  const minutes = Math.max(1, Math.ceil((until - Date.now()) / 60000));
+  out.say(
+    `\n\x1b[36m⏳ tokenmaxxing: all accounts at their limit. Resuming on ${acct} when it resets (Ctrl-C to resume now).\x1b[0m\n`,
+    `tokenmaxxing: all accounts at their limit. Resuming at ${clockFmt.format(until)} (in ${minutes} min) on ${acct}.`,
+  );
+  while (!aborted && Date.now() < until) {
+    if (!out.stream) {
+      const left = until - Date.now();
+      const m = Math.floor(left / 60000);
+      const s = Math.floor((left % 60000) / 1000);
+      process.stderr.write(`\r\x1b[36m   resuming in ${m}m ${String(s).padStart(2, "0")}s \x1b[0m`);
+    }
+    await Bun.sleep(1000);
+  }
+  process.removeListener("SIGINT", onInt);
+  out.say(`\n\x1b[36m↻ resuming on ${acct}...\x1b[0m\n`, `tokenmaxxing: resuming on ${acct}.`);
+  return aborted;
+}
 
 type ChildHandle = {
   pid: number;
@@ -18,6 +48,7 @@ type ChildHandle = {
 const WRAPPED: Record<WrappedProduct, { setting: string; binary: string; events: string }> = {
   claude: { setting: "claudeBin", binary: "Claude", events: "supervisor" },
   codex: { setting: "codexBin", binary: "codex", events: "codexsupervisor" },
+  pi: { setting: "piBin", binary: "pi", events: "pisupervisor" },
 };
 
 export function exitStatus(child: { exitCode: number | null; signalCode: string | null }): number {

@@ -12,6 +12,7 @@ Config is JSON at `~/.config/tokenmaxxing/config.json`. Every field is optional;
   "codexBin": "/path/to/real/codex",
   "grokBin": "/path/to/real/grok",
   "opencodeBin": "/path/to/real/opencode",
+  "piBin": "/path/to/real/pi",
   "policy": {
     "projectionMargin": 3,
     "switchModels": ["fable"],
@@ -25,7 +26,7 @@ Config is JSON at `~/.config/tokenmaxxing/config.json`. Every field is optional;
 
 - `thresholds.session`: the 5-hour session bar, one number (default 90). It is both the trigger and the candidate screen, for Claude and Codex alike. See [How switching decides](/switching). The former array form (the session ladder) is rejected: config loading fails with a zod message naming `thresholds.session`.
 - `thresholds.weekly`: the weekly bar (default 98), covering the 7-day aggregate and every per-model weekly cap.
-- `claudeBin` / `codexBin` / `grokBin` / `opencodeBin`: pins to the REAL binaries the supervisors and the status-only pools spawn (written by `init` for each pool; the recursion-guard diagnostic tells you to fix `claudeBin` here when it stops pointing at the real Claude binary). `TOKENMAXXING_CLAUDE_BIN`, `TOKENMAXXING_CODEX_BIN`, `TOKENMAXXING_GROK_BIN`, and `TOKENMAXXING_OPENCODE_BIN` override the file values for one process, except that `init` pins the binary it resolved into `config.json`, so an override set for `init` persists.
+- `claudeBin` / `codexBin` / `grokBin` / `opencodeBin` / `piBin`: pins to the REAL binaries the supervisors and the status-only pools spawn (written by `init` for each pool and by `init --pi`; the recursion-guard diagnostic tells you to fix `claudeBin` here when it stops pointing at the real Claude binary). `TOKENMAXXING_CLAUDE_BIN`, `TOKENMAXXING_CODEX_BIN`, `TOKENMAXXING_GROK_BIN`, `TOKENMAXXING_OPENCODE_BIN`, and `TOKENMAXXING_PI_BIN` override the file values for one process, except that `init` pins the binary it resolved into `config.json`, so an override set for `init` persists.
 - `policy.projectionMargin`: subtracted from the session threshold only (default 3), so one large turn is less likely to jump the 5-hour window from under the bar to over the hard limit; it must stay below the session threshold. The weekly bar takes no margin because a single turn is too small a fraction of the week to overshoot it, and margin there would only strand use-it-or-lose-it headroom.
 - `policy.switchModels`: model families whose per-model weekly cap gates a switch (entries are lowercased on load).
 - `policy.usagePollTtlMs`: how long a sample attempt stays fresh, for a seat's sample inside a hook decision (a tee older than this, or a gated active model, triggers it) and for the accounts the check tick samples. A seat whose sample keeps failing backs off exponentially from this interval, doubling per consecutive failure up to 30 minutes, and resets on the first success. A Codex seat reads its usage GET when its cached figure is older than this.

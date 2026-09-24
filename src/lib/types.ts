@@ -104,6 +104,7 @@ export const ConfigSchema = z
     codexBin: z.string().default(""),
     grokBin: z.string().default(""),
     opencodeBin: z.string().default(""),
+    piBin: z.string().default(""),
     policy: z
       .object({
         projectionMargin: z.number().min(0).max(100).default(3),

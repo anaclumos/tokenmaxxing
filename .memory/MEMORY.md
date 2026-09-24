@@ -4,6 +4,7 @@ This folder is tracked in a public repository and is the one memory store for ev
 
 - [Claude Code internals](claude-code-internals.md) - verified store, refresh, identity, hook, and statusline mechanics the pool depends on; re-verify on each binary bump
 - [Codex internals](codex-internals.md) - verified auth, usage, hook, and SDK-consumer mechanics of the Codex pool; re-verify on each binary bump
+- [pi internals](pi-internals.md) - verified agent dir, auth.json lock, login, session id, and model-restore mechanics the pi supervisor depends on; re-verify on each pi bump
 - [Shipping](shipping.md) - the ship loop's procedure beyond the AGENTS.md rules: auth check, REST polling, review handling, commit identity, deploy verification
 - [Owner rulings](owner-rulings.md) - standing decisions on scope, forks, root causes, consults, subagent tiers, and chart labels
 - [T3 Code forensics](t3-code-forensics.md) - where a T3 Code thread keeps its Claude session logs and state, and how to correlate them with the tokenmaxxing log

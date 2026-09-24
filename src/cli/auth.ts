@@ -1,5 +1,9 @@
 import { partition } from "es-toolkit";
 import { withLock } from "../lib/lock.ts";
+import { log } from "../lib/log.ts";
+import type { PiPool } from "../lib/paths.ts";
+import { piLogin, piLoginStep } from "../lib/pi.ts";
+import { piStoreUsable, writePiStore } from "../lib/piauth.ts";
 import type { Provider } from "../lib/provider.ts";
 import { loadAccounts, saveAccounts, upsertAccount } from "../lib/state.ts";
 import { findAccount } from "./rename.ts";
@@ -7,7 +11,7 @@ import { usageNote } from "./add.ts";
 import { c, count } from "./render.ts";
 import type { Account, AccountsIndex } from "../lib/types.ts";
 
-const AUTH_USAGE = "usage: tokenmaxxing auth [--codex | --grok | --opencode-go] [<email|label|id> | --all]";
+const AUTH_USAGE = "usage: tokenmaxxing auth [--codex | --grok | --opencode-go] [<email|label|id> | --all]\n       tokenmaxxing auth --pi [--codex] [<email|label|id> | --all]";
 
 export type AuthPlan = { kind: "usage" } | { kind: "error"; message: string } | { kind: "pick" } | { kind: "targets"; ids: string[] };
 
@@ -33,13 +37,11 @@ export function pickerOrder(accounts: Account[], needsAuth: Set<string>): Accoun
   return [...flagged, ...healthy];
 }
 
-function askWhichAccount(idx: AccountsIndex, needsAuth: Set<string>): Account | null {
-  const ordered = pickerOrder(idx.accounts, needsAuth);
-  console.log("which account do you want to reauthenticate?");
+function askWhichAccount(input: { idx: AccountsIndex; needsAuth: Set<string>; question: string; flags: (a: Account) => string[] }): Account | null {
+  const ordered = pickerOrder(input.idx.accounts, input.needsAuth);
+  console.log(input.question);
   for (const [i, a] of ordered.entries()) {
-    const flags: string[] = [];
-    if (a.needsReauth) flags.push(c.red("needs-reauth"));
-    else if (needsAuth.has(a.id)) flags.push(c.red("no-credential"));
+    const flags = input.flags(a);
     const labelNote = a.email != null && a.label !== a.email ? ` (${a.label})` : "";
     const tag = flags.length ? ` ${flags.join(" ")}` : "";
     console.log(`  ${i + 1}. ${c.bold(a.email ?? a.label)}${labelNote}${tag}`);
@@ -94,11 +96,48 @@ async function reauthOne(p: Provider, target: Account): Promise<boolean> {
   return true;
 }
 
-export async function cmdAuth(p: Provider, argv: string[]): Promise<number> {
+async function piLoginOne(p: Provider, pool: PiPool, target: Account): Promise<boolean> {
+  console.log(c.cyan(`Logging ${c.bold(target.label)} into pi - sign in as  ${c.bold(target.email ?? target.label)}.`));
+  console.log(c.dim(piLoginStep(pool)));
+  console.log();
+
+  const login = await piLogin(pool);
+  if (!login) return false;
+
+  if (login.id !== target.id) {
+    const pooled = loadAccounts(p.pool).accounts.some((a) => a.id === login.id);
+    const hint = pooled
+      ? `run \`tokenmaxxing auth --pi${p.flag}\` for that account separately`
+      : `a pi login attaches to an account already in the pool; pool that account first with \`tokenmaxxing add${p.flag}\``;
+    console.error(
+      c.red(
+        `that login is ${c.bold(login.email ?? login.id.slice(0, 8))}, but ${target.label} is ${c.bold(target.email ?? target.id.slice(0, 8))} - nothing changed. To log that account into pi, ${hint}.`,
+      ),
+    );
+    return false;
+  }
+
+  const written = await withLock(p.pool.lockFile, () => {
+    if (!loadAccounts(p.pool).accounts.some((a) => a.id === target.id)) {
+      console.error(c.red(`${target.label} was removed from the pool while the login was open - nothing written`));
+      return false;
+    }
+    writePiStore(pool, target.id, login.cred);
+    return true;
+  });
+  if (!written) return false;
+  log("pi.login", { pool, account: target.id.slice(0, 8) });
+
+  console.log(`${c.green("✓")} logged ${c.bold(target.email ?? target.label)} into pi`);
+  return true;
+}
+
+export async function cmdAuth(p: Provider, argv: string[], pi: PiPool | null): Promise<number> {
   const idx = loadAccounts(p.pool);
   const needsAuth = new Set<string>();
   for (const a of idx.accounts) {
-    if (a.needsReauth === true || !(await p.storeUsable(a))) needsAuth.add(a.id);
+    const usable = pi ? piStoreUsable(pi, a.id) : a.needsReauth !== true && (await p.storeUsable(a));
+    if (!usable) needsAuth.add(a.id);
   }
   const plan = planAuth({ p, accounts: idx.accounts, argv, needsAuth });
   if (plan.kind === "usage") {
@@ -112,7 +151,16 @@ export async function cmdAuth(p: Provider, argv: string[]): Promise<number> {
 
   const targets: Account[] = [];
   if (plan.kind === "pick") {
-    const picked = askWhichAccount(idx, needsAuth);
+    const picked = askWhichAccount(
+      pi
+        ? { idx, needsAuth, question: "which account do you want to log into pi?", flags: (a) => (needsAuth.has(a.id) ? [c.red("no-pi-login")] : []) }
+        : {
+            idx,
+            needsAuth,
+            question: "which account do you want to reauthenticate?",
+            flags: (a) => (a.needsReauth ? [c.red("needs-reauth")] : needsAuth.has(a.id) ? [c.red("no-credential")] : []),
+          },
+    );
     if (!picked) return 1;
     targets.push(picked);
   } else {
@@ -121,7 +169,7 @@ export async function cmdAuth(p: Provider, argv: string[]): Promise<number> {
       if (account) targets.push(account);
     }
     if (targets.length === 0) {
-      console.log(`${c.green("✓")} every account has a usable credential`);
+      console.log(`${c.green("✓")} ${pi ? "every account has a pi login" : "every account has a usable credential"}`);
       return 0;
     }
   }
@@ -130,12 +178,12 @@ export async function cmdAuth(p: Provider, argv: string[]): Promise<number> {
   for (const [i, target] of targets.entries()) {
     console.log();
     if (targets.length > 1) console.log(c.bold(`[${i + 1}/${targets.length}]`));
-    if (await reauthOne(p, target)) ok += 1;
+    if (await (pi ? piLoginOne(p, pi, target) : reauthOne(p, target))) ok += 1;
   }
 
   if (targets.length > 1) {
     console.log();
-    console.log(`reauthed ${count({ n: ok, noun: "account" })} of ${targets.length}`);
+    console.log(`${pi ? "logged into pi" : "reauthed"} ${count({ n: ok, noun: "account" })} of ${targets.length}`);
   }
   return ok === targets.length ? 0 : 1;
 }

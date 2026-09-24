@@ -4,7 +4,8 @@ import { writeFileAtomic } from "./atomic.ts";
 import { CODEX_BIN, MAX_WRAP_DEPTH, WRAP_DEPTH_ENV, resolveRealBin, verifyRealBin } from "./claudebin.ts";
 import { codexIdentityOf, codexStoreUsable, deleteCodexStoreAuth, isCodexAccessExpiring, readCodexAuthAt, readCodexStoreAuth, writeCodexStoreAuth } from "./codexauth.ts";
 import { CodexInvalidGrantError, CodexRefreshFailedError, refreshCodexAuth } from "./codexoauth.ts";
-import { seatCounts } from "./presence.ts";
+import { deletePiStore } from "./piauth.ts";
+import { livingPresences, seatCounts } from "./presence.ts";
 import { CodexUsageReadError, codexLimitLabel, fetchCodexUsage } from "./codexusage.ts";
 import { codexSupervisorLink, ensurePathInRc, installCodexSupervisor, managedShellRcSkipLines, shellRcPath } from "./install.ts";
 import { withLock } from "./lock.ts";
@@ -34,7 +35,7 @@ function applyUsage(account: Account, usage: CodexUsage, at: number): void {
 
 type CodexReadOutcome = { ok: true; usage: CodexUsage; at: number } | { ok: false; reason: string; deadGrant: boolean };
 
-async function readCodexUsage(account: Account, now: number, refresh: boolean): Promise<CodexReadOutcome> {
+async function readCodexUsage(account: Account, now: number, refresh: boolean, holder?: string): Promise<CodexReadOutcome> {
   let auth: CodexAuthJson | null;
   try {
     auth = readCodexStoreAuth(account.id);
@@ -47,7 +48,7 @@ async function readCodexUsage(account: Account, now: number, refresh: boolean): 
       if (!refresh) {
         return { ok: false, reason: "stored access token is expiring and this read never refreshes a store", deadGrant: false };
       }
-      if (seatCounts(codexPaths.presenceDir).has(account.id)) {
+      if (livingPresences(codexPaths.presenceDir).some((p) => p.accountId === account.id && p.id !== holder)) {
         return { ok: false, reason: "running in a live codex session (store refresh unsafe)", deadGrant: false };
       }
       auth = await refreshCodexAuth({ auth, now });
@@ -62,9 +63,9 @@ async function readCodexUsage(account: Account, now: number, refresh: boolean): 
   }
 }
 
-export async function observeCodex(account: Account, cfg: Config, now: number, opts: { probe: boolean; refresh: boolean }): Promise<Observation | null> {
+export async function observeCodex(account: Account, cfg: Config, now: number, opts: { probe: boolean; refresh: boolean; holder?: string }): Promise<Observation | null> {
   if (opts.probe && (account.lastUsageAt == null || now - account.lastUsageAt > cfg.policy.usagePollTtlMs)) {
-    const outcome = await readCodexUsage(account, now, opts.refresh);
+    const outcome = await readCodexUsage(account, now, opts.refresh, opts.holder);
     await withLock(codexPool.lockFile, () => {
       const idx = loadAccounts(codexPool);
       const a = idx.accounts.find((x) => x.id === account.id);
@@ -210,10 +211,10 @@ export function codexPickCtx(now: number, currentId: string | null): PickCtx {
   return { now, thresholds: thresholdBars(loadConfig()), currentId, families: null, seats: null };
 }
 
-export function pickCodexSeat(now: number): Account | null {
+export function pickCodexSeat(now: number, eligible: (a: Account) => boolean = (a) => codexStoreUsable(a.id)): Account | null {
   const ctx = codexPickCtx(now, null);
   const present = seatCounts(codexPaths.presenceDir);
-  const open = loadAccounts(codexPool).accounts.filter((a) => a.needsReauth !== true && !present.has(a.id) && codexStoreUsable(a.id));
+  const open = loadAccounts(codexPool).accounts.filter((a) => a.needsReauth !== true && !present.has(a.id) && eligible(a));
   return pickBest(open.filter((a) => !isExhausted(a, ctx)), ctx) ?? pickEarliestReset(open, ctx)?.account ?? null;
 }
 
@@ -232,7 +233,10 @@ export const codex: Provider = {
   mergeWindows: (next) => next,
   swap: prepareMove,
   classifySwapError: (e) => (e instanceof CodexInvalidGrantError ? "dead-grant" : e instanceof StoreUnusableError ? "skip" : "fatal"),
-  removeCredentials: async (a) => deleteCodexStoreAuth(a.id),
+  removeCredentials: async (a) => {
+    deleteCodexStoreAuth(a.id);
+    deletePiStore("codex", a.id);
+  },
   storeUsable: async (a) => codexStoreUsable(a.id),
   login,
   importLive,
