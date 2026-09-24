@@ -7,7 +7,7 @@ import { errorMessage } from "../lib/log.ts";
 import { claudePool, codexPool, paths } from "../lib/paths.ts";
 import { loadAccounts, loadConfig } from "../lib/state.ts";
 import { readStore } from "../lib/credstore.ts";
-import { codexIdentityOf, readCodexStoreAuth } from "../lib/codexauth.ts";
+import { chatgptAccountIdOf, codexIdentityOf, readCodexStoreAuth } from "../lib/codexauth.ts";
 import { isAccessTokenExpiring, isDeadCredential, fetchTokenIdentity, describeIdentity } from "../lib/oauth.ts";
 import { c } from "./render.ts";
 
@@ -121,7 +121,7 @@ export async function cmdDoctor(): Promise<number> {
           continue;
         }
         if (pool === "codex") {
-          check(cred.accountId === a.id, `pi login identity matches ${a.label} (codex)`, `run \`tokenmaxxing auth --pi --codex ${a.label}\``);
+          check(chatgptAccountIdOf({ jwt: cred.access }) === a.id, `pi login identity matches ${a.label} (codex)`, `run \`tokenmaxxing auth --pi --codex ${a.label}\``);
           continue;
         }
         if (cred.expires <= Date.now()) {

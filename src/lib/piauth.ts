@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readdirSync, rmSync, symlinkSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
 import { writeFileAtomic } from "./atomic.ts";
@@ -13,7 +13,6 @@ const PiOAuthSchema = z.looseObject({
   access: z.string().min(1),
   refresh: z.string().min(1),
   expires: z.number(),
-  accountId: z.string().optional(),
 });
 export type PiOAuth = z.infer<typeof PiOAuthSchema>;
 
@@ -54,9 +53,19 @@ export function deletePiStore(pool: PiPool, accountId: string): void {
   rmSync(piStoreDirFor(pool, accountId), { recursive: true, force: true });
 }
 
+const SHARED_DIRS = ["sessions", "bin"];
+const SHARED_FILES = ["settings.json", "models-store.json", "trust.json"];
+
 export function linkSharedPiHome(dir: string): void {
   mkdirSync(dir, { recursive: true });
-  mkdirSync(join(piPaths.home, "sessions"), { recursive: true });
+  for (const name of SHARED_DIRS) mkdirSync(join(piPaths.home, name), { recursive: true });
+  for (const name of SHARED_FILES) {
+    try {
+      writeFileSync(join(piPaths.home, name), "{}", { flag: "wx", mode: 0o600 });
+    } catch (e) {
+      if (ErrnoSchema.safeParse(e).data?.code !== "EEXIST") throw e;
+    }
+  }
   for (const name of readdirSync(piPaths.home)) {
     if (name.startsWith("auth.json")) continue;
     const link = join(dir, name);

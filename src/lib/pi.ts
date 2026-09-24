@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { claude, pickSeat } from "./claude.ts";
 import { MAX_WRAP_DEPTH, PI_BIN, WRAP_DEPTH_ENV, resolveRealBin, verifyRealBin } from "./claudebin.ts";
 import { codex, pickCodexSeat } from "./codex.ts";
+import { chatgptAccountIdOf } from "./codexauth.ts";
 import { ensurePathInRc, installPiSupervisor, managedShellRcSkipLines, piSupervisorLink, shellRcPath } from "./install.ts";
 import { errorMessage, log } from "./log.ts";
 import { fetchTokenIdentity } from "./oauth.ts";
@@ -32,11 +33,12 @@ function landed(path: string, pool: PiPool): PiOAuth | null {
 
 async function identityOf(pool: PiPool, cred: PiOAuth): Promise<{ id: string; email: string | null } | null> {
   if (pool === "codex") {
-    if (cred.accountId == null) {
-      console.error(c.red("the pi login carries no ChatGPT account id - nothing changed."));
+    const id = chatgptAccountIdOf({ jwt: cred.access });
+    if (id == null) {
+      console.error(c.red("the pi login's access token carries no ChatGPT account id - nothing changed."));
       return null;
     }
-    return { id: cred.accountId, email: null };
+    return { id, email: null };
   }
   try {
     const identity = await fetchTokenIdentity(cred.access);
@@ -82,9 +84,7 @@ export async function piLogin(pool: PiPool): Promise<PiLogin | null> {
       return null;
     }
     const identity = await identityOf(pool, cred);
-    if (!identity) return null;
-    log("pi.login", { pool, account: identity.id.slice(0, 8) });
-    return { ...identity, cred };
+    return identity ? { ...identity, cred } : null;
   } finally {
     if (p.exitCode === null) {
       p.kill();

@@ -1,5 +1,6 @@
 import { partition } from "es-toolkit";
 import { withLock } from "../lib/lock.ts";
+import { log } from "../lib/log.ts";
 import type { PiPool } from "../lib/paths.ts";
 import { piLogin, piLoginStep } from "../lib/pi.ts";
 import { piStoreUsable, writePiStore } from "../lib/piauth.ts";
@@ -104,9 +105,13 @@ async function piLoginOne(p: Provider, pool: PiPool, target: Account): Promise<b
   if (!login) return false;
 
   if (login.id !== target.id) {
+    const pooled = loadAccounts(p.pool).accounts.some((a) => a.id === login.id);
+    const hint = pooled
+      ? `run \`tokenmaxxing auth --pi${p.flag}\` for that account separately`
+      : `a pi login attaches to an account already in the pool; pool that account first with \`tokenmaxxing add${p.flag}\``;
     console.error(
       c.red(
-        `that login is ${c.bold(login.email ?? login.id.slice(0, 8))}, but ${target.label} is ${c.bold(target.email ?? target.id.slice(0, 8))} - nothing changed. A pi login attaches to an account already in the pool; pool that account first with \`tokenmaxxing add${p.flag}\`.`,
+        `that login is ${c.bold(login.email ?? login.id.slice(0, 8))}, but ${target.label} is ${c.bold(target.email ?? target.id.slice(0, 8))} - nothing changed. To log that account into pi, ${hint}.`,
       ),
     );
     return false;
@@ -121,6 +126,7 @@ async function piLoginOne(p: Provider, pool: PiPool, target: Account): Promise<b
     return true;
   });
   if (!written) return false;
+  log("pi.login", { pool, account: target.id.slice(0, 8) });
 
   console.log(`${c.green("✓")} logged ${c.bold(target.email ?? target.label)} into pi`);
   return true;

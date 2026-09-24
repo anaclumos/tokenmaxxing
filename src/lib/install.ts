@@ -88,7 +88,7 @@ exec ${JSON.stringify(bun)} --no-env-file run ${JSON.stringify(entry)} "$@"
 `;
 }
 
-export function installSupervisor(): InstallOutcome {
+function installEntryPoints(): string {
   const target = installedBin();
   const entry = realpathSync(Bun.main);
   if (isNixPackaged()) {
@@ -96,9 +96,13 @@ export function installSupervisor(): InstallOutcome {
   } else {
     writeFileAtomic(target, `#!/bin/sh\nexec ${JSON.stringify(process.execPath)} --no-env-file run ${JSON.stringify(entry)} "$@"\n`, 0o755);
   }
-
-  writeFileAtomic(paths.supervisorLink, `#!/bin/sh\nexec ${JSON.stringify(target)} __supervise "$@"\n`, 0o755);
   writeFileAtomic(join(paths.binDir, "xx"), `#!/bin/sh\nexec ${JSON.stringify(target)} "$@"\n`, 0o755);
+  return target;
+}
+
+export function installSupervisor(): InstallOutcome {
+  const target = installEntryPoints();
+  writeFileAtomic(paths.supervisorLink, `#!/bin/sh\nexec ${JSON.stringify(target)} __supervise "$@"\n`, 0o755);
 
   installSettings();
   const checkIntervalS = Math.ceil(loadConfig().policy.checkIntervalMs / 1000);
@@ -210,7 +214,7 @@ export function piSupervisorLink(): string {
 }
 
 export function installPiSupervisor(): void {
-  writeFileAtomic(piSupervisorLink(), `#!/bin/sh\nexec ${JSON.stringify(installedBin())} __supervise-pi "$@"\n`, 0o755);
+  writeFileAtomic(piSupervisorLink(), `#!/bin/sh\nexec ${JSON.stringify(installEntryPoints())} __supervise-pi "$@"\n`, 0o755);
 }
 
 export type UnitJob = {

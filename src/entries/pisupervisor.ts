@@ -223,42 +223,52 @@ export async function runPiSupervisor(argv: string[]): Promise<number> {
 
   let child: Subprocess | null = null;
   let terminating = false;
-  let releaseClaim = async (): Promise<void> => {};
+  let cleanup = async (): Promise<void> => {};
   process.on("SIGTERM", () => {
     terminating = true;
-    const released = releaseClaim();
-    if (child) child.kill("SIGTERM");
-    else released.finally(() => process.exit(143));
+    if (child) {
+      child.kill("SIGTERM");
+      return;
+    }
+    cleanup().finally(() => {
+      if (child) child.kill("SIGTERM");
+      else process.exit(143);
+    });
   });
 
   const args = process.env.TOKENMAXXING_PROBE || process.env[UNMANAGED_ENV] ? null : analyzePiArgs(argv);
   const settings = args == null ? null : piSettings();
   const pool = args == null || settings == null ? null : poolOf(args, settings);
   if (args == null || settings == null || pool == null) {
+    if (args != null) log("pisupervisor.unpooled", { provider: args.provider ?? args.model ?? settings?.defaultProvider ?? null });
     return runPassthrough({ real, argv, env: childEnv, onSpawn: (p) => { child = p; } });
   }
 
   const id = `pi-${crypto.randomUUID()}`;
   const mover = piMovers[pool];
   const presenceDir = pool === "claude" ? paths.presenceDir : codexPaths.presenceDir;
-  if (pool === "claude") {
-    releaseClaim = async () => {
-      try {
-        await withLock(claudePool.lockFile, () => {
-          releaseWaitClaim(id);
-        });
-      } catch (e) {
-        log("pisupervisor.claim_release_failed", { err: errorMessage(e) });
-      }
-    };
-  }
+  const releaseClaim = async (): Promise<void> => {
+    if (pool !== "claude") return;
+    try {
+      await withLock(claudePool.lockFile, () => {
+        releaseWaitClaim(id);
+      });
+    } catch (e) {
+      log("pisupervisor.claim_release_failed", { err: errorMessage(e) });
+    }
+  };
+  cleanup = async () => {
+    clearPresence({ dir: presenceDir, id });
+    await releaseClaim();
+  };
 
   const dir = sessionDirOf(args, settings);
   const model = sessionModel(args);
   const families = pool === "claude" ? gatedFamilies(model, loadConfig().policy.switchModels) : null;
   const sid = args.session != null ? null : (args.sessionId ?? (args.continueLatest ? latestPiSession(dir) : null) ?? crypto.randomUUID());
   const selector = sid == null ? ["--session", args.session!] : ["--session-id", sid];
-  let launchArgs = args.sessionId != null || args.session != null ? args.rest : [...selector, ...args.rest];
+  const firstArgs = args.sessionId != null || args.session != null ? args.rest : [...selector, ...args.rest];
+  let launchArgs = firstArgs;
 
   const savedTermios = saveTermios();
   process.on("SIGINT", () => {});
@@ -273,8 +283,9 @@ export async function runPiSupervisor(argv: string[]): Promise<number> {
   try {
     while (true) {
       const launchedAt = Date.now();
-      const { child: proc, seat } = await withLock(mover.pool.lockFile, async () => {
+      const launched = await withLock(mover.pool.lockFile, async () => {
         clearPresence({ dir: presenceDir, id });
+        if (terminating) return null;
         const picked = validWanted(pool, wanted, id) ?? pickPiSeat(pool, launchedAt, model);
         log("pisupervisor.launch", { id, pool, respawns, seat: picked?.id.slice(0, 8) ?? null, args: launchArgs.join(" ") });
         const spawned = Bun.spawn([real, ...launchArgs], {
@@ -283,6 +294,7 @@ export async function runPiSupervisor(argv: string[]): Promise<number> {
           stderr: "inherit",
           env: { ...childEnv, ...(picked ? { PI_CODING_AGENT_DIR: ensurePiStoreHome(pool, picked.id) } : {}) },
         });
+        child = spawned;
         if (picked) {
           await recordPresenceOrStop({
             child: spawned,
@@ -294,10 +306,14 @@ export async function runPiSupervisor(argv: string[]): Promise<number> {
             savedTermios,
           });
         }
-        return { child: spawned, seat: picked };
+        return { proc: spawned, seat: picked };
       });
+      if (launched == null) {
+        await releaseClaim();
+        return 143;
+      }
 
-      child = proc;
+      const { proc, seat } = launched;
       const pending: { move: SwapDecision | null; killed: boolean } = { move: null, killed: false };
       let seatCheckAt = 0;
       await raceMarkerOrExit({
@@ -328,8 +344,7 @@ export async function runPiSupervisor(argv: string[]): Promise<number> {
         } else say(`\n\x1b[36m↻ tokenmaxxing: moving pi to ${target.label} - resuming...\x1b[0m\n`);
         await releaseClaim();
         wanted = target.id;
-        const resumable = sid == null || sessionExists(dir, sid);
-        launchArgs = [...selector, ...args.flags, ...(resumable ? ["--", RESUME_PROMPT] : [])];
+        launchArgs = sid == null || sessionExists(dir, sid) ? [...selector, ...args.flags, "--", RESUME_PROMPT] : firstArgs;
         continue;
       }
       clearPresence({ dir: presenceDir, id });
