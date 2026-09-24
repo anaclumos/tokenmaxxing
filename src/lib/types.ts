@@ -147,6 +147,7 @@ export const RespawnMarkerSchema = z.object({
   waitUntil: z.number(),
   sessionId: z.string(),
   compact: z.boolean(),
+  origin: z.enum(["stop", "sessionstart", "stopfailure", "seatwatch"]),
   launchedAt: z.number().optional(),
 });
 
