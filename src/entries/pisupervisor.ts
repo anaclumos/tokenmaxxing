@@ -114,6 +114,7 @@ export function analyzePiArgs(argv: string[]): PiArgs | null {
 const PiSettingsSchema = z.looseObject({
   defaultProvider: z.string().optional().catch(undefined),
   sessionDir: z.string().optional().catch(undefined),
+  defaultProjectTrust: z.string().optional().catch(undefined),
 });
 type PiSettings = z.infer<typeof PiSettingsSchema>;
 type PiSettingsScopes = { global: PiSettings; project: PiSettings; projectTrusted: boolean };
@@ -133,7 +134,7 @@ function readPiJson<T extends z.ZodType>(file: string, schema: T): z.output<T> |
   return parsed.success ? parsed.data : null;
 }
 
-function projectTrusted(args: PiArgs): boolean {
+function projectTrusted(args: PiArgs, global: PiSettings): boolean {
   if (args.approve != null) return args.approve;
   const trust = readPiJson(join(piPaths.home, "trust.json"), PiTrustSchema) ?? {};
   let dir = realpathSync(process.cwd());
@@ -141,16 +142,17 @@ function projectTrusted(args: PiArgs): boolean {
     const decision = trust[dir];
     if (decision === true || decision === false) return decision;
     const parent = dirname(dir);
-    if (parent === dir) return false;
+    if (parent === dir) return global.defaultProjectTrust === "always";
     dir = parent;
   }
 }
 
 function piSettings(args: PiArgs): PiSettingsScopes {
+  const global = readPiJson(join(piPaths.home, "settings.json"), PiSettingsSchema) ?? {};
   return {
-    global: readPiJson(join(piPaths.home, "settings.json"), PiSettingsSchema) ?? {},
+    global,
     project: readPiJson(join(process.cwd(), ".pi", "settings.json"), PiSettingsSchema) ?? {},
-    projectTrusted: projectTrusted(args),
+    projectTrusted: projectTrusted(args, global),
   };
 }
 
