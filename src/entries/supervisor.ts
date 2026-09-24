@@ -268,7 +268,7 @@ function resumePrompt(input: { compacted: boolean; origin: z.infer<typeof Respaw
   const moved = input.compacted
     ? "tokenmaxxing compacted this conversation and resumed the session on an account with quota headroom."
     : "tokenmaxxing resumed this session on an account with quota headroom.";
-  if (input.origin === "stop" || input.origin === "sessionstart") {
+  if (input.origin === "stop") {
     return `${moved} The previous turn finished before the move. If it waited on the user or completed the task, end this turn without restating it. If it waited on a background Bash task, Monitor, or Workflow run, relaunch that work, because the move ended it.`;
   }
   return `${moved} Continue the task from where the previous turn left off. If the previous turn ended waiting on the user, restate what you need and wait. The move restarted Claude Code, which ended every background Bash task, Monitor, and Workflow run this session started. Relaunch what the task still needs.`;

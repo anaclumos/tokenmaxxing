@@ -26,10 +26,10 @@ export async function compactClaudeSession(input: { real: string; sid: string; t
   const reads = Promise.all([p.stdout.text(), p.stderr.text()]);
   const settled = await Promise.race([reads, p.exited.then(() => delay(PIPE_GRACE_MS)).then(() => null)]);
   await p.exited;
-  if (settled === null) return { ok: false, reason: "output pipes still open after child exit (leaked descendant)" };
-  const [stdout, stderr] = settled;
   const appended = await Bun.file(input.transcript).slice(offset).text();
   if (appended.split("\n").some((line) => CompactBoundarySchema.safeParse(JsonTextSchema.safeParse(line).data).success)) return { ok: true };
+  if (settled === null) return { ok: false, reason: "output pipes still open after child exit (leaked descendant)" };
+  const [stdout, stderr] = settled;
   if (p.exitCode === null) return { ok: false, reason: `killed after ${CLAUDE_COMPACT_KILL_MS / 1000}s` };
   const output = (stderr.trim() || stdout.trim()).slice(0, 200);
   return { ok: false, reason: output ? `no compact boundary (exit ${p.exitCode}): ${output}` : `no compact boundary (exit ${p.exitCode})` };
