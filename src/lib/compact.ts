@@ -31,7 +31,8 @@ export async function compactClaudeSession(input: { real: string; sid: string; t
   const appended = await Bun.file(input.transcript).slice(offset).text();
   if (appended.split("\n").some((line) => CompactBoundarySchema.safeParse(JsonTextSchema.safeParse(line).data).success)) return { ok: true };
   if (p.exitCode === null) return { ok: false, reason: `killed after ${CLAUDE_COMPACT_KILL_MS / 1000}s` };
-  return { ok: false, reason: `no compact boundary (exit ${p.exitCode}): ${(stderr.trim() || stdout.trim()).slice(0, 200)}` };
+  const output = (stderr.trim() || stdout.trim()).slice(0, 200);
+  return { ok: false, reason: output ? `no compact boundary (exit ${p.exitCode}): ${output}` : `no compact boundary (exit ${p.exitCode})` };
 }
 
 export const CODEX_COMPACT_KILL_MS = 180_000;
