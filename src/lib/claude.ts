@@ -239,7 +239,7 @@ async function importLive(): Promise<Harvest | null> {
   return login();
 }
 
-function ensurePathAhead(): void {
+export function ensurePathAhead(): void {
   const rc = shellRcPath();
   if (!rc) {
     console.log(c.yellow(`⚠ add to your shell rc: export PATH="${paths.binDir}:$PATH"`));

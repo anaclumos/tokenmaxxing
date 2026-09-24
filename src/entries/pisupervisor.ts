@@ -8,7 +8,7 @@ import { observeCodex } from "../lib/codex.ts";
 import { evaluateAndMaybeSwap, type SwapDecision } from "../lib/decide.ts";
 import { withLock } from "../lib/lock.ts";
 import { errorMessage, log } from "../lib/log.ts";
-import { claudePool, codexPaths, HOME, optionalEnv, paths, piPaths, type PiPool } from "../lib/paths.ts";
+import { claudePool, codexPaths, expandTilde, optionalEnv, paths, piPaths, type PiPool } from "../lib/paths.ts";
 import { pickPiSeat, piMovers } from "../lib/pi.ts";
 import { ensurePiStoreHome, piStoreUsable } from "../lib/piauth.ts";
 import { thresholdBars, usableAt } from "../lib/picker.ts";
@@ -169,14 +169,10 @@ function sessionModel(args: PiArgs): ModelInfo | null {
   return modelFromFlag(id == null ? null : id.slice(id.indexOf("/") + 1));
 }
 
-function expandHome(p: string): string {
-  return p === "~" ? HOME : p.startsWith("~/") ? join(HOME, p.slice(2)) : p;
-}
-
 function sessionDirs(args: PiArgs, settings: PiSettingsScopes): string[] {
   const custom = [args.sessionDir, optionalEnv("PI_CODING_AGENT_SESSION_DIR"), settings.project.sessionDir, settings.global.sessionDir]
     .filter((d): d is string => d != null && d !== "")
-    .map((d) => resolve(expandHome(d)));
+    .map((d) => resolve(expandTilde(d)));
   const cwd = process.cwd();
   const trimmed = cwd.startsWith("/") || cwd.startsWith("\\") ? cwd.slice(1) : cwd;
   return uniq([...custom, join(piPaths.home, "sessions", `--${trimmed.replaceAll("/", "-").replaceAll("\\", "-").replaceAll(":", "-")}--`)]);
@@ -249,7 +245,12 @@ function managedLaunch(argv: string[]): Launch | null {
   const settings = piSettings(args);
   const pool = poolOf(args, settings);
   if (pool == null) {
-    log("pisupervisor.unpooled", { provider: args.provider, model: args.model, projectTrusted: settings.projectTrusted });
+    log("pisupervisor.unpooled", {
+      provider: args.provider,
+      model: args.model,
+      projectTrusted: settings.projectTrusted,
+      defaultProvider: (settings.projectTrusted ? settings.project.defaultProvider : undefined) ?? settings.global.defaultProvider,
+    });
     return null;
   }
   const dirs = sessionDirs(args, settings);
@@ -267,7 +268,7 @@ const RESUME_PROMPT =
 function validWanted(pool: PiPool, wanted: string | null, id: string): Account | null {
   if (wanted == null) return null;
   const a = loadAccounts(piMovers[pool].pool).accounts.find((x) => x.id === wanted);
-  if (!a || !piStoreUsable(pool, a.id)) return null;
+  if (!a || a.needsReauth === true || !piStoreUsable(pool, a.id)) return null;
   if (pool === "codex" && livingPresences(codexPaths.presenceDir).some((p) => p.accountId === a.id && p.id !== id)) return null;
   return a;
 }

@@ -1,16 +1,16 @@
 import { rmSync } from "node:fs";
 import { join } from "node:path";
-import { claude, pickSeat } from "./claude.ts";
+import { claude, ensurePathAhead, pickSeat } from "./claude.ts";
 import { MAX_WRAP_DEPTH, PI_BIN, WRAP_DEPTH_ENV, resolveRealBin, verifyRealBin } from "./claudebin.ts";
 import { codex, pickCodexSeat } from "./codex.ts";
 import { chatgptAccountIdOf } from "./codexauth.ts";
-import { ensurePathInRc, installPiSupervisor, managedShellRcSkipLines, piSupervisorLink, shellRcPath } from "./install.ts";
+import { activationHint, CHECK_JOB, installPiSupervisor, isBinDirAhead, jobHealthy, piSupervisorLink } from "./install.ts";
 import { errorMessage, log } from "./log.ts";
 import { fetchTokenIdentity } from "./oauth.ts";
-import { piPaths, type PiPool } from "./paths.ts";
+import { claudePool, piPaths, type PiPool } from "./paths.ts";
 import { linkSharedPiHome, piStoreUsable, readPiAuthAt, type PiOAuth } from "./piauth.ts";
 import { StoreUnusableError, type Provider } from "./provider.ts";
-import { pinBinOverride } from "./state.ts";
+import { loadAccounts, pinBinOverride } from "./state.ts";
 import { restoreTermios, saveTermios } from "./tty.ts";
 import type { Account, ModelInfo } from "./types.ts";
 import { c } from "../cli/render.ts";
@@ -124,12 +124,9 @@ export function piPreflight(): void {
 
 export function piInstall(): void {
   installPiSupervisor();
-  const rc = shellRcPath();
-  if (rc && ensurePathInRc(rc) === "skipped") {
-    const hint = managedShellRcSkipLines();
-    console.log(c.yellow(`⚠ ${hint.headline}`));
-    console.log(c.yellow(`  ${hint.detail}`));
-    console.log(c.yellow(`  ${hint.exportLine}`));
-  }
   console.log(`${c.green("✓")} pi supervisor installed at ${piSupervisorLink()}`);
+  if (!isBinDirAhead(PI_BIN)) ensurePathAhead();
+  if (loadAccounts(claudePool).accounts.length > 0 && !jobHealthy(CHECK_JOB)) {
+    console.log(c.yellow(`⚠ the check timer is not active, so pi seats on Claude accounts get no fresh usage - run \`tokenmaxxing init\` (or: ${activationHint(CHECK_JOB)})`));
+  }
 }

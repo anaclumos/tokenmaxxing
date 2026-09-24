@@ -1,5 +1,5 @@
 import { homedir, userInfo } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { z } from "zod";
 
 const HOME = homedir();
@@ -90,8 +90,12 @@ export function codexSeatFromEnv(accountIds: string[], env: Record<string, strin
 
 export type PiPool = "claude" | "codex";
 
+export function expandTilde(p: string): string {
+  return p === "~" ? HOME : p.startsWith("~/") ? join(HOME, p.slice(2)) : p;
+}
+
 export const piPaths = {
-  home: env("PI_CODING_AGENT_DIR", join(HOME, ".pi", "agent")),
+  home: resolve(expandTilde(env("PI_CODING_AGENT_DIR", join(HOME, ".pi", "agent")))),
   storesDir: join(TM_HOME, "pi-stores"),
   onboardDir: join(TM_HOME, "pi-onboard"),
 } as const;
