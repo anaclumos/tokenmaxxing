@@ -3,7 +3,6 @@ import { claude } from "../lib/claude.ts";
 import { evaluateAndMaybeSwap } from "../lib/decide.ts";
 import { readStdin } from "../lib/proc.ts";
 import { adoptLiveSession, supervisedSession, writeRespawnMarker } from "../lib/sessions.ts";
-import { loadConfig } from "../lib/state.ts";
 import { classifyEnforcedLimit, findEnforcedRow, parseErrorBody, readTranscriptTail, type TranscriptRow } from "../lib/usage.ts";
 import { paths } from "../lib/paths.ts";
 import { JsonTextSchema, type EnforcedLimit } from "../lib/types.ts";
@@ -49,11 +48,10 @@ export async function runStopFailureHook(): Promise<number> {
       return 0;
     }
     const canRespawn = session != null && mainLoop;
-    const cfg = loadConfig();
     const row = stdin.transcript_path
       ? await awaitEnforcedRow({ transcriptPath: stdin.transcript_path, lastAssistantMessage: stdin.last_assistant_message, now })
       : null;
-    const limit = row ? classifyEnforcedLimit(row, cfg.policy.switchModels) : null;
+    const limit = row ? classifyEnforcedLimit(row) : null;
 
     let enforced: EnforcedLimit | null = null;
     if (limit && account) {
@@ -80,8 +78,8 @@ export async function runStopFailureHook(): Promise<number> {
       );
     }
 
-    const decision = await evaluateAndMaybeSwap(claude, now, canRespawn && enforced != null, enforced, { waiterId: canRespawn ? session?.sid : undefined });
-    if (enforced && session && canRespawn && decision.account && (decision.swapped || decision.waitUntil !== undefined)) {
+    const decision = await evaluateAndMaybeSwap(claude, now, canRespawn, enforced, { waiterId: canRespawn ? session?.sid : undefined });
+    if (session && canRespawn && decision.account && (decision.swapped || decision.waitUntil !== undefined)) {
       writeRespawnMarker({ session, accountId: decision.account.id, waitUntil: decision.waitUntil ?? now, compact: false, origin: "stopfailure" });
       log("stopfailure.marker", { session: session.sid.slice(0, 8), live: session.live.slice(0, 8), account: decision.account.id.slice(0, 8), waitUntil: decision.waitUntil ?? now });
     } else {

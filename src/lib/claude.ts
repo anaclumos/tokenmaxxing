@@ -8,7 +8,7 @@ import { withLock } from "./lock.ts";
 import { errorMessage, log } from "./log.ts";
 import { claudeTierLabel, describeIdentity, fetchTokenIdentity, isDeadCredential, InvalidGrantError } from "./oauth.ts";
 import { claudePool, env, paths, seatFromEnv, storeDirFor } from "./paths.ts";
-import { pickBest, pickEarliestReset, thresholdBars, type PickCtx } from "./picker.ts";
+import { clearWallIfUnderBars, pickBest, pickEarliestReset, thresholdBars, type PickCtx } from "./picker.ts";
 import { seatCounts } from "./presence.ts";
 import { StoreUnusableError, type Observation, type Provider, type SampleReport } from "./provider.ts";
 import { foldTee, sampleAccountUsage, teeObservation, usageBlockedUntil } from "./sample.ts";
@@ -49,6 +49,7 @@ async function observeLive(account: Account, cfg: Config, now: number, opts: { p
         if (a.lastUsageAt == null || startedAt > a.lastUsageAt) {
           a.windows = mergeWindows(windowsOf(outcome.usage, startedAt), a.windows);
           a.lastUsageAt = startedAt;
+          clearWallIfUnderBars(a, thresholdBars(cfg), startedAt);
         }
       } else {
         a.probeFails = (a.probeFails ?? 0) + 1;

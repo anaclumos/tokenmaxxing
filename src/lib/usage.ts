@@ -114,13 +114,11 @@ export function findEnforcedRow(input: { rows: TranscriptRow[]; lastAssistantMes
 export type EnforcedClass =
   | { kind: "session"; resetsAt: number | null }
   | { kind: "weekly"; resetsAt: number | null }
-  | { kind: "model"; family: string; resetsAt: number | null };
+  | { kind: "model"; family: string | null; resetsAt: number | null };
 
 const ErrorBodySchema = z.looseObject({
   error: z.looseObject({ type: z.string().optional(), details: z.looseObject({ error_code: z.string().optional() }).optional() }).optional(),
 });
-
-const CREDITS_GATED_FAMILIES = ["fable"];
 
 export function parseErrorBody(errorDetails: string | undefined): z.infer<typeof ErrorBodySchema> | null {
   if (!errorDetails) return null;
@@ -130,20 +128,18 @@ export function parseErrorBody(errorDetails: string | undefined): z.infer<typeof
   return body.success ? body.data : null;
 }
 
-export function classifyEnforcedLimit(row: TranscriptRow, switchModels: string[]): EnforcedClass | null {
+export function classifyEnforcedLimit(row: TranscriptRow): EnforcedClass | null {
   const q = row.quotaLimits;
   if (q) {
     const resetsAt = q.resetsAt ?? null;
     const type = q.rateLimitType ?? "";
     if (type === "five_hour") return { kind: "session", resetsAt };
     if (type === "seven_day") return { kind: "weekly", resetsAt };
-    const family = switchModels.find((f) => type.includes(f));
-    return family ? { kind: "model", family, resetsAt } : null;
+    return { kind: "model", family: MODEL_FAMILIES.find((f) => type.includes(f)) ?? null, resetsAt };
   }
   if (row.apiErrorIsTransient === true) return null;
   if (parseErrorBody(row.errorDetails)?.error?.type !== "rate_limit_error") return null;
-  const family = switchModels.find((f) => CREDITS_GATED_FAMILIES.includes(f));
-  return family ? { kind: "model", family, resetsAt: null } : null;
+  return { kind: "weekly", resetsAt: null };
 }
 
 const FIVE_HOURS_S = 5 * 3600;

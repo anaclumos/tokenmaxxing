@@ -6,7 +6,7 @@ import { opencodeGo } from "../lib/opencodego.ts";
 import { loadAccounts, loadConfig, saveAccounts } from "../lib/state.ts";
 import { withLock } from "../lib/lock.ts";
 import { codexPool, grokPool, opencodeGoPool } from "../lib/paths.ts";
-import { earliestReset, gatedWindows, isExhausted, isSessionWindow, limitWindows, liveUsed, nextWeeklyReset, sessionWindow, thresholdBars, weeklyWindow } from "../lib/picker.ts";
+import { earliestReset, clearWallIfUnderBars, gatedWindows, isExhausted, isSessionWindow, limitWindows, liveUsed, nextWeeklyReset, sessionWindow, thresholdBars, weeklyWindow } from "../lib/picker.ts";
 import type { Provider, SampleReport } from "../lib/provider.ts";
 import { bar, c, count, emitJson, fmtAgo } from "./render.ts";
 import type { Account, Config, Thresholds, Window } from "../lib/types.ts";
@@ -84,25 +84,48 @@ function gatedNote(accounts: Account[], families: string[] | null, weeklyBar: nu
 }
 
 async function collect(p: Provider, cfg: Config, now: number, cached: boolean): Promise<PoolReport> {
+  const bars = thresholdBars(cfg);
   let idx = loadAccounts(p.pool);
   let reports = new Map<string, SampleReport>();
   let liveId: string | null = null;
   if (!cached && idx.accounts.length > 0) {
-    await withLock(p.pool.lockFile, async () => {
-      idx = loadAccounts(p.pool);
-      const notice = process.stderr.isTTY;
-      if (notice) process.stderr.write(c.dim(`sampling ${p.name} usage...`));
-      try {
-        liveId = p.liveId();
-        reports = await p.samplePool(idx.accounts, liveId, now);
-      } finally {
-        if (notice) process.stderr.write("\r\x1b[2K");
-      }
-      saveAccounts(p.pool, idx);
-    });
+    const notice = process.stderr.isTTY;
+    if (notice) process.stderr.write(c.dim(`sampling ${p.name} usage...`));
+    try {
+      liveId = p.liveId();
+      const retries = new Map(idx.accounts.map((a) => [a.id, a.usageRetryAt ?? null]));
+      reports = await p.samplePool(idx.accounts, liveId, now);
+      await withLock(p.pool.lockFile, () => {
+        const fresh = loadAccounts(p.pool);
+        let dirty = false;
+        for (const a of idx.accounts) {
+          const stored = fresh.accounts.find((x) => x.id === a.id);
+          if (!stored) continue;
+          if (a.needsReauth === true && stored.needsReauth !== true) {
+            stored.needsReauth = true;
+            dirty = true;
+          }
+          if ((a.usageRetryAt ?? null) !== retries.get(a.id)) {
+            stored.usageRetryAt = a.usageRetryAt;
+            dirty = true;
+          }
+          if (a.lastUsageAt != null && (stored.lastUsageAt == null || a.lastUsageAt > stored.lastUsageAt)) {
+            stored.windows = p.mergeWindows(a.windows, stored.windows);
+            stored.lastUsageAt = a.lastUsageAt;
+            if (a.email != null) stored.email = a.email;
+            if (a.tier != null) stored.tier = a.tier;
+            clearWallIfUnderBars(stored, bars, a.lastUsageAt);
+            dirty = true;
+          }
+        }
+        if (dirty) saveAccounts(p.pool, fresh);
+        idx = fresh;
+      });
+    } finally {
+      if (notice) process.stderr.write("\r\x1b[2K");
+    }
   }
 
-  const bars = thresholdBars(cfg);
   const present = p.presence();
   const ctx = { now, thresholds: bars, currentId: null, families: p.gatedFamilies(cfg), seats: null };
   const ordered = sortBy(idx.accounts, [(a) => (a.needsReauth ? 1 : 0), (a) => earliestReset(a, now)]);
@@ -235,7 +258,7 @@ export async function cmdStatus(opts: { json?: boolean; cached?: boolean } = {})
       console.log(c.dim("no claude accounts (run `tokenmaxxing init` to pool claude too)"));
       console.log();
     } else {
-      const header = `thresholds 5h ${claudeReport.thresholds.session}% weekly ${claudeReport.thresholds.weekly}%  (${count({ n: claudeReport.accounts.length, noun: "claude account" })})`;
+      const header = `thresholds 5h ${claudeReport.thresholds.session}% weekly ${claudeReport.thresholds.weekly}%  bars 5h ${claudeReport.bars.session}% weekly ${claudeReport.bars.weekly}%  (${count({ n: claudeReport.accounts.length, noun: "claude account" })})`;
       renderPool(claude, claudeReport, header, Date.now(), cfg.policy.usagePollTtlMs);
     }
   }

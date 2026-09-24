@@ -3,6 +3,7 @@ import { withLock } from "./lock.ts";
 import { errorMessage, log } from "./log.ts";
 import { claudeTierLabel, isDeadCredential } from "./oauth.ts";
 import { claudePool, paths } from "./paths.ts";
+import { clearWallIfUnderBars, thresholdBars } from "./picker.ts";
 import { seatCounts } from "./presence.ts";
 import type { Observation } from "./provider.ts";
 import { loadAccounts, loadUsageSnapshot, saveAccounts } from "./state.ts";
@@ -125,6 +126,7 @@ export async function sampleOldest(cfg: Config): Promise<void> {
         if (stored && outcome.ok && (stored.lastUsageAt == null || startedAt > stored.lastUsageAt)) {
           stored.windows = mergeWindows(windowsOf(outcome.usage, startedAt), stored.windows);
           stored.lastUsageAt = startedAt;
+          clearWallIfUnderBars(stored, thresholdBars(cfg), startedAt);
           dirty = true;
         }
         if (dirty) saveAccounts(claudePool, idx);

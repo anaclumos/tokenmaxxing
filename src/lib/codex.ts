@@ -10,7 +10,7 @@ import { codexSupervisorLink, ensurePathInRc, installCodexSupervisor, managedShe
 import { withLock } from "./lock.ts";
 import { errorMessage, log } from "./log.ts";
 import { codexPaths, codexPool, codexSeatFromEnv } from "./paths.ts";
-import { isExhausted, pickBest, pickEarliestReset, thresholdBars, type PickCtx } from "./picker.ts";
+import { clearWallIfUnderBars, isExhausted, pickBest, pickEarliestReset, thresholdBars, type PickCtx } from "./picker.ts";
 import { StoreUnusableError, type Observation, type Provider, type SampleReport } from "./provider.ts";
 import { loadAccounts, loadConfig, pinBinOverride, saveAccounts, type Harvest } from "./state.ts";
 import { restoreTermios, saveTermios } from "./tty.ts";
@@ -30,6 +30,7 @@ function applyUsage(account: Account, usage: CodexUsage, at: number): void {
   account.lastUsageAt = at;
   if (usage.email != null) account.email = usage.email;
   if (usage.planType != null) account.tier = usage.planType;
+  clearWallIfUnderBars(account, thresholdBars(loadConfig()), at);
 }
 
 type CodexReadOutcome = { ok: true; usage: CodexUsage; at: number } | { ok: false; reason: string; deadGrant: boolean };
@@ -87,7 +88,7 @@ async function samplePool(accounts: Account[], _liveId: string | null, now: numb
   const reports = new Map<string, SampleReport>();
   await Promise.all(
     accounts.map(async (account) => {
-      const outcome = await readCodexUsage(account, now, true);
+      const outcome = await readCodexUsage(account, now, false);
       if (outcome.ok) {
         applyUsage(account, outcome.usage, outcome.at);
         reports.set(account.id, { ok: true, source: "probe" });

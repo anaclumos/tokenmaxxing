@@ -53,22 +53,27 @@ function barFor(w: Window, thresholds: Thresholds): number {
   return isSessionWindow(w) ? thresholds.session : thresholds.weekly;
 }
 
-function blockedUntil(w: Window, bar: number): number {
-  if (w.usedPercentage < bar) return 0;
+function blockedUntil(w: Window, bar: number, now: number): number {
+  if (liveUsed(w, now) < bar) return 0;
   if (w.resetsAt != null) return w.resetsAt;
-  return w.windowSeconds != null ? w.sampledAt + w.windowSeconds * 1000 : Number.POSITIVE_INFINITY;
+  return w.sampledAt + (w.windowSeconds ?? 0) * 1000;
 }
 
 function blockingUntil(a: Account, ctx: PickCtx): number[] {
   return [
-    ...a.windows.filter((w) => w.name == null).map((w) => blockedUntil(w, barFor(w, ctx.thresholds))),
-    ...gatedWindows(a, ctx.families).map((w) => blockedUntil(w, barFor(w, ctx.thresholds))),
+    ...a.windows.filter((w) => w.name == null).map((w) => blockedUntil(w, barFor(w, ctx.thresholds), ctx.now)),
+    ...gatedWindows(a, ctx.families).map((w) => blockedUntil(w, barFor(w, ctx.thresholds), ctx.now)),
     ...(a.enforcedUntil != null ? [a.enforcedUntil] : []),
   ];
 }
 
 export function isExhausted(a: Account, ctx: PickCtx): boolean {
   return blockingUntil(a, ctx).some((t) => t > ctx.now);
+}
+
+export function clearWallIfUnderBars(a: Account, thresholds: Thresholds, now: number): void {
+  if (a.enforcedUntil == null) return;
+  if (!isExhausted({ ...a, enforcedUntil: undefined }, { now, thresholds, currentId: null, families: null, seats: null })) a.enforcedUntil = undefined;
 }
 
 export function nextWeeklyReset(resetsAt: number | null, now: number): number | null {
