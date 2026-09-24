@@ -19,7 +19,7 @@ Everything lives under `~/.config/tokenmaxxing/`. Override with `TOKENMAXXING_HO
 | `spawnrate.json` | The supervisor's wrapper-entry rate limiter, one of the recursion guards |
 | `check.stderr.log`, `hub.stderr.log` | macOS only: the launchd check job's and hub service's stderr (systemd sends it to the journal) |
 | `bin/` | The PATH shims: `claude`, `codex`, and the `tokenmaxxing` / `xx` entry points |
-| `respawn/<session-id>` | Respawn markers the supervisor watches: the target account, the session to resume, a `waitUntil` (now for a plain move, the reset for a depleted-pool wait), whether to compact first, and the launch time of the process the marker was written for |
+| `respawn/<session-id>` | Respawn markers the supervisor watches: the target account, the session to resume, a `waitUntil` (now for a plain move, the reset for a depleted-pool wait), whether to compact first, the origin (the hook or the seat watch that wrote it, which picks the resume prompt), and the launch time of the process the marker was written for |
 | `wait-queue.json` | The depleted-pool wait claims: one `{sessionId, accountId, at, waitUntil}` per waiting supervised session, so at most four sessions wait on one account and the rest take the next reset. Claims expire at `waitUntil` and are released when the countdown ends |
 | `onboard/` | Throwaway config home for `init`, `add`, and `auth` logins (deleted after harvest, credential included) |
 | `hub-key` | The management key `tokenmaxxing serve` requires, mode 0600, minted on the first run; a key written by hand is used as it is. See [Usage hub](/hub) |

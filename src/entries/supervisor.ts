@@ -225,7 +225,7 @@ async function moveExhaustedSeat(seat: Account, sid: string, gate: MarkerGate, m
     const decision = await evaluateAndMaybeSwap(claude, now, true, null, { seatId: seat.id, sessionFamilies: families, waiterId: sid });
     log("supervisor.seat_exhausted", { seat: seat.id.slice(0, 8), until, reason: decision.reason, account: decision.account?.id.slice(0, 8), waitUntil: decision.waitUntil });
     if (decision.account && (decision.swapped || decision.waitUntil !== undefined)) {
-      writeRespawnMarker({ session: { sid, launchedAt: gate.launchedAt, live: liveSessionId(sid) }, accountId: decision.account.id, waitUntil: decision.waitUntil ?? now, compact: true });
+      writeRespawnMarker({ session: { sid, launchedAt: gate.launchedAt, live: liveSessionId(sid) }, accountId: decision.account.id, waitUntil: decision.waitUntil ?? now, compact: true, origin: "seatwatch" });
     }
   } catch (e) {
     log("supervisor.seat_watch_error", { err: errorMessage(e) });
@@ -264,11 +264,14 @@ async function countdownWait(acct: string, until: number, out: { stream: boolean
   return aborted;
 }
 
-function resumePrompt(compacted: boolean): string {
-  const moved = compacted
+function resumePrompt(input: { compacted: boolean; origin: z.infer<typeof RespawnMarkerSchema>["origin"] }): string {
+  const moved = input.compacted
     ? "tokenmaxxing compacted this conversation and resumed the session on an account with quota headroom."
     : "tokenmaxxing resumed this session on an account with quota headroom.";
-  return `${moved} Continue the task from where the previous turn left off. If the previous turn ended waiting on the user, restate what you need and wait.`;
+  if (input.origin === "stop" || input.origin === "sessionstart") {
+    return `${moved} The previous turn finished before the move. If it waited on the user or completed the task, end this turn without restating it. If it waited on a background Bash task, Monitor, or Workflow run, relaunch that work, because the move ended it.`;
+  }
+  return `${moved} Continue the task from where the previous turn left off. If the previous turn ended waiting on the user, restate what you need and wait. The move restarted Claude Code, which ended every background Bash task, Monitor, and Workflow run this session started. Relaunch what the task still needs.`;
 }
 
 function userLine(text: string): string {
@@ -504,17 +507,20 @@ export async function runSupervisor(argv: string[]): Promise<number> {
       rmSync(marker, { force: true });
       respawns++;
       noticeSid = m.sessionId;
-      const label = loadAccounts(claudePool).accounts.find((a) => a.id === m.accountId)?.label ?? m.accountId.slice(0, 8);
-      const resumable = existsSync(transcriptPath(m.sessionId));
+      const accounts = loadAccounts(claudePool).accounts;
+      const label = accounts.find((a) => a.id === m.accountId)?.label ?? m.accountId.slice(0, 8);
+      const walled = accounts.some((a) => a.id === seat?.id && a.enforcedUntil != null && a.enforcedUntil > Date.now());
+      const transcript = transcriptPath(m.sessionId);
+      const resumable = existsSync(transcript);
       let compacted = false;
-      if (m.compact && seat && resumable) {
+      if (m.compact && seat && resumable && !walled) {
         say(`\n\x1b[36m↻ tokenmaxxing: compacting the conversation on ${seat.label} before the move...\x1b[0m\n`, `tokenmaxxing: compacting the conversation on ${seat.label} before the move.`);
         const compactEnv: Record<string, string | undefined> = { ...childEnv, TOKENMAXXING_PROBE: "1", CLAUDE_SECURESTORAGE_CONFIG_DIR: storeDirFor(seat.id) };
         delete compactEnv.TOKENMAXXING_SUPERVISED;
         delete compactEnv.TOKENMAXXING_SESSION_ID;
         delete compactEnv.TOKENMAXXING_LAUNCHED_AT;
         delete compactEnv.TOKENMAXXING_MODEL;
-        const outcome = await compactClaudeSession({ real, sid: m.sessionId, env: compactEnv });
+        const outcome = await compactClaudeSession({ real, sid: m.sessionId, transcript, env: compactEnv });
         log("supervisor.compact", { sid: m.sessionId.slice(0, 8), seat: seat.id.slice(0, 8), ok: outcome.ok, reason: outcome.ok ? undefined : outcome.reason });
         if (!outcome.ok) say(`\x1b[33m   compaction did not land (${outcome.reason}) - resuming with the full context\x1b[0m\n`, `tokenmaxxing: compaction did not land; resuming with the full context. (${outcome.reason})`);
         compacted = outcome.ok;
@@ -525,7 +531,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
       await releaseClaim();
       wanted = m.accountId;
       saveSessionFlags(m.sessionId, persistable, process.cwd());
-      const prompt = resumable ? resumePrompt(compacted) : null;
+      const prompt = resumable ? resumePrompt({ compacted, origin: m.origin }) : null;
       firstLine = relay !== null && prompt !== null ? userLine(prompt) : null;
       launchArgs = [resumable ? "--resume" : "--session-id", m.sessionId, ...(relay === null && prompt !== null ? [prompt] : []), ...persistable];
       continue;

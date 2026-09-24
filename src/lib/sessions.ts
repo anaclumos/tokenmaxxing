@@ -124,13 +124,14 @@ export function adoptLiveSession(session: SupervisedSession, stdinSid: string | 
   return { ...session, live: stdinSid };
 }
 
-export function writeRespawnMarker(input: { session: SupervisedSession; accountId: string; waitUntil: number; compact: boolean }): void {
+export function writeRespawnMarker(input: { session: SupervisedSession; accountId: string; waitUntil: number; compact: boolean; origin: z.infer<typeof RespawnMarkerSchema>["origin"] }): void {
   const payload: z.infer<typeof RespawnMarkerSchema> = {
     accountId: input.accountId,
     ts: Date.now(),
     waitUntil: input.waitUntil,
     sessionId: input.session.live,
     compact: input.compact,
+    origin: input.origin,
     ...(input.session.launchedAt != null ? { launchedAt: input.session.launchedAt } : {}),
   };
   writeFileAtomic(join(paths.respawnDir, input.session.sid), JSON.stringify(payload));
