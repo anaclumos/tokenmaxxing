@@ -1,3 +1,4 @@
+import { closeSync, fstatSync, openSync, readSync, statSync } from "node:fs";
 import { delay } from "es-toolkit";
 import { z } from "zod";
 import pkg from "../../package.json" with { type: "json" };
@@ -10,7 +11,21 @@ export type CompactOutcome = { ok: true } | { ok: false; reason: string };
 export const CLAUDE_COMPACT_KILL_MS = 300_000;
 const PIPE_GRACE_MS = 2_000;
 
-export async function compactClaudeSession(input: { real: string; sid: string; env: Record<string, string | undefined> }): Promise<CompactOutcome> {
+const CompactBoundarySchema = z.looseObject({ type: z.literal("system"), subtype: z.literal("compact_boundary") });
+
+function boundaryAppended(transcript: string, offset: number): boolean {
+  const fd = openSync(transcript, "r");
+  try {
+    const buf = Buffer.alloc(Math.max(0, fstatSync(fd).size - offset));
+    readSync(fd, buf, 0, buf.length, offset);
+    return buf.toString("utf8").split("\n").some((line) => CompactBoundarySchema.safeParse(JsonTextSchema.safeParse(line).data).success);
+  } finally {
+    closeSync(fd);
+  }
+}
+
+export async function compactClaudeSession(input: { real: string; sid: string; transcript: string; env: Record<string, string | undefined> }): Promise<CompactOutcome> {
+  const offset = statSync(input.transcript).size;
   const p = Bun.spawn([input.real, "-p", "--resume", input.sid, "/compact"], {
     env: input.env,
     stdin: "ignore",
@@ -22,11 +37,11 @@ export async function compactClaudeSession(input: { real: string; sid: string; e
   const reads = Promise.all([p.stdout.text(), p.stderr.text()]);
   const settled = await Promise.race([reads, p.exited.then(() => delay(PIPE_GRACE_MS)).then(() => null)]);
   await p.exited;
+  if (boundaryAppended(input.transcript, offset)) return { ok: true };
   if (settled === null) return { ok: false, reason: "output pipes still open after child exit (leaked descendant)" };
   const [stdout, stderr] = settled;
-  if (p.exitCode === 0) return { ok: true };
   if (p.exitCode === null) return { ok: false, reason: `killed after ${CLAUDE_COMPACT_KILL_MS / 1000}s` };
-  return { ok: false, reason: `exit ${p.exitCode}: ${(stderr.trim() || stdout.trim()).slice(0, 200)}` };
+  return { ok: false, reason: `no compact_boundary record after exit ${p.exitCode}: ${(stderr.trim() || stdout.trim()).slice(0, 200)}` };
 }
 
 export const CODEX_COMPACT_KILL_MS = 180_000;

@@ -504,17 +504,20 @@ export async function runSupervisor(argv: string[]): Promise<number> {
       rmSync(marker, { force: true });
       respawns++;
       noticeSid = m.sessionId;
-      const label = loadAccounts(claudePool).accounts.find((a) => a.id === m.accountId)?.label ?? m.accountId.slice(0, 8);
-      const resumable = existsSync(transcriptPath(m.sessionId));
+      const accounts = loadAccounts(claudePool).accounts;
+      const label = accounts.find((a) => a.id === m.accountId)?.label ?? m.accountId.slice(0, 8);
+      const transcript = transcriptPath(m.sessionId);
+      const resumable = existsSync(transcript);
+      const walled = (accounts.find((a) => a.id === seat?.id)?.enforcedUntil ?? 0) > Date.now();
       let compacted = false;
-      if (m.compact && seat && resumable) {
+      if (m.compact && seat && resumable && !walled) {
         say(`\n\x1b[36m↻ tokenmaxxing: compacting the conversation on ${seat.label} before the move...\x1b[0m\n`, `tokenmaxxing: compacting the conversation on ${seat.label} before the move.`);
         const compactEnv: Record<string, string | undefined> = { ...childEnv, TOKENMAXXING_PROBE: "1", CLAUDE_SECURESTORAGE_CONFIG_DIR: storeDirFor(seat.id) };
         delete compactEnv.TOKENMAXXING_SUPERVISED;
         delete compactEnv.TOKENMAXXING_SESSION_ID;
         delete compactEnv.TOKENMAXXING_LAUNCHED_AT;
         delete compactEnv.TOKENMAXXING_MODEL;
-        const outcome = await compactClaudeSession({ real, sid: m.sessionId, env: compactEnv });
+        const outcome = await compactClaudeSession({ real, sid: m.sessionId, transcript, env: compactEnv });
         log("supervisor.compact", { sid: m.sessionId.slice(0, 8), seat: seat.id.slice(0, 8), ok: outcome.ok, reason: outcome.ok ? undefined : outcome.reason });
         if (!outcome.ok) say(`\x1b[33m   compaction did not land (${outcome.reason}) - resuming with the full context\x1b[0m\n`, `tokenmaxxing: compaction did not land; resuming with the full context. (${outcome.reason})`);
         compacted = outcome.ok;
