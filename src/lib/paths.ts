@@ -88,6 +88,22 @@ export function codexSeatFromEnv(accountIds: string[], env: Record<string, strin
   return accountIds.find((id) => codexStoreDirFor(id) === home) ?? null;
 }
 
+export type PiPool = "claude" | "codex";
+
+export const piPaths = {
+  home: env("PI_CODING_AGENT_DIR", join(HOME, ".pi", "agent")),
+  storesDir: join(TM_HOME, "pi-stores"),
+  onboardDir: join(TM_HOME, "pi-onboard"),
+} as const;
+
+export function piStoreDirFor(pool: PiPool, accountId: string): string {
+  return join(piPaths.storesDir, pool, shortId(accountId));
+}
+
+export function piAuthJsonFor(pool: PiPool, accountId: string): string {
+  return join(piStoreDirFor(pool, accountId), "auth.json");
+}
+
 const GROK_HOME_DEFAULT = join(HOME, ".grok");
 
 export const grokPaths = {

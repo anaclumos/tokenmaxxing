@@ -8,11 +8,12 @@ import { runBoundaryHook } from "./entries/stophook.ts";
 import { runStopFailureHook } from "./entries/stopfailurehook.ts";
 import { runCodexSupervisor } from "./entries/codexsupervisor.ts";
 import { runCodexStopHook } from "./entries/codexstophook.ts";
+import { runPiSupervisor } from "./entries/pisupervisor.ts";
 import { claude } from "./lib/claude.ts";
 import { codex } from "./lib/codex.ts";
 import { grok } from "./lib/grok.ts";
 import { opencodeGo } from "./lib/opencodego.ts";
-import { cmdInit } from "./cli/init.ts";
+import { cmdInit, cmdInitPi } from "./cli/init.ts";
 import { cmdAdd } from "./cli/add.ts";
 import { cmdAuth } from "./cli/auth.ts";
 import { cmdStatus } from "./cli/status.ts";
@@ -34,6 +35,7 @@ const YES_FLAG = "--yes";
 const CODEX_FLAG = "--codex";
 const GROK_FLAG = "--grok";
 const OPENCODE_GO_FLAG = "--opencode-go";
+const PI_FLAG = "--pi";
 const JSON_COMMANDS = new Set(["status", "config", "check"]);
 const CODEX_COMMANDS = new Set(["init", "add", "auth", "rm", "rename", "seat"]);
 const STATUS_ONLY_COMMANDS = new Set(["init", "add", "auth", "rm", "rename"]);
@@ -45,11 +47,13 @@ function printHelp(): void {
   ${c.cyan("tokenmaxxing check")}      sample up to three accounts whose last usage attempts are oldest (run by the periodic timer)
   ${c.cyan("tokenmaxxing init")}       log in the first account (isolated) + install supervisor & hooks
   ${c.cyan("tokenmaxxing init --codex")}  same for codex: log in the first account, isolated, install codex supervisor + Stop hook
+  ${c.cyan("tokenmaxxing init --pi")}     install the pi supervisor: pi sessions run on pooled Claude or ChatGPT accounts that are logged into pi
   ${c.cyan("tokenmaxxing init --grok")}   pool grok Build logins (status-only: no supervisor yet)
   ${c.cyan("tokenmaxxing init --opencode-go")}  pool opencode-go API keys (status-only: no supervisor yet)
   ${c.cyan("tokenmaxxing add")}        register an additional account (isolated login)
   ${c.cyan("tokenmaxxing add")} --codex | --grok | --opencode-go   same for the codex, grok, or opencode-go pool
   ${c.cyan("tokenmaxxing auth")} [--codex | --grok | --opencode-go] [sel | --all]  reauthenticate a pooled account in place (bare = pick from a list; --all = every account that is flagged or has no usable credential in its store, one by one)
+  ${c.cyan("tokenmaxxing auth --pi")} [--codex] [sel | --all]  log a pooled Claude account (or a codex account with --codex) into pi, isolated (bare = pick from a list; --all = every account without a pi login)
   ${c.cyan("tokenmaxxing status")} [--cached]  accounts with 5h / weekly / per-model usage bars (--cached: the stored figures, no sampling)
   ${c.cyan("tokenmaxxing config")}     print the config path and the effective values (edit the file in an editor)
   ${c.cyan("tokenmaxxing doctor")}     verify the install is intact
@@ -80,6 +84,9 @@ async function main(): Promise<number> {
   if (argv0 === "codex" || argv[0] === "__supervise-codex") {
     return runCodexSupervisor({ argv: argv[0] === "__supervise-codex" ? argv.slice(1) : argv });
   }
+  if (argv0 === "pi" || argv[0] === "__supervise-pi") {
+    return runPiSupervisor(argv[0] === "__supervise-pi" ? argv.slice(1) : argv);
+  }
 
   jsonMode = argv.includes(JSON_FLAG);
   const json = jsonMode;
@@ -91,8 +98,19 @@ async function main(): Promise<number> {
     return 2;
   }
   const provider = argv.includes(CODEX_FLAG) ? codex : argv.includes(GROK_FLAG) ? grok : argv.includes(OPENCODE_GO_FLAG) ? opencodeGo : claude;
-  const args = argv.filter((a) => a !== JSON_FLAG && a !== CACHED_FLAG && a !== YES_FLAG && a !== CODEX_FLAG && a !== GROK_FLAG && a !== OPENCODE_GO_FLAG);
+  const pi = argv.includes(PI_FLAG);
+  const args = argv.filter((a) => a !== JSON_FLAG && a !== CACHED_FLAG && a !== YES_FLAG && a !== CODEX_FLAG && a !== GROK_FLAG && a !== OPENCODE_GO_FLAG && a !== PI_FLAG);
   const sub = args[0];
+
+  if (pi && sub !== "init" && sub !== "auth") {
+    emitError({ json, message: `${PI_FLAG} applies to init and auth, not ${sub ?? "status"}` });
+    return 2;
+  }
+
+  if (pi && (sub === "init" ? provider !== claude : provider !== claude && provider !== codex)) {
+    emitError({ json, message: sub === "init" ? `init ${PI_FLAG} takes no pool flag` : `auth ${PI_FLAG} logs a Claude account (no pool flag) or a codex account (${CODEX_FLAG}) into pi` });
+    return 2;
+  }
 
   if (cached && sub != null && sub !== "status") {
     emitError({ json, message: `${CACHED_FLAG} applies to status only, not ${sub}` });
@@ -143,9 +161,9 @@ async function main(): Promise<number> {
       return cmdCheck(json);
     }
     case "config": return cmdConfig(args.slice(1), json);
-    case "init": return cmdInit(provider);
+    case "init": return pi ? cmdInitPi() : cmdInit(provider);
     case "add": return cmdAdd(provider);
-    case "auth": return cmdAuth(provider, args.slice(1));
+    case "auth": return cmdAuth(provider, args.slice(1), pi ? (provider === codex ? "codex" : "claude") : null);
     case "doctor": return cmdDoctor();
     case "rm": return cmdRm(provider, args[1]);
     case "rename": return cmdRename(provider, args.slice(1));
@@ -180,7 +198,7 @@ async function main(): Promise<number> {
       if (out.timer === "still-loaded") console.log(c.yellow(`⚠ the check job may still be loaded - run: ${deactivationHint(CHECK_JOB)}`));
       if (out.hub === "still-loaded") console.log(c.yellow(`⚠ the usage hub job may still be loaded - run: ${deactivationHint(HUB_JOB)}`));
       if (!out.pathLineRemoved) console.log(c.dim("(no tokenmaxxing PATH line found in the shell rc)"));
-      console.log(`kept: accounts.json, config.json, and every account credential store (claude: stores/ and its keychain items on macOS; codex: codex-stores/; grok: grok-stores/; opencode-go: opencode-go-stores/) - remove accounts with \`xx rm\` to delete their credentials`);
+      console.log(`kept: accounts.json, config.json, and every account credential store (claude: stores/ and its keychain items on macOS; codex: codex-stores/; pi: pi-stores/; grok: grok-stores/; opencode-go: opencode-go-stores/) - remove accounts with \`xx rm\` to delete their credentials`);
       return 0;
     }
     case "help":

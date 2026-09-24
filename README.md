@@ -65,9 +65,11 @@ claude                  # use claude as always; each session gets its own accoun
 |---|---|
 | `tokenmaxxing init` | verify and pin the real `claude`, log the first account in (isolated) + install supervisor, hooks, PATH line, check timer, and hub service |
 | `tokenmaxxing init --codex` | same for codex: log in the first account (isolated), install codex supervisor + Stop hook |
+| `tokenmaxxing init --pi` | verify and pin the real `pi` and install the `pi` supervisor, which runs pi sessions on pooled Claude and ChatGPT accounts that have a pi login |
 | `tokenmaxxing init --grok` / `init --opencode-go` | pool the first grok login or opencode-go key, status-only: no supervisor, no switching |
 | `tokenmaxxing add [--codex \| --grok \| --opencode-go]` | register an additional account in that pool (isolated login, harvested once into its own store) |
 | `tokenmaxxing auth [--codex \| --grok \| --opencode-go] [sel \| --all]` | reauthenticate a pooled account in place: bare lists the pool (emails shown) and asks which; a selector targets one account and tells you the email to sign in with; `--all` walks every account that is flagged or has no usable credential in its store, one by one |
+| `tokenmaxxing auth --pi [--codex] [sel \| --all]` | log a pooled Claude account (or a codex account with `--codex`) into pi, isolated, and keep that login as the account's pi credential after an identity check; `--all` walks every account without a pi login |
 | `tokenmaxxing status [--cached]` | every pool: accounts with 5h / weekly / per-model usage bars, live session counts, exhausted-until-reset; `--cached` renders the stored figures without sampling |
 | `tokenmaxxing config` | the config path and the effective values; edit the file in an editor, a bad value fails the next load with the field name |
 | `tokenmaxxing check` | fold fresh tees, sample up to three stale accounts, and self-update a Bun global install once a day; the periodic timer runs this every tick |
@@ -110,7 +112,7 @@ See [How switching decides](docs/content/docs/switching.mdx) for the policy and 
 }
 ```
 
-`thresholds.session` and `thresholds.weekly` are the two bars, one number each (an array `thresholds.session`, the former ladder, fails config loading with a message naming the field); `projectionMargin` is a fixed safety margin subtracted from the session bar only (default 3), so a large turn is less likely to blow past the 5-hour bar between checks; the weekly bar takes no margin because one turn cannot overshoot a week; `switchModels` names the models whose per-model cap triggers a move; `usagePollTtlMs` is how long a usage sample stays fresh, for a seat's own sample and for the accounts each check tick samples; `maxWaitMs` bounds the depleted-pool countdown - a reset further out than this does not pause the session (no respawn marker is written and the session simply keeps hitting its limit until an account recovers); `checkIntervalMs` is the periodic check tick (default 60s), which `init` writes into the timer - re-run `tokenmaxxing init` after changing it so the timer unit picks up the new tick. `claudeBin`, `codexBin`, `grokBin`, and `opencodeBin` pin the real binaries; `init` writes them, and `TOKENMAXXING_CLAUDE_BIN`, `TOKENMAXXING_CODEX_BIN`, `TOKENMAXXING_GROK_BIN`, and `TOKENMAXXING_OPENCODE_BIN` override them for one process, except that `init` pins the binary it resolved into `config.json`.
+`thresholds.session` and `thresholds.weekly` are the two bars, one number each (an array `thresholds.session`, the former ladder, fails config loading with a message naming the field); `projectionMargin` is a fixed safety margin subtracted from the session bar only (default 3), so a large turn is less likely to blow past the 5-hour bar between checks; the weekly bar takes no margin because one turn cannot overshoot a week; `switchModels` names the models whose per-model cap triggers a move; `usagePollTtlMs` is how long a usage sample stays fresh, for a seat's own sample and for the accounts each check tick samples; `maxWaitMs` bounds the depleted-pool countdown - a reset further out than this does not pause the session (no respawn marker is written and the session simply keeps hitting its limit until an account recovers); `checkIntervalMs` is the periodic check tick (default 60s), which `init` writes into the timer - re-run `tokenmaxxing init` after changing it so the timer unit picks up the new tick. `claudeBin`, `codexBin`, `grokBin`, `opencodeBin`, and `piBin` pin the real binaries; `init` writes them, and `TOKENMAXXING_CLAUDE_BIN`, `TOKENMAXXING_CODEX_BIN`, `TOKENMAXXING_GROK_BIN`, `TOKENMAXXING_OPENCODE_BIN`, and `TOKENMAXXING_PI_BIN` override them for one process, except that `init` pins the binary it resolved into `config.json`.
 
 State lives in `~/.config/tokenmaxxing/`; outside it the install touches Claude Code's `settings.json`, codex's `hooks.json`, the timer and usage hub units, and your shell rc. Each account's credential store is `stores/<uuid8>/`, which Claude Code reads and refreshes as its own: on macOS the credential is a login-keychain item keyed by the store path (never plaintext on disk), on Linux a 0600 `.credentials.json` inside the store (the same plaintext model claude itself uses for `~/.claude/.credentials.json`).
 
@@ -127,6 +129,19 @@ codex                       # use codex as always
 Codex mechanics differ from Claude Code in one hard way: a running codex process refuses a credential swapped to a different account, so **a restart is the switch**. Each codex session runs on its own account's store (`codex-stores/<uuid8>/`, only `auth.json` per account, everything else shared with `~/.codex` so resume works across stores). The installed Stop hook runs the same pace-pressure decision at each turn boundary (usage read free from codex's own rate-limit endpoint: percentages plus absolute reset times, the weekly aggregate and every named additional limit alike); when it moves, the supervisor relaunches `codex resume <session-id>` under the target's store with the transcript intact, after compacting the thread on the old account. `status` (and `status --cached`) shows every pool.
 
 Two codex-specific facts worth knowing: codex does not run hooks it has not been told to trust, so after `init --codex` you must open codex once and trust the tokenmaxxing Stop hook via `/hooks` (auto-switching is inert until then); and each codex session runs on its own store, so no live `auth.json` is ever shared: tokenmaxxing refreshes a parked account's token only when it reads usage for it, never one a session is running on, and a move is a restart at an idle turn boundary. `init --codex` refuses a `~/.codex/config.toml` that pins `cli_auth_credentials_store` away from `file`.
+
+## pi support
+
+The [pi](https://pi.dev) coding agent runs on the same two pools when it signs in with a Claude subscription (`anthropic`) or a ChatGPT subscription (`openai-codex`):
+
+```sh
+tokenmaxxing init --pi                # install the pi supervisor
+tokenmaxxing auth --pi --all          # log each pooled Claude account into pi once
+tokenmaxxing auth --pi --codex --all  # same for the pooled codex accounts
+pi                                    # use pi as always
+```
+
+pi keeps its own credential and refreshes it itself, so each pooled account gets a pi login of its own (a separate grant, never a copy) in `pi-stores/`, with everything else linked to the shared `~/.pi/agent`. The `pi` supervisor picks the pool from `--provider`, the `--model` prefix, or pi's `defaultProvider`, starts the session on a pooled account through `PI_CODING_AGENT_DIR`, watches that account every ten seconds, and at a bar relaunches `pi --session-id <id>` on a fresher account. Details and limits in [pi support](docs/content/docs/pi.mdx).
 
 ## Honest limitations
 

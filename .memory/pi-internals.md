@@ -1,0 +1,18 @@
+---
+name: pi-internals
+description: Verified pi coding agent mechanics the pi supervisor depends on (agent dir, auth.json and its lock, login, session ids and files, model restore, signals); re-verify against the installed release on each bump
+metadata:
+  type: reference
+---
+
+Source-verified against `@earendil-works/pi-coding-agent` 0.87.1 (`dist/` of the managed install). pi changes often: re-verify a line before building on it.
+
+**Agent dir.** Every path pi reads or writes (`auth.json`, `settings.json`, `models-store.json`, `trust.json`, `sessions/`, `bin/` with the managed `fd` and `rg`, extensions, themes) derives from `PI_CODING_AGENT_DIR`, default `~/.pi/agent`. The managed-install launcher sets `PI_MANAGED_INSTALL_ROOT` from its own location, so moving the agent dir leaves self-update alone. pi writes `settings.json`, `auth.json`, `trust.json`, `models-store.json`, and session files with a direct `writeFileSync` or `appendFileSync` on the path, so a symlink is written through; `bin/` must be linked or pi downloads `fd` and `rg` again.
+
+**auth.json.** Keyed by provider id: `anthropic` is `{type: "oauth", access, refresh, expires}`, `openai-codex` adds `accountId` (the `chatgpt_account_id` claim of the access token); `expires` is epoch ms minus five minutes. pi refreshes a token within five minutes of `expires` under a `proper-lockfile` lock at `<path>.lock` with `realpath: false`, re-checks the expiry under the lock, and re-reads the file whenever its revision changes. A stored credential owns its provider: environment variables are read only when nothing is stored, and `openai-codex` has no environment fallback. The Anthropic login uses Claude Code's OAuth client id and token endpoint. `pi auth check --provider <id> --no-refresh --json` reads the store read-only and prints `status` without the credential.
+
+**Login.** Only the interactive `/login` logs in (no CLI, RPC, or environment path); the menu names the providers `Anthropic (Claude Pro/Max)` and `OpenAI (ChatGPT Plus/Pro)`. `--no-session` keeps the login run from writing a session file; `--no-approve` skips project-local files.
+
+**Sessions.** A session file is `<session dir>/<ISO timestamp with : and . as ->_<id>.jsonl`, first line `{type: "session", id, cwd, ...}`. The default session dir is `<agent dir>/sessions/--<cwd without its leading slash, with /, \, and : as ->--`; `--session-dir`, then `PI_CODING_AGENT_SESSION_DIR`, then settings `sessionDir` override it with one flat directory filtered by the header `cwd`. A new session writes nothing until its first assistant reply lands, then appends each message as it completes. `--session-id <id>` (alphanumerics with `.`, `_`, `-`) opens the project session with that id or creates it with a warning, and refuses `--session`, `--continue`, and `--resume`; `--continue` takes the newest file by mtime. Positional messages are sent as prompts on startup, also into a resumed session; a positional `/compact` is not the built-in command. On resume without `--model`, pi restores the session's recorded model when its provider has auth, else falls back to settings `defaultProvider` and `defaultModel`, which pi rewrites whenever the model changes.
+
+**Process.** `pi --version` prints a bare version. The interactive TUI handles SIGTERM and SIGHUP by restoring the terminal and exiting 0; Ctrl+C is a raw-mode key, not SIGINT. pi retries 429s itself (three attempts up to 60 s by default) and reads no rate-limit headers other than `retry-after`. There are no shell-command hooks: `hooks/` was renamed to TypeScript extensions.

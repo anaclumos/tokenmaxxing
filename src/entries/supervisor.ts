@@ -13,7 +13,7 @@ import { thresholdBars, usableAt } from "../lib/picker.ts";
 import { clearPresence } from "../lib/presence.ts";
 import { readLines } from "../lib/proc.ts";
 import { teeObservation } from "../lib/sample.ts";
-import { exitStatus, loopGuardTripped, raceMarkerOrExit, recordPresenceOrStop, runPassthrough } from "../lib/supervise.ts";
+import { countdownWait, exitStatus, loopGuardTripped, raceMarkerOrExit, recordPresenceOrStop, runPassthrough, SEAT_POLL_MS, SEAT_RETRY_MS, type Say } from "../lib/supervise.ts";
 import { saveTermios } from "../lib/tty.ts";
 import { liveSessionId, loadSessionFlags, pruneStaleSessions, saveSessionFlags, writeRespawnMarker } from "../lib/sessions.ts";
 import { loadAccounts, loadConfig, readJsonFile, releaseWaitClaim } from "../lib/state.ts";
@@ -203,9 +203,6 @@ function consumableMarker(marker: string, gate: MarkerGate): z.infer<typeof Resp
   return m;
 }
 
-const SEAT_POLL_MS = 10_000;
-const SEAT_RETRY_MS = 60_000;
-
 function seatBlockedUntil(seatId: string, now: number, families: string[], cfg: Config): number | null {
   const account = loadAccounts(claudePool).accounts.find((a) => a.id === seatId);
   if (!account) return null;
@@ -233,35 +230,8 @@ async function moveExhaustedSeat(seat: Account, sid: string, gate: MarkerGate, m
   return true;
 }
 
-type Say = (terminal: string, text: string) => void;
-
 function systemLine(sid: string, text: string): string {
   return `${JSON.stringify({ type: "system", subtype: "informational", content: text, level: "warning", uuid: crypto.randomUUID(), session_id: sid })}\n`;
-}
-
-const clockFmt = new Intl.DateTimeFormat("en-US", { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZoneName: "short" });
-
-async function countdownWait(acct: string, until: number, out: { stream: boolean; say: Say }): Promise<boolean> {
-  let aborted = false;
-  const onInt = () => { aborted = true; };
-  process.on("SIGINT", onInt);
-  const minutes = Math.max(1, Math.ceil((until - Date.now()) / 60000));
-  out.say(
-    `\n\x1b[36m⏳ tokenmaxxing: all accounts at their limit. Resuming on ${acct} when it resets (Ctrl-C to resume now).\x1b[0m\n`,
-    `tokenmaxxing: all accounts at their limit. Resuming at ${clockFmt.format(until)} (in ${minutes} min) on ${acct}.`,
-  );
-  while (!aborted && Date.now() < until) {
-    if (!out.stream) {
-      const left = until - Date.now();
-      const m = Math.floor(left / 60000);
-      const s = Math.floor((left % 60000) / 1000);
-      process.stderr.write(`\r\x1b[36m   resuming in ${m}m ${String(s).padStart(2, "0")}s \x1b[0m`);
-    }
-    await Bun.sleep(1000);
-  }
-  process.removeListener("SIGINT", onInt);
-  out.say(`\n\x1b[36m↻ resuming on ${acct}...\x1b[0m\n`, `tokenmaxxing: resuming on ${acct}.`);
-  return aborted;
 }
 
 function resumePrompt(input: { compacted: boolean; origin: z.infer<typeof RespawnMarkerSchema>["origin"] }): string {

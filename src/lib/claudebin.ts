@@ -102,6 +102,7 @@ export function verifyRealBin(input: { bin: string; name: string; versionOk: (ve
 
 export const CLAUDE_BIN = { name: "claude", key: "claudeBin", versionOk: (out: string) => out.toLowerCase().includes("claude") } as const;
 export const CODEX_BIN = { name: "codex", key: "codexBin", versionOk: (out: string) => out.toLowerCase().includes("codex") } as const;
+export const PI_BIN = { name: "pi", key: "piBin", versionOk: (out: string) => out !== "" && Bun.semver.satisfies(out, "*") } as const;
 
 export function resolveVerifiedClaude(): string {
   const candidates: string[] = [];

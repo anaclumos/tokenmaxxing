@@ -9,6 +9,7 @@ import { errorMessage, log } from "./log.ts";
 import { claudeTierLabel, describeIdentity, fetchTokenIdentity, isDeadCredential, InvalidGrantError } from "./oauth.ts";
 import { claudePool, env, paths, seatFromEnv, storeDirFor } from "./paths.ts";
 import { pickBest, pickEarliestReset, thresholdBars, type PickCtx } from "./picker.ts";
+import { deletePiStore } from "./piauth.ts";
 import { seatCounts } from "./presence.ts";
 import { StoreUnusableError, type Observation, type Provider, type SampleReport } from "./provider.ts";
 import { foldTee, sampleAccountUsage, teeObservation, usageBlockedUntil } from "./sample.ts";
@@ -117,20 +118,22 @@ async function storeUsable(a: Account): Promise<boolean> {
   }
 }
 
-export function pickSeat(now: number, model: ModelInfo | null): Account | null {
+export function pickSeat(now: number, model: ModelInfo | null, eligible: (a: Account) => boolean = () => true): Account | null {
   const cfg = loadConfig();
   const idx = loadAccounts(claudePool);
   let dirty = false;
   for (const a of idx.accounts) dirty = foldTee(a) || dirty;
   if (dirty) saveAccounts(claudePool, idx);
   const ctx: PickCtx = { now, thresholds: thresholdBars(cfg), currentId: null, families: gatedFamilies(model, cfg.policy.switchModels), seats: presence() };
-  return pickBest(idx.accounts, ctx) ?? pickEarliestReset(idx.accounts, ctx)?.account ?? null;
+  const candidates = idx.accounts.filter(eligible);
+  return pickBest(candidates, ctx) ?? pickEarliestReset(candidates, ctx)?.account ?? null;
 }
 
 async function removeCredentials(a: Account): Promise<void> {
   await deleteItem(storeTarget(a.id));
   rmSync(storeDirFor(a.id), { recursive: true, force: true });
   rmSync(`${storeDirFor(a.id)}.lock`, { recursive: true, force: true });
+  deletePiStore("claude", a.id);
   clearUsageSnapshot(a.id);
 }
 

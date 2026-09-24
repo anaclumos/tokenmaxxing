@@ -7,17 +7,17 @@ import { codexPaths, codexStoreDirFor, HOME, optionalEnv, paths } from "./paths.
 import { writeFileAtomic } from "./atomic.ts";
 import { installedBin, installSettings, isOurHookCommand, uninstallSettings } from "./settings.ts";
 import { CLAUDE_BIN, resolveRealBin } from "./claudebin.ts";
-import { loadConfig, readJsonFile } from "./state.ts";
+import { loadConfig, readJsonFile, type BinKey } from "./state.ts";
 import { ErrnoSchema } from "./types.ts";
 
 export type InstallOutcome = { claudeWrapper: string; installedBin: string; pathAhead: boolean; timerLoaded: boolean; hubLoaded: boolean; checkIntervalS: number };
 
-export function isBinDirAhead(): boolean {
+export function isBinDirAhead(bin: { name: string; key: BinKey } = CLAUDE_BIN): boolean {
   const dirs = (process.env.PATH ?? "").split(":");
   const ourIdx = dirs.indexOf(paths.binDir);
   if (ourIdx < 0) return false;
   try {
-    const realDir = dirname(resolveRealBin(CLAUDE_BIN));
+    const realDir = dirname(resolveRealBin(bin));
     const realIdx = dirs.indexOf(realDir);
     return realIdx < 0 || ourIdx < realIdx;
   } catch {
@@ -203,6 +203,14 @@ export function installCodexSupervisor(): void {
 export function uninstallCodexSupervisor(): void {
   uninstallCodexStopHook();
   if (existsSync(codexSupervisorLink())) rmSync(codexSupervisorLink(), { force: true });
+}
+
+export function piSupervisorLink(): string {
+  return join(paths.binDir, "pi");
+}
+
+export function installPiSupervisor(): void {
+  writeFileAtomic(piSupervisorLink(), `#!/bin/sh\nexec ${JSON.stringify(installedBin())} __supervise-pi "$@"\n`, 0o755);
 }
 
 export type UnitJob = {
@@ -508,6 +516,7 @@ export function uninstallTargets(live: boolean): string[] {
     ...[CHECK_JOB, HUB_JOB].filter((job) => !job.skip()).map((job) => uninstallTarget(job, live)),
     paths.supervisorLink,
     codexSupervisorLink(),
+    piSupervisorLink(),
     join(paths.binDir, "xx"),
     installedBin(),
     ...(rc == null ? [] : [`${rc}: the ${PATH_LINE_MARK} line`]),
@@ -519,7 +528,7 @@ export function uninstallSupervisor(input: { live: boolean }): UninstallOutcome 
   const timer = uninstallJob(CHECK_JOB, input.live);
   const hub = uninstallJob(HUB_JOB, input.live);
   uninstallCodexSupervisor();
-  for (const f of [paths.supervisorLink, join(paths.binDir, "xx"), installedBin()]) {
+  for (const f of [paths.supervisorLink, piSupervisorLink(), join(paths.binDir, "xx"), installedBin()]) {
     if (existsSync(f)) rmSync(f, { force: true });
   }
   const rc = shellRcPath();

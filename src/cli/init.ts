@@ -1,6 +1,8 @@
 import { mkdirSync } from "node:fs";
 import { withLock } from "../lib/lock.ts";
-import { paths } from "../lib/paths.ts";
+import { claudePool, codexPool, paths } from "../lib/paths.ts";
+import { piInstall, piPreflight } from "../lib/pi.ts";
+import { piStoreUsable } from "../lib/piauth.ts";
 import type { Provider } from "../lib/provider.ts";
 import { loadAccounts, loadConfig, saveAccounts, upsertAccount } from "../lib/state.ts";
 import { c, count } from "./render.ts";
@@ -16,6 +18,25 @@ export function printUsage(p: Provider): void {
   console.log(`    ${c.cyan("xx")}                 show the pool with usage bars (same as ${c.cyan("xx status")})`);
   console.log(`    ${c.cyan(`xx add${p.flag}`)}             log in and pool another account`);
   console.log(`    ${c.cyan("xx help")}            everything else`);
+}
+
+export function cmdInitPi(): number {
+  mkdirSync(paths.home, { recursive: true });
+  loadConfig();
+  piPreflight();
+  piInstall();
+  console.log();
+  for (const [pool, poolPaths, flag] of [["claude", claudePool, ""], ["codex", codexPool, " --codex"]] as const) {
+    const accounts = loadAccounts(poolPaths).accounts;
+    if (accounts.length === 0) {
+      console.log(`  ${pool} pool: empty - ${c.cyan(`xx init${flag}`)} pools the first account`);
+      continue;
+    }
+    const ready = accounts.filter((a) => piStoreUsable(pool, a.id)).length;
+    console.log(`  ${pool} pool: ${ready} of ${count({ n: accounts.length, noun: "account" })} logged into pi - ${c.cyan(`xx auth --pi${flag} --all`)} logs in the rest`);
+  }
+  console.log(`  then run ${c.cyan("pi")} as always: a session on an ${c.bold("anthropic")} or ${c.bold("openai-codex")} model starts on a pooled account and moves near quota`);
+  return 0;
 }
 
 export async function cmdInit(p: Provider): Promise<number> {

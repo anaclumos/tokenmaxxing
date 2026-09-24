@@ -4,6 +4,7 @@ import { writeFileAtomic } from "./atomic.ts";
 import { CODEX_BIN, MAX_WRAP_DEPTH, WRAP_DEPTH_ENV, resolveRealBin, verifyRealBin } from "./claudebin.ts";
 import { codexIdentityOf, codexStoreUsable, deleteCodexStoreAuth, isCodexAccessExpiring, readCodexAuthAt, readCodexStoreAuth, writeCodexStoreAuth } from "./codexauth.ts";
 import { CodexInvalidGrantError, CodexRefreshFailedError, refreshCodexAuth } from "./codexoauth.ts";
+import { deletePiStore } from "./piauth.ts";
 import { seatCounts } from "./presence.ts";
 import { CodexUsageReadError, codexLimitLabel, fetchCodexUsage } from "./codexusage.ts";
 import { codexSupervisorLink, ensurePathInRc, installCodexSupervisor, managedShellRcSkipLines, shellRcPath } from "./install.ts";
@@ -210,10 +211,10 @@ export function codexPickCtx(now: number, currentId: string | null): PickCtx {
   return { now, thresholds: thresholdBars(loadConfig()), currentId, families: null, seats: null };
 }
 
-export function pickCodexSeat(now: number): Account | null {
+export function pickCodexSeat(now: number, eligible: (a: Account) => boolean = (a) => codexStoreUsable(a.id)): Account | null {
   const ctx = codexPickCtx(now, null);
   const present = seatCounts(codexPaths.presenceDir);
-  const open = loadAccounts(codexPool).accounts.filter((a) => a.needsReauth !== true && !present.has(a.id) && codexStoreUsable(a.id));
+  const open = loadAccounts(codexPool).accounts.filter((a) => a.needsReauth !== true && !present.has(a.id) && eligible(a));
   return pickBest(open.filter((a) => !isExhausted(a, ctx)), ctx) ?? pickEarliestReset(open, ctx)?.account ?? null;
 }
 
@@ -232,7 +233,10 @@ export const codex: Provider = {
   mergeWindows: (next) => next,
   swap: prepareMove,
   classifySwapError: (e) => (e instanceof CodexInvalidGrantError ? "dead-grant" : e instanceof StoreUnusableError ? "skip" : "fatal"),
-  removeCredentials: async (a) => deleteCodexStoreAuth(a.id),
+  removeCredentials: async (a) => {
+    deleteCodexStoreAuth(a.id);
+    deletePiStore("codex", a.id);
+  },
   storeUsable: async (a) => codexStoreUsable(a.id),
   login,
   importLive,
