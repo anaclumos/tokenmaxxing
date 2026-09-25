@@ -419,7 +419,8 @@ export async function runSupervisor(argv: string[]): Promise<number> {
     if (existsSync(marker)) rmSync(marker, { force: true });
 
     const gate: MarkerGate = { launchedAt: Date.now(), overriddenUntil };
-    const { child: proc, seat } = await withLock(claudePool.lockFile, async () => {
+    const launched = await withLock(claudePool.lockFile, async () => {
+      if (terminating) return null;
       const picked = (wanted == null ? null : (loadAccounts(claudePool).accounts.find((a) => a.id === wanted) ?? null)) ?? pickSeat(gate.launchedAt, model);
       log("supervisor.launch", { sid, respawns, seat: picked?.id.slice(0, 8) ?? null, args: launchArgs.join(" "), injected: firstLine !== null });
       const spawned = Bun.spawn([real, ...launchArgs], {
@@ -435,6 +436,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
           ...(picked ? { CLAUDE_SECURESTORAGE_CONFIG_DIR: storeDirFor(picked.id) } : {}),
         },
       });
+      child = spawned;
       if (relay !== null) relay.attach(spawned.stdin!, firstLine);
       firstLine = null;
       if (picked) {
@@ -450,8 +452,12 @@ export async function runSupervisor(argv: string[]): Promise<number> {
       }
       return { child: spawned, seat: picked };
     });
+    if (launched == null) {
+      await releaseClaim();
+      return 143;
+    }
 
-    child = proc;
+    const { child: proc, seat } = launched;
     let seatCheckAt = 0;
     await raceMarkerOrExit({
       child: proc,
