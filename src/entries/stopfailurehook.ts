@@ -2,7 +2,7 @@ import { z } from "zod";
 import { claude } from "../lib/claude.ts";
 import { evaluateAndMaybeSwap } from "../lib/decide.ts";
 import { readStdin } from "../lib/proc.ts";
-import { adoptLiveSession, supervisedSession, writeRespawnMarker } from "../lib/sessions.ts";
+import { adoptLiveSession, refusedAccounts, supervisedSession, writeRespawnMarker } from "../lib/sessions.ts";
 import { loadConfig } from "../lib/state.ts";
 import { classifyEnforcedLimit, findEnforcedRow, parseErrorBody, readTranscriptTail, type TranscriptRow } from "../lib/usage.ts";
 import { paths } from "../lib/paths.ts";
@@ -57,7 +57,7 @@ export async function runStopFailureHook(): Promise<number> {
 
     let enforced: EnforcedLimit | null = null;
     if (limit && account) {
-      enforced = { account, kind: limit.kind, family: limit.kind === "model" ? limit.family : null, resetsAt: limit.resetsAt, blind: !mainLoop && limit.kind !== "model" };
+      enforced = { account, kind: limit.kind, family: limit.kind === "model" || limit.kind === "credits" ? limit.family : null, resetsAt: limit.resetsAt, blind: !mainLoop && limit.kind !== "model" };
       log("stopfailure.enforced", { kind: limit.kind, family: enforced.family ?? undefined, resetsAt: limit.resetsAt, subagent: !mainLoop });
     } else {
       log("stopfailure.unclassified", {
@@ -80,9 +80,10 @@ export async function runStopFailureHook(): Promise<number> {
       );
     }
 
-    const decision = await evaluateAndMaybeSwap(claude, now, canRespawn, enforced, { waiterId: canRespawn ? session?.sid : undefined });
+    const refused = enforced?.kind === "credits" ? [...new Set([...refusedAccounts(), enforced.account])] : undefined;
+    const decision = await evaluateAndMaybeSwap(claude, now, canRespawn, enforced, { waiterId: canRespawn ? session?.sid : undefined, exclude: refused });
     if (session && canRespawn && decision.account && (decision.swapped || decision.waitUntil !== undefined)) {
-      writeRespawnMarker({ session, accountId: decision.account.id, waitUntil: decision.waitUntil ?? now, compact: false, origin: "stopfailure" });
+      writeRespawnMarker({ session, accountId: decision.account.id, waitUntil: decision.waitUntil ?? now, compact: false, origin: "stopfailure", refused });
       log("stopfailure.marker", { session: session.sid.slice(0, 8), live: session.live.slice(0, 8), account: decision.account.id.slice(0, 8), waitUntil: decision.waitUntil ?? now });
     } else {
       log("stopfailure.decision", { reason: decision.reason, swapped: decision.swapped, account: decision.account?.id.slice(0, 8), waitUntil: decision.waitUntil });

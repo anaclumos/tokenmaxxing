@@ -104,12 +104,17 @@ export function pruneStaleSessions(now: number): void {
 export type SupervisedSession = { sid: string; launchedAt: number | null; live: string };
 
 const LaunchedAtSchema = z.coerce.number().finite().optional().catch(undefined);
+const RefusedSchema = z.string().optional().transform((ids) => (ids ?? "").split(",").filter((id) => id !== ""));
 
 export function supervisedSession(env: Record<string, string | undefined> = process.env): SupervisedSession | null {
   if (env.TOKENMAXXING_SUPERVISED !== "1") return null;
   const sid = env.TOKENMAXXING_SESSION_ID;
   if (sid == null || sid === "") return null;
   return { sid, launchedAt: LaunchedAtSchema.parse(env.TOKENMAXXING_LAUNCHED_AT) ?? null, live: liveSessionId(sid) };
+}
+
+export function refusedAccounts(env: Record<string, string | undefined> = process.env): string[] {
+  return RefusedSchema.parse(env.TOKENMAXXING_REFUSED);
 }
 
 export function adoptLiveSession(session: SupervisedSession, stdinSid: string | undefined): SupervisedSession | null {
@@ -124,7 +129,7 @@ export function adoptLiveSession(session: SupervisedSession, stdinSid: string | 
   return { ...session, live: stdinSid };
 }
 
-export function writeRespawnMarker(input: { session: SupervisedSession; accountId: string; waitUntil: number; compact: boolean; origin: z.infer<typeof RespawnMarkerSchema>["origin"] }): void {
+export function writeRespawnMarker(input: { session: SupervisedSession; accountId: string; waitUntil: number; compact: boolean; origin: z.infer<typeof RespawnMarkerSchema>["origin"]; refused?: string[] }): void {
   const payload: z.infer<typeof RespawnMarkerSchema> = {
     accountId: input.accountId,
     ts: Date.now(),
@@ -133,6 +138,7 @@ export function writeRespawnMarker(input: { session: SupervisedSession; accountI
     compact: input.compact,
     origin: input.origin,
     ...(input.session.launchedAt != null ? { launchedAt: input.session.launchedAt } : {}),
+    ...(input.refused != null ? { refused: input.refused } : {}),
   };
   writeFileAtomic(join(paths.respawnDir, input.session.sid), JSON.stringify(payload));
 }
