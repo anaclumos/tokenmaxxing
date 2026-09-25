@@ -2,7 +2,7 @@ import { z } from "zod";
 import { claude } from "../lib/claude.ts";
 import { evaluateAndMaybeSwap } from "../lib/decide.ts";
 import { readStdin } from "../lib/proc.ts";
-import { adoptLiveSession, supervisedSession, writeRespawnMarker } from "../lib/sessions.ts";
+import { adoptLiveSession, refusedAccounts, supervisedSession, writeRespawnMarker } from "../lib/sessions.ts";
 import { JsonTextSchema } from "../lib/types.ts";
 import { errorMessage, log } from "../lib/log.ts";
 
@@ -24,7 +24,7 @@ export async function runBoundaryHook(event: "stop" | "sessionstart"): Promise<n
       log(`${event}.nested_session`, { stdin: stdin.session_id?.slice(0, 8), supervised: supervised.live.slice(0, 8), source: stdin.source });
       return 0;
     }
-    const decision = await evaluateAndMaybeSwap(claude, Date.now(), session != null, null, { waiterId: session?.sid });
+    const decision = await evaluateAndMaybeSwap(claude, Date.now(), session != null, null, { waiterId: session?.sid, exclude: refusedAccounts() });
     if (session && decision.account && (decision.swapped || decision.waitUntil !== undefined)) {
       writeRespawnMarker({ session, accountId: decision.account.id, waitUntil: decision.waitUntil ?? Date.now(), compact: true, origin: event });
       log(`${event}.${decision.waitUntil !== undefined ? "wait" : "move"}`, { source: stdin.source, account: decision.account.id.slice(0, 8), waitUntil: decision.waitUntil, session: session.sid.slice(0, 8), live: session.live.slice(0, 8) });
