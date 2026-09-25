@@ -180,10 +180,18 @@ type MarkerGate = {
   overriddenUntil: number;
 };
 
+function releaseClaimLocked(sid: string): void {
+  try {
+    releaseWaitClaim(sid);
+  } catch (e) {
+    log("supervisor.claim_release_failed", { err: errorMessage(e) });
+  }
+}
+
 async function discardMarker(marker: string, event: string, fields: Record<string, unknown>): Promise<null> {
   await withLock(claudePool.lockFile, () => {
     rmSync(marker, { force: true });
-    releaseWaitClaim(basename(marker));
+    releaseClaimLocked(basename(marker));
   });
   log(event, fields);
   return null;
@@ -455,7 +463,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
           savedTermios,
         });
       }
-      releaseWaitClaim(sid);
+      releaseClaimLocked(sid);
       return { child: spawned, seat: picked };
     });
     if (launched == null) {

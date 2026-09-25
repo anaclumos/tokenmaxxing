@@ -386,7 +386,13 @@ export async function runPiSupervisor(argv: string[]): Promise<number> {
             savedTermios,
           });
         }
-        if (pool === "claude") releaseWaitClaim(id);
+        if (pool === "claude") {
+          try {
+            releaseWaitClaim(id);
+          } catch (e) {
+            log("pisupervisor.claim_release_failed", { err: errorMessage(e) });
+          }
+        }
         return { proc: spawned, seat: picked };
       });
       if (launched == null) {
