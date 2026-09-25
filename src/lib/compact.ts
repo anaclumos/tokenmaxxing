@@ -1,4 +1,5 @@
 import { statSync } from "node:fs";
+import type { Subprocess } from "bun";
 import { delay } from "es-toolkit";
 import { z } from "zod";
 import pkg from "../../package.json" with { type: "json" };
@@ -13,7 +14,7 @@ const PIPE_GRACE_MS = 2_000;
 
 const CompactBoundarySchema = z.looseObject({ type: z.literal("system"), subtype: z.literal("compact_boundary") });
 
-export async function compactClaudeSession(input: { real: string; sid: string; transcript: string; env: Record<string, string | undefined> }): Promise<CompactOutcome> {
+export async function compactClaudeSession(input: { real: string; sid: string; transcript: string; env: Record<string, string | undefined>; onSpawn: (child: Subprocess) => void }): Promise<CompactOutcome> {
   const offset = statSync(input.transcript).size;
   const p = Bun.spawn([input.real, "-p", "--resume", input.sid, "/compact"], {
     env: input.env,
@@ -23,6 +24,7 @@ export async function compactClaudeSession(input: { real: string; sid: string; t
     timeout: CLAUDE_COMPACT_KILL_MS,
     killSignal: "SIGKILL",
   });
+  input.onSpawn(p);
   const reads = Promise.all([p.stdout.text(), p.stderr.text()]);
   const settled = await Promise.race([reads, p.exited.then(() => delay(PIPE_GRACE_MS)).then(() => null)]);
   await p.exited;

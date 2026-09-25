@@ -499,7 +499,12 @@ export async function runSupervisor(argv: string[]): Promise<number> {
         delete compactEnv.TOKENMAXXING_SESSION_ID;
         delete compactEnv.TOKENMAXXING_LAUNCHED_AT;
         delete compactEnv.TOKENMAXXING_MODEL;
-        const outcome = await compactClaudeSession({ real, sid: m.sessionId, transcript, env: compactEnv });
+        const outcome = await compactClaudeSession({ real, sid: m.sessionId, transcript, env: compactEnv, onSpawn: (p) => { child = p; } });
+        child = null;
+        if (terminating) {
+          await releaseClaim();
+          return 143;
+        }
         log("supervisor.compact", { sid: m.sessionId.slice(0, 8), seat: seat.id.slice(0, 8), ok: outcome.ok, reason: outcome.ok ? undefined : outcome.reason });
         if (!outcome.ok) say(`\x1b[33m   compaction did not land (${outcome.reason}) - resuming with the full context\x1b[0m\n`, `tokenmaxxing: compaction did not land; resuming with the full context. (${outcome.reason})`);
         compacted = outcome.ok;
