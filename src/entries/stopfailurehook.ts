@@ -81,7 +81,7 @@ export async function runStopFailureHook(): Promise<number> {
     }
 
     const refused = enforced?.kind === "credits" ? [...new Set([...refusedAccounts(), enforced.account])] : undefined;
-    const decision = await evaluateAndMaybeSwap(claude, now, canRespawn, enforced, { waiterId: canRespawn ? session?.sid : undefined, exclude: refused ?? refusedAccounts() });
+    const decision = await evaluateAndMaybeSwap(claude, now, canRespawn, enforced, { waiterId: canRespawn ? session?.sid : undefined, exclude: refused });
     if (session && canRespawn && decision.account && (decision.swapped || decision.waitUntil !== undefined)) {
       writeRespawnMarker({ session, accountId: decision.account.id, waitUntil: decision.waitUntil ?? now, compact: false, origin: "stopfailure", refused });
       log("stopfailure.marker", { session: session.sid.slice(0, 8), live: session.live.slice(0, 8), account: decision.account.id.slice(0, 8), waitUntil: decision.waitUntil ?? now });

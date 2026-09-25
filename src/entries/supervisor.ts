@@ -225,14 +225,14 @@ function seatBlockedUntil(seatId: string, now: number, families: string[], cfg: 
   return until > now ? until : null;
 }
 
-async function moveExhaustedSeat(seat: Account, sid: string, gate: MarkerGate, model: ModelInfo | null, refused: string[]): Promise<boolean> {
+async function moveExhaustedSeat(seat: Account, sid: string, gate: MarkerGate, model: ModelInfo | null): Promise<boolean> {
   try {
     const now = Date.now();
     const cfg = loadConfig();
     const families = gatedFamilies(model, cfg.policy.switchModels);
     const until = seatBlockedUntil(seat.id, now, families, cfg);
     if (until == null || until <= gate.overriddenUntil) return false;
-    const decision = await evaluateAndMaybeSwap(claude, now, true, null, { seatId: seat.id, sessionFamilies: families, waiterId: sid, exclude: refused });
+    const decision = await evaluateAndMaybeSwap(claude, now, true, null, { seatId: seat.id, sessionFamilies: families, waiterId: sid });
     log("supervisor.seat_exhausted", { seat: seat.id.slice(0, 8), until, reason: decision.reason, account: decision.account?.id.slice(0, 8), waitUntil: decision.waitUntil });
     if (decision.account && (decision.swapped || decision.waitUntil !== undefined)) {
       writeRespawnMarker({ session: { sid, launchedAt: gate.launchedAt, live: liveSessionId(sid) }, accountId: decision.account.id, waitUntil: decision.waitUntil ?? now, compact: true, origin: "seatwatch" });
@@ -481,7 +481,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
       tick: async () => {
         if (existsSync(marker) && (await consumableMarker(marker, gate)) != null) return true;
         if (seat && !terminating && Date.now() >= seatCheckAt) {
-          const decided = await moveExhaustedSeat(seat, sid, gate, model, refused);
+          const decided = await moveExhaustedSeat(seat, sid, gate, model);
           seatCheckAt = Date.now() + (decided ? SEAT_RETRY_MS : SEAT_POLL_MS);
         }
         return false;
