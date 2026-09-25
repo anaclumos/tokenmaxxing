@@ -366,6 +366,7 @@ export async function runPiSupervisor(argv: string[]): Promise<number> {
       const launched = await withLock(mover.pool.lockFile, async () => {
         clearPresence({ dir: presenceDir, id });
         if (terminating) return null;
+        if (pool === "claude") releaseWaitClaim(id);
         const picked = validWanted(pool, wanted, id) ?? pickPiSeat(pool, launchedAt, model);
         log("pisupervisor.launch", { id, pool, respawns, seat: picked?.id.slice(0, 8) ?? null, args: launchArgs.join(" ") });
         const spawned = Bun.spawn([real, ...launchArgs], {
@@ -422,7 +423,6 @@ export async function runPiSupervisor(argv: string[]): Promise<number> {
         if (waitUntil > Date.now()) {
           if (await countdownWait(target.label, waitUntil, { stream: false, say })) overriddenUntil = waitUntil;
         } else say(`\n\x1b[36m↻ tokenmaxxing: moving pi to ${target.label} - resuming...\x1b[0m\n`);
-        await releaseClaim();
         wanted = target.id;
         launchArgs = sessionExists(dirs, sid) ? ["--session-id", sid, ...args.flags, "--", RESUME_PROMPT] : firstArgs;
         continue;

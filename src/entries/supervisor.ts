@@ -421,6 +421,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
     const gate: MarkerGate = { launchedAt: Date.now(), overriddenUntil };
     const launched = await withLock(claudePool.lockFile, async () => {
       if (terminating) return null;
+      releaseWaitClaim(sid);
       const picked = (wanted == null ? null : (loadAccounts(claudePool).accounts.find((a) => a.id === wanted) ?? null)) ?? pickSeat(gate.launchedAt, model);
       log("supervisor.launch", { sid, respawns, seat: picked?.id.slice(0, 8) ?? null, args: launchArgs.join(" "), injected: firstLine !== null });
       const spawned = Bun.spawn([real, ...launchArgs], {
@@ -506,7 +507,6 @@ export async function runSupervisor(argv: string[]): Promise<number> {
       if (m.waitUntil > Date.now()) {
         if (await countdownWait(label, m.waitUntil, { stream, say })) overriddenUntil = m.waitUntil;
       } else say(`\n\x1b[36m↻ tokenmaxxing: moving to ${label} - resuming...\x1b[0m\n`, `tokenmaxxing: moving to ${label} and resuming.`);
-      await releaseClaim();
       wanted = m.accountId;
       saveSessionFlags(m.sessionId, persistable, process.cwd());
       const prompt = resumable ? resumePrompt({ compacted, origin: m.origin }) : null;

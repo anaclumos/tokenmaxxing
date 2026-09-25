@@ -1,5 +1,6 @@
 import { mkdirSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
+import { countBy } from "es-toolkit";
 import { z } from "zod";
 import { readItem, writeItem, deleteItem, isolatedTarget, readStore, storeTarget, claudeAiOauthOnly } from "./credstore.ts";
 import { CLAUDE_BIN, resolveRealBin, resolveVerifiedClaude } from "./claudebin.ts";
@@ -10,10 +11,10 @@ import { claudeTierLabel, describeIdentity, fetchTokenIdentity, isDeadCredential
 import { claudePool, env, paths, seatFromEnv, storeDirFor } from "./paths.ts";
 import { pickBest, pickEarliestReset, thresholdBars, type PickCtx } from "./picker.ts";
 import { deletePiStore } from "./piauth.ts";
-import { seatCounts } from "./presence.ts";
+import { livingPresences } from "./presence.ts";
 import { StoreUnusableError, type Observation, type Provider, type SampleReport } from "./provider.ts";
 import { foldTee, sampleAccountUsage, teeObservation, usageBlockedUntil } from "./sample.ts";
-import { clearUsageSnapshot, loadAccounts, loadConfig, loadUsageSnapshot, pinBinOverride, readJsonFile, saveAccounts, type Harvest } from "./state.ts";
+import { clearUsageSnapshot, liveWaitClaims, loadAccounts, loadConfig, loadUsageSnapshot, pinBinOverride, readJsonFile, saveAccounts, type Harvest } from "./state.ts";
 import { saveTermios, restoreTermios } from "./tty.ts";
 import { fetchUsageDirect, gatedFamilies, mergeWindows, modelFromFlag, scrubCredentialEnv, windowsOf } from "./usage.ts";
 import { CredentialBlobSchema, JsonTextSchema, OAuthAccountSchema, type Account, type Config, type ModelInfo } from "./types.ts";
@@ -24,7 +25,9 @@ function liveId(): string | null {
 }
 
 function presence(): Map<string, number> {
-  return seatCounts(paths.presenceDir);
+  const seats = new Map(livingPresences(paths.presenceDir).map((s) => [s.id, s.accountId]));
+  for (const claim of liveWaitClaims(Date.now())) seats.set(claim.sessionId, claim.accountId);
+  return new Map(Object.entries(countBy([...seats.values()], (id) => id)));
 }
 
 const PROBE_BACKOFF_CAP_MS = 30 * 60 * 1000;
