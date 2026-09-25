@@ -14,7 +14,7 @@ import type { Provider } from "../lib/provider.ts";
 import { foldTee } from "../lib/sample.ts";
 import { loadAccounts, loadConfig } from "../lib/state.ts";
 import { OAUTH_USAGE_URL } from "../lib/usage.ts";
-import type { Account, Config } from "../lib/types.ts";
+import type { Account, Config, Thresholds } from "../lib/types.ts";
 import { c, emitError } from "./render.ts";
 import { usageReport, type UsageReport, type WindowReport } from "./status.ts";
 
@@ -24,7 +24,7 @@ const STALE_AFTER_MS = 2 * 60 * 60_000;
 type HubPool = {
   provider: Provider;
   usageUrl: string;
-  fold: (account: Account) => void;
+  fold: (account: Account, thresholds: Thresholds) => void;
   read: (account: Account, cfg: Config, now: number) => Promise<Account>;
   body: (usage: UsageReport, account: Account) => unknown;
 };
@@ -96,7 +96,7 @@ function authFiles(cfg: Config, now: number): unknown {
   const files = POOLS.flatMap((pool) => {
     const ctx = { now, thresholds: thresholdBars(cfg), currentId: null, families: pool.provider.gatedFamilies(cfg), seats: null };
     return loadAccounts(pool.provider.pool).accounts.map((a) => {
-      pool.fold(a);
+      pool.fold(a, ctx.thresholds);
       return {
         id: a.id,
         auth_index: authIndex(pool, a),
@@ -140,8 +140,9 @@ async function apiCall(req: Request): Promise<Response> {
   const account = loadAccounts(pool.provider.pool).accounts.find((a) => authIndex(pool, a) === index);
   if (!account) return json({ error: "auth credential not found for auth_index" }, 400);
   const now = Date.now();
-  const current = await pool.read(account, loadConfig(), now);
-  pool.fold(current);
+  const cfg = loadConfig();
+  const current = await pool.read(account, cfg, now);
+  pool.fold(current, thresholdBars(cfg));
   const usage = usageReport({ ...current, windows: current.windows.filter((w) => now - w.sampledAt <= STALE_AFTER_MS) }, now);
   if (!usage || (!usage.fiveHour && !usage.week)) return json({ error: `no usage figure newer than ${STALE_AFTER_MS / 3_600_000}h for this account` }, 502);
   return json({ status_code: 200, header: { "Content-Type": ["application/json"] }, body: JSON.stringify(pool.body(usage, current)) });

@@ -8,7 +8,7 @@ import { withLock } from "./lock.ts";
 import { errorMessage, log } from "./log.ts";
 import { claudeTierLabel, describeIdentity, fetchTokenIdentity, isDeadCredential, InvalidGrantError } from "./oauth.ts";
 import { claudePool, env, paths, seatFromEnv, storeDirFor } from "./paths.ts";
-import { pickBest, pickEarliestReset, thresholdBars, type PickCtx } from "./picker.ts";
+import { landWindows, pickBest, pickEarliestReset, thresholdBars, type PickCtx } from "./picker.ts";
 import { deletePiStore } from "./piauth.ts";
 import { seatCounts } from "./presence.ts";
 import { StoreUnusableError, type Observation, type Provider, type SampleReport } from "./provider.ts";
@@ -48,8 +48,7 @@ async function observeLive(account: Account, cfg: Config, now: number, opts: { p
       if (outcome.ok) {
         a.probeFails = 0;
         if (a.lastUsageAt == null || startedAt > a.lastUsageAt) {
-          a.windows = mergeWindows(windowsOf(outcome.usage, startedAt), a.windows);
-          a.lastUsageAt = startedAt;
+          landWindows(a, mergeWindows(windowsOf(outcome.usage, startedAt), a.windows), startedAt, thresholdBars(cfg));
         }
       } else {
         a.probeFails = (a.probeFails ?? 0) + 1;
@@ -64,12 +63,13 @@ async function observeLive(account: Account, cfg: Config, now: number, opts: { p
 
 async function samplePool(accounts: Account[]): Promise<Map<string, SampleReport>> {
   const reports = new Map<string, SampleReport>();
+  const bars = thresholdBars(loadConfig());
   await Promise.all(
     accounts.map(async (a) => {
       const tee = loadUsageSnapshot(a.id);
       const teeAt = tee == null ? null : (tee.state.sampledAt ?? tee.state.ts);
       if (teeAt != null && (a.lastUsageAt == null || teeAt >= a.lastUsageAt)) {
-        foldTee(a);
+        foldTee(a, bars);
         reports.set(a.id, { ok: true, source: "statusline" });
         return;
       }
@@ -80,8 +80,7 @@ async function samplePool(accounts: Account[]): Promise<Map<string, SampleReport
         return;
       }
       const at = Date.now();
-      a.lastUsageAt = at;
-      a.windows = mergeWindows(windowsOf(outcome.usage, at), a.windows);
+      landWindows(a, mergeWindows(windowsOf(outcome.usage, at), a.windows), at, bars);
       reports.set(a.id, { ok: true, source: "probe" });
     }),
   );
@@ -120,11 +119,12 @@ async function storeUsable(a: Account): Promise<boolean> {
 
 export function pickSeat(now: number, model: ModelInfo | null, eligible: (a: Account) => boolean = () => true): Account | null {
   const cfg = loadConfig();
+  const bars = thresholdBars(cfg);
   const idx = loadAccounts(claudePool);
   let dirty = false;
-  for (const a of idx.accounts) dirty = foldTee(a) || dirty;
+  for (const a of idx.accounts) dirty = foldTee(a, bars) || dirty;
   if (dirty) saveAccounts(claudePool, idx);
-  const ctx: PickCtx = { now, thresholds: thresholdBars(cfg), currentId: null, families: gatedFamilies(model, cfg.policy.switchModels), seats: presence() };
+  const ctx: PickCtx = { now, thresholds: bars, currentId: null, families: gatedFamilies(model, cfg.policy.switchModels), seats: presence() };
   const candidates = idx.accounts.filter(eligible);
   return pickBest(candidates, ctx) ?? pickEarliestReset(candidates, ctx)?.account ?? null;
 }
