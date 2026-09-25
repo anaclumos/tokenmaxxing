@@ -56,6 +56,7 @@ export const TranscriptRowSchema = z.looseObject({
   timestamp: z.string().optional(),
   isApiErrorMessage: z.boolean().optional(),
   apiErrorIsTransient: z.boolean().optional(),
+  apiError: z.string().optional(),
   error: z.string().optional(),
   errorDetails: z.string().optional(),
   quotaLimits: z.looseObject({ rateLimitType: z.string().optional(), resetsAt: EpochSecondsSchema.optional() }).optional(),
@@ -114,13 +115,14 @@ export function findEnforcedRow(input: { rows: TranscriptRow[]; lastAssistantMes
 export type EnforcedClass =
   | { kind: "session"; resetsAt: number | null }
   | { kind: "weekly"; resetsAt: number | null }
-  | { kind: "model"; family: string; resetsAt: number | null };
+  | { kind: "model"; family: string; resetsAt: number | null }
+  | { kind: "credits"; family: string; resetsAt: null };
 
 const ErrorBodySchema = z.looseObject({
   error: z.looseObject({ type: z.string().optional(), details: z.looseObject({ error_code: z.string().optional() }).optional() }).optional(),
 });
 
-const CREDITS_GATED_FAMILIES = ["fable"];
+const CREDITS_FAMILY = "fable";
 
 export function parseErrorBody(errorDetails: string | undefined): z.infer<typeof ErrorBodySchema> | null {
   if (!errorDetails) return null;
@@ -131,19 +133,15 @@ export function parseErrorBody(errorDetails: string | undefined): z.infer<typeof
 }
 
 export function classifyEnforcedLimit(row: TranscriptRow, switchModels: string[]): EnforcedClass | null {
+  if (row.apiError === "model_requires_usage_credits") return { kind: "credits", family: CREDITS_FAMILY, resetsAt: null };
   const q = row.quotaLimits;
-  if (q) {
-    const resetsAt = q.resetsAt ?? null;
-    const type = q.rateLimitType ?? "";
-    if (type === "five_hour") return { kind: "session", resetsAt };
-    if (type === "seven_day") return { kind: "weekly", resetsAt };
-    const family = switchModels.find((f) => type.includes(f));
-    return family ? { kind: "model", family, resetsAt } : null;
-  }
-  if (row.apiErrorIsTransient === true) return null;
-  if (parseErrorBody(row.errorDetails)?.error?.type !== "rate_limit_error") return null;
-  const family = switchModels.find((f) => CREDITS_GATED_FAMILIES.includes(f));
-  return family ? { kind: "model", family, resetsAt: null } : null;
+  if (!q) return null;
+  const resetsAt = q.resetsAt ?? null;
+  const type = q.rateLimitType ?? "";
+  if (type === "five_hour") return { kind: "session", resetsAt };
+  if (type === "seven_day") return { kind: "weekly", resetsAt };
+  const family = switchModels.find((f) => type.includes(f));
+  return family ? { kind: "model", family, resetsAt } : null;
 }
 
 const FIVE_HOURS_S = 5 * 3600;

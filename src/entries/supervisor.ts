@@ -378,6 +378,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
     delete passthroughEnv.TOKENMAXXING_SUPERVISED;
     delete passthroughEnv.TOKENMAXXING_SESSION_ID;
     delete passthroughEnv.TOKENMAXXING_MODEL;
+    delete passthroughEnv.TOKENMAXXING_REFUSED;
     return runPassthrough({ real, argv, env: passthroughEnv, onSpawn: (p) => { child = p; } });
   }
 
@@ -427,6 +428,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
   let respawns = 0;
   let overriddenUntil = 0;
   let wanted: string | null = null;
+  let refused: string[] = [];
   try {
   while (true) {
     if (existsSync(marker)) rmSync(marker, { force: true });
@@ -446,6 +448,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
           TOKENMAXXING_SESSION_ID: sid,
           TOKENMAXXING_LAUNCHED_AT: String(gate.launchedAt),
           TOKENMAXXING_MODEL: effective.model ?? "",
+          TOKENMAXXING_REFUSED: refused.join(","),
           ...(picked ? { CLAUDE_SECURESTORAGE_CONFIG_DIR: storeDirFor(picked.id) } : {}),
         },
       });
@@ -512,6 +515,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
         delete compactEnv.TOKENMAXXING_SESSION_ID;
         delete compactEnv.TOKENMAXXING_LAUNCHED_AT;
         delete compactEnv.TOKENMAXXING_MODEL;
+        delete compactEnv.TOKENMAXXING_REFUSED;
         const outcome = await compactClaudeSession({ real, sid: m.sessionId, transcript, env: compactEnv, onSpawn: (p) => { child = p; } });
         child = null;
         if (terminating) {
@@ -526,6 +530,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
         if (await countdownWait(label, m.waitUntil, { stream, say })) overriddenUntil = m.waitUntil;
       } else say(`\n\x1b[36m↻ tokenmaxxing: moving to ${label} - resuming...\x1b[0m\n`, `tokenmaxxing: moving to ${label} and resuming.`);
       wanted = m.accountId;
+      refused = m.refused ?? refused;
       saveSessionFlags(m.sessionId, persistable, process.cwd());
       const prompt = resumable ? resumePrompt({ compacted, origin: m.origin }) : null;
       firstLine = relay !== null && prompt !== null ? userLine(prompt) : null;
