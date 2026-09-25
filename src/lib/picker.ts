@@ -71,9 +71,12 @@ export function isExhausted(a: Account, ctx: PickCtx): boolean {
   return blockingUntil(a, ctx).some((t) => t > ctx.now);
 }
 
-export function clearWallIfUnderBars(a: Account, thresholds: Thresholds, now: number): void {
-  if (a.enforcedUntil == null) return;
-  if (!isExhausted({ ...a, enforcedUntil: undefined }, { now, thresholds, currentId: null, families: null, seats: null })) a.enforcedUntil = undefined;
+export function landWindows(a: Account, windows: Window[], at: number, thresholds: Thresholds): void {
+  const ctx: PickCtx = { now: at, thresholds, currentId: null, families: [], seats: null };
+  const blocked = a.enforcedUntil != null && isExhausted({ ...a, enforcedUntil: undefined }, ctx);
+  a.windows = windows;
+  a.lastUsageAt = at;
+  if (blocked && !isExhausted({ ...a, enforcedUntil: undefined }, ctx)) a.enforcedUntil = undefined;
 }
 
 export function nextWeeklyReset(resetsAt: number | null, now: number): number | null {

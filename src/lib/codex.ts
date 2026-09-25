@@ -11,7 +11,7 @@ import { codexSupervisorLink, ensurePathInRc, installCodexSupervisor, managedShe
 import { withLock } from "./lock.ts";
 import { errorMessage, log } from "./log.ts";
 import { codexPaths, codexPool, codexSeatFromEnv } from "./paths.ts";
-import { clearWallIfUnderBars, isExhausted, pickBest, pickEarliestReset, thresholdBars, type PickCtx } from "./picker.ts";
+import { isExhausted, pickBest, pickEarliestReset, thresholdBars, type PickCtx } from "./picker.ts";
 import { StoreUnusableError, type Observation, type Provider, type SampleReport } from "./provider.ts";
 import { loadAccounts, loadConfig, pinBinOverride, saveAccounts, type Harvest } from "./state.ts";
 import { restoreTermios, saveTermios } from "./tty.ts";
@@ -31,10 +31,9 @@ function applyUsage(account: Account, usage: CodexUsage, at: number): void {
   account.lastUsageAt = at;
   if (usage.email != null) account.email = usage.email;
   if (usage.planType != null) account.tier = usage.planType;
-  clearWallIfUnderBars(account, thresholdBars(loadConfig()), at);
 }
 
-type CodexReadOutcome = { ok: true; usage: CodexUsage; at: number } | { ok: false; reason: string; deadGrant: boolean };
+type CodexReadOutcome = { ok: true; usage: CodexUsage; at: number } | { ok: false; reason: string; deadGrant: boolean; expiring?: boolean };
 
 async function readCodexUsage(account: Account, now: number, refresh: boolean, holder?: string): Promise<CodexReadOutcome> {
   let auth: CodexAuthJson | null;
@@ -47,7 +46,7 @@ async function readCodexUsage(account: Account, now: number, refresh: boolean, h
   try {
     if (isCodexAccessExpiring({ auth, now })) {
       if (!refresh) {
-        return { ok: false, reason: "stored access token is expiring and this read never refreshes a store", deadGrant: false };
+        return { ok: false, reason: "stored access token is expiring and this read never refreshes a store", deadGrant: false, expiring: true };
       }
       if (livingPresences(codexPaths.presenceDir).some((p) => p.accountId === account.id && p.id !== holder)) {
         return { ok: false, reason: "running in a live codex session (store refresh unsafe)", deadGrant: false };
@@ -87,18 +86,26 @@ export async function observeCodex(account: Account, cfg: Config, now: number, o
 
 async function samplePool(accounts: Account[], _liveId: string | null, now: number): Promise<Map<string, SampleReport>> {
   const reports = new Map<string, SampleReport>();
+  const record = (account: Account, outcome: CodexReadOutcome): void => {
+    if (outcome.ok) {
+      applyUsage(account, outcome.usage, outcome.at);
+      reports.set(account.id, { ok: true, source: "probe" });
+    } else {
+      if (outcome.deadGrant) account.needsReauth = true;
+      reports.set(account.id, { ok: false, reason: outcome.reason });
+    }
+  };
+  const expiring: Account[] = [];
   await Promise.all(
     accounts.map(async (account) => {
       const outcome = await readCodexUsage(account, now, false);
-      if (outcome.ok) {
-        applyUsage(account, outcome.usage, outcome.at);
-        reports.set(account.id, { ok: true, source: "probe" });
-      } else {
-        if (outcome.deadGrant) account.needsReauth = true;
-        reports.set(account.id, { ok: false, reason: outcome.reason });
-      }
+      if (!outcome.ok && outcome.expiring === true) expiring.push(account);
+      else record(account, outcome);
     }),
   );
+  if (expiring.length > 0) {
+    await withLock(codexPool.lockFile, () => Promise.all(expiring.map(async (account) => record(account, await readCodexUsage(account, now, true)))));
+  }
   return reports;
 }
 

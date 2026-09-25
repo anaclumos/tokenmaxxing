@@ -6,7 +6,7 @@ import { opencodeGo } from "../lib/opencodego.ts";
 import { loadAccounts, loadConfig, saveAccounts } from "../lib/state.ts";
 import { withLock } from "../lib/lock.ts";
 import { codexPool, grokPool, opencodeGoPool } from "../lib/paths.ts";
-import { earliestReset, clearWallIfUnderBars, gatedWindows, isExhausted, isSessionWindow, limitWindows, liveUsed, nextWeeklyReset, sessionWindow, thresholdBars, weeklyWindow } from "../lib/picker.ts";
+import { earliestReset, gatedWindows, landWindows, isExhausted, isSessionWindow, limitWindows, liveUsed, nextWeeklyReset, sessionWindow, thresholdBars, weeklyWindow } from "../lib/picker.ts";
 import type { Provider, SampleReport } from "../lib/provider.ts";
 import { bar, c, count, emitJson, fmtAgo } from "./render.ts";
 import type { Account, Config, Thresholds, Window } from "../lib/types.ts";
@@ -110,11 +110,9 @@ async function collect(p: Provider, cfg: Config, now: number, cached: boolean): 
             dirty = true;
           }
           if (a.lastUsageAt != null && (stored.lastUsageAt == null || a.lastUsageAt > stored.lastUsageAt)) {
-            stored.windows = p.mergeWindows(a.windows, stored.windows);
-            stored.lastUsageAt = a.lastUsageAt;
+            landWindows(stored, p.mergeWindows(a.windows, stored.windows), a.lastUsageAt, bars);
             if (a.email != null) stored.email = a.email;
             if (a.tier != null) stored.tier = a.tier;
-            clearWallIfUnderBars(stored, bars, a.lastUsageAt);
             dirty = true;
           }
         }

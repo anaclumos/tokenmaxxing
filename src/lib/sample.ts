@@ -3,12 +3,12 @@ import { withLock } from "./lock.ts";
 import { errorMessage, log } from "./log.ts";
 import { claudeTierLabel, isDeadCredential } from "./oauth.ts";
 import { claudePool, paths } from "./paths.ts";
-import { clearWallIfUnderBars, thresholdBars } from "./picker.ts";
+import { landWindows, thresholdBars } from "./picker.ts";
 import { seatCounts } from "./presence.ts";
 import type { Observation } from "./provider.ts";
 import { loadAccounts, loadUsageSnapshot, saveAccounts } from "./state.ts";
 import { fetchUsageDirect, mergeWindows, windowsOf } from "./usage.ts";
-import type { Account, Config, UsageWindows } from "./types.ts";
+import type { Account, Config, Thresholds, UsageWindows } from "./types.ts";
 
 export type SampleOutcome = { ok: true; usage: UsageWindows; via: "get" } | { ok: false; reason: string; retryAt?: number };
 
@@ -24,11 +24,10 @@ export function teeObservation(account: Account): Observation | null {
   return { windows: mergeWindows(aggregate, account.windows), at };
 }
 
-export function foldTee(account: Account): boolean {
+export function foldTee(account: Account, thresholds: Thresholds): boolean {
   const observed = teeObservation(account);
   if (!observed || (account.lastUsageAt != null && observed.at <= account.lastUsageAt)) return false;
-  account.windows = observed.windows;
-  account.lastUsageAt = observed.at;
+  landWindows(account, observed.windows, observed.at, thresholds);
   return true;
 }
 
@@ -80,7 +79,7 @@ export async function sampleOldest(cfg: Config): Promise<void> {
     const now = Date.now();
     const idx = loadAccounts(claudePool);
     let dirty = false;
-    for (const a of idx.accounts) dirty = foldTee(a) || dirty;
+    for (const a of idx.accounts) dirty = foldTee(a, thresholdBars(cfg)) || dirty;
     const sampledAt = (a: Account) => Math.max(a.lastUsageAt ?? 0, a.lastProbeAt ?? 0);
     const seats = seatCounts(paths.presenceDir);
     const stale = idx.accounts
@@ -124,9 +123,7 @@ export async function sampleOldest(cfg: Config): Promise<void> {
           dirty = true;
         }
         if (stored && outcome.ok && (stored.lastUsageAt == null || startedAt > stored.lastUsageAt)) {
-          stored.windows = mergeWindows(windowsOf(outcome.usage, startedAt), stored.windows);
-          stored.lastUsageAt = startedAt;
-          clearWallIfUnderBars(stored, thresholdBars(cfg), startedAt);
+          landWindows(stored, mergeWindows(windowsOf(outcome.usage, startedAt), stored.windows), startedAt, thresholdBars(cfg));
           dirty = true;
         }
         if (dirty) saveAccounts(claudePool, idx);

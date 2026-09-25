@@ -3,6 +3,7 @@ import { claude } from "../lib/claude.ts";
 import { evaluateAndMaybeSwap } from "../lib/decide.ts";
 import { readStdin } from "../lib/proc.ts";
 import { adoptLiveSession, supervisedSession, writeRespawnMarker } from "../lib/sessions.ts";
+import { loadConfig } from "../lib/state.ts";
 import { classifyEnforcedLimit, findEnforcedRow, parseErrorBody, readTranscriptTail, type TranscriptRow } from "../lib/usage.ts";
 import { paths } from "../lib/paths.ts";
 import { JsonTextSchema, type EnforcedLimit } from "../lib/types.ts";
@@ -48,10 +49,11 @@ export async function runStopFailureHook(): Promise<number> {
       return 0;
     }
     const canRespawn = session != null && mainLoop;
+    const cfg = loadConfig();
     const row = stdin.transcript_path
       ? await awaitEnforcedRow({ transcriptPath: stdin.transcript_path, lastAssistantMessage: stdin.last_assistant_message, now })
       : null;
-    const limit = row ? classifyEnforcedLimit(row) : null;
+    const limit = row ? classifyEnforcedLimit(row, cfg.policy.switchModels) : null;
 
     let enforced: EnforcedLimit | null = null;
     if (limit && account) {

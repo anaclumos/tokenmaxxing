@@ -1,7 +1,7 @@
 import { countBy } from "es-toolkit";
 import { withLock } from "./lock.ts";
 import { loadAccounts, loadConfig, liveWaitClaims, releaseWaitClaim, replaceWaitClaim, saveAccounts } from "./state.ts";
-import { isExhausted, limitWindows, liveUsed, nextWeeklyReset, pickBest, pickWaitTarget, sessionWindow, thresholdBars, weeklyWindow, type PickCtx } from "./picker.ts";
+import { isExhausted, landWindows, limitWindows, liveUsed, nextWeeklyReset, pickBest, pickWaitTarget, sessionWindow, thresholdBars, weeklyWindow, type PickCtx } from "./picker.ts";
 import { familyTokens } from "./usage.ts";
 import { errorMessage, log } from "./log.ts";
 import type { Observation, Provider } from "./provider.ts";
@@ -100,10 +100,7 @@ export async function evaluateAndMaybeSwap(p: Provider, now = Date.now(), canRes
     for (const a of idx.accounts) {
       const obs = await p.observeLive(a, cfg, now, { probe: false, perModel: false });
       if (a === active) obs2 = obs;
-      if (obs && (a.lastUsageAt == null || obs.at > a.lastUsageAt)) {
-        a.windows = p.mergeWindows(obs.windows, a.windows);
-        a.lastUsageAt = obs.at;
-      }
+      if (obs && (a.lastUsageAt == null || obs.at > a.lastUsageAt)) landWindows(a, p.mergeWindows(obs.windows, a.windows), obs.at, bars);
     }
     saveAccounts(p.pool, idx);
 
