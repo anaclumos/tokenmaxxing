@@ -180,7 +180,24 @@ type MarkerGate = {
   overriddenUntil: number;
 };
 
-function consumableMarker(marker: string, gate: MarkerGate): z.infer<typeof RespawnMarkerSchema> | null {
+function releaseClaimLocked(sid: string): void {
+  try {
+    releaseWaitClaim(sid);
+  } catch (e) {
+    log("supervisor.claim_release_failed", { err: errorMessage(e) });
+  }
+}
+
+async function discardMarker(marker: string, event: string, fields: Record<string, unknown>): Promise<null> {
+  await withLock(claudePool.lockFile, () => {
+    rmSync(marker, { force: true });
+    releaseClaimLocked(basename(marker));
+  });
+  log(event, fields);
+  return null;
+}
+
+async function consumableMarker(marker: string, gate: MarkerGate): Promise<z.infer<typeof RespawnMarkerSchema> | null> {
   let m: z.infer<typeof RespawnMarkerSchema>;
   try {
     m = readJsonFile(marker, RespawnMarkerSchema);
@@ -191,14 +208,10 @@ function consumableMarker(marker: string, gate: MarkerGate): z.infer<typeof Resp
     );
   }
   if (m.launchedAt !== undefined && m.launchedAt !== gate.launchedAt) {
-    rmSync(marker, { force: true });
-    log("supervisor.marker_stale", { markerLaunch: m.launchedAt, childLaunch: gate.launchedAt });
-    return null;
+    return discardMarker(marker, "supervisor.marker_stale", { markerLaunch: m.launchedAt, childLaunch: gate.launchedAt });
   }
   if (m.waitUntil > Date.now() && m.waitUntil <= gate.overriddenUntil) {
-    rmSync(marker, { force: true });
-    log("supervisor.marker_overridden", { waitUntil: m.waitUntil });
-    return null;
+    return discardMarker(marker, "supervisor.marker_overridden", { waitUntil: m.waitUntil });
   }
   return m;
 }
@@ -450,6 +463,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
           savedTermios,
         });
       }
+      releaseClaimLocked(sid);
       return { child: spawned, seat: picked };
     });
     if (launched == null) {
@@ -462,7 +476,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
     await raceMarkerOrExit({
       child: proc,
       tick: async () => {
-        if (existsSync(marker) && consumableMarker(marker, gate) != null) return true;
+        if (existsSync(marker) && (await consumableMarker(marker, gate)) != null) return true;
         if (seat && !terminating && Date.now() >= seatCheckAt) {
           const decided = await moveExhaustedSeat(seat, sid, gate, model);
           seatCheckAt = Date.now() + (decided ? SEAT_RETRY_MS : SEAT_POLL_MS);
@@ -478,7 +492,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
       },
     });
 
-    const m = !terminating && existsSync(marker) ? consumableMarker(marker, gate) : null;
+    const m = !terminating && existsSync(marker) ? await consumableMarker(marker, gate) : null;
     if (m) {
       rmSync(marker, { force: true });
       respawns++;
@@ -511,7 +525,6 @@ export async function runSupervisor(argv: string[]): Promise<number> {
       if (m.waitUntil > Date.now()) {
         if (await countdownWait(label, m.waitUntil, { stream, say })) overriddenUntil = m.waitUntil;
       } else say(`\n\x1b[36m↻ tokenmaxxing: moving to ${label} - resuming...\x1b[0m\n`, `tokenmaxxing: moving to ${label} and resuming.`);
-      await releaseClaim();
       wanted = m.accountId;
       saveSessionFlags(m.sessionId, persistable, process.cwd());
       const prompt = resumable ? resumePrompt({ compacted, origin: m.origin }) : null;

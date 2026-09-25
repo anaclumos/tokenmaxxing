@@ -1,4 +1,5 @@
 import { countBy } from "es-toolkit";
+import { CLAUDE_COMPACT_KILL_MS } from "./compact.ts";
 import { withLock } from "./lock.ts";
 import { loadAccounts, loadConfig, liveWaitClaims, releaseWaitClaim, replaceWaitClaim, saveAccounts } from "./state.ts";
 import { isExhausted, landWindows, limitWindows, liveUsed, nextWeeklyReset, pickBest, pickWaitTarget, sessionWindow, thresholdBars, weeklyWindow, type PickCtx } from "./picker.ts";
@@ -16,6 +17,7 @@ export type EvalOpts = {
 };
 
 const MAX_WAITERS_PER_ACCOUNT = 4;
+const MOVE_CLAIM_MS = 2 * CLAUDE_COMPACT_KILL_MS;
 
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 const FIVE_HOURS_MS = 5 * 60 * 60 * 1000;
@@ -143,6 +145,7 @@ export async function evaluateAndMaybeSwap(p: Provider, now = Date.now(), canRes
         continue;
       }
       log("decide.swap", { account: best.id.slice(0, 8), enforced: enforced2 != null });
+      if (waiterId != null && p.seats === "shared") replaceWaitClaim({ sessionId: waiterId, accountId: best.id, at: now, waitUntil: now + MOVE_CLAIM_MS });
       return { swapped: true, account: best, reason: "swapped" };
     }
 

@@ -386,6 +386,13 @@ export async function runPiSupervisor(argv: string[]): Promise<number> {
             savedTermios,
           });
         }
+        if (pool === "claude") {
+          try {
+            releaseWaitClaim(id);
+          } catch (e) {
+            log("pisupervisor.claim_release_failed", { err: errorMessage(e) });
+          }
+        }
         return { proc: spawned, seat: picked };
       });
       if (launched == null) {
@@ -422,7 +429,6 @@ export async function runPiSupervisor(argv: string[]): Promise<number> {
         if (waitUntil > Date.now()) {
           if (await countdownWait(target.label, waitUntil, { stream: false, say })) overriddenUntil = waitUntil;
         } else say(`\n\x1b[36m↻ tokenmaxxing: moving pi to ${target.label} - resuming...\x1b[0m\n`);
-        await releaseClaim();
         wanted = target.id;
         launchArgs = sessionExists(dirs, sid) ? ["--session-id", sid, ...args.flags, "--", RESUME_PROMPT] : firstArgs;
         continue;
