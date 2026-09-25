@@ -180,7 +180,16 @@ type MarkerGate = {
   overriddenUntil: number;
 };
 
-function consumableMarker(marker: string, gate: MarkerGate): z.infer<typeof RespawnMarkerSchema> | null {
+async function discardMarker(marker: string, event: string, fields: Record<string, unknown>): Promise<null> {
+  await withLock(claudePool.lockFile, () => {
+    rmSync(marker, { force: true });
+    releaseWaitClaim(basename(marker));
+  });
+  log(event, fields);
+  return null;
+}
+
+async function consumableMarker(marker: string, gate: MarkerGate): Promise<z.infer<typeof RespawnMarkerSchema> | null> {
   let m: z.infer<typeof RespawnMarkerSchema>;
   try {
     m = readJsonFile(marker, RespawnMarkerSchema);
@@ -191,14 +200,10 @@ function consumableMarker(marker: string, gate: MarkerGate): z.infer<typeof Resp
     );
   }
   if (m.launchedAt !== undefined && m.launchedAt !== gate.launchedAt) {
-    rmSync(marker, { force: true });
-    log("supervisor.marker_stale", { markerLaunch: m.launchedAt, childLaunch: gate.launchedAt });
-    return null;
+    return discardMarker(marker, "supervisor.marker_stale", { markerLaunch: m.launchedAt, childLaunch: gate.launchedAt });
   }
   if (m.waitUntil > Date.now() && m.waitUntil <= gate.overriddenUntil) {
-    rmSync(marker, { force: true });
-    log("supervisor.marker_overridden", { waitUntil: m.waitUntil });
-    return null;
+    return discardMarker(marker, "supervisor.marker_overridden", { waitUntil: m.waitUntil });
   }
   return m;
 }
@@ -421,7 +426,6 @@ export async function runSupervisor(argv: string[]): Promise<number> {
     const gate: MarkerGate = { launchedAt: Date.now(), overriddenUntil };
     const launched = await withLock(claudePool.lockFile, async () => {
       if (terminating) return null;
-      releaseWaitClaim(sid);
       const picked = (wanted == null ? null : (loadAccounts(claudePool).accounts.find((a) => a.id === wanted) ?? null)) ?? pickSeat(gate.launchedAt, model);
       log("supervisor.launch", { sid, respawns, seat: picked?.id.slice(0, 8) ?? null, args: launchArgs.join(" "), injected: firstLine !== null });
       const spawned = Bun.spawn([real, ...launchArgs], {
@@ -451,6 +455,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
           savedTermios,
         });
       }
+      releaseWaitClaim(sid);
       return { child: spawned, seat: picked };
     });
     if (launched == null) {
@@ -463,7 +468,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
     await raceMarkerOrExit({
       child: proc,
       tick: async () => {
-        if (existsSync(marker) && consumableMarker(marker, gate) != null) return true;
+        if (existsSync(marker) && (await consumableMarker(marker, gate)) != null) return true;
         if (seat && !terminating && Date.now() >= seatCheckAt) {
           const decided = await moveExhaustedSeat(seat, sid, gate, model);
           seatCheckAt = Date.now() + (decided ? SEAT_RETRY_MS : SEAT_POLL_MS);
@@ -479,7 +484,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
       },
     });
 
-    const m = !terminating && existsSync(marker) ? consumableMarker(marker, gate) : null;
+    const m = !terminating && existsSync(marker) ? await consumableMarker(marker, gate) : null;
     if (m) {
       rmSync(marker, { force: true });
       respawns++;
