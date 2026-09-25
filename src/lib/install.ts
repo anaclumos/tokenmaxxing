@@ -200,7 +200,7 @@ export function codexSupervisorLink(): string {
 }
 
 export function installCodexSupervisor(): void {
-  writeFileAtomic(codexSupervisorLink(), `#!/bin/sh\nexec ${JSON.stringify(installedBin())} __supervise-codex "$@"\n`, 0o755);
+  writeFileAtomic(codexSupervisorLink(), `#!/bin/sh\nexec ${JSON.stringify(installEntryPoints())} __supervise-codex "$@"\n`, 0o755);
   installCodexStopHook();
 }
 
