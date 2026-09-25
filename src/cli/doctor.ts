@@ -1,12 +1,13 @@
 import { existsSync, readFileSync } from "node:fs";
-import { CLAUDE_BIN, verifyRealBin } from "../lib/claudebin.ts";
+import { CLAUDE_BIN, PI_BIN, verifyRealBin } from "../lib/claudebin.ts";
 import { checkSettings, installedBin } from "../lib/settings.ts";
-import { activationHint, CHECK_JOB, codexStoreHookTrust, findClaudeShadowers, HUB_JOB, isBinDirAhead, jobHealthy, shellRcPath } from "../lib/install.ts";
+import { activationHint, CHECK_JOB, codexStoreHookTrust, findClaudeShadowers, HUB_JOB, isBinDirAhead, jobHealthy, piSupervisorLink, shellRcPath } from "../lib/install.ts";
+import { readPiStore } from "../lib/piauth.ts";
 import { errorMessage } from "../lib/log.ts";
 import { claudePool, codexPool, paths } from "../lib/paths.ts";
 import { loadAccounts, loadConfig } from "../lib/state.ts";
 import { readStore } from "../lib/credstore.ts";
-import { codexIdentityOf, readCodexStoreAuth } from "../lib/codexauth.ts";
+import { chatgptAccountIdOf, codexIdentityOf, readCodexStoreAuth } from "../lib/codexauth.ts";
 import { isAccessTokenExpiring, isDeadCredential, fetchTokenIdentity, describeIdentity } from "../lib/oauth.ts";
 import { c } from "./render.ts";
 
@@ -97,6 +98,44 @@ export async function cmdDoctor(): Promise<number> {
   if (cfg.claudeBin && existsSync(cfg.claudeBin)) {
     const fail = verifyRealBin({ ...CLAUDE_BIN, bin: cfg.claudeBin });
     check(fail === null, "claudeBin launches the real claude", fail ?? undefined);
+  }
+
+  if (existsSync(piSupervisorLink())) {
+    check(!!cfg.piBin && existsSync(cfg.piBin), "real pi binary resolved", "run `tokenmaxxing init --pi`");
+    if (cfg.piBin && existsSync(cfg.piBin)) {
+      const fail = verifyRealBin({ ...PI_BIN, bin: cfg.piBin });
+      check(fail === null, "piBin launches the real pi", fail ?? undefined);
+      check(isBinDirAhead(PI_BIN), `${paths.binDir} is ahead of the real pi on PATH`, `export PATH="${paths.binDir}:$PATH"`);
+    }
+    for (const [pool, poolPaths, flag] of [["claude", claudePool, ""], ["codex", codexPool, " --codex"]] as const) {
+      for (const a of loadAccounts(poolPaths).accounts) {
+        let cred;
+        try {
+          cred = readPiStore(pool, a.id);
+        } catch (e) {
+          check(false, `pi login readable for ${a.label}`, errorMessage(e).slice(0, 100));
+          continue;
+        }
+        if (!cred) {
+          note(`${a.label} (${pool}) has no pi login - pi sessions skip it (run \`tokenmaxxing auth --pi${flag} ${a.label}\`)`);
+          continue;
+        }
+        if (pool === "codex") {
+          check(chatgptAccountIdOf({ jwt: cred.access }) === a.id, `pi login identity matches ${a.label} (codex)`, `run \`tokenmaxxing auth --pi --codex ${a.label}\``);
+          continue;
+        }
+        if (cred.expires <= Date.now()) {
+          note(`${a.label} pi login identity unverifiable (access token expired; pi refreshes it in its next session)`);
+          continue;
+        }
+        try {
+          const identity = await fetchTokenIdentity(cred.access);
+          check(identity.accountUuid === a.id, `pi login identity matches ${a.label}`, `token belongs to ${describeIdentity(identity)} - run \`tokenmaxxing auth --pi ${a.label}\``);
+        } catch (e) {
+          check(false, `pi login identity matches ${a.label}`, errorMessage(e).slice(0, 100));
+        }
+      }
+    }
   }
 
   const rc = shellRcPath();
