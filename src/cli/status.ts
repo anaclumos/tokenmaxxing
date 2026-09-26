@@ -27,7 +27,7 @@ type StatusAccount = {
   usage: UsageReport | null;
   usageAt: number | null;
   limitsAt: number | null;
-  sample: SampleReport | { ok: true; source: "cached" };
+  sample: SampleReport;
 };
 
 type PoolReport = {

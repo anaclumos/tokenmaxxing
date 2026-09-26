@@ -13,7 +13,7 @@ import { landWindows, pickBest, pickEarliestReset, thresholdBars, type PickCtx }
 import { deletePiStore } from "./piauth.ts";
 import { livingPresences } from "./presence.ts";
 import { StoreUnusableError, type Observation, type Provider, type SampleReport } from "./provider.ts";
-import { foldTee, sampleAccountUsage, teeObservation, usageBlockedUntil } from "./sample.ts";
+import { foldTee, sampleAccountUsage, sampleDue, sampleIntervalMs, teeObservation, usageBlockedUntil } from "./sample.ts";
 import { clearUsageSnapshot, liveWaitClaims, loadAccounts, loadConfig, loadUsageSnapshot, pinBinOverride, readJsonFile, saveAccounts, type Harvest } from "./state.ts";
 import { saveTermios, restoreTermios } from "./tty.ts";
 import { fetchUsageDirect, gatedFamilies, mergeWindows, modelFromFlag, scrubCredentialEnv, windowsOf } from "./usage.ts";
@@ -33,11 +33,10 @@ function presence(): Map<string, number> {
 const PROBE_BACKOFF_CAP_MS = 30 * 60 * 1000;
 
 async function observeLive(account: Account, cfg: Config, now: number, opts: { probe: boolean; perModel: boolean }): Promise<Observation | null> {
-  const ttl = cfg.policy.usagePollTtlMs;
-  const interval = Math.min(ttl * 2 ** (account.probeFails ?? 0), PROBE_BACKOFF_CAP_MS);
+  const interval = Math.min(sampleIntervalMs(account, cfg, now) * 2 ** (account.probeFails ?? 0), PROBE_BACKOFF_CAP_MS);
   const probeAttempted = account.lastProbeAt != null && now - account.lastProbeAt <= interval;
   const snap = loadUsageSnapshot(account.id);
-  const fresh = snap != null && now - snap.at <= ttl;
+  const fresh = snap != null && now - snap.at <= cfg.policy.usagePollTtlMs;
   if (opts.probe && !probeAttempted && usageBlockedUntil(account, now) == null && (!fresh || opts.perModel)) {
     const startedAt = Date.now();
     const outcome = await sampleAccountUsage(account);
@@ -64,9 +63,10 @@ async function observeLive(account: Account, cfg: Config, now: number, opts: { p
   return teeObservation(current);
 }
 
-async function samplePool(accounts: Account[]): Promise<Map<string, SampleReport>> {
+async function samplePool(accounts: Account[], _liveId: string | null, now: number): Promise<Map<string, SampleReport>> {
   const reports = new Map<string, SampleReport>();
-  const bars = thresholdBars(loadConfig());
+  const cfg = loadConfig();
+  const bars = thresholdBars(cfg);
   await Promise.all(
     accounts.map(async (a) => {
       const tee = loadUsageSnapshot(a.id);
@@ -74,6 +74,10 @@ async function samplePool(accounts: Account[]): Promise<Map<string, SampleReport
       if (teeAt != null && (a.lastUsageAt == null || teeAt >= a.lastUsageAt)) {
         foldTee(a, bars);
         reports.set(a.id, { ok: true, source: "statusline" });
+        return;
+      }
+      if (!sampleDue(a, cfg, now)) {
+        reports.set(a.id, { ok: true, source: "cached" });
         return;
       }
       const outcome = await sampleAccountUsage(a);
