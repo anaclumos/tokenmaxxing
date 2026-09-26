@@ -76,21 +76,27 @@ function rateLimitedReason(retryAt: number, now: number): string {
   return `the usage endpoint rate limited this account, next read in ${Math.ceil((retryAt - now) / 60_000)}m`;
 }
 
-export async function runSample(account: Account, token: string): Promise<SampleOutcome> {
-  const read = await fetchUsageDirect(token);
+const EXPIRED_REASON = "the stored access token expired, next read after a session on this account refreshes it";
+
+export async function runSample(account: Account, prepared: { token: string; expiresAt: number }): Promise<SampleOutcome> {
+  if (prepared.expiresAt <= Date.now()) return { ok: false, reason: EXPIRED_REASON };
+  const read = await fetchUsageDirect(prepared.token);
   if (read.ok) return { ok: true, usage: read.usage, via: "get" };
   if (read.retryAt == null) return { ok: false, reason: "usage read failed (see log)" };
   return { ok: false, reason: rateLimitedReason(read.retryAt, Date.now()), retryAt: read.retryAt };
 }
 
-export async function sampleAccountUsage(account: Account): Promise<SampleOutcome> {
-  const now = Date.now();
+export async function readyToSample(account: Account, now: number): Promise<PreparedSample> {
   const blockedUntil = usageBlockedUntil(account, now);
   if (blockedUntil != null) return { ok: false, reason: rateLimitedReason(blockedUntil, now) };
   const prepared = await prepareSample(account);
-  if (!prepared.ok) return prepared;
-  if (prepared.expiresAt <= now) return { ok: false, reason: "the stored access token expired, next read after a session on this account refreshes it" };
-  return runSample(account, prepared.token);
+  if (prepared.ok && prepared.expiresAt <= now) return { ok: false, reason: EXPIRED_REASON };
+  return prepared;
+}
+
+export async function sampleAccountUsage(account: Account): Promise<SampleOutcome> {
+  const ready = await readyToSample(account, Date.now());
+  return ready.ok ? runSample(account, ready) : ready;
 }
 
 const SAMPLE_BATCH = 3;
@@ -111,7 +117,7 @@ export async function sampleOldest(cfg: Config): Promise<void> {
       if (dirty) saveAccounts(claudePool, idx);
       return [];
     }
-    const batch: { account: Account; token: string }[] = [];
+    const batch: { account: Account; prepared: { token: string; expiresAt: number } }[] = [];
     for (const target of stale) {
       target.lastProbeAt = now;
       const prepared = await prepareSample(target);
@@ -122,15 +128,15 @@ export async function sampleOldest(cfg: Config): Promise<void> {
         continue;
       }
       target.storeFails = 0;
-      if (usageBlockedUntil(target, now) == null && prepared.expiresAt > now) batch.push({ account: target, token: prepared.token });
+      if (usageBlockedUntil(target, now) == null) batch.push({ account: target, prepared });
     }
     saveAccounts(claudePool, idx);
     return batch;
   });
   await Promise.all(
-    reserved.map(async ({ account, token }) => {
+    reserved.map(async ({ account, prepared }) => {
       const startedAt = Date.now();
-      const outcome = await runSample(account, token);
+      const outcome = await runSample(account, prepared);
       await withLock(claudePool.lockFile, () => {
         const idx = loadAccounts(claudePool);
         const stored = idx.accounts.find((a) => a.id === account.id);

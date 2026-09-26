@@ -109,6 +109,10 @@ async function collect(p: Provider, cfg: Config, now: number, cached: boolean): 
             stored.usageRetryAt = a.usageRetryAt;
             dirty = true;
           }
+          if ((a.lastProbeAt ?? 0) > (stored.lastProbeAt ?? 0)) {
+            stored.lastProbeAt = a.lastProbeAt;
+            dirty = true;
+          }
           if (a.lastUsageAt != null && (stored.lastUsageAt == null || a.lastUsageAt > stored.lastUsageAt)) {
             landWindows(stored, p.mergeWindows(a.windows, stored.windows), a.lastUsageAt, bars);
             if (a.email != null) stored.email = a.email;

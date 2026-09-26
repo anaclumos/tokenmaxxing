@@ -13,7 +13,7 @@ import { landWindows, pickBest, pickEarliestReset, thresholdBars, type PickCtx }
 import { deletePiStore } from "./piauth.ts";
 import { livingPresences } from "./presence.ts";
 import { StoreUnusableError, type Observation, type Provider, type SampleReport } from "./provider.ts";
-import { foldTee, sampleAccountUsage, sampleDue, sampleIntervalMs, teeObservation, usageBlockedUntil } from "./sample.ts";
+import { foldTee, readyToSample, runSample, sampleAccountUsage, sampleDue, sampleIntervalMs, teeObservation, usageBlockedUntil } from "./sample.ts";
 import { clearUsageSnapshot, liveWaitClaims, loadAccounts, loadConfig, loadUsageSnapshot, pinBinOverride, readJsonFile, saveAccounts, type Harvest } from "./state.ts";
 import { saveTermios, restoreTermios } from "./tty.ts";
 import { fetchUsageDirect, gatedFamilies, mergeWindows, modelFromFlag, scrubCredentialEnv, windowsOf } from "./usage.ts";
@@ -76,11 +76,17 @@ async function samplePool(accounts: Account[], _liveId: string | null, now: numb
         reports.set(a.id, { ok: true, source: "statusline" });
         return;
       }
+      const ready = await readyToSample(a, now);
+      if (!ready.ok) {
+        reports.set(a.id, { ok: false, reason: ready.reason });
+        return;
+      }
       if (!sampleDue(a, cfg, now)) {
         reports.set(a.id, { ok: true, source: "cached" });
         return;
       }
-      const outcome = await sampleAccountUsage(a);
+      a.lastProbeAt = now;
+      const outcome = await runSample(a, ready);
       if (!outcome.ok) {
         if (outcome.retryAt != null) a.usageRetryAt = outcome.retryAt;
         reports.set(a.id, { ok: false, reason: outcome.reason });
