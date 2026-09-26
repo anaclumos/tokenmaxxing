@@ -3,16 +3,36 @@ import { withLock } from "./lock.ts";
 import { errorMessage, log } from "./log.ts";
 import { claudeTierLabel, isDeadCredential } from "./oauth.ts";
 import { claudePool, paths } from "./paths.ts";
-import { landWindows, thresholdBars } from "./picker.ts";
+import { barFor, gatedWindows, landWindows, liveUsed, thresholdBars } from "./picker.ts";
 import { seatCounts } from "./presence.ts";
 import type { Observation } from "./provider.ts";
 import { loadAccounts, loadUsageSnapshot, saveAccounts } from "./state.ts";
 import { fetchUsageDirect, mergeWindows, windowsOf } from "./usage.ts";
-import type { Account, Config, Thresholds, UsageWindows } from "./types.ts";
+import type { Account, Config, Thresholds, UsageWindows, Window } from "./types.ts";
 
 export type SampleOutcome = { ok: true; usage: UsageWindows; via: "get" } | { ok: false; reason: string; retryAt?: number };
 
-type PreparedSample = { ok: true; token: string } | { ok: false; reason: string };
+type PreparedSample = { ok: true; token: string; expiresAt: number } | { ok: false; reason: string };
+
+const SAMPLE_INTERVAL_MAX_MS = 15 * 60 * 1000;
+
+export function sampleIntervalMs(account: Account, cfg: Config, now: number): number {
+  const floor = cfg.policy.usagePollTtlMs;
+  const bars = thresholdBars(cfg);
+  const aggregates = account.windows.filter((w) => w.name == null);
+  if (aggregates.length === 0) return floor;
+  const blocked = (w: Window) => liveUsed(w, now) >= barFor(w, bars);
+  if (aggregates.some(blocked)) return Math.max(floor, SAMPLE_INTERVAL_MAX_MS);
+  const open = [...aggregates, ...gatedWindows(account, cfg.policy.switchModels).filter((w) => !blocked(w))];
+  const spare = Math.min(...open.map((w) => 1 - liveUsed(w, now) / barFor(w, bars)));
+  return Math.max(floor, SAMPLE_INTERVAL_MAX_MS * spare);
+}
+
+const sampledAt = (a: Account) => Math.max(a.lastUsageAt ?? 0, a.lastProbeAt ?? 0);
+
+export function sampleDue(account: Account, cfg: Config, now: number): boolean {
+  return now - sampledAt(account) > sampleIntervalMs(account, cfg, now);
+}
 
 export function teeObservation(account: Account): Observation | null {
   const stored = account.lastUsageAt != null ? { windows: account.windows, at: account.lastUsageAt } : null;
@@ -45,7 +65,7 @@ export async function prepareSample(account: Account): Promise<PreparedSample> {
   }
   if (!account.oauthAccount) return { ok: false, reason: "account record has no oauthAccount - run `tokenmaxxing auth`" };
   account.tier = claudeTierLabel(creds) ?? account.tier;
-  return { ok: true, token: creds.accessToken };
+  return { ok: true, token: creds.accessToken, expiresAt: creds.expiresAt };
 }
 
 export function usageBlockedUntil(account: Account, now: number): number | null {
@@ -56,19 +76,27 @@ function rateLimitedReason(retryAt: number, now: number): string {
   return `the usage endpoint rate limited this account, next read in ${Math.ceil((retryAt - now) / 60_000)}m`;
 }
 
-export async function runSample(account: Account, token: string): Promise<SampleOutcome> {
-  const read = await fetchUsageDirect(token);
+const EXPIRED_REASON = "the stored access token expired, next read after a session on this account refreshes it";
+
+export async function runSample(account: Account, prepared: { token: string; expiresAt: number }): Promise<SampleOutcome> {
+  if (prepared.expiresAt <= Date.now()) return { ok: false, reason: EXPIRED_REASON };
+  const read = await fetchUsageDirect(prepared.token);
   if (read.ok) return { ok: true, usage: read.usage, via: "get" };
   if (read.retryAt == null) return { ok: false, reason: "usage read failed (see log)" };
   return { ok: false, reason: rateLimitedReason(read.retryAt, Date.now()), retryAt: read.retryAt };
 }
 
-export async function sampleAccountUsage(account: Account): Promise<SampleOutcome> {
-  const now = Date.now();
+export async function readyToSample(account: Account, now: number): Promise<PreparedSample> {
   const blockedUntil = usageBlockedUntil(account, now);
   if (blockedUntil != null) return { ok: false, reason: rateLimitedReason(blockedUntil, now) };
   const prepared = await prepareSample(account);
-  return prepared.ok ? runSample(account, prepared.token) : prepared;
+  if (prepared.ok && prepared.expiresAt <= now) return { ok: false, reason: EXPIRED_REASON };
+  return prepared;
+}
+
+export async function sampleAccountUsage(account: Account): Promise<SampleOutcome> {
+  const ready = await readyToSample(account, Date.now());
+  return ready.ok ? runSample(account, ready) : ready;
 }
 
 const SAMPLE_BATCH = 3;
@@ -80,17 +108,16 @@ export async function sampleOldest(cfg: Config): Promise<void> {
     const idx = loadAccounts(claudePool);
     let dirty = false;
     for (const a of idx.accounts) dirty = foldTee(a, thresholdBars(cfg)) || dirty;
-    const sampledAt = (a: Account) => Math.max(a.lastUsageAt ?? 0, a.lastProbeAt ?? 0);
     const seats = seatCounts(paths.presenceDir);
     const stale = idx.accounts
-      .filter((a) => a.needsReauth !== true && now - sampledAt(a) > cfg.policy.usagePollTtlMs)
+      .filter((a) => a.needsReauth !== true && sampleDue(a, cfg, now))
       .sort((a, b) => Number(seats.has(b.id)) - Number(seats.has(a.id)) || sampledAt(a) - sampledAt(b))
       .slice(0, SAMPLE_BATCH);
     if (stale.length === 0) {
       if (dirty) saveAccounts(claudePool, idx);
       return [];
     }
-    const batch: { account: Account; token: string }[] = [];
+    const batch: { account: Account; prepared: { token: string; expiresAt: number } }[] = [];
     for (const target of stale) {
       target.lastProbeAt = now;
       const prepared = await prepareSample(target);
@@ -101,15 +128,15 @@ export async function sampleOldest(cfg: Config): Promise<void> {
         continue;
       }
       target.storeFails = 0;
-      if (usageBlockedUntil(target, now) == null) batch.push({ account: target, token: prepared.token });
+      if (usageBlockedUntil(target, now) == null) batch.push({ account: target, prepared });
     }
     saveAccounts(claudePool, idx);
     return batch;
   });
   await Promise.all(
-    reserved.map(async ({ account, token }) => {
+    reserved.map(async ({ account, prepared }) => {
       const startedAt = Date.now();
-      const outcome = await runSample(account, token);
+      const outcome = await runSample(account, prepared);
       await withLock(claudePool.lockFile, () => {
         const idx = loadAccounts(claudePool);
         const stored = idx.accounts.find((a) => a.id === account.id);

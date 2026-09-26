@@ -49,7 +49,7 @@ export function liveUsed(w: Window, now: number): number {
   return w.usedPercentage;
 }
 
-function barFor(w: Window, thresholds: Thresholds): number {
+export function barFor(w: Window, thresholds: Thresholds): number {
   return isSessionWindow(w) ? thresholds.session : thresholds.weekly;
 }
 

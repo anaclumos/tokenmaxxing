@@ -27,7 +27,7 @@ type StatusAccount = {
   usage: UsageReport | null;
   usageAt: number | null;
   limitsAt: number | null;
-  sample: SampleReport | { ok: true; source: "cached" };
+  sample: SampleReport;
 };
 
 type PoolReport = {
@@ -107,6 +107,10 @@ async function collect(p: Provider, cfg: Config, now: number, cached: boolean): 
           }
           if ((a.usageRetryAt ?? null) !== retries.get(a.id)) {
             stored.usageRetryAt = a.usageRetryAt;
+            dirty = true;
+          }
+          if ((a.lastProbeAt ?? 0) > (stored.lastProbeAt ?? 0)) {
+            stored.lastProbeAt = a.lastProbeAt;
             dirty = true;
           }
           if (a.lastUsageAt != null && (stored.lastUsageAt == null || a.lastUsageAt > stored.lastUsageAt)) {

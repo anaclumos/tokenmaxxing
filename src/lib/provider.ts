@@ -4,7 +4,7 @@ import type { Account, Config, Window } from "./types.ts";
 
 export type Observation = { windows: Window[]; at: number };
 
-export type SampleReport = { ok: true; source: "statusline" | "probe" } | { ok: false; reason: string };
+export type SampleReport = { ok: true; source: "statusline" | "probe" | "cached" } | { ok: false; reason: string };
 
 export type SwapFailure = "dead-grant" | "skip" | "fatal";
 
