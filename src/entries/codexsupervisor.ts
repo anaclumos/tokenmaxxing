@@ -94,12 +94,27 @@ export async function runCodexSupervisor(input: { argv: string[] }): Promise<num
   if (!shouldManageCodex({ argv }) || process.env[UNMANAGED_ENV]) {
     const passthroughEnv: Record<string, string | undefined> = { ...childEnv };
     delete passthroughEnv[CODEX_SUPERVISOR_ID_ENV];
-    if (borrowsCodexSeat({ argv })) {
-      const granted = await borrowCodexSeat(process.pid);
-      if (granted && !("denied" in granted)) passthroughEnv.CODEX_HOME = granted.store;
-      else log("codexsupervisor.borrow_none", { reason: granted?.denied ?? "no usable account" });
-    }
-    return runPassthrough({ real, argv, env: passthroughEnv });
+    const granted = borrowsCodexSeat({ argv }) ? await borrowCodexSeat(process.pid) : undefined;
+    const seat = granted && !("denied" in granted) ? granted : null;
+    if (seat) passthroughEnv.CODEX_HOME = seat.store;
+    else if (granted !== undefined) log("codexsupervisor.borrow_none", { reason: granted && "denied" in granted ? granted.denied : "no usable account" });
+    return runPassthrough({
+      real,
+      argv,
+      env: passthroughEnv,
+      onSpawn: seat
+        ? (child) =>
+            recordPresenceOrStop({
+              child,
+              dir: codexPaths.presenceDir,
+              id: `seat-${process.pid}`,
+              accountId: seat.id,
+              event: "codexsupervisor.borrow_presence_failed",
+              message: "could not key the borrowed codex seat to its child - refusing to run on an unreserved store",
+              savedTermios: null,
+            })
+        : undefined,
+    });
   }
 
   const supervisorId = crypto.randomUUID();
