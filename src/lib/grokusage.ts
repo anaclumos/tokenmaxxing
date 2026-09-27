@@ -20,7 +20,7 @@ const CreditsPeriodSchema = z.looseObject({
 
 const CreditsConfigSchema = z.looseObject({
   currentPeriod: CreditsPeriodSchema,
-  creditUsagePercent: z.number(),
+  creditUsagePercent: z.number().default(0),
 });
 
 const CreditsBillingSchema = z.looseObject({
