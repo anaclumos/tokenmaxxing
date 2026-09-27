@@ -25,6 +25,19 @@ export function spawnedThroughShellsBy(ancestor: number): boolean {
   return false;
 }
 
+export function ancestorPids(): number[] {
+  const res = Bun.spawnSync(["ps", "-A", "-o", "pid=", "-o", "ppid="], { env: { ...process.env, LC_ALL: "C" } });
+  if (res.exitCode !== 0) throw new Error(`ps -A exited ${res.exitCode}: ${res.stderr.toString().trim()}`);
+  const parent = new Map<number, number>();
+  for (const row of res.stdout.toString().split("\n")) {
+    const [pid, ppid] = row.split(" ").filter(Boolean).map(Number);
+    if (pid !== undefined && ppid !== undefined) parent.set(pid, ppid);
+  }
+  const out: number[] = [];
+  for (let pid = process.ppid; pid > 1; pid = parent.get(pid) ?? 0) out.push(pid);
+  return out;
+}
+
 export function pidStartTime(pid: number): string | null {
   const res = Bun.spawnSync(["ps", "-p", String(pid), "-o", "lstart="], { env: { ...process.env, LC_ALL: "C" } });
   if (res.exitCode !== 0) return null;
