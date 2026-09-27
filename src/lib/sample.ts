@@ -1,13 +1,17 @@
-import { readStore } from "./credstore.ts";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { CLAUDE_BIN, MAX_WRAP_DEPTH, resolveRealBin, WRAP_DEPTH_ENV } from "./claudebin.ts";
+import { deleteItem, readStore, storeTarget } from "./credstore.ts";
 import { withLock } from "./lock.ts";
 import { errorMessage, log } from "./log.ts";
 import { claudeTierLabel, isDeadCredential } from "./oauth.ts";
-import { claudePool, paths } from "./paths.ts";
+import { claudePool, paths, storeDirFor } from "./paths.ts";
 import { barFor, gatedWindows, landWindows, liveUsed, thresholdBars } from "./picker.ts";
 import { seatCounts } from "./presence.ts";
 import type { Observation } from "./provider.ts";
 import { loadAccounts, loadUsageSnapshot, saveAccounts } from "./state.ts";
-import { fetchUsageDirect, mergeWindows, windowsOf } from "./usage.ts";
+import { fetchUsageDirect, mergeWindows, scrubCredentialEnv, windowsOf } from "./usage.ts";
 import type { Account, Config, Thresholds, UsageWindows, Window } from "./types.ts";
 
 export type SampleOutcome = { ok: true; usage: UsageWindows; via: "get" } | { ok: false; reason: string; retryAt?: number };
@@ -76,11 +80,46 @@ function rateLimitedReason(retryAt: number, now: number): string {
   return `the usage endpoint rate limited this account, next read in ${Math.ceil((retryAt - now) / 60_000)}m`;
 }
 
-const EXPIRED_REASON = "the stored access token expired, next read after a session on this account refreshes it";
+const REFRESH_KILL_MS = 60_000;
+
+async function refreshStore(account: Account): Promise<number | null> {
+  const home = mkdtempSync(join(tmpdir(), "tokenmaxxing-refresh-"));
+  const env = scrubCredentialEnv({ ...process.env, TOKENMAXXING_PROBE: "1", [WRAP_DEPTH_ENV]: String(MAX_WRAP_DEPTH) });
+  env.CLAUDE_CONFIG_DIR = home;
+  env.CLAUDE_SECURESTORAGE_CONFIG_DIR = storeDirFor(account.id);
+  try {
+    const p = Bun.spawn([resolveRealBin(CLAUDE_BIN), "-p", "/usage", "--no-session-persistence", "--safe-mode"], {
+      env,
+      cwd: home,
+      stdin: "ignore",
+      stdout: "ignore",
+      stderr: "ignore",
+      timeout: REFRESH_KILL_MS,
+      killSignal: "SIGKILL",
+    });
+    await p.exited;
+    return p.exitCode;
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+    await withLock(claudePool.lockFile, async () => {
+      if (loadAccounts(claudePool).accounts.some((a) => a.id === account.id)) return;
+      await deleteItem(storeTarget(account.id));
+      rmSync(storeDirFor(account.id), { recursive: true, force: true });
+      rmSync(`${storeDirFor(account.id)}.lock`, { recursive: true, force: true });
+    });
+  }
+}
 
 export async function runSample(account: Account, prepared: { token: string; expiresAt: number }): Promise<SampleOutcome> {
-  if (prepared.expiresAt <= Date.now()) return { ok: false, reason: EXPIRED_REASON };
-  const read = await fetchUsageDirect(prepared.token);
+  let token = prepared.token;
+  if (prepared.expiresAt <= Date.now()) {
+    const exit = await refreshStore(account);
+    const refreshed = await prepareSample(account);
+    if (!refreshed.ok) return refreshed;
+    if (refreshed.expiresAt <= Date.now()) return { ok: false, reason: `the stored access token expired and claude did not refresh it (exit ${exit ?? "killed"})` };
+    token = refreshed.token;
+  }
+  const read = await fetchUsageDirect(token);
   if (read.ok) return { ok: true, usage: read.usage, via: "get" };
   if (read.retryAt == null) return { ok: false, reason: "usage read failed (see log)" };
   return { ok: false, reason: rateLimitedReason(read.retryAt, Date.now()), retryAt: read.retryAt };
@@ -89,9 +128,7 @@ export async function runSample(account: Account, prepared: { token: string; exp
 export async function readyToSample(account: Account, now: number): Promise<PreparedSample> {
   const blockedUntil = usageBlockedUntil(account, now);
   if (blockedUntil != null) return { ok: false, reason: rateLimitedReason(blockedUntil, now) };
-  const prepared = await prepareSample(account);
-  if (prepared.ok && prepared.expiresAt <= now) return { ok: false, reason: EXPIRED_REASON };
-  return prepared;
+  return prepareSample(account);
 }
 
 export async function sampleAccountUsage(account: Account): Promise<SampleOutcome> {

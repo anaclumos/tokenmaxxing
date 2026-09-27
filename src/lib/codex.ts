@@ -2,10 +2,10 @@ import { existsSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { writeFileAtomic } from "./atomic.ts";
 import { CODEX_BIN, MAX_WRAP_DEPTH, WRAP_DEPTH_ENV, resolveRealBin, verifyRealBin } from "./claudebin.ts";
-import { codexIdentityOf, codexStoreUsable, deleteCodexStoreAuth, isCodexAccessExpiring, readCodexAuthAt, readCodexStoreAuth, writeCodexStoreAuth } from "./codexauth.ts";
+import { codexIdentityOf, codexStoreUsable, deleteCodexStoreAuth, ensureCodexStoreHome, isCodexAccessExpiring, readCodexAuthAt, readCodexStoreAuth, writeCodexStoreAuth } from "./codexauth.ts";
 import { CodexInvalidGrantError, CodexRefreshFailedError, refreshCodexAuth } from "./codexoauth.ts";
 import { deletePiStore } from "./piauth.ts";
-import { livingPresences, seatCounts } from "./presence.ts";
+import { livingPresences, seatCounts, writePresence } from "./presence.ts";
 import { CodexUsageReadError, codexLimitLabel, fetchCodexUsage } from "./codexusage.ts";
 import { codexSupervisorLink, ensurePathInRc, installCodexSupervisor, managedShellRcSkipLines, shellRcPath } from "./install.ts";
 import { withLock } from "./lock.ts";
@@ -234,6 +234,45 @@ export function pickCodexSeat(now: number, eligible: (a: Account) => boolean = (
   const present = seatCounts(codexPaths.presenceDir);
   const open = loadAccounts(codexPool).accounts.filter((a) => a.needsReauth !== true && !present.has(a.id) && eligible(a));
   return pickBest(open.filter((a) => !isExhausted(a, ctx)), ctx) ?? pickEarliestReset(open, ctx)?.account ?? null;
+}
+
+export type CodexBorrow = { store: string; id: string; reused: boolean } | { denied: string } | null;
+
+export async function borrowCodexSeat(pid: number): Promise<CodexBorrow> {
+  const now = Date.now();
+  const seatId = `seat-${pid}`;
+  const cfg = loadConfig();
+  await Promise.all(
+    loadAccounts(codexPool)
+      .accounts.filter((a) => a.needsReauth !== true && codexStoreUsable(a.id))
+      .map((a) => observeCodex(a, cfg, now, { probe: true, refresh: false })),
+  );
+  const granted = await withLock(codexPool.lockFile, (): CodexBorrow => {
+    const ctx = codexPickCtx(now, null);
+    const idx = loadAccounts(codexPool);
+    const held = livingPresences(codexPaths.presenceDir).find((p) => p.id === seatId);
+    const heldAccount = held ? (idx.accounts.find((x) => x.id === held.accountId) ?? null) : null;
+    if (heldAccount) {
+      if (heldAccount.needsReauth === true) {
+        return { denied: "the account this pid holds needs reauthentication - run `tokenmaxxing auth --codex` and borrow again" };
+      }
+      if (!codexStoreUsable(heldAccount.id)) {
+        return { denied: "the account this pid holds has no usable credential in its store - refusing to hand back a credential-less seat" };
+      }
+      return { store: ensureCodexStoreHome(heldAccount.id), id: heldAccount.id, reused: true };
+    }
+    const present = seatCounts(codexPaths.presenceDir);
+    const usable = idx.accounts.filter(
+      (a) => a.needsReauth !== true && !isExhausted(a, ctx) && !present.has(a.id) && codexStoreUsable(a.id)
+    );
+    const picked = pickBest(usable, ctx);
+    if (!picked) return null;
+    const store = ensureCodexStoreHome(picked.id);
+    writePresence({ dir: codexPaths.presenceDir, id: seatId, accountId: picked.id, pid });
+    return { store, id: picked.id, reused: false };
+  });
+  if (granted && !("denied" in granted)) log("seat.grant", { account: granted.id.slice(0, 8), pid, reused: granted.reused });
+  return granted;
 }
 
 export const codex: Provider = {

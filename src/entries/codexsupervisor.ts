@@ -1,3 +1,4 @@
+import type { Subprocess } from "bun";
 import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
@@ -5,7 +6,7 @@ import { codexPaths, codexPool } from "../lib/paths.ts";
 import { withLock } from "../lib/lock.ts";
 import { CODEX_BIN, UNMANAGED_ENV, WRAP_DEPTH_ENV, resolveRealBin, wrapDepth } from "../lib/claudebin.ts";
 import { codexStoreUsable, ensureCodexStoreHome } from "../lib/codexauth.ts";
-import { codexPickCtx, pickCodexSeat } from "../lib/codex.ts";
+import { borrowCodexSeat, codexPickCtx, pickCodexSeat } from "../lib/codex.ts";
 import { clearPresence, livingPresences } from "../lib/presence.ts";
 import { isExhausted } from "../lib/picker.ts";
 import { exitStatus, loopGuardTripped, raceMarkerOrExit, recordPresenceOrStop, runPassthrough } from "../lib/supervise.ts";
@@ -17,10 +18,12 @@ import { errorMessage, log } from "../lib/log.ts";
 export const CODEX_SUPERVISOR_ID_ENV = "TOKENMAXXING_CODEX_SUPERVISOR_ID";
 
 const NONINTERACTIVE_SUBCMDS = new Set([
-  "exec", "review", "login", "logout", "mcp", "plugin", "mcp-server", "app-server",
+  "exec", "e", "review", "login", "logout", "mcp", "plugin", "mcp-server", "app-server",
   "remote-control", "app", "completion", "update", "doctor", "sandbox", "debug",
   "apply", "archive", "delete", "unarchive", "cloud", "exec-server", "features", "help",
 ]);
+
+const BORROWING_SUBCMDS = new Set(["exec", "e", "review", "app-server"]);
 
 const PASSTHROUGH_FLAGS = new Set(["--version", "-V", "--help", "-h"]);
 
@@ -40,19 +43,32 @@ const VALUE_TAKING_ROOT_FLAGS = new Set([
   "-s", "--sandbox", "-a", "--ask-for-approval", "-C", "--cd", "--add-dir", "--enable",
 ]);
 
-export function shouldManageCodex(input: { argv: string[] }): boolean {
-  if (process.env.TOKENMAXXING_PROBE) return false;
-  let firstPositional: string | null = null;
-  for (let i = 0; i < input.argv.length; i++) {
-    const arg = input.argv[i]!;
-    if (PASSTHROUGH_FLAGS.has(arg)) return false;
+function scanCodexArgs(argv: string[]): { help: boolean; positionals: string[] } {
+  const positionals: string[] = [];
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i]!;
+    if (arg === "--") break;
+    if (PASSTHROUGH_FLAGS.has(arg)) return { help: true, positionals };
     if (VALUE_TAKING_ROOT_FLAGS.has(arg)) {
       i++;
       continue;
     }
-    if (!arg.startsWith("-") && firstPositional === null) firstPositional = arg;
+    if (!arg.startsWith("-")) positionals.push(arg);
   }
-  return firstPositional === null || !NONINTERACTIVE_SUBCMDS.has(firstPositional);
+  return { help: false, positionals };
+}
+
+export function shouldManageCodex(input: { argv: string[] }): boolean {
+  if (process.env.TOKENMAXXING_PROBE) return false;
+  const { help, positionals: [sub] } = scanCodexArgs(input.argv);
+  return !help && (sub === undefined || !NONINTERACTIVE_SUBCMDS.has(sub));
+}
+
+function borrowsCodexSeat(input: { argv: string[] }): boolean {
+  if (process.env.TOKENMAXXING_PROBE || process.env[UNMANAGED_ENV] || process.env.CODEX_HOME) return false;
+  const { help, positionals: [sub, ...rest] } = scanCodexArgs(input.argv);
+  if (help || sub === undefined || !BORROWING_SUBCMDS.has(sub)) return false;
+  return sub !== "app-server" || rest.length === 0;
 }
 
 function validWanted(input: { wanted: string | null; now: number; supervisorId: string }): Account | null {
@@ -79,7 +95,34 @@ export async function runCodexSupervisor(input: { argv: string[] }): Promise<num
   if (!shouldManageCodex({ argv }) || process.env[UNMANAGED_ENV]) {
     const passthroughEnv: Record<string, string | undefined> = { ...childEnv };
     delete passthroughEnv[CODEX_SUPERVISOR_ID_ENV];
-    return runPassthrough({ real, argv, env: passthroughEnv });
+    let child: Subprocess | null = null;
+    process.on("SIGTERM", () => {
+      if (child) child.kill("SIGTERM");
+      else process.exit(143);
+    });
+    const granted = borrowsCodexSeat({ argv }) ? await borrowCodexSeat(process.pid) : undefined;
+    const seat = granted && !("denied" in granted) ? granted : null;
+    if (seat) passthroughEnv.CODEX_HOME = seat.store;
+    else if (granted !== undefined) log("codexsupervisor.borrow_none", { reason: granted && "denied" in granted ? granted.denied : "no usable account" });
+    return runPassthrough({
+      real,
+      argv,
+      env: passthroughEnv,
+      onSpawn: (p) => {
+        child = p;
+        return seat
+          ? recordPresenceOrStop({
+              child: p,
+              dir: codexPaths.presenceDir,
+              id: `seat-${process.pid}`,
+              accountId: seat.id,
+              event: "codexsupervisor.borrow_presence_failed",
+              message: "could not key the borrowed codex seat to its child - refusing to run on an unreserved store",
+              savedTermios: null,
+            })
+          : undefined;
+      },
+    });
   }
 
   const supervisorId = crypto.randomUUID();

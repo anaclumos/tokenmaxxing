@@ -75,9 +75,9 @@ export function loopGuardTripped(product: WrappedProduct): boolean {
   return false;
 }
 
-export async function runPassthrough(input: { real: string; argv: string[]; env: Record<string, string | undefined>; onSpawn?: (child: Subprocess) => void }): Promise<number> {
+export async function runPassthrough(input: { real: string; argv: string[]; env: Record<string, string | undefined>; onSpawn?: (child: Subprocess) => void | Promise<void> }): Promise<number> {
   const p = Bun.spawn([input.real, ...input.argv], { stdin: "inherit", stdout: "inherit", stderr: "inherit", env: input.env });
-  input.onSpawn?.(p);
+  await input.onSpawn?.(p);
   await p.exited;
   return exitStatus(p);
 }
