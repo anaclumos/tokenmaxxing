@@ -42,30 +42,32 @@ const VALUE_TAKING_ROOT_FLAGS = new Set([
   "-s", "--sandbox", "-a", "--ask-for-approval", "-C", "--cd", "--add-dir", "--enable",
 ]);
 
-function scanCodexArgs(argv: string[]): { help: boolean; sub: string | null } {
-  let sub: string | null = null;
+function scanCodexArgs(argv: string[]): { help: boolean; positionals: string[] } {
+  const positionals: string[] = [];
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]!;
-    if (PASSTHROUGH_FLAGS.has(arg)) return { help: true, sub };
+    if (arg === "--") break;
+    if (PASSTHROUGH_FLAGS.has(arg)) return { help: true, positionals };
     if (VALUE_TAKING_ROOT_FLAGS.has(arg)) {
       i++;
       continue;
     }
-    if (!arg.startsWith("-") && sub === null) sub = arg;
+    if (!arg.startsWith("-")) positionals.push(arg);
   }
-  return { help: false, sub };
+  return { help: false, positionals };
 }
 
 export function shouldManageCodex(input: { argv: string[] }): boolean {
   if (process.env.TOKENMAXXING_PROBE) return false;
-  const { help, sub } = scanCodexArgs(input.argv);
-  return !help && (sub === null || !NONINTERACTIVE_SUBCMDS.has(sub));
+  const { help, positionals: [sub] } = scanCodexArgs(input.argv);
+  return !help && (sub === undefined || !NONINTERACTIVE_SUBCMDS.has(sub));
 }
 
 function borrowsCodexSeat(input: { argv: string[] }): boolean {
   if (process.env.TOKENMAXXING_PROBE || process.env[UNMANAGED_ENV] || process.env.CODEX_HOME) return false;
-  const { help, sub } = scanCodexArgs(input.argv);
-  return !help && sub !== null && BORROWING_SUBCMDS.has(sub);
+  const { help, positionals: [sub, ...rest] } = scanCodexArgs(input.argv);
+  if (help || sub === undefined || !BORROWING_SUBCMDS.has(sub)) return false;
+  return sub !== "app-server" || rest.length === 0;
 }
 
 function validWanted(input: { wanted: string | null; now: number; supervisorId: string }): Account | null {
