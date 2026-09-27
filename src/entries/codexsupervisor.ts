@@ -1,3 +1,4 @@
+import type { Subprocess } from "bun";
 import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
@@ -94,6 +95,11 @@ export async function runCodexSupervisor(input: { argv: string[] }): Promise<num
   if (!shouldManageCodex({ argv }) || process.env[UNMANAGED_ENV]) {
     const passthroughEnv: Record<string, string | undefined> = { ...childEnv };
     delete passthroughEnv[CODEX_SUPERVISOR_ID_ENV];
+    let child: Subprocess | null = null;
+    process.on("SIGTERM", () => {
+      if (child) child.kill("SIGTERM");
+      else process.exit(143);
+    });
     const granted = borrowsCodexSeat({ argv }) ? await borrowCodexSeat(process.pid) : undefined;
     const seat = granted && !("denied" in granted) ? granted : null;
     if (seat) passthroughEnv.CODEX_HOME = seat.store;
@@ -102,10 +108,11 @@ export async function runCodexSupervisor(input: { argv: string[] }): Promise<num
       real,
       argv,
       env: passthroughEnv,
-      onSpawn: seat
-        ? (child) =>
-            recordPresenceOrStop({
-              child,
+      onSpawn: (p) => {
+        child = p;
+        return seat
+          ? recordPresenceOrStop({
+              child: p,
               dir: codexPaths.presenceDir,
               id: `seat-${process.pid}`,
               accountId: seat.id,
@@ -113,7 +120,8 @@ export async function runCodexSupervisor(input: { argv: string[] }): Promise<num
               message: "could not key the borrowed codex seat to its child - refusing to run on an unreserved store",
               savedTermios: null,
             })
-        : undefined,
+          : undefined;
+      },
     });
   }
 
