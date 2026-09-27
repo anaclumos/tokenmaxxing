@@ -6,6 +6,7 @@ import { errorMessage } from "./log.ts";
 import { paths } from "./paths.ts";
 import { loadConfig, type BinKey } from "./state.ts";
 import { writeFileAtomic } from "./atomic.ts";
+import { ancestorPids } from "./proc.ts";
 
 export const WRAP_DEPTH_ENV = "TOKENMAXXING_WRAP_DEPTH";
 export const MAX_WRAP_DEPTH = 5;
@@ -17,22 +18,24 @@ export function wrapDepth(env: Record<string, string | undefined> = process.env)
   return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
 }
 
-export const WRAP_RATE_MAX = 60;
+const WRAP_RATE_MAX = 60;
 export const WRAP_RATE_WINDOW_MS = 30_000;
-const SpawnRateSchema = z.object({ entries: z.array(z.number()) });
+const SpawnRateSchema = z.object({ entries: z.array(z.object({ at: z.number(), pid: z.number() })) });
 
-export function wrapperEntryRateTripped(now: number): boolean {
+export function wrapperChainTripped(now: number): boolean {
   const file = join(paths.home, "spawnrate.json");
-  let entries: number[] = [];
+  let entries: z.infer<typeof SpawnRateSchema>["entries"] = [];
   try {
     entries = SpawnRateSchema.parse(JSON.parse(readFileSync(file, "utf8"))).entries;
   } catch {  }
-  entries = entries.filter((t) => now - t < WRAP_RATE_WINDOW_MS);
-  entries.push(now);
+  entries = entries.filter((e) => now - e.at < WRAP_RATE_WINDOW_MS);
+  entries.push({ at: now, pid: process.pid });
   try {
     writeFileAtomic(file, JSON.stringify({ entries }));
   } catch {  }
-  return entries.length > WRAP_RATE_MAX;
+  if (entries.length <= WRAP_RATE_MAX) return false;
+  const recent = new Set(entries.map((e) => e.pid));
+  return ancestorPids().filter((pid) => recent.has(pid)).length >= MAX_WRAP_DEPTH;
 }
 
 export function realpathOrNull(p: string): string | null {

@@ -16,7 +16,7 @@ Everything lives under `~/.config/tokenmaxxing/`. Override with `TOKENMAXXING_HO
 | `update.json`, `update.lock` | The last self-update attempt's timestamp and the `flock` file that serializes it (Bun global installs only; see [Automatic updates](/distribution#automatic-updates)) |
 | `sessions/<session-id>.json` | Per-managed-session launch flags the supervisor persists for respawns, plus `current`, the live session id after a `/clear` or an in-session `/resume`; pruned after 30 days idle (matching claude's own transcript retention), never while the session's record under `live/` exists |
 | `tokenmaxxing.log` | Append-only event log, rotated to `tokenmaxxing.log.old` once it passes 5 MB |
-| `spawnrate.json` | The supervisor's wrapper-entry rate limiter, one of the recursion guards |
+| `spawnrate.json` | The time and process id of each wrapper entry in the last 30 seconds, which the recursion guard reads to find a chain of nested entries |
 | `check.stderr.log`, `hub.stderr.log` | macOS only: the launchd check job's and hub service's stderr (systemd sends it to the journal) |
 | `bin/` | The PATH shims: `claude`, `codex`, `pi` (after `init --pi`), and the `tokenmaxxing` / `xx` entry points |
 | `respawn/<session-id>` | Respawn markers the supervisor watches: the target account, the session to resume, a `waitUntil` (now for a plain move, the reset for a depleted-pool wait), whether to compact first, the origin (the hook or the seat watch that wrote it, which picks the resume prompt), the launch time of the process the marker was written for, and after a usage-credits refusal the accounts that have refused the session |

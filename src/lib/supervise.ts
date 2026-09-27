@@ -1,5 +1,5 @@
 import type { Subprocess } from "bun";
-import { LOOP_DIAGNOSIS, MAX_WRAP_DEPTH, WRAP_RATE_MAX, WRAP_RATE_WINDOW_MS, wrapDepth, wrapperEntryRateTripped } from "./claudebin.ts";
+import { LOOP_DIAGNOSIS, MAX_WRAP_DEPTH, WRAP_RATE_WINDOW_MS, wrapDepth, wrapperChainTripped } from "./claudebin.ts";
 import { errorMessage, log } from "./log.ts";
 import { paths } from "./paths.ts";
 import { writePresence } from "./presence.ts";
@@ -65,11 +65,11 @@ export function loopGuardTripped(product: WrappedProduct): boolean {
     log(`${events}.loop_abort`, { depth });
     return true;
   }
-  if (wrapperEntryRateTripped(Date.now())) {
+  if (wrapperChainTripped(Date.now())) {
     console.error(
-      `tokenmaxxing: ${LOOP_DIAGNOSIS} ${binary} (over ${WRAP_RATE_MAX} wrapper entries in ${WRAP_RATE_WINDOW_MS / 1000}s) - ${setting} in ${paths.configJson} does not launch the real ${binary} binary. Fix ${setting}, then run \`tokenmaxxing doctor\`.`,
+      `tokenmaxxing: ${LOOP_DIAGNOSIS} ${binary} (${MAX_WRAP_DEPTH} nested wrapper entries in ${WRAP_RATE_WINDOW_MS / 1000}s) - ${setting} in ${paths.configJson} does not launch the real ${binary} binary. Fix ${setting}, then run \`tokenmaxxing doctor\`.`,
     );
-    log(`${events}.rate_abort`, { max: WRAP_RATE_MAX });
+    log(`${events}.chain_abort`, { nested: MAX_WRAP_DEPTH });
     return true;
   }
   return false;
