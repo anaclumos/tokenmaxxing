@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CLAUDE_BIN, MAX_WRAP_DEPTH, resolveRealBin, WRAP_DEPTH_ENV } from "./claudebin.ts";
-import { readStore } from "./credstore.ts";
+import { deleteItem, readStore, storeTarget } from "./credstore.ts";
 import { withLock } from "./lock.ts";
 import { errorMessage, log } from "./log.ts";
 import { claudeTierLabel, isDeadCredential } from "./oauth.ts";
@@ -101,6 +101,12 @@ async function refreshStore(account: Account): Promise<number | null> {
     return p.exitCode;
   } finally {
     rmSync(home, { recursive: true, force: true });
+    await withLock(claudePool.lockFile, async () => {
+      if (loadAccounts(claudePool).accounts.some((a) => a.id === account.id)) return;
+      await deleteItem(storeTarget(account.id));
+      rmSync(storeDirFor(account.id), { recursive: true, force: true });
+      rmSync(`${storeDirFor(account.id)}.lock`, { recursive: true, force: true });
+    });
   }
 }
 
