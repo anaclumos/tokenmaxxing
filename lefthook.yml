@@ -1,0 +1,32 @@
+assert_lefthook_installed: true
+
+pre-push:
+  jobs:
+    - name: test
+      group:
+        piped: true
+        jobs:
+          - name: install
+            run: bun install --frozen-lockfile
+          - name: typecheck
+            run: bun run typecheck
+          - name: pack
+            run: |
+              set -e
+              d="$(mktemp -d)"
+              trap 'rm -r "$d"' EXIT
+              npm pack --pack-destination "$d"
+              tar -xzf "$d"/tokenmaxxing-*.tgz -C "$d" package/src/main.ts
+              test -x "$d/package/src/main.ts"
+              BUN_INSTALL_GLOBAL_DIR="$d/global" BUN_INSTALL_BIN="$d/bin" bun add -g "$d"/tokenmaxxing-*.tgz
+              "$d/bin/tokenmaxxing" help
+    - name: docs
+      group:
+        piped: true
+        jobs:
+          - name: docs install
+            root: docs/
+            run: bun install --frozen-lockfile
+          - name: docs build
+            root: docs/
+            run: bun run build
