@@ -1,7 +1,6 @@
 import { closeSync, mkdirSync, openSync } from "node:fs";
 import { dirname } from "node:path";
 import { dlopen, FFIType, read } from "bun:ffi";
-import { delay } from "es-toolkit";
 
 const LOCK_EX = 2;
 const LOCK_NB = 4;
@@ -43,7 +42,7 @@ export async function acquireLock(lockPath: string): Promise<{ release: () => vo
       if (errno !== EAGAIN && errno !== EINTR) {
         throw new Error(`flock LOCK_EX|LOCK_NB failed on ${lockPath} (errno ${errno})`);
       }
-      await delay(RETRY_MS);
+      await Bun.sleep(RETRY_MS);
     }
   } catch (e) {
     closeSync(fd);

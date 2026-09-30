@@ -1,6 +1,5 @@
 import { statSync } from "node:fs";
 import type { Subprocess } from "bun";
-import { delay } from "es-toolkit";
 import { z } from "zod";
 import pkg from "../../package.json" with { type: "json" };
 import { errorMessage, log } from "./log.ts";
@@ -26,7 +25,7 @@ export async function compactClaudeSession(input: { real: string; sid: string; t
   });
   input.onSpawn(p);
   const reads = Promise.all([p.stdout.text(), p.stderr.text()]);
-  const settled = await Promise.race([reads, p.exited.then(() => delay(PIPE_GRACE_MS)).then(() => null)]);
+  const settled = await Promise.race([reads, p.exited.then(() => Bun.sleep(PIPE_GRACE_MS)).then(() => null)]);
   await p.exited;
   const appended = await Bun.file(input.transcript).slice(offset).text();
   if (appended.split("\n").some((line) => CompactBoundarySchema.safeParse(JsonTextSchema.safeParse(line).data).success)) return { ok: true };
