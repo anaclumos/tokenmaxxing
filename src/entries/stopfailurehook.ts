@@ -20,10 +20,10 @@ const StopFailureStdin = z.looseObject({
 const ROW_WAIT_MS = 3_000;
 const ROW_POLL_MS = 200;
 
-async function awaitEnforcedRow(input: { transcriptPath: string; error: string; lastAssistantMessage: string | undefined; now: number }): Promise<TranscriptRow | null> {
+async function awaitEnforcedRow(input: { transcriptPath: string; error: string; lastAssistantMessage: string | undefined }): Promise<TranscriptRow | null> {
   const deadline = Date.now() + ROW_WAIT_MS;
   while (true) {
-    const row = findEnforcedRow({ rows: await readTranscriptTail(input.transcriptPath), error: input.error, lastAssistantMessage: input.lastAssistantMessage, now: input.now });
+    const row = findEnforcedRow({ rows: await readTranscriptTail(input.transcriptPath), error: input.error, lastAssistantMessage: input.lastAssistantMessage });
     if (row || Date.now() >= deadline) return row;
     await Bun.sleep(ROW_POLL_MS);
   }
@@ -52,7 +52,7 @@ export async function runStopFailureHook(): Promise<number> {
     const canRespawn = session != null && mainLoop;
     const cfg = loadConfig();
     const row = stdin.transcript_path
-      ? await awaitEnforcedRow({ transcriptPath: stdin.transcript_path, error, lastAssistantMessage: stdin.last_assistant_message, now })
+      ? await awaitEnforcedRow({ transcriptPath: stdin.transcript_path, error, lastAssistantMessage: stdin.last_assistant_message })
       : null;
     const limit = row ? classifyEnforcedLimit(row, cfg.policy.switchModels) : null;
 

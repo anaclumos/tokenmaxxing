@@ -52,7 +52,6 @@ export function modelFromFlag(value: string | null): ModelInfo | null {
 const TranscriptBlockSchema = z.looseObject({ type: z.string().optional(), text: z.string().optional() });
 export const TranscriptRowSchema = z.looseObject({
   type: z.string().optional(),
-  timestamp: z.string().optional(),
   isApiErrorMessage: z.boolean().optional(),
   apiErrorIsTransient: z.boolean().optional(),
   apiError: z.string().optional(),
@@ -84,21 +83,11 @@ export function transcriptRowText(row: TranscriptRow): string {
   return blocks.data.filter((b) => b.type === "text").map((b) => b.text ?? "").join("\n").trim();
 }
 
-const ROW_RECENCY_MS = 60_000;
-
 export const ENFORCED_ERRORS = ["rate_limit", "oauth_org_not_allowed"];
 
-export function findEnforcedRow(input: { rows: TranscriptRow[]; error: string; lastAssistantMessage: string | undefined; now: number }): TranscriptRow | null {
-  const { rows, error, lastAssistantMessage, now } = input;
-  for (let i = rows.length - 1; i >= 0; i--) {
-    const row = rows[i]!;
-    if (row.isApiErrorMessage !== true || row.error !== error) continue;
-    const ts = row.timestamp ? Date.parse(row.timestamp) : Number.NaN;
-    const byContent = lastAssistantMessage != null && lastAssistantMessage !== "" && transcriptRowText(row) === lastAssistantMessage;
-    const byRecency = Number.isFinite(ts) && Math.abs(now - ts) <= ROW_RECENCY_MS;
-    if (byContent && byRecency) return row;
-  }
-  return null;
+export function findEnforcedRow(input: { rows: TranscriptRow[]; error: string; lastAssistantMessage: string | undefined }): TranscriptRow | null {
+  const { rows, error, lastAssistantMessage } = input;
+  return rows.findLast((row) => row.isApiErrorMessage === true && row.error === error && transcriptRowText(row) === lastAssistantMessage) ?? null;
 }
 
 export type EnforcedClass =
