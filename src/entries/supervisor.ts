@@ -17,7 +17,7 @@ import { countdownWait, exitStatus, loopGuardTripped, raceMarkerOrExit, recordPr
 import { saveTermios } from "../lib/tty.ts";
 import { liveSessionId, loadSessionFlags, pruneStaleSessions, saveSessionFlags, writeRespawnMarker } from "../lib/sessions.ts";
 import { loadAccounts, loadConfig, readJsonFile, releaseWaitClaim } from "../lib/state.ts";
-import { CRED_ENV_OVERRIDES, gatedFamilies, modelFromFlag } from "../lib/usage.ts";
+import { gatedFamilies, modelFromFlag, scrubCredEnv } from "../lib/usage.ts";
 import { RespawnMarkerSchema, type Account, type Config, type ModelInfo } from "../lib/types.ts";
 import { errorMessage, log } from "../lib/log.ts";
 
@@ -439,7 +439,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
         stdout: "inherit",
         stderr: "inherit",
         env: {
-          ...(picked ? { ...omit(childEnv, CRED_ENV_OVERRIDES), CLAUDE_SECURESTORAGE_CONFIG_DIR: storeDirFor(picked.id) } : childEnv),
+          ...(picked ? { ...scrubCredEnv(childEnv), CLAUDE_SECURESTORAGE_CONFIG_DIR: storeDirFor(picked.id) } : childEnv),
           TOKENMAXXING_SUPERVISED: "1",
           TOKENMAXXING_SESSION_ID: sid,
           TOKENMAXXING_LAUNCHED_AT: String(gate.launchedAt),
@@ -505,7 +505,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
         log("supervisor.compact_skipped", { sid: m.sessionId.slice(0, 8), seat: seat.id.slice(0, 8), until: walledUntil });
       } else if (m.compact && seat && resumable) {
         say(`\n\x1b[36m↻ tokenmaxxing: compacting the conversation on ${seat.label} before the move...\x1b[0m\n`, `tokenmaxxing: compacting the conversation on ${seat.label} before the move.`);
-        const compactEnv = { ...omit(childEnv, [...CRED_ENV_OVERRIDES, "TOKENMAXXING_SUPERVISED", "TOKENMAXXING_SESSION_ID", "TOKENMAXXING_LAUNCHED_AT", "TOKENMAXXING_MODEL", "TOKENMAXXING_REFUSED"]), TOKENMAXXING_PROBE: "1", CLAUDE_SECURESTORAGE_CONFIG_DIR: storeDirFor(seat.id) };
+        const compactEnv = { ...omit(scrubCredEnv(childEnv), ["TOKENMAXXING_SUPERVISED", "TOKENMAXXING_SESSION_ID", "TOKENMAXXING_LAUNCHED_AT", "TOKENMAXXING_MODEL", "TOKENMAXXING_REFUSED"]), TOKENMAXXING_PROBE: "1", CLAUDE_SECURESTORAGE_CONFIG_DIR: storeDirFor(seat.id) };
         const outcome = await compactClaudeSession({ real, sid: m.sessionId, transcript, env: compactEnv, onSpawn: (p) => { child = p; } });
         child = null;
         if (terminating) {
