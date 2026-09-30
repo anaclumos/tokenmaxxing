@@ -4,7 +4,7 @@ import { evaluateAndMaybeSwap } from "../lib/decide.ts";
 import { readStdin } from "../lib/proc.ts";
 import { adoptLiveSession, refusedAccounts, supervisedSession, writeRespawnMarker } from "../lib/sessions.ts";
 import { loadConfig } from "../lib/state.ts";
-import { classifyEnforcedLimit, findEnforcedRow, parseErrorBody, readTranscriptTail, type TranscriptRow } from "../lib/usage.ts";
+import { classifyEnforcedLimit, ENFORCED_ERRORS, findEnforcedRow, parseErrorBody, readTranscriptTail, type TranscriptRow } from "../lib/usage.ts";
 import { paths } from "../lib/paths.ts";
 import { JsonTextSchema, type EnforcedLimit } from "../lib/types.ts";
 import { errorMessage, log } from "../lib/log.ts";
@@ -36,7 +36,7 @@ export async function runStopFailureHook(): Promise<number> {
   const now = Date.now();
   const parsed = StopFailureStdin.safeParse(JsonTextSchema.safeParse(await readStdin()).data);
   const stdin = parsed.success ? parsed.data : {};
-  if (stdin.error !== undefined && stdin.error !== "rate_limit") return 0;
+  if (stdin.error !== undefined && !ENFORCED_ERRORS.includes(stdin.error)) return 0;
 
   const stdinSid = stdin.session_id;
   const mainLoop = stdin.agent_id === undefined;

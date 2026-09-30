@@ -5,6 +5,7 @@ import { paths } from "./paths.ts";
 import { writeFileAtomic } from "./atomic.ts";
 import { readJsonFile } from "./state.ts";
 import { JsonTextSchema } from "./types.ts";
+import { ENFORCED_ERRORS } from "./usage.ts";
 
 export function installedBin(): string {
   return join(paths.binDir, "tokenmaxxing");
@@ -29,7 +30,7 @@ const SUBCMD = {
   sessionStart: "__session-start",
 } as const;
 
-const STOP_FAILURE_MATCHER = "rate_limit";
+const STOP_FAILURE_MATCHER = ENFORCED_ERRORS.join("|");
 
 function readSettings(): Settings {
   if (!existsSync(paths.claudeSettings)) return {};
