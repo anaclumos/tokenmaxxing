@@ -46,9 +46,7 @@ export function pidStartTime(pid: number): string | null {
 }
 
 export async function readStdin(): Promise<string> {
-  const chunks: Uint8Array[] = [];
-  for await (const chunk of Bun.stdin.stream()) chunks.push(chunk);
-  return Buffer.concat(chunks).toString("utf8");
+  return Buffer.from(await Bun.stdin.bytes()).toString("utf8");
 }
 
 export async function* readLines(stream: ReadableStream<Uint8Array>): AsyncGenerator<string> {
