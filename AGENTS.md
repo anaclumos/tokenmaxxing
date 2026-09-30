@@ -130,7 +130,7 @@ Ship = work on a branch, open the PR, make CI pass, handle every review (fix, or
 
 Verified against Bun 1.4.x and zod 4.4.x; both move monthly, so re-verify a line before relying on it.
 
-- `Bun.stdin.text()` strips a leading UTF-8 BOM; the `Bun.stdin.stream()` plus `Buffer.concat` read keeps it. The hook and statusline stdin readers share one stream read (`readStdin` in `src/lib/proc.ts`) so a BOM-prefixed payload stays "no payload".
+- `Bun.stdin.text()` strips a leading UTF-8 BOM; `Buffer.from(await Bun.stdin.bytes()).toString("utf8")` keeps it. The hook and statusline stdin readers share one bytes read (`readStdin` in `src/lib/proc.ts`) so a BOM-prefixed payload stays "no payload".
 - Bun's `node:readline` ends a line at U+2028 as well as `\n` and `\r`, while `JSON.stringify` and serde_json leave U+2028 raw inside a string. The supervisor's stdin relay and the Codex app-server reader split on `\n` only (`readLines` in `src/lib/proc.ts`).
 - The JSON text codec's output schema is `z.unknown()`, never `z.json()`: `z.json()` revalidates the parsed tree and rejects values `JSON.parse` accepts (`1e400` parses to `Infinity`), so it would turn a classifiable OAuth error body into an unclassified one, and it does not `.pipe()` into an object schema under TypeScript. Parse text with `JsonTextSchema.safeParse(text).data` and hand the value to the target schema: a failed parse yields `undefined`, which no target schema accepts.
 - A zod codec whose `decode` throws propagates the exception out of `safeParse`. Push an issue through `ctx.issues` and return `z.NEVER` instead.
