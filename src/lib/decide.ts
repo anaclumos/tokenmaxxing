@@ -38,6 +38,7 @@ function modelKindCovered(limit: EnforcedLimit, account: Account, now: number, w
 }
 
 function enforcedWall(limit: EnforcedLimit, account: Account, now: number): number {
+  if (limit.kind === "org") return now + FIVE_HOURS_MS;
   const { family } = limit;
   const familyReset =
     family == null
