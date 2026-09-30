@@ -1,8 +1,11 @@
 {
   lib,
+  bun,
   bun2nix,
   stdenv,
 }:
+assert lib.assertMsg (lib.versionAtLeast bun.version "1.4.0")
+  "tokenmaxxing needs bun 1.4.0 or newer, this nixpkgs has bun ${bun.version}";
 bun2nix.writeBunApplication {
   packageJson = ../package.json;
 

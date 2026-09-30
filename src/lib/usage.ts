@@ -1,4 +1,3 @@
-import { closeSync, fstatSync, openSync, readSync } from "node:fs";
 import { z } from "zod";
 import { http } from "./http.ts";
 import { errorMessage, log } from "./log.ts";
@@ -66,23 +65,11 @@ export type TranscriptRow = z.infer<typeof TranscriptRowSchema>;
 
 const TRANSCRIPT_TAIL_BYTES = 256 * 1024;
 
-export function readTranscriptTail(path: string, maxBytes = TRANSCRIPT_TAIL_BYTES): TranscriptRow[] {
-  let text: string;
-  try {
-    const fd = openSync(path, "r");
-    try {
-      const size = fstatSync(fd).size;
-      const start = Math.max(0, size - maxBytes);
-      const buf = Buffer.alloc(size - start);
-      readSync(fd, buf, 0, buf.length, start);
-      text = buf.toString("utf8");
-      if (start > 0) text = text.slice(text.indexOf("\n") + 1);
-    } finally {
-      closeSync(fd);
-    }
-  } catch {
-    return [];
-  }
+export async function readTranscriptTail(path: string): Promise<TranscriptRow[]> {
+  const file = Bun.file(path);
+  const start = Math.max(0, file.size - TRANSCRIPT_TAIL_BYTES);
+  let text = await file.slice(start).text();
+  if (start > 0) text = text.slice(text.indexOf("\n") + 1);
   const rows: TranscriptRow[] = [];
   for (const line of text.split("\n")) {
     const parsed = TranscriptRowSchema.safeParse(JsonTextSchema.safeParse(line).data);

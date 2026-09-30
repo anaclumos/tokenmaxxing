@@ -2,7 +2,7 @@ import { z } from "zod";
 import { http, safeErrorDetail } from "./http.ts";
 import { errorMessage } from "./log.ts";
 import { env } from "./paths.ts";
-import { JsonTextSchema, type CodexAuthJson, type CodexUsage, type Window } from "./types.ts";
+import { EpochSecondsSchema, JsonTextSchema, type CodexAuthJson, type CodexUsage, type Window } from "./types.ts";
 import { codexIdentityOf } from "./codexauth.ts";
 import { familyTokens } from "./usage.ts";
 
@@ -19,7 +19,7 @@ export class CodexUsageReadError extends Error {
 const WireWindowSchema = z.looseObject({
   used_percent: z.number(),
   limit_window_seconds: z.number().nullish(),
-  reset_at: z.number().nullish(),
+  reset_at: EpochSecondsSchema.nullish(),
 });
 
 const WireRateLimitSchema = z.looseObject({
@@ -44,7 +44,7 @@ function toWindows(rateLimit: z.infer<typeof WireRateLimitSchema> | null | undef
     out.push({
       name,
       usedPercentage: wire.used_percent,
-      resetsAt: wire.reset_at != null ? wire.reset_at * 1000 : null,
+      resetsAt: wire.reset_at ?? null,
       windowSeconds: wire.limit_window_seconds ?? null,
       sampledAt: at,
     });
