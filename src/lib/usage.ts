@@ -164,12 +164,6 @@ export const CRED_ENV_OVERRIDES = [
   "CLAUDE_CODE_USE_VERTEX",
 ] as const;
 
-export function scrubCredentialEnv(env: Record<string, string>): Record<string, string> {
-  const scrubbed = { ...env };
-  for (const k of CRED_ENV_OVERRIDES) delete scrubbed[k];
-  return scrubbed;
-}
-
 export const OAUTH_USAGE_URL = "https://api.anthropic.com/api/oauth/usage";
 const USAGE_URL = env("TOKENMAXXING_OAUTH_USAGE_URL", OAUTH_USAGE_URL);
 const USAGE_DEADLINE_MS = 10_000;

@@ -1,6 +1,7 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { omit } from "es-toolkit";
 import { CLAUDE_BIN, MAX_WRAP_DEPTH, resolveRealBin, WRAP_DEPTH_ENV } from "./claudebin.ts";
 import { deleteItem, readStore, storeTarget } from "./credstore.ts";
 import { withLock } from "./lock.ts";
@@ -11,7 +12,7 @@ import { barFor, gatedWindows, landWindows, liveUsed, thresholdBars } from "./pi
 import { seatCounts } from "./presence.ts";
 import type { Observation } from "./provider.ts";
 import { loadAccounts, loadUsageSnapshot, saveAccounts } from "./state.ts";
-import { fetchUsageDirect, mergeWindows, scrubCredentialEnv, windowsOf } from "./usage.ts";
+import { CRED_ENV_OVERRIDES, fetchUsageDirect, mergeWindows, windowsOf } from "./usage.ts";
 import type { Account, Config, Thresholds, UsageWindows, Window } from "./types.ts";
 
 export type SampleOutcome = { ok: true; usage: UsageWindows; via: "get" } | { ok: false; reason: string; retryAt?: number };
@@ -84,9 +85,7 @@ const REFRESH_KILL_MS = 60_000;
 
 async function refreshStore(account: Account): Promise<number | null> {
   const home = mkdtempSync(join(tmpdir(), "tokenmaxxing-refresh-"));
-  const env = scrubCredentialEnv({ ...process.env, TOKENMAXXING_PROBE: "1", [WRAP_DEPTH_ENV]: String(MAX_WRAP_DEPTH) });
-  env.CLAUDE_CONFIG_DIR = home;
-  env.CLAUDE_SECURESTORAGE_CONFIG_DIR = storeDirFor(account.id);
+  const env = { ...omit(process.env, CRED_ENV_OVERRIDES), TOKENMAXXING_PROBE: "1", [WRAP_DEPTH_ENV]: String(MAX_WRAP_DEPTH), CLAUDE_CONFIG_DIR: home, CLAUDE_SECURESTORAGE_CONFIG_DIR: storeDirFor(account.id) };
   try {
     const p = Bun.spawn([resolveRealBin(CLAUDE_BIN), "-p", "/usage", "--no-session-persistence", "--safe-mode"], {
       env,

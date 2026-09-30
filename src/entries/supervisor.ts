@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, rmSync, readdirSync, statSync } from "node:fs";
 import { basename, join } from "node:path";
 import type { FileSink, Subprocess } from "bun";
-import { maxBy } from "es-toolkit";
+import { maxBy, omit } from "es-toolkit";
 import { z } from "zod";
 import { claudePool, paths, storeDirFor } from "../lib/paths.ts";
 import { CLAUDE_BIN, UNMANAGED_ENV, WRAP_DEPTH_ENV, resolveRealBin, wrapDepth } from "../lib/claudebin.ts";
@@ -346,7 +346,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
     log("supervisor.resolve_failed", { err: errorMessage(e) });
     return 1;
   }
-  const childEnv = { ...process.env, [WRAP_DEPTH_ENV]: String(wrapDepth() + 1) };
+  const childEnv: Record<string, string | undefined> = { ...process.env, [WRAP_DEPTH_ENV]: String(wrapDepth() + 1) };
 
   let child: Subprocess | null = null;
   let terminating = false;
@@ -374,11 +374,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
   });
 
   if (!info.manage || process.env[UNMANAGED_ENV]) {
-    const passthroughEnv: Record<string, string | undefined> = { ...childEnv };
-    delete passthroughEnv.TOKENMAXXING_SUPERVISED;
-    delete passthroughEnv.TOKENMAXXING_SESSION_ID;
-    delete passthroughEnv.TOKENMAXXING_MODEL;
-    delete passthroughEnv.TOKENMAXXING_REFUSED;
+    const passthroughEnv = omit(childEnv, ["TOKENMAXXING_SUPERVISED", "TOKENMAXXING_SESSION_ID", "TOKENMAXXING_MODEL", "TOKENMAXXING_REFUSED"]);
     return runPassthrough({ real, argv, env: passthroughEnv, onSpawn: (p) => { child = p; } });
   }
 
@@ -510,12 +506,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
         log("supervisor.compact_skipped", { sid: m.sessionId.slice(0, 8), seat: seat.id.slice(0, 8), until: walledUntil });
       } else if (m.compact && seat && resumable) {
         say(`\n\x1b[36m↻ tokenmaxxing: compacting the conversation on ${seat.label} before the move...\x1b[0m\n`, `tokenmaxxing: compacting the conversation on ${seat.label} before the move.`);
-        const compactEnv: Record<string, string | undefined> = { ...childEnv, TOKENMAXXING_PROBE: "1", CLAUDE_SECURESTORAGE_CONFIG_DIR: storeDirFor(seat.id) };
-        delete compactEnv.TOKENMAXXING_SUPERVISED;
-        delete compactEnv.TOKENMAXXING_SESSION_ID;
-        delete compactEnv.TOKENMAXXING_LAUNCHED_AT;
-        delete compactEnv.TOKENMAXXING_MODEL;
-        delete compactEnv.TOKENMAXXING_REFUSED;
+        const compactEnv = { ...omit(childEnv, ["TOKENMAXXING_SUPERVISED", "TOKENMAXXING_SESSION_ID", "TOKENMAXXING_LAUNCHED_AT", "TOKENMAXXING_MODEL", "TOKENMAXXING_REFUSED"]), TOKENMAXXING_PROBE: "1", CLAUDE_SECURESTORAGE_CONFIG_DIR: storeDirFor(seat.id) };
         const outcome = await compactClaudeSession({ real, sid: m.sessionId, transcript, env: compactEnv, onSpawn: (p) => { child = p; } });
         child = null;
         if (terminating) {
