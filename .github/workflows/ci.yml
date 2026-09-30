@@ -32,6 +32,8 @@ jobs:
       - uses: actions/checkout@v7
       - uses: DeterminateSystems/nix-installer-action@v22
       - uses: DeterminateSystems/magic-nix-cache-action@v14
+        with:
+          use-flakehub: false
       - name: Build flake package
         run: nix build --accept-flake-config .#tokenmaxxing -L
       - name: Smoke-test the store binary
