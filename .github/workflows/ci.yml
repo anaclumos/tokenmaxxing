@@ -70,8 +70,8 @@ jobs:
         shell: bash
         run: |
           current="$(node -p "require('./package.json').version")"
-          versions="$(npm view tokenmaxxing versions --json)"
-          if ! jq -e --arg v "$current" '[.. | strings] | index($v) != null' <<<"$versions" >/dev/null; then
+          listed="$(curl -fsS --retry 2 --max-time 60 'https://registry.npmjs.org/tokenmaxxing?write=true' | jq --arg v "$current" '.versions | has($v)')"
+          if [ "$listed" = false ]; then
             echo "version=${current}" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -102,5 +102,5 @@ jobs:
         run: npm publish
       - name: Wait for the registry to list the version
         if: steps.version.outputs.version != ''
-        timeout-minutes: 30
-        run: until npm view "tokenmaxxing@${{ steps.version.outputs.version }}" version >/dev/null 2>&1; do sleep 15; done
+        timeout-minutes: 60
+        run: until curl -fsS --retry 2 --max-time 60 'https://registry.npmjs.org/tokenmaxxing?write=true' | jq -e --arg v "${{ steps.version.outputs.version }}" '.versions | has($v)' >/dev/null; do sleep 15; done
