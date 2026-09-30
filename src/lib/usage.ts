@@ -1,3 +1,4 @@
+import { omit } from "es-toolkit";
 import { z } from "zod";
 import { http } from "./http.ts";
 import { errorMessage, log } from "./log.ts";
@@ -142,16 +143,27 @@ export function mergeWindows(next: Window[], prev: Window[]): Window[] {
   return [...next.filter((w) => w.name == null), ...rows];
 }
 
-export const CRED_ENV_OVERRIDES = [
+const CRED_ENV_OVERRIDES = [
   "ANTHROPIC_API_KEY",
   "ANTHROPIC_AUTH_TOKEN",
   "CLAUDE_CODE_OAUTH_TOKEN",
+  "CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR",
+  "CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR",
   "CLAUDE_CODE_SUBSCRIPTION_TYPE",
   "CLAUDE_CODE_RATE_LIMIT_TIER",
   "CLAUDE_SECURESTORAGE_CONFIG_DIR",
   "CLAUDE_CODE_USE_BEDROCK",
   "CLAUDE_CODE_USE_VERTEX",
+  "CLAUDE_CODE_USE_FOUNDRY",
+  "CLAUDE_CODE_USE_MANTLE",
+  "CLAUDE_CODE_USE_ANTHROPIC_AWS",
+  "CLAUDE_CODE_USE_ANTHROPIC_GOOGLE_CLOUD",
 ] as const;
+
+export function scrubCredEnv(env: Record<string, string | undefined>): Record<string, string | undefined> {
+  const overridden = CRED_ENV_OVERRIDES.some((k) => k !== "CLAUDE_SECURESTORAGE_CONFIG_DIR" && env[k]);
+  return omit(env, overridden ? [...CRED_ENV_OVERRIDES, "ANTHROPIC_BASE_URL"] : CRED_ENV_OVERRIDES);
+}
 
 export const OAUTH_USAGE_URL = "https://api.anthropic.com/api/oauth/usage";
 const USAGE_URL = env("TOKENMAXXING_OAUTH_USAGE_URL", OAUTH_USAGE_URL);
