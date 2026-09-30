@@ -124,12 +124,12 @@ const PiTrustSchema = z.record(z.string(), z.unknown());
 function readPiJson<T extends z.ZodType>(file: string, schema: T): z.output<T> | null {
   let text: string;
   try {
-    text = readFileSync(file, "utf8");
+    text = new TextDecoder().decode(readFileSync(file));
   } catch (e) {
     if (ErrnoSchema.safeParse(e).data?.code === "ENOENT") return null;
     throw e;
   }
-  const parsed = schema.safeParse(JsonTextSchema.safeParse(text.startsWith("﻿") ? text.slice(1) : text).data);
+  const parsed = schema.safeParse(JsonTextSchema.safeParse(text).data);
   if (!parsed.success) log("pisupervisor.pi_file_unreadable", { file });
   return parsed.success ? parsed.data : null;
 }
