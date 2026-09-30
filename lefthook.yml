@@ -3,40 +3,9 @@ assert_lefthook_installed: true
 pre-push:
   jobs:
     - name: test
-      group:
-        piped: true
-        jobs:
-          - name: install
-            run: bun install --frozen-lockfile
-          - name: typecheck
-            run: bun run typecheck
-          - name: pack
-            run: |
-              set -e
-              d="$(mktemp -d)"
-              trap 'rm -r "$d"' EXIT
-              npm pack --pack-destination "$d"
-              tar -xzf "$d"/tokenmaxxing-*.tgz -C "$d" package/src/main.ts
-              test -x "$d/package/src/main.ts"
-              BUN_INSTALL_GLOBAL_DIR="$d/global" BUN_INSTALL_BIN="$d/bin" bun add -g "$d"/tokenmaxxing-*.tgz
-              "$d/bin/tokenmaxxing" help
+      script: test.sh
     - name: nix
-      run: |
-        set -e
-        d="$(mktemp -d)"
-        trap 'rm -r "$d"' EXIT
-        nix build --accept-flake-config .#tokenmaxxing -L --out-link "$d/result"
-        "$d/result/bin/tokenmaxxing" help
-        "$d/result/bin/xx" help >/dev/null
-        printf '{"thresholds":{"weekly":95}}\n' > "$d/config.json"
-        TOKENMAXXING_HOME="$d" "$d/result/bin/tokenmaxxing" config --json | jq -e '.ok == true and .effective.thresholds.weekly == 95 and .effective.thresholds.session == 90' >/dev/null
+      script: nix.sh
     - name: docs
-      group:
-        piped: true
-        jobs:
-          - name: docs install
-            root: docs/
-            run: bun install --frozen-lockfile
-          - name: docs build
-            root: docs/
-            run: bun run build
+      root: docs/
+      script: docs.sh
