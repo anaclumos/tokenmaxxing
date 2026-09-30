@@ -11,7 +11,7 @@ export function errorMessage(e: unknown): string {
 function redact(s: string): string {
   return s
     .replace(/\b(sk-ant-[A-Za-z0-9._-]{6,})/g, "sk-ant-***")
-    .replace(/\b([A-Za-z0-9_-]{40,})\b/g, (m) => `${m.slice(0, 4)}...(${m.length})`);
+    .replace(/[A-Za-z0-9_-]{40,}/g, "***");
 }
 
 let echo: ((input: { event: string; parts: string }) => void) | null = null;
