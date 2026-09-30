@@ -4,7 +4,7 @@ import { evaluateAndMaybeSwap } from "../lib/decide.ts";
 import { readStdin } from "../lib/proc.ts";
 import { adoptLiveSession, refusedAccounts, supervisedSession, writeRespawnMarker } from "../lib/sessions.ts";
 import { loadConfig } from "../lib/state.ts";
-import { classifyEnforcedLimit, findEnforcedRow, parseErrorBody, readTranscriptTail, type TranscriptRow } from "../lib/usage.ts";
+import { classifyEnforcedLimit, ENFORCED_ERRORS, findEnforcedRow, parseErrorBody, readTranscriptTail, type TranscriptRow } from "../lib/usage.ts";
 import { paths } from "../lib/paths.ts";
 import { JsonTextSchema, type EnforcedLimit } from "../lib/types.ts";
 import { errorMessage, log } from "../lib/log.ts";
@@ -20,10 +20,10 @@ const StopFailureStdin = z.looseObject({
 const ROW_WAIT_MS = 3_000;
 const ROW_POLL_MS = 200;
 
-async function awaitEnforcedRow(input: { transcriptPath: string; lastAssistantMessage: string | undefined; now: number }): Promise<TranscriptRow | null> {
+async function awaitEnforcedRow(input: { transcriptPath: string; error: string; lastAssistantMessage: string | undefined; now: number }): Promise<TranscriptRow | null> {
   const deadline = Date.now() + ROW_WAIT_MS;
   while (true) {
-    const row = findEnforcedRow({ rows: await readTranscriptTail(input.transcriptPath), lastAssistantMessage: input.lastAssistantMessage, now: input.now });
+    const row = findEnforcedRow({ rows: await readTranscriptTail(input.transcriptPath), error: input.error, lastAssistantMessage: input.lastAssistantMessage, now: input.now });
     if (row || Date.now() >= deadline) return row;
     await Bun.sleep(ROW_POLL_MS);
   }
@@ -36,7 +36,8 @@ export async function runStopFailureHook(): Promise<number> {
   const now = Date.now();
   const parsed = StopFailureStdin.safeParse(JsonTextSchema.safeParse(await readStdin()).data);
   const stdin = parsed.success ? parsed.data : {};
-  if (stdin.error !== undefined && stdin.error !== "rate_limit") return 0;
+  const error = stdin.error ?? "rate_limit";
+  if (!ENFORCED_ERRORS.includes(error)) return 0;
 
   const stdinSid = stdin.session_id;
   const mainLoop = stdin.agent_id === undefined;
@@ -51,7 +52,7 @@ export async function runStopFailureHook(): Promise<number> {
     const canRespawn = session != null && mainLoop;
     const cfg = loadConfig();
     const row = stdin.transcript_path
-      ? await awaitEnforcedRow({ transcriptPath: stdin.transcript_path, lastAssistantMessage: stdin.last_assistant_message, now })
+      ? await awaitEnforcedRow({ transcriptPath: stdin.transcript_path, error, lastAssistantMessage: stdin.last_assistant_message, now })
       : null;
     const limit = row ? classifyEnforcedLimit(row, cfg.policy.switchModels) : null;
 

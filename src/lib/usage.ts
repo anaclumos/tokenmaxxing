@@ -86,11 +86,13 @@ export function transcriptRowText(row: TranscriptRow): string {
 
 const ROW_RECENCY_MS = 60_000;
 
-export function findEnforcedRow(input: { rows: TranscriptRow[]; lastAssistantMessage: string | undefined; now: number }): TranscriptRow | null {
-  const { rows, lastAssistantMessage, now } = input;
+export const ENFORCED_ERRORS = ["rate_limit", "oauth_org_not_allowed"];
+
+export function findEnforcedRow(input: { rows: TranscriptRow[]; error: string; lastAssistantMessage: string | undefined; now: number }): TranscriptRow | null {
+  const { rows, error, lastAssistantMessage, now } = input;
   for (let i = rows.length - 1; i >= 0; i--) {
     const row = rows[i]!;
-    if (row.isApiErrorMessage !== true || row.error !== "rate_limit") continue;
+    if (row.isApiErrorMessage !== true || row.error !== error) continue;
     const ts = row.timestamp ? Date.parse(row.timestamp) : Number.NaN;
     const byContent = lastAssistantMessage != null && lastAssistantMessage !== "" && transcriptRowText(row) === lastAssistantMessage;
     const byRecency = Number.isFinite(ts) && Math.abs(now - ts) <= ROW_RECENCY_MS;
@@ -103,7 +105,8 @@ export type EnforcedClass =
   | { kind: "session"; resetsAt: number | null }
   | { kind: "weekly"; resetsAt: number | null }
   | { kind: "model"; family: string; resetsAt: number | null }
-  | { kind: "credits"; family: string; resetsAt: null };
+  | { kind: "credits"; family: string; resetsAt: null }
+  | { kind: "org"; resetsAt: null };
 
 const ErrorBodySchema = z.looseObject({
   error: z.looseObject({ type: z.string().optional(), details: z.looseObject({ error_code: z.string().optional() }).optional() }).optional(),
@@ -120,6 +123,7 @@ export function parseErrorBody(errorDetails: string | undefined): z.infer<typeof
 }
 
 export function classifyEnforcedLimit(row: TranscriptRow, switchModels: string[]): EnforcedClass | null {
+  if (row.error === "oauth_org_not_allowed") return { kind: "org", resetsAt: null };
   if (row.apiError === "model_requires_usage_credits") return { kind: "credits", family: CREDITS_FAMILY, resetsAt: null };
   const q = row.quotaLimits;
   if (!q) return null;
