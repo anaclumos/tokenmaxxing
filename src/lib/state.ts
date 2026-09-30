@@ -18,8 +18,8 @@ import {
   type Window,
 } from "./types.ts";
 
-export function readJsonFile<T extends z.ZodType>(path: string, schema: T): z.output<T> {
-  const json = JsonTextSchema.safeParse(readFileSync(path, "utf8"));
+export function readJsonFile<T extends z.ZodType>(path: string, schema: T, fd?: number): z.output<T> {
+  const json = JsonTextSchema.safeParse(readFileSync(fd ?? path, "utf8"));
   if (!json.success) throw new Error(`${path} is corrupt (unparsable JSON) - repair or remove the file`);
   const parsed = schema.safeParse(json.data);
   if (!parsed.success) {
@@ -119,18 +119,18 @@ export function upsertAccount(
 export type UsageSnapshot = { state: UsageState; at: number };
 
 export function loadUsageSnapshot(accountId: string): UsageSnapshot | null {
+  const path = usageJsonFor(accountId);
   let fd: number;
   try {
-    fd = openSync(usageJsonFor(accountId), "r");
-  } catch {
-    return null;
+    fd = openSync(path, "r");
+  } catch (e) {
+    if (ErrnoSchema.safeParse(e).data?.code === "ENOENT") return null;
+    throw e;
   }
   try {
     const at = fstatSync(fd).mtimeMs;
-    const parsed = UsageStateSchema.safeParse(JSON.parse(readFileSync(fd, "utf8")));
-    return parsed.success && parsed.data.account === accountId ? { state: parsed.data, at } : null;
-  } catch {
-    return null;
+    const state = readJsonFile(path, UsageStateSchema, fd);
+    return state.account === accountId ? { state, at } : null;
   } finally {
     closeSync(fd);
   }
@@ -145,7 +145,11 @@ const SAMPLED_AT_REFRESH_MS = 30_000;
 
 export function writeUsage(input: UsageState): boolean {
   const file = usageJsonFor(input.account);
-  const prev = loadUsageSnapshot(input.account)?.state ?? null;
+  let prev: UsageState | null = null;
+  try {
+    prev = loadUsageSnapshot(input.account)?.state ?? null;
+  } catch {
+  }
   const next: UsageState = { ...input, sampledAt: input.ts };
   if (
     prev &&
