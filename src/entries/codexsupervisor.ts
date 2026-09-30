@@ -1,6 +1,7 @@
 import type { Subprocess } from "bun";
 import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
+import { omit } from "es-toolkit";
 import { z } from "zod";
 import { codexPaths, codexPool } from "../lib/paths.ts";
 import { withLock } from "../lib/lock.ts";
@@ -90,11 +91,10 @@ export async function runCodexSupervisor(input: { argv: string[] }): Promise<num
   if (loopGuardTripped("codex")) return 1;
 
   const real = resolveRealBin(CODEX_BIN);
-  const childEnv = { ...process.env, [WRAP_DEPTH_ENV]: String(wrapDepth() + 1) };
+  const childEnv: Record<string, string | undefined> = { ...process.env, [WRAP_DEPTH_ENV]: String(wrapDepth() + 1) };
 
   if (!shouldManageCodex({ argv }) || process.env[UNMANAGED_ENV]) {
-    const passthroughEnv: Record<string, string | undefined> = { ...childEnv };
-    delete passthroughEnv[CODEX_SUPERVISOR_ID_ENV];
+    const passthroughEnv = omit(childEnv, [CODEX_SUPERVISOR_ID_ENV]);
     let child: Subprocess | null = null;
     process.on("SIGTERM", () => {
       if (child) child.kill("SIGTERM");

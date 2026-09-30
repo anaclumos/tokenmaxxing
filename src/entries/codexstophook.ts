@@ -1,4 +1,5 @@
 import { join } from "node:path";
+import { omit } from "es-toolkit";
 import type { z } from "zod";
 import { codexPaths, optionalEnv } from "../lib/paths.ts";
 import { writeFileAtomic } from "../lib/atomic.ts";
@@ -22,8 +23,7 @@ async function compactBeforeMove(input: { sessionId: string | null; now: number 
   if (!live || live.needsReauth === true || (live.enforcedUntil != null && live.enforcedUntil > now)) return;
   const observed = await codex.observeLive(live, loadConfig(), now, { probe: true, perModel: false });
   if (!observed || !isExhausted({ ...live, windows: observed.windows }, codexPickCtx(now, live.id))) return;
-  const env: Record<string, string | undefined> = { ...process.env, TOKENMAXXING_PROBE: "1", [WRAP_DEPTH_ENV]: String(MAX_WRAP_DEPTH) };
-  delete env[CODEX_SUPERVISOR_ID_ENV];
+  const env = { ...omit(process.env, [CODEX_SUPERVISOR_ID_ENV]), TOKENMAXXING_PROBE: "1", [WRAP_DEPTH_ENV]: String(MAX_WRAP_DEPTH) };
   log("codexstop.compact_start", { thread: sessionId.slice(0, 8), account: live.id.slice(0, 8) });
   await compactCodexThread({ real: resolveRealBin(CODEX_BIN), threadId: sessionId, env });
 }

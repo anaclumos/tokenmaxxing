@@ -1,6 +1,6 @@
 import { mkdirSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
-import { countBy } from "es-toolkit";
+import { countBy, omit } from "es-toolkit";
 import { z } from "zod";
 import { readItem, writeItem, deleteItem, isolatedTarget, readStore, storeTarget, claudeAiOauthOnly } from "./credstore.ts";
 import { CLAUDE_BIN, resolveRealBin, resolveVerifiedClaude } from "./claudebin.ts";
@@ -16,7 +16,7 @@ import { StoreUnusableError, type Observation, type Provider, type SampleReport 
 import { foldTee, readyToSample, runSample, sampleAccountUsage, sampleDue, sampleIntervalMs, teeObservation, usageBlockedUntil } from "./sample.ts";
 import { clearUsageSnapshot, liveWaitClaims, loadAccounts, loadConfig, loadUsageSnapshot, pinBinOverride, readJsonFile, saveAccounts, type Harvest } from "./state.ts";
 import { saveTermios, restoreTermios } from "./tty.ts";
-import { fetchUsageDirect, gatedFamilies, mergeWindows, modelFromFlag, scrubCredentialEnv, windowsOf } from "./usage.ts";
+import { CRED_ENV_OVERRIDES, fetchUsageDirect, gatedFamilies, mergeWindows, modelFromFlag, windowsOf } from "./usage.ts";
 import { CredentialBlobSchema, JsonTextSchema, OAuthAccountSchema, type Account, type Config, type ModelInfo } from "./types.ts";
 import { c } from "../cli/render.ts";
 
@@ -170,7 +170,7 @@ async function login(): Promise<Harvest | null> {
   const real = resolveRealBin(CLAUDE_BIN);
 
   const savedTermios = saveTermios();
-  const env = scrubCredentialEnv({ ...process.env, CLAUDE_CONFIG_DIR: onboardDir, TOKENMAXXING_PROBE: "1", TOKENMAXXING_SUPERVISED: "" });
+  const env = { ...omit(process.env, CRED_ENV_OVERRIDES), CLAUDE_CONFIG_DIR: onboardDir, TOKENMAXXING_PROBE: "1", TOKENMAXXING_SUPERVISED: "" };
   const p = Bun.spawn([real], {
     stdin: "inherit",
     stdout: "inherit",
