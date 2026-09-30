@@ -18,6 +18,7 @@ const { rewrite: rewriteSuffix } = rewritePath(
   '{/*path}.md',
   `${docsContentRoute}{/*path}/content.md`,
 );
+const { rewrite: rewriteRoot } = rewritePath('/{index}.md', `${docsContentRoute}/content.md`);
 
 export default function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -26,7 +27,7 @@ export default function proxy(request: NextRequest) {
     return NextResponse.next();
   }
 
-  const suffix = rewriteSuffix(pathname);
+  const suffix = rewriteRoot(pathname) || rewriteSuffix(pathname);
   if (suffix) {
     return NextResponse.rewrite(new URL(suffix, request.nextUrl));
   }
