@@ -1,15 +1,11 @@
-{ lib, ... }:
+{ lib, pkgs, ... }:
 {
   options.programs.tokenmaxxing = {
     enable = lib.mkEnableOption "tokenmaxxing (pooled Claude Code / Codex account switching)";
 
-    package = lib.mkOption {
-      type = lib.types.nullOr lib.types.package;
-      default = null;
-      defaultText = lib.literalExpression "null  # falls back to pkgs.tokenmaxxing when this flake's overlay is applied";
-      description = ''
-        tokenmaxxing package to install. Leave null to use `pkgs.tokenmaxxing`
-        (requires this flake's overlay / `*.withOverlay`). Or set explicitly:
+    package = lib.mkPackageOption pkgs "tokenmaxxing" {
+      extraDescription = ''
+        `pkgs.tokenmaxxing` requires this flake's overlay / `*.withOverlay`. Or set explicitly:
 
             programs.tokenmaxxing.package = inputs.tokenmaxxing.packages.''${pkgs.system}.default;
       '';

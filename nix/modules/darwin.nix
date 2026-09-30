@@ -1,12 +1,10 @@
 {
   config,
   lib,
-  pkgs,
   ...
 }:
 let
   cfg = config.programs.tokenmaxxing;
-  package = if cfg.package != null then cfg.package else pkgs.tokenmaxxing or null;
   primaryUser = config.system.primaryUser or null;
   home =
     if primaryUser != null && config.users.users ? ${primaryUser} then
@@ -18,14 +16,7 @@ in
   imports = [ ./options.nix ];
 
   config = lib.mkIf cfg.enable {
-    assertions = [
-      {
-        assertion = package != null;
-        message = "programs.tokenmaxxing.package must be set (import this flake's overlay / darwinModules.withOverlay, or set package = inputs.tokenmaxxing.packages.\${pkgs.system}.default).";
-      }
-    ];
-
-    environment.systemPackages = lib.mkIf (package != null) [ package ];
+    environment.systemPackages = [ cfg.package ];
 
     environment.variables = lib.mkMerge [
       (lib.mkIf cfg.checkTimer.enable {
@@ -36,14 +27,14 @@ in
       })
     ];
 
-    system.activationScripts.extraActivation.text = lib.mkIf ((cfg.checkTimer.enable || cfg.hub.enable) && package != null && home != null && primaryUser != null) (
+    system.activationScripts.extraActivation.text = lib.mkIf ((cfg.checkTimer.enable || cfg.hub.enable) && home != null && primaryUser != null) (
       lib.mkAfter ''
         sudo -u ${primaryUser} mkdir -p "${home}/.config/tokenmaxxing"
       ''
     );
 
-    launchd.user.agents.tokenmaxxing-check = lib.mkIf (cfg.checkTimer.enable && package != null) {
-      command = "${lib.getExe package} check";
+    launchd.user.agents.tokenmaxxing-check = lib.mkIf cfg.checkTimer.enable {
+      command = "${lib.getExe cfg.package} check";
       serviceConfig = {
         StartInterval = cfg.checkTimer.intervalSeconds;
         StandardOutPath = "/dev/null";
@@ -52,8 +43,8 @@ in
       };
     };
 
-    launchd.user.agents.tokenmaxxing-hub = lib.mkIf (cfg.hub.enable && package != null) {
-      command = "${lib.getExe package} serve";
+    launchd.user.agents.tokenmaxxing-hub = lib.mkIf cfg.hub.enable {
+      command = "${lib.getExe cfg.package} serve";
       serviceConfig = {
         KeepAlive = {
           SuccessfulExit = false;

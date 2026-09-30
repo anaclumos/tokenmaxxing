@@ -6,21 +6,13 @@
 }:
 let
   cfg = config.programs.tokenmaxxing;
-  package = if cfg.package != null then cfg.package else pkgs.tokenmaxxing or null;
   inherit (pkgs.stdenv) hostPlatform;
 in
 {
   imports = [ ./options.nix ];
 
   config = lib.mkIf cfg.enable {
-    assertions = [
-      {
-        assertion = package != null;
-        message = "programs.tokenmaxxing.package must be set (apply this flake's overlay to the pkgs used by Home Manager, or set package = inputs.tokenmaxxing.packages.\${pkgs.system}.default).";
-      }
-    ];
-
-    home.packages = lib.mkIf (package != null) [ package ];
+    home.packages = [ cfg.package ];
 
     home.sessionPath = [ "${config.xdg.configHome}/tokenmaxxing/bin" ];
 
@@ -33,17 +25,17 @@ in
       })
     ];
 
-    home.activation.tokenmaxxingLogDir = lib.mkIf ((cfg.checkTimer.enable || cfg.hub.enable) && hostPlatform.isDarwin && package != null) (
+    home.activation.tokenmaxxingLogDir = lib.mkIf ((cfg.checkTimer.enable || cfg.hub.enable) && hostPlatform.isDarwin) (
       lib.hm.dag.entryBefore [ "writeBoundary" ] ''
         $DRY_RUN_CMD mkdir -p "${config.home.homeDirectory}/.config/tokenmaxxing"
       ''
     );
 
-    launchd.agents.tokenmaxxing-check = lib.mkIf (cfg.checkTimer.enable && hostPlatform.isDarwin && package != null) {
+    launchd.agents.tokenmaxxing-check = lib.mkIf (cfg.checkTimer.enable && hostPlatform.isDarwin) {
       enable = true;
       config = {
         ProgramArguments = [
-          (lib.getExe package)
+          (lib.getExe cfg.package)
           "check"
         ];
         StartInterval = cfg.checkTimer.intervalSeconds;
@@ -53,16 +45,16 @@ in
     };
 
     systemd.user.services.tokenmaxxing-check =
-      lib.mkIf (cfg.checkTimer.enable && hostPlatform.isLinux && package != null)
+      lib.mkIf (cfg.checkTimer.enable && hostPlatform.isLinux)
         {
           Unit.Description = "tokenmaxxing account-switch check";
           Service = {
             Type = "oneshot";
-            ExecStart = "${lib.getExe package} check";
+            ExecStart = "${lib.getExe cfg.package} check";
           };
         };
 
-    systemd.user.timers.tokenmaxxing-check = lib.mkIf (cfg.checkTimer.enable && hostPlatform.isLinux && package != null) {
+    systemd.user.timers.tokenmaxxing-check = lib.mkIf (cfg.checkTimer.enable && hostPlatform.isLinux) {
       Unit.Description = "tokenmaxxing periodic account-switch check";
       Timer = {
         OnBootSec = toString cfg.checkTimer.intervalSeconds;
@@ -73,11 +65,11 @@ in
       Install.WantedBy = [ "timers.target" ];
     };
 
-    launchd.agents.tokenmaxxing-hub = lib.mkIf (cfg.hub.enable && hostPlatform.isDarwin && package != null) {
+    launchd.agents.tokenmaxxing-hub = lib.mkIf (cfg.hub.enable && hostPlatform.isDarwin) {
       enable = true;
       config = {
         ProgramArguments = [
-          (lib.getExe package)
+          (lib.getExe cfg.package)
           "serve"
         ];
         KeepAlive = {
@@ -90,14 +82,14 @@ in
     };
 
     systemd.user.services.tokenmaxxing-hub =
-      lib.mkIf (cfg.hub.enable && hostPlatform.isLinux && package != null)
+      lib.mkIf (cfg.hub.enable && hostPlatform.isLinux)
         {
           Unit = {
             Description = "tokenmaxxing usage hub";
             StartLimitIntervalSec = "0";
           };
           Service = {
-            ExecStart = "${lib.getExe package} serve";
+            ExecStart = "${lib.getExe cfg.package} serve";
             Restart = "on-failure";
             RestartSec = "5";
           };
