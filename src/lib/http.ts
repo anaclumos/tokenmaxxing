@@ -49,12 +49,5 @@ export function safeErrorDetail(input: { text: string }): string {
 export const http = ky.create({
   timeout: 15_000,
   throwHttpErrors: false,
-  retry: {
-    limit: 2,
-    methods: ["get"],
-    statusCodes: [429, 500, 502, 503, 504],
-    afterStatusCodes: [429, 503],
-    maxRetryAfter: 10_000,
-    backoffLimit: 3000,
-  },
+  retry: 0,
 });
