@@ -1,25 +1,16 @@
 {
   config,
   lib,
-  pkgs,
   ...
 }:
 let
   cfg = config.programs.tokenmaxxing;
-  package = if cfg.package != null then cfg.package else pkgs.tokenmaxxing or null;
 in
 {
   imports = [ ./options.nix ];
 
   config = lib.mkIf cfg.enable {
-    assertions = [
-      {
-        assertion = package != null;
-        message = "programs.tokenmaxxing.package must be set (import this flake's overlay / nixosModules.withOverlay, or set package = inputs.tokenmaxxing.packages.\${pkgs.system}.default).";
-      }
-    ];
-
-    environment.systemPackages = lib.mkIf (package != null) [ package ];
+    environment.systemPackages = [ cfg.package ];
 
     environment.variables = lib.mkMerge [
       (lib.mkIf cfg.checkTimer.enable {
@@ -30,15 +21,15 @@ in
       })
     ];
 
-    systemd.user.services.tokenmaxxing-check = lib.mkIf (cfg.checkTimer.enable && package != null) {
+    systemd.user.services.tokenmaxxing-check = lib.mkIf cfg.checkTimer.enable {
       description = "tokenmaxxing account-switch check";
       serviceConfig = {
         Type = "oneshot";
-        ExecStart = "${lib.getExe package} check";
+        ExecStart = "${lib.getExe cfg.package} check";
       };
     };
 
-    systemd.user.timers.tokenmaxxing-check = lib.mkIf (cfg.checkTimer.enable && package != null) {
+    systemd.user.timers.tokenmaxxing-check = lib.mkIf cfg.checkTimer.enable {
       description = "tokenmaxxing periodic account-switch check";
       timerConfig = {
         OnBootSec = toString cfg.checkTimer.intervalSeconds;
@@ -50,11 +41,11 @@ in
       wantedBy = [ "timers.target" ];
     };
 
-    systemd.user.services.tokenmaxxing-hub = lib.mkIf (cfg.hub.enable && package != null) {
+    systemd.user.services.tokenmaxxing-hub = lib.mkIf cfg.hub.enable {
       description = "tokenmaxxing usage hub";
       unitConfig.StartLimitIntervalSec = 0;
       serviceConfig = {
-        ExecStart = "${lib.getExe package} serve";
+        ExecStart = "${lib.getExe cfg.package} serve";
         Restart = "on-failure";
         RestartSec = "5";
       };
