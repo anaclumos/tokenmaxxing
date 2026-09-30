@@ -1,4 +1,3 @@
-import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
 import { writeFileAtomic } from "./atomic.ts";
@@ -6,9 +5,9 @@ import { fetchGrokUsage, GrokUsageReadError, type GrokUsage } from "./grokusage.
 import { errorMessage } from "./log.ts";
 import { grokAuthJsonFor, grokPaths, grokPool, grokSeatFromEnv, grokStoreDirFor } from "./paths.ts";
 import type { Provider, SampleReport } from "./provider.ts";
-import { loadAccounts, type Harvest } from "./state.ts";
+import { loadAccounts, readJsonFile, type Harvest } from "./state.ts";
 import { statusOnlyProvider, type AuthEntry } from "./statusonly.ts";
-import { InstantSchema, type Account } from "./types.ts";
+import { ErrnoSchema, InstantSchema, type Account } from "./types.ts";
 import { c } from "../cli/render.ts";
 
 const GrokAuthEntrySchema = z.looseObject({
@@ -37,16 +36,15 @@ function harvestOf(id: string, key: string, entry: GrokAuthEntry): Harvest {
 }
 
 function readMap(path: string): [string, GrokAuthEntry][] {
-  let raw: unknown;
+  let map: Record<string, unknown>;
   try {
-    raw = JSON.parse(readFileSync(path, "utf8"));
-  } catch {
-    return [];
+    map = readJsonFile(path, z.record(z.string(), z.unknown()));
+  } catch (e) {
+    if (ErrnoSchema.safeParse(e).data?.code === "ENOENT") return [];
+    throw e;
   }
-  const map = z.record(z.string(), z.unknown()).safeParse(raw);
-  if (!map.success) return [];
   const out: [string, GrokAuthEntry][] = [];
-  for (const [key, value] of Object.entries(map.data)) {
+  for (const [key, value] of Object.entries(map)) {
     const parsed = GrokAuthEntrySchema.safeParse(value);
     if (!parsed.success) continue;
     out.push([key, parsed.data]);

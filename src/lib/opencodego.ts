@@ -1,11 +1,11 @@
-import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
 import { writeFileAtomic } from "./atomic.ts";
 import { env, HOME, opencodeGoAuthJsonFor, opencodeGoPaths, opencodeGoPool, opencodeGoStoreDirFor } from "./paths.ts";
 import type { Provider } from "./provider.ts";
-import { type Harvest } from "./state.ts";
+import { readJsonFile, type Harvest } from "./state.ts";
 import { statusOnlyProvider, type AuthEntry } from "./statusonly.ts";
+import { ErrnoSchema } from "./types.ts";
 import { c } from "../cli/render.ts";
 
 const OpencodeAuthEntrySchema = z.looseObject({ type: z.string(), key: z.string().optional() });
@@ -35,15 +35,14 @@ function harvestOf(key: string): Harvest {
 }
 
 function readAuth(path: string): AuthEntry[] {
-  let raw: unknown;
+  let map: z.infer<typeof OpencodeAuthFileSchema>;
   try {
-    raw = JSON.parse(readFileSync(path, "utf8"));
-  } catch {
-    return [];
+    map = readJsonFile(path, OpencodeAuthFileSchema);
+  } catch (e) {
+    if (ErrnoSchema.safeParse(e).data?.code === "ENOENT") return [];
+    throw e;
   }
-  const map = OpencodeAuthFileSchema.safeParse(raw);
-  if (!map.success) return [];
-  const entry = OpencodeAuthEntrySchema.safeParse(map.data["opencode-go"]);
+  const entry = OpencodeAuthEntrySchema.safeParse(map["opencode-go"]);
   if (!entry.success || entry.data.type !== "api" || !entry.data.key) return [];
   return [{ id: idOfKey(entry.data.key), usable: true, harvest: harvestOf(entry.data.key) }];
 }

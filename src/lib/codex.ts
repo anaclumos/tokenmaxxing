@@ -1,5 +1,6 @@
 import { existsSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
+import { z } from "zod";
 import { writeFileAtomic } from "./atomic.ts";
 import { CODEX_BIN, MAX_WRAP_DEPTH, WRAP_DEPTH_ENV, resolveRealBin, verifyRealBin } from "./claudebin.ts";
 import { codexIdentityOf, codexStoreUsable, deleteCodexStoreAuth, ensureCodexStoreHome, isCodexAccessExpiring, readCodexAuthAt, readCodexStoreAuth, writeCodexStoreAuth } from "./codexauth.ts";
@@ -189,11 +190,13 @@ async function importLive(): Promise<Harvest | null> {
   return login();
 }
 
+const CodexStoreModeSchema = z.looseObject({ cli_auth_credentials_store: z.string().optional() });
+
 function storePinnedAwayFromFile(): boolean {
   const configToml = `${codexPaths.home}/config.toml`;
   if (!existsSync(configToml)) return false;
-  const config = Bun.TOML.parse(readFileSync(configToml, "utf8"));
-  return "cli_auth_credentials_store" in config && config.cli_auth_credentials_store !== "file";
+  const store = CodexStoreModeSchema.parse(Bun.TOML.parse(readFileSync(configToml, "utf8"))).cli_auth_credentials_store;
+  return store !== undefined && store !== "file";
 }
 
 function preflight(): void {
