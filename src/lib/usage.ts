@@ -96,7 +96,7 @@ export function findEnforcedRow(input: { rows: TranscriptRow[]; error: string; l
     const ts = row.timestamp ? Date.parse(row.timestamp) : Number.NaN;
     const byContent = lastAssistantMessage != null && lastAssistantMessage !== "" && transcriptRowText(row) === lastAssistantMessage;
     const byRecency = Number.isFinite(ts) && Math.abs(now - ts) <= ROW_RECENCY_MS;
-    if (byContent || byRecency) return row;
+    if (byContent && byRecency) return row;
   }
   return null;
 }
