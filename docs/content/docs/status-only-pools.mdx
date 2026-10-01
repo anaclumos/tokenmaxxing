@@ -3,7 +3,7 @@ title: Status-only pools
 description: grok and opencode-go accounts, pooled for inventory with no supervisor and no switching
 ---
 
-Two more pools share the account commands, the state layout, and the `status` view with the Claude and Codex pools, and nothing else: no supervisor shim, no hooks, no statusline tee, no presence, and no switching. They keep an inventory of accounts and the credential each one holds. grok `status` also reads the subscription credit window; opencode-go still has no usage source.
+Two more pools share the account commands, the state layout, and the `status` view with the Claude and Codex pools, and nothing else: no supervisor shim, no hooks, no statusline tee, no session presence, and no switching. They keep an inventory of accounts and the credential each one holds, and an opencode-go key can be lent to an unattended consumer. grok `status` also reads the subscription credit window; opencode-go still has no usage source.
 
 ```sh
 tokenmaxxing init --grok          # pool the first grok login (status-only)
@@ -11,7 +11,7 @@ tokenmaxxing add --grok           # pool another one through an isolated login
 tokenmaxxing init --opencode-go   # pool the first opencode-go key (status-only)
 ```
 
-`init`, `add`, `auth`, `rm`, and `rename` take `--grok` or `--opencode-go`; every other command refuses the flags with exit code 2, and the pool flags are mutually exclusive. `init` verifies the vendor CLI and pins its path (`grokBin` or `opencodeBin` in `config.json`; `TOKENMAXXING_GROK_BIN` and `TOKENMAXXING_OPENCODE_BIN` override it), then prints that the pool is status-only. `doctor`, `check`, and the periodic timer ignore both pools, and `uninstall` keeps their stores.
+`init`, `add`, `auth`, `rm`, and `rename` take `--grok` or `--opencode-go`, and `seat` takes `--opencode-go`; every other command refuses the flags with exit code 2, and the pool flags are mutually exclusive. `init` verifies the vendor CLI and pins its path (`grokBin` or `opencodeBin` in `config.json`; `TOKENMAXXING_GROK_BIN` and `TOKENMAXXING_OPENCODE_BIN` override it), then prints that the pool is status-only. `doctor`, `check`, and the periodic timer ignore both pools, and `uninstall` keeps their stores.
 
 ## grok
 
@@ -22,6 +22,12 @@ Usage is the weekly subscription credit window from `GET https://cli-chat-proxy.
 ## opencode-go
 
 An account is an opencode Zen API key for the `opencode-go` provider. `init --opencode-go` imports the key from opencode's auth file (`$XDG_DATA_HOME/opencode/auth.json`, `~/.local/share/opencode/auth.json` by default) when it holds an `opencode-go` entry of type `api`; otherwise, and for `add` and `auth`, it runs `opencode providers login -p opencode-go` in a throwaway data home and you paste the key from opencode.ai/zen when opencode asks. Identity is a hash of the key, so the account has no email and its tier reads `go`. The key is written to `opencode-go-stores/<uuid8>/auth.json` at mode 0600. Each key gets its own store directory, named from the first eight characters of that hash. Keys pooled before that change keep the old `opencode-go-<hex>` id and report no usable credential: remove and add them again.
+
+### Lending a key
+
+`tokenmaxxing seat --opencode-go <pid>` lends one pooled key to a consumer that runs opencode itself, such as a test runner that runs `opencode-go/mimo-v2.6-pro` or another model of the `opencode-go` provider. Under the pool lock it takes the first key in pool order whose store holds a usable credential and that no other living `seat --opencode-go` record names, writes `opencode-go-live/seat-<pid>`, and prints the key's store directory. The pool has no usage source, so the choice does not rank keys by quota. A repeat call by the same live pid returns the key it holds, and refuses when that store no longer holds a usable key. The record reaps itself once the pid exits. With no usable key the command exits 1.
+
+The store's `auth.json` is an opencode auth file: `{"opencode-go": {"type": "api", "key": "..."}}`. opencode reads that file from `$XDG_DATA_HOME/opencode/auth.json` (`~/.local/share/opencode/auth.json` by default) on each credential lookup, so the consumer mounts or links the store's `auth.json` there and selects the model with `--model opencode-go/mimo-v2.6-pro` (`opencode models opencode-go` lists the rest). A read-only mount works, because an API key does not rotate. Mount the file and not the store directory as the data directory, because opencode writes its session database, logs, and snapshots into its data directory.
 
 ## What status shows
 
@@ -35,3 +41,4 @@ An account is an opencode Zen API key for the `opencode-go` provider. `init --op
 | `grok-lock`, `opencode-go-lock` | The `flock` files that serialize each pool's commands |
 | `grok-stores/<uuid8>/auth.json`, `opencode-go-stores/<uuid8>/auth.json` | One 0600 store per account |
 | `grok-onboard/`, `opencode-go-onboard/` | Throwaway login homes, wiped before and after each isolated login |
+| `opencode-go-live/` | One `seat-<pid>` record per lent opencode-go key, validated against that pid |

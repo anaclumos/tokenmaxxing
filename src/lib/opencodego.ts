@@ -2,8 +2,11 @@ import { join } from "node:path";
 import { z } from "zod";
 import { writeFileAtomic } from "./atomic.ts";
 import { env, HOME, opencodeGoAuthJsonFor, opencodeGoPaths, opencodeGoPool, opencodeGoStoreDirFor } from "./paths.ts";
-import type { Provider } from "./provider.ts";
-import { readJsonFile, type Harvest } from "./state.ts";
+import { withLock } from "./lock.ts";
+import { log } from "./log.ts";
+import { livingPresences, writePresence } from "./presence.ts";
+import type { Provider, SeatBorrow } from "./provider.ts";
+import { loadAccounts, readJsonFile, type Harvest } from "./state.ts";
 import { statusOnlyProvider, type AuthEntry } from "./statusonly.ts";
 import { ErrnoSchema } from "./types.ts";
 import { c } from "../cli/render.ts";
@@ -45,6 +48,31 @@ function readAuth(path: string): AuthEntry[] {
   const entry = OpencodeAuthEntrySchema.safeParse(map["opencode-go"]);
   if (!entry.success || entry.data.type !== "api" || !entry.data.key) return [];
   return [{ id: idOfKey(entry.data.key), usable: true, harvest: harvestOf(entry.data.key) }];
+}
+
+export async function borrowOpencodeGoSeat(pid: number): Promise<SeatBorrow> {
+  const seatId = `seat-${pid}`;
+  const granted = await withLock(opencodeGoPool.lockFile, async (): Promise<SeatBorrow> => {
+    const accounts = loadAccounts(opencodeGoPool).accounts;
+    const living = livingPresences(opencodeGoPaths.presenceDir);
+    const held = living.find((p) => p.id === seatId);
+    const heldAccount = held ? (accounts.find((a) => a.id === held.accountId) ?? null) : null;
+    if (heldAccount) {
+      if (!(await opencodeGo.storeUsable(heldAccount))) {
+        return { denied: "the key this pid holds is no longer usable in its store - run `tokenmaxxing auth --opencode-go` and borrow again" };
+      }
+      return { store: opencodeGoStoreDirFor(heldAccount.id), id: heldAccount.id, reused: true };
+    }
+    const lent = new Set(living.map((p) => p.accountId));
+    const open = accounts.filter((a) => !lent.has(a.id));
+    const usable = await Promise.all(open.map(opencodeGo.storeUsable));
+    const picked = open.find((_, i) => usable[i]);
+    if (!picked) return null;
+    writePresence({ dir: opencodeGoPaths.presenceDir, id: seatId, accountId: picked.id, pid });
+    return { store: opencodeGoStoreDirFor(picked.id), id: picked.id, reused: false };
+  });
+  if (granted && !("denied" in granted)) log("seat.grant", { account: granted.id.slice(0, 8), pid, reused: granted.reused });
+  return granted;
 }
 
 export const opencodeGo: Provider = statusOnlyProvider({

@@ -133,6 +133,7 @@ export function grokSeatFromEnv(accountIds: string[], env: Record<string, string
 export const opencodeGoPaths = {
   storesDir: join(TM_HOME, "opencode-go-stores"),
   onboardDir: join(TM_HOME, "opencode-go-onboard"),
+  presenceDir: join(TM_HOME, "opencode-go-live"),
 } as const;
 
 export function opencodeGoStoreDirFor(accountId: string): string {

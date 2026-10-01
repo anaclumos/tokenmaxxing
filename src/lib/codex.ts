@@ -13,7 +13,7 @@ import { withLock } from "./lock.ts";
 import { errorMessage, log } from "./log.ts";
 import { codexPaths, codexPool, codexSeatFromEnv } from "./paths.ts";
 import { isExhausted, pickBest, pickEarliestReset, thresholdBars, type PickCtx } from "./picker.ts";
-import { StoreUnusableError, type Observation, type Provider, type SampleReport } from "./provider.ts";
+import { StoreUnusableError, type Observation, type Provider, type SampleReport, type SeatBorrow } from "./provider.ts";
 import { loadAccounts, loadConfig, pinBinOverride, saveAccounts, type Harvest } from "./state.ts";
 import { restoreTermios, saveTermios } from "./tty.ts";
 import type { Account, CodexAuthJson, CodexUsage, Config } from "./types.ts";
@@ -239,9 +239,7 @@ export function pickCodexSeat(now: number, eligible: (a: Account) => boolean = (
   return pickBest(open.filter((a) => !isExhausted(a, ctx)), ctx) ?? pickEarliestReset(open, ctx)?.account ?? null;
 }
 
-export type CodexBorrow = { store: string; id: string; reused: boolean } | { denied: string } | null;
-
-export async function borrowCodexSeat(pid: number): Promise<CodexBorrow> {
+export async function borrowCodexSeat(pid: number): Promise<SeatBorrow> {
   const now = Date.now();
   const seatId = `seat-${pid}`;
   const cfg = loadConfig();
@@ -250,7 +248,7 @@ export async function borrowCodexSeat(pid: number): Promise<CodexBorrow> {
       .accounts.filter((a) => a.needsReauth !== true && codexStoreUsable(a.id))
       .map((a) => observeCodex(a, cfg, now, { probe: true, refresh: false })),
   );
-  const granted = await withLock(codexPool.lockFile, (): CodexBorrow => {
+  const granted = await withLock(codexPool.lockFile, (): SeatBorrow => {
     const ctx = codexPickCtx(now, null);
     const idx = loadAccounts(codexPool);
     const held = livingPresences(codexPaths.presenceDir).find((p) => p.id === seatId);

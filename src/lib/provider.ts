@@ -8,6 +8,8 @@ export type SampleReport = { ok: true; source: "statusline" | "probe" | "cached"
 
 export type SwapFailure = "dead-grant" | "skip" | "fatal";
 
+export type SeatBorrow = { store: string; id: string; reused: boolean } | { denied: string } | null;
+
 export class StoreUnusableError extends Error {
   constructor(message: string) {
     super(message);
