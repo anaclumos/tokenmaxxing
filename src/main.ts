@@ -39,6 +39,7 @@ const PI_FLAG = "--pi";
 const JSON_COMMANDS = new Set(["status", "config", "check"]);
 const CODEX_COMMANDS = new Set(["init", "add", "auth", "rm", "rename", "seat"]);
 const STATUS_ONLY_COMMANDS = new Set(["init", "add", "auth", "rm", "rename"]);
+const OPENCODE_GO_COMMANDS = new Set([...STATUS_ONLY_COMMANDS, "seat"]);
 
 function printHelp(): void {
   console.log(`${c.bold("tokenmaxxing")} - automatic Claude Code account switching
@@ -59,7 +60,9 @@ function printHelp(): void {
   ${c.cyan("tokenmaxxing doctor")}     verify the install is intact
   ${c.cyan("tokenmaxxing rename")} [--codex | --grok | --opencode-go] <sel> <label>
   ${c.cyan("tokenmaxxing rm")} [--codex | --grok | --opencode-go] <sel>
+  ${c.cyan("tokenmaxxing seat")} <pid>  lend one pooled Claude account to an unattended consumer until <pid> exits: prints the store directory to set as CLAUDE_SECURESTORAGE_CONFIG_DIR (the directory itself, as its owner, never a copy of its credential); host sessions keep using the account, other borrowers do not; exit 1 = none usable
   ${c.cyan("tokenmaxxing seat --codex")} <pid>  borrow one pooled codex account for an unattended consumer (plugin, script): prints the CODEX_HOME to set, reserved until <pid> exits; exit 1 = none usable, fall back to the ambient login
+  ${c.cyan("tokenmaxxing seat --opencode-go")} <pid>  lend one pooled opencode-go key to an unattended consumer until <pid> exits: prints the store directory, whose auth.json is an opencode auth file (mount it at $XDG_DATA_HOME/opencode/auth.json, then run a model such as opencode-go/mimo-v2.6-pro); other borrowers do not get the key; exit 1 = none usable
   ${c.cyan("tokenmaxxing serve")}      serve the CLIProxyAPI-compatible usage API on http://localhost:<hub.port> (default 8317) so a dashboard such as T3 Code's "Add a CLIProxyAPI hub" shows every pooled Claude and Codex account's quota; the management key is the contents of hub-key in the state directory
   ${c.cyan("tokenmaxxing uninstall")} [--yes]  print the targets, then remove supervisor + settings entries (refused without ${c.cyan("--yes")} when HOME is the login home)
 
@@ -127,10 +130,13 @@ async function main(): Promise<number> {
     return 2;
   }
 
-  if ((provider === grok || provider === opencodeGo) && (sub == null || !STATUS_ONLY_COMMANDS.has(sub))) {
+  if (provider === grok || provider === opencodeGo) {
     const flag = provider === grok ? GROK_FLAG : OPENCODE_GO_FLAG;
-    emitError({ json, message: `${flag} applies to ${[...STATUS_ONLY_COMMANDS].join(", ")}, not ${sub ?? "status"}` });
-    return 2;
+    const commands = provider === grok ? STATUS_ONLY_COMMANDS : OPENCODE_GO_COMMANDS;
+    if (sub == null || !commands.has(sub)) {
+      emitError({ json, message: `${flag} applies to ${[...commands].join(", ")}, not ${sub ?? "status"}` });
+      return 2;
+    }
   }
 
   if (json && sub != null && !JSON_COMMANDS.has(sub)) {
@@ -167,13 +173,7 @@ async function main(): Promise<number> {
     case "doctor": return cmdDoctor();
     case "rm": return cmdRm(provider, args[1]);
     case "rename": return cmdRename(provider, args.slice(1));
-    case "seat": {
-      if (provider !== codex) {
-        emitError({ message: `seat borrows a pooled codex account - pass ${CODEX_FLAG} (usage: tokenmaxxing seat ${CODEX_FLAG} <pid>)` });
-        return 2;
-      }
-      return cmdSeat(args[1], args.slice(2));
-    }
+    case "seat": return cmdSeat(provider === codex ? "codex" : provider === opencodeGo ? "opencode-go" : "claude", args[1], args.slice(2));
     case "serve": return cmdServe(args.slice(1));
     case "uninstall": {
       if (args.length > 1) {

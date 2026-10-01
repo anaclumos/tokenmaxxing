@@ -24,6 +24,7 @@ export type StatusOnlySpec = {
   liveAuthPath: () => string;
   readAuth: (path: string) => AuthEntry[];
   liveId: () => string | null;
+  presence: () => Map<string, number>;
   versionOk: (versionOutput: string) => boolean;
   importIntro: string;
   foundLive: (count: number) => string;
@@ -101,7 +102,7 @@ export function statusOnlyProvider(spec: StatusOnlySpec): Provider {
     waitsWhenDepleted: false,
     statusOnly: true,
     liveId: spec.liveId,
-    presence: () => new Map(),
+    presence: spec.presence,
     gatedFamilies: () => null,
     observeLive: async (account) => (account.lastUsageAt != null ? { windows: account.windows, at: account.lastUsageAt } : null),
     samplePool,

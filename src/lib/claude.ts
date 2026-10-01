@@ -11,8 +11,8 @@ import { claudeTierLabel, describeIdentity, fetchTokenIdentity, isDeadCredential
 import { claudePool, env, paths, seatFromEnv, storeDirFor } from "./paths.ts";
 import { landWindows, pickBest, pickEarliestReset, thresholdBars, type PickCtx } from "./picker.ts";
 import { deletePiStore } from "./piauth.ts";
-import { livingPresences } from "./presence.ts";
-import { StoreUnusableError, type Observation, type Provider, type SampleReport } from "./provider.ts";
+import { livingPresences, writePresence } from "./presence.ts";
+import { StoreUnusableError, type Observation, type Provider, type SampleReport, type SeatBorrow } from "./provider.ts";
 import { foldTee, readyToSample, runSample, sampleAccountUsage, sampleDue, sampleIntervalMs, teeObservation, usageBlockedUntil } from "./sample.ts";
 import { clearUsageSnapshot, liveWaitClaims, loadAccounts, loadConfig, loadUsageSnapshot, pinBinOverride, readJsonFile, saveAccounts, type Harvest } from "./state.ts";
 import { saveTermios, restoreTermios } from "./tty.ts";
@@ -140,6 +140,40 @@ export function pickSeat(now: number, model: ModelInfo | null, eligible: (a: Acc
   const ctx: PickCtx = { now, thresholds: bars, currentId: null, families: gatedFamilies(model, cfg.policy.switchModels), seats: presence() };
   const candidates = idx.accounts.filter(eligible);
   return pickBest(candidates, ctx) ?? pickEarliestReset(candidates, ctx)?.account ?? null;
+}
+
+export async function borrowClaudeSeat(pid: number): Promise<SeatBorrow> {
+  const seatId = `seat-${pid}`;
+  const cfg = loadConfig();
+  const bars = thresholdBars(cfg);
+  const granted = await withLock(claudePool.lockFile, async (): Promise<SeatBorrow> => {
+    const idx = loadAccounts(claudePool);
+    let dirty = false;
+    for (const a of idx.accounts) dirty = foldTee(a, bars) || dirty;
+    if (dirty) saveAccounts(claudePool, idx);
+    const living = livingPresences(paths.presenceDir);
+    const held = living.find((p) => p.id === seatId);
+    const heldAccount = held ? (idx.accounts.find((x) => x.id === held.accountId) ?? null) : null;
+    if (heldAccount) {
+      if (heldAccount.needsReauth === true) {
+        return { denied: "the account this pid holds needs reauthentication - run `tokenmaxxing auth` and borrow again" };
+      }
+      if (!(await storeUsable(heldAccount))) {
+        return { denied: "the account this pid holds has no usable credential in its store - refusing to hand back a credential-less seat" };
+      }
+      return { store: storeDirFor(heldAccount.id), id: heldAccount.id, reused: true };
+    }
+    const lent = new Set(living.filter((p) => p.id.startsWith("seat-")).map((p) => p.accountId));
+    const open = idx.accounts.filter((a) => a.needsReauth !== true && !lent.has(a.id));
+    const usable = await Promise.all(open.map(storeUsable));
+    const ctx: PickCtx = { now: Date.now(), thresholds: bars, currentId: null, families: gatedFamilies(null, cfg.policy.switchModels), seats: presence() };
+    const picked = pickBest(open.filter((_, i) => usable[i]), ctx);
+    if (!picked) return null;
+    writePresence({ dir: paths.presenceDir, id: seatId, accountId: picked.id, pid });
+    return { store: storeDirFor(picked.id), id: picked.id, reused: false };
+  });
+  if (granted && !("denied" in granted)) log("seat.grant", { account: granted.id.slice(0, 8), pid, reused: granted.reused });
+  return granted;
 }
 
 async function removeCredentials(a: Account): Promise<void> {
