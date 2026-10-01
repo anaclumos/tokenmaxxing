@@ -4,7 +4,7 @@ import { writeFileAtomic } from "./atomic.ts";
 import { env, HOME, opencodeGoAuthJsonFor, opencodeGoPaths, opencodeGoPool, opencodeGoStoreDirFor } from "./paths.ts";
 import { withLock } from "./lock.ts";
 import { log } from "./log.ts";
-import { livingPresences, writePresence } from "./presence.ts";
+import { livingPresences, seatCounts, writePresence } from "./presence.ts";
 import type { Provider, SeatBorrow } from "./provider.ts";
 import { loadAccounts, readJsonFile, type Harvest } from "./state.ts";
 import { statusOnlyProvider, type AuthEntry } from "./statusonly.ts";
@@ -90,6 +90,7 @@ export const opencodeGo: Provider = statusOnlyProvider({
   liveAuthPath,
   readAuth,
   liveId: () => null,
+  presence: () => seatCounts(opencodeGoPaths.presenceDir),
   versionOk: (out) => out !== "",
   importIntro: "Pooling your opencode-go API key - your existing opencode auth stays as it is.",
   foundLive: () => `found an opencode-go credential in ${liveAuthPath()} - pooling it; use \`tokenmaxxing add --opencode-go\` for more keys.`,

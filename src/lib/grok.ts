@@ -131,6 +131,7 @@ const base = statusOnlyProvider({
   liveAuthPath: () => join(grokPaths.home, "auth.json"),
   readAuth,
   liveId: () => grokSeatFromEnv(loadAccounts(grokPool).accounts.map((a) => a.id)),
+  presence: () => new Map(),
   versionOk: (out) => out.toLowerCase().includes("grok"),
   importIntro: "Opening an isolated grok login for your first pooled account - the login you already have stays as it is.",
   foundLive: (count) => `found ${count} grok login(s) in ${grokPaths.home} - pooling the first; use \`tokenmaxxing add --grok\` for the rest.`,
