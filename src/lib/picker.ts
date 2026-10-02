@@ -122,6 +122,7 @@ const swapPreference = (ctx: PickCtx) => [
   (a: Account) => -pacePressure(a, ctx),
   (a: Account) => weeklyExpiry(a, ctx.now),
   (a: Account) => weeklyWindow(a)?.usedPercentage ?? 101,
+  ...(ctx.seats == null ? [] : [(a: Account) => ctx.seats?.get(a.id) ?? 0]),
 ];
 
 export function pickBest(accounts: Account[], ctx: PickCtx): Account | null {
