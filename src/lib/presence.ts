@@ -7,6 +7,8 @@ import { pidExists, pidStartTime } from "./proc.ts";
 import { readJsonFile } from "./state.ts";
 import { ErrnoSchema, JsonTextSchema } from "./types.ts";
 
+export const PI_PRESENCE_PREFIX = "pi-";
+
 const PresenceSchema = z.object({
   accountId: z.string(),
   pid: z.number(),

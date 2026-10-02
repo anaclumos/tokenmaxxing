@@ -12,7 +12,7 @@ import { claudePool, codexPaths, expandTilde, optionalEnv, paths, piPaths, type 
 import { pickPiSeat, piMovers } from "../lib/pi.ts";
 import { ensurePiStoreHome, piStoreUsable } from "../lib/piauth.ts";
 import { thresholdBars, usableAt } from "../lib/picker.ts";
-import { clearPresence, livingPresences } from "../lib/presence.ts";
+import { PI_PRESENCE_PREFIX, clearPresence, livingPresences } from "../lib/presence.ts";
 import { teeObservation } from "../lib/sample.ts";
 import { countdownWait, exitStatus, loopGuardTripped, raceMarkerOrExit, recordPresenceOrStop, runPassthrough, SEAT_POLL_MS, SEAT_RETRY_MS } from "../lib/supervise.ts";
 import { saveTermios } from "../lib/tty.ts";
@@ -327,7 +327,7 @@ export async function runPiSupervisor(argv: string[]): Promise<number> {
   if (launch == null) return runPassthrough({ real, argv, env: childEnv, onSpawn: (p) => { child = p; } });
   const { args, pool, dirs, sid } = launch;
 
-  const id = `pi-${crypto.randomUUID()}`;
+  const id = `${PI_PRESENCE_PREFIX}${crypto.randomUUID()}`;
   const mover = piMovers[pool];
   const presenceDir = pool === "claude" ? paths.presenceDir : codexPaths.presenceDir;
   const releaseClaim = async (): Promise<void> => {

@@ -7,7 +7,7 @@ import { CODEX_BIN, MAX_WRAP_DEPTH, WRAP_DEPTH_ENV, resolveRealBin, verifyRealBi
 import { codexIdentityOf, codexStoreUsable, deleteCodexStoreAuth, ensureCodexStoreHome, isCodexAccessExpiring, readCodexAuthAt, readCodexStoreAuth, writeCodexStoreAuth } from "./codexauth.ts";
 import { CodexInvalidGrantError, CodexRefreshFailedError, refreshCodexAuth } from "./codexoauth.ts";
 import { deletePiStore } from "./piauth.ts";
-import { livingPresences, seatCounts, writePresence } from "./presence.ts";
+import { PI_PRESENCE_PREFIX, livingPresences, seatCounts, writePresence } from "./presence.ts";
 import { CodexUsageReadError, codexLimitLabel, fetchCodexUsage } from "./codexusage.ts";
 import { codexSupervisorLink, ensurePathInRc, installCodexSupervisor, managedShellRcSkipLines, shellRcPath } from "./install.ts";
 import { withLock } from "./lock.ts";
@@ -266,10 +266,11 @@ export async function borrowCodexSeat(pid: number): Promise<SeatBorrow> {
       }
       return { store: ensureCodexStoreHome(heldAccount.id), id: heldAccount.id, reused: true };
     }
-    const parent = living.find((p) => p.id === optionalEnv(CODEX_SUPERVISOR_ID_ENV))?.accountId;
+    const parent = optionalEnv(CODEX_SUPERVISOR_ID_ENV);
+    const closed = new Set(living.filter((p) => p.id === parent || p.id.startsWith(PI_PRESENCE_PREFIX)).map((p) => p.accountId));
     const lent = countBy(living, (p) => p.accountId);
     const usable = idx.accounts.filter(
-      (a) => a.id !== parent && a.needsReauth !== true && !isExhausted(a, ctx) && codexStoreUsable(a.id)
+      (a) => !closed.has(a.id) && a.needsReauth !== true && !isExhausted(a, ctx) && codexStoreUsable(a.id)
     );
     const fewest = Math.min(...usable.map((a) => lent[a.id] ?? 0));
     const picked = pickBest(usable.filter((a) => (lent[a.id] ?? 0) === fewest), ctx);
