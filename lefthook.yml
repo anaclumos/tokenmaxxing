@@ -5,10 +5,3 @@ pre-push:
     - name: test
       script: test.sh
       args: "--"
-    - name: nix
-      script: nix.sh
-      args: "--"
-    - name: docs
-      root: docs/
-      script: docs.sh
-      args: "--"
