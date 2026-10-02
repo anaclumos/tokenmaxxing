@@ -163,8 +163,7 @@ export async function borrowClaudeSeat(pid: number): Promise<SeatBorrow> {
       }
       return { store: storeDirFor(heldAccount.id), id: heldAccount.id, reused: true };
     }
-    const lent = new Set(living.filter((p) => p.id.startsWith("seat-")).map((p) => p.accountId));
-    const open = idx.accounts.filter((a) => a.needsReauth !== true && !lent.has(a.id));
+    const open = idx.accounts.filter((a) => a.needsReauth !== true);
     const usable = await Promise.all(open.map(storeUsable));
     const ctx: PickCtx = { now: Date.now(), thresholds: bars, currentId: null, families: gatedFamilies(null, cfg.policy.switchModels), seats: presence() };
     const picked = pickBest(open.filter((_, i) => usable[i]), ctx);

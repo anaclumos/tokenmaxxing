@@ -1,4 +1,5 @@
 import { join } from "node:path";
+import { countBy, minBy } from "es-toolkit";
 import { z } from "zod";
 import { writeFileAtomic } from "./atomic.ts";
 import { env, HOME, opencodeGoAuthJsonFor, opencodeGoPaths, opencodeGoPool, opencodeGoStoreDirFor } from "./paths.ts";
@@ -63,10 +64,9 @@ export async function borrowOpencodeGoSeat(pid: number): Promise<SeatBorrow> {
       }
       return { store: opencodeGoStoreDirFor(heldAccount.id), id: heldAccount.id, reused: true };
     }
-    const lent = new Set(living.map((p) => p.accountId));
-    const open = accounts.filter((a) => !lent.has(a.id));
-    const usable = await Promise.all(open.map(opencodeGo.storeUsable));
-    const picked = open.find((_, i) => usable[i]);
+    const lent = countBy(living, (p) => p.accountId);
+    const usable = await Promise.all(accounts.map(opencodeGo.storeUsable));
+    const picked = minBy(accounts.filter((_, i) => usable[i]), (a) => lent[a.id] ?? 0);
     if (!picked) return null;
     writePresence({ dir: opencodeGoPaths.presenceDir, id: seatId, accountId: picked.id, pid });
     return { store: opencodeGoStoreDirFor(picked.id), id: picked.id, reused: false };
