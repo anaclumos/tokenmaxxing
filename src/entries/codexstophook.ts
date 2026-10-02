@@ -4,14 +4,13 @@ import type { z } from "zod";
 import { codexPaths, optionalEnv } from "../lib/paths.ts";
 import { writeFileAtomic } from "../lib/atomic.ts";
 import { CODEX_BIN, MAX_WRAP_DEPTH, WRAP_DEPTH_ENV, resolveRealBin } from "../lib/claudebin.ts";
-import { codex, codexPickCtx } from "../lib/codex.ts";
+import { CODEX_SUPERVISOR_ID_ENV, codex, codexPickCtx } from "../lib/codex.ts";
 import { compactCodexThread } from "../lib/compact.ts";
 import { evaluateAndMaybeSwap } from "../lib/decide.ts";
 import { isExhausted } from "../lib/picker.ts";
 import { livingPresences } from "../lib/presence.ts";
 import { readStdin } from "../lib/proc.ts";
 import { loadAccounts, loadConfig } from "../lib/state.ts";
-import { CODEX_SUPERVISOR_ID_ENV } from "./codexsupervisor.ts";
 import { CodexRespawnMarkerSchema, CodexStopStdinSchema, JsonTextSchema } from "../lib/types.ts";
 import { errorMessage, log } from "../lib/log.ts";
 
