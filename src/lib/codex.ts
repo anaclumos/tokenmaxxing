@@ -1,5 +1,6 @@
 import { existsSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
+import { countBy } from "es-toolkit";
 import { z } from "zod";
 import { writeFileAtomic } from "./atomic.ts";
 import { CODEX_BIN, MAX_WRAP_DEPTH, WRAP_DEPTH_ENV, resolveRealBin, verifyRealBin } from "./claudebin.ts";
@@ -11,13 +12,15 @@ import { CodexUsageReadError, codexLimitLabel, fetchCodexUsage } from "./codexus
 import { codexSupervisorLink, ensurePathInRc, installCodexSupervisor, managedShellRcSkipLines, shellRcPath } from "./install.ts";
 import { withLock } from "./lock.ts";
 import { errorMessage, log } from "./log.ts";
-import { codexPaths, codexPool, codexSeatFromEnv } from "./paths.ts";
+import { codexPaths, codexPool, codexSeatFromEnv, optionalEnv } from "./paths.ts";
 import { isExhausted, pickBest, pickEarliestReset, thresholdBars, type PickCtx } from "./picker.ts";
 import { StoreUnusableError, type Observation, type Provider, type SampleReport, type SeatBorrow } from "./provider.ts";
 import { loadAccounts, loadConfig, pinBinOverride, saveAccounts, type Harvest } from "./state.ts";
 import { restoreTermios, saveTermios } from "./tty.ts";
 import type { Account, CodexAuthJson, CodexUsage, Config } from "./types.ts";
 import { c } from "../cli/render.ts";
+
+export const CODEX_SUPERVISOR_ID_ENV = "TOKENMAXXING_CODEX_SUPERVISOR_ID";
 
 function liveId(): string | null {
   return codexSeatFromEnv(loadAccounts(codexPool).accounts.map((a) => a.id));
@@ -251,7 +254,8 @@ export async function borrowCodexSeat(pid: number): Promise<SeatBorrow> {
   const granted = await withLock(codexPool.lockFile, (): SeatBorrow => {
     const ctx = codexPickCtx(now, null);
     const idx = loadAccounts(codexPool);
-    const held = livingPresences(codexPaths.presenceDir).find((p) => p.id === seatId);
+    const living = livingPresences(codexPaths.presenceDir);
+    const held = living.find((p) => p.id === seatId);
     const heldAccount = held ? (idx.accounts.find((x) => x.id === held.accountId) ?? null) : null;
     if (heldAccount) {
       if (heldAccount.needsReauth === true) {
@@ -262,11 +266,13 @@ export async function borrowCodexSeat(pid: number): Promise<SeatBorrow> {
       }
       return { store: ensureCodexStoreHome(heldAccount.id), id: heldAccount.id, reused: true };
     }
-    const present = seatCounts(codexPaths.presenceDir);
+    const parent = living.find((p) => p.id === optionalEnv(CODEX_SUPERVISOR_ID_ENV))?.accountId;
+    const lent = countBy(living, (p) => p.accountId);
     const usable = idx.accounts.filter(
-      (a) => a.needsReauth !== true && !isExhausted(a, ctx) && !present.has(a.id) && codexStoreUsable(a.id)
+      (a) => a.id !== parent && a.needsReauth !== true && !isExhausted(a, ctx) && codexStoreUsable(a.id)
     );
-    const picked = pickBest(usable, ctx);
+    const fewest = Math.min(...usable.map((a) => lent[a.id] ?? 0));
+    const picked = pickBest(usable.filter((a) => (lent[a.id] ?? 0) === fewest), ctx);
     if (!picked) return null;
     const store = ensureCodexStoreHome(picked.id);
     writePresence({ dir: codexPaths.presenceDir, id: seatId, accountId: picked.id, pid });

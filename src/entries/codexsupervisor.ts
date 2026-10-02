@@ -7,7 +7,7 @@ import { codexPaths, codexPool } from "../lib/paths.ts";
 import { withLock } from "../lib/lock.ts";
 import { CODEX_BIN, UNMANAGED_ENV, WRAP_DEPTH_ENV, resolveRealBin, wrapDepth } from "../lib/claudebin.ts";
 import { codexStoreUsable, ensureCodexStoreHome } from "../lib/codexauth.ts";
-import { borrowCodexSeat, codexPickCtx, pickCodexSeat } from "../lib/codex.ts";
+import { CODEX_SUPERVISOR_ID_ENV, borrowCodexSeat, codexPickCtx, pickCodexSeat } from "../lib/codex.ts";
 import { clearPresence, livingPresences } from "../lib/presence.ts";
 import { isExhausted } from "../lib/picker.ts";
 import { exitStatus, loopGuardTripped, raceMarkerOrExit, recordPresenceOrStop, runPassthrough } from "../lib/supervise.ts";
@@ -15,8 +15,6 @@ import { saveTermios } from "../lib/tty.ts";
 import { loadAccounts, readJsonFile } from "../lib/state.ts";
 import { CodexRespawnMarkerSchema, type Account } from "../lib/types.ts";
 import { errorMessage, log } from "../lib/log.ts";
-
-export const CODEX_SUPERVISOR_ID_ENV = "TOKENMAXXING_CODEX_SUPERVISOR_ID";
 
 const NONINTERACTIVE_SUBCMDS = new Set([
   "exec", "e", "review", "login", "logout", "mcp", "plugin", "mcp-server", "app-server",

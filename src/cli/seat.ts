@@ -11,8 +11,8 @@ const POOLS = {
   },
   codex: {
     borrow: borrowCodexSeat,
-    usage: "usage: tokenmaxxing seat --codex <pid> - print the CODEX_HOME of one pooled account, reserved to <pid> alone until it exits, because one codex auth.json serves one machine or one serialized job stream (https://learn.chatgpt.com/docs/auth/ci-cd-auth)",
-    none: "no usable codex account (pool empty, every account live in another session, or every account at a limit) - use the ambient codex login",
+    usage: "usage: tokenmaxxing seat --codex <pid> - print the CODEX_HOME of one pooled account, lent to <pid> until it exits and shared with codex sessions and other borrowers; codex processes that share one auth.json can lose a refresh race that signs the account out until `tokenmaxxing auth --codex` runs again",
+    none: "no usable codex account (pool empty, or every account at a limit, flagged for reauthentication, or held by the supervised codex session this runs in) - use the ambient codex login",
   },
   "opencode-go": {
     borrow: borrowOpencodeGoSeat,
