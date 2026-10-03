@@ -22,11 +22,14 @@ import { RespawnMarkerSchema, type Account, type Config, type ModelInfo } from "
 import { errorMessage, log } from "../lib/log.ts";
 
 const SUBCOMMANDS = new Set([
-  "agents", "attach", "auth", "auto-mode", "doctor", "gateway", "help", "import",
-  "import-conversations", "install", "kill", "logs", "mcp", "plugin", "plugins", "project",
-  "rc", "remote-control", "respawn", "rm", "sandbox", "setup-token", "stop", "ultrareview",
-  "update", "upgrade",
+  "agents", "attach", "auth", "auto-mode", "daemon", "design-login", "doctor",
+  "drop-worktree-registrations", "edit-chrome-settings", "edit-hook", "edit-memory-settings",
+  "edit-permission-rules", "edit-sandbox-settings", "edit-skill-overrides", "gateway", "help",
+  "import", "import-conversations", "install", "kill", "logs", "mcp", "plugin", "plugins",
+  "project", "rc", "remote-control", "respawn", "rm", "sandbox", "setup-token", "stop",
+  "ultrareview", "update", "upgrade",
 ]);
+const SOLE_UPDATE_FLAGS = new Set(["--update", "--upgrade"]);
 
 const VALUE_TAKING_ROOT_FLAGS = new Set([
   "--agent", "--agents", "--append-system-prompt", "--append-system-prompt-file",
@@ -117,7 +120,7 @@ export function analyzeArgs(argv: string[]): Analysis {
     }
   }
 
-  const isSubcmd = firstPositional !== null && SUBCOMMANDS.has(firstPositional);
+  const isSubcmd = (firstPositional !== null && SUBCOMMANDS.has(firstPositional)) || (argv.length === 1 && SOLE_UPDATE_FLAGS.has(argv[0]!));
   const forkResume = forkSession && (resumeId !== null || continueLatest);
   const manage = !printMode && !isSubcmd && !invalidSessionArg && !pickerResume && !forkResume && !process.env.TOKENMAXXING_PROBE;
   return { manage, sessionId, resumeId, continueLatest, streamInput, streamOutput, model };
