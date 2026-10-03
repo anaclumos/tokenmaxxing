@@ -1,17 +1,19 @@
 import { maxBy, minBy, sortBy } from "es-toolkit";
 import { familyTokens } from "./usage.ts";
-import type { Account, Config, Thresholds, Window } from "./types.ts";
+import type { Account, Bars, Config, Thresholds, Window } from "./types.ts";
 
-export function thresholdBars(cfg: Config): Thresholds {
+export function thresholdBars(cfg: Config): Bars {
+  const bars = (t: Thresholds): Thresholds => ({ session: t.session - cfg.policy.projectionMargin, weekly: t.weekly });
   return {
-    session: cfg.thresholds.session - cfg.policy.projectionMargin,
-    weekly: cfg.thresholds.weekly,
+    ...bars(cfg.thresholds),
+    accounts: new Map(Object.entries(cfg.thresholds.accounts).map(([label, t]) => [label, bars(t)])),
+    accountReleaseMs: cfg.policy.accountReleaseMs,
   };
 }
 
 export type PickCtx = {
   now: number;
-  thresholds: Thresholds;
+  thresholds: Bars;
   currentId: string | null;
   families: string[] | null;
   seats: Map<string, number> | null;
@@ -49,20 +51,31 @@ export function liveUsed(w: Window, now: number): number {
   return w.usedPercentage;
 }
 
-export function barFor(w: Window, thresholds: Thresholds): number {
-  return isSessionWindow(w) ? thresholds.session : thresholds.weekly;
+function releaseMs(w: Window, bars: Bars): number {
+  return isSessionWindow(w) ? bars.accountReleaseMs.session : bars.accountReleaseMs.weekly;
 }
 
-function blockedUntil(w: Window, bar: number, now: number): number {
-  if (liveUsed(w, now) < bar) return 0;
-  if (w.resetsAt != null) return w.resetsAt;
-  return w.sampledAt + (w.windowSeconds ?? 0) * 1000;
+export function barFor(a: Account, w: Window, bars: Bars, now: number): number {
+  const pick = (t: Thresholds) => (isSessionWindow(w) ? t.session : t.weekly);
+  const own = bars.accounts.get(a.label);
+  if (own == null) return pick(bars);
+  const reset = windowResetAt(w, now);
+  const released = reset != null && reset > now && reset - now <= releaseMs(w, bars);
+  return released ? Math.max(pick(own), pick(bars)) : pick(own);
+}
+
+function blockedUntil(a: Account, w: Window, bars: Bars, now: number): number {
+  const used = liveUsed(w, now);
+  if (used < barFor(a, w, bars, now)) return 0;
+  const reset = w.resetsAt ?? w.sampledAt + (w.windowSeconds ?? 0) * 1000;
+  const release = reset - releaseMs(w, bars);
+  return release > now && used < barFor(a, w, bars, release) ? release : reset;
 }
 
 function blockingUntil(a: Account, ctx: PickCtx): number[] {
   return [
-    ...a.windows.filter((w) => w.name == null).map((w) => blockedUntil(w, barFor(w, ctx.thresholds), ctx.now)),
-    ...gatedWindows(a, ctx.families).map((w) => blockedUntil(w, barFor(w, ctx.thresholds), ctx.now)),
+    ...a.windows.filter((w) => w.name == null).map((w) => blockedUntil(a, w, ctx.thresholds, ctx.now)),
+    ...gatedWindows(a, ctx.families).map((w) => blockedUntil(a, w, ctx.thresholds, ctx.now)),
     ...(a.enforcedUntil != null ? [a.enforcedUntil] : []),
   ];
 }
@@ -71,7 +84,7 @@ export function isExhausted(a: Account, ctx: PickCtx): boolean {
   return blockingUntil(a, ctx).some((t) => t > ctx.now);
 }
 
-export function landWindows(a: Account, windows: Window[], at: number, thresholds: Thresholds): void {
+export function landWindows(a: Account, windows: Window[], at: number, thresholds: Bars): void {
   const ctx: PickCtx = { now: at, thresholds, currentId: null, families: [], seats: null };
   const blocked = a.enforcedUntil != null && isExhausted({ ...a, enforcedUntil: undefined }, ctx);
   a.windows = windows;
@@ -114,7 +127,7 @@ export function pacePressure(a: Account, ctx: PickCtx): number {
 export function seatHeadroom(a: Account, ctx: PickCtx): number {
   const session = sessionWindow(a);
   if (session == null) return Number.NEGATIVE_INFINITY;
-  return (ctx.thresholds.session - liveUsed(session, ctx.now)) / ((ctx.seats?.get(a.id) ?? 0) + 1);
+  return (barFor(a, session, ctx.thresholds, ctx.now) - liveUsed(session, ctx.now)) / ((ctx.seats?.get(a.id) ?? 0) + 1);
 }
 
 const swapPreference = (ctx: PickCtx) => [
