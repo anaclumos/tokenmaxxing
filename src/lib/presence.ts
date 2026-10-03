@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { countBy } from "es-toolkit";
 import { z } from "zod";
 import { writeFileAtomic } from "./atomic.ts";
-import { pidExists, pidStartTime } from "./proc.ts";
+import { pidExists, pidStartTimes } from "./proc.ts";
 import { readJsonFile } from "./state.ts";
 import { ErrnoSchema, JsonTextSchema } from "./types.ts";
 
@@ -16,7 +16,7 @@ const PresenceSchema = z.object({
 });
 
 export function writePresence(input: { dir: string; id: string; accountId: string; pid: number }): void {
-  const startedAt = pidStartTime(input.pid);
+  const startedAt = pidStartTimes([input.pid]).get(input.pid);
   if (startedAt == null) throw new Error(`could not read pid ${input.pid}'s start time (ps lstart) - refusing to write an unverifiable presence file`);
   writeFileAtomic(join(input.dir, input.id), JSON.stringify(PresenceSchema.parse({ accountId: input.accountId, pid: input.pid, startedAt })));
 }
@@ -37,8 +37,8 @@ export function clearPresence(input: { dir: string; id: string }): void {
 export type LivingPresence = { id: string; accountId: string };
 
 export function livingPresences(dir: string): LivingPresence[] {
-  const living: LivingPresence[] = [];
-  if (!existsSync(dir)) return living;
+  if (!existsSync(dir)) return [];
+  const records: { name: string; file: string; record: z.infer<typeof PresenceSchema> }[] = [];
   for (const name of readdirSync(dir)) {
     const file = join(dir, name);
     let raw: string;
@@ -52,15 +52,20 @@ export function livingPresences(dir: string): LivingPresence[] {
     if (!parsed.success) {
       throw new Error(`${file} is not a readable presence record - it may belong to a RUNNING session, refusing to treat it as absent; remove the file (or respawn that session) to proceed`);
     }
-    const observed = pidStartTime(parsed.data.pid);
-    if (observed !== parsed.data.startedAt) {
-      if (observed == null && pidExists(parsed.data.pid)) {
-        throw new Error(`ps could not read the start time of live pid ${parsed.data.pid} (${file}) - refusing to clear a presence file that may guard a RUNNING session`);
+    records.push({ name, file, record: parsed.data });
+  }
+  const started = pidStartTimes(records.map((r) => r.record.pid));
+  const living: LivingPresence[] = [];
+  for (const { name, file, record } of records) {
+    const observed = started.get(record.pid);
+    if (observed !== record.startedAt) {
+      if (observed == null && pidExists(record.pid)) {
+        throw new Error(`ps could not read the start time of live pid ${record.pid} (${file}) - refusing to clear a presence file that may guard a RUNNING session`);
       }
       rmSync(file, { force: true });
       continue;
     }
-    living.push({ id: name, accountId: parsed.data.accountId });
+    living.push({ id: name, accountId: record.accountId });
   }
   return living;
 }

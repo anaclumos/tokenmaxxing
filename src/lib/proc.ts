@@ -38,11 +38,17 @@ export function ancestorPids(): number[] {
   return out;
 }
 
-export function pidStartTime(pid: number): string | null {
-  const res = Bun.spawnSync(["ps", "-p", String(pid), "-o", "lstart="], { env: { ...process.env, LC_ALL: "C" } });
-  if (res.exitCode !== 0) return null;
-  const lstart = res.stdout.toString().trim();
-  return lstart === "" ? null : lstart;
+export function pidStartTimes(pids: number[]): Map<number, string> {
+  const started = new Map<number, string>();
+  if (pids.length === 0) return started;
+  const res = Bun.spawnSync(["ps", "-p", pids.join(","), "-o", "pid=", "-o", "lstart="], { env: { ...process.env, LC_ALL: "C" } });
+  if (res.exitCode !== 0) return started;
+  for (const row of res.stdout.toString().split("\n")) {
+    const line = row.trim();
+    const cut = line.indexOf(" ");
+    if (cut !== -1) started.set(Number(line.slice(0, cut)), line.slice(cut).trim());
+  }
+  return started;
 }
 
 export async function readStdin(): Promise<string> {

@@ -24,8 +24,8 @@ function liveId(): string | null {
   return seatFromEnv(loadAccounts(claudePool).accounts.map((a) => a.id));
 }
 
-function presence(): Map<string, number> {
-  const seats = new Map(livingPresences(paths.presenceDir).map((s) => [s.id, s.accountId]));
+function presence(living = livingPresences(paths.presenceDir)): Map<string, number> {
+  const seats = new Map(living.map((s) => [s.id, s.accountId]));
   for (const claim of liveWaitClaims(Date.now())) seats.set(claim.sessionId, claim.accountId);
   return new Map(Object.entries(countBy([...seats.values()], (id) => id)));
 }
@@ -165,7 +165,7 @@ export async function borrowClaudeSeat(pid: number): Promise<SeatBorrow> {
     }
     const open = idx.accounts.filter((a) => a.needsReauth !== true);
     const usable = await Promise.all(open.map(storeUsable));
-    const ctx: PickCtx = { now: Date.now(), thresholds: bars, currentId: null, families: gatedFamilies(null, cfg.policy.switchModels), seats: presence() };
+    const ctx: PickCtx = { now: Date.now(), thresholds: bars, currentId: null, families: gatedFamilies(null, cfg.policy.switchModels), seats: presence(living) };
     const picked = pickBest(open.filter((_, i) => usable[i]), ctx);
     if (!picked) return null;
     writePresence({ dir: paths.presenceDir, id: seatId, accountId: picked.id, pid });
