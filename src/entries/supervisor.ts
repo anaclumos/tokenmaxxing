@@ -21,9 +21,11 @@ import { gatedFamilies, modelFromFlag, scrubCredEnv } from "../lib/usage.ts";
 import { RespawnMarkerSchema, type Account, type Config, type ModelInfo } from "../lib/types.ts";
 import { errorMessage, log } from "../lib/log.ts";
 
-const NONINTERACTIVE_SUBCMDS = new Set([
-  "mcp", "config", "doctor", "update", "install", "migrate-installer",
-  "setup-token", "plugin", "agents", "completion", "help",
+const SUBCOMMANDS = new Set([
+  "agents", "attach", "auth", "auto-mode", "doctor", "gateway", "help", "import",
+  "import-conversations", "install", "kill", "logs", "mcp", "plugin", "plugins", "project",
+  "rc", "remote-control", "respawn", "rm", "sandbox", "setup-token", "stop", "ultrareview",
+  "update", "upgrade",
 ]);
 
 const VALUE_TAKING_ROOT_FLAGS = new Set([
@@ -115,7 +117,7 @@ export function analyzeArgs(argv: string[]): Analysis {
     }
   }
 
-  const isSubcmd = firstPositional !== null && NONINTERACTIVE_SUBCMDS.has(firstPositional);
+  const isSubcmd = firstPositional !== null && SUBCOMMANDS.has(firstPositional);
   const forkResume = forkSession && (resumeId !== null || continueLatest);
   const manage = !printMode && !isSubcmd && !invalidSessionArg && !pickerResume && !forkResume && !process.env.TOKENMAXXING_PROBE;
   return { manage, sessionId, resumeId, continueLatest, streamInput, streamOutput, model };

@@ -66,7 +66,7 @@ The supervisor sees `respawn/<sid>`, SIGTERMs its child at the already-committed
 
 ### 3.4 Placement (supervisor, under the pool lock)
 1. Fold every account's tee into the index.
-2. Rank the usable accounts (§5) with the live session counts from `live/`, or the soonest-recovering account when none is usable; with no pooled account or every account needing re-auth, launch without a store (still supervised, on whatever login the environment names). Print mode, the non-interactive subcommands, the bare resume picker, an invalid `--session-id`, and `--fork-session` with a resume are passed through unmanaged.
+2. Rank the usable accounts (§5) with the live session counts from `live/`, or the soonest-recovering account when none is usable; with no pooled account or every account needing re-auth, launch without a store (still supervised, on whatever login the environment names). Print mode, every subcommand, the bare resume picker, an invalid `--session-id`, and `--fork-session` with a resume are passed through unmanaged.
 3. Spawn claude with the store env set, then write `live/<sid>` with the child's pid and start time. The lock covers the pick and the presence write, so concurrent launches see each other.
 
 ### 3.5 Multiple concurrent sessions

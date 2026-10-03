@@ -23,7 +23,7 @@ Weekly quota is use-it-or-lose-it: whatever an account has not consumed by its f
 
 Doing that by hand means logging out, logging in, and losing your conversation. tokenmaxxing automates it: every pooled account gets its own Claude Code credential store, a thin `claude` supervisor on your PATH picks the account for each session and points `CLAUDE_SECURESTORAGE_CONFIG_DIR` at its store, and when a session must move, the supervisor stops it at a committed turn boundary (the transcript is already on disk, nothing is lost) compacts the conversation on the account it leaves, and runs `claude --resume <id>` under another account's store with a first prompt that asks Claude to continue. Sessions on the same account share its store, so Claude Code's own token refresh keeps them in step.
 
-Everything else about `claude` is unchanged: all flags, MCP servers, hooks, and skills pass through. Print mode, the non-interactive subcommands, and the interactive resume picker run without a seat, on whatever login the environment names (see [Architecture](/architecture)).
+Everything else about `claude` is unchanged: all flags, MCP servers, hooks, and skills pass through. Print mode, every `claude` subcommand, and the interactive resume picker run without a seat, on whatever login the environment names (see [Architecture](/architecture)).
 
 ## Where to go
 
