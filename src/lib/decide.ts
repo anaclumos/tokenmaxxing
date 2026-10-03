@@ -2,7 +2,7 @@ import { countBy } from "es-toolkit";
 import { CLAUDE_COMPACT_KILL_MS } from "./compact.ts";
 import { withLock } from "./lock.ts";
 import { loadAccounts, loadConfig, liveWaitClaims, releaseWaitClaim, replaceWaitClaim, saveAccounts } from "./state.ts";
-import { barFor, isExhausted, landWindows, limitWindows, liveUsed, nextWeeklyReset, pickBest, pickWaitTarget, sessionWindow, thresholdBars, weeklyWindow, type PickCtx } from "./picker.ts";
+import { isExhausted, landWindows, limitWindows, nextWeeklyReset, pickBest, pickWaitTarget, screensUntilReset, sessionWindow, thresholdBars, weeklyWindow, type PickCtx } from "./picker.ts";
 import { familyTokens } from "./usage.ts";
 import { errorMessage, log } from "./log.ts";
 import type { Observation, Provider } from "./provider.ts";
@@ -34,7 +34,7 @@ function isOver(account: Account | undefined, observed: Observation | null, ctx:
 function modelKindCovered(limit: EnforcedLimit, account: Account, now: number, bars: Bars): boolean {
   if (limit.kind !== "model" || limit.family == null) return false;
   const family = limit.family;
-  return limitWindows(account).some((w) => familyTokens(w.name ?? "").includes(family) && liveUsed(w, now) >= barFor(account, w, bars, now));
+  return limitWindows(account).some((w) => familyTokens(w.name ?? "").includes(family) && screensUntilReset(account, w, bars, now));
 }
 
 function enforcedWall(limit: EnforcedLimit, account: Account, now: number): number {

@@ -64,12 +64,21 @@ export function barFor(a: Account, w: Window, bars: Bars, now: number): number {
   return released ? Math.max(pick(own), pick(bars)) : pick(own);
 }
 
+function windowEnd(w: Window): number {
+  return w.resetsAt ?? w.sampledAt + (w.windowSeconds ?? 0) * 1000;
+}
+
 function blockedUntil(a: Account, w: Window, bars: Bars, now: number): number {
   const used = liveUsed(w, now);
   if (used < barFor(a, w, bars, now)) return 0;
-  const reset = w.resetsAt ?? w.sampledAt + (w.windowSeconds ?? 0) * 1000;
+  const reset = windowEnd(w);
   const release = reset - releaseMs(w, bars);
   return release > now && used < barFor(a, w, bars, release) ? release : reset;
+}
+
+export function screensUntilReset(a: Account, w: Window, bars: Bars, now: number): boolean {
+  const reset = windowEnd(w);
+  return reset > now && blockedUntil(a, w, bars, now) === reset;
 }
 
 function blockingUntil(a: Account, ctx: PickCtx): number[] {
