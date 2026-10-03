@@ -6,10 +6,10 @@ import { opencodeGo } from "../lib/opencodego.ts";
 import { loadAccounts, loadConfig, saveAccounts } from "../lib/state.ts";
 import { withLock } from "../lib/lock.ts";
 import { codexPool, grokPool, opencodeGoPool } from "../lib/paths.ts";
-import { earliestReset, gatedWindows, landWindows, isExhausted, isSessionWindow, limitWindows, liveUsed, nextWeeklyReset, sessionWindow, thresholdBars, weeklyWindow } from "../lib/picker.ts";
+import { barFor, earliestReset, gatedWindows, landWindows, isExhausted, isSessionWindow, limitWindows, liveUsed, nextWeeklyReset, sessionWindow, thresholdBars, weeklyWindow } from "../lib/picker.ts";
 import type { Provider, SampleReport } from "../lib/provider.ts";
 import { bar, c, count, emitJson, fmtAgo } from "./render.ts";
-import type { Account, Config, Thresholds, Window } from "../lib/types.ts";
+import type { Account, Bars, Config, Thresholds, Window } from "../lib/types.ts";
 
 export type WindowReport = { usedPercentage: number; resetsAt: number | null; windowSeconds: number | null };
 
@@ -24,6 +24,7 @@ type StatusAccount = {
   sessions: number;
   needsReauth: boolean;
   exhausted: boolean;
+  thresholds: Thresholds | null;
   usage: UsageReport | null;
   usageAt: number | null;
   limitsAt: number | null;
@@ -60,7 +61,7 @@ export function usageReport(a: Account, now: number): UsageReport | null {
   };
 }
 
-function gatedNote(accounts: Account[], families: string[] | null, weeklyBar: number, now: number): string | null {
+function gatedNote(accounts: Account[], families: string[] | null, bars: Bars, now: number): string | null {
   const groups = new Map<string, { carriers: number; capped: number }>();
   for (const a of accounts) {
     if (a.needsReauth === true) continue;
@@ -68,7 +69,7 @@ function gatedNote(accounts: Account[], families: string[] | null, weeklyBar: nu
       const key = (w.name ?? "").toLowerCase();
       const g = groups.get(key) ?? { carriers: 0, capped: 0 };
       g.carriers++;
-      if (liveUsed(w, now) >= weeklyBar) g.capped++;
+      if (liveUsed(w, now) >= barFor(a, w, bars, now)) g.capped++;
       groups.set(key, g);
     }
   }
@@ -77,7 +78,7 @@ function gatedNote(accounts: Account[], families: string[] | null, weeklyBar: nu
   const headroom = accounts.filter((a) => {
     if (a.needsReauth === true) return false;
     const w = weeklyWindow(a);
-    return w != null && liveUsed(w, now) < weeklyBar;
+    return w != null && liveUsed(w, now) < barFor(a, w, bars, now);
   }).length;
   if (headroom === 0) return null;
   return `every ${capped.join(", ")} cap is at the weekly bar, but ${count({ n: headroom, noun: "account" })} still ha${headroom === 1 ? "s" : "ve"} weekly aggregate headroom for other models`;
@@ -130,6 +131,7 @@ async function collect(p: Provider, cfg: Config, now: number, cached: boolean): 
 
   const present = p.presence();
   const ctx = { now, thresholds: bars, currentId: null, families: p.gatedFamilies(cfg), seats: null };
+  const own = new Map(Object.entries(cfg.thresholds.accounts));
   const ordered = sortBy(idx.accounts, [(a) => (a.needsReauth ? 1 : 0), (a) => earliestReset(a, now)]);
   const accounts = ordered.map((a): StatusAccount => {
     const limits = limitWindows(a);
@@ -142,6 +144,7 @@ async function collect(p: Provider, cfg: Config, now: number, cached: boolean): 
       sessions: present.get(a.id) ?? 0,
       needsReauth: a.needsReauth === true,
       exhausted: isExhausted(a, ctx),
+      thresholds: own.get(a.label) ?? null,
       usage: usageReport(a, now),
       usageAt: a.lastUsageAt ?? null,
       limitsAt: limits.length > 0 ? Math.max(...limits.map((w) => w.sampledAt)) : null,
@@ -150,9 +153,9 @@ async function collect(p: Provider, cfg: Config, now: number, cached: boolean): 
   });
   return {
     thresholds: { session: cfg.thresholds.session, weekly: cfg.thresholds.weekly },
-    bars,
+    bars: { session: bars.session, weekly: bars.weekly },
     projectionMargin: cfg.policy.projectionMargin,
-    gatedNote: gatedNote(idx.accounts, ctx.families, bars.weekly, now),
+    gatedNote: gatedNote(idx.accounts, ctx.families, bars, now),
     accounts,
   };
 }
@@ -218,6 +221,7 @@ function card(p: Provider, a: StatusAccount, now: number, staleAfterMs: number):
     for (const w of a.usage.limits) lines.push(usageRow(p.windowLabel(w.name), w));
   }
   const notes: Note[] = [];
+  if (a.thresholds) notes.push({ paint: c.dim, text: `thresholds 5h ${a.thresholds.session}% weekly ${a.thresholds.weekly}%` });
   if (a.sample.ok && a.sample.source === "statusline") {
     const stale = a.usageAt == null || now - a.usageAt > staleAfterMs;
     const age = a.usageAt != null ? fmtAgo(a.usageAt, now) : "age unknown";

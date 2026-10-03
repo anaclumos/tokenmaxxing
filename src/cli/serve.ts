@@ -14,7 +14,7 @@ import type { Provider } from "../lib/provider.ts";
 import { foldTee } from "../lib/sample.ts";
 import { loadAccounts, loadConfig } from "../lib/state.ts";
 import { OAUTH_USAGE_URL } from "../lib/usage.ts";
-import type { Account, Config, Thresholds } from "../lib/types.ts";
+import type { Account, Bars, Config } from "../lib/types.ts";
 import { c, emitError } from "./render.ts";
 import { usageReport, type UsageReport, type WindowReport } from "./status.ts";
 
@@ -24,7 +24,7 @@ const STALE_AFTER_MS = 2 * 60 * 60_000;
 type HubPool = {
   provider: Provider;
   usageUrl: string;
-  fold: (account: Account, thresholds: Thresholds) => void;
+  fold: (account: Account, thresholds: Bars) => void;
   read: (account: Account, cfg: Config, now: number) => Promise<Account>;
   body: (usage: UsageReport, account: Account) => unknown;
 };

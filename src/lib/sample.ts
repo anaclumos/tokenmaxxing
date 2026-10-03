@@ -12,7 +12,7 @@ import { seatCounts } from "./presence.ts";
 import type { Observation } from "./provider.ts";
 import { loadAccounts, loadUsageSnapshot, saveAccounts } from "./state.ts";
 import { fetchUsageDirect, mergeWindows, scrubCredEnv, windowsOf } from "./usage.ts";
-import type { Account, Config, Thresholds, UsageWindows, Window } from "./types.ts";
+import type { Account, Bars, Config, UsageWindows, Window } from "./types.ts";
 
 export type SampleOutcome = { ok: true; usage: UsageWindows; via: "get" } | { ok: false; reason: string; retryAt?: number };
 
@@ -25,10 +25,10 @@ export function sampleIntervalMs(account: Account, cfg: Config, now: number): nu
   const bars = thresholdBars(cfg);
   const aggregates = account.windows.filter((w) => w.name == null);
   if (aggregates.length === 0) return floor;
-  const blocked = (w: Window) => liveUsed(w, now) >= barFor(w, bars);
+  const blocked = (w: Window) => liveUsed(w, now) >= barFor(account, w, bars, now);
   if (aggregates.some(blocked)) return Math.max(floor, SAMPLE_INTERVAL_MAX_MS);
   const open = [...aggregates, ...gatedWindows(account, cfg.policy.switchModels).filter((w) => !blocked(w))];
-  const spare = Math.min(...open.map((w) => 1 - liveUsed(w, now) / barFor(w, bars)));
+  const spare = Math.min(...open.map((w) => 1 - liveUsed(w, now) / barFor(account, w, bars, now)));
   return Math.max(floor, SAMPLE_INTERVAL_MAX_MS * spare);
 }
 
@@ -48,7 +48,7 @@ export function teeObservation(account: Account): Observation | null {
   return { windows: mergeWindows(aggregate, account.windows), at };
 }
 
-export function foldTee(account: Account, thresholds: Thresholds): boolean {
+export function foldTee(account: Account, thresholds: Bars): boolean {
   const observed = teeObservation(account);
   if (!observed || (account.lastUsageAt != null && observed.at <= account.lastUsageAt)) return false;
   landWindows(account, observed.windows, observed.at, thresholds);

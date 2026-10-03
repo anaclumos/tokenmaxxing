@@ -2,11 +2,11 @@ import { countBy } from "es-toolkit";
 import { CLAUDE_COMPACT_KILL_MS } from "./compact.ts";
 import { withLock } from "./lock.ts";
 import { loadAccounts, loadConfig, liveWaitClaims, releaseWaitClaim, replaceWaitClaim, saveAccounts } from "./state.ts";
-import { isExhausted, landWindows, limitWindows, liveUsed, nextWeeklyReset, pickBest, pickWaitTarget, sessionWindow, thresholdBars, weeklyWindow, type PickCtx } from "./picker.ts";
+import { isExhausted, landWindows, limitWindows, nextWeeklyReset, pickBest, pickWaitTarget, screensUntilReset, sessionWindow, thresholdBars, weeklyWindow, type PickCtx } from "./picker.ts";
 import { familyTokens } from "./usage.ts";
 import { errorMessage, log } from "./log.ts";
 import type { Observation, Provider } from "./provider.ts";
-import type { Account, EnforcedLimit } from "./types.ts";
+import type { Account, Bars, EnforcedLimit } from "./types.ts";
 
 export type SwapDecision = { swapped: boolean; account: Account | null; reason: string; waitUntil?: number };
 
@@ -31,10 +31,10 @@ function isOver(account: Account | undefined, observed: Observation | null, ctx:
   return isExhausted({ ...account, windows: observed.windows }, ctx);
 }
 
-function modelKindCovered(limit: EnforcedLimit, account: Account, now: number, weeklyBar: number): boolean {
+function modelKindCovered(limit: EnforcedLimit, account: Account, now: number, bars: Bars): boolean {
   if (limit.kind !== "model" || limit.family == null) return false;
   const family = limit.family;
-  return limitWindows(account).some((w) => familyTokens(w.name ?? "").includes(family) && liveUsed(w, now) >= weeklyBar);
+  return limitWindows(account).some((w) => familyTokens(w.name ?? "").includes(family) && screensUntilReset(account, w, bars, now));
 }
 
 function enforcedWall(limit: EnforcedLimit, account: Account, now: number): number {
@@ -86,7 +86,7 @@ export async function evaluateAndMaybeSwap(p: Provider, now = Date.now(), canRes
     let stamped = false;
     const credits = enforced?.kind === "credits";
     if (enforced && origin && !credits) {
-      const covered = modelKindCovered(enforced, origin, now, bars.weekly);
+      const covered = modelKindCovered(enforced, origin, now, bars);
       if (!covered || prior) {
         origin.enforcedUntil = Math.max(origin.enforcedUntil ?? 0, enforcedWall(enforced, origin, now));
         stamped = true;

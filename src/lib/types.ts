@@ -92,12 +92,17 @@ export type EnforcedLimit = {
 
 export type Thresholds = { session: number; weekly: number };
 
+export type Bars = Thresholds & { accounts: Map<string, Thresholds>; accountReleaseMs: Thresholds };
+
+const PercentSchema = z.number().min(0).max(100);
+
 export const ConfigSchema = z
   .object({
     thresholds: z
       .object({
-        session: z.number().min(0).max(100).default(90),
-        weekly: z.number().min(0).max(100).default(98),
+        session: PercentSchema.default(90),
+        weekly: PercentSchema.default(98),
+        accounts: z.record(z.string(), z.object({ session: PercentSchema, weekly: PercentSchema })).default({}),
       })
       .prefault({}),
     claudeBin: z.string().default(""),
@@ -115,6 +120,12 @@ export const ConfigSchema = z
         usagePollTtlMs: z.number().int().positive().default(90_000),
         maxWaitMs: z.number().int().positive().default(3_600_000),
         checkIntervalMs: z.number().int().min(10_000).default(60_000),
+        accountReleaseMs: z
+          .object({
+            session: z.number().int().min(0).default(1_800_000),
+            weekly: z.number().int().min(0).default(18_000_000),
+          })
+          .prefault({}),
       })
       .prefault({}),
     hub: z
@@ -123,9 +134,9 @@ export const ConfigSchema = z
       })
       .prefault({}),
   })
-  .refine((cfg) => cfg.policy.projectionMargin < cfg.thresholds.session, {
+  .refine((cfg) => [cfg.thresholds, ...Object.values(cfg.thresholds.accounts)].every((t) => cfg.policy.projectionMargin < t.session), {
     path: ["policy", "projectionMargin"],
-    message: "must be strictly below the session threshold (the session bar would hit zero and every account would read as exhausted)",
+    message: "must be strictly below every session threshold (the session bar would hit zero and every account it covers would read as exhausted)",
   });
 export type Config = z.infer<typeof ConfigSchema>;
 
