@@ -81,6 +81,7 @@ export function analyzeArgs(argv: string[]): Analysis {
     if (a === "--") break;
     else if (a === "-p" || a === "--print") printMode = true;
     else if (a === "--version" || a === "-v" || a === "--help" || a === "-h") printMode = true;
+    else if (a === "--no-session-persistence") printMode = true;
     else if (a === "--session-id") {
       const next = argv[++i] ?? null;
       if (next && isUuid(next)) sessionId = next;
