@@ -6,7 +6,7 @@ export function thresholdBars(cfg: Config): Bars {
   const bars = (t: Thresholds): Thresholds => ({ session: t.session - cfg.policy.projectionMargin, weekly: t.weekly });
   return {
     ...bars(cfg.thresholds),
-    accounts: new Map(Object.entries(cfg.thresholds.accounts).map(([label, t]) => [label, bars(t)])),
+    accounts: new Map(Object.entries(cfg.thresholds.accounts).map(([label, t]) => [label, { ...bars(t), credits: t.credits }])),
     accountReleaseMs: cfg.policy.accountReleaseMs,
   };
 }
@@ -68,9 +68,13 @@ function windowEnd(w: Window): number {
   return w.resetsAt ?? w.sampledAt + (w.windowSeconds ?? 0) * 1000;
 }
 
+function spendsCredits(a: Account, bars: Bars): boolean {
+  return bars.accounts.get(a.label)?.credits === true && a.hasCredits !== false;
+}
+
 function blockedUntil(a: Account, w: Window, bars: Bars, now: number): number {
   const used = liveUsed(w, now);
-  if (used < barFor(a, w, bars, now)) return 0;
+  if (used < barFor(a, w, bars, now) || spendsCredits(a, bars)) return 0;
   const reset = windowEnd(w);
   const release = reset - releaseMs(w, bars);
   return release > now && used < barFor(a, w, bars, release) ? release : reset;
@@ -95,10 +99,10 @@ export function isExhausted(a: Account, ctx: PickCtx): boolean {
 
 export function landWindows(a: Account, windows: Window[], at: number, thresholds: Bars): void {
   const ctx: PickCtx = { now: at, thresholds, currentId: null, families: [], seats: null };
-  const blocked = a.enforcedUntil != null && isExhausted({ ...a, enforcedUntil: undefined }, ctx);
+  const blocked = a.enforcedUntil != null && isExhausted({ ...a, enforcedUntil: undefined, hasCredits: false }, ctx);
   a.windows = windows;
   a.lastUsageAt = at;
-  if (blocked && !isExhausted({ ...a, enforcedUntil: undefined }, ctx)) a.enforcedUntil = undefined;
+  if (blocked && !isExhausted({ ...a, enforcedUntil: undefined, hasCredits: false }, ctx)) a.enforcedUntil = undefined;
 }
 
 export function nextWeeklyReset(resetsAt: number | null, now: number): number | null {
@@ -139,7 +143,12 @@ export function seatHeadroom(a: Account, ctx: PickCtx): number {
   return (barFor(a, session, ctx.thresholds, ctx.now) - liveUsed(session, ctx.now)) / ((ctx.seats?.get(a.id) ?? 0) + 1);
 }
 
+export function onCredits(a: Account, ctx: PickCtx): boolean {
+  return spendsCredits(a, ctx.thresholds) && isExhausted({ ...a, hasCredits: false }, ctx);
+}
+
 const swapPreference = (ctx: PickCtx) => [
+  (a: Account) => (onCredits(a, ctx) ? 1 : 0),
   ...(ctx.seats == null ? [] : [(a: Account) => -seatHeadroom(a, ctx)]),
   (a: Account) => -pacePressure(a, ctx),
   (a: Account) => weeklyExpiry(a, ctx.now),

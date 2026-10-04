@@ -115,7 +115,8 @@ export type EnforcedClass =
   | { kind: "weekly"; resetsAt: number | null }
   | { kind: "model"; family: string; resetsAt: number | null }
   | { kind: "credits"; family: string; resetsAt: null }
-  | { kind: "org"; resetsAt: null };
+  | { kind: "org"; resetsAt: null }
+  | { kind: "overage"; resetsAt: null };
 
 const ErrorBodySchema = z.looseObject({
   error: z.looseObject({ type: z.string().optional(), details: z.looseObject({ error_code: z.string().optional() }).optional() }).optional(),
@@ -140,6 +141,7 @@ export function classifyEnforcedLimit(row: TranscriptRow, switchModels: string[]
   const type = q.rateLimitType ?? "";
   if (type === "five_hour") return { kind: "session", resetsAt };
   if (type === "seven_day") return { kind: "weekly", resetsAt };
+  if (type === "overage") return { kind: "overage", resetsAt: null };
   const family = switchModels.find((f) => type.includes(f));
   return family ? { kind: "model", family, resetsAt } : null;
 }

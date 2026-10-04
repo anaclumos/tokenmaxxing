@@ -9,7 +9,7 @@ import { codexPool, grokPool, opencodeGoPool } from "../lib/paths.ts";
 import { barFor, earliestReset, gatedWindows, landWindows, isExhausted, isSessionWindow, limitWindows, liveUsed, nextWeeklyReset, sessionWindow, thresholdBars, weeklyWindow } from "../lib/picker.ts";
 import type { Provider, SampleReport } from "../lib/provider.ts";
 import { bar, c, count, emitJson, fmtAgo } from "./render.ts";
-import type { Account, Bars, Config, Thresholds, Window } from "../lib/types.ts";
+import type { Account, AccountThresholds, Bars, Config, Thresholds, Window } from "../lib/types.ts";
 
 export type WindowReport = { usedPercentage: number; resetsAt: number | null; windowSeconds: number | null };
 
@@ -24,7 +24,7 @@ type StatusAccount = {
   sessions: number;
   needsReauth: boolean;
   exhausted: boolean;
-  thresholds: Thresholds | null;
+  thresholds: AccountThresholds | null;
   usage: UsageReport | null;
   usageAt: number | null;
   limitsAt: number | null;
@@ -116,6 +116,7 @@ async function collect(p: Provider, cfg: Config, now: number, cached: boolean): 
           }
           if (a.lastUsageAt != null && (stored.lastUsageAt == null || a.lastUsageAt > stored.lastUsageAt)) {
             landWindows(stored, p.mergeWindows(a.windows, stored.windows), a.lastUsageAt, bars);
+            stored.hasCredits = a.hasCredits;
             if (a.email != null) stored.email = a.email;
             if (a.tier != null) stored.tier = a.tier;
             dirty = true;
@@ -221,7 +222,7 @@ function card(p: Provider, a: StatusAccount, now: number, staleAfterMs: number):
     for (const w of a.usage.limits) lines.push(usageRow(p.windowLabel(w.name), w));
   }
   const notes: Note[] = [];
-  if (a.thresholds) notes.push({ paint: c.dim, text: `thresholds 5h ${a.thresholds.session}% weekly ${a.thresholds.weekly}%` });
+  if (a.thresholds) notes.push({ paint: c.dim, text: `thresholds 5h ${a.thresholds.session}% weekly ${a.thresholds.weekly}%${a.thresholds.credits ? ", usable past them on credits" : ""}` });
   if (a.sample.ok && a.sample.source === "statusline") {
     const stale = a.usageAt == null || now - a.usageAt > staleAfterMs;
     const age = a.usageAt != null ? fmtAgo(a.usageAt, now) : "age unknown";

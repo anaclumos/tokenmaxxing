@@ -46,7 +46,7 @@ export function bar(pct: number, width = 16): string {
   const clamped = clamp(pct, 0, 100);
   const filled = Math.round((clamped / 100) * width);
   const body = "█".repeat(filled) + "░".repeat(width - filled);
-  const label = `${clamped.toFixed(0).padStart(3)}%`;
+  const label = `${Math.max(0, pct).toFixed(0).padStart(3)}%`;
   const paint = clamped >= 95 ? c.red : clamped >= 75 ? c.yellow : c.green;
   return `${paint(body)} ${label}`;
 }
