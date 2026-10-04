@@ -35,7 +35,8 @@ export function sampleIntervalMs(account: Account, cfg: Config, now: number, liv
 const sampledAt = (a: Account) => Math.max(a.lastUsageAt ?? 0, a.lastProbeAt ?? 0);
 
 export function sampleDue(account: Account, cfg: Config, now: number, live: boolean): boolean {
-  return now - sampledAt(account) > sampleIntervalMs(account, cfg, now, live);
+  const since = live && gatedWindows(account, cfg.policy.switchModels).length > 0 ? (account.lastProbeAt ?? 0) : sampledAt(account);
+  return now - since > sampleIntervalMs(account, cfg, now, live);
 }
 
 export async function claimSample(id: string, now: number, due: (stored: Account) => boolean): Promise<boolean> {
