@@ -33,6 +33,7 @@ function presence(): Map<string, number> {
 function applyUsage(account: Account, usage: CodexUsage, at: number): void {
   account.windows = usage.windows;
   account.lastUsageAt = at;
+  account.hasCredits = usage.hasCredits ?? undefined;
   if (usage.email != null) account.email = usage.email;
   if (usage.planType != null) account.tier = usage.planType;
 }

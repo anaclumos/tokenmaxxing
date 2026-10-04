@@ -72,6 +72,7 @@ export const AccountSchema = z.object({
   usageRetryAt: z.number().optional(),
   enforcedUntil: z.number().optional(),
   needsReauth: z.boolean().optional(),
+  hasCredits: z.boolean().optional(),
   oauthAccount: OAuthAccountSchema.optional(),
 });
 export type Account = z.infer<typeof AccountSchema>;
@@ -92,7 +93,9 @@ export type EnforcedLimit = {
 
 export type Thresholds = { session: number; weekly: number };
 
-export type Bars = Thresholds & { accounts: Map<string, Thresholds>; accountReleaseMs: Thresholds };
+export type AccountThresholds = Thresholds & { credits: boolean };
+
+export type Bars = Thresholds & { accounts: Map<string, AccountThresholds>; accountReleaseMs: Thresholds };
 
 const PercentSchema = z.number().min(0).max(100);
 
@@ -102,7 +105,7 @@ export const ConfigSchema = z
       .object({
         session: PercentSchema.default(90),
         weekly: PercentSchema.default(98),
-        accounts: z.record(z.string(), z.object({ session: PercentSchema, weekly: PercentSchema })).default({}),
+        accounts: z.record(z.string(), z.object({ session: PercentSchema, weekly: PercentSchema, credits: z.boolean().default(false) })).default({}),
       })
       .prefault({}),
     claudeBin: z.string().default(""),
@@ -248,6 +251,7 @@ export type CodexUsage = {
   accountId: string;
   email: string | null;
   planType: string | null;
+  hasCredits: boolean | null;
   windows: Window[];
 };
 

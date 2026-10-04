@@ -6,7 +6,7 @@ export function thresholdBars(cfg: Config): Bars {
   const bars = (t: Thresholds): Thresholds => ({ session: t.session - cfg.policy.projectionMargin, weekly: t.weekly });
   return {
     ...bars(cfg.thresholds),
-    accounts: new Map(Object.entries(cfg.thresholds.accounts).map(([label, t]) => [label, bars(t)])),
+    accounts: new Map(Object.entries(cfg.thresholds.accounts).map(([label, t]) => [label, { ...bars(t), credits: t.credits }])),
     accountReleaseMs: cfg.policy.accountReleaseMs,
   };
 }
@@ -68,9 +68,13 @@ function windowEnd(w: Window): number {
   return w.resetsAt ?? w.sampledAt + (w.windowSeconds ?? 0) * 1000;
 }
 
+function spendsCredits(a: Account, bars: Bars): boolean {
+  return bars.accounts.get(a.label)?.credits === true && a.hasCredits !== false;
+}
+
 function blockedUntil(a: Account, w: Window, bars: Bars, now: number): number {
   const used = liveUsed(w, now);
-  if (used < barFor(a, w, bars, now)) return 0;
+  if (used < barFor(a, w, bars, now) || spendsCredits(a, bars)) return 0;
   const reset = windowEnd(w);
   const release = reset - releaseMs(w, bars);
   return release > now && used < barFor(a, w, bars, release) ? release : reset;
@@ -140,6 +144,7 @@ export function seatHeadroom(a: Account, ctx: PickCtx): number {
 }
 
 const swapPreference = (ctx: PickCtx) => [
+  (a: Account) => (spendsCredits(a, ctx.thresholds) && isExhausted({ ...a, hasCredits: false }, ctx) ? 1 : 0),
   ...(ctx.seats == null ? [] : [(a: Account) => -seatHeadroom(a, ctx)]),
   (a: Account) => -pacePressure(a, ctx),
   (a: Account) => weeklyExpiry(a, ctx.now),

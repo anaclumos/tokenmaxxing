@@ -32,6 +32,7 @@ const WireUsageSchema = z.looseObject({
   email: z.string().nullish(),
   plan_type: z.string().nullish(),
   rate_limit: WireRateLimitSchema.nullish(),
+  credits: z.looseObject({ has_credits: z.boolean().nullish() }).nullish(),
   additional_rate_limits: z
     .array(z.looseObject({ limit_name: z.string(), rate_limit: WireRateLimitSchema.nullish() }))
     .nullish(),
@@ -81,6 +82,7 @@ export async function fetchCodexUsage(input: { auth: CodexAuthJson; at: number }
     accountId: wire.account_id,
     email: wire.email ?? null,
     planType: wire.plan_type ?? null,
+    hasCredits: wire.credits?.has_credits ?? null,
     windows: [
       ...toWindows(wire.rate_limit, null, at),
       ...(wire.additional_rate_limits ?? []).flatMap((row) => toWindows(row.rate_limit, row.limit_name, at)),
