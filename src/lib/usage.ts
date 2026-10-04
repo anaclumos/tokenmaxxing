@@ -18,6 +18,25 @@ export function parseStatusLineStdin(obj: unknown): UsageWindows | null {
   return { fiveHour: win(rl.five_hour), sevenDay: win(rl.seven_day), perModel: {} };
 }
 
+const StreamWindowSchema = z.looseObject({ utilization: z.number(), resetsAt: EpochSecondsSchema });
+const StreamLineSchema = z.looseObject({
+  type: z.string(),
+  rate_limit_info: z
+    .looseObject({
+      unifiedWindows: z.looseObject({ five_hour: StreamWindowSchema.optional(), seven_day: StreamWindowSchema.optional() }).optional(),
+    })
+    .optional(),
+});
+
+export function parseStreamLine(line: string): { type: string; windows: UsageWindows | null } | null {
+  const parsed = StreamLineSchema.safeParse(JsonTextSchema.safeParse(line).data);
+  if (!parsed.success) return null;
+  const unified = parsed.data.type === "rate_limit_event" ? parsed.data.rate_limit_info?.unifiedWindows : undefined;
+  const win = (w: z.infer<typeof StreamWindowSchema>): UsageWindow => ({ usedPercentage: Math.round(w.utilization * 100), resetsAt: w.resetsAt });
+  const windows = unified?.five_hour && unified.seven_day ? { fiveHour: win(unified.five_hour), sevenDay: win(unified.seven_day), perModel: {} } : null;
+  return { type: parsed.data.type, windows };
+}
+
 export function parseStatusLineModel(obj: unknown): ModelInfo | null {
   const parsed = RateLimitsStdinSchema.safeParse(obj);
   if (!parsed.success) return null;

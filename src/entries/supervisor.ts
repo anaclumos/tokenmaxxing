@@ -1,3 +1,4 @@
+import { once } from "node:events";
 import { existsSync, mkdirSync, rmSync, readdirSync, statSync } from "node:fs";
 import { basename, join } from "node:path";
 import type { FileSink, Subprocess } from "bun";
@@ -16,9 +17,9 @@ import { teeObservation } from "../lib/sample.ts";
 import { countdownWait, exitStatus, loopGuardTripped, raceMarkerOrExit, recordPresenceOrStop, runPassthrough, SEAT_POLL_MS, SEAT_RETRY_MS, type Say } from "../lib/supervise.ts";
 import { saveTermios } from "../lib/tty.ts";
 import { liveSessionId, loadSessionFlags, pruneStaleSessions, saveSessionFlags, writeRespawnMarker } from "../lib/sessions.ts";
-import { loadAccounts, loadConfig, readJsonFile, releaseWaitClaim } from "../lib/state.ts";
-import { gatedFamilies, modelFromFlag, scrubCredEnv } from "../lib/usage.ts";
-import { RespawnMarkerSchema, type Account, type Config, type ModelInfo } from "../lib/types.ts";
+import { loadAccounts, loadConfig, readJsonFile, releaseWaitClaim, writeUsage } from "../lib/state.ts";
+import { gatedFamilies, modelFromFlag, parseStreamLine, scrubCredEnv } from "../lib/usage.ts";
+import { RespawnMarkerSchema, type Account, type Config, type ModelInfo, type UsageWindows } from "../lib/types.ts";
 import { errorMessage, log } from "../lib/log.ts";
 
 const SUBCOMMANDS = new Set([
@@ -266,6 +267,54 @@ function userLine(text: string): string {
   return `${JSON.stringify({ type: "user", message: { role: "user", content: [{ type: "text", text }] } })}\n`;
 }
 
+const STDOUT_QUIET_MS = 1000;
+
+function seatTee(seatId: string, model: ModelInfo | null): (line: string) => void {
+  let last: UsageWindows | null = null;
+  return (line) => {
+    const msg = parseStreamLine(line);
+    if (msg?.windows) last = msg.windows;
+    else if (msg?.type !== "assistant") return;
+    if (last) writeUsage({ fiveHour: last.fiveHour, sevenDay: last.sevenDay, account: seatId, ts: Date.now(), model });
+  };
+}
+
+function relayStdout(source: ReadableStream<Uint8Array>, onLine: (line: string) => void): () => Promise<void> {
+  let ended = false;
+  let blocked = false;
+  let readAt = Date.now();
+  const forwarded = source.pipeThrough(
+    new TransformStream<Uint8Array, Uint8Array>({
+      async transform(chunk, controller) {
+        readAt = Date.now();
+        if (!process.stdout.write(chunk)) {
+          blocked = true;
+          await once(process.stdout, "drain");
+          blocked = false;
+        }
+        controller.enqueue(chunk);
+      },
+    }),
+  );
+  void (async () => {
+    for await (const line of readLines(forwarded)) {
+      try {
+        onLine(line);
+      } catch (e) {
+        log("supervisor.tee_failed", { err: errorMessage(e) });
+      }
+    }
+  })()
+    .catch((e: unknown) => log("supervisor.stdout_relay_failed", { err: errorMessage(e) }))
+    .finally(() => {
+      ended = true;
+    });
+  return async () => {
+    const exitedAt = Date.now();
+    while (!ended && (blocked || Date.now() - Math.max(readAt, exitedAt) < STDOUT_QUIET_MS)) await Bun.sleep(50);
+  };
+}
+
 class StdinRelay {
   private sink: FileSink | null = null;
   private queue: string[] = [];
@@ -430,6 +479,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
   let overriddenUntil = 0;
   let wanted: string | null = null;
   let refused: string[] = [];
+  let drainStdout: (() => Promise<void>) | null = null;
   try {
   while (true) {
     if (existsSync(marker)) rmSync(marker, { force: true });
@@ -439,9 +489,10 @@ export async function runSupervisor(argv: string[]): Promise<number> {
       if (terminating) return null;
       const picked = (wanted == null ? null : (loadAccounts(claudePool).accounts.find((a) => a.id === wanted) ?? null)) ?? pickSeat(gate.launchedAt, model);
       log("supervisor.launch", { sid, respawns, seat: picked?.id.slice(0, 8) ?? null, args: launchArgs.join(" "), injected: firstLine !== null });
+      const tee = stream && picked ? seatTee(picked.id, model) : null;
       const spawned = Bun.spawn([real, ...launchArgs], {
         stdin: relay === null ? "inherit" : "pipe",
-        stdout: "inherit",
+        stdout: tee === null ? "inherit" : "pipe",
         stderr: "inherit",
         env: {
           ...(picked ? { ...scrubCredEnv(childEnv), CLAUDE_SECURESTORAGE_CONFIG_DIR: storeDirFor(picked.id) } : childEnv),
@@ -453,6 +504,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
         },
       });
       child = spawned;
+      const drain = tee !== null && spawned.stdout instanceof ReadableStream ? relayStdout(spawned.stdout, tee) : null;
       if (relay !== null) relay.attach(spawned.stdin!, firstLine);
       firstLine = null;
       if (picked) {
@@ -467,7 +519,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
         });
       }
       releaseClaimLocked(sid);
-      return { child: spawned, seat: picked };
+      return { child: spawned, seat: picked, drain };
     });
     if (launched == null) {
       await releaseClaim();
@@ -475,6 +527,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
     }
 
     const { child: proc, seat } = launched;
+    drainStdout = launched.drain;
     let seatCheckAt = 0;
     await raceMarkerOrExit({
       child: proc,
@@ -494,6 +547,8 @@ export async function runSupervisor(argv: string[]): Promise<number> {
         relay?.detach();
       },
     });
+    await drainStdout?.();
+    drainStdout = null;
 
     const m = !terminating && existsSync(marker) ? await consumableMarker(marker, gate) : null;
     if (m) {
@@ -538,6 +593,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
     return exitStatus(proc);
   }
   } catch (e) {
+    await drainStdout?.();
     const msg = errorMessage(e);
     const text = msg.startsWith("tokenmaxxing:") ? msg : `tokenmaxxing: ${msg}`;
     say(`\n\x1b[31m${text}\x1b[0m\n`, text);
