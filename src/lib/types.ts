@@ -103,7 +103,7 @@ export const ConfigSchema = z
   .object({
     thresholds: z
       .object({
-        session: PercentSchema.default(90),
+        session: PercentSchema.default(98),
         weekly: PercentSchema.default(98),
         accounts: z.record(z.string(), z.object({ session: PercentSchema, weekly: PercentSchema, credits: z.boolean().default(false) })).default({}),
       })
@@ -115,7 +115,7 @@ export const ConfigSchema = z
     piBin: z.string().default(""),
     policy: z
       .object({
-        projectionMargin: z.number().min(0).max(100).default(3),
+        projectionMargin: z.number().min(0).max(100).default(0),
         switchModels: z
           .array(z.string())
           .default(["fable"])

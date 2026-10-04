@@ -42,7 +42,7 @@ jobs:
           ./result/bin/xx help >/dev/null
           mkdir -p "$RUNNER_TEMP/tm-nix"
           printf '{"thresholds":{"weekly":95}}\n' > "$RUNNER_TEMP/tm-nix/config.json"
-          TOKENMAXXING_HOME="$RUNNER_TEMP/tm-nix" ./result/bin/tokenmaxxing config --json | jq -e '.ok == true and .effective.thresholds.weekly == 95 and .effective.thresholds.session == 90' >/dev/null
+          TOKENMAXXING_HOME="$RUNNER_TEMP/tm-nix" ./result/bin/tokenmaxxing config --json | jq -e '.ok == true and .effective.thresholds.weekly == 95 and .effective.thresholds.session == 98 and .effective.policy.projectionMargin == 0' >/dev/null
 
   publish:
     if: github.ref == 'refs/heads/main'
