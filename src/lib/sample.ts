@@ -20,13 +20,13 @@ type PreparedSample = { ok: true; token: string; expiresAt: number } | { ok: fal
 
 const SAMPLE_INTERVAL_MAX_MS = 15 * 60 * 1000;
 
-export function sampleIntervalMs(account: Account, cfg: Config, now: number): number {
+export function sampleIntervalMs(account: Account, cfg: Config, now: number, live: boolean): number {
   const floor = cfg.policy.usagePollTtlMs;
   const bars = thresholdBars(cfg);
   const aggregates = account.windows.filter((w) => w.name == null);
   if (aggregates.length === 0) return floor;
   const blocked = (w: Window) => liveUsed(w, now) >= barFor(account, w, bars, now);
-  if (aggregates.some(blocked)) return Math.max(floor, SAMPLE_INTERVAL_MAX_MS);
+  if (!live || aggregates.some(blocked)) return Math.max(floor, SAMPLE_INTERVAL_MAX_MS);
   const open = [...aggregates, ...gatedWindows(account, cfg.policy.switchModels).filter((w) => !blocked(w))];
   const spare = Math.min(...open.map((w) => 1 - liveUsed(w, now) / barFor(account, w, bars, now)));
   return Math.max(floor, SAMPLE_INTERVAL_MAX_MS * spare);
@@ -34,8 +34,19 @@ export function sampleIntervalMs(account: Account, cfg: Config, now: number): nu
 
 const sampledAt = (a: Account) => Math.max(a.lastUsageAt ?? 0, a.lastProbeAt ?? 0);
 
-export function sampleDue(account: Account, cfg: Config, now: number): boolean {
-  return now - sampledAt(account) > sampleIntervalMs(account, cfg, now);
+export function sampleDue(account: Account, cfg: Config, now: number, live: boolean): boolean {
+  return now - sampledAt(account) > sampleIntervalMs(account, cfg, now, live);
+}
+
+export async function claimSample(id: string, now: number, due: (stored: Account) => boolean): Promise<boolean> {
+  return withLock(claudePool.lockFile, () => {
+    const idx = loadAccounts(claudePool);
+    const stored = idx.accounts.find((a) => a.id === id);
+    if (!stored || usageBlockedUntil(stored, now) != null || !due(stored)) return false;
+    stored.lastProbeAt = now;
+    saveAccounts(claudePool, idx);
+    return true;
+  });
 }
 
 export function teeObservation(account: Account): Observation | null {
@@ -118,6 +129,7 @@ export async function runSample(account: Account, prepared: { token: string; exp
     token = refreshed.token;
   }
   const read = await fetchUsageDirect(token);
+  log("usage.read", { account: account.id.slice(0, 8), ok: read.ok });
   if (read.ok) return { ok: true, usage: read.usage, via: "get" };
   if (read.retryAt == null) return { ok: false, reason: "usage read failed (see log)" };
   return { ok: false, reason: rateLimitedReason(read.retryAt, Date.now()), retryAt: read.retryAt };
@@ -145,7 +157,7 @@ export async function sampleOldest(cfg: Config): Promise<void> {
     for (const a of idx.accounts) dirty = foldTee(a, thresholdBars(cfg)) || dirty;
     const seats = seatCounts(paths.presenceDir);
     const stale = idx.accounts
-      .filter((a) => a.needsReauth !== true && sampleDue(a, cfg, now))
+      .filter((a) => a.needsReauth !== true && sampleDue(a, cfg, now, seats.has(a.id)))
       .sort((a, b) => Number(seats.has(b.id)) - Number(seats.has(a.id)) || sampledAt(a) - sampledAt(b))
       .slice(0, SAMPLE_BATCH);
     if (stale.length === 0) {

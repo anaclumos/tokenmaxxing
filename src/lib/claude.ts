@@ -13,7 +13,7 @@ import { landWindows, pickBest, pickEarliestReset, thresholdBars, type PickCtx }
 import { deletePiStore } from "./piauth.ts";
 import { livingPresences, writePresence } from "./presence.ts";
 import { StoreUnusableError, type Observation, type Provider, type SampleReport, type SeatBorrow } from "./provider.ts";
-import { foldTee, readyToSample, runSample, sampleAccountUsage, sampleDue, sampleIntervalMs, teeObservation, usageBlockedUntil } from "./sample.ts";
+import { claimSample, foldTee, readyToSample, runSample, sampleAccountUsage, sampleDue, sampleIntervalMs, teeObservation, usageBlockedUntil } from "./sample.ts";
 import { clearUsageSnapshot, liveWaitClaims, loadAccounts, loadConfig, loadUsageSnapshot, pinBinOverride, readJsonFile, saveAccounts, type Harvest } from "./state.ts";
 import { saveTermios, restoreTermios } from "./tty.ts";
 import { fetchUsageDirect, gatedFamilies, mergeWindows, modelFromFlag, scrubCredEnv, windowsOf } from "./usage.ts";
@@ -33,11 +33,10 @@ function presence(living = livingPresences(paths.presenceDir)): Map<string, numb
 const PROBE_BACKOFF_CAP_MS = 30 * 60 * 1000;
 
 async function observeLive(account: Account, cfg: Config, now: number, opts: { probe: boolean; perModel: boolean }): Promise<Observation | null> {
-  const interval = Math.min(sampleIntervalMs(account, cfg, now) * 2 ** (account.probeFails ?? 0), PROBE_BACKOFF_CAP_MS);
-  const probeAttempted = account.lastProbeAt != null && now - account.lastProbeAt <= interval;
+  const probeDue = (a: Account) => a.lastProbeAt == null || now - a.lastProbeAt > Math.min(sampleIntervalMs(a, cfg, now, true) * 2 ** (a.probeFails ?? 0), PROBE_BACKOFF_CAP_MS);
   const snap = loadUsageSnapshot(account.id);
   const fresh = snap != null && now - snap.at <= cfg.policy.usagePollTtlMs;
-  if (opts.probe && !probeAttempted && usageBlockedUntil(account, now) == null && (!fresh || opts.perModel)) {
+  if (opts.probe && (!fresh || opts.perModel) && probeDue(account) && usageBlockedUntil(account, now) == null && (await claimSample(account.id, now, probeDue))) {
     const startedAt = Date.now();
     const outcome = await sampleAccountUsage(account);
     await withLock(claudePool.lockFile, () => {
@@ -67,6 +66,7 @@ async function samplePool(accounts: Account[], _liveId: string | null, now: numb
   const reports = new Map<string, SampleReport>();
   const cfg = loadConfig();
   const bars = thresholdBars(cfg);
+  const live = presence();
   await Promise.all(
     accounts.map(async (a) => {
       const tee = loadUsageSnapshot(a.id);
@@ -81,7 +81,8 @@ async function samplePool(accounts: Account[], _liveId: string | null, now: numb
         reports.set(a.id, { ok: false, reason: ready.reason });
         return;
       }
-      if (!sampleDue(a, cfg, now)) {
+      const due = (stored: Account) => sampleDue(stored, cfg, now, live.has(a.id));
+      if (!due(a) || !(await claimSample(a.id, now, due))) {
         reports.set(a.id, { ok: true, source: "cached" });
         return;
       }
