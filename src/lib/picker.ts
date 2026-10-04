@@ -99,10 +99,10 @@ export function isExhausted(a: Account, ctx: PickCtx): boolean {
 
 export function landWindows(a: Account, windows: Window[], at: number, thresholds: Bars): void {
   const ctx: PickCtx = { now: at, thresholds, currentId: null, families: [], seats: null };
-  const blocked = a.enforcedUntil != null && isExhausted({ ...a, enforcedUntil: undefined }, ctx);
+  const blocked = a.enforcedUntil != null && isExhausted({ ...a, enforcedUntil: undefined, hasCredits: false }, ctx);
   a.windows = windows;
   a.lastUsageAt = at;
-  if (blocked && !isExhausted({ ...a, enforcedUntil: undefined }, ctx)) a.enforcedUntil = undefined;
+  if (blocked && !isExhausted({ ...a, enforcedUntil: undefined, hasCredits: false }, ctx)) a.enforcedUntil = undefined;
 }
 
 export function nextWeeklyReset(resetsAt: number | null, now: number): number | null {
@@ -143,8 +143,12 @@ export function seatHeadroom(a: Account, ctx: PickCtx): number {
   return (barFor(a, session, ctx.thresholds, ctx.now) - liveUsed(session, ctx.now)) / ((ctx.seats?.get(a.id) ?? 0) + 1);
 }
 
+export function onCredits(a: Account, ctx: PickCtx): boolean {
+  return spendsCredits(a, ctx.thresholds) && isExhausted({ ...a, hasCredits: false }, ctx);
+}
+
 const swapPreference = (ctx: PickCtx) => [
-  (a: Account) => (spendsCredits(a, ctx.thresholds) && isExhausted({ ...a, hasCredits: false }, ctx) ? 1 : 0),
+  (a: Account) => (onCredits(a, ctx) ? 1 : 0),
   ...(ctx.seats == null ? [] : [(a: Account) => -seatHeadroom(a, ctx)]),
   (a: Account) => -pacePressure(a, ctx),
   (a: Account) => weeklyExpiry(a, ctx.now),

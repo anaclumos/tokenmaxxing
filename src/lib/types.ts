@@ -85,7 +85,7 @@ export type AccountsIndex = z.infer<typeof AccountsIndexSchema>;
 
 export type EnforcedLimit = {
   account: string;
-  kind: "session" | "weekly" | "model" | "credits" | "org";
+  kind: "session" | "weekly" | "model" | "credits" | "org" | "overage";
   family: string | null;
   resetsAt: number | null;
   blind: boolean;

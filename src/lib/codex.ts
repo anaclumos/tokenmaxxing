@@ -13,7 +13,7 @@ import { codexSupervisorLink, ensurePathInRc, installCodexSupervisor, managedShe
 import { withLock } from "./lock.ts";
 import { errorMessage, log } from "./log.ts";
 import { codexPaths, codexPool, codexSeatFromEnv, optionalEnv } from "./paths.ts";
-import { isExhausted, pickBest, pickEarliestReset, thresholdBars, type PickCtx } from "./picker.ts";
+import { isExhausted, onCredits, pickBest, pickEarliestReset, thresholdBars, type PickCtx } from "./picker.ts";
 import { StoreUnusableError, type Observation, type Provider, type SampleReport, type SeatBorrow } from "./provider.ts";
 import { loadAccounts, loadConfig, pinBinOverride, saveAccounts, type Harvest } from "./state.ts";
 import { restoreTermios, saveTermios } from "./tty.ts";
@@ -273,8 +273,10 @@ export async function borrowCodexSeat(pid: number): Promise<SeatBorrow> {
     const usable = idx.accounts.filter(
       (a) => !closed.has(a.id) && a.needsReauth !== true && !isExhausted(a, ctx) && codexStoreUsable(a.id)
     );
-    const fewest = Math.min(...usable.map((a) => lent[a.id] ?? 0));
-    const picked = pickBest(usable.filter((a) => (lent[a.id] ?? 0) === fewest), ctx);
+    const plan = usable.filter((a) => !onCredits(a, ctx));
+    const open = plan.length > 0 ? plan : usable;
+    const fewest = Math.min(...open.map((a) => lent[a.id] ?? 0));
+    const picked = pickBest(open.filter((a) => (lent[a.id] ?? 0) === fewest), ctx);
     if (!picked) return null;
     const store = ensureCodexStoreHome(picked.id);
     writePresence({ dir: codexPaths.presenceDir, id: seatId, accountId: picked.id, pid });

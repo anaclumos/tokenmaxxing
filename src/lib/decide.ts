@@ -2,7 +2,7 @@ import { countBy } from "es-toolkit";
 import { CLAUDE_COMPACT_KILL_MS } from "./compact.ts";
 import { withLock } from "./lock.ts";
 import { loadAccounts, loadConfig, liveWaitClaims, releaseWaitClaim, replaceWaitClaim, saveAccounts } from "./state.ts";
-import { isExhausted, landWindows, limitWindows, nextWeeklyReset, pickBest, pickWaitTarget, screensUntilReset, sessionWindow, thresholdBars, weeklyWindow, type PickCtx } from "./picker.ts";
+import { isExhausted, landWindows, limitWindows, liveUsed, nextWeeklyReset, pickBest, pickWaitTarget, screensUntilReset, sessionWindow, thresholdBars, weeklyWindow, type PickCtx } from "./picker.ts";
 import { familyTokens } from "./usage.ts";
 import { errorMessage, log } from "./log.ts";
 import type { Observation, Provider } from "./provider.ts";
@@ -48,11 +48,13 @@ function enforcedWall(limit: EnforcedLimit, account: Account, now: number): numb
           .map((w) => w.resetsAt)
           .find((r): r is number => r != null) ?? null;
   const session = sessionWindow(account)?.resetsAt ?? null;
+  const weekly = weeklyWindow(account);
+  const span = limit.kind !== "overage" ? limit.kind : weekly != null && liveUsed(weekly, now) >= 100 ? "weekly" : "session";
   const cachedReset =
-    limit.kind === "session"
+    span === "session"
       ? session != null && session > now ? session : null
-      : nextWeeklyReset(familyReset ?? weeklyWindow(account)?.resetsAt ?? null, now);
-  return limit.resetsAt ?? cachedReset ?? now + (limit.kind === "session" ? FIVE_HOURS_MS : WEEK_MS);
+      : nextWeeklyReset(familyReset ?? weekly?.resetsAt ?? null, now);
+  return limit.resetsAt ?? cachedReset ?? now + (span === "session" ? FIVE_HOURS_MS : WEEK_MS);
 }
 
 export async function evaluateAndMaybeSwap(p: Provider, now = Date.now(), canRespawn = false, enforced: EnforcedLimit | null = null, opts: EvalOpts = {}): Promise<SwapDecision> {
