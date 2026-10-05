@@ -609,6 +609,9 @@ export async function runSupervisor(argv: string[]): Promise<number> {
       const walledUntil = accounts.find((a) => a.id === seat?.id)?.enforcedUntil ?? 0;
       const transcript = findTranscript(m.sessionId);
       const resumable = transcript !== null;
+      if (!resumable && relay !== null) {
+        for (const id of relay.replay()) process.stdout.write(controlErrorLine(id));
+      }
       let compacted = false;
       if (m.compact && seat && resumable && walledUntil > Date.now()) {
         log("supervisor.compact_skipped", { sid: m.sessionId.slice(0, 8), seat: seat.id.slice(0, 8), until: walledUntil });
@@ -632,9 +635,6 @@ export async function runSupervisor(argv: string[]): Promise<number> {
       refused = m.refused ?? refused;
       saveSessionFlags(m.sessionId, persistable, process.cwd());
       const prompt = resumable ? resumePrompt({ compacted, origin: m.origin }) : null;
-      if (!resumable && relay !== null) {
-        for (const id of relay.replay()) process.stdout.write(controlErrorLine(id));
-      }
       firstLine = relay !== null && prompt !== null ? userLine(prompt) : null;
       pendingTranscript = resumable ? null : transcriptPath(m.sessionId);
       launchArgs = [resumable ? "--resume" : "--session-id", m.sessionId, ...(relay === null && prompt !== null ? [prompt] : []), ...persistable];
