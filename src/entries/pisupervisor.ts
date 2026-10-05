@@ -286,7 +286,7 @@ async function watchSeat(input: { pool: PiPool; seatId: string; id: string; fami
     const unmeasured = input.pool === "codex" && (observed == null || now - observed.at > cfg.policy.usagePollTtlMs);
     if (unmeasured) log("pisupervisor.seat_unmeasured", { seat: account.id.slice(0, 8), usageAt: observed?.at });
     const current = observed ? { ...account, windows: observed.windows } : account;
-    const until = usableAt(current, { now, thresholds: thresholdBars(cfg), currentId: account.id, families: input.families, seats: null });
+    const until = usableAt({ ...current, hasCredits: false }, { now, thresholds: thresholdBars(cfg), currentId: account.id, families: input.families, seats: null });
     if (until <= now || until <= input.overriddenUntil) return { decided: unmeasured, move: null };
     const decision = await evaluateAndMaybeSwap(mover, now, true, null, { seatId: account.id, ...(input.families ? { sessionFamilies: input.families } : {}), waiterId: input.id });
     log("pisupervisor.seat_exhausted", { pool: input.pool, seat: account.id.slice(0, 8), until, reason: decision.reason, account: decision.account?.id.slice(0, 8), waitUntil: decision.waitUntil });
