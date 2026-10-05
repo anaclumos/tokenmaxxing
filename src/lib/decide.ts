@@ -15,6 +15,7 @@ export type EvalOpts = {
   sessionFamilies?: string[];
   waiterId?: string;
   exclude?: string[];
+  refused?: string[];
 };
 
 const MOVE_CLAIM_MS = 2 * CLAUDE_COMPACT_KILL_MS;
@@ -141,8 +142,8 @@ export async function evaluateAndMaybeSwap(p: Provider, now = Date.now(), canRes
       const cur = loadAccounts(p.pool);
       const seat = seatOf(cur);
       const ctx: PickCtx = { now, thresholds: bars, currentId: seat?.id ?? null, families: switchFamilies, seats };
-      const best = pickBest(usable(cur.accounts), ctx);
       const credited = !enforced2 && seat != null && !seat.needsReauth && !isExhausted(seat, ctx) && onCredits(seat, ctx);
+      const best = pickBest(usable(cur.accounts).filter((a) => !(credited && opts.refused?.includes(a.id))), ctx);
       if (credited && (best == null || onCredits(best, ctx))) return { swapped: false, account: null, reason: "no-plan-headroom" };
       if (!best) break;
       try {
