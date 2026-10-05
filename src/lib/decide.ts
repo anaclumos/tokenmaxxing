@@ -2,7 +2,7 @@ import { countBy } from "es-toolkit";
 import { CLAUDE_COMPACT_KILL_MS } from "./compact.ts";
 import { withLock } from "./lock.ts";
 import { loadAccounts, loadConfig, liveWaitClaims, releaseWaitClaim, replaceWaitClaim, saveAccounts } from "./state.ts";
-import { isExhausted, landWindows, limitWindows, liveUsed, nextWeeklyReset, pickBest, pickWaitTarget, screensUntilReset, sessionWindow, thresholdBars, weeklyWindow, type PickCtx } from "./picker.ts";
+import { MAX_WAITERS_PER_ACCOUNT, isExhausted, landWindows, limitWindows, liveUsed, nextWeeklyReset, pickBest, pickWaitTarget, screensUntilReset, sessionWindow, thresholdBars, weeklyWindow, type PickCtx } from "./picker.ts";
 import { familyTokens } from "./usage.ts";
 import { errorMessage, log } from "./log.ts";
 import type { Observation, Provider } from "./provider.ts";
@@ -17,7 +17,6 @@ export type EvalOpts = {
   exclude?: string[];
 };
 
-const MAX_WAITERS_PER_ACCOUNT = 4;
 const MOVE_CLAIM_MS = 2 * CLAUDE_COMPACT_KILL_MS;
 
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
@@ -165,10 +164,10 @@ export async function evaluateAndMaybeSwap(p: Provider, now = Date.now(), canRes
       const ctx: PickCtx = { now, thresholds: bars, currentId: current?.id ?? null, families: switchFamilies, seats };
       const others = liveWaitClaims(now).filter((c) => c.sessionId !== waiterId);
       const waiters = new Map(Object.entries(countBy(others, (c) => c.accountId)));
-      const target = pickWaitTarget(usable(fresh.accounts), ctx, waiters, MAX_WAITERS_PER_ACCOUNT, now + cfg.policy.maxWaitMs);
+      const target = pickWaitTarget(usable(fresh.accounts), ctx, waiters, MAX_WAITERS_PER_ACCOUNT, now + cfg.policy.maxWaitMs, now + 2 * cfg.policy.maxWaitMs);
 
       if (!target) {
-        const soonest = pickWaitTarget(usable(fresh.accounts), ctx, new Map(), MAX_WAITERS_PER_ACCOUNT, Number.POSITIVE_INFINITY);
+        const soonest = pickWaitTarget(usable(fresh.accounts), ctx, new Map(), MAX_WAITERS_PER_ACCOUNT, Number.POSITIVE_INFINITY, Number.POSITIVE_INFINITY);
         const waitUntil = soonest?.availableAt ?? Number.POSITIVE_INFINITY;
         log("decide.depleted", { waitUntil: Number.isFinite(waitUntil) ? waitUntil : 0 });
         return { swapped: false, account: null, reason: "all-depleted", ...(Number.isFinite(waitUntil) ? { waitUntil } : {}) };

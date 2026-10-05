@@ -176,11 +176,18 @@ export function pickEarliestReset(accounts: Account[], ctx: PickCtx): EarliestRe
   return minBy(mapped, (x) => x.availableAt) ?? null;
 }
 
-export function pickWaitTarget(accounts: Account[], ctx: PickCtx, waiters: Map<string, number>, cap: number, deadline: number): EarliestReset | null {
+export const MAX_WAITERS_PER_ACCOUNT = 8;
+
+export function pickWaitTarget(accounts: Account[], ctx: PickCtx, waiters: Map<string, number>, cap: number, deadline: number, overflowDeadline: number): EarliestReset | null {
   const mapped = accounts
     .filter((a) => !a.needsReauth)
     .map((a) => ({ account: a, availableAt: usableAt(a, ctx) }))
-    .filter((x) => Number.isFinite(x.availableAt) && x.availableAt <= deadline)
+    .filter((x) => Number.isFinite(x.availableAt) && x.availableAt <= overflowDeadline)
     .sort((x, y) => x.availableAt - y.availableAt || (x.account.id === ctx.currentId ? -1 : y.account.id === ctx.currentId ? 1 : 0));
-  return mapped.find((x) => (waiters.get(x.account.id) ?? 0) < cap) ?? mapped[0] ?? null;
+  return (
+    mapped.filter((x) => x.availableAt <= deadline).find((x) => (waiters.get(x.account.id) ?? 0) < cap) ??
+    mapped.filter((x) => x.availableAt > deadline).find((x) => (waiters.get(x.account.id) ?? 0) < cap) ??
+    sortBy(mapped, [(x) => waiters.get(x.account.id) ?? 0, (x) => x.availableAt, (x) => (x.account.id === ctx.currentId ? 0 : 1)])[0] ??
+    null
+  );
 }

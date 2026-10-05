@@ -9,7 +9,7 @@ import { withLock } from "./lock.ts";
 import { errorMessage, log } from "./log.ts";
 import { claudeTierLabel, describeIdentity, fetchTokenIdentity, isDeadCredential, InvalidGrantError } from "./oauth.ts";
 import { claudePool, env, paths, seatFromEnv, storeDirFor } from "./paths.ts";
-import { landWindows, pickBest, pickEarliestReset, thresholdBars, type PickCtx } from "./picker.ts";
+import { MAX_WAITERS_PER_ACCOUNT, landWindows, pickBest, pickEarliestReset, pickWaitTarget, thresholdBars, type PickCtx } from "./picker.ts";
 import { deletePiStore } from "./piauth.ts";
 import { livingPresences, writePresence } from "./presence.ts";
 import { StoreUnusableError, type Observation, type Provider, type SampleReport, type SeatBorrow } from "./provider.ts";
@@ -138,9 +138,15 @@ export function pickSeat(now: number, model: ModelInfo | null, eligible: (a: Acc
   let dirty = false;
   for (const a of idx.accounts) dirty = foldTee(a, bars) || dirty;
   if (dirty) saveAccounts(claudePool, idx);
-  const ctx: PickCtx = { now, thresholds: bars, currentId: null, families: gatedFamilies(model, cfg.policy.switchModels), seats: presence() };
+  const seats = presence();
+  const ctx: PickCtx = { now, thresholds: bars, currentId: null, families: gatedFamilies(model, cfg.policy.switchModels), seats };
   const candidates = idx.accounts.filter(eligible);
-  return pickBest(candidates, ctx) ?? pickEarliestReset(candidates, ctx)?.account ?? null;
+  return (
+    pickBest(candidates, ctx) ??
+    pickWaitTarget(candidates, ctx, seats, MAX_WAITERS_PER_ACCOUNT, now + cfg.policy.maxWaitMs, now + 2 * cfg.policy.maxWaitMs)?.account ??
+    pickEarliestReset(candidates, ctx)?.account ??
+    null
+  );
 }
 
 export async function borrowClaudeSeat(pid: number): Promise<SeatBorrow> {
