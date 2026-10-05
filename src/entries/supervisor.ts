@@ -19,7 +19,7 @@ import { saveTermios } from "../lib/tty.ts";
 import { liveSessionId, loadSessionFlags, pruneStaleSessions, saveSessionFlags, writeRespawnMarker } from "../lib/sessions.ts";
 import { loadAccounts, loadConfig, readJsonFile, releaseWaitClaim, writeUsage } from "../lib/state.ts";
 import { gatedFamilies, modelFromFlag, parseStreamLine, scrubCredEnv } from "../lib/usage.ts";
-import { RespawnMarkerSchema, type Account, type Config, type ModelInfo, type UsageWindows } from "../lib/types.ts";
+import { JsonTextSchema, RespawnMarkerSchema, type Account, type Config, type ModelInfo, type UsageWindows } from "../lib/types.ts";
 import { errorMessage, log } from "../lib/log.ts";
 
 const SUBCOMMANDS = new Set([
@@ -324,10 +324,22 @@ function relayStdout(source: ReadableStream<Uint8Array>, onLine: (line: string) 
   };
 }
 
+const REPLAYED_REQUESTS = new Set(["initialize", "set_max_thinking_tokens", "set_model", "set_permission_mode"]);
+
+const RelayLineSchema = z.discriminatedUnion("type", [
+  z.looseObject({ type: z.literal("control_response") }),
+  z.looseObject({ type: z.literal("control_request"), request_id: z.string(), request: z.looseObject({ subtype: z.string() }) }),
+]);
+
+function controlErrorLine(requestId: string): string {
+  return `${JSON.stringify({ type: "control_response", response: { subtype: "error", request_id: requestId, error: "tokenmaxxing restarted Claude Code for an account move, and this request may or may not have run." } })}\n`;
+}
+
 class StdinRelay {
   private sink: FileSink | null = null;
   private queue: string[] = [];
-  private sent: string[] = [];
+  private replayable: string[] = [];
+  private dropped: string[] = [];
   private pendingTranscript: string | null = null;
   private ended = false;
 
@@ -342,7 +354,8 @@ class StdinRelay {
 
   attach(sink: FileSink, first: string | null, pendingTranscript: string | null): void {
     this.sink = sink;
-    this.sent = [];
+    this.replayable = [];
+    this.dropped = [];
     this.pendingTranscript = pendingTranscript;
     const lines = first === null ? this.queue : [first, ...this.queue];
     this.queue = [];
@@ -354,19 +367,26 @@ class StdinRelay {
     this.sink = null;
   }
 
-  replay(): void {
-    this.queue = [...this.sent, ...this.queue];
-    this.sent = [];
+  replay(): string[] {
+    const dropped = this.dropped;
+    this.queue = [...this.replayable, ...this.queue];
+    this.replayable = [];
+    this.dropped = [];
+    return dropped;
   }
 
   private keep(line: string): void {
     if (this.pendingTranscript === null) return;
     if (existsSync(this.pendingTranscript)) {
       this.pendingTranscript = null;
-      this.sent = [];
-    } else if (parseStreamLine(line)?.type !== "control_response") {
-      this.sent.push(line);
+      this.replayable = [];
+      this.dropped = [];
+      return;
     }
+    const parsed = RelayLineSchema.safeParse(JsonTextSchema.safeParse(line).data);
+    if (!parsed.success) this.replayable.push(line);
+    else if (parsed.data.type === "control_request" && REPLAYED_REQUESTS.has(parsed.data.request.subtype)) this.replayable.push(line);
+    else if (parsed.data.type === "control_request") this.dropped.push(parsed.data.request_id);
   }
 
   private async pump(): Promise<void> {
@@ -612,7 +632,9 @@ export async function runSupervisor(argv: string[]): Promise<number> {
       refused = m.refused ?? refused;
       saveSessionFlags(m.sessionId, persistable, process.cwd());
       const prompt = resumable ? resumePrompt({ compacted, origin: m.origin }) : null;
-      if (!resumable) relay?.replay();
+      if (!resumable && relay !== null) {
+        for (const id of relay.replay()) process.stdout.write(controlErrorLine(id));
+      }
       firstLine = relay !== null && prompt !== null ? userLine(prompt) : null;
       pendingTranscript = resumable ? null : transcriptPath(m.sessionId);
       launchArgs = [resumable ? "--resume" : "--session-id", m.sessionId, ...(relay === null && prompt !== null ? [prompt] : []), ...persistable];
