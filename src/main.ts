@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 
 import { basename } from "node:path";
+import pkg from "../package.json" with { type: "json" };
 import { runSupervisor } from "./entries/supervisor.ts";
 import { runStatusline } from "./entries/statusline.ts";
 import { runSubagentStatusline } from "./entries/subagentstatusline.ts";
@@ -67,6 +68,7 @@ function printHelp(): void {
   ${c.cyan("tokenmaxxing uninstall")} [--yes]  print the targets, then remove supervisor + settings entries (refused without ${c.cyan("--yes")} when HOME is the login home)
 
   ${c.cyan("--json")}                  print one JSON document on stdout instead of text (status, config, check); every document carries ${c.bold("ok")}, failures add ${c.bold("error")}
+  ${c.cyan("--version")}               print the running package's version and exit (${c.cyan("-v")})
 
   ${c.dim("(aliased as")} ${c.cyan("xx")}${c.dim(")")} - then just run ${c.bold("claude")} as always; it switches accounts near quota automatically.`);
 }
@@ -205,6 +207,10 @@ async function main(): Promise<number> {
     case "-h":
     case "--help":
       printHelp();
+      return 0;
+    case "-v":
+    case "--version":
+      console.log(pkg.version);
       return 0;
     default:
       emitError({ message: `unknown command: ${sub}` });
