@@ -28,8 +28,8 @@ const StreamLineSchema = z.looseObject({
     .optional(),
 });
 
-export function parseStreamLine(line: string): { type: string; windows: UsageWindows | null } | null {
-  const parsed = StreamLineSchema.safeParse(JsonTextSchema.safeParse(line).data);
+export function parseStreamLine(value: unknown): { type: string; windows: UsageWindows | null } | null {
+  const parsed = StreamLineSchema.safeParse(value);
   if (!parsed.success) return null;
   const unified = parsed.data.type === "rate_limit_event" ? parsed.data.rate_limit_info?.unifiedWindows : undefined;
   const win = (w: z.infer<typeof StreamWindowSchema>): UsageWindow => ({ usedPercentage: Math.round(w.utilization * 100), resetsAt: w.resetsAt });

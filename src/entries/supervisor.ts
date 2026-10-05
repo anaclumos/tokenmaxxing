@@ -19,7 +19,7 @@ import { saveTermios } from "../lib/tty.ts";
 import { liveSessionId, loadSessionFlags, pruneStaleSessions, saveSessionFlags, writeRespawnMarker } from "../lib/sessions.ts";
 import { loadAccounts, loadConfig, readJsonFile, releaseWaitClaim, writeUsage } from "../lib/state.ts";
 import { gatedFamilies, modelFromFlag, parseStreamLine, scrubCredEnv } from "../lib/usage.ts";
-import { RespawnMarkerSchema, type Account, type Config, type ModelInfo, type UsageWindows } from "../lib/types.ts";
+import { JsonTextSchema, RespawnMarkerSchema, type Account, type Config, type ModelInfo, type UsageWindows } from "../lib/types.ts";
 import { errorMessage, log } from "../lib/log.ts";
 
 const SUBCOMMANDS = new Set([
@@ -270,10 +270,31 @@ function userLine(text: string): string {
 
 const STDOUT_QUIET_MS = 1000;
 
-function seatTee(seatId: string, model: ModelInfo | null): (line: string) => void {
+const TaskLineSchema = z.discriminatedUnion("subtype", [
+  z.looseObject({ type: z.literal("system"), subtype: z.literal("task_started"), task_id: z.string(), description: z.string(), session_id: z.string() }),
+  z.looseObject({ type: z.literal("system"), subtype: z.literal("task_notification"), task_id: z.string() }),
+  z.looseObject({ type: z.literal("system"), subtype: z.literal("task_updated"), task_id: z.string(), patch: z.looseObject({ status: z.enum(["completed", "failed", "killed"]) }) }),
+]);
+
+type OpenTasks = Map<string, { description: string; sessionId: string }>;
+
+function trackTask(open: OpenTasks, value: unknown): void {
+  const task = TaskLineSchema.safeParse(value);
+  if (!task.success) return;
+  if (task.data.subtype === "task_started") open.set(task.data.task_id, { description: task.data.description, sessionId: task.data.session_id });
+  else open.delete(task.data.task_id);
+}
+
+function stoppedTaskLines(open: OpenTasks): string[] {
+  return [...open].map(([id, task]) => `${JSON.stringify({ type: "system", subtype: "task_notification", task_id: id, status: "stopped", reason: "worker_restart", output_file: "", summary: `Stopped by a tokenmaxxing restart: ${task.description || id}`, uuid: crypto.randomUUID(), session_id: task.sessionId })}\n`);
+}
+
+function seatTee(seatId: string, model: ModelInfo | null, open: OpenTasks): (line: string) => void {
   let last: UsageWindows | null = null;
   return (line) => {
-    const msg = parseStreamLine(line);
+    const value = JsonTextSchema.safeParse(line).data;
+    trackTask(open, value);
+    const msg = parseStreamLine(value);
     if (msg?.windows) last = msg.windows;
     else if (msg?.type !== "assistant") return;
     if (last) writeUsage({ fiveHour: last.fiveHour, sevenDay: last.sevenDay, account: seatId, ts: Date.now(), model });
@@ -490,7 +511,8 @@ export async function runSupervisor(argv: string[]): Promise<number> {
       if (terminating) return null;
       const picked = (wanted == null ? null : (loadAccounts(claudePool).accounts.find((a) => a.id === wanted) ?? null)) ?? pickSeat(gate.launchedAt, model);
       log("supervisor.launch", { sid, respawns, seat: picked?.id.slice(0, 8) ?? null, args: launchArgs.join(" "), injected: firstLine !== null });
-      const tee = stream && picked ? seatTee(picked.id, model) : null;
+      const open: OpenTasks = new Map();
+      const tee = stream && picked ? seatTee(picked.id, model, open) : null;
       const spawned = Bun.spawn([real, ...launchArgs], {
         stdin: relay === null ? "inherit" : "pipe",
         stdout: tee === null ? "inherit" : "pipe",
@@ -520,14 +542,14 @@ export async function runSupervisor(argv: string[]): Promise<number> {
         });
       }
       releaseClaimLocked(sid);
-      return { child: spawned, seat: picked, drain };
+      return { child: spawned, seat: picked, drain, open };
     });
     if (launched == null) {
       await releaseClaim();
       return 143;
     }
 
-    const { child: proc, seat } = launched;
+    const { child: proc, seat, open } = launched;
     drainStdout = launched.drain;
     let seatCheckAt = 0;
     await raceMarkerOrExit({
@@ -556,6 +578,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
       rmSync(marker, { force: true });
       respawns++;
       noticeSid = m.sessionId;
+      for (const line of stoppedTaskLines(open)) process.stdout.write(line);
       const accounts = loadAccounts(claudePool).accounts;
       const label = accounts.find((a) => a.id === m.accountId)?.label ?? m.accountId.slice(0, 8);
       const walledUntil = accounts.find((a) => a.id === seat?.id)?.enforcedUntil ?? 0;
