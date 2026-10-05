@@ -228,7 +228,7 @@ function seatBlockedUntil(seatId: string, now: number, families: string[], cfg: 
   if (!account) return null;
   const observed = teeObservation(account);
   const current = observed ? { ...account, windows: observed.windows } : account;
-  const until = usableAt(current, { now, thresholds: thresholdBars(cfg), currentId: seatId, families, seats: null });
+  const until = usableAt({ ...current, hasCredits: false }, { now, thresholds: thresholdBars(cfg), currentId: seatId, families, seats: null });
   return until > now ? until : null;
 }
 
