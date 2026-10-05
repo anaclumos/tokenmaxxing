@@ -168,6 +168,14 @@ function transcriptPath(sessionId: string): string {
   return join(projectDirForCwd(), `${sessionId}.jsonl`);
 }
 
+function findTranscript(sessionId: string): string | null {
+  const own = transcriptPath(sessionId);
+  if (existsSync(own)) return own;
+  const root = join(paths.claudeDir, "projects");
+  if (!existsSync(root)) return null;
+  return readdirSync(root).map((dir) => join(root, dir, `${sessionId}.jsonl`)).find((p) => existsSync(p)) ?? null;
+}
+
 function latestSessionForCwd(): string | null {
   const projDir = projectDirForCwd();
   if (!existsSync(projDir)) return null;
@@ -319,6 +327,8 @@ function relayStdout(source: ReadableStream<Uint8Array>, onLine: (line: string) 
 class StdinRelay {
   private sink: FileSink | null = null;
   private queue: string[] = [];
+  private sent: string[] = [];
+  private pendingTranscript: string | null = null;
   private ended = false;
 
   constructor() {
@@ -330,8 +340,10 @@ class StdinRelay {
       });
   }
 
-  attach(sink: FileSink, first: string | null): void {
+  attach(sink: FileSink, first: string | null, pendingTranscript: string | null): void {
     this.sink = sink;
+    this.sent = [];
+    this.pendingTranscript = pendingTranscript;
     const lines = first === null ? this.queue : [first, ...this.queue];
     this.queue = [];
     for (const line of lines) this.forward(line);
@@ -340,6 +352,21 @@ class StdinRelay {
 
   detach(): void {
     this.sink = null;
+  }
+
+  replay(): void {
+    this.queue = [...this.sent, ...this.queue];
+    this.sent = [];
+  }
+
+  private keep(line: string): void {
+    if (this.pendingTranscript === null) return;
+    if (existsSync(this.pendingTranscript)) {
+      this.pendingTranscript = null;
+      this.sent = [];
+    } else if (parseStreamLine(line)?.type !== "control_response") {
+      this.sent.push(line);
+    }
   }
 
   private async pump(): Promise<void> {
@@ -351,6 +378,7 @@ class StdinRelay {
       try {
         this.sink.write(line);
         this.sink.flush();
+        this.keep(line);
         return;
       } catch (e) {
         log("supervisor.relay_write_failed", { err: errorMessage(e) });
@@ -449,15 +477,15 @@ export async function runSupervisor(argv: string[]): Promise<number> {
   }
   claimSid = sid;
 
-  if (resuming && base.length === 0) {
-    const persisted = loadSessionFlags(sid);
-    if (persisted) base = stripPositionals(persisted);
-  }
+  const persisted = resuming ? loadSessionFlags(sid) : null;
+  if (persisted && base.length === 0) base = stripPositionals(persisted);
+  const resume = resuming && (persisted === null || findTranscript(sid) !== null);
   const persistable = stripPositionals(base);
   saveSessionFlags(sid, persistable, process.cwd());
   pruneStaleSessions(Date.now());
 
-  let launchArgs = resuming ? ["--resume", sid, ...base] : ["--session-id", sid, ...base];
+  let launchArgs = resume ? ["--resume", sid, ...base] : ["--session-id", sid, ...base];
+  let pendingTranscript = resume ? null : transcriptPath(sid);
 
   mkdirSync(paths.respawnDir, { recursive: true });
   const marker = join(paths.respawnDir, sid);
@@ -506,7 +534,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
       });
       child = spawned;
       const drain = tee !== null && spawned.stdout instanceof ReadableStream ? relayStdout(spawned.stdout, tee) : null;
-      if (relay !== null) relay.attach(spawned.stdin!, firstLine);
+      if (relay !== null) relay.attach(spawned.stdin!, firstLine, pendingTranscript);
       firstLine = null;
       if (picked) {
         await recordPresenceOrStop({
@@ -559,8 +587,8 @@ export async function runSupervisor(argv: string[]): Promise<number> {
       const accounts = loadAccounts(claudePool).accounts;
       const label = accounts.find((a) => a.id === m.accountId)?.label ?? m.accountId.slice(0, 8);
       const walledUntil = accounts.find((a) => a.id === seat?.id)?.enforcedUntil ?? 0;
-      const transcript = transcriptPath(m.sessionId);
-      const resumable = existsSync(transcript);
+      const transcript = findTranscript(m.sessionId);
+      const resumable = transcript !== null;
       let compacted = false;
       if (m.compact && seat && resumable && walledUntil > Date.now()) {
         log("supervisor.compact_skipped", { sid: m.sessionId.slice(0, 8), seat: seat.id.slice(0, 8), until: walledUntil });
@@ -584,7 +612,9 @@ export async function runSupervisor(argv: string[]): Promise<number> {
       refused = m.refused ?? refused;
       saveSessionFlags(m.sessionId, persistable, process.cwd());
       const prompt = resumable ? resumePrompt({ compacted, origin: m.origin }) : null;
+      if (!resumable) relay?.replay();
       firstLine = relay !== null && prompt !== null ? userLine(prompt) : null;
+      pendingTranscript = resumable ? null : transcriptPath(m.sessionId);
       launchArgs = [resumable ? "--resume" : "--session-id", m.sessionId, ...(relay === null && prompt !== null ? [prompt] : []), ...persistable];
       continue;
     }
