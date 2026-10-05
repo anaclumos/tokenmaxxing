@@ -103,7 +103,7 @@ export const ConfigSchema = z
   .object({
     thresholds: z
       .object({
-        session: PercentSchema.default(98),
+        session: PercentSchema.default(90),
         weekly: PercentSchema.default(98),
         accounts: z.record(z.string(), z.object({ session: PercentSchema, weekly: PercentSchema, credits: z.boolean().default(false) })).default({}),
       })
