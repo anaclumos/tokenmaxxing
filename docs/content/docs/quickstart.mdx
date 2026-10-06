@@ -45,7 +45,7 @@ flowchart LR
   init["tokenmaxxing init<br/>verify the real claude<br/>pin it as claudeBin"] --> has{"pool already<br/>has accounts?"}
   has -->|"no"| login["run /login for your<br/>first pooled account"]
   login --> install["items 2 to 5 below:<br/>shim, entries, PATH,<br/>service units"]
-  has -->|"yes"| again["skip the login<br/>re-install the shim,<br/>the entries,<br/>and the service units<br/>add the PATH line<br/>as in item 4"]
+  has -->|"yes"| again["skip the login,<br/>re-install<br/>shim, entries,<br/>service units,<br/>add PATH line<br/>as in item 4"]
 ```
 
 `init` first verifies the real `claude` binary and pins its path as `claudeBin` in `config.json`, then does five things:
