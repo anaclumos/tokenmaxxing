@@ -13,7 +13,7 @@ import { codexSupervisorLink, ensurePathInRc, installCodexSupervisor, managedShe
 import { withLock } from "./lock.ts";
 import { errorMessage, log } from "./log.ts";
 import { codexPaths, codexPool, codexSeatFromEnv, optionalEnv } from "./paths.ts";
-import { isExhausted, onCredits, pickBest, pickEarliestReset, thresholdBars, type PickCtx } from "./picker.ts";
+import { isExhausted, landGrant, onCredits, pickBest, pickEarliestReset, thresholdBars, type PickCtx } from "./picker.ts";
 import { StoreUnusableError, type Observation, type Provider, type SampleReport, type SeatBorrow } from "./provider.ts";
 import { loadAccounts, loadConfig, pinBinOverride, saveAccounts, type Harvest } from "./state.ts";
 import { restoreTermios, saveTermios } from "./tty.ts";
@@ -34,7 +34,7 @@ function applyUsage(account: Account, usage: CodexUsage, at: number): void {
   account.windows = usage.windows;
   account.lastUsageAt = at;
   account.hasCredits = usage.hasCredits ?? undefined;
-  account.bankedReset = usage.bankedReset;
+  landGrant(account, usage.bankedReset, at);
   if (usage.email != null) account.email = usage.email;
   if (usage.planType != null) account.tier = usage.planType;
 }
@@ -301,9 +301,9 @@ export const codex: Provider = {
   samplePool,
   mergeWindows: (next) => next,
   swap: prepareMove,
-  useBankedReset: async (a) => {
+  useBankedReset: async (a, signal) => {
     const fresh = await freshCodexAuth(a, Date.now(), false);
-    return fresh.ok ? consumeCodexReset(fresh.auth) : { reset: false, detail: fresh.reason };
+    return fresh.ok ? consumeCodexReset(fresh.auth, signal) : { reset: false, detail: fresh.reason };
   },
   classifySwapError: (e) => (e instanceof CodexInvalidGrantError ? "dead-grant" : e instanceof StoreUnusableError ? "skip" : "fatal"),
   removeCredentials: async (a) => {

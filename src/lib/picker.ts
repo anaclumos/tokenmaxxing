@@ -1,6 +1,6 @@
 import { maxBy, minBy, sortBy } from "es-toolkit";
 import { familyTokens } from "./usage.ts";
-import type { Account, Bars, Config, Thresholds, Window } from "./types.ts";
+import type { Account, BankedReset, Bars, Config, Thresholds, Window } from "./types.ts";
 
 export function thresholdBars(cfg: Config): Bars {
   const bars = (t: Thresholds): Thresholds => ({ session: t.session - cfg.policy.projectionMargin, weekly: t.weekly });
@@ -120,6 +120,10 @@ export function wantsBankedReset(a: Account, bars: Bars, now: number): boolean {
   const weekly = weeklyWindow(a);
   const left = weeklyExpiry(a, now) - now;
   return a.bankedReset != null && weekly != null && liveUsed(weekly, now) >= barFor(a, weekly, bars, now) && Number.isFinite(left) && left > BANKED_RESET_LEAD_MS;
+}
+
+export function landGrant(a: Account, grant: BankedReset | undefined, sentAt: number): void {
+  if (sentAt > (a.resetClaimUntil ?? 0)) a.bankedReset = grant;
 }
 
 export function earliestReset(a: Account, now: number): number {

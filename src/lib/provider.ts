@@ -33,7 +33,7 @@ export type Provider = {
   samplePool(accounts: Account[], liveId: string | null, now: number): Promise<Map<string, SampleReport>>;
   mergeWindows(next: Window[], prev: Window[]): Window[];
   swap(target: Account): Promise<void>;
-  useBankedReset(account: Account): Promise<ResetClaim>;
+  useBankedReset(account: Account, signal: AbortSignal): Promise<ResetClaim>;
   classifySwapError(e: unknown): SwapFailure;
   removeCredentials(account: Account): Promise<void>;
   storeUsable(account: Account): Promise<boolean>;

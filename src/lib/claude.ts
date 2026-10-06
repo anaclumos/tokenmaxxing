@@ -122,13 +122,13 @@ async function prepareMove(target: Account): Promise<void> {
   log("move.prepared", { account: target.id.slice(0, 8), label: target.label });
 }
 
-async function useBankedReset(a: Account): Promise<ResetClaim> {
+async function useBankedReset(a: Account, signal: AbortSignal): Promise<ResetClaim> {
   const grant = a.bankedReset?.grant;
   const organizationUuid = a.oauthAccount?.organizationUuid;
   if (grant == null || organizationUuid == null) return { reset: false, detail: "no grant id or organization on the record" };
   const creds = await readStore(a.id);
   if (creds == null || isDeadCredential(creds) || creds.expiresAt <= Date.now()) return { reset: false, detail: "no unexpired access token in the store" };
-  return claimResetGrant({ accessToken: creds.accessToken, organizationUuid, grant });
+  return claimResetGrant({ accessToken: creds.accessToken, organizationUuid, grant }, signal);
 }
 
 async function storeUsable(a: Account): Promise<boolean> {

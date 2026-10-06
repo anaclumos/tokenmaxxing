@@ -95,14 +95,13 @@ export async function fetchCodexUsage(input: { auth: CodexAuthJson; at: number }
 }
 
 const RESET_URL = env("TOKENMAXXING_CODEX_RESET_URL", "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits/consume");
-const RESET_DEADLINE_MS = 25_000;
 const ConsumeResponseSchema = z.looseObject({ code: z.string() });
 
-export async function consumeCodexReset(auth: CodexAuthJson): Promise<ResetClaim> {
+export async function consumeCodexReset(auth: CodexAuthJson, signal: AbortSignal): Promise<ResetClaim> {
   const res = await http.post(RESET_URL, {
     headers: codexHeaders(auth),
     json: { redeem_request_id: crypto.randomUUID() },
-    signal: AbortSignal.timeout(RESET_DEADLINE_MS),
+    signal,
   });
   const text = await res.text();
   if (!res.ok) return { reset: false, detail: `HTTP ${res.status}: ${safeErrorDetail({ text })}` };

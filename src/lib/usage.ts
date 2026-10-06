@@ -269,14 +269,13 @@ export async function fetchUsageDirect(accessToken: string): Promise<UsageRead> 
   };
 }
 
-const RESET_DEADLINE_MS = 25_000;
 const ClaimResponseSchema = z.looseObject({ result: z.string(), reason: z.string().nullish() });
 
-export async function claimResetGrant(input: { accessToken: string; organizationUuid: string; grant: string }): Promise<ResetClaim> {
+export async function claimResetGrant(input: { accessToken: string; organizationUuid: string; grant: string }, signal: AbortSignal): Promise<ResetClaim> {
   const res = await http.post(new URL(`/api/organizations/${input.organizationUuid}/reset_rate_limits`, USAGE_URL), {
     headers: { Authorization: `Bearer ${input.accessToken}`, "anthropic-beta": "oauth-2025-04-20", "User-Agent": claudeUserAgent() },
     json: { program: "cedar_ember", grant_id: input.grant, request_id: crypto.randomUUID() },
-    signal: AbortSignal.timeout(RESET_DEADLINE_MS),
+    signal,
   });
   const text = await res.text();
   if (!res.ok) return { reset: false, detail: `HTTP ${res.status}: ${safeErrorDetail({ text })}` };

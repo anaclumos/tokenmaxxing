@@ -6,7 +6,7 @@ import { MAX_WAITERS_PER_ACCOUNT, isExhausted, landWindows, limitWindows, liveUs
 import { familyTokens } from "./usage.ts";
 import { errorMessage, log } from "./log.ts";
 import type { Observation, Provider, ResetClaim } from "./provider.ts";
-import type { Account, Bars, EnforcedLimit } from "./types.ts";
+import type { Account, Bars, Config, EnforcedLimit } from "./types.ts";
 
 export type SwapDecision = { swapped: boolean; account: Account | null; reason: string; waitUntil?: number };
 
@@ -58,19 +58,39 @@ function enforcedWall(limit: EnforcedLimit, account: Account, now: number): numb
   return limit.resetsAt ?? cachedReset ?? now + (span === "session" ? FIVE_HOURS_MS : WEEK_MS);
 }
 
-export async function useBankedResets(p: Provider, bars: Bars, now: number): Promise<void> {
-  if (!loadAccounts(p.pool).accounts.some((a) => wantsBankedReset(a, bars, now))) return;
-  const due = await withLock(p.pool.lockFile, () => {
+async function foldLive(p: Provider, a: Account, cfg: Config, now: number, bars: Bars): Promise<Observation | null> {
+  const obs = await p.observeLive(a, cfg, now, { probe: false, perModel: false });
+  if (obs && (a.lastUsageAt == null || obs.at > a.lastUsageAt)) landWindows(a, p.mergeWindows(obs.windows, a.windows), obs.at, bars);
+  return obs;
+}
+
+const CLAIM_DEADLINE_MS = 25_000;
+const CLAIM_HOLD_MS = 60_000;
+
+export async function useBankedResets(p: Provider, cfg: Config, now: number): Promise<void> {
+  const bars = thresholdBars(cfg);
+  const wanted = async (accounts: Account[]): Promise<Account[]> => {
+    const held = accounts.filter((a) => a.bankedReset != null);
+    for (const a of held) await foldLive(p, a, cfg, now, bars);
+    return held.filter((a) => wantsBankedReset(a, bars, now));
+  };
+  if ((await wanted(loadAccounts(p.pool).accounts)).length === 0) return;
+  const due = await withLock(p.pool.lockFile, async () => {
     const idx = loadAccounts(p.pool);
-    const picked = idx.accounts.filter((a) => wantsBankedReset(a, bars, now));
+    const picked = await wanted(idx.accounts);
     const claims = picked.map((a) => ({ ...a }));
-    for (const a of picked) a.bankedReset = undefined;
+    const until = Date.now() + CLAIM_HOLD_MS;
+    for (const a of picked) {
+      a.bankedReset = undefined;
+      a.resetClaimUntil = until;
+    }
     if (picked.length > 0) saveAccounts(p.pool, idx);
     return claims;
   });
+  const signal = AbortSignal.timeout(CLAIM_DEADLINE_MS);
   await Promise.all(
     due.map(async (a) => {
-      const claim = await p.useBankedReset(a).catch((e: unknown): ResetClaim => ({ reset: false, detail: errorMessage(e) }));
+      const claim = await p.useBankedReset(a, signal).catch((e: unknown): ResetClaim => ({ reset: false, detail: errorMessage(e) }));
       log("decide.banked_reset", { account: a.id.slice(0, 8), reset: claim.reset, detail: claim.detail.slice(0, 200) });
       if (!claim.reset) return;
       await withLock(p.pool.lockFile, () => {
@@ -89,7 +109,7 @@ export async function evaluateAndMaybeSwap(p: Provider, now = Date.now(), canRes
   const waiterId = canRespawn ? opts.waiterId : undefined;
   const cfg = loadConfig();
   const bars = thresholdBars(cfg);
-  if (enforced == null) await useBankedResets(p, bars, now);
+  if (enforced == null) await useBankedResets(p, cfg, now);
   const stored0 = loadAccounts(p.pool).accounts.find((a) => a.id === activeId);
   const walled0 = stored0?.enforcedUntil != null && stored0.enforcedUntil > now;
   const gated = opts.sessionFamilies ?? p.gatedFamilies(cfg);
@@ -133,9 +153,8 @@ export async function evaluateAndMaybeSwap(p: Provider, now = Date.now(), canRes
 
     let obs2: Observation | null = null;
     for (const a of idx.accounts) {
-      const obs = await p.observeLive(a, cfg, now, { probe: false, perModel: false });
+      const obs = await foldLive(p, a, cfg, now, bars);
       if (a === active) obs2 = obs;
-      if (obs && (a.lastUsageAt == null || obs.at > a.lastUsageAt)) landWindows(a, p.mergeWindows(obs.windows, a.windows), obs.at, bars);
     }
     saveAccounts(p.pool, idx);
 
