@@ -19,7 +19,7 @@ import { saveTermios } from "../lib/tty.ts";
 import { liveSessionId, loadSessionFlags, pruneStaleSessions, saveSessionFlags, writeRespawnMarker } from "../lib/sessions.ts";
 import { loadAccounts, loadConfig, readJsonFile, releaseWaitClaim, writeUsage } from "../lib/state.ts";
 import { gatedFamilies, modelFromFlag, parseStreamLine, scrubCredEnv } from "../lib/usage.ts";
-import { RespawnMarkerSchema, type Account, type Config, type ModelInfo, type UsageWindows } from "../lib/types.ts";
+import { JsonTextSchema, RespawnMarkerSchema, type Account, type Config, type ModelInfo, type UsageWindows } from "../lib/types.ts";
 import { errorMessage, log } from "../lib/log.ts";
 
 const SUBCOMMANDS = new Set([
@@ -168,6 +168,14 @@ function transcriptPath(sessionId: string): string {
   return join(projectDirForCwd(), `${sessionId}.jsonl`);
 }
 
+function findTranscript(sessionId: string): string | null {
+  const own = transcriptPath(sessionId);
+  if (existsSync(own)) return own;
+  const root = join(paths.claudeDir, "projects");
+  if (!existsSync(root)) return null;
+  return readdirSync(root).map((dir) => join(root, dir, `${sessionId}.jsonl`)).find((p) => existsSync(p)) ?? null;
+}
+
 function latestSessionForCwd(): string | null {
   const projDir = projectDirForCwd();
   if (!existsSync(projDir)) return null;
@@ -228,18 +236,18 @@ function seatBlockedUntil(seatId: string, now: number, families: string[], cfg: 
   if (!account) return null;
   const observed = teeObservation(account);
   const current = observed ? { ...account, windows: observed.windows } : account;
-  const until = usableAt(current, { now, thresholds: thresholdBars(cfg), currentId: seatId, families, seats: null });
+  const until = usableAt({ ...current, hasCredits: false }, { now, thresholds: thresholdBars(cfg), currentId: seatId, families, seats: null });
   return until > now ? until : null;
 }
 
-async function moveExhaustedSeat(seat: Account, sid: string, gate: MarkerGate, model: ModelInfo | null): Promise<boolean> {
+async function moveExhaustedSeat(seat: Account, sid: string, gate: MarkerGate, model: ModelInfo | null, refused: string[]): Promise<boolean> {
   try {
     const now = Date.now();
     const cfg = loadConfig();
     const families = gatedFamilies(model, cfg.policy.switchModels);
     const until = seatBlockedUntil(seat.id, now, families, cfg);
     if (until == null || until <= gate.overriddenUntil) return false;
-    const decision = await evaluateAndMaybeSwap(claude, now, true, null, { seatId: seat.id, sessionFamilies: families, waiterId: sid });
+    const decision = await evaluateAndMaybeSwap(claude, now, true, null, { seatId: seat.id, sessionFamilies: families, waiterId: sid, refused });
     log("supervisor.seat_exhausted", { seat: seat.id.slice(0, 8), until, reason: decision.reason, account: decision.account?.id.slice(0, 8), waitUntil: decision.waitUntil });
     if (decision.account && (decision.swapped || decision.waitUntil !== undefined)) {
       writeRespawnMarker({ session: { sid, launchedAt: gate.launchedAt, live: liveSessionId(sid) }, accountId: decision.account.id, waitUntil: decision.waitUntil ?? now, compact: true, origin: "seatwatch" });
@@ -316,9 +324,23 @@ function relayStdout(source: ReadableStream<Uint8Array>, onLine: (line: string) 
   };
 }
 
+const REPLAYED_REQUESTS = new Set(["initialize", "set_max_thinking_tokens", "set_model", "set_permission_mode"]);
+
+const RelayLineSchema = z.discriminatedUnion("type", [
+  z.looseObject({ type: z.literal("control_response") }),
+  z.looseObject({ type: z.literal("control_request"), request_id: z.string(), request: z.looseObject({ subtype: z.string() }) }),
+]);
+
+function controlErrorLine(requestId: string): string {
+  return `${JSON.stringify({ type: "control_response", response: { subtype: "error", request_id: requestId, error: "tokenmaxxing restarted Claude Code for an account move, and this request may or may not have run." } })}\n`;
+}
+
 class StdinRelay {
   private sink: FileSink | null = null;
   private queue: string[] = [];
+  private replayable: string[] = [];
+  private dropped: string[] = [];
+  private pendingTranscript: string | null = null;
   private ended = false;
 
   constructor() {
@@ -330,8 +352,11 @@ class StdinRelay {
       });
   }
 
-  attach(sink: FileSink, first: string | null): void {
+  attach(sink: FileSink, first: string | null, pendingTranscript: string | null): void {
     this.sink = sink;
+    this.replayable = [];
+    this.dropped = [];
+    this.pendingTranscript = pendingTranscript;
     const lines = first === null ? this.queue : [first, ...this.queue];
     this.queue = [];
     for (const line of lines) this.forward(line);
@@ -340,6 +365,28 @@ class StdinRelay {
 
   detach(): void {
     this.sink = null;
+  }
+
+  replay(): string[] {
+    const dropped = this.dropped;
+    this.queue = [...this.replayable, ...this.queue];
+    this.replayable = [];
+    this.dropped = [];
+    return dropped;
+  }
+
+  private keep(line: string): void {
+    if (this.pendingTranscript === null) return;
+    if (existsSync(this.pendingTranscript)) {
+      this.pendingTranscript = null;
+      this.replayable = [];
+      this.dropped = [];
+      return;
+    }
+    const parsed = RelayLineSchema.safeParse(JsonTextSchema.safeParse(line).data);
+    if (!parsed.success) this.replayable.push(line);
+    else if (parsed.data.type === "control_request" && REPLAYED_REQUESTS.has(parsed.data.request.subtype)) this.replayable.push(line);
+    else if (parsed.data.type === "control_request") this.dropped.push(parsed.data.request_id);
   }
 
   private async pump(): Promise<void> {
@@ -351,6 +398,7 @@ class StdinRelay {
       try {
         this.sink.write(line);
         this.sink.flush();
+        this.keep(line);
         return;
       } catch (e) {
         log("supervisor.relay_write_failed", { err: errorMessage(e) });
@@ -449,15 +497,15 @@ export async function runSupervisor(argv: string[]): Promise<number> {
   }
   claimSid = sid;
 
-  if (resuming && base.length === 0) {
-    const persisted = loadSessionFlags(sid);
-    if (persisted) base = stripPositionals(persisted);
-  }
+  const persisted = resuming ? loadSessionFlags(sid) : null;
+  if (persisted && base.length === 0) base = stripPositionals(persisted);
+  const resume = resuming && (persisted === null || findTranscript(sid) !== null);
   const persistable = stripPositionals(base);
   saveSessionFlags(sid, persistable, process.cwd());
   pruneStaleSessions(Date.now());
 
-  let launchArgs = resuming ? ["--resume", sid, ...base] : ["--session-id", sid, ...base];
+  let launchArgs = resume ? ["--resume", sid, ...base] : ["--session-id", sid, ...base];
+  let pendingTranscript = resume ? null : transcriptPath(sid);
 
   mkdirSync(paths.respawnDir, { recursive: true });
   const marker = join(paths.respawnDir, sid);
@@ -506,7 +554,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
       });
       child = spawned;
       const drain = tee !== null && spawned.stdout instanceof ReadableStream ? relayStdout(spawned.stdout, tee) : null;
-      if (relay !== null) relay.attach(spawned.stdin!, firstLine);
+      if (relay !== null) relay.attach(spawned.stdin!, firstLine, pendingTranscript);
       firstLine = null;
       if (picked) {
         await recordPresenceOrStop({
@@ -535,7 +583,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
       tick: async () => {
         if (existsSync(marker) && (await consumableMarker(marker, gate)) != null) return true;
         if (seat && !terminating && Date.now() >= seatCheckAt) {
-          const decided = await moveExhaustedSeat(seat, sid, gate, model);
+          const decided = await moveExhaustedSeat(seat, sid, gate, model, refused);
           seatCheckAt = Date.now() + (decided ? SEAT_RETRY_MS : SEAT_POLL_MS);
         }
         return false;
@@ -559,8 +607,11 @@ export async function runSupervisor(argv: string[]): Promise<number> {
       const accounts = loadAccounts(claudePool).accounts;
       const label = accounts.find((a) => a.id === m.accountId)?.label ?? m.accountId.slice(0, 8);
       const walledUntil = accounts.find((a) => a.id === seat?.id)?.enforcedUntil ?? 0;
-      const transcript = transcriptPath(m.sessionId);
-      const resumable = existsSync(transcript);
+      const transcript = findTranscript(m.sessionId);
+      const resumable = transcript !== null;
+      if (!resumable && relay !== null) {
+        for (const id of relay.replay()) process.stdout.write(controlErrorLine(id));
+      }
       let compacted = false;
       if (m.compact && seat && resumable && walledUntil > Date.now()) {
         log("supervisor.compact_skipped", { sid: m.sessionId.slice(0, 8), seat: seat.id.slice(0, 8), until: walledUntil });
@@ -585,6 +636,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
       saveSessionFlags(m.sessionId, persistable, process.cwd());
       const prompt = resumable ? resumePrompt({ compacted, origin: m.origin }) : null;
       firstLine = relay !== null && prompt !== null ? userLine(prompt) : null;
+      pendingTranscript = resumable ? null : transcriptPath(m.sessionId);
       launchArgs = [resumable ? "--resume" : "--session-id", m.sessionId, ...(relay === null && prompt !== null ? [prompt] : []), ...persistable];
       continue;
     }

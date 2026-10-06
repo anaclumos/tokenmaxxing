@@ -2,7 +2,7 @@ import { countBy } from "es-toolkit";
 import { CLAUDE_COMPACT_KILL_MS } from "./compact.ts";
 import { withLock } from "./lock.ts";
 import { loadAccounts, loadConfig, liveWaitClaims, releaseWaitClaim, replaceWaitClaim, saveAccounts } from "./state.ts";
-import { MAX_WAITERS_PER_ACCOUNT, isExhausted, landWindows, limitWindows, liveUsed, nextWeeklyReset, pickBest, pickWaitTarget, screensUntilReset, sessionWindow, thresholdBars, wantsBankedReset, weeklyWindow, type PickCtx } from "./picker.ts";
+import { MAX_WAITERS_PER_ACCOUNT, isExhausted, landWindows, limitWindows, liveUsed, nextWeeklyReset, onCredits, pickBest, pickWaitTarget, screensUntilReset, sessionWindow, thresholdBars, wantsBankedReset, weeklyWindow, type PickCtx } from "./picker.ts";
 import { familyTokens } from "./usage.ts";
 import { errorMessage, log } from "./log.ts";
 import type { Observation, Provider, ResetClaim } from "./provider.ts";
@@ -15,6 +15,7 @@ export type EvalOpts = {
   sessionFamilies?: string[];
   waiterId?: string;
   exclude?: string[];
+  refused?: string[];
 };
 
 const MOVE_CLAIM_MS = 2 * CLAUDE_COMPACT_KILL_MS;
@@ -27,7 +28,8 @@ function isOver(account: Account | undefined, observed: Observation | null, ctx:
   if (account.needsReauth === true) return true;
   if (account.enforcedUntil != null && account.enforcedUntil > ctx.now) return true;
   if (!observed) return false;
-  return isExhausted({ ...account, windows: observed.windows }, ctx);
+  const seen = { ...account, windows: observed.windows };
+  return isExhausted(seen, ctx) || onCredits(seen, ctx);
 }
 
 function modelKindCovered(limit: EnforcedLimit, account: Account, now: number, bars: Bars): boolean {
@@ -167,7 +169,9 @@ export async function evaluateAndMaybeSwap(p: Provider, now = Date.now(), canRes
       const cur = loadAccounts(p.pool);
       const seat = seatOf(cur);
       const ctx: PickCtx = { now, thresholds: bars, currentId: seat?.id ?? null, families: switchFamilies, seats };
-      const best = pickBest(usable(cur.accounts), ctx);
+      const credited = !enforced2 && seat != null && !seat.needsReauth && !isExhausted(seat, ctx) && onCredits(seat, ctx);
+      const best = pickBest(usable(cur.accounts).filter((a) => !(credited && opts.refused?.includes(a.id))), ctx);
+      if (credited && (best == null || onCredits(best, ctx))) return { swapped: false, account: null, reason: "no-plan-headroom" };
       if (!best) break;
       try {
         await p.swap(best);
