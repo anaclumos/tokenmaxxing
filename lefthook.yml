@@ -1,7 +1,0 @@
-assert_lefthook_installed: true
-
-pre-push:
-  jobs:
-    - name: test
-      script: test.sh
-      args: "--"
