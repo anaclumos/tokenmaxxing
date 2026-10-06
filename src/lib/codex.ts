@@ -8,7 +8,7 @@ import { codexIdentityOf, codexStoreUsable, deleteCodexStoreAuth, ensureCodexSto
 import { CodexInvalidGrantError, CodexRefreshFailedError, refreshCodexAuth } from "./codexoauth.ts";
 import { deletePiStore } from "./piauth.ts";
 import { PI_PRESENCE_PREFIX, livingPresences, seatCounts, writePresence } from "./presence.ts";
-import { CodexUsageReadError, codexLimitLabel, fetchCodexUsage } from "./codexusage.ts";
+import { CodexUsageReadError, codexLimitLabel, consumeCodexReset, fetchCodexUsage } from "./codexusage.ts";
 import { codexSupervisorLink, ensurePathInRc, installCodexSupervisor, managedShellRcSkipLines, shellRcPath } from "./install.ts";
 import { withLock } from "./lock.ts";
 import { errorMessage, log } from "./log.ts";
@@ -34,6 +34,7 @@ function applyUsage(account: Account, usage: CodexUsage, at: number): void {
   account.windows = usage.windows;
   account.lastUsageAt = at;
   account.hasCredits = usage.hasCredits ?? undefined;
+  account.bankedReset = usage.bankedReset;
   if (usage.email != null) account.email = usage.email;
   if (usage.planType != null) account.tier = usage.planType;
 }
@@ -300,6 +301,10 @@ export const codex: Provider = {
   samplePool,
   mergeWindows: (next) => next,
   swap: prepareMove,
+  useBankedReset: async (a) => {
+    const fresh = await freshCodexAuth(a, Date.now(), false);
+    return fresh.ok ? consumeCodexReset(fresh.auth) : { reset: false, detail: fresh.reason };
+  },
   classifySwapError: (e) => (e instanceof CodexInvalidGrantError ? "dead-grant" : e instanceof StoreUnusableError ? "skip" : "fatal"),
   removeCredentials: async (a) => {
     deleteCodexStoreAuth(a.id);

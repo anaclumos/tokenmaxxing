@@ -117,6 +117,7 @@ async function collect(p: Provider, cfg: Config, now: number, cached: boolean): 
           if (a.lastUsageAt != null && (stored.lastUsageAt == null || a.lastUsageAt > stored.lastUsageAt)) {
             landWindows(stored, p.mergeWindows(a.windows, stored.windows), a.lastUsageAt, bars);
             stored.hasCredits = a.hasCredits;
+            stored.bankedReset = a.bankedReset;
             if (a.email != null) stored.email = a.email;
             if (a.tier != null) stored.tier = a.tier;
             dirty = true;

@@ -60,6 +60,11 @@ export function teeObservation(account: Account): Observation | null {
   return { windows: mergeWindows(aggregate, account.windows), at };
 }
 
+export function landRead(account: Account, usage: UsageWindows, at: number, thresholds: Bars): void {
+  landWindows(account, mergeWindows(windowsOf(usage, at), account.windows), at, thresholds);
+  account.bankedReset = usage.bankedReset;
+}
+
 export function foldTee(account: Account, thresholds: Bars): boolean {
   const observed = teeObservation(account);
   if (!observed || (account.lastUsageAt != null && observed.at <= account.lastUsageAt)) return false;
@@ -198,7 +203,7 @@ export async function sampleOldest(cfg: Config): Promise<void> {
           dirty = true;
         }
         if (stored && outcome.ok && (stored.lastUsageAt == null || startedAt > stored.lastUsageAt)) {
-          landWindows(stored, mergeWindows(windowsOf(outcome.usage, startedAt), stored.windows), startedAt, thresholdBars(cfg));
+          landRead(stored, outcome.usage, startedAt, thresholdBars(cfg));
           dirty = true;
         }
         if (dirty) saveAccounts(claudePool, idx);

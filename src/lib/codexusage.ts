@@ -4,6 +4,7 @@ import { errorMessage } from "./log.ts";
 import { env } from "./paths.ts";
 import { EpochSecondsSchema, JsonTextSchema, type CodexAuthJson, type CodexUsage, type Window } from "./types.ts";
 import { codexIdentityOf } from "./codexauth.ts";
+import type { ResetClaim } from "./provider.ts";
 import { familyTokens } from "./usage.ts";
 
 export const CODEX_USAGE_URL = "https://chatgpt.com/backend-api/wham/usage";
@@ -33,6 +34,7 @@ const WireUsageSchema = z.looseObject({
   plan_type: z.string().nullish(),
   rate_limit: WireRateLimitSchema.nullish(),
   credits: z.looseObject({ has_credits: z.boolean().nullish() }).nullish(),
+  rate_limit_reset_credits: z.looseObject({ available_count: z.number() }).nullish(),
   additional_rate_limits: z
     .array(z.looseObject({ limit_name: z.string(), rate_limit: WireRateLimitSchema.nullish() }))
     .nullish(),
@@ -53,18 +55,19 @@ function toWindows(rateLimit: z.infer<typeof WireRateLimitSchema> | null | undef
   return out;
 }
 
+function codexHeaders(auth: CodexAuthJson): Record<string, string> {
+  return {
+    Authorization: `Bearer ${auth.tokens.access_token}`,
+    "ChatGPT-Account-Id": codexIdentityOf({ auth }).accountId,
+    "User-Agent": "codex-cli",
+  };
+}
+
 export async function fetchCodexUsage(input: { auth: CodexAuthJson; at: number }): Promise<CodexUsage> {
   const { auth, at } = input;
-  const identity = codexIdentityOf({ auth });
   let res: Response;
   try {
-    res = await http.get(USAGE_URL, {
-      headers: {
-        Authorization: `Bearer ${auth.tokens.access_token}`,
-        "ChatGPT-Account-Id": identity.accountId,
-        "User-Agent": "codex-cli",
-      },
-    });
+    res = await http.get(USAGE_URL, { headers: codexHeaders(auth) });
   } catch (e) {
     throw new CodexUsageReadError(`endpoint unreachable: ${errorMessage(e)}`);
   }
@@ -83,11 +86,28 @@ export async function fetchCodexUsage(input: { auth: CodexAuthJson; at: number }
     email: wire.email ?? null,
     planType: wire.plan_type ?? null,
     hasCredits: wire.credits?.has_credits ?? null,
+    bankedReset: (wire.rate_limit_reset_credits?.available_count ?? 0) > 0 ? { grant: null } : undefined,
     windows: [
       ...toWindows(wire.rate_limit, null, at),
       ...(wire.additional_rate_limits ?? []).flatMap((row) => toWindows(row.rate_limit, row.limit_name, at)),
     ],
   };
+}
+
+const RESET_URL = env("TOKENMAXXING_CODEX_RESET_URL", "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits/consume");
+const RESET_DEADLINE_MS = 25_000;
+const ConsumeResponseSchema = z.looseObject({ code: z.string() });
+
+export async function consumeCodexReset(auth: CodexAuthJson): Promise<ResetClaim> {
+  const res = await http.post(RESET_URL, {
+    headers: codexHeaders(auth),
+    json: { redeem_request_id: crypto.randomUUID() },
+    signal: AbortSignal.timeout(RESET_DEADLINE_MS),
+  });
+  const text = await res.text();
+  if (!res.ok) return { reset: false, detail: `HTTP ${res.status}: ${safeErrorDetail({ text })}` };
+  const code = ConsumeResponseSchema.safeParse(JsonTextSchema.safeParse(text).data).data?.code;
+  return { reset: code === "reset", detail: code ?? "unreadable body" };
 }
 
 const LIMIT_LABEL_ABBREVIATIONS = new Map([["reserve", "rsrv"]]);

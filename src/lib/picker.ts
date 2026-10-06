@@ -114,6 +114,14 @@ export function weeklyExpiry(a: Account, now: number): number {
   return nextWeeklyReset(weeklyWindow(a)?.resetsAt ?? null, now) ?? Number.POSITIVE_INFINITY;
 }
 
+const BANKED_RESET_LEAD_MS = 3 * 24 * 60 * 60 * 1000;
+
+export function wantsBankedReset(a: Account, bars: Bars, now: number): boolean {
+  const weekly = weeklyWindow(a);
+  const left = weeklyExpiry(a, now) - now;
+  return a.bankedReset != null && weekly != null && liveUsed(weekly, now) >= barFor(a, weekly, bars, now) && Number.isFinite(left) && left > BANKED_RESET_LEAD_MS;
+}
+
 export function earliestReset(a: Account, now: number): number {
   const session = sessionWindow(a)?.resetsAt;
   return Math.min(session != null && session > now ? session : Number.POSITIVE_INFINITY, weeklyExpiry(a, now));

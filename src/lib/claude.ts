@@ -9,14 +9,14 @@ import { withLock } from "./lock.ts";
 import { errorMessage, log } from "./log.ts";
 import { claudeTierLabel, describeIdentity, fetchTokenIdentity, isDeadCredential, InvalidGrantError } from "./oauth.ts";
 import { claudePool, env, paths, seatFromEnv, storeDirFor } from "./paths.ts";
-import { MAX_WAITERS_PER_ACCOUNT, landWindows, pickBest, pickEarliestReset, pickWaitTarget, thresholdBars, type PickCtx } from "./picker.ts";
+import { MAX_WAITERS_PER_ACCOUNT, pickBest, pickEarliestReset, pickWaitTarget, thresholdBars, type PickCtx } from "./picker.ts";
 import { deletePiStore } from "./piauth.ts";
 import { livingPresences, writePresence } from "./presence.ts";
-import { StoreUnusableError, type Observation, type Provider, type SampleReport, type SeatBorrow } from "./provider.ts";
-import { claimSample, foldTee, readyToSample, runSample, sampleAccountUsage, sampleDue, sampleIntervalMs, teeObservation, usageBlockedUntil } from "./sample.ts";
+import { StoreUnusableError, type Observation, type Provider, type ResetClaim, type SampleReport, type SeatBorrow } from "./provider.ts";
+import { claimSample, foldTee, landRead, readyToSample, runSample, sampleAccountUsage, sampleDue, sampleIntervalMs, teeObservation, usageBlockedUntil } from "./sample.ts";
 import { clearUsageSnapshot, liveWaitClaims, loadAccounts, loadConfig, loadUsageSnapshot, pinBinOverride, readJsonFile, saveAccounts, type Harvest } from "./state.ts";
 import { saveTermios, restoreTermios } from "./tty.ts";
-import { fetchUsageDirect, gatedFamilies, mergeWindows, modelFromFlag, scrubCredEnv, windowsOf } from "./usage.ts";
+import { claimResetGrant, fetchUsageDirect, gatedFamilies, mergeWindows, modelFromFlag, scrubCredEnv, windowsOf } from "./usage.ts";
 import { CredentialBlobSchema, JsonTextSchema, OAuthAccountSchema, type Account, type Config, type ModelInfo } from "./types.ts";
 import { c } from "../cli/render.ts";
 
@@ -49,7 +49,7 @@ async function observeLive(account: Account, cfg: Config, now: number, opts: { p
       if (outcome.ok) {
         a.probeFails = 0;
         if (a.lastUsageAt == null || startedAt > a.lastUsageAt) {
-          landWindows(a, mergeWindows(windowsOf(outcome.usage, startedAt), a.windows), startedAt, thresholdBars(cfg));
+          landRead(a, outcome.usage, startedAt, thresholdBars(cfg));
         }
       } else {
         a.probeFails = (a.probeFails ?? 0) + 1;
@@ -87,14 +87,14 @@ async function samplePool(accounts: Account[], _liveId: string | null, now: numb
         return;
       }
       a.lastProbeAt = now;
+      const startedAt = Date.now();
       const outcome = await runSample(a, ready);
       if (!outcome.ok) {
         if (outcome.retryAt != null) a.usageRetryAt = outcome.retryAt;
         reports.set(a.id, { ok: false, reason: outcome.reason });
         return;
       }
-      const at = Date.now();
-      landWindows(a, mergeWindows(windowsOf(outcome.usage, at), a.windows), at, bars);
+      landRead(a, outcome.usage, startedAt, bars);
       reports.set(a.id, { ok: true, source: "probe" });
     }),
   );
@@ -120,6 +120,15 @@ async function prepareMove(target: Account): Promise<void> {
     throw new InvalidGrantError(`${target.label}'s store was cleared after a failed refresh - re-auth with \`tokenmaxxing auth ${target.label}\``);
   }
   log("move.prepared", { account: target.id.slice(0, 8), label: target.label });
+}
+
+async function useBankedReset(a: Account): Promise<ResetClaim> {
+  const grant = a.bankedReset?.grant;
+  const organizationUuid = a.oauthAccount?.organizationUuid;
+  if (grant == null || organizationUuid == null) return { reset: false, detail: "no grant id or organization on the record" };
+  const creds = await readStore(a.id);
+  if (creds == null || isDeadCredential(creds) || creds.expiresAt <= Date.now()) return { reset: false, detail: "no unexpired access token in the store" };
+  return claimResetGrant({ accessToken: creds.accessToken, organizationUuid, grant });
 }
 
 async function storeUsable(a: Account): Promise<boolean> {
@@ -339,6 +348,7 @@ export const claude: Provider = {
   samplePool,
   mergeWindows,
   swap: prepareMove,
+  useBankedReset,
   classifySwapError: (e) => (e instanceof InvalidGrantError ? "dead-grant" : e instanceof StoreUnusableError ? "skip" : "fatal"),
   removeCredentials,
   storeUsable,

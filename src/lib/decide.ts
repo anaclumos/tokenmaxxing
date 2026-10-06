@@ -2,10 +2,10 @@ import { countBy } from "es-toolkit";
 import { CLAUDE_COMPACT_KILL_MS } from "./compact.ts";
 import { withLock } from "./lock.ts";
 import { loadAccounts, loadConfig, liveWaitClaims, releaseWaitClaim, replaceWaitClaim, saveAccounts } from "./state.ts";
-import { MAX_WAITERS_PER_ACCOUNT, isExhausted, landWindows, limitWindows, liveUsed, nextWeeklyReset, pickBest, pickWaitTarget, screensUntilReset, sessionWindow, thresholdBars, weeklyWindow, type PickCtx } from "./picker.ts";
+import { MAX_WAITERS_PER_ACCOUNT, isExhausted, landWindows, limitWindows, liveUsed, nextWeeklyReset, pickBest, pickWaitTarget, screensUntilReset, sessionWindow, thresholdBars, wantsBankedReset, weeklyWindow, type PickCtx } from "./picker.ts";
 import { familyTokens } from "./usage.ts";
 import { errorMessage, log } from "./log.ts";
-import type { Observation, Provider } from "./provider.ts";
+import type { Observation, Provider, ResetClaim } from "./provider.ts";
 import type { Account, Bars, EnforcedLimit } from "./types.ts";
 
 export type SwapDecision = { swapped: boolean; account: Account | null; reason: string; waitUntil?: number };
@@ -56,11 +56,38 @@ function enforcedWall(limit: EnforcedLimit, account: Account, now: number): numb
   return limit.resetsAt ?? cachedReset ?? now + (span === "session" ? FIVE_HOURS_MS : WEEK_MS);
 }
 
+export async function useBankedResets(p: Provider, bars: Bars, now: number): Promise<void> {
+  if (!loadAccounts(p.pool).accounts.some((a) => wantsBankedReset(a, bars, now))) return;
+  const due = await withLock(p.pool.lockFile, () => {
+    const idx = loadAccounts(p.pool);
+    const picked = idx.accounts.filter((a) => wantsBankedReset(a, bars, now));
+    const claims = picked.map((a) => ({ ...a }));
+    for (const a of picked) a.bankedReset = undefined;
+    if (picked.length > 0) saveAccounts(p.pool, idx);
+    return claims;
+  });
+  await Promise.all(
+    due.map(async (a) => {
+      const claim = await p.useBankedReset(a).catch((e: unknown): ResetClaim => ({ reset: false, detail: errorMessage(e) }));
+      log("decide.banked_reset", { account: a.id.slice(0, 8), reset: claim.reset, detail: claim.detail.slice(0, 200) });
+      if (!claim.reset) return;
+      await withLock(p.pool.lockFile, () => {
+        const idx = loadAccounts(p.pool);
+        const stored = idx.accounts.find((x) => x.id === a.id);
+        if (!stored) return;
+        landWindows(stored, p.mergeWindows([], stored.windows), Date.now(), bars);
+        saveAccounts(p.pool, idx);
+      });
+    }),
+  );
+}
+
 export async function evaluateAndMaybeSwap(p: Provider, now = Date.now(), canRespawn = false, enforced: EnforcedLimit | null = null, opts: EvalOpts = {}): Promise<SwapDecision> {
   const activeId = opts.seatId === undefined ? p.liveId() : opts.seatId;
   const waiterId = canRespawn ? opts.waiterId : undefined;
   const cfg = loadConfig();
   const bars = thresholdBars(cfg);
+  if (enforced == null) await useBankedResets(p, bars, now);
   const stored0 = loadAccounts(p.pool).accounts.find((a) => a.id === activeId);
   const walled0 = stored0?.enforcedUntil != null && stored0.enforcedUntil > now;
   const gated = opts.sessionFamilies ?? p.gatedFamilies(cfg);

@@ -8,6 +8,8 @@ export type SampleReport = { ok: true; source: "statusline" | "probe" | "cached"
 
 export type SwapFailure = "dead-grant" | "skip" | "fatal";
 
+export type ResetClaim = { reset: boolean; detail: string };
+
 export type SeatBorrow = { store: string; id: string; reused: boolean } | { denied: string } | null;
 
 export class StoreUnusableError extends Error {
@@ -31,6 +33,7 @@ export type Provider = {
   samplePool(accounts: Account[], liveId: string | null, now: number): Promise<Map<string, SampleReport>>;
   mergeWindows(next: Window[], prev: Window[]): Window[];
   swap(target: Account): Promise<void>;
+  useBankedReset(account: Account): Promise<ResetClaim>;
   classifySwapError(e: unknown): SwapFailure;
   removeCredentials(account: Account): Promise<void>;
   storeUsable(account: Account): Promise<boolean>;
