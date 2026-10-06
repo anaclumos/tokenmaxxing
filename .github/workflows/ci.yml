@@ -11,27 +11,34 @@ permissions:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.CI_RUNNER == 'github' && 'ubuntu-24.04' || fromJSON('["self-hosted","linux","x64","check"]') }}
     steps:
       - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
       - run: bun install --frozen-lockfile
       - run: bun run typecheck
       - name: Pack and verify the artifact
+        env:
+          BUN_INSTALL: ${{ runner.temp }}/bun
         run: |
           npm pack
-          tar tvf tokenmaxxing-*.tgz > /tmp/tarlist.txt
-          grep -E "^-rwx[-rwx]+ .* package/src/main.ts$" /tmp/tarlist.txt
+          tar tvf tokenmaxxing-*.tgz > "$RUNNER_TEMP/tarlist.txt"
+          grep -E "^-rwx[-rwx]+ .* package/src/main.ts$" "$RUNNER_TEMP/tarlist.txt"
           bun add -g "$PWD"/tokenmaxxing-*.tgz
-          tokenmaxxing help
+          "$BUN_INSTALL/bin/tokenmaxxing" help
 
   nix:
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.CI_RUNNER == 'github' && 'ubuntu-24.04' || fromJSON('["self-hosted","linux","x64","check"]') }}
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
       - uses: DeterminateSystems/nix-installer-action@v22
+        if: runner.environment == 'github-hosted'
       - uses: DeterminateSystems/magic-nix-cache-action@v14
+        if: runner.environment == 'github-hosted'
         with:
           use-flakehub: false
       - name: Build flake package
@@ -47,7 +54,7 @@ jobs:
   publish:
     if: github.ref == 'refs/heads/main'
     needs: test
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     concurrency:
       group: publish
       cancel-in-progress: false

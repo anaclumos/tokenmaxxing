@@ -124,7 +124,7 @@ flowchart LR
   xs -->|"symlinks"| shared
 ```
 
-The store holds only `auth.json`. Every other entry in `~/.pi/agent` (settings, sessions, extensions, themes, the managed `fd` and `rg` binaries) is linked into it by symlink, and pi writes those files in place, so settings and transcripts stay shared across accounts.
+The store holds only `auth.json`. Every other entry in `~/.pi/agent` (settings, sessions, extensions, themes, the managed `fd` and `rg` binaries) is linked into it by symlink, except an entry whose name starts with `auth.json` or ends in `.lock`, because pi takes its lock in a directory beside the file it opened and a linked lock reads as held forever once released. pi writes those files in place, so settings and transcripts stay shared across accounts.
 
 A file pi creates for the first time inside a store stays in that store. So before linking, tokenmaxxing creates the shared entries pi writes when `~/.pi/agent` lacks them:
 

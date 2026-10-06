@@ -160,8 +160,15 @@ export function stripPositionals(argv: string[]): string[] {
   return out;
 }
 
+const PROJECT_DIR_MAX = 200;
+
 function projectDirForCwd(): string {
-  return join(paths.claudeDir, "projects", process.cwd().replace(/[^a-zA-Z0-9]/g, "-"));
+  const cwd = process.cwd();
+  const name = cwd.replace(/[^a-zA-Z0-9]/g, "-");
+  if (name.length <= PROJECT_DIR_MAX) return join(paths.claudeDir, "projects", name);
+  let hash = 0;
+  for (let i = 0; i < cwd.length; i++) hash = ((hash << 5) - hash + cwd.charCodeAt(i)) | 0;
+  return join(paths.claudeDir, "projects", `${name.slice(0, PROJECT_DIR_MAX)}-${Math.abs(hash).toString(36)}`);
 }
 
 function transcriptPath(sessionId: string): string {
