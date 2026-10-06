@@ -227,7 +227,7 @@ A SessionStart move is in the second group because a prompt sent inside the mark
 | Terminal | the positional argument after the session id | stderr |
 | Harness that drives claude with `--input-format stream-json` | the first `user` line of each relaunched process | stdout, as `system` lines of subtype `informational` and level `warning` |
 
-A harness session that drives claude with `--input-format stream-json` ignores a positional prompt, so there the supervisor owns stdin and relays the harness's JSON lines to the child through a pipe. The supervisor's notices are the compaction, the move, the depleted-pool wait with its resume time, the resume, and a fatal that ends the session. The stdout line is the shape Claude Code uses for its own print-mode notices, so a harness such as T3 Code shows them in the conversation and the stream stays parseable.
+A harness session that drives claude with `--input-format stream-json` ignores a positional prompt, so there the supervisor owns stdin and relays the harness's JSON lines to the child through a pipe. It sends each relaunched process the latest setup requests the harness sent (`initialize`, which carries the harness's appended system prompt, hooks, and in-process MCP servers, and the requests that set the model, the permission mode, and the thinking budget), and then writes the prompt as its first `user` line. The supervisor's notices are the compaction, the move, the depleted-pool wait with its resume time, the resume, and a fatal that ends the session. The stdout line is the shape Claude Code uses for its own print-mode notices, so a harness such as T3 Code shows them in the conversation and the stream stays parseable.
 
 ### A session with no transcript
 
