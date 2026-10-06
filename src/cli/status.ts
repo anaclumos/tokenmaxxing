@@ -41,17 +41,17 @@ type PoolReport = {
 
 export type StatusReport = { now: number; claude: PoolReport; codex: PoolReport; grok: PoolReport; opencodeGo: PoolReport };
 
-function currentWindow(a: Account, w: Window, bars: Bars, now: number): WindowReport {
+function currentWindow(a: Account, w: Window, bars: Bars | null, now: number): WindowReport {
   const passed = w.resetsAt != null && w.resetsAt <= now;
   return {
-    usedPercentage: passed ? 0 : w.usedPercentage,
-    bufferedPercentage: bufferedUsed(a, w, bars, now),
+    usedPercentage: liveUsed(w, now),
+    bufferedPercentage: bars == null ? liveUsed(w, now) : bufferedUsed(a, w, bars, now),
     resetsAt: isSessionWindow(w) ? (passed ? null : w.resetsAt) : nextWeeklyReset(w.resetsAt, now),
     windowSeconds: w.windowSeconds,
   };
 }
 
-export function usageReport(a: Account, bars: Bars, now: number): UsageReport | null {
+export function usageReport(a: Account, bars: Bars | null, now: number): UsageReport | null {
   if (a.lastUsageAt == null) return null;
   const session = sessionWindow(a);
   const week = weeklyWindow(a);
@@ -152,7 +152,7 @@ async function collect(p: Provider, cfg: Config, now: number, cached: boolean): 
       needsReauth: a.needsReauth === true,
       exhausted: isExhausted(a, ctx),
       thresholds: own.get(a.label) ?? null,
-      usage: usageReport(a, bars, now),
+      usage: usageReport(a, p.statusOnly ? null : bars, now),
       usageAt: a.lastUsageAt ?? null,
       limitsAt: limits.length > 0 ? Math.max(...limits.map((w) => w.sampledAt)) : null,
       sample: reports.get(a.id) ?? (cached ? { ok: true, source: "cached" } : { ok: false, reason: "not sampled" }),
@@ -246,7 +246,7 @@ function card(p: Provider, a: StatusAccount, now: number, staleAfterMs: number):
 
 function renderPool(p: Provider, pool: PoolReport, header: string, now: number, staleAfterMs: number): void {
   console.log(c.dim(header));
-  console.log(c.dim("buffered usage quota: percent of each account's switch threshold, so it reads higher than the usage Claude or Codex reports"));
+  if (!p.statusOnly) console.log(c.dim("buffered usage quota: percent of each account's switch threshold, so it reads higher than the usage Claude or Codex reports"));
   console.log();
   renderGrid(pool.accounts.map((a) => card(p, a, now, staleAfterMs)));
   if (pool.gatedNote) {
