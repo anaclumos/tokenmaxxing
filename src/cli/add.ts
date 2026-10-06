@@ -1,14 +1,18 @@
 import { withLock } from "../lib/lock.ts";
 import type { Provider } from "../lib/provider.ts";
-import { loadAccounts, saveAccounts, upsertAccount } from "../lib/state.ts";
-import { sessionWindow, weeklyWindow } from "../lib/picker.ts";
+import { loadAccounts, loadConfig, saveAccounts, upsertAccount } from "../lib/state.ts";
+import { bufferedUsed, sessionWindow, thresholdBars, weeklyWindow } from "../lib/picker.ts";
 import { c, count } from "./render.ts";
-import type { Account } from "../lib/types.ts";
+import type { Account, Window } from "../lib/types.ts";
 
 export function usageNote(account: Account): string {
   const session = sessionWindow(account);
   const week = weeklyWindow(account);
-  return session && week ? ` (session ${session.usedPercentage}% / week ${week.usedPercentage}%)` : "";
+  if (!session || !week) return "";
+  const bars = thresholdBars(loadConfig());
+  const now = Date.now();
+  const pct = (w: Window) => Math.round(bufferedUsed(account, w, bars, now));
+  return ` (session ${pct(session)}% / week ${pct(week)}%)`;
 }
 
 export async function cmdAdd(p: Provider): Promise<number> {
