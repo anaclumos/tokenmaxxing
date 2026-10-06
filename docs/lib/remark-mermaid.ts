@@ -17,7 +17,7 @@ function walk(node: Node) {
         name: 'Mermaid',
         attributes: [{ type: 'mdxJsxAttribute', name: 'chart', value: child.value }],
         children: [],
-        data: { _stringify: { node: child } },
+        data: { _stringify: { text: '```mermaid\n' + child.value + '\n```' } },
       } satisfies Node;
     }
     walk(child);
