@@ -80,6 +80,17 @@ flowchart TD
 
 See [How switching decides](/switching#the-bars).
 
+## Buffered usage quota
+
+Every displayed usage percent is measured against the account's switch threshold, not against the provider's full limit. This covers the statusline, `status`, the usage note of `add` and `auth`, and the usage hub.
+
+- The threshold is the account's own entry in `thresholds.accounts`, else the global threshold, minus `policy.projectionMargin` for the session window.
+- The threshold is lifted near a reset the way switching lifts it (`policy.accountReleaseMs`).
+- 100 means the account reached its switch threshold, where tokenmaxxing stops placing sessions on it unless its `thresholds.accounts` entry sets `credits`. Usage past that point stays at 100.
+- A status-only pool (Grok, OpenCode Go) has no switch threshold and shows the provider's figure.
+
+The figure therefore reads higher than the usage Claude Code or Codex reports: with `thresholds.session` at 90, a session window at 45 percent reads 50. Switching decisions and the stored records use the provider's figures.
+
 ## Binary pins
 
 `init` writes the pin for each pool, and so does `init --pi`. The recursion-guard diagnostic tells you to fix `claudeBin` here when it stops pointing at the real Claude binary.

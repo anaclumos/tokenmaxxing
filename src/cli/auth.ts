@@ -91,7 +91,7 @@ async function reauthOne(p: Provider, target: Account): Promise<boolean> {
   });
   if (account === null) return false;
 
-  const note = harvested.sample ? usageNote(account) : "";
+  const note = harvested.sample ? usageNote(p, account) : "";
   console.log(`${c.green("✓")} reauthed ${c.bold(account.email ?? account.label)} (${account.tier ?? "?"})${note}`);
   return true;
 }

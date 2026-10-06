@@ -83,6 +83,16 @@ The request body is CLIProxyAPI's (`auth_index`, `method`, `url`, `header`, `dat
 | The account's session and weekly windows are both older than two hours | `502` |
 | A window older than two hours | Left out of the body |
 
+### Buffered usage quota
+
+The `utilization` of `five_hour` and `seven_day`, the `percent` of each `weekly_scoped` row, and every Codex `used_percent` carry the buffered figure, measured against the account's switch threshold, not against the provider's full limit.
+
+- The threshold is the account's own entry in `thresholds.accounts`, else the global threshold, minus `policy.projectionMargin` for the session window.
+- The threshold is lifted near a reset the way switching lifts it (`policy.accountReleaseMs`).
+- 100 means the account reached its switch threshold, where tokenmaxxing stops placing sessions on it unless its `thresholds.accounts` entry sets `credits`. Usage past that point stays at 100.
+
+The figure therefore reads higher than the usage Claude Code or Codex reports, and a consumer such as T3 Code shows an account as full when it reaches its switch threshold.
+
 ## Where the figures come from
 
 The hub is a view over the cached figures and never a proxy: it ignores the `header` the client sends and never forwards a request.
