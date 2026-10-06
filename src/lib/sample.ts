@@ -61,7 +61,7 @@ export function teeObservation(account: Account): Observation | null {
 }
 
 export function landRead(account: Account, usage: UsageWindows, at: number, thresholds: Bars): void {
-  landWindows(account, mergeWindows(windowsOf(usage, at), account.windows), at, thresholds);
+  if (account.lastUsageAt == null || at > account.lastUsageAt) landWindows(account, mergeWindows(windowsOf(usage, at), account.windows), at, thresholds);
   landGrant(account, usage.bankedReset, at);
 }
 
@@ -202,7 +202,7 @@ export async function sampleOldest(cfg: Config): Promise<void> {
           stored.usageRetryAt = outcome.retryAt;
           dirty = true;
         }
-        if (stored && outcome.ok && (stored.lastUsageAt == null || startedAt > stored.lastUsageAt)) {
+        if (stored && outcome.ok) {
           landRead(stored, outcome.usage, startedAt, thresholdBars(cfg));
           dirty = true;
         }

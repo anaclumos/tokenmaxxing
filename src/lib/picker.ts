@@ -123,7 +123,9 @@ export function wantsBankedReset(a: Account, bars: Bars, now: number): boolean {
 }
 
 export function landGrant(a: Account, grant: BankedReset | undefined, sentAt: number): void {
-  if (sentAt > (a.resetClaimUntil ?? 0)) a.bankedReset = grant;
+  if (sentAt <= (a.bankedResetAt ?? 0)) return;
+  a.bankedReset = grant;
+  a.bankedResetAt = sentAt;
 }
 
 export function earliestReset(a: Account, now: number): number {

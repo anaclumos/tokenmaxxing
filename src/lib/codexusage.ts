@@ -1,8 +1,8 @@
 import { z } from "zod";
 import { http, safeErrorDetail } from "./http.ts";
-import { errorMessage } from "./log.ts";
+import { errorMessage, log } from "./log.ts";
 import { env } from "./paths.ts";
-import { EpochSecondsSchema, JsonTextSchema, type CodexAuthJson, type CodexUsage, type Window } from "./types.ts";
+import { EpochSecondsSchema, JsonTextSchema, type BankedReset, type CodexAuthJson, type CodexUsage, type Window } from "./types.ts";
 import { codexIdentityOf } from "./codexauth.ts";
 import type { ResetClaim } from "./provider.ts";
 import { familyTokens } from "./usage.ts";
@@ -34,7 +34,7 @@ const WireUsageSchema = z.looseObject({
   plan_type: z.string().nullish(),
   rate_limit: WireRateLimitSchema.nullish(),
   credits: z.looseObject({ has_credits: z.boolean().nullish() }).nullish(),
-  rate_limit_reset_credits: z.looseObject({ available_count: z.number() }).nullish(),
+  rate_limit_reset_credits: z.unknown().optional(),
   additional_rate_limits: z
     .array(z.looseObject({ limit_name: z.string(), rate_limit: WireRateLimitSchema.nullish() }))
     .nullish(),
@@ -86,12 +86,24 @@ export async function fetchCodexUsage(input: { auth: CodexAuthJson; at: number }
     email: wire.email ?? null,
     planType: wire.plan_type ?? null,
     hasCredits: wire.credits?.has_credits ?? null,
-    bankedReset: (wire.rate_limit_reset_credits?.available_count ?? 0) > 0 ? { grant: null } : undefined,
+    bankedReset: resetCredits(wire.rate_limit_reset_credits),
     windows: [
       ...toWindows(wire.rate_limit, null, at),
       ...(wire.additional_rate_limits ?? []).flatMap((row) => toWindows(row.rate_limit, row.limit_name, at)),
     ],
   };
+}
+
+const ResetCreditsSchema = z.looseObject({ available_count: z.number() });
+
+function resetCredits(raw: unknown): BankedReset | undefined {
+  if (raw == null) return undefined;
+  const block = ResetCreditsSchema.safeParse(raw);
+  if (!block.success) {
+    log("codexusage.reset_credits_unreadable", { issue: z.prettifyError(block.error).slice(0, 200) });
+    return undefined;
+  }
+  return block.data.available_count > 0 ? { grant: null } : undefined;
 }
 
 const RESET_URL = env("TOKENMAXXING_CODEX_RESET_URL", "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits/consume");

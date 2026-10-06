@@ -82,7 +82,7 @@ export async function useBankedResets(p: Provider, cfg: Config, now: number): Pr
     const until = Date.now() + CLAIM_HOLD_MS;
     for (const a of picked) {
       a.bankedReset = undefined;
-      a.resetClaimUntil = until;
+      a.bankedResetAt = until;
     }
     if (picked.length > 0) saveAccounts(p.pool, idx);
     return claims;

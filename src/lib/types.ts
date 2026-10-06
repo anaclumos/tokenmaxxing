@@ -77,7 +77,7 @@ export const AccountSchema = z.object({
   needsReauth: z.boolean().optional(),
   hasCredits: z.boolean().optional(),
   bankedReset: BankedResetSchema.optional(),
-  resetClaimUntil: z.number().optional(),
+  bankedResetAt: z.number().optional(),
   oauthAccount: OAuthAccountSchema.optional(),
 });
 export type Account = z.infer<typeof AccountSchema>;

@@ -48,9 +48,7 @@ async function observeLive(account: Account, cfg: Config, now: number, opts: { p
       if (account.needsReauth) a.needsReauth = true;
       if (outcome.ok) {
         a.probeFails = 0;
-        if (a.lastUsageAt == null || startedAt > a.lastUsageAt) {
-          landRead(a, outcome.usage, startedAt, thresholdBars(cfg));
-        }
+        landRead(a, outcome.usage, startedAt, thresholdBars(cfg));
       } else {
         a.probeFails = (a.probeFails ?? 0) + 1;
         if (outcome.retryAt != null) a.usageRetryAt = outcome.retryAt;
