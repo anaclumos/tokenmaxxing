@@ -7,7 +7,7 @@ import { withLock } from "./lock.ts";
 import { errorMessage, log } from "./log.ts";
 import { claudeTierLabel, isDeadCredential } from "./oauth.ts";
 import { claudePool, paths, storeDirFor } from "./paths.ts";
-import { barFor, gatedWindows, landWindows, liveUsed, thresholdBars } from "./picker.ts";
+import { barFor, gatedWindows, landGrant, landWindows, liveUsed, thresholdBars } from "./picker.ts";
 import { seatCounts } from "./presence.ts";
 import type { Observation } from "./provider.ts";
 import { loadAccounts, loadUsageSnapshot, saveAccounts } from "./state.ts";
@@ -58,6 +58,11 @@ export function teeObservation(account: Account): Observation | null {
   if (stored != null && at <= stored.at) return stored;
   const aggregate = windowsOf({ fiveHour: snap.state.fiveHour, sevenDay: snap.state.sevenDay, perModel: {} }, at);
   return { windows: mergeWindows(aggregate, account.windows), at };
+}
+
+export function landRead(account: Account, usage: UsageWindows, at: number, thresholds: Bars): void {
+  if (account.lastUsageAt == null || at > account.lastUsageAt) landWindows(account, mergeWindows(windowsOf(usage, at), account.windows), at, thresholds);
+  landGrant(account, usage.bankedReset, at);
 }
 
 export function foldTee(account: Account, thresholds: Bars): boolean {
@@ -197,8 +202,8 @@ export async function sampleOldest(cfg: Config): Promise<void> {
           stored.usageRetryAt = outcome.retryAt;
           dirty = true;
         }
-        if (stored && outcome.ok && (stored.lastUsageAt == null || startedAt > stored.lastUsageAt)) {
-          landWindows(stored, mergeWindows(windowsOf(outcome.usage, startedAt), stored.windows), startedAt, thresholdBars(cfg));
+        if (stored && outcome.ok) {
+          landRead(stored, outcome.usage, startedAt, thresholdBars(cfg));
           dirty = true;
         }
         if (dirty) saveAccounts(claudePool, idx);

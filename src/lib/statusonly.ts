@@ -110,6 +110,7 @@ export function statusOnlyProvider(spec: StatusOnlySpec): Provider {
     swap: async () => {
       throw new Error(`${spec.name} moves are not supported yet (status-only pool)`);
     },
+    useBankedReset: async () => ({ reset: false, detail: `${spec.name} has no banked reset` }),
     classifySwapError: () => "fatal",
     removeCredentials: async (a) => {
       rmSync(spec.storeDirFor(a.id), { recursive: true, force: true });

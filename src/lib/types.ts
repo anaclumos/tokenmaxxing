@@ -36,7 +36,10 @@ const AggregateWindowsSchema = z.object({
   sevenDay: UsageWindowSchema,
 });
 
-export type UsageWindows = z.infer<typeof AggregateWindowsSchema> & { perModel: Record<string, UsageWindow> };
+export const BankedResetSchema = z.object({ grant: z.string().nullable() });
+export type BankedReset = z.infer<typeof BankedResetSchema>;
+
+export type UsageWindows = z.infer<typeof AggregateWindowsSchema> & { perModel: Record<string, UsageWindow>; bankedReset?: BankedReset };
 
 export const WindowSchema = z.object({
   name: z.string().nullable(),
@@ -73,6 +76,8 @@ export const AccountSchema = z.object({
   enforcedUntil: z.number().optional(),
   needsReauth: z.boolean().optional(),
   hasCredits: z.boolean().optional(),
+  bankedReset: BankedResetSchema.optional(),
+  bankedResetAt: z.number().optional(),
   oauthAccount: OAuthAccountSchema.optional(),
 });
 export type Account = z.infer<typeof AccountSchema>;
@@ -252,6 +257,7 @@ export type CodexUsage = {
   email: string | null;
   planType: string | null;
   hasCredits: boolean | null;
+  bankedReset: BankedReset | undefined;
   windows: Window[];
 };
 
