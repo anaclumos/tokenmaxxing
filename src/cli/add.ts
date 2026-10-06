@@ -1,14 +1,18 @@
 import { withLock } from "../lib/lock.ts";
 import type { Provider } from "../lib/provider.ts";
-import { loadAccounts, saveAccounts, upsertAccount } from "../lib/state.ts";
-import { sessionWindow, weeklyWindow } from "../lib/picker.ts";
+import { loadAccounts, loadConfig, saveAccounts, upsertAccount } from "../lib/state.ts";
+import { bufferedUsed, liveUsed, sessionWindow, thresholdBars, weeklyWindow } from "../lib/picker.ts";
 import { c, count } from "./render.ts";
-import type { Account } from "../lib/types.ts";
+import type { Account, Window } from "../lib/types.ts";
 
-export function usageNote(account: Account): string {
+export function usageNote(p: Provider, account: Account): string {
   const session = sessionWindow(account);
   const week = weeklyWindow(account);
-  return session && week ? ` (session ${session.usedPercentage}% / week ${week.usedPercentage}%)` : "";
+  if (!session || !week) return "";
+  const bars = thresholdBars(loadConfig());
+  const now = Date.now();
+  const pct = (w: Window) => Math.round(p.statusOnly ? liveUsed(w, now) : bufferedUsed(account, w, bars, now));
+  return ` (session ${pct(session)}% / week ${pct(week)}%)`;
 }
 
 export async function cmdAdd(p: Provider): Promise<number> {
@@ -28,7 +32,7 @@ export async function cmdAdd(p: Provider): Promise<number> {
   });
 
   console.log();
-  const note = harvested.sample ? usageNote(account) : "";
+  const note = harvested.sample ? usageNote(p, account) : "";
   console.log(`${c.green("✓")} added ${c.bold(account.label)} (${account.tier ?? "?"})${note} → pool now has ${count({ n: poolSize, noun: "account" })}`);
   return 0;
 }

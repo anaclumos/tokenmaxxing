@@ -285,10 +285,31 @@ function userLine(text: string): string {
 
 const STDOUT_QUIET_MS = 1000;
 
-function seatTee(seatId: string, model: ModelInfo | null): (line: string) => void {
+const TaskLineSchema = z.discriminatedUnion("subtype", [
+  z.looseObject({ type: z.literal("system"), subtype: z.literal("task_started"), task_id: z.string(), description: z.string(), session_id: z.string() }),
+  z.looseObject({ type: z.literal("system"), subtype: z.literal("task_notification"), task_id: z.string() }),
+  z.looseObject({ type: z.literal("system"), subtype: z.literal("task_updated"), task_id: z.string(), patch: z.looseObject({ status: z.enum(["completed", "failed", "killed"]) }) }),
+]);
+
+type OpenTasks = Map<string, { description: string; sessionId: string }>;
+
+function trackTask(open: OpenTasks, value: unknown): void {
+  const task = TaskLineSchema.safeParse(value);
+  if (!task.success) return;
+  if (task.data.subtype === "task_started") open.set(task.data.task_id, { description: task.data.description, sessionId: task.data.session_id });
+  else open.delete(task.data.task_id);
+}
+
+function stoppedTaskLines(open: OpenTasks): string[] {
+  return [...open].map(([id, task]) => `${JSON.stringify({ type: "system", subtype: "task_notification", task_id: id, status: "stopped", reason: "worker_restart", output_file: "", summary: `Stopped by a tokenmaxxing restart: ${task.description || id}`, uuid: crypto.randomUUID(), session_id: task.sessionId })}\n`);
+}
+
+function seatTee(seatId: string, model: ModelInfo | null, open: OpenTasks): (line: string) => void {
   let last: UsageWindows | null = null;
   return (line) => {
-    const msg = parseStreamLine(line);
+    const value = JsonTextSchema.safeParse(line).data;
+    trackTask(open, value);
+    const msg = parseStreamLine(value);
     if (msg?.windows) last = msg.windows;
     else if (msg?.type !== "assistant") return;
     if (last) writeUsage({ fiveHour: last.fiveHour, sevenDay: last.sevenDay, account: seatId, ts: Date.now(), model });
@@ -345,6 +366,7 @@ function controlErrorLine(requestId: string): string {
 class StdinRelay {
   private sink: FileSink | null = null;
   private queue: string[] = [];
+  private state = new Map<string, string>();
   private replayable: string[] = [];
   private dropped: string[] = [];
   private pendingTranscript: string | null = null;
@@ -364,7 +386,7 @@ class StdinRelay {
     this.replayable = [];
     this.dropped = [];
     this.pendingTranscript = pendingTranscript;
-    const lines = first === null ? this.queue : [first, ...this.queue];
+    const lines = [...this.state.values(), ...(first === null ? [] : [first]), ...this.queue];
     this.queue = [];
     for (const line of lines) this.forward(line);
     if (this.ended) this.close();
@@ -382,7 +404,7 @@ class StdinRelay {
     return dropped;
   }
 
-  private keep(line: string): void {
+  private keep(line: string, control: boolean, request: { request_id: string } | null): void {
     if (this.pendingTranscript === null) return;
     if (existsSync(this.pendingTranscript)) {
       this.pendingTranscript = null;
@@ -390,10 +412,8 @@ class StdinRelay {
       this.dropped = [];
       return;
     }
-    const parsed = RelayLineSchema.safeParse(JsonTextSchema.safeParse(line).data);
-    if (!parsed.success) this.replayable.push(line);
-    else if (parsed.data.type === "control_request" && REPLAYED_REQUESTS.has(parsed.data.request.subtype)) this.replayable.push(line);
-    else if (parsed.data.type === "control_request") this.dropped.push(parsed.data.request_id);
+    if (request !== null) this.dropped.push(request.request_id);
+    else if (!control) this.replayable.push(line);
   }
 
   private async pump(): Promise<void> {
@@ -401,18 +421,22 @@ class StdinRelay {
   }
 
   private forward(line: string): void {
+    const parsed = RelayLineSchema.safeParse(JsonTextSchema.safeParse(line).data);
+    const request = parsed.success && parsed.data.type === "control_request" ? parsed.data : null;
+    const setup = request !== null && REPLAYED_REQUESTS.has(request.request.subtype);
+    if (setup) this.state.set(request.request.subtype, line);
     if (this.sink !== null) {
       try {
         this.sink.write(line);
         this.sink.flush();
-        this.keep(line);
+        if (!setup) this.keep(line, parsed.success, request);
         return;
       } catch (e) {
         log("supervisor.relay_write_failed", { err: errorMessage(e) });
         this.sink = null;
       }
     }
-    this.queue.push(line);
+    if (!setup) this.queue.push(line);
   }
 
   private close(): void {
@@ -545,7 +569,8 @@ export async function runSupervisor(argv: string[]): Promise<number> {
       if (terminating) return null;
       const picked = (wanted == null ? null : (loadAccounts(claudePool).accounts.find((a) => a.id === wanted) ?? null)) ?? pickSeat(gate.launchedAt, model);
       log("supervisor.launch", { sid, respawns, seat: picked?.id.slice(0, 8) ?? null, args: launchArgs.join(" "), injected: firstLine !== null });
-      const tee = stream && picked ? seatTee(picked.id, model) : null;
+      const open: OpenTasks = new Map();
+      const tee = stream && picked ? seatTee(picked.id, model, open) : null;
       const spawned = Bun.spawn([real, ...launchArgs], {
         stdin: relay === null ? "inherit" : "pipe",
         stdout: tee === null ? "inherit" : "pipe",
@@ -575,14 +600,14 @@ export async function runSupervisor(argv: string[]): Promise<number> {
         });
       }
       releaseClaimLocked(sid);
-      return { child: spawned, seat: picked, drain };
+      return { child: spawned, seat: picked, drain, open };
     });
     if (launched == null) {
       await releaseClaim();
       return 143;
     }
 
-    const { child: proc, seat } = launched;
+    const { child: proc, seat, open } = launched;
     drainStdout = launched.drain;
     let seatCheckAt = 0;
     await raceMarkerOrExit({
@@ -611,6 +636,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
       rmSync(marker, { force: true });
       respawns++;
       noticeSid = m.sessionId;
+      for (const line of stoppedTaskLines(open)) process.stdout.write(line);
       const accounts = loadAccounts(claudePool).accounts;
       const label = accounts.find((a) => a.id === m.accountId)?.label ?? m.accountId.slice(0, 8);
       const walledUntil = accounts.find((a) => a.id === seat?.id)?.enforcedUntil ?? 0;

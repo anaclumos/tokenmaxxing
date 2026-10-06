@@ -64,6 +64,13 @@ export function barFor(a: Account, w: Window, bars: Bars, now: number): number {
   return released ? Math.max(pick(own), pick(bars)) : pick(own);
 }
 
+export function bufferedUsed(a: Account, w: Window, bars: Bars, now: number): number {
+  const used = liveUsed(w, now);
+  const bar = barFor(a, w, bars, now);
+  if (bar <= 0) return used > 0 ? 100 : 0;
+  return Math.min(100, (used / bar) * 100);
+}
+
 function windowEnd(w: Window): number {
   return w.resetsAt ?? w.sampledAt + (w.windowSeconds ?? 0) * 1000;
 }
