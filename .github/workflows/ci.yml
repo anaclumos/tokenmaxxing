@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   test:
-    runs-on: ubuntu-24.04
+    runs-on: ${{ vars.CI_RUNNER == 'github' && 'ubuntu-24.04' || fromJSON('["self-hosted","linux","x64","check"]') }}
     steps:
       - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2
@@ -31,7 +31,7 @@ jobs:
           "$BUN_INSTALL/bin/tokenmaxxing" help
 
   nix:
-    runs-on: ubuntu-24.04
+    runs-on: ${{ vars.CI_RUNNER == 'github' && 'ubuntu-24.04' || fromJSON('["self-hosted","linux","x64","check"]') }}
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
