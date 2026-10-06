@@ -21,7 +21,19 @@ A Claude subscription meters three limits at once (all confirmed via `/usage`):
 
 Weekly quota is use-it-or-lose-it: whatever an account has not consumed by its fixed weekly reset is forfeited. If you own several accounts, the rational strategy is to spread your sessions over them so each account drains at a fraction of the pooled rate, to keep burning quota on whichever account is furthest behind its own weekly pace, and to move a session away before any single limit hits the wall.
 
-Doing that by hand means logging out, logging in, and losing your conversation. tokenmaxxing automates it: every pooled account gets its own Claude Code credential store, a thin `claude` supervisor on your PATH picks the account for each session and points `CLAUDE_SECURESTORAGE_CONFIG_DIR` at its store, and when a session must move, the supervisor stops it at a committed turn boundary (the transcript is already on disk, nothing is lost) compacts the conversation on the account it leaves, and runs `claude --resume <id>` under another account's store with a first prompt that asks Claude to continue. Sessions on the same account share its store, so Claude Code's own token refresh keeps them in step.
+Doing that by hand means logging out, logging in, and losing your conversation.
+
+## How it works
+
+```mermaid
+flowchart LR
+  sup["claude<br/>(the supervisor shim)"] -->|"most headroom<br/>per session"| seat["session on account A<br/>under A's store"]
+  seat -->|"under the bars"| seat
+  seat -->|"A at a bar"| move["stop at the turn boundary<br/>compact on A<br/>claude --resume on B"]
+  seat -->|"every account at a bar"| wait["countdown<br/>resume on the assigned reset"]
+```
+
+Every pooled account gets its own Claude Code credential store, and the thin `claude` supervisor on your PATH points `CLAUDE_SECURESTORAGE_CONFIG_DIR` at the store of the account it placed the session on. A move stops the session at a committed turn boundary (the transcript is already on disk, nothing is lost), compacts the conversation on the account it leaves, and runs `claude --resume <id>` under another account's store with a first prompt that asks Claude to continue. Sessions on the same account share its store, so Claude Code's own token refresh keeps them in step.
 
 Everything else about `claude` is unchanged: all flags, MCP servers, hooks, and skills pass through. Print mode, every `claude` subcommand, and the interactive resume picker run without a seat, on whatever login the environment names (see [Architecture](/architecture)).
 

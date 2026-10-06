@@ -6,12 +6,12 @@ import { opencodeGo } from "../lib/opencodego.ts";
 import { loadAccounts, loadConfig, saveAccounts } from "../lib/state.ts";
 import { withLock } from "../lib/lock.ts";
 import { codexPool, grokPool, opencodeGoPool } from "../lib/paths.ts";
-import { barFor, earliestReset, gatedWindows, landWindows, isExhausted, isSessionWindow, limitWindows, liveUsed, nextWeeklyReset, sessionWindow, thresholdBars, weeklyWindow } from "../lib/picker.ts";
+import { barFor, bufferedUsed, earliestReset, gatedWindows, landGrant, landWindows, isExhausted, isSessionWindow, limitWindows, liveUsed, nextWeeklyReset, sessionWindow, thresholdBars, weeklyWindow } from "../lib/picker.ts";
 import type { Provider, SampleReport } from "../lib/provider.ts";
 import { bar, c, count, emitJson, fmtAgo } from "./render.ts";
 import type { Account, AccountThresholds, Bars, Config, Thresholds, Window } from "../lib/types.ts";
 
-export type WindowReport = { usedPercentage: number; resetsAt: number | null; windowSeconds: number | null };
+export type WindowReport = { usedPercentage: number; bufferedPercentage: number; resetsAt: number | null; windowSeconds: number | null };
 
 export type UsageReport = { fiveHour: WindowReport | null; week: WindowReport | null; limits: (WindowReport & { name: string })[] };
 
@@ -41,23 +41,24 @@ type PoolReport = {
 
 export type StatusReport = { now: number; claude: PoolReport; codex: PoolReport; grok: PoolReport; opencodeGo: PoolReport };
 
-function currentWindow(w: Window, now: number): WindowReport {
+function currentWindow(a: Account, w: Window, bars: Bars | null, now: number): WindowReport {
   const passed = w.resetsAt != null && w.resetsAt <= now;
   return {
-    usedPercentage: passed ? 0 : w.usedPercentage,
+    usedPercentage: liveUsed(w, now),
+    bufferedPercentage: bars == null ? liveUsed(w, now) : bufferedUsed(a, w, bars, now),
     resetsAt: isSessionWindow(w) ? (passed ? null : w.resetsAt) : nextWeeklyReset(w.resetsAt, now),
     windowSeconds: w.windowSeconds,
   };
 }
 
-export function usageReport(a: Account, now: number): UsageReport | null {
+export function usageReport(a: Account, bars: Bars | null, now: number): UsageReport | null {
   if (a.lastUsageAt == null) return null;
   const session = sessionWindow(a);
   const week = weeklyWindow(a);
   return {
-    fiveHour: session ? currentWindow(session, now) : null,
-    week: week ? currentWindow(week, now) : null,
-    limits: limitWindows(a).map((w) => ({ name: w.name ?? "", ...currentWindow(w, now) })),
+    fiveHour: session ? currentWindow(a, session, bars, now) : null,
+    week: week ? currentWindow(a, week, bars, now) : null,
+    limits: limitWindows(a).map((w) => ({ name: w.name ?? "", ...currentWindow(a, w, bars, now) })),
   };
 }
 
@@ -121,6 +122,11 @@ async function collect(p: Provider, cfg: Config, now: number, cached: boolean): 
             if (a.tier != null) stored.tier = a.tier;
             dirty = true;
           }
+          const report = reports.get(a.id);
+          if (report?.ok === true && report.source === "probe" && a.bankedResetAt != null) {
+            landGrant(stored, a.bankedReset, a.bankedResetAt);
+            dirty = true;
+          }
         }
         if (dirty) saveAccounts(p.pool, fresh);
         idx = fresh;
@@ -146,7 +152,7 @@ async function collect(p: Provider, cfg: Config, now: number, cached: boolean): 
       needsReauth: a.needsReauth === true,
       exhausted: isExhausted(a, ctx),
       thresholds: own.get(a.label) ?? null,
-      usage: usageReport(a, now),
+      usage: usageReport(a, p.statusOnly ? null : bars, now),
       usageAt: a.lastUsageAt ?? null,
       limitsAt: limits.length > 0 ? Math.max(...limits.map((w) => w.sampledAt)) : null,
       sample: reports.get(a.id) ?? (cached ? { ok: true, source: "cached" } : { ok: false, reason: "not sampled" }),
@@ -189,7 +195,7 @@ function renderGrid(cards: Card[]): void {
 }
 
 function usageRow(name: string, w: WindowReport): string {
-  return `${NOTE_INDENT}${name.padEnd(5)} ${bar(w.usedPercentage)}`;
+  return `${NOTE_INDENT}${name.padEnd(5)} ${bar(w.bufferedPercentage)}`;
 }
 
 function sampleFailedNotes(input: { cached: boolean; usageAt: number | null; reason: string; now: number }): Note[] {
@@ -240,6 +246,7 @@ function card(p: Provider, a: StatusAccount, now: number, staleAfterMs: number):
 
 function renderPool(p: Provider, pool: PoolReport, header: string, now: number, staleAfterMs: number): void {
   console.log(c.dim(header));
+  if (!p.statusOnly) console.log(c.dim("buffered usage quota: percent of each account's switch threshold, so it reads higher than the usage Claude or Codex reports"));
   console.log();
   renderGrid(pool.accounts.map((a) => card(p, a, now, staleAfterMs)));
   if (pool.gatedNote) {

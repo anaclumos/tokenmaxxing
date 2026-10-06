@@ -3,34 +3,189 @@ title: pi support
 description: Running the pi coding agent on the pooled Claude and ChatGPT subscription accounts
 ---
 
-[pi](https://pi.dev) signs in to a Claude subscription (its `anthropic` provider, **Anthropic (Claude Pro/Max)** in `/login`) or a ChatGPT subscription (its `openai-codex` provider, **OpenAI (ChatGPT Plus/Pro)**). tokenmaxxing runs pi sessions on the accounts already in the Claude pool and the Codex pool: the same accounts, the same cached usage, the same bars, and the same ranking as `claude` and `codex` sessions.
+[pi](https://pi.dev) signs in to a Claude subscription or a ChatGPT subscription. tokenmaxxing runs pi sessions on the accounts already in the Claude pool and the Codex pool: the same accounts, the same cached usage, the same bars, and the same ranking as `claude` and `codex` sessions.
+
+| pi provider | Entry in `/login` | Subscription | Pool |
+| --- | --- | --- | --- |
+| `anthropic` | **Anthropic (Claude Pro/Max)** | Claude | Claude pool |
+| `openai-codex` | **OpenAI (ChatGPT Plus/Pro)** | ChatGPT | Codex pool |
+
+<Steps>
+<Step>
+
+**Pool the accounts.** An account joins the pool through `tokenmaxxing init` or `add` (Claude) and `init --codex` or `add --codex` (ChatGPT) first. `auth --pi` only gives an account that is already pooled a pi login.
+
+</Step>
+<Step>
+
+**Install the pi supervisor.**
 
 ```sh
 tokenmaxxing init --pi              # verify and pin the real pi, install the pi supervisor
-tokenmaxxing auth --pi --all        # log every pooled Claude account into pi, one by one
-tokenmaxxing auth --pi --codex --all  # same for the pooled codex accounts
-pi                                  # use pi as always
 ```
 
-An account joins the pool through `tokenmaxxing init` or `add` (Claude) and `init --codex` or `add --codex` (ChatGPT) first; `auth --pi` only gives an account that is already pooled a pi login.
+</Step>
+<Step>
+
+**Log the pooled accounts into pi.**
+
+```sh
+tokenmaxxing auth --pi --all        # log every pooled Claude account into pi, one by one
+tokenmaxxing auth --pi --codex --all  # same for the pooled codex accounts
+```
+
+</Step>
+<Step>
+
+**Use pi as always.**
+
+```sh
+pi
+```
+
+</Step>
+</Steps>
 
 ## One pi login per account
 
-pi keeps its credential in `auth.json` inside its agent directory, in its own format, and refreshes it itself. That is a different grant from the one in the account's Claude Code store or codex store, and tokenmaxxing never copies a grant between stores: a refresh rotation revokes the superseded token, so two copies of one grant break each other. Each pooled account is therefore logged into pi once more. Separate logins are separate grants and do not interfere.
+pi keeps its credential in `auth.json` inside its agent directory, in its own format, and refreshes it itself. That is a different grant from the one in the account's Claude Code store or codex store. tokenmaxxing never copies a grant between stores: a refresh rotation revokes the superseded token, so two copies of one grant break each other. Each pooled account is therefore logged into pi once more; separate logins are separate grants and do not interfere.
 
-`auth --pi [--codex] [<sel> | --all]` opens pi in an isolated agent directory under the state directory. Run `/login` there, pick the provider, and sign in with the account the command names; pi closes once the credential lands. tokenmaxxing then checks which account the login belongs to: the `accountUuid` the profile endpoint reports for a Claude login, the ChatGPT account id in the access token of a ChatGPT login. A login that belongs to another account changes nothing. The credential goes to `pi-stores/claude/<uuid8>/auth.json` or `pi-stores/codex/<uuid8>/auth.json` (0600) and is written there once; afterwards pi is its only writer, and it refreshes the token under its own lock on that file. Bare `auth --pi` lists the pool and asks which account; `--all` walks every account without a pi login. `rm` deletes an account's pi store with its other credentials, and `doctor` reports accounts without a pi login and checks the identity of every pi login whose access token is still fresh.
+### The login
+
+```mermaid
+flowchart TD
+  cmd["auth --pi"] -->|"/login in an isolated<br/>agent directory"| land["pi closes once<br/>the credential<br/>lands"]
+  land --> who{"login of the<br/>named account?"}
+  who -->|"no"| none["nothing changes"]
+  who -->|"yes"| store["the account's<br/>pi store, 0600,<br/>written once"]
+  store -->|"pi refreshes it<br/>under its own lock"| store
+```
+
+`auth --pi [--codex] [<sel> | --all]` opens pi in an isolated agent directory under the state directory. Run `/login` there, pick the provider, and sign in with the account the command names; pi closes once the credential lands. tokenmaxxing then checks which account the login belongs to:
+
+- **Claude login**: the `accountUuid` the profile endpoint reports.
+- **ChatGPT login**: the ChatGPT account id in the access token.
+
+The credential goes to `pi-stores/claude/<uuid8>/auth.json` or `pi-stores/codex/<uuid8>/auth.json` (0600) and is written there once. Afterwards pi is its only writer, and it refreshes the token under its own lock on that file.
+
+### Commands for pi logins
+
+| Command | Effect |
+| --- | --- |
+| Bare `auth --pi` | Lists the pool and asks which account. |
+| `auth --pi [--codex] --all` | Walks every account without a pi login. |
+| `rm` | Deletes an account's pi store with its other credentials. |
+| `doctor` | Reports accounts without a pi login and checks the identity of every pi login whose access token is still fresh. |
 
 ## One store per account, sessions shared
 
-The `pi` shim on your PATH runs the pi supervisor. It picks the pool from the provider pi starts on: `--provider`, the provider prefix of `--model` (`anthropic/claude-opus-4-8`), or, without `--model`, `defaultProvider` from `~/.pi/agent/settings.json`, which pi writes when you pick a model, or from the project's `.pi/settings.json` when pi trusts the project (`--approve`, a trust decision for the directory or a parent in `~/.pi/agent/trust.json`, or, with no decision, `defaultProjectTrust: "always"` in the global settings). A project whose trust pi would ask about at startup counts as untrusted, so answering pi's prompt with trust can start the session on the project's provider while the seat belongs to the global default's pool; pi then falls back to a model whose provider has a credential in that session, which is the seat's provider unless an API key in the environment names another. A settings file that does not parse is skipped with a log line, as pi skips it. `anthropic` runs on the Claude pool and `openai-codex` on the Codex pool; any other provider runs pi unchanged, on its own login. A bare `--model` with no provider prefix and no `--provider` runs pi unchanged too, because pi resolves a bare model id across every provider's catalog; write `--model anthropic/<id>` or add `--provider`. Among the accounts with a pi login, the supervisor picks the seat with that pool's ranking and sets `PI_CODING_AGENT_DIR` to the account's pi store. The store holds only `auth.json`: every other entry in `~/.pi/agent` (settings, sessions, extensions, themes, the managed `fd` and `rg` binaries) is linked into it by symlink, and pi writes those files in place, so settings and transcripts stay shared across accounts. A file pi creates for the first time inside a store stays in that store, so before linking, tokenmaxxing creates the shared entries pi writes when `~/.pi/agent` lacks them: `settings.json`, `models-store.json`, and `trust.json` as `{}`, and the `sessions` and `bin` directories. When no account with a pi login can take the session, pi runs on its own login in `~/.pi/agent`.
+The `pi` shim on your PATH runs the pi supervisor. It picks the pool from the provider pi starts on, then picks the seat.
 
-A pi session on a Claude account counts as a session on that account (a presence record under `live/`), so `claude` placement spreads around it and the check tick samples its account first. A pi session on a ChatGPT account holds the account the way a codex session does (a presence record under `codex-live/`): no other codex or pi session and no `seat --codex` borrower is placed there, and nothing else refreshes that account's codex store while the session runs. The pi supervisor that holds the account refreshes the codex store token itself when it expires, because no codex process uses that store meanwhile, so its usage reads keep working for the whole session.
+```mermaid
+flowchart TD
+  shim["pi shim<br/>(the pi supervisor)"] -->|"anthropic"| claude["Claude pool"]
+  shim -->|"openai-codex"| codex["Codex pool"]
+  shim -->|"any other provider,<br/>or a bare --model<br/>and no --provider"| own["pi unchanged,<br/>on its own login"]
+  claude --> pick["the pool's ranking,<br/>among accounts<br/>with a pi login"]
+  codex --> pick
+  pick -->|"a seat"| seat["PI_CODING_AGENT_DIR<br/>= the account's<br/>pi store"]
+  pick -->|"no account can take it"| home["pi on its<br/>own login in<br/>~/.pi/agent"]
+```
+
+### Which provider pi starts on
+
+The supervisor reads the provider from:
+
+- `--provider`.
+- The provider prefix of `--model` (`anthropic/claude-opus-4-8`).
+- Without `--model`, `defaultProvider` from `~/.pi/agent/settings.json`, which pi writes when you pick a model, or from the project's `.pi/settings.json` when pi trusts the project.
+
+pi trusts the project in any of these cases:
+
+- `--approve`.
+- A trust decision for the directory or a parent in `~/.pi/agent/trust.json`.
+- With no decision, `defaultProjectTrust: "always"` in the global settings.
+
+<Callout>
+A project whose trust pi would ask about at startup counts as untrusted. As a result, answering pi's prompt with trust can start the session on the project's provider while the seat belongs to the global default's pool. pi then falls back to a model whose provider has a credential in that session, which is the seat's provider unless an API key in the environment names another.
+</Callout>
+
+A settings file that does not parse is skipped with a log line, as pi skips it.
+
+A bare `--model` with no provider prefix and no `--provider` runs pi unchanged, because pi resolves a bare model id across every provider's catalog. Write `--model anthropic/<id>` or add `--provider`.
+
+### The store
+
+```mermaid
+flowchart LR
+  cs["pi-stores/claude/<br/>#lt;uuid8#gt;"] --> ca["auth.json<br/>(that account's<br/>pi login)"]
+  xs["pi-stores/codex/<br/>#lt;uuid8#gt;"] --> xa["auth.json<br/>(that account's<br/>pi login)"]
+  cs -->|"symlinks"| shared["~/.pi/agent:<br/>settings, sessions,<br/>extensions, themes,<br/>fd and rg binaries"]
+  xs -->|"symlinks"| shared
+```
+
+The store holds only `auth.json`. Every other entry in `~/.pi/agent` (settings, sessions, extensions, themes, the managed `fd` and `rg` binaries) is linked into it by symlink, except an entry whose name starts with `auth.json` or ends in `.lock`, because pi takes its lock in a directory beside the file it opened and a linked lock reads as held forever once released. pi writes those files in place, so settings and transcripts stay shared across accounts.
+
+A file pi creates for the first time inside a store stays in that store. So before linking, tokenmaxxing creates the shared entries pi writes when `~/.pi/agent` lacks them:
+
+- `settings.json`, `models-store.json`, and `trust.json`, as `{}`.
+- The `sessions` and `bin` directories.
+
+### Presence records
+
+| Account | Presence record | Effect |
+| --- | --- | --- |
+| Claude | Under `live/` | Counts as a session on that account, so `claude` placement spreads around it and the check tick samples its account first. |
+| ChatGPT | Under `codex-live/` | Holds the account the way a codex session does: no other codex or pi session and no `seat --codex` borrower is placed there, and nothing else refreshes that account's codex store while the session runs. |
+
+The pi supervisor that holds a ChatGPT account refreshes the codex store token itself when it expires, because no codex process uses that store meanwhile, so its usage reads keep working for the whole session.
 
 ## Moves
 
-pi runs no hook tokenmaxxing can use, so the supervisor watches its own seat every ten seconds. For a Claude account it reads the cached figure and the account's statusline tee; the check tick refreshes the cached figure at the account's sample interval (the timer comes from `tokenmaxxing init`, and `init --pi` warns when it is not active); for a ChatGPT account it reads codex's usage endpoint with the account's codex store token when the cached figure is older than `policy.usagePollTtlMs`, and after a failed read it logs `pisupervisor.seat_unmeasured` and waits a minute before the next one. At or over a bar it runs the pool's decision, restricted to accounts with a pi login. On a move it stops pi (pi restores the terminal on SIGTERM) and relaunches `pi --session-id <id>` under the target's store with the launch flags and a first prompt that asks the model to continue. pi restores the session's model on resume. A turn in flight is cut; its completed messages are in the session file. On the Claude pool a fully depleted pool gets the same countdown as a `claude` session (Ctrl-C resumes at once); on the Codex pool nothing waits.
+pi runs no hook tokenmaxxing can use, so the supervisor watches its own seat every ten seconds.
 
-The supervisor owns the session id so that a relaunch reopens the same conversation. A new session gets `--session-id <uuid>`, `--continue` resolves to the most recent session for the current directory, `--session` with an id or a unique id prefix of a session in the current directory becomes `--session-id` with the full id, and `--session-id` and `--fork` are kept. These run pi unchanged, on the login the environment names: the subcommands (`install`, `remove`, `uninstall`, `update`, `list`, `config`, `auth`), `-p`, `--mode json` and `--mode rpc`, any run whose stdin or stdout is not a terminal (pi runs print mode then), `--resume`, `--no-session`, `--session` with a path or with an id from another directory, `--api-key`, `--export`, `--list-models`, `--help`, and `--version`.
+```mermaid
+flowchart TD
+  watch["seat watch"] -->|"every ten seconds"| watch
+  watch -->|"at or over a bar"| decide["the pool's<br/>decision,<br/>accounts with<br/>a pi login only"]
+  decide -->|"a move:<br/>stop pi (SIGTERM)"| file{"session file<br/>exists?"}
+  file -->|"yes"| resume["pi --session-id<br/>under the<br/>target's store,<br/>launch flags,<br/>continue prompt"]
+  file -->|"no, before<br/>the first reply"| repeat["repeat the<br/>original launch,<br/>first message<br/>included"]
+```
+
+### What the watch reads
+
+| | Claude account | ChatGPT account |
+| --- | --- | --- |
+| Source | The cached figure and the account's statusline tee. | Codex's usage endpoint, read with the account's codex store token when the cached figure is older than `policy.usagePollTtlMs`. |
+| Freshness | The check tick refreshes the cached figure at the account's sample interval. The timer comes from `tokenmaxxing init`, and `init --pi` warns when it is not active. | After a failed read, the supervisor logs `pisupervisor.seat_unmeasured` and waits a minute before the next one. |
+| Fully depleted pool | The same countdown as a `claude` session (Ctrl-C resumes at once). | Nothing waits. |
+
+### The relaunch
+
+On a move the supervisor stops pi (pi restores the terminal on SIGTERM) and relaunches `pi --session-id <id>` under the target's store with the launch flags and a first prompt that asks the model to continue. pi restores the session's model on resume. A turn in flight is cut; its completed messages are in the session file.
+
+### Session ids
+
+The supervisor owns the session id so that a relaunch reopens the same conversation.
+
+| Launch | Result |
+| --- | --- |
+| A new session | Gets `--session-id <uuid>`. |
+| `--continue` | Resolves to the most recent session for the current directory. |
+| `--session` with an id or a unique id prefix of a session in the current directory | Becomes `--session-id` with the full id. |
+| `--session-id` or `--fork` | Kept. |
+
+### Runs the supervisor leaves alone
+
+These run pi unchanged, on the login the environment names:
+
+- The subcommands: `install`, `remove`, `uninstall`, `update`, `list`, `config`, and `auth`.
+- `-p`, `--mode json`, and `--mode rpc`.
+- Any run whose stdin or stdout is not a terminal (pi runs print mode then).
+- `--resume` and `--no-session`.
+- `--session` with a path or with an id from another directory.
+- `--api-key`, `--export`, `--list-models`, `--help`, and `--version`.
 
 ## Limits
 

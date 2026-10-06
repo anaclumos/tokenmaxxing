@@ -1,5 +1,6 @@
 import { claude } from "../lib/claude.ts";
-import { evaluateAndMaybeSwap } from "../lib/decide.ts";
+import { codex } from "../lib/codex.ts";
+import { evaluateAndMaybeSwap, useBankedResets } from "../lib/decide.ts";
 import { sampleOldest } from "../lib/sample.ts";
 import { pruneStaleSessions } from "../lib/sessions.ts";
 import { loadConfig } from "../lib/state.ts";
@@ -13,6 +14,7 @@ export async function cmdCheck(json = false): Promise<number> {
   try {
     pruneStaleSessions(now);
     d = await evaluateAndMaybeSwap(claude, now);
+    await useBankedResets(codex, loadConfig(), now);
     await sampleOldest(loadConfig());
     await maybeAutoUpdate();
   } catch (e) {

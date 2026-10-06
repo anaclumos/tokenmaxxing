@@ -34,11 +34,11 @@ function iso(epochMs: number | null): string | null {
 }
 
 function claudeBody(usage: UsageReport): unknown {
-  const win = (w: WindowReport | null) => (w ? { utilization: w.usedPercentage, resets_at: iso(w.resetsAt) } : null);
+  const win = (w: WindowReport | null) => (w ? { utilization: w.bufferedPercentage, resets_at: iso(w.resetsAt) } : null);
   return {
     five_hour: win(usage.fiveHour),
     seven_day: win(usage.week),
-    limits: usage.limits.map((w) => ({ kind: "weekly_scoped", percent: w.usedPercentage, resets_at: iso(w.resetsAt), scope: { model: { display_name: w.name } } })),
+    limits: usage.limits.map((w) => ({ kind: "weekly_scoped", percent: w.bufferedPercentage, resets_at: iso(w.resetsAt), scope: { model: { display_name: w.name } } })),
   };
 }
 
@@ -46,7 +46,7 @@ function codexBody(usage: UsageReport, account: Account): unknown {
   const win = (w: WindowReport | undefined) =>
     w
       ? {
-          used_percent: w.usedPercentage,
+          used_percent: w.bufferedPercentage,
           reset_at: w.resetsAt == null ? null : Math.round(w.resetsAt / 1000),
           ...(w.windowSeconds == null ? {} : { limit_window_seconds: w.windowSeconds }),
         }
@@ -142,8 +142,9 @@ async function apiCall(req: Request): Promise<Response> {
   const now = Date.now();
   const cfg = loadConfig();
   const current = await pool.read(account, cfg, now);
-  pool.fold(current, thresholdBars(cfg));
-  const usage = usageReport({ ...current, windows: current.windows.filter((w) => now - w.sampledAt <= STALE_AFTER_MS) }, now);
+  const bars = thresholdBars(cfg);
+  pool.fold(current, bars);
+  const usage = usageReport({ ...current, windows: current.windows.filter((w) => now - w.sampledAt <= STALE_AFTER_MS) }, bars, now);
   if (!usage || (!usage.fiveHour && !usage.week)) return json({ error: `no usage figure newer than ${STALE_AFTER_MS / 3_600_000}h for this account` }, 502);
   return json({ status_code: 200, header: { "Content-Type": ["application/json"] }, body: JSON.stringify(pool.body(usage, current)) });
 }

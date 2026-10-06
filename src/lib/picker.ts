@@ -1,6 +1,6 @@
 import { maxBy, minBy, sortBy } from "es-toolkit";
 import { familyTokens } from "./usage.ts";
-import type { Account, Bars, Config, Thresholds, Window } from "./types.ts";
+import type { Account, BankedReset, Bars, Config, Thresholds, Window } from "./types.ts";
 
 export function thresholdBars(cfg: Config): Bars {
   const bars = (t: Thresholds): Thresholds => ({ session: t.session - cfg.policy.projectionMargin, weekly: t.weekly });
@@ -64,6 +64,13 @@ export function barFor(a: Account, w: Window, bars: Bars, now: number): number {
   return released ? Math.max(pick(own), pick(bars)) : pick(own);
 }
 
+export function bufferedUsed(a: Account, w: Window, bars: Bars, now: number): number {
+  const used = liveUsed(w, now);
+  const bar = barFor(a, w, bars, now);
+  if (bar <= 0) return used > 0 ? 100 : 0;
+  return Math.min(100, (used / bar) * 100);
+}
+
 function windowEnd(w: Window): number {
   return w.resetsAt ?? w.sampledAt + (w.windowSeconds ?? 0) * 1000;
 }
@@ -112,6 +119,20 @@ export function nextWeeklyReset(resetsAt: number | null, now: number): number | 
 
 export function weeklyExpiry(a: Account, now: number): number {
   return nextWeeklyReset(weeklyWindow(a)?.resetsAt ?? null, now) ?? Number.POSITIVE_INFINITY;
+}
+
+const BANKED_RESET_LEAD_MS = 3 * 24 * 60 * 60 * 1000;
+
+export function wantsBankedReset(a: Account, bars: Bars, now: number): boolean {
+  const weekly = weeklyWindow(a);
+  const left = weeklyExpiry(a, now) - now;
+  return a.bankedReset != null && weekly != null && liveUsed(weekly, now) >= barFor(a, weekly, bars, now) && Number.isFinite(left) && left > BANKED_RESET_LEAD_MS;
+}
+
+export function landGrant(a: Account, grant: BankedReset | undefined, sentAt: number): void {
+  if (sentAt <= (a.bankedResetAt ?? 0)) return;
+  a.bankedReset = grant;
+  a.bankedResetAt = sentAt;
 }
 
 export function earliestReset(a: Account, now: number): number {

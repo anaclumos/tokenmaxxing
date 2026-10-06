@@ -1,9 +1,11 @@
 import { omit } from "es-toolkit";
 import { z } from "zod";
-import { http } from "./http.ts";
+import { claudeUserAgent } from "./claudebin.ts";
+import { http, safeErrorDetail } from "./http.ts";
 import { errorMessage, log } from "./log.ts";
 import { env } from "./paths.ts";
-import { EpochSecondsSchema, InstantSchema, JsonTextSchema, RateLimitsStdinSchema, type ModelInfo, type UsageWindow, type UsageWindows, type Window } from "./types.ts";
+import type { ResetClaim } from "./provider.ts";
+import { EpochSecondsSchema, InstantSchema, JsonTextSchema, RateLimitsStdinSchema, type BankedReset, type ModelInfo, type UsageWindow, type UsageWindows, type Window } from "./types.ts";
 
 const win = (w: { used_percentage: number; resets_at?: number | null }): UsageWindow => ({
   usedPercentage: w.used_percentage,
@@ -198,11 +200,31 @@ const UsageScopedLimitSchema = z.looseObject({
   resets_at: ResetsAtSchema,
   scope: z.looseObject({ model: z.looseObject({ display_name: z.string() }) }),
 });
+const ResetGrantSchema = z.looseObject({ id: z.string(), resets_left: z.number(), clears: z.array(z.string()), paused: z.boolean(), usable_now: z.boolean() });
+const CedarEmberSchema = z.looseObject({ next_grant_id: z.string().nullish(), grants: z.array(z.looseObject({ id: z.string() })) });
 const UsageResponseSchema = z.looseObject({
   five_hour: UsageLimitSchema.nullish(),
   seven_day: UsageLimitSchema.nullish(),
   limits: z.array(z.unknown()).nullish(),
+  cedar_ember: z.unknown().optional(),
 });
+
+function unreadableGrant(error: z.ZodError): undefined {
+  log("usage.cedar_ember_unreadable", { issue: z.prettifyError(error).slice(0, 200) });
+  return undefined;
+}
+
+function weeklyGrant(raw: unknown): BankedReset | undefined {
+  if (raw == null) return undefined;
+  const block = CedarEmberSchema.safeParse(raw);
+  if (!block.success) return unreadableGrant(block.error);
+  const named = block.data.grants.find((g) => g.id === block.data.next_grant_id);
+  if (named == null) return undefined;
+  const next = ResetGrantSchema.safeParse(named);
+  if (!next.success) return unreadableGrant(next.error);
+  const g = next.data;
+  return g.usable_now && !g.paused && g.resets_left > 0 && g.clears.includes("seven_day") ? { grant: g.id } : undefined;
+}
 
 function scopedRows(limits: unknown[]): Record<string, UsageWindow> {
   const perModel: Record<string, UsageWindow> = {};
@@ -223,7 +245,7 @@ export async function fetchUsageDirect(accessToken: string): Promise<UsageRead> 
   try {
     res = await http.get(USAGE_URL, {
       searchParams: { at_wall: 1, skip_spend: 1 },
-      headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+      headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json", "User-Agent": claudeUserAgent() },
       signal: AbortSignal.timeout(USAGE_DEADLINE_MS),
     });
   } catch (e) {
@@ -241,5 +263,23 @@ export async function fetchUsageDirect(accessToken: string): Promise<UsageRead> 
     return { ok: false, retryAt: null };
   }
   const win = (w: z.infer<typeof UsageLimitSchema>): UsageWindow => ({ usedPercentage: w.utilization, resetsAt: w.resets_at ?? null });
-  return { ok: true, usage: { fiveHour: win(parsed.data.five_hour), sevenDay: win(parsed.data.seven_day), perModel: scopedRows(parsed.data.limits ?? []) } };
+  return {
+    ok: true,
+    usage: { fiveHour: win(parsed.data.five_hour), sevenDay: win(parsed.data.seven_day), perModel: scopedRows(parsed.data.limits ?? []), bankedReset: weeklyGrant(parsed.data.cedar_ember) },
+  };
+}
+
+const ClaimResponseSchema = z.looseObject({ result: z.string(), reason: z.string().nullish() });
+
+export async function claimResetGrant(input: { accessToken: string; organizationUuid: string; grant: string }, signal: AbortSignal): Promise<ResetClaim> {
+  const res = await http.post(new URL(`/api/organizations/${input.organizationUuid}/reset_rate_limits`, USAGE_URL), {
+    headers: { Authorization: `Bearer ${input.accessToken}`, "anthropic-beta": "oauth-2025-04-20", "User-Agent": claudeUserAgent() },
+    json: { program: "cedar_ember", grant_id: input.grant, request_id: crypto.randomUUID() },
+    signal,
+  });
+  const text = await res.text();
+  if (!res.ok) return { reset: false, detail: `HTTP ${res.status}: ${safeErrorDetail({ text })}` };
+  const claim = ClaimResponseSchema.safeParse(JsonTextSchema.safeParse(text).data).data;
+  if (claim == null) return { reset: false, detail: "unreadable body" };
+  return { reset: claim.result === "reset", detail: claim.reason != null ? `${claim.result}: ${claim.reason}` : claim.result };
 }

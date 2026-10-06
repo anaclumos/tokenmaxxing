@@ -160,8 +160,15 @@ export function stripPositionals(argv: string[]): string[] {
   return out;
 }
 
+const PROJECT_DIR_MAX = 200;
+
 function projectDirForCwd(): string {
-  return join(paths.claudeDir, "projects", process.cwd().replace(/[^a-zA-Z0-9]/g, "-"));
+  const cwd = process.cwd();
+  const name = cwd.replace(/[^a-zA-Z0-9]/g, "-");
+  if (name.length <= PROJECT_DIR_MAX) return join(paths.claudeDir, "projects", name);
+  let hash = 0;
+  for (let i = 0; i < cwd.length; i++) hash = ((hash << 5) - hash + cwd.charCodeAt(i)) | 0;
+  return join(paths.claudeDir, "projects", `${name.slice(0, PROJECT_DIR_MAX)}-${Math.abs(hash).toString(36)}`);
 }
 
 function transcriptPath(sessionId: string): string {
@@ -359,6 +366,7 @@ function controlErrorLine(requestId: string): string {
 class StdinRelay {
   private sink: FileSink | null = null;
   private queue: string[] = [];
+  private state = new Map<string, string>();
   private replayable: string[] = [];
   private dropped: string[] = [];
   private pendingTranscript: string | null = null;
@@ -378,7 +386,7 @@ class StdinRelay {
     this.replayable = [];
     this.dropped = [];
     this.pendingTranscript = pendingTranscript;
-    const lines = first === null ? this.queue : [first, ...this.queue];
+    const lines = [...this.state.values(), ...(first === null ? [] : [first]), ...this.queue];
     this.queue = [];
     for (const line of lines) this.forward(line);
     if (this.ended) this.close();
@@ -396,7 +404,7 @@ class StdinRelay {
     return dropped;
   }
 
-  private keep(line: string): void {
+  private keep(line: string, control: boolean, request: { request_id: string } | null): void {
     if (this.pendingTranscript === null) return;
     if (existsSync(this.pendingTranscript)) {
       this.pendingTranscript = null;
@@ -404,10 +412,8 @@ class StdinRelay {
       this.dropped = [];
       return;
     }
-    const parsed = RelayLineSchema.safeParse(JsonTextSchema.safeParse(line).data);
-    if (!parsed.success) this.replayable.push(line);
-    else if (parsed.data.type === "control_request" && REPLAYED_REQUESTS.has(parsed.data.request.subtype)) this.replayable.push(line);
-    else if (parsed.data.type === "control_request") this.dropped.push(parsed.data.request_id);
+    if (request !== null) this.dropped.push(request.request_id);
+    else if (!control) this.replayable.push(line);
   }
 
   private async pump(): Promise<void> {
@@ -415,18 +421,22 @@ class StdinRelay {
   }
 
   private forward(line: string): void {
+    const parsed = RelayLineSchema.safeParse(JsonTextSchema.safeParse(line).data);
+    const request = parsed.success && parsed.data.type === "control_request" ? parsed.data : null;
+    const setup = request !== null && REPLAYED_REQUESTS.has(request.request.subtype);
+    if (setup) this.state.set(request.request.subtype, line);
     if (this.sink !== null) {
       try {
         this.sink.write(line);
         this.sink.flush();
-        this.keep(line);
+        if (!setup) this.keep(line, parsed.success, request);
         return;
       } catch (e) {
         log("supervisor.relay_write_failed", { err: errorMessage(e) });
         this.sink = null;
       }
     }
-    this.queue.push(line);
+    if (!setup) this.queue.push(line);
   }
 
   private close(): void {

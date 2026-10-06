@@ -85,11 +85,15 @@ export function resolveRealBin(input: { name: string; key: BinKey }): string {
   throw new Error(`could not locate the real \`${input.name}\` binary (set ${input.key} in config.json)`);
 }
 
-export function verifyRealBin(input: { bin: string; name: string; versionOk: (versionOutput: string) => boolean }): string | null {
+function spawnVersion(bin: string) {
   const env = { ...process.env, [WRAP_DEPTH_ENV]: String(MAX_WRAP_DEPTH), TOKENMAXXING_PROBE: "1" };
+  return Bun.spawnSync([bin, "--version"], { env, stdout: "pipe", stderr: "pipe", timeout: 15_000, killSignal: "SIGKILL" });
+}
+
+export function verifyRealBin(input: { bin: string; name: string; versionOk: (versionOutput: string) => boolean }): string | null {
   let p;
   try {
-    p = Bun.spawnSync([input.bin, "--version"], { env, stdout: "pipe", stderr: "pipe", timeout: 15_000, killSignal: "SIGKILL" });
+    p = spawnVersion(input.bin);
   } catch (e) {
     return errorMessage(e);
   }
@@ -114,6 +118,17 @@ function isBareVersion(out: string): boolean {
 }
 
 export const PI_BIN = { name: "pi", key: "piBin", versionOk: isBareVersion } as const;
+
+let userAgent: string | undefined;
+
+export function claudeUserAgent(): string {
+  if (userAgent != null) return userAgent;
+  const bin = resolveRealBin(CLAUDE_BIN);
+  const version = spawnVersion(bin).stdout.toString().trim().split(" ")[0] ?? "";
+  if (!isBareVersion(version)) throw new Error(`\`${bin} --version\` printed no version`);
+  userAgent = `claude-cli/${version} (external, cli)`;
+  return userAgent;
+}
 
 export function resolveVerifiedClaude(): string {
   const candidates: string[] = [];

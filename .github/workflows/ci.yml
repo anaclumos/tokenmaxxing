@@ -11,22 +11,25 @@ permissions:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
       - run: bun install --frozen-lockfile
       - run: bun run typecheck
       - name: Pack and verify the artifact
         run: |
           npm pack
-          tar tvf tokenmaxxing-*.tgz > /tmp/tarlist.txt
-          grep -E "^-rwx[-rwx]+ .* package/src/main.ts$" /tmp/tarlist.txt
+          tar tvf tokenmaxxing-*.tgz > "$RUNNER_TEMP/tarlist.txt"
+          grep -E "^-rwx[-rwx]+ .* package/src/main.ts$" "$RUNNER_TEMP/tarlist.txt"
           bun add -g "$PWD"/tokenmaxxing-*.tgz
-          tokenmaxxing help
+          "$(bun pm bin -g)/tokenmaxxing" help
 
   nix:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
@@ -47,7 +50,7 @@ jobs:
   publish:
     if: github.ref == 'refs/heads/main'
     needs: test
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     concurrency:
       group: publish
       cancel-in-progress: false
