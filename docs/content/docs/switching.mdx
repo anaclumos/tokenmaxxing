@@ -182,6 +182,43 @@ The wait target follows these steps in order:
 - Only a supervised session waits: a session outside the supervisor gets the enforced stamp and nothing else.
 - Codex has no pause; it rides its account until the server refuses it.
 
+## Banked resets
+
+An account can hold a banked reset: a one-time reset of its usage windows that the provider grants, such as a promotional reset. When an account's weekly window is at or over its weekly bar and its weekly reset is more than three days away, tokenmaxxing spends the account's banked reset on it, so the account does not sit out the rest of the week. When the weekly reset is three days away or less, or its time is unknown, the account waits for it and keeps the banked reset.
+
+```mermaid
+flowchart LR
+  spent["weekly window<br/>at or over<br/>its weekly bar"] --> due{"weekly reset<br/>more than<br/>three days away?"}
+  due -->|"yes"| claim["spend the<br/>banked reset"]
+  due -->|"no, or<br/>its time unknown"| wait["wait for the<br/>weekly reset,<br/>keep the<br/>banked reset"]
+```
+
+### The claim per provider
+
+- Claude: the direct usage read carries the account's reset grants in its `cedar_ember` block, the block Claude Code's own limit-reset offer reads. A grant counts when it is the account's next grant, the server marks it usable now, it is not paused, it has a reset left, and it clears the weekly window. The claim is the call Claude Code makes, `POST /api/organizations/<organization>/reset_rate_limits` with that grant, under the account's stored access token. The usage read sends Claude Code's `User-Agent`, `claude-cli/<version> (external, cli)` with the version that the real binary's `--version` prints, because the server reports no grant to any other client.
+- Codex: the usage read carries `rate_limit_reset_credits.available_count`, and the claim is the call `codex` makes, `POST https://chatgpt.com/backend-api/wham/rate-limit-reset-credits/consume`, under the account's stored access token. A token that is about to expire is never refreshed for a claim.
+
+### When the claim runs
+
+The claim runs at the start of every decision that carries no server refusal (the Stop hook, the supervisor's seat watch, and the Codex Stop hook) and on every check tick for both pools. It runs for every account in the pool that qualifies on its cached figures after its newer statusline tee is folded in. The decision after a server refusal (the StopFailure hook) claims nothing: the refused session moves as described under [Enforced limits](#enforced-limits), and the next decision or tick claims the reset, which ends the wall that the refusal stamped. Each claim and its answer is logged as `decide.banked_reset`.
+
+### One claim per grant
+
+Under the pool lock, the account record drops the grant and records a one-minute claim hold before the claim is sent. The claim gives up within 25 seconds. A usage read sent before the hold ends cannot bring the grant back, so concurrent decisions and reads in flight send one claim per grant. Only a usage read sent after the hold that still reports a usable grant brings it back.
+
+```mermaid
+flowchart LR
+  lock["under the<br/>pool lock:<br/>drop the grant,<br/>record a<br/>one-minute<br/>claim hold"] --> post["send the claim,<br/>give up within<br/>25 seconds"]
+  post -->|"reset"| reset["drop the cached<br/>session and<br/>weekly windows"]
+  reset --> wall["end a wall<br/>stamped while<br/>the weekly<br/>window was<br/>at its bar"]
+```
+
+### After a reset
+
+When the server answers `reset`, the account record drops its cached session and weekly windows, so the account is unmeasured until its next sample, and an enforced-limit wall stamped while the weekly window was at its bar ends. A session whose own seat takes the reset at a turn boundary stays on that seat.
+
+The seat watch reads the seat's statusline tee. A terminal statusline that renders between the claim and the next model response writes the figures from before the claim with a fresh time, and the seat watch then moves the session once. The account keeps its reset.
+
 ## Per-model caps
 
 `policy.switchModels` (default `["fable"]`) names the model families whose per-model weekly cap can trigger a move. Matching is by family token, never by exact display string: model display names drift ("Fable" became "Fable 5"), and an exact-string gate once silently disabled per-model switching entirely.
@@ -304,6 +341,7 @@ An organization refusal walls the account for five hours, because the row names 
 The timer runs `tokenmaxxing check` once per tick (`policy.checkIntervalMs`, 60 seconds by default). A tick runs from no session, so it has no seat to move. launchd and systemd both skip a firing while the previous check is still running, so ticks never overlap. Each tick:
 
 - folds every fresh tee into `accounts.json`;
+- spends the banked resets that are due (see [Banked resets](#banked-resets));
 - samples up to three accounts: accounts with a live session first, then the ones whose last sample attempt (`lastUsageAt` or `lastProbeAt`) is oldest, skipping any attempted within the account's sample interval;
 - deletes atomic-write temp files older than an hour (see [Temp file sweep](#temp-file-sweep)) and prunes session flag files older than 30 days;
 - on a Bun global install, ends by checking npm for a newer version, at most once a day (see [Automatic updates](/distribution#automatic-updates)).
