@@ -7,7 +7,7 @@ import { codexPaths, codexPool } from "../lib/paths.ts";
 import { withLock } from "../lib/lock.ts";
 import { CODEX_BIN, UNMANAGED_ENV, WRAP_DEPTH_ENV, resolveRealBin, wrapDepth } from "../lib/claudebin.ts";
 import { codexStoreUsable, ensureCodexStoreHome } from "../lib/codexauth.ts";
-import { CODEX_SUPERVISOR_ID_ENV, borrowCodexSeat, codexPickCtx, pickCodexSeat } from "../lib/codex.ts";
+import { CODEX_CRED_ENV, CODEX_SUPERVISOR_ID_ENV, borrowCodexSeat, codexPickCtx, pickCodexSeat } from "../lib/codex.ts";
 import { clearPresence, livingPresences } from "../lib/presence.ts";
 import { isExhausted } from "../lib/picker.ts";
 import { exitStatus, loopGuardTripped, raceMarkerOrExit, recordPresenceOrStop, runPassthrough } from "../lib/supervise.ts";
@@ -100,12 +100,11 @@ export async function runCodexSupervisor(input: { argv: string[] }): Promise<num
     });
     const granted = borrowsCodexSeat({ argv }) ? await borrowCodexSeat(process.pid) : undefined;
     const seat = granted && !("denied" in granted) ? granted : null;
-    if (seat) passthroughEnv.CODEX_HOME = seat.store;
-    else if (granted !== undefined) log("codexsupervisor.borrow_none", { reason: granted && "denied" in granted ? granted.denied : "no usable account" });
+    if (!seat && granted !== undefined) log("codexsupervisor.borrow_none", { reason: granted && "denied" in granted ? granted.denied : "no usable account" });
     return runPassthrough({
       real,
       argv,
-      env: passthroughEnv,
+      env: seat ? { ...omit(passthroughEnv, CODEX_CRED_ENV), CODEX_HOME: seat.store } : passthroughEnv,
       onSpawn: (p) => {
         child = p;
         return seat
@@ -148,7 +147,7 @@ export async function runCodexSupervisor(input: { argv: string[] }): Promise<num
         stdout: "inherit",
         stderr: "inherit",
         env: {
-          ...childEnv,
+          ...(store ? omit(childEnv, CODEX_CRED_ENV) : childEnv),
           [CODEX_SUPERVISOR_ID_ENV]: supervisorId,
           ...(store ? { CODEX_HOME: store } : {}),
         },
