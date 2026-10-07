@@ -1,6 +1,10 @@
 import { basename } from "node:path";
 import { ErrnoSchema } from "./types.ts";
 
+export function shellQuote(s: string): string {
+  return `'${s.replaceAll("'", "'\\''")}'`;
+}
+
 const SHELLS = new Set(["sh", "bash", "dash", "zsh", "ksh", "fish"]);
 const MAX_SHELL_HOPS = 4;
 

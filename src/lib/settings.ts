@@ -4,6 +4,7 @@ import { z } from "zod";
 import { paths } from "./paths.ts";
 import { writeFileAtomic } from "./atomic.ts";
 import { readJsonFile } from "./state.ts";
+import { shellQuote } from "./proc.ts";
 import { JsonTextSchema } from "./types.ts";
 import { ENFORCED_ERRORS } from "./usage.ts";
 
@@ -55,7 +56,7 @@ function isOurCommand(cmd: string | undefined): boolean {
 }
 
 function ourCommand(sub: string): string {
-  return `${JSON.stringify(installedBin())} ${sub}`;
+  return `${shellQuote(installedBin())} ${sub}`;
 }
 
 function ourHookGroup(sub: string, matcher?: string): HookGroup {
@@ -73,9 +74,13 @@ function appendHook(s: Settings, event: string, sub: string, matcher?: string): 
 export function isOurHookCommand(cmd: string, sub: string): boolean {
   if (!cmd.endsWith(` ${sub}`)) return false;
   const quotedPath = cmd.slice(0, cmd.length - (sub.length + 1));
-  if (!quotedPath.startsWith('"') || !quotedPath.endsWith('"')) return false;
-  const parsed = z.string().safeParse(JsonTextSchema.safeParse(quotedPath).data);
-  return parsed.success && parsed.data.endsWith("/tokenmaxxing");
+  const unquoted = quotedPath.slice(1, -1).replaceAll("'\\''", "'");
+  const path = quotedPath.startsWith("'")
+    ? shellQuote(unquoted) === quotedPath
+      ? unquoted
+      : undefined
+    : z.string().safeParse(JsonTextSchema.safeParse(quotedPath).data).data;
+  return path?.endsWith("/tokenmaxxing") === true;
 }
 
 function removeHook(s: Settings, event: string, sub: string): void {
