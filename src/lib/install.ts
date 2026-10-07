@@ -5,6 +5,7 @@ import { escape } from "es-toolkit";
 import { z } from "zod";
 import { codexPaths, codexStoreDirFor, HOME, optionalEnv, paths } from "./paths.ts";
 import { writeFileAtomic } from "./atomic.ts";
+import { shellQuote } from "./proc.ts";
 import { installedBin, installSettings, isOurHookCommand, uninstallSettings } from "./settings.ts";
 import { CLAUDE_BIN, resolveRealBin } from "./claudebin.ts";
 import { loadConfig, readJsonFile, type BinKey } from "./state.ts";
@@ -84,7 +85,7 @@ export PATH
 if command -v tokenmaxxing >/dev/null 2>&1; then
   exec tokenmaxxing "$@"
 fi
-exec ${JSON.stringify(bun)} --no-env-file run ${JSON.stringify(entry)} "$@"
+exec ${shellQuote(bun)} --no-env-file run ${shellQuote(entry)} "$@"
 `;
 }
 
@@ -94,15 +95,15 @@ function installEntryPoints(): string {
   if (isNixPackaged()) {
     writeFileAtomic(target, nixSupervisorShim(process.execPath, entry), 0o755);
   } else {
-    writeFileAtomic(target, `#!/bin/sh\nexec ${JSON.stringify(process.execPath)} --no-env-file run ${JSON.stringify(entry)} "$@"\n`, 0o755);
+    writeFileAtomic(target, `#!/bin/sh\nexec ${shellQuote(process.execPath)} --no-env-file run ${shellQuote(entry)} "$@"\n`, 0o755);
   }
-  writeFileAtomic(join(paths.binDir, "xx"), `#!/bin/sh\nexec ${JSON.stringify(target)} "$@"\n`, 0o755);
+  writeFileAtomic(join(paths.binDir, "xx"), `#!/bin/sh\nexec ${shellQuote(target)} "$@"\n`, 0o755);
   return target;
 }
 
 export function installSupervisor(): InstallOutcome {
   const target = installEntryPoints();
-  writeFileAtomic(paths.supervisorLink, `#!/bin/sh\nexec ${JSON.stringify(target)} __supervise "$@"\n`, 0o755);
+  writeFileAtomic(paths.supervisorLink, `#!/bin/sh\nexec ${shellQuote(target)} __supervise "$@"\n`, 0o755);
 
   installSettings();
   const checkIntervalS = Math.ceil(loadConfig().policy.checkIntervalMs / 1000);
@@ -127,7 +128,7 @@ const CodexHooksFileSchema = z.looseObject({
 const CODEX_STOP_HOOK_SUBCOMMAND = "__codex-stop-hook";
 
 function codexStopHookCommand(): string {
-  return `${JSON.stringify(installedBin())} ${CODEX_STOP_HOOK_SUBCOMMAND}`;
+  return `${shellQuote(installedBin())} ${CODEX_STOP_HOOK_SUBCOMMAND}`;
 }
 
 function withoutOurCodexStopHooks(groups: { hooks: { type?: string; command?: string }[] }[]): typeof groups {
@@ -200,7 +201,7 @@ export function codexSupervisorLink(): string {
 }
 
 export function installCodexSupervisor(): void {
-  writeFileAtomic(codexSupervisorLink(), `#!/bin/sh\nexec ${JSON.stringify(installEntryPoints())} __supervise-codex "$@"\n`, 0o755);
+  writeFileAtomic(codexSupervisorLink(), `#!/bin/sh\nexec ${shellQuote(installEntryPoints())} __supervise-codex "$@"\n`, 0o755);
   installCodexStopHook();
 }
 
@@ -214,7 +215,7 @@ export function piSupervisorLink(): string {
 }
 
 export function installPiSupervisor(): void {
-  writeFileAtomic(piSupervisorLink(), `#!/bin/sh\nexec ${JSON.stringify(installEntryPoints())} __supervise-pi "$@"\n`, 0o755);
+  writeFileAtomic(piSupervisorLink(), `#!/bin/sh\nexec ${shellQuote(installEntryPoints())} __supervise-pi "$@"\n`, 0o755);
 }
 
 export type UnitJob = {
