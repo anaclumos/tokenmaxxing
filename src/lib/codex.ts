@@ -21,6 +21,7 @@ import type { Account, CodexAuthJson, CodexUsage, Config } from "./types.ts";
 import { c } from "../cli/render.ts";
 
 export const CODEX_SUPERVISOR_ID_ENV = "TOKENMAXXING_CODEX_SUPERVISOR_ID";
+export const CODEX_CRED_ENV = ["CODEX_ACCESS_TOKEN", "CODEX_API_KEY"] as const;
 
 function liveId(): string | null {
   return codexSeatFromEnv(loadAccounts(codexPool).accounts.map((a) => a.id));
