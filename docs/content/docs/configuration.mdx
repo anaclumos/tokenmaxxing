@@ -15,7 +15,6 @@ Config is JSON at `~/.config/tokenmaxxing/config.json`. Every field is optional;
   "claudeBin": "/path/to/real/claude",
   "codexBin": "/path/to/real/codex",
   "grokBin": "/path/to/real/grok",
-  "opencodeBin": "/path/to/real/opencode",
   "piBin": "/path/to/real/pi",
   "policy": {
     "projectionMargin": 0,
@@ -37,7 +36,7 @@ Config is JSON at `~/.config/tokenmaxxing/config.json`. Every field is optional;
 | `thresholds.weekly` | `98` | The weekly bar, covering the 7-day aggregate and every per-model weekly cap. |
 | `thresholds.accounts` | `{}` | Per-account thresholds keyed by account label, each with both `session` and `weekly`. See [Per-account bars](#per-account-bars). |
 | `"credits"` in a `thresholds.accounts` entry | `false` | Marks an account that carries purchased usage credits. |
-| `claudeBin`, `codexBin`, `grokBin`, `opencodeBin`, `piBin` | written by `init` | Pins to the REAL binaries the supervisors and the status-only pools spawn. See [Binary pins](#binary-pins). |
+| `claudeBin`, `codexBin`, `grokBin`, `piBin` | written by `init` | Pins to the REAL binaries the supervisors and the status-only pool spawn. See [Binary pins](#binary-pins). |
 | `policy.projectionMargin` | `0` | Subtracted from the session threshold only. See [Projection margin](#projection-margin). |
 | `policy.switchModels` | `["fable"]` | Model families whose per-model weekly cap gates a switch (entries are lowercased on load). |
 | `policy.usagePollTtlMs` | `90000` | The shortest sample interval of a Claude account, the one an account near a bar gets. See [Sample interval](#sample-interval). |
@@ -87,7 +86,7 @@ Every displayed usage percent is measured against the account's switch threshold
 - The threshold is the account's own entry in `thresholds.accounts`, else the global threshold, minus `policy.projectionMargin` for the session window.
 - The threshold is lifted near a reset the way switching lifts it (`policy.accountReleaseMs`).
 - 100 means the account reached its switch threshold, where tokenmaxxing stops placing sessions on it unless its `thresholds.accounts` entry sets `credits`. Usage past that point stays at 100.
-- A status-only pool (Grok, OpenCode Go) has no switch threshold and shows the provider's figure.
+- The status-only grok pool has no switch threshold and shows the provider's figure.
 
 The figure therefore reads higher than the usage Claude Code or Codex reports: with `thresholds.session` at 90, a session window at 45 percent reads 50. Switching decisions and the stored records use the provider's figures.
 
@@ -100,7 +99,6 @@ The figure therefore reads higher than the usage Claude Code or Codex reports: w
 | `claudeBin` | `TOKENMAXXING_CLAUDE_BIN` |
 | `codexBin` | `TOKENMAXXING_CODEX_BIN` |
 | `grokBin` | `TOKENMAXXING_GROK_BIN` |
-| `opencodeBin` | `TOKENMAXXING_OPENCODE_BIN` |
 | `piBin` | `TOKENMAXXING_PI_BIN` |
 
 Each variable overrides the file value for one process, except that `init` pins the binary it resolved into `config.json`, so an override set for `init` persists.

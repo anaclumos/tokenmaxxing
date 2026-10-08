@@ -89,17 +89,6 @@ The tree lists the entries in the order of the sections below. Open a folder to 
       </Folder>
     </Folder>
     <Folder name="grok-onboard" />
-    <File name="opencode-go-accounts.json" />
-    <File name="opencode-go-lock" />
-    <Folder name="opencode-go-stores">
-      <Folder name="<uuid8>">
-        <File name="auth.json" />
-      </Folder>
-    </Folder>
-    <Folder name="opencode-go-onboard" />
-    <Folder name="opencode-go-live">
-      <File name="seat-<pid>" />
-    </Folder>
   </Folder>
 </Files>
 
@@ -222,14 +211,13 @@ A pi session's presence record goes to `live/` or `codex-live/`. See [pi support
 
 ### Status-only pools
 
-The `grok-*` and `opencode-go-*` entries are the state of the two status-only pools. See [Status-only pools](/status-only-pools).
+The `grok-*` entries are the state of the status-only grok pool. See [Status-only pools](/status-only-pools).
 
 | Path | What it holds |
 |---|---|
-| `grok-accounts.json`, `opencode-go-accounts.json` | The same index shape |
-| `grok-stores/<uuid8>/auth.json`, `opencode-go-stores/<uuid8>/auth.json` | One 0600 store per account |
-| `grok-onboard/`, `opencode-go-onboard/` | Throwaway login homes |
-| `opencode-go-live/` | One `seat-<pid>` record per key lent by `seat --opencode-go`, validated against that pid |
+| `grok-accounts.json` | The same index shape |
+| `grok-stores/<uuid8>/auth.json` | One 0600 store per account |
+| `grok-onboard/` | Throwaway login home |
 
 ## Outside the state directory
 

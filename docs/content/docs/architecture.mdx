@@ -41,7 +41,7 @@ One switching engine serves both switching pools. The account model, the picker,
 | Codex (see [Codex support](/codex)) | `src/lib/codex.ts` | `live`: at most one session runs on an account, because codex has no cross-process refresh lock, and an account running in another session is never a target | its per-account stores (`codex-stores/<uuid8>/` with `auth.json`, everything else symlinked to the shared `~/.codex`), its identity, the usage GET and the refresh it needs, presence, and the store check before a move |
 
 - **pi** is a client of both switching pools rather than a pool of its own. The pi supervisor (`src/entries/pisupervisor.ts`) runs a pi session on a Claude or Codex account through that account's pi store. It drives the same decision through the pool's provider with one change: the store check before a move reads the target's pi store (`src/lib/pi.ts`; see [pi support](/pi)).
-- **grok** (`src/lib/grok.ts`) and **opencode-go** (`src/lib/opencodego.ts`) are `statusOnly` providers: they get the same stores and account commands and no supervisor, hooks, or switching. grok `status` reads the weekly subscription credit window; opencode-go has no usage source (see [Status-only pools](/status-only-pools)).
+- **grok** (`src/lib/grok.ts`) is a `statusOnly` provider: it gets the same stores and account commands and no supervisor, hooks, or switching. grok `status` reads the weekly subscription credit window (see [Status-only pools](/status-only-pools)).
 
 Everything below describes the Claude provider unless it says otherwise.
 

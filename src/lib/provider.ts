@@ -20,7 +20,7 @@ export class StoreUnusableError extends Error {
 }
 
 export type Provider = {
-  name: "claude" | "codex" | "grok" | "opencode-go";
+  name: "claude" | "codex" | "grok";
   flag: string;
   pool: PoolPaths;
   seats: "shared" | "live";

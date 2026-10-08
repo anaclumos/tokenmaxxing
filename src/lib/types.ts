@@ -116,7 +116,6 @@ export const ConfigSchema = z
     claudeBin: z.string().default(""),
     codexBin: z.string().default(""),
     grokBin: z.string().default(""),
-    opencodeBin: z.string().default(""),
     piBin: z.string().default(""),
     policy: z
       .object({

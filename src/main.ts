@@ -13,7 +13,6 @@ import { runPiSupervisor } from "./entries/pisupervisor.ts";
 import { claude } from "./lib/claude.ts";
 import { codex } from "./lib/codex.ts";
 import { grok } from "./lib/grok.ts";
-import { opencodeGo } from "./lib/opencodego.ts";
 import { cmdInit, cmdInitPi } from "./cli/init.ts";
 import { cmdAdd } from "./cli/add.ts";
 import { cmdAuth } from "./cli/auth.ts";
@@ -35,12 +34,10 @@ const CACHED_FLAG = "--cached";
 const YES_FLAG = "--yes";
 const CODEX_FLAG = "--codex";
 const GROK_FLAG = "--grok";
-const OPENCODE_GO_FLAG = "--opencode-go";
 const PI_FLAG = "--pi";
 const JSON_COMMANDS = new Set(["status", "config", "check"]);
 const CODEX_COMMANDS = new Set(["init", "add", "auth", "rm", "rename", "seat"]);
 const STATUS_ONLY_COMMANDS = new Set(["init", "add", "auth", "rm", "rename"]);
-const OPENCODE_GO_COMMANDS = new Set([...STATUS_ONLY_COMMANDS, "seat"]);
 
 function printHelp(): void {
   console.log(`${c.bold("tokenmaxxing")} - automatic Claude Code account switching
@@ -51,19 +48,17 @@ function printHelp(): void {
   ${c.cyan("tokenmaxxing init --codex")}  same for codex: log in the first account, isolated, install codex supervisor + Stop hook
   ${c.cyan("tokenmaxxing init --pi")}     install the pi supervisor: pi sessions run on pooled Claude or ChatGPT accounts that are logged into pi
   ${c.cyan("tokenmaxxing init --grok")}   pool grok Build logins (status-only: no supervisor yet)
-  ${c.cyan("tokenmaxxing init --opencode-go")}  pool opencode-go API keys (status-only: no supervisor yet)
   ${c.cyan("tokenmaxxing add")}        register an additional account (isolated login)
-  ${c.cyan("tokenmaxxing add")} --codex | --grok | --opencode-go   same for the codex, grok, or opencode-go pool
-  ${c.cyan("tokenmaxxing auth")} [--codex | --grok | --opencode-go] [sel | --all]  reauthenticate a pooled account in place (bare = pick from a list; --all = every account that is flagged or has no usable credential in its store, one by one)
+  ${c.cyan("tokenmaxxing add")} --codex | --grok   same for the codex or grok pool
+  ${c.cyan("tokenmaxxing auth")} [--codex | --grok] [sel | --all]  reauthenticate a pooled account in place (bare = pick from a list; --all = every account that is flagged or has no usable credential in its store, one by one)
   ${c.cyan("tokenmaxxing auth --pi")} [--codex] [sel | --all]  log a pooled Claude account (or a codex account with --codex) into pi, isolated (bare = pick from a list; --all = every account without a pi login)
   ${c.cyan("tokenmaxxing status")} [--cached]  accounts with 5h / weekly / per-model usage bars (--cached: the stored figures, no sampling)
   ${c.cyan("tokenmaxxing config")}     print the config path and the effective values (edit the file in an editor)
   ${c.cyan("tokenmaxxing doctor")}     verify the install is intact
-  ${c.cyan("tokenmaxxing rename")} [--codex | --grok | --opencode-go] <sel> <label>
-  ${c.cyan("tokenmaxxing rm")} [--codex | --grok | --opencode-go] <sel>
+  ${c.cyan("tokenmaxxing rename")} [--codex | --grok] <sel> <label>
+  ${c.cyan("tokenmaxxing rm")} [--codex | --grok] <sel>
   ${c.cyan("tokenmaxxing seat")} <pid>  lend one pooled Claude account to an unattended consumer until <pid> exits: prints the store directory to set as CLAUDE_SECURESTORAGE_CONFIG_DIR (the directory itself, as its owner, never a copy of its credential); host sessions and other borrowers share the account; exit 1 = none usable
   ${c.cyan("tokenmaxxing seat --codex")} <pid>  borrow one pooled codex account for an unattended consumer (plugin, script): prints the CODEX_HOME to set, lent to <pid> until it exits; codex sessions and other borrowers share the account, and a refresh race between them can sign it out until auth --codex runs again; exit 1 = none usable, fall back to the ambient login
-  ${c.cyan("tokenmaxxing seat --opencode-go")} <pid>  lend one pooled opencode-go key to an unattended consumer until <pid> exits: prints the store directory, whose auth.json is an opencode auth file (mount it at $XDG_DATA_HOME/opencode/auth.json, then run a model such as opencode-go/mimo-v2.6-pro); other borrowers share the key; exit 1 = none usable
   ${c.cyan("tokenmaxxing serve")}      serve the CLIProxyAPI-compatible usage API on http://localhost:<hub.port> (default 8317) so a dashboard such as T3 Code's "Add a CLIProxyAPI hub" shows every pooled Claude and Codex account's quota; the management key is the contents of hub-key in the state directory
   ${c.cyan("tokenmaxxing uninstall")} [--yes]  print the targets, then remove supervisor + settings entries (refused without ${c.cyan("--yes")} when HOME is the login home)
 
@@ -97,14 +92,14 @@ async function main(): Promise<number> {
   const json = jsonMode;
   const cached = argv.includes(CACHED_FLAG);
   const yes = argv.includes(YES_FLAG);
-  const providerFlags = [CODEX_FLAG, GROK_FLAG, OPENCODE_GO_FLAG].filter((f) => argv.includes(f));
+  const providerFlags = [CODEX_FLAG, GROK_FLAG].filter((f) => argv.includes(f));
   if (providerFlags.length > 1) {
     emitError({ json, message: `${providerFlags.join(" and ")} are mutually exclusive - pick one pool` });
     return 2;
   }
-  const provider = argv.includes(CODEX_FLAG) ? codex : argv.includes(GROK_FLAG) ? grok : argv.includes(OPENCODE_GO_FLAG) ? opencodeGo : claude;
+  const provider = argv.includes(CODEX_FLAG) ? codex : argv.includes(GROK_FLAG) ? grok : claude;
   const pi = argv.includes(PI_FLAG);
-  const args = argv.filter((a) => a !== JSON_FLAG && a !== CACHED_FLAG && a !== YES_FLAG && a !== CODEX_FLAG && a !== GROK_FLAG && a !== OPENCODE_GO_FLAG && a !== PI_FLAG);
+  const args = argv.filter((a) => a !== JSON_FLAG && a !== CACHED_FLAG && a !== YES_FLAG && a !== CODEX_FLAG && a !== GROK_FLAG && a !== PI_FLAG);
   const sub = args[0];
 
   if (pi && sub !== "init" && sub !== "auth") {
@@ -132,13 +127,9 @@ async function main(): Promise<number> {
     return 2;
   }
 
-  if (provider === grok || provider === opencodeGo) {
-    const flag = provider === grok ? GROK_FLAG : OPENCODE_GO_FLAG;
-    const commands = provider === grok ? STATUS_ONLY_COMMANDS : OPENCODE_GO_COMMANDS;
-    if (sub == null || !commands.has(sub)) {
-      emitError({ json, message: `${flag} applies to ${[...commands].join(", ")}, not ${sub ?? "status"}` });
-      return 2;
-    }
+  if (provider === grok && (sub == null || !STATUS_ONLY_COMMANDS.has(sub))) {
+    emitError({ json, message: `${GROK_FLAG} applies to ${[...STATUS_ONLY_COMMANDS].join(", ")}, not ${sub ?? "status"}` });
+    return 2;
   }
 
   if (json && sub != null && !JSON_COMMANDS.has(sub)) {
@@ -175,7 +166,7 @@ async function main(): Promise<number> {
     case "doctor": return cmdDoctor();
     case "rm": return cmdRm(provider, args[1]);
     case "rename": return cmdRename(provider, args.slice(1));
-    case "seat": return cmdSeat(provider === codex ? "codex" : provider === opencodeGo ? "opencode-go" : "claude", args[1], args.slice(2));
+    case "seat": return cmdSeat(provider === codex ? "codex" : "claude", args[1], args.slice(2));
     case "serve": return cmdServe(args.slice(1));
     case "uninstall": {
       if (args.length > 1) {
@@ -200,7 +191,7 @@ async function main(): Promise<number> {
       if (out.timer === "still-loaded") console.log(c.yellow(`⚠ the check job may still be loaded - run: ${deactivationHint(CHECK_JOB)}`));
       if (out.hub === "still-loaded") console.log(c.yellow(`⚠ the usage hub job may still be loaded - run: ${deactivationHint(HUB_JOB)}`));
       if (!out.pathLineRemoved) console.log(c.dim("(no tokenmaxxing PATH line found in the shell rc)"));
-      console.log(`kept: accounts.json, config.json, and every account credential store (claude: stores/ and its keychain items on macOS; codex: codex-stores/; pi: pi-stores/; grok: grok-stores/; opencode-go: opencode-go-stores/) - remove accounts with \`xx rm\` to delete their credentials`);
+      console.log(`kept: accounts.json, config.json, and every account credential store (claude: stores/ and its keychain items on macOS; codex: codex-stores/; pi: pi-stores/; grok: grok-stores/) - remove accounts with \`xx rm\` to delete their credentials`);
       return 0;
     }
     case "help":
