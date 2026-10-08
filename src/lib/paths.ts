@@ -55,11 +55,6 @@ export const grokPool = {
   lockFile: join(TM_HOME, "grok-lock"),
 } as const;
 
-export const opencodeGoPool = {
-  accountsJson: join(TM_HOME, "opencode-go-accounts.json"),
-  lockFile: join(TM_HOME, "opencode-go-lock"),
-} as const;
-
 export type PoolPaths = { accountsJson: string; lockFile: string };
 
 const CODEX_HOME = env("TOKENMAXXING_CODEX_HOME", env("CODEX_HOME", join(HOME, ".codex")));
@@ -128,20 +123,6 @@ export function grokSeatFromEnv(accountIds: string[], env: Record<string, string
   const home = env.GROK_HOME;
   if (home == null || home === "") return null;
   return accountIds.find((id) => grokStoreDirFor(id) === home) ?? null;
-}
-
-export const opencodeGoPaths = {
-  storesDir: join(TM_HOME, "opencode-go-stores"),
-  onboardDir: join(TM_HOME, "opencode-go-onboard"),
-  presenceDir: join(TM_HOME, "opencode-go-live"),
-} as const;
-
-export function opencodeGoStoreDirFor(accountId: string): string {
-  return join(opencodeGoPaths.storesDir, shortId(accountId));
-}
-
-export function opencodeGoAuthJsonFor(accountId: string): string {
-  return join(opencodeGoStoreDirFor(accountId), "auth.json");
 }
 
 const CLAUDE_KEYCHAIN_ACCOUNT_PATTERN = /^[a-zA-Z0-9._-]+$/;

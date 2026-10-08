@@ -165,7 +165,7 @@ The reservation follows these rules:
 - A consumer that runs inside a supervised codex session inherits that session's supervisor id, and a borrow made with that id in its environment never gets that session's account. The Stop hook of the borrowed child compares the supervisor's presence record with the seat in its own `CODEX_HOME` and moves nothing when they differ, so a borrowed child never restarts its parent.
 
 <Callout>
-A Codex account serves several borrowers and sessions at once, like a Claude or opencode-go seat, although OpenAI's [CI/CD auth guide](https://learn.chatgpt.com/docs/auth/ci-cd-auth) says "Do not share the same file across concurrent jobs or multiple machines." Codex takes no cross-process lock around a token refresh, so two codex processes on one `auth.json` can send the same refresh token. The loser gets `refresh_token_reused`, and the account can stay signed out until you run `tokenmaxxing auth --codex` for it. Spreading borrowers keeps the number of processes per account low, which makes that race less likely but does not remove it.
+A Codex account serves several borrowers and sessions at once, like a Claude seat, although OpenAI's [CI/CD auth guide](https://learn.chatgpt.com/docs/auth/ci-cd-auth) says "Do not share the same file across concurrent jobs or multiple machines." Codex takes no cross-process lock around a token refresh, so two codex processes on one `auth.json` can send the same refresh token. The loser gets `refresh_token_reused`, and the account can stay signed out until you run `tokenmaxxing auth --codex` for it. Spreading borrowers keeps the number of processes per account low, which makes that race less likely but does not remove it.
 </Callout>
 
 ### Trusting the Stop hook

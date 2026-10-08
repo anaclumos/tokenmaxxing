@@ -11,7 +11,7 @@ import { usageNote } from "./add.ts";
 import { c, count } from "./render.ts";
 import type { Account, AccountsIndex } from "../lib/types.ts";
 
-const AUTH_USAGE = "usage: tokenmaxxing auth [--codex | --grok | --opencode-go] [<email|label|id> | --all]\n       tokenmaxxing auth --pi [--codex] [<email|label|id> | --all]";
+const AUTH_USAGE = "usage: tokenmaxxing auth [--codex | --grok] [<email|label|id> | --all]\n       tokenmaxxing auth --pi [--codex] [<email|label|id> | --all]";
 
 export type AuthPlan = { kind: "usage" } | { kind: "error"; message: string } | { kind: "pick" } | { kind: "targets"; ids: string[] };
 
