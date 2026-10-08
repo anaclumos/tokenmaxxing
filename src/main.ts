@@ -27,7 +27,7 @@ import { cmdServe } from "./cli/serve.ts";
 import { CHECK_JOB, deactivationHint, HUB_JOB, onLoginHome, uninstallSupervisor, uninstallTargets } from "./lib/install.ts";
 import { errorMessage } from "./lib/log.ts";
 import { HOME } from "./lib/paths.ts";
-import { c, emitError } from "./cli/render.ts";
+import { c, count, emitError } from "./cli/render.ts";
 
 const JSON_FLAG = "--json";
 const CACHED_FLAG = "--cached";
@@ -38,6 +38,7 @@ const PI_FLAG = "--pi";
 const JSON_COMMANDS = new Set(["status", "config", "check"]);
 const CODEX_COMMANDS = new Set(["init", "add", "auth", "rm", "rename", "seat"]);
 const STATUS_ONLY_COMMANDS = new Set(["init", "add", "auth", "rm", "rename"]);
+const MAX_OPERANDS = new Map([["init", 0], ["add", 0], ["rm", 1], ["rename", 2]]);
 
 function printHelp(): void {
   console.log(`${c.bold("tokenmaxxing")} - automatic Claude Code account switching
@@ -134,6 +135,12 @@ async function main(): Promise<number> {
 
   if (json && sub != null && !JSON_COMMANDS.has(sub)) {
     emitError({ json, message: `${sub} has no ${JSON_FLAG} form (${JSON_FLAG} applies to ${[...JSON_COMMANDS].join(", ")})` });
+    return 2;
+  }
+
+  const maxOperands = sub == null ? undefined : MAX_OPERANDS.get(sub);
+  if (maxOperands != null && args.length - 1 > maxOperands) {
+    emitError({ json, message: `${sub} takes at most ${count({ n: maxOperands, noun: "argument" })}, got: ${args.slice(1).join(" ")}` });
     return 2;
   }
   switch (sub) {
