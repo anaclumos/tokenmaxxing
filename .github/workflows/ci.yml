@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   test:
-    runs-on: ubuntu-24.04
+    runs-on: ${{ vars.CI_RUNNER == 'github' && 'ubuntu-24.04' || fromJSON('["self-hosted","linux","arm64","check"]') }}
     steps:
       - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2
@@ -29,12 +29,14 @@ jobs:
           "$(bun pm bin -g)/tokenmaxxing" help
 
   nix:
-    runs-on: ubuntu-24.04
+    runs-on: ${{ vars.CI_RUNNER == 'github' && 'ubuntu-24.04' || fromJSON('["self-hosted","linux","arm64","build"]') }}
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
-      - uses: DeterminateSystems/nix-installer-action@v22
-      - uses: DeterminateSystems/magic-nix-cache-action@v14
+      - if: runner.environment == 'github-hosted'
+        uses: DeterminateSystems/nix-installer-action@v22
+      - if: runner.environment == 'github-hosted'
+        uses: DeterminateSystems/magic-nix-cache-action@v14
         with:
           use-flakehub: false
       - name: Build flake package
