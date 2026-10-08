@@ -6,7 +6,6 @@ import { withLock } from "./lock.ts";
 import { claudePool, optionalEnv, paths } from "./paths.ts";
 import { livingPresences } from "./presence.ts";
 import type { ApiKeyPool } from "./provider.ts";
-import { loadSessionSpend, saveSessionSpend } from "./sessions.ts";
 import { readJsonFile } from "./state.ts";
 import { ApiKeysIndexSchema, SessionCostSchema, type ApiKey, type ApiKeysIndex, type SessionCost } from "./types.ts";
 
@@ -39,7 +38,7 @@ export function apiKeySecretFor(id: string): string {
 }
 
 export function loadApiKeys(): ApiKeysIndex {
-  if (!existsSync(claudePool.apiKeysJson)) return { version: 1, keys: [] };
+  if (!existsSync(claudePool.apiKeysJson)) return { version: 1, keys: [], baselines: {} };
   return readJsonFile(claudePool.apiKeysJson, ApiKeysIndexSchema);
 }
 
@@ -122,23 +121,22 @@ export function clearSessionCost(sid: string): void {
   rmSync(costFileFor(sid), { force: true });
 }
 
-export async function foldSessionCost(sid: string, keyId: string | null): Promise<void> {
+const BASELINE_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
+
+export async function foldSessionCost(sid: string, keyId: string | null, resumed: Set<string>): Promise<void> {
   const file = costFileFor(sid);
-  if (!existsSync(file)) return;
+  if (!existsSync(file) || !existsSync(claudePool.apiKeysJson)) return;
   const seen = readJsonFile(file, SessionCostSchema);
   await withLock(claudePool.lockFile, () => {
-    const prev = loadSessionSpend(sid);
-    if (prev != null && isEqual(prev, seen)) return;
-    const base = prev?.sessionId === seen.sessionId ? prev.usd : 0;
-    const delta = Math.max(0, seen.usd - base);
-    if (keyId != null && delta > 0) {
-      const idx = loadApiKeys();
-      const key = idx.keys.find((k) => k.id === keyId);
-      if (key) {
-        key.spentUsd += delta;
-        saveApiKeys(idx);
-      }
-    }
-    saveSessionSpend(sid, seen);
+    const idx = loadApiKeys();
+    const prev = idx.baselines[seen.sessionId];
+    if (prev?.usd === seen.usd) return;
+    const delta = prev != null ? Math.max(0, seen.usd - prev.usd) : resumed.has(seen.sessionId) ? 0 : seen.usd;
+    const key = keyId == null ? undefined : idx.keys.find((k) => k.id === keyId);
+    if (key) key.spentUsd += delta;
+    const now = Date.now();
+    idx.baselines = Object.fromEntries(Object.entries(idx.baselines).filter(([, b]) => now - b.at <= BASELINE_RETENTION_MS));
+    idx.baselines[seen.sessionId] = { usd: seen.usd, at: now };
+    saveApiKeys(idx);
   });
 }

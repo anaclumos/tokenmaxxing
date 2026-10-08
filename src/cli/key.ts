@@ -44,7 +44,10 @@ async function add(args: string[]): Promise<number> {
     return 2;
   }
   const workspaceId = workspace?.data;
-  if (process.stdin.isTTY) console.error(c.dim("paste the API key, then press Ctrl-D"));
+  if (process.stdin.isTTY) {
+    emitError({ message: "refusing to read the API key from a terminal, which would echo it - pipe it in: read -rs KEY && printf '%s' \"$KEY\" | tokenmaxxing key add <label> ...; unset KEY" });
+    return 2;
+  }
   const secret = (await readStdin()).trim();
   if (secret === "") {
     emitError({ message: "no API key on stdin - pipe the key in, for example from your password manager" });

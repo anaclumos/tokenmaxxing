@@ -255,7 +255,7 @@ async function moveExhaustedSeat(seat: Account, sid: string, gate: MarkerGate, m
     const families = gatedFamilies(model, cfg.policy.switchModels);
     const until = seatBlockedUntil(seat.id, now, families, cfg);
     if (until == null || until <= gate.overriddenUntil) return false;
-    const decision = await evaluateAndMaybeSwap(claude, now, true, null, { seatId: seat.id, sessionFamilies: families, waiterId: sid, refused });
+    const decision = await evaluateAndMaybeSwap(claude, now, true, null, { seatId: seat.id, sessionFamilies: families, waiterId: sid, refused, apiKeys: true });
     log("supervisor.seat_exhausted", { seat: seat.id.slice(0, 8), until, reason: decision.reason, account: decision.account?.id.slice(0, 8), key: decision.apiKey?.id, waitUntil: decision.waitUntil });
     const target = moveTarget(decision);
     if (target) {
@@ -267,14 +267,14 @@ async function moveExhaustedSeat(seat: Account, sid: string, gate: MarkerGate, m
   return true;
 }
 
-async function moveKeySession(key: ApiKey, sid: string, gate: MarkerGate, model: ModelInfo | null): Promise<boolean> {
-  await foldCost(sid, key.id);
+async function moveKeySession(key: ApiKey, sid: string, gate: MarkerGate, model: ModelInfo | null, refused: string[], resumed: Set<string>): Promise<boolean> {
+  await foldCost(sid, key.id, resumed);
   try {
     if (usableApiKey(key.id) != null) return false;
     const now = Date.now();
     const cfg = loadConfig();
     const families = gatedFamilies(model, cfg.policy.switchModels);
-    const decision = await evaluateAndMaybeSwap(claude, now, true, null, { seatId: null, sessionFamilies: families, waiterId: sid, apiKeys: true, apiKeyId: key.id });
+    const decision = await evaluateAndMaybeSwap(claude, now, true, null, { seatId: null, sessionFamilies: families, waiterId: sid, refused, apiKeys: true, apiKeyId: key.id });
     log("supervisor.key_watch", { key: key.id, reason: decision.reason, account: decision.account?.id.slice(0, 8), next: decision.apiKey?.id, waitUntil: decision.waitUntil });
     const target = moveTarget(decision);
     if (target && (target.waitUntil === undefined || target.waitUntil > gate.overriddenUntil)) {
@@ -298,9 +298,9 @@ function resolveLaunch(wanted: { accountId: string | null; apiKeyId: string | nu
   return pickLaunch(now, model);
 }
 
-async function foldCost(sid: string, keyId: string | null): Promise<void> {
+async function foldCost(sid: string, keyId: string | null, resumed: Set<string>): Promise<void> {
   try {
-    await foldSessionCost(sid, keyId);
+    await foldSessionCost(sid, keyId, resumed);
   } catch (e) {
     log("supervisor.cost_fold_failed", { err: errorMessage(e) });
   }
@@ -581,6 +581,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
   pruneStaleSessions(Date.now());
 
   let launchArgs = resume ? ["--resume", sid, ...base] : ["--session-id", sid, ...base];
+  const resumed = new Set<string>(resume ? [sid] : []);
   let pendingTranscript = resume ? null : transcriptPath(sid);
 
   mkdirSync(paths.respawnDir, { recursive: true });
@@ -667,7 +668,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
       tick: async () => {
         if (existsSync(marker) && (await consumableMarker(marker, gate)) != null) return true;
         if ((seat || key) && !terminating && Date.now() >= seatCheckAt) {
-          const decided = seat ? await moveExhaustedSeat(seat, sid, gate, model, refused) : key ? await moveKeySession(key, sid, gate, model) : false;
+          const decided = seat ? await moveExhaustedSeat(seat, sid, gate, model, refused) : key ? await moveKeySession(key, sid, gate, model, refused, resumed) : false;
           seatCheckAt = Date.now() + (decided ? SEAT_RETRY_MS : SEAT_POLL_MS);
         }
         return false;
@@ -682,7 +683,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
     });
     await drainStdout?.();
     drainStdout = null;
-    await foldCost(sid, key?.id ?? null);
+    await foldCost(sid, key?.id ?? null, resumed);
 
     const m = !terminating && existsSync(marker) ? await consumableMarker(marker, gate) : null;
     if (m) {
@@ -738,6 +739,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
       const prompt = resumable ? resumePrompt({ compacted, origin: m.origin, onKey: m.apiKeyId != null }) : null;
       firstLine = relay !== null && prompt !== null ? userLine(prompt) : null;
       pendingTranscript = resumable ? null : transcriptPath(m.sessionId);
+      if (resumable) resumed.add(m.sessionId);
       launchArgs = [resumable ? "--resume" : "--session-id", m.sessionId, ...(relay === null && prompt !== null ? [prompt] : []), ...persistable];
       continue;
     }

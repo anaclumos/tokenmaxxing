@@ -66,7 +66,7 @@ export async function runStopFailureHook(): Promise<number> {
       if (error !== "billing_error") return 0;
       const known = await refuseApiKey(keyId, now);
       log("stopfailure.key_refused", { key: keyId, known, subagent: !mainLoop });
-      const decision = await evaluateAndMaybeSwap(claude, now, canRespawn, null, { waiterId: canRespawn ? session?.sid : undefined, apiKeys: true, apiKeyId: keyId });
+      const decision = await evaluateAndMaybeSwap(claude, now, canRespawn, null, { waiterId: canRespawn ? session?.sid : undefined, refused: refusedAccounts(), apiKeys: true, apiKeyId: keyId });
       const target = moveTarget(decision);
       if (session && canRespawn && target) {
         writeRespawnMarker({ session, ...target, waitUntil: target.waitUntil ?? now, compact: false, origin: "stopfailure" });

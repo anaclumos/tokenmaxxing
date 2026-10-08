@@ -7,9 +7,9 @@ import { writeFileAtomic } from "./atomic.ts";
 import { presencePid } from "./presence.ts";
 import { readJsonFile } from "./state.ts";
 import { spawnedThroughShellsBy } from "./proc.ts";
-import { SessionCostSchema, type RespawnMarkerSchema, type SessionCost } from "./types.ts";
+import type { RespawnMarkerSchema } from "./types.ts";
 
-const SessionSchema = z.object({ flags: z.array(z.string()), cwd: z.string(), current: z.uuid().optional(), spend: SessionCostSchema.optional() });
+const SessionSchema = z.object({ flags: z.array(z.string()), cwd: z.string(), current: z.uuid().optional() });
 
 const SESSION_RETENTION_MS = 30 * 24 * 3600 * 1000;
 
@@ -20,8 +20,7 @@ function sessionFile(sid: string): string {
 }
 
 export function saveSessionFlags(sid: string, flags: string[], cwd: string): void {
-  const spend = loadSession(sid)?.spend;
-  writeFileAtomic(sessionFile(sid), JSON.stringify({ flags, cwd, ...(spend != null ? { spend } : {}) }));
+  writeFileAtomic(sessionFile(sid), JSON.stringify({ flags, cwd }));
 }
 
 function loadSession(sid: string): z.infer<typeof SessionSchema> | null {
@@ -40,16 +39,7 @@ export function liveSessionId(sid: string): string {
 
 function recordLiveSession(sid: string, current: string): void {
   const session = loadSession(sid);
-  writeFileAtomic(sessionFile(sid), JSON.stringify({ flags: session?.flags ?? [], cwd: session?.cwd ?? process.cwd(), current, ...(session?.spend != null ? { spend: session.spend } : {}) }));
-}
-
-export function loadSessionSpend(sid: string): SessionCost | null {
-  return loadSession(sid)?.spend ?? null;
-}
-
-export function saveSessionSpend(sid: string, spend: SessionCost): void {
-  const session = loadSession(sid);
-  writeFileAtomic(sessionFile(sid), JSON.stringify({ ...(session ?? { flags: [], cwd: process.cwd() }), spend }));
+  writeFileAtomic(sessionFile(sid), JSON.stringify({ flags: session?.flags ?? [], cwd: session?.cwd ?? process.cwd(), current }));
 }
 
 const TMP_MARKER = ".tmp.";

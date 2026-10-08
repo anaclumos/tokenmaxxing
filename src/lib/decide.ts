@@ -201,7 +201,7 @@ export async function evaluateAndMaybeSwap(p: Provider, now = Date.now(), canRes
       const seat = seatOf(cur);
       const ctx: PickCtx = { now, thresholds: bars, currentId: seat?.id ?? null, families: switchFamilies, seats };
       const credited = !enforced2 && seat != null && !seat.needsReauth && !isExhausted(seat, ctx) && onCredits(seat, ctx);
-      const best = pickBest(usable(cur.accounts).filter((a) => !(credited && opts.refused?.includes(a.id))), ctx);
+      const best = pickBest(usable(cur.accounts).filter((a) => !((credited || keyId != null) && opts.refused?.includes(a.id))), ctx);
       if (credited && (best == null || onCredits(best, ctx))) return { swapped: false, account: null, reason: "no-plan-headroom" };
       if (!best || (keyId != null && onCredits(best, ctx))) break;
       try {

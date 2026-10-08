@@ -187,6 +187,7 @@ export type ApiKey = z.infer<typeof ApiKeySchema>;
 export const ApiKeysIndexSchema = z.object({
   version: z.literal(1),
   keys: z.array(ApiKeySchema).default([]),
+  baselines: z.record(z.string(), z.object({ usd: z.number(), at: z.number() })).default({}),
 });
 export type ApiKeysIndex = z.infer<typeof ApiKeysIndexSchema>;
 
