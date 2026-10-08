@@ -12,13 +12,13 @@ export type Provider = {
   name: "claude" | "codex";
   flag: string;
   pool: PoolPaths;
-  seats: "shared" | "live";
   waitsWhenDepleted: boolean;
   liveId(): string | null;
   presence(): Map<string, number>;
   gatedFamilies(cfg: Config): string[] | null;
   observeLive(account: Account, cfg: Config, now: number, opts: { probe: boolean }): Promise<Observation | null>;
-  samplePool(accounts: Account[], liveId: string | null, now: number): Promise<Map<string, SampleReport>>;
+  samplePool(accounts: Account[], now: number): Promise<Map<string, SampleReport>>;
+  sampleOldest(cfg: Config): Promise<void>;
   mergeWindows(next: Window[], prev: Window[]): Window[];
   swap(target: Account): Promise<void>;
   classifySwapError(e: unknown): SwapFailure;

@@ -7,7 +7,6 @@ import {
   AccountsIndexSchema,
   ConfigSchema,
   ErrnoSchema,
-  LastSwapSchema,
   UsageStateSchema,
   type Account,
   type AccountsIndex,
@@ -47,7 +46,7 @@ export function pinBinOverride(input: { key: "claudeBin" | "codexBin"; bin: stri
   writeFileAtomic(paths.configJson, JSON.stringify(raw, null, 2) + "\n");
 }
 
-const emptyIndex = (): AccountsIndex => ({ version: 2, activeId: null, accounts: [] });
+const emptyIndex = (): AccountsIndex => ({ version: 2, accounts: [] });
 
 export function loadAccounts(pool: PoolPaths): AccountsIndex {
   if (!existsSync(pool.accountsJson)) return emptyIndex();
@@ -122,24 +121,6 @@ export function loadUsageSnapshot(accountId: string): UsageSnapshot | null {
 export function clearUsageSnapshot(accountId: string): void {
   rmSync(usageJsonFor(accountId), { force: true });
 }
-
-export function loadLastSwapAt(pool: PoolPaths): number | null {
-  if (pool.lastSwapJson == null || !existsSync(pool.lastSwapJson)) return null;
-  let json: unknown;
-  try {
-    json = JSON.parse(readFileSync(pool.lastSwapJson, "utf8"));
-  } catch {
-    throw new Error(`${pool.lastSwapJson} is corrupt (unparsable JSON) - refusing to treat a damaged swap clock as never-swapped; repair or remove the file`);
-  }
-  return LastSwapSchema.parse(json).ts;
-}
-
-export function saveLastSwapAt(pool: PoolPaths, ts: number): void {
-  if (pool.lastSwapJson == null) throw new Error("this pool keeps no swap clock");
-  writeFileAtomic(pool.lastSwapJson, JSON.stringify(LastSwapSchema.parse({ ts })));
-}
-
-export const POST_SWAP_COOLDOWN_MS = 45_000;
 
 const USAGE_TS_REFRESH_MS = 10 * 60_000;
 const SAMPLED_AT_REFRESH_MS = 30_000;

@@ -1,8 +1,8 @@
-import { readFileSync, rmSync } from "node:fs";
+import { mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
 import { writeFileAtomic } from "./atomic.ts";
-import { codexPaths } from "./paths.ts";
+import { codexStoreDirFor } from "./paths.ts";
 import { CodexAuthJsonSchema, ErrnoSchema, type CodexAuthJson } from "./types.ts";
 
 export function readCodexAuthAt(input: { path: string }): CodexAuthJson | null {
@@ -19,41 +19,21 @@ export function readCodexAuthAt(input: { path: string }): CodexAuthJson | null {
   return CodexAuthJsonSchema.parse(parsed);
 }
 
-export function readLiveCodexAuth(): CodexAuthJson | null {
-  return readCodexAuthAt({ path: codexPaths.authJson });
+export function codexStoreAuthPath(accountId: string): string {
+  return join(codexStoreDirFor(accountId), "auth.json");
 }
 
-export function liveCodexAccountId(): string | null {
-  const live = readLiveCodexAuth();
-  if (!live) return null;
-  return codexIdentityOf({ auth: live }).accountId;
+export function readCodexStore(accountId: string): CodexAuthJson | null {
+  return readCodexAuthAt({ path: codexStoreAuthPath(accountId) });
 }
 
-export function writeLiveCodexAuth(input: { auth: CodexAuthJson }): void {
-  writeFileAtomic(codexPaths.authJson, JSON.stringify(CodexAuthJsonSchema.parse(input.auth), null, 2), 0o600);
+export function writeCodexStore(input: { accountId: string; auth: CodexAuthJson }): void {
+  mkdirSync(codexStoreDirFor(input.accountId), { recursive: true, mode: 0o700 });
+  writeFileAtomic(codexStoreAuthPath(input.accountId), JSON.stringify(CodexAuthJsonSchema.parse(input.auth), null, 2), 0o600);
 }
 
-function parkedPath(input: { credFile: string }): string {
-  return join(codexPaths.credsDir, `${input.credFile}.json`);
-}
-
-export function readParkedCodexAuth(input: { credFile: string }): CodexAuthJson | null {
-  let raw: string;
-  try {
-    raw = readFileSync(parkedPath(input), "utf8");
-  } catch (e) {
-    if (ErrnoSchema.safeParse(e).data?.code === "ENOENT") return null;
-    throw e;
-  }
-  return CodexAuthJsonSchema.parse(JSON.parse(raw));
-}
-
-export function writeParkedCodexAuth(input: { credFile: string; auth: CodexAuthJson }): void {
-  writeFileAtomic(parkedPath(input), JSON.stringify(CodexAuthJsonSchema.parse(input.auth), null, 2), 0o600);
-}
-
-export function deleteParkedCodexAuth(input: { credFile: string }): void {
-  rmSync(parkedPath(input), { force: true });
+export function isDeadCodexCredential(auth: CodexAuthJson): boolean {
+  return auth.tokens.refresh_token === "" || auth.tokens.access_token === "";
 }
 
 const IdClaimsSchema = z.looseObject({
