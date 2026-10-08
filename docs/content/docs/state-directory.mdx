@@ -27,8 +27,15 @@ The tree lists the entries in the order of the sections below. Open a folder to 
       </Folder>
     </Folder>
     <Folder name="onboard" />
+    <File name="api-keys.json" />
+    <Folder name="api-keys">
+      <File name="<id>" />
+    </Folder>
     <Folder name="usage">
       <File name="<uuid8>.json" />
+    </Folder>
+    <Folder name="cost">
+      <File name="<session-id>.json" />
     </Folder>
     <Folder name="live">
       <File name="<session-id>" />
@@ -101,6 +108,8 @@ The tree lists the entries in the order of the sections below. Open a folder to 
 | `lock` | The `flock` file that serializes decisions, placement, and sampling |
 | `stores/<uuid8>/` | One Claude Code credential store per pooled account. On Linux it holds the account's `.credentials.json` (0600 in a 0700 directory) and Claude Code's refresh lock. On macOS the credential is the keychain item keyed by this path, and the directory holds only the lock |
 | `onboard/` | Throwaway config home for `init`, `add`, and `auth` logins (deleted after harvest, credential included) |
+| `api-keys.json` | Non-secret index of stored Anthropic API keys: `{version: 1, keys}`, each key with `id` (8 random hex characters), `label`, `workspaceId` (optional), `creditUsd` (the balance you entered, optional), `spentUsd`, `creditSetAt` (epoch ms), `refusedAt` (epoch ms, set on `billing_error`, optional), and `addedAt` (epoch ms). Every read-modify-write runs under `lock`, and a file that exists but fails to parse stops the command instead of reading as no keys |
+| `api-keys/<id>` | One API key per file, 0600 in a 0700 directory. See [Credential storage](/credentials#api-keys) |
 
 ### Account index fields
 
@@ -133,9 +142,10 @@ flowchart TD
 | Path | What it holds |
 |---|---|
 | `usage/<uuid8>.json` | The tee per account: the aggregate window snapshot pushed by the sessions running on that account. Its mtime is the feed's liveness heartbeat |
-| `live/<session-id>` | One PID-validated presence file per running supervised Claude session: the account id, the pid, and the start time |
+| `live/<session-id>` | One PID-validated presence file per running supervised Claude session: the account id, the pid, and the start time. A session on an API key carries `apiKeyId` and an empty account id, and counts toward the key, not toward any account |
 | `live/seat-<pid>` | One record per Claude account lent by `seat <pid>`, validated against that pid |
-| `sessions/<session-id>.json` | Per-managed-session launch flags the supervisor persists for respawns, plus `current`, the live session id after a `/clear` or an in-session `/resume`. Pruned after 30 days idle (matching claude's own transcript retention), never while the session's record under `live/` exists |
+| `sessions/<session-id>.json` | Per-managed-session launch flags the supervisor persists for respawns, plus `current`, the live session id after a `/clear` or an in-session `/resume`, and `spend`, the last cumulative cost the supervisor recorded for the live session id (`{sessionId, usd}`), which it bills to a key only as growth. Pruned after 30 days idle (matching claude's own transcript retention), never while the session's record under `live/` exists |
+| `cost/<session-id>.json` | Written only while `api-keys.json` exists: the session's latest cumulative cost estimate (`{sessionId, usd}`), from the statusline in a terminal session and from the `result` lines in a stream-json session. The supervisor reads it and deletes it when the session ends |
 | `respawn/<session-id>` | Respawn markers the supervisor watches (fields below) |
 | `wait-queue.json` | One `{sessionId, accountId, at, waitUntil}` claim per supervised session that is moving or waiting, naming the account it relaunches on (lifecycle below) |
 
@@ -143,7 +153,7 @@ Placement counts each record under `live/` as one session on its account, and `r
 
 A respawn marker holds:
 
-- the target account
+- the target account, or, for a move onto an API key, `apiKeyId` with an empty account id (a hook writes a key marker only for a supervisor that sets `TOKENMAXXING_API_KEY_ID` on its child, so a supervisor from an older release never receives one)
 - the session to resume
 - a `waitUntil`: now for a plain move, the reset for a depleted-pool wait
 - whether to compact first

@@ -6,9 +6,9 @@ import { MAX_WAITERS_PER_ACCOUNT, isExhausted, landWindows, limitWindows, liveUs
 import { familyTokens } from "./usage.ts";
 import { errorMessage, log } from "./log.ts";
 import type { Observation, Provider, ResetClaim } from "./provider.ts";
-import type { Account, Bars, Config, EnforcedLimit } from "./types.ts";
+import type { Account, ApiKey, Bars, Config, EnforcedLimit } from "./types.ts";
 
-export type SwapDecision = { swapped: boolean; account: Account | null; reason: string; waitUntil?: number };
+export type SwapDecision = { swapped: boolean; account: Account | null; apiKey?: ApiKey; reason: string; waitUntil?: number };
 
 export type EvalOpts = {
   seatId?: string | null;
@@ -16,7 +16,17 @@ export type EvalOpts = {
   waiterId?: string;
   exclude?: string[];
   refused?: string[];
+  apiKeys?: boolean;
+  apiKeyId?: string;
 };
+
+export type MoveTarget = { accountId: string; apiKeyId?: string; waitUntil: number | undefined };
+
+export function moveTarget(d: SwapDecision): MoveTarget | null {
+  if (d.apiKey) return { accountId: "", apiKeyId: d.apiKey.id, waitUntil: undefined };
+  if (d.account && (d.swapped || d.waitUntil !== undefined)) return { accountId: d.account.id, waitUntil: d.waitUntil };
+  return null;
+}
 
 const MOVE_CLAIM_MS = 2 * CLAUDE_COMPACT_KILL_MS;
 
@@ -106,6 +116,8 @@ export async function useBankedResets(p: Provider, cfg: Config, now: number): Pr
 
 export async function evaluateAndMaybeSwap(p: Provider, now = Date.now(), canRespawn = false, enforced: EnforcedLimit | null = null, opts: EvalOpts = {}): Promise<SwapDecision> {
   const activeId = opts.seatId === undefined ? p.liveId() : opts.seatId;
+  const keys = opts.apiKeys === true ? p.apiKeys : undefined;
+  const keyId = activeId == null && keys ? (opts.apiKeyId ?? keys.liveId()) : null;
   const waiterId = canRespawn ? opts.waiterId : undefined;
   const cfg = loadConfig();
   const bars = thresholdBars(cfg);
@@ -116,7 +128,7 @@ export async function evaluateAndMaybeSwap(p: Provider, now = Date.now(), canRes
   const observed = stored0 ? await p.observeLive(stored0, cfg, now, { probe: enforced == null && !walled0, perModel: gated == null || gated.length > 0 }) : null;
   const stored = loadAccounts(p.pool).accounts.find((a) => a.id === activeId);
 
-  if (!enforced && !isOver(stored, observed, { now, thresholds: bars, currentId: activeId, families: gated, seats: null })) {
+  if (!enforced && keyId == null && !isOver(stored, observed, { now, thresholds: bars, currentId: activeId, families: gated, seats: null })) {
     if (waiterId != null && liveWaitClaims(now).some((c) => c.sessionId === waiterId)) {
       await withLock(p.pool.lockFile, () => {
         releaseWaitClaim(waiterId);
@@ -168,7 +180,7 @@ export async function evaluateAndMaybeSwap(p: Provider, now = Date.now(), canRes
     const seats = p.seats === "shared" ? present : null;
 
     const seatExhausted = active != null && isExhausted(active, { now, thresholds: bars, currentId: id2, families: switchFamilies, seats });
-    if (!enforced2 && !isOver(active, obs2, { now, thresholds: bars, currentId: id2, families, seats }) && !(enforced && seatExhausted)) {
+    if (keyId == null && !enforced2 && !isOver(active, obs2, { now, thresholds: bars, currentId: id2, families, seats }) && !(enforced && seatExhausted)) {
       return { swapped: false, account: null, reason: "raced-already-swapped" };
     }
     if (p.seats === "shared" && !canRespawn) {
@@ -191,7 +203,7 @@ export async function evaluateAndMaybeSwap(p: Provider, now = Date.now(), canRes
       const credited = !enforced2 && seat != null && !seat.needsReauth && !isExhausted(seat, ctx) && onCredits(seat, ctx);
       const best = pickBest(usable(cur.accounts).filter((a) => !(credited && opts.refused?.includes(a.id))), ctx);
       if (credited && (best == null || onCredits(best, ctx))) return { swapped: false, account: null, reason: "no-plan-headroom" };
-      if (!best) break;
+      if (!best || (keyId != null && onCredits(best, ctx))) break;
       try {
         await p.swap(best);
       } catch (e) {
@@ -201,6 +213,15 @@ export async function evaluateAndMaybeSwap(p: Provider, now = Date.now(), canRes
       log("decide.swap", { account: best.id.slice(0, 8), enforced: enforced2 != null });
       if (waiterId != null && p.seats === "shared") replaceWaitClaim({ sessionId: waiterId, accountId: best.id, at: now, waitUntil: now + MOVE_CLAIM_MS });
       return { swapped: true, account: best, reason: "swapped" };
+    }
+
+    if (keys) {
+      if (keyId != null && keys.holds(keyId)) return { swapped: false, account: null, reason: "api-key-holds" };
+      const key = keys.pick(keyId == null ? [] : [keyId]);
+      if (key) {
+        log("decide.api_key", { key: key.id, from: keyId ?? id2?.slice(0, 8) });
+        return { swapped: true, account: null, apiKey: key, reason: "api-key" };
+      }
     }
 
     if (!p.waitsWhenDepleted) {

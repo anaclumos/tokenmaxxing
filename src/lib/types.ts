@@ -169,7 +169,36 @@ export const RespawnMarkerSchema = z.object({
   origin: z.enum(["stop", "sessionstart", "stopfailure", "seatwatch"]),
   launchedAt: z.number().optional(),
   refused: z.array(z.string()).optional(),
+  apiKeyId: z.string().optional(),
 });
+
+export const ApiKeySchema = z.object({
+  id: z.string(),
+  label: z.string(),
+  workspaceId: z.string().optional(),
+  creditUsd: z.number().optional(),
+  spentUsd: z.number(),
+  creditSetAt: z.number(),
+  refusedAt: z.number().optional(),
+  addedAt: z.number(),
+});
+export type ApiKey = z.infer<typeof ApiKeySchema>;
+
+export const ApiKeysIndexSchema = z.object({
+  version: z.literal(1),
+  keys: z.array(ApiKeySchema).default([]),
+});
+export type ApiKeysIndex = z.infer<typeof ApiKeysIndexSchema>;
+
+export const SessionCostSchema = z.object({ sessionId: z.string(), usd: z.number() });
+export type SessionCost = z.infer<typeof SessionCostSchema>;
+
+export const CostLineSchema = z
+  .looseObject({ session_id: z.string(), total_cost_usd: z.number().optional(), cost: z.looseObject({ total_cost_usd: z.number() }).nullable().optional() })
+  .transform((line): SessionCost | null => {
+    const usd = line.total_cost_usd ?? line.cost?.total_cost_usd;
+    return usd == null ? null : { sessionId: line.session_id, usd };
+  });
 
 export const EpochSecondsSchema = z.number().transform((seconds) => seconds * 1000);
 

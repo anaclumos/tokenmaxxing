@@ -1,4 +1,5 @@
 import { chunk, sortBy } from "es-toolkit";
+import { creditLeft, keySessions, loadApiKeys } from "../lib/apikeys.ts";
 import { claude } from "../lib/claude.ts";
 import { codex } from "../lib/codex.ts";
 import { grok } from "../lib/grok.ts";
@@ -7,6 +8,7 @@ import { withLock } from "../lib/lock.ts";
 import { codexPool, grokPool } from "../lib/paths.ts";
 import { barFor, bufferedUsed, earliestReset, gatedWindows, landGrant, landWindows, isExhausted, isSessionWindow, limitWindows, liveUsed, nextWeeklyReset, sessionWindow, thresholdBars, weeklyWindow } from "../lib/picker.ts";
 import type { Provider, SampleReport } from "../lib/provider.ts";
+import { usd } from "./key.ts";
 import { bar, c, count, emitJson, fmtAgo } from "./render.ts";
 import type { Account, AccountThresholds, Bars, Config, Thresholds, Window } from "../lib/types.ts";
 
@@ -38,7 +40,48 @@ type PoolReport = {
   accounts: StatusAccount[];
 };
 
-export type StatusReport = { now: number; claude: PoolReport; codex: PoolReport; grok: PoolReport };
+type StatusApiKey = {
+  label: string;
+  id: string;
+  workspaceId: string | null;
+  creditUsd: number | null;
+  spentUsd: number;
+  creditLeftUsd: number | null;
+  refused: boolean;
+  refusedAt: number | null;
+  sessions: number;
+};
+
+export type StatusReport = { now: number; claude: PoolReport; codex: PoolReport; grok: PoolReport; apiKeys?: StatusApiKey[] };
+
+function apiKeyReport(): StatusApiKey[] {
+  const sessions = keySessions();
+  return loadApiKeys().keys.map((k) => ({
+    label: k.label,
+    id: k.id,
+    workspaceId: k.workspaceId ?? null,
+    creditUsd: k.creditUsd ?? null,
+    spentUsd: k.spentUsd,
+    creditLeftUsd: creditLeft(k),
+    refused: k.refusedAt != null,
+    refusedAt: k.refusedAt ?? null,
+    sessions: sessions.get(k.id) ?? 0,
+  }));
+}
+
+function renderApiKeys(keys: StatusApiKey[]): void {
+  console.log(c.dim(`api keys  (${count({ n: keys.length, noun: "key" })}, used only while every claude account is at its limit)`));
+  console.log();
+  for (const k of keys) {
+    const badges: string[] = [];
+    if (k.sessions > 0) badges.push(c.green(count({ n: k.sessions, noun: "session" })));
+    if (k.refused) badges.push(c.red("refused"));
+    else if (k.creditLeftUsd != null && k.creditLeftUsd <= 0) badges.push(c.yellow("spent"));
+    const credit = k.creditLeftUsd == null ? c.dim("credit unknown") : `credit left ${usd(k.creditLeftUsd)}`;
+    console.log(`${k.sessions > 0 ? c.green("●") : c.dim("○")} ${c.bold(k.label)} ${credit}${badges.length ? ` ${badges.join(" ")}` : ""}`);
+  }
+  console.log();
+}
 
 function currentWindow(a: Account, w: Window, bars: Bars | null, now: number): WindowReport {
   const passed = w.resetsAt != null && w.resetsAt <= now;
@@ -259,11 +302,12 @@ export async function cmdStatus(opts: { json?: boolean; cached?: boolean } = {})
   const cfg = loadConfig();
   const now = Date.now();
   const claudeReport = await collect(claude, cfg, now, cached);
+  const apiKeys = apiKeyReport();
   if (!json) {
     const codexPooled = loadAccounts(codexPool).accounts.length > 0;
     const grokPooled = loadAccounts(grokPool).accounts.length > 0;
     if (claudeReport.accounts.length === 0) {
-      if (!codexPooled && !grokPooled) {
+      if (!codexPooled && !grokPooled && apiKeys.length === 0) {
         console.log(c.dim("no accounts yet, run `tokenmaxxing init` (or `tokenmaxxing init --codex`, `--grok`)"));
         return 0;
       }
@@ -273,11 +317,12 @@ export async function cmdStatus(opts: { json?: boolean; cached?: boolean } = {})
       const header = `thresholds 5h ${claudeReport.thresholds.session}% weekly ${claudeReport.thresholds.weekly}%  bars 5h ${claudeReport.bars.session}% weekly ${claudeReport.bars.weekly}%  (${count({ n: claudeReport.accounts.length, noun: "claude account" })})`;
       renderPool(claude, claudeReport, header, Date.now(), cfg.policy.usagePollTtlMs);
     }
+    if (apiKeys.length > 0) renderApiKeys(apiKeys);
   }
   const codexReport = await collect(codex, cfg, now, cached);
   const grokReport = await collect(grok, cfg, now, cached);
   if (json) {
-    const report: StatusReport = { now, claude: claudeReport, codex: codexReport, grok: grokReport };
+    const report: StatusReport = { now, claude: claudeReport, codex: codexReport, grok: grokReport, ...(apiKeys.length > 0 ? { apiKeys } : {}) };
     emitJson({ ok: true, ...report });
     return 0;
   }

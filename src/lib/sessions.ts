@@ -7,9 +7,9 @@ import { writeFileAtomic } from "./atomic.ts";
 import { presencePid } from "./presence.ts";
 import { readJsonFile } from "./state.ts";
 import { spawnedThroughShellsBy } from "./proc.ts";
-import type { RespawnMarkerSchema } from "./types.ts";
+import { SessionCostSchema, type RespawnMarkerSchema, type SessionCost } from "./types.ts";
 
-const SessionSchema = z.object({ flags: z.array(z.string()), cwd: z.string(), current: z.uuid().optional() });
+const SessionSchema = z.object({ flags: z.array(z.string()), cwd: z.string(), current: z.uuid().optional(), spend: SessionCostSchema.optional() });
 
 const SESSION_RETENTION_MS = 30 * 24 * 3600 * 1000;
 
@@ -20,7 +20,8 @@ function sessionFile(sid: string): string {
 }
 
 export function saveSessionFlags(sid: string, flags: string[], cwd: string): void {
-  writeFileAtomic(sessionFile(sid), JSON.stringify({ flags, cwd }));
+  const spend = loadSession(sid)?.spend;
+  writeFileAtomic(sessionFile(sid), JSON.stringify({ flags, cwd, ...(spend != null ? { spend } : {}) }));
 }
 
 function loadSession(sid: string): z.infer<typeof SessionSchema> | null {
@@ -39,7 +40,16 @@ export function liveSessionId(sid: string): string {
 
 function recordLiveSession(sid: string, current: string): void {
   const session = loadSession(sid);
-  writeFileAtomic(sessionFile(sid), JSON.stringify({ flags: session?.flags ?? [], cwd: session?.cwd ?? process.cwd(), current }));
+  writeFileAtomic(sessionFile(sid), JSON.stringify({ flags: session?.flags ?? [], cwd: session?.cwd ?? process.cwd(), current, ...(session?.spend != null ? { spend: session.spend } : {}) }));
+}
+
+export function loadSessionSpend(sid: string): SessionCost | null {
+  return loadSession(sid)?.spend ?? null;
+}
+
+export function saveSessionSpend(sid: string, spend: SessionCost): void {
+  const session = loadSession(sid);
+  writeFileAtomic(sessionFile(sid), JSON.stringify({ ...(session ?? { flags: [], cwd: process.cwd() }), spend }));
 }
 
 const TMP_MARKER = ".tmp.";
@@ -60,7 +70,7 @@ function listDir(dir: string, root: string): Dirent[] {
 }
 
 function tmpSweepDirs(root: string): string[] {
-  const dirs = [paths.home, paths.usageDir, paths.presenceDir, paths.respawnDir, sessionsDir(), paths.binDir, codexPaths.presenceDir, codexPaths.respawnDir, codexPaths.onboardDir];
+  const dirs = [paths.home, paths.usageDir, paths.presenceDir, paths.respawnDir, sessionsDir(), paths.binDir, paths.apiKeysDir, paths.costDir, codexPaths.presenceDir, codexPaths.respawnDir, codexPaths.onboardDir];
   for (const parent of STORE_PARENTS) {
     for (const child of listDir(parent, root)) {
       if (child.isDirectory()) dirs.push(join(parent, child.name));
@@ -113,6 +123,10 @@ export function supervisedSession(env: Record<string, string | undefined> = proc
   return { sid, launchedAt: LaunchedAtSchema.parse(env.TOKENMAXXING_LAUNCHED_AT) ?? null, live: liveSessionId(sid) };
 }
 
+export function keyMovesSupported(env: Record<string, string | undefined> = process.env): boolean {
+  return env.TOKENMAXXING_API_KEY_ID !== undefined;
+}
+
 export function refusedAccounts(env: Record<string, string | undefined> = process.env): string[] {
   return RefusedSchema.parse(env.TOKENMAXXING_REFUSED);
 }
@@ -129,9 +143,10 @@ export function adoptLiveSession(session: SupervisedSession, stdinSid: string | 
   return { ...session, live: stdinSid };
 }
 
-export function writeRespawnMarker(input: { session: SupervisedSession; accountId: string; waitUntil: number; compact: boolean; origin: z.infer<typeof RespawnMarkerSchema>["origin"]; refused?: string[] }): void {
+export function writeRespawnMarker(input: { session: SupervisedSession; accountId: string; apiKeyId?: string; waitUntil: number; compact: boolean; origin: z.infer<typeof RespawnMarkerSchema>["origin"]; refused?: string[] }): void {
   const payload: z.infer<typeof RespawnMarkerSchema> = {
     accountId: input.accountId,
+    ...(input.apiKeyId != null ? { apiKeyId: input.apiKeyId } : {}),
     ts: Date.now(),
     waitUntil: input.waitUntil,
     sessionId: input.session.live,

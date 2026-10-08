@@ -1,5 +1,8 @@
+import { existsSync } from "node:fs";
 import { sortBy } from "es-toolkit";
+import { writeSessionCost } from "../lib/apikeys.ts";
 import { claudePool, seatFromEnv } from "../lib/paths.ts";
+import { supervisedSession } from "../lib/sessions.ts";
 import { errorMessage } from "../lib/log.ts";
 import { loadAccounts, loadConfig, writeUsage } from "../lib/state.ts";
 import { familyTokens, matchedFamily, parseStatusLineStdin, parseStatusLineModel } from "../lib/usage.ts";
@@ -8,6 +11,7 @@ import { readStdin } from "../lib/proc.ts";
 import { worktreeName } from "../lib/worktree.ts";
 import { fmtResetShort, makeColors, makeUsagePaint, statuslineColor } from "../cli/render.ts";
 import {
+  CostLineSchema,
   JsonTextSchema,
   StatusLineStdinSchema,
   type Account,
@@ -125,6 +129,12 @@ export async function runStatusline(): Promise<number> {
       const state: UsageState = { fiveHour: windows.fiveHour, sevenDay: windows.sevenDay, account, ts: now, model: parseStatusLineModel(obj) };
       writeUsage(state);
     }
+  } catch {
+  }
+  try {
+    const session = existsSync(claudePool.apiKeysJson) ? supervisedSession() : null;
+    const cost = session == null ? null : (CostLineSchema.safeParse(obj).data ?? null);
+    if (session != null && cost != null && cost.sessionId === session.live) writeSessionCost(session.sid, cost);
   } catch {
   }
 

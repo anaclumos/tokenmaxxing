@@ -28,6 +28,8 @@ export const paths = {
   onboardDir: join(TM_HOME, "onboard"),
   storesDir: join(TM_HOME, "stores"),
   hubKeyFile: join(TM_HOME, "hub-key"),
+  apiKeysDir: join(TM_HOME, "api-keys"),
+  costDir: join(TM_HOME, "cost"),
 
   claudeSettings: env(
     "TOKENMAXXING_CLAUDE_SETTINGS",
@@ -43,6 +45,7 @@ export const claudePool = {
   accountsJson: join(TM_HOME, "accounts.json"),
   lockFile: join(TM_HOME, "lock"),
   waitQueueJson: join(TM_HOME, "wait-queue.json"),
+  apiKeysJson: join(TM_HOME, "api-keys.json"),
 } as const;
 
 export const codexPool = {
