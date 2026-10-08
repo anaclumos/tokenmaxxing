@@ -1,6 +1,12 @@
 import type { PoolPaths } from "./paths.ts";
 import type { Harvest } from "./state.ts";
-import type { Account, Config, Window } from "./types.ts";
+import type { Account, ApiKey, Config, Window } from "./types.ts";
+
+export type ApiKeyPool = {
+  liveId(): string | null;
+  holds(id: string): boolean;
+  pick(exclude: string[]): ApiKey | null;
+};
 
 export type Observation = { windows: Window[]; at: number };
 
@@ -26,6 +32,7 @@ export type Provider = {
   seats: "shared" | "live";
   waitsWhenDepleted: boolean;
   statusOnly: boolean;
+  apiKeys?: ApiKeyPool;
   liveId(): string | null;
   presence(): Map<string, number>;
   gatedFamilies(cfg: Config): string[] | null;

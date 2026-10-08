@@ -105,7 +105,7 @@ export function transcriptRowText(row: TranscriptRow): string {
   return blocks.data.filter((b) => b.type === "text").map((b) => b.text ?? "").join("\n").trim();
 }
 
-export const ENFORCED_ERRORS = ["rate_limit", "oauth_org_not_allowed"];
+export const ENFORCED_ERRORS = ["rate_limit", "oauth_org_not_allowed", "billing_error"];
 
 export function findEnforcedRow(input: { rows: TranscriptRow[]; error: string; lastAssistantMessage: string | undefined }): TranscriptRow | null {
   const { rows, error, lastAssistantMessage } = input;

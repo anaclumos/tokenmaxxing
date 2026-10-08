@@ -20,6 +20,7 @@ import { cmdStatus } from "./cli/status.ts";
 import { cmdDoctor } from "./cli/doctor.ts";
 import { cmdRm } from "./cli/rm.ts";
 import { cmdRename } from "./cli/rename.ts";
+import { cmdKey } from "./cli/key.ts";
 import { cmdCheck } from "./cli/check.ts";
 import { cmdConfig } from "./cli/config.ts";
 import { cmdSeat } from "./cli/seat.ts";
@@ -38,7 +39,7 @@ const PI_FLAG = "--pi";
 const JSON_COMMANDS = new Set(["status", "config", "check"]);
 const CODEX_COMMANDS = new Set(["init", "add", "auth", "rm", "rename", "seat"]);
 const STATUS_ONLY_COMMANDS = new Set(["init", "add", "auth", "rm", "rename"]);
-const MAX_OPERANDS = new Map([["init", 0], ["add", 0], ["rm", 1], ["rename", 2]]);
+const MAX_OPERANDS = new Map([["init", 0], ["add", 0], ["rm", 1], ["rename", 2], ["key", 4]]);
 
 function printHelp(): void {
   console.log(`${c.bold("tokenmaxxing")} - automatic Claude Code account switching
@@ -58,6 +59,9 @@ function printHelp(): void {
   ${c.cyan("tokenmaxxing doctor")}     verify the install is intact
   ${c.cyan("tokenmaxxing rename")} [--codex | --grok] <sel> <label>
   ${c.cyan("tokenmaxxing rm")} [--codex | --grok] <sel>
+  ${c.cyan("tokenmaxxing key add")} <label> [credit-usd] [workspace-id]  store an Anthropic API key read from stdin; Claude sessions run on it only while every pooled Claude account is at its limit (workspace-id: for a key that spans several workspaces)
+  ${c.cyan("tokenmaxxing key credit")} <label> <usd>  set the key's balance as the Console shows it and restart its spend count
+  ${c.cyan("tokenmaxxing key rm")} <label>  delete the key and its stored secret (refused while a session runs on it)
   ${c.cyan("tokenmaxxing seat")} <pid>  lend one pooled Claude account to an unattended consumer until <pid> exits: prints the store directory to set as CLAUDE_SECURESTORAGE_CONFIG_DIR (the directory itself, as its owner, never a copy of its credential); host sessions and other borrowers share the account; exit 1 = none usable
   ${c.cyan("tokenmaxxing seat --codex")} <pid>  borrow one pooled codex account for an unattended consumer (plugin, script): prints the CODEX_HOME to set, lent to <pid> until it exits; codex sessions and other borrowers share the account, and a refresh race between them can sign it out until auth --codex runs again; exit 1 = none usable, fall back to the ambient login
   ${c.cyan("tokenmaxxing serve")}      serve the CLIProxyAPI-compatible usage API on http://localhost:<hub.port> (default 8317) so a dashboard such as T3 Code's "Add a CLIProxyAPI hub" shows every pooled Claude and Codex account's quota; the management key is the contents of hub-key in the state directory
@@ -173,6 +177,7 @@ async function main(): Promise<number> {
     case "doctor": return cmdDoctor();
     case "rm": return cmdRm(provider, args[1]);
     case "rename": return cmdRename(provider, args.slice(1));
+    case "key": return cmdKey(args.slice(1));
     case "seat": return cmdSeat(provider === codex ? "codex" : "claude", args[1], args.slice(2));
     case "serve": return cmdServe(args.slice(1));
     case "uninstall": {
@@ -198,7 +203,7 @@ async function main(): Promise<number> {
       if (out.timer === "still-loaded") console.log(c.yellow(`⚠ the check job may still be loaded - run: ${deactivationHint(CHECK_JOB)}`));
       if (out.hub === "still-loaded") console.log(c.yellow(`⚠ the usage hub job may still be loaded - run: ${deactivationHint(HUB_JOB)}`));
       if (!out.pathLineRemoved) console.log(c.dim("(no tokenmaxxing PATH line found in the shell rc)"));
-      console.log(`kept: accounts.json, config.json, and every account credential store (claude: stores/ and its keychain items on macOS; codex: codex-stores/; pi: pi-stores/; grok: grok-stores/) - remove accounts with \`xx rm\` to delete their credentials`);
+      console.log(`kept: accounts.json, config.json, and every account credential store (claude: stores/ and its keychain items on macOS; codex: codex-stores/; pi: pi-stores/; grok: grok-stores/), plus api-keys.json and the API keys in api-keys/ - remove accounts with \`xx rm\` and keys with \`xx key rm\` to delete their credentials`);
       return 0;
     }
     case "help":
