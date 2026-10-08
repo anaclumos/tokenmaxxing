@@ -42,33 +42,36 @@ export const paths = {
 
 export const claudePool = {
   accountsJson: join(TM_HOME, "accounts.json"),
-  lastSwapJson: null,
   lockFile: join(TM_HOME, "lock"),
 } as const;
 
 export const codexPool = {
   accountsJson: join(TM_HOME, "codex-accounts.json"),
-  lastSwapJson: join(TM_HOME, "codex-lastswap.json"),
   lockFile: join(TM_HOME, "codex-lock"),
 } as const;
 
-export type PoolPaths = { accountsJson: string; lastSwapJson: string | null; lockFile: string };
+export type PoolPaths = { accountsJson: string; lockFile: string };
 
 const CODEX_HOME = env("TOKENMAXXING_CODEX_HOME", env("CODEX_HOME", join(HOME, ".codex")));
 
 export const codexPaths = {
   home: CODEX_HOME,
-  authJson: join(CODEX_HOME, "auth.json"),
+  configToml: join(CODEX_HOME, "config.toml"),
   hooksJson: join(CODEX_HOME, "hooks.json"),
-  credsDir: join(TM_HOME, "codex-creds"),
+  storesDir: join(TM_HOME, "codex-stores"),
   onboardDir: join(TM_HOME, "codex-onboard"),
   respawnDir: join(TM_HOME, "codex-respawn"),
   presenceDir: join(TM_HOME, "codex-live"),
-  reconcileDir: join(TM_HOME, "codex-reconcile"),
 } as const;
 
-export function codexCredItemFor(accountId: string): string {
-  return `tokenmaxxing-codex-${accountId.slice(0, 8)}`;
+export function codexStoreDirFor(accountId: string): string {
+  return join(codexPaths.storesDir, shortId(accountId));
+}
+
+export function codexSeatFromEnv(accountIds: string[], env: Record<string, string | undefined> = process.env): string | null {
+  const home = env.CODEX_HOME;
+  if (home == null || home === "") return null;
+  return accountIds.find((id) => codexStoreDirFor(id) === home) ?? null;
 }
 
 export const keychain = {

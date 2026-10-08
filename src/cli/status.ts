@@ -78,23 +78,18 @@ function usageReport(a: Account, now: number): StatusAccount["usage"] {
 async function collect(p: Provider, cfg: Config, now: number, cached: boolean): Promise<PoolReport> {
   let idx = loadAccounts(p.pool);
   let reports = new Map<string, SampleReport>();
-  let liveId: string | null = p.seats === "live" ? idx.activeId : null;
-  if (!cached) {
-    liveId = null;
-    if (idx.accounts.length > 0) {
-      await withLock(p.pool.lockFile, async () => {
-        idx = loadAccounts(p.pool);
-        console.error(c.dim(`sampling ${p.name} usage...`));
-        liveId = p.liveId();
-        reports = await p.samplePool(idx.accounts, liveId, now);
-        saveAccounts(p.pool, idx);
-      });
-    }
+  if (!cached && idx.accounts.length > 0) {
+    await withLock(p.pool.lockFile, async () => {
+      idx = loadAccounts(p.pool);
+      console.error(c.dim(`sampling ${p.name} usage...`));
+      reports = await p.samplePool(idx.accounts, now);
+      saveAccounts(p.pool, idx);
+    });
   }
 
   const bars = thresholdBars(cfg);
   const present = p.presence();
-  const ctx = { now, thresholds: bars, currentId: idx.activeId, families: p.gatedFamilies(cfg), seats: null };
+  const ctx = { now, thresholds: bars, currentId: null, families: p.gatedFamilies(cfg), seats: null };
   const ordered = sortBy(idx.accounts, [(a) => (a.needsReauth ? 1 : 0), (a) => earliestReset(a, now)]);
   const accounts = ordered.map((a): StatusAccount => {
     const limits = limitWindows(a);
@@ -103,7 +98,7 @@ async function collect(p: Provider, cfg: Config, now: number, cached: boolean): 
       email: a.email,
       id: a.id,
       tier: a.tier,
-      active: (liveId != null && a.id === liveId) || present.has(a.id),
+      active: present.has(a.id),
       sessions: present.get(a.id) ?? 0,
       needsReauth: a.needsReauth === true,
       exhausted: isExhausted(a, ctx),

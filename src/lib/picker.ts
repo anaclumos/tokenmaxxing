@@ -112,14 +112,6 @@ export function pickBest(accounts: Account[], ctx: PickCtx): Account | null {
   return sortBy(usable, swapPreference(ctx))[0] ?? null;
 }
 
-export function currentWins(active: Account | null, accounts: Account[], ctx: PickCtx, margin = 1): boolean {
-  if (!active || active.needsReauth || isExhausted(active, ctx)) return false;
-  const best = pickBest(accounts, { ...ctx, currentId: null });
-  if (best == null || best.id === active.id) return true;
-  if (margin > 1) return pacePressure(best, ctx.now) <= pacePressure(active, ctx.now) * margin;
-  return swapPreference(ctx).every((k) => k(active) === k(best));
-}
-
 export function usableAt(a: Account, ctx: PickCtx): number {
   const blocking = blockingUntil(a, ctx).filter((t) => t > ctx.now);
   return blocking.length ? Math.max(...blocking) : ctx.now;

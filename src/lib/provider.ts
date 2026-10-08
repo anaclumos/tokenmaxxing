@@ -8,6 +8,13 @@ export type SampleReport = { ok: true; source: "statusline" | "probe" } | { ok: 
 
 export type SwapFailure = "dead-grant" | "skip" | "fatal";
 
+export class StoreUnusableError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "StoreUnusableError";
+  }
+}
+
 export type Provider = {
   name: "claude" | "codex";
   flag: string;
@@ -18,7 +25,7 @@ export type Provider = {
   presence(): Map<string, number>;
   gatedFamilies(cfg: Config): string[] | null;
   observeLive(account: Account, cfg: Config, now: number, opts: { probe: boolean }): Promise<Observation | null>;
-  samplePool(accounts: Account[], liveId: string | null, now: number): Promise<Map<string, SampleReport>>;
+  samplePool(accounts: Account[], now: number): Promise<Map<string, SampleReport>>;
   mergeWindows(next: Window[], prev: Window[]): Window[];
   swap(target: Account): Promise<void>;
   classifySwapError(e: unknown): SwapFailure;

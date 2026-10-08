@@ -152,6 +152,19 @@ export function installCodexStopHook(): void {
   writeFileAtomic(codexPaths.hooksJson, JSON.stringify(next, null, 2) + "\n");
 }
 
+const CodexHookPositionSchema = z.object({ group: z.number().int().nonnegative(), handler: z.number().int().nonnegative() });
+export type CodexHookPosition = z.infer<typeof CodexHookPositionSchema>;
+
+export function codexStopHookPosition(): CodexHookPosition | null {
+  if (!existsSync(codexPaths.hooksJson)) return null;
+  const current = CodexHooksFileSchema.parse(JSON.parse(readFileSync(codexPaths.hooksJson, "utf8")));
+  for (const [group, entry] of current.hooks.Stop.entries()) {
+    const handler = entry.hooks.findIndex((hook) => isOurHookCommand(hook.command ?? "", CODEX_STOP_HOOK_SUBCOMMAND));
+    if (handler >= 0) return CodexHookPositionSchema.parse({ group, handler });
+  }
+  return null;
+}
+
 export function uninstallCodexStopHook(): void {
   if (!existsSync(codexPaths.hooksJson)) return;
   const current = CodexHooksFileSchema.parse(JSON.parse(readFileSync(codexPaths.hooksJson, "utf8")));

@@ -45,7 +45,6 @@ function askWhichAccount(idx: AccountsIndex, needsAuth: Set<string>): Account | 
   console.log("which account do you want to reauthenticate?");
   for (const [i, a] of ordered.entries()) {
     const flags: string[] = [];
-    if (a.id === idx.activeId) flags.push(c.green("active"));
     if (a.needsReauth) flags.push(c.red("needs-reauth"));
     else if (needsAuth.has(a.id)) flags.push(c.red("no-credential"));
     const labelNote = a.email != null && a.label !== a.email ? ` (${a.label})` : "";
@@ -93,15 +92,12 @@ async function reauthOne(p: Provider, target: Account): Promise<boolean> {
     await harvested.park();
     const account = upsertAccount(idx, harvested, p.mergeWindows);
     saveAccounts(p.pool, idx);
-    return { account, isActive: idx.activeId === target.id };
+    return { account };
   });
   if (result === null) return false;
 
   const note = harvested.sample ? usageNote(result.account) : "";
   console.log(`${c.green("✓")} reauthed ${c.bold(result.account.email ?? result.account.label)} (${result.account.tier ?? "?"})${note}`);
-  if (result.isActive) {
-    console.log(c.dim("this account is the active one: the fresh credential is parked as its backup; the live session keeps its current token until the next swap."));
-  }
   return true;
 }
 

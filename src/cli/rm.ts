@@ -16,10 +16,6 @@ export async function cmdRm(p: Provider, selector?: string): Promise<number> {
       emitError({ message: `no account matches "${selector}"` });
       return 1;
     }
-    if (a.id === idx.activeId) {
-      emitError({ message: `${a.label} is the ACTIVE account - switch away before removing it.` });
-      return 1;
-    }
     if (p.liveId() === a.id) {
       emitError({ message: `${a.label} is the ${p.name} login this command runs under - remove it from a session on another account.` });
       return 1;

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { withLock } from "./lock.ts";
-import { POST_SWAP_COOLDOWN_MS, loadAccounts, loadConfig, loadLastSwapAt, saveAccounts } from "./state.ts";
+import { loadAccounts, loadConfig, saveAccounts } from "./state.ts";
 import { isExhausted, limitWindows, nextWeeklyReset, pickBest, pickEarliestReset, sessionWindow, thresholdBars, usableAt, weeklyWindow, type PickCtx } from "./picker.ts";
 import { familyTokens } from "./usage.ts";
 import { log } from "./log.ts";
@@ -46,11 +46,6 @@ function enforcedWall(limit: EnforcedLimit, account: Account, now: number): numb
 export async function evaluateAndMaybeSwap(p: Provider, now = Date.now(), canRespawn = false, enforced: EnforcedLimit | null = null): Promise<SwapDecision> {
   const activeId = p.liveId();
 
-  const lastSwapAt = loadLastSwapAt(p.pool);
-  if (!enforced && lastSwapAt != null && now - lastSwapAt < POST_SWAP_COOLDOWN_MS) {
-    return { swapped: false, account: null, reason: "post-swap-cooldown" };
-  }
-
   const cfg = loadConfig();
   const bars = thresholdBars(cfg);
   const stored0 = loadAccounts(p.pool).accounts.find((a) => a.id === activeId);
@@ -63,10 +58,6 @@ export async function evaluateAndMaybeSwap(p: Provider, now = Date.now(), canRes
   }
 
   return withLock(p.pool.lockFile, async () => {
-    const lastSwapAt2 = loadLastSwapAt(p.pool);
-    if (!enforced && lastSwapAt2 != null && now - lastSwapAt2 < POST_SWAP_COOLDOWN_MS) {
-      return { swapped: false, account: null, reason: "raced-already-swapped" };
-    }
     const idx = loadAccounts(p.pool);
     const id2 = p.liveId();
     const active = id2 ? idx.accounts.find((a) => a.id === id2) : undefined;
@@ -80,10 +71,6 @@ export async function evaluateAndMaybeSwap(p: Provider, now = Date.now(), canRes
       log("usage.enforced_limit", { kind: enforced.kind, family: enforced.family ?? undefined, resetsAt: origin.enforcedUntil, blind: prior || enforced.blind, live: origin === active });
     }
     const enforced2 = enforced && origin && origin === active ? enforced : null;
-
-    if (id2 != null && !active) {
-      return { swapped: false, account: null, reason: "live-credential-not-in-pool" };
-    }
 
     let obs2: Observation | null = null;
     for (const a of idx.accounts) {
@@ -109,12 +96,11 @@ export async function evaluateAndMaybeSwap(p: Provider, now = Date.now(), canRes
     if (!enforced2 && !isOver(active, obs2, { now, thresholds: bars, currentId: id2, families, seats }) && !(enforced && seatExhausted)) {
       return { swapped: false, account: null, reason: "raced-already-swapped" };
     }
-    if (p.seats === "shared" && !canRespawn) {
+    if (!canRespawn) {
       return { swapped: false, account: null, reason: "needs-respawn" };
     }
 
-    const seatOf = (cur: { activeId: string | null; accounts: Account[] }): Account | null =>
-      cur.accounts.find((a) => a.id === id2) ?? cur.accounts.find((a) => a.id === cur.activeId) ?? null;
+    const seatOf = (cur: { accounts: Account[] }): Account | null => cur.accounts.find((a) => a.id === id2) ?? null;
 
     const rejected = new Set<string>();
     const usable = (accounts: Account[]): Account[] => accounts.filter((a) => !rejected.has(a.id) && (p.seats === "shared" || a.id === id2 || !present.has(a.id)));

@@ -78,11 +78,8 @@ export type Account = z.infer<typeof AccountSchema>;
 
 export const AccountsIndexSchema = z.object({
   version: z.literal(2),
-  activeId: z.string().nullable(),
   accounts: z.array(AccountSchema).default([]),
 });
-
-export const LastSwapSchema = z.object({ ts: z.number() });
 export type AccountsIndex = z.infer<typeof AccountsIndexSchema>;
 
 export const EnforcedLimitSchema = z.object({
@@ -226,13 +223,8 @@ export const CodexStopStdinSchema = z.looseObject({
 });
 
 export const CodexRespawnMarkerSchema = z.object({
-  account: z.string(),
-  sessionId: z.string().nullable(),
-  ts: z.number(),
-});
-
-export const CodexReconcileMarkerSchema = z.object({
   accountId: z.string(),
+  sessionId: z.string().nullable(),
   ts: z.number(),
 });
 

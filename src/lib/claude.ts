@@ -11,7 +11,7 @@ import { claudeTierLabel, describeIdentity, fetchTokenIdentity, isDeadCredential
 import { claudePool, paths, sampleDirFor, seatFromEnv, storeDirFor } from "./paths.ts";
 import { pickBest, pickEarliestReset, thresholdBars, type PickCtx } from "./picker.ts";
 import { seatCounts } from "./presence.ts";
-import type { Observation, Provider, SampleReport } from "./provider.ts";
+import { StoreUnusableError, type Observation, type Provider, type SampleReport } from "./provider.ts";
 import { foldTee, probeAccountUsage, teeObservation } from "./sample.ts";
 import { clearUsageSnapshot, loadAccounts, loadConfig, loadUsageSnapshot, pinBinOverride, saveAccounts, type Harvest } from "./state.ts";
 import { loadSetupTokens, saveSetupTokens } from "./setuptokens.ts";
@@ -19,13 +19,6 @@ import { saveTermios, restoreTermios } from "./tty.ts";
 import { CRED_ENV_OVERRIDES, gatedFamilies, mergeWindows, probeUsage, windowsOf } from "./usage.ts";
 import { CredentialBlobSchema, OAuthAccountSchema, type Account, type Config } from "./types.ts";
 import { c } from "../cli/render.ts";
-
-class StoreUnusableError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "StoreUnusableError";
-  }
-}
 
 function liveId(): string | null {
   return seatFromEnv(loadAccounts(claudePool).accounts.map((a) => a.id));
