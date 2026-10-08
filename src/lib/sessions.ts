@@ -60,7 +60,7 @@ function listDir(dir: string, root: string): Dirent[] {
 }
 
 function tmpSweepDirs(root: string): string[] {
-  const dirs = [paths.home, paths.usageDir, paths.presenceDir, paths.respawnDir, sessionsDir(), paths.binDir, codexPaths.presenceDir, codexPaths.respawnDir, codexPaths.onboardDir];
+  const dirs = [paths.home, paths.usageDir, paths.presenceDir, paths.respawnDir, sessionsDir(), paths.binDir, paths.apiKeysDir, paths.costDir, codexPaths.presenceDir, codexPaths.respawnDir, codexPaths.onboardDir];
   for (const parent of STORE_PARENTS) {
     for (const child of listDir(parent, root)) {
       if (child.isDirectory()) dirs.push(join(parent, child.name));
@@ -113,6 +113,10 @@ export function supervisedSession(env: Record<string, string | undefined> = proc
   return { sid, launchedAt: LaunchedAtSchema.parse(env.TOKENMAXXING_LAUNCHED_AT) ?? null, live: liveSessionId(sid) };
 }
 
+export function keyMovesSupported(env: Record<string, string | undefined> = process.env): boolean {
+  return env.TOKENMAXXING_API_KEY_ID !== undefined;
+}
+
 export function refusedAccounts(env: Record<string, string | undefined> = process.env): string[] {
   return RefusedSchema.parse(env.TOKENMAXXING_REFUSED);
 }
@@ -129,9 +133,10 @@ export function adoptLiveSession(session: SupervisedSession, stdinSid: string | 
   return { ...session, live: stdinSid };
 }
 
-export function writeRespawnMarker(input: { session: SupervisedSession; accountId: string; waitUntil: number; compact: boolean; origin: z.infer<typeof RespawnMarkerSchema>["origin"]; refused?: string[] }): void {
+export function writeRespawnMarker(input: { session: SupervisedSession; accountId: string; apiKeyId?: string; waitUntil: number; compact: boolean; origin: z.infer<typeof RespawnMarkerSchema>["origin"]; refused?: string[] }): void {
   const payload: z.infer<typeof RespawnMarkerSchema> = {
     accountId: input.accountId,
+    ...(input.apiKeyId != null ? { apiKeyId: input.apiKeyId } : {}),
     ts: Date.now(),
     waitUntil: input.waitUntil,
     sessionId: input.session.live,

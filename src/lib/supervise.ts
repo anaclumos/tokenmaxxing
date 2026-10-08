@@ -82,10 +82,10 @@ export async function runPassthrough(input: { real: string; argv: string[]; env:
   return exitStatus(p);
 }
 
-export async function recordPresenceOrStop(input: { child: ChildHandle; dir: string; id: string; accountId: string; event: string; message: string; savedTermios: string | null }): Promise<void> {
+export async function recordPresenceOrStop(input: { child: ChildHandle; dir: string; id: string; accountId: string; apiKeyId?: string; event: string; message: string; savedTermios: string | null }): Promise<void> {
   for (let attempt = 0; ; attempt++) {
     try {
-      writePresence({ dir: input.dir, id: input.id, accountId: input.accountId, pid: input.child.pid });
+      writePresence({ dir: input.dir, id: input.id, accountId: input.accountId, pid: input.child.pid, ...(input.apiKeyId != null ? { apiKeyId: input.apiKeyId } : {}) });
       return;
     } catch (e) {
       if (input.child.exitCode !== null || input.child.signalCode !== null) return;

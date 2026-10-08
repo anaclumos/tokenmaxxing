@@ -13,13 +13,12 @@ const PIPE_GRACE_MS = 2_000;
 
 const CompactBoundarySchema = z.looseObject({ type: z.literal("system"), subtype: z.literal("compact_boundary") });
 
-export async function compactClaudeSession(input: { real: string; sid: string; transcript: string; env: Record<string, string | undefined>; onSpawn: (child: Subprocess) => void }): Promise<CompactOutcome> {
+export async function compactClaudeSession(input: { real: string; sid: string; transcript: string; env: Record<string, string | undefined>; keyPipe: boolean; onSpawn: (child: Subprocess) => void }): Promise<CompactOutcome> {
   const offset = statSync(input.transcript).size;
+  const extra: "pipe"[] = input.keyPipe ? ["pipe"] : [];
   const p = Bun.spawn([input.real, "-p", "--resume", input.sid, "/compact"], {
     env: input.env,
-    stdin: "ignore",
-    stdout: "pipe",
-    stderr: "pipe",
+    stdio: ["ignore", "pipe", "pipe", ...extra],
     timeout: CLAUDE_COMPACT_KILL_MS,
     killSignal: "SIGKILL",
   });

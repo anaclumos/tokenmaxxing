@@ -98,6 +98,7 @@ export async function piLogin(pool: PiPool): Promise<PiLogin | null> {
 function piMover(base: Provider, pool: PiPool): Provider {
   return {
     ...base,
+    apiKeys: undefined,
     swap: async (target) => {
       if (!piStoreUsable(pool, target.id)) {
         throw new StoreUnusableError(`${target.label} has no pi login - run \`tokenmaxxing auth --pi${base.flag} ${target.label}\``);

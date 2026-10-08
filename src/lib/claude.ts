@@ -2,6 +2,7 @@ import { mkdirSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { countBy } from "es-toolkit";
 import { z } from "zod";
+import { claudeApiKeys, launchApiKey } from "./apikeys.ts";
 import { readItem, writeItem, deleteItem, isolatedTarget, readStore, storeTarget, claudeAiOauthOnly } from "./credstore.ts";
 import { CLAUDE_BIN, resolveRealBin, resolveVerifiedClaude } from "./claudebin.ts";
 import { activationHint, CHECK_JOB, ensurePathInRc, HUB_JOB, installSupervisor, managedShellRcSkipLines, shellRcPath } from "./install.ts";
@@ -17,7 +18,7 @@ import { claimSample, foldTee, landRead, readyToSample, runSample, sampleAccount
 import { clearUsageSnapshot, liveWaitClaims, loadAccounts, loadConfig, loadUsageSnapshot, pinBinOverride, readJsonFile, saveAccounts, type Harvest } from "./state.ts";
 import { saveTermios, restoreTermios } from "./tty.ts";
 import { claimResetGrant, fetchUsageDirect, gatedFamilies, mergeWindows, modelFromFlag, scrubCredEnv, windowsOf } from "./usage.ts";
-import { CredentialBlobSchema, JsonTextSchema, OAuthAccountSchema, type Account, type Config, type ModelInfo } from "./types.ts";
+import { CredentialBlobSchema, JsonTextSchema, OAuthAccountSchema, type Account, type ApiKey, type Config, type ModelInfo } from "./types.ts";
 import { c } from "../cli/render.ts";
 
 function liveId(): string | null {
@@ -25,7 +26,7 @@ function liveId(): string | null {
 }
 
 function presence(living = livingPresences(paths.presenceDir)): Map<string, number> {
-  const seats = new Map(living.map((s) => [s.id, s.accountId]));
+  const seats = new Map(living.filter((s) => s.apiKeyId == null).map((s) => [s.id, s.accountId]));
   for (const claim of liveWaitClaims(Date.now())) seats.set(claim.sessionId, claim.accountId);
   return new Map(Object.entries(countBy([...seats.values()], (id) => id)));
 }
@@ -138,7 +139,7 @@ async function storeUsable(a: Account): Promise<boolean> {
   }
 }
 
-export function pickSeat(now: number, model: ModelInfo | null, eligible: (a: Account) => boolean = () => true): Account | null {
+function seatContext(now: number, model: ModelInfo | null, eligible: (a: Account) => boolean): { candidates: Account[]; ctx: PickCtx; fallback: () => Account | null } {
   const cfg = loadConfig();
   const bars = thresholdBars(cfg);
   const idx = loadAccounts(claudePool);
@@ -148,12 +149,28 @@ export function pickSeat(now: number, model: ModelInfo | null, eligible: (a: Acc
   const seats = presence();
   const ctx: PickCtx = { now, thresholds: bars, currentId: null, families: gatedFamilies(model, cfg.policy.switchModels), seats };
   const candidates = idx.accounts.filter(eligible);
-  return (
-    pickBest(candidates, ctx) ??
+  const fallback = () =>
     pickWaitTarget(candidates, ctx, seats, MAX_WAITERS_PER_ACCOUNT, now + cfg.policy.maxWaitMs, now + 2 * cfg.policy.maxWaitMs)?.account ??
     pickEarliestReset(candidates, ctx)?.account ??
-    null
-  );
+    null;
+  return { candidates, ctx, fallback };
+}
+
+export function pickSeat(now: number, model: ModelInfo | null, eligible: (a: Account) => boolean = () => true): Account | null {
+  const { candidates, ctx, fallback } = seatContext(now, model, eligible);
+  return pickBest(candidates, ctx) ?? fallback();
+}
+
+export type LaunchTarget = { account: Account; apiKey: null } | { account: null; apiKey: ApiKey };
+
+export function pickLaunch(now: number, model: ModelInfo | null): LaunchTarget | null {
+  const { candidates, ctx, fallback } = seatContext(now, model, () => true);
+  const best = pickBest(candidates, ctx);
+  if (best) return { account: best, apiKey: null };
+  const key = launchApiKey();
+  if (key) return { account: null, apiKey: key };
+  const account = fallback();
+  return account ? { account, apiKey: null } : null;
 }
 
 export async function borrowClaudeSeat(pid: number): Promise<SeatBorrow> {
@@ -335,6 +352,7 @@ export const claude: Provider = {
   seats: "shared",
   waitsWhenDepleted: true,
   statusOnly: false,
+  apiKeys: claudeApiKeys,
   liveId,
   presence,
   gatedFamilies: (cfg) => {

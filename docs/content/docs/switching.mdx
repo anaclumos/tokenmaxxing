@@ -15,6 +15,7 @@ flowchart LR
 
 - The same ranking places a new session at launch.
 - A launch onto a depleted pool takes the same target selection, counting running sessions as well as queued waiters, and starts immediately.
+- With no usable account, a stored API key with credit left comes before the wait, at launch and on a running session; see [API keys](#api-keys).
 - Every Codex session runs on its own seat too: the account whose store the codex supervisor gave it at launch, decided the same way at each Stop hook; everything else is shared.
 
 ## The bars
@@ -158,7 +159,7 @@ A move the enforced-limit path triggers never compacts, and neither does any mov
 
 ## When nothing is usable
 
-When every account is at or over a bar, the decision assigns the session to a recovery account. If that reset lands within twice `policy.maxWaitMs` (`maxWaitMs` defaults to 1 hour), the supervised session pauses until it and resumes on that account (see [Architecture](/architecture)). Assignment is first come first served with at most eight waiting sessions per account, so one reset wakes at most eight sessions instead of the whole pool.
+When every account is at or over a bar and no stored API key has credit left (see [API keys](#api-keys)), the decision assigns the session to a recovery account. If that reset lands within twice `policy.maxWaitMs` (`maxWaitMs` defaults to 1 hour), the supervised session pauses until it and resumes on that account (see [Architecture](/architecture)). Assignment is first come first served with at most eight waiting sessions per account, so one reset wakes at most eight sessions instead of the whole pool.
 
 ```mermaid
 flowchart LR
@@ -181,6 +182,26 @@ The wait target follows these steps in order:
 - The pause happens at the bar, not at 100: the unspent headroom is the same budget that set the bar.
 - Only a supervised session waits: a session outside the supervisor gets the enforced stamp and nothing else.
 - Codex has no pause; it rides its account until the server refuses it.
+
+## API keys
+
+Anthropic API keys stored with `tokenmaxxing key add` are a paid fallback for Claude sessions. A session runs on a key only when no pooled account is usable, and it leaves the key at the next turn boundary after one is, because a key costs money and a subscription does not.
+
+```mermaid
+flowchart LR
+  bar["every account<br/>at or over a bar"] -->|"a key has<br/>credit left"| key["resume on the key<br/>that ranks first"]
+  key -->|"an account is usable<br/>again"| seat["resume on<br/>that account"]
+  key -->|"key spent<br/>or refused"| next["next key, or the<br/>depleted wait"]
+```
+
+- **When a key is used.** At launch, the supervisor picks a key when no account is usable, before the wait target and the earliest-reset fallback. On a running session, a decision that finds no usable account tries a key before it assigns a wait target.
+- **Ranking.** A key is a candidate when no turn on it ended with `billing_error` and, when you entered a balance, its credit left (the balance minus the recorded spend) is above 0. Keys with the most credit left rank first. A key with no balance entered ranks after every key with one, because an unknown balance must never look safe. Ties go to the key with the fewest running sessions, then to the oldest key.
+- **Stickiness.** A session stays on its key while the key has credit left and no subscription account is usable. It moves to another key only when its key is spent (credit left at or below 0) or refused.
+- **Return to a subscription.** The Stop hook moves a key session to the account that ranks first once one is usable, at the turn boundary, and so does the SessionStart hook, which runs before any turn. The supervisor's seat watch never cuts a turn on a key to save money: it moves a key session only when the key is spent or refused, to an account when one is usable, else to the next key, else to the depleted wait. The seat watch on an account seat that crosses a bar mid-turn moves the session to a key the same way the hooks do, compacting first. An account that is usable only on usage credits (`credits` in `thresholds.accounts`) does not draw a session off a key.
+- **Refusal.** When a turn on a key ends with `billing_error`, the StopFailure hook marks the key as refused and moves the session to the next key, or to the depleted wait when no key is left. Any other error on a key session moves nothing. `key credit` clears the refusal.
+- **Spend.** The supervisor is the only writer of a key's spend. It reads the session's cumulative cost estimate from Claude Code (the statusline's `cost.total_cost_usd` in a terminal session, the `total_cost_usd` of each stream-json `result` line in a harness session) every seat-watch tick and once after the process exits, and it adds the growth since its last reading to the key. The last reading is kept per live session id in `api-keys.json`, in the same atomic write as the key's spend, so a failed write followed by a retry never bills twice. The cost a session ran up on a subscription account before it moved to the key is recorded as its starting point and never billed to the key. A session id with no recorded reading starts at 0 when the session began fresh (a new session or `/clear`) and starts at its first reading when the supervisor resumed it, so a resumed session's restored total is never billed.
+- **Refused accounts.** A key session never moves to an account that has already refused it with a usage-credits refusal (the accounts in `TOKENMAXXING_REFUSED`); it stays on the key instead.
+- **Compaction.** A move off a key compacts on that key, the same way a move off an account compacts on the account. A key that is spent or refused gets no compaction.
 
 ## Banked resets
 
@@ -245,7 +266,7 @@ A model changed inside the session with `/model` does not change the launch valu
 
 ## Enforced limits
 
-The cached figures can lag reality: a seat's per-model cap is not in the tee and comes only from the seat's own sample, at most once per sample interval, which shrinks to `policy.usagePollTtlMs` as the cap nears the weekly bar. When the server actually refuses a turn, Claude Code ends it on an API error and fires its `StopFailure` hook instead of `Stop`. tokenmaxxing installs that hook with a `rate_limit|oauth_org_not_allowed` matcher, and it reads the transcript's structured error row (the same row Claude Code marks `isApiErrorMessage`).
+The cached figures can lag reality: a seat's per-model cap is not in the tee and comes only from the seat's own sample, at most once per sample interval, which shrinks to `policy.usagePollTtlMs` as the cap nears the weekly bar. When the server actually refuses a turn, Claude Code ends it on an API error and fires its `StopFailure` hook instead of `Stop`. tokenmaxxing installs that hook with a `rate_limit|oauth_org_not_allowed|billing_error` matcher, and it reads the transcript's structured error row (the same row Claude Code marks `isApiErrorMessage`). `billing_error` acts only on a session that runs on an API key (see [API keys](#api-keys)); on an account it changes nothing. A host installed before the matcher named `billing_error` gets it when `init` runs again, and `doctor` reports the stale matcher until then.
 
 ```mermaid
 flowchart TD

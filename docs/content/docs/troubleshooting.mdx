@@ -15,6 +15,12 @@ The account needs reauthentication: its store's credential is dead (Claude Code 
 **Which account does a new session start on?**
 The usable account with the most session-window headroom per running session: `(session bar - session used) / (sessions on it + 1)`, ties by pace pressure. Two fresh accounts alternate; the third session goes to whichever has more headroom left per session. When no account is usable, the session spreads onto the wait assignment instead of the soonest block: the soonest reset with room for another waiter, counting running sessions as well as queued waiters; with no pooled account, or every account flagged, it launches without a store on Claude Code's own login. See [How switching decides](/switching).
 
+**Every account is at its limit and the session waits.**
+With no API key stored, a session waits for the assigned reset when the whole pool is at its limit. To keep working on paid usage instead, store a key with `read -rs KEY && printf '%s' "$KEY" | tokenmaxxing key add <label> <credit-usd>; unset KEY`, which keeps the key out of the terminal echo and the shell history. Sessions then run on the key until a pooled account is usable again. See [API keys](/switching#api-keys).
+
+**`status` shows an API key as `refused`.**
+A turn on that key ended with `billing_error`, which Claude Code reports when the key's credit balance is too low. tokenmaxxing moved the session to the next key, or to the wait for a reset when no key is left, and places no session on the refused key. Add credit in the Console, then run `tokenmaxxing key credit <label> <usd>`, which clears the refusal and restarts the spend count.
+
 **Why doesn't it move to the account with the most remaining weekly quota?**
 Weekly quota is the tie-break. The first key is session-window headroom per running session, because the 5-hour window is what a new or moved session drains first; among accounts with equal headroom per session the one furthest behind its own pace wins: remaining percent of its binding gated per-model cap (the Fable cap by default), or of the weekly aggregate when it carries no gated row, divided by time to that reset.
 

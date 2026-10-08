@@ -2,9 +2,10 @@ import { existsSync, readdirSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { z } from "zod";
 import { claude } from "../lib/claude.ts";
-import { evaluateAndMaybeSwap } from "../lib/decide.ts";
+import { liveApiKeyId, refuseApiKey } from "../lib/apikeys.ts";
+import { evaluateAndMaybeSwap, moveTarget } from "../lib/decide.ts";
 import { readStdin } from "../lib/proc.ts";
-import { adoptLiveSession, refusedAccounts, supervisedSession, writeRespawnMarker } from "../lib/sessions.ts";
+import { adoptLiveSession, keyMovesSupported, refusedAccounts, supervisedSession, writeRespawnMarker } from "../lib/sessions.ts";
 import { loadConfig } from "../lib/state.ts";
 import { classifyEnforcedLimit, ENFORCED_ERRORS, findEnforcedRow, parseErrorBody, readTranscriptTail, type TranscriptRow } from "../lib/usage.ts";
 import { paths } from "../lib/paths.ts";
@@ -60,6 +61,22 @@ export async function runStopFailureHook(): Promise<number> {
       return 0;
     }
     const canRespawn = session != null && mainLoop;
+    const keyId = account == null ? liveApiKeyId() : null;
+    if (keyId != null) {
+      if (error !== "billing_error") return 0;
+      const known = await refuseApiKey(keyId, now);
+      log("stopfailure.key_refused", { key: keyId, known, subagent: !mainLoop });
+      const decision = await evaluateAndMaybeSwap(claude, now, canRespawn, null, { waiterId: canRespawn ? session?.sid : undefined, refused: refusedAccounts(), apiKeys: true, apiKeyId: keyId });
+      const target = moveTarget(decision);
+      if (session && canRespawn && target) {
+        writeRespawnMarker({ session, ...target, waitUntil: target.waitUntil ?? now, compact: false, origin: "stopfailure" });
+        log("stopfailure.marker", { session: session.sid.slice(0, 8), live: session.live.slice(0, 8), account: target.accountId.slice(0, 8), key: target.apiKeyId, waitUntil: target.waitUntil ?? now });
+      } else {
+        log("stopfailure.decision", { reason: decision.reason, swapped: decision.swapped, account: decision.account?.id.slice(0, 8), waitUntil: decision.waitUntil });
+      }
+      return 0;
+    }
+    if (error === "billing_error") return 0;
     const cfg = loadConfig();
     const row = stdin.transcript_path
       ? await awaitEnforcedRow({ transcriptPath: stdin.transcript_path, agentId: stdin.agent_id, error, lastAssistantMessage: stdin.last_assistant_message })
@@ -92,10 +109,11 @@ export async function runStopFailureHook(): Promise<number> {
     }
 
     const refused = enforced?.kind === "credits" ? [...new Set([...refusedAccounts(), enforced.account])] : undefined;
-    const decision = await evaluateAndMaybeSwap(claude, now, canRespawn, enforced, { waiterId: canRespawn ? session?.sid : undefined, exclude: refused });
-    if (session && canRespawn && decision.account && (decision.swapped || decision.waitUntil !== undefined)) {
-      writeRespawnMarker({ session, accountId: decision.account.id, waitUntil: decision.waitUntil ?? now, compact: false, origin: "stopfailure", refused });
-      log("stopfailure.marker", { session: session.sid.slice(0, 8), live: session.live.slice(0, 8), account: decision.account.id.slice(0, 8), waitUntil: decision.waitUntil ?? now });
+    const decision = await evaluateAndMaybeSwap(claude, now, canRespawn, enforced, { waiterId: canRespawn ? session?.sid : undefined, exclude: refused, apiKeys: canRespawn && keyMovesSupported() });
+    const target = moveTarget(decision);
+    if (session && canRespawn && target) {
+      writeRespawnMarker({ session, ...target, waitUntil: target.waitUntil ?? now, compact: false, origin: "stopfailure", refused });
+      log("stopfailure.marker", { session: session.sid.slice(0, 8), live: session.live.slice(0, 8), account: target.accountId.slice(0, 8), key: target.apiKeyId, waitUntil: target.waitUntil ?? now });
     } else {
       log("stopfailure.decision", { reason: decision.reason, swapped: decision.swapped, account: decision.account?.id.slice(0, 8), waitUntil: decision.waitUntil });
     }
