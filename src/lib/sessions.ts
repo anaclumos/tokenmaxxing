@@ -2,7 +2,7 @@ import { existsSync, readdirSync, realpathSync, rmSync, statSync, type Dirent } 
 import { basename, join, sep } from "node:path";
 import { z } from "zod";
 import { errorMessage, log } from "./log.ts";
-import { codexPaths, grokPaths, opencodeGoPaths, paths, piPaths } from "./paths.ts";
+import { codexPaths, grokPaths, paths, piPaths } from "./paths.ts";
 import { writeFileAtomic } from "./atomic.ts";
 import { presencePid } from "./presence.ts";
 import { readJsonFile } from "./state.ts";
@@ -45,7 +45,7 @@ function recordLiveSession(sid: string, current: string): void {
 const TMP_MARKER = ".tmp.";
 const TMP_GRACE_MS = 3600 * 1000;
 
-const STORE_PARENTS = [paths.storesDir, codexPaths.storesDir, grokPaths.storesDir, opencodeGoPaths.storesDir, join(piPaths.storesDir, "claude"), join(piPaths.storesDir, "codex")];
+const STORE_PARENTS = [paths.storesDir, codexPaths.storesDir, grokPaths.storesDir, join(piPaths.storesDir, "claude"), join(piPaths.storesDir, "codex")];
 
 function listDir(dir: string, root: string): Dirent[] {
   if (!existsSync(dir)) return [];
@@ -60,7 +60,7 @@ function listDir(dir: string, root: string): Dirent[] {
 }
 
 function tmpSweepDirs(root: string): string[] {
-  const dirs = [paths.home, paths.usageDir, paths.presenceDir, paths.respawnDir, sessionsDir(), paths.binDir, codexPaths.presenceDir, codexPaths.respawnDir, codexPaths.onboardDir, opencodeGoPaths.presenceDir];
+  const dirs = [paths.home, paths.usageDir, paths.presenceDir, paths.respawnDir, sessionsDir(), paths.binDir, codexPaths.presenceDir, codexPaths.respawnDir, codexPaths.onboardDir];
   for (const parent of STORE_PARENTS) {
     for (const child of listDir(parent, root)) {
       if (child.isDirectory()) dirs.push(join(parent, child.name));
