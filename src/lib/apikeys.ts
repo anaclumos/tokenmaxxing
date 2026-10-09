@@ -121,6 +121,12 @@ export function clearSessionCost(sid: string): void {
   rmSync(costFileFor(sid), { force: true });
 }
 
+export async function foldCompactionCost(sid: string, cost: SessionCost, keyId: string | null, resumed: Set<string>): Promise<void> {
+  if (!existsSync(claudePool.apiKeysJson)) return;
+  writeSessionCost(sid, cost);
+  await foldSessionCost(sid, keyId, resumed);
+}
+
 const BASELINE_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 
 export async function foldSessionCost(sid: string, keyId: string | null, resumed: Set<string>): Promise<void> {
