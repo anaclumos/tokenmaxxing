@@ -10,7 +10,7 @@ import { codexStoreUsable, ensureCodexStoreHome } from "../lib/codexauth.ts";
 import { CODEX_CRED_ENV, CODEX_SUPERVISOR_ID_ENV, borrowCodexSeat, codexPickCtx, pickCodexSeat } from "../lib/codex.ts";
 import { clearPresence, livingPresences } from "../lib/presence.ts";
 import { isExhausted } from "../lib/picker.ts";
-import { exitStatus, loopGuardTripped, raceMarkerOrExit, recordPresenceOrStop, runPassthrough } from "../lib/supervise.ts";
+import { childStdout, exitStatus, loopGuardTripped, raceMarkerOrExit, recordPresenceOrStop, relayStdout, runPassthrough } from "../lib/supervise.ts";
 import { saveTermios } from "../lib/tty.ts";
 import { loadAccounts, readJsonFile } from "../lib/state.ts";
 import { CodexRespawnMarkerSchema, type Account } from "../lib/types.ts";
@@ -137,14 +137,14 @@ export async function runCodexSupervisor(input: { argv: string[] }): Promise<num
     if (existsSync(marker)) rmSync(marker, { force: true });
 
     const launchedAt = Date.now();
-    const { child, seat } = await withLock(codexPool.lockFile, async () => {
+    const { child, seat, drain } = await withLock(codexPool.lockFile, async () => {
       clearPresence({ dir: codexPaths.presenceDir, id: supervisorId });
       const picked = validWanted({ wanted, now: launchedAt, supervisorId }) ?? pickCodexSeat(launchedAt);
       log("codexsupervisor.launch", { supervisorId: supervisorId.slice(0, 8), respawns, seat: picked?.id.slice(0, 8) ?? null, args: launchArgs.join(" ") });
       const store = picked ? ensureCodexStoreHome(picked.id) : undefined;
       const spawned = Bun.spawn([real, ...launchArgs], {
         stdin: "inherit",
-        stdout: "inherit",
+        stdout: childStdout(),
         stderr: "inherit",
         env: {
           ...(store ? omit(childEnv, CODEX_CRED_ENV) : childEnv),
@@ -152,6 +152,7 @@ export async function runCodexSupervisor(input: { argv: string[] }): Promise<num
           ...(store ? { CODEX_HOME: store } : {}),
         },
       });
+      const drain = spawned.stdout instanceof ReadableStream ? relayStdout(spawned.stdout) : null;
       if (picked) {
         await recordPresenceOrStop({
           child: spawned,
@@ -163,10 +164,10 @@ export async function runCodexSupervisor(input: { argv: string[] }): Promise<num
           savedTermios,
         });
       }
-      return { child: spawned, seat: picked };
+      return { child: spawned, seat: picked, drain };
     });
     if (respawns > 0) {
-      process.stdout.write(`\n\x1b[36m↻ tokenmaxxing: switched codex to ${seat?.label ?? "the ambient codex login"} - resuming...\x1b[0m\n`);
+      process.stderr.write(`\n\x1b[36m↻ tokenmaxxing: switched codex to ${seat?.label ?? "the ambient codex login"} - resuming...\x1b[0m\n`);
     }
 
     await raceMarkerOrExit({
@@ -178,6 +179,7 @@ export async function runCodexSupervisor(input: { argv: string[] }): Promise<num
       },
       savedTermios,
     });
+    await drain?.();
 
     const payload = existsSync(marker) ? readCodexMarker(marker) : null;
     if (payload) {
