@@ -196,6 +196,14 @@ function restoredCost(sessionId: string): number {
   return CostStateRowSchema.safeParse(JsonTextSchema.safeParse(row).data).data?.totalCostUSD ?? 0;
 }
 
+function restoredCostOf(restored: Map<string, number>, sessionId: string): number {
+  const known = restored.get(sessionId);
+  if (known !== undefined) return known;
+  const total = restoredCost(sessionId);
+  restored.set(sessionId, total);
+  return total;
+}
+
 function latestSessionForCwd(): string | null {
   const projDir = projectDirForCwd();
   if (!existsSync(projDir)) return null;
@@ -312,7 +320,7 @@ function resolveLaunch(wanted: { accountId: string | null; apiKeyId: string | nu
 
 async function foldCost(sid: string, keyId: string | null, restored: Map<string, number>): Promise<void> {
   try {
-    await foldSessionCost(sid, keyId, restored);
+    await foldSessionCost(sid, keyId, (id) => restoredCostOf(restored, id));
   } catch (e) {
     log("supervisor.cost_fold_failed", { err: errorMessage(e) });
   }
@@ -555,7 +563,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
   pruneStaleSessions(Date.now());
 
   let launchArgs = resume ? ["--resume", sid, ...base] : ["--session-id", sid, ...base];
-  const restored = new Map<string, number>(resume ? [[sid, restoredCost(sid)]] : []);
+  const restored = new Map<string, number>([[sid, resume ? restoredCost(sid) : 0]]);
   let pendingTranscript = resume ? null : transcriptPath(sid);
 
   mkdirSync(paths.respawnDir, { recursive: true });
@@ -713,7 +721,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
       const prompt = resumable ? resumePrompt({ compacted, origin: m.origin, onKey: m.apiKeyId != null }) : null;
       firstLine = relay !== null && prompt !== null ? userLine(prompt) : null;
       pendingTranscript = resumable ? null : transcriptPath(m.sessionId);
-      if (resumable && !restored.has(m.sessionId)) restored.set(m.sessionId, restoredCost(m.sessionId));
+      if (!restored.has(m.sessionId)) restored.set(m.sessionId, resumable ? restoredCost(m.sessionId) : 0);
       launchArgs = [resumable ? "--resume" : "--session-id", m.sessionId, ...(relay === null && prompt !== null ? [prompt] : []), ...persistable];
       continue;
     }
