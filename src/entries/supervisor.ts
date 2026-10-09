@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, rmSync, readdirSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, readdirSync, statSync } from "node:fs";
 import { basename, join } from "node:path";
 import type { FileSink, Subprocess } from "bun";
 import { maxBy, omit } from "es-toolkit";
@@ -19,7 +19,7 @@ import { saveTermios } from "../lib/tty.ts";
 import { liveSessionId, loadSessionFlags, pruneStaleSessions, saveSessionFlags, writeRespawnMarker } from "../lib/sessions.ts";
 import { loadAccounts, loadConfig, readJsonFile, releaseWaitClaim, writeUsage } from "../lib/state.ts";
 import { gatedFamilies, modelFromFlag, parseStreamLine, scrubCredEnv } from "../lib/usage.ts";
-import { CostLineSchema, JsonTextSchema, RespawnMarkerSchema, type Account, type ApiKey, type Config, type ModelInfo, type UsageWindows } from "../lib/types.ts";
+import { CostLineSchema, CostStateRowSchema, JsonTextSchema, RespawnMarkerSchema, type Account, type ApiKey, type Config, type ModelInfo, type UsageWindows } from "../lib/types.ts";
 import { errorMessage, log } from "../lib/log.ts";
 
 const SUBCOMMANDS = new Set([
@@ -183,6 +183,19 @@ function findTranscript(sessionId: string): string | null {
   return readdirSync(root).map((dir) => join(root, dir, `${sessionId}.jsonl`)).find((p) => existsSync(p)) ?? null;
 }
 
+const COST_STATE_MARKER = '"type":"cost-state"';
+
+function restoredCost(sessionId: string): number {
+  const transcript = findTranscript(sessionId);
+  if (transcript === null) return 0;
+  const text = readFileSync(transcript, "utf8");
+  const at = text.lastIndexOf(COST_STATE_MARKER);
+  if (at < 0) return 0;
+  const end = text.indexOf("\n", at);
+  const row = text.slice(text.lastIndexOf("\n", at) + 1, end < 0 ? undefined : end);
+  return CostStateRowSchema.safeParse(JsonTextSchema.safeParse(row).data).data?.totalCostUSD ?? 0;
+}
+
 function latestSessionForCwd(): string | null {
   const projDir = projectDirForCwd();
   if (!existsSync(projDir)) return null;
@@ -266,8 +279,8 @@ async function moveExhaustedSeat(seat: Account, sid: string, gate: MarkerGate, m
   return true;
 }
 
-async function moveKeySession(key: ApiKey, sid: string, gate: MarkerGate, model: ModelInfo | null, refused: string[], resumed: Set<string>): Promise<boolean> {
-  await foldCost(sid, key.id, resumed);
+async function moveKeySession(key: ApiKey, sid: string, gate: MarkerGate, model: ModelInfo | null, refused: string[], restored: Map<string, number>): Promise<boolean> {
+  await foldCost(sid, key.id, restored);
   try {
     if (usableApiKey(key.id) != null) return false;
     const now = Date.now();
@@ -297,9 +310,9 @@ function resolveLaunch(wanted: { accountId: string | null; apiKeyId: string | nu
   return pickLaunch(now, model);
 }
 
-async function foldCost(sid: string, keyId: string | null, resumed: Set<string>): Promise<void> {
+async function foldCost(sid: string, keyId: string | null, restored: Map<string, number>): Promise<void> {
   try {
-    await foldSessionCost(sid, keyId, resumed);
+    await foldSessionCost(sid, keyId, restored);
   } catch (e) {
     log("supervisor.cost_fold_failed", { err: errorMessage(e) });
   }
@@ -542,7 +555,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
   pruneStaleSessions(Date.now());
 
   let launchArgs = resume ? ["--resume", sid, ...base] : ["--session-id", sid, ...base];
-  const resumed = new Set<string>(resume ? [sid] : []);
+  const restored = new Map<string, number>(resume ? [[sid, restoredCost(sid)]] : []);
   let pendingTranscript = resume ? null : transcriptPath(sid);
 
   mkdirSync(paths.respawnDir, { recursive: true });
@@ -629,7 +642,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
       tick: async () => {
         if (existsSync(marker) && (await consumableMarker(marker, gate)) != null) return true;
         if ((seat || key) && !terminating && Date.now() >= seatCheckAt) {
-          const decided = seat ? await moveExhaustedSeat(seat, sid, gate, model, refused) : key ? await moveKeySession(key, sid, gate, model, refused, resumed) : false;
+          const decided = seat ? await moveExhaustedSeat(seat, sid, gate, model, refused) : key ? await moveKeySession(key, sid, gate, model, refused, restored) : false;
           seatCheckAt = Date.now() + (decided ? SEAT_RETRY_MS : SEAT_POLL_MS);
         }
         return false;
@@ -644,7 +657,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
     });
     await drainStdout?.();
     drainStdout = null;
-    await foldCost(sid, key?.id ?? null, resumed);
+    await foldCost(sid, key?.id ?? null, restored);
 
     const m = !terminating && existsSync(marker) ? await consumableMarker(marker, gate) : null;
     if (m) {
@@ -700,7 +713,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
       const prompt = resumable ? resumePrompt({ compacted, origin: m.origin, onKey: m.apiKeyId != null }) : null;
       firstLine = relay !== null && prompt !== null ? userLine(prompt) : null;
       pendingTranscript = resumable ? null : transcriptPath(m.sessionId);
-      if (resumable) resumed.add(m.sessionId);
+      if (resumable && !restored.has(m.sessionId)) restored.set(m.sessionId, restoredCost(m.sessionId));
       launchArgs = [resumable ? "--resume" : "--session-id", m.sessionId, ...(relay === null && prompt !== null ? [prompt] : []), ...persistable];
       continue;
     }
