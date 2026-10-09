@@ -1,7 +1,10 @@
+import { once } from "node:events";
+import { isatty } from "node:tty";
 import type { Subprocess } from "bun";
 import { LOOP_DIAGNOSIS, MAX_WRAP_DEPTH, WRAP_RATE_WINDOW_MS, wrapDepth, wrapperChainTripped } from "./claudebin.ts";
 import { errorMessage, log } from "./log.ts";
 import { paths } from "./paths.ts";
+import { readLines } from "./proc.ts";
 import { writePresence } from "./presence.ts";
 import { restoreTermios } from "./tty.ts";
 
@@ -75,10 +78,57 @@ export function loopGuardTripped(product: WrappedProduct): boolean {
   return false;
 }
 
+const STDOUT_QUIET_MS = 1000;
+
+export function childStdout(): "inherit" | "pipe" {
+  return isatty(1) ? "inherit" : "pipe";
+}
+
+export function relayStdout(source: ReadableStream<Uint8Array>, onLine?: (line: string) => void): (abandoned?: () => boolean) => Promise<void> {
+  let ended = false;
+  let blocked = false;
+  let readAt = Date.now();
+  const forwarded = source.pipeThrough(
+    new TransformStream<Uint8Array, Uint8Array>({
+      async transform(chunk, controller) {
+        readAt = Date.now();
+        if (!process.stdout.write(chunk)) {
+          blocked = true;
+          await once(process.stdout, "drain");
+          blocked = false;
+        }
+        controller.enqueue(chunk);
+      },
+    }),
+  );
+  void (async () => {
+    if (onLine == null) return forwarded.pipeTo(new WritableStream());
+    for await (const line of readLines(forwarded)) {
+      try {
+        onLine(line);
+      } catch (e) {
+        log("supervisor.tee_failed", { err: errorMessage(e) });
+      }
+    }
+  })()
+    .catch((e: unknown) => log("supervisor.stdout_relay_failed", { err: errorMessage(e) }))
+    .finally(() => {
+      ended = true;
+    });
+  return async (abandoned = () => false) => {
+    const exitedAt = Date.now();
+    while (!ended && (blocked ? !abandoned() : Date.now() - Math.max(readAt, exitedAt) < STDOUT_QUIET_MS)) await Bun.sleep(50);
+  };
+}
+
 export async function runPassthrough(input: { real: string; argv: string[]; env: Record<string, string | undefined>; onSpawn?: (child: Subprocess) => void | Promise<void> }): Promise<number> {
-  const p = Bun.spawn([input.real, ...input.argv], { stdin: "inherit", stdout: "inherit", stderr: "inherit", env: input.env });
+  let terminated = false;
+  process.on("SIGTERM", () => { terminated = true; });
+  const p = Bun.spawn([input.real, ...input.argv], { stdin: "inherit", stdout: childStdout(), stderr: "inherit", env: input.env });
+  const drain = p.stdout instanceof ReadableStream ? relayStdout(p.stdout) : null;
   await input.onSpawn?.(p);
   await p.exited;
+  await drain?.(() => terminated);
   return exitStatus(p);
 }
 

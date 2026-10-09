@@ -1,4 +1,3 @@
-import { once } from "node:events";
 import { existsSync, mkdirSync, rmSync, readdirSync, statSync } from "node:fs";
 import { basename, join } from "node:path";
 import type { FileSink, Subprocess } from "bun";
@@ -15,7 +14,7 @@ import { thresholdBars, usableAt } from "../lib/picker.ts";
 import { clearPresence } from "../lib/presence.ts";
 import { readLines } from "../lib/proc.ts";
 import { teeObservation } from "../lib/sample.ts";
-import { countdownWait, exitStatus, loopGuardTripped, raceMarkerOrExit, recordPresenceOrStop, runPassthrough, SEAT_POLL_MS, SEAT_RETRY_MS, type Say } from "../lib/supervise.ts";
+import { countdownWait, exitStatus, loopGuardTripped, raceMarkerOrExit, recordPresenceOrStop, relayStdout, runPassthrough, SEAT_POLL_MS, SEAT_RETRY_MS, type Say } from "../lib/supervise.ts";
 import { saveTermios } from "../lib/tty.ts";
 import { liveSessionId, loadSessionFlags, pruneStaleSessions, saveSessionFlags, writeRespawnMarker } from "../lib/sessions.ts";
 import { loadAccounts, loadConfig, readJsonFile, releaseWaitClaim, writeUsage } from "../lib/state.ts";
@@ -325,8 +324,6 @@ function userLine(text: string): string {
   return `${JSON.stringify({ type: "user", message: { role: "user", content: [{ type: "text", text }] } })}\n`;
 }
 
-const STDOUT_QUIET_MS = 1000;
-
 const TaskLineSchema = z.discriminatedUnion("subtype", [
   z.looseObject({ type: z.literal("system"), subtype: z.literal("task_started"), task_id: z.string(), description: z.string(), session_id: z.string() }),
   z.looseObject({ type: z.literal("system"), subtype: z.literal("task_notification"), task_id: z.string() }),
@@ -358,42 +355,6 @@ function seatTee(seatId: string | null, model: ModelInfo | null, open: OpenTasks
     if (msg?.windows) last = msg.windows;
     else if (msg?.type !== "assistant") return;
     if (last) writeUsage({ fiveHour: last.fiveHour, sevenDay: last.sevenDay, account: seatId, ts: Date.now(), model });
-  };
-}
-
-function relayStdout(source: ReadableStream<Uint8Array>, onLine: (line: string) => void): () => Promise<void> {
-  let ended = false;
-  let blocked = false;
-  let readAt = Date.now();
-  const forwarded = source.pipeThrough(
-    new TransformStream<Uint8Array, Uint8Array>({
-      async transform(chunk, controller) {
-        readAt = Date.now();
-        if (!process.stdout.write(chunk)) {
-          blocked = true;
-          await once(process.stdout, "drain");
-          blocked = false;
-        }
-        controller.enqueue(chunk);
-      },
-    }),
-  );
-  void (async () => {
-    for await (const line of readLines(forwarded)) {
-      try {
-        onLine(line);
-      } catch (e) {
-        log("supervisor.tee_failed", { err: errorMessage(e) });
-      }
-    }
-  })()
-    .catch((e: unknown) => log("supervisor.stdout_relay_failed", { err: errorMessage(e) }))
-    .finally(() => {
-      ended = true;
-    });
-  return async () => {
-    const exitedAt = Date.now();
-    while (!ended && (blocked || Date.now() - Math.max(readAt, exitedAt) < STDOUT_QUIET_MS)) await Bun.sleep(50);
   };
 }
 
