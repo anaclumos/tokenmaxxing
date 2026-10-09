@@ -235,10 +235,11 @@ export async function evaluateAndMaybeSwap(p: Provider, now = Date.now(), canRes
       const ctx: PickCtx = { now, thresholds: bars, currentId: current?.id ?? null, families: switchFamilies, seats };
       const others = liveWaitClaims(now).filter((c) => c.sessionId !== waiterId);
       const waiters = new Map(Object.entries(countBy(others, (c) => c.accountId)));
-      const target = pickWaitTarget(usable(fresh.accounts), ctx, waiters, MAX_WAITERS_PER_ACCOUNT, now + cfg.policy.maxWaitMs, now + 2 * cfg.policy.maxWaitMs);
+      const waitable = usable(fresh.accounts).filter((a) => keyId == null || !opts.refused?.includes(a.id));
+      const target = pickWaitTarget(waitable, ctx, waiters, MAX_WAITERS_PER_ACCOUNT, now + cfg.policy.maxWaitMs, now + 2 * cfg.policy.maxWaitMs);
 
       if (!target) {
-        const soonest = pickWaitTarget(usable(fresh.accounts), ctx, new Map(), MAX_WAITERS_PER_ACCOUNT, Number.POSITIVE_INFINITY, Number.POSITIVE_INFINITY);
+        const soonest = pickWaitTarget(waitable, ctx, new Map(), MAX_WAITERS_PER_ACCOUNT, Number.POSITIVE_INFINITY, Number.POSITIVE_INFINITY);
         const waitUntil = soonest?.availableAt ?? Number.POSITIVE_INFINITY;
         log("decide.depleted", { waitUntil: Number.isFinite(waitUntil) ? waitUntil : 0 });
         return { swapped: false, account: null, reason: "all-depleted", ...(Number.isFinite(waitUntil) ? { waitUntil } : {}) };
