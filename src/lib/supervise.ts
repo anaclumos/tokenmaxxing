@@ -84,7 +84,7 @@ export function childStdout(): "inherit" | "pipe" {
   return isatty(1) ? "inherit" : "pipe";
 }
 
-export function relayStdout(source: ReadableStream<Uint8Array>, onLine?: (line: string) => void): () => Promise<void> {
+export function relayStdout(source: ReadableStream<Uint8Array>, onLine?: (line: string) => void): (abandoned?: () => boolean) => Promise<void> {
   let ended = false;
   let blocked = false;
   let readAt = Date.now();
@@ -115,18 +115,20 @@ export function relayStdout(source: ReadableStream<Uint8Array>, onLine?: (line: 
     .finally(() => {
       ended = true;
     });
-  return async () => {
+  return async (abandoned = () => false) => {
     const exitedAt = Date.now();
-    while (!ended && (blocked || Date.now() - Math.max(readAt, exitedAt) < STDOUT_QUIET_MS)) await Bun.sleep(50);
+    while (!ended && (blocked ? !abandoned() : Date.now() - Math.max(readAt, exitedAt) < STDOUT_QUIET_MS)) await Bun.sleep(50);
   };
 }
 
 export async function runPassthrough(input: { real: string; argv: string[]; env: Record<string, string | undefined>; onSpawn?: (child: Subprocess) => void | Promise<void> }): Promise<number> {
+  let terminated = false;
+  process.on("SIGTERM", () => { terminated = true; });
   const p = Bun.spawn([input.real, ...input.argv], { stdin: "inherit", stdout: childStdout(), stderr: "inherit", env: input.env });
   const drain = p.stdout instanceof ReadableStream ? relayStdout(p.stdout) : null;
   await input.onSpawn?.(p);
   await p.exited;
-  await drain?.();
+  await drain?.(() => terminated);
   return exitStatus(p);
 }
 
