@@ -138,10 +138,10 @@ export function settleLiveSessionCosts(idx: ApiKeysIndex, keyId: string): void {
   const now = Date.now();
   for (const p of livingPresences(paths.presenceDir)) {
     if (p.apiKeyId !== keyId) continue;
-    const file = costFilesFor(p.id).at(-1);
-    if (file == null) continue;
-    const seen = readJsonFile(file, SessionCostSchema);
-    idx.baselines[seen.sessionId] = { usd: seen.usd, at: now };
+    for (const file of costFilesFor(p.id)) {
+      const seen = readJsonFile(file, SessionCostSchema);
+      idx.baselines[seen.sessionId] = { usd: Math.max(seen.usd, idx.baselines[seen.sessionId]?.usd ?? 0), at: now };
+    }
   }
 }
 
