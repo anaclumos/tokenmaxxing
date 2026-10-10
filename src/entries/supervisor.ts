@@ -365,13 +365,13 @@ function stoppedTaskLines(open: OpenTasks): string[] {
   return [...open].map(([id, task]) => `${JSON.stringify({ type: "system", subtype: "task_notification", task_id: id, status: "stopped", reason: "worker_restart", output_file: "", summary: `Stopped by a tokenmaxxing restart: ${task.description || id}`, uuid: crypto.randomUUID(), session_id: task.sessionId })}\n`);
 }
 
-function seatTee(seatId: string | null, model: ModelInfo | null, open: OpenTasks, costSid: string | null): (line: string) => void {
+function seatTee(seatId: string | null, model: ModelInfo | null, open: OpenTasks, costSid: string): (line: string) => void {
   let last: UsageWindows | null = null;
   return (line) => {
     const value = JsonTextSchema.safeParse(line).data;
     trackTask(open, value);
-    const cost = costSid == null ? null : (CostLineSchema.safeParse(value).data ?? null);
-    if (costSid != null && cost != null) writeSessionCost(costSid, cost);
+    const cost = CostLineSchema.safeParse(value).data;
+    if (cost != null && existsSync(claudePool.apiKeysJson)) writeSessionCost(costSid, cost);
     if (seatId == null) return;
     const msg = parseStreamLine(value);
     if (msg?.windows) last = msg.windows;
@@ -602,8 +602,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
       const key = target?.apiKey ?? null;
       log("supervisor.launch", { sid, respawns, seat: picked?.id.slice(0, 8) ?? null, key: key?.id, args: launchArgs.join(" "), injected: firstLine !== null });
       const open: OpenTasks = new Map();
-      const costSid = existsSync(claudePool.apiKeysJson) ? sid : null;
-      const tee = stream && (picked || costSid != null) ? seatTee(picked?.id ?? null, model, open, costSid) : null;
+      const tee = stream && (picked || existsSync(claudePool.apiKeysJson)) ? seatTee(picked?.id ?? null, model, open, sid) : null;
       const secret = key ? readApiKey(key) : null;
       const extra: "pipe"[] = secret == null ? [] : ["pipe"];
       const scrubbed = scrubCredEnv(childEnv);
