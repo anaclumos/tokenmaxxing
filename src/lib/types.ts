@@ -205,7 +205,7 @@ export const CostStateRowSchema = z
   .looseObject({ type: z.literal("cost-state"), sessionId: z.string(), totalCostUSD: z.number() })
   .transform((row): SessionCost => ({ sessionId: row.sessionId, usd: row.totalCostUSD }));
 
-export const EpochSecondsSchema =z.number().transform((seconds) => seconds * 1000);
+export const EpochSecondsSchema = z.number().transform((seconds) => seconds * 1000);
 
 export const InstantSchema = z.iso.datetime({ offset: true }).transform((iso) => Date.parse(iso));
 
