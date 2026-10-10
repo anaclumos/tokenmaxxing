@@ -294,7 +294,10 @@ function resolveLaunch(wanted: { accountId: string | null; apiKeyId: string | nu
     const account = loadAccounts(claudePool).accounts.find((a) => a.id === id);
     if (account) return { account, apiKey: null };
   }
-  return pickLaunch(now, model, wanted?.apiKeyId != null ? refused : []);
+  if (wanted?.apiKeyId == null) return pickLaunch(now, model);
+  const target = pickLaunch(now, model, refused);
+  if (!target) throw new Error("tokenmaxxing: the session's API key is spent and no pooled account that has not refused the session is available, so it was stopped. Run `claude --resume` later to continue it");
+  return target;
 }
 
 async function foldCost(sid: string, keyId: string | null, resumed: Set<string>, compaction: SessionCost | null = null): Promise<void> {
