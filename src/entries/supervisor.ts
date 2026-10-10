@@ -551,6 +551,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
 
   let launchArgs = resume ? ["--resume", sid, ...base] : ["--session-id", sid, ...base];
   const restored = new Map<string, number>(resume ? [[sid, restoredCost(sid)]] : []);
+  clearSessionCost(sid);
   let pendingTranscript = resume ? null : transcriptPath(sid);
 
   mkdirSync(paths.respawnDir, { recursive: true });
