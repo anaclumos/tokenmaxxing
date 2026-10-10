@@ -185,9 +185,11 @@ function findTranscript(sessionId: string): string | null {
 
 const COST_STATE_MARKER = '"type":"cost-state"';
 
-function restoredCost(sessionId: string): number {
+const STARTED_AT = Date.now();
+
+function restoredCost(sessionId: string, bornBefore = Infinity): number {
   const transcript = findTranscript(sessionId);
-  if (transcript === null) return 0;
+  if (transcript === null || statSync(transcript).birthtimeMs >= bornBefore) return 0;
   const text = readFileSync(transcript, "utf8");
   const at = text.lastIndexOf(COST_STATE_MARKER);
   if (at < 0) return 0;
@@ -199,7 +201,7 @@ function restoredCost(sessionId: string): number {
 function restoredCostOf(restored: Map<string, number>, sessionId: string): number {
   const known = restored.get(sessionId);
   if (known !== undefined) return known;
-  const total = restoredCost(sessionId);
+  const total = restoredCost(sessionId, STARTED_AT);
   restored.set(sessionId, total);
   return total;
 }
