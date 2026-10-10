@@ -142,8 +142,8 @@ export function settleLiveSessionCosts(idx: ApiKeysIndex, keyId: string): void {
 export async function foldSessionCost(sid: string, keyId: string | null, resumed: Set<string>): Promise<void> {
   const file = costFileFor(sid);
   if (!existsSync(file) || !existsSync(claudePool.apiKeysJson)) return;
-  const seen = readJsonFile(file, SessionCostSchema);
   await withLock(claudePool.lockFile, () => {
+    const seen = readJsonFile(file, SessionCostSchema);
     const idx = loadApiKeys();
     const prev = idx.baselines[seen.sessionId];
     if (prev?.usd === seen.usd) return;
