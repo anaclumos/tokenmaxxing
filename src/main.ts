@@ -63,6 +63,7 @@ function printHelp(): void {
   ${c.cyan("tokenmaxxing key credit")} <label> <usd>  set the key's balance as the Console shows it and restart its spend count
   ${c.cyan("tokenmaxxing key rm")} <label>  delete the key and its stored secret (refused while a session runs on it)
   ${c.cyan("tokenmaxxing seat")} <pid>  lend one pooled Claude account to an unattended consumer until <pid> exits: prints the store directory to set as CLAUDE_SECURESTORAGE_CONFIG_DIR (the directory itself, as its owner, never a copy of its credential); host sessions and other borrowers share the account; exit 1 = none usable
+  ${c.cyan("tokenmaxxing seat")} <pid> --store <id>  lend the Claude store with that 8-character id instead of the ranked pick, checking only that it is pooled, holds a usable credential, and is not flagged for reauthentication; bars, the credits flag, and holds are the caller's job; exit 0 = granted, 1 = the store is unusable, 2 = unknown store, <pid> already holds another store, or bad usage
   ${c.cyan("tokenmaxxing seat --codex")} <pid>  borrow one pooled codex account for an unattended consumer (plugin, script): prints the CODEX_HOME to set, lent to <pid> until it exits; codex sessions and other borrowers share the account, and a refresh race between them can sign it out until auth --codex runs again; exit 1 = none usable, fall back to the ambient login
   ${c.cyan("tokenmaxxing serve")}      serve the CLIProxyAPI-compatible usage API on http://localhost:<hub.port> (default 8317) so a dashboard such as T3 Code's "Add a CLIProxyAPI hub" shows every pooled Claude and Codex account's quota; the management key is the contents of hub-key in the state directory
   ${c.cyan("tokenmaxxing uninstall")} [--yes]  print the targets, then remove supervisor + settings entries (refused without ${c.cyan("--yes")} when HOME is the login home)
@@ -178,7 +179,7 @@ async function main(): Promise<number> {
     case "rm": return cmdRm(provider, args[1]);
     case "rename": return cmdRename(provider, args.slice(1));
     case "key": return cmdKey(args.slice(1));
-    case "seat": return cmdSeat(provider === codex ? "codex" : "claude", args[1], args.slice(2));
+    case "seat": return cmdSeat(provider === codex ? "codex" : "claude", args.slice(1));
     case "serve": return cmdServe(args.slice(1));
     case "uninstall": {
       if (args.length > 1) {
