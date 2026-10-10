@@ -124,7 +124,7 @@ export function clearSessionCost(sid: string): void {
 export async function foldCompactionCost(sid: string, cost: SessionCost, keyId: string | null, resumed: Set<string>): Promise<void> {
   if (!existsSync(claudePool.apiKeysJson)) return;
   writeSessionCost(sid, cost);
-  await foldSessionCost(sid, keyId, resumed);
+  await foldSessionCost(sid, keyId, new Set([...resumed, cost.sessionId]));
 }
 
 const BASELINE_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
