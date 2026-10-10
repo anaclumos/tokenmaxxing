@@ -113,7 +113,7 @@ const costDirFor = (sid: string): string => join(paths.costDir, sid);
 
 function costFilesFor(sid: string): string[] {
   const dir = costDirFor(sid);
-  return existsSync(dir) ? sortBy(readdirSync(dir).filter((f) => f.endsWith(".json")).map((f) => join(dir, f)), [(f) => statSync(f).mtimeMs]) : [];
+  return existsSync(dir) ? readdirSync(dir).filter((f) => f.endsWith(".json")).map((f) => join(dir, f)).sort((a, b) => statSync(a).mtimeMs - statSync(b).mtimeMs) : [];
 }
 
 export function writeSessionCost(sid: string, cost: SessionCost): void {
