@@ -16,7 +16,7 @@ export type SwapFailure = "dead-grant" | "skip" | "fatal";
 
 export type ResetClaim = { reset: boolean; detail: string };
 
-export type SeatBorrow = { store: string; id: string; reused: boolean } | { denied: string } | null;
+export type SeatBorrow = { store: string; id: string; reused: boolean } | { denied: string } | { invalid: string } | null;
 
 export class StoreUnusableError extends Error {
   constructor(message: string) {

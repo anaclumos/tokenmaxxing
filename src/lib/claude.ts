@@ -9,7 +9,7 @@ import { activationHint, CHECK_JOB, ensurePathInRc, HUB_JOB, installSupervisor, 
 import { withLock } from "./lock.ts";
 import { errorMessage, log } from "./log.ts";
 import { claudeTierLabel, describeIdentity, fetchTokenIdentity, isDeadCredential, InvalidGrantError } from "./oauth.ts";
-import { claudePool, env, paths, seatFromEnv, storeDirFor } from "./paths.ts";
+import { claudePool, env, paths, seatFromEnv, shortId, storeDirFor } from "./paths.ts";
 import { MAX_WAITERS_PER_ACCOUNT, pickBest, pickEarliestReset, pickWaitTarget, thresholdBars, type PickCtx } from "./picker.ts";
 import { deletePiStore } from "./piauth.ts";
 import { livingPresences, writePresence } from "./presence.ts";
@@ -173,7 +173,7 @@ export function pickLaunch(now: number, model: ModelInfo | null, refused: readon
   return account ? { account, apiKey: null } : null;
 }
 
-export async function borrowClaudeSeat(pid: number): Promise<SeatBorrow> {
+export async function borrowClaudeSeat(pid: number, named?: string): Promise<SeatBorrow> {
   const seatId = `seat-${pid}`;
   const cfg = loadConfig();
   const bars = thresholdBars(cfg);
@@ -186,6 +186,9 @@ export async function borrowClaudeSeat(pid: number): Promise<SeatBorrow> {
     const held = living.find((p) => p.id === seatId);
     const heldAccount = held ? (idx.accounts.find((x) => x.id === held.accountId) ?? null) : null;
     if (heldAccount) {
+      if (named != null && shortId(heldAccount.id) !== named) {
+        return { invalid: `pid ${pid} already holds store ${shortId(heldAccount.id)} - a pid holds one store until it exits` };
+      }
       if (heldAccount.needsReauth === true) {
         return { denied: "the account this pid holds needs reauthentication - run `tokenmaxxing auth` and borrow again" };
       }
@@ -193,6 +196,14 @@ export async function borrowClaudeSeat(pid: number): Promise<SeatBorrow> {
         return { denied: "the account this pid holds has no usable credential in its store - refusing to hand back a credential-less seat" };
       }
       return { store: storeDirFor(heldAccount.id), id: heldAccount.id, reused: true };
+    }
+    if (named != null) {
+      const account = idx.accounts.find((a) => shortId(a.id) === named);
+      if (!account) return { invalid: `no claude store ${named} in the pool` };
+      if (account.needsReauth === true) return { denied: `store ${named} needs reauthentication - run \`tokenmaxxing auth\`` };
+      if (!(await storeUsable(account))) return { denied: `store ${named} has no usable credential` };
+      writePresence({ dir: paths.presenceDir, id: seatId, accountId: account.id, pid });
+      return { store: storeDirFor(account.id), id: account.id, reused: false };
     }
     const open = idx.accounts.filter((a) => a.needsReauth !== true);
     const usable = await Promise.all(open.map(storeUsable));
@@ -202,7 +213,7 @@ export async function borrowClaudeSeat(pid: number): Promise<SeatBorrow> {
     writePresence({ dir: paths.presenceDir, id: seatId, accountId: picked.id, pid });
     return { store: storeDirFor(picked.id), id: picked.id, reused: false };
   });
-  if (granted && !("denied" in granted)) log("seat.grant", { account: granted.id.slice(0, 8), pid, reused: granted.reused });
+  if (granted && "store" in granted) log("seat.grant", { account: granted.id.slice(0, 8), pid, reused: granted.reused, named: named != null });
   return granted;
 }
 
