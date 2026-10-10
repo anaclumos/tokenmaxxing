@@ -1,4 +1,4 @@
-import { chmodSync, closeSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeSync } from "node:fs";
+import { chmodSync, closeSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeSync } from "node:fs";
 import { join } from "node:path";
 import { countBy, isEqual, sortBy } from "es-toolkit";
 import { writeFileAtomic } from "./atomic.ts";
@@ -113,7 +113,7 @@ const costDirFor = (sid: string): string => join(paths.costDir, sid);
 
 function costFilesFor(sid: string): string[] {
   const dir = costDirFor(sid);
-  return existsSync(dir) ? readdirSync(dir).filter((f) => f.endsWith(".json")).map((f) => join(dir, f)) : [];
+  return existsSync(dir) ? sortBy(readdirSync(dir).filter((f) => f.endsWith(".json")).map((f) => join(dir, f)), [(f) => statSync(f).mtimeMs]) : [];
 }
 
 export function writeSessionCost(sid: string, cost: SessionCost): void {
@@ -138,10 +138,10 @@ export function settleLiveSessionCosts(idx: ApiKeysIndex, keyId: string): void {
   const now = Date.now();
   for (const p of livingPresences(paths.presenceDir)) {
     if (p.apiKeyId !== keyId) continue;
-    for (const file of costFilesFor(p.id)) {
-      const seen = readJsonFile(file, SessionCostSchema);
-      idx.baselines[seen.sessionId] = { usd: seen.usd, at: now };
-    }
+    const file = costFilesFor(p.id).at(-1);
+    if (file == null) continue;
+    const seen = readJsonFile(file, SessionCostSchema);
+    idx.baselines[seen.sessionId] = { usd: seen.usd, at: now };
   }
 }
 
@@ -150,8 +150,9 @@ export async function foldSessionCost(sid: string, keyId: string | null, resumed
   await withLock(claudePool.lockFile, () => {
     const idx = loadApiKeys();
     const key = keyId == null ? undefined : idx.keys.find((k) => k.id === keyId);
+    const files = costFilesFor(sid);
     let changed = false;
-    for (const file of costFilesFor(sid)) {
+    for (const file of files) {
       const seen = readJsonFile(file, SessionCostSchema);
       const prev = idx.baselines[seen.sessionId];
       if (prev?.usd === seen.usd) continue;
@@ -160,9 +161,11 @@ export async function foldSessionCost(sid: string, keyId: string | null, resumed
       idx.baselines[seen.sessionId] = { usd: seen.usd, at: Date.now() };
       changed = true;
     }
-    if (!changed) return;
-    const now = Date.now();
-    idx.baselines = Object.fromEntries(Object.entries(idx.baselines).filter(([, b]) => now - b.at <= BASELINE_RETENTION_MS));
-    saveApiKeys(idx);
+    if (changed) {
+      const now = Date.now();
+      idx.baselines = Object.fromEntries(Object.entries(idx.baselines).filter(([, b]) => now - b.at <= BASELINE_RETENTION_MS));
+      saveApiKeys(idx);
+    }
+    for (const file of files.slice(0, -1)) rmSync(file, { force: true });
   });
 }
