@@ -5,7 +5,7 @@ import { maxBy, omit } from "es-toolkit";
 import { z } from "zod";
 import { claudePool, paths, storeDirFor } from "../lib/paths.ts";
 import { CLAUDE_BIN, UNMANAGED_ENV, WRAP_DEPTH_ENV, resolveRealBin, wrapDepth } from "../lib/claudebin.ts";
-import { apiKeyEnv, clearSessionCost, foldSessionCost, loadApiKeys, readApiKey, sendApiKey, usableApiKey, writeSessionCost } from "../lib/apikeys.ts";
+import { apiKeyEnv, clearSessionCost, foldCompactionCost, foldSessionCost, loadApiKeys, readApiKey, sendApiKey, usableApiKey, writeSessionCost } from "../lib/apikeys.ts";
 import { claude, pickLaunch, type LaunchTarget } from "../lib/claude.ts";
 import { compactClaudeSession } from "../lib/compact.ts";
 import { evaluateAndMaybeSwap, moveTarget } from "../lib/decide.ts";
@@ -19,7 +19,7 @@ import { saveTermios } from "../lib/tty.ts";
 import { liveSessionId, loadSessionFlags, pruneStaleSessions, saveSessionFlags, writeRespawnMarker } from "../lib/sessions.ts";
 import { loadAccounts, loadConfig, readJsonFile, releaseWaitClaim, writeUsage } from "../lib/state.ts";
 import { gatedFamilies, modelFromFlag, parseStreamLine, scrubCredEnv } from "../lib/usage.ts";
-import { CostLineSchema, JsonTextSchema, RespawnMarkerSchema, type Account, type ApiKey, type Config, type ModelInfo, type UsageWindows } from "../lib/types.ts";
+import { CostLineSchema, JsonTextSchema, RespawnMarkerSchema, type Account, type ApiKey, type Config, type ModelInfo, type SessionCost, type UsageWindows } from "../lib/types.ts";
 import { errorMessage, log } from "../lib/log.ts";
 
 const SUBCOMMANDS = new Set([
@@ -297,9 +297,10 @@ function resolveLaunch(wanted: { accountId: string | null; apiKeyId: string | nu
   return pickLaunch(now, model);
 }
 
-async function foldCost(sid: string, keyId: string | null, resumed: Set<string>): Promise<void> {
+async function foldCost(sid: string, keyId: string | null, resumed: Set<string>, compaction: SessionCost | null = null): Promise<void> {
   try {
-    await foldSessionCost(sid, keyId, resumed);
+    if (compaction) await foldCompactionCost(sid, compaction, keyId, resumed);
+    else await foldSessionCost(sid, keyId, resumed);
   } catch (e) {
     log("supervisor.cost_fold_failed", { err: errorMessage(e) });
   }
@@ -683,6 +684,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
           },
         });
         child = null;
+        await foldCost(sid, compactKey?.id ?? null, resumed, outcome.cost);
         if (terminating) {
           await releaseClaim();
           return 143;
