@@ -3,7 +3,10 @@ import { dirname } from "node:path";
 
 const STAGING_MARKER = ".tmp.";
 
-export const isStagingFile = (name: string): boolean => name.includes(STAGING_MARKER);
+export function stagingTarget(name: string): string | null {
+  const at = name.indexOf(STAGING_MARKER);
+  return at < 0 ? null : name.slice(0, at);
+}
 
 export function writeFileAtomic(file: string, data: string | Uint8Array, mode = 0o600): void {
   const dir = dirname(file);

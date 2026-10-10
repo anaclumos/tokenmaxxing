@@ -1,8 +1,8 @@
 import { existsSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
-import { countBy } from "es-toolkit";
+import { countBy, uniqBy } from "es-toolkit";
 import { z } from "zod";
-import { isStagingFile, writeFileAtomic } from "./atomic.ts";
+import { stagingTarget, writeFileAtomic } from "./atomic.ts";
 import { pidExists, pidStartTimes } from "./proc.ts";
 import { readJsonFile } from "./state.ts";
 import { ErrnoSchema, JsonTextSchema } from "./types.ts";
@@ -41,7 +41,7 @@ export function livingPresences(dir: string): LivingPresence[] {
   if (!existsSync(dir)) return [];
   const records: { name: string; file: string; record: z.infer<typeof PresenceSchema> }[] = [];
   for (const name of readdirSync(dir)) {
-    if (isStagingFile(name)) continue;
+    const staged = stagingTarget(name);
     const file = join(dir, name);
     let raw: string;
     try {
@@ -52,9 +52,10 @@ export function livingPresences(dir: string): LivingPresence[] {
     }
     const parsed = PresenceSchema.safeParse(JsonTextSchema.safeParse(raw).data);
     if (!parsed.success) {
+      if (staged != null) continue;
       throw new Error(`${file} is not a readable presence record - it may belong to a RUNNING session, refusing to treat it as absent; remove the file (or respawn that session) to proceed`);
     }
-    records.push({ name, file, record: parsed.data });
+    records.push({ name: staged ?? name, file, record: parsed.data });
   }
   const started = pidStartTimes(records.map((r) => r.record.pid));
   const living: LivingPresence[] = [];
@@ -69,7 +70,7 @@ export function livingPresences(dir: string): LivingPresence[] {
     }
     living.push({ id: name, accountId: record.accountId, ...(record.apiKeyId != null ? { apiKeyId: record.apiKeyId } : {}) });
   }
-  return living;
+  return uniqBy(living, (p) => p.id);
 }
 
 export function seatCounts(dir: string): Map<string, number> {
