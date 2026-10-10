@@ -126,10 +126,10 @@ export function clearSessionCost(sid: string): void {
   rmSync(costDirFor(sid), { recursive: true, force: true });
 }
 
-export async function foldCompactionCost(sid: string, cost: SessionCost, keyId: string | null, resumed: Set<string>): Promise<void> {
+export async function foldCompactionCost(sid: string, cost: SessionCost, keyId: string | null, restoredCost: (id: string) => number): Promise<void> {
   if (!existsSync(claudePool.apiKeysJson)) return;
   writeSessionCost(sid, cost);
-  await foldSessionCost(sid, keyId, new Set([...resumed, cost.sessionId]));
+  await foldSessionCost(sid, keyId, (id) => (id === cost.sessionId ? cost.usd : restoredCost(id)));
 }
 
 const BASELINE_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
@@ -145,7 +145,7 @@ export function settleLiveSessionCosts(idx: ApiKeysIndex, keyId: string): void {
   }
 }
 
-export async function foldSessionCost(sid: string, keyId: string | null, resumed: Set<string>): Promise<void> {
+export async function foldSessionCost(sid: string, keyId: string | null, restoredCost: (id: string) => number): Promise<void> {
   if (!existsSync(claudePool.apiKeysJson)) return;
   await withLock(claudePool.lockFile, () => {
     const idx = loadApiKeys();
@@ -156,7 +156,7 @@ export async function foldSessionCost(sid: string, keyId: string | null, resumed
       const seen = readJsonFile(file, SessionCostSchema);
       const prev = idx.baselines[seen.sessionId];
       if (prev?.usd === seen.usd) continue;
-      const delta = prev != null ? Math.max(0, seen.usd - prev.usd) : resumed.has(seen.sessionId) ? 0 : seen.usd;
+      const delta = Math.max(0, seen.usd - (prev?.usd ?? restoredCost(seen.sessionId)));
       if (key) key.spentUsd += delta;
       idx.baselines[seen.sessionId] = { usd: seen.usd, at: Date.now() };
       changed = true;
