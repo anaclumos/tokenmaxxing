@@ -173,11 +173,11 @@ export function pickLaunch(now: number, model: ModelInfo | null, refused: readon
   return account ? { account, apiKey: null } : null;
 }
 
-export async function borrowClaudeSeat(pid: number, named?: string): Promise<SeatBorrow> {
+export async function borrowClaudeSeat(pid: number, named?: string): Promise<SeatBorrow | { invalid: string }> {
   const seatId = `seat-${pid}`;
   const cfg = loadConfig();
   const bars = thresholdBars(cfg);
-  const granted = await withLock(claudePool.lockFile, async (): Promise<SeatBorrow> => {
+  const granted = await withLock(claudePool.lockFile, async (): Promise<SeatBorrow | { invalid: string }> => {
     const idx = loadAccounts(claudePool);
     let dirty = false;
     for (const a of idx.accounts) dirty = foldTee(a, bars) || dirty;

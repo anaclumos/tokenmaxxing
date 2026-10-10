@@ -284,7 +284,7 @@ export async function borrowCodexSeat(pid: number): Promise<SeatBorrow> {
     writePresence({ dir: codexPaths.presenceDir, id: seatId, accountId: picked.id, pid });
     return { store, id: picked.id, reused: false };
   });
-  if (granted && "store" in granted) log("seat.grant", { account: granted.id.slice(0, 8), pid, reused: granted.reused });
+  if (granted && !("denied" in granted)) log("seat.grant", { account: granted.id.slice(0, 8), pid, reused: granted.reused });
   return granted;
 }
 
