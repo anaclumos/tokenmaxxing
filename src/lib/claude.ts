@@ -163,8 +163,8 @@ export function pickSeat(now: number, model: ModelInfo | null, eligible: (a: Acc
 
 export type LaunchTarget = { account: Account; apiKey: null } | { account: null; apiKey: ApiKey };
 
-export function pickLaunch(now: number, model: ModelInfo | null): LaunchTarget | null {
-  const { candidates, ctx, fallback } = seatContext(now, model, () => true);
+export function pickLaunch(now: number, model: ModelInfo | null, refused: readonly string[] = []): LaunchTarget | null {
+  const { candidates, ctx, fallback } = seatContext(now, model, (a) => !refused.includes(a.id));
   const best = pickBest(candidates, ctx);
   if (best) return { account: best, apiKey: null };
   const key = launchApiKey();

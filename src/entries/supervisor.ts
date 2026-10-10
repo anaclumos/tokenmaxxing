@@ -292,7 +292,7 @@ async function moveKeySession(key: ApiKey, sid: string, gate: MarkerGate, model:
   return true;
 }
 
-function resolveLaunch(wanted: { accountId: string | null; apiKeyId: string | null } | null, now: number, model: ModelInfo | null): LaunchTarget | null {
+function resolveLaunch(wanted: { accountId: string | null; apiKeyId: string | null } | null, now: number, model: ModelInfo | null, refused: string[]): LaunchTarget | null {
   if (wanted?.apiKeyId != null) {
     const key = usableApiKey(wanted.apiKeyId);
     if (key) return { account: null, apiKey: key };
@@ -301,7 +301,10 @@ function resolveLaunch(wanted: { accountId: string | null; apiKeyId: string | nu
     const account = loadAccounts(claudePool).accounts.find((a) => a.id === id);
     if (account) return { account, apiKey: null };
   }
-  return pickLaunch(now, model);
+  if (wanted?.apiKeyId == null) return pickLaunch(now, model);
+  const target = pickLaunch(now, model, refused);
+  if (!target) throw new Error("tokenmaxxing: the session's API key is spent and no pooled account that has not refused the session is available, so it was stopped. Run `claude --resume` later to continue it");
+  return target;
 }
 
 async function foldCost(sid: string, keyId: string | null, restored: Map<string, number>, compaction: SessionCost | null = null): Promise<void> {
@@ -583,7 +586,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
     const gate: MarkerGate = { launchedAt: Date.now(), overriddenUntil };
     const launched = await withLock(claudePool.lockFile, async () => {
       if (terminating) return null;
-      const target = resolveLaunch(wanted, gate.launchedAt, model);
+      const target = resolveLaunch(wanted, gate.launchedAt, model, refused);
       const picked = target?.account ?? null;
       const key = target?.apiKey ?? null;
       log("supervisor.launch", { sid, respawns, seat: picked?.id.slice(0, 8) ?? null, key: key?.id, args: launchArgs.join(" "), injected: firstLine !== null });
