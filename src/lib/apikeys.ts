@@ -121,10 +121,10 @@ export function clearSessionCost(sid: string): void {
   rmSync(costFileFor(sid), { force: true });
 }
 
-export async function foldCompactionCost(sid: string, cost: SessionCost, keyId: string | null, resumed: Set<string>): Promise<void> {
+export async function foldCompactionCost(sid: string, cost: SessionCost, keyId: string | null, restored: Map<string, number>): Promise<void> {
   if (!existsSync(claudePool.apiKeysJson)) return;
   writeSessionCost(sid, cost);
-  await foldSessionCost(sid, keyId, new Set([...resumed, cost.sessionId]));
+  await foldSessionCost(sid, keyId, new Map([...restored, [cost.sessionId, cost.usd]]));
 }
 
 const BASELINE_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
@@ -139,7 +139,7 @@ export function settleLiveSessionCosts(idx: ApiKeysIndex, keyId: string): void {
   }
 }
 
-export async function foldSessionCost(sid: string, keyId: string | null, resumed: Set<string>): Promise<void> {
+export async function foldSessionCost(sid: string, keyId: string | null, restored: Map<string, number>): Promise<void> {
   const file = costFileFor(sid);
   if (!existsSync(file) || !existsSync(claudePool.apiKeysJson)) return;
   await withLock(claudePool.lockFile, () => {
@@ -147,7 +147,7 @@ export async function foldSessionCost(sid: string, keyId: string | null, resumed
     const idx = loadApiKeys();
     const prev = idx.baselines[seen.sessionId];
     if (prev?.usd === seen.usd) return;
-    const delta = prev != null ? Math.max(0, seen.usd - prev.usd) : resumed.has(seen.sessionId) ? 0 : seen.usd;
+    const delta = Math.max(0, seen.usd - (prev?.usd ?? restored.get(seen.sessionId) ?? 0));
     const key = keyId == null ? undefined : idx.keys.find((k) => k.id === keyId);
     if (key) key.spentUsd += delta;
     const now = Date.now();
