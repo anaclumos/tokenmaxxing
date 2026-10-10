@@ -5,7 +5,7 @@ import { maxBy, omit } from "es-toolkit";
 import { z } from "zod";
 import { claudePool, paths, storeDirFor } from "../lib/paths.ts";
 import { CLAUDE_BIN, UNMANAGED_ENV, WRAP_DEPTH_ENV, resolveRealBin, wrapDepth } from "../lib/claudebin.ts";
-import { apiKeyEnv, clearSessionCost, foldSessionCost, loadApiKeys, readApiKey, sendApiKey, usableApiKey, writeSessionCost } from "../lib/apikeys.ts";
+import { apiKeyEnv, clearSessionCost, foldCompactionCost, foldSessionCost, loadApiKeys, readApiKey, sendApiKey, usableApiKey, writeSessionCost } from "../lib/apikeys.ts";
 import { claude, pickLaunch, type LaunchTarget } from "../lib/claude.ts";
 import { compactClaudeSession } from "../lib/compact.ts";
 import { evaluateAndMaybeSwap, moveTarget } from "../lib/decide.ts";
@@ -19,7 +19,7 @@ import { saveTermios } from "../lib/tty.ts";
 import { liveSessionId, loadSessionFlags, pruneStaleSessions, saveSessionFlags, writeRespawnMarker } from "../lib/sessions.ts";
 import { loadAccounts, loadConfig, readJsonFile, releaseWaitClaim, writeUsage } from "../lib/state.ts";
 import { gatedFamilies, modelFromFlag, parseStreamLine, scrubCredEnv } from "../lib/usage.ts";
-import { CostLineSchema, CostStateRowSchema, JsonTextSchema, RespawnMarkerSchema, type Account, type ApiKey, type Config, type ModelInfo, type UsageWindows } from "../lib/types.ts";
+import { CostLineSchema, CostStateRowSchema, JsonTextSchema, RespawnMarkerSchema, type Account, type ApiKey, type Config, type ModelInfo, type SessionCost, type UsageWindows } from "../lib/types.ts";
 import { errorMessage, log } from "../lib/log.ts";
 
 const SUBCOMMANDS = new Set([
@@ -183,17 +183,11 @@ function findTranscript(sessionId: string): string | null {
   return readdirSync(root).map((dir) => join(root, dir, `${sessionId}.jsonl`)).find((p) => existsSync(p)) ?? null;
 }
 
-const COST_STATE_MARKER = '"type":"cost-state"';
-
 function restoredCost(sessionId: string): number {
   const transcript = findTranscript(sessionId);
   if (transcript === null) return 0;
-  const text = readFileSync(transcript, "utf8");
-  const at = text.lastIndexOf(COST_STATE_MARKER);
-  if (at < 0) return 0;
-  const end = text.indexOf("\n", at);
-  const row = text.slice(text.lastIndexOf("\n", at) + 1, end < 0 ? undefined : end);
-  return CostStateRowSchema.safeParse(JsonTextSchema.safeParse(row).data).data?.totalCostUSD ?? 0;
+  const rows = readFileSync(transcript, "utf8").split("\n").filter((line) => line.includes('"type":"cost-state"'));
+  return rows.map((line) => CostStateRowSchema.safeParse(JsonTextSchema.safeParse(line).data).data).findLast((c) => c?.sessionId === sessionId)?.usd ?? 0;
 }
 
 function latestSessionForCwd(): string | null {
@@ -310,9 +304,10 @@ function resolveLaunch(wanted: { accountId: string | null; apiKeyId: string | nu
   return pickLaunch(now, model);
 }
 
-async function foldCost(sid: string, keyId: string | null, restored: Map<string, number>): Promise<void> {
+async function foldCost(sid: string, keyId: string | null, restored: Map<string, number>, compaction: SessionCost | null = null): Promise<void> {
   try {
-    await foldSessionCost(sid, keyId, restored);
+    if (compaction) await foldCompactionCost(sid, compaction, keyId, restored);
+    else await foldSessionCost(sid, keyId, restored);
   } catch (e) {
     log("supervisor.cost_fold_failed", { err: errorMessage(e) });
   }
@@ -696,6 +691,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
           },
         });
         child = null;
+        await foldCost(sid, compactKey?.id ?? null, restored, outcome.cost);
         if (terminating) {
           await releaseClaim();
           return 143;
