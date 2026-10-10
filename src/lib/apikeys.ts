@@ -140,7 +140,7 @@ export function settleLiveSessionCosts(idx: ApiKeysIndex, keyId: string): void {
     if (p.apiKeyId !== keyId) continue;
     for (const file of costFilesFor(p.id)) {
       const seen = readJsonFile(file, SessionCostSchema);
-      idx.baselines[seen.sessionId] = { usd: seen.usd, at: now };
+      idx.baselines[seen.sessionId] = { usd: Math.max(seen.usd, idx.baselines[seen.sessionId]?.usd ?? 0), at: now };
     }
   }
 }
