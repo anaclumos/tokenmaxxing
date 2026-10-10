@@ -155,7 +155,7 @@ export async function foldSessionCost(sid: string, keyId: string | null, restore
     for (const file of files) {
       const seen = readJsonFile(file, SessionCostSchema);
       const prev = idx.baselines[seen.sessionId];
-      if (prev?.usd === seen.usd) continue;
+      if (prev != null && seen.usd <= prev.usd) continue;
       const delta = Math.max(0, seen.usd - (prev?.usd ?? restoredCost(seen.sessionId)));
       if (key) key.spentUsd += delta;
       idx.baselines[seen.sessionId] = { usd: seen.usd, at: Date.now() };
