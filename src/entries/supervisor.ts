@@ -183,11 +183,21 @@ function findTranscript(sessionId: string): string | null {
   return readdirSync(root).map((dir) => join(root, dir, `${sessionId}.jsonl`)).find((p) => existsSync(p)) ?? null;
 }
 
-function restoredCost(sessionId: string): number {
+const STARTED_AT = Date.now();
+
+function restoredCost(sessionId: string, bornBefore = Infinity): number {
   const transcript = findTranscript(sessionId);
-  if (transcript === null) return 0;
+  if (transcript === null || statSync(transcript).birthtimeMs >= bornBefore) return 0;
   const rows = readFileSync(transcript, "utf8").split("\n").filter((line) => line.includes('"type":"cost-state"'));
   return rows.map((line) => CostStateRowSchema.safeParse(JsonTextSchema.safeParse(line).data).data).findLast((c) => c?.sessionId === sessionId)?.usd ?? 0;
+}
+
+function restoredCostOf(restored: Map<string, number>, sessionId: string): number {
+  const known = restored.get(sessionId);
+  if (known !== undefined) return known;
+  const total = restoredCost(sessionId, STARTED_AT);
+  restored.set(sessionId, total);
+  return total;
 }
 
 function latestSessionForCwd(): string | null {
@@ -309,8 +319,9 @@ function resolveLaunch(wanted: { accountId: string | null; apiKeyId: string | nu
 
 async function foldCost(sid: string, keyId: string | null, restored: Map<string, number>, compaction: SessionCost | null = null): Promise<void> {
   try {
-    if (compaction) await foldCompactionCost(sid, compaction, keyId, restored);
-    else await foldSessionCost(sid, keyId, restored);
+    const restoredOf = (id: string) => restoredCostOf(restored, id);
+    if (compaction) await foldCompactionCost(sid, compaction, keyId, restoredOf);
+    else await foldSessionCost(sid, keyId, restoredOf);
   } catch (e) {
     log("supervisor.cost_fold_failed", { err: errorMessage(e) });
   }
@@ -553,7 +564,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
   pruneStaleSessions(Date.now());
 
   let launchArgs = resume ? ["--resume", sid, ...base] : ["--session-id", sid, ...base];
-  const restored = new Map<string, number>(resume ? [[sid, restoredCost(sid)]] : []);
+  const restored = new Map<string, number>([[sid, resume ? restoredCost(sid) : 0]]);
   clearSessionCost(sid);
   let pendingTranscript = resume ? null : transcriptPath(sid);
 
@@ -713,7 +724,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
       const prompt = resumable ? resumePrompt({ compacted, origin: m.origin, onKey: m.apiKeyId != null }) : null;
       firstLine = relay !== null && prompt !== null ? userLine(prompt) : null;
       pendingTranscript = resumable ? null : transcriptPath(m.sessionId);
-      if (resumable && !restored.has(m.sessionId)) restored.set(m.sessionId, restoredCost(m.sessionId));
+      if (!restored.has(m.sessionId)) restored.set(m.sessionId, resumable ? restoredCost(m.sessionId) : 0);
       launchArgs = [resumable ? "--resume" : "--session-id", m.sessionId, ...(relay === null && prompt !== null ? [prompt] : []), ...persistable];
       continue;
     }
