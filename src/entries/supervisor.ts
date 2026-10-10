@@ -602,7 +602,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
       const key = target?.apiKey ?? null;
       log("supervisor.launch", { sid, respawns, seat: picked?.id.slice(0, 8) ?? null, key: key?.id, args: launchArgs.join(" "), injected: firstLine !== null });
       const open: OpenTasks = new Map();
-      const tee = stream ? seatTee(picked?.id ?? null, model, open, sid) : null;
+      const tee = stream && (picked || existsSync(claudePool.apiKeysJson)) ? seatTee(picked?.id ?? null, model, open, sid) : null;
       const secret = key ? readApiKey(key) : null;
       const extra: "pipe"[] = secret == null ? [] : ["pipe"];
       const scrubbed = scrubCredEnv(childEnv);
