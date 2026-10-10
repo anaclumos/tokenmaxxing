@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { keySessions, loadApiKeys, removeApiKeySecret, saveApiKeys, writeApiKeySecret } from "../lib/apikeys.ts";
+import { keySessions, loadApiKeys, removeApiKeySecret, saveApiKeys, settleLiveSessionCosts, writeApiKeySecret } from "../lib/apikeys.ts";
 import { withLock } from "../lib/lock.ts";
 import { claudePool } from "../lib/paths.ts";
 import { readStdin } from "../lib/proc.ts";
@@ -106,6 +106,7 @@ async function credit(args: string[]): Promise<number> {
     key.spentUsd = 0;
     key.creditSetAt = Date.now();
     key.refusedAt = undefined;
+    settleLiveSessionCosts(idx, key.id);
     saveApiKeys(idx);
     console.log(`set ${c.bold(key.label)} credit to ${usd(amount)}`);
     return 0;

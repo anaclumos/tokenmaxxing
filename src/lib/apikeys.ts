@@ -129,11 +129,21 @@ export async function foldCompactionCost(sid: string, cost: SessionCost, keyId: 
 
 const BASELINE_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 
+export function settleLiveSessionCosts(idx: ApiKeysIndex, keyId: string): void {
+  const now = Date.now();
+  for (const p of livingPresences(paths.presenceDir)) {
+    const file = costFileFor(p.id);
+    if (p.apiKeyId !== keyId || !existsSync(file)) continue;
+    const seen = readJsonFile(file, SessionCostSchema);
+    idx.baselines[seen.sessionId] = { usd: seen.usd, at: now };
+  }
+}
+
 export async function foldSessionCost(sid: string, keyId: string | null, resumed: Set<string>): Promise<void> {
   const file = costFileFor(sid);
   if (!existsSync(file) || !existsSync(claudePool.apiKeysJson)) return;
-  const seen = readJsonFile(file, SessionCostSchema);
   await withLock(claudePool.lockFile, () => {
+    const seen = readJsonFile(file, SessionCostSchema);
     const idx = loadApiKeys();
     const prev = idx.baselines[seen.sessionId];
     if (prev?.usd === seen.usd) return;
