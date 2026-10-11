@@ -95,7 +95,14 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit --quiet --message "chore: release ${next#v}" -- package.json
-          git push origin HEAD:main
+          if ! git push origin HEAD:main; then
+            git fetch --quiet origin main
+            newer="$(git rev-parse origin/main)"
+            if [ "$newer" != "$GITHUB_SHA" ] && git merge-base --is-ancestor "$GITHUB_SHA" "$newer"; then
+              echo "::error title=Lost the push race::This run lost the push race: main moved to ${newer} after this run checked out ${GITHUB_SHA}, and the publish run queued for ${newer} releases this merge. After that run finishes, check npm view tokenmaxxing version."
+            fi
+            exit 1
+          fi
           echo "version=${next#v}" >> "$GITHUB_OUTPUT"
       - if: steps.version.outputs.version != ''
         env:
