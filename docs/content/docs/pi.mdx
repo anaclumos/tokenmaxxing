@@ -64,7 +64,7 @@ flowchart TD
 `auth --pi [--codex] [<sel> | --all]` opens pi in an isolated agent directory under the state directory. Run `/login` there, pick the provider, and sign in with the account the command names; pi closes once the credential lands. tokenmaxxing then checks which account the login belongs to:
 
 - **Claude login**: the `accountUuid` the profile endpoint reports.
-- **ChatGPT login**: the ChatGPT account id in the access token.
+- **ChatGPT login**: the ChatGPT user id and workspace account id in the access token.
 
 The credential goes to `pi-stores/claude/<uuid8>/auth.json` or `pi-stores/codex/<uuid8>/auth.json` (0600) and is written there once. Afterwards pi is its only writer, and it refreshes the token under its own lock on that file.
 

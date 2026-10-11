@@ -167,11 +167,11 @@ async function login(): Promise<Harvest | null> {
     const identity = codexIdentityOf({ auth });
     const usage = await sampleLogin(auth);
     return {
-      id: identity.accountId,
+      id: identity.id,
       email: usage?.usage.email ?? identity.email,
       tier: usage?.usage.planType ?? identity.planType,
       sample: usage ? { windows: usage.usage.windows, at: usage.at } : null,
-      park: async () => writeCodexStoreAuth(identity.accountId, auth),
+      park: async () => writeCodexStoreAuth(identity.id, auth),
     };
   } finally {
     rmSync(onboardDir, { recursive: true, force: true });
