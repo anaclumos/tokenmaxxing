@@ -50,8 +50,3 @@ export async function readStore(accountId: string): Promise<OAuthCreds | null> {
   const raw = await readItem(storeTarget(accountId));
   return raw == null ? null : CredentialBlobSchema.parse(JSON.parse(raw)).claudeAiOauth;
 }
-
-export function claudeAiOauthOnly(fullBlobRaw: string): string {
-  const b = CredentialBlobSchema.parse(JSON.parse(fullBlobRaw));
-  return JSON.stringify({ claudeAiOauth: b.claudeAiOauth });
-}

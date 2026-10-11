@@ -112,8 +112,10 @@ export function codexIdentityOf(input: { auth: CodexAuthJson }): CodexIdentity {
   return { id: seatIdFor(userId, accountId), accountId, email: claims.email ?? null, planType: authClaims?.chatgpt_plan_type ?? null };
 }
 
-export function isCodexAccessExpiring(input: { auth: CodexAuthJson; skewMs?: number; now?: number }): boolean {
-  const { auth, skewMs = 300_000, now = Date.now() } = input;
+const CODEX_EXPIRY_SKEW_MS = 300_000;
+
+export function isCodexAccessExpiring(input: { auth: CodexAuthJson; now: number }): boolean {
+  const { auth, now } = input;
   let exp: number | undefined;
   try {
     exp = JwtNumericClaimsSchema.parse(decodeJwtPayload({ jwt: auth.tokens.access_token })).exp;
@@ -121,5 +123,5 @@ export function isCodexAccessExpiring(input: { auth: CodexAuthJson; skewMs?: num
     return true;
   }
   if (exp == null) return true;
-  return exp * 1000 - now <= skewMs;
+  return exp * 1000 - now <= CODEX_EXPIRY_SKEW_MS;
 }
