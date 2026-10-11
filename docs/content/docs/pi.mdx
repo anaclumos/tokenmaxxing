@@ -159,7 +159,7 @@ flowchart TD
 | --- | --- | --- |
 | Source | The cached figure and the account's statusline tee. | Codex's usage endpoint, read with the account's codex store token when the cached figure is older than `policy.usagePollTtlMs`. |
 | Freshness | The check tick refreshes the cached figure at the account's sample interval. The timer comes from `tokenmaxxing init`, and `init --pi` warns when it is not active. | After a failed read, the supervisor logs `pisupervisor.seat_unmeasured` and waits a minute before the next one. |
-| Fully depleted pool | The same countdown as a `claude` session (Ctrl-C resumes at once). | Nothing waits. |
+| Fully depleted pool | The same countdown as a `claude` session (Ctrl-C resumes at once). A launch onto a depleted pool starts at once on the account a wait would target, and the watch leaves it there until that account's reset. | Nothing waits. |
 
 ### The relaunch
 
@@ -192,7 +192,7 @@ These run pi unchanged, on the login the environment names:
 - **One subscription per session.** A pi store holds only the seat's credential, so a session on a Claude account cannot switch to an `openai-codex` model, or to a provider whose login lives in `~/.pi/agent/auth.json`, without a restart; start pi with `--provider` or `--model` for the other one. Providers read from environment variables still work.
 - **No move on a refusal.** tokenmaxxing sees no pi error, so a limit the server enforces before the cached figure reaches a bar (a per-model cap with no cached row, for example) shows as pi's own error until the watch reads the figure. Per-model gating follows `--model`; a launch without it gates every family in `policy.switchModels`, as a `claude` launch without `--model` does.
 - **No compaction before a move.** The resumed session sends the full conversation to the new account.
-- **A move before the first reply repeats the launch.** pi writes a session file only after the first reply lands, and no tool runs before that reply, so when the session file does not exist yet the relaunch repeats the original launch, first message included, instead of sending the resume prompt. A launch into a fully depleted Claude pool takes this path after the countdown.
+- **A move before the first reply repeats the launch.** pi writes a session file only after the first reply lands, and no tool runs before that reply, so when the session file does not exist yet the relaunch repeats the original launch, first message included, instead of sending the resume prompt.
 - **Shared settings writes.** pi locks `settings.json`, `trust.json`, and `models-store.json` through the path it opened, and each store opens its own link, so two sessions on different accounts that rewrite the same shared file at the same moment can lose one of the two writes.
 
 pi's Claude login is pi's own use of a Claude subscription; the [personal-use terms](/terms) apply to it as they do to every pool.

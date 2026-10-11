@@ -1,6 +1,6 @@
 import { rmSync } from "node:fs";
 import { join } from "node:path";
-import { claude, ensurePathAhead, pickSeat } from "./claude.ts";
+import { claude, ensurePathAhead, pickSeat, type Seat } from "./claude.ts";
 import { MAX_WRAP_DEPTH, PI_BIN, WRAP_DEPTH_ENV, resolveRealBin, verifyRealBin } from "./claudebin.ts";
 import { codex, pickCodexSeat } from "./codex.ts";
 import { codexSeatIdOf } from "./codexauth.ts";
@@ -111,9 +111,11 @@ function piMover(base: Provider, pool: PiPool): Provider {
 
 export const piMovers: Record<PiPool, Provider> = { claude: piMover(claude, "claude"), codex: piMover(codex, "codex") };
 
-export function pickPiSeat(pool: PiPool, now: number, model: ModelInfo | null): Account | null {
+export function pickPiSeat(pool: PiPool, now: number, model: ModelInfo | null): Seat | null {
   const eligible = (a: Account) => piStoreUsable(pool, a.id);
-  return pool === "claude" ? pickSeat(now, model, eligible) : pickCodexSeat(now, eligible);
+  if (pool === "claude") return pickSeat(now, model, eligible);
+  const account = pickCodexSeat(now, eligible);
+  return account ? { account } : null;
 }
 
 export function piPreflight(): void {
