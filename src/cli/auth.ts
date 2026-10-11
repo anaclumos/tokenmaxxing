@@ -1,4 +1,4 @@
-import { partition, uniq } from "es-toolkit";
+import { countBy, partition, uniq } from "es-toolkit";
 import { z } from "zod";
 import { withLock } from "../lib/lock.ts";
 import { log } from "../lib/log.ts";
@@ -136,15 +136,19 @@ async function piLoginOne(p: Provider, pool: PiPool, target: Account): Promise<b
 }
 
 async function loginEmails(p: Provider, argv: string[]): Promise<number> {
-  const emails = uniq(argv.filter((a) => a !== EMAILS_FLAG).map((a) => a.toLowerCase()));
-  const invalid = emails.filter((e) => !z.email().safeParse(e).success);
+  const emails = argv.filter((a) => a !== EMAILS_FLAG).map((a) => a.toLowerCase());
+  const invalid = uniq(emails.filter((e) => !z.email().safeParse(e).success));
   if (emails.length === 0 || invalid.length > 0) {
     if (invalid.length > 0) console.error(c.red(`not an email: ${invalid.join(", ")}`));
     console.error(AUTH_USAGE);
     return 2;
   }
-  const pooled = new Set(loadAccounts(p.pool).accounts.flatMap((a) => (a.email == null ? [] : [a.email.toLowerCase()])));
-  const [skipped, targets] = partition(emails, (e) => pooled.has(e));
+  const accounts = loadAccounts(p.pool).accounts;
+  const pooledIds = new Set(accounts.map((a) => a.id));
+  const pooled = countBy(accounts, (a) => a.email?.toLowerCase() ?? "");
+  const wanted = countBy(emails, (e) => e);
+  const skipped = Object.keys(wanted).filter((e) => (pooled[e] ?? 0) >= (wanted[e] ?? 0));
+  const targets = Object.keys(wanted).flatMap((e) => Array<string>(Math.max(0, (wanted[e] ?? 0) - (pooled[e] ?? 0))).fill(e));
   for (const email of skipped) console.log(c.dim(`skip ${email} - already in the ${p.name} pool`));
 
   let ok = 0;
@@ -160,7 +164,12 @@ async function loginEmails(p: Provider, argv: string[]): Promise<number> {
       console.error(c.red(`that login is ${c.bold(harvested.email ?? harvested.id.slice(0, 8))}, not ${c.bold(email)} - nothing changed.`));
       continue;
     }
+    if (pooledIds.has(harvested.id)) {
+      console.error(c.red(`that login is an account already in the pool - nothing changed. An email listed twice is a codex email with two workspaces: sign in to the workspace that is not pooled yet.`));
+      continue;
+    }
     await poolHarvest(p, harvested);
+    pooledIds.add(harvested.id);
     ok += 1;
   }
 
