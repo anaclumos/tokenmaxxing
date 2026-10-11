@@ -64,6 +64,8 @@ const IdClaimsSchema = z.looseObject({
   "https://api.openai.com/auth": z
     .looseObject({
       chatgpt_account_id: z.string().optional(),
+      chatgpt_user_id: z.string().optional(),
+      user_id: z.string().optional(),
       chatgpt_plan_type: z.string().optional(),
     })
     .optional(),
@@ -78,15 +80,22 @@ function decodeJwtPayload(input: { jwt: string }): unknown {
   return JSON.parse(payload);
 }
 
-export function chatgptAccountIdOf(input: { jwt: string }): string | null {
+function seatIdFor(userId: string, accountId: string): string {
+  return new Bun.CryptoHasher("sha256").update(`${userId}__${accountId}`).digest("hex");
+}
+
+export function codexSeatIdOf(input: { jwt: string }): string | null {
   try {
-    return IdClaimsSchema.parse(decodeJwtPayload(input))["https://api.openai.com/auth"]?.chatgpt_account_id ?? null;
+    const authClaims = IdClaimsSchema.parse(decodeJwtPayload(input))["https://api.openai.com/auth"];
+    const userId = authClaims?.chatgpt_user_id ?? authClaims?.user_id;
+    const accountId = authClaims?.chatgpt_account_id;
+    return userId && accountId ? seatIdFor(userId, accountId) : null;
   } catch {
     return null;
   }
 }
 
-export type CodexIdentity = { accountId: string; email: string | null; planType: string | null };
+export type CodexIdentity = { id: string; accountId: string; email: string | null; planType: string | null };
 
 export function codexIdentityOf(input: { auth: CodexAuthJson }): CodexIdentity {
   const { auth } = input;
@@ -96,7 +105,11 @@ export function codexIdentityOf(input: { auth: CodexAuthJson }): CodexIdentity {
   if (!accountId) {
     throw new Error("codex credential carries no account id (neither tokens.account_id nor the id_token claim)");
   }
-  return { accountId, email: claims.email ?? null, planType: authClaims?.chatgpt_plan_type ?? null };
+  const userId = authClaims?.chatgpt_user_id ?? authClaims?.user_id;
+  if (!userId) {
+    throw new Error("codex credential carries no user id (neither chatgpt_user_id nor user_id in the id_token claim)");
+  }
+  return { id: seatIdFor(userId, accountId), accountId, email: claims.email ?? null, planType: authClaims?.chatgpt_plan_type ?? null };
 }
 
 export function isCodexAccessExpiring(input: { auth: CodexAuthJson; skewMs?: number; now?: number }): boolean {

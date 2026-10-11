@@ -87,6 +87,7 @@ Verified auth and quota mechanics live in `.memory/claude_code.md`; the credenti
 Source-verified against rust-v0.144.5 and re-checked on later binaries; codex changes monthly, so re-verify before trusting any line here. Detail: `docs/codex.mdx` and `.memory/codex.md`.
 
 - No hot-swap: restart IS the switch (`codex resume <sid>`).
+- A Codex pool account id is the sha256 hex of `<chatgpt_user_id>__<chatgpt_account_id>` from the token's `https://api.openai.com/auth` claim (`codexSeatIdOf`, `codexIdentityOf`), never `chatgpt_account_id` alone: that claim is the workspace, so every member of one team workspace shares it and an id keyed by it collapses them onto one account. The usage GET still sends the workspace id as `ChatGPT-Account-Id`.
 - Refresh-token reuse is punished, and a superseded token kills the whole grant family. Harvest by true owner and persist every rotation into the account's own store the instant it returns; never refresh an account running in another session from outside.
 - An idle codex still touches tokens: the Apps surface builds throwaway auth managers that fresh-read the session's own store home `auth.json` mid-run. Sample from the store file at the last moment.
 - An account running in another supervised session is never a session placement or move target and never gets its store refreshed from outside; a `seat --codex` borrow still shares a codex session's account. Unmeasured does not imply not running.

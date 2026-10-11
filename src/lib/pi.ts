@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { claude, ensurePathAhead, pickSeat } from "./claude.ts";
 import { MAX_WRAP_DEPTH, PI_BIN, WRAP_DEPTH_ENV, resolveRealBin, verifyRealBin } from "./claudebin.ts";
 import { codex, pickCodexSeat } from "./codex.ts";
-import { chatgptAccountIdOf } from "./codexauth.ts";
+import { codexSeatIdOf } from "./codexauth.ts";
 import { CHECK_JOB, installPiSupervisor, isBinDirAhead, jobHealthy, piSupervisorLink } from "./install.ts";
 import { errorMessage, log } from "./log.ts";
 import { fetchTokenIdentity } from "./oauth.ts";
@@ -33,9 +33,9 @@ function landed(path: string, pool: PiPool): PiOAuth | null {
 
 async function identityOf(pool: PiPool, cred: PiOAuth): Promise<{ id: string; email: string | null } | null> {
   if (pool === "codex") {
-    const id = chatgptAccountIdOf({ jwt: cred.access });
+    const id = codexSeatIdOf({ jwt: cred.access });
     if (id == null) {
-      console.error(c.red("the pi login's access token carries no ChatGPT account id - nothing changed."));
+      console.error(c.red("the pi login's access token carries no ChatGPT user and account id - nothing changed."));
       return null;
     }
     return { id, email: null };
