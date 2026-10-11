@@ -615,7 +615,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
       });
       child = spawned;
       if (secret != null) sendApiKey(spawned, secret);
-      const drain = spawned.stdout instanceof ReadableStream ? relayStdout(spawned.stdout, tee ?? undefined) : null;
+      drainStdout = spawned.stdout instanceof ReadableStream ? relayStdout(spawned.stdout, tee ?? undefined) : null;
       if (relay !== null) relay.attach(spawned.stdin!, firstLine, pendingTranscript);
       firstLine = null;
       if (picked || key) {
@@ -631,7 +631,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
         });
       }
       releaseClaimLocked(sid);
-      return { child: spawned, seat: picked, key, drain, open };
+      return { child: spawned, seat: picked, key, open };
     });
     if (launched == null) {
       await releaseClaim();
@@ -639,7 +639,6 @@ export async function runSupervisor(argv: string[]): Promise<number> {
     }
 
     const { child: proc, seat, key, open } = launched;
-    drainStdout = launched.drain;
     let seatCheckAt = 0;
     await raceMarkerOrExit({
       child: proc,
