@@ -260,17 +260,19 @@ export const SubagentStatusLineStdinSchema = z.looseObject({
     .catch(undefined),
 });
 
-export const ProfileResponseSchema = z.looseObject({
-  account: z.looseObject({ uuid: z.string(), email: z.string().nullish() }),
-  organization: z.looseObject({ uuid: z.string(), name: z.string().nullish() }),
-});
+export const ProfileResponseSchema = z
+  .looseObject({
+    account: z.looseObject({ uuid: z.string(), email: z.string().nullish() }),
+    organization: z.looseObject({ uuid: z.string(), name: z.string().nullish() }),
+  })
+  .transform(({ account, organization }) => ({
+    accountUuid: account.uuid,
+    email: account.email ?? null,
+    organizationUuid: organization.uuid,
+    organizationName: organization.name ?? null,
+  }));
 
-export type TokenIdentity = {
-  accountUuid: string;
-  email: string | null;
-  organizationUuid: string;
-  organizationName: string | null;
-};
+export type TokenIdentity = z.output<typeof ProfileResponseSchema>;
 
 const CodexTokensSchema = z.looseObject({
   id_token: z.string(),
