@@ -170,7 +170,7 @@ function sessionModel(args: PiArgs): ModelInfo | null {
 }
 
 function sessionDir(args: PiArgs, settings: PiSettingsScopes): string {
-  const custom = [args.sessionDir, optionalEnv("PI_CODING_AGENT_SESSION_DIR"), settings.project.sessionDir, settings.global.sessionDir].find(
+  const custom = [args.sessionDir, optionalEnv("PI_CODING_AGENT_SESSION_DIR"), settings.project.sessionDir ?? settings.global.sessionDir].find(
     (d): d is string => d != null && d !== "",
   );
   if (custom != null) return resolve(expandTilde(custom));
