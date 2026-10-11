@@ -16,6 +16,7 @@ import { grok } from "./lib/grok.ts";
 import { cmdInit, cmdInitPi } from "./cli/init.ts";
 import { cmdAdd } from "./cli/add.ts";
 import { cmdAuth } from "./cli/auth.ts";
+import { cmdEmails } from "./cli/emails.ts";
 import { cmdStatus } from "./cli/status.ts";
 import { cmdDoctor } from "./cli/doctor.ts";
 import { cmdRm } from "./cli/rm.ts";
@@ -37,9 +38,9 @@ const CODEX_FLAG = "--codex";
 const GROK_FLAG = "--grok";
 const PI_FLAG = "--pi";
 const JSON_COMMANDS = new Set(["status", "config", "check"]);
-const CODEX_COMMANDS = new Set(["init", "add", "auth", "rm", "rename", "seat"]);
-const STATUS_ONLY_COMMANDS = new Set(["init", "add", "auth", "rm", "rename"]);
-const MAX_OPERANDS = new Map([["init", 0], ["add", 0], ["rm", 1], ["rename", 2], ["key", 4]]);
+const CODEX_COMMANDS = new Set(["init", "add", "auth", "emails", "rm", "rename", "seat"]);
+const STATUS_ONLY_COMMANDS = new Set(["init", "add", "auth", "emails", "rm", "rename"]);
+const MAX_OPERANDS = new Map([["init", 0], ["add", 0], ["emails", 0], ["rm", 1], ["rename", 2], ["key", 4]]);
 
 function printHelp(): void {
   console.log(`${c.bold("tokenmaxxing")} - automatic Claude Code account switching
@@ -53,6 +54,8 @@ function printHelp(): void {
   ${c.cyan("tokenmaxxing add")}        register an additional account (isolated login)
   ${c.cyan("tokenmaxxing add")} --codex | --grok   same for the codex or grok pool
   ${c.cyan("tokenmaxxing auth")} [--codex | --grok] [sel | --all]  reauthenticate a pooled account in place (bare = pick from a list; --all = every account that is flagged or has no usable credential in its store, one by one)
+  ${c.cyan("tokenmaxxing auth")} [--codex | --grok] --emails <email>...  log in and pool each listed email, skipping the ones already pooled (for moving to a new host: paste the output of ${c.cyan("emails")} from the old one)
+  ${c.cyan("tokenmaxxing emails")} [--codex | --grok]  print every pooled account's email, one per line, to copy into ${c.cyan("auth --emails")} on another host
   ${c.cyan("tokenmaxxing auth --pi")} [--codex] [sel | --all]  log a pooled Claude account (or a codex account with --codex) into pi, isolated (bare = pick from a list; --all = every account without a pi login)
   ${c.cyan("tokenmaxxing status")} [--cached]  accounts with 5h / weekly / per-model usage bars (--cached: the stored figures, no sampling)
   ${c.cyan("tokenmaxxing config")}     print the config path and the effective values (edit the file in an editor)
@@ -175,6 +178,7 @@ async function main(): Promise<number> {
     case "init": return pi ? cmdInitPi() : cmdInit(provider);
     case "add": return cmdAdd(provider);
     case "auth": return cmdAuth(provider, args.slice(1), pi ? (provider === codex ? "codex" : "claude") : null);
+    case "emails": return cmdEmails(provider);
     case "doctor": return cmdDoctor();
     case "rm": return cmdRm(provider, args[1]);
     case "rename": return cmdRename(provider, args.slice(1));
