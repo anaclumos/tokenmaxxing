@@ -38,7 +38,7 @@ function readSettings(): Settings {
 }
 
 function writeSettings(s: Settings): void {
-  const mode = existsSync(paths.claudeSettings) ? statSync(paths.claudeSettings).mode & 0o777 : 0o600;
+  const mode = (statSync(paths.claudeSettings, { throwIfNoEntry: false })?.mode ?? 0o600) & 0o777;
   writeFileAtomic(paths.claudeSettings, JSON.stringify(s, null, 2) + "\n", mode);
 }
 

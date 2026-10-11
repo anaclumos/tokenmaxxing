@@ -100,7 +100,7 @@ export function usageReport(a: Account, bars: Bars | null, now: number): UsageRe
   return {
     fiveHour: session ? currentWindow(a, session, bars, now) : null,
     week: week ? currentWindow(a, week, bars, now) : null,
-    limits: limitWindows(a).map((w) => ({ name: w.name ?? "", ...currentWindow(a, w, bars, now) })),
+    limits: limitWindows(a).map((w) => ({ name: w.name, ...currentWindow(a, w, bars, now) })),
   };
 }
 
@@ -109,7 +109,7 @@ function gatedNote(accounts: Account[], families: string[] | null, bars: Bars, n
   for (const a of accounts) {
     if (a.needsReauth === true) continue;
     for (const w of gatedWindows(a, families)) {
-      const key = (w.name ?? "").toLowerCase();
+      const key = w.name.toLowerCase();
       const g = groups.get(key) ?? { carriers: 0, capped: 0 };
       g.carriers++;
       if (liveUsed(w, now) >= barFor(a, w, bars, now)) g.capped++;

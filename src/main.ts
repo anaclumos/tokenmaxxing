@@ -85,7 +85,7 @@ async function main(): Promise<number> {
     return 1;
   }
   const argv = process.argv.slice(2);
-  const argv0 = basename(process.argv0 || process.argv[0] || "");
+  const argv0 = basename(process.argv0);
 
   if (argv0 === "claude" || argv[0] === "__supervise") {
     return runSupervisor(argv[0] === "__supervise" ? argv.slice(1) : argv);

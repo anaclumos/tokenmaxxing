@@ -207,7 +207,7 @@ export function installCodexSupervisor(): void {
 
 export function uninstallCodexSupervisor(): void {
   uninstallCodexStopHook();
-  if (existsSync(codexSupervisorLink())) rmSync(codexSupervisorLink(), { force: true });
+  rmSync(codexSupervisorLink(), { force: true });
 }
 
 export function piSupervisorLink(): string {
@@ -534,7 +534,7 @@ export function uninstallSupervisor(input: { live: boolean }): UninstallOutcome 
   const hub = uninstallJob(HUB_JOB, input.live);
   uninstallCodexSupervisor();
   for (const f of [paths.supervisorLink, piSupervisorLink(), join(paths.binDir, "xx"), installedBin()]) {
-    if (existsSync(f)) rmSync(f, { force: true });
+    rmSync(f, { force: true });
   }
   const rc = shellRcPath();
   const pathLineRemoved = rc != null && removePathFromRc(rc);
