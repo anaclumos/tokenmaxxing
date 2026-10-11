@@ -631,7 +631,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
         });
       }
       releaseClaimLocked(sid);
-      return { child: spawned, seat: picked, key, open };
+      return { child: spawned, seat: picked, key, drain: drainStdout, open };
     });
     if (launched == null) {
       await releaseClaim();
@@ -639,6 +639,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
     }
 
     const { child: proc, seat, key, open } = launched;
+    drainStdout = launched.drain;
     let seatCheckAt = 0;
     await raceMarkerOrExit({
       child: proc,
