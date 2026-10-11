@@ -3,7 +3,7 @@ import { sortBy } from "es-toolkit";
 import { writeSessionCost } from "../lib/apikeys.ts";
 import { claudePool, seatFromEnv } from "../lib/paths.ts";
 import { supervisedSession } from "../lib/sessions.ts";
-import { errorMessage } from "../lib/log.ts";
+import { errorMessage, log } from "../lib/log.ts";
 import { loadAccounts, loadConfig, writeUsage } from "../lib/state.ts";
 import { familyTokens, matchedFamily, parseStatusLineStdin, parseStatusLineModel } from "../lib/usage.ts";
 import { bufferedUsed, earliestReset, limitWindows, liveUsed, thresholdBars, weeklyExpiry, weeklyWindow } from "../lib/picker.ts";
@@ -107,7 +107,7 @@ export function renderStatusline(stdinObj: unknown, ctx: RenderCtx): string {
     const parts: string[] = [];
     for (const w of limitWindows(a)) {
       const u = used(a, w);
-      if (u > weekUsed) parts.push(seg(initial(w.name ?? ""), u, null));
+      if (u > weekUsed) parts.push(seg(initial(w.name), u, null));
     }
     const expiry = weeklyExpiry(a, ctx.now);
     parts.push(seg("", weekUsed, Number.isFinite(expiry) ? expiry : null));
@@ -129,13 +129,15 @@ export async function runStatusline(): Promise<number> {
       const state: UsageState = { fiveHour: windows.fiveHour, sevenDay: windows.sevenDay, account, ts: now, model: parseStatusLineModel(obj) };
       writeUsage(state);
     }
-  } catch {
+  } catch (e) {
+    log("statusline.tee_failed", { err: errorMessage(e) });
   }
   try {
     const session = existsSync(claudePool.apiKeysJson) ? supervisedSession() : null;
     const cost = session == null ? null : (CostLineSchema.safeParse(obj).data ?? null);
     if (session != null && cost != null && cost.sessionId === session.live) writeSessionCost(session.sid, cost);
-  } catch {
+  } catch (e) {
+    log("statusline.cost_failed", { err: errorMessage(e) });
   }
 
   let line: string;
@@ -148,7 +150,7 @@ export async function runStatusline(): Promise<number> {
     const ctx: RenderCtx = {
       accounts,
       bars: thresholdBars(cfg),
-      perModel: Object.fromEntries((live ? limitWindows(live) : []).map((w) => [w.name ?? "", w])),
+      perModel: Object.fromEntries((live ? limitWindows(live) : []).map((w) => [w.name, w])),
       switchModels: cfg.policy.switchModels,
       worktree: dir == null ? null : worktreeName(dir),
       liveAccount: account,

@@ -184,8 +184,9 @@ function sessionHeader(path: string): z.infer<typeof SessionHeaderSchema> | null
   let fd: number;
   try {
     fd = openSync(path, "r");
-  } catch {
-    return null;
+  } catch (e) {
+    if (ErrnoSchema.safeParse(e).data?.code === "ENOENT") return null;
+    throw e;
   }
   try {
     const buf = Buffer.alloc(16 * 1024);
@@ -200,8 +201,9 @@ function sessionHeader(path: string): z.infer<typeof SessionHeaderSchema> | null
 function sessionFiles(dir: string): string[] {
   try {
     return readdirSync(dir).filter((f) => f.endsWith(".jsonl"));
-  } catch {
-    return [];
+  } catch (e) {
+    if (ErrnoSchema.safeParse(e).data?.code === "ENOENT") return [];
+    throw e;
   }
 }
 
@@ -210,8 +212,9 @@ function localSessions(dir: string): string[] {
   const dated = sessionFiles(dir).flatMap((f) => {
     try {
       return [{ path: join(dir, f), mtime: statSync(join(dir, f)).mtimeMs }];
-    } catch {
-      return [];
+    } catch (e) {
+      if (ErrnoSchema.safeParse(e).data?.code === "ENOENT") return [];
+      throw e;
     }
   });
   return sortBy(dated, [(x) => -x.mtime]).flatMap(({ path }) => {
