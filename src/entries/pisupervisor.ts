@@ -371,8 +371,10 @@ export async function runPiSupervisor(argv: string[]): Promise<number> {
       const launched = await withLock(mover.pool.lockFile, async () => {
         clearPresence({ dir: presenceDir, id });
         if (terminating) return null;
-        const picked = validWanted(pool, wanted, id) ?? pickPiSeat(pool, launchedAt, model);
-        log("pisupervisor.launch", { id, pool, respawns, seat: picked?.id.slice(0, 8) ?? null, args: launchArgs.join(" ") });
+        const kept = validWanted(pool, wanted, id);
+        const target = kept ? { account: kept } : pickPiSeat(pool, launchedAt, model);
+        const picked = target?.account ?? null;
+        log("pisupervisor.launch", { id, pool, respawns, seat: picked?.id.slice(0, 8) ?? null, depletedUntil: target?.depletedUntil, args: launchArgs.join(" ") });
         const spawned = Bun.spawn([real, ...launchArgs], {
           stdin: "inherit",
           stdout: "inherit",
@@ -398,21 +400,21 @@ export async function runPiSupervisor(argv: string[]): Promise<number> {
             log("pisupervisor.claim_release_failed", { err: errorMessage(e) });
           }
         }
-        return { proc: spawned, seat: picked };
+        return { proc: spawned, seat: picked, overriddenUntil: Math.max(overriddenUntil, target?.depletedUntil ?? 0) };
       });
       if (launched == null) {
         await releaseClaim();
         return 143;
       }
 
-      const { proc, seat } = launched;
+      const { proc, seat, overriddenUntil: gateUntil } = launched;
       const pending: { move: SwapDecision | null; killed: boolean } = { move: null, killed: false };
       let seatCheckAt = 0;
       await raceMarkerOrExit({
         child: proc,
         tick: async () => {
           if (!seat || terminating || Date.now() < seatCheckAt) return false;
-          const watched = await watchSeat({ pool, seatId: seat.id, id, families, overriddenUntil });
+          const watched = await watchSeat({ pool, seatId: seat.id, id, families, overriddenUntil: gateUntil });
           seatCheckAt = Date.now() + (watched.decided ? SEAT_RETRY_MS : SEAT_POLL_MS);
           pending.move = watched.move;
           return watched.move !== null;
