@@ -1,6 +1,6 @@
 import { withLock } from "../lib/lock.ts";
 import type { Provider } from "../lib/provider.ts";
-import { loadAccounts, loadConfig, saveAccounts, upsertAccount } from "../lib/state.ts";
+import { loadAccounts, loadConfig, saveAccounts, upsertAccount, type Harvest } from "../lib/state.ts";
 import { bufferedUsed, liveUsed, sessionWindow, thresholdBars, weeklyWindow } from "../lib/picker.ts";
 import { c, count } from "./render.ts";
 import type { Account, Window } from "../lib/types.ts";
@@ -23,6 +23,12 @@ export async function cmdAdd(p: Provider): Promise<number> {
   const harvested = await p.login();
   if (!harvested) return 1;
 
+  console.log();
+  await poolHarvest(p, harvested);
+  return 0;
+}
+
+export async function poolHarvest(p: Provider, harvested: Harvest): Promise<void> {
   const { account, poolSize } = await withLock(p.pool.lockFile, async () => {
     await harvested.park();
     const idx = loadAccounts(p.pool);
@@ -31,8 +37,6 @@ export async function cmdAdd(p: Provider): Promise<number> {
     return { account, poolSize: idx.accounts.length };
   });
 
-  console.log();
   const note = harvested.sample ? usageNote(p, account) : "";
   console.log(`${c.green("✓")} added ${c.bold(account.label)} (${account.tier ?? "?"})${note} → pool now has ${count({ n: poolSize, noun: "account" })}`);
-  return 0;
 }
