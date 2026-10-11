@@ -117,7 +117,7 @@ export function relayStdout(source: ReadableStream<Uint8Array>, onLine?: (line: 
     });
   return async (abandoned = () => false) => {
     const exitedAt = Date.now();
-    while (!ended && (blocked ? !abandoned() : Date.now() - Math.max(readAt, exitedAt) < STDOUT_QUIET_MS)) await Bun.sleep(50);
+    while (!ended && !abandoned() && (blocked || Date.now() - Math.max(readAt, exitedAt) < STDOUT_QUIET_MS)) await Bun.sleep(50);
   };
 }
 
