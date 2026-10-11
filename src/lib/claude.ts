@@ -217,7 +217,7 @@ export async function borrowClaudeSeat(pid: number, named?: string): Promise<Sea
   return granted;
 }
 
-async function removeCredentials(a: Account): Promise<void> {
+export async function removeCredentials(a: Account): Promise<void> {
   await deleteItem(storeTarget(a.id));
   rmSync(storeDirFor(a.id), { recursive: true, force: true });
   rmSync(`${storeDirFor(a.id)}.lock`, { recursive: true, force: true });
