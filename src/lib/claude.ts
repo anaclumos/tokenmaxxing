@@ -10,7 +10,7 @@ import { withLock } from "./lock.ts";
 import { errorMessage, log } from "./log.ts";
 import { claudeTierLabel, describeIdentity, fetchTokenIdentity, isDeadCredential, InvalidGrantError } from "./oauth.ts";
 import { claudePool, env, paths, seatFromEnv, shortId, storeDirFor } from "./paths.ts";
-import { MAX_WAITERS_PER_ACCOUNT, pickBest, pickEarliestReset, pickWaitTarget, thresholdBars, type PickCtx } from "./picker.ts";
+import { MAX_WAITERS_PER_ACCOUNT, pickBest, pickEarliestReset, pickWaitTarget, thresholdBars, type EarliestReset, type PickCtx } from "./picker.ts";
 import { deletePiStore } from "./piauth.ts";
 import { livingPresences, writePresence } from "./presence.ts";
 import { StoreUnusableError, type Observation, type Provider, type ResetClaim, type SampleReport, type SeatBorrow } from "./provider.ts";
@@ -139,7 +139,7 @@ async function storeUsable(a: Account): Promise<boolean> {
   }
 }
 
-function seatContext(now: number, model: ModelInfo | null, eligible: (a: Account) => boolean): { candidates: Account[]; ctx: PickCtx; fallback: () => Account | null } {
+function seatContext(now: number, model: ModelInfo | null, eligible: (a: Account) => boolean): { candidates: Account[]; ctx: PickCtx; fallback: () => EarliestReset | null } {
   const cfg = loadConfig();
   const bars = thresholdBars(cfg);
   const idx = loadAccounts(claudePool);
@@ -150,18 +150,17 @@ function seatContext(now: number, model: ModelInfo | null, eligible: (a: Account
   const ctx: PickCtx = { now, thresholds: bars, currentId: null, families: gatedFamilies(model, cfg.policy.switchModels), seats };
   const candidates = idx.accounts.filter(eligible);
   const fallback = () =>
-    pickWaitTarget(candidates, ctx, seats, MAX_WAITERS_PER_ACCOUNT, now + cfg.policy.maxWaitMs, now + 2 * cfg.policy.maxWaitMs)?.account ??
-    pickEarliestReset(candidates, ctx)?.account ??
-    null;
+    pickWaitTarget(candidates, ctx, seats, MAX_WAITERS_PER_ACCOUNT, now + cfg.policy.maxWaitMs, now + 2 * cfg.policy.maxWaitMs) ??
+    pickEarliestReset(candidates, ctx);
   return { candidates, ctx, fallback };
 }
 
 export function pickSeat(now: number, model: ModelInfo | null, eligible: (a: Account) => boolean = () => true): Account | null {
   const { candidates, ctx, fallback } = seatContext(now, model, eligible);
-  return pickBest(candidates, ctx) ?? fallback();
+  return pickBest(candidates, ctx) ?? fallback()?.account ?? null;
 }
 
-export type LaunchTarget = { account: Account; apiKey: null } | { account: null; apiKey: ApiKey };
+export type LaunchTarget = { account: Account; apiKey: null; depletedUntil?: number } | { account: null; apiKey: ApiKey };
 
 export function pickLaunch(now: number, model: ModelInfo | null, refused: readonly string[] = []): LaunchTarget | null {
   const { candidates, ctx, fallback } = seatContext(now, model, (a) => !refused.includes(a.id));
@@ -169,8 +168,8 @@ export function pickLaunch(now: number, model: ModelInfo | null, refused: readon
   if (best) return { account: best, apiKey: null };
   const key = launchApiKey();
   if (key) return { account: null, apiKey: key };
-  const account = fallback();
-  return account ? { account, apiKey: null } : null;
+  const wait = fallback();
+  return wait ? { account: wait.account, apiKey: null, depletedUntil: wait.availableAt } : null;
 }
 
 export async function borrowClaudeSeat(pid: number, named?: string): Promise<SeatBorrow | { invalid: string }> {
