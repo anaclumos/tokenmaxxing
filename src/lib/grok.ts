@@ -4,7 +4,7 @@ import { writeFileAtomic } from "./atomic.ts";
 import { fetchGrokUsage, GrokUsageReadError, type GrokUsage } from "./grokusage.ts";
 import { errorMessage } from "./log.ts";
 import { grokAuthJsonFor, grokPaths, grokPool, grokSeatFromEnv, grokStoreDirFor } from "./paths.ts";
-import type { Provider, SampleReport } from "./provider.ts";
+import type { SampleReport } from "./provider.ts";
 import { loadAccounts, readJsonFile, type Harvest } from "./state.ts";
 import { statusOnlyProvider, type AuthEntry } from "./statusonly.ts";
 import { ErrnoSchema, InstantSchema, type Account } from "./types.ts";
@@ -105,7 +105,7 @@ async function readGrokUsage(account: Account, now: number): Promise<{ ok: true;
   return { ok: true, at: usage.at };
 }
 
-async function samplePool(accounts: Account[], _liveId: string | null, now: number): Promise<Map<string, SampleReport>> {
+async function samplePool(accounts: Account[], now: number): Promise<Map<string, SampleReport>> {
   const reports = new Map<string, SampleReport>();
   await Promise.all(
     accounts.map(async (account) => {
@@ -116,7 +116,7 @@ async function samplePool(accounts: Account[], _liveId: string | null, now: numb
   return reports;
 }
 
-const base = statusOnlyProvider({
+export const grok = statusOnlyProvider({
   name: "grok",
   flag: " --grok",
   pool: grokPool,
@@ -137,9 +137,5 @@ const base = statusOnlyProvider({
   foundLive: (count) => `found ${count} grok login(s) in ${grokPaths.home} - pooling the first; use \`tokenmaxxing add --grok\` for the rest.`,
   installNotice: "grok pool is status-only: no supervisor or hooks installed. Use `tokenmaxxing status` to view pooled grok accounts.",
   loginStep: () => `Sign in in the browser session that opens (or run ${c.bold("grok login --device-auth")} on headless hosts first).`,
-});
-
-export const grok: Provider = {
-  ...base,
   samplePool,
-};
+});

@@ -100,7 +100,7 @@ export async function observeCodex(account: Account, cfg: Config, now: number, o
   return current.lastUsageAt != null ? { windows: current.windows, at: current.lastUsageAt } : null;
 }
 
-async function samplePool(accounts: Account[], _liveId: string | null, now: number): Promise<Map<string, SampleReport>> {
+async function samplePool(accounts: Account[], now: number): Promise<Map<string, SampleReport>> {
   const reports = new Map<string, SampleReport>();
   const record = (account: Account, outcome: CodexReadOutcome): void => {
     if (outcome.ok) {

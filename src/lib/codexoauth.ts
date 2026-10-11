@@ -34,8 +34,8 @@ const DEAD_GRANT_CODES = new Set([
   "refresh_token_invalidated",
 ]);
 
-export async function refreshCodexAuth(input: { auth: CodexAuthJson; now?: number }): Promise<CodexAuthJson> {
-  const { auth, now = Date.now() } = input;
+export async function refreshCodexAuth(input: { auth: CodexAuthJson; now: number }): Promise<CodexAuthJson> {
+  const { auth, now } = input;
   let res: Response;
   try {
     res = await http.post(TOKEN_URL, {
