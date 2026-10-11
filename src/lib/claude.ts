@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { countBy } from "es-toolkit";
 import { z } from "zod";
 import { claudeApiKeys, launchApiKey } from "./apikeys.ts";
-import { readItem, writeItem, deleteItem, isolatedTarget, readStore, storeTarget, claudeAiOauthOnly } from "./credstore.ts";
+import { readItem, writeItem, deleteItem, isolatedTarget, readStore, storeTarget } from "./credstore.ts";
 import { CLAUDE_BIN, resolveRealBin, resolveVerifiedClaude } from "./claudebin.ts";
 import { activationHint, CHECK_JOB, ensurePathInRc, HUB_JOB, installSupervisor, managedShellRcSkipLines, shellRcPath } from "./install.ts";
 import { withLock } from "./lock.ts";
@@ -61,7 +61,7 @@ async function observeLive(account: Account, cfg: Config, now: number, opts: { p
   return teeObservation(current);
 }
 
-async function samplePool(accounts: Account[], _liveId: string | null, now: number): Promise<Map<string, SampleReport>> {
+async function samplePool(accounts: Account[], now: number): Promise<Map<string, SampleReport>> {
   const reports = new Map<string, SampleReport>();
   const cfg = loadConfig();
   const bars = thresholdBars(cfg);
@@ -217,7 +217,7 @@ export async function borrowClaudeSeat(pid: number, named?: string): Promise<Sea
   return granted;
 }
 
-async function removeCredentials(a: Account): Promise<void> {
+export async function removeCredentials(a: Account): Promise<void> {
   await deleteItem(storeTarget(a.id));
   rmSync(storeDirFor(a.id), { recursive: true, force: true });
   rmSync(`${storeDirFor(a.id)}.lock`, { recursive: true, force: true });
@@ -298,6 +298,7 @@ async function login(): Promise<Harvest | null> {
     if (!sampled.ok) console.log(c.yellow("could not sample usage now - it will fill in on first use."));
     const at = Date.now();
     const id = oauthAccount.accountUuid;
+    const claudeAiOauth = blob.claudeAiOauth;
     return {
       id,
       email: oauthAccount.emailAddress,
@@ -305,7 +306,7 @@ async function login(): Promise<Harvest | null> {
       oauthAccount,
       sample: sampled.ok ? { windows: windowsOf(sampled.usage, at), at } : null,
       ...(!sampled.ok && sampled.retryAt != null ? { usageRetryAt: sampled.retryAt } : {}),
-      park: () => writeItem(storeTarget(id), claudeAiOauthOnly(blobRaw)),
+      park: () => writeItem(storeTarget(id), JSON.stringify({ claudeAiOauth })),
     };
   } finally {
     if (p.exitCode === null) {

@@ -2,7 +2,7 @@ import { mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { resolveRealBin, verifyRealBin } from "./claudebin.ts";
 import type { PoolPaths } from "./paths.ts";
-import type { Provider, SampleReport } from "./provider.ts";
+import type { Provider } from "./provider.ts";
 import { pinBinOverride, type Harvest } from "./state.ts";
 import type { Account } from "./types.ts";
 import { c } from "../cli/render.ts";
@@ -30,6 +30,7 @@ export type StatusOnlySpec = {
   foundLive: (count: number) => string;
   installNotice: string;
   loginStep: () => string;
+  samplePool: Provider["samplePool"];
 };
 
 export function statusOnlyProvider(spec: StatusOnlySpec): Provider {
@@ -41,14 +42,6 @@ export function statusOnlyProvider(spec: StatusOnlySpec): Provider {
     } catch {
       return false;
     }
-  }
-
-  async function samplePool(accounts: Account[]): Promise<Map<string, SampleReport>> {
-    const reports = new Map<string, SampleReport>();
-    for (const a of accounts) {
-      reports.set(a.id, (await storeUsable(a)) ? { ok: true, source: "probe" } : { ok: false, reason: `no usable credential in this account's store - run \`tokenmaxxing auth${spec.flag}\`` });
-    }
-    return reports;
   }
 
   async function login(): Promise<Harvest | null> {
@@ -105,7 +98,7 @@ export function statusOnlyProvider(spec: StatusOnlySpec): Provider {
     presence: spec.presence,
     gatedFamilies: () => null,
     observeLive: async (account) => (account.lastUsageAt != null ? { windows: account.windows, at: account.lastUsageAt } : null),
-    samplePool,
+    samplePool: spec.samplePool,
     mergeWindows: (next) => next,
     swap: async () => {
       throw new Error(`${spec.name} moves are not supported yet (status-only pool)`);

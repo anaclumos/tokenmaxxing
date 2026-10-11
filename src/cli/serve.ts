@@ -1,6 +1,6 @@
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { existsSync, readFileSync, statSync } from "node:fs";
-import { sortBy } from "es-toolkit";
+import { groupBy, sortBy } from "es-toolkit";
 import { z } from "zod";
 import { writeFileAtomic } from "../lib/atomic.ts";
 import { claude } from "../lib/claude.ts";
@@ -55,12 +55,11 @@ function codexBody(usage: UsageReport, account: Account): unknown {
     const ordered = sortBy(windows, [(w) => w.windowSeconds ?? Number.POSITIVE_INFINITY]);
     return { primary_window: win(ordered[0]), secondary_window: win(ordered[1]) };
   };
-  const named = new Map<string, WindowReport[]>();
-  for (const w of usage.limits) named.set(w.name, [...(named.get(w.name) ?? []), w]);
+  const named = groupBy(usage.limits, (w) => w.name);
   return {
     ...(account.tier ? { plan_type: account.tier } : {}),
     rate_limit: pair([usage.fiveHour, usage.week].filter((w) => w != null)),
-    ...(named.size === 0 ? {} : { additional_rate_limits: [...named].map(([limit_name, windows]) => ({ limit_name, rate_limit: pair(windows) })) }),
+    ...(Object.keys(named).length === 0 ? {} : { additional_rate_limits: Object.entries(named).map(([limit_name, windows]) => ({ limit_name, rate_limit: pair(windows) })) }),
   };
 }
 

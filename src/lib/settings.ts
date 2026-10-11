@@ -5,7 +5,6 @@ import { paths } from "./paths.ts";
 import { writeFileAtomic } from "./atomic.ts";
 import { readJsonFile } from "./state.ts";
 import { shellQuote } from "./proc.ts";
-import { JsonTextSchema } from "./types.ts";
 import { ENFORCED_ERRORS } from "./usage.ts";
 
 export function installedBin(): string {
@@ -75,11 +74,7 @@ export function isOurHookCommand(cmd: string, sub: string): boolean {
   if (!cmd.endsWith(` ${sub}`)) return false;
   const quotedPath = cmd.slice(0, cmd.length - (sub.length + 1));
   const unquoted = quotedPath.slice(1, -1).replaceAll("'\\''", "'");
-  const path = quotedPath.startsWith("'")
-    ? shellQuote(unquoted) === quotedPath
-      ? unquoted
-      : undefined
-    : z.string().safeParse(JsonTextSchema.safeParse(quotedPath).data).data;
+  const path = quotedPath.startsWith("'") && shellQuote(unquoted) === quotedPath ? unquoted : undefined;
   return path?.endsWith("/tokenmaxxing") === true;
 }
 

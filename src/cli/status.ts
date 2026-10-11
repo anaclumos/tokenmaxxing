@@ -138,7 +138,7 @@ async function collect(p: Provider, cfg: Config, now: number, cached: boolean): 
     try {
       liveId = p.liveId();
       const retries = new Map(idx.accounts.map((a) => [a.id, a.usageRetryAt ?? null]));
-      reports = await p.samplePool(idx.accounts, liveId, now);
+      reports = await p.samplePool(idx.accounts, now);
       await withLock(p.pool.lockFile, () => {
         const fresh = loadAccounts(p.pool);
         let dirty = false;
