@@ -8,7 +8,7 @@ import { c, emitError, plain } from "./render.ts";
 
 const USAGE = "usage: tokenmaxxing key add <label> [credit-usd] [workspace-id] (the key on stdin) | key credit <label> <usd> | key rm <label>";
 
-const UsdSchema = z.coerce.number().finite().min(0);
+const UsdSchema = z.string().trim().min(1).pipe(z.coerce.number().finite().min(0));
 
 const WorkspaceIdSchema = z
   .string()
