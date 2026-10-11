@@ -364,7 +364,7 @@ The timer runs `tokenmaxxing check` once per tick (`policy.checkIntervalMs`, 60 
 - folds every fresh tee into `accounts.json`;
 - spends the banked resets that are due (see [Banked resets](#banked-resets));
 - samples up to three accounts: accounts with a live session first, then the ones whose last sample attempt (`lastUsageAt` or `lastProbeAt`) is oldest, skipping any attempted within the account's sample interval;
-- deletes atomic-write temp files older than an hour (see [Temp file sweep](#temp-file-sweep)) and prunes session flag files older than 30 days;
+- deletes atomic-write temp files older than an hour (see [Temp file sweep](#temp-file-sweep)) and prunes session flag files and session cost folders older than 30 days;
 - on a Bun global install, ends by checking npm for a newer version, at most once a day (see [Automatic updates](/distribution#automatic-updates)).
 
 With `n` pooled accounts every account is attempted about once per `n/3` ticks, or once per its sample interval plus a tick when that is longer, so a figure is as fresh as its last successful attempt and an account whose samples keep failing stays as stale as the decision last saw it (see [Honest limitations](/limitations)).

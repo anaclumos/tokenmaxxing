@@ -89,13 +89,14 @@ export function pruneStaleSessions(now: number): void {
     return;
   }
   pruneTmpFiles(now, root);
-  const dir = sessionsDir();
-  for (const f of listDir(dir, root)) {
-    const p = join(dir, f.name);
-    try {
-      if (existsSync(join(paths.presenceDir, basename(f.name, ".json")))) continue;
-      if (now - statSync(p).mtimeMs > SESSION_RETENTION_MS) rmSync(p, { force: true });
-    } catch {
+  for (const dir of [sessionsDir(), paths.costDir]) {
+    for (const f of listDir(dir, root)) {
+      const p = join(dir, f.name);
+      try {
+        if (existsSync(join(paths.presenceDir, basename(f.name, ".json")))) continue;
+        if (now - statSync(p).mtimeMs > SESSION_RETENTION_MS) rmSync(p, { recursive: true, force: true });
+      } catch {
+      }
     }
   }
 }
