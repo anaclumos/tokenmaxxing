@@ -251,7 +251,7 @@ The supervisor does not depend on a hook firing. Every ten seconds while the chi
 - A harness session whose main turn has ended while a background workflow or background agents keep burning the window. A harness session has no statusline tee, and its next Stop hook waits for the next prompt.
 - A subagent whose refusal stamped the wall while the parent turn was still running.
 
-A turn in flight is cut at the bar; the transcript holds every completed step, and the resume prompt continues from there. A Ctrl-C override of a depleted-pool wait suppresses the watch for as long as the override runs.
+A turn in flight is cut at the bar; the transcript holds every completed step, and the resume prompt continues from there. A Ctrl-C override of a depleted-pool wait suppresses the watch for as long as the override runs, and so does a launch onto a depleted pool until its target's reset, so the session starts immediately instead of pausing before its first turn.
 
 ### Unsupervised sessions and subagents
 

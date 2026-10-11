@@ -593,6 +593,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
     const launched = await withLock(claudePool.lockFile, async () => {
       if (terminating) return null;
       const target = resolveLaunch(wanted, gate.launchedAt, model, refused);
+      if (target?.account && target.depletedUntil !== undefined) gate.overriddenUntil = Math.max(gate.overriddenUntil, target.depletedUntil);
       const picked = target?.account ?? null;
       const key = target?.apiKey ?? null;
       log("supervisor.launch", { sid, respawns, seat: picked?.id.slice(0, 8) ?? null, key: key?.id, args: launchArgs.join(" "), injected: firstLine !== null });
