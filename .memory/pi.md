@@ -11,7 +11,7 @@ Verified mechanics of the pi coding agent that the pi supervisor depends on. Sou
 
 ## auth.json
 
-- `auth.json` is keyed by provider id: `anthropic` is `{type: "oauth", access, refresh, expires}`, and `openai-codex` adds `accountId`, copied from the `chatgpt_account_id` claim of the access token (identity reads the claim, not the copy); `expires` is epoch ms minus five minutes.
+- `auth.json` is keyed by provider id: `anthropic` is `{type: "oauth", access, refresh, expires}`, and `openai-codex` adds `accountId`, copied from the `chatgpt_account_id` claim of the access token (identity reads the `chatgpt_user_id` and `chatgpt_account_id` claims, not the copy); `expires` is epoch ms minus five minutes.
 - pi refreshes a token within five minutes of `expires` under a `proper-lockfile` lock (a `<path>.lock` directory; `settings.json`, `trust.json`, and `models-store.json` lock the same way) with `realpath: false`, re-checks the expiry under the lock, and re-reads the file whenever its revision changes.
 - A stored credential owns its provider: environment variables are read only when nothing is stored, and `openai-codex` has no environment fallback.
 - The Anthropic login uses Claude Code's OAuth client id and token endpoint.

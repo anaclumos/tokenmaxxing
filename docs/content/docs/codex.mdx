@@ -17,7 +17,7 @@ The Codex pool keeps separate state and shares the engine with the Claude pool:
 | --- | --- |
 | Codex pool state (separate) | Its own accounts index, its own per-account stores (0600 files on both platforms, since codex's own store is a plaintext file), and its own lock |
 | Engine (shared) | One account model (`id`, `label`, `email`, `tier`, cached `windows`), one picker, one decision, and one set of account commands (`init`, `add`, `auth`, `rm`, and `rename`) |
-| Codex provider | Only what differs: identity from `auth.json` (the account id, with the id token's claims for the email and plan), the usage GET and the refresh it needs, the credential store, presence, and the store check before a move |
+| Codex provider | Only what differs: identity from `auth.json` (the ChatGPT user id and workspace account id together, so two members of one team workspace pool as two accounts, with the id token's claims for the email and plan), the usage GET and the refresh it needs, the credential store, presence, and the store check before a move |
 | codex supervisor and its Stop hook | The restart itself |
 
 The account commands run against the Codex provider when you pass `--codex`. `status` renders every pool and takes no pool flag.
