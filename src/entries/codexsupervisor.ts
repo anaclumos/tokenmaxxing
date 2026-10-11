@@ -134,7 +134,7 @@ export async function runCodexSupervisor(input: { argv: string[] }): Promise<num
   let respawns = 0;
   let wanted: string | null = null;
   while (true) {
-    if (existsSync(marker)) rmSync(marker, { force: true });
+    rmSync(marker, { force: true });
 
     const launchedAt = Date.now();
     const { child, seat, drain } = await withLock(codexPool.lockFile, async () => {

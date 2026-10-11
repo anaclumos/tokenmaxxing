@@ -118,10 +118,7 @@ export async function compactCodexThread(input: { real: string; threadId: string
     send({ id: INIT_ID, method: "initialize", params: { clientInfo: { name: "tokenmaxxing", version: pkg.version } } });
   });
 
-  try {
-    p.stdin.end();
-  } catch {
-  }
+  p.stdin.end();
   p.kill();
   await p.exited;
   log("compact.codex", { thread: input.threadId.slice(0, 8), ok: outcome.ok, reason: outcome.ok ? undefined : outcome.reason });

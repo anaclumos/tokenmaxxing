@@ -1,7 +1,7 @@
 import { closeSync, openSync, readdirSync, readFileSync, readSync, realpathSync, statSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import type { Subprocess } from "bun";
-import { sortBy, uniq } from "es-toolkit";
+import { sortBy } from "es-toolkit";
 import { z } from "zod";
 import { PI_BIN, UNMANAGED_ENV, WRAP_DEPTH_ENV, resolveRealBin, wrapDepth } from "../lib/claudebin.ts";
 import { observeCodex } from "../lib/codex.ts";
@@ -169,13 +169,14 @@ function sessionModel(args: PiArgs): ModelInfo | null {
   return modelFromFlag(id == null ? null : id.slice(id.indexOf("/") + 1));
 }
 
-function sessionDirs(args: PiArgs, settings: PiSettingsScopes): string[] {
-  const custom = [args.sessionDir, optionalEnv("PI_CODING_AGENT_SESSION_DIR"), settings.project.sessionDir, settings.global.sessionDir]
-    .filter((d): d is string => d != null && d !== "")
-    .map((d) => resolve(expandTilde(d)));
+function sessionDir(args: PiArgs, settings: PiSettingsScopes): string {
+  const custom = [args.sessionDir, optionalEnv("PI_CODING_AGENT_SESSION_DIR"), settings.project.sessionDir ?? settings.global.sessionDir].find(
+    (d): d is string => d != null && d !== "",
+  );
+  if (custom != null) return resolve(expandTilde(custom));
   const cwd = process.cwd();
   const trimmed = cwd.startsWith("/") || cwd.startsWith("\\") ? cwd.slice(1) : cwd;
-  return uniq([...custom, join(piPaths.home, "sessions", `--${trimmed.replaceAll("/", "-").replaceAll("\\", "-").replaceAll(":", "-")}--`)]);
+  return join(piPaths.home, "sessions", `--${trimmed.replaceAll("/", "-").replaceAll("\\", "-").replaceAll(":", "-")}--`);
 }
 
 const SessionHeaderSchema = z.looseObject({ type: z.literal("session"), id: z.string(), cwd: z.string() });
@@ -184,8 +185,10 @@ function sessionHeader(path: string): z.infer<typeof SessionHeaderSchema> | null
   let fd: number;
   try {
     fd = openSync(path, "r");
-  } catch {
-    return null;
+  } catch (e) {
+    const code = ErrnoSchema.safeParse(e).data?.code;
+    if (code === "ENOENT" || code === "EACCES") return null;
+    throw e;
   }
   try {
     const buf = Buffer.alloc(16 * 1024);
@@ -200,8 +203,9 @@ function sessionHeader(path: string): z.infer<typeof SessionHeaderSchema> | null
 function sessionFiles(dir: string): string[] {
   try {
     return readdirSync(dir).filter((f) => f.endsWith(".jsonl"));
-  } catch {
-    return [];
+  } catch (e) {
+    if (ErrnoSchema.safeParse(e).data?.code === "ENOENT") return [];
+    throw e;
   }
 }
 
@@ -210,8 +214,9 @@ function localSessions(dir: string): string[] {
   const dated = sessionFiles(dir).flatMap((f) => {
     try {
       return [{ path: join(dir, f), mtime: statSync(join(dir, f)).mtimeMs }];
-    } catch {
-      return [];
+    } catch (e) {
+      if (ErrnoSchema.safeParse(e).data?.code === "ENOENT") return [];
+      throw e;
     }
   });
   return sortBy(dated, [(x) => -x.mtime]).flatMap(({ path }) => {
@@ -232,11 +237,11 @@ function sessionIdFor(args: PiArgs, dir: string): string | null {
   return matches.length === 1 ? matches[0]! : null;
 }
 
-function sessionExists(dirs: string[], sid: string): boolean {
-  return dirs.some((dir) => sessionFiles(dir).some((f) => f.endsWith(`_${sid}.jsonl`)));
+function sessionExists(dir: string, sid: string): boolean {
+  return sessionFiles(dir).some((f) => f.endsWith(`_${sid}.jsonl`));
 }
 
-type Launch = { args: PiArgs; pool: PiPool; dirs: string[]; sid: string };
+type Launch = { args: PiArgs; pool: PiPool; dir: string; sid: string };
 
 function managedLaunch(argv: string[]): Launch | null {
   if (process.stdin.isTTY !== true || process.stdout.isTTY !== true || process.env.TOKENMAXXING_PROBE || process.env[UNMANAGED_ENV]) return null;
@@ -253,13 +258,13 @@ function managedLaunch(argv: string[]): Launch | null {
     });
     return null;
   }
-  const dirs = sessionDirs(args, settings);
-  const sid = sessionIdFor(args, dirs[0]!);
+  const dir = sessionDir(args, settings);
+  const sid = sessionIdFor(args, dir);
   if (sid == null) {
     log("pisupervisor.session_unresolved", { session: args.session });
     return null;
   }
-  return { args, pool, dirs, sid };
+  return { args, pool, dir, sid };
 }
 
 const RESUME_PROMPT =
@@ -325,7 +330,7 @@ export async function runPiSupervisor(argv: string[]): Promise<number> {
 
   const launch = managedLaunch(argv);
   if (launch == null) return runPassthrough({ real, argv, env: childEnv, onSpawn: (p) => { child = p; } });
-  const { args, pool, dirs, sid } = launch;
+  const { args, pool, dir, sid } = launch;
 
   const id = `${PI_PRESENCE_PREFIX}${crypto.randomUUID()}`;
   const mover = piMovers[pool];
@@ -430,7 +435,7 @@ export async function runPiSupervisor(argv: string[]): Promise<number> {
           if (await countdownWait(target.label, waitUntil, { stream: false, say })) overriddenUntil = waitUntil;
         } else say(`\n\x1b[36m↻ tokenmaxxing: moving pi to ${target.label} - resuming...\x1b[0m\n`);
         wanted = target.id;
-        launchArgs = sessionExists(dirs, sid) ? ["--session-id", sid, ...args.flags, "--", RESUME_PROMPT] : firstArgs;
+        launchArgs = sessionExists(dir, sid) ? ["--session-id", sid, ...args.flags, "--", RESUME_PROMPT] : firstArgs;
         continue;
       }
       clearPresence({ dir: presenceDir, id });

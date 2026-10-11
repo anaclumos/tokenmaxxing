@@ -34,15 +34,15 @@ export function weeklyWindow(a: Account): Window | undefined {
   return maxBy(a.windows.filter((w) => w.name == null && !isSessionWindow(w)), (w) => w.windowSeconds ?? 0);
 }
 
-export function limitWindows(a: Account): Window[] {
-  return a.windows.filter((w) => w.name != null);
+type NamedWindow = Window & { name: string };
+
+export function limitWindows(a: Account): NamedWindow[] {
+  return a.windows.filter((w): w is NamedWindow => w.name != null);
 }
 
-export function gatedWindows(a: Account, families: string[] | null): Window[] {
-  return a.windows.filter((w) => {
-    const name = w.name;
-    return name != null && (families == null || families.some((f) => familyTokens(name).includes(f)));
-  });
+export function gatedWindows(a: Account, families: string[] | null): NamedWindow[] {
+  const named = limitWindows(a);
+  return families == null ? named : named.filter((w) => families.some((f) => familyTokens(w.name).includes(f)));
 }
 
 export function liveUsed(w: Window, now: number): number {
@@ -192,8 +192,7 @@ export type EarliestReset = { account: Account; availableAt: number };
 export function pickEarliestReset(accounts: Account[], ctx: PickCtx): EarliestReset | null {
   const mapped = accounts
     .filter((a) => a.id !== ctx.currentId && !a.needsReauth)
-    .map((a) => ({ account: a, availableAt: usableAt(a, ctx) }))
-    .filter((x) => Number.isFinite(x.availableAt));
+    .map((a) => ({ account: a, availableAt: usableAt(a, ctx) }));
   return minBy(mapped, (x) => x.availableAt) ?? null;
 }
 
@@ -203,7 +202,7 @@ export function pickWaitTarget(accounts: Account[], ctx: PickCtx, waiters: Map<s
   const mapped = accounts
     .filter((a) => !a.needsReauth)
     .map((a) => ({ account: a, availableAt: usableAt(a, ctx) }))
-    .filter((x) => Number.isFinite(x.availableAt) && x.availableAt <= overflowDeadline)
+    .filter((x) => x.availableAt <= overflowDeadline)
     .sort((x, y) => x.availableAt - y.availableAt || (x.account.id === ctx.currentId ? -1 : y.account.id === ctx.currentId ? 1 : 0));
   return (
     mapped.filter((x) => x.availableAt <= deadline).find((x) => (waiters.get(x.account.id) ?? 0) < cap) ??

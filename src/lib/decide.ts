@@ -45,7 +45,7 @@ function isOver(account: Account | undefined, observed: Observation | null, ctx:
 function modelKindCovered(limit: EnforcedLimit, account: Account, now: number, bars: Bars): boolean {
   if (limit.kind !== "model" || limit.family == null) return false;
   const family = limit.family;
-  return limitWindows(account).some((w) => familyTokens(w.name ?? "").includes(family) && screensUntilReset(account, w, bars, now));
+  return limitWindows(account).some((w) => familyTokens(w.name).includes(family) && screensUntilReset(account, w, bars, now));
 }
 
 function enforcedWall(limit: EnforcedLimit, account: Account, now: number): number {
@@ -55,7 +55,7 @@ function enforcedWall(limit: EnforcedLimit, account: Account, now: number): numb
     family == null
       ? null
       : limitWindows(account)
-          .filter((w) => familyTokens(w.name ?? "").includes(family))
+          .filter((w) => familyTokens(w.name).includes(family))
           .map((w) => w.resetsAt)
           .find((r): r is number => r != null) ?? null;
   const session = sessionWindow(account)?.resetsAt ?? null;
@@ -240,9 +240,9 @@ export async function evaluateAndMaybeSwap(p: Provider, now = Date.now(), canRes
 
       if (!target) {
         const soonest = pickWaitTarget(waitable, ctx, new Map(), MAX_WAITERS_PER_ACCOUNT, Number.POSITIVE_INFINITY, Number.POSITIVE_INFINITY);
-        const waitUntil = soonest?.availableAt ?? Number.POSITIVE_INFINITY;
-        log("decide.depleted", { waitUntil: Number.isFinite(waitUntil) ? waitUntil : 0 });
-        return { swapped: false, account: null, reason: "all-depleted", ...(Number.isFinite(waitUntil) ? { waitUntil } : {}) };
+        const waitUntil = soonest?.availableAt;
+        log("decide.depleted", { waitUntil: waitUntil ?? 0 });
+        return { swapped: false, account: null, reason: "all-depleted", ...(waitUntil != null ? { waitUntil } : {}) };
       }
 
       const waitUntil = target.availableAt;

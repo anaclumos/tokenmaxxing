@@ -480,12 +480,8 @@ class StdinRelay {
 
 function bareResumeStream(info: Analysis, argv: string[], sid: string | null): boolean {
   if (!info.manage || process.env[UNMANAGED_ENV] || info.sessionId != null || stripSessionFlags(argv).length !== 0 || sid == null) return false;
-  try {
-    const persisted = loadSessionFlags(sid);
-    return persisted != null && analyzeArgs(persisted).streamOutput;
-  } catch {
-    return false;
-  }
+  const persisted = loadSessionFlags(sid);
+  return persisted != null && analyzeArgs(persisted).streamOutput;
 }
 
 export async function runSupervisor(argv: string[]): Promise<number> {
@@ -529,7 +525,6 @@ export async function runSupervisor(argv: string[]): Promise<number> {
     const released = releaseClaim();
     if (child) {
       child.kill("SIGTERM");
-      void released;
     } else {
       released.finally(() => process.exit(143));
     }
@@ -592,7 +587,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
   let drainStdout: (() => Promise<void>) | null = null;
   try {
   while (true) {
-    if (existsSync(marker)) rmSync(marker, { force: true });
+    rmSync(marker, { force: true });
 
     const gate: MarkerGate = { launchedAt: Date.now(), overriddenUntil };
     const launched = await withLock(claudePool.lockFile, async () => {
