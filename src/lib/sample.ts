@@ -14,7 +14,7 @@ import { loadAccounts, loadUsageSnapshot, saveAccounts } from "./state.ts";
 import { fetchUsageDirect, mergeWindows, scrubCredEnv, windowsOf } from "./usage.ts";
 import type { Account, Bars, Config, UsageWindows, Window } from "./types.ts";
 
-export type SampleOutcome = { ok: true; usage: UsageWindows; via: "get" } | { ok: false; reason: string; retryAt?: number };
+export type SampleOutcome = { ok: true; usage: UsageWindows } | { ok: false; reason: string; retryAt?: number };
 
 type PreparedSample = { ok: true; token: string; expiresAt: number } | { ok: false; reason: string };
 
@@ -136,7 +136,7 @@ export async function runSample(account: Account, prepared: { token: string; exp
   }
   const read = await fetchUsageDirect(token);
   log("usage.read", { account: account.id.slice(0, 8), ok: read.ok });
-  if (read.ok) return { ok: true, usage: read.usage, via: "get" };
+  if (read.ok) return { ok: true, usage: read.usage };
   if (read.retryAt == null) return { ok: false, reason: "usage read failed (see log)" };
   return { ok: false, reason: rateLimitedReason(read.retryAt, Date.now()), retryAt: read.retryAt };
 }
@@ -209,7 +209,7 @@ export async function sampleOldest(cfg: Config): Promise<void> {
         if (dirty) saveAccounts(claudePool, idx);
         log(outcome.ok ? "sample.ok" : "sample.failed", {
           account: account.id.slice(0, 8),
-          ...(outcome.ok ? { via: outcome.via } : { reason: outcome.reason.slice(0, 200) }),
+          ...(outcome.ok ? {} : { reason: outcome.reason.slice(0, 200) }),
         });
       });
     }),

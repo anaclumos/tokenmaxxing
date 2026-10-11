@@ -30,8 +30,8 @@ export function claudeTierLabel(input: { subscriptionType?: string; rateLimitTie
   return multiplier ? `${input.subscriptionType} ${multiplier}` : input.subscriptionType;
 }
 
-export function isAccessTokenExpiring(creds: OAuthCreds, skewMs = 120_000, now = Date.now()): boolean {
-  return !creds.expiresAt || creds.expiresAt - now <= skewMs;
+export function isAccessTokenExpiring(creds: OAuthCreds): boolean {
+  return creds.expiresAt - Date.now() <= 120_000;
 }
 
 export async function fetchTokenIdentity(accessToken: string, signal?: AbortSignal): Promise<TokenIdentity> {

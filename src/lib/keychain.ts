@@ -43,20 +43,12 @@ async function writeViaInteractive(encodedLine: Uint8Array): Promise<void> {
   if (p.exitCode !== 0) throw new Error(`keychain write (interactive) failed (exit ${p.exitCode}): ${err.trim()}`);
 }
 
-async function writeViaArgv(t: KeychainTarget, secret: string): Promise<void> {
-  const p = Bun.spawn([SECURITY, "add-generic-password", "-U", "-a", t.account, "-s", t.service, "-w", secret], {
-    stdout: "ignore",
-    stderr: "pipe",
-  });
-  const err = await p.stderr.text();
-  await p.exited;
-  if (p.exitCode !== 0) throw new Error(`keychain write (argv) failed (exit ${p.exitCode}): ${err.trim()}`);
-}
-
 export async function writeItem(t: KeychainTarget, secret: string): Promise<void> {
   const encoded = new TextEncoder().encode(interactiveLine(t, secret));
-  if (encoded.length <= INTERACTIVE_MAX_LINE) return writeViaInteractive(encoded);
-  return writeViaArgv(t, secret);
+  if (encoded.length > INTERACTIVE_MAX_LINE) {
+    throw new Error(`keychain write refused: the encoded line is ${encoded.length} bytes, past the ${INTERACTIVE_MAX_LINE}-byte limit of security -i, and a credential never goes on argv`);
+  }
+  return writeViaInteractive(encoded);
 }
 
 export async function deleteItem(t: KeychainTarget): Promise<boolean> {

@@ -14,12 +14,6 @@ function redact(s: string): string {
     .replace(/[A-Za-z0-9_-]{40,}/g, "***");
 }
 
-let echo: ((input: { event: string; parts: string }) => void) | null = null;
-
-export function setLogEcho(input: { printer: (input: { event: string; parts: string }) => void }): void {
-  echo = input.printer;
-}
-
 export function log(event: string, fields: Record<string, unknown> = {}): void {
   let line = "";
   try {
@@ -32,10 +26,6 @@ export function log(event: string, fields: Record<string, unknown> = {}): void {
       renameSync(paths.logFile, `${paths.logFile}.old`);
     }
     appendFileSync(paths.logFile, `${new Date().toISOString()} ${event} ${line}\n`);
-  } catch {
-  }
-  try {
-    echo?.({ event, parts: line });
   } catch {
   }
 }

@@ -13,8 +13,8 @@ export const MAX_WRAP_DEPTH = 5;
 export const UNMANAGED_ENV = "TOKENMAXXING_UNMANAGED";
 export const LOOP_DIAGNOSIS = "wrapper re-entered without reaching the real";
 
-export function wrapDepth(env: Record<string, string | undefined> = process.env): number {
-  const n = Number(env[WRAP_DEPTH_ENV] ?? "");
+export function wrapDepth(): number {
+  const n = Number(process.env[WRAP_DEPTH_ENV] ?? "");
   return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
 }
 
