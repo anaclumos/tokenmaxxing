@@ -14,7 +14,7 @@ import { thresholdBars, usableAt } from "../lib/picker.ts";
 import { clearPresence } from "../lib/presence.ts";
 import { readLines } from "../lib/proc.ts";
 import { teeObservation } from "../lib/sample.ts";
-import { countdownWait, exitStatus, loopGuardTripped, raceMarkerOrExit, recordPresenceOrStop, relayStdout, runPassthrough, SEAT_POLL_MS, SEAT_RETRY_MS, type Say } from "../lib/supervise.ts";
+import { childStdout, countdownWait, exitStatus, loopGuardTripped, raceMarkerOrExit, recordPresenceOrStop, relayStdout, runPassthrough, SEAT_POLL_MS, SEAT_RETRY_MS, type Say } from "../lib/supervise.ts";
 import { saveTermios } from "../lib/tty.ts";
 import { liveSessionId, loadSessionFlags, pruneStaleSessions, saveSessionFlags, writeRespawnMarker } from "../lib/sessions.ts";
 import { loadAccounts, loadConfig, readJsonFile, releaseWaitClaim, writeUsage } from "../lib/state.ts";
@@ -584,7 +584,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
   let overriddenUntil = 0;
   let wanted: { accountId: string | null; apiKeyId: string | null } | null = null;
   let refused: string[] = [];
-  let drainStdout: (() => Promise<void>) | null = null;
+  let drainStdout: ((abandoned: () => boolean) => Promise<void>) | null = null;
   try {
   while (true) {
     rmSync(marker, { force: true });
@@ -602,7 +602,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
       const extra: "pipe"[] = secret == null ? [] : ["pipe"];
       const scrubbed = scrubCredEnv(childEnv);
       const spawned = Bun.spawn([real, ...launchArgs], {
-        stdio: [relay === null ? "inherit" : "pipe", tee === null ? "inherit" : "pipe", "inherit", ...extra],
+        stdio: [relay === null ? "inherit" : "pipe", tee === null ? childStdout() : "pipe", "inherit", ...extra],
         env: {
           ...(picked ? { ...scrubbed, CLAUDE_SECURESTORAGE_CONFIG_DIR: storeDirFor(picked.id) } : key ? apiKeyEnv(scrubbed, key) : childEnv),
           TOKENMAXXING_SUPERVISED: "1",
@@ -615,7 +615,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
       });
       child = spawned;
       if (secret != null) sendApiKey(spawned, secret);
-      const drain = tee !== null && spawned.stdout instanceof ReadableStream ? relayStdout(spawned.stdout, tee) : null;
+      const drain = spawned.stdout instanceof ReadableStream ? relayStdout(spawned.stdout, tee ?? undefined) : null;
       if (relay !== null) relay.attach(spawned.stdin!, firstLine, pendingTranscript);
       firstLine = null;
       if (picked || key) {
@@ -659,7 +659,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
         relay?.detach();
       },
     });
-    await drainStdout?.();
+    await drainStdout?.(() => terminating);
     drainStdout = null;
     await foldCost(sid, key?.id ?? null, restored);
 
@@ -729,7 +729,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
     return exitStatus(proc);
   }
   } catch (e) {
-    await drainStdout?.();
+    await drainStdout?.(() => terminating);
     const msg = errorMessage(e);
     const text = msg.startsWith("tokenmaxxing:") ? msg : `tokenmaxxing: ${msg}`;
     say(`\n\x1b[31m${text}\x1b[0m\n`, text);
