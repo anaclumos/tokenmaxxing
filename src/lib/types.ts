@@ -195,7 +195,7 @@ export const SessionCostSchema = z.object({ sessionId: z.string(), usd: z.number
 export type SessionCost = z.infer<typeof SessionCostSchema>;
 
 export const CostLineSchema = z
-  .looseObject({ session_id: z.string(), num_turns: z.number().optional(), total_cost_usd: z.number().optional(), cost: z.looseObject({ total_cost_usd: z.number() }).nullable().optional() })
+  .looseObject({ session_id: z.uuid(), num_turns: z.number().optional(), total_cost_usd: z.number().optional(), cost: z.looseObject({ total_cost_usd: z.number() }).nullable().optional() })
   .transform((line): SessionCost | null => {
     const usd = line.total_cost_usd ?? line.cost?.total_cost_usd;
     return usd == null || (usd === 0 && line.num_turns === 0) ? null : { sessionId: line.session_id, usd };

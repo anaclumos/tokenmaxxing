@@ -44,7 +44,7 @@ function recordLiveSession(sid: string, current: string): void {
 
 const TMP_GRACE_MS = 3600 * 1000;
 
-const STORE_PARENTS = [paths.storesDir, codexPaths.storesDir, grokPaths.storesDir, join(piPaths.storesDir, "claude"), join(piPaths.storesDir, "codex")];
+const SWEEP_PARENTS = [paths.storesDir, codexPaths.storesDir, grokPaths.storesDir, join(piPaths.storesDir, "claude"), join(piPaths.storesDir, "codex"), paths.costDir];
 
 function listDir(dir: string, root: string): Dirent[] {
   if (!existsSync(dir)) return [];
@@ -59,8 +59,8 @@ function listDir(dir: string, root: string): Dirent[] {
 }
 
 function tmpSweepDirs(root: string): string[] {
-  const dirs = [paths.home, paths.usageDir, paths.presenceDir, paths.respawnDir, sessionsDir(), paths.binDir, paths.apiKeysDir, paths.costDir, codexPaths.presenceDir, codexPaths.respawnDir, codexPaths.onboardDir];
-  for (const parent of STORE_PARENTS) {
+  const dirs = [paths.home, paths.usageDir, paths.presenceDir, paths.respawnDir, sessionsDir(), paths.binDir, paths.apiKeysDir, codexPaths.presenceDir, codexPaths.respawnDir, codexPaths.onboardDir];
+  for (const parent of SWEEP_PARENTS) {
     for (const child of listDir(parent, root)) {
       if (child.isDirectory()) dirs.push(join(parent, child.name));
     }
