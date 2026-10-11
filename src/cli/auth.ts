@@ -1,4 +1,5 @@
-import { partition } from "es-toolkit";
+import { partition, uniq } from "es-toolkit";
+import { z } from "zod";
 import { withLock } from "../lib/lock.ts";
 import { log } from "../lib/log.ts";
 import type { PiPool } from "../lib/paths.ts";
@@ -7,11 +8,13 @@ import { piStoreUsable, writePiStore } from "../lib/piauth.ts";
 import type { Provider } from "../lib/provider.ts";
 import { loadAccounts, saveAccounts, upsertAccount } from "../lib/state.ts";
 import { findAccount } from "./rename.ts";
-import { usageNote } from "./add.ts";
+import { poolHarvest, usageNote } from "./add.ts";
 import { c, count } from "./render.ts";
 import type { Account, AccountsIndex } from "../lib/types.ts";
 
-const AUTH_USAGE = "usage: tokenmaxxing auth [--codex | --grok] [<email|label|id> | --all]\n       tokenmaxxing auth --pi [--codex] [<email|label|id> | --all]";
+const AUTH_USAGE =
+  "usage: tokenmaxxing auth [--codex | --grok] [<email|label|id> | --all]\n       tokenmaxxing auth [--codex | --grok] --emails <email>...\n       tokenmaxxing auth --pi [--codex] [<email|label|id> | --all]";
+const EMAILS_FLAG = "--emails";
 
 export type AuthPlan = { kind: "usage" } | { kind: "error"; message: string } | { kind: "pick" } | { kind: "targets"; ids: string[] };
 
@@ -132,7 +135,48 @@ async function piLoginOne(p: Provider, pool: PiPool, target: Account): Promise<b
   return true;
 }
 
+async function loginEmails(p: Provider, argv: string[]): Promise<number> {
+  const emails = uniq(argv.filter((a) => a !== EMAILS_FLAG).map((a) => a.toLowerCase()));
+  const invalid = emails.filter((e) => !z.email().safeParse(e).success);
+  if (emails.length === 0 || invalid.length > 0) {
+    if (invalid.length > 0) console.error(c.red(`not an email: ${invalid.join(", ")}`));
+    console.error(AUTH_USAGE);
+    return 2;
+  }
+  const pooled = new Set(loadAccounts(p.pool).accounts.flatMap((a) => (a.email == null ? [] : [a.email.toLowerCase()])));
+  const [skipped, targets] = partition(emails, (e) => pooled.has(e));
+  for (const email of skipped) console.log(c.dim(`skip ${email} - already in the ${p.name} pool`));
+
+  let ok = 0;
+  for (const [i, email] of targets.entries()) {
+    console.log();
+    if (targets.length > 1) console.log(c.bold(`[${i + 1}/${targets.length}]`));
+    console.log(c.cyan(`Opening an isolated ${p.name} login - sign in as  ${c.bold(email)}.`));
+    console.log(c.dim(p.loginStep("that account")));
+    console.log();
+    const harvested = await p.login();
+    if (!harvested) continue;
+    if (harvested.email?.toLowerCase() !== email) {
+      console.error(c.red(`that login is ${c.bold(harvested.email ?? harvested.id.slice(0, 8))}, not ${c.bold(email)} - nothing changed.`));
+      continue;
+    }
+    await poolHarvest(p, harvested);
+    ok += 1;
+  }
+
+  console.log();
+  console.log(`added ${count({ n: ok, noun: "account" })} of ${targets.length}, skipped ${skipped.length} already pooled`);
+  return ok === targets.length ? 0 : 1;
+}
+
 export async function cmdAuth(p: Provider, argv: string[], pi: PiPool | null): Promise<number> {
+  if (argv.includes(EMAILS_FLAG)) {
+    if (pi) {
+      console.error(AUTH_USAGE);
+      return 2;
+    }
+    return loginEmails(p, argv);
+  }
   const idx = loadAccounts(p.pool);
   const needsAuth = new Set<string>();
   for (const a of idx.accounts) {
