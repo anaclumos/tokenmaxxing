@@ -53,12 +53,7 @@ export async function fetchTokenIdentity(accessToken: string, signal?: AbortSign
   if (!res.ok) throw new IdentityUnavailableError(res.status, safeErrorDetail({ text }));
   const parsed = ProfileResponseSchema.safeParse(JsonTextSchema.safeParse(text).data);
   if (!parsed.success) throw new IdentityUnavailableError(res.status, `profile endpoint returned an unrecognized body (${text.length} bytes, withheld)`);
-  return {
-    accountUuid: parsed.data.account.uuid,
-    email: parsed.data.account.email ?? null,
-    organizationUuid: parsed.data.organization.uuid,
-    organizationName: parsed.data.organization.name ?? null,
-  };
+  return parsed.data;
 }
 
 export function describeIdentity(id: TokenIdentity): string {
