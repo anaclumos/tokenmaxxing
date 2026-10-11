@@ -28,10 +28,7 @@
         system:
         import inputs.nixpkgs {
           inherit system;
-          overlays = [
-            inputs.bun2nix.overlays.default
-            inputs.self.overlays.default
-          ];
+          overlays = [ inputs.self.overlays.default ];
         }
       );
     in
