@@ -186,7 +186,8 @@ function sessionHeader(path: string): z.infer<typeof SessionHeaderSchema> | null
   try {
     fd = openSync(path, "r");
   } catch (e) {
-    if (ErrnoSchema.safeParse(e).data?.code === "ENOENT") return null;
+    const code = ErrnoSchema.safeParse(e).data?.code;
+    if (code === "ENOENT" || code === "EACCES") return null;
     throw e;
   }
   try {
