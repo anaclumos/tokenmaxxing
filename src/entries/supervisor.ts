@@ -332,7 +332,7 @@ function systemLine(sid: string, text: string): string {
 }
 
 function resumePrompt(input: { compacted: boolean; origin: z.infer<typeof RespawnMarkerSchema>["origin"]; onKey: boolean }): string {
-  const where = input.onKey ? "on an Anthropic API key, because every pooled account is at its limit or the previous key ran out" : "on an account with quota headroom";
+  const where = input.onKey ? "on an API key, because every pooled account is at its limit or the previous key ran out" : "on an account with quota headroom";
   const moved = input.compacted
     ? `tokenmaxxing compacted this conversation and resumed the session ${where}.`
     : `tokenmaxxing resumed this session ${where}.`;

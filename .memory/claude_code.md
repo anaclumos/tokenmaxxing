@@ -1,6 +1,6 @@
 # Claude Code internals
 
-Verified mechanics of the Claude Code binary that the pool depends on. The binary changes monthly: re-verify against the installed binary before building on an entry. Supervisor, hook, and seat rules are in `AGENTS.md`; Codex is in [[codex]] and pi in [[pi]].
+Verified mechanics of the Claude Code binary that the pool depends on. The binary changes monthly: re-verify against the installed binary before building on an entry. Supervisor, hook, and seat rules are in `.claude/rules/`; Codex is in [[codex]] and pi in [[pi]].
 
 ## Verification baseline
 
@@ -115,6 +115,10 @@ Verified mechanics of the Claude Code binary that the pool depends on. The binar
 - The statusLine stdin `rate_limits` key exists only for claude.ai Pro and Max subscribers after the session's first API response; each window (`five_hour`, `seven_day`, and the gateway-only `spend_limit`) can be absent on its own, and Claude Code drops a window once its `resets_at` passes, so a missing window is no reading, never 0.
 - The transcript directory for a cwd is `~/.claude/projects/<slug>`: every character that is not an ASCII letter or digit becomes `-`, and a slug over 200 characters is cut to 200 plus `-` and a base-36 hash of the original cwd. `PROJECT_DIR_MAX` and `projectDirForCwd` in `src/entries/supervisor.ts` mirror it, so derive a long path through that function; a lookup that skips the cut finds no transcript and `--continue` starts a new session (re-verify the binary's naming function on a binary bump).
 - Under Bun, `os.userInfo().username` reads `USER` and returns `unknown` when it is unset, so the keychain account in `src/lib/paths.ts` copies Claude Code's `process.env.USER || os.userInfo().username` and its name check exactly; confirm against the binary with `LC_ALL=C grep -aob 'claude-code-user' <binary>` (re-verify on a binary bump).
+
+## OpenRouter
+
+- `limit_remaining` from `GET /api/v1/key` is the key's own limit only, and `null` for a key with none: a guardrail or workspace budget is a separate `budgets` entry (`effective_budget` names the one that blocks first) that answers 403 with `error.metadata.limit_source` `openrouter_guardrail_budget` or `openrouter_workspace_budget` while `limit_remaining` still shows credit, so the credit left that tokenmaxxing reads is right only while the key's own limit is the one that binds; a spent key limit answers 403 with `openrouter_key_limit`, and an account balance or in-flight budget refusal answers 402 with `openrouter_credits` or `openrouter_in_flight_budget`.
 
 ## Reading the binary
 
