@@ -643,7 +643,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
     }
     if (launched.waitOn !== undefined) {
       log("supervisor.depleted_wait", { sid: sid.slice(0, 8), account: launched.waitOn.id.slice(0, 8), waitUntil: launched.waitUntil });
-      if (await countdownWait(launched.waitOn.label, launched.waitUntil, { stream, say })) overriddenUntil = launched.waitUntil;
+      if (await countdownWait(launched.waitOn.label, launched.waitUntil, { stream, say, holdSid: noticeSid })) overriddenUntil = launched.waitUntil;
       continue;
     }
 
