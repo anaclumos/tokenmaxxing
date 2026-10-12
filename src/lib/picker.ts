@@ -164,6 +164,12 @@ export function seatHeadroom(a: Account, ctx: PickCtx): number {
   return (barFor(a, session, ctx.thresholds, ctx.now) - liveUsed(session, ctx.now)) / ((ctx.seats?.get(a.id) ?? 0) + 1);
 }
 
+const MIN_SEAT_HEADROOM = 5;
+
+function seatFull(a: Account, ctx: PickCtx): boolean {
+  return ctx.seats != null && sessionWindow(a) != null && !spendsCredits(a, ctx.thresholds) && seatHeadroom(a, ctx) < MIN_SEAT_HEADROOM;
+}
+
 export function onCredits(a: Account, ctx: PickCtx): boolean {
   return spendsCredits(a, ctx.thresholds) && isExhausted({ ...a, hasCredits: false }, ctx);
 }
@@ -178,12 +184,14 @@ const swapPreference = (ctx: PickCtx) => [
 ];
 
 export function pickBest(accounts: Account[], ctx: PickCtx): Account | null {
-  const usable = accounts.filter((a) => a.id !== ctx.currentId && !a.needsReauth && !isExhausted(a, ctx));
+  const usable = accounts.filter((a) => a.id !== ctx.currentId && !a.needsReauth && !isExhausted(a, ctx) && !seatFull(a, ctx));
   return sortBy(usable, swapPreference(ctx))[0] ?? null;
 }
 
 export function usableAt(a: Account, ctx: PickCtx): number {
   const blocking = blockingUntil(a, ctx).filter((t) => t > ctx.now);
+  const session = sessionWindow(a);
+  if (session != null && seatFull(a, ctx)) blocking.push(windowEnd(session) > ctx.now ? windowEnd(session) : ctx.now + (session.windowSeconds ?? 0) * 1000);
   return blocking.length ? Math.max(...blocking) : ctx.now;
 }
 
