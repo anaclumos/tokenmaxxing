@@ -62,8 +62,8 @@ function printHelp(): void {
   ${c.cyan("tokenmaxxing doctor")}     verify the install is intact
   ${c.cyan("tokenmaxxing rename")} [--codex | --grok] <sel> <label>
   ${c.cyan("tokenmaxxing rm")} [--codex | --grok] <sel>
-  ${c.cyan("tokenmaxxing key add")} <label> [credit-usd] [workspace-id]  store an Anthropic API key read from stdin; Claude sessions run on it only while every pooled Claude account is at its limit (workspace-id: for a key that spans several workspaces)
-  ${c.cyan("tokenmaxxing key credit")} <label> <usd>  set the key's balance as the Console shows it and restart its spend count
+  ${c.cyan("tokenmaxxing key add")} <label> [credit-usd] [workspace-id]  store an Anthropic or OpenRouter (sk-or-...) API key read from stdin or the prompt; Claude sessions run on it only while every pooled Claude account is at its limit (workspace-id: for a key that spans several workspaces; an OpenRouter key takes neither argument and reads its credit from OpenRouter)
+  ${c.cyan("tokenmaxxing key credit")} <label> <usd>  set the key's balance as the Console shows it and restart its spend count (an OpenRouter key takes no amount: key credit <label> clears its refusal)
   ${c.cyan("tokenmaxxing key rm")} <label>  delete the key and its stored secret (refused while a session runs on it)
   ${c.cyan("tokenmaxxing seat")} <pid>  lend one pooled Claude account to an unattended consumer until <pid> exits: prints the store directory to set as CLAUDE_SECURESTORAGE_CONFIG_DIR (the directory itself, as its owner, never a copy of its credential); host sessions and other borrowers share the account; exit 1 = none usable
   ${c.cyan("tokenmaxxing seat")} <pid> --store <id>  lend the Claude store with that 8-character id instead of the ranked pick, checking only that it is pooled, holds a usable credential, and is not flagged for reauthentication; bars, the credits flag, and holds are the caller's job; exit 0 = granted, 1 = the store is unusable, 2 = unknown store, <pid> already holds another store, or bad usage

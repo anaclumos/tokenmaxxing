@@ -1,13 +1,16 @@
 import { chmodSync, closeSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeSync } from "node:fs";
 import { join } from "node:path";
 import { countBy, isEqual, sortBy } from "es-toolkit";
+import { z } from "zod";
 import { writeFileAtomic } from "./atomic.ts";
+import { http, safeErrorDetail } from "./http.ts";
 import { withLock } from "./lock.ts";
-import { claudePool, optionalEnv, paths } from "./paths.ts";
+import { errorMessage, log } from "./log.ts";
+import { claudePool, env, optionalEnv, paths } from "./paths.ts";
 import { livingPresences } from "./presence.ts";
 import type { ApiKeyPool } from "./provider.ts";
 import { readJsonFile } from "./state.ts";
-import { ApiKeysIndexSchema, SessionCostSchema, type ApiKey, type ApiKeysIndex, type SessionCost } from "./types.ts";
+import { ApiKeysIndexSchema, JsonTextSchema, SessionCostSchema, type ApiKey, type ApiKeysIndex, type SessionCost } from "./types.ts";
 
 export const API_KEY_ENV = "TOKENMAXXING_API_KEY_ID";
 export const API_KEY_FD = 3;
@@ -15,7 +18,58 @@ export const API_KEY_FD = 3;
 export function apiKeyEnv(env: Record<string, string | undefined>, key: ApiKey): Record<string, string | undefined> {
   const header = key.workspaceId == null ? null : `anthropic-workspace-id: ${key.workspaceId}`;
   const headers = header == null ? env.ANTHROPIC_CUSTOM_HEADERS : env.ANTHROPIC_CUSTOM_HEADERS ? `${env.ANTHROPIC_CUSTOM_HEADERS}\n${header}` : header;
-  return { ...env, CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR: String(API_KEY_FD), ...(headers != null ? { ANTHROPIC_CUSTOM_HEADERS: headers } : {}) };
+  return {
+    ...env,
+    CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR: String(API_KEY_FD),
+    ...(headers != null ? { ANTHROPIC_CUSTOM_HEADERS: headers } : {}),
+    ...(isOpenRouterKey(key) ? { ANTHROPIC_BASE_URL: OPENROUTER_URL } : {}),
+  };
+}
+
+export const OPENROUTER_PREFIX = "sk-or-";
+
+export function isOpenRouterKey(key: ApiKey): boolean {
+  return readApiKey(key).startsWith(OPENROUTER_PREFIX);
+}
+
+const OPENROUTER_URL = env("TOKENMAXXING_OPENROUTER_URL", "https://openrouter.ai/api");
+const OPENROUTER_READ_DEADLINE_MS = 10_000;
+const OpenRouterKeySchema = z.looseObject({ data: z.looseObject({ limit_remaining: z.number().nullable() }) });
+
+export async function readOpenRouterCredit(secret: string): Promise<NonNullable<ApiKey["openrouter"]>> {
+  const at = Date.now();
+  const res = await http.get(`${OPENROUTER_URL}/v1/key`, { headers: { Authorization: `Bearer ${secret}` }, signal: AbortSignal.timeout(OPENROUTER_READ_DEADLINE_MS) });
+  const text = await res.text();
+  if (!res.ok) throw new Error(`OpenRouter key read answered HTTP ${res.status}: ${safeErrorDetail({ text })}`);
+  return { remainingUsd: OpenRouterKeySchema.parse(JsonTextSchema.safeParse(text).data).data.limit_remaining, at };
+}
+
+export async function refreshOpenRouterCredit(): Promise<void> {
+  if (!existsSync(claudePool.apiKeysJson)) return;
+  const reads = await Promise.all(
+    availableKeys().map(async (k) => {
+      try {
+        if (!isOpenRouterKey(k)) return null;
+        return { id: k.id, credit: await readOpenRouterCredit(readApiKey(k).trim()) };
+      } catch (e) {
+        log("apikey.openrouter_read_failed", { key: k.id, err: errorMessage(e) });
+        return null;
+      }
+    }),
+  );
+  const landed = reads.filter((r) => r != null);
+  if (landed.length === 0) return;
+  await withLock(claudePool.lockFile, () => {
+    const idx = loadApiKeys();
+    let changed = false;
+    for (const r of landed) {
+      const key = idx.keys.find((k) => k.id === r.id);
+      if (key == null || r.credit.at <= (key.openrouter?.at ?? 0)) continue;
+      key.openrouter = r.credit;
+      changed = true;
+    }
+    if (changed) saveApiKeys(idx);
+  });
 }
 
 export function readApiKey(key: ApiKey): string {
@@ -57,6 +111,7 @@ export function removeApiKeySecret(id: string): void {
 }
 
 export function creditLeft(k: ApiKey): number | null {
+  if (k.openrouter != null) return k.openrouter.remainingUsd;
   return k.creditUsd == null ? null : k.creditUsd - k.spentUsd;
 }
 
@@ -157,7 +212,7 @@ export async function foldSessionCost(sid: string, keyId: string | null, restore
       const prev = idx.baselines[seen.sessionId];
       if (prev != null && seen.usd <= prev.usd) continue;
       const delta = Math.max(0, seen.usd - (prev?.usd ?? restoredCost(seen.sessionId)));
-      if (key) key.spentUsd += delta;
+      if (key && !isOpenRouterKey(key)) key.spentUsd += delta;
       idx.baselines[seen.sessionId] = { usd: seen.usd, at: Date.now() };
       changed = true;
     }
