@@ -177,6 +177,7 @@ The wait target follows these steps in order:
 | 3 | Only when every reset within that horizon is full does it join the least-crowded one (ties broken by soonest reset, then the session's own account). |
 
 - Claims live in `wait-queue.json` for the length of the countdown and are released when the session relaunches.
+- In a stream-json session (the Agent SDK, T3 Code) the countdown shows as one background task for its length, so a host that stops idle sessions leaves the waiting one alone. T3 Code 0.0.45 stops a session after 30 minutes with no active turn and no background task, and a wait is often longer. The task ends with the wait.
 - When no account resets within twice `policy.maxWaitMs`, the decision reports the pool as depleted and the session stays put, keeps running into its real limit, and the enforced-limit path below takes over.
 - The pause happens at the bar, not at 100: the unspent headroom is the same budget that set the bar.
 - Only a supervised session waits: a session outside the supervisor gets the enforced stamp and nothing else.
