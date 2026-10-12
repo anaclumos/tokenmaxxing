@@ -1,6 +1,6 @@
 # Claude Code internals
 
-Verified mechanics of the Claude Code binary that the pool depends on. The binary changes monthly: re-verify against the installed binary before building on an entry. Supervisor, hook, and seat rules are in `AGENTS.md`; Codex is in [[codex]] and pi in [[pi]].
+Verified mechanics of the Claude Code binary that the pool depends on. The binary changes monthly: re-verify against the installed binary before building on an entry. Supervisor, hook, and seat rules are in `.claude/rules/`; Codex is in [[codex]] and pi in [[pi]].
 
 ## Verification baseline
 

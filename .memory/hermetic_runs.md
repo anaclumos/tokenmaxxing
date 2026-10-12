@@ -1,6 +1,6 @@
 # Hermetic runs
 
-Traps in running the supervisor, hooks, `check`, `status`, and `seat` against a throwaway state. The rules (no mutating command on a live host, a full isolated `HOME`, `TOKENMAXXING_SKIP_TIMER=1`) are in `AGENTS.md` "Verification".
+Traps in running the supervisor, hooks, `check`, `status`, and `seat` against a throwaway state. The rules (no mutating command on a live host, a full isolated `HOME`, `TOKENMAXXING_SKIP_TIMER=1`) are in `AGENTS.md` "Shipping and verification" and the `hermetic-runs` skill.
 
 - A fresh worktree has no `node_modules` under `docs/`; run `bun install --frozen-lockfile` there for the docs app.
 - Resolve `BUN=$(command -v bun)` before exporting a throwaway `HOME`, because `~/.bun/bin/bun` then expands under the fake home and exits 127; run `env -i PATH=<dirs> HOME=<tmp> TOKENMAXXING_HOME=<tmp> TOKENMAXXING_SKIP_TIMER=1 TOKENMAXXING_CLAUDE_BIN=<stub> "$BUN" run src/main.ts <args>`.
