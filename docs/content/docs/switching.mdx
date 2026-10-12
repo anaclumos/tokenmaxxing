@@ -14,7 +14,7 @@ flowchart LR
 ```
 
 - The same ranking places a new session at launch.
-- A launch onto a depleted pool takes the same target selection, counting running sessions as well as queued waiters, and starts immediately.
+- A launch onto a depleted pool takes the same target selection, counting running sessions as well as queued waiters. The supervisor starts no `claude` process: it claims that reset in `wait-queue.json`, counts down to it, and then places the session again.
 - With no usable account, a stored API key with credit left comes before the wait, at launch and on a running session; see [API keys](#api-keys).
 - Every Codex session runs on its own seat too: the account whose store the codex supervisor gave it at launch, decided the same way at each Stop hook; everything else is shared.
 
@@ -153,19 +153,18 @@ For Claude:
 - Claude Code writes the compaction boundary into the same transcript, and the relaunch honors it.
 - The supervisor counts the compaction as landed only when that boundary appears, because `claude -p` exits 0 on a refused compaction too.
 - A session with no transcript file on disk, or one launched with no seat, skips the step.
-- The depleted-pool wait compacts the same way before its countdown.
+- The depleted-pool wait never compacts: no account has quota, so the session resumes with its full context after the reset.
 
 A move the enforced-limit path triggers never compacts, and neither does any move while the old account carries an enforced-limit wall (a seat-watch move after a subagent's refusal, for one): the account already refused a request, so the compaction call would fail the same way.
 
 ## When nothing is usable
 
-When every account is at or over a bar and no stored API key has credit left (see [API keys](#api-keys)), the decision assigns the session to a recovery account. If that reset lands within twice `policy.maxWaitMs` (`maxWaitMs` defaults to 1 hour), the supervised session pauses until it and resumes on that account (see [Architecture](/architecture)). Assignment is first come first served with at most eight waiting sessions per account, so one reset wakes at most eight sessions instead of the whole pool.
+When every account is at or over a bar and no stored API key has credit left (see [API keys](#api-keys)), the decision assigns the session to a recovery account. If that reset lands within twice `policy.maxWaitMs` (`maxWaitMs` defaults to 1 hour), the supervised session pauses until it, and the supervisor then places the session again by the same ranking (see [Architecture](/architecture)). Assignment is first come first served with at most eight waiting sessions per account, so one reset wakes at most eight sessions instead of the whole pool.
 
 ```mermaid
 flowchart LR
-  bar["every account<br/>at or over a bar"] -->|"supervised session,<br/>a target resets<br/>within twice<br/>policy.maxWaitMs"| compact["compact on<br/>the old account"]
-  compact --> countdown["pause for the<br/>countdown, claim in<br/>wait-queue.json"]
-  countdown --> resume["resume on the<br/>target account,<br/>claim released"]
+  bar["every account<br/>at or over a bar"] -->|"supervised session,<br/>a target resets<br/>within twice<br/>policy.maxWaitMs"| countdown["pause for the<br/>countdown, claim in<br/>wait-queue.json,<br/>no compaction"]
+  countdown --> resume["place the session<br/>again and resume,<br/>claim released"]
   bar -->|"no reset<br/>within twice<br/>policy.maxWaitMs"| depleted["pool depleted:<br/>the session<br/>stays put"]
 ```
 
