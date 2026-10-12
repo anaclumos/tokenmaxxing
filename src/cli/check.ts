@@ -1,3 +1,4 @@
+import { refreshOpenRouterCredit } from "../lib/apikeys.ts";
 import { claude } from "../lib/claude.ts";
 import { codex } from "../lib/codex.ts";
 import { evaluateAndMaybeSwap, useBankedResets } from "../lib/decide.ts";
@@ -16,6 +17,7 @@ export async function cmdCheck(json = false): Promise<number> {
     d = await evaluateAndMaybeSwap(claude, now);
     await useBankedResets(codex, loadConfig(), now);
     await sampleOldest(loadConfig());
+    await refreshOpenRouterCredit();
     await maybeAutoUpdate();
   } catch (e) {
     const detail = errorMessage(e);

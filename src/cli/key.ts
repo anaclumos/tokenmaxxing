@@ -1,12 +1,14 @@
 import { z } from "zod";
-import { keySessions, loadApiKeys, removeApiKeySecret, saveApiKeys, settleLiveSessionCosts, writeApiKeySecret } from "../lib/apikeys.ts";
+import { isOpenRouterKey, keySessions, loadApiKeys, OPENROUTER_PREFIX, readOpenRouterCredit, removeApiKeySecret, saveApiKeys, settleLiveSessionCosts, writeApiKeySecret } from "../lib/apikeys.ts";
 import { withLock } from "../lib/lock.ts";
+import { errorMessage } from "../lib/log.ts";
 import { claudePool } from "../lib/paths.ts";
 import { readStdin } from "../lib/proc.ts";
 import type { ApiKey } from "../lib/types.ts";
 import { c, emitError, plain } from "./render.ts";
 
-const USAGE = "usage: tokenmaxxing key add <label> [credit-usd] [workspace-id] (the key on stdin) | key credit <label> <usd> | key rm <label>";
+const USAGE =
+  "usage: tokenmaxxing key add <label> [credit-usd] [workspace-id] (the key at the prompt, or on stdin when piped) | key credit <label> <usd> (an OpenRouter key takes no amount and clears its refusal) | key rm <label>";
 
 const UsdSchema = z.string().trim().min(1).transform(Number).pipe(z.number().min(0));
 
@@ -44,13 +46,9 @@ async function add(args: string[]): Promise<number> {
     return 2;
   }
   const workspaceId = workspace?.data;
-  if (process.stdin.isTTY) {
-    emitError({ message: "refusing to read the API key from a terminal, which would echo it - pipe it in: read -rs KEY && printf '%s' \"$KEY\" | tokenmaxxing key add <label> ...; unset KEY" });
-    return 2;
-  }
-  const secret = (await readStdin()).trim();
+  const secret = (process.stdin.isTTY ? (prompt("API key:") ?? "") : await readStdin()).trim();
   if (secret === "") {
-    emitError({ message: "no API key on stdin - pipe the key in, for example from your password manager" });
+    emitError({ message: "no API key given - paste it at the prompt or pipe it in" });
     return 2;
   }
   if (secret.includes("\n") || secret.includes("\r")) {
@@ -60,6 +58,19 @@ async function add(args: string[]): Promise<number> {
   if (secret.startsWith("sk-ant-admin")) {
     emitError({ message: "that is an Admin API key, which cannot run inference - create a regular API key in the Console" });
     return 2;
+  }
+  let openrouter: ApiKey["openrouter"];
+  if (secret.startsWith(OPENROUTER_PREFIX)) {
+    if (credit != null || workspaceId != null) {
+      emitError({ message: "an OpenRouter key takes no credit-usd or workspace-id - its credit left is the key's limit_remaining on OpenRouter" });
+      return 2;
+    }
+    try {
+      openrouter = await readOpenRouterCredit(secret);
+    } catch (e) {
+      emitError({ message: `could not read that OpenRouter key: ${errorMessage(e)}` });
+      return 1;
+    }
   }
   return withLock(claudePool.lockFile, () => {
     const idx = loadApiKeys();
@@ -80,20 +91,24 @@ async function add(args: string[]): Promise<number> {
       spentUsd: 0,
       creditSetAt: now,
       addedAt: now,
+      ...(openrouter != null ? { openrouter } : {}),
     });
     saveApiKeys(idx);
-    console.log(`added API key ${c.bold(label)} (${credit != null ? `credit ${usd(credit)}` : "credit unknown, ranks after keys with a balance"}${workspaceId != null ? `, workspace ${workspaceId}` : ""})`);
+    const left = openrouter != null ? openrouter.remainingUsd : credit;
+    console.log(
+      `added ${openrouter != null ? "OpenRouter" : "API"} key ${c.bold(label)} (${left != null ? `credit ${usd(left)}` : "credit unknown, ranks after keys with a balance"}${workspaceId != null ? `, workspace ${workspaceId}` : ""})`,
+    );
     return 0;
   });
 }
 
 async function credit(args: string[]): Promise<number> {
   const [label, amountRaw] = args;
-  if (!label || amountRaw == null || args.length > 2) {
+  if (!label || args.length > 2) {
     emitError({ message: USAGE, paint: plain });
     return 2;
   }
-  const amount = parseUsd(amountRaw);
+  const amount = amountRaw == null ? undefined : parseUsd(amountRaw);
   if (amount === null) return 2;
   return withLock(claudePool.lockFile, () => {
     const idx = loadApiKeys();
@@ -101,6 +116,20 @@ async function credit(args: string[]): Promise<number> {
     if (!key) {
       emitError({ message: `no API key is labeled "${label}"` });
       return 1;
+    }
+    if (isOpenRouterKey(key)) {
+      if (amount != null) {
+        emitError({ message: `${key.label} is an OpenRouter key - its credit left is the key's limit_remaining, read from OpenRouter on every check tick; set the limit on OpenRouter. \`key credit ${key.label}\` with no amount clears a refusal` });
+        return 1;
+      }
+      key.refusedAt = undefined;
+      saveApiKeys(idx);
+      console.log(`cleared the refusal on ${c.bold(key.label)}`);
+      return 0;
+    }
+    if (amount == null) {
+      emitError({ message: USAGE, paint: plain });
+      return 2;
     }
     key.creditUsd = amount;
     key.spentUsd = 0;
