@@ -204,7 +204,7 @@ The supervisor sees the marker and:
 
 1. SIGTERMs its child at the already-committed turn boundary. The Stop hook runs after the transcript is on disk and claude is idle, so nothing is lost.
 2. Restores the terminal.
-3. Compacts the conversation when the marker asks for it and the old seat carries no enforced-limit wall: `claude -p --resume <live-session-id> /compact` under the old seat's store, bounded at 5 minutes. The compaction counts only when Claude Code writes its compaction boundary into the transcript. A failure prints why, and the move goes on with the full context.
+3. Compacts the conversation when the marker asks for it, the old seat carries no enforced-limit wall, and the marker is not a depleted-pool wait: `claude -p --resume <live-session-id> /compact` under the old seat's store, bounded at 5 minutes. The compaction counts only when Claude Code writes its compaction boundary into the transcript. A failure prints why, and the move goes on with the full context.
 4. Relaunches `claude --resume <live-session-id>` with `CLAUDE_SECURESTORAGE_CONFIG_DIR` set to the target's store. The resumed process reads the target's store cold and continues the same conversation on the new account.
 
 The move writes no credential. Other sessions are not affected: each session moves on its own seat's figures.
@@ -251,7 +251,7 @@ The supervisor does not depend on a hook firing. Every ten seconds while the chi
 - A harness session whose main turn has ended while a background workflow or background agents keep burning the window. A harness session has no statusline tee, and its next Stop hook waits for the next prompt.
 - A subagent whose refusal stamped the wall while the parent turn was still running.
 
-A turn in flight is cut at the bar; the transcript holds every completed step, and the resume prompt continues from there. A Ctrl-C override of a depleted-pool wait suppresses the watch for as long as the override runs, and so does a launch onto a depleted pool until its target's reset, so the session starts immediately instead of pausing before its first turn.
+A turn in flight is cut at the bar; the transcript holds every completed step, and the resume prompt continues from there. A Ctrl-C override of a depleted-pool wait suppresses the watch for as long as the override runs.
 
 ### Unsupervised sessions and subagents
 
@@ -274,19 +274,20 @@ When every account in the pool is over its bars, the Stop hook writes the marker
 | Every reset within `policy.maxWaitMs` is full | the next reset with room, up to twice `policy.maxWaitMs` out |
 | Every reset within that horizon is full | the least-crowded reset |
 
-Claims are first come first served in `wait-queue.json`, so one reset wakes at most eight sessions and the rest are already queued on later resets. The auto-wait is bounded by twice `policy.maxWaitMs` (`maxWaitMs` defaults to 1 hour); beyond that the decision reports the pool as depleted instead of waiting. A launch onto a depleted pool takes the same target selection, counting running sessions as well as queued waiters, and starts immediately instead of parking.
+Claims are first come first served in `wait-queue.json`, so one reset wakes at most eight sessions and the rest are already queued on later resets. The auto-wait is bounded by twice `policy.maxWaitMs` (`maxWaitMs` defaults to 1 hour); beyond that the decision reports the pool as depleted instead of waiting. A launch onto a depleted pool takes the same target selection, counting running sessions as well as queued waiters, and waits the same way before it starts any `claude` process.
 
 ### The wait
 
 ```mermaid
 flowchart TD
-  t["terminate the child at the turn boundary,<br/>restore the terminal"] --> c["compact (when the marker asks)"]
-  c --> cd["countdown to the reset"]
+  t["terminate the child at the turn boundary,<br/>restore the terminal"] --> cd["countdown to the reset,<br/>no compaction"]
   cd --> r["release the wait claim"]
-  r --> l["relaunch under the target's store"]
+  r --> p["place the session again"]
+  p -->|"an account has quota"| l["relaunch under its store"]
+  p -->|"still depleted"| cd
 ```
 
-In a harness session, the countdown is one line naming the account and the resume time. The relaunch runs the same way as after a move: `--resume`, or `--session-id` when the live session has no transcript yet.
+The wait never compacts: no account has quota, so a compaction would fail on the old account or spend past its bar. Every launch, the first one included, goes through the same gate: when no pooled account has quota and no API key has credit, the supervisor starts no `claude` process, claims the reset in `wait-queue.json`, counts down to it, and places the session again. In a harness session, the countdown is one line naming the account and the resume time. The relaunch runs the same way as after a move: `--resume`, or `--session-id` when the live session has no transcript yet.
 
 Ctrl-C during the countdown resumes immediately. The supervisor then ignores any later marker whose `waitUntil` falls at or before the wait it skipped, so the next Stop hook does not park the session again.
 

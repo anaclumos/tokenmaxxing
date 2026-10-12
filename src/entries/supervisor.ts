@@ -17,7 +17,7 @@ import { teeObservation } from "../lib/sample.ts";
 import { childStdout, countdownWait, exitStatus, loopGuardTripped, raceMarkerOrExit, recordPresenceOrStop, relayStdout, runPassthrough, SEAT_POLL_MS, SEAT_RETRY_MS, type Say } from "../lib/supervise.ts";
 import { saveTermios } from "../lib/tty.ts";
 import { liveSessionId, loadSessionFlags, pruneStaleSessions, saveSessionFlags, writeRespawnMarker } from "../lib/sessions.ts";
-import { loadAccounts, loadConfig, readJsonFile, releaseWaitClaim, writeUsage } from "../lib/state.ts";
+import { loadAccounts, loadConfig, readJsonFile, releaseWaitClaim, replaceWaitClaim, writeUsage } from "../lib/state.ts";
 import { gatedFamilies, modelFromFlag, parseStreamLine, scrubCredEnv } from "../lib/usage.ts";
 import { CostLineSchema, CostStateRowSchema, JsonTextSchema, RespawnMarkerSchema, type Account, type ApiKey, type Config, type ModelInfo, type SessionCost, type UsageWindows } from "../lib/types.ts";
 import { errorMessage, log } from "../lib/log.ts";
@@ -592,8 +592,12 @@ export async function runSupervisor(argv: string[]): Promise<number> {
     const gate: MarkerGate = { launchedAt: Date.now(), overriddenUntil };
     const launched = await withLock(claudePool.lockFile, async () => {
       if (terminating) return null;
+      releaseClaimLocked(sid);
       const target = resolveLaunch(wanted, gate.launchedAt, model, refused);
-      if (target?.account && target.depletedUntil !== undefined) gate.overriddenUntil = Math.max(gate.overriddenUntil, target.depletedUntil);
+      if (target?.account && target.depletedUntil !== undefined && target.depletedUntil > gate.overriddenUntil) {
+        replaceWaitClaim({ sessionId: sid, accountId: target.account.id, at: gate.launchedAt, waitUntil: target.depletedUntil });
+        return { waitOn: target.account, waitUntil: target.depletedUntil };
+      }
       const picked = target?.account ?? null;
       const key = target?.apiKey ?? null;
       log("supervisor.launch", { sid, respawns, seat: picked?.id.slice(0, 8) ?? null, key: key?.id, args: launchArgs.join(" "), injected: firstLine !== null });
@@ -631,12 +635,16 @@ export async function runSupervisor(argv: string[]): Promise<number> {
           savedTermios,
         });
       }
-      releaseClaimLocked(sid);
       return { child: spawned, seat: picked, key, drain: drainStdout, open };
     });
     if (launched == null) {
       await releaseClaim();
       return 143;
+    }
+    if (launched.waitOn !== undefined) {
+      log("supervisor.depleted_wait", { sid: sid.slice(0, 8), account: launched.waitOn.id.slice(0, 8), waitUntil: launched.waitUntil });
+      if (await countdownWait(launched.waitOn.label, launched.waitUntil, { stream, say })) overriddenUntil = launched.waitUntil;
+      continue;
     }
 
     const { child: proc, seat, key, open } = launched;
@@ -682,8 +690,9 @@ export async function runSupervisor(argv: string[]): Promise<number> {
       let compacted = false;
       const compactKey = key != null && usableApiKey(key.id) != null ? key : null;
       const compactOn = seat?.label ?? (compactKey ? `API key ${compactKey.label}` : null);
-      if (m.compact && seat && resumable && walledUntil > Date.now()) {
-        log("supervisor.compact_skipped", { sid: m.sessionId.slice(0, 8), seat: seat.id.slice(0, 8), until: walledUntil });
+      const depleted = m.waitUntil > Date.now();
+      if (m.compact && resumable && (depleted || (seat && walledUntil > Date.now()))) {
+        log("supervisor.compact_skipped", { sid: m.sessionId.slice(0, 8), seat: seat?.id.slice(0, 8), until: depleted ? m.waitUntil : walledUntil, depleted: depleted || undefined });
       } else if (m.compact && compactOn != null && resumable) {
         say(`\n\x1b[36m↻ tokenmaxxing: compacting the conversation on ${compactOn} before the move...\x1b[0m\n`, `tokenmaxxing: compacting the conversation on ${compactOn} before the move.`);
         const baseEnv = { ...omit(scrubCredEnv(childEnv), ["TOKENMAXXING_SUPERVISED", "TOKENMAXXING_SESSION_ID", "TOKENMAXXING_LAUNCHED_AT", "TOKENMAXXING_MODEL", "TOKENMAXXING_REFUSED", "TOKENMAXXING_API_KEY_ID"]), TOKENMAXXING_PROBE: "1" };
@@ -710,10 +719,8 @@ export async function runSupervisor(argv: string[]): Promise<number> {
         if (!outcome.ok) say(`\x1b[33m   compaction did not land (${outcome.reason}) - resuming with the full context\x1b[0m\n`, `tokenmaxxing: compaction did not land; resuming with the full context. (${outcome.reason})`);
         compacted = outcome.ok;
       }
-      if (m.waitUntil > Date.now()) {
-        if (await countdownWait(label, m.waitUntil, { stream, say })) overriddenUntil = m.waitUntil;
-      } else say(`\n\x1b[36m↻ tokenmaxxing: moving to ${label} - resuming...\x1b[0m\n`, `tokenmaxxing: moving to ${label} and resuming.`);
-      wanted = m.apiKeyId != null ? { accountId: null, apiKeyId: m.apiKeyId } : { accountId: m.accountId, apiKeyId: null };
+      if (!depleted) say(`\n\x1b[36m↻ tokenmaxxing: moving to ${label} - resuming...\x1b[0m\n`, `tokenmaxxing: moving to ${label} and resuming.`);
+      wanted = depleted ? (key ? { accountId: null, apiKeyId: key.id } : null) : m.apiKeyId != null ? { accountId: null, apiKeyId: m.apiKeyId } : { accountId: m.accountId, apiKeyId: null };
       refused = m.refused ?? refused;
       saveSessionFlags(m.sessionId, persistable, process.cwd());
       const prompt = resumable ? resumePrompt({ compacted, origin: m.origin, onKey: m.apiKeyId != null }) : null;
