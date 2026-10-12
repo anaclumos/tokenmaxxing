@@ -181,6 +181,7 @@ export const ApiKeySchema = z.object({
   creditSetAt: z.number(),
   refusedAt: z.number().optional(),
   addedAt: z.number(),
+  openrouter: z.object({ remainingUsd: z.number().nullable(), at: z.number() }).optional(),
 });
 export type ApiKey = z.infer<typeof ApiKeySchema>;
 
