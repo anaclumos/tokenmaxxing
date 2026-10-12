@@ -1,6 +1,6 @@
 # Shipping
 
-The ship rules (branch, PR, CI, every review handled, squash merge, the `publish` job as the release, teardown) are in `AGENTS.md` "Release and CI". These entries keep a loop from stalling.
+The ship rules are in the global `ship` skill, this repository's deltas in `AGENTS.md` "Shipping and verification" and the `release` skill, and the `publish` job in `.claude/rules/ci.md`. These entries keep a loop from stalling.
 
 - Confirm `gh auth status` before the loop starts and again before the merge; when it fails, read the PR over unauthenticated REST, stop before the merge, and ask the owner. Never run `gh auth login` and never search files or process environments for a token.
 - Poll over REST, never GraphQL: `gh api repos/<owner>/<repo>/pulls/<n>`, `.../pulls/<n>/reviews` (the only endpoint that returns review bodies), `.../pulls/<n>/comments`, `.../issues/<n>/comments`, `.../commits/<sha>/check-runs`, `.../commits/<sha>/status`, and `.../issues/<n>` for the source issue.
