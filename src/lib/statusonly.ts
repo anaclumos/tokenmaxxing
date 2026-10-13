@@ -33,6 +33,11 @@ export type StatusOnlySpec = {
   samplePool: Provider["samplePool"];
 };
 
+// An entry with no identity (a Muse Code provider without an email) has no harvest; the first one that has one is pooled.
+function firstHarvest(entries: AuthEntry[]): Harvest | null {
+  return entries.find((e) => e.harvest)?.harvest ?? null;
+}
+
 export function statusOnlyProvider(spec: StatusOnlySpec): Provider {
   const bin = { name: spec.binName, key: spec.binKey, versionOk: spec.versionOk };
 
@@ -57,12 +62,9 @@ export function statusOnlyProvider(spec: StatusOnlySpec): Provider {
     });
     await p.exited;
     try {
-      const first = p.exitCode === 0 ? spec.readAuth(join(onboardDir, spec.onboardAuthRel))[0] : undefined;
-      if (!first) {
-        console.error(c.red(`no ${spec.name} login landed in the isolated home - nothing added.`));
-        return null;
-      }
-      return first.harvest;
+      const harvest = p.exitCode === 0 ? firstHarvest(spec.readAuth(join(onboardDir, spec.onboardAuthRel))) : null;
+      if (!harvest) console.error(c.red(`no ${spec.name} login landed in the isolated home - nothing added.`));
+      return harvest;
     } finally {
       rmSync(onboardDir, { recursive: true, force: true });
     }
@@ -71,13 +73,11 @@ export function statusOnlyProvider(spec: StatusOnlySpec): Provider {
   async function importLive(): Promise<Harvest | null> {
     console.log(c.cyan(spec.importIntro));
     console.log();
-    const live = spec.readAuth(spec.liveAuthPath());
-    const first = live[0];
-    if (first) {
-      console.log(c.dim(spec.foundLive(live.length)));
-      if (first.harvest) return first.harvest;
-    }
-    return login();
+    const live = spec.readAuth(spec.liveAuthPath()).filter((e) => e.harvest);
+    const harvest = live[0]?.harvest;
+    if (!harvest) return login();
+    console.log(c.dim(spec.foundLive(live.length)));
+    return harvest;
   }
 
   function preflight(): void {
