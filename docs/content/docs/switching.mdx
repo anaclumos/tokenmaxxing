@@ -15,7 +15,7 @@ flowchart LR
 
 - The same ranking places a new session at launch.
 - A launch onto a depleted pool starts no `claude` process. The supervisor prints the soonest reset and exits, so a harness that runs the session closes the run instead of holding it open. Resume the session after that reset and it is placed again by the same ranking.
-- With no usable account, a stored API key with credit left comes before the wait, at launch and on a running session; see [API keys](#api-keys).
+- With no usable account, a stored API key with credit left comes before the depleted stop, at launch and on a running session; see [API keys](#api-keys).
 - Every Codex session runs on its own seat too: the account whose store the codex supervisor gave it at launch, decided the same way at each Stop hook; everything else is shared.
 
 ## The bars
@@ -179,7 +179,7 @@ The recovery target follows these steps in order:
 | 3 | Only when every reset within that horizon is full does it take the least-crowded one (ties broken by soonest reset, then the session's own account). |
 
 - Assignments live in `wait-queue.json` while the session moves or stops and are released when it relaunches or exits.
-- In a stream-json session (the Agent SDK, T3 Code) the stop is one notice line naming the account and the reset time, then the supervisor process exits, so the harness ends the run instead of showing it as still working.
+- In a stream-json session (the Agent SDK, T3 Code) the stop writes a notice line naming the account and the reset time, then a rejected `rate_limit_event` with the reset time and an error `result` whose message is the notice, and the supervisor process exits. T3 Code shows that pair as a usage-limit failure with the reset time, and the harness ends the run instead of showing it as still working (see [Terminal and harness sessions](/architecture#terminal-and-harness-sessions)).
 - When no account resets within twice `policy.maxWaitMs`, the decision reports the pool as depleted and a running session stays put, keeps running into its real limit, and the enforced-limit path below takes over. A launch onto such a pool stops at once with the soonest reset named.
 - The stop happens at the bar, not at 100: the unspent headroom is the same budget that set the bar.
 - Only a supervised session stops this way: a session outside the supervisor gets the enforced stamp and nothing else.
