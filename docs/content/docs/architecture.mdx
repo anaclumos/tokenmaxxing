@@ -192,7 +192,7 @@ The hook then writes `respawn/<session-id>`.
 | --- | --- |
 | Target account | the account the session moves to |
 | Session to resume | the process's live session id |
-| `waitUntil` | the timestamp of a depleted-pool wait (see [Depleted-pool wait and auto-resume](#depleted-pool-wait-and-auto-resume)) |
+| `waitUntil` | the timestamp of a depleted-pool stop (see [Depleted-pool stop](#depleted-pool-stop)) |
 | Compact flag | asks the supervisor to compact; set by the Stop and SessionStart hooks and the seat watch, cleared by StopFailure |
 | Origin | the writer: the Stop, SessionStart, or StopFailure hook, or the supervisor's seat watch |
 | Launch time | the launch time of the process the marker was written for, so a marker left by an earlier launch of the same session is discarded |
@@ -229,7 +229,7 @@ A SessionStart move is in the second group because a prompt sent inside the mark
 | Terminal | the positional argument after the session id | stderr |
 | Harness that drives claude with `--input-format stream-json` | the first `user` line of each relaunched process | stdout, as `system` lines of subtype `informational` and level `warning` |
 
-A harness session that drives claude with `--input-format stream-json` ignores a positional prompt, so there the supervisor owns stdin and relays the harness's JSON lines to the child through a pipe. It sends each relaunched process the latest setup requests the harness sent (`initialize`, which carries the harness's appended system prompt, hooks, and in-process MCP servers, and the requests that set the model, the permission mode, and the thinking budget), and then writes the prompt as its first `user` line. The supervisor's notices are the compaction, the move, the depleted-pool wait with its resume time, the resume, and a fatal that ends the session. The stdout line is the shape Claude Code uses for its own print-mode notices, so a harness such as T3 Code shows them in the conversation and the stream stays parseable. Before those notices, the supervisor closes the tasks the move ended: for each task the old process started on that stdout (`task_started`) and did not end there (a `task_notification`, or a `task_updated` to `completed`, `failed`, or `killed`), it writes a `task_notification` line with `status: "stopped"` and `reason: "worker_restart"`, the line Claude Code writes when a restarted process finds a task orphaned, so a harness that tracks background work from the stream stops showing it as running. The depleted-pool wait itself opens one task of type `local_bash` on that stdout (`tokenmaxxing-wait-<session id>`, with the resume time in its description) and closes it with a `completed` `task_notification` when the wait ends, so a harness that stops idle sessions sees background work for the whole wait (see [When nothing is usable](/switching#when-nothing-is-usable)).
+A harness session that drives claude with `--input-format stream-json` ignores a positional prompt, so there the supervisor owns stdin and relays the harness's JSON lines to the child through a pipe. It sends each relaunched process the latest setup requests the harness sent (`initialize`, which carries the harness's appended system prompt, hooks, and in-process MCP servers, and the requests that set the model, the permission mode, and the thinking budget), and then writes the prompt as its first `user` line. The supervisor's notices are the compaction, the move, the depleted-pool stop with its reset time, the resume, and a fatal that ends the session. The stdout line is the shape Claude Code uses for its own print-mode notices, so a harness such as T3 Code shows them in the conversation and the stream stays parseable. Before those notices, the supervisor closes the tasks the move ended: for each task the old process started on that stdout (`task_started`) and did not end there (a `task_notification`, or a `task_updated` to `completed`, `failed`, or `killed`), it writes a `task_notification` line with `status: "stopped"` and `reason: "worker_restart"`, the line Claude Code writes when a restarted process finds a task orphaned, so a harness that tracks background work from the stream stops showing it as running. The depleted-pool stop writes no task: the supervisor exits after its notice, so the harness ends the run (see [When nothing is usable](/switching#when-nothing-is-usable)).
 
 ### A session with no transcript
 
@@ -253,7 +253,7 @@ The supervisor does not depend on a hook firing. Every ten seconds while the chi
 - A harness session whose main turn has ended while a background workflow or background agents keep burning the window. A harness session has no statusline tee, and its next Stop hook waits for the next prompt.
 - A subagent whose refusal stamped the wall while the parent turn was still running.
 
-A turn in flight is cut at the bar; the transcript holds every completed step, and the resume prompt continues from there. A Ctrl-C override of a depleted-pool wait suppresses the watch for as long as the override runs.
+A turn in flight is cut at the bar; the transcript holds every completed step, and the resume prompt continues from there.
 
 ### Unsupervised sessions and subagents
 
@@ -263,39 +263,38 @@ A turn in flight is cut at the bar; the transcript holds every completed step, a
 | A failure inside a subagent of a supervised session | It stamps the limit and writes no marker, because the parent turn is still running. The supervisor's seat watch reads the stamp within ten seconds and moves. |
 | A usage-credits refusal inside a subagent | It stamps nothing, so nothing moves. |
 
-## Depleted-pool wait and auto-resume
+## Depleted-pool stop
 
-When every account in the pool is over its bars, the Stop hook writes the marker with a `waitUntil` timestamp instead, for the account the wait queue assigns.
+When every account in the pool is over its bars, the Stop hook writes the marker with a `waitUntil` timestamp instead, for the account the wait queue assigns as the recovery target.
 
-### The wait target
+### The recovery target
 
-| Case | The session waits on |
+| Case | The session stops for |
 | --- | --- |
-| A reset still has fewer than eight waiters | the soonest such reset |
+| A reset still has fewer than eight sessions assigned | the soonest such reset |
 | The session's own account recovers first and has a free slot | the session's own account |
 | Every reset within `policy.maxWaitMs` is full | the next reset with room, up to twice `policy.maxWaitMs` out |
 | Every reset within that horizon is full | the least-crowded reset |
 
-Claims are first come first served in `wait-queue.json`, so one reset wakes at most eight sessions and the rest are already queued on later resets. The auto-wait is bounded by twice `policy.maxWaitMs` (`maxWaitMs` defaults to 1 hour); beyond that the decision reports the pool as depleted instead of waiting. A launch onto a depleted pool takes the same target selection, counting running sessions as well as queued waiters, and waits the same way before it starts any `claude` process.
+Claims are first come first served in `wait-queue.json`, so at most eight sessions are assigned to one reset and the rest take later resets. The stop is bounded by twice `policy.maxWaitMs` (`maxWaitMs` defaults to 1 hour); beyond that the decision reports the pool as depleted and a running session stays put. A launch onto a depleted pool takes the same target selection, counting running sessions as well as assigned ones, and stops the same way before it starts any `claude` process.
 
-### The wait
+### The stop
 
 ```mermaid
 flowchart TD
-  t["terminate the child at the turn boundary,<br/>restore the terminal"] --> cd["countdown to the reset,<br/>no compaction"]
-  cd --> r["release the wait claim"]
-  r --> p["place the session again"]
+  t["terminate the child at the turn boundary,<br/>restore the terminal"] --> cd["name the reset,<br/>no compaction"]
+  cd --> r["release the claim"]
+  r --> x["supervisor exits"]
+  x -->|"resumed after the reset"| p["place the session again"]
   p -->|"an account has quota"| l["relaunch under its store"]
   p -->|"still depleted"| cd
 ```
 
-The wait never compacts: no account has quota, so a compaction would fail on the old account or spend past its bar. Every launch, the first one included, goes through the same gate: when no pooled account has quota and no API key has credit, the supervisor starts no `claude` process, claims the reset in `wait-queue.json`, counts down to it, and places the session again. In a harness session, the countdown is one line naming the account and the resume time. The relaunch runs the same way as after a move: `--resume`, or `--session-id` when the live session has no transcript yet.
-
-Ctrl-C during the countdown resumes immediately. The supervisor then ignores any later marker whose `waitUntil` falls at or before the wait it skipped, so the next Stop hook does not park the session again.
+The stop never compacts: no account has quota, so a compaction would fail on the old account or spend past its bar. Every launch, the first one included, goes through the same gate: when no pooled account has quota and no API key has credit, the supervisor starts no `claude` process, writes one notice naming the account and the reset time, and exits. The supervisor holds no process open until the reset, so a harness that runs the session ends the run. In a stream-json session the notice also goes out as a usage-limit failure: a `rate_limit_event` with `status: "rejected"` and the reset time, then an error `result` whose message is the notice. T3 Code shows that message as the run's **Usage limit reached** error, with the time left until the reset, instead of its generic provider failure. A first launch first waits for the harness's prompt line, because T3 Code reads a result for the run only after it sends that prompt. A later resume runs the same way as after a move: `--resume`, or `--session-id` when the live session has no transcript yet.
 
 ### A marker the supervisor cannot parse
 
-A marker the supervisor cannot parse is never treated as absent. The supervisor terminates the child at that same boundary, restores the terminal, and exits naming the marker path, so a mismatched marker schema never skips the wait silently. In a stream-json session, that fatal, the wrap-depth abort, the wrapper-chain abort, and a failed presence write also go to stdout as the same `informational`/`warning` line, so the harness shows why the session stopped.
+A marker the supervisor cannot parse is never treated as absent. The supervisor terminates the child at that same boundary, restores the terminal, and exits naming the marker path, so a mismatched marker schema never skips the stop silently. In a stream-json session, that fatal, the wrap-depth abort, the wrapper-chain abort, and a failed presence write also go to stdout as the same `informational`/`warning` line, so the harness shows why the session stopped.
 
 ## The periodic check timer
 

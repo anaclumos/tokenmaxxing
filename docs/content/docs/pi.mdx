@@ -159,7 +159,7 @@ flowchart TD
 | --- | --- | --- |
 | Source | The cached figure and the account's statusline tee. | Codex's usage endpoint, read with the account's codex store token when the cached figure is older than `policy.usagePollTtlMs`. |
 | Freshness | The check tick refreshes the cached figure at the account's sample interval. The timer comes from `tokenmaxxing init`, and `init --pi` warns when it is not active. | After a failed read, the supervisor logs `pisupervisor.seat_unmeasured` and waits a minute before the next one. |
-| Fully depleted pool | The same countdown as a `claude` session (Ctrl-C resumes at once). A launch onto a depleted pool starts at once on the account a wait would target, and the watch leaves it there until that account's reset. | Nothing waits. |
+| Fully depleted pool | The same stop as a `claude` session: the supervisor exits with the soonest reset named. A launch onto a depleted pool starts at once on the account a stop would target, and the watch leaves it there until that account's reset. | Nothing stops. |
 
 ### The relaunch
 
