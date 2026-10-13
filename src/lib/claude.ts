@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, rmSync } from "node:fs";
+import { readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { countBy } from "es-toolkit";
 import { z } from "zod";
@@ -9,6 +9,7 @@ import { activationHint, CHECK_JOB, ensurePathInRc, HUB_JOB, installSupervisor, 
 import { withLock } from "./lock.ts";
 import { errorMessage, log } from "./log.ts";
 import { claudeTierLabel, describeIdentity, fetchTokenIdentity, isDeadCredential, InvalidGrantError } from "./oauth.ts";
+import { onboardHome } from "./onboard.ts";
 import { claudePool, env, paths, seatFromEnv, shortId, storeDirFor } from "./paths.ts";
 import { MAX_WAITERS_PER_ACCOUNT, pickBest, pickEarliestReset, pickWaitTarget, thresholdBars, type PickCtx } from "./picker.ts";
 import { deletePiStore } from "./piauth.ts";
@@ -232,11 +233,8 @@ function identityReady(cjPath: string): boolean {
 }
 
 async function login(): Promise<Harvest | null> {
-  const onboardDir = paths.onboardDir;
-  rmSync(onboardDir, { recursive: true, force: true });
-  mkdirSync(onboardDir, { recursive: true });
+  const onboardDir = await onboardHome("claude", (dir) => deleteItem(isolatedTarget(dir)));
   const iso = isolatedTarget(onboardDir);
-  await deleteItem(iso);
   const cjPath = join(onboardDir, ".claude.json");
   const real = resolveRealBin(CLAUDE_BIN);
 

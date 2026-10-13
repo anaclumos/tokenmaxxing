@@ -1,6 +1,7 @@
-import { mkdirSync, rmSync } from "node:fs";
+import { rmSync } from "node:fs";
 import { join } from "node:path";
 import { resolveRealBin, verifyRealBin } from "./claudebin.ts";
+import { onboardHome } from "./onboard.ts";
 import type { PoolPaths } from "./paths.ts";
 import type { Provider } from "./provider.ts";
 import { pinBinOverride, type Harvest } from "./state.ts";
@@ -17,7 +18,6 @@ export type StatusOnlySpec = {
   binKey: "grokBin" | "museBin";
   storeDirFor: (accountId: string) => string;
   authJsonFor: (accountId: string) => string;
-  onboardDir: string;
   homeEnv: string;
   loginArgs: string[];
   onboardAuthRel: string;
@@ -51,9 +51,7 @@ export function statusOnlyProvider(spec: StatusOnlySpec): Provider {
 
   async function login(): Promise<Harvest | null> {
     const real = resolveRealBin(bin);
-    const onboardDir = spec.onboardDir;
-    rmSync(onboardDir, { recursive: true, force: true });
-    mkdirSync(onboardDir, { recursive: true });
+    const onboardDir = await onboardHome(spec.name);
     const p = Bun.spawn([real, ...spec.loginArgs], {
       stdin: "inherit",
       stdout: "inherit",

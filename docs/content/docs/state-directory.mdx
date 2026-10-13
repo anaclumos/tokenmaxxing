@@ -26,7 +26,9 @@ The tree lists the entries in the order of the sections below. Open a folder to 
         <File name=".credentials.json (Linux only)" />
       </Folder>
     </Folder>
-    <Folder name="onboard" />
+    <Folder name="onboard">
+      <Folder name="<pool>-<pid>-<random>" />
+    </Folder>
     <File name="api-keys.json" />
     <Folder name="api-keys">
       <File name="<id>" />
@@ -72,7 +74,6 @@ The tree lists the entries in the order of the sections below. Open a folder to 
         <File name="auth.json" />
       </Folder>
     </Folder>
-    <Folder name="codex-onboard" />
     <Folder name="codex-respawn" />
     <Folder name="codex-live">
       <File name="seat-<pid>" />
@@ -89,7 +90,6 @@ The tree lists the entries in the order of the sections below. Open a folder to 
         </Folder>
       </Folder>
     </Folder>
-    <Folder name="pi-onboard" />
     <File name="grok-accounts.json" />
     <File name="grok-lock" />
     <Folder name="grok-stores">
@@ -97,7 +97,6 @@ The tree lists the entries in the order of the sections below. Open a folder to 
         <File name="auth.json" />
       </Folder>
     </Folder>
-    <Folder name="grok-onboard" />
     <File name="muse-accounts.json" />
     <File name="muse-lock" />
     <Folder name="muse-stores">
@@ -105,7 +104,6 @@ The tree lists the entries in the order of the sections below. Open a folder to 
         <File name="auth.json" />
       </Folder>
     </Folder>
-    <Folder name="muse-onboard" />
   </Folder>
 </Files>
 
@@ -117,7 +115,7 @@ The tree lists the entries in the order of the sections below. Open a folder to 
 | `accounts.json` | Non-secret index of pooled Claude accounts, never tokens. The index names no active account: there is no pool-wide active account, each session has its own seat. Fields: [Account index fields](#account-index-fields) |
 | `lock` | The `flock` file that serializes decisions, placement, and sampling |
 | `stores/<uuid8>/` | One Claude Code credential store per pooled account. On Linux it holds the account's `.credentials.json` (0600 in a 0700 directory) and Claude Code's refresh lock. On macOS the credential is the keychain item keyed by this path, and the directory holds only the lock |
-| `onboard/` | Throwaway config home for `init`, `add`, and `auth` logins (deleted after harvest, credential included) |
+| `onboard/<pool>-<pid>-<random>/` | One throwaway home per `init`, `add`, or `auth` login of every pool (`claude`, `codex`, `pi`, `grok`, `muse`), so two logins that overlap never read or delete each other's credential. Deleted after harvest, credential included; a login also deletes its pool's homes whose process is gone, so a login killed before its cleanup leaves no credential behind past the next one |
 | `api-keys.json` | Non-secret index of stored Anthropic and OpenRouter API keys: `{version: 1, keys}`, each key with `id` (8 random hex characters), `label`, `workspaceId` (optional), `creditUsd` (the balance you entered, optional), `spentUsd`, `creditSetAt` (epoch ms), `refusedAt` (epoch ms, set on `billing_error`, optional), `openrouter` (`{remainingUsd, at}`, the credit left that OpenRouter last reported for an OpenRouter key, `remainingUsd` null for a key with no limit, optional), and `addedAt` (epoch ms), plus `baselines`, the last cumulative cost the supervisor recorded per live session id (`{usd, at}`), which it bills to a key only as growth; entries older than 30 days are dropped on the next write. Every read-modify-write runs under `lock`, and a file that exists but fails to parse stops the command instead of reading as no keys |
 | `api-keys/<id>` | One API key per file, 0600 in a 0700 directory. See [Credential storage](/credentials#api-keys) |
 
@@ -225,7 +223,6 @@ flowchart TD
 | Path | What it holds |
 |---|---|
 | `pi-stores/claude/<uuid8>/`, `pi-stores/codex/<uuid8>/` | One pi store per pooled Claude or Codex account that has a pi login, laid out as the diagram shows |
-| `pi-onboard/` | Throwaway pi agent directory for `auth --pi` logins (deleted after harvest, credential included) |
 
 A pi session's presence record goes to `live/` or `codex-live/`. See [pi support](/pi).
 
@@ -237,7 +234,6 @@ The `grok-*` and `muse-*` entries are the state of the status-only grok and Muse
 |---|---|
 | `grok-accounts.json`, `muse-accounts.json` | The same index shape |
 | `grok-stores/<uuid8>/auth.json`, `muse-stores/<uuid8>/auth.json` | One 0600 store per account |
-| `grok-onboard/`, `muse-onboard/` | Throwaway login home |
 
 ## Outside the state directory
 

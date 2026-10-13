@@ -7,7 +7,8 @@ import { codexSeatIdOf } from "./codexauth.ts";
 import { CHECK_JOB, installPiSupervisor, isBinDirAhead, jobHealthy, piSupervisorLink } from "./install.ts";
 import { errorMessage, log } from "./log.ts";
 import { fetchTokenIdentity } from "./oauth.ts";
-import { claudePool, piPaths, type PiPool } from "./paths.ts";
+import { onboardHome } from "./onboard.ts";
+import { claudePool, type PiPool } from "./paths.ts";
 import { linkSharedPiHome, piStoreUsable, readPiAuthAt, type PiOAuth } from "./piauth.ts";
 import { StoreUnusableError, type Provider } from "./provider.ts";
 import { loadAccounts, pinBinOverride } from "./state.ts";
@@ -51,8 +52,7 @@ async function identityOf(pool: PiPool, cred: PiOAuth): Promise<{ id: string; em
 
 export async function piLogin(pool: PiPool): Promise<PiLogin | null> {
   const real = resolveRealBin(PI_BIN);
-  const onboardDir = piPaths.onboardDir;
-  rmSync(onboardDir, { recursive: true, force: true });
+  const onboardDir = await onboardHome("pi");
   linkSharedPiHome(onboardDir);
   const authPath = join(onboardDir, "auth.json");
 
