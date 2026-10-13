@@ -3,9 +3,10 @@ import { creditLeft, keySessions, loadApiKeys } from "../lib/apikeys.ts";
 import { claude } from "../lib/claude.ts";
 import { codex } from "../lib/codex.ts";
 import { grok } from "../lib/grok.ts";
+import { muse } from "../lib/muse.ts";
 import { loadAccounts, loadConfig, saveAccounts } from "../lib/state.ts";
 import { withLock } from "../lib/lock.ts";
-import { codexPool, grokPool } from "../lib/paths.ts";
+import { codexPool, grokPool, musePool } from "../lib/paths.ts";
 import { barFor, bufferedUsed, earliestReset, gatedWindows, landGrant, landWindows, isExhausted, isSessionWindow, limitWindows, liveUsed, nextWeeklyReset, sessionWindow, thresholdBars, weeklyWindow } from "../lib/picker.ts";
 import type { Provider, SampleReport } from "../lib/provider.ts";
 import { usd } from "./key.ts";
@@ -52,7 +53,7 @@ type StatusApiKey = {
   sessions: number;
 };
 
-export type StatusReport = { now: number; claude: PoolReport; codex: PoolReport; grok: PoolReport; apiKeys?: StatusApiKey[] };
+export type StatusReport = { now: number; claude: PoolReport; codex: PoolReport; grok: PoolReport; muse: PoolReport; apiKeys?: StatusApiKey[] };
 
 function apiKeyReport(): StatusApiKey[] {
   const sessions = keySessions();
@@ -306,9 +307,10 @@ export async function cmdStatus(opts: { json?: boolean; cached?: boolean } = {})
   if (!json) {
     const codexPooled = loadAccounts(codexPool).accounts.length > 0;
     const grokPooled = loadAccounts(grokPool).accounts.length > 0;
+    const musePooled = loadAccounts(musePool).accounts.length > 0;
     if (claudeReport.accounts.length === 0) {
-      if (!codexPooled && !grokPooled && apiKeys.length === 0) {
-        console.log(c.dim("no accounts yet, run `tokenmaxxing init` (or `tokenmaxxing init --codex`, `--grok`)"));
+      if (!codexPooled && !grokPooled && !musePooled && apiKeys.length === 0) {
+        console.log(c.dim("no accounts yet, run `tokenmaxxing init` (or `tokenmaxxing init --codex`, `--grok`, `--muse`)"));
         return 0;
       }
       console.log(c.dim("no claude accounts (run `tokenmaxxing init` to pool claude too)"));
@@ -321,8 +323,9 @@ export async function cmdStatus(opts: { json?: boolean; cached?: boolean } = {})
   }
   const codexReport = await collect(codex, cfg, now, cached);
   const grokReport = await collect(grok, cfg, now, cached);
+  const museReport = await collect(muse, cfg, now, cached);
   if (json) {
-    const report: StatusReport = { now, claude: claudeReport, codex: codexReport, grok: grokReport, ...(apiKeys.length > 0 ? { apiKeys } : {}) };
+    const report: StatusReport = { now, claude: claudeReport, codex: codexReport, grok: grokReport, muse: museReport, ...(apiKeys.length > 0 ? { apiKeys } : {}) };
     emitJson({ ok: true, ...report });
     return 0;
   }
@@ -331,6 +334,9 @@ export async function cmdStatus(opts: { json?: boolean; cached?: boolean } = {})
   }
   if (grokReport.accounts.length > 0) {
     renderPool(grok, grokReport, `grok  (${count({ n: grokReport.accounts.length, noun: "account" })}, status-only)`, Date.now(), cfg.policy.usagePollTtlMs);
+  }
+  if (museReport.accounts.length > 0) {
+    renderPool(muse, museReport, `muse  (${count({ n: museReport.accounts.length, noun: "account" })}, status-only)`, Date.now(), cfg.policy.usagePollTtlMs);
   }
   return 0;
 }

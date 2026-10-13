@@ -34,11 +34,12 @@ export function loadConfig(): Config {
   cfg.claudeBin = optionalEnv("TOKENMAXXING_CLAUDE_BIN") ?? cfg.claudeBin;
   cfg.codexBin = optionalEnv("TOKENMAXXING_CODEX_BIN") ?? cfg.codexBin;
   cfg.grokBin = optionalEnv("TOKENMAXXING_GROK_BIN") ?? cfg.grokBin;
+  cfg.museBin = optionalEnv("TOKENMAXXING_MUSE_BIN") ?? cfg.museBin;
   cfg.piBin = optionalEnv("TOKENMAXXING_PI_BIN") ?? cfg.piBin;
   return cfg;
 }
 
-export type BinKey = "claudeBin" | "codexBin" | "grokBin" | "piBin";
+export type BinKey = "claudeBin" | "codexBin" | "grokBin" | "museBin" | "piBin";
 
 export function pinBinOverride(input: { key: BinKey; bin: string }): void {
   const raw: Record<string, unknown> = existsSync(paths.configJson) ? readJsonFile(paths.configJson, z.record(z.string(), z.unknown())) : {};

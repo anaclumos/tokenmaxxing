@@ -14,7 +14,7 @@ export type StatusOnlySpec = {
   flag: string;
   pool: PoolPaths;
   binName: string;
-  binKey: "grokBin";
+  binKey: "grokBin" | "museBin";
   storeDirFor: (accountId: string) => string;
   authJsonFor: (accountId: string) => string;
   onboardDir: string;

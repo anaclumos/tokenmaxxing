@@ -6,7 +6,7 @@ Repo-specific rules only. The owner's global agent rules load beside this file i
 
 Subtree law lives in `.claude/rules/`, one file per subsystem, each scoped by its `paths` frontmatter. Claude Code loads a rule when it reads a matching file; a harness that does not (Codex) reads the rule whose paths match before it edits there.
 
-- `credentials.md`: credential stores, identity, onboarding, dead grants, grok quota.
+- `credentials.md`: credential stores, identity, onboarding, dead grants, grok quota, Muse Code identity.
 - `switching.md`: the decision engine, ranking, bars, screening, sampling, banked resets, model families.
 - `supervisor.md`: the respawn marker, the live session id, compaction, the relay, the seat watch, the stream-json tee.
 - `claude-internals.md`: the usage read, the tee, StopFailure classification, real-binary spawns.
