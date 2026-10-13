@@ -9,6 +9,7 @@ paths:
   - "src/lib/codexoauth.ts"
   - "src/lib/grok.ts"
   - "src/lib/grokusage.ts"
+  - "src/lib/muse.ts"
   - "src/lib/decide.ts"
   - "src/lib/sample.ts"
   - "src/lib/state.ts"
@@ -32,3 +33,4 @@ paths:
 - Claude Code hashes the NFC-normalized `CLAUDE_SECURESTORAGE_CONFIG_DIR` into the macOS keychain item name whenever that variable is set, even with `CLAUDE_CONFIG_DIR` also set (`xSe` in the 2.1.269 binary); `isolatedTarget(storeDir)` names the same item. A missing namespaced item never falls back to the default one, so isolation is sound once the probe env is scrubbed and the intended store is set.
 - The onboarding homes that hold plaintext credentials are the one hard-delete (`rmSync`) exception to the trash rule, so a live token never sits in the Trash.
 - Grok quota is the weekly `creditUsagePercent` from `GET https://cli-chat-proxy.grok.com/v1/billing?format=credits` (`TOKENMAXXING_GROK_USAGE_URL` overrides). The dollar billing GET without `format=credits` is not quota: subscription accounts report `monthlyLimit` 0 there while credits remain. The credits body drops `creditUsagePercent` while the period's use is 0 (the proto3 JSON rule for a default scalar; the `{val: 0}` wrappers stay), so a body with `currentPeriod` and no percent reads as 0. tokenmaxxing does not refresh grok tokens; an expired stored access token is retried against the live `GROK_HOME` login when that login is the same account. A failed grok sample does not write the dollar body: an account with no stored window stays unmeasured, and one with a stored credits window keeps that figure as stale as it was.
+- A Muse Code login (`$XDG_CONFIG_HOME/muse/auth.json`, `providers.<name>` entries) carries no account id, so a Muse Code account id is the sha256 of the entry's lowercased `user_email`; a raw email would collide in the 8-character store directory name. The isolated login sets `XDG_CONFIG_HOME` to `muse-onboard/`, because the binary has no home variable of its own and `MUSE_AUTH_PATH` is read only by the launcher script. Muse Code has no read-only quota read: the binary learns its subscription window from the `response.subscription_usage` event of a model response, which spends quota, and from the key mint response (`subs_usage`), which can issue a new `api_key`, so the pool sends neither and every account stays unmeasured.
