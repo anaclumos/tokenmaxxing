@@ -424,8 +424,10 @@ const RelayLineSchema = z.discriminatedUnion("type", [
 
 const UserLineSchema = z.looseObject({ type: z.literal("user") });
 
-function controlErrorLine(requestId: string): string {
-  return `${JSON.stringify({ type: "control_response", response: { subtype: "error", request_id: requestId, error: "tokenmaxxing restarted Claude Code for an account move, and this request may or may not have run." } })}\n`;
+const MOVED_REQUEST_ERROR = "tokenmaxxing restarted Claude Code for an account move, and this request may or may not have run.";
+
+function controlErrorLine(requestId: string, error: string): string {
+  return `${JSON.stringify({ type: "control_response", response: { subtype: "error", request_id: requestId, error } })}\n`;
 }
 
 class StdinRelay {
@@ -436,6 +438,7 @@ class StdinRelay {
   private dropped: string[] = [];
   private pendingTranscript: string | null = null;
   private ended = false;
+  private refusal: string | null = null;
   private sawUser!: () => void;
   readonly firstUser = new Promise<void>((resolve) => {
     this.sawUser = resolve;
@@ -464,6 +467,13 @@ class StdinRelay {
 
   detach(): void {
     this.sink = null;
+  }
+
+  refuse(error: string): void {
+    this.refusal = error;
+    const lines = [...this.state.values(), ...this.queue];
+    this.queue = [];
+    for (const line of lines) this.forward(line);
   }
 
   replay(): string[] {
@@ -495,6 +505,10 @@ class StdinRelay {
     if (UserLineSchema.safeParse(value).success) this.sawUser();
     const parsed = RelayLineSchema.safeParse(value);
     const request = parsed.success && parsed.data.type === "control_request" ? parsed.data : null;
+    if (this.refusal !== null) {
+      if (request !== null) process.stdout.write(controlErrorLine(request.request_id, this.refusal));
+      return;
+    }
     const setup = request !== null && REPLAYED_REQUESTS.has(request.request.subtype);
     if (setup) this.state.set(request.request.subtype, line);
     if (this.sink !== null) {
@@ -762,9 +776,12 @@ export async function runSupervisor(argv: string[]): Promise<number> {
       return 143;
     }
     if (launched.waitOn !== undefined) {
-      if (respawns === 0) await relay?.firstUser;
-      log("supervisor.depleted_exit", { sid: sid.slice(0, 8), account: launched.waitOn.id.slice(0, 8), waitUntil: launched.waitUntil });
       const text = `tokenmaxxing: session stopped because every pooled account is at its limit. The next reset is at ${clockFmt.format(launched.waitUntil)} on ${launched.waitOn.label}. Resume the session after that.`;
+      if (respawns === 0 && relay !== null) {
+        relay.refuse(text);
+        await relay.firstUser;
+      }
+      log("supervisor.depleted_exit", { sid: sid.slice(0, 8), account: launched.waitOn.id.slice(0, 8), waitUntil: launched.waitUntil });
       say(`\n\x1b[36m⏳ tokenmaxxing: all accounts at their limit, so this session stopped. The next reset is at ${clockFmt.format(launched.waitUntil)} on ${launched.waitOn.label}. Run \`claude --resume ${noticeSid}\` after that to continue.\x1b[0m\n`, text);
       if (stream) process.stdout.write(depletedLines(noticeSid, launched.waitUntil, text));
       await releaseClaim();
@@ -809,7 +826,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
       const transcript = findTranscript(m.sessionId);
       const resumable = transcript !== null;
       if (!resumable && relay !== null) {
-        for (const id of relay.replay()) process.stdout.write(controlErrorLine(id));
+        for (const id of relay.replay()) process.stdout.write(controlErrorLine(id, MOVED_REQUEST_ERROR));
       }
       let compacted = false;
       const compactKey = key != null && usableApiKey(key.id) != null ? key : null;
