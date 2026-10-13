@@ -13,7 +13,7 @@ paths:
 
 # Codex
 
-Source-verified against rust-v0.144.5 and re-checked on later binaries; codex changes monthly, so re-verify before trusting any line here. Detail: `docs/content/docs/codex.mdx` and the Supermemory documents with `project` `tokenmaxxing`.
+Source-verified against rust-v0.144.5 and re-checked on later binaries; codex changes monthly, so re-verify before trusting any line here. Detail: `docs/content/docs/codex.mdx` and the Supermemory documents in the two namespaces `AGENTS.md` names.
 
 - No hot-swap: restart IS the switch (`codex resume <sid>`).
 - A Codex pool account id is the sha256 hex of `<chatgpt_user_id>__<chatgpt_account_id>` from the token's `https://api.openai.com/auth` claim (`codexSeatIdOf`, `codexIdentityOf`), never `chatgpt_account_id` alone: that claim is the workspace, so every member of one team workspace shares it and an id keyed by it collapses them onto one account. The usage GET still sends the workspace id as `ChatGPT-Account-Id`.

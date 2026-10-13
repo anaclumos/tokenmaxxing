@@ -8,7 +8,7 @@ paths:
 
 # pi
 
-pi is a client of the Claude and Codex pools, not a pool: a pi session runs on a pooled account through that account's pi store. Verified mechanics are Supermemory documents with `project` `tokenmaxxing`; the user page is `docs/content/docs/pi.mdx`.
+pi is a client of the Claude and Codex pools, not a pool: a pi session runs on a pooled account through that account's pi store. Verified mechanics are Supermemory documents in the two namespaces `AGENTS.md` names; the user page is `docs/content/docs/pi.mdx`.
 
 - An account needs a pi login of its own in `pi-stores/<claude|codex>/<uuid8>/auth.json`, written once by `auth --pi` and refreshed afterwards by pi alone. Never fill it from the Claude Code or codex grant, and never symlink one pi `auth.json` into two stores: pi locks the path it opened (`realpath: false`), so two links to one file race a refresh. Never link a `*.lock` entry into a store either: the lock is a directory beside the path pi opened, and a linked lock dangles once released and reads as held forever.
 - A Codex account held by a pi session carries one presence record, its supervisor's, so that supervisor passes its id as `holder` to `observeCodex` and refreshes the account's codex store token when it expires; every other reader still refuses a refresh while any presence record names the account.
