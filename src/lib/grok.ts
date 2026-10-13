@@ -124,7 +124,6 @@ export const grok = statusOnlyProvider({
   binKey: "grokBin",
   storeDirFor: grokStoreDirFor,
   authJsonFor: grokAuthJsonFor,
-  onboardDir: grokPaths.onboardDir,
   homeEnv: "GROK_HOME",
   loginArgs: ["login"],
   onboardAuthRel: "auth.json",

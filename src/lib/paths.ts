@@ -72,7 +72,6 @@ export const codexPaths = {
   authJson: join(CODEX_HOME, "auth.json"),
   hooksJson: join(CODEX_HOME, "hooks.json"),
   storesDir: join(TM_HOME, "codex-stores"),
-  onboardDir: join(TM_HOME, "codex-onboard"),
   respawnDir: join(TM_HOME, "codex-respawn"),
   presenceDir: join(TM_HOME, "codex-live"),
 } as const;
@@ -100,7 +99,6 @@ export function expandTilde(p: string): string {
 export const piPaths = {
   home: resolve(expandTilde(env("PI_CODING_AGENT_DIR", join(HOME, ".pi", "agent")))),
   storesDir: join(TM_HOME, "pi-stores"),
-  onboardDir: join(TM_HOME, "pi-onboard"),
 } as const;
 
 export function piStoreDirFor(pool: PiPool, accountId: string): string {
@@ -116,7 +114,6 @@ const GROK_HOME_DEFAULT = join(HOME, ".grok");
 export const grokPaths = {
   home: env("GROK_HOME", GROK_HOME_DEFAULT),
   storesDir: join(TM_HOME, "grok-stores"),
-  onboardDir: join(TM_HOME, "grok-onboard"),
 } as const;
 
 export function grokStoreDirFor(accountId: string): string {
@@ -130,7 +127,6 @@ export function grokAuthJsonFor(accountId: string): string {
 export const musePaths = {
   authJson: join(env("XDG_CONFIG_HOME", join(HOME, ".config")), "muse", "auth.json"),
   storesDir: join(TM_HOME, "muse-stores"),
-  onboardDir: join(TM_HOME, "muse-onboard"),
 } as const;
 
 export function museStoreDirFor(accountId: string): string {

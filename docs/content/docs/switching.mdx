@@ -436,7 +436,7 @@ A failed attempt counts as an attempt, so a broken account moves to the back of 
 The tick also deletes atomic-write temp files older than an hour in these places:
 
 - the state root;
-- every other directory under it that tokenmaxxing writes an atomic target into: `usage/`, `live/`, `respawn/`, `sessions/`, `bin/`, `codex-live/`, `codex-respawn/`, and `codex-onboard/`;
+- every other directory under it that tokenmaxxing writes an atomic target into: `usage/`, `live/`, `respawn/`, `sessions/`, `bin/`, `codex-live/`, and `codex-respawn/`;
 - each per-account store, where an onboarding killed between the write and the rename would otherwise strand a 0600 file holding a full credential.
 
 Each place is swept under these rules:
