@@ -6,11 +6,11 @@ import { z } from "zod";
 import { claudePool, paths, storeDirFor } from "../lib/paths.ts";
 import { CLAUDE_BIN, UNMANAGED_ENV, WRAP_DEPTH_ENV, resolveRealBin, wrapDepth } from "../lib/claudebin.ts";
 import { apiKeyEnv, clearSessionCost, foldCompactionCost, foldSessionCost, loadApiKeys, readApiKey, sendApiKey, usableApiKey, writeSessionCost } from "../lib/apikeys.ts";
-import { claude, pickLaunch, type LaunchTarget } from "../lib/claude.ts";
+import { claude, pickLaunch, pickSeat, type LaunchTarget } from "../lib/claude.ts";
 import { compactClaudeSession } from "../lib/compact.ts";
 import { evaluateAndMaybeSwap, moveTarget } from "../lib/decide.ts";
 import { withLock } from "../lib/lock.ts";
-import { thresholdBars, usableAt } from "../lib/picker.ts";
+import { limitWindows, liveUsed, sessionWindow, thresholdBars, usableAt, weeklyWindow } from "../lib/picker.ts";
 import { clearPresence } from "../lib/presence.ts";
 import { readLines } from "../lib/proc.ts";
 import { teeObservation } from "../lib/sample.ts";
@@ -19,7 +19,7 @@ import { saveTermios } from "../lib/tty.ts";
 import { liveSessionId, loadSessionFlags, pruneStaleSessions, saveSessionFlags, writeRespawnMarker } from "../lib/sessions.ts";
 import { loadAccounts, loadConfig, readJsonFile, releaseWaitClaim, replaceWaitClaim, writeUsage } from "../lib/state.ts";
 import { gatedFamilies, modelFromFlag, parseStreamLine, scrubCredEnv } from "../lib/usage.ts";
-import { CostLineSchema, CostStateRowSchema, JsonTextSchema, RespawnMarkerSchema, type Account, type ApiKey, type Config, type ModelInfo, type SessionCost, type UsageWindows } from "../lib/types.ts";
+import { CostLineSchema, CostStateRowSchema, JsonTextSchema, RespawnMarkerSchema, type Account, type ApiKey, type Config, type ModelInfo, type SessionCost, type UsageWindows, type Window } from "../lib/types.ts";
 import { errorMessage, log } from "../lib/log.ts";
 
 const SUBCOMMANDS = new Set([
@@ -126,6 +126,37 @@ export function analyzeArgs(argv: string[]): Analysis {
   const forkResume = forkSession && (resumeId !== null || continueLatest);
   const manage = !printMode && !isSubcmd && !invalidSessionArg && !pickerResume && !forkResume && !process.env.TOKENMAXXING_PROBE;
   return { manage, sessionId, resumeId, continueLatest, streamInput, streamOutput, model };
+}
+
+const PROBE_VALUE_FLAGS = new Set(["--output-format", "--input-format", "--setting-sources", "--settings", "--permission-mode", "--debug-file"]);
+const PROBE_BOOLEAN_FLAGS = new Set(["--verbose", "--strict-mcp-config", "--no-session-persistence"]);
+const ProbeSettingsSchema = z.strictObject({ disableAllHooks: z.literal(true) });
+
+export function isCapabilitiesProbe(argv: string[], envLike: Record<string, string | undefined>): boolean {
+  if (envLike.ENABLE_CLAUDEAI_MCP_SERVERS !== "false" || envLike.CLAUDE_CODE_AUTO_CONNECT_IDE !== "0" || envLike.CLAUDE_CODE_IDE_SKIP_AUTO_INSTALL !== "1") return false;
+  const values = new Map<string, string>();
+  const booleans = new Set<string>();
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i]!;
+    const eq = a.indexOf("=");
+    const flag = eq > 0 ? a.slice(0, eq) : a;
+    if (PROBE_VALUE_FLAGS.has(flag)) {
+      if (values.has(flag)) return false;
+      const value = eq > 0 ? a.slice(eq + 1) : argv[++i];
+      if (value === undefined) return false;
+      values.set(flag, value);
+    } else if (eq === -1 && PROBE_BOOLEAN_FLAGS.has(a)) {
+      if (booleans.has(a)) return false;
+      booleans.add(a);
+    } else return false;
+  }
+  if (!booleans.has("--verbose") || !booleans.has("--strict-mcp-config") || !booleans.has("--no-session-persistence")) return false;
+  if (values.get("--output-format") !== "stream-json" || values.get("--input-format") !== "stream-json") return false;
+  if (values.get("--setting-sources") !== "user,project,local") return false;
+  const permissionMode = values.get("--permission-mode");
+  if (permissionMode !== undefined && permissionMode !== "default") return false;
+  const settings = values.get("--settings");
+  return settings !== undefined && ProbeSettingsSchema.safeParse(JsonTextSchema.safeParse(settings).data).success;
 }
 
 export function stripSessionFlags(argv: string[]): string[] {
@@ -478,6 +509,74 @@ class StdinRelay {
   }
 }
 
+const ProbeCancelLineSchema = z.looseObject({ type: z.literal("control_cancel_request") });
+
+function probeUsageLine(requestId: string, account: Account): string {
+  const now = Date.now();
+  const observed = teeObservation(account);
+  const current = observed ? { ...account, windows: observed.windows } : account;
+  const win = (w: Window | undefined) => (w == null ? null : { utilization: liveUsed(w, now), resets_at: w.resetsAt != null && w.resetsAt > now ? new Date(w.resetsAt).toISOString() : null });
+  const fiveHour = win(sessionWindow(current));
+  const sevenDay = win(weeklyWindow(current));
+  const scoped = limitWindows(current).map((w) => ({ display_name: w.name, utilization: liveUsed(w, now), resets_at: w.resetsAt != null && w.resetsAt > now ? new Date(w.resetsAt).toISOString() : null }));
+  const available = fiveHour != null || sevenDay != null;
+  return `${JSON.stringify({
+    type: "control_response",
+    response: {
+      subtype: "success",
+      request_id: requestId,
+      response: {
+        session: { total_cost_usd: 0, total_api_duration_ms: 0, total_duration_ms: 0, total_lines_added: 0, total_lines_removed: 0, model_usage: {} },
+        subscription_type: null,
+        rate_limits_available: available,
+        rate_limits: available ? { five_hour: fiveHour, seven_day: sevenDay, ...(scoped.length > 0 ? { model_scoped: scoped } : {}) } : null,
+        behaviors: null,
+      },
+    },
+  })}\n`;
+}
+
+async function runCapabilitiesProbe(input: { real: string; argv: string[]; env: Record<string, string | undefined>; seat: Account; onSpawn: (child: Subprocess) => void }): Promise<number> {
+  const proc = Bun.spawn([input.real, ...input.argv], { stdin: "pipe", stdout: "pipe", stderr: "inherit", env: input.env });
+  input.onSpawn(proc);
+  log("supervisor.probe_launch", { seat: input.seat.id.slice(0, 8) });
+  const stdoutPump = (async () => {
+    for await (const line of readLines(proc.stdout as ReadableStream<Uint8Array>)) process.stdout.write(`${line}\n`);
+  })().catch((e: unknown) => log("supervisor.probe_stdout_failed", { err: errorMessage(e) }));
+  void (async () => {
+    for await (const line of readLines(Bun.stdin.stream())) {
+      const parsed = RelayLineSchema.safeParse(JsonTextSchema.safeParse(line).data);
+      const request = parsed.success && parsed.data.type === "control_request" ? parsed.data : null;
+      if (request?.request.subtype === "get_usage") {
+        process.stdout.write(probeUsageLine(request.request_id, input.seat));
+        log("supervisor.probe_usage", { seat: input.seat.id.slice(0, 8) });
+        continue;
+      }
+      const forwarded = (parsed.success && parsed.data.type === "control_response") || request?.request.subtype === "initialize" || ProbeCancelLineSchema.safeParse(JsonTextSchema.safeParse(line).data).success;
+      if (!forwarded) {
+        log("supervisor.probe_refused", { seat: input.seat.id.slice(0, 8), kind: parsed.success ? parsed.data.type : "unparsed" });
+        proc.kill("SIGKILL");
+        break;
+      }
+      try {
+        proc.stdin.write(`${line}\n`);
+        proc.stdin.flush();
+      } catch (e) {
+        log("supervisor.probe_stdin_failed", { err: errorMessage(e) });
+        break;
+      }
+    }
+    try {
+      proc.stdin.end();
+    } catch (e) {
+      log("supervisor.probe_stdin_failed", { err: errorMessage(e) });
+    }
+  })().catch((e: unknown) => log("supervisor.probe_stdin_failed", { err: errorMessage(e) }));
+  await proc.exited;
+  await Promise.race([stdoutPump, Bun.sleep(1000)]);
+  return exitStatus(proc);
+}
+
 function bareResumeStream(info: Analysis, argv: string[], sid: string | null): boolean {
   if (!info.manage || process.env[UNMANAGED_ENV] || info.sessionId != null || stripSessionFlags(argv).length !== 0 || sid == null) return false;
   const persisted = loadSessionFlags(sid);
@@ -532,6 +631,16 @@ export async function runSupervisor(argv: string[]): Promise<number> {
 
   if (!info.manage || process.env[UNMANAGED_ENV]) {
     const passthroughEnv = omit(childEnv, ["TOKENMAXXING_SUPERVISED", "TOKENMAXXING_SESSION_ID", "TOKENMAXXING_MODEL", "TOKENMAXXING_REFUSED", "TOKENMAXXING_API_KEY_ID"]);
+    if (!process.env[UNMANAGED_ENV] && !process.env.TOKENMAXXING_PROBE && isCapabilitiesProbe(argv, process.env)) {
+      const seat = await withLock(claudePool.lockFile, () => pickSeat(Date.now(), null)?.account ?? null).catch((e: unknown) => {
+        log("supervisor.probe_pick_failed", { err: errorMessage(e) });
+        return null;
+      });
+      if (seat != null) {
+        const probeEnv = { ...scrubCredEnv(passthroughEnv), CLAUDE_SECURESTORAGE_CONFIG_DIR: storeDirFor(seat.id) };
+        return runCapabilitiesProbe({ real, argv, env: probeEnv, seat, onSpawn: (p) => { child = p; } });
+      }
+    }
     return runPassthrough({ real, argv, env: passthroughEnv, onSpawn: (p) => { child = p; } });
   }
 
