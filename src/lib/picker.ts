@@ -164,6 +164,15 @@ export function seatHeadroom(a: Account, ctx: PickCtx): number {
   return (barFor(a, session, ctx.thresholds, ctx.now) - liveUsed(session, ctx.now)) / ((ctx.seats?.get(a.id) ?? 0) + 1);
 }
 
+const MIN_SEAT_HEADROOM = 5;
+
+function seatFull(a: Account, ctx: PickCtx): boolean {
+  const session = sessionWindow(a);
+  if (ctx.seats == null || session == null || spendsCredits(a, ctx.thresholds)) return false;
+  const fresh = barFor(a, session, ctx.thresholds, windowEnd(session)) / ((ctx.seats.get(a.id) ?? 0) + 1);
+  return seatHeadroom(a, ctx) < MIN_SEAT_HEADROOM && fresh >= MIN_SEAT_HEADROOM;
+}
+
 export function onCredits(a: Account, ctx: PickCtx): boolean {
   return spendsCredits(a, ctx.thresholds) && isExhausted({ ...a, hasCredits: false }, ctx);
 }
@@ -178,13 +187,15 @@ const swapPreference = (ctx: PickCtx) => [
 ];
 
 export function pickBest(accounts: Account[], ctx: PickCtx): Account | null {
-  const usable = accounts.filter((a) => a.id !== ctx.currentId && !a.needsReauth && !isExhausted(a, ctx));
+  const usable = accounts.filter((a) => a.id !== ctx.currentId && !a.needsReauth && !isExhausted(a, ctx) && !seatFull(a, ctx));
   return sortBy(usable, swapPreference(ctx))[0] ?? null;
 }
 
 export function usableAt(a: Account, ctx: PickCtx): number {
   const blocking = blockingUntil(a, ctx).filter((t) => t > ctx.now);
-  return blocking.length ? Math.max(...blocking) : ctx.now;
+  const at = blocking.length ? Math.max(...blocking) : ctx.now;
+  const session = sessionWindow(a);
+  return session != null && seatFull(a, { ...ctx, now: at }) ? windowEnd(session) : at;
 }
 
 export type EarliestReset = { account: Account; availableAt: number };
