@@ -728,10 +728,12 @@ export async function runSupervisor(argv: string[]): Promise<number> {
     const launched = await withLock(claudePool.lockFile, async () => {
       if (terminating) return null;
       releaseClaimLocked(sid);
+      if (noticeSid !== sid) releaseClaimLocked(noticeSid);
       const target = resolveLaunch(wanted, gate.launchedAt, model, refused);
       if (target?.account && target.depletedUntil !== undefined && target.depletedUntil > gate.launchedAt) {
         try {
-          replaceWaitClaim({ sessionId: sid, accountId: target.account.id, at: gate.launchedAt, waitUntil: target.depletedUntil });
+          replaceWaitClaim({ sessionId: noticeSid, accountId: target.account.id, at: gate.launchedAt, waitUntil: target.depletedUntil });
+          claimSid = null;
         } catch (e) {
           log("supervisor.claim_write_failed", { err: errorMessage(e) });
         }
