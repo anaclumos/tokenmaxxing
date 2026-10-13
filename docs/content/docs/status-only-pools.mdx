@@ -1,16 +1,18 @@
 ---
 title: Status-only pools
-description: grok accounts, pooled for inventory with no supervisor and no switching
+description: grok and Muse Code accounts, pooled for inventory with no supervisor and no switching
 ---
 
-The grok pool shares the account commands, the state layout, and the `status` view with the Claude and Codex pools, and nothing else: no supervisor shim, no hooks, no statusline tee, no session presence, and no switching. It keeps an inventory of accounts and the credential each one holds, and `status` reads each account's subscription credit window.
+The grok and Muse Code pools share the account commands, the state layout, and the `status` view with the Claude and Codex pools, and nothing else: no supervisor shim, no hooks, no statusline tee, no session presence, and no switching. Each keeps an inventory of accounts and the credential each one holds. `status` reads each grok account's subscription credit window; a Muse Code account has no usage read.
 
 ```sh
 tokenmaxxing init --grok          # pool the first grok login (status-only)
 tokenmaxxing add --grok           # pool another one through an isolated login
+tokenmaxxing init --muse          # pool the first Muse Code login (status-only)
+tokenmaxxing add --muse           # pool another one through an isolated login
 ```
 
-`init`, `add`, `auth`, `rm`, and `rename` take `--grok`; every other command refuses the flag with exit code 2, and the pool flags are mutually exclusive. `init` verifies the vendor CLI and pins its path (`grokBin` in `config.json`; `TOKENMAXXING_GROK_BIN` overrides it), then prints that the pool is status-only. `doctor`, `check`, and the periodic timer ignore the pool, and `uninstall` keeps its stores.
+`init`, `add`, `auth`, `emails`, `rm`, and `rename` take `--grok` or `--muse`; every other command refuses the flag with exit code 2, and the pool flags are mutually exclusive. `init` verifies the vendor CLI and pins its path (`grokBin` or `museBin` in `config.json`; `TOKENMAXXING_GROK_BIN` and `TOKENMAXXING_MUSE_BIN` override them), then prints that the pool is status-only. `doctor`, `check`, and the periodic timer ignore both pools, and `uninstall` keeps their stores.
 
 ## grok
 
@@ -18,9 +20,17 @@ An account is a grok CLI login. `init --grok` imports the first entry of `~/.gro
 
 Usage is the weekly subscription credit window from `GET https://cli-chat-proxy.grok.com/v1/billing?format=credits` (`creditUsagePercent`, classified by the period's duration). The endpoint leaves `creditUsagePercent` out while the period's use is 0, so a credits body without it reads as 0%. `TOKENMAXXING_GROK_USAGE_URL` overrides that URL for hermetic runs. The dollar billing body (`GET /v1/billing` without `format=credits`) is not quota: subscription accounts report `monthlyLimit` 0 there while credits remain, and a parser that treats that body as usage reports the account depleted. tokenmaxxing does not refresh grok tokens; a stored access token that has expired is retried against the live `GROK_HOME` login when that login is the same account. A failed read does not write the dollar body: an account with no stored window stays unmeasured, and one with a stored credits window keeps that figure as stale as it was.
 
+## Muse Code
+
+An account is a Muse Code login. `init --muse` imports the first provider entry of `$XDG_CONFIG_HOME/muse/auth.json` (`~/.config/muse/auth.json` when `XDG_CONFIG_HOME` is unset) and points at `add --muse` for the rest; with no live login it runs `muse login` with `XDG_CONFIG_HOME` set to a throwaway directory under the state directory, so the login lands in `muse/auth.json` there. `add --muse` and `auth --muse` always use the isolated login. The entry carries no account id, so identity is the sha256 of the entry's `user_email`, lowercased; the label defaults to that email, and an entry without an email is not pooled. The harvested entry is written with the file's other top-level fields to `muse-stores/<uuid8>/auth.json` at mode 0600. A store is usable when its entry holds an `access_token` or an `api_key`.
+
+Muse Code exposes no read-only quota endpoint: the binary learns its subscription window from the `response.subscription_usage` event of a model response, which spends quota, and from the key mint response (`subs_usage`), which can issue a new `api_key`. tokenmaxxing sends neither request, so every Muse Code account stays unmeasured, and `status` reports the live sample as failed with that reason.
+
 ## What status shows
 
 `status` renders the pool after Claude and Codex, headed `grok  (N accounts, status-only)` and skipped when empty. A grok account renders the weekly credit bar from the credits billing read. The live sample is the credits GET (and a live-login retry when the stored access token is expired). `status` shows `sampling grok usage...` on a terminal while the check runs, erases it, then reports `live sample failed` when the read fails (run `auth --grok` when the store has no usable credential); `status --cached` skips the check and notes `never sampled` when nothing is stored. `status --json` always carries the pool under `grok`, with the same pool shape as the others. `usage` is the weekly credit window when a sample has landed. `sessions` is 0. `exhausted` follows the same bars as the other pools when the account has a stored window, and is `false` when the account is unmeasured.
+
+The Muse Code pool renders after grok, headed `muse  (N accounts, status-only)` and skipped when empty, and `status --json` always carries it under `muse`. Each account shows `live sample failed` with the reason above, `usage` is null, `sessions` is 0, and `exhausted` is `false`.
 
 ## State
 
@@ -30,3 +40,7 @@ Usage is the weekly subscription credit window from `GET https://cli-chat-proxy.
 | `grok-lock` | The `flock` file that serializes the pool's commands |
 | `grok-stores/<uuid8>/auth.json` | One 0600 store per account |
 | `grok-onboard/` | Throwaway login home, wiped before and after each isolated login |
+| `muse-accounts.json` | The Muse Code pool index, the same schema |
+| `muse-lock` | The `flock` file of the Muse Code pool |
+| `muse-stores/<uuid8>/auth.json` | One 0600 store per account |
+| `muse-onboard/` | Throwaway `XDG_CONFIG_HOME` for the isolated login, wiped before and after it |

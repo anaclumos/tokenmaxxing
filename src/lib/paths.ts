@@ -58,6 +58,11 @@ export const grokPool = {
   lockFile: join(TM_HOME, "grok-lock"),
 } as const;
 
+export const musePool = {
+  accountsJson: join(TM_HOME, "muse-accounts.json"),
+  lockFile: join(TM_HOME, "muse-lock"),
+} as const;
+
 export type PoolPaths = { accountsJson: string; lockFile: string };
 
 const CODEX_HOME = env("TOKENMAXXING_CODEX_HOME", env("CODEX_HOME", join(HOME, ".codex")));
@@ -120,6 +125,20 @@ export function grokStoreDirFor(accountId: string): string {
 
 export function grokAuthJsonFor(accountId: string): string {
   return join(grokStoreDirFor(accountId), "auth.json");
+}
+
+export const musePaths = {
+  authJson: join(env("XDG_CONFIG_HOME", join(HOME, ".config")), "muse", "auth.json"),
+  storesDir: join(TM_HOME, "muse-stores"),
+  onboardDir: join(TM_HOME, "muse-onboard"),
+} as const;
+
+export function museStoreDirFor(accountId: string): string {
+  return join(musePaths.storesDir, shortId(accountId));
+}
+
+export function museAuthJsonFor(accountId: string): string {
+  return join(museStoreDirFor(accountId), "auth.json");
 }
 
 export function grokSeatFromEnv(accountIds: string[], env: Record<string, string | undefined> = process.env): string | null {

@@ -98,6 +98,14 @@ The tree lists the entries in the order of the sections below. Open a folder to 
       </Folder>
     </Folder>
     <Folder name="grok-onboard" />
+    <File name="muse-accounts.json" />
+    <File name="muse-lock" />
+    <Folder name="muse-stores">
+      <Folder name="<uuid8>">
+        <File name="auth.json" />
+      </Folder>
+    </Folder>
+    <Folder name="muse-onboard" />
   </Folder>
 </Files>
 
@@ -223,13 +231,13 @@ A pi session's presence record goes to `live/` or `codex-live/`. See [pi support
 
 ### Status-only pools
 
-The `grok-*` entries are the state of the status-only grok pool. See [Status-only pools](/status-only-pools).
+The `grok-*` and `muse-*` entries are the state of the status-only grok and Muse Code pools. See [Status-only pools](/status-only-pools).
 
 | Path | What it holds |
 |---|---|
-| `grok-accounts.json` | The same index shape |
-| `grok-stores/<uuid8>/auth.json` | One 0600 store per account |
-| `grok-onboard/` | Throwaway login home |
+| `grok-accounts.json`, `muse-accounts.json` | The same index shape |
+| `grok-stores/<uuid8>/auth.json`, `muse-stores/<uuid8>/auth.json` | One 0600 store per account |
+| `grok-onboard/`, `muse-onboard/` | Throwaway login home |
 
 ## Outside the state directory
 
