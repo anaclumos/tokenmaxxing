@@ -15,6 +15,7 @@ Config is JSON at `~/.config/tokenmaxxing/config.json`. Every field is optional;
   "claudeBin": "/path/to/real/claude",
   "codexBin": "/path/to/real/codex",
   "grokBin": "/path/to/real/grok",
+  "museBin": "/path/to/real/muse",
   "piBin": "/path/to/real/pi",
   "policy": {
     "projectionMargin": 0,
@@ -36,11 +37,11 @@ Config is JSON at `~/.config/tokenmaxxing/config.json`. Every field is optional;
 | `thresholds.weekly` | `98` | The weekly bar, covering the 7-day aggregate and every per-model weekly cap. |
 | `thresholds.accounts` | `{}` | Per-account thresholds keyed by account label, each with both `session` and `weekly`. See [Per-account bars](#per-account-bars). |
 | `"credits"` in a `thresholds.accounts` entry | `false` | Marks an account that carries purchased usage credits. |
-| `claudeBin`, `codexBin`, `grokBin`, `piBin` | written by `init` | Pins to the REAL binaries the supervisors and the status-only pool spawn. See [Binary pins](#binary-pins). |
+| `claudeBin`, `codexBin`, `grokBin`, `museBin`, `piBin` | written by `init` | Pins to the REAL binaries the supervisors and the status-only pool spawn. See [Binary pins](#binary-pins). |
 | `policy.projectionMargin` | `0` | Subtracted from the session threshold only. See [Projection margin](#projection-margin). |
 | `policy.switchModels` | `["fable"]` | Model families whose per-model weekly cap gates a switch (entries are lowercased on load). |
 | `policy.usagePollTtlMs` | `90000` | The shortest sample interval of a Claude account, the one an account near a bar gets. See [Sample interval](#sample-interval). |
-| `policy.maxWaitMs` | `3600000` (1 hour) | The depleted-pool auto-wait bound. See [Depleted-pool wait](#depleted-pool-wait). |
+| `policy.maxWaitMs` | `3600000` (1 hour) | The depleted-pool stop bound. See [Depleted-pool stop](#depleted-pool-stop). |
 | `policy.checkIntervalMs` | `60000`, minimum `10000` | The periodic check tick. See [Check timer](#check-timer). |
 | `policy.accountReleaseMs` | `session` `1800000` (30 minutes), `weekly` `18000000` (5 hours) | How close to its reset a window is when a `thresholds.accounts` entry stops holding the account under the global bar. |
 | `hub.port` | `8317`, the CLIProxyAPI default | The loopback port the usage hub listens on (`tokenmaxxing serve` and its background service). See [Usage hub](/hub). |
@@ -86,7 +87,7 @@ Every displayed usage percent is measured against the account's switch threshold
 - The threshold is the account's own entry in `thresholds.accounts`, else the global threshold, minus `policy.projectionMargin` for the session window.
 - The threshold is lifted near a reset the way switching lifts it (`policy.accountReleaseMs`).
 - 100 means the account reached its switch threshold, where tokenmaxxing stops placing sessions on it unless its `thresholds.accounts` entry sets `credits`. Usage past that point stays at 100.
-- The status-only grok pool has no switch threshold and shows the provider's figure.
+- The status-only grok pool has no switch threshold and shows the provider's figure. The status-only Muse Code pool has no figure.
 
 The figure therefore reads higher than the usage Claude Code or Codex reports: with `thresholds.session` at 90, a session window at 45 percent reads 50. Switching decisions and the stored records use the provider's figures.
 
@@ -99,6 +100,7 @@ The figure therefore reads higher than the usage Claude Code or Codex reports: w
 | `claudeBin` | `TOKENMAXXING_CLAUDE_BIN` |
 | `codexBin` | `TOKENMAXXING_CODEX_BIN` |
 | `grokBin` | `TOKENMAXXING_GROK_BIN` |
+| `museBin` | `TOKENMAXXING_MUSE_BIN` |
 | `piBin` | `TOKENMAXXING_PI_BIN` |
 
 Each variable overrides the file value for one process, except that `init` pins the binary it resolved into `config.json`, so an override set for `init` persists.
@@ -128,13 +130,13 @@ How the samplers use it:
 - A seat whose sample keeps failing backs off exponentially from its interval, doubling per consecutive failure up to 30 minutes, and resets on the first success.
 - A Codex seat reads its usage GET when its cached figure is older than `policy.usagePollTtlMs`.
 
-## Depleted-pool wait
+## Depleted-pool stop
 
-`policy.maxWaitMs` is the depleted-pool auto-wait bound (see [When nothing is usable](/switching#when-nothing-is-usable)):
+`policy.maxWaitMs` is the depleted-pool stop bound (see [When nothing is usable](/switching#when-nothing-is-usable)):
 
-1. Waiters fill resets within this bound first.
-2. When those are full, the overflow waits for the next reset with room, up to twice this bound out.
-3. When that horizon is full, the overflow joins the least-crowded reset.
+1. Stopped sessions take resets within this bound first.
+2. When those are full, the overflow takes the next reset with room, up to twice this bound out.
+3. When that horizon is full, the overflow takes the least-crowded reset.
 
 ## Check timer
 

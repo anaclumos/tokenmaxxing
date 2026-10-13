@@ -2,14 +2,14 @@
 
 **Automatic Claude Code account switching.** Run `claude` exactly as you always do; each session starts on the pooled account with the most headroom per running session, and when that account nears its usage limit, tokenmaxxing resumes the session on a fresher account at a safe turn boundary - same conversation, compacted on the account it leaves and restarted under another account's credential store with a first prompt that asks Claude to continue. Works across many concurrent sessions, which spread over the pool instead of draining one account together. When the whole pool is at its limit, a session queues first come first served for a reset (at most eight sessions wait on one account; overflow waits for the next reset with room) and pauses with a countdown until its assigned reset, when that reset falls within twice `policy.maxWaitMs` (default 1h - a longer wait stays put rather than parking your terminal for hours).
 
-> **Scope:** Claude Code on macOS and Linux, plus OpenAI's Codex CLI as a second switching pool; grok as a status-only pool. It pools **subscription** accounts (Pro/Max), not API keys.
+> **Scope:** Claude Code on macOS and Linux, plus OpenAI's Codex CLI as a second switching pool; grok and Muse Code as status-only pools. It pools **subscription** accounts (Pro/Max), not API keys.
 
 ```
 $ claude
   ...you work normally; the statusline's ◆ marks this session's account...
   ↻ tokenmaxxing: compacting the conversation on me@example.com before the move...
   ↻ tokenmaxxing: moving to work@acme.com - resuming...
-  ⏳ tokenmaxxing: all accounts at their limit. Resuming on work@acme.com when it resets (Ctrl-C to resume now).
+  ⏳ tokenmaxxing: all accounts at their limit, so this session stopped. The next reset is at 18:42 KST on work@acme.com. Run `claude --resume <id>` after that to continue.
 ```
 
 ## Why
@@ -67,14 +67,15 @@ claude                  # use claude as always; each session gets its own accoun
 | `tokenmaxxing init --codex` | same for codex: log in the first account (isolated), install codex supervisor + Stop hook |
 | `tokenmaxxing init --pi` | verify and pin the real `pi` and install the `pi` supervisor, which runs pi sessions on pooled Claude and ChatGPT accounts that have a pi login |
 | `tokenmaxxing init --grok` | pool the first grok login, status-only: no supervisor, no switching |
-| `tokenmaxxing add [--codex \| --grok]` | register an additional account in that pool (isolated login, harvested once into its own store) |
-| `tokenmaxxing auth [--codex \| --grok] [sel \| --all]` | reauthenticate a pooled account in place: bare lists the pool (emails shown) and asks which; a selector targets one account and tells you the email to sign in with; `--all` walks every account that is flagged or has no usable credential in its store, one by one |
+| `tokenmaxxing init --muse` | pool the first Muse Code login, status-only: no supervisor, no switching, no usage read |
+| `tokenmaxxing add [--codex \| --grok \| --muse]` | register an additional account in that pool (isolated login, harvested once into its own store) |
+| `tokenmaxxing auth [--codex \| --grok \| --muse] [sel \| --all]` | reauthenticate a pooled account in place: bare lists the pool (emails shown) and asks which; a selector targets one account and tells you the email to sign in with; `--all` walks every account that is flagged or has no usable credential in its store, one by one |
 | `tokenmaxxing auth --pi [--codex] [sel \| --all]` | log a pooled Claude account (or a codex account with `--codex`) into pi, isolated, and keep that login as the account's pi credential after an identity check; `--all` walks every account without a pi login |
 | `tokenmaxxing status [--cached]` | every pool: accounts with 5h / weekly / per-model usage bars, live session counts, exhausted-until-reset; `--cached` renders the stored figures without sampling |
 | `tokenmaxxing config` | the config path and the effective values; edit the file in an editor, a bad value fails the next load with the field name |
 | `tokenmaxxing check` | fold fresh tees, sample up to three stale accounts, and self-update a Bun global install once a day; the periodic timer runs this every tick |
 | `tokenmaxxing doctor` | verify the install: PATH order, `claudeBin`, the five settings entries, the timer, the hub service, the credential identity of every Codex store and of every Claude store whose access token is still fresh (an expiring Claude token is reported as unverifiable, not as a failure), codex hook trust, and shell aliases that shadow `claude` |
-| `tokenmaxxing rename [--codex \| --grok] <sel> <label>` / `rm [...] <sel>` | manage a pool (one email can hold both a claude and a codex account); `rm` is refused for an account with a running supervised session |
+| `tokenmaxxing rename [--codex \| --grok \| --muse] <sel> <label>` / `rm [...] <sel>` | manage a pool (one email can hold both a claude and a codex account); `rm` is refused for an account with a running supervised session |
 | `tokenmaxxing serve` | serve the CLIProxyAPI-compatible usage API on `http://localhost:8317` (`hub.port`) so a dashboard such as T3 Code's "Add a CLIProxyAPI hub" shows the quota of every pooled Claude and Codex account; the management key is the contents of `hub-key` in the state directory, minted on the first run, and `init` runs it as a background service beside the check timer. Details in [Usage hub](docs/content/docs/hub.mdx) |
 | `tokenmaxxing uninstall [--yes]` | print the targets, then remove the shims, settings entries, codex Stop hook, check timer, hub service, and rc PATH line (accounts/stores kept); refused without `--yes` when `HOME` is the login home |
 | `--json` | machine-readable output: one JSON document on stdout for `status`, `config`, and `check` (`ok` mirrors the exit code, failures add `error`) |
@@ -146,12 +147,13 @@ pi keeps its own credential and refreshes it itself, so each pooled account gets
 ## Honest limitations
 
 - **A move restarts the process.** The session resumes the same transcript under the new account and continues on its own from a first prompt the supervisor submits, but the process restarts, which ends every background Bash task, Monitor, and Workflow run the session started (the first prompt asks Claude to relaunch what the task still needs); a bar-triggered move compacts the conversation on the old account first, so the first turn on the new account uploads the summary (the full context when the compaction does not land), while a move after a refusal re-uploads the full context once (prompt cache is org-scoped).
-- **Depleted-pause hiccup.** When the whole pool is at its limit, `claude` stops for the countdown; anything typed in that split second is lost.
+- **Depleted-stop hiccup.** When the whole pool is at its limit, `claude` stops and names the next reset; anything typed in that split second is lost, and the session continues only when you resume it after that reset.
 - **Unsupervised sessions are not moved.** A claude started outside the supervisor runs on Claude Code's own login, which tokenmaxxing never writes; when a hard limit lands there, the StopFailure hook prints the shim command that resumes the session under the supervisor.
 - **One shared identity file.** `~/.claude.json` holds one `oauthAccount` that Claude Code rewrites after whichever session refreshed last, so `/status` can show another session's email; the statusline's `◆` marks the account a session actually uses.
 - **Keychain (macOS).** The first keychain access for a new store happens inside the interactive `init`, `add`, or `auth` run, where a prompt can be answered, not inside a headless hook.
 - **Plaintext credentials (Linux).** Claude Code itself stores Linux credentials as a 0600 plaintext file; a store follows the same model.
 - **The status-only grok pool does not switch.** grok `status` shows the weekly subscription credit window, and no grok session moves.
+- **The status-only Muse Code pool does not switch and shows no usage.** Muse Code exposes no read-only quota endpoint, so every Muse Code account stays unmeasured.
 
 ## How it's built
 

@@ -5,7 +5,7 @@ description: Automatic Claude Code account switching - pool your own subscriptio
 
 tokenmaxxing is a CLI for automatic Claude Code account switching. It pools multiple subscription (Pro/Max) accounts that you own, starts each `claude` session on the pooled account with the most headroom per running session, and, when the account a session runs on nears a usage limit, resumes that session on a fresher account at a safe turn boundary. You run `claude` exactly as you always do; each session keeps its own account, so several sessions spread across the pool instead of draining one account together.
 
-The visible behavior is a resume: when a session moves, `claude` restarts on the same conversation under the new account. When the whole pool is at its limit and no API key is stored, the session pauses with a countdown and auto-resumes on its assigned reset (at most eight sessions wait on one account; Ctrl-C resumes immediately).
+The visible behavior is a resume: when a session moves, `claude` restarts on the same conversation under the new account. When the whole pool is at its limit and no API key is stored, the session stops and the supervisor exits with the soonest reset named (at most eight sessions take one reset). Resume the session after that reset to continue it.
 
 <Callout>
 Scope: Claude Code on macOS and Linux, plus OpenAI's Codex CLI as a second pool with its own supervisor and switching, and the pi coding agent on either pool when it signs in with a Claude or ChatGPT subscription (see [pi support](/pi)). A grok pool is status-only: `status` lists its accounts with the weekly credit window and nothing moves (see [Status-only pools](/status-only-pools)). It pools subscription accounts; Anthropic and OpenRouter API keys you store with `tokenmaxxing key add` serve as a paid fallback for Claude sessions while every pooled account is at its limit (see [API keys](/switching#api-keys)). This is a personal-use tool for pooling accounts you own, in sessions and agents you run yourself - see [Personal use and terms of service](/terms).
@@ -30,7 +30,7 @@ flowchart LR
   sup["claude<br/>(the supervisor shim)"] -->|"most headroom<br/>per session"| seat["session on account A<br/>under A's store"]
   seat -->|"under the bars"| seat
   seat -->|"A at a bar"| move["stop at the turn boundary<br/>compact on A<br/>claude --resume on B"]
-  seat -->|"every account at a bar"| wait["countdown<br/>resume on the assigned reset"]
+  seat -->|"every account at a bar"| wait["stop and name<br/>the soonest reset"]
 ```
 
 Every pooled account gets its own Claude Code credential store, and the thin `claude` supervisor on your PATH points `CLAUDE_SECURESTORAGE_CONFIG_DIR` at the store of the account it placed the session on. A move stops the session at a committed turn boundary (the transcript is already on disk, nothing is lost), compacts the conversation on the account it leaves, and runs `claude --resume <id>` under another account's store with a first prompt that asks Claude to continue. Sessions on the same account share its store, so Claude Code's own token refresh keeps them in step.
