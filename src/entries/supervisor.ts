@@ -509,6 +509,8 @@ class StdinRelay {
   }
 }
 
+const ProbeCancelLineSchema = z.looseObject({ type: z.literal("control_cancel_request") });
+
 function probeUsageLine(requestId: string, account: Account): string {
   const now = Date.now();
   const observed = teeObservation(account);
@@ -549,6 +551,12 @@ async function runCapabilitiesProbe(input: { real: string; argv: string[]; env: 
         process.stdout.write(probeUsageLine(request.request_id, input.seat));
         log("supervisor.probe_usage", { seat: input.seat.id.slice(0, 8) });
         continue;
+      }
+      const forwarded = (parsed.success && parsed.data.type === "control_response") || request?.request.subtype === "initialize" || ProbeCancelLineSchema.safeParse(JsonTextSchema.safeParse(line).data).success;
+      if (!forwarded) {
+        log("supervisor.probe_refused", { seat: input.seat.id.slice(0, 8), kind: parsed.success ? parsed.data.type : "unparsed" });
+        proc.kill("SIGKILL");
+        break;
       }
       try {
         proc.stdin.write(`${line}\n`);
