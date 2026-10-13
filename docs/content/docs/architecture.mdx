@@ -277,14 +277,14 @@ When every account in the pool is over its bars, the Stop hook writes the marker
 | Every reset within `policy.maxWaitMs` is full | the next reset with room, up to twice `policy.maxWaitMs` out |
 | Every reset within that horizon is full | the least-crowded reset |
 
-Claims are first come first served in `wait-queue.json`, so at most eight sessions are assigned to one reset and the rest take later resets. The stop is bounded by twice `policy.maxWaitMs` (`maxWaitMs` defaults to 1 hour); beyond that the decision reports the pool as depleted and a running session stays put. A launch onto a depleted pool takes the same target selection, counting running sessions as well as assigned ones, and stops the same way before it starts any `claude` process.
+Claims are first come first served in `wait-queue.json`, so at most eight sessions are assigned to one reset and the rest take later resets. A stopped session keeps its claim until the reset it names, so sessions that stop one after another count against the same eight; its next launch releases the claim before it places the session again. The stop is bounded by twice `policy.maxWaitMs` (`maxWaitMs` defaults to 1 hour); beyond that the decision reports the pool as depleted and a running session stays put. A launch onto a depleted pool takes the same target selection, counting running sessions as well as assigned ones, and stops the same way before it starts any `claude` process.
 
 ### The stop
 
 ```mermaid
 flowchart TD
   t["terminate the child at the turn boundary,<br/>restore the terminal"] --> cd["name the reset,<br/>no compaction"]
-  cd --> r["release the claim"]
+  cd --> r["keep the claim<br/>until the reset"]
   r --> x["supervisor exits"]
   x -->|"resumed after the reset"| p["place the session again"]
   p -->|"an account has quota"| l["relaunch under its store"]

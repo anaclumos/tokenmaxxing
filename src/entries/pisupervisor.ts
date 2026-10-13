@@ -436,7 +436,6 @@ export async function runPiSupervisor(argv: string[]): Promise<number> {
           log("pisupervisor.depleted_exit", { id, pool, account: target.id.slice(0, 8), waitUntil });
           say(`\n\x1b[36m⏳ tokenmaxxing: all accounts at their limit, so this session stopped. The next reset is at ${clockFmt.format(waitUntil)} on ${target.label}. Start pi again after that to continue.\x1b[0m\n`);
           clearPresence({ dir: presenceDir, id });
-          await releaseClaim();
           return 1;
         }
         say(`\n\x1b[36m↻ tokenmaxxing: moving pi to ${target.label} - resuming...\x1b[0m\n`);

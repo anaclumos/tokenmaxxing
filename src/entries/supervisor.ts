@@ -17,7 +17,7 @@ import { teeObservation } from "../lib/sample.ts";
 import { childStdout, clockFmt, exitStatus, loopGuardTripped, raceMarkerOrExit, recordPresenceOrStop, relayStdout, runPassthrough, SEAT_POLL_MS, SEAT_RETRY_MS, type Say } from "../lib/supervise.ts";
 import { saveTermios } from "../lib/tty.ts";
 import { liveSessionId, loadSessionFlags, pruneStaleSessions, saveSessionFlags, writeRespawnMarker } from "../lib/sessions.ts";
-import { loadAccounts, loadConfig, readJsonFile, releaseWaitClaim, writeUsage } from "../lib/state.ts";
+import { loadAccounts, loadConfig, readJsonFile, releaseWaitClaim, replaceWaitClaim, writeUsage } from "../lib/state.ts";
 import { gatedFamilies, modelFromFlag, parseStreamLine, scrubCredEnv } from "../lib/usage.ts";
 import { CostLineSchema, CostStateRowSchema, JsonTextSchema, RespawnMarkerSchema, type Account, type ApiKey, type Config, type ModelInfo, type SessionCost, type UsageWindows, type Window } from "../lib/types.ts";
 import { errorMessage, log } from "../lib/log.ts";
@@ -728,8 +728,15 @@ export async function runSupervisor(argv: string[]): Promise<number> {
     const launched = await withLock(claudePool.lockFile, async () => {
       if (terminating) return null;
       releaseClaimLocked(sid);
+      if (noticeSid !== sid) releaseClaimLocked(noticeSid);
       const target = resolveLaunch(wanted, gate.launchedAt, model, refused);
       if (target?.account && target.depletedUntil !== undefined && target.depletedUntil > gate.launchedAt) {
+        try {
+          replaceWaitClaim({ sessionId: noticeSid, accountId: target.account.id, at: gate.launchedAt, waitUntil: target.depletedUntil });
+          claimSid = null;
+        } catch (e) {
+          log("supervisor.claim_write_failed", { err: errorMessage(e) });
+        }
         return { waitOn: target.account, waitUntil: target.depletedUntil };
       }
       const picked = target?.account ?? null;
@@ -784,7 +791,6 @@ export async function runSupervisor(argv: string[]): Promise<number> {
       log("supervisor.depleted_exit", { sid: sid.slice(0, 8), account: launched.waitOn.id.slice(0, 8), waitUntil: launched.waitUntil });
       say(`\n\x1b[36m⏳ tokenmaxxing: all accounts at their limit, so this session stopped. The next reset is at ${clockFmt.format(launched.waitUntil)} on ${launched.waitOn.label}. Run \`claude --resume ${noticeSid}\` after that to continue.\x1b[0m\n`, text);
       if (stream) process.stdout.write(depletedLines(noticeSid, launched.waitUntil, text));
-      await releaseClaim();
       return 1;
     }
 
