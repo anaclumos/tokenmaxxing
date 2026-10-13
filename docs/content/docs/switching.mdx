@@ -178,7 +178,7 @@ The recovery target follows these steps in order:
 | 2 | A session that arrives when every reset within `policy.maxWaitMs` already has eight sessions assigned takes the next reset with room, up to twice `policy.maxWaitMs` out, rather than piling onto the soonest. |
 | 3 | Only when every reset within that horizon is full does it take the least-crowded one (ties broken by soonest reset, then the session's own account). |
 
-- Assignments live in `wait-queue.json` while the session moves or stops and are released when it relaunches or exits.
+- Assignments live in `wait-queue.json`. A moving session's assignment is released when it relaunches; a stopped session's stays until the reset it names, so the count of eight covers sessions that already stopped, and the session's next launch releases it.
 - In a stream-json session (the Agent SDK, T3 Code) the stop writes a notice line naming the account and the reset time, then a rejected `rate_limit_event` with the reset time and an error `result` whose message is the notice, and the supervisor process exits. T3 Code shows that pair as a usage-limit failure with the reset time, and the harness ends the run instead of showing it as still working (see [Terminal and harness sessions](/architecture#terminal-and-harness-sessions)).
 - When no account resets within twice `policy.maxWaitMs`, the decision reports the pool as depleted and a running session stays put, keeps running into its real limit, and the enforced-limit path below takes over. A launch onto such a pool stops at once with the soonest reset named.
 - The stop happens at the bar, not at 100: the unspent headroom is the same budget that set the bar.
