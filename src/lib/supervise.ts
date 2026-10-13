@@ -15,42 +15,7 @@ export const SEAT_RETRY_MS = 60_000;
 
 export type Say = (terminal: string, text: string) => void;
 
-const clockFmt = new Intl.DateTimeFormat("en-US", { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZoneName: "short" });
-
-function waitHoldLines(sid: string, until: number): { start: string; stop: string } {
-  const line = (fields: Record<string, unknown>): string =>
-    `${JSON.stringify({ type: "system", task_id: `tokenmaxxing-wait-${sid}`, uuid: crypto.randomUUID(), session_id: sid, ...fields })}\n`;
-  return {
-    start: line({ subtype: "task_started", task_type: "local_bash", description: `Waiting until ${clockFmt.format(until)} for a Claude account to reset` }),
-    stop: line({ subtype: "task_notification", status: "completed", output_file: "", summary: "The wait for a Claude account to reset ended" }),
-  };
-}
-
-export async function countdownWait(acct: string, until: number, out: { stream: boolean; say: Say; holdSid?: string }): Promise<boolean> {
-  let aborted = false;
-  const onInt = () => { aborted = true; };
-  process.on("SIGINT", onInt);
-  const minutes = Math.max(1, Math.ceil((until - Date.now()) / 60000));
-  out.say(
-    `\n\x1b[36m⏳ tokenmaxxing: all accounts at their limit. Resuming on ${acct} when it resets (Ctrl-C to resume now).\x1b[0m\n`,
-    `tokenmaxxing: all accounts at their limit. Resuming at ${clockFmt.format(until)} (in ${minutes} min) on ${acct}.`,
-  );
-  const hold = out.stream && out.holdSid !== undefined ? waitHoldLines(out.holdSid, until) : null;
-  if (hold) process.stdout.write(hold.start);
-  while (!aborted && Date.now() < until) {
-    if (!out.stream) {
-      const left = until - Date.now();
-      const m = Math.floor(left / 60000);
-      const s = Math.floor((left % 60000) / 1000);
-      process.stderr.write(`\r\x1b[36m   resuming in ${m}m ${String(s).padStart(2, "0")}s \x1b[0m`);
-    }
-    await Bun.sleep(1000);
-  }
-  process.removeListener("SIGINT", onInt);
-  if (hold) process.stdout.write(hold.stop);
-  out.say(`\n\x1b[36m↻ resuming on ${acct}...\x1b[0m\n`, `tokenmaxxing: resuming on ${acct}.`);
-  return aborted;
-}
+export const clockFmt = new Intl.DateTimeFormat("en-US", { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZoneName: "short" });
 
 type ChildHandle = {
   pid: number;

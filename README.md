@@ -9,7 +9,7 @@ $ claude
   ...you work normally; the statusline's ◆ marks this session's account...
   ↻ tokenmaxxing: compacting the conversation on me@example.com before the move...
   ↻ tokenmaxxing: moving to work@acme.com - resuming...
-  ⏳ tokenmaxxing: all accounts at their limit. Resuming on work@acme.com when it resets (Ctrl-C to resume now).
+  ⏳ tokenmaxxing: all accounts at their limit, so this session stopped. The next reset is at 18:42 KST on work@acme.com. Run `claude --resume <id>` after that to continue.
 ```
 
 ## Why
@@ -147,7 +147,7 @@ pi keeps its own credential and refreshes it itself, so each pooled account gets
 ## Honest limitations
 
 - **A move restarts the process.** The session resumes the same transcript under the new account and continues on its own from a first prompt the supervisor submits, but the process restarts, which ends every background Bash task, Monitor, and Workflow run the session started (the first prompt asks Claude to relaunch what the task still needs); a bar-triggered move compacts the conversation on the old account first, so the first turn on the new account uploads the summary (the full context when the compaction does not land), while a move after a refusal re-uploads the full context once (prompt cache is org-scoped).
-- **Depleted-pause hiccup.** When the whole pool is at its limit, `claude` stops for the countdown; anything typed in that split second is lost.
+- **Depleted-stop hiccup.** When the whole pool is at its limit, `claude` stops and names the next reset; anything typed in that split second is lost, and the session continues only when you resume it after that reset.
 - **Unsupervised sessions are not moved.** A claude started outside the supervisor runs on Claude Code's own login, which tokenmaxxing never writes; when a hard limit lands there, the StopFailure hook prints the shim command that resumes the session under the supervisor.
 - **One shared identity file.** `~/.claude.json` holds one `oauthAccount` that Claude Code rewrites after whichever session refreshed last, so `/status` can show another session's email; the statusline's `◆` marks the account a session actually uses.
 - **Keychain (macOS).** The first keychain access for a new store happens inside the interactive `init`, `add`, or `auth` run, where a prompt can be answered, not inside a headless hook.
