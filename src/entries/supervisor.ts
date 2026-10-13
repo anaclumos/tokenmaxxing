@@ -14,10 +14,10 @@ import { limitWindows, liveUsed, sessionWindow, thresholdBars, usableAt, weeklyW
 import { clearPresence } from "../lib/presence.ts";
 import { readLines } from "../lib/proc.ts";
 import { teeObservation } from "../lib/sample.ts";
-import { childStdout, countdownWait, exitStatus, loopGuardTripped, raceMarkerOrExit, recordPresenceOrStop, relayStdout, runPassthrough, SEAT_POLL_MS, SEAT_RETRY_MS, type Say } from "../lib/supervise.ts";
+import { childStdout, clockFmt, exitStatus, loopGuardTripped, raceMarkerOrExit, recordPresenceOrStop, relayStdout, runPassthrough, SEAT_POLL_MS, SEAT_RETRY_MS, type Say } from "../lib/supervise.ts";
 import { saveTermios } from "../lib/tty.ts";
 import { liveSessionId, loadSessionFlags, pruneStaleSessions, saveSessionFlags, writeRespawnMarker } from "../lib/sessions.ts";
-import { loadAccounts, loadConfig, readJsonFile, releaseWaitClaim, replaceWaitClaim, writeUsage } from "../lib/state.ts";
+import { loadAccounts, loadConfig, readJsonFile, releaseWaitClaim, writeUsage } from "../lib/state.ts";
 import { gatedFamilies, modelFromFlag, parseStreamLine, scrubCredEnv } from "../lib/usage.ts";
 import { CostLineSchema, CostStateRowSchema, JsonTextSchema, RespawnMarkerSchema, type Account, type ApiKey, type Config, type ModelInfo, type SessionCost, type UsageWindows, type Window } from "../lib/types.ts";
 import { errorMessage, log } from "../lib/log.ts";
@@ -247,7 +247,6 @@ function latestSessionForCwd(): string | null {
 
 type MarkerGate = {
   launchedAt: number;
-  overriddenUntil: number;
 };
 
 function releaseClaimLocked(sid: string): void {
@@ -280,9 +279,6 @@ async function consumableMarker(marker: string, gate: MarkerGate): Promise<z.inf
   if (m.launchedAt !== undefined && m.launchedAt !== gate.launchedAt) {
     return discardMarker(marker, "supervisor.marker_stale", { markerLaunch: m.launchedAt, childLaunch: gate.launchedAt });
   }
-  if (m.waitUntil > Date.now() && m.waitUntil <= gate.overriddenUntil) {
-    return discardMarker(marker, "supervisor.marker_overridden", { waitUntil: m.waitUntil });
-  }
   return m;
 }
 
@@ -301,7 +297,7 @@ async function moveExhaustedSeat(seat: Account, sid: string, gate: MarkerGate, m
     const cfg = loadConfig();
     const families = gatedFamilies(model, cfg.policy.switchModels);
     const until = seatBlockedUntil(seat.id, now, families, cfg);
-    if (until == null || until <= gate.overriddenUntil) return false;
+    if (until == null) return false;
     const decision = await evaluateAndMaybeSwap(claude, now, true, null, { seatId: seat.id, sessionFamilies: families, waiterId: sid, refused, apiKeys: true });
     log("supervisor.seat_exhausted", { seat: seat.id.slice(0, 8), until, reason: decision.reason, account: decision.account?.id.slice(0, 8), key: decision.apiKey?.id, waitUntil: decision.waitUntil });
     const target = moveTarget(decision);
@@ -324,7 +320,7 @@ async function moveKeySession(key: ApiKey, sid: string, gate: MarkerGate, model:
     const decision = await evaluateAndMaybeSwap(claude, now, true, null, { seatId: null, sessionFamilies: families, waiterId: sid, refused, apiKeys: true, apiKeyId: key.id });
     log("supervisor.key_watch", { key: key.id, reason: decision.reason, account: decision.account?.id.slice(0, 8), next: decision.apiKey?.id, waitUntil: decision.waitUntil });
     const target = moveTarget(decision);
-    if (target && (target.waitUntil === undefined || target.waitUntil > gate.overriddenUntil)) {
+    if (target) {
       writeRespawnMarker({ session: { sid, launchedAt: gate.launchedAt, live: liveSessionId(sid) }, ...target, waitUntil: target.waitUntil ?? now, compact: true, origin: "seatwatch" });
     }
   } catch (e) {
@@ -360,6 +356,14 @@ async function foldCost(sid: string, keyId: string | null, restored: Map<string,
 
 function systemLine(sid: string, text: string): string {
   return `${JSON.stringify({ type: "system", subtype: "informational", content: text, level: "warning", uuid: crypto.randomUUID(), session_id: sid })}\n`;
+}
+
+function depletedLines(sid: string, until: number, text: string): string {
+  const line = (fields: Record<string, unknown>): string => `${JSON.stringify({ ...fields, uuid: crypto.randomUUID(), session_id: sid })}\n`;
+  return (
+    line({ type: "rate_limit_event", rate_limit_info: { status: "rejected", resetsAt: Math.ceil(until / 1000) } }) +
+    line({ type: "result", subtype: "error_during_execution", is_error: true, errors: [text], terminal_reason: "blocking_limit", num_turns: 0 })
+  );
 }
 
 function resumePrompt(input: { compacted: boolean; origin: z.infer<typeof RespawnMarkerSchema>["origin"]; onKey: boolean }): string {
@@ -418,8 +422,12 @@ const RelayLineSchema = z.discriminatedUnion("type", [
   z.looseObject({ type: z.literal("control_request"), request_id: z.string(), request: z.looseObject({ subtype: z.string() }) }),
 ]);
 
-function controlErrorLine(requestId: string): string {
-  return `${JSON.stringify({ type: "control_response", response: { subtype: "error", request_id: requestId, error: "tokenmaxxing restarted Claude Code for an account move, and this request may or may not have run." } })}\n`;
+const UserLineSchema = z.looseObject({ type: z.literal("user") });
+
+const MOVED_REQUEST_ERROR = "tokenmaxxing restarted Claude Code for an account move, and this request may or may not have run.";
+
+function controlErrorLine(requestId: string, error: string): string {
+  return `${JSON.stringify({ type: "control_response", response: { subtype: "error", request_id: requestId, error } })}\n`;
 }
 
 class StdinRelay {
@@ -430,12 +438,18 @@ class StdinRelay {
   private dropped: string[] = [];
   private pendingTranscript: string | null = null;
   private ended = false;
+  private refusal: string | null = null;
+  private sawUser!: () => void;
+  readonly firstUser = new Promise<void>((resolve) => {
+    this.sawUser = resolve;
+  });
 
   constructor() {
     this.pump()
       .catch((e: unknown) => log("supervisor.relay_read_failed", { err: errorMessage(e) }))
       .finally(() => {
         this.ended = true;
+        this.sawUser();
         this.close();
       });
   }
@@ -453,6 +467,13 @@ class StdinRelay {
 
   detach(): void {
     this.sink = null;
+  }
+
+  refuse(error: string): void {
+    this.refusal = error;
+    const lines = [...this.state.values(), ...this.queue];
+    this.queue = [];
+    for (const line of lines) this.forward(line);
   }
 
   replay(): string[] {
@@ -480,8 +501,14 @@ class StdinRelay {
   }
 
   private forward(line: string): void {
-    const parsed = RelayLineSchema.safeParse(JsonTextSchema.safeParse(line).data);
+    const value = JsonTextSchema.safeParse(line).data;
+    if (UserLineSchema.safeParse(value).success) this.sawUser();
+    const parsed = RelayLineSchema.safeParse(value);
     const request = parsed.success && parsed.data.type === "control_request" ? parsed.data : null;
+    if (this.refusal !== null) {
+      if (request !== null) process.stdout.write(controlErrorLine(request.request_id, this.refusal));
+      return;
+    }
     const setup = request !== null && REPLAYED_REQUESTS.has(request.request.subtype);
     if (setup) this.state.set(request.request.subtype, line);
     if (this.sink !== null) {
@@ -690,7 +717,6 @@ export async function runSupervisor(argv: string[]): Promise<number> {
   };
   let firstLine: string | null = null;
   let respawns = 0;
-  let overriddenUntil = 0;
   let wanted: { accountId: string | null; apiKeyId: string | null } | null = null;
   let refused: string[] = [];
   let drainStdout: ((abandoned: () => boolean) => Promise<void>) | null = null;
@@ -698,13 +724,12 @@ export async function runSupervisor(argv: string[]): Promise<number> {
   while (true) {
     rmSync(marker, { force: true });
 
-    const gate: MarkerGate = { launchedAt: Date.now(), overriddenUntil };
+    const gate: MarkerGate = { launchedAt: Date.now() };
     const launched = await withLock(claudePool.lockFile, async () => {
       if (terminating) return null;
       releaseClaimLocked(sid);
       const target = resolveLaunch(wanted, gate.launchedAt, model, refused);
-      if (target?.account && target.depletedUntil !== undefined && target.depletedUntil > gate.overriddenUntil) {
-        replaceWaitClaim({ sessionId: sid, accountId: target.account.id, at: gate.launchedAt, waitUntil: target.depletedUntil });
+      if (target?.account && target.depletedUntil !== undefined && target.depletedUntil > gate.launchedAt) {
         return { waitOn: target.account, waitUntil: target.depletedUntil };
       }
       const picked = target?.account ?? null;
@@ -751,9 +776,16 @@ export async function runSupervisor(argv: string[]): Promise<number> {
       return 143;
     }
     if (launched.waitOn !== undefined) {
-      log("supervisor.depleted_wait", { sid: sid.slice(0, 8), account: launched.waitOn.id.slice(0, 8), waitUntil: launched.waitUntil });
-      if (await countdownWait(launched.waitOn.label, launched.waitUntil, { stream, say, holdSid: noticeSid })) overriddenUntil = launched.waitUntil;
-      continue;
+      const text = `tokenmaxxing: session stopped because every pooled account is at its limit. The next reset is at ${clockFmt.format(launched.waitUntil)} on ${launched.waitOn.label}. Resume the session after that.`;
+      if (respawns === 0 && relay !== null) {
+        relay.refuse(text);
+        await relay.firstUser;
+      }
+      log("supervisor.depleted_exit", { sid: sid.slice(0, 8), account: launched.waitOn.id.slice(0, 8), waitUntil: launched.waitUntil });
+      say(`\n\x1b[36m⏳ tokenmaxxing: all accounts at their limit, so this session stopped. The next reset is at ${clockFmt.format(launched.waitUntil)} on ${launched.waitOn.label}. Run \`claude --resume ${noticeSid}\` after that to continue.\x1b[0m\n`, text);
+      if (stream) process.stdout.write(depletedLines(noticeSid, launched.waitUntil, text));
+      await releaseClaim();
+      return 1;
     }
 
     const { child: proc, seat, key, open } = launched;
@@ -794,7 +826,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
       const transcript = findTranscript(m.sessionId);
       const resumable = transcript !== null;
       if (!resumable && relay !== null) {
-        for (const id of relay.replay()) process.stdout.write(controlErrorLine(id));
+        for (const id of relay.replay()) process.stdout.write(controlErrorLine(id, MOVED_REQUEST_ERROR));
       }
       let compacted = false;
       const compactKey = key != null && usableApiKey(key.id) != null ? key : null;

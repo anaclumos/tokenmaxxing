@@ -14,7 +14,7 @@ import { ensurePiStoreHome, piStoreUsable } from "../lib/piauth.ts";
 import { thresholdBars, usableAt } from "../lib/picker.ts";
 import { PI_PRESENCE_PREFIX, clearPresence, livingPresences } from "../lib/presence.ts";
 import { teeObservation } from "../lib/sample.ts";
-import { countdownWait, exitStatus, loopGuardTripped, raceMarkerOrExit, recordPresenceOrStop, runPassthrough, SEAT_POLL_MS, SEAT_RETRY_MS } from "../lib/supervise.ts";
+import { clockFmt, exitStatus, loopGuardTripped, raceMarkerOrExit, recordPresenceOrStop, runPassthrough, SEAT_POLL_MS, SEAT_RETRY_MS } from "../lib/supervise.ts";
 import { saveTermios } from "../lib/tty.ts";
 import { loadAccounts, loadConfig, releaseWaitClaim } from "../lib/state.ts";
 import { gatedFamilies, modelFromFlag } from "../lib/usage.ts";
@@ -364,7 +364,6 @@ export async function runPiSupervisor(argv: string[]): Promise<number> {
 
   let respawns = 0;
   let wanted: string | null = null;
-  let overriddenUntil = 0;
   try {
     while (true) {
       const launchedAt = Date.now();
@@ -400,7 +399,7 @@ export async function runPiSupervisor(argv: string[]): Promise<number> {
             log("pisupervisor.claim_release_failed", { err: errorMessage(e) });
           }
         }
-        return { proc: spawned, seat: picked, overriddenUntil: Math.max(overriddenUntil, target?.depletedUntil ?? 0) };
+        return { proc: spawned, seat: picked, overriddenUntil: target?.depletedUntil ?? 0 };
       });
       if (launched == null) {
         await releaseClaim();
@@ -434,8 +433,13 @@ export async function runPiSupervisor(argv: string[]): Promise<number> {
         respawns++;
         const waitUntil = pending.move?.waitUntil ?? 0;
         if (waitUntil > Date.now()) {
-          if (await countdownWait(target.label, waitUntil, { stream: false, say })) overriddenUntil = waitUntil;
-        } else say(`\n\x1b[36m↻ tokenmaxxing: moving pi to ${target.label} - resuming...\x1b[0m\n`);
+          log("pisupervisor.depleted_exit", { id, pool, account: target.id.slice(0, 8), waitUntil });
+          say(`\n\x1b[36m⏳ tokenmaxxing: all accounts at their limit, so this session stopped. The next reset is at ${clockFmt.format(waitUntil)} on ${target.label}. Start pi again after that to continue.\x1b[0m\n`);
+          clearPresence({ dir: presenceDir, id });
+          await releaseClaim();
+          return 1;
+        }
+        say(`\n\x1b[36m↻ tokenmaxxing: moving pi to ${target.label} - resuming...\x1b[0m\n`);
         wanted = target.id;
         launchArgs = sessionExists(dir, sid) ? ["--session-id", sid, ...args.flags, "--", RESUME_PROMPT] : firstArgs;
         continue;

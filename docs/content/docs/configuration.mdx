@@ -41,7 +41,7 @@ Config is JSON at `~/.config/tokenmaxxing/config.json`. Every field is optional;
 | `policy.projectionMargin` | `0` | Subtracted from the session threshold only. See [Projection margin](#projection-margin). |
 | `policy.switchModels` | `["fable"]` | Model families whose per-model weekly cap gates a switch (entries are lowercased on load). |
 | `policy.usagePollTtlMs` | `90000` | The shortest sample interval of a Claude account, the one an account near a bar gets. See [Sample interval](#sample-interval). |
-| `policy.maxWaitMs` | `3600000` (1 hour) | The depleted-pool auto-wait bound. See [Depleted-pool wait](#depleted-pool-wait). |
+| `policy.maxWaitMs` | `3600000` (1 hour) | The depleted-pool stop bound. See [Depleted-pool stop](#depleted-pool-stop). |
 | `policy.checkIntervalMs` | `60000`, minimum `10000` | The periodic check tick. See [Check timer](#check-timer). |
 | `policy.accountReleaseMs` | `session` `1800000` (30 minutes), `weekly` `18000000` (5 hours) | How close to its reset a window is when a `thresholds.accounts` entry stops holding the account under the global bar. |
 | `hub.port` | `8317`, the CLIProxyAPI default | The loopback port the usage hub listens on (`tokenmaxxing serve` and its background service). See [Usage hub](/hub). |
@@ -130,13 +130,13 @@ How the samplers use it:
 - A seat whose sample keeps failing backs off exponentially from its interval, doubling per consecutive failure up to 30 minutes, and resets on the first success.
 - A Codex seat reads its usage GET when its cached figure is older than `policy.usagePollTtlMs`.
 
-## Depleted-pool wait
+## Depleted-pool stop
 
-`policy.maxWaitMs` is the depleted-pool auto-wait bound (see [When nothing is usable](/switching#when-nothing-is-usable)):
+`policy.maxWaitMs` is the depleted-pool stop bound (see [When nothing is usable](/switching#when-nothing-is-usable)):
 
-1. Waiters fill resets within this bound first.
-2. When those are full, the overflow waits for the next reset with room, up to twice this bound out.
-3. When that horizon is full, the overflow joins the least-crowded reset.
+1. Stopped sessions take resets within this bound first.
+2. When those are full, the overflow takes the next reset with room, up to twice this bound out.
+3. When that horizon is full, the overflow takes the least-crowded reset.
 
 ## Check timer
 

@@ -86,7 +86,7 @@ flowchart LR
 - When it moves, the hook writes a marker that makes the supervisor SIGTERM the session at the committed boundary and relaunch `codex resume <session-id>` under the target's store, transcript intact (`resume --last` when the hook carried no session id).
 - The relaunch prints which account it switched to. Unlike the Claude path, it submits no first prompt, so you type the next turn.
 - A marker the supervisor cannot parse stops the session instead of resuming it.
-- There is no depleted-pool countdown for codex (nothing can pause a codex session), so a fully depleted codex pool stays put.
+- There is no depleted-pool stop for codex (nothing can pause a codex session), so a fully depleted codex pool stays put.
 - The hook does nothing in a codex started outside the supervisor.
 - The hook is declared in `~/.codex/hooks.json` with a 300-second timeout that covers the usage read, the compaction, and the decision.
 
