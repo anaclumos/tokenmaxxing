@@ -103,8 +103,10 @@ These invocations pass straight through with no store and no session management.
 - The interactive resume picker: `claude -r` with no session id.
 - An invalid `--session-id`.
 - `--fork-session` with a resume.
-- A run with `--no-session-persistence`: Claude Code saves no transcript for it, so a move could not resume it. T3 Code's provider capability probe is one.
+- A run with `--no-session-persistence`: Claude Code saves no transcript for it, so a move could not resume it.
 - tokenmaxxing's own probes.
+
+One run in that class is seated instead. T3 Code's provider capability probe carries the stream-json flag set with `--strict-mcp-config`, `--setting-sources=user,project,local`, `--settings {"disableAllHooks":true}`, and `--no-session-persistence`, plus the environment `ENABLE_CLAUDEAI_MCP_SERVERS=false`, `CLAUDE_CODE_AUTO_CONNECT_IDE=0`, and `CLAUDE_CODE_IDE_SKIP_AUTO_INSTALL=1`. The supervisor runs it on the account that placement picks, and answers its `get_usage` control request from that account's sampled windows. The request never reaches the child, so the probe sends no usage read. The run writes no presence file and no session flags.
 
 ### Signals and environment files
 
