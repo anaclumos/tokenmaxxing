@@ -39,8 +39,7 @@ The Muse Code pool renders after grok, headed `muse  (N accounts, status-only)` 
 | `grok-accounts.json` | The pool index, the same schema as `accounts.json`; it names no active account |
 | `grok-lock` | The `flock` file that serializes the pool's commands |
 | `grok-stores/<uuid8>/auth.json` | One 0600 store per account |
-| `grok-onboard/` | Throwaway login home, wiped before and after each isolated login |
 | `muse-accounts.json` | The Muse Code pool index, the same schema |
 | `muse-lock` | The `flock` file of the Muse Code pool |
 | `muse-stores/<uuid8>/auth.json` | One 0600 store per account |
-| `muse-onboard/` | Throwaway `XDG_CONFIG_HOME` for the isolated login, wiped before and after it |
+| `onboard/grok-<pid>-<random>/`, `onboard/muse-<pid>-<random>/` | The throwaway home of one isolated login (for Muse Code, its `XDG_CONFIG_HOME`), deleted after it |

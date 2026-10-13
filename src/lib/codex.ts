@@ -6,6 +6,7 @@ import { writeFileAtomic } from "./atomic.ts";
 import { CODEX_BIN, MAX_WRAP_DEPTH, WRAP_DEPTH_ENV, resolveRealBin, verifyRealBin } from "./claudebin.ts";
 import { codexIdentityOf, codexStoreUsable, deleteCodexStoreAuth, ensureCodexStoreHome, isCodexAccessExpiring, readCodexAuthAt, readCodexStoreAuth, writeCodexStoreAuth } from "./codexauth.ts";
 import { CodexInvalidGrantError, CodexRefreshFailedError, refreshCodexAuth } from "./codexoauth.ts";
+import { onboardHome } from "./onboard.ts";
 import { deletePiStore } from "./piauth.ts";
 import { PI_PRESENCE_PREFIX, livingPresences, seatCounts, writePresence } from "./presence.ts";
 import { CodexUsageReadError, codexLimitLabel, consumeCodexReset, fetchCodexUsage } from "./codexusage.ts";
@@ -139,8 +140,7 @@ async function prepareMove(target: Account): Promise<void> {
 
 async function login(): Promise<Harvest | null> {
   const real = resolveRealBin(CODEX_BIN);
-  const onboardDir = codexPaths.onboardDir;
-  rmSync(onboardDir, { recursive: true, force: true });
+  const onboardDir = await onboardHome("codex");
   writeFileAtomic(join(onboardDir, "config.toml"), 'cli_auth_credentials_store = "file"\n');
 
   const savedTermios = saveTermios();

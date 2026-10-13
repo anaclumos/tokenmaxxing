@@ -59,7 +59,7 @@ function listDir(dir: string, root: string): Dirent[] {
 }
 
 function tmpSweepDirs(root: string): string[] {
-  const dirs = [paths.home, paths.usageDir, paths.presenceDir, paths.respawnDir, sessionsDir(), paths.binDir, paths.apiKeysDir, codexPaths.presenceDir, codexPaths.respawnDir, codexPaths.onboardDir];
+  const dirs = [paths.home, paths.usageDir, paths.presenceDir, paths.respawnDir, sessionsDir(), paths.binDir, paths.apiKeysDir, codexPaths.presenceDir, codexPaths.respawnDir];
   for (const parent of SWEEP_PARENTS) {
     for (const child of listDir(parent, root)) {
       if (child.isDirectory()) dirs.push(join(parent, child.name));

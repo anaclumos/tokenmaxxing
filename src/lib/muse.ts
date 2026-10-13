@@ -65,7 +65,6 @@ export const muse = statusOnlyProvider({
   binKey: "museBin",
   storeDirFor: museStoreDirFor,
   authJsonFor: museAuthJsonFor,
-  onboardDir: musePaths.onboardDir,
   homeEnv: "XDG_CONFIG_HOME",
   loginArgs: ["login"],
   onboardAuthRel: "muse/auth.json",
