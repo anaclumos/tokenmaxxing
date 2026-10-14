@@ -82,7 +82,12 @@ function storedAccessToken(id: string): string | null {
 }
 
 async function readMuseUsage(account: Account, now: number): Promise<SampleReport> {
-  const token = storedAccessToken(account.id);
+  let token: string | null;
+  try {
+    token = storedAccessToken(account.id);
+  } catch (e) {
+    return { ok: false, reason: `this account's store is unreadable (${errorMessage(e)}) - run \`tokenmaxxing auth --muse\`` };
+  }
   if (token == null) return { ok: false, reason: "no access_token in this account's store - run `tokenmaxxing auth --muse`" };
   let res: Response;
   let text: string;
@@ -91,6 +96,10 @@ async function readMuseUsage(account: Account, now: number): Promise<SampleRepor
     text = await res.text();
   } catch (e) {
     return { ok: false, reason: `Muse Code usage read failed: endpoint unreachable: ${errorMessage(e)}` };
+  }
+  if (res.status === 401 || res.status === 403) {
+    account.needsReauth = true;
+    return { ok: false, reason: `Muse Code rejected the stored login (HTTP ${res.status}) - run \`tokenmaxxing auth --muse\`` };
   }
   if (!res.ok) return { ok: false, reason: `Muse Code usage read failed: HTTP ${res.status}: ${safeErrorDetail({ text })}` };
   const parsed = MintSchema.safeParse(JsonTextSchema.safeParse(text).data);
