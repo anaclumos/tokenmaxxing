@@ -25,33 +25,6 @@ bun add -g tokenmaxxing
 tokenmaxxing init
 ```
 
-Or with Nix (same source-run-by-Bun package; `init` still owns the stores, the `claude` shim, and settings merges). Install onto PATH first, then init: `nix run ... -- init` alone leaves supervisor shims without a stable `tokenmaxxing` on PATH after the ephemeral run exits.
-
-```sh
-nix profile install github:anaclumos/tokenmaxxing
-tokenmaxxing init
-```
-
-nix-darwin:
-
-```nix
-inputs.tokenmaxxing.url = "github:anaclumos/tokenmaxxing";
-modules = [
-  inputs.tokenmaxxing.darwinModules.withOverlay
-  { programs.tokenmaxxing.enable = true; }
-];
-```
-
-Home Manager:
-
-```nix
-imports = [ inputs.tokenmaxxing.homeManagerModules.default ];
-programs.tokenmaxxing.enable = true;
-programs.tokenmaxxing.package = inputs.tokenmaxxing.packages.${pkgs.system}.default;
-```
-
-With either module, run `tokenmaxxing init` afterwards.
-
 `init` verifies and pins the real `claude` binary, opens an isolated `claude` session for your first pooled account (run `/login` there, even if you are already signed in; the login you already have stays for sessions started outside the supervisor), installs the `claude` supervisor and the `xx` entry point, five `settings.json` entries (the tokenmaxxing statusLine, a subagentStatusLine, a Stop hook, a StopFailure hook, a SessionStart hook), the periodic check timer, and the usage hub service, and adds the supervisor's bin dir to PATH in your shell rc (idempotent; it must sit ahead of the real `claude` to intercept it). Restart your shell, then add more accounts and go:
 
 ```sh

@@ -1,6 +1,6 @@
 ---
 title: Build and distribution
-description: TypeScript source on npm and Nix, run by Bun, published with provenance
+description: TypeScript source on npm, run by Bun, published with provenance
 ---
 
 The npm package ships TypeScript source, not a build:
@@ -50,7 +50,6 @@ flowchart TD
 |---|---|
 | Bun global install | the periodic check, as above |
 | Checkout, including a `bun link` checkout | left alone; its owner updates it |
-| Nix | left alone; its owner updates it |
 | Codex-only (`init --codex` without the Claude `init`) | no periodic check, so no self-update |
 
 A Codex-only install has no periodic check because the Codex decision reads the figures `status` samples and needs no tick. The Claude `init` installs the timer that drives the update.
@@ -94,109 +93,9 @@ An update replaces the installed files in place. A supervisor or session that is
 
 An ordinary package update needs no rerun of `init`: the supervisor shim, the settings entries, and the timer unit all point at the package rather than at a version.
 
-## Nix / nix-darwin
+## Working on the source
 
-The same source tree is also a flake. It keeps the source-run-by-Bun model (via [bun2nix](https://github.com/nix-community/bun2nix) `writeBunApplication`) and exposes:
-
-| Output | Purpose |
-|---|---|
-| `packages.default` | `tokenmaxxing` + `xx` on PATH |
-| `darwinModules.default` / `withOverlay` | nix-darwin: install the CLI (optional declarative check timer and hub service) |
-| `homeManagerModules.default` / `withOverlay` | Home Manager on macOS or Linux (optional declarative check timer and hub service) |
-| `nixosModules.default` / `withOverlay` | NixOS system install (optional declarative check timer and hub service) |
-
-### Install
-
-<Tabs items={['Profile', 'One-shot', 'nix-darwin', 'Home Manager']}>
-<Tab value="Profile">
-
-Install onto a profile, then run `init`. The profile gives `init`'s supervisor shims a stable `tokenmaxxing` on PATH to resolve.
-
-```sh
-nix profile install github:anaclumos/tokenmaxxing
-tokenmaxxing init
-```
-
-</Tab>
-<Tab value="One-shot">
-
-Run once without installing, for help or status only. Do not run `init` this way.
-
-```sh
-nix run github:anaclumos/tokenmaxxing -- help
-```
-
-</Tab>
-<Tab value="nix-darwin">
-
-`darwinModules.withOverlay` adds the overlay so `pkgs.tokenmaxxing` resolves.
-
-```nix
-{
-  inputs.tokenmaxxing.url = "github:anaclumos/tokenmaxxing";
-  modules = [
-    inputs.tokenmaxxing.darwinModules.withOverlay
-    { programs.tokenmaxxing.enable = true; }
-  ];
-}
-```
-
-</Tab>
-<Tab value="Home Manager">
-
-Set the package explicitly, as below, or import `homeManagerModules.withOverlay`. That variant adds this flake's overlay to the pkgs Home Manager uses, the way the darwin and NixOS variants do.
-
-```nix
-{
-  imports = [ inputs.tokenmaxxing.homeManagerModules.default ];
-  programs.tokenmaxxing.enable = true;
-  programs.tokenmaxxing.package = inputs.tokenmaxxing.packages.${pkgs.system}.default;
-}
-```
-
-</Tab>
-</Tabs>
-
-### What init still owns
-
-Nix only puts the CLI on PATH. The rest still comes from `tokenmaxxing init`, because it touches credentials and user-owned settings that a pure module should not rewrite:
-
-```mermaid
-flowchart TD
-  nix["Nix package<br/>or module"] -->|"puts on PATH"| cli["tokenmaxxing, xx"]
-  cli --> init["tokenmaxxing init"]
-  init --> accounts["account import"]
-  init --> shim["on-PATH claude<br/>supervisor shim"]
-  init --> hooks["settings.json hooks"]
-  init -->|"by default"| units["periodic<br/>check timer,<br/>usage hub<br/>service"]
-```
-
-### Declarative check timer and hub
-
-Set an option below only when you want Nix to own that unit instead of init. Each option exports its own skip variable, so init does not write a second unit.
-
-| Unit | Nix option | Skip variable |
-|---|---|---|
-| Check timer | `programs.tokenmaxxing.checkTimer.enable = true` | `TOKENMAXXING_SKIP_TIMER=1` |
-| Hub service | `programs.tokenmaxxing.hub.enable = true` | `TOKENMAXXING_SKIP_HUB=1` |
-
-When you enable one of them after running `init`, remove the imperative unit once so only the Nix-managed unit runs. The same removal step is in the option descriptions.
-
-| Unit | macOS | Linux |
-|---|---|---|
-| Check timer | `launchctl bootout gui/$(id -u)/com.tokenmaxxing.check` | `systemctl --user disable --now tokenmaxxing-check.timer` |
-| Hub service | `launchctl bootout gui/$(id -u)/com.tokenmaxxing.hub` | `systemctl --user disable --now tokenmaxxing-hub.service` |
-
-- The declarative timer and hub are user-session units, matching init. Headless Linux needs `loginctl enable-linger` for them to run without a login.
-- Keep `checkTimer.intervalSeconds` equal to `policy.checkIntervalMs` in seconds, so the documented tick matches the one the unit fires on.
-
-### Dependency expression
-
-When `bun.lock` changes, regenerate the Nix dependency expression:
-
-```sh
-bun run nix:bun   # writes bun.nix via bun2nix@2.1.2
-```
+`mise.toml` pins the Bun a checkout runs on. `mise install` installs it, then `bun install --frozen-lockfile` and `bun run typecheck` run the commands of the CI `test` job, which installs the latest Bun through `setup-bun` rather than the pin.
 
 ## License
 

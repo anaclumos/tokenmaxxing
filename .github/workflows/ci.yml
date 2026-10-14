@@ -28,27 +28,6 @@ jobs:
           bun add -g "$PWD"/tokenmaxxing-*.tgz
           "$(bun pm bin -g)/tokenmaxxing" help
 
-  nix:
-    runs-on: ${{ vars.CI_RUNNER == 'github' && 'ubuntu-24.04' || fromJSON('["self-hosted","linux","arm64","build"]') }}
-    timeout-minutes: 45
-    steps:
-      - uses: actions/checkout@v7
-      - if: runner.environment == 'github-hosted'
-        uses: DeterminateSystems/nix-installer-action@v22
-      - if: runner.environment == 'github-hosted'
-        uses: DeterminateSystems/magic-nix-cache-action@v14
-        with:
-          use-flakehub: false
-      - name: Build flake package
-        run: nix build --accept-flake-config .#tokenmaxxing -L
-      - name: Smoke-test the store binary
-        run: |
-          ./result/bin/tokenmaxxing help
-          ./result/bin/xx help >/dev/null
-          mkdir -p "$RUNNER_TEMP/tm-nix"
-          printf '{"thresholds":{"weekly":95}}\n' > "$RUNNER_TEMP/tm-nix/config.json"
-          TOKENMAXXING_HOME="$RUNNER_TEMP/tm-nix" ./result/bin/tokenmaxxing config --json | jq -e '.ok == true and .effective.thresholds.weekly == 95 and .effective.thresholds.session == 90 and .effective.policy.projectionMargin == 0' >/dev/null
-
   publish:
     if: github.ref == 'refs/heads/main'
     needs: test

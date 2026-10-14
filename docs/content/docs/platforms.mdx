@@ -13,7 +13,7 @@ description: How macOS and Linux differ in storage and timers
 | Usage hub service | launchd agent (started at load, restarted after a failed run); stderr in `hub.stderr.log` under the state directory | systemd user service (restart on failure); stderr in the journal |
 | Isolated-login home | Hash-namespaced keychain service per config dir | A file inside the isolated config dir |
 
-`TOKENMAXXING_SKIP_TIMER=1` makes `init` skip the timer unit and `uninstall` leave it alone on both platforms; `TOKENMAXXING_SKIP_HUB=1` does the same for the usage hub service. The Nix modules export each variable when they own that unit (see [Build and distribution](/distribution)).
+`TOKENMAXXING_SKIP_TIMER=1` makes `init` skip the timer unit and `uninstall` leave it alone on both platforms; `TOKENMAXXING_SKIP_HUB=1` does the same for the usage hub service.
 
 Claude Code resolves its credential directory from `CLAUDE_SECURESTORAGE_CONFIG_DIR` first (then `CLAUDE_CONFIG_DIR`, then `~/.claude`), and on macOS it hashes that same resolved path into the keychain item name, even when `CLAUDE_CONFIG_DIR` is also set (verified in the 2.1.269 binary); tokenmaxxing sets the store variable itself and computes the item name from the same directory, so the two never desync. The two OS builds of the same claude version format `/usage` reset clocks differently (one uses " at " glue, the other a comma), which nothing in tokenmaxxing reads: a reset time comes from the direct usage read as ISO 8601 with an offset, and from the transcript row and the statusline payload as epoch seconds.
 
