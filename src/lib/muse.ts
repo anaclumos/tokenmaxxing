@@ -1,10 +1,12 @@
 import { z } from "zod";
 import { writeFileAtomic } from "./atomic.ts";
-import { museAuthJsonFor, musePaths, musePool, museStoreDirFor } from "./paths.ts";
+import { http, safeErrorDetail } from "./http.ts";
+import { errorMessage } from "./log.ts";
+import { env, museAuthJsonFor, musePaths, musePool, museStoreDirFor } from "./paths.ts";
 import type { SampleReport } from "./provider.ts";
 import { readJsonFile, type Harvest } from "./state.ts";
 import { statusOnlyProvider, type AuthEntry } from "./statusonly.ts";
-import { ErrnoSchema, type Account } from "./types.ts";
+import { EpochSecondsSchema, ErrnoSchema, JsonTextSchema, type Account } from "./types.ts";
 import { c } from "../cli/render.ts";
 
 const MuseProviderSchema = z.looseObject({
@@ -53,8 +55,70 @@ function readAuth(path: string): AuthEntry[] {
   return out;
 }
 
-async function samplePool(accounts: Account[]): Promise<Map<string, SampleReport>> {
-  return new Map(accounts.map((a) => [a.id, { ok: false, reason: "Muse Code exposes no read-only quota endpoint" }]));
+const SubscriptionWindowSchema = z.looseObject({ used_percent: z.number(), resets_at: EpochSecondsSchema });
+
+const SubscriptionUsageSchema = z.looseObject({
+  type: z.literal("response.subscription_usage"),
+  subscription: z.looseObject({
+    window: SubscriptionWindowSchema.extend({ window_duration_mins: z.number() }),
+    weekly: SubscriptionWindowSchema,
+  }),
+});
+
+const WEEK_S = 7 * 86400;
+
+function usageUrl(): string {
+  return env("TOKENMAXXING_MUSE_USAGE_URL", "https://api.meta.ai/v1/responses");
+}
+
+function storedKey(id: string): string | null {
+  const file = readFile(museAuthJsonFor(id));
+  if (file == null) return null;
+  for (const value of Object.values(file.providers)) {
+    const key = MuseProviderSchema.safeParse(value).data?.api_key ?? "";
+    if (key !== "") return key;
+  }
+  return null;
+}
+
+function subscriptionFrame(text: string): z.infer<typeof SubscriptionUsageSchema> | null {
+  for (const line of text.split("\n")) {
+    if (!line.startsWith("data: ")) continue;
+    const frame = SubscriptionUsageSchema.safeParse(JsonTextSchema.safeParse(line.slice("data: ".length)).data);
+    if (frame.success) return frame.data;
+  }
+  return null;
+}
+
+async function readMuseUsage(account: Account, now: number): Promise<SampleReport> {
+  const key = storedKey(account.id);
+  if (key == null) return { ok: false, reason: "no api_key in this account's store - run `tokenmaxxing auth --muse`" };
+  let res: Response;
+  try {
+    res = await http.post(usageUrl(), {
+      headers: { Authorization: `Bearer ${key}`, Accept: "text/event-stream" },
+      json: { model: "muse-spark-1.3", input: "hi", max_output_tokens: 16, stream: true },
+    });
+  } catch (e) {
+    return { ok: false, reason: `Muse Code usage read failed: endpoint unreachable: ${errorMessage(e)}` };
+  }
+  const text = await res.text();
+  if (!res.ok) return { ok: false, reason: `Muse Code usage read failed: HTTP ${res.status}: ${safeErrorDetail({ text })}` };
+  const frame = subscriptionFrame(text);
+  if (frame == null) return { ok: false, reason: "Muse Code usage read failed: the response stream carried no response.subscription_usage event" };
+  const { window, weekly } = frame.subscription;
+  account.windows = [
+    { name: null, usedPercentage: window.used_percent, resetsAt: window.resets_at, windowSeconds: window.window_duration_mins * 60, sampledAt: now },
+    { name: null, usedPercentage: weekly.used_percent, resetsAt: weekly.resets_at, windowSeconds: WEEK_S, sampledAt: now },
+  ];
+  account.lastUsageAt = now;
+  return { ok: true, source: "probe" };
+}
+
+async function samplePool(accounts: Account[], now: number): Promise<Map<string, SampleReport>> {
+  const reports = new Map<string, SampleReport>();
+  await Promise.all(accounts.map(async (account) => reports.set(account.id, await readMuseUsage(account, now))));
+  return reports;
 }
 
 export const muse = statusOnlyProvider({

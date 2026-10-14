@@ -40,7 +40,7 @@ claude                  # use claude as always; each session gets its own accoun
 | `tokenmaxxing init --codex` | same for codex: log in the first account (isolated), install codex supervisor + Stop hook |
 | `tokenmaxxing init --pi` | verify and pin the real `pi` and install the `pi` supervisor, which runs pi sessions on pooled Claude and ChatGPT accounts that have a pi login |
 | `tokenmaxxing init --grok` | pool the first grok login, status-only: no supervisor, no switching |
-| `tokenmaxxing init --muse` | pool the first Muse Code login, status-only: no supervisor, no switching, no usage read |
+| `tokenmaxxing init --muse` | pool the first Muse Code login, status-only: no supervisor, no switching |
 | `tokenmaxxing add [--codex \| --grok \| --muse]` | register an additional account in that pool (isolated login, harvested once into its own store) |
 | `tokenmaxxing auth [--codex \| --grok \| --muse] [sel \| --all]` | reauthenticate a pooled account in place: bare lists the pool (emails shown) and asks which; a selector targets one account and tells you the email to sign in with; `--all` walks every account that is flagged or has no usable credential in its store, one by one |
 | `tokenmaxxing auth --pi [--codex] [sel \| --all]` | log a pooled Claude account (or a codex account with `--codex`) into pi, isolated, and keep that login as the account's pi credential after an identity check; `--all` walks every account without a pi login |
@@ -126,7 +126,7 @@ pi keeps its own credential and refreshes it itself, so each pooled account gets
 - **Keychain (macOS).** The first keychain access for a new store happens inside the interactive `init`, `add`, or `auth` run, where a prompt can be answered, not inside a headless hook.
 - **Plaintext credentials (Linux).** Claude Code itself stores Linux credentials as a 0600 plaintext file; a store follows the same model.
 - **The status-only grok pool does not switch.** grok `status` shows the weekly subscription credit window, and no grok session moves.
-- **The status-only Muse Code pool does not switch and shows no usage.** Muse Code exposes no read-only quota endpoint, so every Muse Code account stays unmeasured.
+- **The status-only Muse Code pool does not switch, and its usage read spends quota.** Muse Code has no read-only quota endpoint, so each live `status` sends every Muse Code account one model request of at most 16 output tokens to read its window.
 
 ## How it's built
 
