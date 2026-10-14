@@ -145,7 +145,6 @@ How the samplers use it:
 - The default is 60000. The minimum is 10000, because launchd does not spawn a job more than once every 10 seconds by default.
 - `init` writes it, rounded up to whole seconds, as the timer's interval. On Linux the systemd `AccuracySec` is a twelfth of it, at least one second.
 - The installed timer keeps its old tick until you run `tokenmaxxing init` again.
-- With a Nix-managed timer, set `checkTimer.intervalSeconds` to the same value; that option has the same 10-second floor.
 
 ## Editing and validation
 
