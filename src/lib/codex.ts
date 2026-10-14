@@ -41,10 +41,10 @@ function applyUsage(account: Account, usage: CodexUsage, at: number): void {
   if (usage.planType != null) account.tier = usage.planType;
 }
 
-type CodexReadFailure = { ok: false; reason: string; deadGrant: boolean; expiring?: boolean };
+type CodexReadFailure = { ok: false; reason: string; deadGrant: boolean; expiring?: boolean; rejected?: boolean };
 type CodexReadOutcome = { ok: true; usage: CodexUsage; at: number } | CodexReadFailure;
 
-async function freshCodexAuth(account: Account, now: number, refresh: boolean, holder?: string): Promise<{ ok: true; auth: CodexAuthJson } | CodexReadFailure> {
+async function freshCodexAuth(account: Account, now: number, refresh: boolean, holder?: string, force = false): Promise<{ ok: true; auth: CodexAuthJson } | CodexReadFailure> {
   let auth: CodexAuthJson | null;
   try {
     auth = readCodexStoreAuth(account.id);
@@ -52,7 +52,7 @@ async function freshCodexAuth(account: Account, now: number, refresh: boolean, h
     return { ok: false, reason: `store credential unreadable (${errorMessage(e).slice(0, 80)})`, deadGrant: false };
   }
   if (!auth) return { ok: false, reason: "no credential in this account's store - run `tokenmaxxing auth --codex`", deadGrant: false };
-  if (!isCodexAccessExpiring({ auth, now })) return { ok: true, auth };
+  if (!force && !isCodexAccessExpiring({ auth, now })) return { ok: true, auth };
   if (!refresh) return { ok: false, reason: "stored access token is expiring and this read never refreshes a store", deadGrant: false, expiring: true };
   if (livingPresences(codexPaths.presenceDir).some((p) => p.accountId === account.id && p.id !== holder)) {
     return { ok: false, reason: "running in a live codex session (store refresh unsafe)", deadGrant: false };
@@ -68,16 +68,22 @@ async function freshCodexAuth(account: Account, now: number, refresh: boolean, h
   return { ok: true, auth };
 }
 
-async function readCodexUsage(account: Account, now: number, refresh: boolean, holder?: string): Promise<CodexReadOutcome> {
-  const fresh = await freshCodexAuth(account, now, refresh, holder);
+async function readCodexUsageOnce(account: Account, now: number, refresh: boolean, holder?: string, force = false): Promise<CodexReadOutcome> {
+  const fresh = await freshCodexAuth(account, now, refresh, holder, force);
   if (!fresh.ok) return fresh;
   try {
     const at = Date.now();
     return { ok: true, usage: await fetchCodexUsage({ auth: fresh.auth, at }), at };
   } catch (e) {
-    if (e instanceof CodexUsageReadError) return { ok: false, reason: e.message, deadGrant: false };
+    if (e instanceof CodexUsageReadError) return { ok: false, reason: e.message, deadGrant: force && e.status === 401, rejected: e.status === 401 };
     throw e;
   }
+}
+
+async function readCodexUsage(account: Account, now: number, refresh: boolean, holder?: string): Promise<CodexReadOutcome> {
+  const outcome = await readCodexUsageOnce(account, now, refresh, holder);
+  if (outcome.ok || outcome.rejected !== true || !refresh) return outcome;
+  return readCodexUsageOnce(account, now, refresh, holder, true);
 }
 
 export async function observeCodex(account: Account, cfg: Config, now: number, opts: { probe: boolean; refresh: boolean; holder?: string }): Promise<Observation | null> {
@@ -112,17 +118,23 @@ async function samplePool(accounts: Account[], now: number): Promise<Map<string,
       reports.set(account.id, { ok: false, reason: outcome.reason });
     }
   };
-  const expiring: Account[] = [];
+  const expiring: { account: Account; force: boolean }[] = [];
   await Promise.all(
     accounts.map(async (account) => {
       const outcome = await readCodexUsage(account, now, false);
-      if (!outcome.ok && outcome.expiring === true) expiring.push(account);
+      if (!outcome.ok && (outcome.expiring === true || outcome.rejected === true)) expiring.push({ account, force: outcome.rejected === true });
       else record(account, outcome);
     }),
   );
   if (expiring.length > 0) {
-    const rotated = await withLock(codexPool.lockFile, () => Promise.all(expiring.map(async (account) => ({ account, fresh: await freshCodexAuth(account, now, true) }))));
-    await Promise.all(rotated.map(async ({ account, fresh }) => record(account, fresh.ok ? await readCodexUsage(account, now, false) : fresh)));
+    const rotated = await withLock(codexPool.lockFile, () => Promise.all(expiring.map(async ({ account, force }) => ({ account, force, fresh: await freshCodexAuth(account, now, true, undefined, force) }))));
+    await Promise.all(
+      rotated.map(async ({ account, force, fresh }) => {
+        if (!fresh.ok) return record(account, fresh);
+        const outcome = await readCodexUsage(account, now, false);
+        record(account, !outcome.ok && force && outcome.rejected === true ? { ...outcome, deadGrant: true } : outcome);
+      }),
+    );
   }
   return reports;
 }

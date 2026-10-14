@@ -11,9 +11,11 @@ export const CODEX_USAGE_URL = "https://chatgpt.com/backend-api/wham/usage";
 const USAGE_URL = env("TOKENMAXXING_CODEX_USAGE_URL", CODEX_USAGE_URL);
 
 export class CodexUsageReadError extends Error {
-  constructor(detail: string) {
+  readonly status: number | null;
+  constructor(detail: string, status: number | null = null) {
     super(`codex usage read failed: ${detail}`);
     this.name = "CodexUsageReadError";
+    this.status = status;
   }
 }
 
@@ -73,7 +75,7 @@ export async function fetchCodexUsage(input: { auth: CodexAuthJson; at: number }
   }
   const text = await res.text();
   if (!res.ok) {
-    throw new CodexUsageReadError(`HTTP ${res.status}: ${safeErrorDetail({ text })}`);
+    throw new CodexUsageReadError(`HTTP ${res.status}: ${safeErrorDetail({ text })}`, res.status);
   }
   const parsed = WireUsageSchema.safeParse(JsonTextSchema.safeParse(text).data);
   if (!parsed.success) {
