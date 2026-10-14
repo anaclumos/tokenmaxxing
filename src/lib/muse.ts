@@ -1,15 +1,16 @@
 import { z } from "zod";
 import { writeFileAtomic } from "./atomic.ts";
-import { museAuthJsonFor, musePaths, musePool, museStoreDirFor } from "./paths.ts";
+import { http, safeErrorDetail } from "./http.ts";
+import { errorMessage } from "./log.ts";
+import { env, museAuthJsonFor, musePaths, musePool, museStoreDirFor } from "./paths.ts";
 import type { SampleReport } from "./provider.ts";
 import { readJsonFile, type Harvest } from "./state.ts";
 import { statusOnlyProvider, type AuthEntry } from "./statusonly.ts";
-import { ErrnoSchema, type Account } from "./types.ts";
+import { EpochSecondsSchema, ErrnoSchema, JsonTextSchema, type Account } from "./types.ts";
 import { c } from "../cli/render.ts";
 
 const MuseProviderSchema = z.looseObject({
   access_token: z.string().optional(),
-  api_key: z.string().optional(),
   user_email: z.string().nullish(),
 });
 
@@ -48,13 +49,75 @@ function readAuth(path: string): AuthEntry[] {
               writeFileAtomic(museAuthJsonFor(id), JSON.stringify({ ...file, providers: { [key]: value } }, null, 2), 0o600);
             },
           };
-    out.push({ id, usable: (parsed.data.access_token ?? "") !== "" || (parsed.data.api_key ?? "") !== "", harvest });
+    out.push({ id, usable: (parsed.data.access_token ?? "") !== "", harvest });
   }
   return out;
 }
 
-async function samplePool(accounts: Account[]): Promise<Map<string, SampleReport>> {
-  return new Map(accounts.map((a) => [a.id, { ok: false, reason: "Muse Code exposes no read-only quota endpoint" }]));
+const SubscriptionWindowSchema = z.looseObject({ used_percent: z.number(), resets_at: EpochSecondsSchema });
+
+const MintSchema = z.looseObject({
+  subs_usage: z
+    .looseObject({
+      window: SubscriptionWindowSchema.extend({ window_duration_mins: z.number() }),
+      weekly: SubscriptionWindowSchema,
+    })
+    .nullable(),
+});
+
+const WEEK_S = 7 * 86400;
+
+function usageUrl(): string {
+  return env("TOKENMAXXING_MUSE_USAGE_URL", "https://api.meta.ai/muse-code/key");
+}
+
+function storedAccessToken(id: string): string | null {
+  const file = readFile(museAuthJsonFor(id));
+  if (file == null) return null;
+  for (const value of Object.values(file.providers)) {
+    const token = MuseProviderSchema.safeParse(value).data?.access_token ?? "";
+    if (token !== "") return token;
+  }
+  return null;
+}
+
+async function readMuseUsage(account: Account, now: number): Promise<SampleReport> {
+  let token: string | null;
+  try {
+    token = storedAccessToken(account.id);
+  } catch (e) {
+    return { ok: false, reason: `this account's store is unreadable (${errorMessage(e)}) - run \`tokenmaxxing auth --muse\`` };
+  }
+  if (token == null) return { ok: false, reason: "no access_token in this account's store - run `tokenmaxxing auth --muse`" };
+  let res: Response;
+  let text: string;
+  try {
+    res = await http.post(usageUrl(), { headers: { Authorization: `Bearer ${token}` }, json: {} });
+    text = await res.text();
+  } catch (e) {
+    return { ok: false, reason: `Muse Code usage read failed: endpoint unreachable: ${errorMessage(e)}` };
+  }
+  if (res.status === 401 || res.status === 403) {
+    account.needsReauth = true;
+    return { ok: false, reason: `Muse Code rejected the stored login (HTTP ${res.status}) - run \`tokenmaxxing auth --muse\`` };
+  }
+  if (!res.ok) return { ok: false, reason: `Muse Code usage read failed: HTTP ${res.status}: ${safeErrorDetail({ text })}` };
+  const parsed = MintSchema.safeParse(JsonTextSchema.safeParse(text).data);
+  if (!parsed.success) return { ok: false, reason: "Muse Code usage read failed: endpoint returned an unexpected body shape (withheld)" };
+  if (parsed.data.subs_usage == null) return { ok: false, reason: "Muse Code reports no usage until a model request opens the 5-hour window" };
+  const { window, weekly } = parsed.data.subs_usage;
+  account.windows = [
+    { name: null, usedPercentage: window.used_percent, resetsAt: window.resets_at, windowSeconds: window.window_duration_mins * 60, sampledAt: now },
+    { name: null, usedPercentage: weekly.used_percent, resetsAt: weekly.resets_at, windowSeconds: WEEK_S, sampledAt: now },
+  ];
+  account.lastUsageAt = now;
+  return { ok: true, source: "probe" };
+}
+
+async function samplePool(accounts: Account[], now: number): Promise<Map<string, SampleReport>> {
+  const reports = new Map<string, SampleReport>();
+  await Promise.all(accounts.map(async (account) => reports.set(account.id, await readMuseUsage(account, now))));
+  return reports;
 }
 
 export const muse = statusOnlyProvider({
