@@ -27,8 +27,7 @@
   ],
   "scripts": {
     "dev": "bun run src/main.ts",
-    "typecheck": "tsc --noEmit",
-    "nix:bun": "bunx bun2nix@2.1.2 -o bun.nix"
+    "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
     "@types/bun": "1.3.14",

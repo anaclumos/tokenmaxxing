@@ -12,7 +12,7 @@ Subtree law lives in `.claude/rules/`, one file per subsystem, each scoped by it
 - `claude-internals.md`: the usage read, the tee, StopFailure classification, real-binary spawns.
 - `codex.md`, `pi.md`, `api-keys.md`, `self-update.md`, `statusline.md`, `cli-output.md`, `hub.md`.
 - `code.md`: code-wide constraints, platform idioms, and the designs that stay deleted, for all of `src/`.
-- `ci.md`: `ci.yml`, the publish job, the runners, the Nix build. `docs-site.md`: the docs app.
+- `ci.md`: `ci.yml`, the publish job, the runners, the mise toolchain pin. `docs-site.md`: the docs app.
 
 Procedures are skills in `.claude/skills/`: `release` (this repo's ship deltas and release verification), `hermetic-runs` (how to verify a change), and `binary-bump-audit` (the tables to audit when claude or pi updates).
 

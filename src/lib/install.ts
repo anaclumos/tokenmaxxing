@@ -28,15 +28,6 @@ export function isBinDirAhead(bin: { name: string; key: BinKey } = CLAUDE_BIN): 
 
 const envFlag = (name: string): boolean => z.stringbool().optional().parse(optionalEnv(name)) === true;
 
-export function isNixPackaged(): boolean {
-  if (envFlag("TOKENMAXXING_NIX")) return true;
-  try {
-    return realpathSync(Bun.main).startsWith("/nix/store/");
-  } catch {
-    return false;
-  }
-}
-
 function skipImperativeTimer(): boolean {
   return envFlag("TOKENMAXXING_SKIP_TIMER");
 }
@@ -45,13 +36,8 @@ function skipImperativeHub(): boolean {
   return envFlag("TOKENMAXXING_SKIP_HUB");
 }
 
-function isNixStorePath(path: string): boolean {
-  return path === "/nix/store" || path.startsWith("/nix/store/");
-}
-
 function cannotWriteRcTarget(target: string): boolean {
   if (envFlag("TOKENMAXXING_SKIP_SHELL_RC")) return true;
-  if (isNixStorePath(target)) return true;
   if (!existsSync(target)) return false;
   try {
     accessSync(target, constants.W_OK);
@@ -63,40 +49,16 @@ function cannotWriteRcTarget(target: string): boolean {
 
 export function managedShellRcSkipLines(): { headline: string; detail: string; exportLine: string } {
   return {
-    headline: "shell rc is managed (Home Manager / nix-store) - PATH was not auto-edited",
-    detail: `put ${paths.binDir} on PATH via home.sessionPath (programs.tokenmaxxing Home Manager module sets this), e.g.`,
-    exportLine: `home.sessionPath = [ "${paths.binDir}" ];`,
+    headline: "shell rc is not writable - PATH was not auto-edited",
+    detail: `put ${paths.binDir} on PATH ahead of the real claude, e.g.`,
+    exportLine: `export PATH="${paths.binDir}:$PATH"`,
   };
-}
-
-function nixSupervisorShim(bun: string, entry: string): string {
-  return `#!/bin/sh
-dir=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
-old_ifs=$IFS
-IFS=:
-new_path=
-for p in $PATH; do
-  [ "$p" = "$dir" ] && continue
-  if [ -n "$new_path" ]; then new_path="$new_path:$p"; else new_path="$p"; fi
-done
-IFS=$old_ifs
-PATH=$new_path
-export PATH
-if command -v tokenmaxxing >/dev/null 2>&1; then
-  exec tokenmaxxing "$@"
-fi
-exec ${shellQuote(bun)} --no-env-file run ${shellQuote(entry)} "$@"
-`;
 }
 
 function installEntryPoints(): string {
   const target = installedBin();
   const entry = realpathSync(Bun.main);
-  if (isNixPackaged()) {
-    writeFileAtomic(target, nixSupervisorShim(process.execPath, entry), 0o755);
-  } else {
-    writeFileAtomic(target, `#!/bin/sh\nexec ${shellQuote(process.execPath)} --no-env-file run ${shellQuote(entry)} "$@"\n`, 0o755);
-  }
+  writeFileAtomic(target, `#!/bin/sh\nexec ${shellQuote(process.execPath)} --no-env-file run ${shellQuote(entry)} "$@"\n`, 0o755);
   writeFileAtomic(join(paths.binDir, "xx"), `#!/bin/sh\nexec ${shellQuote(target)} "$@"\n`, 0o755);
   return target;
 }

@@ -10,26 +10,11 @@ Requires [Bun](https://bun.sh) and Claude Code, on macOS or Linux.
 
 ### Install the CLI
 
-Install with Bun, or from the flake if you already use Nix / nix-darwin. Put the CLI on PATH before `init` (see [Build and distribution](/distribution)).
-
-<Tabs items={['Bun', 'Nix']}>
-<Tab value="Bun">
+Install with Bun, and put the CLI on PATH before `init` (see [Build and distribution](/distribution)).
 
 ```sh
 bun add -g tokenmaxxing
 ```
-
-</Tab>
-<Tab value="Nix">
-
-Nix users replace the Bun step with this command, or enable `programs.tokenmaxxing` in their nix-darwin or Home Manager config:
-
-```sh
-nix profile install github:anaclumos/tokenmaxxing
-```
-
-</Tab>
-</Tabs>
 
 </Step>
 <Step>
@@ -55,7 +40,7 @@ flowchart LR
    - The login lands in that account's own credential store; the one you already have is never copied.
 2. **Supervisor shim.** Installs the `claude` supervisor shim, beside the `tokenmaxxing` and `xx` entry points, in `~/.config/tokenmaxxing/bin/`.
 3. **Claude Code entries.** Installs five entries in Claude Code's `settings.json`: a statusLine, a subagentStatusLine, a Stop hook, a StopFailure hook, and a SessionStart hook.
-4. **PATH.** Adds the bin directory to PATH in your shell rc when it does not already sit ahead of the real `claude` (idempotent, marked with a `# tokenmaxxing PATH` comment). On a Nix-managed or unwritable rc it prints the line to add instead.
+4. **PATH.** Adds the bin directory to PATH in your shell rc when it does not already sit ahead of the real `claude` (idempotent, marked with a `# tokenmaxxing PATH` comment). On an unwritable rc it prints the line to add instead.
 5. **Service units.**
    - A periodic check timer (a launchd agent on macOS, a systemd user timer on Linux) that runs `tokenmaxxing check` once per tick (`policy.checkIntervalMs`, 60 seconds by default).
    - A usage hub service that runs `tokenmaxxing serve` for a dashboard such as T3 Code (see [Usage hub](/hub)).

@@ -4,7 +4,6 @@ import { z } from "zod";
 import { writeFileAtomic } from "./atomic.ts";
 import { realpathOrNull } from "./claudebin.ts";
 import { http } from "./http.ts";
-import { isNixPackaged } from "./install.ts";
 import { withLock } from "./lock.ts";
 import { errorMessage, log } from "./log.ts";
 import { env, HOME, optionalEnv, paths } from "./paths.ts";
@@ -56,7 +55,6 @@ function registryPackageDir(root: string): string | null {
 }
 
 function detectGlobalRoot(): string | null {
-  if (isNixPackaged()) return null;
   const entry = realpathOrNull(Bun.main);
   if (entry == null) return null;
   return (
