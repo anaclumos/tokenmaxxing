@@ -42,7 +42,7 @@ One switching engine serves both switching pools. The account model, the picker,
 
 - **pi** is a client of both switching pools rather than a pool of its own. The pi supervisor (`src/entries/pisupervisor.ts`) runs a pi session on a Claude or Codex account through that account's pi store. It drives the same decision through the pool's provider with one change: the store check before a move reads the target's pi store (`src/lib/pi.ts`; see [pi support](/pi)).
 - **grok** (`src/lib/grok.ts`) is a `statusOnly` provider: it gets the same stores and account commands and no supervisor, hooks, or switching. grok `status` reads the weekly subscription credit window (see [Status-only pools](/status-only-pools)).
-- **muse** (`src/lib/muse.ts`) is a `statusOnly` provider for Muse Code logins with the same shape as grok and no usage read, because Muse Code exposes no read-only quota endpoint.
+- **muse** (`src/lib/muse.ts`) is a `statusOnly` provider for Muse Code logins with the same shape as grok. Its usage read is the `subs_usage` object of the Muse Code key mint, the same read the Muse Code TUI's `/usage` shows.
 
 Everything below describes the Claude provider unless it says otherwise.
 
