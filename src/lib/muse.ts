@@ -11,7 +11,6 @@ import { c } from "../cli/render.ts";
 
 const MuseProviderSchema = z.looseObject({
   access_token: z.string().optional(),
-  api_key: z.string().optional(),
   user_email: z.string().nullish(),
 });
 
@@ -50,63 +49,54 @@ function readAuth(path: string): AuthEntry[] {
               writeFileAtomic(museAuthJsonFor(id), JSON.stringify({ ...file, providers: { [key]: value } }, null, 2), 0o600);
             },
           };
-    out.push({ id, usable: (parsed.data.access_token ?? "") !== "" || (parsed.data.api_key ?? "") !== "", harvest });
+    out.push({ id, usable: (parsed.data.access_token ?? "") !== "", harvest });
   }
   return out;
 }
 
 const SubscriptionWindowSchema = z.looseObject({ used_percent: z.number(), resets_at: EpochSecondsSchema });
 
-const SubscriptionUsageSchema = z.looseObject({
-  type: z.literal("response.subscription_usage"),
-  subscription: z.looseObject({
-    window: SubscriptionWindowSchema.extend({ window_duration_mins: z.number() }),
-    weekly: SubscriptionWindowSchema,
-  }),
+const MintSchema = z.looseObject({
+  subs_usage: z
+    .looseObject({
+      window: SubscriptionWindowSchema.extend({ window_duration_mins: z.number() }),
+      weekly: SubscriptionWindowSchema,
+    })
+    .nullable(),
 });
 
 const WEEK_S = 7 * 86400;
 
 function usageUrl(): string {
-  return env("TOKENMAXXING_MUSE_USAGE_URL", "https://api.meta.ai/v1/responses");
+  return env("TOKENMAXXING_MUSE_USAGE_URL", "https://api.meta.ai/muse-code/key");
 }
 
-function storedKey(id: string): string | null {
+function storedAccessToken(id: string): string | null {
   const file = readFile(museAuthJsonFor(id));
   if (file == null) return null;
   for (const value of Object.values(file.providers)) {
-    const key = MuseProviderSchema.safeParse(value).data?.api_key ?? "";
-    if (key !== "") return key;
-  }
-  return null;
-}
-
-function subscriptionFrame(text: string): z.infer<typeof SubscriptionUsageSchema> | null {
-  for (const line of text.split("\n")) {
-    if (!line.startsWith("data: ")) continue;
-    const frame = SubscriptionUsageSchema.safeParse(JsonTextSchema.safeParse(line.slice("data: ".length)).data);
-    if (frame.success) return frame.data;
+    const token = MuseProviderSchema.safeParse(value).data?.access_token ?? "";
+    if (token !== "") return token;
   }
   return null;
 }
 
 async function readMuseUsage(account: Account, now: number): Promise<SampleReport> {
-  const key = storedKey(account.id);
-  if (key == null) return { ok: false, reason: "no api_key in this account's store - run `tokenmaxxing auth --muse`" };
+  const token = storedAccessToken(account.id);
+  if (token == null) return { ok: false, reason: "no access_token in this account's store - run `tokenmaxxing auth --muse`" };
   let res: Response;
+  let text: string;
   try {
-    res = await http.post(usageUrl(), {
-      headers: { Authorization: `Bearer ${key}`, Accept: "text/event-stream" },
-      json: { model: "muse-spark-1.3", input: "hi", max_output_tokens: 16, stream: true },
-    });
+    res = await http.post(usageUrl(), { headers: { Authorization: `Bearer ${token}` }, json: {} });
+    text = await res.text();
   } catch (e) {
     return { ok: false, reason: `Muse Code usage read failed: endpoint unreachable: ${errorMessage(e)}` };
   }
-  const text = await res.text();
   if (!res.ok) return { ok: false, reason: `Muse Code usage read failed: HTTP ${res.status}: ${safeErrorDetail({ text })}` };
-  const frame = subscriptionFrame(text);
-  if (frame == null) return { ok: false, reason: "Muse Code usage read failed: the response stream carried no response.subscription_usage event" };
-  const { window, weekly } = frame.subscription;
+  const parsed = MintSchema.safeParse(JsonTextSchema.safeParse(text).data);
+  if (!parsed.success) return { ok: false, reason: "Muse Code usage read failed: endpoint returned an unexpected body shape (withheld)" };
+  if (parsed.data.subs_usage == null) return { ok: false, reason: "Muse Code reports no usage until a model request opens the 5-hour window" };
+  const { window, weekly } = parsed.data.subs_usage;
   account.windows = [
     { name: null, usedPercentage: window.used_percent, resetsAt: window.resets_at, windowSeconds: window.window_duration_mins * 60, sampledAt: now },
     { name: null, usedPercentage: weekly.used_percent, resetsAt: weekly.resets_at, windowSeconds: WEEK_S, sampledAt: now },

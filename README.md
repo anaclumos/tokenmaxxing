@@ -126,7 +126,7 @@ pi keeps its own credential and refreshes it itself, so each pooled account gets
 - **Keychain (macOS).** The first keychain access for a new store happens inside the interactive `init`, `add`, or `auth` run, where a prompt can be answered, not inside a headless hook.
 - **Plaintext credentials (Linux).** Claude Code itself stores Linux credentials as a 0600 plaintext file; a store follows the same model.
 - **The status-only grok pool does not switch.** grok `status` shows the weekly subscription credit window, and no grok session moves.
-- **The status-only Muse Code pool does not switch, and its usage read spends quota.** Muse Code has no read-only quota endpoint, so each live `status` sends every Muse Code account one model request of at most 16 output tokens to read its window.
+- **The status-only Muse Code pool does not switch, and shows no usage before the first model request of a window.** Its usage read is the key mint, which reports no usage until a model request opens the 5-hour window.
 
 ## How it's built
 
