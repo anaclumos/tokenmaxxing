@@ -1,5 +1,5 @@
 import { lstatSync, mkdirSync, readdirSync, readlinkSync, renameSync, rmSync, symlinkSync } from "node:fs";
-import { isAbsolute, join, relative, resolve, sep } from "node:path";
+import { join, sep } from "node:path";
 import { z } from "zod";
 import { writeFileAtomic } from "./atomic.ts";
 import { ensurePathAhead } from "./claude.ts";
@@ -89,21 +89,14 @@ function isMirrorLink(from: string, to: string, name: string): boolean {
   return readlinkSync(join(to, name)) === join(from, name);
 }
 
-// An entry a seated tool created (a file, a directory, or a link of its own) lives only in the store. It moves to
-// the real config home, when that has no entry of the name, so it outlives the store and every seat sees it.
+// A file or directory a seated tool created lives only in the store. It moves to the real config home, when that
+// has no entry of the name, so it outlives the store and every seat sees it. A link the tool made stays where it
+// is: rewriting its target could change what it points at.
 function adoptEntries(from: string, to: string, keep: (name: string) => boolean): void {
   for (const name of namesIn(to)) {
     const own = join(to, name);
-    if (!keep(name) || isMirrorLink(from, to, name) || lstatSync(join(from, name), { throwIfNoEntry: false }) != null) continue;
+    if (!keep(name) || lstatSync(own).isSymbolicLink() || lstatSync(join(from, name), { throwIfNoEntry: false }) != null) continue;
     mkdirSync(from, { recursive: true });
-    if (lstatSync(own).isSymbolicLink()) {
-      // A target inside the store moves with it, so it maps to the same path under the real config home.
-      const target = resolve(to, readlinkSync(own));
-      const inside = relative(to, target);
-      symlinkSync(inside !== "" && !inside.startsWith("..") && !isAbsolute(inside) ? join(from, inside) : target, join(from, name));
-      rmSync(own);
-      continue;
-    }
     try {
       renameSync(own, join(from, name));
     } catch (e) {
@@ -144,8 +137,9 @@ export function ensureMuseStoreHome(accountId: string): string {
   return store;
 }
 
-// Deletes the login and the mirror links. An entry only the store holds moves to the real config home first; one
-// the real config home also holds (a settings.json Muse Code rewrote in place of its link) stays, with the store.
+// Deletes the login and the mirror links. A file or directory only the store holds moves to the real config home
+// first. Anything else left (a link a tool made, or an entry the real config home also holds, such as a
+// settings.json Muse Code rewrote in place of its link) keeps the store, and the command names it.
 function removeMuseStore(accountId: string): void {
   const store = museStoreDirFor(accountId);
   const config = join(store, "muse");
@@ -157,7 +151,7 @@ function removeMuseStore(accountId: string): void {
   }
   const kept = [...namesIn(config).map((n) => join(config, n)), ...namesIn(store).filter((n) => n !== "muse").map((n) => join(store, n))];
   if (kept.length > 0) {
-    console.log(c.yellow(`kept ${store}: it holds ${kept.join(", ")}, which the real config home also has - merge or delete by hand`));
+    console.log(c.yellow(`kept ${store}: it holds ${kept.join(", ")}, which tokenmaxxing does not move - merge or delete by hand`));
     return;
   }
   rmSync(store, { recursive: true, force: true });
