@@ -1,5 +1,5 @@
 import { homedir, userInfo } from "node:os";
-import { join, resolve } from "node:path";
+import { join, resolve, sep } from "node:path";
 import { z } from "zod";
 
 const HOME = homedir();
@@ -124,13 +124,17 @@ export function grokAuthJsonFor(accountId: string): string {
   return join(grokStoreDirFor(accountId), "auth.json");
 }
 
-const MUSE_CONFIG_HOME = env("XDG_CONFIG_HOME", join(HOME, ".config"));
+const MUSE_STORES_DIR = join(TM_HOME, "muse-stores");
+const XDG_CONFIG = optionalEnv("XDG_CONFIG_HOME");
+// Inside a seat XDG_CONFIG_HOME names a store; the real config home a store mirrors is the one outside every store.
+const MUSE_CONFIG_HOME =
+  XDG_CONFIG != null && XDG_CONFIG !== MUSE_STORES_DIR && !XDG_CONFIG.startsWith(MUSE_STORES_DIR + sep) ? XDG_CONFIG : join(HOME, ".config");
 
 export const musePaths = {
   configHome: MUSE_CONFIG_HOME,
   authJson: join(MUSE_CONFIG_HOME, "muse", "auth.json"),
   sessionsDir: join(env("XDG_DATA_HOME", join(HOME, ".local", "share")), "muse", "sessions"),
-  storesDir: join(TM_HOME, "muse-stores"),
+  storesDir: MUSE_STORES_DIR,
   presenceDir: join(TM_HOME, "muse-live"),
 } as const;
 
