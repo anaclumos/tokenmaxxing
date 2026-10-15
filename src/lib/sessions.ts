@@ -2,7 +2,7 @@ import { existsSync, readdirSync, realpathSync, rmSync, statSync, type Dirent } 
 import { basename, join, sep } from "node:path";
 import { z } from "zod";
 import { errorMessage, log } from "./log.ts";
-import { codexPaths, grokPaths, musePaths, paths, piPaths } from "./paths.ts";
+import { codexPaths, cursorPaths, grokPaths, musePaths, paths, piPaths } from "./paths.ts";
 import { stagingTarget, writeFileAtomic } from "./atomic.ts";
 import { presencePid } from "./presence.ts";
 import { readJsonFile } from "./state.ts";
@@ -44,7 +44,7 @@ function recordLiveSession(sid: string, current: string): void {
 
 const TMP_GRACE_MS = 3600 * 1000;
 
-const SWEEP_PARENTS = [paths.storesDir, codexPaths.storesDir, grokPaths.storesDir, musePaths.storesDir, join(piPaths.storesDir, "claude"), join(piPaths.storesDir, "codex"), paths.costDir];
+const SWEEP_PARENTS = [paths.storesDir, codexPaths.storesDir, grokPaths.storesDir, musePaths.storesDir, cursorPaths.storesDir, join(piPaths.storesDir, "claude"), join(piPaths.storesDir, "codex"), paths.costDir];
 
 function listDir(dir: string, root: string): Dirent[] {
   if (!existsSync(dir)) return [];
