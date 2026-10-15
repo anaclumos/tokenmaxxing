@@ -3,10 +3,11 @@ import { creditLeft, keySessions, loadApiKeys } from "../lib/apikeys.ts";
 import { claude } from "../lib/claude.ts";
 import { codex } from "../lib/codex.ts";
 import { grok } from "../lib/grok.ts";
+import { cursor } from "../lib/cursor.ts";
 import { muse } from "../lib/muse.ts";
 import { loadAccounts, loadConfig, saveAccounts } from "../lib/state.ts";
 import { withLock } from "../lib/lock.ts";
-import { codexPool, grokPool, musePool } from "../lib/paths.ts";
+import { codexPool, cursorPool, grokPool, musePool } from "../lib/paths.ts";
 import { barFor, bufferedUsed, earliestReset, gatedWindows, landGrant, landWindows, isExhausted, isSessionWindow, limitWindows, liveUsed, nextWeeklyReset, sessionWindow, thresholdBars, weeklyWindow } from "../lib/picker.ts";
 import type { Provider, SampleReport } from "../lib/provider.ts";
 import { usd } from "./key.ts";
@@ -53,7 +54,7 @@ type StatusApiKey = {
   sessions: number;
 };
 
-export type StatusReport = { now: number; claude: PoolReport; codex: PoolReport; grok: PoolReport; muse: PoolReport; apiKeys?: StatusApiKey[] };
+export type StatusReport = { now: number; claude: PoolReport; codex: PoolReport; grok: PoolReport; muse: PoolReport; cursor: PoolReport; apiKeys?: StatusApiKey[] };
 
 function apiKeyReport(): StatusApiKey[] {
   const sessions = keySessions();
@@ -161,6 +162,7 @@ async function collect(p: Provider, cfg: Config, now: number, cached: boolean): 
           if (a.lastUsageAt != null && (stored.lastUsageAt == null || a.lastUsageAt > stored.lastUsageAt)) {
             landWindows(stored, p.mergeWindows(a.windows, stored.windows), a.lastUsageAt, bars);
             stored.hasCredits = a.hasCredits;
+            if (a.email != null && stored.email == null && stored.label === stored.id.slice(0, 8)) stored.label = a.email;
             if (a.email != null) stored.email = a.email;
             if (a.tier != null) stored.tier = a.tier;
             dirty = true;
@@ -211,6 +213,7 @@ async function collect(p: Provider, cfg: Config, now: number, cached: boolean): 
 }
 
 const CARD_GAP = 3;
+const WEEK_S = 7 * 86400;
 const NOTE_INDENT = "    ";
 
 type Note = { paint: (s: string) => string; text: string };
@@ -267,7 +270,7 @@ function card(p: Provider, a: StatusAccount, now: number, staleAfterMs: number):
   const lines = [headerLine({ ...a, name: a.label })];
   if (a.usage) {
     if (a.usage.fiveHour) lines.push(usageRow(`${Math.round((a.usage.fiveHour.windowSeconds ?? 0) / 3600)}h`, a.usage.fiveHour));
-    if (a.usage.week) lines.push(usageRow("week", a.usage.week));
+    if (a.usage.week) lines.push(usageRow((a.usage.week.windowSeconds ?? 0) > WEEK_S ? "month" : "week", a.usage.week));
     for (const w of a.usage.limits) lines.push(usageRow(p.windowLabel(w.name), w));
   }
   const notes: Note[] = [];
@@ -308,9 +311,10 @@ export async function cmdStatus(opts: { json?: boolean; cached?: boolean } = {})
     const codexPooled = loadAccounts(codexPool).accounts.length > 0;
     const grokPooled = loadAccounts(grokPool).accounts.length > 0;
     const musePooled = loadAccounts(musePool).accounts.length > 0;
+    const cursorPooled = loadAccounts(cursorPool).accounts.length > 0;
     if (claudeReport.accounts.length === 0) {
-      if (!codexPooled && !grokPooled && !musePooled && apiKeys.length === 0) {
-        console.log(c.dim("no accounts yet, run `tokenmaxxing init` (or `tokenmaxxing init --codex`, `--grok`, `--muse`)"));
+      if (!codexPooled && !grokPooled && !musePooled && !cursorPooled && apiKeys.length === 0) {
+        console.log(c.dim("no accounts yet, run `tokenmaxxing init` (or `tokenmaxxing init --codex`, `--grok`, `--muse`, `--cursor`)"));
         return 0;
       }
       console.log(c.dim("no claude accounts (run `tokenmaxxing init` to pool claude too)"));
@@ -324,8 +328,9 @@ export async function cmdStatus(opts: { json?: boolean; cached?: boolean } = {})
   const codexReport = await collect(codex, cfg, now, cached);
   const grokReport = await collect(grok, cfg, now, cached);
   const museReport = await collect(muse, cfg, now, cached);
+  const cursorReport = await collect(cursor, cfg, now, cached);
   if (json) {
-    const report: StatusReport = { now, claude: claudeReport, codex: codexReport, grok: grokReport, muse: museReport, ...(apiKeys.length > 0 ? { apiKeys } : {}) };
+    const report: StatusReport = { now, claude: claudeReport, codex: codexReport, grok: grokReport, muse: museReport, cursor: cursorReport, ...(apiKeys.length > 0 ? { apiKeys } : {}) };
     emitJson({ ok: true, ...report });
     return 0;
   }
@@ -337,6 +342,9 @@ export async function cmdStatus(opts: { json?: boolean; cached?: boolean } = {})
   }
   if (museReport.accounts.length > 0) {
     renderPool(muse, museReport, `muse  (${count({ n: museReport.accounts.length, noun: "account" })}, status-only)`, Date.now(), cfg.policy.usagePollTtlMs);
+  }
+  if (cursorReport.accounts.length > 0) {
+    renderPool(cursor, cursorReport, `cursor  (${count({ n: cursorReport.accounts.length, noun: "account" })}, status-only)`, Date.now(), cfg.policy.usagePollTtlMs);
   }
   return 0;
 }

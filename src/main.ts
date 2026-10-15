@@ -13,6 +13,7 @@ import { runPiSupervisor } from "./entries/pisupervisor.ts";
 import { claude } from "./lib/claude.ts";
 import { codex } from "./lib/codex.ts";
 import { grok } from "./lib/grok.ts";
+import { cursor } from "./lib/cursor.ts";
 import { muse } from "./lib/muse.ts";
 import { cmdInit, cmdInitPi } from "./cli/init.ts";
 import { cmdAdd } from "./cli/add.ts";
@@ -38,6 +39,7 @@ const YES_FLAG = "--yes";
 const CODEX_FLAG = "--codex";
 const GROK_FLAG = "--grok";
 const MUSE_FLAG = "--muse";
+const CURSOR_FLAG = "--cursor";
 const PI_FLAG = "--pi";
 const JSON_COMMANDS = new Set(["status", "config", "check"]);
 const CODEX_COMMANDS = new Set(["init", "add", "auth", "emails", "rm", "rename", "seat"]);
@@ -54,17 +56,18 @@ function printHelp(): void {
   ${c.cyan("tokenmaxxing init --pi")}     install the pi supervisor: pi sessions run on pooled Claude or ChatGPT accounts that are logged into pi
   ${c.cyan("tokenmaxxing init --grok")}   pool grok Build logins (status-only: no supervisor yet)
   ${c.cyan("tokenmaxxing init --muse")}   pool Muse Code logins (status-only: no supervisor and no usage read)
+  ${c.cyan("tokenmaxxing init --cursor")} pool Cursor CLI logins (status-only: no supervisor yet)
   ${c.cyan("tokenmaxxing add")}        register an additional account (isolated login)
-  ${c.cyan("tokenmaxxing add")} --codex | --grok | --muse   same for the codex, grok, or muse pool
-  ${c.cyan("tokenmaxxing auth")} [--codex | --grok | --muse] [sel | --all]  reauthenticate a pooled account in place (bare = pick from a list; --all = every account that is flagged or has no usable credential in its store, one by one)
-  ${c.cyan("tokenmaxxing auth")} [--codex | --grok | --muse] --emails <email>...  log in and pool each listed email, skipping the ones already pooled (for moving to a new host: paste the output of ${c.cyan("emails")} from the old one)
-  ${c.cyan("tokenmaxxing emails")} [--codex | --grok | --muse]  print every pooled account's email, one per line, to copy into ${c.cyan("auth --emails")} on another host
+  ${c.cyan("tokenmaxxing add")} --codex | --grok | --muse | --cursor   same for the codex, grok, muse, or cursor pool
+  ${c.cyan("tokenmaxxing auth")} [--codex | --grok | --muse | --cursor] [sel | --all]  reauthenticate a pooled account in place (bare = pick from a list; --all = every account that is flagged or has no usable credential in its store, one by one)
+  ${c.cyan("tokenmaxxing auth")} [--codex | --grok | --muse | --cursor] --emails <email>...  log in and pool each listed email, skipping the ones already pooled (for moving to a new host: paste the output of ${c.cyan("emails")} from the old one)
+  ${c.cyan("tokenmaxxing emails")} [--codex | --grok | --muse | --cursor]  print every pooled account's email, one per line, to copy into ${c.cyan("auth --emails")} on another host
   ${c.cyan("tokenmaxxing auth --pi")} [--codex] [sel | --all]  log a pooled Claude account (or a codex account with --codex) into pi, isolated (bare = pick from a list; --all = every account without a pi login)
   ${c.cyan("tokenmaxxing status")} [--cached]  accounts with 5h / weekly / per-model usage bars (--cached: the stored figures, no sampling)
   ${c.cyan("tokenmaxxing config")}     print the config path and the effective values (edit the file in an editor)
   ${c.cyan("tokenmaxxing doctor")}     verify the install is intact
-  ${c.cyan("tokenmaxxing rename")} [--codex | --grok | --muse] <sel> <label>
-  ${c.cyan("tokenmaxxing rm")} [--codex | --grok | --muse] <sel>
+  ${c.cyan("tokenmaxxing rename")} [--codex | --grok | --muse | --cursor] <sel> <label>
+  ${c.cyan("tokenmaxxing rm")} [--codex | --grok | --muse | --cursor] <sel>
   ${c.cyan("tokenmaxxing key add")} <label> [credit-usd] [workspace-id]  store an Anthropic or OpenRouter (sk-or-...) API key read from stdin or the prompt; Claude sessions run on it only while every pooled Claude account is at its limit (workspace-id: for a key that spans several workspaces; an OpenRouter key takes neither argument and reads its credit from OpenRouter)
   ${c.cyan("tokenmaxxing key credit")} <label> <usd>  set the key's balance as the Console shows it and restart its spend count (an OpenRouter key takes no amount: key credit <label> clears its refusal)
   ${c.cyan("tokenmaxxing key rm")} <label>  delete the key and its stored secret (refused while a session runs on it)
@@ -104,14 +107,14 @@ async function main(): Promise<number> {
   const json = jsonMode;
   const cached = argv.includes(CACHED_FLAG);
   const yes = argv.includes(YES_FLAG);
-  const providerFlags = [CODEX_FLAG, GROK_FLAG, MUSE_FLAG].filter((f) => argv.includes(f));
+  const providerFlags = [CODEX_FLAG, GROK_FLAG, MUSE_FLAG, CURSOR_FLAG].filter((f) => argv.includes(f));
   if (providerFlags.length > 1) {
     emitError({ json, message: `${providerFlags.join(" and ")} are mutually exclusive - pick one pool` });
     return 2;
   }
-  const provider = argv.includes(CODEX_FLAG) ? codex : argv.includes(GROK_FLAG) ? grok : argv.includes(MUSE_FLAG) ? muse : claude;
+  const provider = argv.includes(CODEX_FLAG) ? codex : argv.includes(GROK_FLAG) ? grok : argv.includes(MUSE_FLAG) ? muse : argv.includes(CURSOR_FLAG) ? cursor : claude;
   const pi = argv.includes(PI_FLAG);
-  const args = argv.filter((a) => a !== JSON_FLAG && a !== CACHED_FLAG && a !== YES_FLAG && a !== CODEX_FLAG && a !== GROK_FLAG && a !== MUSE_FLAG && a !== PI_FLAG);
+  const args = argv.filter((a) => a !== JSON_FLAG && a !== CACHED_FLAG && a !== YES_FLAG && a !== CODEX_FLAG && a !== GROK_FLAG && a !== MUSE_FLAG && a !== CURSOR_FLAG && a !== PI_FLAG);
   const sub = args[0];
 
   if (pi && sub !== "init" && sub !== "auth") {
@@ -211,7 +214,7 @@ async function main(): Promise<number> {
       if (out.timer === "still-loaded") console.log(c.yellow(`⚠ the check job may still be loaded - run: ${deactivationHint(CHECK_JOB)}`));
       if (out.hub === "still-loaded") console.log(c.yellow(`⚠ the usage hub job may still be loaded - run: ${deactivationHint(HUB_JOB)}`));
       if (!out.pathLineRemoved) console.log(c.dim("(no tokenmaxxing PATH line found in the shell rc)"));
-      console.log(`kept: accounts.json, config.json, and every account credential store (claude: stores/ and its keychain items on macOS; codex: codex-stores/; pi: pi-stores/; grok: grok-stores/; muse: muse-stores/), plus api-keys.json and the API keys in api-keys/ - remove accounts with \`xx rm\` and keys with \`xx key rm\` to delete their credentials`);
+      console.log(`kept: accounts.json, config.json, and every account credential store (claude: stores/ and its keychain items on macOS; codex: codex-stores/; pi: pi-stores/; grok: grok-stores/; muse: muse-stores/; cursor: cursor-stores/), plus api-keys.json and the API keys in api-keys/ - remove accounts with \`xx rm\` and keys with \`xx key rm\` to delete their credentials`);
       return 0;
     }
     case "help":
