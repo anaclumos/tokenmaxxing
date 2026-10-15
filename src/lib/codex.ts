@@ -92,10 +92,12 @@ async function readCodexUsageOnce(account: Account, now: number, refresh: boolea
 
 async function readCodexUsage(account: Account, now: number, refresh: boolean, holder?: string): Promise<CodexReadOutcome> {
   const outcome = await readCodexUsageOnce(account, now, refresh, holder);
-  if (outcome.ok || outcome.rejectedToken === undefined || !refresh) return outcome;
+  if (outcome.ok || outcome.rejectedToken === undefined) return outcome;
   const { rejectedToken } = outcome;
   const fresh = await withLock(codexPool.lockFile, () => freshCodexAuth(account, now, true, holder, rejectedToken));
-  return fresh.ok ? readCodexUsageOnce(account, now, false) : afterRejection(outcome, fresh);
+  if (!fresh.ok) return afterRejection(outcome, fresh);
+  const retried = await readCodexUsageOnce(account, now, false);
+  return retried.ok ? retried : { ...retried, rejectedToken: undefined };
 }
 
 export async function observeCodex(account: Account, cfg: Config, now: number, opts: { probe: boolean; refresh: boolean; holder?: string }): Promise<Observation | null> {
@@ -130,21 +132,17 @@ async function samplePool(accounts: Account[], now: number): Promise<Map<string,
       reports.set(account.id, { ok: false, reason: outcome.reason });
     }
   };
-  const expiring: { account: Account; rejected?: CodexReadFailure }[] = [];
+  const expiring: Account[] = [];
   await Promise.all(
     accounts.map(async (account) => {
       const outcome = await readCodexUsage(account, now, false);
-      if (!outcome.ok && (outcome.expiring === true || outcome.rejectedToken !== undefined)) expiring.push({ account, rejected: outcome.rejectedToken === undefined ? undefined : outcome });
+      if (!outcome.ok && outcome.expiring === true) expiring.push(account);
       else record(account, outcome);
     }),
   );
   if (expiring.length > 0) {
-    const rotated = await withLock(codexPool.lockFile, () => Promise.all(expiring.map(async ({ account, rejected }) => ({ account, rejected, fresh: await freshCodexAuth(account, now, true, undefined, rejected?.rejectedToken) }))));
-    await Promise.all(
-      rotated.map(async ({ account, rejected, fresh }) =>
-        record(account, fresh.ok ? await readCodexUsage(account, now, false) : rejected ? afterRejection(rejected, fresh) : fresh),
-      ),
-    );
+    const rotated = await withLock(codexPool.lockFile, () => Promise.all(expiring.map(async (account) => ({ account, fresh: await freshCodexAuth(account, now, true) }))));
+    await Promise.all(rotated.map(async ({ account, fresh }) => record(account, fresh.ok ? await readCodexUsage(account, now, false) : fresh)));
   }
   return reports;
 }
