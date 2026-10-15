@@ -2,7 +2,7 @@
 
 **Automatic Claude Code account switching.** Run `claude` exactly as you always do; each session starts on the pooled account with room for it whose weekly quota is closest to expiring unused, and when that account nears its usage limit, tokenmaxxing resumes the session on a fresher account at a safe turn boundary - same conversation, compacted on the account it leaves and restarted under another account's credential store with a first prompt that asks Claude to continue. Works across many concurrent sessions, which spread over the pool instead of draining one account together. When the whole pool is at its limit, a session queues first come first served for a reset (at most eight sessions wait on one account; overflow waits for the next reset with room) and pauses with a countdown until its assigned reset, when that reset falls within twice `policy.maxWaitMs` (default 1h - a longer wait stays put rather than parking your terminal for hours).
 
-> **Scope:** Claude Code on macOS and Linux, plus OpenAI's Codex CLI as a second switching pool; grok, Muse Code, and Cursor as status-only pools. It pools **subscription** accounts (Pro/Max), not API keys.
+> **Scope:** Claude Code on macOS and Linux, plus OpenAI's Codex CLI and Muse Code as further switching pools; grok and Cursor as status-only pools. It pools **subscription** accounts (Pro/Max), not API keys.
 
 ```
 $ claude
@@ -40,8 +40,8 @@ claude                  # use claude as always; each session gets its own accoun
 | `tokenmaxxing init --codex` | same for codex: log in the first account (isolated), install codex supervisor + Stop hook |
 | `tokenmaxxing init --pi` | verify and pin the real `pi` and install the `pi` supervisor, which runs pi sessions on pooled Claude and ChatGPT accounts that have a pi login |
 | `tokenmaxxing init --grok` | pool the first grok login, status-only: no supervisor, no switching |
-| `tokenmaxxing init --muse` | pool the first Muse Code login, status-only: no supervisor, no switching |
 | `tokenmaxxing init --cursor` | pool the Cursor CLI login, status-only: no supervisor, no switching |
+| `tokenmaxxing init --muse` | same for Muse Code: log in the first account (isolated), install the `muse` supervisor, which starts each session on the freshest account and resumes it on another near quota |
 | `tokenmaxxing add [--codex \| --grok \| --muse \| --cursor]` | register an additional account in that pool (isolated login, harvested once into its own store) |
 | `tokenmaxxing auth [--codex \| --grok \| --muse \| --cursor] [sel \| --all]` | reauthenticate a pooled account in place: bare lists the pool (emails shown) and asks which; a selector targets one account and tells you the email to sign in with; `--all` walks every account that is flagged or has no usable credential in its store, one by one |
 | `tokenmaxxing auth --pi [--codex] [sel \| --all]` | log a pooled Claude account (or a codex account with `--codex`) into pi, isolated, and keep that login as the account's pi credential after an identity check; `--all` walks every account without a pi login |
@@ -127,8 +127,8 @@ pi keeps its own credential and refreshes it itself, so each pooled account gets
 - **Keychain (macOS).** The first keychain access for a new store happens inside the interactive `init`, `add`, or `auth` run, where a prompt can be answered, not inside a headless hook.
 - **Plaintext credentials (Linux).** Claude Code itself stores Linux credentials as a 0600 plaintext file; a store follows the same model.
 - **The status-only grok pool does not switch.** grok `status` shows the weekly subscription credit window, and no grok session moves.
-- **The status-only Muse Code pool does not switch, and shows no usage before the first model request of a window.** Its usage read is the key mint, which reports no usage until a model request opens the 5-hour window.
 - **The status-only Cursor pool does not switch, and reads only a file login.** Cursor `status` shows the included usage of the monthly billing cycle. The Cursor CLI keeps its login in the keychain on macOS, which tokenmaxxing does not read, so the pool works where the login is `auth.json` (Linux).
+- **A Muse Code move stops the running turn.** `muse resume` takes no prompt, so a turn that was running when the move landed has to be sent again; `muse exec` and `muse serve` keep the account they started on.
 
 ## How it's built
 

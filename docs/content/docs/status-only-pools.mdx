@@ -1,20 +1,20 @@
 ---
 title: Status-only pools
-description: grok, Muse Code, and Cursor accounts, pooled for inventory with no supervisor and no switching
+description: grok and Cursor accounts, pooled for inventory with no supervisor and no switching
 ---
 
-The grok, Muse Code, and Cursor pools share the account commands, the state layout, and the `status` view with the Claude and Codex pools, and nothing else: no supervisor shim, no hooks, no statusline tee, no session presence, and no switching. Each keeps an inventory of accounts and the credential each one holds. `status` reads each grok account's subscription credit window each Muse Code account's 5-hour and weekly windows, and each Cursor account's monthly included usage.
+The grok and Cursor pools share the account commands, the state layout, and the `status` view with the other pools, and nothing else: no supervisor shim, no hooks, no statusline tee, no session presence, and no switching. Each keeps an inventory of accounts and the credential each one holds; `status` reads each grok account's subscription credit window and each Cursor account's monthly included usage.
 
 ```sh
 tokenmaxxing init --grok          # pool the first grok login (status-only)
 tokenmaxxing add --grok           # pool another one through an isolated login
-tokenmaxxing init --muse          # pool the first Muse Code login (status-only)
-tokenmaxxing add --muse           # pool another one through an isolated login
 tokenmaxxing init --cursor        # pool the Cursor CLI login (status-only)
 tokenmaxxing add --cursor         # pool another one through an isolated login
 ```
 
-`init`, `add`, `auth`, `emails`, `rm`, and `rename` take `--grok`, `--muse`, or `--cursor`; every other command refuses the flag with exit code 2, and the pool flags are mutually exclusive. `init` verifies the vendor CLI and pins its path (`grokBin`, `museBin`, or `cursorBin` in `config.json`; `TOKENMAXXING_GROK_BIN`, `TOKENMAXXING_MUSE_BIN`, and `TOKENMAXXING_CURSOR_BIN` override them), then prints that the pool is status-only. `doctor`, `check`, and the periodic timer ignore these pools, and `uninstall` keeps their stores.
+`init`, `add`, `auth`, `emails`, `rm`, and `rename` take `--grok` or `--cursor`; every other command refuses the flags with exit code 2, and the pool flags are mutually exclusive. `init` verifies the vendor CLI and pins its path (`grokBin` or `cursorBin` in `config.json`; `TOKENMAXXING_GROK_BIN` and `TOKENMAXXING_CURSOR_BIN` override them), then prints that the pool is status-only. `doctor`, `check`, and the periodic timer ignore these pools, and `uninstall` keeps their stores.
+
+Muse Code was a status-only pool until it got a supervisor; see [Muse Code support](/muse).
 
 ## grok
 
@@ -22,24 +22,17 @@ An account is a grok CLI login. `init --grok` imports the first entry of `~/.gro
 
 Usage is the weekly subscription credit window from `GET https://cli-chat-proxy.grok.com/v1/billing?format=credits` (`creditUsagePercent`, classified by the period's duration). The endpoint leaves `creditUsagePercent` out while the period's use is 0, so a credits body without it reads as 0%. `TOKENMAXXING_GROK_USAGE_URL` overrides that URL for hermetic runs. The dollar billing body (`GET /v1/billing` without `format=credits`) is not quota: subscription accounts report `monthlyLimit` 0 there while credits remain, and a parser that treats that body as usage reports the account depleted. tokenmaxxing does not refresh grok tokens; a stored access token that has expired is retried against the live `GROK_HOME` login when that login is the same account. A failed read does not write the dollar body: an account with no stored window stays unmeasured, and one with a stored credits window keeps that figure as stale as it was.
 
-## Muse Code
-
-An account is a Muse Code login. `init --muse` imports the first provider entry with a `user_email` from `$XDG_CONFIG_HOME/muse/auth.json` (`~/.config/muse/auth.json` when `XDG_CONFIG_HOME` is unset) and points at `add --muse` for the rest; with no live login it runs `muse login` with `XDG_CONFIG_HOME` set to a throwaway directory under the state directory, so the login lands in `muse/auth.json` there. `add --muse` and `auth --muse` always use the isolated login. The entry carries no account id, so identity is the sha256 of the entry's `user_email`, lowercased; the label defaults to that email, and an entry without an email is skipped, so a login that holds no email adds nothing and says so. The harvested entry is written with the file's other top-level fields to `muse-stores/<uuid8>/auth.json` at mode 0600.
-Usage is the `subs_usage` object of the key mint, `POST https://api.meta.ai/muse-code/key` with the store's `access_token` as the bearer and an empty JSON body; it is the read the Muse Code TUI's `/usage` shows, and it spends no quota. `TOKENMAXXING_MUSE_USAGE_URL` overrides the URL for hermetic runs. Its `window` is the 5-hour window, with its duration in `window_duration_mins`, and its `weekly` is the 7-day window; each carries `used_percent` and `resets_at` in epoch seconds. The mint answers `subs_usage` `null` until a model request opens the 5-hour window, and the sample then fails with that reason. The mint response also carries an `api_key`, which tokenmaxxing ignores; the mint returned the stored key when it was read. A store is usable when its entry holds an `access_token`. A failed read keeps the stored windows as stale as they were, and an account with no stored window stays unmeasured. The model response stream also carries the window, as its `response.subscription_usage` event, but reading it spends quota.
-
 ## Cursor
 
 An account is a Cursor CLI (`cursor-agent`) login. `init --cursor` imports `$XDG_CONFIG_HOME/cursor/auth.json` (`~/.config/cursor/auth.json` when `XDG_CONFIG_HOME` is unset) and points at `add --cursor` for more; with no live login it runs `cursor-agent login` with `XDG_CONFIG_HOME` set to a throwaway directory under the state directory, so the login lands in `cursor/auth.json` there. `add --cursor` and `auth --cursor` always use the isolated login. The file holds only tokens, so identity is the sha256 of the access token's `sub` claim; the email comes from the `authInfo` the CLI caches in `cli-config.json` beside `auth.json` when its `authId` matches that claim, else from the first usage read (`GetMe`), and the label defaults to it. The file is written to `cursor-stores/<uuid8>/auth.json` at mode 0600. On macOS the Cursor CLI keeps its login in the keychain, which tokenmaxxing does not read, so the pool imports nothing there.
 
-Usage is `POST https://api2.cursor.sh/aiserver.v1.DashboardService/GetCurrentPeriodUsage` with the store's `accessToken` as the bearer and an empty JSON body; it is the read the Cursor dashboard and the CLI's usage notice show, and it spends no quota. `TOKENMAXXING_CURSOR_API_URL` overrides the origin for hermetic runs. The unnamed window is `planUsage.totalPercentUsed` (the included usage that Auto draws on; `includedSpend` over `limit` when the field is absent), and the `API` window is `apiPercentUsed` (the included usage that a named model draws on); both span the billing cycle from `billingCycleStart` to `billingCycleEnd`. The plan, lowercased, comes from `GetPlanInfo`. tokenmaxxing does not refresh Cursor tokens: a 401 or 403 flags the account for `auth --cursor`. A failed read keeps the stored windows as stale as they were.
+Usage is `POST https://api2.cursor.sh/aiserver.v1.DashboardService/GetCurrentPeriodUsage` with the store's `accessToken` as the bearer and an empty JSON body; it is the read behind the Cursor CLI's own usage notice, and it spends no quota. `TOKENMAXXING_CURSOR_API_URL` overrides the origin for hermetic runs. The unnamed window is `planUsage.totalPercentUsed` (the included usage that Auto draws on; `includedSpend` over `limit` when the field is absent), and the `API` window is `apiPercentUsed` (the included usage that a named model draws on); both span the billing cycle from `billingCycleStart` to `billingCycleEnd`. The plan, lowercased, comes from `GetPlanInfo`. tokenmaxxing does not refresh Cursor tokens: a 401 or 403 flags the account for `auth --cursor`. A failed read keeps the stored windows as stale as they were.
 
 ## What status shows
 
 `status` renders the pool after Claude and Codex, headed `grok  (N accounts, status-only)` and skipped when empty. A grok account renders the weekly credit bar from the credits billing read. The live sample is the credits GET (and a live-login retry when the stored access token is expired). `status` shows `sampling grok usage...` on a terminal while the check runs, erases it, then reports `live sample failed` when the read fails (run `auth --grok` when the store has no usable credential); `status --cached` skips the check and notes `never sampled` when nothing is stored. `status --json` always carries the pool under `grok`, with the same pool shape as the others. `usage` is the weekly credit window when a sample has landed. `sessions` is 0. `exhausted` follows the same bars as the other pools when the account has a stored window, and is `false` when the account is unmeasured.
 
-The Muse Code pool renders after grok, headed `muse  (N accounts, status-only)` and skipped when empty, and `status --json` always carries it under `muse`. Each account renders the 5-hour and weekly bars once a sample has landed, `usage` carries both windows, `sessions` is 0, and `exhausted` follows the same bars as the other pools; an unmeasured account has `usage` null and `exhausted` `false`.
-
-The Cursor pool renders after Muse Code, headed `cursor  (N accounts, status-only)` and skipped when empty, and `status --json` always carries it under `cursor`. Each account renders the billing-cycle bar, labeled `month`, and the `api` bar; `usage.week` carries the billing-cycle window (its `windowSeconds` is the cycle's length) and `usage.limits` the `API` window.
+The Cursor pool renders last, headed `cursor  (N accounts, status-only)` and skipped when empty, and `status --json` always carries it under `cursor`. Each account renders the billing-cycle bar, labeled `month`, and the `api` bar; `usage.week` carries the billing-cycle window (its `windowSeconds` is the cycle's length) and `usage.limits` the `API` window.
 
 ## State
 
@@ -48,10 +41,7 @@ The Cursor pool renders after Muse Code, headed `cursor  (N accounts, status-onl
 | `grok-accounts.json` | The pool index, the same schema as `accounts.json`; it names no active account |
 | `grok-lock` | The `flock` file that serializes the pool's commands |
 | `grok-stores/<uuid8>/auth.json` | One 0600 store per account |
-| `muse-accounts.json` | The Muse Code pool index, the same schema |
-| `muse-lock` | The `flock` file of the Muse Code pool |
-| `muse-stores/<uuid8>/auth.json` | One 0600 store per account |
 | `cursor-accounts.json` | The Cursor pool index, the same schema |
 | `cursor-lock` | The `flock` file of the Cursor pool |
 | `cursor-stores/<uuid8>/auth.json` | One 0600 store per account |
-| `onboard/grok-<pid>-<random>/`, `onboard/muse-<pid>-<random>/`, `onboard/cursor-<pid>-<random>/` | The throwaway home of one isolated login (for Muse Code and Cursor, its `XDG_CONFIG_HOME`), deleted after it |
+| `onboard/grok-<pid>-<random>/`, `onboard/cursor-<pid>-<random>/` | The throwaway home of one isolated login (for Cursor, its `XDG_CONFIG_HOME`), deleted after it |

@@ -28,7 +28,7 @@ export type StatusOnlySpec = {
   versionOk: (versionOutput: string) => boolean;
   importIntro: string;
   foundLive: (count: number) => string;
-  installNotice: string;
+  install: () => void;
   loginStep: () => string;
   samplePool: Provider["samplePool"];
 };
@@ -110,9 +110,7 @@ export function statusOnlyProvider(spec: StatusOnlySpec): Provider {
     login,
     importLive,
     preflight,
-    install: () => {
-      console.log(c.dim(spec.installNotice));
-    },
+    install: spec.install,
     loginStep: spec.loginStep,
     windowLabel: (name) => name.toLowerCase(),
   };

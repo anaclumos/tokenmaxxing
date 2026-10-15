@@ -292,7 +292,7 @@ function card(p: Provider, a: StatusAccount, now: number, staleAfterMs: number):
 
 function renderPool(p: Provider, pool: PoolReport, header: string, now: number, staleAfterMs: number): void {
   console.log(c.dim(header));
-  if (!p.statusOnly) console.log(c.dim("buffered usage quota: percent of each account's switch threshold, so it reads higher than the usage Claude or Codex reports"));
+  if (!p.statusOnly) console.log(c.dim("buffered usage quota: percent of each account's switch threshold, so it reads higher than the usage the provider reports"));
   console.log();
   renderGrid(pool.accounts.map((a) => card(p, a, now, staleAfterMs)));
   if (pool.gatedNote) {
@@ -341,7 +341,7 @@ export async function cmdStatus(opts: { json?: boolean; cached?: boolean } = {})
     renderPool(grok, grokReport, `grok  (${count({ n: grokReport.accounts.length, noun: "account" })}, status-only)`, Date.now(), cfg.policy.usagePollTtlMs);
   }
   if (museReport.accounts.length > 0) {
-    renderPool(muse, museReport, `muse  (${count({ n: museReport.accounts.length, noun: "account" })}, status-only)`, Date.now(), cfg.policy.usagePollTtlMs);
+    renderPool(muse, museReport, `muse  (${count({ n: museReport.accounts.length, noun: "account" })})`, Date.now(), cfg.policy.usagePollTtlMs);
   }
   if (cursorReport.accounts.length > 0) {
     renderPool(cursor, cursorReport, `cursor  (${count({ n: cursorReport.accounts.length, noun: "account" })}, status-only)`, Date.now(), cfg.policy.usagePollTtlMs);

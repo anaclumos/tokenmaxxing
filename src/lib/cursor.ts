@@ -166,7 +166,9 @@ export const cursor = statusOnlyProvider({
   versionOk: (out) => /^\d{4}\.\d{2}\.\d{2}-[0-9a-f]+$/.test(out.trim()),
   importIntro: "Opening an isolated Cursor login for your first pooled account - the login you already have stays as it is.",
   foundLive: () => `found the Cursor login in ${cursorPaths.authJson} - pooling it; use \`tokenmaxxing add --cursor\` for more.`,
-  installNotice: "cursor pool is status-only: no supervisor or hooks installed. Use `tokenmaxxing status` to view pooled Cursor accounts.",
+  install: () => {
+    console.log(c.dim("cursor pool is status-only: no supervisor or hooks installed. Use `tokenmaxxing status` to view pooled Cursor accounts."));
+  },
   loginStep: () => `Approve the login in the browser that ${c.bold("cursor-agent login")} opens.`,
   samplePool,
 });

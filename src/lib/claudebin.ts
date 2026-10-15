@@ -109,6 +109,7 @@ export function verifyRealBin(input: { bin: string; name: string; versionOk: (ve
 
 export const CLAUDE_BIN = { name: "claude", key: "claudeBin", versionOk: (out: string) => out.toLowerCase().includes("claude") } as const;
 export const CODEX_BIN = { name: "codex", key: "codexBin", versionOk: (out: string) => out.toLowerCase().includes("codex") } as const;
+export const MUSE_BIN = { name: "muse", key: "museBin", versionOk: (out: string) => out.toLowerCase().includes("muse code") } as const;
 function isBareVersion(out: string): boolean {
   try {
     return Bun.semver.order(out, "0.0.0") >= 0;
