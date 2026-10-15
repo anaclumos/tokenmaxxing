@@ -1,5 +1,5 @@
 import { lstatSync, mkdirSync, readdirSync, readlinkSync, renameSync, rmSync, symlinkSync } from "node:fs";
-import { join, resolve, sep } from "node:path";
+import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { z } from "zod";
 import { writeFileAtomic } from "./atomic.ts";
 import { ensurePathAhead } from "./claude.ts";
@@ -97,7 +97,10 @@ function adoptEntries(from: string, to: string, keep: (name: string) => boolean)
     if (!keep(name) || isMirrorLink(from, to, name) || lstatSync(join(from, name), { throwIfNoEntry: false }) != null) continue;
     mkdirSync(from, { recursive: true });
     if (lstatSync(own).isSymbolicLink()) {
-      symlinkSync(resolve(to, readlinkSync(own)), join(from, name));
+      // A target inside the store moves with it, so it maps to the same path under the real config home.
+      const target = resolve(to, readlinkSync(own));
+      const inside = relative(to, target);
+      symlinkSync(inside !== "" && !inside.startsWith("..") && !isAbsolute(inside) ? join(from, inside) : target, join(from, name));
       rmSync(own);
       continue;
     }
