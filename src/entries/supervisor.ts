@@ -718,7 +718,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
     if (stream) process.stdout.write(systemLine(noticeSid, text));
     else process.stderr.write(terminal);
   };
-  let firstLine: string | null = null;
+  let pendingResume: { compacted: boolean; origin: z.infer<typeof RespawnMarkerSchema>["origin"] } | null = null;
   let respawns = 0;
   let wanted: { accountId: string | null; apiKeyId: string | null } | null = null;
   let refused: string[] = [];
@@ -744,13 +744,17 @@ export async function runSupervisor(argv: string[]): Promise<number> {
       }
       const picked = target?.account ?? null;
       const key = target?.apiKey ?? null;
-      log("supervisor.launch", { sid, respawns, seat: picked?.id.slice(0, 8) ?? null, key: key?.id, args: launchArgs.join(" "), injected: firstLine !== null });
+      const prompt = pendingResume === null ? null : resumePrompt({ ...pendingResume, onKey: key != null, openRouter: key != null && isOpenRouterKey(key) });
+      pendingResume = null;
+      const args = relay === null && prompt !== null ? [...launchArgs.slice(0, 2), prompt, ...launchArgs.slice(2)] : launchArgs;
+      const firstLine = relay !== null && prompt !== null ? userLine(prompt) : null;
+      log("supervisor.launch", { sid, respawns, seat: picked?.id.slice(0, 8) ?? null, key: key?.id, args: args.join(" "), injected: firstLine !== null });
       const open: OpenTasks = new Map();
       const tee = stream && (picked || existsSync(claudePool.apiKeysJson)) ? seatTee(picked?.id ?? null, model, open, sid) : null;
       const secret = key ? readApiKey(key) : null;
       const extra: "pipe"[] = secret == null ? [] : ["pipe"];
       const scrubbed = scrubCredEnv(childEnv);
-      const spawned = Bun.spawn([real, ...launchArgs], {
+      const spawned = Bun.spawn([real, ...args], {
         stdio: [relay === null ? "inherit" : "pipe", tee === null ? childStdout() : "pipe", "inherit", ...extra],
         env: {
           ...(picked ? { ...scrubbed, CLAUDE_SECURESTORAGE_CONFIG_DIR: storeDirFor(picked.id) } : key ? apiKeyEnv(scrubbed, key) : childEnv),
@@ -766,7 +770,6 @@ export async function runSupervisor(argv: string[]): Promise<number> {
       if (secret != null) sendApiKey(spawned, secret);
       drainStdout = spawned.stdout instanceof ReadableStream ? relayStdout(spawned.stdout, tee ?? undefined) : null;
       if (relay !== null) relay.attach(spawned.stdin!, firstLine, pendingTranscript);
-      firstLine = null;
       if (picked || key) {
         await recordPresenceOrStop({
           child: spawned,
@@ -873,12 +876,10 @@ export async function runSupervisor(argv: string[]): Promise<number> {
       wanted = depleted ? (key ? { accountId: null, apiKeyId: key.id } : null) : m.apiKeyId != null ? { accountId: null, apiKeyId: m.apiKeyId } : { accountId: m.accountId, apiKeyId: null };
       refused = m.refused ?? refused;
       saveSessionFlags(m.sessionId, persistable, process.cwd());
-      const landingKey = m.apiKeyId == null ? null : usableApiKey(m.apiKeyId);
-      const prompt = resumable ? resumePrompt({ compacted, origin: m.origin, onKey: m.apiKeyId != null, openRouter: landingKey != null && isOpenRouterKey(landingKey) }) : null;
-      firstLine = relay !== null && prompt !== null ? userLine(prompt) : null;
+      pendingResume = resumable ? { compacted, origin: m.origin } : null;
       pendingTranscript = resumable ? null : transcriptPath(m.sessionId);
       if (!restored.has(m.sessionId)) restored.set(m.sessionId, resumable ? restoredCost(m.sessionId) : 0);
-      launchArgs = [resumable ? "--resume" : "--session-id", m.sessionId, ...(relay === null && prompt !== null ? [prompt] : []), ...persistable];
+      launchArgs = [resumable ? "--resume" : "--session-id", m.sessionId, ...persistable];
       continue;
     }
     clearPresence({ dir: paths.presenceDir, id: sid });
