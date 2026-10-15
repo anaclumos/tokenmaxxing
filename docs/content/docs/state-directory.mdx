@@ -101,9 +101,12 @@ The tree lists the entries in the order of the sections below. Open a folder to 
     <File name="muse-lock" />
     <Folder name="muse-stores">
       <Folder name="<uuid8>">
-        <File name="auth.json" />
+        <Folder name="muse">
+          <File name="auth.json" />
+        </Folder>
       </Folder>
     </Folder>
+    <Folder name="muse-live" />
   </Folder>
 </Files>
 
@@ -228,12 +231,22 @@ A pi session's presence record goes to `live/` or `codex-live/`. See [pi support
 
 ### Status-only pools
 
-The `grok-*` and `muse-*` entries are the state of the status-only grok and Muse Code pools. See [Status-only pools](/status-only-pools).
+The `grok-*` entries are the state of the status-only grok pool. See [Status-only pools](/status-only-pools).
 
 | Path | What it holds |
 |---|---|
-| `grok-accounts.json`, `muse-accounts.json` | The same index shape |
-| `grok-stores/<uuid8>/auth.json`, `muse-stores/<uuid8>/auth.json` | One 0600 store per account |
+| `grok-accounts.json` | The same index shape |
+| `grok-stores/<uuid8>/auth.json` | One 0600 store per account |
+
+### Muse Code
+
+The `muse-*` entries are the state of the Muse Code pool. See [Muse Code support](/muse).
+
+| Path | What it holds |
+|---|---|
+| `muse-accounts.json` | The same index shape |
+| `muse-stores/<uuid8>/` | The account's seat, the `XDG_CONFIG_HOME` of the sessions on it: links to the real config home's entries, and in `muse/` the 0600 `auth.json` beside links to the real `muse/` entries |
+| `muse-live/<id>` | One presence file per seated Muse Code session |
 
 ## Outside the state directory
 

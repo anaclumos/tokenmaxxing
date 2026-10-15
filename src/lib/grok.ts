@@ -134,7 +134,9 @@ export const grok = statusOnlyProvider({
   versionOk: (out) => out.toLowerCase().includes("grok"),
   importIntro: "Opening an isolated grok login for your first pooled account - the login you already have stays as it is.",
   foundLive: (count) => `found ${count} grok login(s) in ${grokPaths.home} - pooling the first; use \`tokenmaxxing add --grok\` for the rest.`,
-  installNotice: "grok pool is status-only: no supervisor or hooks installed. Use `tokenmaxxing status` to view pooled grok accounts.",
+  install: () => {
+    console.log(c.dim("grok pool is status-only: no supervisor or hooks installed. Use `tokenmaxxing status` to view pooled grok accounts."));
+  },
   loginStep: () => `Sign in in the browser session that opens (or run ${c.bold("grok login --device-auth")} on headless hosts first).`,
   samplePool,
 });
