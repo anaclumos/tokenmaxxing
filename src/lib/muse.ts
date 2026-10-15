@@ -116,23 +116,29 @@ function configHomeMarker(accountId: string): string {
 
 // A store mirrors one config home, recorded beside it. Relinking it to another while a session may run on it could
 // redirect that session, so a launch from another config home is refused instead.
+function recordedConfigHome(accountId: string): string | null {
+  try {
+    return readFileSync(configHomeMarker(accountId), "utf8");
+  } catch (e) {
+    if (ErrnoSchema.safeParse(e).data?.code !== "ENOENT") throw e;
+    return null;
+  }
+}
+
+// Why this process cannot seat the account's store, or null when it can.
+export function museStoreMismatch(accountId: string): string | null {
+  const recorded = recordedConfigHome(accountId);
+  if (recorded == null || recorded === musePaths.configHome) return null;
+  return `${museStoreDirFor(accountId)} mirrors the config home ${recorded}, not ${musePaths.configHome} - launch with XDG_CONFIG_HOME=${recorded}, or run \`tokenmaxxing rm --muse\` and add the account again`;
+}
+
 export function ensureMuseStoreHome(accountId: string): string {
   const store = museStoreDirFor(accountId);
   const config = join(store, "muse");
-  const marker = configHomeMarker(accountId);
-  let recorded: string | null = null;
-  try {
-    recorded = readFileSync(marker, "utf8");
-  } catch (e) {
-    if (ErrnoSchema.safeParse(e).data?.code !== "ENOENT") throw e;
-  }
-  if (recorded != null && recorded !== musePaths.configHome) {
-    throw new Error(
-      `${store} mirrors the config home ${recorded}, not ${musePaths.configHome} - launch with XDG_CONFIG_HOME=${recorded}, or run \`tokenmaxxing rm --muse\` and add the account again`,
-    );
-  }
+  const mismatch = museStoreMismatch(accountId);
+  if (mismatch != null) throw new Error(mismatch);
   mkdirSync(config, { recursive: true, mode: 0o700 });
-  if (recorded == null) writeFileAtomic(marker, musePaths.configHome);
+  if (recordedConfigHome(accountId) == null) writeFileAtomic(configHomeMarker(accountId), musePaths.configHome);
   linkEntries(musePaths.configHome, store, sharedTop);
   linkEntries(join(musePaths.configHome, "muse"), config, sharedMuse);
   return store;
@@ -145,9 +151,10 @@ function removeMuseStore(accountId: string): void {
   const store = museStoreDirFor(accountId);
   const config = join(store, "muse");
   for (const name of namesIn(config)) if (name.startsWith("auth.json")) rmSync(join(config, name), { force: true });
+  const home = recordedConfigHome(accountId) ?? musePaths.configHome;
   const kept = [
-    ...namesIn(config).filter((n) => !isMirrorLink(join(musePaths.configHome, "muse"), config, n)).map((n) => join(config, n)),
-    ...namesIn(store).filter((n) => n !== "muse" && !isMirrorLink(musePaths.configHome, store, n)).map((n) => join(store, n)),
+    ...namesIn(config).filter((n) => !isMirrorLink(join(home, "muse"), config, n)).map((n) => join(config, n)),
+    ...namesIn(store).filter((n) => n !== "muse" && !isMirrorLink(home, store, n)).map((n) => join(store, n)),
   ];
   if (kept.length > 0) {
     console.log(c.yellow(`kept ${store} without its login: it holds ${kept.join(", ")}, which a seated session made there - move what you need, then delete the directory`));
@@ -268,8 +275,10 @@ function presence(): Map<string, number> {
   return seatCounts(musePaths.presenceDir);
 }
 
+// A store that mirrors another config home is no seat for this process; moving a session onto it would stop the
+// session and then refuse to start it.
 function seatable(a: Account): boolean {
-  return a.needsReauth !== true && museStoreUsable(a.id);
+  return a.needsReauth !== true && museStoreUsable(a.id) && museStoreMismatch(a.id) == null;
 }
 
 // Reads the usage of every seatable account whose sample is stale. It takes the pool lock itself, so it runs
@@ -295,6 +304,8 @@ async function prepareMove(target: Account): Promise<void> {
   if (!museStoreUsable(target.id)) {
     throw new StoreUnusableError(`${target.label} has no usable login in its store - run \`tokenmaxxing auth --muse ${target.label}\``);
   }
+  const mismatch = museStoreMismatch(target.id);
+  if (mismatch != null) throw new StoreUnusableError(mismatch);
   log("move.prepared", { account: target.id.slice(0, 8), label: target.label, muse: true });
 }
 
