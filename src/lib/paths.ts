@@ -1,5 +1,5 @@
 import { homedir, userInfo } from "node:os";
-import { join, resolve } from "node:path";
+import { join, resolve, sep } from "node:path";
 import { z } from "zod";
 
 const HOME = homedir();
@@ -124,17 +124,41 @@ export function grokAuthJsonFor(accountId: string): string {
   return join(grokStoreDirFor(accountId), "auth.json");
 }
 
+const MUSE_STORES_DIR = join(TM_HOME, "muse-stores");
+const XDG_CONFIG = optionalEnv("XDG_CONFIG_HOME");
+export const MUSE_CONFIG_HOME_ENV = "TOKENMAXXING_XDG_CONFIG_HOME";
+
+export function inMuseStores(path: string): boolean {
+  return path === MUSE_STORES_DIR || path.startsWith(MUSE_STORES_DIR + sep);
+}
+
+// Inside a seat XDG_CONFIG_HOME names a store, and the seat carries the real config home it mirrors in
+// MUSE_CONFIG_HOME_ENV; a store named with no such record (one rm --muse kept) falls back to ~/.config.
+const MUSE_CONFIG_HOME =
+  XDG_CONFIG == null ? join(HOME, ".config") : !inMuseStores(XDG_CONFIG) ? XDG_CONFIG : (optionalEnv(MUSE_CONFIG_HOME_ENV) ?? join(HOME, ".config"));
+
 export const musePaths = {
-  authJson: join(env("XDG_CONFIG_HOME", join(HOME, ".config")), "muse", "auth.json"),
-  storesDir: join(TM_HOME, "muse-stores"),
+  configHome: MUSE_CONFIG_HOME,
+  authJson: join(MUSE_CONFIG_HOME, "muse", "auth.json"),
+  sessionsDir: join(env("XDG_DATA_HOME", join(HOME, ".local", "share")), "muse", "sessions"),
+  storesDir: MUSE_STORES_DIR,
+  presenceDir: join(TM_HOME, "muse-live"),
 } as const;
 
+// A store is the XDG_CONFIG_HOME of the sessions seated on its account: Muse Code reads its login only from
+// $XDG_CONFIG_HOME/muse/auth.json.
 export function museStoreDirFor(accountId: string): string {
   return join(musePaths.storesDir, shortId(accountId));
 }
 
 export function museAuthJsonFor(accountId: string): string {
-  return join(museStoreDirFor(accountId), "auth.json");
+  return join(museStoreDirFor(accountId), "muse", "auth.json");
+}
+
+export function museSeatFromEnv(accountIds: string[], env: Record<string, string | undefined> = process.env): string | null {
+  const home = env.XDG_CONFIG_HOME;
+  if (home == null || home === "") return null;
+  return accountIds.find((id) => museStoreDirFor(id) === home) ?? null;
 }
 
 export function grokSeatFromEnv(accountIds: string[], env: Record<string, string | undefined> = process.env): string | null {

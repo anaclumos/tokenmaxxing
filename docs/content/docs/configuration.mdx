@@ -87,7 +87,7 @@ Every displayed usage percent is measured against the account's switch threshold
 - The threshold is the account's own entry in `thresholds.accounts`, else the global threshold, minus `policy.projectionMargin` for the session window.
 - The threshold is lifted near a reset the way switching lifts it (`policy.accountReleaseMs`).
 - 100 means the account reached its switch threshold, where tokenmaxxing stops placing sessions on it unless its `thresholds.accounts` entry sets `credits`. Usage past that point stays at 100.
-- The status-only grok pool has no switch threshold and shows the provider's figure. The status-only Muse Code pool has no figure.
+- The status-only grok pool has no switch threshold and shows the provider's figure.
 
 The figure therefore reads higher than the usage Claude Code or Codex reports: with `thresholds.session` at 90, a session window at 45 percent reads 50. Switching decisions and the stored records use the provider's figures.
 
