@@ -203,6 +203,9 @@ const swapPreference = (ctx: PickCtx) => [
   (a: Account) => (onCredits(a, ctx) ? 1 : 0),
   (a: Account) => ((a.storeFails ?? 0) > 0 ? 1 : 0),
   (a: Account) => (a.windows.length === 0 ? 1 : 0),
+  // A full account ranks after every open one, and among full accounts the most room per session wins.
+  (a: Account) => (seatFull(a, ctx) ? 1 : 0),
+  (a: Account) => (seatFull(a, ctx) ? -seatHeadroom(a, ctx) * planWeight(a, ctx) : 0),
   (a: Account) => (cramped(a, ctx) ? 1 : 0),
   (a: Account) => (weeklyExpiry(a, ctx.now) - ctx.now <= WEEKLY_SOON_MS ? 0 : 1),
   (a: Account) => (stale(a, ctx) ? 1 : 0),
@@ -215,8 +218,7 @@ const swapPreference = (ctx: PickCtx) => [
 
 export function pickBest(accounts: Account[], ctx: PickCtx): Account | null {
   const usable = accounts.filter((a) => a.id !== ctx.currentId && !a.needsReauth && !isExhausted(a, ctx));
-  const open = usable.filter((a) => !seatFull(a, ctx));
-  return sortBy(open.length > 0 ? open : usable, swapPreference(ctx))[0] ?? null;
+  return sortBy(usable, swapPreference(ctx))[0] ?? null;
 }
 
 export function usableAt(a: Account, ctx: PickCtx): number {
