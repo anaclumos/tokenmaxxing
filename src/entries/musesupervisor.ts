@@ -153,6 +153,11 @@ function validWanted(wanted: string | null, now: number): Account | null {
 
 const KILL_GRACE_MS = 30_000;
 
+function warnUnseated(): void {
+  if (loadAccounts(musePool).accounts.length === 0) return;
+  process.stderr.write("\x1b[33mtokenmaxxing: no pooled Muse Code account is usable (run `tokenmaxxing doctor`) - this session runs on your own Muse Code login\x1b[0m\n");
+}
+
 export async function runMuseSupervisor(argv: string[]): Promise<number> {
   if (loopGuardTripped("muse")) return 1;
   const real = resolveRealBin(MUSE_BIN);
@@ -176,6 +181,7 @@ export async function runMuseSupervisor(argv: string[]): Promise<number> {
     const placed = await withLock(musePool.lockFile, async () => {
       const seat = rankMuseSeat(Date.now());
       log("musesupervisor.passthrough", { why, seat: seat?.id.slice(0, 8) ?? null });
+      if (!seat) warnUnseated();
       const p = Bun.spawn([real, ...argv], {
         stdin: "inherit",
         stdout: childStdout(),
@@ -232,6 +238,7 @@ export async function runMuseSupervisor(argv: string[]): Promise<number> {
         if (terminating) return null;
         const picked = validWanted(wanted, Date.now()) ?? rankMuseSeat(Date.now());
         log("musesupervisor.launch", { id: id.slice(0, 8), respawns, seat: picked?.id.slice(0, 8) ?? null, args: launchArgs.join(" ") });
+        if (!picked) warnUnseated();
         const spawned = Bun.spawn([real, ...launchArgs], {
           stdin: "inherit",
           stdout: "inherit",

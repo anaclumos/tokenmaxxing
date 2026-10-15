@@ -130,7 +130,13 @@ function storedAccessToken(id: string): string | null {
   return null;
 }
 
-type MuseRead = { ok: true; windows: Window[]; at: number } | { ok: false; reason: string; rejected: boolean };
+// windows null: the mint carried no subs_usage, which it leaves out while no 5-hour window is open.
+type MuseRead = { ok: true; windows: Window[] | null; at: number } | { ok: false; reason: string; rejected: boolean };
+
+// With no window open, a stored window that has not reset (the weekly one at its limit, say) still binds.
+function landedWindows(read: { windows: Window[] | null }, stored: Window[], now: number): Window[] {
+  return read.windows ?? stored.filter((w) => w.resetsAt != null && w.resetsAt > now);
+}
 
 async function readMuseUsage(accountId: string, now: number): Promise<MuseRead> {
   let token: string | null;
@@ -154,8 +160,7 @@ async function readMuseUsage(accountId: string, now: number): Promise<MuseRead> 
   if (!res.ok) return { ok: false, rejected: false, reason: `Muse Code usage read failed: HTTP ${res.status}: ${safeErrorDetail({ text })}` };
   const parsed = MintSchema.safeParse(JsonTextSchema.safeParse(text).data);
   if (!parsed.success) return { ok: false, rejected: false, reason: "Muse Code usage read failed: endpoint returned an unexpected body shape (withheld)" };
-  // The mint leaves subs_usage out until a model request opens the 5-hour window: nothing is used yet.
-  if (parsed.data.subs_usage == null) return { ok: true, windows: [], at: now };
+  if (parsed.data.subs_usage == null) return { ok: true, windows: null, at: now };
   const { window, weekly } = parsed.data.subs_usage;
   return {
     ok: true,
@@ -173,7 +178,7 @@ async function samplePool(accounts: Account[], now: number): Promise<Map<string,
     accounts.map(async (account) => {
       const read = await readMuseUsage(account.id, now);
       if (read.ok) {
-        account.windows = read.windows;
+        account.windows = landedWindows(read, account.windows, read.at);
         account.lastUsageAt = read.at;
         reports.set(account.id, { ok: true, source: "probe" });
         return;
@@ -194,7 +199,7 @@ export async function observeMuse(account: Account, cfg: Config, now: number, op
       const a = idx.accounts.find((x) => x.id === account.id);
       if (!a) return;
       if (read.ok) {
-        if (a.lastUsageAt == null || read.at > a.lastUsageAt) landWindows(a, read.windows, read.at, thresholdBars(cfg));
+        if (a.lastUsageAt == null || read.at > a.lastUsageAt) landWindows(a, landedWindows(read, a.windows, read.at), read.at, thresholdBars(cfg));
       } else if (read.rejected) {
         a.needsReauth = true;
       }
