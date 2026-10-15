@@ -5,7 +5,7 @@ import { maxBy, omit } from "es-toolkit";
 import { z } from "zod";
 import { claudePool, paths, storeDirFor } from "../lib/paths.ts";
 import { CLAUDE_BIN, UNMANAGED_ENV, WRAP_DEPTH_ENV, resolveRealBin, wrapDepth } from "../lib/claudebin.ts";
-import { apiKeyEnv, clearSessionCost, foldCompactionCost, foldSessionCost, loadApiKeys, readApiKey, sendApiKey, usableApiKey, writeSessionCost } from "../lib/apikeys.ts";
+import { apiKeyEnv, clearSessionCost, foldCompactionCost, foldSessionCost, isOpenRouterKey, loadApiKeys, readApiKey, sendApiKey, usableApiKey, writeSessionCost } from "../lib/apikeys.ts";
 import { claude, pickLaunch, pickSeat, type LaunchTarget } from "../lib/claude.ts";
 import { compactClaudeSession } from "../lib/compact.ts";
 import { evaluateAndMaybeSwap, moveTarget } from "../lib/decide.ts";
@@ -366,11 +366,14 @@ function depletedLines(sid: string, until: number, text: string): string {
   );
 }
 
-function resumePrompt(input: { compacted: boolean; origin: z.infer<typeof RespawnMarkerSchema>["origin"]; onKey: boolean }): string {
+function resumePrompt(input: { compacted: boolean; origin: z.infer<typeof RespawnMarkerSchema>["origin"]; onKey: boolean; openRouter: boolean }): string {
   const where = input.onKey ? "on an API key, because every pooled account is at its limit or the previous key ran out" : "on an account with quota headroom";
-  const moved = input.compacted
+  const resumed = input.compacted
     ? `tokenmaxxing compacted this conversation and resumed the session ${where}.`
     : `tokenmaxxing resumed this session ${where}.`;
+  const moved = input.openRouter
+    ? `${resumed} The session now runs on a base URL that is not an Anthropic host, so Claude Code has turned tool search off: every tool schema is already loaded and the ToolSearch tool does not exist in this session. Call tools directly.`
+    : resumed;
   if (input.origin === "stop") {
     return `${moved} The previous turn finished before the move. If it waited on the user or completed the task, end this turn without restating it. If it waited on a background Bash task, Monitor, or Workflow run, relaunch that work, because the move ended it.`;
   }
@@ -870,7 +873,8 @@ export async function runSupervisor(argv: string[]): Promise<number> {
       wanted = depleted ? (key ? { accountId: null, apiKeyId: key.id } : null) : m.apiKeyId != null ? { accountId: null, apiKeyId: m.apiKeyId } : { accountId: m.accountId, apiKeyId: null };
       refused = m.refused ?? refused;
       saveSessionFlags(m.sessionId, persistable, process.cwd());
-      const prompt = resumable ? resumePrompt({ compacted, origin: m.origin, onKey: m.apiKeyId != null }) : null;
+      const landingKey = m.apiKeyId == null ? null : usableApiKey(m.apiKeyId);
+      const prompt = resumable ? resumePrompt({ compacted, origin: m.origin, onKey: m.apiKeyId != null, openRouter: landingKey != null && isOpenRouterKey(landingKey) }) : null;
       firstLine = relay !== null && prompt !== null ? userLine(prompt) : null;
       pendingTranscript = resumable ? null : transcriptPath(m.sessionId);
       if (!restored.has(m.sessionId)) restored.set(m.sessionId, resumable ? restoredCost(m.sessionId) : 0);
