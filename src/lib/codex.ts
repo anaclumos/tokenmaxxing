@@ -138,7 +138,6 @@ async function samplePool(accounts: Account[], now: number): Promise<Map<string,
       applyUsage(account, outcome.usage, outcome.at);
       reports.set(account.id, { ok: true, source: "probe" });
     } else {
-      if (outcome.deadGrant) account.needsReauth = true;
       reports.set(account.id, { ok: false, reason: outcome.reason });
     }
   };
@@ -151,7 +150,16 @@ async function samplePool(accounts: Account[], now: number): Promise<Map<string,
     }),
   );
   if (expiring.length > 0) {
-    const rotated = await withLock(codexPool.lockFile, () => Promise.all(expiring.map(async ({ account, rejected }) => ({ account, rejected, fresh: await freshCodexAuth(account, now, true, undefined, rejected?.rejectedToken) }))));
+    const rotated = await withLock(codexPool.lockFile, async () => {
+      const results = await Promise.all(expiring.map(async ({ account, rejected }) => ({ account, rejected, fresh: await freshCodexAuth(account, now, true, undefined, rejected?.rejectedToken) })));
+      const dead = new Set(results.filter(({ fresh }) => !fresh.ok && fresh.deadGrant).map(({ account }) => account.id));
+      if (dead.size > 0) {
+        const idx = loadAccounts(codexPool);
+        for (const a of idx.accounts) if (dead.has(a.id)) a.needsReauth = true;
+        saveAccounts(codexPool, idx);
+      }
+      return results;
+    });
     await Promise.all(
       rotated.map(async ({ account, rejected, fresh }) =>
         record(account, fresh.ok ? await readCodexUsageOnce(account, now, false) : rejected ? afterRejection(rejected, fresh) : fresh),
