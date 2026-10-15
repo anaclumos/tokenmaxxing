@@ -182,7 +182,9 @@ export async function runMuseSupervisor(argv: string[]): Promise<number> {
     });
     if (mode === "passthrough") {
       log("musesupervisor.passthrough", { why, seat: null });
-      return runPassthrough({ real, argv, env: childEnv, onSpawn: (p) => { child = p; } });
+      // A store no pooled account owns any longer (rm --muse kept it for its leftovers) is no login to run on.
+      const env = museSeatFromEnv(loadAccounts(musePool).accounts.map((a) => a.id)) == null ? unseatedEnv(childEnv) : childEnv;
+      return runPassthrough({ real, argv, env, onSpawn: (p) => { child = p; } });
     }
     const id = `seat-${process.pid}`;
     if (inherited == null) await probeMuseSeats(Date.now());
