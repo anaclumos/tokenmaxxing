@@ -119,19 +119,19 @@ export function ensureMuseStoreHome(accountId: string): string {
   return store;
 }
 
-// Deletes the login and the mirror links. Anything else in the store (an entry a seated tool or Muse Code made
-// there, such as a settings.json rewritten in place of its link) keeps the store, and the command names it: moving
-// it could break a link that points at it.
+// Deletes the login. Anything in the store besides the login and the mirror links (an entry a seated tool or Muse
+// Code made there, such as a settings.json rewritten in place of its link) keeps the store whole, mirror links
+// included, since a kept entry may point through one; the command names each kept entry.
 function removeMuseStore(accountId: string): void {
   const store = museStoreDirFor(accountId);
   const config = join(store, "muse");
   for (const name of namesIn(config)) if (name.startsWith("auth.json")) rmSync(join(config, name), { force: true });
-  for (const [from, dir] of [[join(musePaths.configHome, "muse"), config], [musePaths.configHome, store]] as const) {
-    for (const name of namesIn(dir)) if (isMirrorLink(from, dir, name)) rmSync(join(dir, name), { force: true });
-  }
-  const kept = [...namesIn(config).map((n) => join(config, n)), ...namesIn(store).filter((n) => n !== "muse").map((n) => join(store, n))];
+  const kept = [
+    ...namesIn(config).filter((n) => !isMirrorLink(join(musePaths.configHome, "muse"), config, n)).map((n) => join(config, n)),
+    ...namesIn(store).filter((n) => n !== "muse" && !isMirrorLink(musePaths.configHome, store, n)).map((n) => join(store, n)),
+  ];
   if (kept.length > 0) {
-    console.log(c.yellow(`kept ${store}: it holds ${kept.join(", ")}, which a seated session made there - move what you need, then delete the directory`));
+    console.log(c.yellow(`kept ${store} without its login: it holds ${kept.join(", ")}, which a seated session made there - move what you need, then delete the directory`));
     return;
   }
   rmSync(store, { recursive: true, force: true });
