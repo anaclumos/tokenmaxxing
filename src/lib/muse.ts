@@ -1,5 +1,5 @@
-import { lstatSync, mkdirSync, readdirSync, renameSync, rmSync, symlinkSync } from "node:fs";
-import { join, sep } from "node:path";
+import { lstatSync, mkdirSync, readdirSync, readlinkSync, renameSync, rmSync, symlinkSync } from "node:fs";
+import { join, resolve, sep } from "node:path";
 import { z } from "zod";
 import { writeFileAtomic } from "./atomic.ts";
 import { ensurePathAhead } from "./claude.ts";
@@ -83,17 +83,24 @@ function namesIn(dir: string): string[] {
   }
 }
 
-function isLink(path: string): boolean {
-  return lstatSync(path, { throwIfNoEntry: false })?.isSymbolicLink() === true;
+// A mirror link is one this code made: a symlink to the real config home's entry of the same name.
+function isMirrorLink(from: string, to: string, name: string): boolean {
+  if (lstatSync(join(to, name), { throwIfNoEntry: false })?.isSymbolicLink() !== true) return false;
+  return readlinkSync(join(to, name)) === join(from, name);
 }
 
-// An entry a seated tool created lives only in the store. It moves to the real config home, when that has no entry
-// of the name, so it outlives the store and every seat sees it.
+// An entry a seated tool created (a file, a directory, or a link of its own) lives only in the store. It moves to
+// the real config home, when that has no entry of the name, so it outlives the store and every seat sees it.
 function adoptEntries(from: string, to: string, keep: (name: string) => boolean): void {
   for (const name of namesIn(to)) {
     const own = join(to, name);
-    if (!keep(name) || isLink(own) || lstatSync(join(from, name), { throwIfNoEntry: false }) != null) continue;
+    if (!keep(name) || isMirrorLink(from, to, name) || lstatSync(join(from, name), { throwIfNoEntry: false }) != null) continue;
     mkdirSync(from, { recursive: true });
+    if (lstatSync(own).isSymbolicLink()) {
+      symlinkSync(resolve(to, readlinkSync(own)), join(from, name));
+      rmSync(own);
+      continue;
+    }
     try {
       renameSync(own, join(from, name));
     } catch (e) {
@@ -142,8 +149,8 @@ function removeMuseStore(accountId: string): void {
   for (const name of namesIn(config)) if (name.startsWith("auth.json")) rmSync(join(config, name), { force: true });
   adoptEntries(musePaths.configHome, store, sharedTop);
   adoptEntries(join(musePaths.configHome, "muse"), config, sharedMuse);
-  for (const dir of [config, store]) {
-    for (const name of namesIn(dir)) if (isLink(join(dir, name))) rmSync(join(dir, name), { force: true });
+  for (const [from, dir] of [[join(musePaths.configHome, "muse"), config], [musePaths.configHome, store]] as const) {
+    for (const name of namesIn(dir)) if (isMirrorLink(from, dir, name)) rmSync(join(dir, name), { force: true });
   }
   const kept = [...namesIn(config).map((n) => join(config, n)), ...namesIn(store).filter((n) => n !== "muse").map((n) => join(store, n))];
   if (kept.length > 0) {
