@@ -9,7 +9,7 @@ import { isBinDirAhead, installMuseSupervisor, museSupervisorLink } from "./inst
 import { withLock } from "./lock.ts";
 import { errorMessage, log } from "./log.ts";
 import { env, museAuthJsonFor, musePaths, musePool, museSeatFromEnv, museStoreDirFor } from "./paths.ts";
-import { landWindows, pickBest, pickEarliestReset, thresholdBars, type PickCtx } from "./picker.ts";
+import { isExhausted, landWindows, pickBest, pickEarliestReset, thresholdBars, type PickCtx } from "./picker.ts";
 import { seatCounts } from "./presence.ts";
 import { StoreUnusableError, type Observation, type Provider, type SampleReport } from "./provider.ts";
 import { loadAccounts, loadConfig, readJsonFile, saveAccounts, type Harvest } from "./state.ts";
@@ -213,12 +213,21 @@ function seatable(a: Account): boolean {
   return a.needsReauth !== true && museStoreUsable(a.id);
 }
 
-// Probes every seatable account whose sample is stale, then ranks them the way a move does, spreading sessions
-// across accounts with the same headroom; with none under its bars, the one that frees up first.
-export async function pickMuseSeat(now: number): Promise<Account | null> {
+// Reads the usage of every seatable account whose sample is stale. It takes the pool lock itself, so it runs
+// before the lock a placement holds.
+export async function probeMuseSeats(now: number): Promise<void> {
   const cfg = loadConfig();
   await Promise.all(loadAccounts(musePool).accounts.filter(seatable).map((a) => observeMuse(a, cfg, now, { probe: true })));
-  const ctx: PickCtx = { now, thresholds: thresholdBars(cfg), currentId: null, families: null, seats: presence() };
+}
+
+export function museSeatOpen(a: Account, now: number): boolean {
+  return seatable(a) && !isExhausted(a, { now, thresholds: thresholdBars(loadConfig()), currentId: null, families: null, seats: null });
+}
+
+// Ranks the stored accounts the way a move does, spreading sessions across accounts with the same headroom; with
+// none under its bars, the one that frees up first. Call it under the pool lock, after probeMuseSeats.
+export function rankMuseSeat(now: number): Account | null {
+  const ctx: PickCtx = { now, thresholds: thresholdBars(loadConfig()), currentId: null, families: null, seats: presence() };
   const open = loadAccounts(musePool).accounts.filter(seatable);
   return pickBest(open, ctx) ?? pickEarliestReset(open, ctx)?.account ?? null;
 }

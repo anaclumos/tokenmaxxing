@@ -6,11 +6,11 @@ import { MUSE_BIN, UNMANAGED_ENV, WRAP_DEPTH_ENV, resolveRealBin, wrapDepth } fr
 import { evaluateAndMaybeSwap } from "../lib/decide.ts";
 import { withLock } from "../lib/lock.ts";
 import { errorMessage, log } from "../lib/log.ts";
-import { ensureMuseStoreHome, muse, museStoreUsable, observeMuse, pickMuseSeat } from "../lib/muse.ts";
+import { ensureMuseStoreHome, muse, museSeatOpen, observeMuse, probeMuseSeats, rankMuseSeat } from "../lib/muse.ts";
 import { musePaths, musePool, museSeatFromEnv } from "../lib/paths.ts";
 import { thresholdBars, usableAt } from "../lib/picker.ts";
 import { clearPresence } from "../lib/presence.ts";
-import { exitStatus, loopGuardTripped, raceMarkerOrExit, recordPresenceOrStop, runPassthrough, SEAT_POLL_MS, SEAT_RETRY_MS } from "../lib/supervise.ts";
+import { childStdout, exitStatus, loopGuardTripped, raceMarkerOrExit, recordPresenceOrStop, relayStdout, runPassthrough, SEAT_POLL_MS, SEAT_RETRY_MS } from "../lib/supervise.ts";
 import { saveTermios } from "../lib/tty.ts";
 import { loadAccounts, loadConfig } from "../lib/state.ts";
 import { ErrnoSchema, type Account } from "../lib/types.ts";
@@ -130,9 +130,12 @@ async function watchSeat(seatId: string): Promise<Watch> {
     const observed = await observeMuse(account, cfg, now, { probe: true });
     const unmeasured = observed == null || now - observed.at > cfg.policy.usagePollTtlMs;
     if (unmeasured) log("musesupervisor.seat_unmeasured", { seat: account.id.slice(0, 8), usageAt: observed?.at });
+    const rejected = loadAccounts(musePool).accounts.find((a) => a.id === seatId)?.needsReauth === true;
     const current = observed ? { ...account, windows: observed.windows } : account;
     const until = usableAt({ ...current, hasCredits: false }, { now, thresholds: thresholdBars(cfg), currentId: account.id, families: null, seats: null });
-    if (until <= now) return { decided: unmeasured, move: null };
+    if (!rejected && until <= now) return { decided: unmeasured, move: null };
+    // The move decision folds the other accounts from storage, so a destination is read fresh first.
+    await probeMuseSeats(now);
     const decision = await evaluateAndMaybeSwap(muse, now, true, null, { seatId: account.id });
     log("musesupervisor.seat_exhausted", { seat: account.id.slice(0, 8), until, reason: decision.reason, account: decision.account?.id.slice(0, 8) });
     return { decided: true, move: decision.swapped ? decision.account : null };
@@ -142,10 +145,10 @@ async function watchSeat(seatId: string): Promise<Watch> {
   }
 }
 
-function validWanted(wanted: string | null): Account | null {
+function validWanted(wanted: string | null, now: number): Account | null {
   if (wanted == null) return null;
   const a = loadAccounts(musePool).accounts.find((x) => x.id === wanted);
-  return a && a.needsReauth !== true && museStoreUsable(a.id) ? a : null;
+  return a && museSeatOpen(a, now) ? a : null;
 }
 
 const KILL_GRACE_MS = 30_000;
@@ -163,16 +166,24 @@ export async function runMuseSupervisor(argv: string[]): Promise<number> {
       if (child) child.kill("SIGTERM");
       else process.exit(143);
     });
+    if (mode === "passthrough") {
+      log("musesupervisor.passthrough", { why, seat: null });
+      return runPassthrough({ real, argv, env: childEnv, onSpawn: (p) => { child = p; } });
+    }
     const id = `seat-${process.pid}`;
-    const seat = mode === "seat" ? await pickMuseSeat(Date.now()) : null;
-    log("musesupervisor.passthrough", { why, seat: seat?.id.slice(0, 8) ?? null });
-    return runPassthrough({
-      real,
-      argv,
-      env: seat ? { ...childEnv, XDG_CONFIG_HOME: ensureMuseStoreHome(seat.id) } : childEnv,
-      onSpawn: async (p) => {
-        child = p;
-        if (!seat) return;
+    await probeMuseSeats(Date.now());
+    // Placement, spawn, and presence share one lock hold, so `rm` never removes an account a launch is taking.
+    const placed = await withLock(musePool.lockFile, async () => {
+      const seat = rankMuseSeat(Date.now());
+      log("musesupervisor.passthrough", { why, seat: seat?.id.slice(0, 8) ?? null });
+      const p = Bun.spawn([real, ...argv], {
+        stdin: "inherit",
+        stdout: childStdout(),
+        stderr: "inherit",
+        env: seat ? { ...childEnv, XDG_CONFIG_HOME: ensureMuseStoreHome(seat.id) } : childEnv,
+      });
+      child = p;
+      if (seat) {
         await recordPresenceOrStop({
           child: p,
           dir: musePaths.presenceDir,
@@ -182,8 +193,17 @@ export async function runMuseSupervisor(argv: string[]): Promise<number> {
           message: "could not write the muse seat's presence file - refusing to run a session that placement cannot see",
           savedTermios: null,
         });
-      },
-    }).finally(() => clearPresence({ dir: musePaths.presenceDir, id }));
+      }
+      return p;
+    });
+    const drain = placed.stdout instanceof ReadableStream ? relayStdout(placed.stdout) : null;
+    try {
+      await placed.exited;
+      await drain?.();
+      return exitStatus(placed);
+    } finally {
+      clearPresence({ dir: musePaths.presenceDir, id });
+    }
   }
 
   const id = crypto.randomUUID();
@@ -206,10 +226,11 @@ export async function runMuseSupervisor(argv: string[]): Promise<number> {
   let wanted: string | null = null;
   try {
     while (true) {
-      const picked = validWanted(wanted) ?? (await pickMuseSeat(Date.now()));
+      await probeMuseSeats(Date.now());
       const launched = await withLock(musePool.lockFile, async () => {
         clearPresence({ dir: musePaths.presenceDir, id });
         if (terminating) return null;
+        const picked = validWanted(wanted, Date.now()) ?? rankMuseSeat(Date.now());
         log("musesupervisor.launch", { id: id.slice(0, 8), respawns, seat: picked?.id.slice(0, 8) ?? null, args: launchArgs.join(" ") });
         const spawned = Bun.spawn([real, ...launchArgs], {
           stdin: "inherit",
@@ -229,23 +250,24 @@ export async function runMuseSupervisor(argv: string[]): Promise<number> {
             savedTermios,
           });
         }
-        return spawned;
+        return { proc: spawned, picked };
       });
       if (launched == null) return 143;
+      const { proc, picked } = launched;
 
       const pending: { move: Account | null; session: string | null; killed: boolean } = { move: null, session: null, killed: false };
       let seatCheckAt = 0;
       let escalate: Timer | null = null;
       await raceMarkerOrExit({
-        child: launched,
+        child: proc,
         tick: async () => {
           if (!picked || terminating || Date.now() < seatCheckAt) return false;
           const watched = await watchSeat(picked.id);
           seatCheckAt = Date.now() + (watched.decided ? SEAT_RETRY_MS : SEAT_POLL_MS);
           if (watched.move == null) return false;
-          const session = sessionHeldBy(launched.pid);
+          const session = sessionHeldBy(proc.pid);
           if (session == null) {
-            log("musesupervisor.session_unresolved", { id: id.slice(0, 8), pid: launched.pid, target: watched.move.id.slice(0, 8) });
+            log("musesupervisor.session_unresolved", { id: id.slice(0, 8), pid: proc.pid, target: watched.move.id.slice(0, 8) });
             return false;
           }
           pending.move = watched.move;
@@ -255,7 +277,7 @@ export async function runMuseSupervisor(argv: string[]): Promise<number> {
         savedTermios,
         onKill: () => {
           pending.killed = true;
-          escalate = setTimeout(() => launched.kill("SIGKILL"), KILL_GRACE_MS);
+          escalate = setTimeout(() => proc.kill("SIGKILL"), KILL_GRACE_MS);
         },
         onError: () => clearPresence({ dir: musePaths.presenceDir, id }),
         onExited: () => {
@@ -273,8 +295,8 @@ export async function runMuseSupervisor(argv: string[]): Promise<number> {
         continue;
       }
       clearPresence({ dir: musePaths.presenceDir, id });
-      log("musesupervisor.exit", { id: id.slice(0, 8), respawns, code: launched.exitCode, signal: launched.signalCode, terminated: terminating || undefined });
-      return exitStatus(launched);
+      log("musesupervisor.exit", { id: id.slice(0, 8), respawns, code: proc.exitCode, signal: proc.signalCode, terminated: terminating || undefined });
+      return exitStatus(proc);
     }
   } catch (e) {
     const msg = errorMessage(e);
