@@ -41,13 +41,22 @@ function applyUsage(account: Account, usage: CodexUsage, at: number): void {
   if (usage.planType != null) account.tier = usage.planType;
 }
 
-type CodexReadFailure = { ok: false; reason: string; deadGrant: boolean; expiring?: boolean; rejected?: boolean; rejectedToken?: string };
+type CodexReadFailure = { ok: false; reason: string; deadGrant: boolean; deadAccessToken?: string; expiring?: boolean; rejected?: boolean; rejectedToken?: string };
 type CodexReadOutcome = { ok: true; usage: CodexUsage; at: number } | CodexReadFailure;
 
 const REJECTED_REFRESH_BACKOFF_MS = 60 * 60 * 1000;
 
 function afterRejection(rejected: CodexReadFailure, refreshFailure: CodexReadFailure): CodexReadFailure {
   return { ...refreshFailure, rejected: true, reason: `${rejected.reason}; refresh skipped: ${refreshFailure.reason}` };
+}
+
+function storeHolds(accountId: string, accessToken: string | undefined): boolean {
+  if (accessToken === undefined) return true;
+  try {
+    return readCodexStoreAuth(accountId)?.tokens.access_token === accessToken;
+  } catch {
+    return false;
+  }
 }
 
 async function freshCodexAuth(account: Account, now: number, refresh: boolean, holder?: string, rejectedToken?: string): Promise<{ ok: true; auth: CodexAuthJson } | CodexReadFailure> {
@@ -70,7 +79,7 @@ async function freshCodexAuth(account: Account, now: number, refresh: boolean, h
   try {
     auth = await refreshCodexAuth({ auth, now });
   } catch (e) {
-    if (e instanceof CodexInvalidGrantError) return { ok: false, reason: e.message, deadGrant: true };
+    if (e instanceof CodexInvalidGrantError) return { ok: false, reason: e.message, deadGrant: true, deadAccessToken: auth.tokens.access_token };
     if (e instanceof CodexRefreshFailedError) return { ok: false, reason: e.message, deadGrant: false };
     throw e;
   }
@@ -112,7 +121,7 @@ export async function observeCodex(account: Account, cfg: Config, now: number, o
         if (a.lastUsageAt == null || outcome.at > a.lastUsageAt) {
           applyUsage(a, outcome.usage, outcome.at);
         }
-      } else if (outcome.deadGrant) {
+      } else if (outcome.deadGrant && storeHolds(a.id, outcome.deadAccessToken)) {
         a.needsReauth = true;
       }
       saveAccounts(codexPool, idx);
@@ -287,6 +296,9 @@ export async function borrowCodexSeat(pid: number): Promise<SeatBorrow> {
     const held = living.find((p) => p.id === seatId);
     const heldAccount = held ? (idx.accounts.find((x) => x.id === held.accountId) ?? null) : null;
     if (heldAccount) {
+      if (rejected.has(heldAccount.id)) {
+        return { denied: "the usage endpoint rejects the account this pid holds and its store could not be refreshed now - borrow again later" };
+      }
       if (heldAccount.needsReauth === true) {
         return { denied: "the account this pid holds needs reauthentication - run `tokenmaxxing auth --codex` and borrow again" };
       }
