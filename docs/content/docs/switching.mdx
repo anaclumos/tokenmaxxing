@@ -65,26 +65,52 @@ A new session, a move, a borrow, or a running session therefore spends credits o
 
 Older versions carried a session ladder, an engagement floor, organization affinity, incumbent hysteresis, and wall bars. Their config keys are gone: an array `thresholds.session` fails config loading with a zod message naming the field, and `hardThresholds`, `policy.greedySessionFloor`, and `policy.greedySwapMargin` are ignored by the loader.
 
-## The ranking: headroom per session, then pace pressure
+## The ranking: weekly quota at risk, with room for the session
 
-Claude launches and session moves choose among usable accounts by the keys below, in order. Codex ranks by pace pressure, then soonest weekly reset, then lowest weekly use.
+Claude and Codex launches and session moves choose among usable accounts by the keys below, in order. The yes-or-no keys sort accounts into groups, and the rest rank within a group.
 
 | Key | Prefers | Claude | Codex |
 | --- | --- | --- | --- |
-| Headroom per session | greatest first | 1st | not used |
-| Pace pressure | highest first | 2nd | 1st |
-| Weekly reset | soonest first | 3rd | 2nd |
-| Weekly usage | lowest first | 4th | 3rd |
-| Live sessions | fewest first | 5th | not used |
+| On usage credits | no first | 1st | 1st |
+| Credential store failed its last read | no first | 2nd | not used |
+| Cramped (no room for a whole session) | no first | 3rd | 2nd |
+| Weekly reset within 4 days | yes first | 4th | 3rd |
+| Usage figure older than 6 hours | no first | 5th | 4th |
+| Pace pressure, scaled by plan size | highest first | 6th | 5th |
+| Weekly reset | soonest first | 7th | 6th |
+| Headroom per session, scaled by plan size | greatest first | 8th | not used |
+| Weekly usage | lowest first | 9th | 7th |
+| Live sessions | fewest first | 10th | not used |
 
-- Claude ranks unknown usage last.
+- An account with no usage figure counts as cramped, so unknown usage ranks after every measured account.
 - Accounts with no cached figure tie on every other key, so the session count alone spreads launches and `seat` borrows across them.
 - Codex excludes an account running in another codex session outright, because a codex session cannot share a login.
 - Neither pool has a manual switch, because placement is per session at launch.
 
+### Plan size
+
+Usage figures are percentages, but a percent of a large plan is more quota than a percent of a small one. Pace pressure, headroom per session, and the cramped test multiply by a plan weight read from the account's tier:
+
+| Pool | Weight |
+| --- | --- |
+| Claude | the tier's multiplier divided by 5 (`max 5x` is 1, `max 20x` is 4), `pro` 0.2, anything else 1 |
+| Codex | relative to Plus: `free` 0.2, `go` 0.5, `plus`, `team`, `business`, `enterprise`, and `edu` 1, `prolite` (Pro 100), `self_serve_business_prolite` (Business Premium), and `edu_pro` 5, `pro` (Pro 200) 10, `promax` (Pro 500) 20, anything else 1 |
+
+### Cramped
+
+An account is cramped when its headroom per session, times its plan weight, is under 15 and its session window does not reset within the hour. A session placed there would cross the session bar partway through and move, losing its prompt cache, so a roomier account ranks first. An account whose `thresholds.accounts` entry sets `credits` is never cramped, and neither is a measured account whose plan has no session window, such as Codex Pro. An account with no usage figure at all is cramped.
+
+### Weekly reset within 4 days
+
+Weekly quota left at the reset is lost, so accounts whose weekly window resets within 4 days rank ahead of every account that resets later. Within that group, pace pressure puts the account with the most quota left per hour until its reset first.
+
+### Stale figures and store failures
+
+An account whose last usage figure is more than 6 hours old could have been drained elsewhere since, so it ranks after accounts measured more recently. An account whose credential store failed its last read ranks after every account whose store read cleanly, because its next request is the one most likely to fail.
+
 ### Headroom per session
 
-The first key is the remaining headroom to the session bar divided by the number of sessions after placement:
+Headroom per session is the remaining headroom to the session bar divided by the number of sessions after placement:
 
 ```
 (session bar - session used) / (live sessions on the account + 1)
@@ -99,7 +125,7 @@ With the default bars (an effective session bar of 90):
 | 80 percent | 0 | (90 - 80) / (0 + 1) = 10 |
 | 10 percent | 1 | (90 - 10) / (1 + 1) = 40 |
 
-The busier but fresher account wins.
+The busier but fresher account wins on this key.
 
 The same figure caps the sessions one account takes. An account whose score would fall under 5 is full: the next launch, move, or `seat` borrow that names no account takes an account that is not full while one is usable, so a fresh account under the default bars takes at most 18 sessions (90 / 18 = 5) before placement spills. When every usable account is full, the session still runs: it takes the full account with the highest score, because an account under its bars has headroom and a crowded account is a better outcome than no session. A session that finds every account exhausted goes to a stored API key at launch, or stops with the soonest reset named. A full account counts as usable at its session window's reset for that reset time. An account that its bars block until a release time is judged full or not at that release time, with the raised bar. A session on usage credits stays on credits while every other account is exhausted. The cap only screens placement: it never moves a session that is already on the account. It does not apply to an account with no session figure, or to an account whose `thresholds.accounts` entry sets `credits`. Without the cap, a burst of launches onto the only usable account fills it, and every session on it crosses the bar and moves in the same minute.
 
@@ -107,7 +133,7 @@ Selection and the presence write share one critical section, so concurrent launc
 
 ### Pace pressure
 
-**Pace pressure**, the tie-break, is remaining percent of the binding gated window (the gated per-model cap with the least headroom) divided by time until its reset. An account with no gated row falls back to the weekly aggregate, because an unmeasured cap must not look safe and an account that never ran the gated model must not rank below one near the cap. Organization membership is not a ranking input.
+**Pace pressure** is remaining percent of the binding gated window (the gated per-model cap with the least headroom) divided by time until its reset. An account with no gated row falls back to the weekly aggregate, because an unmeasured cap must not look safe and an account that never ran the gated model must not rank below one near the cap. Organization membership is not a ranking input.
 
 ### Cached figures
 

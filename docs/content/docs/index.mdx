@@ -3,7 +3,7 @@ title: tokenmaxxing
 description: Automatic Claude Code account switching - pool your own subscription accounts, start each session on its own account, and resume it on a fresher account when quota fills.
 ---
 
-tokenmaxxing is a CLI for automatic Claude Code account switching. It pools multiple subscription (Pro/Max) accounts that you own, starts each `claude` session on the pooled account with the most headroom per running session, and, when the account a session runs on nears a usage limit, resumes that session on a fresher account at a safe turn boundary. You run `claude` exactly as you always do; each session keeps its own account, so several sessions spread across the pool instead of draining one account together.
+tokenmaxxing is a CLI for automatic Claude Code account switching. It pools multiple subscription (Pro/Max) accounts that you own, starts each `claude` session on the pooled account with room for it whose weekly quota is closest to expiring unused, and, when the account a session runs on nears a usage limit, resumes that session on a fresher account at a safe turn boundary. You run `claude` exactly as you always do; each session keeps its own account, so several sessions spread across the pool instead of draining one account together.
 
 The visible behavior is a resume: when a session moves, `claude` restarts on the same conversation under the new account. When the whole pool is at its limit and no API key is stored, the session stops and the supervisor exits with the soonest reset named (at most eight sessions take one reset). Resume the session after that reset to continue it.
 
@@ -27,7 +27,7 @@ Doing that by hand means logging out, logging in, and losing your conversation.
 
 ```mermaid
 flowchart LR
-  sup["claude<br/>(the supervisor shim)"] -->|"most headroom<br/>per session"| seat["session on account A<br/>under A's store"]
+  sup["claude<br/>(the supervisor shim)"] -->|"room for the session,<br/>most weekly quota at risk"| seat["session on account A<br/>under A's store"]
   seat -->|"under the bars"| seat
   seat -->|"A at a bar"| move["stop at the turn boundary<br/>compact on A<br/>claude --resume on B"]
   seat -->|"every account at a bar"| wait["stop and name<br/>the soonest reset"]

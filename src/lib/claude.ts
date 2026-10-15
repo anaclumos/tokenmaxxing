@@ -140,6 +140,12 @@ async function storeUsable(a: Account): Promise<boolean> {
   }
 }
 
+export function claudePlanWeight(a: Account): number {
+  const multiplier = a.tier?.match(/(\d+)x\b/)?.[1];
+  if (multiplier != null) return Number(multiplier) / 5;
+  return a.tier?.startsWith("pro") ? 0.2 : 1;
+}
+
 export type Seat = { account: Account; depletedUntil?: number };
 
 export function pickSeat(now: number, model: ModelInfo | null, eligible: (a: Account) => boolean = () => true): Seat | null {
@@ -150,7 +156,7 @@ export function pickSeat(now: number, model: ModelInfo | null, eligible: (a: Acc
   for (const a of idx.accounts) dirty = foldTee(a, bars) || dirty;
   if (dirty) saveAccounts(claudePool, idx);
   const seats = presence();
-  const ctx: PickCtx = { now, thresholds: bars, currentId: null, families: gatedFamilies(model, cfg.policy.switchModels), seats };
+  const ctx: PickCtx = { now, thresholds: bars, currentId: null, families: gatedFamilies(model, cfg.policy.switchModels), seats, planWeight: claudePlanWeight };
   const candidates = idx.accounts.filter(eligible);
   const best = pickBest(candidates, ctx);
   if (best) return { account: best };
@@ -204,7 +210,7 @@ export async function borrowClaudeSeat(pid: number, named?: string): Promise<Sea
     }
     const open = idx.accounts.filter((a) => a.needsReauth !== true);
     const usable = await Promise.all(open.map(storeUsable));
-    const ctx: PickCtx = { now: Date.now(), thresholds: bars, currentId: null, families: gatedFamilies(null, cfg.policy.switchModels), seats: presence(living) };
+    const ctx: PickCtx = { now: Date.now(), thresholds: bars, currentId: null, families: gatedFamilies(null, cfg.policy.switchModels), seats: presence(living), planWeight: claudePlanWeight };
     const picked = pickBest(open.filter((_, i) => usable[i]), ctx);
     if (!picked) return null;
     writePresence({ dir: paths.presenceDir, id: seatId, accountId: picked.id, pid });
@@ -361,6 +367,7 @@ export const claude: Provider = {
   apiKeys: claudeApiKeys,
   liveId,
   presence,
+  planWeight: claudePlanWeight,
   gatedFamilies: (cfg) => {
     const seat = liveId();
     const model = modelFromFlag(env("TOKENMAXXING_MODEL", "")) ?? (seat == null ? null : (loadUsageSnapshot(seat)?.state.model ?? null));

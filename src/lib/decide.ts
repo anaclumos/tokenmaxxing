@@ -199,7 +199,7 @@ export async function evaluateAndMaybeSwap(p: Provider, now = Date.now(), canRes
     while (true) {
       const cur = loadAccounts(p.pool);
       const seat = seatOf(cur);
-      const ctx: PickCtx = { now, thresholds: bars, currentId: seat?.id ?? null, families: switchFamilies, seats };
+      const ctx: PickCtx = { now, thresholds: bars, currentId: seat?.id ?? null, families: switchFamilies, seats, planWeight: p.planWeight };
       const credited = !enforced2 && seat != null && !seat.needsReauth && !isExhausted(seat, ctx) && onCredits(seat, ctx);
       const best = pickBest(usable(cur.accounts).filter((a) => !((credited || keyId != null) && opts.refused?.includes(a.id))), ctx);
       if (credited && (best == null || onCredits(best, ctx))) return { swapped: false, account: null, reason: "no-plan-headroom" };
@@ -232,7 +232,7 @@ export async function evaluateAndMaybeSwap(p: Provider, now = Date.now(), canRes
     while (true) {
       const fresh = loadAccounts(p.pool);
       const current = seatOf(fresh);
-      const ctx: PickCtx = { now, thresholds: bars, currentId: current?.id ?? null, families: switchFamilies, seats };
+      const ctx: PickCtx = { now, thresholds: bars, currentId: current?.id ?? null, families: switchFamilies, seats, planWeight: p.planWeight };
       const others = liveWaitClaims(now).filter((c) => c.sessionId !== waiterId);
       const waiters = new Map(Object.entries(countBy(others, (c) => c.accountId)));
       const waitable = usable(fresh.accounts).filter((a) => keyId == null || !opts.refused?.includes(a.id));

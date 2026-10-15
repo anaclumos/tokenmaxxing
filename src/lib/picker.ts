@@ -17,6 +17,7 @@ export type PickCtx = {
   currentId: string | null;
   families: string[] | null;
   seats: Map<string, number> | null;
+  planWeight?: (a: Account) => number;
 };
 
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
@@ -176,11 +177,34 @@ export function onCredits(a: Account, ctx: PickCtx): boolean {
   return spendsCredits(a, ctx.thresholds) && isExhausted({ ...a, hasCredits: false }, ctx);
 }
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+const WEEKLY_SOON_MS = 4 * DAY_MS;
+const THREAD_HEADROOM = 15;
+const SESSION_SOON_MS = 60 * 60 * 1000;
+const STALE_MS = 6 * 60 * 60 * 1000;
+
+const planWeight = (a: Account, ctx: PickCtx): number => ctx.planWeight?.(a) ?? 1;
+
+function cramped(a: Account, ctx: PickCtx): boolean {
+  const session = sessionWindow(a);
+  if (session == null) return a.windows.length === 0;
+  if (spendsCredits(a, ctx.thresholds)) return false;
+  const end = windowEnd(session);
+  const resetsSoon = end > ctx.now && end - ctx.now <= SESSION_SOON_MS;
+  return !resetsSoon && seatHeadroom(a, ctx) * planWeight(a, ctx) < THREAD_HEADROOM;
+}
+
+const stale = (a: Account, now: number): boolean => a.windows.length > 0 && now - (a.lastUsageAt ?? 0) > STALE_MS;
+
 const swapPreference = (ctx: PickCtx) => [
   (a: Account) => (onCredits(a, ctx) ? 1 : 0),
-  ...(ctx.seats == null ? [] : [(a: Account) => -seatHeadroom(a, ctx)]),
-  (a: Account) => -pacePressure(a, ctx),
+  (a: Account) => ((a.storeFails ?? 0) > 0 ? 1 : 0),
+  (a: Account) => (cramped(a, ctx) ? 1 : 0),
+  (a: Account) => (weeklyExpiry(a, ctx.now) - ctx.now <= WEEKLY_SOON_MS ? 0 : 1),
+  (a: Account) => (stale(a, ctx.now) ? 1 : 0),
+  (a: Account) => -pacePressure(a, ctx) * planWeight(a, ctx),
   (a: Account) => weeklyExpiry(a, ctx.now),
+  ...(ctx.seats == null ? [] : [(a: Account) => -seatHeadroom(a, ctx) * planWeight(a, ctx)]),
   (a: Account) => weeklyWindow(a)?.usedPercentage ?? 101,
   ...(ctx.seats == null ? [] : [(a: Account) => ctx.seats?.get(a.id) ?? 0]),
 ];

@@ -276,8 +276,31 @@ function install(): void {
   console.log(c.yellow("`tokenmaxxing doctor` lists seats still needing trust."));
 }
 
+// Relative to Plus. prolite (Pro 100) is 5x per OpenAI's launch; pro (Pro 200) was 20x and is about 10x for new
+// subscribers; promax (Pro 500) is unpublished beyond "the most". Business, Enterprise, and Edu seats match Plus.
+const CODEX_PLAN_WEIGHTS: Record<string, number> = {
+  free: 0.2,
+  go: 0.5,
+  plus: 1,
+  team: 1,
+  business: 1,
+  enterprise: 1,
+  ent26: 1,
+  edu: 1,
+  edu_plus: 1,
+  prolite: 5,
+  self_serve_business_prolite: 5,
+  edu_pro: 5,
+  pro: 10,
+  promax: 20,
+};
+
+export function codexPlanWeight(a: Account): number {
+  return (a.tier == null ? undefined : CODEX_PLAN_WEIGHTS[a.tier.toLowerCase()]) ?? 1;
+}
+
 export function codexPickCtx(now: number, currentId: string | null): PickCtx {
-  return { now, thresholds: thresholdBars(loadConfig()), currentId, families: null, seats: null };
+  return { now, thresholds: thresholdBars(loadConfig()), currentId, families: null, seats: null, planWeight: codexPlanWeight };
 }
 
 export function pickCodexSeat(now: number, eligible: (a: Account) => boolean = (a) => codexStoreUsable(a.id)): Account | null {
@@ -343,6 +366,7 @@ export const codex: Provider = {
   statusOnly: false,
   liveId,
   presence,
+  planWeight: codexPlanWeight,
   gatedFamilies: () => null,
   observeLive: (account, cfg, now, opts) => observeCodex(account, cfg, now, { probe: opts.probe, refresh: true }),
   samplePool,
