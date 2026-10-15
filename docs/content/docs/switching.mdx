@@ -119,7 +119,7 @@ Headroom per session is the remaining headroom to the session bar divided by the
 (session bar - session used) / (live sessions on the account + 1)
 ```
 
-The session count comes from the presence files of running supervised sessions and of `seat` borrowers, and from the claims of sessions that are moving to the account. The `+ 1` is the session being placed. Two fresh accounts therefore alternate: the second launch lands on the account that has no session yet, and a third launch goes to whichever of the two has more headroom left per session.
+The session count comes from the presence files of running supervised sessions and of `seat` borrowers, and from the claims of sessions that are moving to the account. The `+ 1` is the session being placed. When the keys ahead of it tie, two fresh accounts therefore alternate: the second launch lands on the account that has no session yet, and a third launch goes to whichever of the two has more headroom left per session. When one account's week resets sooner, its pace pressure wins first, and it keeps taking launches until it is cramped or full.
 
 With the default bars (an effective session bar of 90):
 
