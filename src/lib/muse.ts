@@ -1,4 +1,4 @@
-import { lstatSync, mkdirSync, readdirSync, readlinkSync, rmSync, symlinkSync } from "node:fs";
+import { lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSync, rmSync, symlinkSync } from "node:fs";
 import { join, sep } from "node:path";
 import { z } from "zod";
 import { writeFileAtomic } from "./atomic.ts";
@@ -110,10 +110,29 @@ function sharedMuse(name: string): boolean {
 
 // The store doubles as the seated session's XDG_CONFIG_HOME, which every tool the session runs inherits, so it
 // mirrors the real config home: a link to each entry but `muse`, and in `muse/` a link to each entry but the login.
+function configHomeMarker(accountId: string): string {
+  return `${museStoreDirFor(accountId)}.config-home`;
+}
+
+// A store mirrors one config home, recorded beside it. Relinking it to another while a session may run on it could
+// redirect that session, so a launch from another config home is refused instead.
 export function ensureMuseStoreHome(accountId: string): string {
   const store = museStoreDirFor(accountId);
   const config = join(store, "muse");
+  const marker = configHomeMarker(accountId);
+  let recorded: string | null = null;
+  try {
+    recorded = readFileSync(marker, "utf8");
+  } catch (e) {
+    if (ErrnoSchema.safeParse(e).data?.code !== "ENOENT") throw e;
+  }
+  if (recorded != null && recorded !== musePaths.configHome) {
+    throw new Error(
+      `${store} mirrors the config home ${recorded}, not ${musePaths.configHome} - launch with XDG_CONFIG_HOME=${recorded}, or run \`tokenmaxxing rm --muse\` and add the account again`,
+    );
+  }
   mkdirSync(config, { recursive: true, mode: 0o700 });
+  if (recorded == null) writeFileAtomic(marker, musePaths.configHome);
   linkEntries(musePaths.configHome, store, sharedTop);
   linkEntries(join(musePaths.configHome, "muse"), config, sharedMuse);
   return store;
@@ -135,6 +154,7 @@ function removeMuseStore(accountId: string): void {
     return;
   }
   rmSync(store, { recursive: true, force: true });
+  rmSync(configHomeMarker(accountId), { force: true });
 }
 
 const SubscriptionWindowSchema = z.looseObject({ used_percent: z.number(), resets_at: EpochSecondsSchema });
