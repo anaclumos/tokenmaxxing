@@ -1,6 +1,6 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { hostname } from "node:os";
-import { join, sep } from "node:path";
+import { join } from "node:path";
 import { omit } from "es-toolkit";
 import type { Subprocess } from "bun";
 import { MUSE_BIN, UNMANAGED_ENV, WRAP_DEPTH_ENV, resolveRealBin, wrapDepth } from "../lib/claudebin.ts";
@@ -8,7 +8,7 @@ import { evaluateAndMaybeSwap } from "../lib/decide.ts";
 import { withLock } from "../lib/lock.ts";
 import { errorMessage, log } from "../lib/log.ts";
 import { ensureMuseStoreHome, muse, museSeatOpen, observeMuse, probeMuseSeats, rankMuseSeat } from "../lib/muse.ts";
-import { musePaths, musePool, museSeatFromEnv } from "../lib/paths.ts";
+import { MUSE_CONFIG_HOME_ENV, inMuseStores, musePaths, musePool, museSeatFromEnv } from "../lib/paths.ts";
 import { thresholdBars, usableAt } from "../lib/picker.ts";
 import { clearPresence } from "../lib/presence.ts";
 import { childStdout, exitStatus, loopGuardTripped, raceMarkerOrExit, recordPresenceOrStop, relayStdout, runPassthrough, SEAT_POLL_MS, SEAT_RETRY_MS } from "../lib/supervise.ts";
@@ -159,7 +159,15 @@ const KILL_GRACE_MS = 30_000;
 // account was removed): without a presence file nothing would protect it.
 function unseatedEnv(env: Record<string, string | undefined>): Record<string, string | undefined> {
   const home = env.XDG_CONFIG_HOME;
-  return home != null && (home === musePaths.storesDir || home.startsWith(musePaths.storesDir + sep)) ? omit(env, ["XDG_CONFIG_HOME"]) : env;
+  if (home == null || !inMuseStores(home)) return env;
+  const rest = omit(env, ["XDG_CONFIG_HOME", MUSE_CONFIG_HOME_ENV]);
+  return env[MUSE_CONFIG_HOME_ENV] != null ? { ...rest, XDG_CONFIG_HOME: env[MUSE_CONFIG_HOME_ENV] } : rest;
+}
+
+// A seated child runs with the store as XDG_CONFIG_HOME and keeps the real config home it mirrors, so a launch
+// from inside it mirrors the same one.
+function seatedEnv(env: Record<string, string | undefined>, accountId: string): Record<string, string | undefined> {
+  return { ...env, XDG_CONFIG_HOME: ensureMuseStoreHome(accountId), [MUSE_CONFIG_HOME_ENV]: musePaths.configHome };
 }
 
 function warnUnseated(): void {
@@ -198,7 +206,7 @@ export async function runMuseSupervisor(argv: string[]): Promise<number> {
         stdin: "inherit",
         stdout: childStdout(),
         stderr: "inherit",
-        env: seat ? { ...childEnv, XDG_CONFIG_HOME: ensureMuseStoreHome(seat.id) } : unseatedEnv(childEnv),
+        env: seat ? seatedEnv(childEnv, seat.id) : unseatedEnv(childEnv),
       });
       child = p;
       if (seat) {
@@ -255,7 +263,7 @@ export async function runMuseSupervisor(argv: string[]): Promise<number> {
           stdin: "inherit",
           stdout: "inherit",
           stderr: "inherit",
-          env: picked ? { ...childEnv, XDG_CONFIG_HOME: ensureMuseStoreHome(picked.id) } : unseatedEnv(childEnv),
+          env: picked ? seatedEnv(childEnv, picked.id) : unseatedEnv(childEnv),
         });
         child = spawned;
         if (picked) {

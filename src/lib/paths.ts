@@ -126,9 +126,16 @@ export function grokAuthJsonFor(accountId: string): string {
 
 const MUSE_STORES_DIR = join(TM_HOME, "muse-stores");
 const XDG_CONFIG = optionalEnv("XDG_CONFIG_HOME");
-// Inside a seat XDG_CONFIG_HOME names a store; the real config home a store mirrors is the one outside every store.
+export const MUSE_CONFIG_HOME_ENV = "TOKENMAXXING_XDG_CONFIG_HOME";
+
+export function inMuseStores(path: string): boolean {
+  return path === MUSE_STORES_DIR || path.startsWith(MUSE_STORES_DIR + sep);
+}
+
+// Inside a seat XDG_CONFIG_HOME names a store, and the seat carries the real config home it mirrors in
+// MUSE_CONFIG_HOME_ENV; a store named with no such record (one rm --muse kept) falls back to ~/.config.
 const MUSE_CONFIG_HOME =
-  XDG_CONFIG != null && XDG_CONFIG !== MUSE_STORES_DIR && !XDG_CONFIG.startsWith(MUSE_STORES_DIR + sep) ? XDG_CONFIG : join(HOME, ".config");
+  XDG_CONFIG == null ? join(HOME, ".config") : !inMuseStores(XDG_CONFIG) ? XDG_CONFIG : (optionalEnv(MUSE_CONFIG_HOME_ENV) ?? join(HOME, ".config"));
 
 export const musePaths = {
   configHome: MUSE_CONFIG_HOME,
