@@ -14,6 +14,8 @@ import { usd } from "./key.ts";
 import { bar, c, count, emitJson, fmtAgo } from "./render.ts";
 import type { Account, AccountThresholds, Bars, Config, Thresholds, Window } from "../lib/types.ts";
 
+const WEEK_S = 7 * 86400;
+
 export type WindowReport = { usedPercentage: number; bufferedPercentage: number; resetsAt: number | null; windowSeconds: number | null };
 
 export type UsageReport = { fiveHour: WindowReport | null; week: WindowReport | null; limits: (WindowReport & { name: string })[] };
@@ -90,7 +92,7 @@ function currentWindow(a: Account, w: Window, bars: Bars | null, now: number): W
   return {
     usedPercentage: liveUsed(w, now),
     bufferedPercentage: bars == null ? liveUsed(w, now) : bufferedUsed(a, w, bars, now),
-    resetsAt: isSessionWindow(w) ? (passed ? null : w.resetsAt) : nextWeeklyReset(w.resetsAt, now),
+    resetsAt: isSessionWindow(w) || (w.windowSeconds ?? 0) > WEEK_S ? (passed ? null : w.resetsAt) : nextWeeklyReset(w.resetsAt, now),
     windowSeconds: w.windowSeconds,
   };
 }
@@ -213,7 +215,6 @@ async function collect(p: Provider, cfg: Config, now: number, cached: boolean): 
 }
 
 const CARD_GAP = 3;
-const WEEK_S = 7 * 86400;
 const NOTE_INDENT = "    ";
 
 type Note = { paint: (s: string) => string; text: string };

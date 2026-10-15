@@ -31,6 +31,7 @@ export type StatusOnlySpec = {
   install: () => void;
   loginStep: () => string;
   samplePool: Provider["samplePool"];
+  identify?: (harvest: Harvest) => Promise<void>;
 };
 
 // An entry with no identity (a Muse Code provider without an email) has no harvest; the first one that has one is pooled.
@@ -62,6 +63,7 @@ export function statusOnlyProvider(spec: StatusOnlySpec): Provider {
     try {
       const harvest = p.exitCode === 0 ? firstHarvest(spec.readAuth(join(onboardDir, spec.onboardAuthRel))) : null;
       if (!harvest) console.error(c.red(`no ${spec.name} login landed in the isolated home - nothing added.`));
+      else await spec.identify?.(harvest);
       return harvest;
     } finally {
       rmSync(onboardDir, { recursive: true, force: true });
@@ -75,6 +77,7 @@ export function statusOnlyProvider(spec: StatusOnlySpec): Provider {
     const harvest = live[0]?.harvest;
     if (!harvest) return login();
     console.log(c.dim(spec.foundLive(live.length)));
+    await spec.identify?.(harvest);
     return harvest;
   }
 

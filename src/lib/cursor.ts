@@ -47,6 +47,8 @@ function cachedEmail(authPath: string, subject: string): string | null {
   return email === "" ? null : email;
 }
 
+const harvestTokens = new WeakMap<Harvest, string>();
+
 function readAuth(path: string): AuthEntry[] {
   const file: CursorAuth | null = readOptional(path, CursorAuthSchema);
   const token = file?.accessToken ?? "";
@@ -63,6 +65,7 @@ function readAuth(path: string): AuthEntry[] {
       writeFileAtomic(cursorAuthJsonFor(id), JSON.stringify(file, null, 2), 0o600);
     },
   };
+  harvestTokens.set(harvest, token);
   return [{ id, usable: true, harvest }];
 }
 
@@ -142,6 +145,13 @@ async function readCursorUsage(account: Account, now: number): Promise<SampleRep
   return { ok: true, source: "probe" };
 }
 
+async function identify(harvest: Harvest): Promise<void> {
+  const token = harvestTokens.get(harvest);
+  if (harvest.email != null || token == null) return;
+  const email = (await dashboardField(token, "GetMe", MeSchema))?.email?.trim().toLowerCase();
+  if (email) harvest.email = email;
+}
+
 async function samplePool(accounts: Account[], now: number): Promise<Map<string, SampleReport>> {
   const reports = new Map<string, SampleReport>();
   await Promise.all(accounts.map(async (account) => reports.set(account.id, await readCursorUsage(account, now))));
@@ -171,4 +181,5 @@ export const cursor = statusOnlyProvider({
   },
   loginStep: () => `Approve the login in the browser that ${c.bold("cursor-agent login")} opens.`,
   samplePool,
+  identify,
 });
