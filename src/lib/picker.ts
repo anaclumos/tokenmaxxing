@@ -167,10 +167,12 @@ export function seatHeadroom(a: Account, ctx: PickCtx): number {
 
 const MIN_SEAT_HEADROOM = 5;
 
+const planWeight = (a: Account, ctx: PickCtx): number => ctx.planWeight?.(a) ?? 1;
+
 function seatFull(a: Account, ctx: PickCtx): boolean {
   const session = sessionWindow(a);
   if (ctx.seats == null || session == null || spendsCredits(a, ctx.thresholds)) return false;
-  return seatHeadroom(a, ctx) < MIN_SEAT_HEADROOM;
+  return seatHeadroom(a, ctx) * planWeight(a, ctx) < MIN_SEAT_HEADROOM;
 }
 
 export function onCredits(a: Account, ctx: PickCtx): boolean {
@@ -183,25 +185,27 @@ const THREAD_HEADROOM = 15;
 const SESSION_SOON_MS = 60 * 60 * 1000;
 const STALE_MS = 6 * 60 * 60 * 1000;
 
-const planWeight = (a: Account, ctx: PickCtx): number => ctx.planWeight?.(a) ?? 1;
-
 function cramped(a: Account, ctx: PickCtx): boolean {
   const session = sessionWindow(a);
-  if (session == null) return a.windows.length === 0;
-  if (spendsCredits(a, ctx.thresholds)) return false;
+  if (session == null || spendsCredits(a, ctx.thresholds)) return false;
   const end = windowEnd(session);
   const resetsSoon = end > ctx.now && end - ctx.now <= SESSION_SOON_MS;
   return !resetsSoon && seatHeadroom(a, ctx) * planWeight(a, ctx) < THREAD_HEADROOM;
 }
 
-const stale = (a: Account, now: number): boolean => a.windows.length > 0 && now - (a.lastUsageAt ?? 0) > STALE_MS;
+// Judged per window, because a fresh statusline sample refreshes the session and weekly figures but carries an old per-model cap forward.
+function stale(a: Account, ctx: PickCtx): boolean {
+  const read = [sessionWindow(a), weeklyWindow(a), ...gatedWindows(a, ctx.families)];
+  return read.some((w) => w != null && windowEnd(w) > ctx.now && ctx.now - w.sampledAt > STALE_MS);
+}
 
 const swapPreference = (ctx: PickCtx) => [
   (a: Account) => (onCredits(a, ctx) ? 1 : 0),
   (a: Account) => ((a.storeFails ?? 0) > 0 ? 1 : 0),
+  (a: Account) => (a.windows.length === 0 ? 1 : 0),
   (a: Account) => (cramped(a, ctx) ? 1 : 0),
   (a: Account) => (weeklyExpiry(a, ctx.now) - ctx.now <= WEEKLY_SOON_MS ? 0 : 1),
-  (a: Account) => (stale(a, ctx.now) ? 1 : 0),
+  (a: Account) => (stale(a, ctx) ? 1 : 0),
   (a: Account) => -pacePressure(a, ctx) * planWeight(a, ctx),
   (a: Account) => weeklyExpiry(a, ctx.now),
   ...(ctx.seats == null ? [] : [(a: Account) => -seatHeadroom(a, ctx) * planWeight(a, ctx)]),

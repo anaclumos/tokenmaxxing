@@ -73,23 +73,24 @@ Claude and Codex launches and session moves choose among usable accounts by the 
 | --- | --- | --- | --- |
 | On usage credits | no first | 1st | 1st |
 | Credential store failed its last read | no first | 2nd | not used |
-| Cramped (no room for a whole session) | no first | 3rd | 2nd |
-| Weekly reset within 4 days | yes first | 4th | 3rd |
-| Usage figure older than 6 hours | no first | 5th | 4th |
-| Pace pressure, scaled by plan size | highest first | 6th | 5th |
-| Weekly reset | soonest first | 7th | 6th |
-| Headroom per session, scaled by plan size | greatest first | 8th | not used |
-| Weekly usage | lowest first | 9th | 7th |
-| Live sessions | fewest first | 10th | not used |
+| No usage figure at all | no first | 3rd | 2nd |
+| Cramped (no room for a whole session) | no first | 4th | 3rd |
+| Weekly reset within 4 days | yes first | 5th | 4th |
+| A figure the ranking reads is older than 6 hours | no first | 6th | 5th |
+| Pace pressure, scaled by plan size | highest first | 7th | 6th |
+| Weekly reset | soonest first | 8th | 7th |
+| Headroom per session, scaled by plan size | greatest first | 9th | not used |
+| Weekly usage | lowest first | 10th | 8th |
+| Live sessions | fewest first | 11th | not used |
 
-- An account with no usage figure counts as cramped, so unknown usage ranks after every measured account.
+- An account with no usage figure ranks after every measured account, cramped or stale ones included.
 - Accounts with no cached figure tie on every other key, so the session count alone spreads launches and `seat` borrows across them.
 - Codex excludes an account running in another codex session outright, because a codex session cannot share a login.
 - Neither pool has a manual switch, because placement is per session at launch.
 
 ### Plan size
 
-Usage figures are percentages, but a percent of a large plan is more quota than a percent of a small one. Pace pressure, headroom per session, and the cramped test multiply by a plan weight read from the account's tier:
+Usage figures are percentages, but a percent of a large plan is more quota than a percent of a small one. Pace pressure, headroom per session, the cramped test, and the full-account cap multiply by a plan weight read from the account's tier:
 
 | Pool | Weight |
 | --- | --- |
@@ -98,7 +99,7 @@ Usage figures are percentages, but a percent of a large plan is more quota than 
 
 ### Cramped
 
-An account is cramped when its headroom per session, times its plan weight, is under 15 and its session window does not reset within the hour. A session placed there would cross the session bar partway through and move, losing its prompt cache, so a roomier account ranks first. An account whose `thresholds.accounts` entry sets `credits` is never cramped, and neither is a measured account whose plan has no session window, such as Codex Pro. An account with no usage figure at all is cramped.
+An account is cramped when its headroom per session, times its plan weight, is under 15 and its session window does not reset within the hour. A session placed there would cross the session bar partway through and move, losing its prompt cache, so a roomier account ranks first. An account whose `thresholds.accounts` entry sets `credits` is never cramped, and neither is an account whose plan has no session window, such as Codex Pro.
 
 ### Weekly reset within 4 days
 
@@ -106,7 +107,7 @@ Weekly quota left at the reset is lost, so accounts whose weekly window resets w
 
 ### Stale figures and store failures
 
-An account whose last usage figure is more than 6 hours old could have been drained elsewhere since, so it ranks after accounts measured more recently. An account whose credential store failed its last read ranks after every account whose store read cleanly, because its next request is the one most likely to fail.
+An account could have been drained elsewhere since its figures were read, so it ranks after accounts measured more recently when any window the ranking reads (the session window, the weekly window, or a gated per-model cap) is still running and was sampled more than 6 hours ago. Each window keeps its own sample time, because a statusline sample refreshes the session and weekly figures but carries an older per-model cap forward. An account whose credential store failed its last read ranks after every account whose store read cleanly, because its next request is the one most likely to fail.
 
 ### Headroom per session
 
@@ -127,7 +128,7 @@ With the default bars (an effective session bar of 90):
 
 The busier but fresher account wins on this key.
 
-The same figure caps the sessions one account takes. An account whose score would fall under 5 is full: the next launch, move, or `seat` borrow that names no account takes an account that is not full while one is usable, so a fresh account under the default bars takes at most 18 sessions (90 / 18 = 5) before placement spills. When every usable account is full, the session still runs: it takes the full account with the highest score, because an account under its bars has headroom and a crowded account is a better outcome than no session. A session that finds every account exhausted goes to a stored API key at launch, or stops with the soonest reset named. A full account counts as usable at its session window's reset for that reset time. An account that its bars block until a release time is judged full or not at that release time, with the raised bar. A session on usage credits stays on credits while every other account is exhausted. The cap only screens placement: it never moves a session that is already on the account. It does not apply to an account with no session figure, or to an account whose `thresholds.accounts` entry sets `credits`. Without the cap, a burst of launches onto the only usable account fills it, and every session on it crosses the bar and moves in the same minute.
+The same figure, scaled by plan size, caps the sessions one account takes. An account whose score times its plan weight would fall under 5 is full: the next launch, move, or `seat` borrow that names no account takes an account that is not full while one is usable, so a fresh Max 5x account under the default bars takes at most 18 sessions (90 / 18 = 5) before placement spills, and a Max 20x account four times as many. When every usable account is full, the session still runs: it takes the full account with the highest score, because an account under its bars has headroom and a crowded account is a better outcome than no session. A session that finds every account exhausted goes to a stored API key at launch, or stops with the soonest reset named. A full account counts as usable at its session window's reset for that reset time. An account that its bars block until a release time is judged full or not at that release time, with the raised bar. A session on usage credits stays on credits while every other account is exhausted. The cap only screens placement: it never moves a session that is already on the account. It does not apply to an account with no session figure, or to an account whose `thresholds.accounts` entry sets `credits`. Without the cap, a burst of launches onto the only usable account fills it, and every session on it crosses the bar and moves in the same minute.
 
 Selection and the presence write share one critical section, so concurrent launches see each other. A move records its target in `wait-queue.json` in the critical section that picks it, and the relaunch replaces that claim with the presence file in one critical section, so a burst of moves spreads the same way while the moved sessions compact.
 
