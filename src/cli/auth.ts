@@ -13,7 +13,7 @@ import { c, count } from "./render.ts";
 import type { Account, AccountsIndex } from "../lib/types.ts";
 
 const AUTH_USAGE =
-  "usage: tokenmaxxing auth [--codex | --grok | --muse] [<email|label|id> | --all]\n       tokenmaxxing auth [--codex | --grok | --muse] --emails <email>...\n       tokenmaxxing auth --pi [--codex] [<email|label|id> | --all]";
+  "usage: tokenmaxxing auth [--codex | --grok | --muse | --cursor] [<email|label|id> | --all]\n       tokenmaxxing auth [--codex | --grok | --muse | --cursor] --emails <email>...\n       tokenmaxxing auth --pi [--codex] [<email|label|id> | --all]";
 const EMAILS_FLAG = "--emails";
 
 export type AuthPlan = { kind: "usage" } | { kind: "error"; message: string } | { kind: "pick" } | { kind: "targets"; ids: string[] };

@@ -6,7 +6,8 @@ description: How macOS and Linux differ in storage and timers
 | | macOS | Linux |
 |---|---|---|
 | Claude account store | Login keychain generic-password item keyed by the store path | 0600 `.credentials.json` inside the store's 0700 directory |
-| Codex, grok, and Muse Code stores | 0600 `auth.json` inside the store directory | Same |
+| Codex, grok, Muse Code, and Cursor stores | 0600 `auth.json` inside the store directory | Same |
+| Live Cursor login | The keychain, which the Cursor pool does not read | `$XDG_CONFIG_HOME/cursor/auth.json` |
 | Who writes a Claude store | tokenmaxxing once at onboarding, Claude Code's refresh afterwards | Same |
 | A session's account | `CLAUDE_SECURESTORAGE_CONFIG_DIR` set by the supervisor at launch | Same |
 | Periodic check | launchd agent, every `policy.checkIntervalMs` tick (60s default); stderr in `check.stderr.log` under the state directory | systemd user timer, every `policy.checkIntervalMs` tick (60s default); stderr in the journal |
