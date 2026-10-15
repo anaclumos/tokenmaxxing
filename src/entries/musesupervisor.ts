@@ -69,12 +69,13 @@ export function analyzeMuseArgs(argv: string[]): MuseArgs {
 
 type LaunchMode = "passthrough" | "seat" | "managed";
 
-function launchMode(args: MuseArgs): { mode: LaunchMode; why: string } {
+function launchMode(args: MuseArgs): { mode: LaunchMode; why: string; inherited?: string } {
   if (args.help) return { mode: "passthrough", why: "help" };
   if (process.env.TOKENMAXXING_PROBE || process.env[UNMANAGED_ENV]) return { mode: "passthrough", why: "unmanaged" };
   if (args.provider != null && args.provider !== "meta") return { mode: "passthrough", why: `provider ${args.provider}` };
   if (process.env.META_API_KEY) return { mode: "passthrough", why: "META_API_KEY overrides the account login" };
-  if (museSeatFromEnv(loadAccounts(musePool).accounts.map((a) => a.id)) != null) return { mode: "passthrough", why: "inherits its parent's seat" };
+  const inherited = museSeatFromEnv(loadAccounts(musePool).accounts.map((a) => a.id));
+  if (inherited != null) return { mode: "seat", why: "inherits its parent's seat", inherited };
   if (args.sub != null && args.sub !== "resume") return SEATED_SUBCMDS.has(args.sub) ? { mode: "seat", why: args.sub } : { mode: "passthrough", why: args.sub };
   if (!args.sessionLog) return { mode: "seat", why: "no session log to resume" };
   if (process.stdin.isTTY !== true || process.stdout.isTTY !== true) return { mode: "seat", why: "no terminal" };
@@ -163,7 +164,7 @@ export async function runMuseSupervisor(argv: string[]): Promise<number> {
   const real = resolveRealBin(MUSE_BIN);
   const childEnv: Record<string, string | undefined> = { ...process.env, [WRAP_DEPTH_ENV]: String(wrapDepth() + 1) };
   const args = analyzeMuseArgs(argv);
-  const { mode, why } = launchMode(args);
+  const { mode, why, inherited } = launchMode(args);
 
   if (mode !== "managed") {
     let child: Subprocess | null = null;
@@ -176,10 +177,11 @@ export async function runMuseSupervisor(argv: string[]): Promise<number> {
       return runPassthrough({ real, argv, env: childEnv, onSpawn: (p) => { child = p; } });
     }
     const id = `seat-${process.pid}`;
-    await probeMuseSeats(Date.now());
-    // Placement, spawn, and presence share one lock hold, so `rm` never removes an account a launch is taking.
+    if (inherited == null) await probeMuseSeats(Date.now());
+    // Placement, spawn, and presence share one lock hold, so `rm` never removes an account a launch is taking. A
+    // launch inside a seat keeps that seat, and records its own presence so the seat outlives its parent.
     const placed = await withLock(musePool.lockFile, async () => {
-      const seat = rankMuseSeat(Date.now());
+      const seat = inherited != null ? (loadAccounts(musePool).accounts.find((a) => a.id === inherited) ?? null) : rankMuseSeat(Date.now());
       log("musesupervisor.passthrough", { why, seat: seat?.id.slice(0, 8) ?? null });
       if (!seat) warnUnseated();
       const p = Bun.spawn([real, ...argv], {

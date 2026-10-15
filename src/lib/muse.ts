@@ -1,4 +1,4 @@
-import { mkdirSync, readdirSync, symlinkSync } from "node:fs";
+import { lstatSync, mkdirSync, readdirSync, renameSync, rmSync, symlinkSync } from "node:fs";
 import { join, sep } from "node:path";
 import { z } from "zod";
 import { writeFileAtomic } from "./atomic.ts";
@@ -74,15 +74,38 @@ export function museStoreIdentity(accountId: string): string[] {
   return readAuth(museAuthJsonFor(accountId)).map((e) => e.id);
 }
 
-function linkEntries(from: string, to: string, keep: (name: string) => boolean): void {
-  let names: string[];
+function namesIn(dir: string): string[] {
   try {
-    names = readdirSync(from);
+    return readdirSync(dir);
   } catch (e) {
-    if (ErrnoSchema.safeParse(e).data?.code === "ENOENT") return;
+    if (ErrnoSchema.safeParse(e).data?.code === "ENOENT") return [];
     throw e;
   }
-  for (const name of names) {
+}
+
+function isLink(path: string): boolean {
+  return lstatSync(path, { throwIfNoEntry: false })?.isSymbolicLink() === true;
+}
+
+// An entry a seated tool created lives only in the store. It moves to the real config home, when that has no entry
+// of the name, so it outlives the store and every seat sees it.
+function adoptEntries(from: string, to: string, keep: (name: string) => boolean): void {
+  for (const name of namesIn(to)) {
+    const own = join(to, name);
+    if (!keep(name) || isLink(own) || lstatSync(join(from, name), { throwIfNoEntry: false }) != null) continue;
+    mkdirSync(from, { recursive: true });
+    try {
+      renameSync(own, join(from, name));
+    } catch (e) {
+      if (ErrnoSchema.safeParse(e).data?.code !== "EXDEV") throw e;
+      log("muse.adopt_cross_device", { entry: own });
+    }
+  }
+}
+
+function linkEntries(from: string, to: string, keep: (name: string) => boolean): void {
+  adoptEntries(from, to, keep);
+  for (const name of namesIn(from)) {
     if (!keep(name)) continue;
     try {
       symlinkSync(join(from, name), join(to, name));
@@ -92,15 +115,42 @@ function linkEntries(from: string, to: string, keep: (name: string) => boolean):
   }
 }
 
+function sharedTop(name: string): boolean {
+  return name !== "muse" && !`${musePaths.storesDir}${sep}`.startsWith(join(musePaths.configHome, name) + sep);
+}
+
+function sharedMuse(name: string): boolean {
+  return !name.startsWith("auth.json") && !name.endsWith(".lock");
+}
+
 // The store doubles as the seated session's XDG_CONFIG_HOME, which every tool the session runs inherits, so it
 // mirrors the real config home: a link to each entry but `muse`, and in `muse/` a link to each entry but the login.
 export function ensureMuseStoreHome(accountId: string): string {
   const store = museStoreDirFor(accountId);
   const config = join(store, "muse");
   mkdirSync(config, { recursive: true, mode: 0o700 });
-  linkEntries(musePaths.configHome, store, (name) => name !== "muse" && !`${musePaths.storesDir}${sep}`.startsWith(join(musePaths.configHome, name) + sep));
-  linkEntries(join(musePaths.configHome, "muse"), config, (name) => !name.startsWith("auth.json") && !name.endsWith(".lock"));
+  linkEntries(musePaths.configHome, store, sharedTop);
+  linkEntries(join(musePaths.configHome, "muse"), config, sharedMuse);
   return store;
+}
+
+// Deletes the login and the mirror links. An entry only the store holds moves to the real config home first; one
+// the real config home also holds (a settings.json Muse Code rewrote in place of its link) stays, with the store.
+function removeMuseStore(accountId: string): void {
+  const store = museStoreDirFor(accountId);
+  const config = join(store, "muse");
+  for (const name of namesIn(config)) if (name.startsWith("auth.json")) rmSync(join(config, name), { force: true });
+  adoptEntries(musePaths.configHome, store, sharedTop);
+  adoptEntries(join(musePaths.configHome, "muse"), config, sharedMuse);
+  for (const dir of [config, store]) {
+    for (const name of namesIn(dir)) if (isLink(join(dir, name))) rmSync(join(dir, name), { force: true });
+  }
+  const kept = [...namesIn(config).map((n) => join(config, n)), ...namesIn(store).filter((n) => n !== "muse").map((n) => join(store, n))];
+  if (kept.length > 0) {
+    console.log(c.yellow(`kept ${store}: it holds ${kept.join(", ")}, which the real config home also has - merge or delete by hand`));
+    return;
+  }
+  rmSync(store, { recursive: true, force: true });
 }
 
 const SubscriptionWindowSchema = z.looseObject({ used_percent: z.number(), resets_at: EpochSecondsSchema });
@@ -279,5 +329,6 @@ export const muse: Provider = {
   statusOnly: false,
   observeLive: (account, cfg, now, opts) => observeMuse(account, cfg, now, { probe: opts.probe }),
   swap: prepareMove,
+  removeCredentials: async (a) => removeMuseStore(a.id),
   classifySwapError: (e) => (e instanceof StoreUnusableError ? "skip" : "fatal"),
 };
