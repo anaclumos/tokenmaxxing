@@ -1,4 +1,4 @@
-import { lstatSync, mkdirSync, readdirSync, readlinkSync, renameSync, rmSync, symlinkSync } from "node:fs";
+import { lstatSync, mkdirSync, readdirSync, readlinkSync, rmSync, symlinkSync } from "node:fs";
 import { join, sep } from "node:path";
 import { z } from "zod";
 import { writeFileAtomic } from "./atomic.ts";
@@ -89,25 +89,7 @@ function isMirrorLink(from: string, to: string, name: string): boolean {
   return readlinkSync(join(to, name)) === join(from, name);
 }
 
-// A file or directory a seated tool created lives only in the store. It moves to the real config home, when that
-// has no entry of the name, so it outlives the store and every seat sees it. A link the tool made stays where it
-// is: rewriting its target could change what it points at.
-function adoptEntries(from: string, to: string, keep: (name: string) => boolean): void {
-  for (const name of namesIn(to)) {
-    const own = join(to, name);
-    if (!keep(name) || lstatSync(own).isSymbolicLink() || lstatSync(join(from, name), { throwIfNoEntry: false }) != null) continue;
-    mkdirSync(from, { recursive: true });
-    try {
-      renameSync(own, join(from, name));
-    } catch (e) {
-      if (ErrnoSchema.safeParse(e).data?.code !== "EXDEV") throw e;
-      log("muse.adopt_cross_device", { entry: own });
-    }
-  }
-}
-
 function linkEntries(from: string, to: string, keep: (name: string) => boolean): void {
-  adoptEntries(from, to, keep);
   for (const name of namesIn(from)) {
     if (!keep(name)) continue;
     try {
@@ -137,21 +119,19 @@ export function ensureMuseStoreHome(accountId: string): string {
   return store;
 }
 
-// Deletes the login and the mirror links. A file or directory only the store holds moves to the real config home
-// first. Anything else left (a link a tool made, or an entry the real config home also holds, such as a
-// settings.json Muse Code rewrote in place of its link) keeps the store, and the command names it.
+// Deletes the login and the mirror links. Anything else in the store (an entry a seated tool or Muse Code made
+// there, such as a settings.json rewritten in place of its link) keeps the store, and the command names it: moving
+// it could break a link that points at it.
 function removeMuseStore(accountId: string): void {
   const store = museStoreDirFor(accountId);
   const config = join(store, "muse");
   for (const name of namesIn(config)) if (name.startsWith("auth.json")) rmSync(join(config, name), { force: true });
-  adoptEntries(musePaths.configHome, store, sharedTop);
-  adoptEntries(join(musePaths.configHome, "muse"), config, sharedMuse);
   for (const [from, dir] of [[join(musePaths.configHome, "muse"), config], [musePaths.configHome, store]] as const) {
     for (const name of namesIn(dir)) if (isMirrorLink(from, dir, name)) rmSync(join(dir, name), { force: true });
   }
   const kept = [...namesIn(config).map((n) => join(config, n)), ...namesIn(store).filter((n) => n !== "muse").map((n) => join(store, n))];
   if (kept.length > 0) {
-    console.log(c.yellow(`kept ${store}: it holds ${kept.join(", ")}, which tokenmaxxing does not move - merge or delete by hand`));
+    console.log(c.yellow(`kept ${store}: it holds ${kept.join(", ")}, which a seated session made there - move what you need, then delete the directory`));
     return;
   }
   rmSync(store, { recursive: true, force: true });
