@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { hostname } from "node:os";
-import { join } from "node:path";
+import { join, sep } from "node:path";
+import { omit } from "es-toolkit";
 import type { Subprocess } from "bun";
 import { MUSE_BIN, UNMANAGED_ENV, WRAP_DEPTH_ENV, resolveRealBin, wrapDepth } from "../lib/claudebin.ts";
 import { evaluateAndMaybeSwap } from "../lib/decide.ts";
@@ -154,6 +155,13 @@ function validWanted(wanted: string | null, now: number): Account | null {
 
 const KILL_GRACE_MS = 30_000;
 
+// A launch that gets no seat must not run on a store its environment still names (one inherited from a seat whose
+// account was removed): without a presence file nothing would protect it.
+function unseatedEnv(env: Record<string, string | undefined>): Record<string, string | undefined> {
+  const home = env.XDG_CONFIG_HOME;
+  return home != null && (home === musePaths.storesDir || home.startsWith(musePaths.storesDir + sep)) ? omit(env, ["XDG_CONFIG_HOME"]) : env;
+}
+
 function warnUnseated(): void {
   if (loadAccounts(musePool).accounts.length === 0) return;
   process.stderr.write("\x1b[33mtokenmaxxing: no pooled Muse Code account is usable (run `tokenmaxxing doctor`) - this session runs on your own Muse Code login\x1b[0m\n");
@@ -188,7 +196,7 @@ export async function runMuseSupervisor(argv: string[]): Promise<number> {
         stdin: "inherit",
         stdout: childStdout(),
         stderr: "inherit",
-        env: seat ? { ...childEnv, XDG_CONFIG_HOME: ensureMuseStoreHome(seat.id) } : childEnv,
+        env: seat ? { ...childEnv, XDG_CONFIG_HOME: ensureMuseStoreHome(seat.id) } : unseatedEnv(childEnv),
       });
       child = p;
       if (seat) {
@@ -245,7 +253,7 @@ export async function runMuseSupervisor(argv: string[]): Promise<number> {
           stdin: "inherit",
           stdout: "inherit",
           stderr: "inherit",
-          env: { ...childEnv, ...(picked ? { XDG_CONFIG_HOME: ensureMuseStoreHome(picked.id) } : {}) },
+          env: picked ? { ...childEnv, XDG_CONFIG_HOME: ensureMuseStoreHome(picked.id) } : unseatedEnv(childEnv),
         });
         child = spawned;
         if (picked) {
