@@ -1,0 +1,61 @@
+---
+title: Muse Code support
+description: Pooling Muse Code logins, placing each session on the freshest one, and resuming it on another near quota
+---
+
+tokenmaxxing pools Muse Code subscription logins the way it pools Codex logins: each `muse` session starts on the pooled account with the most headroom, and an interactive session that nears its account's limit resumes on a fresher account.
+
+```sh
+tokenmaxxing init --muse          # pool the first Muse Code login, install the muse supervisor
+tokenmaxxing add --muse           # pool another one through an isolated login
+muse                              # use Muse Code as always
+```
+
+`init`, `add`, `auth`, `emails`, `rm`, and `rename` take `--muse`; every other command refuses the flag with exit code 2. `init --muse` verifies the real `muse` and pins its path (`museBin` in `config.json`, overridden by `TOKENMAXXING_MUSE_BIN`), writes the `muse` wrapper into the state directory's `bin/`, and puts that directory ahead of the real `muse` on `PATH` the way `init` does for `claude`.
+
+## Accounts
+
+An account is a Muse Code login. `init --muse` imports the first provider entry with a `user_email` from `$XDG_CONFIG_HOME/muse/auth.json` (`~/.config/muse/auth.json` when `XDG_CONFIG_HOME` is unset) and points at `add --muse` for the rest; with no live login it runs `muse login` with `XDG_CONFIG_HOME` set to a throwaway directory under the state directory, so the login lands in `muse/auth.json` there. `add --muse` and `auth --muse` always use the isolated login. The entry carries no account id, so identity is the sha256 of the entry's `user_email`, lowercased; the label defaults to that email, and an entry without an email is skipped, so a login that holds no email adds nothing and says so. The harvested entry is written with the file's other top-level fields to `muse-stores/<uuid8>/muse/auth.json` at mode 0600. A store is usable when its entry holds an `access_token`.
+
+## The seat
+
+Muse Code reads its login only from `$XDG_CONFIG_HOME/muse/auth.json`, so a seat is an `XDG_CONFIG_HOME`: the account's store directory. `META_API_KEY` is not used, because it overrides the account login and bills the Model API instead of the subscription. Every tool a seated session runs inherits that `XDG_CONFIG_HOME`, so the store mirrors the real config home: before each launch it gets a symlink to every entry of the real config home except `muse` (and except the entry that holds the state directory), and its `muse/` gets a symlink to every entry of the real `muse/` except `auth.json` and lock files. A tool that reads `gh`, `git`, or any other config through `XDG_CONFIG_HOME` reads the real one, and Muse Code reads the shared `settings.json` and `trust.json`. Sessions, the session index, and the model catalog live under `XDG_DATA_HOME`, which the seat leaves alone, so every account sees the same sessions.
+
+## Placement
+
+The wrapper sorts each launch into one of three modes.
+
+| Launch | Mode |
+| --- | --- |
+| `muse`, `muse <prompt>`, `muse resume ...` on a terminal | Supervised: seated, watched, and moved near quota |
+| The same without a terminal, or with `--no-session-log` | Seated for its whole life, never moved |
+| `muse exec ...`, `muse serve` | Seated for its whole life, never moved |
+| `--help`, `--version`, any other subcommand (`login`, `logout`, `auth`, `skills`, `plugins`, ...), `--provider echo` or `local`, `META_API_KEY` set, `TOKENMAXXING_UNMANAGED` set, or a parent that already runs on a pooled seat | Passthrough on the ambient login |
+
+A seated launch first reads the usage of every usable account whose sample is older than `policy.usagePollTtlMs`, then picks the account with the most headroom under the bars, counting the sessions already on each account so equal accounts share the load; when every account is at its bars it picks the one that frees up first. It writes a presence file to `muse-live/`, keyed to the child's pid, so `status` counts the session and `rm` refuses the account.
+
+## Moves
+
+A supervised session's seat is checked every 10 seconds. The check reads the seat's usage once the stored sample is older than `policy.usagePollTtlMs` (60 seconds after an unmeasured read), and when the seat is at its bars it runs the same decision as a Codex move. With a fresher account available, the supervisor finds the session the child holds open: Muse Code keeps each session in `$XDG_DATA_HOME/muse/sessions/<yyyy>/<mm>/<dd>/<session id>/` and writes the pid that holds it to `.session.lock`, a resume included. It stops the child with SIGTERM (SIGKILL after 30 seconds), and starts `muse resume <session id>` on the new account with the first launch's root flags, minus the prompt, `--image`, and the worktree flags, since the resumed session keeps its worktree. A turn that was running when the move landed stops; send it again. When no session holds the child's pid, the move is skipped and logged as `musesupervisor.session_unresolved`. With every account at its bars, the session stays where it is.
+
+`check` and the periodic timer do not sample the pool: a seated launch and the supervisor read the usage they need. `doctor` checks the pinned `muse`, its place on `PATH`, and that each store holds a login of its account. `uninstall` removes `bin/muse` and keeps the stores.
+
+## Usage
+
+Usage is the `subs_usage` object of the key mint, `POST https://api.meta.ai/muse-code/key` with the store's `access_token` as the bearer and an empty JSON body; it is the read the Muse Code TUI's `/usage` shows, and it spends no quota. `TOKENMAXXING_MUSE_USAGE_URL` overrides the URL for hermetic runs. Its `window` is the 5-hour window, with its duration in `window_duration_mins`, and its `weekly` is the 7-day window; each carries `used_percent` and `resets_at` in epoch seconds. The mint leaves `subs_usage` out until a model request opens the first window, and that read lands as an account with nothing used. The mint response also carries an `api_key`, which tokenmaxxing ignores. A 401 or 403 flags the account for reauthentication. A failed read keeps the stored windows as stale as they were, and an account with no stored window stays unmeasured.
+
+## What status shows
+
+The Muse Code pool renders after grok, headed `muse  (N accounts)` and skipped when empty, and `status --json` always carries it under `muse`. Each account renders the buffered 5-hour and weekly bars once a sample has landed, `usage` carries both windows, `sessions` counts the seated sessions, and `exhausted` follows the same bars as the other pools; an unmeasured account has `usage` null and `exhausted` `false`.
+
+## State
+
+| Path | What it holds |
+|---|---|
+| `muse-accounts.json` | The pool index, the same schema as `accounts.json`; it names no active account |
+| `muse-lock` | The `flock` file that serializes the pool's commands and launches |
+| `muse-stores/<uuid8>/` | The account's seat: the `XDG_CONFIG_HOME` of the sessions on it, with the mirror links |
+| `muse-stores/<uuid8>/muse/auth.json` | The account's 0600 login |
+| `muse-live/<id>` | One presence file per seated session |
+| `bin/muse` | The wrapper that runs `tokenmaxxing __supervise-muse` |
+| `onboard/muse-<pid>-<random>/` | The throwaway `XDG_CONFIG_HOME` of one isolated login, deleted after it |

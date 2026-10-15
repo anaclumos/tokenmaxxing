@@ -1,10 +1,11 @@
 import { existsSync, readFileSync } from "node:fs";
-import { CLAUDE_BIN, PI_BIN, verifyRealBin } from "../lib/claudebin.ts";
+import { CLAUDE_BIN, MUSE_BIN, PI_BIN, verifyRealBin } from "../lib/claudebin.ts";
 import { checkSettings, installedBin } from "../lib/settings.ts";
-import { activationHint, CHECK_JOB, codexStoreHookTrust, findClaudeShadowers, HUB_JOB, isBinDirAhead, jobHealthy, piSupervisorLink, shellRcPath } from "../lib/install.ts";
+import { activationHint, CHECK_JOB, codexStoreHookTrust, findClaudeShadowers, HUB_JOB, isBinDirAhead, jobHealthy, museSupervisorLink, piSupervisorLink, shellRcPath } from "../lib/install.ts";
+import { museStoreIdentity } from "../lib/muse.ts";
 import { readPiStore } from "../lib/piauth.ts";
 import { errorMessage } from "../lib/log.ts";
-import { claudePool, codexPool, paths } from "../lib/paths.ts";
+import { claudePool, codexPool, musePool, paths } from "../lib/paths.ts";
 import { loadAccounts, loadConfig } from "../lib/state.ts";
 import { readStore } from "../lib/credstore.ts";
 import { codexIdentityOf, codexSeatIdOf, readCodexStoreAuth } from "../lib/codexauth.ts";
@@ -136,6 +137,30 @@ export async function cmdDoctor(): Promise<number> {
         }
       }
     }
+  }
+
+  const midx = loadAccounts(musePool);
+  if (existsSync(museSupervisorLink())) {
+    check(!!cfg.museBin && existsSync(cfg.museBin), "real muse binary resolved", "run `tokenmaxxing init --muse`");
+    if (cfg.museBin && existsSync(cfg.museBin)) {
+      const fail = verifyRealBin({ ...MUSE_BIN, bin: cfg.museBin });
+      check(fail === null, "museBin launches the real muse", fail ?? undefined);
+      check(isBinDirAhead(MUSE_BIN), `${paths.binDir} is ahead of the real muse on PATH`, `export PATH="${paths.binDir}:$PATH"`);
+    }
+  } else if (midx.accounts.length > 0) {
+    warn("Muse Code accounts are pooled but the muse supervisor is not installed - run `tokenmaxxing init --muse`");
+  }
+  for (const a of midx.accounts) {
+    let ids: string[] = [];
+    let readErr: string | null = null;
+    try {
+      ids = museStoreIdentity(a.id);
+    } catch (e) {
+      readErr = errorMessage(e).slice(0, 100);
+    }
+    check(ids.length > 0, `Muse Code store login present for ${a.label}`, readErr ?? `run \`tokenmaxxing auth --muse ${a.label}\``);
+    if (ids.length > 0) check(ids.includes(a.id), `Muse Code store login identity matches ${a.label}`, `the store holds another account's login - run \`tokenmaxxing auth --muse ${a.label}\``);
+    if (a.needsReauth) check(false, `${a.label} (muse) needs re-auth`, `run \`tokenmaxxing auth --muse ${a.label}\` to re-login`);
   }
 
   const rc = shellRcPath();

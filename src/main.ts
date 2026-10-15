@@ -10,6 +10,7 @@ import { runStopFailureHook } from "./entries/stopfailurehook.ts";
 import { runCodexSupervisor } from "./entries/codexsupervisor.ts";
 import { runCodexStopHook } from "./entries/codexstophook.ts";
 import { runPiSupervisor } from "./entries/pisupervisor.ts";
+import { runMuseSupervisor } from "./entries/musesupervisor.ts";
 import { claude } from "./lib/claude.ts";
 import { codex } from "./lib/codex.ts";
 import { grok } from "./lib/grok.ts";
@@ -41,7 +42,7 @@ const MUSE_FLAG = "--muse";
 const PI_FLAG = "--pi";
 const JSON_COMMANDS = new Set(["status", "config", "check"]);
 const CODEX_COMMANDS = new Set(["init", "add", "auth", "emails", "rm", "rename", "seat"]);
-const STATUS_ONLY_COMMANDS = new Set(["init", "add", "auth", "emails", "rm", "rename"]);
+const POOL_COMMANDS = new Set(["init", "add", "auth", "emails", "rm", "rename"]);
 const MAX_OPERANDS = new Map([["init", 0], ["add", 0], ["emails", 0], ["rm", 1], ["rename", 2], ["key", 4]]);
 
 function printHelp(): void {
@@ -53,7 +54,7 @@ function printHelp(): void {
   ${c.cyan("tokenmaxxing init --codex")}  same for codex: log in the first account, isolated, install codex supervisor + Stop hook
   ${c.cyan("tokenmaxxing init --pi")}     install the pi supervisor: pi sessions run on pooled Claude or ChatGPT accounts that are logged into pi
   ${c.cyan("tokenmaxxing init --grok")}   pool grok Build logins (status-only: no supervisor yet)
-  ${c.cyan("tokenmaxxing init --muse")}   pool Muse Code logins (status-only: no supervisor and no usage read)
+  ${c.cyan("tokenmaxxing init --muse")}   same for Muse Code: log in the first account, isolated, install the muse supervisor
   ${c.cyan("tokenmaxxing add")}        register an additional account (isolated login)
   ${c.cyan("tokenmaxxing add")} --codex | --grok | --muse   same for the codex, grok, or muse pool
   ${c.cyan("tokenmaxxing auth")} [--codex | --grok | --muse] [sel | --all]  reauthenticate a pooled account in place (bare = pick from a list; --all = every account that is flagged or has no usable credential in its store, one by one)
@@ -99,6 +100,9 @@ async function main(): Promise<number> {
   if (argv0 === "pi" || argv[0] === "__supervise-pi") {
     return runPiSupervisor(argv[0] === "__supervise-pi" ? argv.slice(1) : argv);
   }
+  if (argv0 === "muse" || argv[0] === "__supervise-muse") {
+    return runMuseSupervisor(argv[0] === "__supervise-muse" ? argv.slice(1) : argv);
+  }
 
   jsonMode = argv.includes(JSON_FLAG);
   const json = jsonMode;
@@ -139,8 +143,8 @@ async function main(): Promise<number> {
     return 2;
   }
 
-  if (provider.statusOnly && (sub == null || !STATUS_ONLY_COMMANDS.has(sub))) {
-    emitError({ json, message: `${provider.flag.trim()} applies to ${[...STATUS_ONLY_COMMANDS].join(", ")}, not ${sub ?? "status"}` });
+  if ((provider === grok || provider === muse) && (sub == null || !POOL_COMMANDS.has(sub))) {
+    emitError({ json, message: `${provider.flag.trim()} applies to ${[...POOL_COMMANDS].join(", ")}, not ${sub ?? "status"}` });
     return 2;
   }
 

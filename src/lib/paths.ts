@@ -124,17 +124,30 @@ export function grokAuthJsonFor(accountId: string): string {
   return join(grokStoreDirFor(accountId), "auth.json");
 }
 
+const MUSE_CONFIG_HOME = env("XDG_CONFIG_HOME", join(HOME, ".config"));
+
 export const musePaths = {
-  authJson: join(env("XDG_CONFIG_HOME", join(HOME, ".config")), "muse", "auth.json"),
+  configHome: MUSE_CONFIG_HOME,
+  authJson: join(MUSE_CONFIG_HOME, "muse", "auth.json"),
+  sessionsDir: join(env("XDG_DATA_HOME", join(HOME, ".local", "share")), "muse", "sessions"),
   storesDir: join(TM_HOME, "muse-stores"),
+  presenceDir: join(TM_HOME, "muse-live"),
 } as const;
 
+// A store is the XDG_CONFIG_HOME of the sessions seated on its account: Muse Code reads its login only from
+// $XDG_CONFIG_HOME/muse/auth.json.
 export function museStoreDirFor(accountId: string): string {
   return join(musePaths.storesDir, shortId(accountId));
 }
 
 export function museAuthJsonFor(accountId: string): string {
-  return join(museStoreDirFor(accountId), "auth.json");
+  return join(museStoreDirFor(accountId), "muse", "auth.json");
+}
+
+export function museSeatFromEnv(accountIds: string[], env: Record<string, string | undefined> = process.env): string | null {
+  const home = env.XDG_CONFIG_HOME;
+  if (home == null || home === "") return null;
+  return accountIds.find((id) => museStoreDirFor(id) === home) ?? null;
 }
 
 export function grokSeatFromEnv(accountIds: string[], env: Record<string, string | undefined> = process.env): string | null {
