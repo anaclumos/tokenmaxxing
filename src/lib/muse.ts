@@ -9,7 +9,7 @@ import { isBinDirAhead, installMuseSupervisor, museSupervisorLink } from "./inst
 import { withLock } from "./lock.ts";
 import { errorMessage, log } from "./log.ts";
 import { env, museAuthJsonFor, musePaths, musePool, museSeatFromEnv, museStoreDirFor } from "./paths.ts";
-import { isExhausted, landWindows, pickBest, pickEarliestReset, thresholdBars, type PickCtx } from "./picker.ts";
+import { isExhausted, isSessionWindow, landWindows, pickBest, pickEarliestReset, thresholdBars, type PickCtx } from "./picker.ts";
 import { seatCounts } from "./presence.ts";
 import { StoreUnusableError, type Observation, type Provider, type SampleReport } from "./provider.ts";
 import { loadAccounts, loadConfig, readJsonFile, saveAccounts, type Harvest } from "./state.ts";
@@ -194,9 +194,15 @@ function storedAccessToken(id: string): string | null {
 // windows null: the mint carried no subs_usage, which it leaves out while no 5-hour window is open.
 type MuseRead = { ok: true; windows: Window[] | null; at: number } | { ok: false; reason: string; rejected: boolean };
 
-// With no window open, a stored window that has not reset (the weekly one at its limit, say) still binds.
+const SESSION_S = 5 * 3600;
+
+// The mint omits subs_usage while no 5-hour window is open. The plan still has its 5-hour limit, so the read lands that window at zero unless a stored one is still open, keeps a stored window that has not reset (the weekly one at its limit, say, which still binds), and drops the rest.
 function landedWindows(read: { windows: Window[] | null }, stored: Window[], now: number): Window[] {
-  return read.windows ?? stored.filter((w) => w.resetsAt != null && w.resetsAt > now);
+  if (read.windows != null) return read.windows;
+  const kept = stored.filter((w) => w.resetsAt != null && w.resetsAt > now);
+  if (kept.some((w) => w.name == null && isSessionWindow(w))) return kept;
+  const seconds = stored.find((w) => w.name == null && isSessionWindow(w))?.windowSeconds ?? SESSION_S;
+  return [{ name: null, usedPercentage: 0, resetsAt: null, windowSeconds: seconds, sampledAt: now }, ...kept];
 }
 
 async function readMuseUsage(accountId: string, now: number): Promise<MuseRead> {
