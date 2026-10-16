@@ -418,7 +418,7 @@ function seatTee(seatId: string | null, model: ModelInfo | null, open: OpenTasks
   };
 }
 
-const REPLAYED_REQUESTS = new Set(["initialize", "set_max_thinking_tokens", "set_model", "set_permission_mode"]);
+const REPLAYED_REQUESTS = new Set(["initialize", "mcp_set_servers", "set_max_thinking_tokens", "set_model", "set_permission_mode"]);
 
 const RelayLineSchema = z.discriminatedUnion("type", [
   z.looseObject({ type: z.literal("control_response") }),
