@@ -150,7 +150,7 @@ flowchart TD
 1. Outside the lock, it refreshes the figure of every candidate whose last sample is older than `usagePollTtlMs`. This is the free usage read with the account's stored token, the same read `status` makes, so a consumer that drained an account since the last `status` is screened on the fresh figure.
 2. Under the pool lock, it picks among the usable accounts with a readable credential in their store that no pi session holds. The ranking is:
    1. the fewest live sessions and reservations naming the account
-   2. on a tie, the Codex keys of [the ranking](/switching#the-ranking-weekly-quota-at-risk-with-room-for-the-session): not on usage credits, measured, not cramped, weekly reset within 4 days, every figure the ranking reads under 6 hours old, the highest pace pressure scaled by plan size, the soonest weekly reset, then the lowest weekly usage
+   2. on a tie, the Codex keys of [the ranking](/switching#the-ranking-weekly-quota-at-risk-with-room-for-the-session): not on usage credits, measured, a plan with a 5-hour session window, not cramped, weekly reset within 4 days, every figure the ranking reads under 6 hours old, the highest pace pressure scaled by plan size, the soonest weekly reset, then the lowest weekly usage
 3. It writes a presence record keyed to the caller's pid and prints that account's store path for the consumer to pass as `CODEX_HOME`.
 
 Exit 1 means no usable account: fall back to whatever `CODEX_HOME` the environment already names.

@@ -206,6 +206,8 @@ const swapPreference = (ctx: PickCtx) => [
   // A full account ranks after every open one, and among full accounts the most room per session wins.
   (a: Account) => (seatFull(a, ctx) ? 1 : 0),
   (a: Account) => (seatFull(a, ctx) ? -seatHeadroom(a, ctx) * planWeight(a, ctx) : 0),
+  // An account with a session window first: its 5-hour quota comes back within hours, while an account with only a weekly window spends quota that is gone until the week resets.
+  (a: Account) => (sessionWindow(a) == null ? 1 : 0),
   (a: Account) => (cramped(a, ctx) ? 1 : 0),
   (a: Account) => (weeklyExpiry(a, ctx.now) - ctx.now <= WEEKLY_SOON_MS ? 0 : 1),
   (a: Account) => (stale(a, ctx) ? 1 : 0),
