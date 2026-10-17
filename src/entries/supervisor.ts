@@ -440,7 +440,7 @@ class StdinRelay {
   private queue: string[] = [];
   private state = new Map<string, string>();
   private replayable: string[] = [];
-  private dropped = new Set<string>();
+  private dropped = new Map<string, number>();
   private pendingTranscript: string | null = null;
   private ended = false;
   private refusal: string | null = null;
@@ -483,11 +483,15 @@ class StdinRelay {
 
   answered(line: string): void {
     const response = ControlResponseLineSchema.safeParse(JsonTextSchema.safeParse(line).data);
-    if (response.success) this.dropped.delete(response.data.response.request_id);
+    if (!response.success) return;
+    const id = response.data.response.request_id;
+    const open = this.dropped.get(id) ?? 0;
+    if (open > 1) this.dropped.set(id, open - 1);
+    else this.dropped.delete(id);
   }
 
   replay(resumable: boolean): string[] {
-    const dropped = [...this.dropped];
+    const dropped = [...this.dropped.keys()];
     if (!resumable) this.queue = [...this.replayable, ...this.queue];
     this.replayable = [];
     this.dropped.clear();
@@ -496,7 +500,7 @@ class StdinRelay {
 
   private keep(line: string, control: boolean, request: { request_id: string } | null): void {
     if (request !== null) {
-      this.dropped.add(request.request_id);
+      this.dropped.set(request.request_id, (this.dropped.get(request.request_id) ?? 0) + 1);
       return;
     }
     if (this.pendingTranscript === null) return;
