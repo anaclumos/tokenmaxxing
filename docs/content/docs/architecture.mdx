@@ -261,9 +261,8 @@ A turn in flight is cut at the bar; the transcript holds every completed step, a
 
 | Case | What happens |
 | --- | --- |
-| A hook in a session started outside the supervisor | There is no session to respawn, so the decision only records enforced limits there (a usage-credits refusal records nothing) and moves nothing. The session runs on whatever login it has until that login is refused, and the StopFailure hook then prints the shim command that resumes the session under the supervisor (see [Honest limitations](/limitations)). |
+| A hook in a session started outside the supervisor | There is no session to respawn, so the decision only records enforced limits there and moves nothing. The session runs on whatever login it has until that login is refused, and the StopFailure hook then prints the shim command that resumes the session under the supervisor (see [Honest limitations](/limitations)). |
 | A failure inside a subagent of a supervised session | It stamps the limit and writes no marker, because the parent turn is still running. The supervisor's seat watch reads the stamp within ten seconds and moves. |
-| A usage-credits refusal inside a subagent | It stamps nothing, so nothing moves. |
 
 ## Depleted-pool stop
 

@@ -57,7 +57,7 @@ An entry with `"credits": true`, such as `{"credit-seat": {"session": 100, "week
 A new session, a move, a borrow, or a running session therefore spends credits only when no account has plan headroom left, and a session on credits moves back to plan quota at its next check after another account's window resets.
 
 - An early server-side reset drops a wall on such an account the same way it does on any account.
-- A server refusal also moves a session off it: a Claude usage-credits refusal moves the session as described under [Enforced limits](#enforced-limits), and any other classified refusal walls the account as it walls every account.
+- A server refusal also moves a session off it: every classified refusal, a Claude usage-credits refusal included, walls the account as it walls every account (see [Enforced limits](#enforced-limits)).
 - A Codex usage read reports whether the account still has credits (`credits.has_credits`); once a read reports none, the account's own bars apply again until a later read reports credits.
 - Claude's no-spend usage read carries no credit status, so a Claude account is screened by its refusals alone.
 
@@ -299,7 +299,7 @@ A model changed inside the session with `/model` does not change the launch valu
 - An unknown active model gates every configured family. A launch without `--model` has no model yet, and right after a respawn such a session runs model-blind until its first statusline render on the new account; treating unknown as unconstrained once let an account sit at its Fable cap for hours unnoticed.
 - Candidate screening counts gated per-model caps too, so a pool where every account has burnt its Fable cap does not round-robin.
 - Codex has no model in its usage feed, so every named Codex limit window screens and triggers against its own bar (session or weekly by duration); `policy.switchModels` gates Claude per-model rows only.
-- The usage-credits refusal of the enforced-limit path (below) is not gated by `policy.switchModels`: it moves the session whatever that list holds, and it writes no wall.
+- The usage-credits refusal of the enforced-limit path (below) is not gated by `policy.switchModels`: it moves the session and walls the account whatever that list holds.
 
 ## Enforced limits
 
@@ -322,7 +322,7 @@ flowchart TD
 | Session or weekly window | a `quotaLimits` block names `five_hour` or `seven_day` with the server's reset | until the reset |
 | Per-model cap (`kind: model`) | a `quotaLimits` block names a per-model type with the server's reset | until the reset, unless the cached family window already screens it (see below) |
 | Overage | a `quotaLimits` block names `overage`, the usage credit limit of an account already past its plan's limits | until its plan answers again: the cached weekly reset when the cached weekly window is at 100 percent, else the cached session reset (or five hours) |
-| Usage credits | no `quotaLimits`; the row's typed `apiError: "model_requires_usage_credits"` (the Fable allowance used up, usage credits off or spent, or a monthly spend limit reached) | none (see [Usage-credits refusals](#usage-credits-refusals)) |
+| Usage credits | no `quotaLimits`; the row's typed `apiError: "model_requires_usage_credits"` (the Fable allowance used up, usage credits off or spent, or a monthly spend limit reached) | five hours (see [Usage-credits refusals](#usage-credits-refusals)) |
 | Organization | the row whose `error` is `oauth_org_not_allowed` (the account's organization disabled Claude subscription access for Claude Code) | five hours (see [Organization refusals](#organization-refusals)) |
 
 Model prose is never read.
@@ -377,13 +377,15 @@ The wall does not record which refusal stamped it, so the rule reads only those 
 
 ### Usage-credits refusals
 
-A usage-credits refusal writes no wall. The usage read shows no sign of it: the refusing account's Fable row can read far under its bar while another account serves the same session. The decision therefore moves the refused session and blocks no account: it screens candidates by their Fable windows and skips every account that has already refused this session.
+A usage-credits refusal walls the account for five hours, the same hold as an organization refusal, because the row names no window and no reset and the usage read shows no sign of the refusal: the refusing account's Fable row can read far under its bar, and `policy.switchModels` may not gate the Fable row at all, while the server keeps refusing. The wall is written on the account record, so it holds for every session and every launch, not only for the session that was refused: without it, every new session placed on the refusing account was refused in turn and moved, and the pool walked one refusal at a time.
 
-- The supervisor keeps that list for the life of the session and hands it to each new process, and every later credits move skips those accounts, so these moves try each account at most once.
-- A move off an account with `"credits": true` that still answers skips them too, so a session that a plan account refused stays on credits instead of returning to that account.
-- A move for a bar or a wall does not read the list, because a `/model` change inside the session can make those accounts usable again; such a move can land on a refusing account, and the next refusal moves the session on.
-- Once every candidate has refused, the session stays where it is and the refusal text tells you to switch models.
-- A credits refusal inside a subagent moves nothing.
+- The wall keeps launches, resumes, and moves off the account until it ends; the seat watch moves every other session on the account within ten seconds, as after any wall.
+- The refused session moves with the Fable windows screening the candidates, and it skips every account that has already refused it, a list the supervisor keeps for the life of the session and hands to each new process.
+- A move off an account with `"credits": true` that still answers skips that list too, so a session that a plan account refused stays on credits instead of returning to that account.
+- A move for a bar does not read the list, because a `/model` change inside the session can make those accounts usable again; the wall still keeps such a move off a refusing account for its five hours.
+- Once every account is walled, the session takes the depleted stop with the soonest wall end named, instead of walking the pool.
+- After the wall ends the account is a candidate again; when it still refuses, the first refused turn walls it again and moves that session.
+- A credits refusal inside a subagent stamps the wall like any other refusal, so the seat watch moves the session.
 - An account that accepts the session may be spending usage credits on Fable; the usage read cannot show that either.
 
 ### Organization refusals

@@ -109,7 +109,7 @@ export async function runStopFailureHook(): Promise<number> {
     }
 
     const refused = enforced?.kind === "credits" ? [...new Set([...refusedAccounts(), enforced.account])] : undefined;
-    const decision = await evaluateAndMaybeSwap(claude, now, canRespawn, enforced, { waiterId: canRespawn ? session?.sid : undefined, exclude: refused, apiKeys: canRespawn && keyMovesSupported() });
+    const decision = await evaluateAndMaybeSwap(claude, now, canRespawn, enforced, { waiterId: canRespawn ? session?.sid : undefined, apiKeys: canRespawn && keyMovesSupported() });
     const target = moveTarget(decision);
     if (session && canRespawn && target) {
       writeRespawnMarker({ session, ...target, waitUntil: target.waitUntil ?? now, compact: false, origin: "stopfailure", refused });

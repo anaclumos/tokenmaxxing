@@ -14,7 +14,6 @@ export type EvalOpts = {
   seatId?: string | null;
   sessionFamilies?: string[];
   waiterId?: string;
-  exclude?: string[];
   refused?: string[];
   apiKeys?: boolean;
   apiKeyId?: string;
@@ -49,7 +48,7 @@ function modelKindCovered(limit: EnforcedLimit, account: Account, now: number, b
 }
 
 function enforcedWall(limit: EnforcedLimit, account: Account, now: number): number {
-  if (limit.kind === "org") return now + FIVE_HOURS_MS;
+  if (limit.kind === "org" || limit.kind === "credits") return now + FIVE_HOURS_MS;
   const { family } = limit;
   const familyReset =
     family == null
@@ -146,8 +145,7 @@ export async function evaluateAndMaybeSwap(p: Provider, now = Date.now(), canRes
     const origin = enforced ? idx.accounts.find((a) => a.id === enforced.account) : undefined;
     const prior = origin?.enforcedUntil != null && origin.enforcedUntil > now;
     let stamped = false;
-    const credits = enforced?.kind === "credits";
-    if (enforced && origin && !credits) {
+    if (enforced && origin) {
       const covered = modelKindCovered(enforced, origin, now, bars);
       if (!covered || prior) {
         origin.enforcedUntil = Math.max(origin.enforcedUntil ?? 0, enforcedWall(enforced, origin, now));
@@ -157,7 +155,7 @@ export async function evaluateAndMaybeSwap(p: Provider, now = Date.now(), canRes
       saveAccounts(p.pool, idx);
       log("usage.enforced_limit", { kind: enforced.kind, family: enforced.family ?? undefined, resetsAt: origin.enforcedUntil, blind: prior || enforced.blind, live: origin === active, covered: covered && !prior });
     }
-    const enforced2 = (stamped || credits) && origin === active ? enforced : null;
+    const enforced2 = stamped && origin === active ? enforced : null;
 
     if (id2 != null && !active) {
       return { swapped: false, account: null, reason: "live-credential-not-in-pool" };
@@ -189,7 +187,7 @@ export async function evaluateAndMaybeSwap(p: Provider, now = Date.now(), canRes
 
     const seatOf = (cur: { accounts: Account[] }): Account | null => cur.accounts.find((a) => a.id === id2) ?? null;
 
-    const rejected = new Set<string>(opts.exclude);
+    const rejected = new Set<string>();
     const usable = (accounts: Account[]): Account[] => accounts.filter((a) => !rejected.has(a.id) && (p.seats === "shared" || a.id === id2 || !present.has(a.id)));
     const skipOrThrow = (e: unknown, candidate: Account): void => {
       if (p.classifySwapError(e) === "fatal") throw e;
