@@ -310,9 +310,8 @@ export function pickCodexSeat(now: number, eligible: (a: Account) => boolean = (
   return pickBest(open.filter((a) => !isExhausted(a, ctx)), ctx) ?? pickEarliestReset(open, ctx)?.account ?? null;
 }
 
-export async function borrowCodexSeat(pid: number): Promise<SeatBorrow> {
+export async function borrowCodexSeat(pid: number, seatId = `seat-${pid}`): Promise<SeatBorrow> {
   const now = Date.now();
-  const seatId = `seat-${pid}`;
   const cfg = loadConfig();
   const rejected = new Set<string>();
   await Promise.all(
