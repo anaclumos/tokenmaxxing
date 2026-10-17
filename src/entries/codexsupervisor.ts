@@ -6,6 +6,7 @@ import { z } from "zod";
 import { codexPaths, codexPool } from "../lib/paths.ts";
 import { withLock } from "../lib/lock.ts";
 import { CODEX_BIN, UNMANAGED_ENV, WRAP_DEPTH_ENV, resolveRealBin, wrapDepth } from "../lib/claudebin.ts";
+import { runCodexAppServer } from "../lib/codexappserver.ts";
 import { codexStoreUsable, ensureCodexStoreHome } from "../lib/codexauth.ts";
 import { CODEX_CRED_ENV, CODEX_SUPERVISOR_ID_ENV, borrowCodexSeat, codexPickCtx, pickCodexSeat } from "../lib/codex.ts";
 import { clearPresence, livingPresences } from "../lib/presence.ts";
@@ -101,6 +102,9 @@ export async function runCodexSupervisor(input: { argv: string[] }): Promise<num
     const granted = borrowsCodexSeat({ argv }) ? await borrowCodexSeat(process.pid) : undefined;
     const seat = granted && !("denied" in granted) ? granted : null;
     if (!seat && granted !== undefined) log("codexsupervisor.borrow_none", { reason: granted && "denied" in granted ? granted.denied : "no usable account" });
+    if (seat && scanCodexArgs(argv).positionals[0] === "app-server") {
+      return runCodexAppServer({ real, argv, env: omit(passthroughEnv, CODEX_CRED_ENV), seat, onSpawn: (p) => { child = p; } });
+    }
     return runPassthrough({
       real,
       argv,

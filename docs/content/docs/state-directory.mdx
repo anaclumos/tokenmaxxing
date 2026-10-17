@@ -216,7 +216,8 @@ The `codex-*` entries are the Codex pool's own state.
 | Borrow | Its `seat-<pid>` record names |
 |---|---|
 | `seat --codex` | The caller's pid |
-| A shim-run `exec`, `e`, `review`, or bare `app-server` | The codex child's pid |
+| A shim-run `exec`, `e`, or `review` | The codex child's pid |
+| A shim-run bare `app-server` | The shim's pid, which outlives each app-server it restarts on a fresh account |
 
 A borrow picks the account the fewest records name.
 
