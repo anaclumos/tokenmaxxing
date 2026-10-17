@@ -80,9 +80,9 @@ Claude and Codex launches and session moves choose among usable accounts by the 
 | Cramped (no room for a whole session) | no first | 7th | 4th |
 | Weekly reset within 4 days | yes first | 8th | 5th |
 | A figure the ranking reads is older than 6 hours | no first | 9th | 6th |
-| Pace pressure, scaled by plan size | highest first | 10th | 7th |
-| Weekly reset | soonest first | 11th | 8th |
-| Headroom per session, scaled by plan size | greatest first | 12th | not used |
+| Headroom per session, scaled by plan size | greatest first | 10th | not used |
+| Pace pressure, scaled by plan size | highest first | 11th | 7th |
+| Weekly reset | soonest first | 12th | 8th |
 | Weekly usage | lowest first | 13th | 9th |
 | Live sessions | fewest first | 14th | not used |
 
@@ -110,7 +110,7 @@ An account is cramped when its headroom per session, times its plan weight, is u
 
 ### Weekly reset within 4 days
 
-Weekly quota left at the reset is lost, so accounts whose weekly window resets within 4 days rank ahead of every account that resets later. Within that group, pace pressure puts the account with the most quota left per hour until its reset first.
+Weekly quota left at the reset is lost, so accounts whose weekly window resets within 4 days rank ahead of every account that resets later. Within that group, a Claude launch or move takes the account with the most session headroom per session, and pace pressure puts the account with the most quota left per hour until its reset first among accounts that tie on it; a Codex launch, which counts no sessions, goes straight to pace pressure.
 
 ### Stale figures and store failures
 
@@ -124,7 +124,7 @@ Headroom per session is the remaining headroom to the session bar divided by the
 (session bar - session used) / (live sessions on the account + 1)
 ```
 
-The session count comes from the presence files of running supervised sessions and of `seat` borrowers, and from the claims of sessions that are moving to the account. The `+ 1` is the session being placed. When the keys ahead of it tie, two fresh accounts therefore alternate: the second launch lands on the account that has no session yet, and a third launch goes to whichever of the two has more headroom left per session. When one account's week resets sooner, its pace pressure wins first, and it keeps taking launches until it is cramped or full.
+The session count comes from the presence files of running supervised sessions and of `seat` borrowers, and from the claims of sessions that are moving to the account. The `+ 1` is the session being placed. This key ranks ahead of pace pressure, so a burst of launches or moves spreads over the accounts in the same group one session at a time: the first lands on the account with the most headroom per session, the second on the account that now has the most (another account rather than the first, whose score halved), and so on, and pace pressure decides only between accounts that tie on it, such as two fresh accounts with no session, where the one whose week resets sooner goes first. Before this ordering a burst of simultaneous moves landed four to six sessions on the one account with the highest pace pressure, until it was cramped, and that account crossed its bar within the hour and moved them all again.
 
 With the default bars (an effective session bar of 90):
 
