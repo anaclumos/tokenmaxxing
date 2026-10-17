@@ -425,6 +425,8 @@ const RelayLineSchema = z.discriminatedUnion("type", [
   z.looseObject({ type: z.literal("control_request"), request_id: z.string(), request: z.looseObject({ subtype: z.string() }) }),
 ]);
 
+const ControlResponseLineSchema = z.looseObject({ type: z.literal("control_response"), response: z.looseObject({ request_id: z.string() }) });
+
 const UserLineSchema = z.looseObject({ type: z.literal("user") });
 
 const MOVED_REQUEST_ERROR = "tokenmaxxing restarted Claude Code for an account move, and this request may or may not have run.";
@@ -438,7 +440,7 @@ class StdinRelay {
   private queue: string[] = [];
   private state = new Map<string, string>();
   private replayable: string[] = [];
-  private dropped: string[] = [];
+  private dropped = new Map<string, number>();
   private pendingTranscript: string | null = null;
   private ended = false;
   private refusal: string | null = null;
@@ -460,7 +462,7 @@ class StdinRelay {
   attach(sink: FileSink, first: string | null, pendingTranscript: string | null): void {
     this.sink = sink;
     this.replayable = [];
-    this.dropped = [];
+    this.dropped.clear();
     this.pendingTranscript = pendingTranscript;
     const lines = [...this.state.values(), ...(first === null ? [] : [first]), ...this.queue];
     this.queue = [];
@@ -479,24 +481,35 @@ class StdinRelay {
     for (const line of lines) this.forward(line);
   }
 
-  replay(): string[] {
-    const dropped = this.dropped;
-    this.queue = [...this.replayable, ...this.queue];
+  answered(line: string): void {
+    const response = ControlResponseLineSchema.safeParse(JsonTextSchema.safeParse(line).data);
+    if (!response.success) return;
+    const id = response.data.response.request_id;
+    const open = this.dropped.get(id) ?? 0;
+    if (open > 1) this.dropped.set(id, open - 1);
+    else this.dropped.delete(id);
+  }
+
+  replay(resumable: boolean): string[] {
+    const dropped = [...this.dropped.keys()];
+    if (!resumable) this.queue = [...this.replayable, ...this.queue];
     this.replayable = [];
-    this.dropped = [];
+    this.dropped.clear();
     return dropped;
   }
 
   private keep(line: string, control: boolean, request: { request_id: string } | null): void {
+    if (request !== null) {
+      this.dropped.set(request.request_id, (this.dropped.get(request.request_id) ?? 0) + 1);
+      return;
+    }
     if (this.pendingTranscript === null) return;
     if (existsSync(this.pendingTranscript)) {
       this.pendingTranscript = null;
       this.replayable = [];
-      this.dropped = [];
       return;
     }
-    if (request !== null) this.dropped.push(request.request_id);
-    else if (!control) this.replayable.push(line);
+    if (!control) this.replayable.push(line);
   }
 
   private async pump(): Promise<void> {
@@ -751,11 +764,15 @@ export async function runSupervisor(argv: string[]): Promise<number> {
       log("supervisor.launch", { sid, respawns, seat: picked?.id.slice(0, 8) ?? null, key: key?.id, args: args.join(" "), injected: firstLine !== null });
       const open: OpenTasks = new Map();
       const tee = stream && (picked || existsSync(claudePool.apiKeysJson)) ? seatTee(picked?.id ?? null, model, open, sid) : null;
+      const onLine = tee === null && relay === null ? undefined : (line: string) => {
+        tee?.(line);
+        relay?.answered(line);
+      };
       const secret = key ? readApiKey(key) : null;
       const extra: "pipe"[] = secret == null ? [] : ["pipe"];
       const scrubbed = scrubCredEnv(childEnv);
       const spawned = Bun.spawn([real, ...args], {
-        stdio: [relay === null ? "inherit" : "pipe", tee === null ? childStdout() : "pipe", "inherit", ...extra],
+        stdio: [relay === null ? "inherit" : "pipe", onLine === undefined ? childStdout() : "pipe", "inherit", ...extra],
         env: {
           ...(picked ? { ...scrubbed, CLAUDE_SECURESTORAGE_CONFIG_DIR: storeDirFor(picked.id) } : key ? apiKeyEnv(scrubbed, key) : childEnv),
           TOKENMAXXING_SUPERVISED: "1",
@@ -768,7 +785,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
       });
       child = spawned;
       if (secret != null) sendApiKey(spawned, secret);
-      drainStdout = spawned.stdout instanceof ReadableStream ? relayStdout(spawned.stdout, tee ?? undefined) : null;
+      drainStdout = spawned.stdout instanceof ReadableStream ? relayStdout(spawned.stdout, onLine) : null;
       if (relay !== null) relay.attach(spawned.stdin!, firstLine, pendingTranscript);
       if (picked || key) {
         await recordPresenceOrStop({
@@ -837,8 +854,8 @@ export async function runSupervisor(argv: string[]): Promise<number> {
       const walledUntil = accounts.find((a) => a.id === seat?.id)?.enforcedUntil ?? 0;
       const transcript = findTranscript(m.sessionId);
       const resumable = transcript !== null;
-      if (!resumable && relay !== null) {
-        for (const id of relay.replay()) process.stdout.write(controlErrorLine(id, MOVED_REQUEST_ERROR));
+      if (relay !== null) {
+        for (const id of relay.replay(resumable)) process.stdout.write(controlErrorLine(id, MOVED_REQUEST_ERROR));
       }
       let compacted = false;
       const compactKey = key != null && usableApiKey(key.id) != null ? key : null;

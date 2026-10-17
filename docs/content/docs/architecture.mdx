@@ -211,6 +211,8 @@ The supervisor sees the marker and:
 3. Compacts the conversation when the marker asks for it, the old seat carries no enforced-limit wall, and the marker is not a depleted-pool wait: `claude -p --resume <live-session-id> /compact` under the old seat's store, bounded at 5 minutes. The compaction counts only when Claude Code writes its compaction boundary into the transcript. A failure prints why, and the move goes on with the full context.
 4. Relaunches `claude --resume <live-session-id>` with `CLAUDE_SECURESTORAGE_CONFIG_DIR` set to the target's store. The resumed process reads the target's store cold and continues the same conversation on the new account.
 
+In a stream-json session the supervisor replays the harness's setup requests (`initialize` and the requests that set the model, the permission mode, the thinking budget, and the MCP servers) to the new process. Every other control request the stopped process received and did not answer gets an error reply instead, because a repeat could run it twice and the harness would otherwise wait on it forever.
+
 The move writes no credential. Other sessions are not affected: each session moves on its own seat's figures.
 
 ### The first prompt
@@ -237,7 +239,7 @@ A harness session that drives claude with `--input-format stream-json` ignores a
 
 A session whose transcript file is missing (a `/clear` with no turn since, or a move before the first turn) gets neither the compaction nor the prompt. It is started with `--session-id` instead of `--resume`, because `claude --resume` exits with `No conversation found` for an id that has no transcript.
 
-In a stream-json session the supervisor then replays to the new process the harness's messages and setup requests (`initialize` and the requests that set the model, the permission mode, the thinking budget, and the MCP servers) that the stopped process received, so they are not lost. Every other control request the stopped process received gets an error reply instead, because a repeat could run it twice.
+In a stream-json session the supervisor then replays to the new process the harness's messages as well as its setup requests, so they are not lost. Every other control request the stopped process did not answer gets the same error reply as on a `--resume` move.
 
 A later `claude --resume` of an id the supervisor launched, whose transcript does not exist yet, starts with `--session-id` the same way.
 
