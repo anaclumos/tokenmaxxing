@@ -211,9 +211,9 @@ const swapPreference = (ctx: PickCtx) => [
   (a: Account) => (cramped(a, ctx) ? 1 : 0),
   (a: Account) => (weeklyExpiry(a, ctx.now) - ctx.now <= WEEKLY_SOON_MS ? 0 : 1),
   (a: Account) => (stale(a, ctx) ? 1 : 0),
+  ...(ctx.seats == null ? [] : [(a: Account) => -seatHeadroom(a, ctx) * planWeight(a, ctx)]),
   (a: Account) => -pacePressure(a, ctx) * planWeight(a, ctx),
   (a: Account) => weeklyExpiry(a, ctx.now),
-  ...(ctx.seats == null ? [] : [(a: Account) => -seatHeadroom(a, ctx) * planWeight(a, ctx)]),
   (a: Account) => weeklyWindow(a)?.usedPercentage ?? 101,
   ...(ctx.seats == null ? [] : [(a: Account) => ctx.seats?.get(a.id) ?? 0]),
 ];
