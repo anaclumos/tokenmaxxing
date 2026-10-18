@@ -367,6 +367,7 @@ export const codex: Provider = {
   presence,
   planWeight: codexPlanWeight,
   gatedFamilies: () => null,
+  heldFamilies: () => null,
   observeLive: (account, cfg, now, opts) => observeCodex(account, cfg, now, { probe: opts.probe, refresh: true }),
   samplePool,
   mergeWindows: (next) => next,

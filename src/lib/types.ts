@@ -74,6 +74,7 @@ export const AccountSchema = z.object({
   storeFails: z.number().optional(),
   usageRetryAt: z.number().optional(),
   enforcedUntil: z.number().optional(),
+  familyUntil: z.record(z.string(), z.number()).optional(),
   needsReauth: z.boolean().optional(),
   hasCredits: z.boolean().optional(),
   bankedReset: BankedResetSchema.optional(),

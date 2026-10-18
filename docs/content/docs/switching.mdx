@@ -299,7 +299,8 @@ A model changed inside the session with `/model` does not change the launch valu
 - An unknown active model gates every configured family. A launch without `--model` has no model yet, and right after a respawn such a session runs model-blind until its first statusline render on the new account; treating unknown as unconstrained once let an account sit at its Fable cap for hours unnoticed.
 - Candidate screening counts gated per-model caps too, so a pool where every account has burnt its Fable cap does not round-robin.
 - Codex has no model in its usage feed, so every named Codex limit window screens and triggers against its own bar (session or weekly by duration); `policy.switchModels` gates Claude per-model rows only.
-- The usage-credits refusal of the enforced-limit path (below) is not gated by `policy.switchModels`: it moves the session and walls the account whatever that list holds.
+- The usage-credits refusal of the enforced-limit path (below) is not gated by `policy.switchModels`: it moves the session and walls the account for Fable sessions whatever that list holds.
+- Which family walls bind a session is read from the session's own model, not from `policy.switchModels`: a Fable wall binds a Fable session even when that list is empty, and never binds an Opus, Sonnet, or Haiku session. A session whose model is unknown is bound by every family wall.
 
 ## Enforced limits
 
@@ -317,19 +318,21 @@ flowchart TD
 
 ### Refusal kinds
 
-| Refusal | How the error row shows it | Wall (`enforcedUntil`) |
+| Refusal | How the error row shows it | Wall |
 | --- | --- | --- |
 | Session or weekly window | a `quotaLimits` block names `five_hour` or `seven_day` with the server's reset | until the reset |
-| Per-model cap (`kind: model`) | a `quotaLimits` block names a per-model type with the server's reset | until the reset, unless the cached family window already screens it (see below) |
+| Per-model cap (`kind: model`) | a `quotaLimits` block names a per-model type with the server's reset | until the reset, for that family's sessions only, unless the cached family window already screens it (see below) |
 | Overage | a `quotaLimits` block names `overage`, the usage credit limit of an account already past its plan's limits | until its plan answers again: the cached weekly reset when the cached weekly window is at 100 percent, else the cached session reset (or five hours) |
-| Usage credits | no `quotaLimits`; the row's typed `apiError: "model_requires_usage_credits"` (the Fable allowance used up, usage credits off or spent, or a monthly spend limit reached) | five hours (see [Usage-credits refusals](#usage-credits-refusals)) |
+| Usage credits | no `quotaLimits`; the row's typed `apiError: "model_requires_usage_credits"` (the Fable allowance used up, usage credits off or spent, or a monthly spend limit reached) | five hours, for Fable sessions only (see [Usage-credits refusals](#usage-credits-refusals)) |
 | Organization | the row whose `error` is `oauth_org_not_allowed` (the account's organization disabled Claude subscription access for Claude Code) | five hours (see [Organization refusals](#organization-refusals)) |
 
 Model prose is never read.
 
+The session, weekly, overage, and organization walls are account-wide: they are written to `enforcedUntil` and bind every session. The per-model and usage-credits walls are family walls: they are written to the family's entry in `familyUntil` and bind only a session whose model is in that family, or whose model is unknown. A Fable refusal therefore never keeps an Opus, Sonnet, or Haiku session off the account, and `status` marks such an account `fable-walled` instead of `exhausted` unless its own session asks for Fable.
+
 ### How the wall is written
 
-The hook hands the classified refusal to the decision, which blocks the seat until the reset inside the same critical section that picks the target. It writes `enforcedUntil` on the account record, using the first of these that exists:
+The hook hands the classified refusal to the decision, which blocks the seat until the reset inside the same critical section that picks the target. It writes `enforcedUntil` on the account record, or for a family wall the refusal's family in `familyUntil`, using the first of these that exists:
 
 1. the server's reset, when the row carries one;
 2. the account's own cached reset for that window;
@@ -337,12 +340,12 @@ The hook hands the classified refusal to the decision, which blocks the seat unt
 
 A later wall already on the account is never shortened.
 
-A `kind: model` refusal (a per-model cap named in `quotaLimits`) does not write that field when the cached family window already sits at or over its bar and stays there until its reset. The window then screens per family, so a session that does not gate Fable can still use the account. An account's `thresholds.accounts` entry can release the window to the global bar before then, and the wall lands in that case. The wall still lands when that cached row is missing or under the bar, or when a wall is already active.
+A `kind: model` refusal (a per-model cap named in `quotaLimits`) writes no family wall when the cached family window already sits at or over its bar and stays there until its reset. The window then screens per family, so a session that does not gate Fable can still use the account. An account's `thresholds.accounts` entry can release the window to the global bar before then, and the wall lands in that case. The wall still lands when that cached row is missing or under the bar, or when a wall is already active.
 
-That one field is what the trigger and the candidate screen read, so:
+Those walls are what the trigger and the candidate screen read, so:
 
 - an account with no usage sample yet cannot be picked straight back;
-- a model-kind wall that did land parks the account until its weekly reset;
+- a model-kind wall that did land parks the account for that family's sessions until its weekly reset;
 - a seat still walled after a failed move keeps triggering on every later boundary, screening candidates on every configured family because the wall does not record which one tripped.
 
 The decision treats the enforcement as a fact stronger than any cached window (it skips the probe, gates candidates by the tripped family, and never holds the seat) and moves away.
@@ -355,6 +358,7 @@ The wall does not record which refusal stamped it, so the rule reads only those 
 
 - A wall stamped while neither was at its bar, such as a per-model refusal on an account with 5-hour and weekly headroom, holds until its deadline.
 - A wall stamped while one of them was at its bar ends at that window's early reset, whatever refusal stamped it.
+- A family wall ends early the same way when fresh figures show that family's per-model window under its bar while the stored figures had it at or over its bar before its reset; fresh figures that carry no row for the family, and the 5-hour and weekly windows, never end a family wall.
 
 ### Which families a refusal screens
 
@@ -377,15 +381,17 @@ The wall does not record which refusal stamped it, so the rule reads only those 
 
 ### Usage-credits refusals
 
-A usage-credits refusal walls the account for five hours, the same hold as an organization refusal, because the row names no window and no reset and the usage read shows no sign of the refusal: the refusing account's Fable row can read far under its bar, and `policy.switchModels` may not gate the Fable row at all, while the server keeps refusing. The wall is written on the account record, so it holds for every session and every launch, not only for the session that was refused: without it, every new session placed on the refusing account was refused in turn and moved, and the pool walked one refusal at a time.
+A usage-credits refusal walls the account for Fable sessions for five hours, the length of an organization refusal's hold, because the row names no window and no reset and the usage read shows no sign of the refusal: the refusing account's Fable row can read far under its bar, and `policy.switchModels` may not gate the Fable row at all, while the server keeps refusing. The wall is written on the account record as `familyUntil.fable`, so it holds for every Fable session and every Fable launch, not only for the session that was refused: without it, every new Fable session placed on the refusing account was refused in turn and moved, and the pool walked one refusal at a time.
 
-- The wall keeps launches, resumes, and moves off the account until it ends; the seat watch moves every other session on the account within ten seconds, as after any wall.
+The refusal is Fable's alone: the Fable allowance or the credits that pay for Fable ran out, while the account's shared 5-hour and weekly windows still serve every other model. The wall therefore never binds an Opus, Sonnet, or Haiku session, which keeps launching on, resuming on, and staying on the account.
+
+- The wall keeps Fable launches, resumes, and moves off the account until it ends; the seat watch moves every other Fable session on the account within ten seconds, as after any wall.
 - The refused session moves with the Fable windows screening the candidates and the walls keeping it off every account that refused within the last five hours. The move does not read the list of accounts that refused this session, a list the supervisor keeps for the life of the session and hands to each new process: that list screens only a move off a credits-flagged seat and an API-key move, so once a wall ends the account is a candidate for this session again.
 - A move off an account with `"credits": true` that still answers skips that list too, so a session that a plan account refused stays on credits instead of returning to that account.
 - A move for a bar does not read the list, because a `/model` change inside the session can make those accounts usable again; the wall still keeps such a move off a refusing account for its five hours.
-- Once every account is walled, a launch or resume takes the depleted stop with the soonest wall end named, instead of walking the pool. The running session whose refusal walled the last account takes that stop only when a wall ends within `policy.maxWaitMs`; with the default hour and fresh five-hour walls, the hook writes no marker and the session shows the refusal itself, and its next launch or resume takes the depleted stop.
+- Once every account is walled for Fable, a Fable launch or resume takes the depleted stop with the soonest wall end named, instead of walking the pool. The running session whose refusal walled the last account takes that stop only when a wall ends within `policy.maxWaitMs`; with the default hour and fresh five-hour walls, the hook writes no marker and the session shows the refusal itself, and its next launch or resume takes the depleted stop.
 - After the wall ends the account is a candidate again; when it still refuses, the first refused turn walls it again and moves that session.
-- A credits refusal inside a subagent stamps the wall like any other refusal, so the seat watch moves the session.
+- A credits refusal inside a subagent stamps the wall like any other refusal and records the family on the session (`held` in `sessions/<session-id>.json`). The supervisor's seat watch honors the family walls of the main session's model and of every family recorded there, so it moves an Opus session whose Fable subagent was refused to an account that still serves Fable, within ten seconds.
 - An account that accepts the session may be spending usage credits on Fable; the usage read cannot show that either.
 
 ### Organization refusals

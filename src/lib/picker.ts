@@ -16,6 +16,7 @@ export type PickCtx = {
   thresholds: Bars;
   currentId: string | null;
   families: string[] | null;
+  held?: string[] | null;
   seats: Map<string, number> | null;
   planWeight?: (a: Account) => number;
 };
@@ -93,11 +94,21 @@ export function screensUntilReset(a: Account, w: Window, bars: Bars, now: number
   return reset > now && blockedUntil(a, w, bars, now) === reset;
 }
 
+// A family wall binds only a session whose model is in that family; an unknown model (`held` null or absent) is bound by every one.
+export function wallUntil(a: Account, held: string[] | null | undefined): number {
+  const family = Object.entries(a.familyUntil ?? {}).filter(([f]) => held == null || held.includes(f));
+  return Math.max(a.enforcedUntil ?? 0, ...family.map(([, t]) => t));
+}
+
+export function liveFamilyWalls(a: Account, now: number): Record<string, number> {
+  return Object.fromEntries(Object.entries(a.familyUntil ?? {}).filter(([, t]) => t > now));
+}
+
 function blockingUntil(a: Account, ctx: PickCtx): number[] {
   return [
     ...a.windows.filter((w) => w.name == null).map((w) => blockedUntil(a, w, ctx.thresholds, ctx.now)),
     ...gatedWindows(a, ctx.families).map((w) => blockedUntil(a, w, ctx.thresholds, ctx.now)),
-    ...(a.enforcedUntil != null ? [a.enforcedUntil] : []),
+    wallUntil(a, ctx.held),
   ];
 }
 
@@ -106,11 +117,16 @@ export function isExhausted(a: Account, ctx: PickCtx): boolean {
 }
 
 export function landWindows(a: Account, windows: Window[], at: number, thresholds: Bars): void {
-  const ctx: PickCtx = { now: at, thresholds, currentId: null, families: [], seats: null };
-  const blocked = a.enforcedUntil != null && isExhausted({ ...a, enforcedUntil: undefined, hasCredits: false }, ctx);
+  const ctx: PickCtx = { now: at, thresholds, currentId: null, families: [], held: [], seats: null };
+  const bare = (): Account => ({ ...a, enforcedUntil: undefined, familyUntil: undefined, hasCredits: false });
+  const familyBlocked = (f: string): boolean => gatedWindows(a, [f]).some((w) => blockedUntil(bare(), w, thresholds, at) > at);
+  const blocked = a.enforcedUntil != null && isExhausted(bare(), ctx);
+  const families = Object.keys(a.familyUntil ?? {}).filter(familyBlocked);
   a.windows = windows;
   a.lastUsageAt = at;
-  if (blocked && !isExhausted({ ...a, enforcedUntil: undefined, hasCredits: false }, ctx)) a.enforcedUntil = undefined;
+  if (blocked && !isExhausted(bare(), ctx)) a.enforcedUntil = undefined;
+  const cleared = families.filter((f) => gatedWindows(a, [f]).length > 0 && !familyBlocked(f));
+  if (cleared.length > 0) a.familyUntil = Object.fromEntries(Object.entries(a.familyUntil ?? {}).filter(([f]) => !cleared.includes(f)));
 }
 
 export function nextWeeklyReset(resetsAt: number | null, now: number): number | null {

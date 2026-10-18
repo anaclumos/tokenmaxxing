@@ -5,7 +5,7 @@ import { claude } from "../lib/claude.ts";
 import { liveApiKeyId, refuseApiKey } from "../lib/apikeys.ts";
 import { evaluateAndMaybeSwap, moveTarget } from "../lib/decide.ts";
 import { readStdin } from "../lib/proc.ts";
-import { adoptLiveSession, keyMovesSupported, refusedAccounts, supervisedSession, writeRespawnMarker } from "../lib/sessions.ts";
+import { addSessionHeld, adoptLiveSession, keyMovesSupported, refusedAccounts, supervisedSession, writeRespawnMarker } from "../lib/sessions.ts";
 import { loadConfig } from "../lib/state.ts";
 import { classifyEnforcedLimit, ENFORCED_ERRORS, findEnforcedRow, parseErrorBody, readTranscriptTail, type TranscriptRow } from "../lib/usage.ts";
 import { paths } from "../lib/paths.ts";
@@ -87,6 +87,7 @@ export async function runStopFailureHook(): Promise<number> {
     if (limit && account) {
       enforced = { account, kind: limit.kind, family: limit.kind === "model" || limit.kind === "credits" ? limit.family : null, resetsAt: limit.resetsAt, blind: !mainLoop && limit.kind !== "model" };
       log("stopfailure.enforced", { kind: limit.kind, family: enforced.family ?? undefined, resetsAt: limit.resetsAt, subagent: !mainLoop });
+      if (session && !mainLoop && enforced.family != null) addSessionHeld(session.sid, enforced.family);
     } else {
       log("stopfailure.unclassified", {
         seat: account != null,

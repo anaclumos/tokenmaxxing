@@ -5,8 +5,8 @@ import { claudePool, seatFromEnv } from "../lib/paths.ts";
 import { supervisedSession } from "../lib/sessions.ts";
 import { errorMessage, log } from "../lib/log.ts";
 import { loadAccounts, loadConfig, writeUsage } from "../lib/state.ts";
-import { familyTokens, matchedFamily, parseStatusLineStdin, parseStatusLineModel } from "../lib/usage.ts";
-import { bufferedUsed, earliestReset, limitWindows, liveUsed, thresholdBars, weeklyExpiry, weeklyWindow } from "../lib/picker.ts";
+import { familyTokens, heldFamilies, matchedFamily, parseStatusLineStdin, parseStatusLineModel } from "../lib/usage.ts";
+import { bufferedUsed, earliestReset, limitWindows, liveUsed, thresholdBars, wallUntil, weeklyExpiry, weeklyWindow } from "../lib/picker.ts";
 import { readStdin } from "../lib/proc.ts";
 import { worktreeName } from "../lib/worktree.ts";
 import { fmtResetShort, makeColors, makeUsagePaint, statuslineColor } from "../cli/render.ts";
@@ -68,7 +68,8 @@ export function renderStatusline(stdinObj: unknown, ctx: RenderCtx): string {
   const initial = (name: string) => (familyTokens(name).includes("fable") ? "𝒇" : name.slice(0, 1).toUpperCase());
   const wins = parseStatusLineStdin(stdinObj);
   const windows: string[] = [];
-  const family = matchedFamily(parseStatusLineModel(stdinObj), ctx.switchModels);
+  const model = parseStatusLineModel(stdinObj);
+  const family = matchedFamily(model, ctx.switchModels);
   if (family && !Object.keys(ctx.perModel).some((k) => familyTokens(k).includes(family))) {
     windows.push(`${initial(family)}?`);
   }
@@ -81,9 +82,10 @@ export function renderStatusline(stdinObj: unknown, ctx: RenderCtx): string {
     windows.push(seg("", seatUsed(stdinWindow(wins.fiveHour, FIVE_HOUR_S)), wins.fiveHour.resetsAt));
     windows.push(seg("", seatUsed(stdinWindow(wins.sevenDay, SEVEN_DAY_S)), wins.sevenDay.resetsAt));
   }
-  const walled = (a: Account) => a.enforcedUntil != null && a.enforcedUntil > ctx.now;
-  const wallSeg = (wall: number) => seg("", 100, wall);
-  if (seat?.enforcedUntil != null && walled(seat)) windows.push(wallSeg(seat.enforcedUntil));
+  const held = heldFamilies(model);
+  const walled = (a: Account) => wallUntil(a, held) > ctx.now;
+  const wallSeg = (a: Account) => seg("", 100, wallUntil(a, held));
+  if (seat && walled(seat)) windows.push(wallSeg(seat));
   const seatMarker = seat && walled(seat) ? paint(100)("◆") : col.green("◆");
   const active =
     windows.length > 0
@@ -98,7 +100,7 @@ export function renderStatusline(stdinObj: unknown, ctx: RenderCtx): string {
   );
   const poolSeg = (a: Account): string => {
     const marker = a.needsReauth ? col.red("✗") : walled(a) ? paint(100)("◇") : col.cyan("◇");
-    if (a.enforcedUntil != null && walled(a)) return `${marker} ${wallSeg(a.enforcedUntil)}`;
+    if (walled(a)) return `${marker} ${wallSeg(a)}`;
     const week = weeklyWindow(a);
     if (week == null) return `${marker} ?`;
     const weekUsed = used(a, week);

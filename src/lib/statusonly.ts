@@ -98,6 +98,7 @@ export function statusOnlyProvider(spec: StatusOnlySpec): Provider {
     liveId: spec.liveId,
     presence: spec.presence,
     gatedFamilies: () => null,
+    heldFamilies: () => null,
     observeLive: async (account) => (account.lastUsageAt != null ? { windows: account.windows, at: account.lastUsageAt } : null),
     samplePool: spec.samplePool,
     mergeWindows: (next) => next,
