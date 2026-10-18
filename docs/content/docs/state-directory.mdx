@@ -221,7 +221,7 @@ The `codex-*` entries are the Codex pool's own state.
 | A shim-run `exec`, `e`, or `review` | The codex child's pid |
 | A shim-run bare `app-server` | The shim's pid, which outlives each app-server it restarts on a fresh account |
 
-A borrow picks an account with a 5-hour window whenever one is usable, and among those the account the fewest records name.
+A borrow picks an account whose quota expires within a day whenever one is usable, else an account with a 5-hour window whenever one is usable, and among those the account the fewest records name (expiring quota goes to the account with the most to lose, however many records name it).
 
 ### pi stores
 

@@ -2,7 +2,7 @@ import { once } from "node:events";
 import type { Subprocess } from "bun";
 import { pick, pickBy } from "es-toolkit";
 import { z } from "zod";
-import { borrowCodexSeat, codexPickCtx, codexTeamOpen, observeCodex } from "./codex.ts";
+import { borrowCodexSeat, codexPickCtx, codexPlanOrderOpen, observeCodex } from "./codex.ts";
 import { ensureCodexStoreHome } from "./codexauth.ts";
 import { withLock } from "./lock.ts";
 import { errorMessage, log } from "./log.ts";
@@ -18,7 +18,7 @@ const REFUSED_HOLD_MS = 30 * 60 * 1000;
 const REPLAY_TIMEOUT_MS = 30_000;
 const STOP_GRACE_MS = 5_000;
 const EPHEMERAL_IDLE_MS = 15 * 60 * 1000;
-const TEAM_RETRY_MS = 15 * 60 * 1000;
+const PLAN_ORDER_RETRY_MS = 15 * 60 * 1000;
 const REPLAY_ID = "tokenmaxxing-replay-";
 const THREAD_OPENERS = new Set(["thread/start", "thread/resume", "thread/fork"]);
 const RESUME_KEYS = ["approvalPolicy", "approvalsReviewer", "baseInstructions", "config", "cwd", "developerInstructions", "model", "modelProvider", "personality", "sandbox", "serviceTier"];
@@ -163,8 +163,8 @@ export async function runCodexAppServer(input: {
   let replaying = false;
   let moving: Promise<void> | null = null;
   let wantMove = false;
-  let wantTeam = false;
-  let teamRetryAt = 0;
+  let wantPlanOrder = false;
+  let planOrderRetryAt = 0;
   let checking = false;
   let ended = false;
   let terminated = false;
@@ -260,16 +260,16 @@ export async function runCodexAppServer(input: {
 
   const move = async (): Promise<void> => {
     await holding;
-    const teamOnly = wantTeam;
-    wantTeam = false;
-    const granted = await borrowCodexSeat(process.pid, nextSeatId, { teamOnly }).catch((e: unknown) => {
+    const planOrder = wantPlanOrder;
+    wantPlanOrder = false;
+    const granted = await borrowCodexSeat(process.pid, nextSeatId, planOrder ? { betterThan: held } : {}).catch((e: unknown) => {
       log("codexappserver.borrow_failed", { err: errorMessage(e) });
       return null;
     });
     wantMove = false;
     const clearNext = (): void => clearPresence({ dir: codexPaths.presenceDir, id: nextSeatId });
     if (!granted || "denied" in granted || granted.id === held || terminated) {
-      if (teamOnly) teamRetryAt = Date.now() + TEAM_RETRY_MS;
+      if (planOrder) planOrderRetryAt = Date.now() + PLAN_ORDER_RETRY_MS;
       clearNext();
       log("codexappserver.move_none", { account: held.slice(0, 8), reason: terminated ? "shutting down" : granted && "denied" in granted ? granted.denied : granted ? "held account is still the best pick" : "no usable account" });
       return;
@@ -301,7 +301,7 @@ export async function runCodexAppServer(input: {
     checking = true;
     try {
       if (!wantMove && (await heldExhausted(held))) wantMove = true;
-      else if (!wantMove && Date.now() >= teamRetryAt && codexTeamOpen(held, Date.now())) wantMove = wantTeam = true;
+      else if (!wantMove && Date.now() >= planOrderRetryAt && codexPlanOrderOpen(held, Date.now())) wantMove = wantPlanOrder = true;
     } catch (e) {
       log("codexappserver.check_failed", { err: errorMessage(e) });
     } finally {
