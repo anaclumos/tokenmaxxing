@@ -2,7 +2,7 @@ import { once } from "node:events";
 import type { Subprocess } from "bun";
 import { pick, pickBy } from "es-toolkit";
 import { z } from "zod";
-import { borrowCodexSeat, codexPickCtx, observeCodex } from "./codex.ts";
+import { borrowCodexSeat, codexPickCtx, codexTeamOpen, observeCodex } from "./codex.ts";
 import { ensureCodexStoreHome } from "./codexauth.ts";
 import { withLock } from "./lock.ts";
 import { errorMessage, log } from "./log.ts";
@@ -294,7 +294,7 @@ export async function runCodexAppServer(input: {
     if (checking || moving || ended || terminated) return;
     checking = true;
     try {
-      if (!wantMove && (await heldExhausted(held))) wantMove = true;
+      if (!wantMove && ((await heldExhausted(held)) || codexTeamOpen(held, Date.now()))) wantMove = true;
     } catch (e) {
       log("codexappserver.check_failed", { err: errorMessage(e) });
     } finally {

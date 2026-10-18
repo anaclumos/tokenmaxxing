@@ -14,7 +14,7 @@ import { codexSupervisorLink, ensurePathInRc, installCodexSupervisor, managedShe
 import { withLock } from "./lock.ts";
 import { errorMessage, log } from "./log.ts";
 import { codexPaths, codexPool, codexSeatFromEnv, optionalEnv } from "./paths.ts";
-import { isExhausted, landGrant, onCredits, pickBest, pickEarliestReset, thresholdBars, type PickCtx } from "./picker.ts";
+import { isExhausted, landGrant, onCredits, pickBest, pickEarliestReset, sessionWindow, thresholdBars, type PickCtx } from "./picker.ts";
 import { StoreUnusableError, type Observation, type Provider, type SampleReport, type SeatBorrow } from "./provider.ts";
 import { loadAccounts, loadConfig, pinBinOverride, saveAccounts, type Harvest } from "./state.ts";
 import { restoreTermios, saveTermios } from "./tty.ts";
@@ -310,6 +310,24 @@ export function pickCodexSeat(now: number, eligible: (a: Account) => boolean = (
   return pickBest(open.filter((a) => !isExhausted(a, ctx)), ctx) ?? pickEarliestReset(open, ctx)?.account ?? null;
 }
 
+// Codex work is mostly short reviews that fit inside a 5-hour window, which refills within hours, while a weekly-only
+// (Pro) account's quota is gone until the week resets: every usable account with a session window (Team) takes the
+// borrow before any weekly-only one, however much more headroom the weekly-only account has.
+function teamFirst(accounts: Account[]): Account[] {
+  const windowed = accounts.filter((a) => sessionWindow(a) != null);
+  return windowed.length > 0 ? windowed : accounts;
+}
+
+// Whether a usable account with a session window could take the borrow that `heldId`, a weekly-only account, holds.
+export function codexTeamOpen(heldId: string, now: number): boolean {
+  const ctx = codexPickCtx(now, null);
+  const accounts = loadAccounts(codexPool).accounts;
+  const held = accounts.find((a) => a.id === heldId);
+  if (held == null || sessionWindow(held) != null) return false;
+  const closed = new Set(livingPresences(codexPaths.presenceDir).filter((p) => p.id.startsWith(PI_PRESENCE_PREFIX)).map((p) => p.accountId));
+  return accounts.some((a) => a.id !== heldId && sessionWindow(a) != null && !closed.has(a.id) && a.needsReauth !== true && !isExhausted(a, ctx) && !onCredits(a, ctx) && codexStoreUsable(a.id));
+}
+
 export async function borrowCodexSeat(pid: number, seatId = `seat-${pid}`): Promise<SeatBorrow> {
   const now = Date.now();
   const cfg = loadConfig();
@@ -344,7 +362,7 @@ export async function borrowCodexSeat(pid: number, seatId = `seat-${pid}`): Prom
       (a) => !closed.has(a.id) && !rejected.has(a.id) && a.needsReauth !== true && !isExhausted(a, ctx) && codexStoreUsable(a.id)
     );
     const plan = usable.filter((a) => !onCredits(a, ctx));
-    const open = plan.length > 0 ? plan : usable;
+    const open = teamFirst(plan.length > 0 ? plan : usable);
     const fewest = Math.min(...open.map((a) => lent[a.id] ?? 0));
     const picked = pickBest(open.filter((a) => (lent[a.id] ?? 0) === fewest), ctx);
     if (!picked) return null;
