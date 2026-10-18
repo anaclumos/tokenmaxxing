@@ -324,11 +324,13 @@ export function codexTeamOpen(heldId: string, now: number): boolean {
   const accounts = loadAccounts(codexPool).accounts;
   const held = accounts.find((a) => a.id === heldId);
   if (held == null || sessionWindow(held) != null) return false;
-  const closed = new Set(livingPresences(codexPaths.presenceDir).filter((p) => p.id.startsWith(PI_PRESENCE_PREFIX)).map((p) => p.accountId));
+  const parent = optionalEnv(CODEX_SUPERVISOR_ID_ENV);
+  const closed = new Set(livingPresences(codexPaths.presenceDir).filter((p) => p.id === parent || p.id.startsWith(PI_PRESENCE_PREFIX)).map((p) => p.accountId));
   return accounts.some((a) => a.id !== heldId && sessionWindow(a) != null && !closed.has(a.id) && a.needsReauth !== true && !isExhausted(a, ctx) && !onCredits(a, ctx) && codexStoreUsable(a.id));
 }
 
-export async function borrowCodexSeat(pid: number, seatId = `seat-${pid}`): Promise<SeatBorrow> {
+// `teamOnly` grants only an account with a session window, so a move made for plan order never lands on another weekly-only account.
+export async function borrowCodexSeat(pid: number, seatId = `seat-${pid}`, opts: { teamOnly?: boolean } = {}): Promise<SeatBorrow> {
   const now = Date.now();
   const cfg = loadConfig();
   const rejected = new Set<string>();
@@ -363,6 +365,7 @@ export async function borrowCodexSeat(pid: number, seatId = `seat-${pid}`): Prom
     );
     const plan = usable.filter((a) => !onCredits(a, ctx));
     const open = teamFirst(plan.length > 0 ? plan : usable);
+    if (opts.teamOnly && !open.some((a) => sessionWindow(a) != null)) return null;
     const fewest = Math.min(...open.map((a) => lent[a.id] ?? 0));
     const picked = pickBest(open.filter((a) => (lent[a.id] ?? 0) === fewest), ctx);
     if (!picked) return null;
