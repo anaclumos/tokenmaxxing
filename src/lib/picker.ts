@@ -219,9 +219,11 @@ function stale(a: Account, ctx: PickCtx): boolean {
 // Use it or lose it: when an account's longest window (the weekly one, or the 5-hour one on a plan without a weekly window)
 // resets within a day, the quota left under its bar is lost at the reset. Returns that quota, scaled by plan size, per
 // millisecond until the reset, so the account with the most to lose soonest scores highest; 0 when nothing expires within a day.
+// Only a reset the provider reported and that is still ahead counts: a window that already reset, or a closed window with no
+// reset, starts again with the next request, so nothing in it expires.
 export function expiringPressure(a: Account, ctx: PickCtx): number {
   const w = weeklyWindow(a) ?? sessionWindow(a);
-  const reset = w == null ? null : windowResetAt(w, ctx.now);
+  const reset = w?.resetsAt;
   if (w == null || reset == null || reset <= ctx.now || reset - ctx.now > EXPIRING_MS) return 0;
   return (Math.max(0, barFor(a, w, ctx.thresholds, ctx.now) - liveUsed(w, ctx.now)) * planWeight(a, ctx)) / (reset - ctx.now);
 }

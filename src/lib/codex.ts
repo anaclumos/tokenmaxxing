@@ -375,8 +375,10 @@ export async function borrowCodexSeat(pid: number, seatId = `seat-${pid}`, opts:
     const open = planOrder(plan.length > 0 ? plan : usable, ctx);
     const leaving = idx.accounts.find((a) => a.id === opts.betterThan);
     if (opts.betterThan != null && (leaving == null || !open.some((a) => planTier(a, ctx) < planTier(leaving, ctx)))) return null;
+    // Expiring quota goes to the account with the most to lose however many borrowers it has; other tiers spread by borrowers first.
     const fewest = Math.min(...open.map((a) => lent[a.id] ?? 0));
-    const picked = pickBest(open.filter((a) => (lent[a.id] ?? 0) === fewest), ctx);
+    const spread = open.some((a) => planTier(a, ctx) === 0) ? open : open.filter((a) => (lent[a.id] ?? 0) === fewest);
+    const picked = pickBest(spread, ctx);
     if (!picked) return null;
     const store = ensureCodexStoreHome(picked.id);
     writePresence({ dir: codexPaths.presenceDir, id: seatId, accountId: picked.id, pid });
