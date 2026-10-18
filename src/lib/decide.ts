@@ -2,7 +2,7 @@ import { countBy } from "es-toolkit";
 import { CLAUDE_COMPACT_KILL_MS } from "./compact.ts";
 import { withLock } from "./lock.ts";
 import { loadAccounts, loadConfig, liveWaitClaims, releaseWaitClaim, replaceWaitClaim, saveAccounts } from "./state.ts";
-import { MAX_WAITERS_PER_ACCOUNT, isExhausted, landWindows, limitWindows, liveUsed, nextWeeklyReset, onCredits, pickBest, pickWaitTarget, screensUntilReset, sessionWindow, thresholdBars, wantsBankedReset, weeklyWindow, type PickCtx } from "./picker.ts";
+import { MAX_WAITERS_PER_ACCOUNT, isExhausted, landWindows, limitWindows, liveFamilyWalls, liveUsed, nextWeeklyReset, onCredits, pickBest, pickWaitTarget, screensUntilReset, sessionWindow, thresholdBars, wallUntil, wantsBankedReset, weeklyWindow, type PickCtx } from "./picker.ts";
 import { familyTokens } from "./usage.ts";
 import { errorMessage, log } from "./log.ts";
 import type { Observation, Provider, ResetClaim } from "./provider.ts";
@@ -13,6 +13,7 @@ export type SwapDecision = { swapped: boolean; account: Account | null; apiKey?:
 export type EvalOpts = {
   seatId?: string | null;
   sessionFamilies?: string[];
+  sessionHeld?: string[] | null;
   waiterId?: string;
   refused?: string[];
   apiKeys?: boolean;
@@ -35,7 +36,7 @@ const FIVE_HOURS_MS = 5 * 60 * 60 * 1000;
 function isOver(account: Account | undefined, observed: Observation | null, ctx: PickCtx): boolean {
   if (!account) return false;
   if (account.needsReauth === true) return true;
-  if (account.enforcedUntil != null && account.enforcedUntil > ctx.now) return true;
+  if (wallUntil(account, ctx.held) > ctx.now) return true;
   if (!observed) return false;
   const seen = { ...account, windows: observed.windows };
   return isExhausted(seen, ctx) || onCredits(seen, ctx);
@@ -122,12 +123,13 @@ export async function evaluateAndMaybeSwap(p: Provider, now = Date.now(), canRes
   const bars = thresholdBars(cfg);
   if (enforced == null) await useBankedResets(p, cfg, now);
   const stored0 = loadAccounts(p.pool).accounts.find((a) => a.id === activeId);
-  const walled0 = stored0?.enforcedUntil != null && stored0.enforcedUntil > now;
   const gated = opts.sessionFamilies ?? p.gatedFamilies(cfg);
+  const held = opts.sessionHeld !== undefined ? opts.sessionHeld : p.heldFamilies();
+  const walled0 = stored0 != null && wallUntil(stored0, held) > now;
   const observed = stored0 ? await p.observeLive(stored0, cfg, now, { probe: enforced == null && !walled0, perModel: gated == null || gated.length > 0 }) : null;
   const stored = loadAccounts(p.pool).accounts.find((a) => a.id === activeId);
 
-  if (!enforced && keyId == null && !isOver(stored, observed, { now, thresholds: bars, currentId: activeId, families: gated, seats: null })) {
+  if (!enforced && keyId == null && !isOver(stored, observed, { now, thresholds: bars, currentId: activeId, families: gated, held, seats: null })) {
     if (waiterId != null && liveWaitClaims(now).some((c) => c.sessionId === waiterId)) {
       await withLock(p.pool.lockFile, () => {
         releaseWaitClaim(waiterId);
@@ -143,17 +145,21 @@ export async function evaluateAndMaybeSwap(p: Provider, now = Date.now(), canRes
     const active = id2 ? idx.accounts.find((a) => a.id === id2) : undefined;
 
     const origin = enforced ? idx.accounts.find((a) => a.id === enforced.account) : undefined;
-    const prior = origin?.enforcedUntil != null && origin.enforcedUntil > now;
+    const scope = enforced?.family ?? null;
+    const scoped = scope == null ? [] : [scope];
+    const prior = origin != null && wallUntil(origin, scoped) > now;
     let stamped = false;
     if (enforced && origin) {
       const covered = modelKindCovered(enforced, origin, now, bars);
       if (!covered || prior) {
-        origin.enforcedUntil = Math.max(origin.enforcedUntil ?? 0, enforcedWall(enforced, origin, now));
+        const until = enforcedWall(enforced, origin, now);
+        if (scope == null) origin.enforcedUntil = Math.max(origin.enforcedUntil ?? 0, until);
+        else origin.familyUntil = { ...liveFamilyWalls(origin, now), [scope]: Math.max(origin.familyUntil?.[scope] ?? 0, until) };
         stamped = true;
       }
       origin.lastProbeAt = now;
       saveAccounts(p.pool, idx);
-      log("usage.enforced_limit", { kind: enforced.kind, family: enforced.family ?? undefined, resetsAt: origin.enforcedUntil, blind: prior || enforced.blind, live: origin === active, covered: covered && !prior });
+      log("usage.enforced_limit", { kind: enforced.kind, family: scope ?? undefined, resetsAt: wallUntil(origin, scoped), blind: prior || enforced.blind, live: origin === active, covered: covered && !prior });
     }
     const enforced2 = stamped && origin === active ? enforced : null;
 
@@ -169,16 +175,16 @@ export async function evaluateAndMaybeSwap(p: Provider, now = Date.now(), canRes
     saveAccounts(p.pool, idx);
 
     const families = opts.sessionFamilies ?? p.gatedFamilies(cfg);
-    const walled = active?.enforcedUntil != null && active.enforcedUntil > now;
+    const walled = active != null && wallUntil(active, held) > now;
     const blindScreen = (enforced != null && (prior || enforced.blind)) || (walled && !enforced2);
     const screened = blindScreen && families != null ? cfg.policy.switchModels : families;
-    const family = enforced?.family ?? null;
-    const switchFamilies = screened == null ? null : family != null && !screened.includes(family) ? [...screened, family] : screened;
+    const switchFamilies = screened == null ? null : scope != null && !screened.includes(scope) ? [...screened, scope] : screened;
+    const switchHeld = held == null || scope == null || held.includes(scope) ? held : [...held, scope];
     const present = p.presence();
     const seats = p.seats === "shared" ? present : null;
 
-    const seatExhausted = active != null && isExhausted(active, { now, thresholds: bars, currentId: id2, families: switchFamilies, seats });
-    if (keyId == null && !enforced2 && !isOver(active, obs2, { now, thresholds: bars, currentId: id2, families, seats }) && !(enforced && seatExhausted)) {
+    const seatExhausted = active != null && isExhausted(active, { now, thresholds: bars, currentId: id2, families: switchFamilies, held: switchHeld, seats });
+    if (keyId == null && !enforced2 && !isOver(active, obs2, { now, thresholds: bars, currentId: id2, families, held, seats }) && !(enforced && seatExhausted)) {
       return { swapped: false, account: null, reason: "raced-already-swapped" };
     }
     if (p.seats === "shared" && !canRespawn) {
@@ -197,7 +203,7 @@ export async function evaluateAndMaybeSwap(p: Provider, now = Date.now(), canRes
     while (true) {
       const cur = loadAccounts(p.pool);
       const seat = seatOf(cur);
-      const ctx: PickCtx = { now, thresholds: bars, currentId: seat?.id ?? null, families: switchFamilies, seats, planWeight: p.planWeight };
+      const ctx: PickCtx = { now, thresholds: bars, currentId: seat?.id ?? null, families: switchFamilies, held: switchHeld, seats, planWeight: p.planWeight };
       const credited = !enforced2 && seat != null && !seat.needsReauth && !isExhausted(seat, ctx) && onCredits(seat, ctx);
       const best = pickBest(usable(cur.accounts).filter((a) => !((credited || keyId != null) && opts.refused?.includes(a.id))), ctx);
       if (credited && (best == null || onCredits(best, ctx))) return { swapped: false, account: null, reason: "no-plan-headroom" };
@@ -230,7 +236,7 @@ export async function evaluateAndMaybeSwap(p: Provider, now = Date.now(), canRes
     while (true) {
       const fresh = loadAccounts(p.pool);
       const current = seatOf(fresh);
-      const ctx: PickCtx = { now, thresholds: bars, currentId: current?.id ?? null, families: switchFamilies, seats, planWeight: p.planWeight };
+      const ctx: PickCtx = { now, thresholds: bars, currentId: current?.id ?? null, families: switchFamilies, held: switchHeld, seats, planWeight: p.planWeight };
       const others = liveWaitClaims(now).filter((c) => c.sessionId !== waiterId);
       const waiters = new Map(Object.entries(countBy(others, (c) => c.accountId)));
       const waitable = usable(fresh.accounts).filter((a) => keyId == null || !opts.refused?.includes(a.id));

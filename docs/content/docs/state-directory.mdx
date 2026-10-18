@@ -134,7 +134,7 @@ The tree lists the entries in the order of the sections below. Open a folder to 
 Each account in `accounts.json` has these fields.
 
 - Required: `id`, `label`, `email`, `tier`, `addedAt`, and `windows`.
-- Optional: `lastUsageAt`, `lastProbeAt`, `probeFails`, `storeFails`, `usageRetryAt`, `enforcedUntil`, `needsReauth`, and `oauthAccount`.
+- Optional: `lastUsageAt`, `lastProbeAt`, `probeFails`, `storeFails`, `usageRetryAt`, `enforcedUntil`, `familyUntil`, `needsReauth`, and `oauthAccount`.
 
 | Field | What it holds |
 |---|---|
@@ -142,6 +142,8 @@ Each account in `accounts.json` has these fields.
 | `probeFails` | Consecutive failed seat samples, for the backoff |
 | `storeFails` | Consecutive failed store reads on the check tick; five stamp `needsReauth` |
 | `usageRetryAt` | The time the `retry-after` of the usage endpoint's HTTP 429 names; no usage read is sent for the account before it |
+| `enforcedUntil` | The end of an account-wide wall a server refusal stamped; it binds every session (see [Enforced limits](/switching#enforced-limits)) |
+| `familyUntil` | The end of each family wall a per-model or usage-credits refusal stamped, keyed by family; it binds only that family's sessions |
 | `oauthAccount` | The object used to verify identity on `auth` |
 
 A window is `{name, usedPercentage, resetsAt, windowSeconds, sampledAt}`. `name` is `null` for the session and weekly windows and the limit or model name otherwise.
@@ -162,7 +164,7 @@ flowchart TD
 | `usage/<uuid8>.json` | The tee per account: the aggregate window snapshot pushed by the sessions running on that account. Its mtime is the feed's liveness heartbeat |
 | `live/<session-id>` | One PID-validated presence file per running supervised Claude session: the account id, the pid, and the start time. A session on an API key carries `apiKeyId` and an empty account id, and counts toward the key, not toward any account |
 | `live/seat-<pid>` | One record per Claude account lent by `seat <pid>`, validated against that pid |
-| `sessions/<session-id>.json` | Per-managed-session launch flags the supervisor persists for respawns, plus `current`, the live session id after a `/clear` or an in-session `/resume`. Pruned after 30 days idle (matching claude's own transcript retention), never while the session's record under `live/` exists |
+| `sessions/<session-id>.json` | Per-managed-session launch flags the supervisor persists for respawns, plus `current`, the live session id after a `/clear` or an in-session `/resume`. `held` lists the families a subagent of the session was refused for, whose family walls the seat watch honors. Pruned after 30 days idle (matching claude's own transcript retention), never while the session's record under `live/` exists |
 | `cost/<session-id>/<live-session-id>.json` | Written only while `api-keys.json` exists: the latest cumulative cost estimate (`{sessionId, usd}`) of one live session id of the launch, from the statusline in a terminal session and from the `result` lines in a stream-json session. The supervisor reads the folder and deletes it when the session ends. A folder that a killed supervisor left behind is pruned after 30 days idle, never while the session's record under `live/` exists |
 | `respawn/<session-id>` | Respawn markers the supervisor watches (fields below) |
 | `wait-queue.json` | One `{sessionId, accountId, at, waitUntil}` claim per supervised session that is moving or waiting, naming the account it relaunches on (lifecycle below) |

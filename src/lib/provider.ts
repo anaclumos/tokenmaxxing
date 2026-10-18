@@ -36,6 +36,7 @@ export type Provider = {
   liveId(): string | null;
   presence(): Map<string, number>;
   gatedFamilies(cfg: Config): string[] | null;
+  heldFamilies(): string[] | null;
   planWeight?(account: Account): number;
   observeLive(account: Account, cfg: Config, now: number, opts: { probe: boolean; perModel: boolean }): Promise<Observation | null>;
   samplePool(accounts: Account[], now: number): Promise<Map<string, SampleReport>>;

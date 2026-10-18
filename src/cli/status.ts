@@ -8,10 +8,10 @@ import { muse } from "../lib/muse.ts";
 import { loadAccounts, loadConfig, saveAccounts } from "../lib/state.ts";
 import { withLock } from "../lib/lock.ts";
 import { codexPool, cursorPool, grokPool, musePool } from "../lib/paths.ts";
-import { barFor, bufferedUsed, earliestReset, gatedWindows, landGrant, landWindows, isExhausted, isSessionWindow, limitWindows, liveUsed, nextWeeklyReset, sessionWindow, thresholdBars, weeklyWindow } from "../lib/picker.ts";
+import { barFor, bufferedUsed, earliestReset, gatedWindows, landGrant, landWindows, isExhausted, isSessionWindow, limitWindows, liveFamilyWalls, liveUsed, nextWeeklyReset, sessionWindow, thresholdBars, weeklyWindow } from "../lib/picker.ts";
 import type { Provider, SampleReport } from "../lib/provider.ts";
 import { usd } from "./key.ts";
-import { bar, c, count, emitJson, fmtAgo } from "./render.ts";
+import { bar, c, count, emitJson, fmtAgo, fmtReset } from "./render.ts";
 import type { Account, AccountThresholds, Bars, Config, Thresholds, Window } from "../lib/types.ts";
 
 const WEEK_S = 7 * 86400;
@@ -29,6 +29,7 @@ type StatusAccount = {
   sessions: number;
   needsReauth: boolean;
   exhausted: boolean;
+  familyWalls: Record<string, number>;
   thresholds: AccountThresholds | null;
   usage: UsageReport | null;
   usageAt: number | null;
@@ -184,7 +185,7 @@ async function collect(p: Provider, cfg: Config, now: number, cached: boolean): 
   }
 
   const present = p.presence();
-  const ctx = { now, thresholds: bars, currentId: null, families: p.gatedFamilies(cfg), seats: null };
+  const ctx = { now, thresholds: bars, currentId: null, families: p.gatedFamilies(cfg), held: p.heldFamilies() ?? [], seats: null };
   const own = new Map(Object.entries(cfg.thresholds.accounts));
   const ordered = sortBy(idx.accounts, [(a) => (a.needsReauth ? 1 : 0), (a) => earliestReset(a, now)]);
   const accounts = ordered.map((a): StatusAccount => {
@@ -198,6 +199,7 @@ async function collect(p: Provider, cfg: Config, now: number, cached: boolean): 
       sessions: present.get(a.id) ?? 0,
       needsReauth: a.needsReauth === true,
       exhausted: isExhausted(a, ctx),
+      familyWalls: liveFamilyWalls(a, now),
       thresholds: own.get(a.label) ?? null,
       usage: usageReport(a, p.statusOnly ? null : bars, now),
       usageAt: a.lastUsageAt ?? null,
@@ -257,13 +259,14 @@ function cachedNote(usageAt: number | null, now: number): Note {
   return { paint: c.dim, text: usageAt != null ? `cached ${fmtAgo(usageAt, now)}` : "never sampled" };
 }
 
-function headerLine(input: { active: boolean; sessions: number; needsReauth: boolean; exhausted: boolean; name: string; tier: string | null }): string {
+function headerLine(input: { active: boolean; sessions: number; needsReauth: boolean; exhausted: boolean; familyWalls: Record<string, number>; name: string; tier: string | null }): string {
   const marker = input.active ? c.green("●") : c.dim("○");
   const badges: string[] = [];
   if (input.active) badges.push(c.green("active"));
   if (input.sessions > 0) badges.push(c.green(count({ n: input.sessions, noun: "session" })));
   if (input.needsReauth) badges.push(c.red("needs-reauth"));
   if (input.exhausted) badges.push(c.yellow("exhausted"));
+  for (const family of Object.keys(input.familyWalls)) badges.push(c.yellow(`${family}-walled`));
   return `${marker} ${c.bold(input.name)}${input.tier ? ` ${c.dim(input.tier)}` : ""}${badges.length ? ` ${badges.join(" ")}` : ""}`;
 }
 
@@ -275,6 +278,7 @@ function card(p: Provider, a: StatusAccount, now: number, staleAfterMs: number):
     for (const w of a.usage.limits) lines.push(usageRow(p.windowLabel(w.name), w));
   }
   const notes: Note[] = [];
+  for (const [family, until] of Object.entries(a.familyWalls)) notes.push({ paint: c.yellow, text: `${family}-walled for ${family} sessions only, ${fmtReset(until, now).replace("resets", "ends")}` });
   if (a.thresholds) notes.push({ paint: c.dim, text: `thresholds 5h ${a.thresholds.session}% weekly ${a.thresholds.weekly}%${a.thresholds.credits ? ", usable past them on credits" : ""}` });
   if (a.sample.ok && a.sample.source === "statusline") {
     const stale = a.usageAt == null || now - a.usageAt > staleAfterMs;

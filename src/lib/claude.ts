@@ -18,12 +18,17 @@ import { StoreUnusableError, type Observation, type Provider, type ResetClaim, t
 import { claimSample, foldTee, landRead, readyToSample, runSample, sampleAccountUsage, sampleDue, sampleIntervalMs, teeObservation, usageBlockedUntil } from "./sample.ts";
 import { clearUsageSnapshot, liveWaitClaims, loadAccounts, loadConfig, loadUsageSnapshot, pinBinOverride, readJsonFile, saveAccounts, type Harvest } from "./state.ts";
 import { saveTermios, restoreTermios } from "./tty.ts";
-import { claimResetGrant, fetchUsageDirect, gatedFamilies, mergeWindows, modelFromFlag, scrubCredEnv, windowsOf } from "./usage.ts";
+import { claimResetGrant, fetchUsageDirect, gatedFamilies, heldFamilies, mergeWindows, modelFromFlag, scrubCredEnv, windowsOf } from "./usage.ts";
 import { CredentialBlobSchema, JsonTextSchema, OAuthAccountSchema, type Account, type ApiKey, type Config, type ModelInfo } from "./types.ts";
 import { c } from "../cli/render.ts";
 
 function liveId(): string | null {
   return seatFromEnv(loadAccounts(claudePool).accounts.map((a) => a.id));
+}
+
+function liveModel(): ModelInfo | null {
+  const seat = liveId();
+  return modelFromFlag(env("TOKENMAXXING_MODEL", "")) ?? (seat == null ? null : (loadUsageSnapshot(seat)?.state.model ?? null));
 }
 
 function presence(living = livingPresences(paths.presenceDir)): Map<string, number> {
@@ -156,7 +161,7 @@ export function pickSeat(now: number, model: ModelInfo | null, eligible: (a: Acc
   for (const a of idx.accounts) dirty = foldTee(a, bars) || dirty;
   if (dirty) saveAccounts(claudePool, idx);
   const seats = presence();
-  const ctx: PickCtx = { now, thresholds: bars, currentId: null, families: gatedFamilies(model, cfg.policy.switchModels), seats, planWeight: claudePlanWeight };
+  const ctx: PickCtx = { now, thresholds: bars, currentId: null, families: gatedFamilies(model, cfg.policy.switchModels), held: heldFamilies(model), seats, planWeight: claudePlanWeight };
   const candidates = idx.accounts.filter(eligible);
   const best = pickBest(candidates, ctx);
   if (best) return { account: best };
@@ -368,11 +373,8 @@ export const claude: Provider = {
   liveId,
   presence,
   planWeight: claudePlanWeight,
-  gatedFamilies: (cfg) => {
-    const seat = liveId();
-    const model = modelFromFlag(env("TOKENMAXXING_MODEL", "")) ?? (seat == null ? null : (loadUsageSnapshot(seat)?.state.model ?? null));
-    return gatedFamilies(model, cfg.policy.switchModels);
-  },
+  gatedFamilies: (cfg) => gatedFamilies(liveModel(), cfg.policy.switchModels),
+  heldFamilies: () => heldFamilies(liveModel()),
   observeLive,
   samplePool,
   mergeWindows,

@@ -65,6 +65,13 @@ export function gatedFamilies(model: ModelInfo | null, families: string[]): stri
 
 const MODEL_FAMILIES = ["sonnet", "opus", "haiku", "fable"];
 
+// The families whose family-scoped walls bind a session: its model's own family whatever `switchModels` gates, null when the model is unknown.
+export function heldFamilies(model: ModelInfo | null): string[] | null {
+  if (!model) return null;
+  const family = matchedFamily(model, MODEL_FAMILIES);
+  return family ? [family] : [];
+}
+
 export function modelFromFlag(value: string | null): ModelInfo | null {
   const name = value?.split("[")[0]?.trim() ?? "";
   const tokens = familyTokens(name);
