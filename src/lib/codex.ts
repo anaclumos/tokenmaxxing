@@ -14,7 +14,7 @@ import { codexSupervisorLink, ensurePathInRc, installCodexSupervisor, managedShe
 import { withLock } from "./lock.ts";
 import { errorMessage, log } from "./log.ts";
 import { codexPaths, codexPool, codexSeatFromEnv, optionalEnv } from "./paths.ts";
-import { isExhausted, landGrant, onCredits, pickBest, pickEarliestReset, sessionWindow, thresholdBars, type PickCtx } from "./picker.ts";
+import { expiringPressure, isExhausted, landGrant, onCredits, pickBest, pickEarliestReset, sessionWindow, thresholdBars, type PickCtx } from "./picker.ts";
 import { StoreUnusableError, type Observation, type Provider, type SampleReport, type SeatBorrow } from "./provider.ts";
 import { loadAccounts, loadConfig, pinBinOverride, saveAccounts, type Harvest } from "./state.ts";
 import { restoreTermios, saveTermios } from "./tty.ts";
@@ -312,25 +312,33 @@ export function pickCodexSeat(now: number, eligible: (a: Account) => boolean = (
 
 // Codex work is mostly short reviews that fit inside a 5-hour window, which refills within hours, while a weekly-only
 // (Pro) account's quota is gone until the week resets: every usable account with a session window (Team) takes the
-// borrow before any weekly-only one, however much more headroom the weekly-only account has.
-function teamFirst(accounts: Account[]): Account[] {
-  const windowed = accounts.filter((a) => sessionWindow(a) != null);
-  return windowed.length > 0 ? windowed : accounts;
+// borrow before any weekly-only one, however much more headroom the weekly-only account has. Quota that expires within a
+// day outranks both (use it or lose it): a Pro account whose week resets within a day with quota left goes first, since
+// a Team account's 5-hour window refills within hours anyway.
+function planTier(a: Account, ctx: PickCtx): number {
+  if (expiringPressure(a, ctx) > 0) return 0;
+  return sessionWindow(a) != null ? 1 : 2;
 }
 
-// Whether a usable account with a session window could take the borrow that `heldId`, a weekly-only account, holds.
-export function codexTeamOpen(heldId: string, now: number): boolean {
+function planOrder(accounts: Account[], ctx: PickCtx): Account[] {
+  const top = Math.min(...accounts.map((a) => planTier(a, ctx)));
+  return accounts.filter((a) => planTier(a, ctx) === top);
+}
+
+// Whether a usable account of a better plan tier could take the borrow that `heldId` holds.
+export function codexPlanOrderOpen(heldId: string, now: number): boolean {
   const ctx = codexPickCtx(now, null);
   const accounts = loadAccounts(codexPool).accounts;
   const held = accounts.find((a) => a.id === heldId);
-  if (held == null || sessionWindow(held) != null) return false;
+  if (held == null) return false;
+  const tier = planTier(held, ctx);
   const parent = optionalEnv(CODEX_SUPERVISOR_ID_ENV);
   const closed = new Set(livingPresences(codexPaths.presenceDir).filter((p) => p.id === parent || p.id.startsWith(PI_PRESENCE_PREFIX)).map((p) => p.accountId));
-  return accounts.some((a) => a.id !== heldId && sessionWindow(a) != null && !closed.has(a.id) && a.needsReauth !== true && !isExhausted(a, ctx) && !onCredits(a, ctx) && codexStoreUsable(a.id));
+  return accounts.some((a) => a.id !== heldId && planTier(a, ctx) < tier && !closed.has(a.id) && a.needsReauth !== true && !isExhausted(a, ctx) && !onCredits(a, ctx) && codexStoreUsable(a.id));
 }
 
-// `teamOnly` grants only an account with a session window, so a move made for plan order never lands on another weekly-only account.
-export async function borrowCodexSeat(pid: number, seatId = `seat-${pid}`, opts: { teamOnly?: boolean } = {}): Promise<SeatBorrow> {
+// `betterThan` grants only an account of a better plan tier than that account's, so a move made for plan order never lands on an account no better than the one it leaves.
+export async function borrowCodexSeat(pid: number, seatId = `seat-${pid}`, opts: { betterThan?: string } = {}): Promise<SeatBorrow> {
   const now = Date.now();
   const cfg = loadConfig();
   const rejected = new Set<string>();
@@ -364,8 +372,9 @@ export async function borrowCodexSeat(pid: number, seatId = `seat-${pid}`, opts:
       (a) => !closed.has(a.id) && !rejected.has(a.id) && a.needsReauth !== true && !isExhausted(a, ctx) && codexStoreUsable(a.id)
     );
     const plan = usable.filter((a) => !onCredits(a, ctx));
-    const open = teamFirst(plan.length > 0 ? plan : usable);
-    if (opts.teamOnly && !open.some((a) => sessionWindow(a) != null)) return null;
+    const open = planOrder(plan.length > 0 ? plan : usable, ctx);
+    const leaving = idx.accounts.find((a) => a.id === opts.betterThan);
+    if (opts.betterThan != null && (leaving == null || !open.some((a) => planTier(a, ctx) < planTier(leaving, ctx)))) return null;
     const fewest = Math.min(...open.map((a) => lent[a.id] ?? 0));
     const picked = pickBest(open.filter((a) => (lent[a.id] ?? 0) === fewest), ctx);
     if (!picked) return null;
