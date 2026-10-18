@@ -93,7 +93,7 @@ function json(value: unknown, status = 200): Response {
 
 function authFiles(cfg: Config, now: number): unknown {
   const files = POOLS.flatMap((pool) => {
-    const ctx = { now, thresholds: thresholdBars(cfg), currentId: null, families: pool.provider.gatedFamilies(cfg), seats: null };
+    const ctx = { now, thresholds: thresholdBars(cfg), currentId: null, families: pool.provider.gatedFamilies(cfg), held: pool.provider.heldFamilies() ?? [], seats: null };
     return loadAccounts(pool.provider.pool).accounts.map((a) => {
       pool.fold(a, ctx.thresholds);
       return {

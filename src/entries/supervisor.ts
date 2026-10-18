@@ -10,7 +10,7 @@ import { claude, pickLaunch, pickSeat, type LaunchTarget } from "../lib/claude.t
 import { compactClaudeSession } from "../lib/compact.ts";
 import { evaluateAndMaybeSwap, moveTarget } from "../lib/decide.ts";
 import { withLock } from "../lib/lock.ts";
-import { limitWindows, liveUsed, sessionWindow, thresholdBars, usableAt, weeklyWindow } from "../lib/picker.ts";
+import { limitWindows, liveUsed, sessionWindow, thresholdBars, usableAt, wallUntil, weeklyWindow } from "../lib/picker.ts";
 import { clearPresence } from "../lib/presence.ts";
 import { readLines } from "../lib/proc.ts";
 import { teeObservation } from "../lib/sample.ts";
@@ -18,7 +18,7 @@ import { childStdout, clockFmt, exitStatus, loopGuardTripped, raceMarkerOrExit, 
 import { saveTermios } from "../lib/tty.ts";
 import { liveSessionId, loadSessionFlags, pruneStaleSessions, saveSessionFlags, writeRespawnMarker } from "../lib/sessions.ts";
 import { loadAccounts, loadConfig, readJsonFile, releaseWaitClaim, replaceWaitClaim, writeUsage } from "../lib/state.ts";
-import { gatedFamilies, modelFromFlag, parseStreamLine, scrubCredEnv } from "../lib/usage.ts";
+import { gatedFamilies, heldFamilies, modelFromFlag, parseStreamLine, scrubCredEnv } from "../lib/usage.ts";
 import { CostLineSchema, CostStateRowSchema, JsonTextSchema, RespawnMarkerSchema, type Account, type ApiKey, type Config, type ModelInfo, type SessionCost, type UsageWindows, type Window } from "../lib/types.ts";
 import { errorMessage, log } from "../lib/log.ts";
 
@@ -282,12 +282,12 @@ async function consumableMarker(marker: string, gate: MarkerGate): Promise<z.inf
   return m;
 }
 
-function seatBlockedUntil(seatId: string, now: number, families: string[], cfg: Config): number | null {
+function seatBlockedUntil(seatId: string, now: number, families: string[], held: string[] | null, cfg: Config): number | null {
   const account = loadAccounts(claudePool).accounts.find((a) => a.id === seatId);
   if (!account) return null;
   const observed = teeObservation(account);
   const current = observed ? { ...account, windows: observed.windows } : account;
-  const until = usableAt({ ...current, hasCredits: false }, { now, thresholds: thresholdBars(cfg), currentId: seatId, families, seats: null });
+  const until = usableAt({ ...current, hasCredits: false }, { now, thresholds: thresholdBars(cfg), currentId: seatId, families, held, seats: null });
   return until > now ? until : null;
 }
 
@@ -296,9 +296,10 @@ async function moveExhaustedSeat(seat: Account, sid: string, gate: MarkerGate, m
     const now = Date.now();
     const cfg = loadConfig();
     const families = gatedFamilies(model, cfg.policy.switchModels);
-    const until = seatBlockedUntil(seat.id, now, families, cfg);
+    const held = heldFamilies(model);
+    const until = seatBlockedUntil(seat.id, now, families, held, cfg);
     if (until == null) return false;
-    const decision = await evaluateAndMaybeSwap(claude, now, true, null, { seatId: seat.id, sessionFamilies: families, waiterId: sid, refused, apiKeys: true });
+    const decision = await evaluateAndMaybeSwap(claude, now, true, null, { seatId: seat.id, sessionFamilies: families, sessionHeld: held, waiterId: sid, refused, apiKeys: true });
     log("supervisor.seat_exhausted", { seat: seat.id.slice(0, 8), until, reason: decision.reason, account: decision.account?.id.slice(0, 8), key: decision.apiKey?.id, waitUntil: decision.waitUntil });
     const target = moveTarget(decision);
     if (target) {
@@ -317,7 +318,7 @@ async function moveKeySession(key: ApiKey, sid: string, gate: MarkerGate, model:
     const now = Date.now();
     const cfg = loadConfig();
     const families = gatedFamilies(model, cfg.policy.switchModels);
-    const decision = await evaluateAndMaybeSwap(claude, now, true, null, { seatId: null, sessionFamilies: families, waiterId: sid, refused, apiKeys: true, apiKeyId: key.id });
+    const decision = await evaluateAndMaybeSwap(claude, now, true, null, { seatId: null, sessionFamilies: families, sessionHeld: heldFamilies(model), waiterId: sid, refused, apiKeys: true, apiKeyId: key.id });
     log("supervisor.key_watch", { key: key.id, reason: decision.reason, account: decision.account?.id.slice(0, 8), next: decision.apiKey?.id, waitUntil: decision.waitUntil });
     const target = moveTarget(decision);
     if (target) {
@@ -851,7 +852,8 @@ export async function runSupervisor(argv: string[]): Promise<number> {
       const accounts = loadAccounts(claudePool).accounts;
       const nextKey = m.apiKeyId == null ? null : (loadApiKeys().keys.find((k) => k.id === m.apiKeyId) ?? null);
       const label = m.apiKeyId != null ? `API key ${nextKey?.label ?? m.apiKeyId}` : (accounts.find((a) => a.id === m.accountId)?.label ?? m.accountId.slice(0, 8));
-      const walledUntil = accounts.find((a) => a.id === seat?.id)?.enforcedUntil ?? 0;
+      const left = accounts.find((a) => a.id === seat?.id);
+      const walledUntil = left ? wallUntil(left, heldFamilies(model)) : 0;
       const transcript = findTranscript(m.sessionId);
       const resumable = transcript !== null;
       if (relay !== null) {

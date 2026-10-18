@@ -17,7 +17,7 @@ import { teeObservation } from "../lib/sample.ts";
 import { clockFmt, exitStatus, loopGuardTripped, raceMarkerOrExit, recordPresenceOrStop, runPassthrough, SEAT_POLL_MS, SEAT_RETRY_MS } from "../lib/supervise.ts";
 import { saveTermios } from "../lib/tty.ts";
 import { loadAccounts, loadConfig, releaseWaitClaim } from "../lib/state.ts";
-import { gatedFamilies, modelFromFlag } from "../lib/usage.ts";
+import { gatedFamilies, heldFamilies, modelFromFlag } from "../lib/usage.ts";
 import { ErrnoSchema, JsonTextSchema, type Account, type ModelInfo } from "../lib/types.ts";
 
 const SUBCOMMANDS = new Set(["install", "remove", "uninstall", "update", "list", "config", "auth"]);
@@ -280,7 +280,7 @@ function validWanted(pool: PiPool, wanted: string | null, id: string): Account |
 
 type Watch = { decided: boolean; move: SwapDecision | null };
 
-async function watchSeat(input: { pool: PiPool; seatId: string; id: string; families: string[] | null; overriddenUntil: number }): Promise<Watch> {
+async function watchSeat(input: { pool: PiPool; seatId: string; id: string; families: string[] | null; held: string[] | null; overriddenUntil: number }): Promise<Watch> {
   try {
     const now = Date.now();
     const cfg = loadConfig();
@@ -291,9 +291,9 @@ async function watchSeat(input: { pool: PiPool; seatId: string; id: string; fami
     const unmeasured = input.pool === "codex" && (observed == null || now - observed.at > cfg.policy.usagePollTtlMs);
     if (unmeasured) log("pisupervisor.seat_unmeasured", { seat: account.id.slice(0, 8), usageAt: observed?.at });
     const current = observed ? { ...account, windows: observed.windows } : account;
-    const until = usableAt({ ...current, hasCredits: false }, { now, thresholds: thresholdBars(cfg), currentId: account.id, families: input.families, seats: null });
+    const until = usableAt({ ...current, hasCredits: false }, { now, thresholds: thresholdBars(cfg), currentId: account.id, families: input.families, held: input.held, seats: null });
     if (until <= now || until <= input.overriddenUntil) return { decided: unmeasured, move: null };
-    const decision = await evaluateAndMaybeSwap(mover, now, true, null, { seatId: account.id, ...(input.families ? { sessionFamilies: input.families } : {}), waiterId: input.id });
+    const decision = await evaluateAndMaybeSwap(mover, now, true, null, { seatId: account.id, ...(input.families ? { sessionFamilies: input.families } : {}), sessionHeld: input.held, waiterId: input.id });
     log("pisupervisor.seat_exhausted", { pool: input.pool, seat: account.id.slice(0, 8), until, reason: decision.reason, account: decision.account?.id.slice(0, 8), waitUntil: decision.waitUntil });
     return { decided: true, move: decision.account && (decision.swapped || decision.waitUntil !== undefined) ? decision : null };
   } catch (e) {
@@ -352,6 +352,7 @@ export async function runPiSupervisor(argv: string[]): Promise<number> {
 
   const model = sessionModel(args);
   const families = pool === "claude" ? gatedFamilies(model, loadConfig().policy.switchModels) : null;
+  const held = pool === "claude" ? heldFamilies(model) : null;
   const firstArgs = ["--session-id", sid, ...args.rest];
   let launchArgs = firstArgs;
 
@@ -413,7 +414,7 @@ export async function runPiSupervisor(argv: string[]): Promise<number> {
         child: proc,
         tick: async () => {
           if (!seat || terminating || Date.now() < seatCheckAt) return false;
-          const watched = await watchSeat({ pool, seatId: seat.id, id, families, overriddenUntil: gateUntil });
+          const watched = await watchSeat({ pool, seatId: seat.id, id, families, held, overriddenUntil: gateUntil });
           seatCheckAt = Date.now() + (watched.decided ? SEAT_RETRY_MS : SEAT_POLL_MS);
           pending.move = watched.move;
           return watched.move !== null;
