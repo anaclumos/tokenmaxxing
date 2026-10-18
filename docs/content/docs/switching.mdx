@@ -358,7 +358,7 @@ The wall does not record which refusal stamped it, so the rule reads only those 
 
 - A wall stamped while neither was at its bar, such as a per-model refusal on an account with 5-hour and weekly headroom, holds until its deadline.
 - A wall stamped while one of them was at its bar ends at that window's early reset, whatever refusal stamped it.
-- A family wall ends early the same way when fresh figures show that family's per-model window under its bar while the stored figures had it at or over its bar before its reset; the 5-hour and weekly windows never end a family wall.
+- A family wall ends early the same way when fresh figures show that family's per-model window under its bar while the stored figures had it at or over its bar before its reset; fresh figures that carry no row for the family, and the 5-hour and weekly windows, never end a family wall.
 
 ### Which families a refusal screens
 
@@ -391,7 +391,7 @@ The refusal is Fable's alone: the Fable allowance or the credits that pay for Fa
 - A move for a bar does not read the list, because a `/model` change inside the session can make those accounts usable again; the wall still keeps such a move off a refusing account for its five hours.
 - Once every account is walled for Fable, a Fable launch or resume takes the depleted stop with the soonest wall end named, instead of walking the pool. The running session whose refusal walled the last account takes that stop only when a wall ends within `policy.maxWaitMs`; with the default hour and fresh five-hour walls, the hook writes no marker and the session shows the refusal itself, and its next launch or resume takes the depleted stop.
 - After the wall ends the account is a candidate again; when it still refuses, the first refused turn walls it again and moves that session.
-- A credits refusal inside a subagent stamps the wall like any other refusal, and the decision for that refusal screens the Fable wall whatever the main session's model, so the session moves to an account that still serves its Fable subagents. The seat watch after that reads the main session's model alone.
+- A credits refusal inside a subagent stamps the wall like any other refusal and records the family on the session (`held` in `sessions/<session-id>.json`). The supervisor's seat watch honors the family walls of the main session's model and of every family recorded there, so it moves an Opus session whose Fable subagent was refused to an account that still serves Fable, within ten seconds.
 - An account that accepts the session may be spending usage credits on Fable; the usage read cannot show that either.
 
 ### Organization refusals

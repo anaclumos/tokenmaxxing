@@ -125,7 +125,7 @@ export function landWindows(a: Account, windows: Window[], at: number, threshold
   a.windows = windows;
   a.lastUsageAt = at;
   if (blocked && !isExhausted(bare(), ctx)) a.enforcedUntil = undefined;
-  const cleared = families.filter((f) => !familyBlocked(f));
+  const cleared = families.filter((f) => gatedWindows(a, [f]).length > 0 && !familyBlocked(f));
   if (cleared.length > 0) a.familyUntil = Object.fromEntries(Object.entries(a.familyUntil ?? {}).filter(([f]) => !cleared.includes(f)));
 }
 

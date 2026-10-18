@@ -9,7 +9,7 @@ import { readJsonFile } from "./state.ts";
 import { spawnedThroughShellsBy } from "./proc.ts";
 import type { RespawnMarkerSchema } from "./types.ts";
 
-const SessionSchema = z.object({ flags: z.array(z.string()), cwd: z.string(), current: z.uuid().optional() });
+const SessionSchema = z.object({ flags: z.array(z.string()), cwd: z.string(), current: z.uuid().optional(), held: z.array(z.string()).optional() });
 
 const SESSION_RETENTION_MS = 30 * 24 * 3600 * 1000;
 
@@ -20,7 +20,7 @@ function sessionFile(sid: string): string {
 }
 
 export function saveSessionFlags(sid: string, flags: string[], cwd: string): void {
-  writeFileAtomic(sessionFile(sid), JSON.stringify({ flags, cwd }));
+  writeFileAtomic(sessionFile(sid), JSON.stringify({ flags, cwd, held: loadSession(sid)?.held }));
 }
 
 function loadSession(sid: string): z.infer<typeof SessionSchema> | null {
@@ -37,9 +37,20 @@ export function liveSessionId(sid: string): string {
   return loadSession(sid)?.current ?? sid;
 }
 
+// The families a subagent of the session was refused for: the seat watch honors their family walls beside the main model's.
+export function loadSessionHeld(sid: string): string[] {
+  return loadSession(sid)?.held ?? [];
+}
+
+export function addSessionHeld(sid: string, family: string): void {
+  const session = loadSession(sid);
+  if (session?.held?.includes(family)) return;
+  writeFileAtomic(sessionFile(sid), JSON.stringify({ flags: session?.flags ?? [], cwd: session?.cwd ?? process.cwd(), current: session?.current, held: [...(session?.held ?? []), family] }));
+}
+
 function recordLiveSession(sid: string, current: string): void {
   const session = loadSession(sid);
-  writeFileAtomic(sessionFile(sid), JSON.stringify({ flags: session?.flags ?? [], cwd: session?.cwd ?? process.cwd(), current }));
+  writeFileAtomic(sessionFile(sid), JSON.stringify({ flags: session?.flags ?? [], cwd: session?.cwd ?? process.cwd(), current, held: session?.held }));
 }
 
 const TMP_GRACE_MS = 3600 * 1000;
