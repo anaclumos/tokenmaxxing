@@ -76,15 +76,17 @@ Claude and Codex launches and session moves choose among usable accounts by the 
 | No usage figure at all | no first | 3rd | 2nd |
 | Full (see [Headroom per session](#headroom-per-session)) | no first | 4th | not used |
 | Headroom per session among full accounts, scaled by plan size | greatest first | 5th | not used |
-| Has a session window (see [Session window first](#session-window-first)) | yes first | 6th | 3rd |
-| Cramped (no room for a whole session) | no first | 7th | 4th |
-| Weekly reset within 4 days | yes first | 8th | 5th |
-| A figure the ranking reads is older than 6 hours | no first | 9th | 6th |
-| Headroom per session, scaled by plan size | greatest first | 10th | not used |
-| Pace pressure, scaled by plan size | highest first | 11th | 7th |
-| Weekly reset | soonest first | 12th | 8th |
-| Weekly usage | lowest first | 13th | 9th |
-| Live sessions | fewest first | 14th | not used |
+| Quota expires within a day (see [Use it or lose it](#use-it-or-lose-it)) | yes first | 6th | 3rd |
+| Expiring quota per hour until the reset, scaled by plan size | highest first | 7th | 4th |
+| Has a session window (see [Session window first](#session-window-first)) | yes first | 8th | 5th |
+| Cramped (no room for a whole session) | no first | 9th | 6th |
+| Weekly reset within 4 days | yes first | 10th | 7th |
+| A figure the ranking reads is older than 6 hours | no first | 11th | 8th |
+| Headroom per session, scaled by plan size | greatest first | 12th | not used |
+| Pace pressure, scaled by plan size | highest first | 13th | 9th |
+| Weekly reset | soonest first | 14th | 10th |
+| Weekly usage | lowest first | 15th | 11th |
+| Live sessions | fewest first | 16th | not used |
 
 - An account with no usage figure ranks after every measured account, cramped or stale ones included.
 - Accounts with no cached figure tie on every other key, so the session count alone spreads launches and `seat` borrows across them.
@@ -99,6 +101,12 @@ Usage figures are percentages, but a percent of a large plan is more quota than 
 | --- | --- |
 | Claude | the tier's multiplier divided by 5 (`max 5x` is 1, `max 20x` is 4), `pro` 0.2, anything else 1 |
 | Codex | relative to Plus: `free` 0.2, `go` 0.5, `plus`, `team`, `business`, `enterprise`, and `edu` 1, `prolite` (Pro 100), `self_serve_business_prolite` (Business Premium), and `edu_pro` 5, `pro` (Pro 200) 10, `promax` (Pro 500) 20, anything else 1 |
+
+### Use it or lose it
+
+Quota left in a window is lost when the window resets. When an account's longest window (the weekly one, or the 5-hour one on a plan with no weekly window) resets within 24 hours and the account is still under that window's bar, it ranks ahead of every other usable account for every new pick: launches, moves, `seat` borrows, and the Codex app-server. This includes accounts with a session window, so a Codex Pro account whose week resets within a day with quota left outranks a Team account, whose 5-hour window refills within hours anyway. Among such accounts, the one losing the most quota per hour until its reset goes first: the quota left under the bar, scaled by plan size, divided by the time to the reset. So of two accounts with equal quota left, the one that resets sooner goes first, and of two that reset together, the one with more left goes first.
+
+Hard blocks still apply first: an account at or over any bar, walled (an enforced wall, or a family wall for the session's model family), flagged for reauthentication, or full (see [Headroom per session](#headroom-per-session)) is never placed for this reason. Only a reset the provider reported and that is still ahead counts: a window that has already reset, or a closed 5-hour window with no reset, holds no expiring quota, because its next window begins with the next request.
 
 ### Session window first
 

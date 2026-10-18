@@ -196,6 +196,7 @@ export function onCredits(a: Account, ctx: PickCtx): boolean {
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+const EXPIRING_MS = DAY_MS;
 const WEEKLY_SOON_MS = 4 * DAY_MS;
 const THREAD_HEADROOM = 15;
 const SESSION_SOON_MS = 60 * 60 * 1000;
@@ -215,6 +216,18 @@ function stale(a: Account, ctx: PickCtx): boolean {
   return read.some((w) => w != null && windowEnd(w) > ctx.now && ctx.now - w.sampledAt > STALE_MS);
 }
 
+// Use it or lose it: when an account's longest window (the weekly one, or the 5-hour one on a plan without a weekly window)
+// resets within a day, the quota left under its bar is lost at the reset. Returns that quota, scaled by plan size, per
+// millisecond until the reset, so the account with the most to lose soonest scores highest; 0 when nothing expires within a day.
+// Only a reset the provider reported and that is still ahead counts: a window that already reset, or a closed window with no
+// reset, starts again with the next request, so nothing in it expires.
+export function expiringPressure(a: Account, ctx: PickCtx): number {
+  const w = weeklyWindow(a) ?? sessionWindow(a);
+  const reset = w?.resetsAt;
+  if (w == null || reset == null || reset <= ctx.now || reset - ctx.now > EXPIRING_MS) return 0;
+  return (Math.max(0, barFor(a, w, ctx.thresholds, ctx.now) - liveUsed(w, ctx.now)) * planWeight(a, ctx)) / (reset - ctx.now);
+}
+
 const swapPreference = (ctx: PickCtx) => [
   (a: Account) => (onCredits(a, ctx) ? 1 : 0),
   (a: Account) => ((a.storeFails ?? 0) > 0 ? 1 : 0),
@@ -222,6 +235,9 @@ const swapPreference = (ctx: PickCtx) => [
   // A full account ranks after every open one, and among full accounts the most room per session wins.
   (a: Account) => (seatFull(a, ctx) ? 1 : 0),
   (a: Account) => (seatFull(a, ctx) ? -seatHeadroom(a, ctx) * planWeight(a, ctx) : 0),
+  // Quota that expires within a day ranks ahead of every headroom key, the session-window key included.
+  (a: Account) => (expiringPressure(a, ctx) > 0 ? 0 : 1),
+  (a: Account) => -expiringPressure(a, ctx),
   // An account with a session window first: its 5-hour quota comes back within hours, while an account with only a weekly window spends quota that is gone until the week resets.
   (a: Account) => (sessionWindow(a) == null ? 1 : 0),
   (a: Account) => (cramped(a, ctx) ? 1 : 0),
