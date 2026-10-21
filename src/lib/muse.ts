@@ -6,6 +6,7 @@ import { ensurePathAhead } from "./claude.ts";
 import { MUSE_BIN } from "./claudebin.ts";
 import { http, safeErrorDetail } from "./http.ts";
 import { isBinDirAhead, installMuseSupervisor, museSupervisorLink } from "./install.ts";
+import { readItemSync } from "./keychain.ts";
 import { withLock } from "./lock.ts";
 import { errorMessage, log } from "./log.ts";
 import { env, museAuthJsonFor, musePaths, musePool, museSeatFromEnv, museStoreDirFor } from "./paths.ts";
@@ -19,8 +20,27 @@ import { c } from "../cli/render.ts";
 
 const MuseProviderSchema = z.looseObject({
   access_token: z.string().optional(),
+  storage: z.string().optional(),
   user_email: z.string().nullish(),
 });
+type MuseProvider = z.infer<typeof MuseProviderSchema>;
+
+const MUSE_KEYCHAIN_SERVICE = "ai.meta.dev.credentials";
+const MuseKeychainSchema = z.looseObject({ access_token: z.string().optional() });
+
+function inKeychain(entry: MuseProvider): boolean {
+  return (entry.access_token ?? "") === "" && entry.storage === "keychain" && process.platform === "darwin";
+}
+
+function accessToken(provider: string, entry: MuseProvider): string {
+  if (!inKeychain(entry)) return entry.access_token ?? "";
+  const item = readItemSync({ service: MUSE_KEYCHAIN_SERVICE, account: provider });
+  return MuseKeychainSchema.safeParse(JsonTextSchema.safeParse(item ?? "").data).data?.access_token ?? "";
+}
+
+function museId(email: string): string {
+  return new Bun.CryptoHasher("sha256").update(email.trim().toLowerCase()).digest("hex");
+}
 
 const MuseAuthSchema = z.looseObject({
   providers: z.record(z.string(), z.unknown()),
@@ -44,7 +64,7 @@ function readAuth(path: string): AuthEntry[] {
     const parsed = MuseProviderSchema.safeParse(value);
     if (!parsed.success) continue;
     const email = parsed.data.user_email?.trim().toLowerCase() ?? "";
-    const id = email === "" ? "" : new Bun.CryptoHasher("sha256").update(email).digest("hex");
+    const id = email === "" ? "" : museId(email);
     const harvest: Harvest | null =
       id === ""
         ? null
@@ -57,7 +77,7 @@ function readAuth(path: string): AuthEntry[] {
               writeFileAtomic(museAuthJsonFor(id), JSON.stringify({ ...file, providers: { [key]: value } }, null, 2), 0o600);
             },
           };
-    out.push({ id, usable: (parsed.data.access_token ?? "") !== "", harvest });
+    out.push({ id, usable: accessToken(key, parsed.data) !== "", harvest });
   }
   return out;
 }
@@ -173,6 +193,7 @@ const MintSchema = z.looseObject({
       weekly: SubscriptionWindowSchema,
     })
     .nullish(),
+  user_email: z.string().nullish(),
 });
 
 const WEEK_S = 7 * 86400;
@@ -181,12 +202,14 @@ function usageUrl(): string {
   return env("TOKENMAXXING_MUSE_USAGE_URL", "https://api.meta.ai/muse-code/key");
 }
 
-function storedAccessToken(id: string): string | null {
+function storedAccessToken(id: string): { token: string; keychain: boolean } | null {
   const file = readFile(museAuthJsonFor(id));
   if (file == null) return null;
-  for (const value of Object.values(file.providers)) {
-    const token = MuseProviderSchema.safeParse(value).data?.access_token ?? "";
-    if (token !== "") return token;
+  for (const [key, value] of Object.entries(file.providers)) {
+    const entry = MuseProviderSchema.safeParse(value).data;
+    if (entry == null) continue;
+    const token = accessToken(key, entry);
+    if (token !== "") return { token, keychain: inKeychain(entry) };
   }
   return null;
 }
@@ -206,17 +229,19 @@ function landedWindows(read: { windows: Window[] | null }, stored: Window[], now
 }
 
 async function readMuseUsage(accountId: string, now: number): Promise<MuseRead> {
-  let token: string | null;
+  let stored: { token: string; keychain: boolean } | null;
   try {
-    token = storedAccessToken(accountId);
+    stored = storedAccessToken(accountId);
   } catch (e) {
     return { ok: false, rejected: false, reason: `this account's store is unreadable (${errorMessage(e)}) - run \`tokenmaxxing auth --muse\`` };
   }
-  if (token == null) return { ok: false, rejected: false, reason: "no access_token in this account's store - run `tokenmaxxing auth --muse`" };
+  if (stored == null) {
+    return { ok: false, rejected: false, reason: "no access_token in this account's store or in the Muse Code keychain item - run `tokenmaxxing auth --muse`" };
+  }
   let res: Response;
   let text: string;
   try {
-    res = await http.post(usageUrl(), { headers: { Authorization: `Bearer ${token}` }, json: {} });
+    res = await http.post(usageUrl(), { headers: { Authorization: `Bearer ${stored.token}` }, json: {} });
     text = await res.text();
   } catch (e) {
     return { ok: false, rejected: false, reason: `Muse Code usage read failed: endpoint unreachable: ${errorMessage(e)}` };
@@ -227,6 +252,11 @@ async function readMuseUsage(accountId: string, now: number): Promise<MuseRead> 
   if (!res.ok) return { ok: false, rejected: false, reason: `Muse Code usage read failed: HTTP ${res.status}: ${safeErrorDetail({ text })}` };
   const parsed = MintSchema.safeParse(JsonTextSchema.safeParse(text).data);
   if (!parsed.success) return { ok: false, rejected: false, reason: "Muse Code usage read failed: endpoint returned an unexpected body shape (withheld)" };
+  const owner = parsed.data.user_email?.trim().toLowerCase() ?? "";
+  if (owner !== "" && museId(owner) !== accountId) {
+    const where = stored.keychain ? "the macOS keychain item Muse Code keeps for every config home on this Mac" : "this account's store";
+    return { ok: false, rejected: false, reason: `the Muse Code login in ${where} belongs to ${owner}, not this account - Muse Code on macOS holds one login per Mac` };
+  }
   if (parsed.data.subs_usage == null) return { ok: true, windows: null, at: now };
   const { window, weekly } = parsed.data.subs_usage;
   return {

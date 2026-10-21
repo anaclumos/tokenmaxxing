@@ -11,6 +11,14 @@ function quoteValue(s: string): string {
   return s.includes("'") ? quoteDouble(s) : `'${s}'`;
 }
 
+function readResult(exitCode: number | null, out: string, err: string): string | null {
+  if (exitCode === 44) return null;
+  if (exitCode !== 0) {
+    throw new Error(`keychain read failed (exit ${exitCode}): ${err.trim().slice(0, 200)} - a locked keychain or denied ACL must fail loudly, never read as absent`);
+  }
+  return out.replace(/\n$/, "");
+}
+
 export async function readItem(t: KeychainTarget): Promise<string | null> {
   const p = Bun.spawn([SECURITY, "find-generic-password", "-s", t.service, "-a", t.account, "-w"], {
     stdout: "pipe",
@@ -18,11 +26,12 @@ export async function readItem(t: KeychainTarget): Promise<string | null> {
   });
   const [out, err] = await Promise.all([p.stdout.text(), p.stderr.text()]);
   await p.exited;
-  if (p.exitCode === 44) return null;
-  if (p.exitCode !== 0) {
-    throw new Error(`keychain read failed (exit ${p.exitCode}): ${err.trim().slice(0, 200)} - a locked keychain or denied ACL must fail loudly, never read as absent`);
-  }
-  return out.replace(/\n$/, "");
+  return readResult(p.exitCode, out, err);
+}
+
+export function readItemSync(t: KeychainTarget): string | null {
+  const p = Bun.spawnSync([SECURITY, "find-generic-password", "-s", t.service, "-a", t.account, "-w"], { stdout: "pipe", stderr: "pipe", timeout: 10_000 });
+  return readResult(p.exitCode, p.stdout.toString(), p.stderr.toString());
 }
 
 function interactiveLine(t: KeychainTarget, secret: string): string {
