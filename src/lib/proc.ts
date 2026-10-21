@@ -1,4 +1,6 @@
+import { readlinkSync } from "node:fs";
 import { basename } from "node:path";
+import { dlopen, FFIType, ptr } from "bun:ffi";
 import { ErrnoSchema } from "./types.ts";
 
 export function shellQuote(s: string): string {
@@ -40,6 +42,50 @@ export function ancestorPids(): number[] {
   const out: number[] = [];
   for (let pid = process.ppid; pid > 1; pid = parent.get(pid) ?? 0) out.push(pid);
   return out;
+}
+
+export type ProcessRow = { pid: number; ppid: number; name: string; args: string };
+
+function psColumn(column: "comm" | "args"): Map<number, { ppid: number; value: string }> {
+  const res = Bun.spawnSync(["ps", "-A", "-o", "pid=", "-o", "ppid=", "-o", `${column}=`], { env: { ...process.env, LC_ALL: "C" } });
+  if (res.exitCode !== 0) throw new Error(`ps -A exited ${res.exitCode}: ${res.stderr.toString().trim()}`);
+  const rows = new Map<number, { ppid: number; value: string }>();
+  for (const row of res.stdout.toString().split("\n")) {
+    const m = row.match(/^\s*(\d+)\s+(\d+)\s(.*)$/);
+    if (m) rows.set(Number(m[1]), { ppid: Number(m[2]), value: m[3]!.trim() });
+  }
+  return rows;
+}
+
+export function processTable(): Map<number, ProcessRow> {
+  const names = psColumn("comm");
+  const table = new Map<number, ProcessRow>();
+  for (const [pid, row] of psColumn("args")) {
+    table.set(pid, { pid, ppid: row.ppid, name: basename(names.get(pid)?.value ?? "").replace(/^-/, ""), args: row.value });
+  }
+  return table;
+}
+
+const PROC_PIDPATHINFO_MAXSIZE = 4096;
+
+let _libproc: ReturnType<typeof loadLibproc> | null = null;
+
+function loadLibproc() {
+  return dlopen("libSystem.B.dylib", { proc_pidpath: { args: [FFIType.i32, FFIType.ptr, FFIType.u32], returns: FFIType.i32 } }).symbols;
+}
+
+export function executablePath(pid: number): string | null {
+  if (process.platform !== "darwin") {
+    try {
+      return readlinkSync(`/proc/${pid}/exe`);
+    } catch {
+      return null;
+    }
+  }
+  _libproc ??= loadLibproc();
+  const buf = new Uint8Array(PROC_PIDPATHINFO_MAXSIZE);
+  const n = _libproc.proc_pidpath(pid, ptr(buf), buf.length);
+  return n > 0 ? new TextDecoder().decode(buf.subarray(0, n)) : null;
 }
 
 export function pidStartTimes(pids: number[]): Map<number, string> {

@@ -1,8 +1,10 @@
+import { existsSync } from "node:fs";
 import { countBy, partition, uniq } from "es-toolkit";
 import { z } from "zod";
+import { codexSupervisorLink, museSupervisorLink } from "../lib/install.ts";
 import { withLock } from "../lib/lock.ts";
 import { log } from "../lib/log.ts";
-import type { PiPool } from "../lib/paths.ts";
+import { paths, type PiPool } from "../lib/paths.ts";
 import { piLogin, piLoginStep } from "../lib/pi.ts";
 import { piStoreUsable, writePiStore } from "../lib/piauth.ts";
 import type { Provider } from "../lib/provider.ts";
@@ -15,6 +17,12 @@ import type { Account, AccountsIndex } from "../lib/types.ts";
 const AUTH_USAGE =
   "usage: tokenmaxxing auth [--codex | --grok | --muse | --cursor] [<email|label|id> | --all]\n       tokenmaxxing auth [--codex | --grok | --muse | --cursor] --emails <email>...\n       tokenmaxxing auth --pi [--codex] [<email|label|id> | --all]";
 const EMAILS_FLAG = "--emails";
+
+const SUPERVISOR_LINKS: Partial<Record<Provider["name"], () => string>> = {
+  claude: () => paths.supervisorLink,
+  codex: codexSupervisorLink,
+  muse: museSupervisorLink,
+};
 
 export type AuthPlan = { kind: "usage" } | { kind: "error"; message: string } | { kind: "pick" } | { kind: "targets"; ids: string[] };
 
@@ -175,6 +183,13 @@ async function loginEmails(p: Provider, argv: string[]): Promise<number> {
 
   console.log();
   console.log(`added ${count({ n: ok, noun: "account" })} of ${targets.length}, skipped ${skipped.length} already pooled`);
+  const link = SUPERVISOR_LINKS[p.name]?.();
+  if (link != null && !existsSync(link) && loadAccounts(p.pool).accounts.length > 0) {
+    console.log();
+    console.log(c.cyan(`the ${p.name} pool has no supervisor yet - installing it, as \`tokenmaxxing init${p.flag}\` would`));
+    p.preflight();
+    p.install();
+  }
   return ok === targets.length ? 0 : 1;
 }
 
