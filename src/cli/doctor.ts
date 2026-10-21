@@ -4,7 +4,7 @@ import { seatsCodexArgs } from "../entries/codexsupervisor.ts";
 import { CLAUDE_BIN, CODEX_BIN, MUSE_BIN, PI_BIN, verifyRealBin } from "../lib/claudebin.ts";
 import { checkSettings, installedBin } from "../lib/settings.ts";
 import { activationHint, CHECK_JOB, codexStoreHookTrust, codexSupervisorLink, findClaudeShadowers, HUB_JOB, isBinDirAhead, jobHealthy, museSupervisorLink, piSupervisorLink, shellRcPath } from "../lib/install.ts";
-import { museStoreIdentity } from "../lib/muse.ts";
+import { museStoreIdentity, museStoreUsable } from "../lib/muse.ts";
 import { readPiStore } from "../lib/piauth.ts";
 import { errorMessage } from "../lib/log.ts";
 import { claudePool, codexPool, musePool, paths } from "../lib/paths.ts";
@@ -215,6 +215,7 @@ export async function cmdDoctor(): Promise<number> {
     }
     check(ids.length > 0, `Muse Code store login present for ${a.label}`, readErr ?? `run \`tokenmaxxing auth --muse ${a.label}\``);
     if (ids.length > 0) check(ids.includes(a.id), `Muse Code store login identity matches ${a.label}`, `the store holds another account's login - run \`tokenmaxxing auth --muse ${a.label}\``);
+    if (ids.includes(a.id)) check(museStoreUsable(a.id), `Muse Code store login holds a token for ${a.label}`, `no access_token in the store or in the Muse Code keychain item - run \`tokenmaxxing auth --muse ${a.label}\``);
     if (a.needsReauth) check(false, `${a.label} (muse) needs re-auth`, `run \`tokenmaxxing auth --muse ${a.label}\` to re-login`);
   }
 
