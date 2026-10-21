@@ -128,6 +128,7 @@ pi keeps its own credential and refreshes it itself, so each pooled account gets
 - **Plaintext credentials (Linux).** Claude Code itself stores Linux credentials as a 0600 plaintext file; a store follows the same model.
 - **The status-only grok pool does not switch.** grok `status` shows the weekly subscription credit window, and no grok session moves.
 - **The status-only Cursor pool does not switch, and reads only a file login.** Cursor `status` shows the included usage of the monthly billing cycle. The Cursor CLI keeps its login in the keychain on macOS, which tokenmaxxing does not read, so the pool works where the login is `auth.json` (Linux).
+- **Muse Code on macOS holds one login per Mac.** Muse Code keeps its token in one keychain item for every config home, which tokenmaxxing reads, so only the Muse account the Mac signed in last works there.
 - **A Muse Code move stops the running turn.** `muse resume` takes no prompt, so a turn that was running when the move landed has to be sent again; `muse exec` and `muse serve` keep the account they started on.
 
 ## How it's built
