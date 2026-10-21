@@ -1,16 +1,60 @@
-import { existsSync, readFileSync } from "node:fs";
-import { CLAUDE_BIN, MUSE_BIN, PI_BIN, verifyRealBin } from "../lib/claudebin.ts";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
+import { analyzeArgs } from "../entries/supervisor.ts";
+import { seatsCodexArgs } from "../entries/codexsupervisor.ts";
+import { CLAUDE_BIN, CODEX_BIN, MUSE_BIN, PI_BIN, verifyRealBin } from "../lib/claudebin.ts";
 import { checkSettings, installedBin } from "../lib/settings.ts";
-import { activationHint, CHECK_JOB, codexStoreHookTrust, findClaudeShadowers, HUB_JOB, isBinDirAhead, jobHealthy, museSupervisorLink, piSupervisorLink, shellRcPath } from "../lib/install.ts";
+import { activationHint, CHECK_JOB, codexStoreHookTrust, codexSupervisorLink, findClaudeShadowers, HUB_JOB, isBinDirAhead, jobHealthy, museSupervisorLink, piSupervisorLink, shellRcPath } from "../lib/install.ts";
 import { museStoreIdentity } from "../lib/muse.ts";
 import { readPiStore } from "../lib/piauth.ts";
 import { errorMessage } from "../lib/log.ts";
 import { claudePool, codexPool, musePool, paths } from "../lib/paths.ts";
+import { executablePath, processTable } from "../lib/proc.ts";
 import { loadAccounts, loadConfig } from "../lib/state.ts";
 import { readStore } from "../lib/credstore.ts";
 import { codexIdentityOf, codexSeatIdOf, readCodexStoreAuth } from "../lib/codexauth.ts";
 import { isAccessTokenExpiring, isDeadCredential, fetchTokenIdentity, describeIdentity } from "../lib/oauth.ts";
 import { c } from "./render.ts";
+
+type RealBin = { name: string; real: string; link: string; seated: (argv: string[]) => boolean };
+
+const NON_SESSION_CLAUDE_FLAGS = new Set(["--chrome-native-host"]);
+
+function realOrNull(path: string | null): string | null {
+  if (path == null) return null;
+  try {
+    return realpathSync(path);
+  } catch {
+    return null;
+  }
+}
+
+const SUPERVISE_VERB = /\s__supervise(-[a-z]+)?(\s|$)/;
+
+function unsupervisedRuns(bins: RealBin[]): { bin: RealBin; pid: number; parent: string }[] {
+  if (bins.length === 0) return [];
+  const table = processTable();
+  const entry = realpathSync(Bun.main);
+  const binOf = new Map<number, RealBin>();
+  for (const pid of table.keys()) {
+    const exe = realOrNull(executablePath(pid));
+    const bin = bins.find((b) => b.real === exe);
+    if (bin) binOf.set(pid, bin);
+  }
+  const out: { bin: RealBin; pid: number; parent: string }[] = [];
+  for (const [pid, bin] of binOf) {
+    const row = table.get(pid)!;
+    if (!bin.seated(row.args.split(" ").slice(1).filter(Boolean))) continue;
+    let owned = false;
+    for (let cur = row.ppid, hops = 0; cur > 1 && hops < 64 && !owned; hops++) {
+      const up = table.get(cur);
+      if (!up) break;
+      owned = binOf.has(cur) || up.args.includes(entry) || SUPERVISE_VERB.test(up.args);
+      cur = up.ppid;
+    }
+    if (!owned) out.push({ bin, pid, parent: table.get(row.ppid)?.name || `pid ${row.ppid}` });
+  }
+  return out;
+}
 
 export async function cmdDoctor(): Promise<number> {
   let failed = 0;
@@ -64,9 +108,20 @@ export async function cmdDoctor(): Promise<number> {
     if (a.needsReauth) check(false, `${a.label} needs re-auth`, `run \`tokenmaxxing auth ${a.label}\` to re-login`);
   }
 
+  const cfg = loadConfig();
   const cidx = loadAccounts(codexPool);
+  const codexShim = existsSync(codexSupervisorLink());
   if (cidx.accounts.length === 0) {
     note("no codex accounts in the pool (run `tokenmaxxing init --codex` to pool codex too)");
+  } else if (codexShim) {
+    check(!!cfg.codexBin && existsSync(cfg.codexBin), "real codex binary resolved", "run `tokenmaxxing init --codex`");
+    if (cfg.codexBin && existsSync(cfg.codexBin)) {
+      const fail = verifyRealBin({ ...CODEX_BIN, bin: cfg.codexBin });
+      check(fail === null, "codexBin launches the real codex", fail ?? undefined);
+      check(isBinDirAhead(CODEX_BIN), `${paths.binDir} is ahead of the real codex on PATH`, `export PATH="${paths.binDir}:$PATH"`);
+    }
+  } else {
+    warn("codex accounts are pooled but the codex supervisor is not installed - run `tokenmaxxing init --codex`");
   }
   for (const a of cidx.accounts) {
     let auth = null;
@@ -89,12 +144,12 @@ export async function cmdDoctor(): Promise<number> {
       check(match, `codex store credential identity matches ${a.label}`, matchHint);
     }
     if (a.needsReauth) check(false, `${a.label} (codex) needs re-auth`, `run \`tokenmaxxing auth --codex ${a.label}\` to re-login`);
+    if (!codexShim) continue;
     const trust = codexStoreHookTrust(a.id);
     if (trust === "untrusted") warn(`${a.label} (codex): Stop hook not trusted for this seat - open a supervised codex session on it, run /hooks, and trust it, or auto-switching stays inert there`);
     else if (trust === "unknown") note(`${a.label} (codex): hook trust unknown (no hooks.json or config.toml yet - launch a supervised session once, then trust via /hooks)`);
   }
 
-  const cfg = loadConfig();
   check(!!cfg.claudeBin && existsSync(cfg.claudeBin), "real claude binary resolved", "set claudeBin in config.json");
   if (cfg.claudeBin && existsSync(cfg.claudeBin)) {
     const fail = verifyRealBin({ ...CLAUDE_BIN, bin: cfg.claudeBin });
@@ -169,6 +224,19 @@ export async function cmdDoctor(): Promise<number> {
       if (s.kind === "shadow") warn(`${rc}: ${s.line.startsWith("alias ") ? "alias" : "function"} \`claude\` shadows the supervised claude wrapper - launches through it skip tokenmaxxing`);
       else warn(`${rc}: alias \`${s.name}\` hardcodes a claude path and bypasses the supervisor - use plain \`claude\` in its body instead`);
     }
+  }
+
+  const bins: RealBin[] = [];
+  const realClaude = existsSync(paths.supervisorLink) ? realOrNull(cfg.claudeBin || null) : null;
+  if (realClaude) bins.push({ name: "claude", real: realClaude, link: paths.supervisorLink, seated: (argv) => analyzeArgs(argv).manage && !argv.some((a) => NON_SESSION_CLAUDE_FLAGS.has(a)) });
+  const realCodex = codexShim ? realOrNull(cfg.codexBin || null) : null;
+  if (realCodex) bins.push({ name: "codex", real: realCodex, link: codexSupervisorLink(), seated: seatsCodexArgs });
+  try {
+    for (const run of unsupervisedRuns(bins)) {
+      warn(`${run.parent} runs ${run.bin.name} outside the supervisor (pid ${run.pid}) - quit and reopen it if it was open before init added the PATH line, or set its ${run.bin.name} path to ${run.bin.link}`);
+    }
+  } catch (e) {
+    note(`could not list running processes: ${errorMessage(e).slice(0, 100)}`);
   }
 
   console.log();

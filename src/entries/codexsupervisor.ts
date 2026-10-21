@@ -58,17 +58,28 @@ function scanCodexArgs(argv: string[]): { help: boolean; positionals: string[] }
   return { help: false, positionals };
 }
 
-export function shouldManageCodex(input: { argv: string[] }): boolean {
-  if (process.env.TOKENMAXXING_PROBE) return false;
-  const { help, positionals: [sub] } = scanCodexArgs(input.argv);
+function managedCodexArgs(argv: string[]): boolean {
+  const { help, positionals: [sub] } = scanCodexArgs(argv);
   return !help && (sub === undefined || !NONINTERACTIVE_SUBCMDS.has(sub));
+}
+
+function borrowingCodexArgs(argv: string[]): boolean {
+  const { help, positionals: [sub, ...rest] } = scanCodexArgs(argv);
+  if (help || sub === undefined || !BORROWING_SUBCMDS.has(sub)) return false;
+  return sub !== "app-server" || rest.length === 0;
+}
+
+export function seatsCodexArgs(argv: string[]): boolean {
+  return managedCodexArgs(argv) || borrowingCodexArgs(argv);
+}
+
+export function shouldManageCodex(input: { argv: string[] }): boolean {
+  return !process.env.TOKENMAXXING_PROBE && managedCodexArgs(input.argv);
 }
 
 function borrowsCodexSeat(input: { argv: string[] }): boolean {
   if (process.env.TOKENMAXXING_PROBE || process.env[UNMANAGED_ENV] || process.env.CODEX_HOME) return false;
-  const { help, positionals: [sub, ...rest] } = scanCodexArgs(input.argv);
-  if (help || sub === undefined || !BORROWING_SUBCMDS.has(sub)) return false;
-  return sub !== "app-server" || rest.length === 0;
+  return borrowingCodexArgs(input.argv);
 }
 
 function validWanted(input: { wanted: string | null; now: number; supervisorId: string }): Account | null {
