@@ -10,7 +10,8 @@ import { onboardHome } from "./onboard.ts";
 import { deletePiStore } from "./piauth.ts";
 import { PI_PRESENCE_PREFIX, livingPresences, seatCounts, writePresence } from "./presence.ts";
 import { CodexUsageReadError, codexLimitLabel, consumeCodexReset, fetchCodexUsage } from "./codexusage.ts";
-import { codexSupervisorLink, ensurePathInRc, installCodexSupervisor, managedShellRcSkipLines, shellRcPath } from "./install.ts";
+import { ensurePathAhead } from "./claude.ts";
+import { codexSupervisorLink, installCodexSupervisor, isBinDirAhead } from "./install.ts";
 import { withLock } from "./lock.ts";
 import { errorMessage, log } from "./log.ts";
 import { codexPaths, codexPool, codexSeatFromEnv, optionalEnv } from "./paths.ts";
@@ -261,14 +262,8 @@ function preflight(): void {
 
 function install(): void {
   installCodexSupervisor();
-  const rc = shellRcPath();
-  if (rc && ensurePathInRc(rc) === "skipped") {
-    const hint = managedShellRcSkipLines();
-    console.log(c.yellow(`⚠ ${hint.headline}`));
-    console.log(c.yellow(`  ${hint.detail}`));
-    console.log(c.yellow(`  ${hint.exportLine}`));
-  }
   console.log(`${c.green("✓")} codex supervisor installed at ${codexSupervisorLink()}`);
+  if (!isBinDirAhead(CODEX_BIN)) ensurePathAhead();
   console.log(`${c.green("✓")} Stop hook declared in ${codexPaths.hooksJson}`);
   console.log();
   console.log(c.bold(c.yellow("one manual step per seat: codex trusts hooks per store path.")));

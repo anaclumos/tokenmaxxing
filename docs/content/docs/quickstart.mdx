@@ -52,7 +52,7 @@ A second `init` on a pool that already has accounts re-installs the shim, the en
 
 ### Add more accounts
 
-Restart your shell, then add more accounts:
+Restart your shell, and quit and reopen any app that was already open and runs `claude` or `codex` for you, such as T3 Code: it read PATH when it launched, so until it restarts it runs the real binaries outside the supervisor. Then add more accounts:
 
 ```sh
 tokenmaxxing add        # logs one more account in, in isolation, and pools it

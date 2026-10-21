@@ -340,13 +340,16 @@ export function ensurePathAhead(): void {
     return;
   }
   const outcome = ensurePathInRc(rc);
-  if (outcome === "added") console.log(`${c.green("✓")} added ${paths.binDir} to PATH in ${rc} - restart your shell (or \`source ${rc}\`)`);
-  else if (outcome === "skipped") {
+  if (outcome === "skipped") {
     const hint = managedShellRcSkipLines();
     console.log(c.yellow(`⚠ ${hint.headline}`));
     console.log(c.yellow(`  ${hint.detail}`));
     console.log(c.yellow(`  ${hint.exportLine}`));
-  } else console.log(c.yellow(`⚠ PATH line already in ${rc} - restart your shell to pick it up`));
+    return;
+  }
+  if (outcome === "added") console.log(`${c.green("✓")} added ${paths.binDir} to PATH in ${rc} - restart your shell (or \`source ${rc}\`)`);
+  else console.log(c.yellow(`⚠ PATH line already in ${rc} - restart your shell to pick it up`));
+  console.log(c.yellow("  also quit and reopen any app that was already open and runs claude or codex for you (T3 Code, an editor): it read PATH when it launched, so until then it runs them outside the supervisor"));
 }
 
 function install(): void {

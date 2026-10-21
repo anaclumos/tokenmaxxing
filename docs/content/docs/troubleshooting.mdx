@@ -6,6 +6,9 @@ description: Common questions and the diagnostics behind them
 **`claude` doesn't seem to be supervised.**
 Run `tokenmaxxing doctor`. The shim must win PATH resolution: `doctor` checks that the bin directory sits ahead of the real claude on your live PATH and, for bash and zsh, warns about `alias claude=...` or a `claude()` shell function shadowing the wrapper, and about aliases that launch a claude binary by absolute path (those bypass the supervisor entirely). Check that the `# tokenmaxxing PATH` line in your shell rc points at the current bin directory. A session that bypasses the supervisor runs on Claude Code's own login and is never moved.
 
+**T3 Code says Claude Code or Codex is not authenticated.**
+T3 Code starts `claude` and `codex` through the PATH it read from your login shell when it launched, so an app that was open when `init` added the PATH line runs the real binaries outside the supervisor, on Claude Code's and Codex's own logins, which are empty on a host whose accounts are all pooled. Its threads then answer `Not logged in · Please run /login`. Quit and reopen T3 Code. `tokenmaxxing doctor` names each app that runs `claude` or `codex` outside the supervisor. Codex also needs its own shim: pooling Codex accounts with `auth --codex --emails` installs it, and so does `tokenmaxxing init --codex`.
+
 **Auto-switching never fires on Codex.**
 Codex skips hooks it has not been told to trust, and trust is recorded per store path. Open a supervised session on each pooled account, run `/hooks`, and trust the tokenmaxxing Stop hook there. Trust is recorded against the hook's hash and its position in the Stop list, so it must be re-granted if the hook is ever edited or another Stop hook is inserted ahead of it. `tokenmaxxing doctor` lists seats still needing trust; it cannot tell a stale hash from a current one. The hook also does nothing in a codex started outside the supervisor.
 
