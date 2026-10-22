@@ -20,8 +20,7 @@ flowchart LR
   tag["push tag<br/>v#lt;version#gt;"] --> check{"on main, and newer<br/>than npm latest?"}
   check -->|"no"| fail["job fails,<br/>nothing published"]
   check -->|"yes"| set["set package.json<br/>to the tag's version<br/>(not committed)"]
-  set --> typecheck["typecheck"]
-  typecheck --> release["GitHub release<br/>for the tag"]
+  set --> release["GitHub release<br/>for the tag"]
   release --> publish["publish to npm<br/>through trusted<br/>publishing<br/>(OIDC, provenance)"]
 ```
 
