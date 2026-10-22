@@ -1,36 +1,17 @@
+# Publish only. Every check runs in lefthook (lefthook.yml); this job exists
+# because npm trusted publishing needs a GitHub-hosted runner, and npm binds
+# the trusted publisher to this file's name, so it stays ci.yml.
 name: CI
 
 on:
   push:
-    branches: [main]
-  pull_request:
-  workflow_dispatch:
+    tags: ["v*"]
 
 permissions:
   contents: read
 
 jobs:
-  test:
-    runs-on: [self-hosted, linux, arm64, check]
-    steps:
-      - uses: actions/checkout@v7
-      - uses: oven-sh/setup-bun@v2
-      - uses: actions/setup-node@v6
-        with:
-          node-version: 24
-      - run: bun install --frozen-lockfile
-      - run: bun run typecheck
-      - name: Pack and verify the artifact
-        run: |
-          npm pack
-          tar tvf tokenmaxxing-*.tgz > "$RUNNER_TEMP/tarlist.txt"
-          grep -E "^-rwx[-rwx]+ .* package/src/main.ts$" "$RUNNER_TEMP/tarlist.txt"
-          bun add -g "$PWD"/tokenmaxxing-*.tgz
-          "$(bun pm bin -g)/tokenmaxxing" help
-
   publish:
-    if: github.ref == 'refs/heads/main'
-    needs: test
     runs-on: ubuntu-24.04
     concurrency:
       group: publish
@@ -43,55 +24,46 @@ jobs:
         with:
           fetch-depth: 0
       - uses: oven-sh/setup-bun@v2
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           registry-url: "https://registry.npmjs.org"
           package-manager-cache: false
       - run: bun install --frozen-lockfile
-      - name: Assign the version
+      # The tag names the version; package.json on main is not bumped by hand
+      # or by a bot. A rerun of a tag already on npm skips the publish.
+      - name: Take the version from the tag
         id: version
         shell: bash
         run: |
-          current="$(node -p "require('./package.json').version")"
-          listed="$(curl -fsS --retry 2 --max-time 60 'https://registry.npmjs.org/tokenmaxxing?write=true' | jq --arg v "$current" '.versions | has($v)')"
-          if [ "$listed" = false ]; then
-            echo "version=${current}" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          if [ -n "$(git tag --list 'v*' --contains HEAD)" ]; then
-            echo "HEAD is already inside a release"
-            exit 0
-          fi
-          packed="$(npm pack --dry-run --json | jq -er '.. | .files? // empty | .[].path' | cut -d/ -f1 | sort -u)"
-          changed="$(git diff --name-only "v${current}" HEAD -- $packed)"
-          if [ -z "$changed" ]; then
-            echo "no packed file changed since v${current}"
-            exit 0
-          fi
-          echo "$changed"
-          next="$(npm version minor --no-git-tag-version)"
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit --quiet --message "chore: release ${next#v}" -- package.json
-          if ! git push origin HEAD:main; then
-            git fetch --quiet origin main
-            newer="$(git rev-parse origin/main)"
-            if [ "$newer" != "$GITHUB_SHA" ] && git merge-base --is-ancestor "$GITHUB_SHA" "$newer"; then
-              echo "::error title=Lost the push race::This run lost the push race: main moved to ${newer} after this run checked out ${GITHUB_SHA}, and the publish run queued for ${newer} releases this merge. After that run finishes, check npm view tokenmaxxing version."
-            fi
+          version="${GITHUB_REF_NAME#v}"
+          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error title=Bad tag::${GITHUB_REF_NAME} is not v<major>.<minor>.<patch>"
             exit 1
           fi
-          echo "version=${next#v}" >> "$GITHUB_OUTPUT"
-      - if: steps.version.outputs.version != ''
-        env:
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error title=Tag off main::${GITHUB_REF_NAME} points at ${GITHUB_SHA}, which is not on main"
+            exit 1
+          fi
+          packument="$(curl -fsS --retry 2 --max-time 60 'https://registry.npmjs.org/tokenmaxxing?write=true')"
+          if [ "$(jq --arg v "$version" '.versions | has($v)' <<<"$packument")" = true ]; then
+            echo "tokenmaxxing@${version} is already on npm"
+            echo "listed=true" >> "$GITHUB_OUTPUT"
+          else
+            latest="$(jq -r '."dist-tags".latest' <<<"$packument")"
+            if [ "$(bun -e "console.log(Bun.semver.order(process.argv[1], process.argv[2]))" "$version" "$latest")" != 1 ]; then
+              echo "::error title=Version not newer::${version} is not newer than the latest on npm, ${latest}"
+              exit 1
+            fi
+          fi
+          npm version "$version" --no-git-tag-version --allow-same-version
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+      - run: bun run typecheck
+      - env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          tag="v${{ steps.version.outputs.version }}"
-          gh release view "$tag" >/dev/null 2>&1 || gh release create "$tag" --target "$(git rev-parse HEAD)" --generate-notes
-      - if: steps.version.outputs.version != ''
+        run: gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 || gh release create "$GITHUB_REF_NAME" --verify-tag --generate-notes
+      - if: steps.version.outputs.listed != 'true'
         run: npm publish
       - name: Wait for the registry to list the version
-        if: steps.version.outputs.version != ''
         timeout-minutes: 60
         run: until curl -fsS --retry 2 --max-time 60 'https://registry.npmjs.org/tokenmaxxing?write=true' | jq -e --arg v "${{ steps.version.outputs.version }}" '.versions | has($v)' >/dev/null; do sleep 15; done

@@ -13,16 +13,24 @@ There are no compiled binaries by design. Source run by Bun became the distribut
 - An early release shipped a single 61 MB macOS binary to every platform and failed on Linux with `exec format error`.
 - Per-platform compiled packages would each need their own release pipeline.
 
-A merge to main that changes a packed file releases itself through CI:
+A merge to main publishes nothing. A release is a pushed tag, `v<major>.<minor>.<patch>`, on a commit of main, and the tag names the version: `package.json` on main is never bumped by hand or by a bot, so sibling pull requests never collide on it.
 
 ```mermaid
 flowchart LR
-  merge["merge to main"] -->|"packed file changed"| bump["bump the<br/>minor version"]
-  merge -->|"only docs changed"| none["nothing published"]
-  bump --> commit["commit the bump<br/>to main"]
-  commit --> publish["publish to npm<br/>through trusted<br/>publishing<br/>(OIDC, provenance)"]
-  commit --> tag["tag v#lt;version#gt;<br/>at that commit"]
-  typecheck["typecheck"] -->|"gates"| publish
+  tag["push tag<br/>v#lt;version#gt;"] --> check{"on main, and newer<br/>than npm latest?"}
+  check -->|"no"| fail["job fails,<br/>nothing published"]
+  check -->|"yes"| set["set package.json<br/>to the tag's version<br/>(not committed)"]
+  set --> typecheck["typecheck"]
+  typecheck --> release["GitHub release<br/>for the tag"]
+  release --> publish["publish to npm<br/>through trusted<br/>publishing<br/>(OIDC, provenance)"]
+```
+
+The publish job is the only GitHub Actions job, in `.github/workflows/ci.yml`; npm binds the trusted publisher to that file name. A rerun for a tag already on npm skips the publish. To release, tag the main commit and push the tag:
+
+```sh
+git fetch origin main
+git tag v1.188.0 origin/main
+git push origin v1.188.0
 ```
 
 ## Automatic updates
@@ -95,7 +103,7 @@ An ordinary package update needs no rerun of `init`: the supervisor shim, the se
 
 ## Working on the source
 
-`mise.toml` pins the Bun a checkout runs on. `mise install` installs it, then `bun install --frozen-lockfile` and `bun run typecheck` run the commands of the CI `test` job, which installs the latest Bun through `setup-bun` rather than the pin.
+`mise.toml` pins the Bun a checkout runs on. `mise install` installs it, then `bun install --frozen-lockfile` installs the dependencies and the [lefthook](https://lefthook.dev) git hooks. There is no CI: the pre-commit hook runs the typecheck, and the pre-push hook runs the typecheck and packs the npm artifact, installs it into a throwaway global root, and runs its `help`. The merge gate reruns the pre-push hook on the change merged onto the latest main.
 
 ## License
 
