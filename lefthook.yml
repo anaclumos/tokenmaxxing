@@ -3,9 +3,19 @@
 pre-commit:
   parallel: true
   jobs:
+    # Type-checks the index, the tree the commit holds, against the installed
+    # node_modules. lefthook hides only the unstaged hunks of a staged file, so
+    # in the working tree an unstaged or untracked file would decide the result.
     - name: typecheck
       glob: ["*.ts", "package.json", "tsconfig.json", "bun.lock"]
-      run: bun run typecheck
+      run: |
+        set -eu
+        tmp="$(mktemp -d)"
+        trap 'rm -rf "$tmp"' EXIT
+        git checkout-index -a --prefix="$tmp/"
+        ln -s "$PWD/node_modules" "$tmp/node_modules"
+        cd "$tmp"
+        bun run typecheck
 
 pre-push:
   parallel: true
