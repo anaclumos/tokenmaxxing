@@ -26,6 +26,7 @@
   ],
   "scripts": {
     "dev": "bun run src/main.ts",
+    "prepare": "[ -n \"$CI\" ] || (lefthook uninstall && lefthook install)",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
