@@ -102,7 +102,9 @@ An ordinary package update needs no rerun of `init`: the supervisor shim, the se
 
 ## Working on the source
 
-`mise.toml` pins the Bun a checkout runs on. `mise install` installs it, then `bun install --frozen-lockfile` installs the dependencies and the [lefthook](https://lefthook.dev) git hooks. There is no CI: the pre-commit hook runs the typecheck, and the pre-push hook runs the typecheck and packs the npm artifact, installs it into a throwaway global root, and runs its `help`. The merge gate reruns the pre-push hook on the change merged onto the latest main.
+`mise.toml` pins the Bun a checkout runs on. `mise install` installs it, then `bun install --frozen-lockfile` installs the dependencies and the [lefthook](https://lefthook.dev) git hooks. There is no CI and no pre-commit hook: the pre-push hook exports the committed tree at `HEAD` and, on it, runs the typecheck and packs the npm artifact, installs it into a throwaway global root, and runs its `help`, so an uncommitted or untracked file cannot change the result. The merge gate reruns the pre-push hook on the change merged onto the latest main.
+
+`lefthook install` writes the hooks `lefthook.yml` names and leaves a hook that was dropped from it in place, so the `prepare` script that `bun install` runs is `lefthook uninstall && lefthook install`, which removes every lefthook hook first. It does nothing when `CI` is set, as lefthook's own install step does.
 
 ## License
 
