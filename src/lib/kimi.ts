@@ -3,6 +3,7 @@ import { basename, dirname, join } from "node:path";
 import { z } from "zod";
 import { writeFileAtomic } from "./atomic.ts";
 import { resolveRealBin } from "./claudebin.ts";
+import { withLock } from "./lock.ts";
 import { http, safeErrorDetail } from "./http.ts";
 import { errorMessage } from "./log.ts";
 import { kimiConfigFor, kimiPaths, kimiPool, kimiStoreDirFor } from "./paths.ts";
@@ -181,10 +182,28 @@ async function serverReady(base: string, server: Bun.Subprocess): Promise<boolea
   return false;
 }
 
+const STOP_SIGNALS = ["SIGTERM", "SIGINT", "SIGHUP"] as const;
+
+const liveServers = new Set<Bun.Subprocess>();
+
+function stopLiveServers(signal: (typeof STOP_SIGNALS)[number]): void {
+  for (const s of STOP_SIGNALS) process.off(s, stopLiveServers);
+  for (const server of liveServers) server.kill();
+  process.kill(process.pid, signal);
+}
+
+function trackServer(server: Bun.Subprocess): void {
+  if (liveServers.size === 0) for (const s of STOP_SIGNALS) process.on(s, stopLiveServers);
+  liveServers.add(server);
+}
+
 async function stopServer(server: Bun.Subprocess): Promise<void> {
   server.kill();
   const stopped = await Promise.race([server.exited.then(() => true), Bun.sleep(SERVER_STOP_MS).then(() => false)]);
   if (!stopped) server.kill("SIGKILL");
+  await server.exited;
+  liveServers.delete(server);
+  if (liveServers.size === 0) for (const s of STOP_SIGNALS) process.off(s, stopLiveServers);
 }
 
 type ServerRead = { usage: string; userInfo: string | null };
@@ -199,6 +218,7 @@ async function readThroughServer(store: string): Promise<ServerRead> {
     stdout: "ignore",
     stderr: "ignore",
   });
+  trackServer(server);
   try {
     if (!(await serverReady(base, server))) throw new Error(`the Kimi Code server did not start (exit ${server.exitCode ?? "none"})`);
     const headers = { Authorization: `Bearer ${readFileSync(join(store, "server.token"), "utf8").trim()}` };
@@ -217,13 +237,13 @@ async function readThroughServer(store: string): Promise<ServerRead> {
 const REAUTH_MESSAGE = /re-login required|run \/login/i;
 
 async function readKimiUsage(account: Account, now: number): Promise<SampleReport> {
-  let read: ServerRead;
+  let read: ServerRead | null;
   try {
-    if (readOptional(kimiConfigFor(account.id)) == null) return { ok: false, reason: "no Kimi Code login in this account's store - run `tokenmaxxing auth --kimi`" };
-    read = await readThroughServer(kimiStoreDirFor(account.id));
+    read = await withLock(kimiPool.lockFile, () => (readOptional(kimiConfigFor(account.id)) == null ? null : readThroughServer(kimiStoreDirFor(account.id))));
   } catch (e) {
     return { ok: false, reason: `Kimi Code usage read failed: ${errorMessage(e)}` };
   }
+  if (read == null) return { ok: false, reason: "no Kimi Code login in this account's store - run `tokenmaxxing auth --kimi`" };
   const parsed = ServerUsageSchema.safeParse(JsonTextSchema.safeParse(read.usage).data);
   if (!parsed.success) return { ok: false, reason: "Kimi Code usage read failed: the server returned an unexpected body shape (withheld)" };
   const data = parsed.data.data;
