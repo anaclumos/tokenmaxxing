@@ -36,11 +36,12 @@ export function loadConfig(): Config {
   cfg.grokBin = optionalEnv("TOKENMAXXING_GROK_BIN") ?? cfg.grokBin;
   cfg.museBin = optionalEnv("TOKENMAXXING_MUSE_BIN") ?? cfg.museBin;
   cfg.cursorBin = optionalEnv("TOKENMAXXING_CURSOR_BIN") ?? cfg.cursorBin;
+  cfg.kimiBin = optionalEnv("TOKENMAXXING_KIMI_BIN") ?? cfg.kimiBin;
   cfg.piBin = optionalEnv("TOKENMAXXING_PI_BIN") ?? cfg.piBin;
   return cfg;
 }
 
-export type BinKey = "claudeBin" | "codexBin" | "grokBin" | "museBin" | "cursorBin" | "piBin";
+export type BinKey = "claudeBin" | "codexBin" | "grokBin" | "museBin" | "cursorBin" | "kimiBin" | "piBin";
 
 export function pinBinOverride(input: { key: BinKey; bin: string }): void {
   const raw: Record<string, unknown> = existsSync(paths.configJson) ? readJsonFile(paths.configJson, z.record(z.string(), z.unknown())) : {};

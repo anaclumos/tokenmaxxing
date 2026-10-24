@@ -15,19 +15,18 @@ export type StatusOnlySpec = {
   flag: string;
   pool: PoolPaths;
   binName: string;
-  binKey: "grokBin" | "museBin" | "cursorBin";
+  binKey: "grokBin" | "museBin" | "cursorBin" | "kimiBin";
   storeDirFor: (accountId: string) => string;
   authJsonFor: (accountId: string) => string;
   homeEnv: string;
-  loginArgs: string[];
+  loginArgs: () => string[];
   onboardAuthRel: string;
-  liveAuthPath: () => string;
   readAuth: (path: string) => AuthEntry[];
   liveId: () => string | null;
   presence: () => Map<string, number>;
   versionOk: (versionOutput: string) => boolean;
   importIntro: string;
-  foundLive: (count: number) => string;
+  live: { authPath: () => string; found: (count: number) => string } | null;
   install: () => void;
   loginStep: () => string;
   samplePool: Provider["samplePool"];
@@ -53,7 +52,7 @@ export function statusOnlyProvider(spec: StatusOnlySpec): Provider {
   async function login(): Promise<Harvest | null> {
     const real = resolveRealBin(bin);
     const onboardDir = await onboardHome(spec.name);
-    const p = Bun.spawn([real, ...spec.loginArgs], {
+    const p = Bun.spawn([real, ...spec.loginArgs()], {
       stdin: "inherit",
       stdout: "inherit",
       stderr: "inherit",
@@ -73,10 +72,11 @@ export function statusOnlyProvider(spec: StatusOnlySpec): Provider {
   async function importLive(): Promise<Harvest | null> {
     console.log(c.cyan(spec.importIntro));
     console.log();
-    const live = spec.readAuth(spec.liveAuthPath()).filter((e) => e.harvest);
-    const harvest = live[0]?.harvest;
+    if (spec.live == null) return login();
+    const found = spec.readAuth(spec.live.authPath()).filter((e) => e.harvest);
+    const harvest = found[0]?.harvest;
     if (!harvest) return login();
-    console.log(c.dim(spec.foundLive(live.length)));
+    console.log(c.dim(spec.live.found(found.length)));
     await spec.identify?.(harvest);
     return harvest;
   }
