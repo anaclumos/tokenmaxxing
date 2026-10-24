@@ -26,7 +26,7 @@ export class StoreUnusableError extends Error {
 }
 
 export type Provider = {
-  name: "claude" | "codex" | "grok" | "muse" | "cursor";
+  name: "claude" | "codex" | "grok" | "muse" | "cursor" | "kimi";
   flag: string;
   pool: PoolPaths;
   seats: "shared" | "live";

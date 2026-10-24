@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { paths } from "./paths.ts";
 import { pidExists } from "./proc.ts";
 
-const POOLS = ["claude", "codex", "pi", "grok", "muse", "cursor"] as const;
+const POOLS = ["claude", "codex", "pi", "grok", "muse", "cursor", "kimi"] as const;
 
 export type OnboardPool = (typeof POOLS)[number];
 

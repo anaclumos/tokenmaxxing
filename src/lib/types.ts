@@ -119,6 +119,7 @@ export const ConfigSchema = z
     grokBin: z.string().default(""),
     museBin: z.string().default(""),
     cursorBin: z.string().default(""),
+    kimiBin: z.string().default(""),
     piBin: z.string().default(""),
     policy: z
       .object({

@@ -4,10 +4,11 @@ import { claude } from "../lib/claude.ts";
 import { codex } from "../lib/codex.ts";
 import { grok } from "../lib/grok.ts";
 import { cursor } from "../lib/cursor.ts";
+import { kimi } from "../lib/kimi.ts";
 import { muse } from "../lib/muse.ts";
 import { loadAccounts, loadConfig, saveAccounts } from "../lib/state.ts";
 import { withLock } from "../lib/lock.ts";
-import { codexPool, cursorPool, grokPool, musePool } from "../lib/paths.ts";
+import { codexPool, cursorPool, grokPool, kimiPool, musePool } from "../lib/paths.ts";
 import { barFor, bufferedUsed, earliestReset, gatedWindows, landGrant, landWindows, isExhausted, isSessionWindow, limitWindows, liveFamilyWalls, liveUsed, nextWeeklyReset, sessionWindow, thresholdBars, weeklyWindow } from "../lib/picker.ts";
 import type { Provider, SampleReport } from "../lib/provider.ts";
 import { usd } from "./key.ts";
@@ -57,7 +58,7 @@ type StatusApiKey = {
   sessions: number;
 };
 
-export type StatusReport = { now: number; claude: PoolReport; codex: PoolReport; grok: PoolReport; muse: PoolReport; cursor: PoolReport; apiKeys?: StatusApiKey[] };
+export type StatusReport = { now: number; claude: PoolReport; codex: PoolReport; grok: PoolReport; muse: PoolReport; cursor: PoolReport; kimi: PoolReport; apiKeys?: StatusApiKey[] };
 
 function apiKeyReport(): StatusApiKey[] {
   const sessions = keySessions();
@@ -317,9 +318,10 @@ export async function cmdStatus(opts: { json?: boolean; cached?: boolean } = {})
     const grokPooled = loadAccounts(grokPool).accounts.length > 0;
     const musePooled = loadAccounts(musePool).accounts.length > 0;
     const cursorPooled = loadAccounts(cursorPool).accounts.length > 0;
+    const kimiPooled = loadAccounts(kimiPool).accounts.length > 0;
     if (claudeReport.accounts.length === 0) {
-      if (!codexPooled && !grokPooled && !musePooled && !cursorPooled && apiKeys.length === 0) {
-        console.log(c.dim("no accounts yet, run `tokenmaxxing init` (or `tokenmaxxing init --codex`, `--grok`, `--muse`, `--cursor`)"));
+      if (!codexPooled && !grokPooled && !musePooled && !cursorPooled && !kimiPooled && apiKeys.length === 0) {
+        console.log(c.dim("no accounts yet, run `tokenmaxxing init` (or `tokenmaxxing init --codex`, `--grok`, `--muse`, `--cursor`, `--kimi`)"));
         return 0;
       }
       console.log(c.dim("no claude accounts (run `tokenmaxxing init` to pool claude too)"));
@@ -334,8 +336,9 @@ export async function cmdStatus(opts: { json?: boolean; cached?: boolean } = {})
   const grokReport = await collect(grok, cfg, now, cached);
   const museReport = await collect(muse, cfg, now, cached);
   const cursorReport = await collect(cursor, cfg, now, cached);
+  const kimiReport = await collect(kimi, cfg, now, cached);
   if (json) {
-    const report: StatusReport = { now, claude: claudeReport, codex: codexReport, grok: grokReport, muse: museReport, cursor: cursorReport, ...(apiKeys.length > 0 ? { apiKeys } : {}) };
+    const report: StatusReport = { now, claude: claudeReport, codex: codexReport, grok: grokReport, muse: museReport, cursor: cursorReport, kimi: kimiReport, ...(apiKeys.length > 0 ? { apiKeys } : {}) };
     emitJson({ ok: true, ...report });
     return 0;
   }
@@ -350,6 +353,9 @@ export async function cmdStatus(opts: { json?: boolean; cached?: boolean } = {})
   }
   if (cursorReport.accounts.length > 0) {
     renderPool(cursor, cursorReport, `cursor  (${count({ n: cursorReport.accounts.length, noun: "account" })}, status-only)`, Date.now(), cfg.policy.usagePollTtlMs);
+  }
+  if (kimiReport.accounts.length > 0) {
+    renderPool(kimi, kimiReport, `kimi  (${count({ n: kimiReport.accounts.length, noun: "account" })}, status-only)`, Date.now(), cfg.policy.usagePollTtlMs);
   }
   return 0;
 }
