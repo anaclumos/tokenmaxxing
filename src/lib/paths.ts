@@ -68,6 +68,11 @@ export const cursorPool = {
   lockFile: join(TM_HOME, "cursor-lock"),
 } as const;
 
+export const kimiPool = {
+  accountsJson: join(TM_HOME, "kimi-accounts.json"),
+  lockFile: join(TM_HOME, "kimi-lock"),
+} as const;
+
 export type PoolPaths = { accountsJson: string; lockFile: string };
 
 const CODEX_HOME = env("TOKENMAXXING_CODEX_HOME", env("CODEX_HOME", join(HOME, ".codex")));
@@ -177,6 +182,19 @@ export function cursorStoreDirFor(accountId: string): string {
 
 export function cursorAuthJsonFor(accountId: string): string {
   return join(cursorStoreDirFor(accountId), "auth.json");
+}
+
+export const kimiPaths = {
+  home: env("KIMI_CODE_HOME", join(HOME, ".kimi-code")),
+  storesDir: join(TM_HOME, "kimi-stores"),
+} as const;
+
+export function kimiStoreDirFor(accountId: string): string {
+  return join(kimiPaths.storesDir, shortId(accountId));
+}
+
+export function kimiConfigFor(accountId: string): string {
+  return join(kimiStoreDirFor(accountId), "config.toml");
 }
 
 export function grokSeatFromEnv(accountIds: string[], env: Record<string, string | undefined> = process.env): string | null {

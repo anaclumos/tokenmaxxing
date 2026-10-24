@@ -167,15 +167,17 @@ export const cursor = statusOnlyProvider({
   storeDirFor: cursorStoreDirFor,
   authJsonFor: cursorAuthJsonFor,
   homeEnv: "XDG_CONFIG_HOME",
-  loginArgs: ["login"],
+  loginArgs: () => ["login"],
   onboardAuthRel: "cursor/auth.json",
-  liveAuthPath: () => cursorPaths.authJson,
   readAuth,
   liveId: () => null,
   presence: () => new Map(),
   versionOk: (out) => /^\d{4}\.\d{2}\.\d{2}-[0-9a-f]+$/.test(out.trim()),
   importIntro: "Opening an isolated Cursor login for your first pooled account - the login you already have stays as it is.",
-  foundLive: () => `found the Cursor login in ${cursorPaths.authJson} - pooling it; use \`tokenmaxxing add --cursor\` for more.`,
+  live: {
+    authPath: () => cursorPaths.authJson,
+    found: () => `found the Cursor login in ${cursorPaths.authJson} - pooling it; use \`tokenmaxxing add --cursor\` for more.`,
+  },
   install: () => {
     console.log(c.dim("cursor pool is status-only: no supervisor or hooks installed. Use `tokenmaxxing status` to view pooled Cursor accounts."));
   },
