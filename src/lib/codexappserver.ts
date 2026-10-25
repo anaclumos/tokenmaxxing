@@ -43,6 +43,10 @@ const OptOutSchema = z.looseObject({ capabilities: z.looseObject({ optOutNotific
 const RefusalSchema = z.looseObject({ codexErrorInfo: z.literal("usageLimitExceeded") });
 const TurnRefusalSchema = z.looseObject({ turn: z.looseObject({ error: RefusalSchema }) });
 const ErrorRefusalSchema = z.looseObject({ error: RefusalSchema, willRetry: z.literal(false).optional() });
+const TurnSchema = z.looseObject({ id: z.string(), rootTurnId: z.string().nullish() });
+const TurnEnvelopeSchema = z.looseObject({ turn: TurnSchema });
+const TurnIdSchema = z.looseObject({ turnId: z.string() });
+const ClientTurnSchema = z.looseObject({ turnId: z.string().optional(), expectedTurnId: z.string().optional() });
 
 function parseRpc(line: string): Rpc | null {
   try {
@@ -54,10 +58,32 @@ function parseRpc(line: string): Rpc | null {
 
 const idKey = (id: string | number): string => `${typeof id}:${id}`;
 
+type TurnMap = { from: string; to: string };
+type Retry = { params: Record<string, unknown>; turnId: string; withheld: string[] };
+
+function translateTurn(line: string, msg: Rpc, mapped: TurnMap): string {
+  const params = msg.params ?? {};
+  let out: Record<string, unknown> = params;
+  if (TurnIdSchema.safeParse(params).data?.turnId === mapped.to) out = { ...out, turnId: mapped.from };
+  const turn = TurnEnvelopeSchema.safeParse(params).data?.turn;
+  if (turn != null && turn.id === mapped.to) out = { ...out, turn: { ...turn, id: mapped.from, ...(turn.rootTurnId === mapped.to ? { rootTurnId: mapped.from } : {}) } };
+  return out === params ? line : JSON.stringify({ ...msg, params: out });
+}
+
+function translateClientTurn(msg: Rpc, mapped: TurnMap): Rpc {
+  const params = msg.params ?? {};
+  const ids = ClientTurnSchema.safeParse(params).data;
+  let out: Record<string, unknown> = params;
+  if (ids?.turnId === mapped.from) out = { ...out, turnId: mapped.to };
+  if (ids?.expectedTurnId === mapped.from) out = { ...out, expectedTurnId: mapped.to };
+  return out === params ? msg : { ...msg, params: out };
+}
+
 export class AppServerState {
   initialize: Record<string, unknown> | null = null;
   initialized = false;
   readonly threads = new Map<string, Record<string, unknown>>();
+  readonly lastTurn = new Map<string, Record<string, unknown>>();
   private readonly ephemeral = new Map<string, number>();
   private readonly pending = new Map<string, { method: string; params: Record<string, unknown> }>();
   private readonly busy = new Set<string>();
@@ -80,7 +106,7 @@ export class AppServerState {
     return sent;
   }
 
-  fromServer(msg: Rpc, now = Date.now()): { refused: boolean; turnEnded: boolean; forward: boolean } {
+  fromServer(msg: Rpc, now = Date.now()): { refused: boolean; turnEnded: boolean; forward: boolean; threadId?: string } {
     if (msg.method == null && msg.id != null) {
       const asked = this.pending.get(idKey(msg.id));
       this.pending.delete(idKey(msg.id));
@@ -93,14 +119,15 @@ export class AppServerState {
     if (msg.method === "turn/started" && threadId != null) this.busy.add(threadId);
     if (msg.method === "turn/completed" && threadId != null) {
       this.busy.delete(threadId);
-      return { refused: TurnRefusalSchema.safeParse(msg.params).success, turnEnded: true, forward };
+      return { refused: TurnRefusalSchema.safeParse(msg.params).success, turnEnded: true, forward, threadId };
     }
     if (msg.method === "thread/closed" && threadId != null) {
       this.busy.delete(threadId);
       this.threads.delete(threadId);
+      this.lastTurn.delete(threadId);
       this.ephemeral.delete(threadId);
     }
-    return { refused: msg.method === "error" && ErrorRefusalSchema.safeParse(msg.params).success, turnEnded: false, forward };
+    return { refused: msg.method === "error" && ErrorRefusalSchema.safeParse(msg.params).success, turnEnded: false, forward, threadId };
   }
 
   private answered(asked: { method: string; params: Record<string, unknown> }, result: unknown, now: number): void {
@@ -109,6 +136,7 @@ export class AppServerState {
     else if (opened) this.threads.set(opened.thread.id, pick(asked.params, RESUME_KEYS));
     if (asked.method !== "turn/start") return;
     const threadId = ThreadParamsSchema.safeParse(asked.params).data?.threadId;
+    if (threadId != null) this.lastTurn.set(threadId, asked.params);
     const tracked = threadId == null ? undefined : this.threads.get(threadId);
     if (!tracked) return;
     Object.assign(tracked, pickBy(pick(asked.params, TURN_KEYS), (v) => v != null));
@@ -158,6 +186,9 @@ export async function runCodexAppServer(input: {
   const retired = new Set<Child>();
   const waiters = new Map<string, (reply: Rpc) => void>();
   const queued: string[] = [];
+  const retries = new Map<string, Retry>();
+  const remaps = new Map<string, TurnMap>();
+  const withheldErrors = new Map<string, string>();
   let held = input.seat.id;
   let replays = 0;
   let replaying = false;
@@ -194,18 +225,49 @@ export async function runCodexAppServer(input: {
           continue;
         }
         if (replaying) continue;
-        if (msg) {
-          const seen = state.fromServer(msg);
-          if (seen.refused) {
-            const refusedId = held;
-            log("codexappserver.refused", { account: refusedId.slice(0, 8) });
-            holding = holding.then(() => holdRefused(refusedId)).catch((e: unknown) => log("codexappserver.hold_failed", { err: errorMessage(e) }));
-            wantMove = true;
-          }
-          if (seen.turnEnded) void check();
-          if (!seen.forward) continue;
+        if (!msg) {
+          await writeOut(line);
+          continue;
         }
-        await writeOut(line);
+        const seen = state.fromServer(msg);
+        const { threadId } = seen;
+        const retrying = threadId == null ? undefined : retries.get(threadId);
+        const mapped = threadId == null ? undefined : remaps.get(threadId);
+        if (msg.method === "turn/started" && threadId != null && (retrying || mapped)) {
+          const started = TurnEnvelopeSchema.safeParse(msg.params).data;
+          if (retrying && started) remaps.set(threadId, { from: retrying.turnId, to: started.turn.id });
+          continue;
+        }
+        if (seen.refused) {
+          const refusedId = held;
+          log("codexappserver.refused", { account: refusedId.slice(0, 8) });
+          holding = holding.then(() => holdRefused(refusedId)).catch((e: unknown) => log("codexappserver.hold_failed", { err: errorMessage(e) }));
+          wantMove = true;
+          const plan = threadId != null && !retrying && !mapped && !ended && !terminated ? state.lastTurn.get(threadId) : undefined;
+          if (plan && threadId != null && msg.method === "error") {
+            if (seen.forward) withheldErrors.set(threadId, line);
+            continue;
+          }
+          const failed = plan && seen.turnEnded ? TurnEnvelopeSchema.safeParse(msg.params).data : undefined;
+          if (plan && threadId != null && failed && state.idle()) {
+            const withheld = withheldErrors.get(threadId);
+            withheldErrors.delete(threadId);
+            retries.set(threadId, { params: plan, turnId: failed.turn.id, withheld: [...(withheld == null ? [] : [withheld]), ...(seen.forward ? [line] : [])] });
+            log("codexappserver.retry_planned", { account: refusedId.slice(0, 8), thread: threadId.slice(0, 8) });
+            void check();
+            continue;
+          }
+        }
+        const out = mapped ? translateTurn(line, msg, mapped) : line;
+        if ((seen.turnEnded || msg.method === "thread/closed") && threadId != null) {
+          const withheld = withheldErrors.get(threadId);
+          withheldErrors.delete(threadId);
+          if (withheld != null) await writeOut(withheld);
+          remaps.delete(threadId);
+        }
+        if (seen.turnEnded) void check();
+        if (!seen.forward) continue;
+        await writeOut(out);
       }
     })().catch((e: unknown) => log("codexappserver.stdout_failed", { err: errorMessage(e) }));
     void p.exited.then(async () => {
@@ -258,7 +320,7 @@ export async function runCodexAppServer(input: {
     return restore(child);
   };
 
-  const move = async (): Promise<void> => {
+  const move = async (): Promise<boolean> => {
     await holding;
     const planOrder = wantPlanOrder;
     wantPlanOrder = false;
@@ -272,7 +334,7 @@ export async function runCodexAppServer(input: {
       if (planOrder) planOrderRetryAt = Date.now() + PLAN_ORDER_RETRY_MS;
       clearNext();
       log("codexappserver.move_none", { account: held.slice(0, 8), reason: terminated ? "shutting down" : granted && "denied" in granted ? granted.denied : granted ? "held account is still the best pick" : "no usable account" });
-      return;
+      return false;
     }
     const from = held;
     const old = child;
@@ -282,18 +344,38 @@ export async function runCodexAppServer(input: {
     if (terminated) {
       clearNext();
       finish(exitStatus(old));
-      return;
+      return false;
     }
     const restored = await relaunch(granted.id, granted.store);
     clearNext();
-    if (restored) return;
+    if (restored) {
+      replaying = false;
+      return true;
+    }
     log("codexappserver.move_rollback", { from: granted.id.slice(0, 8), to: from.slice(0, 8) });
     await stop(child);
     if (terminated) {
       finish(exitStatus(child));
-      return;
+      return false;
     }
     if (!(await relaunch(from, ensureCodexStoreHome(from)))) log("codexappserver.rollback_failed", { account: from.slice(0, 8) });
+    return false;
+  };
+
+  const retry = async (landed: boolean): Promise<void> => {
+    for (const [threadId, planned] of [...retries]) {
+      const reply = landed && !terminated && !ended ? await request(child, "turn/start", planned.params) : null;
+      const started = reply ? TurnEnvelopeSchema.safeParse(reply.result).data : undefined;
+      retries.delete(threadId);
+      if (started) {
+        remaps.set(threadId, { from: planned.turnId, to: started.turn.id });
+        log("codexappserver.retry", { account: held.slice(0, 8), thread: threadId.slice(0, 8) });
+        continue;
+      }
+      remaps.delete(threadId);
+      log("codexappserver.retry_none", { thread: threadId.slice(0, 8), reason: landed ? "turn/start was not answered" : "the move did not land" });
+      for (const line of planned.withheld) await writeOut(line);
+    }
   };
 
   const check = async (): Promise<void> => {
@@ -309,8 +391,10 @@ export async function runCodexAppServer(input: {
     }
     if (!wantMove || moving || ended || terminated || !state.idle()) return;
     moving = move()
-      .catch((e: unknown) => {
+      .then(retry)
+      .catch(async (e: unknown) => {
         log("codexappserver.move_failed", { err: errorMessage(e) });
+        await retry(false).catch((e2: unknown) => log("codexappserver.retry_failed", { err: errorMessage(e2) }));
         if (retired.has(child)) finish(1);
       })
       .finally(() => {
@@ -328,7 +412,10 @@ export async function runCodexAppServer(input: {
     const msg = parseRpc(line);
     if (!msg) return toChild(child, line);
     const sent = state.fromClient(msg);
-    toChild(child, sent === msg ? line : JSON.stringify(sent));
+    const threadId = ThreadParamsSchema.safeParse(sent.params).data?.threadId;
+    const mapped = threadId == null ? undefined : remaps.get(threadId);
+    const out = mapped ? translateClientTurn(sent, mapped) : sent;
+    toChild(child, out === msg ? line : JSON.stringify(out));
   };
 
   process.on("SIGTERM", () => {
