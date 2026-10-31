@@ -8,7 +8,7 @@ import { withLock } from "./lock.ts";
 import { errorMessage, log } from "./log.ts";
 import { claudeTierLabel, isDeadCredential } from "./oauth.ts";
 import { claudePool, paths, storeDirFor } from "./paths.ts";
-import { barFor, gatedWindows, landGrant, landWindows, liveUsed, thresholdBars } from "./picker.ts";
+import { barFor, gatedWindows, landGrant, landWindows, liveUsed, sessionWindow, thresholdBars } from "./picker.ts";
 import { seatCounts } from "./presence.ts";
 import type { Observation } from "./provider.ts";
 import { loadAccounts, loadUsageSnapshot, saveAccounts } from "./state.ts";
@@ -58,7 +58,8 @@ export function teeObservation(account: Account): Observation | null {
   const at = snap.state.sampledAt ?? snap.state.ts;
   if (stored != null && at <= stored.at) return stored;
   const aggregate = windowsOf({ fiveHour: snap.state.fiveHour, sevenDay: snap.state.sevenDay, perModel: {} }, at);
-  return { windows: mergeWindows(aggregate, account.windows), at };
+  const session = snap.state.fiveHour == null ? sessionWindow(account) : undefined;
+  return { windows: mergeWindows(session ? [session, ...aggregate] : aggregate, account.windows), at };
 }
 
 export function landRead(account: Account, usage: UsageWindows, at: number, thresholds: Bars): void {

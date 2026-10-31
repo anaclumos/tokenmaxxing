@@ -23,11 +23,14 @@ export function isDeadCredential(creds: OAuthCreds): boolean {
   return creds.refreshToken === "" || creds.accessToken === "";
 }
 
+const CLAUDE_PLAN_NAMES: Record<string, string> = { "max 20x": "ultra", "max 5x": "max" };
+
 export function claudeTierLabel(input: { subscriptionType?: string; rateLimitTier?: string }): string | null {
   const segments = input.rateLimitTier?.split("_") ?? [];
   const multiplier = segments.find((seg) => seg.length > 1 && seg.endsWith("x") && Number.isInteger(Number(seg.slice(0, -1))));
   if (input.subscriptionType == null) return multiplier ?? null;
-  return multiplier ? `${input.subscriptionType} ${multiplier}` : input.subscriptionType;
+  const label = multiplier ? `${input.subscriptionType} ${multiplier}` : input.subscriptionType;
+  return CLAUDE_PLAN_NAMES[label] ?? label;
 }
 
 export function isAccessTokenExpiring(creds: OAuthCreds): boolean {

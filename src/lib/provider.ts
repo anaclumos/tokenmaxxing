@@ -37,7 +37,7 @@ export type Provider = {
   presence(): Map<string, number>;
   gatedFamilies(cfg: Config): string[] | null;
   heldFamilies(): string[] | null;
-  planWeight?(account: Account): number;
+  planWeight?(account: Account, window: Window): number;
   observeLive(account: Account, cfg: Config, now: number, opts: { probe: boolean; perModel: boolean }): Promise<Observation | null>;
   samplePool(accounts: Account[], now: number): Promise<Map<string, SampleReport>>;
   mergeWindows(next: Window[], prev: Window[]): Window[];
