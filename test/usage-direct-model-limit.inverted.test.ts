@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { freshHome, serveJson } from "./fixtures.ts";
+import { describeFailedRead, freshHome, serveJson } from "./fixtures.ts";
 
 describe("usage endpoint per-model weekly limits on a weekly-only account", () => {
   test("keeps a weekly_scoped limit named by its model as a per-model window", async () => {
-    freshHome();
+    const home = freshHome();
     const resetsAt = new Date(Date.now() + 3 * 24 * 3600 * 1000).toISOString();
     const stub = serveJson([
       {
@@ -16,7 +16,8 @@ describe("usage endpoint per-model weekly limits on a weekly-only account", () =
     try {
       const { fetchUsageDirect } = await import("../src/lib/usage.ts");
       const read = await fetchUsageDirect("test-access-token");
-      expect(read.ok).toBe(true);
+      if (!read.ok) console.error(describeFailedRead(home, read));
+      expect({ hits: stub.hits(), ok: read.ok }).toEqual({ hits: 1, ok: true });
       if (!read.ok) return;
       expect(read.usage.fiveHour).toBeNull();
       const fable = Object.entries(read.usage.perModel).find(([name]) => name.toLowerCase() === "fable");

@@ -1,4 +1,4 @@
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Account, Window } from "../src/lib/types.ts";
@@ -40,7 +40,7 @@ export async function claudePickCtx(now: number, seats: Map<string, number> | nu
   };
 }
 
-export function serveJson(bodies: unknown[]): { url: string; stop: () => void } {
+export function serveJson(bodies: unknown[]): { url: string; hits: () => number; stop: () => void } {
   let next = 0;
   const server = Bun.serve({
     hostname: "127.0.0.1",
@@ -51,5 +51,13 @@ export function serveJson(bodies: unknown[]): { url: string; stop: () => void } 
       return Response.json(body);
     },
   });
-  return { url: new URL("/api/oauth/usage", server.url).href, stop: () => void server.stop(true) };
+  return { url: new URL("/api/oauth/usage", server.url).href, hits: () => next, stop: () => void server.stop(true) };
+}
+
+export function describeFailedRead(home: string, read: unknown): string {
+  const files = readdirSync(home, { recursive: true, encoding: "utf8" })
+    .map((name) => join(home, name))
+    .filter((path) => statSync(path).isFile())
+    .map((path) => `--- ${path}\n${readFileSync(path, "utf8").slice(-4000)}`);
+  return [`read: ${JSON.stringify(read)}`, ...files].join("\n");
 }

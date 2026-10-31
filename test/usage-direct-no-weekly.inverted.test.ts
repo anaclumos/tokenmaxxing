@@ -10,6 +10,7 @@ describe("usage endpoint without a weekly window", () => {
     try {
       const { fetchUsageDirect } = await import("../src/lib/usage.ts");
       const read = await fetchUsageDirect("test-access-token");
+      expect(stub.hits()).toBe(1);
       expect(read.ok).toBe(true);
     } finally {
       stub.stop();
