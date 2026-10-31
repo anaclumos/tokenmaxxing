@@ -2,20 +2,17 @@ name: CI
 
 on:
   pull_request:
-  push:
-    tags: ["v*"]
 
 permissions:
   contents: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: true
 
 jobs:
   typecheck:
-    if: github.event_name == 'pull_request'
-    runs-on: [self-hosted, minicomputer]
+    runs-on: instabox-medium
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
@@ -40,8 +37,7 @@ jobs:
       - run: bun run typecheck
 
   test:
-    if: github.event_name == 'pull_request'
-    runs-on: [self-hosted, minicomputer]
+    runs-on: instabox-medium
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
@@ -55,8 +51,7 @@ jobs:
       - run: bun run test
 
   pack:
-    if: github.event_name == 'pull_request'
-    runs-on: [self-hosted, minicomputer]
+    runs-on: instabox-medium
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
@@ -80,60 +75,3 @@ jobs:
           BUN_INSTALL_GLOBAL_DIR="$tmp/global" BUN_INSTALL_BIN="$tmp/bin" bun add -g --silent "$tgz"
           HOME="$tmp/home" XDG_CONFIG_HOME="$tmp/home/.config" XDG_STATE_HOME="$tmp/home/.local/state" XDG_DATA_HOME="$tmp/home/.local/share" XDG_CACHE_HOME="$tmp/home/.cache" \
             "$tmp/bin/tokenmaxxing" help >/dev/null
-
-  publish:
-    if: github.event_name == 'push'
-    runs-on: ubuntu-24.04
-    concurrency:
-      group: publish
-      cancel-in-progress: false
-    permissions:
-      contents: write
-      id-token: write
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-      - uses: oven-sh/setup-bun@v2
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 24
-          registry-url: "https://registry.npmjs.org"
-          package-manager-cache: false
-      - run: bun install --frozen-lockfile
-      # The tag names the version; package.json on main is not bumped by hand
-      # or by a bot. A rerun of a tag already on npm skips the publish.
-      - name: Take the version from the tag
-        id: version
-        shell: bash
-        run: |
-          version="${GITHUB_REF_NAME#v}"
-          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "::error title=Bad tag::${GITHUB_REF_NAME} is not v<major>.<minor>.<patch>"
-            exit 1
-          fi
-          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
-            echo "::error title=Tag off main::${GITHUB_REF_NAME} points at ${GITHUB_SHA}, which is not on main"
-            exit 1
-          fi
-          packument="$(curl -fsS --retry 2 --max-time 60 'https://registry.npmjs.org/tokenmaxxing?write=true')"
-          if [ "$(jq --arg v "$version" '.versions | has($v)' <<<"$packument")" = true ]; then
-            echo "tokenmaxxing@${version} is already on npm"
-            echo "listed=true" >> "$GITHUB_OUTPUT"
-          else
-            latest="$(jq -r '."dist-tags".latest' <<<"$packument")"
-            if [ "$(bun -e "console.log(Bun.semver.order(process.argv[1], process.argv[2]))" "$version" "$latest")" != 1 ]; then
-              echo "::error title=Version not newer::${version} is not newer than the latest on npm, ${latest}"
-              exit 1
-            fi
-          fi
-          npm version "$version" --no-git-tag-version --allow-same-version
-          echo "version=${version}" >> "$GITHUB_OUTPUT"
-      - env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 || gh release create "$GITHUB_REF_NAME" --verify-tag --generate-notes
-      - if: steps.version.outputs.listed != 'true'
-        run: npm publish
-      - name: Wait for the registry to list the version
-        timeout-minutes: 60
-        run: until curl -fsS --retry 2 --max-time 60 'https://registry.npmjs.org/tokenmaxxing?write=true' | jq -e --arg v "${{ steps.version.outputs.version }}" '.versions | has($v)' >/dev/null; do sleep 15; done

@@ -1,6 +1,6 @@
 ---
 title: Build and distribution
-description: TypeScript source on npm, run by Bun, published with provenance
+description: TypeScript source on npm, run by Bun
 ---
 
 The npm package ships TypeScript source, not a build:
@@ -13,7 +13,9 @@ There are no compiled binaries by design. Source run by Bun became the distribut
 - An early release shipped a single 61 MB macOS binary to every platform and failed on Linux with `exec format error`.
 - Per-platform compiled packages would each need their own release pipeline.
 
-A merge to main publishes nothing. A release is a pushed tag, `v<major>.<minor>.<patch>`, on a commit of main, and the tag names the version: `package.json` on main is never bumped by hand or by a bot, so sibling pull requests never collide on it.
+A merge to main publishes nothing, and releases are paused: v1.190.0 is the last version on npm. Every CI job runs on Instabox's `instabox-medium` machines, which GitHub counts as self-hosted runners, npm trusted publishing supports only cloud-hosted runners, and no job runs on a GitHub-hosted runner, so the publish job left CI. [#467](https://github.com/anaclumos/tokenmaxxing/issues/467) tracks bringing it back. Until then, a pushed tag runs no job.
+
+Once the job is back, a release is a pushed tag, `v<major>.<minor>.<patch>`, on a commit of main, and the tag names the version: `package.json` on main is never bumped by hand or by a bot, so sibling pull requests never collide on it.
 
 ```mermaid
 flowchart LR
@@ -21,16 +23,10 @@ flowchart LR
   check -->|"no"| fail["job fails,<br/>nothing published"]
   check -->|"yes"| set["set package.json<br/>to the tag's version<br/>(not committed)"]
   set --> release["GitHub release<br/>for the tag"]
-  release --> publish["publish to npm<br/>through trusted<br/>publishing<br/>(OIDC, provenance)"]
+  release --> publish["publish to npm"]
 ```
 
-The publish job is the only GitHub Actions job, in `.github/workflows/ci.yml`; npm binds the trusted publisher to that file name. A rerun for a tag already on npm skips the publish. To release, tag the main commit and push the tag:
-
-```sh
-git fetch origin main
-git tag v1.188.0 origin/main
-git push origin v1.188.0
-```
+The publish job belongs in `.github/workflows/ci.yml`, the file name npm binds the trusted publisher to, and a rerun for a tag already on npm skips the publish.
 
 ## Automatic updates
 
@@ -102,7 +98,7 @@ An ordinary package update needs no rerun of `init`: the supervisor shim, the se
 
 ## Working on the source
 
-`mise.toml` pins the Bun a checkout runs on, and CI installs that version. Every check runs in GitHub Actions CI on each pull request (`.github/workflows/ci.yml`), and no git hook runs one: `typecheck` installs the dependencies from the frozen lockfile and runs the typecheck, `test` runs the `bun:test` files under `test/` with Bun's test runner, each file isolated, and `pack` packs the npm artifact, installs it into a throwaway global root, and runs its `help`. When `bun.lock` no longer matches `package.json`, `typecheck` fails and uploads the lockfile `bun install` wrote as the `bun-lock` artifact, so a dependency change commits that file.
+`mise.toml` pins the Bun a checkout runs on, and CI installs that version. Every check runs in GitHub Actions CI on each pull request (`.github/workflows/ci.yml`), each job on a fresh Instabox `instabox-medium` machine (Ubuntu 24.04, amd64) that keeps nothing between runs, and no git hook runs one: `typecheck` installs the dependencies from the frozen lockfile and runs the typecheck, `test` runs the `bun:test` files under `test/` with Bun's test runner, each file isolated, and `pack` packs the npm artifact, installs it into a throwaway global root, and runs its `help`. When `bun.lock` no longer matches `package.json`, `typecheck` fails and uploads the lockfile `bun install` wrote as the `bun-lock` artifact, so a dependency change commits that file.
 
 ## License
 
