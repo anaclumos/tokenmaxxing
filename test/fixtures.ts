@@ -1,4 +1,4 @@
-import { mkdtempSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Account, Window } from "../src/lib/types.ts";
@@ -52,6 +52,14 @@ export function serveJson(bodies: unknown[]): { url: string; hits: () => number;
     },
   });
   return { url: new URL("/api/oauth/usage", server.url).href, hits: () => next, stop: () => void server.stop(true) };
+}
+
+export function installFakeClaude(home: string): void {
+  const bin = join(home, "bin", "claude");
+  mkdirSync(join(home, "bin"), { recursive: true });
+  writeFileSync(bin, '#!/bin/sh\necho "2.1.0 (Claude Code)"\n');
+  chmodSync(bin, 0o755);
+  writeFileSync(join(home, "config.json"), JSON.stringify({ claudeBin: bin }));
 }
 
 export function describeFailedRead(home: string, read: unknown): string {

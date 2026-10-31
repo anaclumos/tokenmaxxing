@@ -1,9 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { describeFailedRead, freshHome, serveJson } from "./fixtures.ts";
+import { describeFailedRead, freshHome, installFakeClaude, serveJson } from "./fixtures.ts";
 
 describe("usage endpoint without a 5-hour window", () => {
   test("reads a null five_hour, or one whose utilization is null, as no session limit with the weekly figure kept", async () => {
     const home = freshHome();
+    installFakeClaude(home);
     const resetsAt = new Date(Date.now() + 3 * 24 * 3600 * 1000).toISOString();
     const sessionResetsAt = new Date(Date.now() + 2 * 3600 * 1000).toISOString();
     const stub = serveJson([

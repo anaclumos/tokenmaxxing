@@ -1,9 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { describeFailedRead, freshHome, serveJson } from "./fixtures.ts";
+import { describeFailedRead, freshHome, installFakeClaude, serveJson } from "./fixtures.ts";
 
 describe("usage endpoint per-model weekly limits on a weekly-only account", () => {
   test("keeps a weekly_scoped limit named by its model as a per-model window", async () => {
     const home = freshHome();
+    installFakeClaude(home);
     const resetsAt = new Date(Date.now() + 3 * 24 * 3600 * 1000).toISOString();
     const stub = serveJson([
       {
