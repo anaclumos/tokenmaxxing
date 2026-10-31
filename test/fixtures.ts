@@ -4,7 +4,6 @@ import { join } from "node:path";
 import type { Account, Window } from "../src/lib/types.ts";
 
 export const HOUR_MS = 3_600_000;
-export const DAY_MS = 24 * HOUR_MS;
 export const SESSION_SECONDS = 5 * 3600;
 export const WEEK_SECONDS = 7 * 24 * 3600;
 
