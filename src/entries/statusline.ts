@@ -79,7 +79,7 @@ export function renderStatusline(stdinObj: unknown, ctx: RenderCtx): string {
   const stdinWindow = (w: UsageWindow, windowSeconds: number): Window => ({ name: null, ...w, windowSeconds, sampledAt: ctx.now });
   for (const [name, w] of Object.entries(ctx.perModel)) windows.push(seg(initial(name), seatUsed(w), null));
   if (wins) {
-    windows.push(seg("", seatUsed(stdinWindow(wins.fiveHour, FIVE_HOUR_S)), wins.fiveHour.resetsAt));
+    if (wins.fiveHour) windows.push(seg("", seatUsed(stdinWindow(wins.fiveHour, FIVE_HOUR_S)), wins.fiveHour.resetsAt));
     windows.push(seg("", seatUsed(stdinWindow(wins.sevenDay, SEVEN_DAY_S)), wins.sevenDay.resetsAt));
   }
   const held = heldFamilies(model);

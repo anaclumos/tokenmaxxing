@@ -18,7 +18,7 @@ export type PickCtx = {
   families: string[] | null;
   held?: string[] | null;
   seats: Map<string, number> | null;
-  planWeight?: (a: Account) => number;
+  planWeight?: (a: Account, w: Window) => number;
 };
 
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
@@ -163,32 +163,35 @@ function windowResetAt(w: Window, now: number): number | null {
   return null;
 }
 
+const planWeight = (a: Account, w: Window, ctx: PickCtx): number => ctx.planWeight?.(a, w) ?? 1;
+
 export function pacePressure(a: Account, ctx: PickCtx): number {
   const binding = minBy(gatedWindows(a, ctx.families), (w) => Math.max(0, 100 - liveUsed(w, ctx.now)));
   if (binding != null) {
     const reset = windowResetAt(binding, ctx.now);
-    if (reset != null) return Math.max(0, 100 - liveUsed(binding, ctx.now)) / Math.max(1, reset - ctx.now);
+    if (reset != null) return (Math.max(0, 100 - liveUsed(binding, ctx.now)) * planWeight(a, binding, ctx)) / Math.max(1, reset - ctx.now);
   }
   const weekly = weeklyWindow(a);
   const reset = nextWeeklyReset(weekly?.resetsAt ?? null, ctx.now);
   if (weekly == null || reset == null) return 0;
-  return Math.max(0, 100 - liveUsed(weekly, ctx.now)) / Math.max(1, reset - ctx.now);
+  return (Math.max(0, 100 - liveUsed(weekly, ctx.now)) * planWeight(a, weekly, ctx)) / Math.max(1, reset - ctx.now);
+}
+
+function seatWindow(a: Account): Window | undefined {
+  return sessionWindow(a) ?? weeklyWindow(a);
 }
 
 export function seatHeadroom(a: Account, ctx: PickCtx): number {
-  const session = sessionWindow(a);
-  if (session == null) return Number.NEGATIVE_INFINITY;
-  return (barFor(a, session, ctx.thresholds, ctx.now) - liveUsed(session, ctx.now)) / ((ctx.seats?.get(a.id) ?? 0) + 1);
+  const w = seatWindow(a);
+  if (w == null) return Number.NEGATIVE_INFINITY;
+  return ((barFor(a, w, ctx.thresholds, ctx.now) - liveUsed(w, ctx.now)) * planWeight(a, w, ctx)) / ((ctx.seats?.get(a.id) ?? 0) + 1);
 }
 
 const MIN_SEAT_HEADROOM = 5;
 
-const planWeight = (a: Account, ctx: PickCtx): number => ctx.planWeight?.(a) ?? 1;
-
 function seatFull(a: Account, ctx: PickCtx): boolean {
-  const session = sessionWindow(a);
-  if (ctx.seats == null || session == null || spendsCredits(a, ctx.thresholds)) return false;
-  return seatHeadroom(a, ctx) * planWeight(a, ctx) < MIN_SEAT_HEADROOM;
+  if (ctx.seats == null || seatWindow(a) == null || spendsCredits(a, ctx.thresholds)) return false;
+  return seatHeadroom(a, ctx) < MIN_SEAT_HEADROOM;
 }
 
 export function onCredits(a: Account, ctx: PickCtx): boolean {
@@ -207,7 +210,7 @@ function cramped(a: Account, ctx: PickCtx): boolean {
   if (session == null || spendsCredits(a, ctx.thresholds)) return false;
   const end = windowEnd(session);
   const resetsSoon = end > ctx.now && end - ctx.now <= SESSION_SOON_MS;
-  return !resetsSoon && seatHeadroom(a, ctx) * planWeight(a, ctx) < THREAD_HEADROOM;
+  return !resetsSoon && seatHeadroom(a, ctx) < THREAD_HEADROOM;
 }
 
 // Judged per window, because a fresh statusline sample refreshes the session and weekly figures but carries an old per-model cap forward.
@@ -225,7 +228,7 @@ export function expiringPressure(a: Account, ctx: PickCtx): number {
   const w = weeklyWindow(a) ?? sessionWindow(a);
   const reset = w?.resetsAt;
   if (w == null || reset == null || reset <= ctx.now || reset - ctx.now > EXPIRING_MS) return 0;
-  return (Math.max(0, barFor(a, w, ctx.thresholds, ctx.now) - liveUsed(w, ctx.now)) * planWeight(a, ctx)) / (reset - ctx.now);
+  return (Math.max(0, barFor(a, w, ctx.thresholds, ctx.now) - liveUsed(w, ctx.now)) * planWeight(a, w, ctx)) / (reset - ctx.now);
 }
 
 const swapPreference = (ctx: PickCtx) => [
@@ -234,7 +237,7 @@ const swapPreference = (ctx: PickCtx) => [
   (a: Account) => (a.windows.length === 0 ? 1 : 0),
   // A full account ranks after every open one, and among full accounts the most room per session wins.
   (a: Account) => (seatFull(a, ctx) ? 1 : 0),
-  (a: Account) => (seatFull(a, ctx) ? -seatHeadroom(a, ctx) * planWeight(a, ctx) : 0),
+  (a: Account) => (seatFull(a, ctx) ? -seatHeadroom(a, ctx) : 0),
   // Quota that expires within a day ranks ahead of every headroom key, the session-window key included.
   (a: Account) => (expiringPressure(a, ctx) > 0 ? 0 : 1),
   (a: Account) => -expiringPressure(a, ctx),
@@ -243,8 +246,8 @@ const swapPreference = (ctx: PickCtx) => [
   (a: Account) => (cramped(a, ctx) ? 1 : 0),
   (a: Account) => (weeklyExpiry(a, ctx.now) - ctx.now <= WEEKLY_SOON_MS ? 0 : 1),
   (a: Account) => (stale(a, ctx) ? 1 : 0),
-  ...(ctx.seats == null ? [] : [(a: Account) => -seatHeadroom(a, ctx) * planWeight(a, ctx)]),
-  (a: Account) => -pacePressure(a, ctx) * planWeight(a, ctx),
+  ...(ctx.seats == null ? [] : [(a: Account) => -seatHeadroom(a, ctx)]),
+  (a: Account) => -pacePressure(a, ctx),
   (a: Account) => weeklyExpiry(a, ctx.now),
   (a: Account) => weeklyWindow(a)?.usedPercentage ?? 101,
   ...(ctx.seats == null ? [] : [(a: Account) => ctx.seats?.get(a.id) ?? 0]),

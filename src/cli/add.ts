@@ -8,11 +8,11 @@ import type { Account, Window } from "../lib/types.ts";
 export function usageNote(p: Provider, account: Account): string {
   const session = sessionWindow(account);
   const week = weeklyWindow(account);
-  if (!session || !week) return "";
+  if (!week) return "";
   const bars = thresholdBars(loadConfig());
   const now = Date.now();
   const pct = (w: Window) => Math.round(p.statusOnly ? liveUsed(w, now) : bufferedUsed(account, w, bars, now));
-  return ` (session ${pct(session)}% / week ${pct(week)}%)`;
+  return ` (${session ? `session ${pct(session)}% / ` : ""}week ${pct(week)}%)`;
 }
 
 export async function cmdAdd(p: Provider): Promise<number> {

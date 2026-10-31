@@ -39,6 +39,25 @@ jobs:
           path: bun.lock
       - run: bun run typecheck
 
+  test:
+    if: github.event_name == 'pull_request'
+    runs-on: [self-hosted, minicomputer]
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - id: bun
+        run: echo "version=$(sed -n 's/^bun = "\(.*\)"$/\1/p' mise.toml)" >> "$GITHUB_OUTPUT"
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ steps.bun.outputs.version }}
+          no-cache: true
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - run: bun install --frozen-lockfile
+      - run: bun run test
+
   pack:
     if: github.event_name == 'pull_request'
     runs-on: [self-hosted, minicomputer]

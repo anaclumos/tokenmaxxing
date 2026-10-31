@@ -102,7 +102,7 @@ An ordinary package update needs no rerun of `init`: the supervisor shim, the se
 
 ## Working on the source
 
-`mise.toml` pins the Bun a checkout runs on, and CI installs that version. Every check runs in GitHub Actions CI on each pull request (`.github/workflows/ci.yml`), and no git hook runs one: `typecheck` installs the dependencies from the frozen lockfile and runs the typecheck, and `pack` packs the npm artifact, installs it into a throwaway global root, and runs its `help`. When `bun.lock` no longer matches `package.json`, `typecheck` fails and uploads the lockfile `bun install` wrote as the `bun-lock` artifact, so a dependency change commits that file.
+`mise.toml` pins the Bun a checkout runs on, and CI installs that version. Every check runs in GitHub Actions CI on each pull request (`.github/workflows/ci.yml`), and no git hook runs one: `typecheck` installs the dependencies from the frozen lockfile and runs the typecheck, `test` runs the Vitest files under `test/` in Node, and `pack` packs the npm artifact, installs it into a throwaway global root, and runs its `help`. When `bun.lock` no longer matches `package.json`, `typecheck` fails and uploads the lockfile `bun install` wrote as the `bun-lock` artifact, so a dependency change commits that file.
 
 ## License
 
