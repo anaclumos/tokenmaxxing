@@ -22,6 +22,8 @@ describe("usage endpoint per-model weekly limits on a weekly-only account", () =
       if (!read.ok) return;
       expect(read.usage.fiveHour).toBeNull();
       const fable = Object.entries(read.usage.perModel).find(([name]) => name.toLowerCase() === "fable");
+      if (fable == null) console.error(`perModel: ${JSON.stringify(read.usage.perModel)}`);
+      expect(fable).toBeDefined();
       expect(fable?.[1].usedPercentage).not.toBe(55);
     } finally {
       stub.stop();
