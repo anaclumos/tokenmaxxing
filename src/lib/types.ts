@@ -32,7 +32,7 @@ export const UsageWindowSchema = z.object({
 export type UsageWindow = z.infer<typeof UsageWindowSchema>;
 
 const AggregateWindowsSchema = z.object({
-  fiveHour: UsageWindowSchema,
+  fiveHour: UsageWindowSchema.nullable(),
   sevenDay: UsageWindowSchema,
 });
 
@@ -219,8 +219,8 @@ const StdinWindowSchema = z.looseObject({ used_percentage: z.number(), resets_at
 export const RateLimitsStdinSchema = z.looseObject({
   rate_limits: z
     .looseObject({
-      five_hour: StdinWindowSchema.optional(),
-      seven_day: StdinWindowSchema.optional(),
+      five_hour: StdinWindowSchema.nullish(),
+      seven_day: StdinWindowSchema.nullish(),
     })
     .optional(),
   model: z.looseObject({ id: z.string().optional(), display_name: z.string().optional() }).optional(),

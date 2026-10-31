@@ -11,7 +11,7 @@ import { errorMessage, log } from "./log.ts";
 import { claudeTierLabel, describeIdentity, fetchTokenIdentity, isDeadCredential, InvalidGrantError } from "./oauth.ts";
 import { onboardHome } from "./onboard.ts";
 import { claudePool, env, paths, seatFromEnv, shortId, storeDirFor } from "./paths.ts";
-import { MAX_WAITERS_PER_ACCOUNT, pickBest, pickEarliestReset, pickWaitTarget, thresholdBars, type PickCtx } from "./picker.ts";
+import { isSessionWindow, MAX_WAITERS_PER_ACCOUNT, pickBest, pickEarliestReset, pickWaitTarget, thresholdBars, type PickCtx } from "./picker.ts";
 import { deletePiStore } from "./piauth.ts";
 import { livingPresences, writePresence } from "./presence.ts";
 import { StoreUnusableError, type Observation, type Provider, type ResetClaim, type SampleReport, type SeatBorrow } from "./provider.ts";
@@ -19,7 +19,7 @@ import { claimSample, foldTee, landRead, readyToSample, runSample, sampleAccount
 import { clearUsageSnapshot, liveWaitClaims, loadAccounts, loadConfig, loadUsageSnapshot, pinBinOverride, readJsonFile, saveAccounts, type Harvest } from "./state.ts";
 import { saveTermios, restoreTermios } from "./tty.ts";
 import { claimResetGrant, fetchUsageDirect, gatedFamilies, heldFamilies, mergeWindows, modelFromFlag, scrubCredEnv, windowsOf } from "./usage.ts";
-import { CredentialBlobSchema, JsonTextSchema, OAuthAccountSchema, type Account, type ApiKey, type Config, type ModelInfo } from "./types.ts";
+import { CredentialBlobSchema, JsonTextSchema, OAuthAccountSchema, type Account, type ApiKey, type Config, type ModelInfo, type Window } from "./types.ts";
 import { c } from "../cli/render.ts";
 
 function liveId(): string | null {
@@ -145,7 +145,8 @@ async function storeUsable(a: Account): Promise<boolean> {
   }
 }
 
-export function claudePlanWeight(a: Account): number {
+export function claudePlanWeight(a: Account, w: Window): number {
+  if (a.tier === "ultra") return isSessionWindow(w) ? 4 : 2;
   const multiplier = a.tier?.match(/(\d+)x\b/)?.[1];
   if (multiplier != null) return Number(multiplier) / 5;
   return a.tier?.startsWith("pro") ? 0.2 : 1;

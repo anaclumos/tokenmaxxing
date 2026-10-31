@@ -16,8 +16,8 @@ export function parseStatusLineStdin(obj: unknown): UsageWindows | null {
   const parsed = RateLimitsStdinSchema.safeParse(obj);
   if (!parsed.success) return null;
   const rl = parsed.data.rate_limits;
-  if (!rl?.five_hour || !rl.seven_day) return null;
-  return { fiveHour: win(rl.five_hour), sevenDay: win(rl.seven_day), perModel: {} };
+  if (!rl?.seven_day) return null;
+  return { fiveHour: rl.five_hour ? win(rl.five_hour) : null, sevenDay: win(rl.seven_day), perModel: {} };
 }
 
 const StreamWindowSchema = z.looseObject({ utilization: z.number(), resetsAt: EpochSecondsSchema });
@@ -35,7 +35,7 @@ export function parseStreamLine(value: unknown): { type: string; windows: UsageW
   if (!parsed.success) return null;
   const unified = parsed.data.type === "rate_limit_event" ? parsed.data.rate_limit_info?.unifiedWindows : undefined;
   const win = (w: z.infer<typeof StreamWindowSchema>): UsageWindow => ({ usedPercentage: Math.round(w.utilization * 100), resetsAt: w.resetsAt });
-  const windows = unified?.five_hour && unified.seven_day ? { fiveHour: win(unified.five_hour), sevenDay: win(unified.seven_day), perModel: {} } : null;
+  const windows = unified?.seven_day ? { fiveHour: unified.five_hour ? win(unified.five_hour) : null, sevenDay: win(unified.seven_day), perModel: {} } : null;
   return { type: parsed.data.type, windows };
 }
 
@@ -160,7 +160,7 @@ const WEEK_S = 7 * 24 * 3600;
 
 export function windowsOf(u: UsageWindows, at: number): Window[] {
   return [
-    { name: null, ...u.fiveHour, windowSeconds: FIVE_HOURS_S, sampledAt: at },
+    ...(u.fiveHour ? [{ name: null, ...u.fiveHour, windowSeconds: FIVE_HOURS_S, sampledAt: at }] : []),
     { name: null, ...u.sevenDay, windowSeconds: WEEK_S, sampledAt: at },
     ...Object.entries(u.perModel).map(([name, w]) => ({ name, ...w, windowSeconds: WEEK_S, sampledAt: at })),
   ];
@@ -200,7 +200,7 @@ const USAGE_URL = env("TOKENMAXXING_OAUTH_USAGE_URL", OAUTH_USAGE_URL);
 const USAGE_DEADLINE_MS = 10_000;
 
 const ResetsAtSchema = InstantSchema.nullish();
-const UsageLimitSchema = z.looseObject({ utilization: z.number(), resets_at: ResetsAtSchema });
+const UsageLimitSchema = z.looseObject({ utilization: z.number().nullable(), resets_at: ResetsAtSchema });
 const UsageScopedLimitSchema = z.looseObject({
   kind: z.string(),
   percent: z.number(),
@@ -265,14 +265,15 @@ export async function fetchUsageDirect(accessToken: string): Promise<UsageRead> 
     return { ok: false, retryAt: retryAfter != null ? Date.now() + retryAfter * 1000 : null };
   }
   const parsed = UsageResponseSchema.safeParse(JsonTextSchema.safeParse(await res.text()).data);
-  if (!parsed.success || !parsed.data.five_hour || !parsed.data.seven_day) {
+  const win = (w: z.infer<typeof UsageLimitSchema> | null | undefined): UsageWindow | null => (w?.utilization == null ? null : { usedPercentage: w.utilization, resetsAt: w.resets_at ?? null });
+  const sevenDay = parsed.success ? win(parsed.data.seven_day) : null;
+  if (!parsed.success || sevenDay == null) {
     log("usage.get_incomplete", { ok: parsed.success, issue: parsed.success ? undefined : z.prettifyError(parsed.error).slice(0, 200) });
     return { ok: false, retryAt: null };
   }
-  const win = (w: z.infer<typeof UsageLimitSchema>): UsageWindow => ({ usedPercentage: w.utilization, resetsAt: w.resets_at ?? null });
   return {
     ok: true,
-    usage: { fiveHour: win(parsed.data.five_hour), sevenDay: win(parsed.data.seven_day), perModel: scopedRows(parsed.data.limits ?? []), bankedReset: weeklyGrant(parsed.data.cedar_ember) },
+    usage: { fiveHour: win(parsed.data.five_hour), sevenDay, perModel: scopedRows(parsed.data.limits ?? []), bankedReset: weeklyGrant(parsed.data.cedar_ember) },
   };
 }
 
