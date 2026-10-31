@@ -55,8 +55,9 @@ export function serveJson(bodies: unknown[]): { url: string; hits: () => number;
 }
 
 export function installFakeClaude(home: string): void {
-  const bin = join(home, "bin", "claude");
-  mkdirSync(join(home, "bin"), { recursive: true });
+  const dir = join(mkdtempSync(join(tmpdir(), "claude-stub-")), "versions", "2.1.0");
+  mkdirSync(dir, { recursive: true });
+  const bin = join(dir, "claude");
   writeFileSync(bin, '#!/bin/sh\necho "2.1.0 (Claude Code)"\n');
   chmodSync(bin, 0o755);
   writeFileSync(join(home, "config.json"), JSON.stringify({ claudeBin: bin }));
