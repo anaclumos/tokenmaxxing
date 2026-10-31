@@ -95,11 +95,11 @@ Claude and Codex launches and session moves choose among usable accounts by the 
 
 ### Plan size
 
-Usage figures are percentages, but a percent of a large plan is more quota than a percent of a small one. Pace pressure, headroom per session, the cramped test, and the full-account cap multiply by a plan weight read from the account's tier:
+Usage figures are percentages, but a percent of a large plan is more quota than a percent of a small one. Pace pressure, headroom per session, the cramped test, the full-account cap, and use it or lose it multiply by a plan weight read from the account's tier and the window being measured:
 
 | Pool | Weight |
 | --- | --- |
-| Claude | the tier's multiplier divided by 5 (`max 5x` is 1, `max 20x` is 4), `pro` 0.2, anything else 1 |
+| Claude | `ultra` is 4 on the session window and 2 on a weekly window or per-model cap, because Ultra carries 20 times Pro's 5-hour usage but 10 times Pro's weekly usage; otherwise the tier's multiplier divided by 5 (`team 5x` is 1), `pro` 0.2, anything else (`max` included) 1 |
 | Codex | relative to Plus: `free` 0.2, `go` 0.5, `plus`, `team`, `business`, `enterprise`, and `edu` 1, `prolite` (Pro 100), `self_serve_business_prolite` (Business Premium), and `edu_pro` 5, `pro` (Pro 200) 10, `promax` (Pro 500) 20, anything else 1 |
 
 ### Use it or lose it
@@ -110,11 +110,11 @@ Hard blocks still apply first: an account at or over any bar, walled (an enforce
 
 ### Session window first
 
-An account whose plan has a 5-hour session window ranks ahead of every account whose plan has only a weekly window, such as Codex Pro, among accounts that are not full. Session quota comes back within hours, so spending it first costs nothing, while a weekly-only account spends quota that is gone until its week resets; that account takes sessions once every account with a session window is full or exhausted. An unmeasured account still ranks after both, and a Muse Code account whose 5-hour window is closed lands that window at zero rather than without one.
+An account whose plan has a 5-hour session window ranks ahead of every account whose plan has only a weekly window, such as Codex Pro or a verified Claude Ultra account, among accounts that are not full. Session quota comes back within hours, so spending it first costs nothing, while a weekly-only account spends quota that is gone until its week resets; that account takes sessions once every account with a session window is full or exhausted. An unmeasured account still ranks after both, and a Muse Code account whose 5-hour window is closed lands that window at zero rather than without one.
 
 ### Cramped
 
-An account is cramped when its headroom per session, times its plan weight, is under 15 and its session window does not reset within the hour. A session placed there would cross the session bar partway through and move, losing its prompt cache, so a roomier account ranks first. An account whose `thresholds.accounts` entry sets `credits` is never cramped, and neither is an account whose plan has no session window, such as Codex Pro.
+An account is cramped when its headroom per session, times its plan weight, is under 15 and its session window does not reset within the hour. A session placed there would cross the session bar partway through and move, losing its prompt cache, so a roomier account ranks first. An account whose `thresholds.accounts` entry sets `credits` is never cramped, and neither is an account whose plan has no session window, such as Codex Pro or a verified Claude Ultra account.
 
 ### Weekly reset within 4 days
 
@@ -132,6 +132,8 @@ Headroom per session is the remaining headroom to the session bar divided by the
 (session bar - session used) / (live sessions on the account + 1)
 ```
 
+An account whose plan has no session window, such as a verified Claude Ultra account, measures the same figure against its weekly window and weekly bar instead, so a burst that reaches the weekly-only accounts spreads over them the same way rather than landing on the one with the highest pace pressure.
+
 The session count comes from the presence files of running supervised sessions and of `seat` borrowers, and from the claims of sessions that are moving to the account. The `+ 1` is the session being placed. This key ranks ahead of pace pressure, so a burst of launches or moves spreads over the accounts in the same group one session at a time: the first lands on the account with the most headroom per session, the second on the account that now has the most (another account rather than the first, whose score halved), and so on, and pace pressure decides only between accounts that tie on it, such as two fresh accounts with no session, where the one whose week resets sooner goes first. Before this ordering a burst of simultaneous moves landed four to six sessions on the one account with the highest pace pressure, until it was cramped, and that account crossed its bar within the hour and moved them all again.
 
 With the default bars (an effective session bar of 90):
@@ -143,7 +145,7 @@ With the default bars (an effective session bar of 90):
 
 The busier but fresher account wins on this key.
 
-The same figure, scaled by plan size, caps the sessions one account takes. An account whose score times its plan weight would fall under 5 is full: the next launch, move, or `seat` borrow that names no account takes an account that is not full while one is usable, so a fresh Max 5x account under the default bars takes at most 18 sessions (90 / 18 = 5) before placement spills, and a Max 20x account four times as many. When every usable account is full, the session still runs: it takes the full account with the highest score, ahead of an account on usage credits or one with no usage figure, because an account under its bars has headroom and a crowded account is a better outcome than no session. A session that finds every account exhausted goes to a stored API key at launch, or stops with the soonest reset named. A full account counts as usable at its session window's reset for that reset time. An account that its bars block until a release time is judged full or not at that release time, with the raised bar. A session on usage credits stays on credits while every other account is exhausted. The cap only screens placement: it never moves a session that is already on the account. It does not apply to an account with no session figure, or to an account whose `thresholds.accounts` entry sets `credits`. Without the cap, a burst of launches onto the only usable account fills it, and every session on it crosses the bar and moves in the same minute.
+The same figure, scaled by plan size, caps the sessions one account takes. An account whose score times its plan weight would fall under 5 is full: the next launch, move, or `seat` borrow that names no account takes an account that is not full while one is usable, so a fresh Max account under the default bars takes at most 18 sessions (90 / 18 = 5) before placement spills, and an Ultra account still on a 5-hour limit four times as many. When every usable account is full, the session still runs: it takes the full account with the highest score, ahead of an account on usage credits or one with no usage figure, because an account under its bars has headroom and a crowded account is a better outcome than no session. A session that finds every account exhausted goes to a stored API key at launch, or stops with the soonest reset named. A full account counts as usable at its session window's reset for that reset time. An account that its bars block until a release time is judged full or not at that release time, with the raised bar. A session on usage credits stays on credits while every other account is exhausted. The cap only screens placement: it never moves a session that is already on the account. It does not apply to an account with neither a session nor a weekly figure, or to an account whose `thresholds.accounts` entry sets `credits`. Without the cap, a burst of launches onto the only usable account fills it, and every session on it crosses the bar and moves in the same minute.
 
 Selection and the presence write share one critical section, so concurrent launches see each other. A move records its target in `wait-queue.json` in the critical section that picks it, and the relaunch replaces that claim with the presence file in one critical section, so a burst of moves spreads the same way while the moved sessions compact.
 
@@ -457,7 +459,7 @@ The first three rows hold with the default value of `policy.usagePollTtlMs`:
 
 Each account is read first with the direct `GET /api/oauth/usage?at_wall=1&skip_spend=1` and its stored access token. It is the no-spend read Claude Code itself uses (`skip_spend=1`), so it opens no window, spends nothing, and starts no `claude` process, and it answers for a seat with live sessions as well as for an idle account.
 
-The body carries the session and weekly windows (`five_hour` and `seven_day`, a percent and an ISO reset time) and the per-model caps (`limits[]` rows of kind `weekly_scoped`, named by the model's display name), so a direct read is a complete sample.
+The body carries the session and weekly windows (`five_hour` and `seven_day`, a percent and an ISO reset time) and the per-model caps (`limits[]` rows of kind `weekly_scoped`, named by the model's display name), so a direct read is a complete sample. A plan with no 5-hour limit, such as a verified Claude Ultra account, reads `five_hour` as null, the same signal Claude Code uses to hide its Current session bar, and its sample lands the weekly window and the per-model caps with no session window. A body with no weekly figure is incomplete and lands nothing. Only this read decides that a plan has no session window: a statusline tee or a stream-json `rate_limit_event` that leaves `five_hour` out keeps the account's stored session window, because Claude Code also drops a window from those once its reset passes.
 
 - The tick holds the pool lock only to reserve the target and to store the result; the usage GET runs outside it, so an enforced-limit move never waits on a slow sample.
 - The read gets one attempt, because the round-robin is its retry loop.

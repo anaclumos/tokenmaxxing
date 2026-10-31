@@ -1,17 +1,88 @@
-# Publish only. Every check runs in lefthook (lefthook.yml); this job exists
-# because npm trusted publishing needs a GitHub-hosted runner, and npm binds
-# the trusted publisher to this file's name, so it stays ci.yml.
 name: CI
 
 on:
+  pull_request:
   push:
     tags: ["v*"]
 
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
+  typecheck:
+    if: github.event_name == 'pull_request'
+    runs-on: [self-hosted, minicomputer]
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - id: bun
+        run: echo "version=$(sed -n 's/^bun = "\(.*\)"$/\1/p' mise.toml)" >> "$GITHUB_OUTPUT"
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ steps.bun.outputs.version }}
+          no-cache: true
+      - id: install
+        run: bun install --frozen-lockfile
+      - name: Write the lockfile package.json needs
+        if: failure() && steps.install.outcome == 'failure'
+        run: |
+          bun install
+          echo "::error title=Stale bun.lock::bun.lock does not match package.json; the bun-lock artifact holds the lockfile bun install wrote"
+      - if: failure() && steps.install.outcome == 'failure'
+        uses: actions/upload-artifact@v7
+        with:
+          name: bun-lock
+          path: bun.lock
+      - run: bun run typecheck
+
+  test:
+    if: github.event_name == 'pull_request'
+    runs-on: [self-hosted, minicomputer]
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - id: bun
+        run: echo "version=$(sed -n 's/^bun = "\(.*\)"$/\1/p' mise.toml)" >> "$GITHUB_OUTPUT"
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ steps.bun.outputs.version }}
+          no-cache: true
+      - run: bun install --frozen-lockfile
+      - run: bun run test
+
+  pack:
+    if: github.event_name == 'pull_request'
+    runs-on: [self-hosted, minicomputer]
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - id: bun
+        run: echo "version=$(sed -n 's/^bun = "\(.*\)"$/\1/p' mise.toml)" >> "$GITHUB_OUTPUT"
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ steps.bun.outputs.version }}
+          no-cache: true
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - name: Pack, install into a throwaway global root, and run it
+        run: |
+          tmp="$(mktemp -d "$RUNNER_TEMP/pack.XXXXXX")"
+          mkdir "$tmp/home"
+          npm pack --silent --pack-destination "$tmp" >/dev/null
+          tgz="$(ls "$tmp"/tokenmaxxing-*.tgz)"
+          tar tvf "$tgz" | grep -Eq '^-rwx[-rwx]+ .* package/src/main\.ts$' || { echo "::error::package/src/main.ts is not executable in $tgz"; exit 1; }
+          BUN_INSTALL_GLOBAL_DIR="$tmp/global" BUN_INSTALL_BIN="$tmp/bin" bun add -g --silent "$tgz"
+          HOME="$tmp/home" XDG_CONFIG_HOME="$tmp/home/.config" XDG_STATE_HOME="$tmp/home/.local/state" XDG_DATA_HOME="$tmp/home/.local/share" XDG_CACHE_HOME="$tmp/home/.cache" \
+            "$tmp/bin/tokenmaxxing" help >/dev/null
+
   publish:
+    if: github.event_name == 'push'
     runs-on: ubuntu-24.04
     concurrency:
       group: publish

@@ -27,7 +27,7 @@ const SUBCOMMANDS = new Set([
   "drop-worktree-registrations", "edit-chrome-settings", "edit-hook", "edit-memory-settings",
   "edit-permission-rules", "edit-sandbox-settings", "edit-skill-overrides", "gateway", "help",
   "import", "import-conversations", "install", "kill", "logs", "mcp", "plugin", "plugins",
-  "project", "rc", "remote-control", "respawn", "rm", "sandbox", "setup-token", "stop",
+  "project", "purge", "rc", "remote-control", "respawn", "rm", "sandbox", "setup-token", "stop",
   "ultrareview", "update", "upgrade",
 ]);
 const SOLE_UPDATE_FLAGS = new Set(["--update", "--upgrade"]);
