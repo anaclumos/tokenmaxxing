@@ -3,7 +3,6 @@ import {
   DAY_MS,
   childEnv,
   freshHomes,
-  leafValues,
   run,
   spoolEvents,
   spoolIsEmpty,
@@ -35,9 +34,8 @@ test(
         expect(event.distinct_id).toBe(state.installId);
         expect(event.properties.$process_person_profile).toBe(false);
       }
-      expect(commands.some((event) => leafValues(event.properties).includes("codex"))).toBe(true);
-      expect(commands.some((event) => leafValues(event.properties).includes("claude"))).toBe(true);
-      expect(commands.some((event) => JSON.stringify(event.properties).includes("cached"))).toBe(true);
+      expect(commands.map((event) => event.properties.pool)).toEqual(expect.arrayContaining(["codex", "claude"]));
+      expect(commands.map((event) => event.properties.flags)).toContainEqual(["--cached"]);
       const sentText = JSON.stringify(host.requests[0]);
       expect(sentText).not.toContain(homes.state);
       expect(sentText).not.toContain(homes.home);

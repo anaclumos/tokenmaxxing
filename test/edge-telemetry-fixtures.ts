@@ -2,12 +2,11 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-export const ROOT = join(import.meta.dir, "..");
-export const MAIN = join(ROOT, "src", "main.ts");
+const ROOT = join(import.meta.dir, "..");
+const MAIN = join(ROOT, "src", "main.ts");
 export const DAY_MS = 24 * 60 * 60 * 1000;
-export const HOUR_MS = 60 * 60 * 1000;
 
-export type CapturedEvent = {
+type CapturedEvent = {
   event: string;
   distinct_id: string;
   properties: Record<string, unknown>;
@@ -15,24 +14,19 @@ export type CapturedEvent = {
   uuid?: string;
 };
 
-export type CapturedBatch = {
+type CapturedBatch = {
   api_key?: string;
   batch: CapturedEvent[];
 };
 
-export type StubBehavior = "accept" | "refuse" | "hang";
-
 export type StubHost = {
   url: string;
   requests: CapturedBatch[];
-  setBehavior: (next: StubBehavior) => void;
   stop: () => void;
 };
 
-export function startStubHost(behavior: StubBehavior = "accept"): StubHost {
+export function startStubHost(): StubHost {
   const requests: CapturedBatch[] = [];
-  let mode: StubBehavior = behavior;
-  const hung: Array<(response: Response) => void> = [];
   const server = Bun.serve({
     hostname: "127.0.0.1",
     port: 0,
@@ -44,35 +38,15 @@ export function startStubHost(behavior: StubBehavior = "accept"): StubHost {
       const raw = new Uint8Array(await request.arrayBuffer());
       const encoding = request.headers.get("content-encoding") ?? "";
       const bytes = encoding.includes("gzip") ? Bun.gunzipSync(raw) : raw;
-      let parsed: CapturedBatch = { batch: [] };
-      try {
-        const value = JSON.parse(new TextDecoder().decode(bytes)) as Partial<CapturedBatch>;
-        parsed = { api_key: value.api_key, batch: Array.isArray(value.batch) ? value.batch : [] };
-      } catch {
-        parsed = { batch: [] };
-      }
-      requests.push(parsed);
-      if (mode === "hang") {
-        return new Promise<Response>((resolve) => {
-          hung.push(resolve);
-        });
-      }
-      if (mode === "refuse") {
-        return Response.json({ error: "refused" }, { status: 500 });
-      }
+      const value = JSON.parse(new TextDecoder().decode(bytes)) as Partial<CapturedBatch>;
+      requests.push({ api_key: value.api_key, batch: Array.isArray(value.batch) ? value.batch : [] });
       return Response.json({ status: 1 }, { status: 200 });
     },
   });
   return {
     url: `http://127.0.0.1:${server.port}`,
     requests,
-    setBehavior: (next) => {
-      mode = next;
-    },
-    stop: () => {
-      for (const resolve of hung.splice(0)) resolve(new Response(null, { status: 503 }));
-      server.stop(true);
-    },
+    stop: () => server.stop(true),
   };
 }
 
@@ -120,15 +94,9 @@ export type RunResult = {
   exitCode: number;
   stdout: string;
   stderr: string;
-  durationMs: number;
 };
 
-export async function run(
-  args: string[],
-  env: Record<string, string>,
-  options: { timeoutMs?: number } = {},
-): Promise<RunResult> {
-  const started = Date.now();
+export async function run(args: string[], env: Record<string, string>): Promise<RunResult> {
   const proc = Bun.spawn([process.execPath, MAIN, ...args], {
     env,
     cwd: ROOT,
@@ -136,45 +104,12 @@ export async function run(
     stdout: "pipe",
     stderr: "pipe",
   });
-  const timer =
-    options.timeoutMs === undefined ? undefined : setTimeout(() => proc.kill("SIGKILL"), options.timeoutMs);
-  const [stdout, stderr, exitCode] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exited,
-  ]);
-  if (timer !== undefined) clearTimeout(timer);
-  return { exitCode, stdout, stderr, durationMs: Date.now() - started };
+  const [stdout, stderr, exitCode] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text(), proc.exited]);
+  return { exitCode, stdout, stderr };
 }
 
-function shellQuote(value: string): string {
-  return `'${value.replace(/'/g, `'\\''`)}'`;
-}
-
-export async function runOnTerminal(args: string[], env: Record<string, string>): Promise<RunResult> {
-  const started = Date.now();
-  const line = [process.execPath, MAIN, ...args].map(shellQuote).join(" ");
-  const proc = Bun.spawn(["script", "-q", "-e", "-c", line, "/dev/null"], {
-    env,
-    cwd: ROOT,
-    stdin: "ignore",
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-  const [stdout, stderr, exitCode] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exited,
-  ]);
-  return { exitCode, stdout, stderr, durationMs: Date.now() - started };
-}
-
-export function spoolPath(homes: Homes): string {
-  return join(homes.state, "telemetry.jsonl");
-}
-
-export function spoolText(homes: Homes): string {
-  const path = spoolPath(homes);
+function spoolText(homes: Homes): string {
+  const path = join(homes.state, "telemetry.jsonl");
   return existsSync(path) ? readFileSync(path, "utf8") : "";
 }
 
@@ -190,27 +125,24 @@ export function spoolIsEmpty(homes: Homes): boolean {
   return spoolText(homes).trim().length === 0;
 }
 
-export type TelemetryState = {
+type TelemetryState = {
   installId: string;
   noticeAt: number | null;
   attemptedAt: number | null;
 };
 
-export function statePath(homes: Homes): string {
+function statePath(homes: Homes): string {
   return join(homes.state, "telemetry.json");
 }
 
-export function readState(homes: Homes): TelemetryState | null {
-  const path = statePath(homes);
-  if (!existsSync(path)) return null;
-  return JSON.parse(readFileSync(path, "utf8")) as TelemetryState;
-}
-
 export function writeState(homes: Homes, patch: Partial<TelemetryState>): TelemetryState {
-  const current = readState(homes) ?? { installId: crypto.randomUUID(), noticeAt: null, attemptedAt: null };
+  const path = statePath(homes);
+  const current = existsSync(path)
+    ? (JSON.parse(readFileSync(path, "utf8")) as TelemetryState)
+    : { installId: crypto.randomUUID(), noticeAt: null, attemptedAt: null };
   const next: TelemetryState = { ...current, ...patch };
   mkdirSync(homes.state, { recursive: true });
-  writeFileSync(statePath(homes), JSON.stringify(next));
+  writeFileSync(path, JSON.stringify(next));
   return next;
 }
 
@@ -222,24 +154,4 @@ export function readConfig(homes: Homes): Record<string, unknown> | null {
   const path = configPath(homes);
   if (!existsSync(path)) return null;
   return JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown>;
-}
-
-export function sentEvents(host: StubHost): CapturedEvent[] {
-  return host.requests.flatMap((request) => request.batch);
-}
-
-export function leafValues(value: unknown, out: unknown[] = []): unknown[] {
-  if (Array.isArray(value)) {
-    for (const item of value) leafValues(item, out);
-  } else if (value !== null && typeof value === "object") {
-    for (const item of Object.values(value as Record<string, unknown>)) leafValues(item, out);
-  } else {
-    out.push(value);
-  }
-  return out;
-}
-
-export function packageVersion(): string {
-  const raw = readFileSync(join(ROOT, "package.json"), "utf8");
-  return (JSON.parse(raw) as { version: string }).version;
 }

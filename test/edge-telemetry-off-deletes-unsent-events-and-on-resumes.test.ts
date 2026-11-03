@@ -36,7 +36,8 @@ test(
 
       const offState = await run(["telemetry"], env);
       expect(offState.exitCode).toBe(0);
-      expect(offState.stdout.toLowerCase()).toMatch(/\boff\b|disabled|false/);
+      expect(offState.stdout).toMatch(/\boff\b/);
+      expect(offState.stdout).not.toMatch(/\bon\b/);
 
       const on = await run(["telemetry", "on"], env);
       expect(on.exitCode).toBe(0);
@@ -48,7 +49,8 @@ test(
 
       const onState = await run(["telemetry"], env);
       expect(onState.exitCode).toBe(0);
-      expect(onState.stdout.toLowerCase()).toMatch(/\bon\b|enabled|true/);
+      expect(onState.stdout).toMatch(/\bon\b/);
+      expect(onState.stdout).not.toMatch(/\boff\b/);
     } finally {
       host.stop();
     }

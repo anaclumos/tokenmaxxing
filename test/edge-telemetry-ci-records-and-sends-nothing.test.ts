@@ -29,6 +29,7 @@ test(
       await run(["check"], childEnv(due, host.url, { CI: "true" }));
       expect(host.requests).toHaveLength(0);
       expect(spoolIsEmpty(due)).toBe(false);
+      expect(existsSync(configPath(due))).toBe(false);
       await run(["check"], childEnv(due, host.url));
       expect(host.requests).toHaveLength(1);
       expect(spoolIsEmpty(due)).toBe(true);
