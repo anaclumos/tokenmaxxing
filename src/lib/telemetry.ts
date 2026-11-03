@@ -219,7 +219,9 @@ async function send(installId: string, lines: Line[]): Promise<void> {
 async function flush(due: (since: number) => boolean): Promise<void> {
   try {
     await withLock(lockFile, async () => {
-      if (telemetryState() !== "on") {
+      const telemetry = telemetryState();
+      if (telemetry === "ci") return;
+      if (telemetry !== "on") {
         rmSync(spoolFile, { force: true });
         return;
       }
