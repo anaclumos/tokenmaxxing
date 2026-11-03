@@ -87,6 +87,7 @@ jobs:
     concurrency:
       group: publish
       cancel-in-progress: false
+      queue: max
     permissions:
       contents: write
       id-token: write
