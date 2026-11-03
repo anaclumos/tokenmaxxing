@@ -53,6 +53,49 @@ export function serveJson(bodies: unknown[]): { url: string; hits: () => number;
   return { url: new URL("/api/oauth/usage", server.url).href, hits: () => next, stop: () => void server.stop(true) };
 }
 
+export function barrier(keys: readonly string[]): { arrive: (key: string) => Promise<void>; arrived: string[] } {
+  const arrived: string[] = [];
+  const all = Promise.withResolvers<void>();
+  return {
+    arrived,
+    arrive(key) {
+      arrived.push(key);
+      if (keys.every((k) => arrived.includes(k))) all.resolve();
+      return all.promise;
+    },
+  };
+}
+
+export function serveTogether(input: { keys: readonly string[]; respond: (req: Request) => unknown; keyOf?: (req: Request) => string }): { base: string; arrived: string[]; stop: () => void } {
+  const keyOf = input.keyOf ?? ((req: Request) => new URL(req.url).pathname);
+  const gate = barrier(input.keys);
+  const server = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    idleTimeout: 0,
+    async fetch(req) {
+      await gate.arrive(keyOf(req));
+      return Response.json(input.respond(req));
+    },
+  });
+  return { base: `http://127.0.0.1:${server.port}`, arrived: gate.arrived, stop: () => void server.stop(true) };
+}
+
+export function claudeCredentials(accessToken: string, expiresAt: number): string {
+  return JSON.stringify({ claudeAiOauth: { accessToken, refreshToken: `refresh-${accessToken}`, expiresAt, scopes: [], subscriptionType: "max" } });
+}
+
+export function pooledClaude(id: string): Account {
+  return { ...account(id, "max", []), oauthAccount: { accountUuid: id, emailAddress: `${id}@example.com`, organizationUuid: "org-test" } };
+}
+
+export function claudeUsageBody(now: number): unknown {
+  return {
+    five_hour: { utilization: 10, resets_at: new Date(now + 2 * HOUR_MS).toISOString() },
+    seven_day: { utilization: 20, resets_at: new Date(now + 4 * 24 * HOUR_MS).toISOString() },
+  };
+}
+
 export function installFakeClaude(home: string): void {
   const dir = join(mkdtempSync(join(tmpdir(), "claude-stub-")), "versions", "2.1.0");
   mkdirSync(dir, { recursive: true });
