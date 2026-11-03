@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { countBy, partition, uniq } from "es-toolkit";
+import { countBy, mapAsync, partition, uniq } from "es-toolkit";
 import { z } from "zod";
 import { codexSupervisorLink, museSupervisorLink } from "../lib/install.ts";
 import { withLock } from "../lib/lock.ts";
@@ -18,6 +18,7 @@ import type { Account, AccountsIndex } from "../lib/types.ts";
 const AUTH_USAGE =
   "usage: tokenmaxxing auth [--codex | --grok | --muse | --cursor | --kimi] [<email|label|id> | --all]\n       tokenmaxxing auth [--codex | --grok | --muse | --cursor | --kimi] --emails <email>...\n       tokenmaxxing auth --pi [--codex] [<email|label|id> | --all]";
 const EMAILS_FLAG = "--emails";
+const STORE_CHECKS_AT_ONCE = 8;
 
 const SUPERVISOR_LINKS: Partial<Record<Provider["name"], () => string>> = {
   claude: () => paths.supervisorLink,
@@ -205,11 +206,8 @@ export async function cmdAuth(p: Provider, argv: string[], pi: PiPool | null): P
     return loginEmails(p, argv);
   }
   const idx = loadAccounts(p.pool);
-  const needsAuth = new Set<string>();
-  for (const a of idx.accounts) {
-    const usable = pi ? piStoreUsable(pi, a.id) : a.needsReauth !== true && (await p.storeUsable(a));
-    if (!usable) needsAuth.add(a.id);
-  }
+  const usable = await mapAsync(idx.accounts, async (a) => (pi ? piStoreUsable(pi, a.id) : a.needsReauth !== true && (await p.storeUsable(a))), { concurrency: STORE_CHECKS_AT_ONCE });
+  const needsAuth = new Set(idx.accounts.filter((_, i) => !usable[i]).map((a) => a.id));
   const plan = planAuth({ p, accounts: idx.accounts, argv, needsAuth });
   if (plan.kind === "usage") {
     console.error(AUTH_USAGE);

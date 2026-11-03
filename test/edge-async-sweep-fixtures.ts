@@ -1,18 +1,16 @@
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import type { Account, ApiKeysIndex, Window } from "../src/lib/types.ts";
-import { account, barrier, claudeCredentials, claudeUsageBody, HOUR_MS, installFakeClaude, SESSION_SECONDS, WEEK_SECONDS } from "./fixtures.ts";
+import type { Account } from "../src/lib/types.ts";
+import { account, barrier, claudeCredentials, claudeUsageBody, HOUR_MS, installFakeClaude } from "./fixtures.ts";
 import { childEnv, freshHomes, type Homes } from "./edge-telemetry-fixtures.ts";
 
-export type Kind = "claude-usage" | "claude-profile" | "codex-usage" | "codex-reset" | "openrouter-key" | "other";
+type Kind = "claude-usage" | "claude-profile" | "codex-usage" | "codex-reset" | "openrouter-key" | "other";
 
-export type Seen = { kind: Kind; key: string; method: string; path: string };
-
-export type Stub = { base: string; seen: Seen[]; count: (kind: Kind) => number; stop: () => void };
+type Stub = { base: string; seen: { kind: Kind }[]; stop: () => void };
 
 const DAY_MS = 24 * HOUR_MS;
 
-export function kindOf(req: Request): Kind {
+function kindOf(req: Request): Kind {
   const path = new URL(req.url).pathname;
   if (path.startsWith("/openrouter/")) return "openrouter-key";
   if (path.startsWith("/api/oauth/profile")) return "claude-profile";
@@ -22,42 +20,24 @@ export function kindOf(req: Request): Kind {
   return "other";
 }
 
-export function bearer(req: Request): string {
-  const header = req.headers.get("authorization") ?? "";
-  return header.startsWith("Bearer ") ? header.slice("Bearer ".length) : header;
-}
-
-export function startStub(input: {
-  gated?: readonly string[];
-  keyOf?: (req: Request, kind: Kind) => string;
-  respond?: (kind: Kind, req: Request) => Response;
-}): Stub {
-  const gated = input.gated ?? [];
-  const gate = barrier(gated);
-  const seen: Seen[] = [];
-  const keyOf = input.keyOf ?? ((_req: Request, kind: Kind) => kind);
-  const respond = input.respond ?? answer;
+export function startStub(input: { gated: readonly Kind[] }): Stub {
+  const gate = barrier(input.gated);
+  const seen: { kind: Kind }[] = [];
   const server = Bun.serve({
     hostname: "127.0.0.1",
     port: 0,
     idleTimeout: 0,
     async fetch(req) {
       const kind = kindOf(req);
-      const key = keyOf(req, kind);
-      seen.push({ kind, key, method: req.method, path: new URL(req.url).pathname });
-      if (gated.includes(key)) await gate.arrive(key);
-      return respond(kind, req);
+      seen.push({ kind });
+      if (input.gated.includes(kind)) await gate.arrive(kind);
+      return answer(kind);
     },
   });
-  return {
-    base: `http://127.0.0.1:${server.port}`,
-    seen,
-    count: (kind) => seen.filter((s) => s.kind === kind).length,
-    stop: () => void server.stop(true),
-  };
+  return { base: `http://127.0.0.1:${server.port}`, seen, stop: () => void server.stop(true) };
 }
 
-export function codexUsageBody(now: number): unknown {
+function codexUsageBody(now: number): unknown {
   const s = Math.floor(now / 1000);
   return {
     plan_type: "pro",
@@ -73,26 +53,15 @@ export function codexUsageBody(now: number): unknown {
   };
 }
 
-export const OPENROUTER_REMAINING = 7.25;
-
-export function openRouterKeyBody(): unknown {
-  return { data: { label: "sk-or-v1-a1b...9f0", limit: 20, limit_remaining: OPENROUTER_REMAINING, usage: 12.75, is_free_tier: false, rate_limit: { requests: -1, interval: "10s" } } };
-}
-
-export function answer(kind: Kind, _req: Request): Response {
+function answer(kind: Kind): Response {
   const now = Date.now();
   if (kind === "claude-usage") return Response.json(claudeUsageBody(now));
   if (kind === "codex-usage") return Response.json(codexUsageBody(now));
   if (kind === "codex-reset") return Response.json({ code: "reset" });
-  if (kind === "openrouter-key") return Response.json(openRouterKeyBody());
+  if (kind === "openrouter-key") {
+    return Response.json({ data: { label: "sk-or-v1-a1b...9f0", limit: 20, limit_remaining: 7.25, usage: 12.75, is_free_tier: false, rate_limit: { requests: -1, interval: "10s" } } });
+  }
   return Response.json({});
-}
-
-export function profileBody(id: string): unknown {
-  return {
-    account: { uuid: id, email: `${id}@example.com`, full_name: "Test User", display_name: "Test" },
-    organization: { uuid: "org-test", name: "Test Org", organization_type: "claude_max", rate_limit_tier: "default_claude_max_20x" },
-  };
 }
 
 export function preparedHomes(): Homes {
@@ -131,8 +100,8 @@ function writePrivate(path: string, text: string): void {
   chmodSync(path, 0o600);
 }
 
-export function pooledClaudeAccount(id: string, windows: Window[] = []): Account {
-  return { ...account(id, "max", windows), oauthAccount: { accountUuid: id, emailAddress: `${id}@example.com`, organizationUuid: "org-test" } };
+export function pooledClaudeAccount(id: string): Account {
+  return { ...account(id, "max", []), oauthAccount: { accountUuid: id, emailAddress: `${id}@example.com`, organizationUuid: "org-test" } };
 }
 
 export function writeClaudePool(homes: Homes, accounts: Account[]): void {
@@ -146,12 +115,6 @@ export function writeClaudeStore(homes: Homes, id: string, token: string): void 
 function fakeJwt(payload: Record<string, unknown>): string {
   const part = (value: unknown) => Buffer.from(JSON.stringify(value)).toString("base64url");
   return `${part({ alg: "RS256", typ: "JWT", kid: "test" })}.${part(payload)}.${Buffer.from("test-signature").toString("base64url")}`;
-}
-
-export function codexAccountAtWeeklyBar(id: string, now: number): Account {
-  const weekly: Window = { name: null, usedPercentage: 100, resetsAt: now + 5 * DAY_MS, windowSeconds: WEEK_SECONDS, sampledAt: now - 60_000 };
-  const session: Window = { name: null, usedPercentage: 12, resetsAt: now + 2 * HOUR_MS, windowSeconds: SESSION_SECONDS, sampledAt: now - 60_000 };
-  return { ...account(id, "pro", [session, weekly]), lastUsageAt: now - 60_000, bankedReset: { grant: "rate-limit-reset-credit" } };
 }
 
 export function writeCodexPool(homes: Homes, accounts: Account[]): void {
@@ -169,32 +132,6 @@ export function writeCodexStore(homes: Homes, id: string): void {
     account_id: id,
   };
   writePrivate(join(homes.state, "codex-stores", id.slice(0, 8), "auth.json"), JSON.stringify({ OPENAI_API_KEY: null, tokens, last_refresh: new Date().toISOString() }));
-}
-
-export const OPENROUTER_KEY_ID = "4d7e1a90";
-
-export function writeOpenRouterKey(homes: Homes, now: number): void {
-  const index: ApiKeysIndex = {
-    version: 1,
-    keys: [{ id: OPENROUTER_KEY_ID, label: "router", spentUsd: 0, creditSetAt: now - DAY_MS, addedAt: now - DAY_MS, openrouter: { remainingUsd: 3, at: now - HOUR_MS } }],
-    baselines: {},
-  };
-  writeFileSync(join(homes.state, "api-keys.json"), JSON.stringify(index));
-  writePrivate(join(homes.state, "api-keys", OPENROUTER_KEY_ID), `sk-or-v1-${"5c".repeat(32)}`);
-}
-
-export function readPool(homes: Homes, file: "accounts.json" | "codex-accounts.json"): Account[] {
-  const index: { accounts: Account[] } = JSON.parse(readFileSync(join(homes.state, file), "utf8"));
-  return index.accounts;
-}
-
-export function readApiKeys(homes: Homes): ApiKeysIndex {
-  const index: ApiKeysIndex = JSON.parse(readFileSync(join(homes.state, "api-keys.json"), "utf8"));
-  return index;
-}
-
-export function unnamedFigures(a: Account | undefined): number[] {
-  return (a?.windows ?? []).filter((w) => w.name === null).map((w) => w.usedPercentage).sort((x, y) => x - y);
 }
 
 export function logTail(homes: Homes): string {
