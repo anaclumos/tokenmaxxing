@@ -78,7 +78,7 @@ describe("telemetry", () => {
 
   test("turning it off, by command or by DO_NOT_TRACK, drops the spool and sends nothing", async () => {
     telemetry.record({ event: "account_renamed", pool: "claude" });
-    telemetry.setTelemetry(false);
+    await telemetry.setTelemetry(false);
     await telemetry.flushTelemetry(Date.now());
     expect(attempts).toBe(0);
 

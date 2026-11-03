@@ -138,7 +138,7 @@ pi keeps its own credential and refreshes it itself, so each pooled account gets
 
 tokenmaxxing sends anonymous usage statistics to PostHog once a day, so its maintainer can see how many installs there are and which commands and tools they use. It is on by default.
 
-- **Turn it off** with `tokenmaxxing telemetry off` (or `"telemetry": false` in `config.json`), which also deletes the events not sent yet. Running any command or session with `DO_NOT_TRACK=1` or `TOKENMAXXING_TELEMETRY=0` turns it off the same way, and nothing is recorded or sent while `CI` is set.
+- **Turn it off** with `tokenmaxxing telemetry off`, which also deletes the events not sent yet, waiting for a send already under way to finish; `"telemetry": false` in `config.json` stops recording at once, and the next check tick deletes the unsent events. Running any command or session with `DO_NOT_TRACK=1` or `TOKENMAXXING_TELEMETRY=0` turns it off the same way, and nothing is recorded or sent while `CI` is set.
 - **What is sent:** the command name, the pool, which flags were given (from a fixed list), and the exit code; when a session ends, the tool, how many times it moved, and how it ended; account counts per pool in buckets (`0`, `1`, `2-5`, `6-20`, `21+`); and the tokenmaxxing version, OS, and CPU type. Events go under a random install ID.
 - **What is never sent:** account labels, emails, account IDs, credentials, paths, hostnames, command arguments, prompts, or error text. PostHog still receives the IP address each upload comes from.
 - **When:** events wait in `telemetry.jsonl` in the state directory, and the check timer sends them once a day, starting a day after the first interactive command shows the notice. The statusline and hooks record nothing.

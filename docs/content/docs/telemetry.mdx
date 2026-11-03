@@ -9,8 +9,8 @@ tokenmaxxing sends anonymous usage statistics to PostHog once a day, so its main
 
 | Way | Effect |
 |---|---|
-| `tokenmaxxing telemetry off` | Writes `"telemetry": false` to `config.json` and deletes the events not sent yet. `tokenmaxxing telemetry on` turns it back on, and a bare `tokenmaxxing telemetry` prints the current state |
-| `"telemetry": false` in `config.json` | The same switch, edited by hand |
+| `tokenmaxxing telemetry off` | Writes `"telemetry": false` to `config.json` and deletes the events not sent yet; a send already under way finishes first, and nothing is sent after the command returns. `tokenmaxxing telemetry on` turns it back on, and a bare `tokenmaxxing telemetry` prints the current state |
+| `"telemetry": false` in `config.json` | The same switch, edited by hand: recording stops at once, and the next check tick deletes the unsent events |
 | `DO_NOT_TRACK=1` or `TOKENMAXXING_TELEMETRY=0` | The first command or session that runs with either one writes `"telemetry": false` and deletes the unsent events, because the check timer that sends them does not see your shell's environment |
 | `CI` set | Nothing is recorded or sent while `CI` is set, and nothing is written to `config.json` |
 

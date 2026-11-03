@@ -111,9 +111,11 @@ export function telemetryState(): Telemetry {
   return "env";
 }
 
-export function setTelemetry(on: boolean): void {
-  setConfigField("telemetry", on);
-  if (!on) rmSync(spoolFile, { force: true });
+export function setTelemetry(on: boolean): Promise<void> {
+  return withLock(lockFile, () => {
+    setConfigField("telemetry", on);
+    if (!on) rmSync(spoolFile, { force: true });
+  });
 }
 
 function loadState(): State {
