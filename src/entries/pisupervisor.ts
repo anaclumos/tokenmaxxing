@@ -8,6 +8,7 @@ import { observeCodex } from "../lib/codex.ts";
 import { evaluateAndMaybeSwap, type SwapDecision } from "../lib/decide.ts";
 import { withLock } from "../lib/lock.ts";
 import { errorMessage, log } from "../lib/log.ts";
+import { endSession } from "../lib/telemetry.ts";
 import { claudePool, codexPaths, expandTilde, optionalEnv, paths, piPaths, type PiPool } from "../lib/paths.ts";
 import { pickPiSeat, piMovers } from "../lib/pi.ts";
 import { ensurePiStoreHome, piStoreUsable } from "../lib/piauth.ts";
@@ -364,6 +365,7 @@ export async function runPiSupervisor(argv: string[]): Promise<number> {
   };
 
   let respawns = 0;
+  const startedAt = Date.now();
   let wanted: string | null = null;
   try {
     while (true) {
@@ -437,7 +439,7 @@ export async function runPiSupervisor(argv: string[]): Promise<number> {
           log("pisupervisor.depleted_exit", { id, pool, account: target.id.slice(0, 8), waitUntil });
           say(`\n\x1b[36m⏳ tokenmaxxing: all accounts at their limit, so this session stopped. The next reset is at ${clockFmt.format(waitUntil)} on ${target.label}. Start pi again after that to continue.\x1b[0m\n`);
           clearPresence({ dir: presenceDir, id });
-          return 1;
+          return endSession({ tool: "pi", moves: respawns, outcome: "depleted", startedAt, code: 1 });
         }
         say(`\n\x1b[36m↻ tokenmaxxing: moving pi to ${target.label} - resuming...\x1b[0m\n`);
         wanted = target.id;
@@ -447,13 +449,13 @@ export async function runPiSupervisor(argv: string[]): Promise<number> {
       clearPresence({ dir: presenceDir, id });
       await releaseClaim();
       log("pisupervisor.exit", { id, respawns, code: proc.exitCode, signal: proc.signalCode, terminated: terminating || undefined });
-      return exitStatus(proc);
+      return endSession({ tool: "pi", moves: respawns, outcome: "exit", startedAt, code: exitStatus(proc) });
     }
   } catch (e) {
     const msg = errorMessage(e);
     say(`\n\x1b[31m${msg.startsWith("tokenmaxxing:") ? msg : `tokenmaxxing: ${msg}`}\x1b[0m\n`);
     log("pisupervisor.fatal", { err: msg });
     await releaseClaim();
-    return 1;
+    return endSession({ tool: "pi", moves: respawns, outcome: "fatal", startedAt, code: 1 });
   }
 }

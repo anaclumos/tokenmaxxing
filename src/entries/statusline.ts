@@ -5,7 +5,7 @@ import { claudePool, seatFromEnv } from "../lib/paths.ts";
 import { supervisedSession } from "../lib/sessions.ts";
 import { errorMessage, log } from "../lib/log.ts";
 import { loadAccounts, loadConfig, writeUsage } from "../lib/state.ts";
-import { familyTokens, heldFamilies, matchedFamily, parseStatusLineStdin, parseStatusLineModel } from "../lib/usage.ts";
+import { familyTokens, heldFamilies, matchedFamily, statusLineWindows } from "../lib/usage.ts";
 import { bufferedUsed, earliestReset, limitWindows, liveUsed, thresholdBars, wallUntil, weeklyExpiry, weeklyWindow } from "../lib/picker.ts";
 import { readStdin } from "../lib/proc.ts";
 import { worktreeName } from "../lib/worktree.ts";
@@ -17,6 +17,7 @@ import {
   type Account,
   type AccountsIndex,
   type Bars,
+  type StatusLineStdin,
   type UsageState,
   type UsageWindow,
   type Window,
@@ -37,18 +38,16 @@ export type RenderCtx = {
   truecolor: boolean;
 };
 
-export function renderStatusline(stdinObj: unknown, ctx: RenderCtx): string {
+export function renderStatusline(d: StatusLineStdin | null, ctx: RenderCtx): string {
   const col = makeColors(ctx.color);
   const paint = makeUsagePaint({ enabled: ctx.color, truecolor: ctx.truecolor });
   const used = (a: Account, w: Window) => bufferedUsed(a, w, ctx.bars, ctx.now);
   const reset = (epochMs: number | null) => fmtResetShort(epochMs, ctx.now);
 
-  const parsed = StatusLineStdinSchema.safeParse(stdinObj);
-  const d = parsed.success ? parsed.data : null;
-
   const info: string[] = [];
   if (ctx.worktree != null) info.push(ctx.worktree);
-  const modelName = d?.model?.display_name ?? d?.model?.id;
+  const model = d?.model ?? null;
+  const modelName = model?.display;
   const ctxUsed = d?.context_window?.used_percentage;
   if (modelName) {
     const effort = d?.effort?.level;
@@ -66,9 +65,8 @@ export function renderStatusline(stdinObj: unknown, ctx: RenderCtx): string {
     return col.bold(paint(u)(body !== "" ? body : u > 0 ? "?" : "0"));
   };
   const initial = (name: string) => (familyTokens(name).includes("fable") ? "𝒇" : name.slice(0, 1).toUpperCase());
-  const wins = parseStatusLineStdin(stdinObj);
+  const wins = d == null ? null : statusLineWindows(d);
   const windows: string[] = [];
-  const model = parseStatusLineModel(stdinObj);
   const family = matchedFamily(model, ctx.switchModels);
   if (family && !Object.keys(ctx.perModel).some((k) => familyTokens(k).includes(family))) {
     windows.push(`${initial(family)}?`);
@@ -119,21 +117,23 @@ export function renderStatusline(stdinObj: unknown, ctx: RenderCtx): string {
   return [info.join(" "), active, ...parked.map(poolSeg)].filter((l) => l !== "").join("  ");
 }
 
-export async function runStatusline(): Promise<number> {
-  const obj = JsonTextSchema.safeParse(await readStdin()).data ?? null;
-  const now = Date.now();
-
-  let account: string | null = null;
+function teeUsage(stdin: StatusLineStdin | null, account: string | null, now: number): void {
   try {
-    account = seatFromEnv(loadAccounts(claudePool).accounts.map((a) => a.id));
-    const windows = obj == null ? null : parseStatusLineStdin(obj);
+    const windows = stdin == null ? null : statusLineWindows(stdin);
     if (windows && account != null) {
-      const state: UsageState = { fiveHour: windows.fiveHour, sevenDay: windows.sevenDay, account, ts: now, model: parseStatusLineModel(obj) };
+      const state: UsageState = { fiveHour: windows.fiveHour, sevenDay: windows.sevenDay, account, ts: now, model: stdin?.model ?? null };
       writeUsage(state);
     }
   } catch (e) {
     log("statusline.tee_failed", { err: errorMessage(e) });
   }
+}
+
+export async function runStatusline(): Promise<number> {
+  const obj = JsonTextSchema.safeParse(await readStdin()).data ?? null;
+  const stdin = StatusLineStdinSchema.safeParse(obj).data ?? null;
+  const now = Date.now();
+
   try {
     const session = existsSync(claudePool.apiKeysJson) ? supervisedSession() : null;
     const cost = session == null ? null : (CostLineSchema.safeParse(obj).data ?? null);
@@ -144,10 +144,11 @@ export async function runStatusline(): Promise<number> {
 
   let line: string;
   try {
-    const cfg = loadConfig();
     const accounts = loadAccounts(claudePool);
-    const stdin = StatusLineStdinSchema.safeParse(obj);
-    const dir = stdin.success ? (stdin.data.workspace?.current_dir ?? stdin.data.workspace?.project_dir ?? null) : null;
+    const account = seatFromEnv(accounts.accounts.map((a) => a.id));
+    teeUsage(stdin, account, now);
+    const cfg = loadConfig();
+    const dir = stdin?.workspace?.current_dir ?? stdin?.workspace?.project_dir ?? null;
     const live = accounts.accounts.find((a) => a.id === account);
     const ctx: RenderCtx = {
       accounts,
@@ -159,7 +160,7 @@ export async function runStatusline(): Promise<number> {
       now,
       ...statuslineColor(),
     };
-    line = renderStatusline(obj, ctx);
+    line = renderStatusline(stdin, ctx);
   } catch (e) {
     line = `tokenmaxxing: ${errorMessage(e)}`;
   }

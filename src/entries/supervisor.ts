@@ -21,6 +21,7 @@ import { loadAccounts, loadConfig, readJsonFile, releaseWaitClaim, replaceWaitCl
 import { gatedFamilies, heldFamilies, modelFromFlag, parseStreamLine, scrubCredEnv } from "../lib/usage.ts";
 import { CostLineSchema, CostStateRowSchema, JsonTextSchema, RespawnMarkerSchema, type Account, type ApiKey, type Config, type ModelInfo, type SessionCost, type UsageWindows, type Window } from "../lib/types.ts";
 import { errorMessage, log } from "../lib/log.ts";
+import { endSession, record } from "../lib/telemetry.ts";
 
 const SUBCOMMANDS = new Set([
   "agents", "attach", "auth", "auto-mode", "daemon", "design-login", "doctor",
@@ -739,6 +740,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
   };
   let pendingResume: { compacted: boolean; origin: z.infer<typeof RespawnMarkerSchema>["origin"] } | null = null;
   let respawns = 0;
+  const startedAt = Date.now();
   let wanted: { accountId: string | null; apiKeyId: string | null } | null = null;
   let refused: string[] = [];
   let drainStdout: ((abandoned: () => boolean) => Promise<void>) | null = null;
@@ -820,7 +822,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
       log("supervisor.depleted_exit", { sid: sid.slice(0, 8), account: launched.waitOn.id.slice(0, 8), waitUntil: launched.waitUntil });
       say(`\n\x1b[36m⏳ tokenmaxxing: all accounts at their limit, so this session stopped. The next reset is at ${clockFmt.format(launched.waitUntil)} on ${launched.waitOn.label}. Run \`claude --resume ${noticeSid}\` after that to continue.\x1b[0m\n`, text);
       if (stream) process.stdout.write(depletedLines(noticeSid, launched.waitUntil, text));
-      return 1;
+      return endSession({ tool: "claude", moves: respawns, outcome: "depleted", startedAt, code: 1 });
     }
 
     const { child: proc, seat, key, open } = launched;
@@ -870,6 +872,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
       const depleted = m.waitUntil > Date.now();
       if (m.compact && resumable && (depleted || (seat && walledUntil > Date.now()))) {
         log("supervisor.compact_skipped", { sid: m.sessionId.slice(0, 8), seat: seat?.id.slice(0, 8), until: depleted ? m.waitUntil : walledUntil, depleted: depleted || undefined });
+        record({ event: "compaction", result: "skipped" });
       } else if (m.compact && compactOn != null && resumable) {
         say(`\n\x1b[36m↻ tokenmaxxing: compacting the conversation on ${compactOn} before the move...\x1b[0m\n`, `tokenmaxxing: compacting the conversation on ${compactOn} before the move.`);
         const baseEnv = { ...omit(scrubCredEnv(childEnv), ["TOKENMAXXING_SUPERVISED", "TOKENMAXXING_SESSION_ID", "TOKENMAXXING_LAUNCHED_AT", "TOKENMAXXING_MODEL", "TOKENMAXXING_REFUSED", "TOKENMAXXING_API_KEY_ID"]), TOKENMAXXING_PROBE: "1" };
@@ -893,6 +896,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
           return 143;
         }
         log("supervisor.compact", { sid: m.sessionId.slice(0, 8), seat: seat?.id.slice(0, 8), key: compactKey?.id, ok: outcome.ok, reason: outcome.ok ? undefined : outcome.reason });
+        record({ event: "compaction", result: outcome.ok ? "ok" : "failed" });
         if (!outcome.ok) say(`\x1b[33m   compaction did not land (${outcome.reason}) - resuming with the full context\x1b[0m\n`, `tokenmaxxing: compaction did not land; resuming with the full context. (${outcome.reason})`);
         compacted = outcome.ok;
       }
@@ -910,7 +914,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
     clearSessionCost(sid);
     await releaseClaim();
     log("supervisor.exit", { sid, respawns, code: proc.exitCode, signal: proc.signalCode, terminated: terminating || undefined });
-    return exitStatus(proc);
+    return endSession({ tool: "claude", moves: respawns, outcome: "exit", startedAt, code: exitStatus(proc) });
   }
   } catch (e) {
     await drainStdout?.(() => terminating);
@@ -919,6 +923,6 @@ export async function runSupervisor(argv: string[]): Promise<number> {
     say(`\n\x1b[31m${text}\x1b[0m\n`, text);
     log("supervisor.fatal", { err: msg });
     await releaseClaim();
-    return 1;
+    return endSession({ tool: "claude", moves: respawns, outcome: "fatal", startedAt, code: 1 });
   }
 }

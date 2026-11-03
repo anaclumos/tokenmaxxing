@@ -19,6 +19,7 @@ Config is JSON at `~/.config/tokenmaxxing/config.json`. Every field is optional;
   "cursorBin": "/path/to/real/cursor-agent",
   "kimiBin": "/path/to/real/kimi",
   "piBin": "/path/to/real/pi",
+  "telemetry": true,
   "policy": {
     "projectionMargin": 0,
     "switchModels": ["fable"],
@@ -40,6 +41,7 @@ Config is JSON at `~/.config/tokenmaxxing/config.json`. Every field is optional;
 | `thresholds.accounts` | `{}` | Per-account thresholds keyed by account label, each with both `session` and `weekly`. See [Per-account bars](#per-account-bars). |
 | `"credits"` in a `thresholds.accounts` entry | `false` | Marks an account that carries purchased usage credits. |
 | `claudeBin`, `codexBin`, `grokBin`, `museBin`, `cursorBin`, `kimiBin`, `piBin` | written by `init` | Pins to the REAL binaries the supervisors and the status-only pools spawn. See [Binary pins](#binary-pins). |
+| `telemetry` | `true` | Whether tokenmaxxing records and sends its anonymous daily usage statistics; `tokenmaxxing telemetry off`, `DO_NOT_TRACK=1`, and `TOKENMAXXING_TELEMETRY=0` write `false`. See [Telemetry](/telemetry). |
 | `policy.projectionMargin` | `0` | Subtracted from the session threshold only. See [Projection margin](#projection-margin). |
 | `policy.switchModels` | `["fable"]` | Model families whose per-model weekly cap gates a switch (entries are lowercased on load). |
 | `policy.usagePollTtlMs` | `90000` | The shortest sample interval of a Claude account, the one an account near a bar gets. See [Sample interval](#sample-interval). |

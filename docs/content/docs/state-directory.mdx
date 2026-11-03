@@ -64,6 +64,9 @@ The tree lists the entries in the order of the sections below. Open a folder to 
     <File name="spawnrate.json" />
     <File name="update.json" />
     <File name="update.lock" />
+    <File name="telemetry.json" />
+    <File name="telemetry.jsonl" />
+    <File name="telemetry.lock" />
     <File name="check.stderr.log (macOS only)" />
     <File name="hub.stderr.log (macOS only)" />
     <File name="hub-key" />
@@ -212,6 +215,7 @@ flowchart LR
 | `tokenmaxxing.log` | Append-only event log, rotated to `tokenmaxxing.log.old` once it passes 5 MB |
 | `spawnrate.json` | The time and process id of each wrapper entry in the last 30 seconds, which the recursion guard reads to find a chain of nested entries |
 | `update.json`, `update.lock` | The last self-update attempt's timestamp and the `flock` file that serializes it (Bun global installs only; see [Automatic updates](/distribution#automatic-updates)) |
+| `telemetry.json`, `telemetry.jsonl`, `telemetry.lock` | The random install ID and when the telemetry notice was shown and the last send was tried; the events waiting for the next daily send; and the `flock` file that serializes the notice and the send. See [Telemetry](/telemetry) |
 | `check.stderr.log`, `hub.stderr.log` | macOS only: the launchd check job's and hub service's stderr (systemd sends it to the journal) |
 | `hub-key` | The management key `tokenmaxxing serve` requires, mode 0600, minted on the first run; a key written by hand is used as it is. See [Usage hub](/hub) |
 

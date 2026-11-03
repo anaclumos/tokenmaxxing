@@ -30,24 +30,30 @@ import { cmdCheck } from "./cli/check.ts";
 import { cmdConfig } from "./cli/config.ts";
 import { cmdSeat } from "./cli/seat.ts";
 import { cmdServe } from "./cli/serve.ts";
+import { cmdTelemetry } from "./cli/telemetry.ts";
 import { CHECK_JOB, deactivationHint, HUB_JOB, onLoginHome, uninstallSupervisor, uninstallTargets } from "./lib/install.ts";
 import { errorMessage } from "./lib/log.ts";
 import { HOME } from "./lib/paths.ts";
+import { flushTelemetryNow, record, showTelemetryNotice, TRACKED_COMMANDS, TRACKED_FLAGS } from "./lib/telemetry.ts";
 import { c, count, emitError } from "./cli/render.ts";
 
 const JSON_FLAG = "--json";
 const CACHED_FLAG = "--cached";
 const YES_FLAG = "--yes";
-const CODEX_FLAG = "--codex";
-const GROK_FLAG = "--grok";
-const MUSE_FLAG = "--muse";
-const CURSOR_FLAG = "--cursor";
-const KIMI_FLAG = "--kimi";
 const PI_FLAG = "--pi";
+const POOLS = [codex, grok, muse, cursor, kimi];
+const GLOBAL_FLAGS = new Set([JSON_FLAG, CACHED_FLAG, YES_FLAG, PI_FLAG, ...POOLS.map((p) => p.flag.trim())]);
 const JSON_COMMANDS = new Set(["status", "config", "check"]);
 const CODEX_COMMANDS = new Set(["init", "add", "auth", "emails", "rm", "rename", "seat"]);
 const POOL_COMMANDS = new Set(["init", "add", "auth", "emails", "rm", "rename"]);
-const MAX_OPERANDS = new Map([["init", 0], ["add", 0], ["emails", 0], ["rm", 1], ["rename", 2], ["key", 4]]);
+const MAX_OPERANDS = new Map([["init", 0], ["add", 0], ["emails", 0], ["rm", 1], ["rename", 2], ["key", 4], ["telemetry", 1]]);
+const UNTRACKED_COMMANDS = new Set(["check", "uninstall", "help", "-h", "--help", "-v", "--version"]);
+
+function trackedCommand(sub: string | undefined): (typeof TRACKED_COMMANDS)[number] | null {
+  if (sub != null && (sub.startsWith("__") || UNTRACKED_COMMANDS.has(sub))) return null;
+  const name = sub ?? "status";
+  return TRACKED_COMMANDS.find((tracked) => tracked === name) ?? "unknown";
+}
 
 function printHelp(): void {
   console.log(`${c.bold("tokenmaxxing")} - automatic Claude Code account switching
@@ -79,6 +85,7 @@ function printHelp(): void {
   ${c.cyan("tokenmaxxing seat")} <pid> --store <id>  lend the Claude store with that 8-character id instead of the ranked pick, checking only that it is pooled, holds a usable credential, and is not flagged for reauthentication; bars, the credits flag, and holds are the caller's job; exit 0 = granted, 1 = the store is unusable, 2 = unknown store, <pid> already holds another store, or bad usage
   ${c.cyan("tokenmaxxing seat --codex")} <pid>  borrow one pooled codex account for an unattended consumer (plugin, script): prints the CODEX_HOME to set, lent to <pid> until it exits; codex sessions and other borrowers share the account, and a refresh race between them can sign it out until auth --codex runs again; exit 1 = none usable, fall back to the ambient login
   ${c.cyan("tokenmaxxing serve")}      serve the CLIProxyAPI-compatible usage API on http://localhost:<hub.port> (default 8317) so a dashboard such as T3 Code's "Add a CLIProxyAPI hub" shows every pooled Claude and Codex account's quota; the management key is the contents of hub-key in the state directory
+  ${c.cyan("tokenmaxxing telemetry")} [on | off]  show, turn on, or turn off the anonymous usage statistics sent once a day (on by default; DO_NOT_TRACK=1 also turns them off)
   ${c.cyan("tokenmaxxing uninstall")} [--yes]  print the targets, then remove supervisor + settings entries (refused without ${c.cyan("--yes")} when HOME is the login home)
 
   ${c.cyan("--json")}                  print one JSON document on stdout instead of text (status, config, check); every document carries ${c.bold("ok")}, failures add ${c.bold("error")}
@@ -114,15 +121,22 @@ async function main(): Promise<number> {
   const json = jsonMode;
   const cached = argv.includes(CACHED_FLAG);
   const yes = argv.includes(YES_FLAG);
-  const providerFlags = [CODEX_FLAG, GROK_FLAG, MUSE_FLAG, CURSOR_FLAG, KIMI_FLAG].filter((f) => argv.includes(f));
-  if (providerFlags.length > 1) {
-    emitError({ json, message: `${providerFlags.join(" and ")} are mutually exclusive - pick one pool` });
+  const chosen = POOLS.filter((p) => argv.includes(p.flag.trim()));
+  if (chosen.length > 1) {
+    emitError({ json, message: `${chosen.map((p) => p.flag.trim()).join(" and ")} are mutually exclusive - pick one pool` });
     return 2;
   }
-  const provider = argv.includes(CODEX_FLAG) ? codex : argv.includes(GROK_FLAG) ? grok : argv.includes(MUSE_FLAG) ? muse : argv.includes(CURSOR_FLAG) ? cursor : argv.includes(KIMI_FLAG) ? kimi : claude;
+  const provider = chosen[0] ?? claude;
   const pi = argv.includes(PI_FLAG);
-  const args = argv.filter((a) => a !== JSON_FLAG && a !== CACHED_FLAG && a !== YES_FLAG && a !== CODEX_FLAG && a !== GROK_FLAG && a !== MUSE_FLAG && a !== CURSOR_FLAG && a !== KIMI_FLAG && a !== PI_FLAG);
+  const args = argv.filter((a) => !GLOBAL_FLAGS.has(a));
   const sub = args[0];
+
+  const command = trackedCommand(sub);
+  if (command != null) {
+    const startedAt = Date.now();
+    const flags = TRACKED_FLAGS.filter((f) => argv.includes(f));
+    process.once("exit", (code) => record({ event: "command", command, pool: provider.name, flags, exit_code: code, duration_ms: Date.now() - startedAt }));
+  }
 
   if (pi && sub !== "init" && sub !== "auth") {
     emitError({ json, message: `${PI_FLAG} applies to init and auth, not ${sub ?? "status"}` });
@@ -130,7 +144,7 @@ async function main(): Promise<number> {
   }
 
   if (pi && (sub === "init" ? provider !== claude : provider !== claude && provider !== codex)) {
-    emitError({ json, message: sub === "init" ? `init ${PI_FLAG} takes no pool flag` : `auth ${PI_FLAG} logs a Claude account (no pool flag) or a codex account (${CODEX_FLAG}) into pi` });
+    emitError({ json, message: sub === "init" ? `init ${PI_FLAG} takes no pool flag` : `auth ${PI_FLAG} logs a Claude account (no pool flag) or a codex account (${codex.flag.trim()}) into pi` });
     return 2;
   }
 
@@ -145,11 +159,11 @@ async function main(): Promise<number> {
   }
 
   if (provider === codex && (sub == null || !CODEX_COMMANDS.has(sub))) {
-    emitError({ json, message: `${CODEX_FLAG} applies to ${[...CODEX_COMMANDS].join(", ")}, not ${sub ?? "status"}` });
+    emitError({ json, message: `${codex.flag.trim()} applies to ${[...CODEX_COMMANDS].join(", ")}, not ${sub ?? "status"}` });
     return 2;
   }
 
-  if ((provider === grok || provider === muse || provider === cursor || provider === kimi) && (sub == null || !POOL_COMMANDS.has(sub))) {
+  if (provider !== claude && provider !== codex && (sub == null || !POOL_COMMANDS.has(sub))) {
     emitError({ json, message: `${provider.flag.trim()} applies to ${[...POOL_COMMANDS].join(", ")}, not ${sub ?? "status"}` });
     return 2;
   }
@@ -164,6 +178,7 @@ async function main(): Promise<number> {
     emitError({ json, message: `${sub} takes at most ${count({ n: maxOperands, noun: "argument" })}, got: ${args.slice(1).join(" ")}` });
     return 2;
   }
+  if (command != null && command !== "telemetry" && !json) await showTelemetryNotice();
   switch (sub) {
     case "__statusline": return runStatusline();
     case "__subagent-statusline": return runSubagentStatusline();
@@ -198,6 +213,7 @@ async function main(): Promise<number> {
     case "key": return cmdKey(args.slice(1));
     case "seat": return cmdSeat(provider === codex ? "codex" : "claude", args.slice(1));
     case "serve": return cmdServe(args.slice(1));
+    case "telemetry": return cmdTelemetry(args.slice(1));
     case "uninstall": {
       if (args.length > 1) {
         emitError({ message: `unknown uninstall option: ${args[1]} (uninstall takes only ${YES_FLAG})` });
@@ -222,6 +238,8 @@ async function main(): Promise<number> {
       if (out.hub === "still-loaded") console.log(c.yellow(`⚠ the usage hub job may still be loaded - run: ${deactivationHint(HUB_JOB)}`));
       if (!out.pathLineRemoved) console.log(c.dim("(no tokenmaxxing PATH line found in the shell rc)"));
       console.log(`kept: accounts.json, config.json, and every account credential store (claude: stores/ and its keychain items on macOS; codex: codex-stores/; pi: pi-stores/; grok: grok-stores/; muse: muse-stores/; cursor: cursor-stores/; kimi: kimi-stores/), plus api-keys.json and the API keys in api-keys/ - remove accounts with \`xx rm\` and keys with \`xx key rm\` to delete their credentials`);
+      record({ event: "uninstall" });
+      await flushTelemetryNow();
       return 0;
     }
     case "help":

@@ -11,7 +11,7 @@ import { onboardHome } from "./onboard.ts";
 import { claudePool, type PiPool } from "./paths.ts";
 import { linkSharedPiHome, piStoreUsable, readPiAuthAt, type PiOAuth } from "./piauth.ts";
 import { StoreUnusableError, type Provider } from "./provider.ts";
-import { loadAccounts, pinBinOverride } from "./state.ts";
+import { loadAccounts, setConfigField } from "./state.ts";
 import { restoreTermios, saveTermios } from "./tty.ts";
 import type { Account, ModelInfo } from "./types.ts";
 import { c } from "../cli/render.ts";
@@ -122,7 +122,7 @@ export function piPreflight(): void {
   const real = resolveRealBin(PI_BIN);
   const fail = verifyRealBin({ ...PI_BIN, bin: real });
   if (fail !== null) throw new Error(`pi binary failed verification: ${real}: ${fail}`);
-  pinBinOverride({ key: "piBin", bin: real });
+  setConfigField("piBin", real);
 }
 
 export function piInstall(): void {

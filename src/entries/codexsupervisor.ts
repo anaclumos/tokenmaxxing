@@ -16,6 +16,7 @@ import { saveTermios } from "../lib/tty.ts";
 import { loadAccounts, readJsonFile } from "../lib/state.ts";
 import { CodexRespawnMarkerSchema, type Account } from "../lib/types.ts";
 import { errorMessage, log } from "../lib/log.ts";
+import { endSession } from "../lib/telemetry.ts";
 
 const NONINTERACTIVE_SUBCMDS = new Set([
   "exec", "e", "review", "login", "logout", "mcp", "plugin", "mcp-server", "app-server",
@@ -147,6 +148,7 @@ export async function runCodexSupervisor(input: { argv: string[] }): Promise<num
 
   let launchArgs = argv;
   let respawns = 0;
+  const startedAt = Date.now();
   let wanted: string | null = null;
   while (true) {
     rmSync(marker, { force: true });
@@ -206,6 +208,6 @@ export async function runCodexSupervisor(input: { argv: string[] }): Promise<num
     }
     clearPresence({ dir: codexPaths.presenceDir, id: supervisorId });
     log("codexsupervisor.exit", { supervisorId: supervisorId.slice(0, 8), respawns, code: child.exitCode, signal: child.signalCode });
-    return exitStatus(child);
+    return endSession({ tool: "codex", moves: respawns, outcome: "exit", startedAt, code: exitStatus(child) });
   }
 }

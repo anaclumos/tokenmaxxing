@@ -5,6 +5,7 @@ import { piInstall, piPreflight } from "../lib/pi.ts";
 import { piStoreUsable } from "../lib/piauth.ts";
 import type { Provider } from "../lib/provider.ts";
 import { loadAccounts, loadConfig, saveAccounts, upsertAccount } from "../lib/state.ts";
+import { bucket, record } from "../lib/telemetry.ts";
 import { c, count } from "./render.ts";
 
 export function printUsage(p: Provider): void {
@@ -68,6 +69,7 @@ export async function cmdInit(p: Provider): Promise<number> {
   const poolSize = loadAccounts(p.pool).accounts.length;
   console.log();
   console.log(`  pool ready (${count({ n: poolSize, noun: "account" })})`);
+  record({ event: "account_imported", pool: p.name, pool_size: bucket(poolSize) });
   printUsage(p);
   return 0;
 }

@@ -1,6 +1,7 @@
 import { withLock } from "../lib/lock.ts";
 import type { Provider } from "../lib/provider.ts";
 import { loadAccounts, saveAccounts } from "../lib/state.ts";
+import { record } from "../lib/telemetry.ts";
 import { c, emitError, plain } from "./render.ts";
 import type { Account } from "../lib/types.ts";
 
@@ -35,6 +36,7 @@ export async function cmdRename(p: Provider, argv: string[]): Promise<number> {
     a.label = newLabel;
     saveAccounts(p.pool, idx);
     console.log(`renamed ${c.dim(old)} → ${c.bold(newLabel)}`);
+    record({ event: "account_renamed", pool: p.name });
     return 0;
   });
 }

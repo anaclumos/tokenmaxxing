@@ -1,6 +1,7 @@
 import { withLock } from "../lib/lock.ts";
 import type { Provider } from "../lib/provider.ts";
 import { loadAccounts, saveAccounts } from "../lib/state.ts";
+import { bucket, record } from "../lib/telemetry.ts";
 import { findAccount } from "./rename.ts";
 import { c, emitError, plain } from "./render.ts";
 
@@ -28,6 +29,7 @@ export async function cmdRm(p: Provider, selector?: string): Promise<number> {
     idx.accounts = idx.accounts.filter((x) => x.id !== a.id);
     saveAccounts(p.pool, idx);
     console.log(`removed ${c.bold(a.label)} from the pool (${idx.accounts.length} left)`);
+    record({ event: "account_removed", pool: p.name, pool_size: bucket(idx.accounts.length) });
     return 0;
   });
 }
