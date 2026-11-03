@@ -10,15 +10,17 @@ function fableCap(usedPercentage: number, resetsAt: number, now: number): Window
 
 async function setup() {
   freshHome();
-  const { pickBest } = await import("../src/lib/picker.ts");
+  const { pickBest, thresholdBars } = await import("../src/lib/picker.ts");
+  const { ConfigSchema } = await import("../src/lib/types.ts");
   const now = Date.now();
   const base = await claudePickCtx(now, new Map());
-  const pick = (accounts: Account[], model: "opus" | "fable" | null) =>
-    pickBest(accounts, { ...base, families: model === "opus" ? [] : ["fable"], held: model == null ? null : [model] })?.id;
+  const credited = (label: string) => thresholdBars(ConfigSchema.parse({ thresholds: { accounts: { [label]: { session: 90, weekly: 98, credits: true } } } }));
+  const pick = (accounts: Account[], model: "opus" | "fable" | null, thresholds = base.thresholds) =>
+    pickBest(accounts, { ...base, thresholds, families: model === "opus" ? [] : ["fable"], held: model == null ? null : [model] })?.id;
   const team = (id: string, sessionUsed: number, weekReset = now + 5 * DAY_MS): Account =>
     account(id, "team 5x", [sessionWindow(sessionUsed, now + 4 * HOUR_MS, now), weeklyWindow(30, weekReset, now), fableCap(30, weekReset, now)]);
   const ultra = (id: string, fableUsed: number): Account => account(id, "ultra", [weeklyWindow(50, now + 6 * DAY_MS, now), fableCap(fableUsed, now + 6 * DAY_MS, now)]);
-  return { now, pick, team, ultra };
+  return { now, pick, team, ultra, credited };
 }
 
 describe("a session of another model goes first to an account that refuses Fable", () => {
@@ -38,6 +40,12 @@ describe("a session of another model goes first to an account that refuses Fable
 
     expect(pick(accounts, "opus")).toBe("capped");
     expect(pick(accounts, "fable")).toBe("team");
+  });
+
+  test("an account that spends credits past its bars still counts as refusing Fable once its Fable cap is spent", async () => {
+    const { pick, team, ultra, credited } = await setup();
+
+    expect(pick([team("team", 0), ultra("capped", 100)], "opus", credited("capped"))).toBe("capped");
   });
 
   test("a Fable-walled Team account goes first only while it has room for a whole session", async () => {

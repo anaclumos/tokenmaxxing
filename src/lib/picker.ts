@@ -239,7 +239,8 @@ function spawnsOtherModel(ctx: PickCtx): boolean {
 
 function refusesFable(a: Account, ctx: PickCtx): boolean {
   if ((a.familyUntil?.[FABLE] ?? 0) > ctx.now) return true;
-  return gatedWindows(a, [FABLE]).some((w) => blockedUntil(a, w, ctx.thresholds, ctx.now) > ctx.now);
+  const plan = { ...a, hasCredits: false };
+  return gatedWindows(a, [FABLE]).some((w) => blockedUntil(plan, w, ctx.thresholds, ctx.now) > ctx.now);
 }
 
 const swapPreference = (ctx: PickCtx) => [
