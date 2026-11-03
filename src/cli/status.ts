@@ -139,44 +139,50 @@ async function collect(p: Provider, cfg: Config, now: number, cached: boolean): 
   let reports = new Map<string, SampleReport>();
   let liveId: string | null = null;
   if (!cached && idx.accounts.length > 0) {
-    liveId = p.liveId();
-    const retries = new Map(idx.accounts.map((a) => [a.id, a.usageRetryAt ?? null]));
-    reports = await p.samplePool(idx.accounts, now);
-    await withLock(p.pool.lockFile, () => {
-      const fresh = loadAccounts(p.pool);
-      let dirty = false;
-      for (const a of idx.accounts) {
-        const stored = fresh.accounts.find((x) => x.id === a.id);
-        if (!stored) continue;
-        if (a.needsReauth === true && stored.needsReauth !== true) {
-          stored.needsReauth = true;
-          dirty = true;
+    const notice = process.stderr.isTTY;
+    if (notice) process.stderr.write(c.dim(`sampling ${p.name} usage...`));
+    try {
+      liveId = p.liveId();
+      const retries = new Map(idx.accounts.map((a) => [a.id, a.usageRetryAt ?? null]));
+      reports = await p.samplePool(idx.accounts, now);
+      await withLock(p.pool.lockFile, () => {
+        const fresh = loadAccounts(p.pool);
+        let dirty = false;
+        for (const a of idx.accounts) {
+          const stored = fresh.accounts.find((x) => x.id === a.id);
+          if (!stored) continue;
+          if (a.needsReauth === true && stored.needsReauth !== true) {
+            stored.needsReauth = true;
+            dirty = true;
+          }
+          if ((a.usageRetryAt ?? null) !== retries.get(a.id)) {
+            stored.usageRetryAt = a.usageRetryAt;
+            dirty = true;
+          }
+          if ((a.lastProbeAt ?? 0) > (stored.lastProbeAt ?? 0)) {
+            stored.lastProbeAt = a.lastProbeAt;
+            dirty = true;
+          }
+          if (a.lastUsageAt != null && (stored.lastUsageAt == null || a.lastUsageAt > stored.lastUsageAt)) {
+            landWindows(stored, p.mergeWindows(a.windows, stored.windows), a.lastUsageAt, bars);
+            stored.hasCredits = a.hasCredits;
+            if (a.email != null && stored.email == null && stored.label === stored.id.slice(0, 8)) stored.label = a.email;
+            if (a.email != null) stored.email = a.email;
+            if (a.tier != null) stored.tier = a.tier;
+            dirty = true;
+          }
+          const report = reports.get(a.id);
+          if (report?.ok === true && report.source === "probe" && a.bankedResetAt != null) {
+            landGrant(stored, a.bankedReset, a.bankedResetAt);
+            dirty = true;
+          }
         }
-        if ((a.usageRetryAt ?? null) !== retries.get(a.id)) {
-          stored.usageRetryAt = a.usageRetryAt;
-          dirty = true;
-        }
-        if ((a.lastProbeAt ?? 0) > (stored.lastProbeAt ?? 0)) {
-          stored.lastProbeAt = a.lastProbeAt;
-          dirty = true;
-        }
-        if (a.lastUsageAt != null && (stored.lastUsageAt == null || a.lastUsageAt > stored.lastUsageAt)) {
-          landWindows(stored, p.mergeWindows(a.windows, stored.windows), a.lastUsageAt, bars);
-          stored.hasCredits = a.hasCredits;
-          if (a.email != null && stored.email == null && stored.label === stored.id.slice(0, 8)) stored.label = a.email;
-          if (a.email != null) stored.email = a.email;
-          if (a.tier != null) stored.tier = a.tier;
-          dirty = true;
-        }
-        const report = reports.get(a.id);
-        if (report?.ok === true && report.source === "probe" && a.bankedResetAt != null) {
-          landGrant(stored, a.bankedReset, a.bankedResetAt);
-          dirty = true;
-        }
-      }
-      if (dirty) saveAccounts(p.pool, fresh);
-      idx = fresh;
-    });
+        if (dirty) saveAccounts(p.pool, fresh);
+        idx = fresh;
+      });
+    } finally {
+      if (notice) process.stderr.write("\r\x1b[2K");
+    }
   }
 
   const present = p.presence();
@@ -305,20 +311,7 @@ export async function cmdStatus(opts: { json?: boolean; cached?: boolean } = {})
   const { json = false, cached = false } = opts;
   const cfg = loadConfig();
   const now = Date.now();
-  const notice = !cached && process.stderr.isTTY;
-  if (notice) process.stderr.write(c.dim("sampling usage..."));
-  const pending = [
-    collect(claude, cfg, now, cached),
-    collect(codex, cfg, now, cached),
-    collect(grok, cfg, now, cached),
-    collect(muse, cfg, now, cached),
-    collect(cursor, cfg, now, cached),
-    collect(kimi, cfg, now, cached),
-  ] as const;
-  const failures = (await Promise.allSettled(pending)).flatMap((r) => (r.status === "rejected" ? [r.reason] : []));
-  if (notice) process.stderr.write("\r\x1b[2K");
-  if (failures.length > 0) throw failures[0];
-  const [claudeReport, codexReport, grokReport, museReport, cursorReport, kimiReport] = await Promise.all(pending);
+  const claudeReport = await collect(claude, cfg, now, cached);
   const apiKeys = apiKeyReport();
   if (!json) {
     const codexPooled = loadAccounts(codexPool).accounts.length > 0;
@@ -339,6 +332,11 @@ export async function cmdStatus(opts: { json?: boolean; cached?: boolean } = {})
     }
     if (apiKeys.length > 0) renderApiKeys(apiKeys);
   }
+  const codexReport = await collect(codex, cfg, now, cached);
+  const grokReport = await collect(grok, cfg, now, cached);
+  const museReport = await collect(muse, cfg, now, cached);
+  const cursorReport = await collect(cursor, cfg, now, cached);
+  const kimiReport = await collect(kimi, cfg, now, cached);
   if (json) {
     const report: StatusReport = { now, claude: claudeReport, codex: codexReport, grok: grokReport, muse: museReport, cursor: cursorReport, kimi: kimiReport, ...(apiKeys.length > 0 ? { apiKeys } : {}) };
     emitJson({ ok: true, ...report });

@@ -28,14 +28,6 @@ function realOrNull(path: string | null): string | null {
   }
 }
 
-async function attempt<T>(work: () => Promise<T>): Promise<{ ok: true; value: T } | { ok: false; error: string }> {
-  try {
-    return { ok: true, value: await work() };
-  } catch (e) {
-    return { ok: false, error: errorMessage(e).slice(0, 100) };
-  }
-}
-
 const SUPERVISE_VERB = /\s__supervise(-[a-z]+)?(\s|$)/;
 
 function unsupervisedRuns(bins: RealBin[]): { bin: RealBin; pid: number; parent: string }[] {
@@ -92,28 +84,25 @@ export async function cmdDoctor(): Promise<number> {
   const idx = loadAccounts(claudePool);
   check(idx.accounts.length > 0, "at least one account in the pool", "run `tokenmaxxing init`");
 
-  const stores = idx.accounts.map((a) => ({
-    a,
-    read: attempt(async () => {
-      const creds = await readStore(a.id);
-      return { creds, identity: creds != null && !isDeadCredential(creds) && !isAccessTokenExpiring(creds) ? attempt(() => fetchTokenIdentity(creds.accessToken)) : null };
-    }),
-  }));
-  for (const { a, read } of stores) {
-    const store = await read;
-    if (!store.ok) {
-      check(false, `store credential readable for ${a.label}`, store.error);
+  for (const a of idx.accounts) {
+    let creds;
+    try {
+      creds = await readStore(a.id);
+    } catch (e) {
+      check(false, `store credential readable for ${a.label}`, errorMessage(e).slice(0, 100));
       continue;
     }
-    const { creds, identity } = store.value;
     check(creds != null, `store credential present for ${a.label}`, `run \`tokenmaxxing auth ${a.label}\``);
     if (creds) {
       if (isDeadCredential(creds)) check(false, `${a.label}'s store credential is usable`, `cleared after a failed refresh - run \`tokenmaxxing auth ${a.label}\``);
-      else if (identity == null) note(`${a.label} identity unverifiable (access token expired)`);
+      else if (isAccessTokenExpiring(creds)) note(`${a.label} identity unverifiable (access token expired)`);
       else {
-        const verified = await identity;
-        if (verified.ok) check(verified.value.accountUuid === a.id, `store credential identity matches ${a.label}`, `token belongs to ${describeIdentity(verified.value)} - run \`tokenmaxxing auth ${a.label}\``);
-        else check(false, `store credential identity matches ${a.label}`, verified.error);
+        try {
+          const identity = await fetchTokenIdentity(creds.accessToken);
+          check(identity.accountUuid === a.id, `store credential identity matches ${a.label}`, `token belongs to ${describeIdentity(identity)} - run \`tokenmaxxing auth ${a.label}\``);
+        } catch (e) {
+          check(false, `store credential identity matches ${a.label}`, errorMessage(e).slice(0, 100));
+        }
       }
     }
     if (a.needsReauth) check(false, `${a.label} needs re-auth`, `run \`tokenmaxxing auth ${a.label}\` to re-login`);
@@ -175,21 +164,14 @@ export async function cmdDoctor(): Promise<number> {
       check(isBinDirAhead(PI_BIN), `${paths.binDir} is ahead of the real pi on PATH`, `export PATH="${paths.binDir}:$PATH"`);
     }
     for (const [pool, poolPaths, flag] of [["claude", claudePool, ""], ["codex", codexPool, " --codex"]] as const) {
-      const logins = loadAccounts(poolPaths).accounts.map((a) => {
+      for (const a of loadAccounts(poolPaths).accounts) {
+        let cred;
         try {
-          const cred = readPiStore(pool, a.id);
-          return { a, read: true as const, cred, identity: pool === "claude" && cred != null && cred.expires > Date.now() ? attempt(() => fetchTokenIdentity(cred.access)) : null };
+          cred = readPiStore(pool, a.id);
         } catch (e) {
-          return { a, read: false as const, error: errorMessage(e).slice(0, 100) };
-        }
-      });
-      for (const login of logins) {
-        const { a } = login;
-        if (!login.read) {
-          check(false, `pi login readable for ${a.label}`, login.error);
+          check(false, `pi login readable for ${a.label}`, errorMessage(e).slice(0, 100));
           continue;
         }
-        const { cred, identity } = login;
         if (!cred) {
           note(`${a.label} (${pool}) has no pi login - pi sessions skip it (run \`tokenmaxxing auth --pi${flag} ${a.label}\`)`);
           continue;
@@ -198,13 +180,16 @@ export async function cmdDoctor(): Promise<number> {
           check(codexSeatIdOf({ jwt: cred.access }) === a.id, `pi login identity matches ${a.label} (codex)`, `run \`tokenmaxxing auth --pi --codex ${a.label}\``);
           continue;
         }
-        if (identity == null) {
+        if (cred.expires <= Date.now()) {
           note(`${a.label} pi login identity unverifiable (access token expired; pi refreshes it in its next session)`);
           continue;
         }
-        const verified = await identity;
-        if (verified.ok) check(verified.value.accountUuid === a.id, `pi login identity matches ${a.label}`, `token belongs to ${describeIdentity(verified.value)} - run \`tokenmaxxing auth --pi ${a.label}\``);
-        else check(false, `pi login identity matches ${a.label}`, verified.error);
+        try {
+          const identity = await fetchTokenIdentity(cred.access);
+          check(identity.accountUuid === a.id, `pi login identity matches ${a.label}`, `token belongs to ${describeIdentity(identity)} - run \`tokenmaxxing auth --pi ${a.label}\``);
+        } catch (e) {
+          check(false, `pi login identity matches ${a.label}`, errorMessage(e).slice(0, 100));
+        }
       }
     }
   }

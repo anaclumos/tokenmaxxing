@@ -171,9 +171,9 @@ export async function sampleOldest(cfg: Config): Promise<void> {
       return [];
     }
     const batch: { account: Account; prepared: { token: string; expiresAt: number } }[] = [];
-    const reads = await Promise.all(stale.map(async (target) => ({ target, prepared: await prepareSample(target) })));
-    for (const { target, prepared } of reads) {
+    for (const target of stale) {
       target.lastProbeAt = now;
+      const prepared = await prepareSample(target);
       if (!prepared.ok) {
         target.storeFails = (target.storeFails ?? 0) + 1;
         if (target.storeFails >= STORE_FAILS_REAUTH) target.needsReauth = true;

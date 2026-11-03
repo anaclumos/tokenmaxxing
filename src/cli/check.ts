@@ -15,23 +15,13 @@ export async function cmdCheck(json = false): Promise<number> {
   let d;
   try {
     pruneStaleSessions(now);
+    d = await evaluateAndMaybeSwap(claude, now);
     const cfg = loadConfig();
-    const steps = [
-      evaluateAndMaybeSwap(claude, now).then(async (decision) => {
-        await sampleOldest(cfg);
-        return decision;
-      }),
-      useBankedResets(codex, cfg, now),
-      refreshOpenRouterCredit(),
-      maybeAutoUpdate().then((updated) => {
-        if (updated != null) record({ event: "update", ...updated });
-      }),
-    ] as const;
-    const failures = (await Promise.allSettled(steps)).flatMap((r) => (r.status === "rejected" ? [r.reason] : []));
-    for (const e of failures.slice(1)) log("check.error", { err: errorMessage(e) });
-    if (failures.length > 0) throw failures[0];
-    const [decision] = await Promise.all(steps);
-    d = decision;
+    await useBankedResets(codex, cfg, now);
+    await sampleOldest(cfg);
+    await refreshOpenRouterCredit();
+    const updated = await maybeAutoUpdate();
+    if (updated != null) record({ event: "update", ...updated });
   } catch (e) {
     const detail = errorMessage(e);
     log("check.error", { err: detail });

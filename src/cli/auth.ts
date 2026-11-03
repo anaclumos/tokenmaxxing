@@ -205,8 +205,11 @@ export async function cmdAuth(p: Provider, argv: string[], pi: PiPool | null): P
     return loginEmails(p, argv);
   }
   const idx = loadAccounts(p.pool);
-  const usable = await Promise.all(idx.accounts.map(async (a) => (pi ? piStoreUsable(pi, a.id) : a.needsReauth !== true && (await p.storeUsable(a)))));
-  const needsAuth = new Set(idx.accounts.filter((_, i) => !usable[i]).map((a) => a.id));
+  const needsAuth = new Set<string>();
+  for (const a of idx.accounts) {
+    const usable = pi ? piStoreUsable(pi, a.id) : a.needsReauth !== true && (await p.storeUsable(a));
+    if (!usable) needsAuth.add(a.id);
+  }
   const plan = planAuth({ p, accounts: idx.accounts, argv, needsAuth });
   if (plan.kind === "usage") {
     console.error(AUTH_USAGE);
