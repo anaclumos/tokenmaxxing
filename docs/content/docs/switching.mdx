@@ -78,15 +78,16 @@ Claude and Codex launches and session moves choose among usable accounts by the 
 | Headroom per session among full accounts, scaled by plan size | greatest first | 5th | not used |
 | Quota expires within a day (see [Use it or lose it](#use-it-or-lose-it)) | yes first | 6th | 3rd |
 | Expiring quota per hour until the reset, scaled by plan size | highest first | 7th | 4th |
-| Has a session window (see [Session window first](#session-window-first)) | yes first | 8th | 5th |
-| Cramped (no room for a whole session) | no first | 9th | 6th |
-| Weekly reset within 4 days | yes first | 10th | 7th |
-| A figure the ranking reads is older than 6 hours | no first | 11th | 8th |
-| Headroom per session, scaled by plan size | greatest first | 12th | not used |
-| Pace pressure, scaled by plan size | highest first | 13th | 9th |
-| Weekly reset | soonest first | 14th | 10th |
-| Weekly usage | lowest first | 15th | 11th |
-| Live sessions | fewest first | 16th | not used |
+| Refuses Fable, with room for a whole session, for a session of another model (see [Fable-refusing accounts first](#fable-refusing-accounts-first)) | yes first | 8th | not used |
+| Has a session window (see [Session window first](#session-window-first)) | yes first | 9th | 5th |
+| Cramped (no room for a whole session) | no first | 10th | 6th |
+| Weekly reset within 4 days | yes first | 11th | 7th |
+| A figure the ranking reads is older than 6 hours | no first | 12th | 8th |
+| Headroom per session, scaled by plan size | greatest first | 13th | not used |
+| Pace pressure, scaled by plan size | highest first | 14th | 9th |
+| Weekly reset | soonest first | 15th | 10th |
+| Weekly usage | lowest first | 16th | 11th |
+| Live sessions | fewest first | 17th | not used |
 
 - An account with no usage figure ranks after every measured account, cramped or stale ones included.
 - Accounts with no cached figure tie on every other key, so the session count alone spreads launches and `seat` borrows across them.
@@ -108,9 +109,18 @@ Quota left in a window is lost when the window resets. When an account's longest
 
 Hard blocks still apply first: an account at or over any bar, walled (an enforced wall, or a family wall for the session's model family), flagged for reauthentication, or full (see [Headroom per session](#headroom-per-session)) is never placed for this reason. Only a reset the provider reported and that is still ahead counts: a window that has already reset, or a closed 5-hour window with no reset, holds no expiring quota, because its next window begins with the next request.
 
+### Fable-refusing accounts first
+
+An account that refuses Fable ranks ahead of every other account, after expiring quota, for a session whose model is known and is not Fable: an Opus, Sonnet, or Haiku launch, resume, or move. An account refuses Fable while it carries a live Fable family wall (`fable-walled` in `status`, after a usage-credits or per-model refusal) or while its Fable per-model cap is at or over its bar, including an account whose `thresholds.accounts` entry sets `credits`, since a Fable session would land there only on usage credits. Such an account cannot take a Fable session until the wall ends or the cap resets, while its 5-hour and weekly windows still serve every other model, so a session of another model spends that quota first and leaves the accounts that still serve Fable to Fable sessions.
+
+- The key ranks ahead of [Session window first](#session-window-first), so a Fable-refusing account whose plan has only a weekly window, such as a verified Claude Ultra account, takes an Opus session ahead of a Team account with an idle 5-hour window.
+- A [cramped](#cramped) Fable-refusing account does not go first, because the session would cross the session bar partway through and move; it falls back to the normal order, where a roomier account ranks first.
+- Hard blocks, full accounts, and [use it or lose it](#use-it-or-lose-it) still come first, so quota that expires within a day goes first even when another account refuses Fable.
+- The key never applies to a Fable session or to a session whose model is unknown (a launch without `--model`, a `seat` borrow), both of which every Fable wall binds, nor to Codex and the other pools, which carry no model.
+
 ### Session window first
 
-An account whose plan has a 5-hour session window ranks ahead of every account whose plan has only a weekly window, such as Codex Pro or a verified Claude Ultra account, among accounts that are not full. Session quota comes back within hours, so spending it first costs nothing, while a weekly-only account spends quota that is gone until its week resets; that account takes sessions once every account with a session window is full or exhausted. An unmeasured account still ranks after both, and a Muse Code account whose 5-hour window is closed lands that window at zero rather than without one.
+An account whose plan has a 5-hour session window ranks ahead of every account whose plan has only a weekly window, such as Codex Pro or a verified Claude Ultra account, among accounts that are not full, unless the weekly-only account refuses Fable and the session is of another model (see [Fable-refusing accounts first](#fable-refusing-accounts-first)). Session quota comes back within hours, so spending it first costs nothing, while a weekly-only account spends quota that is gone until its week resets; that account takes sessions once every account with a session window is full or exhausted. An unmeasured account still ranks after both, and a Muse Code account whose 5-hour window is closed lands that window at zero rather than without one.
 
 ### Cramped
 
@@ -310,7 +320,7 @@ A model changed inside the session with `/model` does not change the launch valu
 - Candidate screening counts gated per-model caps too, so a pool where every account has burnt its Fable cap does not round-robin.
 - Codex has no model in its usage feed, so every named Codex limit window screens and triggers against its own bar (session or weekly by duration); `policy.switchModels` gates Claude per-model rows only.
 - The usage-credits refusal of the enforced-limit path (below) is not gated by `policy.switchModels`: it moves the session and walls the account for Fable sessions whatever that list holds.
-- Which family walls bind a session is read from the session's own model, not from `policy.switchModels`: a Fable wall binds a Fable session even when that list is empty, and never binds an Opus, Sonnet, or Haiku session. A session whose model is unknown is bound by every family wall.
+- Which family walls bind a session is read from the session's own model, not from `policy.switchModels`: a Fable wall binds a Fable session even when that list is empty, and never binds an Opus, Sonnet, or Haiku session, which ranks a Fable-refusing account first instead (see [Fable-refusing accounts first](#fable-refusing-accounts-first)). A session whose model is unknown is bound by every family wall.
 
 ## Enforced limits
 
@@ -393,7 +403,7 @@ The wall does not record which refusal stamped it, so the rule reads only those 
 
 A usage-credits refusal walls the account for Fable sessions for five hours, the length of an organization refusal's hold, because the row names no window and no reset and the usage read shows no sign of the refusal: the refusing account's Fable row can read far under its bar, and `policy.switchModels` may not gate the Fable row at all, while the server keeps refusing. The wall is written on the account record as `familyUntil.fable`, so it holds for every Fable session and every Fable launch, not only for the session that was refused: without it, every new Fable session placed on the refusing account was refused in turn and moved, and the pool walked one refusal at a time.
 
-The refusal is Fable's alone: the Fable allowance or the credits that pay for Fable ran out, while the account's shared 5-hour and weekly windows still serve every other model. The wall therefore never binds an Opus, Sonnet, or Haiku session, which keeps launching on, resuming on, and staying on the account.
+The refusal is Fable's alone: the Fable allowance or the credits that pay for Fable ran out, while the account's shared 5-hour and weekly windows still serve every other model. The wall therefore never binds an Opus, Sonnet, or Haiku session, which keeps launching on, resuming on, and staying on the account; while the wall lasts, such a session goes to the account first (see [Fable-refusing accounts first](#fable-refusing-accounts-first)).
 
 - The wall keeps Fable launches, resumes, and moves off the account until it ends; the seat watch moves every other Fable session on the account within ten seconds, as after any wall.
 - The refused session moves with the Fable windows screening the candidates and the walls keeping it off every account that refused within the last five hours. The move does not read the list of accounts that refused this session, a list the supervisor keeps for the life of the session and hands to each new process: that list screens only a move off a credits-flagged seat and an API-key move, so once a wall ends the account is a candidate for this session again.

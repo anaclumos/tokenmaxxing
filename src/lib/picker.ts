@@ -231,6 +231,18 @@ export function expiringPressure(a: Account, ctx: PickCtx): number {
   return (Math.max(0, barFor(a, w, ctx.thresholds, ctx.now) - liveUsed(w, ctx.now)) * planWeight(a, w, ctx)) / (reset - ctx.now);
 }
 
+const FABLE = "fable";
+
+function spawnsOtherModel(ctx: PickCtx): boolean {
+  return ctx.held != null && !ctx.held.includes(FABLE);
+}
+
+function refusesFable(a: Account, ctx: PickCtx): boolean {
+  if ((a.familyUntil?.[FABLE] ?? 0) > ctx.now) return true;
+  const plan = { ...a, hasCredits: false };
+  return gatedWindows(a, [FABLE]).some((w) => blockedUntil(plan, w, ctx.thresholds, ctx.now) > ctx.now);
+}
+
 const swapPreference = (ctx: PickCtx) => [
   (a: Account) => (onCredits(a, ctx) ? 1 : 0),
   (a: Account) => ((a.storeFails ?? 0) > 0 ? 1 : 0),
@@ -241,6 +253,7 @@ const swapPreference = (ctx: PickCtx) => [
   // Quota that expires within a day ranks ahead of every headroom key, the session-window key included.
   (a: Account) => (expiringPressure(a, ctx) > 0 ? 0 : 1),
   (a: Account) => -expiringPressure(a, ctx),
+  (a: Account) => (spawnsOtherModel(ctx) && refusesFable(a, ctx) && !cramped(a, ctx) ? 0 : 1),
   // An account with a session window first: its 5-hour quota comes back within hours, while an account with only a weekly window spends quota that is gone until the week resets.
   (a: Account) => (sessionWindow(a) == null ? 1 : 0),
   (a: Account) => (cramped(a, ctx) ? 1 : 0),
