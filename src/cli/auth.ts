@@ -9,6 +9,7 @@ import { piLogin, piLoginStep } from "../lib/pi.ts";
 import { piStoreUsable, writePiStore } from "../lib/piauth.ts";
 import type { Provider } from "../lib/provider.ts";
 import { loadAccounts, saveAccounts, upsertAccount } from "../lib/state.ts";
+import { record } from "../lib/telemetry.ts";
 import { findAccount } from "./rename.ts";
 import { poolHarvest, usageNote } from "./add.ts";
 import { c, count } from "./render.ts";
@@ -104,6 +105,7 @@ async function reauthOne(p: Provider, target: Account): Promise<boolean> {
 
   const note = harvested.sample ? usageNote(p, account) : "";
   console.log(`${c.green("✓")} reauthed ${c.bold(account.email ?? account.label)} (${account.tier ?? "?"})${note}`);
+  record({ event: "account_reauthenticated", pool: p.name });
   return true;
 }
 
@@ -140,6 +142,7 @@ async function piLoginOne(p: Provider, pool: PiPool, target: Account): Promise<b
   log("pi.login", { pool, account: target.id.slice(0, 8) });
 
   console.log(`${c.green("✓")} logged ${c.bold(target.email ?? target.label)} into pi`);
+  record({ event: "pi_login_added", pool });
   return true;
 }
 

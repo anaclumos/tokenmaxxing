@@ -16,7 +16,7 @@ import { deletePiStore } from "./piauth.ts";
 import { livingPresences, writePresence } from "./presence.ts";
 import { StoreUnusableError, type Observation, type Provider, type ResetClaim, type SampleReport, type SeatBorrow } from "./provider.ts";
 import { claimSample, foldTee, landRead, readyToSample, runSample, sampleAccountUsage, sampleDue, sampleIntervalMs, teeObservation, usageBlockedUntil } from "./sample.ts";
-import { clearUsageSnapshot, liveWaitClaims, loadAccounts, loadConfig, loadUsageSnapshot, pinBinOverride, readJsonFile, saveAccounts, type Harvest } from "./state.ts";
+import { clearUsageSnapshot, liveWaitClaims, loadAccounts, loadConfig, loadUsageSnapshot, readJsonFile, saveAccounts, setConfigField, type Harvest } from "./state.ts";
 import { saveTermios, restoreTermios } from "./tty.ts";
 import { claimResetGrant, fetchUsageDirect, gatedFamilies, heldFamilies, mergeWindows, modelFromFlag, scrubCredEnv, windowsOf } from "./usage.ts";
 import { CredentialBlobSchema, JsonTextSchema, OAuthAccountSchema, type Account, type ApiKey, type Config, type ModelInfo, type Window } from "./types.ts";
@@ -389,7 +389,7 @@ export const claude: Provider = {
   storeUsable,
   login,
   importLive,
-  preflight: () => pinBinOverride({ key: "claudeBin", bin: resolveVerifiedClaude() }),
+  preflight: () => setConfigField("claudeBin", resolveVerifiedClaude()),
   install,
   loginStep,
   windowLabel: (name) => name.toLowerCase(),

@@ -4,7 +4,7 @@ import { resolveRealBin, verifyRealBin } from "./claudebin.ts";
 import { onboardHome } from "./onboard.ts";
 import type { PoolPaths } from "./paths.ts";
 import type { Provider } from "./provider.ts";
-import { pinBinOverride, type Harvest } from "./state.ts";
+import { setConfigField, type Harvest } from "./state.ts";
 import type { Account } from "./types.ts";
 import { c } from "../cli/render.ts";
 
@@ -85,7 +85,7 @@ export function statusOnlyProvider(spec: StatusOnlySpec): Provider {
     const real = resolveRealBin(bin);
     const fail = verifyRealBin({ ...bin, bin: real });
     if (fail !== null) throw new Error(`${spec.binName} binary failed verification: ${real}: ${fail}`);
-    pinBinOverride({ key: spec.binKey, bin: real });
+    setConfigField(spec.binKey, real);
   }
 
   return {

@@ -1,6 +1,7 @@
 import { withLock } from "../lib/lock.ts";
 import type { Provider } from "../lib/provider.ts";
 import { loadAccounts, loadConfig, saveAccounts, upsertAccount, type Harvest } from "../lib/state.ts";
+import { bucket, record } from "../lib/telemetry.ts";
 import { bufferedUsed, liveUsed, sessionWindow, thresholdBars, weeklyWindow } from "../lib/picker.ts";
 import { c, count } from "./render.ts";
 import type { Account, Window } from "../lib/types.ts";
@@ -39,4 +40,5 @@ export async function poolHarvest(p: Provider, harvested: Harvest): Promise<void
 
   const note = harvested.sample ? usageNote(p, account) : "";
   console.log(`${c.green("✓")} added ${c.bold(account.label)} (${account.tier ?? "?"})${note} → pool now has ${count({ n: poolSize, noun: "account" })}`);
+  record({ event: "account_added", pool: p.name, pool_size: bucket(poolSize) });
 }

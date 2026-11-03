@@ -17,7 +17,7 @@ import { errorMessage, log } from "./log.ts";
 import { codexPaths, codexPool, codexSeatFromEnv, optionalEnv } from "./paths.ts";
 import { expiringPressure, isExhausted, landGrant, onCredits, pickBest, pickEarliestReset, sessionWindow, thresholdBars, type PickCtx } from "./picker.ts";
 import { StoreUnusableError, type Observation, type Provider, type SampleReport, type SeatBorrow } from "./provider.ts";
-import { loadAccounts, loadConfig, pinBinOverride, saveAccounts, type Harvest } from "./state.ts";
+import { loadAccounts, loadConfig, saveAccounts, setConfigField, type Harvest } from "./state.ts";
 import { restoreTermios, saveTermios } from "./tty.ts";
 import type { Account, CodexAuthJson, CodexUsage, Config } from "./types.ts";
 import { c } from "../cli/render.ts";
@@ -252,7 +252,7 @@ function preflight(): void {
   const real = resolveRealBin(CODEX_BIN);
   const fail = verifyRealBin({ ...CODEX_BIN, bin: real });
   if (fail !== null) throw new Error(`codex binary failed verification: ${real}: ${fail}`);
-  pinBinOverride({ key: "codexBin", bin: real });
+  setConfigField("codexBin", real);
   if (storePinnedAwayFromFile()) {
     throw new Error(
       'codex config.toml pins cli_auth_credentials_store away from the plain auth.json file tokenmaxxing swaps - set cli_auth_credentials_store = "file" in ~/.codex/config.toml, run `codex login`, then re-run this.',

@@ -36,6 +36,7 @@
   "dependencies": {
     "es-toolkit": "^1.49.0",
     "ky": "^2.0.2",
+    "posthog-node": "5.61.2",
     "zod": "^4.4.3"
   }
 }

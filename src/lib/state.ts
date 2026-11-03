@@ -43,10 +43,9 @@ export function loadConfig(): Config {
 
 export type BinKey = "claudeBin" | "codexBin" | "grokBin" | "museBin" | "cursorBin" | "kimiBin" | "piBin";
 
-export function pinBinOverride(input: { key: BinKey; bin: string }): void {
-  const raw: Record<string, unknown> = existsSync(paths.configJson) ? readJsonFile(paths.configJson, z.record(z.string(), z.unknown())) : {};
-  raw[input.key] = input.bin;
-  writeFileAtomic(paths.configJson, JSON.stringify(raw, null, 2) + "\n");
+export function setConfigField<K extends BinKey | "telemetry">(key: K, value: Config[K]): void {
+  const raw = existsSync(paths.configJson) ? readJsonFile(paths.configJson, z.record(z.string(), z.unknown())) : {};
+  writeFileAtomic(paths.configJson, JSON.stringify({ ...raw, [key]: value }, null, 2) + "\n");
 }
 
 const emptyIndex = (): AccountsIndex => ({ version: 2, accounts: [] });

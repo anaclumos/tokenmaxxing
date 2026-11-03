@@ -121,6 +121,7 @@ export const ConfigSchema = z
     cursorBin: z.string().default(""),
     kimiBin: z.string().default(""),
     piBin: z.string().default(""),
+    telemetry: z.boolean().default(true),
     policy: z
       .object({
         projectionMargin: z.number().min(0).max(100).default(0),
@@ -223,8 +224,15 @@ export const RateLimitsStdinSchema = z.looseObject({
       seven_day: StdinWindowSchema.nullish(),
     })
     .optional(),
-  model: z.looseObject({ id: z.string().optional(), display_name: z.string().optional() }).optional(),
+  model: z
+    .looseObject({ id: z.string().optional(), display_name: z.string().optional() })
+    .optional()
+    .transform((m): ModelInfo | null => {
+      const id = m?.id || m?.display_name;
+      return id ? { id, display: m?.display_name || id } : null;
+    }),
 });
+export type RateLimitsStdin = z.output<typeof RateLimitsStdinSchema>;
 
 export const StatusLineStdinSchema = RateLimitsStdinSchema.extend({
   workspace: z
@@ -246,6 +254,7 @@ export const StatusLineStdinSchema = RateLimitsStdinSchema.extend({
     .catch(undefined),
   effort: z.looseObject({ level: z.string().optional() }).nullable().optional().catch(undefined),
 });
+export type StatusLineStdin = z.output<typeof StatusLineStdinSchema>;
 
 export const SubagentStatusLineStdinSchema = z.looseObject({
   tasks: z

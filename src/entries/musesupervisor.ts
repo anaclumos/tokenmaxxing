@@ -7,6 +7,7 @@ import { MUSE_BIN, UNMANAGED_ENV, WRAP_DEPTH_ENV, resolveRealBin, wrapDepth } fr
 import { evaluateAndMaybeSwap } from "../lib/decide.ts";
 import { withLock } from "../lib/lock.ts";
 import { errorMessage, log } from "../lib/log.ts";
+import { endSession } from "../lib/telemetry.ts";
 import { ensureMuseStoreHome, muse, museSeatOpen, observeMuse, probeMuseSeats, rankMuseSeat } from "../lib/muse.ts";
 import { MUSE_CONFIG_HOME_ENV, inMuseStores, musePaths, musePool, museSeatFromEnv } from "../lib/paths.ts";
 import { thresholdBars, usableAt } from "../lib/picker.ts";
@@ -249,6 +250,7 @@ export async function runMuseSupervisor(argv: string[]): Promise<number> {
 
   let launchArgs = argv;
   let respawns = 0;
+  const startedAt = Date.now();
   let wanted: string | null = null;
   try {
     while (true) {
@@ -323,13 +325,13 @@ export async function runMuseSupervisor(argv: string[]): Promise<number> {
       }
       clearPresence({ dir: musePaths.presenceDir, id });
       log("musesupervisor.exit", { id: id.slice(0, 8), respawns, code: proc.exitCode, signal: proc.signalCode, terminated: terminating || undefined });
-      return exitStatus(proc);
+      return endSession({ tool: "muse", moves: respawns, outcome: "exit", startedAt, code: exitStatus(proc) });
     }
   } catch (e) {
     const msg = errorMessage(e);
     say(msg.startsWith("tokenmaxxing:") ? msg : `tokenmaxxing: ${msg}`);
     log("musesupervisor.fatal", { err: msg });
     clearPresence({ dir: musePaths.presenceDir, id });
-    return 1;
+    return endSession({ tool: "muse", moves: respawns, outcome: "fatal", startedAt, code: 1 });
   }
 }

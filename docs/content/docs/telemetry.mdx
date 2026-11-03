@@ -1,0 +1,49 @@
+---
+title: Telemetry
+description: The anonymous usage statistics tokenmaxxing sends once a day, and how to turn them off
+---
+
+tokenmaxxing sends anonymous usage statistics to PostHog once a day, so its maintainer can see how many installs there are, which commands and tools they use, and how often sessions move. It is on by default, and one command turns it off.
+
+## Turning it off
+
+| Way | Effect |
+|---|---|
+| `tokenmaxxing telemetry off` | Writes `"telemetry": false` to `config.json` and deletes the events not sent yet. `tokenmaxxing telemetry on` turns it back on, and a bare `tokenmaxxing telemetry` prints the current state |
+| `"telemetry": false` in `config.json` | The same switch, edited by hand |
+| `DO_NOT_TRACK=1` or `TOKENMAXXING_TELEMETRY=0` | The first command or session that runs with either one writes `"telemetry": false` and deletes the unsent events, because the check timer that sends them does not see your shell's environment |
+| `CI` set | Nothing is recorded or sent while `CI` is set, and nothing is written to `config.json` |
+
+## When it sends
+
+- Commands and sessions append each event to `telemetry.jsonl` in the state directory. The statusline and the hooks record nothing.
+- The first interactive command prints a notice on stderr, once, naming what is sent and how to turn it off. `--json` runs, `check`, `help`, `--version`, `telemetry`, and `uninstall` print no notice.
+- Nothing is sent before that notice. The check timer sends the first batch a day after it, and one batch a day after that. A failed send keeps its events for the next day's try, and the spool stops growing at 2 MB.
+- `uninstall` sends its own event right away, because it removes the timer that would send it later, and it sends nothing when the notice was never shown.
+
+## What is sent
+
+Every event carries the tokenmaxxing version, the OS (`darwin` or `linux`), the CPU type (such as `arm64`), the event's time, and a random event ID, and goes out under a random install ID kept in `telemetry.json`.
+
+| Event | When | Fields |
+|---|---|---|
+| `command` | A command finishes | The command name (`status`, `add`, `auth`, and the rest; anything else is `unknown`), the pool, which of `--json`, `--cached`, `--yes`, `--pi`, `--all`, `--emails`, and `--store` were given, the exit code, and how long it took. Never the arguments themselves |
+| `session_end` | A `claude`, `codex`, `pi`, or `muse` session ends | The tool, whether stdin was a terminal, how many times the session moved to another account, how it ended (`exit`, `depleted` when every account was at its limit, or `fatal`), the exit code, and how long it ran |
+| `compaction` | A session's compaction before a move | Whether it landed (`ok`), failed, or was skipped |
+| `account_added`, `account_imported`, `account_removed` | `add`, `init`, `rm` | The pool, and its size afterwards as a bucket: `0`, `1`, `2-5`, `6-20`, or `21+` |
+| `account_reauthenticated`, `account_renamed` | `auth`, `rename` | The pool |
+| `pi_login_added` | `auth --pi` | The pool the account belongs to (`claude` or `codex`) |
+| `update` | The daily self-update installs a new version | The old and new versions |
+| `uninstall` | `uninstall` | Nothing more |
+| `install_daily` | Each daily send | Whether this is a Bun global install, the Bun version, each pool's account count, and the API key count, each as a bucket |
+
+## What is never sent
+
+- Account labels, emails, account or organization IDs, credentials, tokens, API keys, or session IDs.
+- Paths, hostnames, user names, command arguments, prompts, model output, or error text.
+
+Each event's fields pass a fixed allowlist before they are written to the spool and again before they are sent, so a field outside it is dropped. Events create no PostHog person profile, and the SDK asks PostHog to skip its GeoIP lookup. PostHog still receives the IP address each upload comes from.
+
+## The client
+
+`check` loads the [PostHog Node SDK](https://posthog.com/docs/libraries/node) (`posthog-node`, pinned to one exact version) only when a daily send is due; no other process imports it. A send makes one request with no retries and gives up after 10 seconds, so an unreachable host costs one check tick at most once a day. `TOKENMAXXING_POSTHOG_HOST` points the send at another host, which the tests use for a local stub.

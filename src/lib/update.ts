@@ -54,7 +54,7 @@ function registryPackageDir(root: string): string | null {
   }
 }
 
-function detectGlobalRoot(): string | null {
+export function detectGlobalRoot(): string | null {
   const entry = realpathOrNull(Bun.main);
   if (entry == null) return null;
   return (
@@ -74,7 +74,9 @@ function isDue(now: number): boolean {
   return now - readJsonFile(updateJson, AttemptSchema).attemptedAt >= UPDATE_INTERVAL_MS;
 }
 
-async function updateToLatest(root: string): Promise<void> {
+export type Update = { from: string; to: string };
+
+async function updateToLatest(root: string): Promise<Update | null> {
   const current = installedVersion(root);
   const { base, authorization } = registry();
   const latestUrl = new URL("tokenmaxxing/latest", base).href;
@@ -82,7 +84,7 @@ async function updateToLatest(root: string): Promise<void> {
   const response = await http.get(latestUrl, { signal, headers: authorization ? { authorization } : undefined });
   if (!response.ok) throw new Error(`${latestUrl} answered HTTP ${response.status}`);
   const latest = LatestSchema.parse(await response.json());
-  if (Bun.semver.order(latest.version, current) <= 0) return;
+  if (Bun.semver.order(latest.version, current) <= 0) return null;
   const floor = latest.engines?.bun;
   if (floor != null && !Bun.semver.satisfies(Bun.version, floor)) {
     throw new Error(`tokenmaxxing@${latest.version} needs bun ${floor}, this is bun ${Bun.version}`);
@@ -100,17 +102,18 @@ async function updateToLatest(root: string): Promise<void> {
   const installed = installedVersion(root);
   if (installed !== latest.version) throw new Error(`bun add -g tokenmaxxing@${latest.version} left ${installed} installed`);
   log("update.done", { from: current, to: latest.version });
+  return { from: current, to: latest.version };
 }
 
-export async function maybeAutoUpdate(): Promise<void> {
+export async function maybeAutoUpdate(): Promise<Update | null> {
   const root = detectGlobalRoot();
-  if (root == null) return;
-  await withLock(updateLock, async () => {
+  if (root == null) return null;
+  return withLock(updateLock, async () => {
     const now = Date.now();
-    if (!isDue(now)) return;
+    if (!isDue(now)) return null;
     writeFileAtomic(updateJson, JSON.stringify({ attemptedAt: now }) + "\n");
     try {
-      await updateToLatest(root);
+      return await updateToLatest(root);
     } catch (e) {
       throw new Error(`self-update from npm failed: ${errorMessage(e)}`);
     }

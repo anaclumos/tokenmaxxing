@@ -5,17 +5,15 @@ import { http, safeErrorDetail } from "./http.ts";
 import { errorMessage, log } from "./log.ts";
 import { env } from "./paths.ts";
 import type { ResetClaim } from "./provider.ts";
-import { EpochSecondsSchema, InstantSchema, JsonTextSchema, RateLimitsStdinSchema, type BankedReset, type ModelInfo, type UsageWindow, type UsageWindows, type Window } from "./types.ts";
+import { EpochSecondsSchema, InstantSchema, JsonTextSchema, type BankedReset, type ModelInfo, type RateLimitsStdin, type UsageWindow, type UsageWindows, type Window } from "./types.ts";
 
 const win = (w: { used_percentage: number; resets_at?: number | null }): UsageWindow => ({
   usedPercentage: w.used_percentage,
   resetsAt: w.resets_at ?? null,
 });
 
-export function parseStatusLineStdin(obj: unknown): UsageWindows | null {
-  const parsed = RateLimitsStdinSchema.safeParse(obj);
-  if (!parsed.success) return null;
-  const rl = parsed.data.rate_limits;
+export function statusLineWindows(stdin: RateLimitsStdin): UsageWindows | null {
+  const rl = stdin.rate_limits;
   if (!rl?.seven_day) return null;
   return { fiveHour: rl.five_hour ? win(rl.five_hour) : null, sevenDay: win(rl.seven_day), perModel: {} };
 }
@@ -37,14 +35,6 @@ export function parseStreamLine(value: unknown): { type: string; windows: UsageW
   const win = (w: z.infer<typeof StreamWindowSchema>): UsageWindow => ({ usedPercentage: Math.round(w.utilization * 100), resetsAt: w.resetsAt });
   const windows = unified?.seven_day ? { fiveHour: unified.five_hour ? win(unified.five_hour) : null, sevenDay: win(unified.seven_day), perModel: {} } : null;
   return { type: parsed.data.type, windows };
-}
-
-export function parseStatusLineModel(obj: unknown): ModelInfo | null {
-  const parsed = RateLimitsStdinSchema.safeParse(obj);
-  if (!parsed.success) return null;
-  const m = parsed.data.model;
-  if (!m?.id && !m?.display_name) return null;
-  return { id: m?.id ?? m?.display_name ?? "", display: m?.display_name ?? m?.id ?? "" };
 }
 
 export function familyTokens(s: string): string[] {
