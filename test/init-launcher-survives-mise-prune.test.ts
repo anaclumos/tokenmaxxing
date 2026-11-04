@@ -43,4 +43,34 @@ describe("init from a mise install that tracks latest", () => {
       exitCode: 0,
     });
   });
+
+  test("names Bun through its latest alias and keeps a version that is not the latest", async () => {
+    const { miseStablePath } = await import("../src/lib/install.ts");
+    const bun = join(realpathSync(mkdtempSync(join(tmpdir(), "tokenmaxxing-mise-"))), "installs", "bun");
+    for (const version of ["1.4.3", "1.4.4"]) {
+      mkdirSync(join(bun, version, "bin"), { recursive: true });
+      writeFileSync(join(bun, version, "bin", "bun"), "");
+    }
+    writeFileSync(join(bun, ".mise.backend.toml"), 'short = "bun"\nfull = "core:bun"\n');
+    symlinkSync("./1.4.4", join(bun, "latest"));
+
+    expect([miseStablePath(join(bun, "1.4.4", "bin", "bun")), miseStablePath(join(bun, "1.4.3", "bin", "bun"))]).toEqual([
+      join(bun, "latest", "bin", "bun"),
+      join(bun, "1.4.3", "bin", "bun"),
+    ]);
+  });
+
+  test("names an identity-layout install through its tool's latest alias", async () => {
+    const { miseStablePath } = await import("../src/lib/install.ts");
+    const installs = join(realpathSync(mkdtempSync(join(tmpdir(), "tokenmaxxing-mise-"))), "installs");
+    const store = join(installs, "tokenmaxxing-hlencrst");
+    mkdirSync(join(store, "src"), { recursive: true });
+    writeFileSync(join(store, ".mise-install.toml"), 'requested_as = "npm:tokenmaxxing"\n');
+    writeFileSync(join(store, "src", "main.ts"), "");
+    mkdirSync(join(installs, "npm-tokenmaxxing"));
+    symlinkSync("../tokenmaxxing-hlencrst", join(installs, "npm-tokenmaxxing", "1.193.0"));
+    symlinkSync("./1.193.0", join(installs, "npm-tokenmaxxing", "latest"));
+
+    expect(miseStablePath(join(store, "src", "main.ts"))).toBe(join(installs, "npm-tokenmaxxing", "latest", "src", "main.ts"));
+  });
 });
