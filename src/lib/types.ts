@@ -101,7 +101,10 @@ export type Thresholds = { session: number; weekly: number };
 
 export type AccountThresholds = Thresholds & { credits: boolean };
 
-export type Bars = Thresholds & { accounts: Map<string, AccountThresholds>; accountReleaseMs: Thresholds };
+export const RANKS = ["priority", "default", "fallback"] as const;
+export type Rank = (typeof RANKS)[number];
+
+export type Bars = Thresholds & { accounts: Map<string, AccountThresholds>; accountReleaseMs: Thresholds; ranks: Map<string, Rank> };
 
 const PercentSchema = z.number().min(0).max(100);
 
@@ -114,6 +117,7 @@ export const ConfigSchema = z
         accounts: z.record(z.string(), z.object({ session: PercentSchema, weekly: PercentSchema, credits: z.boolean().default(false) })).default({}),
       })
       .prefault({}),
+    ranks: z.record(z.string(), z.enum(RANKS)).default({}),
     claudeBin: z.string().default(""),
     codexBin: z.string().default(""),
     grokBin: z.string().default(""),

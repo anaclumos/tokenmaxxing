@@ -9,11 +9,11 @@ import { muse } from "../lib/muse.ts";
 import { loadAccounts, loadConfig, saveAccounts } from "../lib/state.ts";
 import { withLock } from "../lib/lock.ts";
 import { codexPool, cursorPool, grokPool, kimiPool, musePool } from "../lib/paths.ts";
-import { barFor, bufferedUsed, earliestReset, gatedWindows, landGrant, landWindows, isExhausted, isSessionWindow, limitWindows, liveFamilyWalls, liveUsed, nextWeeklyReset, sessionWindow, thresholdBars, weeklyWindow } from "../lib/picker.ts";
+import { barFor, bufferedUsed, earliestReset, gatedWindows, landGrant, landWindows, isExhausted, isSessionWindow, limitWindows, liveFamilyWalls, liveUsed, nextWeeklyReset, rankOf, sessionWindow, thresholdBars, weeklyWindow } from "../lib/picker.ts";
 import type { Provider, SampleReport } from "../lib/provider.ts";
 import { usd } from "./key.ts";
 import { bar, c, count, emitJson, fmtAgo, fmtReset } from "./render.ts";
-import type { Account, AccountThresholds, Bars, Config, Thresholds, Window } from "../lib/types.ts";
+import type { Account, AccountThresholds, Bars, Config, Rank, Thresholds, Window } from "../lib/types.ts";
 
 const WEEK_S = 7 * 86400;
 
@@ -26,6 +26,7 @@ type StatusAccount = {
   email: string | null;
   id: string;
   tier: string | null;
+  rank: Rank;
   active: boolean;
   sessions: number;
   needsReauth: boolean;
@@ -190,6 +191,7 @@ async function collect(p: Provider, cfg: Config, now: number, cached: boolean): 
       email: a.email,
       id: a.id,
       tier: a.tier,
+      rank: rankOf(a, bars),
       active: (liveId != null && a.id === liveId) || present.has(a.id),
       sessions: present.get(a.id) ?? 0,
       needsReauth: a.needsReauth === true,
@@ -254,9 +256,11 @@ function cachedNote(usageAt: number | null, now: number): Note {
   return { paint: c.dim, text: usageAt != null ? `cached ${fmtAgo(usageAt, now)}` : "never sampled" };
 }
 
-function headerLine(input: { active: boolean; sessions: number; needsReauth: boolean; exhausted: boolean; familyWalls: Record<string, number>; name: string; tier: string | null }): string {
+function headerLine(input: { active: boolean; sessions: number; needsReauth: boolean; exhausted: boolean; familyWalls: Record<string, number>; name: string; tier: string | null; rank: Rank | null }): string {
   const marker = input.active ? c.green("●") : c.dim("○");
   const badges: string[] = [];
+  if (input.rank === "priority") badges.push(c.cyan("priority"));
+  if (input.rank === "fallback") badges.push(c.dim("fallback"));
   if (input.active) badges.push(c.green("active"));
   if (input.sessions > 0) badges.push(c.green(count({ n: input.sessions, noun: "session" })));
   if (input.needsReauth) badges.push(c.red("needs-reauth"));
@@ -266,7 +270,7 @@ function headerLine(input: { active: boolean; sessions: number; needsReauth: boo
 }
 
 function card(p: Provider, a: StatusAccount, now: number, staleAfterMs: number): Card {
-  const lines = [headerLine({ ...a, name: a.label })];
+  const lines = [headerLine({ ...a, name: a.label, rank: p.statusOnly ? null : a.rank })];
   if (a.usage) {
     if (a.usage.fiveHour) lines.push(usageRow(`${Math.round((a.usage.fiveHour.windowSeconds ?? 0) / 3600)}h`, a.usage.fiveHour));
     if (a.usage.week) lines.push(usageRow((a.usage.week.windowSeconds ?? 0) > WEEK_S ? "month" : "week", a.usage.week));
