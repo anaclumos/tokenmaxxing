@@ -1,6 +1,6 @@
 import { once } from "node:events";
 import type { Subprocess } from "bun";
-import { pick, pickBy } from "es-toolkit";
+import { omit, pick, pickBy } from "es-toolkit";
 import { z } from "zod";
 import { borrowCodexSeat, codexPickCtx, codexPlanOrderOpen, observeCodex } from "./codex.ts";
 import { ensureCodexStoreHome } from "./codexauth.ts";
@@ -19,6 +19,8 @@ const REPLAY_TIMEOUT_MS = 30_000;
 const STOP_GRACE_MS = 5_000;
 const EPHEMERAL_IDLE_MS = 15 * 60 * 1000;
 const PLAN_ORDER_RETRY_MS = 15 * 60 * 1000;
+const OVERLOAD_RETRY: OverloadRetry = { windowMs: 30 * 60 * 1000, delayMs: (attempt) => Math.min(60_000, 2_000 * 2 ** attempt) };
+const CONTINUE_INPUT = [{ type: "text", text: "Continue." }];
 const REPLAY_ID = "tokenmaxxing-replay-";
 const THREAD_OPENERS = new Set(["thread/start", "thread/resume", "thread/fork"]);
 const RESUME_KEYS = ["approvalPolicy", "approvalsReviewer", "baseInstructions", "config", "cwd", "developerInstructions", "model", "modelProvider", "personality", "sandbox", "serviceTier"];
@@ -43,10 +45,14 @@ const OptOutSchema = z.looseObject({ capabilities: z.looseObject({ optOutNotific
 const RefusalSchema = z.looseObject({ codexErrorInfo: z.literal("usageLimitExceeded") });
 const TurnRefusalSchema = z.looseObject({ turn: z.looseObject({ error: RefusalSchema }) });
 const ErrorRefusalSchema = z.looseObject({ error: RefusalSchema, willRetry: z.literal(false).optional() });
+const OverloadSchema = z.looseObject({ codexErrorInfo: z.literal("serverOverloaded") });
+const TurnOverloadSchema = z.looseObject({ turn: z.looseObject({ error: OverloadSchema }) });
+const ErrorOverloadSchema = z.looseObject({ error: OverloadSchema, willRetry: z.literal(false).optional() });
 const TurnSchema = z.looseObject({ id: z.string(), rootTurnId: z.string().nullish() });
 const TurnEnvelopeSchema = z.looseObject({ turn: TurnSchema });
 const TurnIdSchema = z.looseObject({ turnId: z.string() });
 const ClientTurnSchema = z.looseObject({ turnId: z.string().optional(), expectedTurnId: z.string().optional() });
+const ResultSchema = z.record(z.string(), z.unknown());
 
 function parseRpc(line: string): Rpc | null {
   try {
@@ -60,14 +66,27 @@ const idKey = (id: string | number): string => `${typeof id}:${id}`;
 
 type TurnMap = { from: string; to: string };
 type Retry = { params: Record<string, unknown>; turnId: string; withheld: string[] };
+type OverloadRetry = { windowMs: number; delayMs: (attempt: number) => number };
+type Overload = { since: number; attempts: number; timer: ReturnType<typeof setTimeout> | null; pending: Retry | null; starting: Retry | null };
+
+function mapTurnIds(fields: Record<string, unknown>, mapped: TurnMap): Record<string, unknown> {
+  let out = fields;
+  if (TurnIdSchema.safeParse(fields).data?.turnId === mapped.to) out = { ...out, turnId: mapped.from };
+  const turn = TurnEnvelopeSchema.safeParse(fields).data?.turn;
+  if (turn != null && turn.id === mapped.to) out = { ...out, turn: { ...turn, id: mapped.from, ...(turn.rootTurnId === mapped.to ? { rootTurnId: mapped.from } : {}) } };
+  return out;
+}
 
 function translateTurn(line: string, msg: Rpc, mapped: TurnMap): string {
   const params = msg.params ?? {};
-  let out: Record<string, unknown> = params;
-  if (TurnIdSchema.safeParse(params).data?.turnId === mapped.to) out = { ...out, turnId: mapped.from };
-  const turn = TurnEnvelopeSchema.safeParse(params).data?.turn;
-  if (turn != null && turn.id === mapped.to) out = { ...out, turn: { ...turn, id: mapped.from, ...(turn.rootTurnId === mapped.to ? { rootTurnId: mapped.from } : {}) } };
+  const out = mapTurnIds(params, mapped);
   return out === params ? line : JSON.stringify({ ...msg, params: out });
+}
+
+function translateReply(line: string, msg: Rpc, mapped: TurnMap): string {
+  const result = ResultSchema.safeParse(msg.result).data;
+  const out = result == null ? undefined : mapTurnIds(result, mapped);
+  return out == null || out === result ? line : JSON.stringify({ ...msg, result: out });
 }
 
 function translateClientTurn(msg: Rpc, mapped: TurnMap): Rpc {
@@ -106,12 +125,12 @@ export class AppServerState {
     return sent;
   }
 
-  fromServer(msg: Rpc, now = Date.now()): { refused: boolean; turnEnded: boolean; forward: boolean; threadId?: string } {
+  fromServer(msg: Rpc, now = Date.now()): { refused: boolean; overloaded: boolean; turnEnded: boolean; forward: boolean; threadId?: string } {
     if (msg.method == null && msg.id != null) {
       const asked = this.pending.get(idKey(msg.id));
       this.pending.delete(idKey(msg.id));
       if (asked && msg.error == null) this.answered(asked, msg.result, now);
-      return { refused: false, turnEnded: false, forward: true };
+      return { refused: false, overloaded: false, turnEnded: false, forward: true };
     }
     const forward = msg.method == null || !this.optedOut.has(msg.method);
     const threadId = ThreadParamsSchema.safeParse(msg.params).data?.threadId;
@@ -119,7 +138,7 @@ export class AppServerState {
     if (msg.method === "turn/started" && threadId != null) this.busy.add(threadId);
     if (msg.method === "turn/completed" && threadId != null) {
       this.busy.delete(threadId);
-      return { refused: TurnRefusalSchema.safeParse(msg.params).success, turnEnded: true, forward, threadId };
+      return { refused: TurnRefusalSchema.safeParse(msg.params).success, overloaded: TurnOverloadSchema.safeParse(msg.params).success, turnEnded: true, forward, threadId };
     }
     if (msg.method === "thread/closed" && threadId != null) {
       this.busy.delete(threadId);
@@ -127,7 +146,8 @@ export class AppServerState {
       this.lastTurn.delete(threadId);
       this.ephemeral.delete(threadId);
     }
-    return { refused: msg.method === "error" && ErrorRefusalSchema.safeParse(msg.params).success, turnEnded: false, forward, threadId };
+    const error = msg.method === "error";
+    return { refused: error && ErrorRefusalSchema.safeParse(msg.params).success, overloaded: error && ErrorOverloadSchema.safeParse(msg.params).success, turnEnded: false, forward, threadId };
   }
 
   private answered(asked: { method: string; params: Record<string, unknown> }, result: unknown, now: number): void {
@@ -178,7 +198,9 @@ export async function runCodexAppServer(input: {
   env: Record<string, string | undefined>;
   seat: { store: string; id: string };
   onSpawn: (child: Child) => void;
+  overload?: OverloadRetry;
 }): Promise<number> {
+  const overloadRetry = input.overload ?? OVERLOAD_RETRY;
   const seatId = `seat-${process.pid}`;
   const nextSeatId = `${seatId}-next`;
   const nonce = crypto.randomUUID();
@@ -188,7 +210,9 @@ export async function runCodexAppServer(input: {
   const queued: string[] = [];
   const retries = new Map<string, Retry>();
   const remaps = new Map<string, TurnMap>();
+  const remappedReplies = new Map<string, TurnMap>();
   const withheldErrors = new Map<string, string>();
+  const overloads = new Map<string, Overload>();
   let held = input.seat.id;
   let replays = 0;
   let replaying = false;
@@ -231,12 +255,40 @@ export async function runCodexAppServer(input: {
         }
         const seen = state.fromServer(msg);
         const { threadId } = seen;
-        const retrying = threadId == null ? undefined : retries.get(threadId);
+        const replyKey = msg.method == null && msg.id != null ? idKey(msg.id) : undefined;
+        const replyMapped = replyKey == null ? undefined : remappedReplies.get(replyKey);
+        if (replyKey != null) remappedReplies.delete(replyKey);
+        const retrying = threadId == null ? undefined : (retries.get(threadId) ?? overloads.get(threadId)?.starting ?? undefined);
         const mapped = threadId == null ? undefined : remaps.get(threadId);
         if (msg.method === "turn/started" && threadId != null && (retrying || mapped)) {
           const started = TurnEnvelopeSchema.safeParse(msg.params).data;
           if (retrying && started) remaps.set(threadId, { from: retrying.turnId, to: started.turn.id });
           continue;
+        }
+        const overload = threadId == null || !seen.overloaded ? undefined : (overloads.get(threadId) ?? { since: Date.now(), attempts: 0, timer: null, pending: null, starting: null });
+        const continuable = threadId == null ? undefined : state.lastTurn.get(threadId);
+        if (overload && threadId != null && continuable && !ended && !terminated && Date.now() - overload.since < overloadRetry.windowMs) {
+          const failedLine = mapped ? translateTurn(line, msg, mapped) : line;
+          const failed = seen.turnEnded ? TurnEnvelopeSchema.safeParse(msg.params).data : undefined;
+          overloads.set(threadId, overload);
+          if (!seen.turnEnded) {
+            if (seen.forward) withheldErrors.set(threadId, failedLine);
+            continue;
+          }
+          if (failed) {
+            const withheld = withheldErrors.get(threadId);
+            withheldErrors.delete(threadId);
+            overload.pending = {
+              params: { ...omit(continuable, ["toolOutput"]), input: CONTINUE_INPUT },
+              turnId: mapped?.from ?? failed.turn.id,
+              withheld: [...(withheld == null ? [] : [withheld]), ...(seen.forward ? [failedLine] : [])],
+            };
+            const left = overloadRetry.windowMs - (Date.now() - overload.since);
+            const delay = overloadRetry.delayMs(overload.attempts);
+            overload.timer = setTimeout(() => void continueOverloaded(threadId, delay >= left), Math.min(delay, left));
+            log("codexappserver.overload_planned", { account: held.slice(0, 8), thread: threadId.slice(0, 8), attempt: overload.attempts + 1 });
+            continue;
+          }
         }
         if (seen.refused) {
           const refusedId = held;
@@ -258,12 +310,13 @@ export async function runCodexAppServer(input: {
             continue;
           }
         }
-        const out = mapped ? translateTurn(line, msg, mapped) : line;
+        const out = replyMapped ? translateReply(line, msg, replyMapped) : mapped ? translateTurn(line, msg, mapped) : line;
         if ((seen.turnEnded || msg.method === "thread/closed") && threadId != null) {
           const withheld = withheldErrors.get(threadId);
           withheldErrors.delete(threadId);
           if (withheld != null) await writeOut(withheld);
           remaps.delete(threadId);
+          for (const pending of dropOverload(threadId)?.withheld ?? []) await writeOut(pending);
         }
         if (seen.turnEnded) void check();
         if (!seen.forward) continue;
@@ -273,6 +326,11 @@ export async function runCodexAppServer(input: {
     void p.exited.then(async () => {
       if (retired.has(p)) return;
       await reading;
+      for (const [threadId, overload] of [...overloads]) {
+        overloads.delete(threadId);
+        if (overload.timer != null) clearTimeout(overload.timer);
+        for (const line of (overload.pending ?? overload.starting)?.withheld ?? []) await writeOut(line);
+      }
       finish(exitStatus(p));
     });
     return p;
@@ -378,6 +436,47 @@ export async function runCodexAppServer(input: {
     }
   };
 
+  const dropOverload = (threadId: string): Retry | null => {
+    const overload = overloads.get(threadId);
+    overloads.delete(threadId);
+    if (overload?.timer != null) clearTimeout(overload.timer);
+    return overload?.pending ?? null;
+  };
+
+  const releaseOverload = async (threadId: string, withheld: string[], reason: string): Promise<void> => {
+    overloads.delete(threadId);
+    remaps.delete(threadId);
+    log("codexappserver.retry_none", { thread: threadId.slice(0, 8), reason });
+    for (const line of withheld) await writeOut(line);
+  };
+
+  const startContinuation = async (threadId: string, overload: Overload, pending: Retry): Promise<void> => {
+    const reply = await request(child, "turn/start", pending.params);
+    overload.starting = null;
+    if (overloads.get(threadId) !== overload) return;
+    const started = reply ? TurnEnvelopeSchema.safeParse(reply.result).data : undefined;
+    if (!started) return releaseOverload(threadId, pending.withheld, "the continuation turn/start was not answered");
+    remaps.set(threadId, { from: pending.turnId, to: started.turn.id });
+    log("codexappserver.overload_continued", { account: held.slice(0, 8), thread: threadId.slice(0, 8), attempt: overload.attempts });
+  };
+
+  const continueOverloaded = async (threadId: string, expired: boolean): Promise<void> => {
+    const overload = overloads.get(threadId);
+    if (overload == null) return;
+    overload.timer = null;
+    while (moving) await moving;
+    const pending = overload.pending;
+    if (pending == null || overloads.get(threadId) !== overload) return;
+    if (expired || ended || terminated || Date.now() - overload.since >= overloadRetry.windowMs) return releaseOverload(threadId, pending.withheld, "the retry window passed or the client left");
+    overload.pending = null;
+    overload.starting = pending;
+    overload.attempts++;
+    moving = startContinuation(threadId, overload, pending).finally(() => {
+      moving = null;
+      for (const line of queued.splice(0)) forward(line);
+    });
+  };
+
   const check = async (): Promise<void> => {
     if (checking || moving || ended || terminated) return;
     checking = true;
@@ -413,8 +512,12 @@ export async function runCodexAppServer(input: {
     if (!msg) return toChild(child, line);
     const sent = state.fromClient(msg);
     const threadId = ThreadParamsSchema.safeParse(sent.params).data?.threadId;
+    const waiting = threadId != null && (sent.method === "turn/start" || sent.method === "turn/interrupt") ? dropOverload(threadId) : null;
+    if (waiting && threadId != null) remaps.delete(threadId);
+    for (const pending of waiting?.withheld ?? []) void writeOut(pending);
     const mapped = threadId == null ? undefined : remaps.get(threadId);
     const out = mapped ? translateClientTurn(sent, mapped) : sent;
+    if (mapped && sent.id != null) remappedReplies.set(idKey(sent.id), mapped);
     toChild(child, out === msg ? line : JSON.stringify(out));
   };
 
