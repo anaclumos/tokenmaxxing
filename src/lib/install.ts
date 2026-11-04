@@ -1,13 +1,13 @@
-import { accessSync, appendFileSync, constants, existsSync, readdirSync, readFileSync, realpathSync, rmSync, statSync } from "node:fs";
+import { accessSync, appendFileSync, constants, existsSync, readFileSync, realpathSync, rmSync, statSync } from "node:fs";
 import { userInfo } from "node:os";
-import { basename, dirname, join, relative, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { escape } from "es-toolkit";
 import { z } from "zod";
 import { codexPaths, codexStoreDirFor, HOME, optionalEnv, paths } from "./paths.ts";
 import { writeFileAtomic } from "./atomic.ts";
 import { shellQuote } from "./proc.ts";
 import { installedBin, installSettings, isOurHookCommand, uninstallSettings } from "./settings.ts";
-import { CLAUDE_BIN, realpathOrNull, resolveRealBin } from "./claudebin.ts";
+import { CLAUDE_BIN, resolveRealBin } from "./claudebin.ts";
 import { loadConfig, readJsonFile, type BinKey } from "./state.ts";
 import { ErrnoSchema } from "./types.ts";
 
@@ -55,26 +55,10 @@ export function managedShellRcSkipLines(): { headline: string; detail: string; e
   };
 }
 
-export function miseStablePath(path: string): string {
-  const real = realpathSync(path);
-  for (let dir = dirname(real); dir !== dirname(dir); dir = dirname(dir)) {
-    const installs = existsSync(join(dirname(dir), ".mise.backend.toml"))
-      ? dirname(dirname(dir))
-      : existsSync(join(dir, ".mise-install.toml"))
-        ? dirname(dir)
-        : null;
-    if (installs == null) continue;
-    const latest = readdirSync(installs)
-      .map((tool) => join(installs, tool, "latest"))
-      .find((alias) => realpathOrNull(alias) === dir);
-    return latest == null ? real : join(latest, relative(dir, real));
-  }
-  return real;
-}
-
 function installEntryPoints(): string {
   const target = installedBin();
-  writeFileAtomic(target, `#!/bin/sh\nexec ${shellQuote(miseStablePath(process.execPath))} --no-env-file run ${shellQuote(miseStablePath(Bun.main))} "$@"\n`, 0o755);
+  const entry = realpathSync(Bun.main);
+  writeFileAtomic(target, `#!/bin/sh\nexec ${shellQuote(process.execPath)} --no-env-file run ${shellQuote(entry)} "$@"\n`, 0o755);
   writeFileAtomic(join(paths.binDir, "xx"), `#!/bin/sh\nexec ${shellQuote(target)} "$@"\n`, 0o755);
   return target;
 }
