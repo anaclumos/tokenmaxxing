@@ -7,11 +7,13 @@ import { readLines } from "../src/lib/proc.ts";
 const SELF = import.meta.path;
 export const THREAD_ID = "thread-1";
 export const RATE_LIMITS_UPDATED = "account/rateLimits/updated";
+export const START_RECEIVED = "test/turnStartReceived";
+const SLOW_ACK_MS = 300;
 const APPROVAL_ID = 0;
 const OVERLOAD = { message: "Selected model is at capacity. Please try a different model.", codexErrorInfo: "serverOverloaded" };
 const CONTEXT_FULL = { message: "Your input exceeds the context window of this model.", codexErrorInfo: "contextWindowExceeded", additionalDetails: null };
 
-const OutcomeSchema = z.enum(["answer", "params", "overload", "overloadUnflagged", "retriedOverload", "contextFull", "approval", "hang"]);
+const OutcomeSchema = z.enum(["answer", "params", "overload", "overloadUnflagged", "retriedOverload", "contextFull", "approval", "hang", "slowHang"]);
 const ScriptSchema = z.tuple([OutcomeSchema], OutcomeSchema);
 type Outcome = z.infer<typeof OutcomeSchema>;
 type Script = z.infer<typeof ScriptSchema>;
@@ -19,7 +21,7 @@ const ProxyConfigSchema = z.object({ script: ScriptSchema, windowMs: z.number(),
 type ProxyConfig = z.infer<typeof ProxyConfigSchema>;
 
 const RequestSchema = z.looseObject({ id: z.union([z.string(), z.number()]).optional(), method: z.string().optional(), params: z.record(z.string(), z.unknown()).optional(), result: z.unknown().optional() });
-const TurnStartSchema = z.looseObject({ input: z.array(z.looseObject({ text: z.string() })) });
+const TurnStartSchema = z.looseObject({ input: z.array(z.looseObject({ text: z.string() })), toolOutput: z.unknown().optional() });
 const InterruptSchema = z.looseObject({ turnId: z.string() });
 const SteerSchema = z.looseObject({ expectedTurnId: z.string(), input: z.array(z.looseObject({ text: z.string() })) });
 const ApprovalSchema = z.looseObject({ decision: z.string() });
@@ -31,6 +33,7 @@ const turn = (id: string, status: string, error: unknown = null) => ({ id, items
 async function fakeAppServer(script: Script): Promise<void> {
   const inputs: string[] = [];
   const starts: unknown[] = [];
+  let turns = 0;
   const last = script.at(-1) ?? script[0];
   const running: { turnId: string | null } = { turnId: null };
   const overloaded = () => ({ ...OVERLOAD, additionalDetails: JSON.stringify(inputs) });
@@ -65,6 +68,7 @@ async function fakeAppServer(script: Script): Promise<void> {
       notify("item/started", { turnId, item: { type: "agentMessage", id: `msg-${turnId}`, text: "" } });
       running.turnId = turnId;
     },
+    slowHang: (turnId) => plays.hang(turnId),
   };
   for await (const line of readLines(Bun.stdin.stream())) {
     const msg = RequestSchema.parse(JSON.parse(line));
@@ -94,12 +98,27 @@ async function fakeAppServer(script: Script): Promise<void> {
     }
     if (msg.method !== "turn/start") continue;
     const params = TurnStartSchema.parse(msg.params);
+    if (params.toolOutput != null && params.input.length > 0) {
+      send({ id: msg.id, error: { code: -32600, message: "`toolOutput` cannot be combined with nonempty `input`" } });
+      continue;
+    }
     starts.push(params);
     inputs.push(params.input.map((i) => i.text).join(""));
-    const turnId = `turn-${inputs.length}`;
+    if (running.turnId != null) {
+      send({ id: msg.id, result: { turn: turn(running.turnId, "inProgress") } });
+      answer(running.turnId, JSON.stringify(inputs));
+      running.turnId = null;
+      continue;
+    }
+    const outcome = script[turns] ?? last;
+    const turnId = `turn-${++turns}`;
+    if (outcome === "slowHang") {
+      notify(START_RECEIVED, { turnId });
+      await Bun.sleep(SLOW_ACK_MS);
+    }
     send({ id: msg.id, result: { turn: turn(turnId, "inProgress") } });
     notify("turn/started", { turn: turn(turnId, "inProgress") });
-    plays[script[inputs.length - 1] ?? last](turnId);
+    plays[outcome](turnId);
   }
 }
 
@@ -163,6 +182,7 @@ export async function converse(input: { script: Script; windowMs: number; delays
     }
   }
   proc.stdin.end();
+  for await (const line of lines) seen.push(ClientMessageSchema.parse(JSON.parse(line)));
   await proc.exited;
   return seen;
 }
