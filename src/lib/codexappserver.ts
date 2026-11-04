@@ -1,6 +1,6 @@
 import { once } from "node:events";
 import type { Subprocess } from "bun";
-import { pick, pickBy } from "es-toolkit";
+import { omit, pick, pickBy } from "es-toolkit";
 import { z } from "zod";
 import { borrowCodexSeat, codexPickCtx, codexPlanOrderOpen, observeCodex } from "./codex.ts";
 import { ensureCodexStoreHome } from "./codexauth.ts";
@@ -279,11 +279,13 @@ export async function runCodexAppServer(input: {
             const withheld = withheldErrors.get(threadId);
             withheldErrors.delete(threadId);
             overload.pending = {
-              params: { ...continuable, input: CONTINUE_INPUT },
+              params: { ...omit(continuable, ["toolOutput"]), input: CONTINUE_INPUT },
               turnId: mapped?.from ?? failed.turn.id,
               withheld: [...(withheld == null ? [] : [withheld]), ...(seen.forward ? [failedLine] : [])],
             };
-            overload.timer = setTimeout(() => void continueOverloaded(threadId), overloadRetry.delayMs(overload.attempts));
+            const left = overloadRetry.windowMs - (Date.now() - overload.since);
+            const delay = overloadRetry.delayMs(overload.attempts);
+            overload.timer = setTimeout(() => void continueOverloaded(threadId, delay >= left), Math.min(delay, left));
             log("codexappserver.overload_planned", { account: held.slice(0, 8), thread: threadId.slice(0, 8), attempt: overload.attempts + 1 });
             continue;
           }
@@ -324,6 +326,11 @@ export async function runCodexAppServer(input: {
     void p.exited.then(async () => {
       if (retired.has(p)) return;
       await reading;
+      for (const [threadId, overload] of [...overloads]) {
+        overloads.delete(threadId);
+        if (overload.timer != null) clearTimeout(overload.timer);
+        for (const line of (overload.pending ?? overload.starting)?.withheld ?? []) await writeOut(line);
+      }
       finish(exitStatus(p));
     });
     return p;
@@ -436,27 +443,38 @@ export async function runCodexAppServer(input: {
     return overload?.pending ?? null;
   };
 
-  const continueOverloaded = async (threadId: string): Promise<void> => {
-    const overload = overloads.get(threadId);
-    const pending = overload?.pending;
-    if (overload == null || pending == null) return;
-    overload.timer = null;
-    overload.pending = null;
-    overload.attempts++;
-    while (moving) await moving;
-    overload.starting = pending;
-    const reply = ended || terminated ? null : await request(child, "turn/start", pending.params);
-    overload.starting = null;
-    const started = reply ? TurnEnvelopeSchema.safeParse(reply.result).data : undefined;
-    if (started) {
-      remaps.set(threadId, { from: pending.turnId, to: started.turn.id });
-      log("codexappserver.overload_continued", { account: held.slice(0, 8), thread: threadId.slice(0, 8), attempt: overload.attempts });
-      return;
-    }
+  const releaseOverload = async (threadId: string, withheld: string[], reason: string): Promise<void> => {
     overloads.delete(threadId);
     remaps.delete(threadId);
-    log("codexappserver.retry_none", { thread: threadId.slice(0, 8), reason: "the continuation turn/start was not answered" });
-    for (const line of pending.withheld) await writeOut(line);
+    log("codexappserver.retry_none", { thread: threadId.slice(0, 8), reason });
+    for (const line of withheld) await writeOut(line);
+  };
+
+  const startContinuation = async (threadId: string, overload: Overload, pending: Retry): Promise<void> => {
+    const reply = await request(child, "turn/start", pending.params);
+    overload.starting = null;
+    if (overloads.get(threadId) !== overload) return;
+    const started = reply ? TurnEnvelopeSchema.safeParse(reply.result).data : undefined;
+    if (!started) return releaseOverload(threadId, pending.withheld, "the continuation turn/start was not answered");
+    remaps.set(threadId, { from: pending.turnId, to: started.turn.id });
+    log("codexappserver.overload_continued", { account: held.slice(0, 8), thread: threadId.slice(0, 8), attempt: overload.attempts });
+  };
+
+  const continueOverloaded = async (threadId: string, expired: boolean): Promise<void> => {
+    const overload = overloads.get(threadId);
+    if (overload == null) return;
+    overload.timer = null;
+    while (moving) await moving;
+    const pending = overload.pending;
+    if (pending == null || overloads.get(threadId) !== overload) return;
+    if (expired || ended || terminated || Date.now() - overload.since >= overloadRetry.windowMs) return releaseOverload(threadId, pending.withheld, "the retry window passed or the client left");
+    overload.pending = null;
+    overload.starting = pending;
+    overload.attempts++;
+    moving = startContinuation(threadId, overload, pending).finally(() => {
+      moving = null;
+      for (const line of queued.splice(0)) forward(line);
+    });
   };
 
   const check = async (): Promise<void> => {
@@ -499,7 +517,7 @@ export async function runCodexAppServer(input: {
     for (const pending of waiting?.withheld ?? []) void writeOut(pending);
     const mapped = threadId == null ? undefined : remaps.get(threadId);
     const out = mapped ? translateClientTurn(sent, mapped) : sent;
-    if (mapped && out !== sent && sent.id != null) remappedReplies.set(idKey(sent.id), mapped);
+    if (mapped && sent.id != null) remappedReplies.set(idKey(sent.id), mapped);
     toChild(child, out === msg ? line : JSON.stringify(out));
   };
 

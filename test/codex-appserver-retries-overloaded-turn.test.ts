@@ -23,6 +23,6 @@ describe("a bare codex app-server turn that fails with serverOverloaded", () => 
     const seen = await runTurnThroughProxy({ script: ["overload"], windowMs: 0 });
 
     expect(seen.filter((m) => m.method === "error").map((m) => m.params)).toMatchObject([{ turnId: "turn-1", error: { codexErrorInfo: "serverOverloaded" } }]);
-    expect(turnOf(seen.at(-1))).toMatchObject({ id: "turn-1", status: "failed" });
+    expect(turnOf(seen.findLast((m) => m.method === "turn/completed"))).toMatchObject({ id: "turn-1", status: "failed" });
   }, 20_000);
 });
