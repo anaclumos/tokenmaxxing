@@ -15,7 +15,7 @@ import { codexSupervisorLink, installCodexSupervisor, isBinDirAhead } from "./in
 import { withLock } from "./lock.ts";
 import { errorMessage, log } from "./log.ts";
 import { codexPaths, codexPool, codexSeatFromEnv, optionalEnv } from "./paths.ts";
-import { expiringPressure, isExhausted, landGrant, onCredits, pickBest, pickEarliestReset, sessionWindow, thresholdBars, type PickCtx } from "./picker.ts";
+import { expiringPressure, isExhausted, landGrant, onCredits, pickBest, pickEarliestReset, rankOrder, sessionWindow, thresholdBars, type PickCtx } from "./picker.ts";
 import { StoreUnusableError, type Observation, type Provider, type SampleReport, type SeatBorrow } from "./provider.ts";
 import { loadAccounts, loadConfig, saveAccounts, setConfigField, type Harvest } from "./state.ts";
 import { restoreTermios, saveTermios } from "./tty.ts";
@@ -305,14 +305,15 @@ export function pickCodexSeat(now: number, eligible: (a: Account) => boolean = (
   return pickBest(open.filter((a) => !isExhausted(a, ctx)), ctx) ?? pickEarliestReset(open, ctx)?.account ?? null;
 }
 
-// Codex work is mostly short reviews that fit inside a 5-hour window, which refills within hours, while a weekly-only
-// (Pro) account's quota is gone until the week resets: every usable account with a session window (Team) takes the
-// borrow before any weekly-only one, however much more headroom the weekly-only account has. Quota that expires within a
-// day outranks both (use it or lose it): a Pro account whose week resets within a day with quota left goes first, since
-// a Team account's 5-hour window refills within hours anyway.
-function planTier(a: Account, ctx: PickCtx): number {
+const PLAN_GROUPS = 3;
+
+function planGroup(a: Account, ctx: PickCtx): number {
   if (expiringPressure(a, ctx) > 0) return 0;
   return sessionWindow(a) != null ? 1 : 2;
+}
+
+function planTier(a: Account, ctx: PickCtx): number {
+  return rankOrder(a, ctx.thresholds) * PLAN_GROUPS + planGroup(a, ctx);
 }
 
 function planOrder(accounts: Account[], ctx: PickCtx): Account[] {
@@ -366,13 +367,15 @@ export async function borrowCodexSeat(pid: number, seatId = `seat-${pid}`, opts:
     const usable = idx.accounts.filter(
       (a) => !closed.has(a.id) && !rejected.has(a.id) && a.needsReauth !== true && !isExhausted(a, ctx) && codexStoreUsable(a.id)
     );
-    const plan = usable.filter((a) => !onCredits(a, ctx));
-    const open = planOrder(plan.length > 0 ? plan : usable, ctx);
+    const topRank = Math.min(...usable.map((a) => rankOrder(a, ctx.thresholds)));
+    const ranked = usable.filter((a) => rankOrder(a, ctx.thresholds) === topRank);
+    const plan = ranked.filter((a) => !onCredits(a, ctx));
+    const open = planOrder(plan.length > 0 ? plan : ranked, ctx);
     const leaving = idx.accounts.find((a) => a.id === opts.betterThan);
     if (opts.betterThan != null && (leaving == null || !open.some((a) => planTier(a, ctx) < planTier(leaving, ctx)))) return null;
     // Expiring quota goes to the account with the most to lose however many borrowers it has; other tiers spread by borrowers first.
     const fewest = Math.min(...open.map((a) => lent[a.id] ?? 0));
-    const spread = open.some((a) => planTier(a, ctx) === 0) ? open : open.filter((a) => (lent[a.id] ?? 0) === fewest);
+    const spread = open.some((a) => expiringPressure(a, ctx) > 0) ? open : open.filter((a) => (lent[a.id] ?? 0) === fewest);
     const picked = pickBest(spread, ctx);
     if (!picked) return null;
     const store = ensureCodexStoreHome(picked.id);

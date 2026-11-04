@@ -38,7 +38,7 @@ The same bars gate the trigger and screen the candidates:
 - The decision engages when the seat's measured usage is at or over a bar.
 - A candidate is usable when none of its cached windows (session, weekly aggregate, gated per-model caps, and any server-pinned enforcement) is at or over one.
 - A screen laxer than the trigger would land moves on accounts the trigger immediately re-flags, so there is exactly one bar per window.
-- Unmeasured usage never reads as safe: an account with no sample ranks last, and a seat with no tee, no record, and no probe result does not trigger.
+- Unmeasured usage never reads as safe: an account with no sample ranks last within its [rank](#account-ranks), and a seat with no tee, no record, and no probe result does not trigger.
 - A seat flagged for reauthentication or walled by an enforced limit triggers regardless of its figures.
 
 ### Per-account bars
@@ -51,10 +51,10 @@ The account's bars replace the global ones everywhere a bar is read: the trigger
 
 An entry with `"credits": true`, such as `{"credit-seat": {"session": 100, "weekly": 100, "credits": true}}`, marks an account that keeps answering past its plan's limits on purchased usage credits. No window of that account screens it out, so it stays usable past 100 percent of its windows. Its bars still order the candidates and still trigger a move:
 
-- Ranking: while any of its windows is at or over its bar, the account ranks after every usable account that is under all of its bars, and a Codex `seat` borrow spreads over the accounts under their bars before it counts borrowers.
-- Trigger: a session on it at or over a bar moves to a usable account that is under all of its bars and has not refused the session for usage credits, through the same hooks and seat watch that move a session off any account, and stays on credits when no such account exists.
+- Ranking: while any of its windows is at or over its bar, the account ranks after every usable account of its [rank](#account-ranks) that is under all of its bars, and a Codex `seat` borrow spreads over the accounts of the top rank under their bars before it counts borrowers.
+- Trigger: a session on it at or over a bar moves to a usable account of its rank or a higher one that is under all of its bars and has not refused the session for usage credits, through the same hooks and seat watch that move a session off any account, and stays on credits when no such account exists.
 
-A new session, a move, a borrow, or a running session therefore spends credits only when no account has plan headroom left, and a session on credits moves back to plan quota at its next check after another account's window resets.
+A new session, a move, a borrow, or a running session therefore spends credits only when no account of its rank or a higher one has plan headroom left, and a session on credits moves back to plan quota at its next check after such an account's window resets.
 
 - An early server-side reset drops a wall on such an account the same way it does on any account.
 - A server refusal also moves a session off it: every classified refusal, a Claude usage-credits refusal included, walls the account as it walls every account (see [Enforced limits](#enforced-limits)).
@@ -71,28 +71,40 @@ Claude and Codex launches and session moves choose among usable accounts by the 
 
 | Key | Prefers | Claude | Codex |
 | --- | --- | --- | --- |
-| On usage credits | no first | 1st | 1st |
-| Credential store failed its last read | no first | 2nd | not used |
-| No usage figure at all | no first | 3rd | 2nd |
-| Full (see [Headroom per session](#headroom-per-session)) | no first | 4th | not used |
-| Headroom per session among full accounts, scaled by plan size | greatest first | 5th | not used |
-| Quota expires within a day (see [Use it or lose it](#use-it-or-lose-it)) | yes first | 6th | 3rd |
-| Expiring quota per hour until the reset, scaled by plan size | highest first | 7th | 4th |
-| Refuses Fable, with room for a whole session, for a session of another model (see [Fable-refusing accounts first](#fable-refusing-accounts-first)) | yes first | 8th | not used |
-| Has a session window (see [Session window first](#session-window-first)) | yes first | 9th | 5th |
-| Cramped (no room for a whole session) | no first | 10th | 6th |
-| Weekly reset within 4 days | yes first | 11th | 7th |
-| A figure the ranking reads is older than 6 hours | no first | 12th | 8th |
-| Headroom per session, scaled by plan size | greatest first | 13th | not used |
-| Pace pressure, scaled by plan size | highest first | 14th | 9th |
-| Weekly reset | soonest first | 15th | 10th |
-| Weekly usage | lowest first | 16th | 11th |
-| Live sessions | fewest first | 17th | not used |
+| Account rank (see [Account ranks](#account-ranks)) | `priority`, then `default`, then `fallback` | 1st | 1st |
+| On usage credits | no first | 2nd | 2nd |
+| Credential store failed its last read | no first | 3rd | not used |
+| No usage figure at all | no first | 4th | 3rd |
+| Full (see [Headroom per session](#headroom-per-session)) | no first | 5th | not used |
+| Headroom per session among full accounts, scaled by plan size | greatest first | 6th | not used |
+| Quota expires within a day (see [Use it or lose it](#use-it-or-lose-it)) | yes first | 7th | 4th |
+| Expiring quota per hour until the reset, scaled by plan size | highest first | 8th | 5th |
+| Refuses Fable, with room for a whole session, for a session of another model (see [Fable-refusing accounts first](#fable-refusing-accounts-first)) | yes first | 9th | not used |
+| Has a session window (see [Session window first](#session-window-first)) | yes first | 10th | 6th |
+| Cramped (no room for a whole session) | no first | 11th | 7th |
+| Weekly reset within 4 days | yes first | 12th | 8th |
+| A figure the ranking reads is older than 6 hours | no first | 13th | 9th |
+| Headroom per session, scaled by plan size | greatest first | 14th | not used |
+| Pace pressure, scaled by plan size | highest first | 15th | 10th |
+| Weekly reset | soonest first | 16th | 11th |
+| Weekly usage | lowest first | 17th | 12th |
+| Live sessions | fewest first | 18th | not used |
 
-- An account with no usage figure ranks after every measured account, cramped or stale ones included.
+- An account with no usage figure ranks after every measured account of its rank, cramped or stale ones included.
 - Accounts with no cached figure tie on every other key, so the session count alone spreads launches and `seat` borrows across them.
 - Codex excludes an account running in another codex session outright, because a codex session cannot share a login.
 - Neither pool has a manual switch, because placement is per session at launch.
+
+### Account ranks
+
+`ranks` in `config.json` gives an account the rank `priority`, `default`, or `fallback`, keyed by label. An account the map does not name is `default`, so a pool with no entries ranks exactly as it would without the key.
+
+- The rank is the first key. A new pick takes a `priority` account while one is usable, then a `default` account, then a `fallback` account.
+- A lower rank takes a pick only when every account of each higher rank is unusable at the time of the pick: at or over a bar, walled (an enforced wall, or a family wall for the session's model family), or flagged for reauthentication.
+- Every other key orders accounts inside one rank, the time-based keys included. A `priority` account takes the pick ahead of every `default` account while it is usable, even when it is [full](#headroom-per-session), [cramped](#cramped), unmeasured, on usage credits, or after a failed credential store read. Quota that expires within a day on a `default` account waits behind a usable `priority` account and is lost at the reset if the `priority` accounts keep taking the picks.
+- A move off usage credits (see [Accounts on usage credits](#accounts-on-usage-credits)) goes only to an account with plan headroom of the session's own rank or a higher one, so it never takes a session down a rank. A session on an [API key](#api-keys) returns to the highest-ranked account with plan headroom, since an account on usage credits does not draw a session off a key.
+- The rank decides picks, and a bar still decides when a session moves. A Claude or interactive Codex session on a lower rank stays on its account when a higher rank becomes usable, until it crosses a bar or ends. A shim-run Codex `app-server` does move once it is idle and an account of a higher rank has plan headroom, because the rank leads its [plan tier](/codex).
+- When no account of any rank is usable, a session takes an [API key](#api-keys), and then the [depleted stop](#when-nothing-is-usable) targets the soonest reset whatever its rank.
 
 ### Plan size
 
@@ -105,22 +117,22 @@ Usage figures are percentages, but a percent of a large plan is more quota than 
 
 ### Use it or lose it
 
-Quota left in a window is lost when the window resets. When an account's longest window (the weekly one, or the 5-hour one on a plan with no weekly window) resets within 24 hours and the account is still under that window's bar, it ranks ahead of every other usable account for every new pick: launches, moves, `seat` borrows, and the Codex app-server. This includes accounts with a session window, so a Codex Pro account whose week resets within a day with quota left outranks a Team account, whose 5-hour window refills within hours anyway. Among such accounts, the one losing the most quota per hour until its reset goes first: the quota left under the bar, scaled by plan size, divided by the time to the reset. So of two accounts with equal quota left, the one that resets sooner goes first, and of two that reset together, the one with more left goes first.
+Quota left in a window is lost when the window resets. When an account's longest window (the weekly one, or the 5-hour one on a plan with no weekly window) resets within 24 hours and the account is still under that window's bar, it ranks ahead of every other usable account of its [rank](#account-ranks) for every new pick: launches, moves, `seat` borrows, and the Codex app-server. This includes accounts with a session window, so a Codex Pro account whose week resets within a day with quota left outranks a Team account, whose 5-hour window refills within hours anyway. Among such accounts, the one losing the most quota per hour until its reset goes first: the quota left under the bar, scaled by plan size, divided by the time to the reset. So of two accounts with equal quota left, the one that resets sooner goes first, and of two that reset together, the one with more left goes first.
 
 Hard blocks still apply first: an account at or over any bar, walled (an enforced wall, or a family wall for the session's model family), flagged for reauthentication, or full (see [Headroom per session](#headroom-per-session)) is never placed for this reason. Only a reset the provider reported and that is still ahead counts: a window that has already reset, or a closed 5-hour window with no reset, holds no expiring quota, because its next window begins with the next request.
 
 ### Fable-refusing accounts first
 
-An account that refuses Fable ranks ahead of every other account, after expiring quota, for a session whose model is known and is not Fable: an Opus, Sonnet, or Haiku launch, resume, or move. An account refuses Fable while it carries a live Fable family wall (`fable-walled` in `status`, after a usage-credits or per-model refusal) or while its Fable per-model cap is at or over its bar, including an account whose `thresholds.accounts` entry sets `credits`, since a Fable session would land there only on usage credits. Such an account cannot take a Fable session until the wall ends or the cap resets, while its 5-hour and weekly windows still serve every other model, so a session of another model spends that quota first and leaves the accounts that still serve Fable to Fable sessions.
+An account that refuses Fable ranks ahead of every other account of its [rank](#account-ranks), after expiring quota, for a session whose model is known and is not Fable: an Opus, Sonnet, or Haiku launch, resume, or move. An account refuses Fable while it carries a live Fable family wall (`fable-walled` in `status`, after a usage-credits or per-model refusal) or while its Fable per-model cap is at or over its bar, including an account whose `thresholds.accounts` entry sets `credits`, since a Fable session would land there only on usage credits. Such an account cannot take a Fable session until the wall ends or the cap resets, while its 5-hour and weekly windows still serve every other model, so a session of another model spends that quota first and leaves the accounts that still serve Fable to Fable sessions.
 
 - The key ranks ahead of [Session window first](#session-window-first), so a Fable-refusing account whose plan has only a weekly window, such as a verified Claude Ultra account, takes an Opus session ahead of a Team account with an idle 5-hour window.
 - A [cramped](#cramped) Fable-refusing account does not go first, because the session would cross the session bar partway through and move; it falls back to the normal order, where a roomier account ranks first.
-- Hard blocks, full accounts, and [use it or lose it](#use-it-or-lose-it) still come first, so quota that expires within a day goes first even when another account refuses Fable.
+- [Account ranks](#account-ranks), hard blocks, full accounts, and [use it or lose it](#use-it-or-lose-it) still come first, so quota that expires within a day goes first even when another account of its rank refuses Fable.
 - The key never applies to a Fable session or to a session whose model is unknown (a launch without `--model`, a `seat` borrow), both of which every Fable wall binds, nor to Codex and the other pools, which carry no model.
 
 ### Session window first
 
-An account whose plan has a 5-hour session window ranks ahead of every account whose plan has only a weekly window, such as Codex Pro or a verified Claude Ultra account, among accounts that are not full, unless the weekly-only account refuses Fable and the session is of another model (see [Fable-refusing accounts first](#fable-refusing-accounts-first)). Session quota comes back within hours, so spending it first costs nothing, while a weekly-only account spends quota that is gone until its week resets; that account takes sessions once every account with a session window is full or exhausted. An unmeasured account still ranks after both, and a Muse Code account whose 5-hour window is closed lands that window at zero rather than without one.
+An account whose plan has a 5-hour session window ranks ahead of every account whose plan has only a weekly window, such as Codex Pro or a verified Claude Ultra account, among accounts of one [rank](#account-ranks) that are not full, unless the weekly-only account refuses Fable and the session is of another model (see [Fable-refusing accounts first](#fable-refusing-accounts-first)). Session quota comes back within hours, so spending it first costs nothing, while a weekly-only account spends quota that is gone until its week resets; that account takes sessions once every account with a session window is full or exhausted. An unmeasured account still ranks after both, and a Muse Code account whose 5-hour window is closed lands that window at zero rather than without one.
 
 ### Cramped
 
@@ -155,7 +167,7 @@ With the default bars (an effective session bar of 90):
 
 The busier but fresher account wins on this key.
 
-The same figure, scaled by plan size, caps the sessions one account takes. An account whose score times its plan weight would fall under 5 is full: the next launch, move, or `seat` borrow that names no account takes an account that is not full while one is usable, so a fresh Max account under the default bars takes at most 18 sessions (90 / 18 = 5) before placement spills, and an Ultra account still on a 5-hour limit four times as many. When every usable account is full, the session still runs: it takes the full account with the highest score, ahead of an account on usage credits or one with no usage figure, because an account under its bars has headroom and a crowded account is a better outcome than no session. A session that finds every account exhausted goes to a stored API key at launch, or stops with the soonest reset named. A full account counts as usable at its session window's reset for that reset time. An account that its bars block until a release time is judged full or not at that release time, with the raised bar. A session on usage credits stays on credits while every other account is exhausted. The cap only screens placement: it never moves a session that is already on the account. It does not apply to an account with neither a session nor a weekly figure, or to an account whose `thresholds.accounts` entry sets `credits`. Without the cap, a burst of launches onto the only usable account fills it, and every session on it crosses the bar and moves in the same minute.
+The same figure, scaled by plan size, caps the sessions one account takes. An account whose score times its plan weight would fall under 5 is full: the next launch, move, or `seat` borrow that names no account takes an account of the same [rank](#account-ranks) that is not full while one is usable, so a fresh Max account under the default bars takes at most 18 sessions (90 / 18 = 5) before placement spills to another account of its rank, and an Ultra account still on a 5-hour limit four times as many. A full account still takes the pick ahead of every account of a lower rank. When every usable account of the top rank is full, the session still runs on that rank: it takes the full account with the highest score, ahead of an account of that rank on usage credits or one with no usage figure, because an account under its bars has headroom and a crowded account is a better outcome than no session. A session that finds every account exhausted goes to a stored API key at launch, or stops with the soonest reset named. A full account counts as usable at its session window's reset for that reset time. An account that its bars block until a release time is judged full or not at that release time, with the raised bar. A session on usage credits stays on credits while every other account is exhausted. The cap only screens placement: it never moves a session that is already on the account. It does not apply to an account with neither a session nor a weekly figure, or to an account whose `thresholds.accounts` entry sets `credits`. Without the cap, a burst of launches onto the only usable account fills it, and every session on it crosses the bar and moves in the same minute.
 
 Selection and the presence write share one critical section, so concurrent launches see each other. A move records its target in `wait-queue.json` in the critical section that picks it, and the relaunch replaces that claim with the presence file in one critical section, so a burst of moves spreads the same way while the moved sessions compact.
 

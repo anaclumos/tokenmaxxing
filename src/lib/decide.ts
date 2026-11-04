@@ -2,7 +2,7 @@ import { countBy } from "es-toolkit";
 import { CLAUDE_COMPACT_KILL_MS } from "./compact.ts";
 import { withLock } from "./lock.ts";
 import { loadAccounts, loadConfig, liveWaitClaims, releaseWaitClaim, replaceWaitClaim, saveAccounts } from "./state.ts";
-import { MAX_WAITERS_PER_ACCOUNT, isExhausted, landWindows, limitWindows, liveFamilyWalls, liveUsed, nextWeeklyReset, onCredits, pickBest, pickWaitTarget, screensUntilReset, sessionWindow, thresholdBars, wallUntil, wantsBankedReset, weeklyWindow, type PickCtx } from "./picker.ts";
+import { MAX_WAITERS_PER_ACCOUNT, isExhausted, landWindows, limitWindows, liveFamilyWalls, liveUsed, nextWeeklyReset, onCredits, pickBest, pickWaitTarget, rankOrder, screensUntilReset, sessionWindow, thresholdBars, wallUntil, wantsBankedReset, weeklyWindow, type PickCtx } from "./picker.ts";
 import { familyTokens } from "./usage.ts";
 import { errorMessage, log } from "./log.ts";
 import type { Observation, Provider, ResetClaim } from "./provider.ts";
@@ -205,9 +205,11 @@ export async function evaluateAndMaybeSwap(p: Provider, now = Date.now(), canRes
       const seat = seatOf(cur);
       const ctx: PickCtx = { now, thresholds: bars, currentId: seat?.id ?? null, families: switchFamilies, held: switchHeld, seats, planWeight: p.planWeight };
       const credited = !enforced2 && seat != null && !seat.needsReauth && !isExhausted(seat, ctx) && onCredits(seat, ctx);
-      const best = pickBest(usable(cur.accounts).filter((a) => !((credited || keyId != null) && opts.refused?.includes(a.id))), ctx);
-      if (credited && (best == null || onCredits(best, ctx))) return { swapped: false, account: null, reason: "no-plan-headroom" };
-      if (!best || (keyId != null && onCredits(best, ctx))) break;
+      const seatRank = seat != null && credited ? rankOrder(seat, bars) : Number.POSITIVE_INFINITY;
+      const candidates = usable(cur.accounts).filter((a) => !((credited || keyId != null) && opts.refused?.includes(a.id)));
+      const best = pickBest(credited || keyId != null ? candidates.filter((a) => !onCredits(a, ctx) && rankOrder(a, bars) <= seatRank) : candidates, ctx);
+      if (credited && best == null) return { swapped: false, account: null, reason: "no-plan-headroom" };
+      if (!best) break;
       try {
         await p.swap(best);
       } catch (e) {

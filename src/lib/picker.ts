@@ -1,6 +1,6 @@
 import { maxBy, minBy, sortBy } from "es-toolkit";
 import { familyTokens } from "./usage.ts";
-import type { Account, BankedReset, Bars, Config, Thresholds, Window } from "./types.ts";
+import { RANKS, type Account, type BankedReset, type Bars, type Config, type Rank, type Thresholds, type Window } from "./types.ts";
 
 export function thresholdBars(cfg: Config): Bars {
   const bars = (t: Thresholds): Thresholds => ({ session: t.session - cfg.policy.projectionMargin, weekly: t.weekly });
@@ -8,7 +8,16 @@ export function thresholdBars(cfg: Config): Bars {
     ...bars(cfg.thresholds),
     accounts: new Map(Object.entries(cfg.thresholds.accounts).map(([label, t]) => [label, { ...bars(t), credits: t.credits }])),
     accountReleaseMs: cfg.policy.accountReleaseMs,
+    ranks: new Map(Object.entries(cfg.ranks)),
   };
+}
+
+export function rankOf(a: Account, bars: Bars): Rank {
+  return bars.ranks.get(a.label) ?? "default";
+}
+
+export function rankOrder(a: Account, bars: Bars): number {
+  return RANKS.indexOf(rankOf(a, bars));
 }
 
 export type PickCtx = {
@@ -244,10 +253,10 @@ function refusesFable(a: Account, ctx: PickCtx): boolean {
 }
 
 const swapPreference = (ctx: PickCtx) => [
+  (a: Account) => rankOrder(a, ctx.thresholds),
   (a: Account) => (onCredits(a, ctx) ? 1 : 0),
   (a: Account) => ((a.storeFails ?? 0) > 0 ? 1 : 0),
   (a: Account) => (a.windows.length === 0 ? 1 : 0),
-  // A full account ranks after every open one, and among full accounts the most room per session wins.
   (a: Account) => (seatFull(a, ctx) ? 1 : 0),
   (a: Account) => (seatFull(a, ctx) ? -seatHeadroom(a, ctx) : 0),
   // Quota that expires within a day ranks ahead of every headroom key, the session-window key included.
