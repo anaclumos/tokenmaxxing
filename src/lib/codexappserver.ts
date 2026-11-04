@@ -52,6 +52,7 @@ const TurnSchema = z.looseObject({ id: z.string(), rootTurnId: z.string().nullis
 const TurnEnvelopeSchema = z.looseObject({ turn: TurnSchema });
 const TurnIdSchema = z.looseObject({ turnId: z.string() });
 const ClientTurnSchema = z.looseObject({ turnId: z.string().optional(), expectedTurnId: z.string().optional() });
+const ResultSchema = z.record(z.string(), z.unknown());
 
 function parseRpc(line: string): Rpc | null {
   try {
@@ -68,13 +69,24 @@ type Retry = { params: Record<string, unknown>; turnId: string; withheld: string
 type OverloadRetry = { windowMs: number; delayMs: (attempt: number) => number };
 type Overload = { since: number; attempts: number; timer: ReturnType<typeof setTimeout> | null; pending: Retry | null; starting: Retry | null };
 
+function mapTurnIds(fields: Record<string, unknown>, mapped: TurnMap): Record<string, unknown> {
+  let out = fields;
+  if (TurnIdSchema.safeParse(fields).data?.turnId === mapped.to) out = { ...out, turnId: mapped.from };
+  const turn = TurnEnvelopeSchema.safeParse(fields).data?.turn;
+  if (turn != null && turn.id === mapped.to) out = { ...out, turn: { ...turn, id: mapped.from, ...(turn.rootTurnId === mapped.to ? { rootTurnId: mapped.from } : {}) } };
+  return out;
+}
+
 function translateTurn(line: string, msg: Rpc, mapped: TurnMap): string {
   const params = msg.params ?? {};
-  let out: Record<string, unknown> = params;
-  if (TurnIdSchema.safeParse(params).data?.turnId === mapped.to) out = { ...out, turnId: mapped.from };
-  const turn = TurnEnvelopeSchema.safeParse(params).data?.turn;
-  if (turn != null && turn.id === mapped.to) out = { ...out, turn: { ...turn, id: mapped.from, ...(turn.rootTurnId === mapped.to ? { rootTurnId: mapped.from } : {}) } };
+  const out = mapTurnIds(params, mapped);
   return out === params ? line : JSON.stringify({ ...msg, params: out });
+}
+
+function translateReply(line: string, msg: Rpc, mapped: TurnMap): string {
+  const result = ResultSchema.safeParse(msg.result).data;
+  const out = result == null ? undefined : mapTurnIds(result, mapped);
+  return out == null || out === result ? line : JSON.stringify({ ...msg, result: out });
 }
 
 function translateClientTurn(msg: Rpc, mapped: TurnMap): Rpc {
@@ -198,6 +210,7 @@ export async function runCodexAppServer(input: {
   const queued: string[] = [];
   const retries = new Map<string, Retry>();
   const remaps = new Map<string, TurnMap>();
+  const remappedReplies = new Map<string, TurnMap>();
   const withheldErrors = new Map<string, string>();
   const overloads = new Map<string, Overload>();
   let held = input.seat.id;
@@ -242,6 +255,9 @@ export async function runCodexAppServer(input: {
         }
         const seen = state.fromServer(msg);
         const { threadId } = seen;
+        const replyKey = msg.method == null && msg.id != null ? idKey(msg.id) : undefined;
+        const replyMapped = replyKey == null ? undefined : remappedReplies.get(replyKey);
+        if (replyKey != null) remappedReplies.delete(replyKey);
         const retrying = threadId == null ? undefined : (retries.get(threadId) ?? overloads.get(threadId)?.starting ?? undefined);
         const mapped = threadId == null ? undefined : remaps.get(threadId);
         if (msg.method === "turn/started" && threadId != null && (retrying || mapped)) {
@@ -292,13 +308,13 @@ export async function runCodexAppServer(input: {
             continue;
           }
         }
-        const out = mapped ? translateTurn(line, msg, mapped) : line;
+        const out = replyMapped ? translateReply(line, msg, replyMapped) : mapped ? translateTurn(line, msg, mapped) : line;
         if ((seen.turnEnded || msg.method === "thread/closed") && threadId != null) {
           const withheld = withheldErrors.get(threadId);
           withheldErrors.delete(threadId);
           if (withheld != null) await writeOut(withheld);
           remaps.delete(threadId);
-          for (const pending of dropOverload(threadId)) await writeOut(pending);
+          for (const pending of dropOverload(threadId)?.withheld ?? []) await writeOut(pending);
         }
         if (seen.turnEnded) void check();
         if (!seen.forward) continue;
@@ -413,11 +429,11 @@ export async function runCodexAppServer(input: {
     }
   };
 
-  const dropOverload = (threadId: string): string[] => {
+  const dropOverload = (threadId: string): Retry | null => {
     const overload = overloads.get(threadId);
     overloads.delete(threadId);
     if (overload?.timer != null) clearTimeout(overload.timer);
-    return overload?.pending?.withheld ?? [];
+    return overload?.pending ?? null;
   };
 
   const continueOverloaded = async (threadId: string): Promise<void> => {
@@ -478,9 +494,12 @@ export async function runCodexAppServer(input: {
     if (!msg) return toChild(child, line);
     const sent = state.fromClient(msg);
     const threadId = ThreadParamsSchema.safeParse(sent.params).data?.threadId;
-    if (threadId != null && (sent.method === "turn/start" || sent.method === "turn/interrupt")) for (const pending of dropOverload(threadId)) void writeOut(pending);
+    const waiting = threadId != null && (sent.method === "turn/start" || sent.method === "turn/interrupt") ? dropOverload(threadId) : null;
+    if (waiting && threadId != null) remaps.delete(threadId);
+    for (const pending of waiting?.withheld ?? []) void writeOut(pending);
     const mapped = threadId == null ? undefined : remaps.get(threadId);
     const out = mapped ? translateClientTurn(sent, mapped) : sent;
+    if (mapped && out !== sent && sent.id != null) remappedReplies.set(idKey(sent.id), mapped);
     toChild(child, out === msg ? line : JSON.stringify(out));
   };
 
