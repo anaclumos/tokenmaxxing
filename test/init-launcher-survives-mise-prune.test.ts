@@ -44,9 +44,14 @@ describe("init from a mise install that tracks latest", () => {
     });
   });
 
-  test("names Bun through its latest alias and keeps a version that is not the latest", async () => {
+  test("names Bun through its latest alias and keeps a version that is not the latest or an install outside mise", async () => {
     const { miseStablePath } = await import("../src/lib/install.ts");
-    const bun = join(realpathSync(mkdtempSync(join(tmpdir(), "tokenmaxxing-mise-"))), "installs", "bun");
+    const root = realpathSync(mkdtempSync(join(tmpdir(), "tokenmaxxing-mise-")));
+    const bun = join(root, "installs", "bun");
+    const global = join(root, ".bun", "install", "global", "node_modules", "tokenmaxxing", "src");
+    mkdirSync(global, { recursive: true });
+    writeFileSync(join(global, "main.ts"), "");
+    symlinkSync(join(global, "main.ts"), join(root, "tokenmaxxing"));
     for (const version of ["1.4.3", "1.4.4"]) {
       mkdirSync(join(bun, version, "bin"), { recursive: true });
       writeFileSync(join(bun, version, "bin", "bun"), "");
@@ -54,9 +59,10 @@ describe("init from a mise install that tracks latest", () => {
     writeFileSync(join(bun, ".mise.backend.toml"), 'short = "bun"\nfull = "core:bun"\n');
     symlinkSync("./1.4.4", join(bun, "latest"));
 
-    expect([miseStablePath(join(bun, "1.4.4", "bin", "bun")), miseStablePath(join(bun, "1.4.3", "bin", "bun"))]).toEqual([
+    expect([miseStablePath(join(bun, "1.4.4", "bin", "bun")), miseStablePath(join(bun, "1.4.3", "bin", "bun")), miseStablePath(join(root, "tokenmaxxing"))]).toEqual([
       join(bun, "latest", "bin", "bun"),
       join(bun, "1.4.3", "bin", "bun"),
+      join(global, "main.ts"),
     ]);
   });
 
