@@ -7,7 +7,7 @@ const turnOf = (msg: ClientMessage | undefined) => TurnParamsSchema.safeParse(ms
 
 describe("a bare codex app-server turn that fails with serverOverloaded", () => {
   test("is continued on the same app-server until it completes, and the client sees one completed turn under its own id", async () => {
-    const seen = await runTurnThroughProxy({ failures: 2, windowMs: 60_000 });
+    const seen = await runTurnThroughProxy({ script: ["overload", "overload", "answer"], windowMs: 60_000 });
     const reply = seen.find((m) => m.id === 3);
     const completed = seen.at(-1);
     const answer = seen.find((m) => m.method === "item/completed");
@@ -20,7 +20,7 @@ describe("a bare codex app-server turn that fails with serverOverloaded", () => 
   }, 20_000);
 
   test("reaches the client as that turn's failure once the retry window has passed", async () => {
-    const seen = await runTurnThroughProxy({ failures: Number.MAX_SAFE_INTEGER, windowMs: 0 });
+    const seen = await runTurnThroughProxy({ script: ["overload"], windowMs: 0 });
 
     expect(seen.filter((m) => m.method === "error").map((m) => m.params)).toMatchObject([{ turnId: "turn-1", error: { codexErrorInfo: "serverOverloaded" } }]);
     expect(turnOf(seen.at(-1))).toMatchObject({ id: "turn-1", status: "failed" });
