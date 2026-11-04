@@ -4,7 +4,7 @@ import { analyzeArgs } from "../entries/supervisor.ts";
 import { seatsCodexArgs } from "../entries/codexsupervisor.ts";
 import { CLAUDE_BIN, CODEX_BIN, MUSE_BIN, PI_BIN, verifyRealBin } from "../lib/claudebin.ts";
 import { checkSettings, installedBin } from "../lib/settings.ts";
-import { activationHint, CHECK_JOB, codexStoreHookTrust, codexSupervisorLink, findClaudeShadowers, HUB_JOB, isBinDirAhead, jobHealthy, museSupervisorLink, piSupervisorLink, shellRcPath } from "../lib/install.ts";
+import { activationHint, CHECK_JOB, codexStoreHookTrust, codexSupervisorLink, findClaudeShadowers, HUB_JOB, isBinDirAhead, jobHealthy, miseStablePath, museSupervisorLink, piSupervisorLink, shellRcPath } from "../lib/install.ts";
 import { museStoreIdentity, museStoreUsable } from "../lib/muse.ts";
 import { readPiStore } from "../lib/piauth.ts";
 import { errorMessage } from "../lib/log.ts";
@@ -43,7 +43,7 @@ const SUPERVISE_VERB = /\s__supervise(-[a-z]+)?(\s|$)/;
 function unsupervisedRuns(bins: RealBin[]): { bin: RealBin; pid: number; parent: string }[] {
   if (bins.length === 0) return [];
   const table = processTable();
-  const entry = realpathSync(Bun.main);
+  const entry = miseStablePath(Bun.main);
   const binOf = new Map<number, RealBin>();
   for (const pid of table.keys()) {
     const exe = realOrNull(executablePath(pid));

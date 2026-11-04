@@ -33,7 +33,7 @@ export function tokenmaxxingHome(root: string): Home {
   return { env, tm, launcher: join(tm, "bin", "tokenmaxxing") };
 }
 
-export function entryScript(version: string): string {
+function entryScript(version: string): string {
   return `const verb = process.argv[2];
 if (verb === "init") (await import(${JSON.stringify(join(SRC, "lib", "install.ts"))})).installSupervisor();
 else if (verb === "doctor") await (await import(${JSON.stringify(join(SRC, "cli", "doctor.ts"))})).cmdDoctor();
