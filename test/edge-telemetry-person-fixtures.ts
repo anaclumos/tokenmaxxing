@@ -1,17 +1,13 @@
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
 import { childEnv, type Homes, type StubHost } from "./edge-telemetry-fixtures.ts";
 
 export type SentEvent = StubHost["requests"][number]["batch"][number];
 
-export type PersonFault = { event: string; faults: string[] };
-
 const TelemetryJson = z.object({ installId: z.string().min(1) });
 
 const PERSON_OPERATIONS = ["$set", "$set_once", "$unset"];
-
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -53,7 +49,7 @@ function personProperties(holder: Record<string, unknown>): string[] {
   });
 }
 
-export function personFaults(events: SentEvent[], installId: string): PersonFault[] {
+export function personFaults(events: SentEvent[], installId: string): Array<{ event: string; faults: string[] }> {
   return events.flatMap((event) => {
     const faults = [
       ...(event.distinct_id === installId ? [] : [`distinct_id ${event.distinct_id}`]),
@@ -65,38 +61,4 @@ export function personFaults(events: SentEvent[], installId: string): PersonFaul
     ];
     return faults.length === 0 ? [] : [{ event: event.event, faults }];
   });
-}
-
-function fieldHolder(record: Record<string, unknown>): Record<string, unknown> {
-  if ("pool" in record || "flags" in record) return record;
-  const nested = Object.values(record).filter(isRecord);
-  const holder = nested.find((value) => "pool" in value || "flags" in value) ?? (nested.length === 1 ? nested[0] : undefined);
-  if (holder === undefined) throw new Error(`no field holder in the spooled event ${JSON.stringify(record)}`);
-  return holder;
-}
-
-function renewIds(holder: Record<string, unknown>, keep: string): void {
-  for (const [key, value] of Object.entries(holder)) {
-    if (typeof value !== "string" || value === keep || !UUID.test(value)) continue;
-    holder[key] = value.charAt(14) === "7" ? Bun.randomUUIDv7() : crypto.randomUUID();
-  }
-}
-
-export function spooledLike(
-  template: Record<string, unknown>,
-  event: string,
-  fields: Record<string, unknown>,
-  installId: string,
-): Record<string, unknown> {
-  const copy = structuredClone(template);
-  copy.event = event;
-  const holder = fieldHolder(copy);
-  renewIds(copy, installId);
-  if (holder !== copy) renewIds(holder, installId);
-  Object.assign(holder, fields);
-  return copy;
-}
-
-export function writeSpool(homes: Homes, events: Array<Record<string, unknown>>): void {
-  writeFileSync(join(homes.state, "telemetry.jsonl"), events.map((event) => `${JSON.stringify(event)}\n`).join(""));
 }
