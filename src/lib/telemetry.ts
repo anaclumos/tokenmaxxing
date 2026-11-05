@@ -213,7 +213,7 @@ async function send(installId: string, lines: Line[]): Promise<void> {
     isServer: false,
   });
   for (const { uuid, at, event, ...properties } of lines) {
-    client.capture({ distinctId: installId, event, uuid, timestamp: new Date(at), properties: { ...properties, $process_person_profile: false } });
+    client.capture({ distinctId: installId, event, uuid, timestamp: new Date(at), properties });
   }
   await client.flush();
 }

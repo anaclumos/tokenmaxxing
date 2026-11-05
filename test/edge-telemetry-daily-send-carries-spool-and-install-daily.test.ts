@@ -11,7 +11,7 @@ import {
 } from "./edge-telemetry-fixtures.ts";
 
 test(
-  "a daily send carries every spooled command event, with its pool and flags, plus one install_daily under the install id with no person profile, empties the spool, and does not send again the same day",
+  "a daily send carries every spooled command event, with its pool and flags, plus one install_daily under the install id as its PostHog person, empties the spool, and does not send again the same day",
   async () => {
     const host = startStubHost();
     try {
@@ -32,7 +32,7 @@ test(
       expect(batch.filter((event) => event.event === "install_daily")).toHaveLength(1);
       for (const event of batch) {
         expect(event.distinct_id).toBe(state.installId);
-        expect(event.properties.$process_person_profile).toBe(false);
+        expect(Object.keys(event.properties)).not.toContain("$process_person_profile");
       }
       expect(commands.map((event) => event.properties.pool)).toEqual(expect.arrayContaining(["codex", "claude"]));
       expect(commands.map((event) => event.properties.flags)).toContainEqual(["--cached"]);

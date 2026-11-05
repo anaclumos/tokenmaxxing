@@ -57,7 +57,7 @@ describe("telemetry", () => {
 
     const events = sent().flatMap((b) => b.batch);
     expect(events.map((e) => e.event).sort()).toEqual(["account_renamed", "command", "install_daily"]);
-    expect(events.every((e) => e.distinct_id === installId && e.properties.$process_person_profile === false)).toBe(true);
+    expect(events.every((e) => e.distinct_id === installId && !("$process_person_profile" in e.properties))).toBe(true);
     expect(bodies.join("\n")).not.toContain("alice@example.com");
     expect(bodies.join("\n")).not.toContain(home);
     expect(spoolLines()).toEqual([]);

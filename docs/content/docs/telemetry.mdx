@@ -42,7 +42,7 @@ Every event carries the tokenmaxxing version, the OS (`darwin` or `linux`), the 
 - Account labels, emails, account or organization IDs, credentials, tokens, API keys, or session IDs.
 - Paths, hostnames, user names, command arguments, prompts, model output, or error text.
 
-Each event's fields pass a fixed allowlist before they are written to the spool and again before they are sent, so a field outside it is dropped. Events create no PostHog person profile, and the SDK asks PostHog to skip its GeoIP lookup. PostHog still receives the IP address each upload comes from.
+Each event's fields pass a fixed allowlist before they are written to the spool and again before they are sent, so a field outside it is dropped. PostHog shows each install as one person under its random install ID, with no person properties, and the SDK asks PostHog to skip its GeoIP lookup. PostHog still receives the IP address each upload comes from.
 
 ## The client
 
