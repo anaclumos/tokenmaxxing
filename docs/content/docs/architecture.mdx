@@ -65,7 +65,7 @@ flowchart LR
   rf["Claude Code's own<br/>token refresh, under<br/>the store's refresh lock"] -->|"the only writer after that"| st
 ```
 
-After that first write, the only writer is Claude Code's own token refresh, which runs inside each session under the refresh lock rooted at the store, so sessions that share an account coordinate the way two windows of one login always did. A credential is never copied between stores: a refresh rotation revokes the previous access token of that grant, so two stores holding one grant would break each other.
+After that first write, the only writer is Claude Code's own token refresh, which runs inside each session under the refresh lock rooted at the store, so sessions that share an account coordinate the way two windows of one login do. A credential is never copied between stores: a refresh rotation revokes the previous access token of that grant, so two stores holding one grant would break each other.
 
 ## The supervisor shim
 
