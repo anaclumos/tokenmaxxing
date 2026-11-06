@@ -42,7 +42,7 @@ function applyUsage(account: Account, usage: CodexUsage, at: number): void {
   if (usage.planType != null) account.tier = usage.planType;
 }
 
-type CodexReadFailure = { ok: false; reason: string; deadGrant: boolean; deadAccessToken?: string; expiring?: boolean; rejected?: boolean; rejectedToken?: string };
+type CodexReadFailure = { ok: false; reason: string; deadAccessToken?: string; expiring?: boolean; rejected?: boolean; rejectedToken?: string };
 type CodexReadOutcome = { ok: true; usage: CodexUsage; at: number } | CodexReadFailure;
 
 const REJECTED_REFRESH_BACKOFF_MS = 60 * 60 * 1000;
@@ -51,8 +51,7 @@ function afterRejection(rejected: CodexReadFailure, refreshFailure: CodexReadFai
   return { ...refreshFailure, rejected: true, reason: `${rejected.reason}; refresh skipped: ${refreshFailure.reason}` };
 }
 
-function storeHolds(accountId: string, accessToken: string | undefined): boolean {
-  if (accessToken === undefined) return true;
+function storeHolds(accountId: string, accessToken: string): boolean {
   try {
     return readCodexStoreAuth(accountId)?.tokens.access_token === accessToken;
   } catch {
@@ -65,37 +64,37 @@ async function freshCodexAuth(account: Account, now: number, refresh: boolean, h
   try {
     auth = readCodexStoreAuth(account.id);
   } catch (e) {
-    return { ok: false, reason: `store credential unreadable (${errorMessage(e).slice(0, 80)})`, deadGrant: false };
+    return { ok: false, reason: `store credential unreadable (${errorMessage(e).slice(0, 80)})` };
   }
-  if (!auth) return { ok: false, reason: "no credential in this account's store - run `tokenmaxxing auth --codex`", deadGrant: false };
+  if (!auth) return { ok: false, reason: "no credential in this account's store - run `tokenmaxxing auth --codex`" };
   const expiring = isCodexAccessExpiring({ auth, now });
   if (auth.tokens.access_token !== rejectedToken && !expiring) return { ok: true, auth };
   if (!expiring && auth.last_refresh != null && now - Date.parse(auth.last_refresh) < REJECTED_REFRESH_BACKOFF_MS) {
-    return { ok: false, reason: "the store was refreshed within the last hour", deadGrant: false };
+    return { ok: false, reason: "the store was refreshed within the last hour" };
   }
-  if (!refresh) return { ok: false, reason: "stored access token is expiring and this read never refreshes a store", deadGrant: false, expiring: true };
+  if (!refresh) return { ok: false, reason: "stored access token is expiring and this read never refreshes a store", expiring: true };
   if (livingPresences(codexPaths.presenceDir).some((p) => p.accountId === account.id && p.id !== holder)) {
-    return { ok: false, reason: "running in a live codex session (store refresh unsafe)", deadGrant: false };
+    return { ok: false, reason: "running in a live codex session (store refresh unsafe)" };
   }
   try {
     auth = await refreshCodexAuth({ auth, now });
   } catch (e) {
-    if (e instanceof CodexInvalidGrantError) return { ok: false, reason: e.message, deadGrant: true, deadAccessToken: auth.tokens.access_token };
-    if (e instanceof CodexRefreshFailedError) return { ok: false, reason: e.message, deadGrant: false };
+    if (e instanceof CodexInvalidGrantError) return { ok: false, reason: e.message, deadAccessToken: auth.tokens.access_token };
+    if (e instanceof CodexRefreshFailedError) return { ok: false, reason: e.message };
     throw e;
   }
   writeCodexStoreAuth(account.id, auth);
   return { ok: true, auth };
 }
 
-async function readCodexUsageOnce(account: Account, now: number, refresh: boolean, holder?: string, rejectedToken?: string): Promise<CodexReadOutcome> {
-  const fresh = await freshCodexAuth(account, now, refresh, holder, rejectedToken);
+async function readCodexUsageOnce(account: Account, now: number, refresh: boolean, holder?: string): Promise<CodexReadOutcome> {
+  const fresh = await freshCodexAuth(account, now, refresh, holder);
   if (!fresh.ok) return fresh;
   try {
     const at = Date.now();
     return { ok: true, usage: await fetchCodexUsage({ auth: fresh.auth, at }), at };
   } catch (e) {
-    if (e instanceof CodexUsageReadError) return { ok: false, reason: e.message, deadGrant: false, rejected: e.status === 401, rejectedToken: e.status === 401 ? fresh.auth.tokens.access_token : undefined };
+    if (e instanceof CodexUsageReadError) return { ok: false, reason: e.message, rejected: e.status === 401, rejectedToken: e.status === 401 ? fresh.auth.tokens.access_token : undefined };
     throw e;
   }
 }
@@ -122,7 +121,7 @@ export async function observeCodex(account: Account, cfg: Config, now: number, o
         if (a.lastUsageAt == null || outcome.at > a.lastUsageAt) {
           applyUsage(a, outcome.usage, outcome.at);
         }
-      } else if (outcome.deadGrant && storeHolds(a.id, outcome.deadAccessToken)) {
+      } else if (outcome.deadAccessToken !== undefined && storeHolds(a.id, outcome.deadAccessToken)) {
         a.needsReauth = true;
       }
       saveAccounts(codexPool, idx);
@@ -153,7 +152,7 @@ async function samplePool(accounts: Account[], now: number): Promise<Map<string,
   if (expiring.length > 0) {
     const rotated = await withLock(codexPool.lockFile, async () => {
       const results = await Promise.all(expiring.map(async ({ account, rejected }) => ({ account, rejected, fresh: await freshCodexAuth(account, now, true, undefined, rejected?.rejectedToken) })));
-      const dead = new Set(results.filter(({ fresh }) => !fresh.ok && fresh.deadGrant).map(({ account }) => account.id));
+      const dead = new Set(results.filter(({ fresh }) => !fresh.ok && fresh.deadAccessToken !== undefined).map(({ account }) => account.id));
       if (dead.size > 0) {
         const idx = loadAccounts(codexPool);
         for (const a of idx.accounts) if (dead.has(a.id)) a.needsReauth = true;
@@ -290,7 +289,7 @@ const CODEX_PLAN_WEIGHTS: Record<string, number> = {
   promax: 20,
 };
 
-export function codexPlanWeight(a: Account): number {
+function codexPlanWeight(a: Account): number {
   return (a.tier == null ? undefined : CODEX_PLAN_WEIGHTS[a.tier.toLowerCase()]) ?? 1;
 }
 

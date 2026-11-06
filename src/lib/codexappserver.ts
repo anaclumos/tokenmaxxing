@@ -12,6 +12,7 @@ import { clearPresence, writePresence } from "./presence.ts";
 import { readLines } from "./proc.ts";
 import { loadAccounts, loadConfig, saveAccounts } from "./state.ts";
 import { exitStatus } from "./supervise.ts";
+import { JsonTextSchema } from "./types.ts";
 
 const WATCH_MS = 60_000;
 const REFUSED_HOLD_MS = 30 * 60 * 1000;
@@ -55,11 +56,7 @@ const ClientTurnSchema = z.looseObject({ turnId: z.string().optional(), expected
 const ResultSchema = z.record(z.string(), z.unknown());
 
 function parseRpc(line: string): Rpc | null {
-  try {
-    return RpcSchema.safeParse(JSON.parse(line)).data ?? null;
-  } catch {
-    return null;
-  }
+  return RpcSchema.safeParse(JsonTextSchema.safeParse(line).data).data ?? null;
 }
 
 const idKey = (id: string | number): string => `${typeof id}:${id}`;
@@ -98,7 +95,7 @@ function translateClientTurn(msg: Rpc, mapped: TurnMap): Rpc {
   return out === params ? msg : { ...msg, params: out };
 }
 
-export class AppServerState {
+class AppServerState {
   initialize: Record<string, unknown> | null = null;
   initialized = false;
   readonly threads = new Map<string, Record<string, unknown>>();
@@ -125,7 +122,8 @@ export class AppServerState {
     return sent;
   }
 
-  fromServer(msg: Rpc, now = Date.now()): { refused: boolean; overloaded: boolean; turnEnded: boolean; forward: boolean; threadId?: string } {
+  fromServer(msg: Rpc): { refused: boolean; overloaded: boolean; turnEnded: boolean; forward: boolean; threadId?: string } {
+    const now = Date.now();
     if (msg.method == null && msg.id != null) {
       const asked = this.pending.get(idKey(msg.id));
       this.pending.delete(idKey(msg.id));
@@ -164,7 +162,8 @@ export class AppServerState {
     if (policy != null) tracked.sandbox = SANDBOX_MODES[policy] ?? "read-only";
   }
 
-  idle(now = Date.now()): boolean {
+  idle(): boolean {
+    const now = Date.now();
     return this.busy.size === 0 && this.pending.size === 0 && [...this.ephemeral.values()].every((at) => now - at > EPHEMERAL_IDLE_MS);
   }
 }

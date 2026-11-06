@@ -88,12 +88,8 @@ const PlanInfoSchema = z.looseObject({ planInfo: z.looseObject({ planName: z.str
 
 const MeSchema = z.looseObject({ email: z.string().optional() });
 
-function dashboardUrl(method: string): string {
-  return `${env("TOKENMAXXING_CURSOR_API_URL", "https://api2.cursor.sh")}/aiserver.v1.DashboardService/${method}`;
-}
-
 async function dashboard(token: string, method: string): Promise<Response> {
-  return http.post(dashboardUrl(method), { headers: { Authorization: `Bearer ${token}`, "Connect-Protocol-Version": "1" }, json: {} });
+  return http.post(`${env("TOKENMAXXING_CURSOR_API_URL", "https://api2.cursor.sh")}/aiserver.v1.DashboardService/${method}`, { headers: { Authorization: `Bearer ${token}`, "Connect-Protocol-Version": "1" }, json: {} });
 }
 
 async function dashboardField<T>(token: string, method: string, schema: z.ZodType<T>): Promise<T | null> {
@@ -162,8 +158,7 @@ export const cursor = statusOnlyProvider({
   name: "cursor",
   flag: " --cursor",
   pool: cursorPool,
-  binName: "cursor-agent",
-  binKey: "cursorBin",
+  bin: { name: "cursor-agent", key: "cursorBin", versionOk: (out) => /^\d{4}\.\d{2}\.\d{2}-[0-9a-f]+$/.test(out.trim()) },
   storeDirFor: cursorStoreDirFor,
   authJsonFor: cursorAuthJsonFor,
   homeEnv: "XDG_CONFIG_HOME",
@@ -172,7 +167,6 @@ export const cursor = statusOnlyProvider({
   readAuth,
   liveId: () => null,
   presence: () => new Map(),
-  versionOk: (out) => /^\d{4}\.\d{2}\.\d{2}-[0-9a-f]+$/.test(out.trim()),
   importIntro: "Opening an isolated Cursor login for your first pooled account - the login you already have stays as it is.",
   live: {
     authPath: () => cursorPaths.authJson,

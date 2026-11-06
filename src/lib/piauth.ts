@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
 import { writeFileAtomic } from "./atomic.ts";
@@ -6,7 +6,7 @@ import { piAuthJsonFor, piPaths, piStoreDirFor, type PiPool } from "./paths.ts";
 import { readJsonFile } from "./state.ts";
 import { ErrnoSchema } from "./types.ts";
 
-export const PI_PROVIDER: Record<PiPool, string> = { claude: "anthropic", codex: "openai-codex" };
+const PI_PROVIDER: Record<PiPool, string> = { claude: "anthropic", codex: "openai-codex" };
 
 const PiOAuthSchema = z.looseObject({
   type: z.literal("oauth"),
@@ -69,7 +69,6 @@ export function linkSharedPiHome(dir: string): void {
   for (const name of readdirSync(piPaths.home)) {
     if (name.startsWith("auth.json") || name.endsWith(".lock")) continue;
     const link = join(dir, name);
-    if (existsSync(link)) continue;
     try {
       symlinkSync(join(piPaths.home, name), link);
     } catch (e) {

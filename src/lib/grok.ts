@@ -1,13 +1,13 @@
 import { join } from "node:path";
 import { z } from "zod";
 import { writeFileAtomic } from "./atomic.ts";
-import { fetchGrokUsage, GrokUsageReadError, type GrokUsage } from "./grokusage.ts";
+import { fetchGrokUsage, GrokUsageReadError } from "./grokusage.ts";
 import { errorMessage } from "./log.ts";
 import { grokAuthJsonFor, grokPaths, grokPool, grokSeatFromEnv, grokStoreDirFor } from "./paths.ts";
 import type { SampleReport } from "./provider.ts";
 import { loadAccounts, readJsonFile, type Harvest } from "./state.ts";
 import { statusOnlyProvider, type AuthEntry } from "./statusonly.ts";
-import { ErrnoSchema, InstantSchema, type Account } from "./types.ts";
+import { ErrnoSchema, InstantSchema, type Account, type Window } from "./types.ts";
 import { c } from "../cli/render.ts";
 
 const GrokAuthEntrySchema = z.looseObject({
@@ -85,34 +85,29 @@ function bearerFor(accountId: string, now: number): { token: string; from: "stor
   return null;
 }
 
-async function readGrokUsage(account: Account, now: number): Promise<{ ok: true; at: number } | { ok: false; reason: string }> {
+async function readGrokUsage(account: Account, now: number): Promise<SampleReport> {
   const first = bearerFor(account.id, now);
   if (first == null) return { ok: false, reason: "no usable credential in this account's store - run `tokenmaxxing auth --grok`" };
-  let usage: GrokUsage;
+  let windows: Window[];
   try {
-    usage = await fetchGrokUsage({ token: first.token, at: now });
+    windows = await fetchGrokUsage({ token: first.token, at: now });
   } catch (e) {
     const live = e instanceof GrokUsageReadError && e.status === 401 && first.from === "store" ? liveCred(account.id) : null;
     if (live == null || live.token === first.token) return { ok: false, reason: errorMessage(e) };
     try {
-      usage = await fetchGrokUsage({ token: live.token, at: now });
+      windows = await fetchGrokUsage({ token: live.token, at: now });
     } catch (retry) {
       return { ok: false, reason: errorMessage(retry) };
     }
   }
-  account.windows = usage.windows;
-  account.lastUsageAt = usage.at;
-  return { ok: true, at: usage.at };
+  account.windows = windows;
+  account.lastUsageAt = now;
+  return { ok: true, source: "probe" };
 }
 
 async function samplePool(accounts: Account[], now: number): Promise<Map<string, SampleReport>> {
   const reports = new Map<string, SampleReport>();
-  await Promise.all(
-    accounts.map(async (account) => {
-      const outcome = await readGrokUsage(account, now);
-      reports.set(account.id, outcome.ok ? { ok: true, source: "probe" } : { ok: false, reason: outcome.reason });
-    }),
-  );
+  await Promise.all(accounts.map(async (account) => reports.set(account.id, await readGrokUsage(account, now))));
   return reports;
 }
 
@@ -120,8 +115,7 @@ export const grok = statusOnlyProvider({
   name: "grok",
   flag: " --grok",
   pool: grokPool,
-  binName: "grok",
-  binKey: "grokBin",
+  bin: { name: "grok", key: "grokBin", versionOk: (out) => out.toLowerCase().includes("grok") },
   storeDirFor: grokStoreDirFor,
   authJsonFor: grokAuthJsonFor,
   homeEnv: "GROK_HOME",
@@ -130,7 +124,6 @@ export const grok = statusOnlyProvider({
   readAuth,
   liveId: () => grokSeatFromEnv(loadAccounts(grokPool).accounts.map((a) => a.id)),
   presence: () => new Map(),
-  versionOk: (out) => out.toLowerCase().includes("grok"),
   importIntro: "Opening an isolated grok login for your first pooled account - the login you already have stays as it is.",
   live: {
     authPath: () => join(grokPaths.home, "auth.json"),

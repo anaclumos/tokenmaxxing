@@ -22,7 +22,7 @@ export function piLoginStep(pool: PiPool): string {
   return `In the pi session that opens, run  ${c.bold("/login")} , pick ${c.bold(PROVIDER_TITLE[pool])}, and sign in with that account. It closes itself once you're in.`;
 }
 
-export type PiLogin = { id: string; email: string | null; cred: PiOAuth };
+type PiLogin = { id: string; email: string | null; cred: PiOAuth };
 
 function landed(path: string, pool: PiPool): PiOAuth | null {
   try {

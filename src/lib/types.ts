@@ -307,7 +307,6 @@ export const CodexAuthJsonSchema = z.looseObject({
 export type CodexAuthJson = z.infer<typeof CodexAuthJsonSchema>;
 
 export type CodexUsage = {
-  accountId: string;
   email: string | null;
   planType: string | null;
   hasCredits: boolean | null;

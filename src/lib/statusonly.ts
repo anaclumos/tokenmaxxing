@@ -10,12 +10,11 @@ import { c } from "../cli/render.ts";
 
 export type AuthEntry = { id: string; usable: boolean; harvest: Harvest | null };
 
-export type StatusOnlySpec = {
+type StatusOnlySpec = {
   name: Provider["name"];
   flag: string;
   pool: PoolPaths;
-  binName: string;
-  binKey: "grokBin" | "museBin" | "cursorBin" | "kimiBin";
+  bin: { name: string; key: "grokBin" | "museBin" | "cursorBin" | "kimiBin"; versionOk: (versionOutput: string) => boolean };
   storeDirFor: (accountId: string) => string;
   authJsonFor: (accountId: string) => string;
   homeEnv: string;
@@ -24,7 +23,6 @@ export type StatusOnlySpec = {
   readAuth: (path: string) => AuthEntry[];
   liveId: () => string | null;
   presence: () => Map<string, number>;
-  versionOk: (versionOutput: string) => boolean;
   importIntro: string;
   live: { authPath: () => string; found: (count: number) => string } | null;
   install: () => void;
@@ -33,14 +31,7 @@ export type StatusOnlySpec = {
   identify?: (harvest: Harvest) => Promise<void>;
 };
 
-// An entry with no identity (a Muse Code provider without an email) has no harvest; the first one that has one is pooled.
-function firstHarvest(entries: AuthEntry[]): Harvest | null {
-  return entries.find((e) => e.harvest)?.harvest ?? null;
-}
-
 export function statusOnlyProvider(spec: StatusOnlySpec): Provider {
-  const bin = { name: spec.binName, key: spec.binKey, versionOk: spec.versionOk };
-
   async function storeUsable(a: Account): Promise<boolean> {
     try {
       return spec.readAuth(spec.authJsonFor(a.id)).some((e) => e.id === a.id && e.usable);
@@ -50,7 +41,7 @@ export function statusOnlyProvider(spec: StatusOnlySpec): Provider {
   }
 
   async function login(): Promise<Harvest | null> {
-    const real = resolveRealBin(bin);
+    const real = resolveRealBin(spec.bin);
     const onboardDir = await onboardHome(spec.name);
     const p = Bun.spawn([real, ...spec.loginArgs()], {
       stdin: "inherit",
@@ -60,7 +51,7 @@ export function statusOnlyProvider(spec: StatusOnlySpec): Provider {
     });
     await p.exited;
     try {
-      const harvest = p.exitCode === 0 ? firstHarvest(spec.readAuth(join(onboardDir, spec.onboardAuthRel))) : null;
+      const harvest = p.exitCode === 0 ? (spec.readAuth(join(onboardDir, spec.onboardAuthRel)).find((e) => e.harvest)?.harvest ?? null) : null;
       if (!harvest) console.error(c.red(`no ${spec.name} login landed in the isolated home - nothing added.`));
       else await spec.identify?.(harvest);
       return harvest;
@@ -82,10 +73,10 @@ export function statusOnlyProvider(spec: StatusOnlySpec): Provider {
   }
 
   function preflight(): void {
-    const real = resolveRealBin(bin);
-    const fail = verifyRealBin({ ...bin, bin: real });
-    if (fail !== null) throw new Error(`${spec.binName} binary failed verification: ${real}: ${fail}`);
-    setConfigField(spec.binKey, real);
+    const real = resolveRealBin(spec.bin);
+    const fail = verifyRealBin({ ...spec.bin, bin: real });
+    if (fail !== null) throw new Error(`${spec.bin.name} binary failed verification: ${real}: ${fail}`);
+    setConfigField(spec.bin.key, real);
   }
 
   return {
