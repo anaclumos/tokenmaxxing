@@ -120,7 +120,7 @@ export function pruneStaleSessions(now: number): void {
 
 type SupervisedSession = { sid: string; launchedAt: number; live: string };
 
-const LaunchedAtSchema = z.coerce.number();
+const LaunchedAtSchema = z.coerce.number().int().positive();
 const RefusedSchema = z.string().optional().transform((ids) => (ids ?? "").split(",").filter((id) => id !== ""));
 
 export function supervisedSession(): SupervisedSession | null {
