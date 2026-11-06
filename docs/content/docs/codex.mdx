@@ -101,7 +101,7 @@ Usage is read from a free authenticated GET against codex's own rate-limit endpo
 - the aggregate windows and every named additional limit alike
 - whether the account holds purchased credits (`credits.has_credits`)
 
-Every named limit screens and triggers against its own bar by duration. Window classification is duration-driven, never position-driven, because current plans may have no 5-hour window at all and the weekly window sits in the primary slot.
+Every named limit screens and triggers against its own bar by duration. Window classification is duration-driven, never position-driven, because a plan may have no 5-hour window at all, and then the weekly window sits in the primary slot.
 
 An account marked `"credits": true` in `thresholds.accounts` stays usable past its windows unless its latest read reports no credits, which puts it back under its bars (see [How switching decides](/switching#the-bars)).
 
