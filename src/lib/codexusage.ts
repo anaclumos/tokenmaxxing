@@ -84,7 +84,6 @@ export async function fetchCodexUsage(input: { auth: CodexAuthJson; at: number }
   const wire = parsed.data;
 
   return {
-    accountId: wire.account_id,
     email: wire.email ?? null,
     planType: wire.plan_type ?? null,
     hasCredits: wire.credits?.has_credits ?? null,

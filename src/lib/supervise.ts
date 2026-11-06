@@ -8,7 +8,7 @@ import { readLines } from "./proc.ts";
 import { writePresence } from "./presence.ts";
 import { restoreTermios } from "./tty.ts";
 
-export type WrappedProduct = "claude" | "codex" | "pi" | "muse";
+type WrappedProduct = "claude" | "codex" | "pi" | "muse";
 
 export const SEAT_POLL_MS = 10_000;
 export const SEAT_RETRY_MS = 60_000;
@@ -122,7 +122,7 @@ export async function recordPresenceOrStop(input: { child: ChildHandle; dir: str
         input.child.kill();
         await input.child.exited;
         restoreTermios(input.savedTermios);
-        throw new Error(`tokenmaxxing: ${input.message}`);
+        throw new Error(input.message);
       }
       await Bun.sleep(100);
     }

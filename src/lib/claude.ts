@@ -8,14 +8,14 @@ import { CLAUDE_BIN, resolveRealBin, resolveVerifiedClaude } from "./claudebin.t
 import { activationHint, CHECK_JOB, ensurePathInRc, HUB_JOB, installSupervisor, shellRcPath } from "./install.ts";
 import { withLock } from "./lock.ts";
 import { errorMessage, log } from "./log.ts";
-import { claudeTierLabel, describeIdentity, fetchTokenIdentity, isDeadCredential, InvalidGrantError } from "./oauth.ts";
+import { claudeTierLabel, describeIdentity, fetchTokenIdentity, isDeadCredential } from "./oauth.ts";
 import { onboardHome } from "./onboard.ts";
 import { claudePool, env, paths, seatFromEnv, shortId, storeDirFor } from "./paths.ts";
-import { isSessionWindow, MAX_WAITERS_PER_ACCOUNT, pickBest, pickEarliestReset, pickWaitTarget, thresholdBars, type PickCtx } from "./picker.ts";
+import { isSessionWindow, pickBest, pickEarliestReset, pickWaitTarget, thresholdBars, type PickCtx } from "./picker.ts";
 import { deletePiStore } from "./piauth.ts";
 import { livingPresences, writePresence } from "./presence.ts";
 import { StoreUnusableError, type Observation, type Provider, type ResetClaim, type SampleReport, type SeatBorrow } from "./provider.ts";
-import { claimSample, foldTee, landRead, readyToSample, runSample, sampleAccountUsage, sampleDue, sampleIntervalMs, teeObservation, usageBlockedUntil } from "./sample.ts";
+import { claimSample, foldTee, landRead, prepareSample, readyToSample, runSample, sampleDue, sampleIntervalMs, teeObservation, usageBlockedUntil, type SampleOutcome } from "./sample.ts";
 import { clearUsageSnapshot, liveWaitClaims, loadAccounts, loadConfig, loadUsageSnapshot, readJsonFile, saveAccounts, setConfigField, type Harvest } from "./state.ts";
 import { saveTermios, restoreTermios } from "./tty.ts";
 import { claimResetGrant, fetchUsageDirect, gatedFamilies, heldFamilies, mergeWindows, modelFromFlag, scrubCredEnv, windowsOf } from "./usage.ts";
@@ -45,7 +45,8 @@ async function observeLive(account: Account, cfg: Config, now: number, opts: { p
   const fresh = snap != null && now - snap.at <= cfg.policy.usagePollTtlMs;
   if (opts.probe && (!fresh || opts.perModel) && probeDue(account) && usageBlockedUntil(account, now) == null && (await claimSample(account.id, now, probeDue))) {
     const startedAt = Date.now();
-    const outcome = await sampleAccountUsage(account);
+    const ready = await prepareSample(account);
+    const outcome: SampleOutcome = ready.ok ? await runSample(account, ready) : ready;
     await withLock(claudePool.lockFile, () => {
       const idx = loadAccounts(claudePool);
       const a = idx.accounts.find((x) => x.id === account.id);
@@ -122,7 +123,7 @@ async function prepareMove(target: Account): Promise<void> {
       saveAccounts(claudePool, idx);
     }
     log("move.invalid_grant", { account: target.id.slice(0, 8) });
-    throw new InvalidGrantError(`${target.label}'s store was cleared after a failed refresh - re-auth with \`tokenmaxxing auth ${target.label}\``);
+    throw new StoreUnusableError(`${target.label}'s store was cleared after a failed refresh - re-auth with \`tokenmaxxing auth ${target.label}\``);
   }
   log("move.prepared", { account: target.id.slice(0, 8), label: target.label });
 }
@@ -167,7 +168,7 @@ export function pickSeat(now: number, model: ModelInfo | null, eligible: (a: Acc
   const best = pickBest(candidates, ctx);
   if (best) return { account: best };
   const wait =
-    pickWaitTarget(candidates, ctx, seats, MAX_WAITERS_PER_ACCOUNT, now + cfg.policy.maxWaitMs, now + 2 * cfg.policy.maxWaitMs) ??
+    pickWaitTarget(candidates, ctx, seats, now + cfg.policy.maxWaitMs, now + 2 * cfg.policy.maxWaitMs) ??
     pickEarliestReset(candidates, ctx);
   return wait ? { account: wait.account, depletedUntil: wait.availableAt } : null;
 }
@@ -383,7 +384,7 @@ export const claude: Provider = {
   mergeWindows,
   swap: prepareMove,
   useBankedReset,
-  classifySwapError: (e) => (e instanceof InvalidGrantError ? "dead-grant" : e instanceof StoreUnusableError ? "skip" : "fatal"),
+  classifySwapError: (e) => (e instanceof StoreUnusableError ? "skip" : "fatal"),
   removeCredentials,
   storeUsable,
   login,

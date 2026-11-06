@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { EnforcedClass } from "./usage.ts";
 
 const OAuthCredsSchema = z.looseObject({
   accessToken: z.string(),
@@ -85,7 +86,7 @@ export type AccountsIndex = z.infer<typeof AccountsIndexSchema>;
 
 export type EnforcedLimit = {
   account: string;
-  kind: "session" | "weekly" | "model" | "credits" | "org" | "overage";
+  kind: EnforcedClass["kind"];
   family: string | null;
   resetsAt: number | null;
   blind: boolean;
@@ -299,7 +300,6 @@ export const CodexAuthJsonSchema = z.looseObject({
 export type CodexAuthJson = z.infer<typeof CodexAuthJsonSchema>;
 
 export type CodexUsage = {
-  accountId: string;
   email: string | null;
   planType: string | null;
   hasCredits: boolean | null;

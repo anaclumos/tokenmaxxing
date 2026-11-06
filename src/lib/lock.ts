@@ -6,7 +6,6 @@ const LOCK_EX = 2;
 const LOCK_NB = 4;
 const LOCK_UN = 8;
 const EAGAIN = process.platform === "darwin" ? 35 : 11;
-const EINTR = 4;
 const RETRY_MS = 75;
 
 const FLOCK_DEF = { flock: { args: [FFIType.i32, FFIType.i32], returns: FFIType.i32 } } as const;
@@ -32,40 +31,19 @@ function currentErrno(): number {
   return p == null ? -1 : read.i32(p, 0);
 }
 
-export async function acquireLock(lockPath: string): Promise<{ release: () => void }> {
+export async function withLock<T>(lockPath: string, fn: () => Promise<T> | T): Promise<T> {
   mkdirSync(dirname(lockPath), { recursive: true });
   const fd = openSync(lockPath, "a", 0o600);
   const { flock } = libc();
   try {
     while (flock(fd, LOCK_EX | LOCK_NB) !== 0) {
       const errno = currentErrno();
-      if (errno !== EAGAIN && errno !== EINTR) {
-        throw new Error(`flock LOCK_EX|LOCK_NB failed on ${lockPath} (errno ${errno})`);
-      }
+      if (errno !== EAGAIN) throw new Error(`flock LOCK_EX|LOCK_NB failed on ${lockPath} (errno ${errno})`);
       await Bun.sleep(RETRY_MS);
     }
-  } catch (e) {
-    closeSync(fd);
-    throw e;
-  }
-  let released = false;
-  const release = () => {
-    if (released) return;
-    released = true;
-    try {
-      flock(fd, LOCK_UN);
-    } finally {
-      closeSync(fd);
-    }
-  };
-  return { release };
-}
-
-export async function withLock<T>(lockPath: string, fn: () => Promise<T> | T): Promise<T> {
-  const held = await acquireLock(lockPath);
-  try {
     return await fn();
   } finally {
-    held.release();
+    flock(fd, LOCK_UN);
+    closeSync(fd);
   }
 }

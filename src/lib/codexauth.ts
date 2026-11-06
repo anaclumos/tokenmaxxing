@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readdirSync, rmSync, symlinkSync } from "node:fs";
+import { mkdirSync, readdirSync, rmSync, symlinkSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
 import { writeFileAtomic } from "./atomic.ts";
@@ -49,7 +49,6 @@ export function ensureCodexStoreHome(accountId: string): string {
     if (name === "auth.json") continue;
     const target = join(codexPaths.home, name);
     const link = join(store, name);
-    if (existsSync(link)) continue;
     try {
       symlinkSync(target, link);
     } catch (e) {
@@ -95,7 +94,7 @@ export function codexSeatIdOf(input: { jwt: string }): string | null {
   }
 }
 
-export type CodexIdentity = { id: string; accountId: string; email: string | null; planType: string | null };
+type CodexIdentity = { id: string; accountId: string; email: string | null; planType: string | null };
 
 export function codexIdentityOf(input: { auth: CodexAuthJson }): CodexIdentity {
   const { auth } = input;

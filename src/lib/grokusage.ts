@@ -27,13 +27,11 @@ const CreditsBillingSchema = z.looseObject({
   config: CreditsConfigSchema,
 });
 
-export type GrokUsage = { windows: Window[]; at: number };
-
 function usageUrl(): string {
   return env("TOKENMAXXING_GROK_USAGE_URL", "https://cli-chat-proxy.grok.com/v1/billing?format=credits");
 }
 
-export async function fetchGrokUsage(input: { token: string; at: number }): Promise<GrokUsage> {
+export async function fetchGrokUsage(input: { token: string; at: number }): Promise<Window[]> {
   const { token, at } = input;
   let res: Response;
   try {
@@ -56,16 +54,13 @@ export async function fetchGrokUsage(input: { token: string; at: number }): Prom
     throw new GrokUsageReadError("endpoint returned an unexpected body shape (withheld)");
   }
   const { start, end } = parsed.data.config.currentPeriod;
-  return {
-    at,
-    windows: [
-      {
-        name: null,
-        usedPercentage: parsed.data.config.creditUsagePercent,
-        resetsAt: end,
-        windowSeconds: end > start ? Math.round((end - start) / 1000) : null,
-        sampledAt: at,
-      },
-    ],
-  };
+  return [
+    {
+      name: null,
+      usedPercentage: parsed.data.config.creditUsagePercent,
+      resetsAt: end,
+      windowSeconds: end > start ? Math.round((end - start) / 1000) : null,
+      sampledAt: at,
+    },
+  ];
 }

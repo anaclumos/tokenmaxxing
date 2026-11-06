@@ -6,14 +6,14 @@ import { errorMessage, log } from "./log.ts";
 import { readLines } from "./proc.ts";
 import { CostStateRowSchema, JsonTextSchema, type SessionCost } from "./types.ts";
 
-export type CompactOutcome = { ok: true } | { ok: false; reason: string };
+type CompactOutcome = { ok: true } | { ok: false; reason: string };
 
 export const CLAUDE_COMPACT_KILL_MS = 300_000;
 const PIPE_GRACE_MS = 2_000;
 
 const CompactBoundarySchema = z.looseObject({ type: z.literal("system"), subtype: z.literal("compact_boundary") });
 
-export type ClaudeCompactResult = CompactOutcome & { cost: SessionCost | null };
+type ClaudeCompactResult = CompactOutcome & { cost: SessionCost | null };
 
 export async function compactClaudeSession(input: { real: string; sid: string; transcript: string; env: Record<string, string | undefined>; keyPipe: boolean; onSpawn: (child: Subprocess) => void }): Promise<ClaudeCompactResult> {
   const offset = statSync(input.transcript).size;
@@ -39,7 +39,7 @@ export async function compactClaudeSession(input: { real: string; sid: string; t
   return done({ ok: false, reason: output ? `no compact boundary (exit ${p.exitCode}): ${output}` : `no compact boundary (exit ${p.exitCode})` });
 }
 
-export const CODEX_COMPACT_KILL_MS = 180_000;
+const CODEX_COMPACT_KILL_MS = 180_000;
 
 const RpcLineSchema = z.looseObject({
   id: z.union([z.number(), z.string()]).optional(),
@@ -57,7 +57,7 @@ const INIT_ID = 1;
 const RESUME_ID = 2;
 const COMPACT_ID = 3;
 
-export async function compactCodexThread(input: { real: string; threadId: string; env: Record<string, string | undefined> }): Promise<CompactOutcome> {
+export async function compactCodexThread(input: { real: string; threadId: string; env: Record<string, string | undefined> }): Promise<void> {
   const p = Bun.spawn([input.real, "app-server"], {
     env: input.env,
     stdin: "pipe",
@@ -73,48 +73,42 @@ export async function compactCodexThread(input: { real: string; threadId: string
   const stderrText = p.stderr.text();
 
   const outcome = await new Promise<CompactOutcome>((resolve) => {
-    let finished = false;
-    const finish = (o: CompactOutcome): void => {
-      if (finished) return;
-      finished = true;
-      resolve(o);
-    };
     const onLine = (line: string): void => {
       const parsed = RpcLineSchema.safeParse(JsonTextSchema.safeParse(line).data);
       if (!parsed.success) return;
       const msg = parsed.data;
       if (msg.id === INIT_ID) {
-        if (msg.error) return finish({ ok: false, reason: `initialize failed: ${msg.error.message ?? "unknown error"}` });
+        if (msg.error) return resolve({ ok: false, reason: `initialize failed: ${msg.error.message ?? "unknown error"}` });
         send({ method: "initialized" });
         send({ id: RESUME_ID, method: "thread/resume", params: { threadId: input.threadId } });
         return;
       }
       if (msg.id === RESUME_ID) {
-        if (msg.error) return finish({ ok: false, reason: `thread/resume failed: ${msg.error.message ?? "unknown error"}` });
+        if (msg.error) return resolve({ ok: false, reason: `thread/resume failed: ${msg.error.message ?? "unknown error"}` });
         send({ id: COMPACT_ID, method: "thread/compact/start", params: { threadId: input.threadId } });
         return;
       }
       if (msg.id === COMPACT_ID) {
-        if (msg.error) return finish({ ok: false, reason: `thread/compact/start failed: ${msg.error.message ?? "unknown error"}` });
+        if (msg.error) return resolve({ ok: false, reason: `thread/compact/start failed: ${msg.error.message ?? "unknown error"}` });
         return;
       }
       if (msg.method === "turn/completed") {
         const turn = TurnCompletedSchema.safeParse(msg.params);
         if (!turn.success || turn.data.threadId !== input.threadId) return;
-        if (turn.data.turn.status === "completed") return finish({ ok: true });
-        return finish({ ok: false, reason: `compaction turn ${turn.data.turn.status}: ${turn.data.turn.error?.message ?? "no error message"}` });
+        if (turn.data.turn.status === "completed") return resolve({ ok: true });
+        return resolve({ ok: false, reason: `compaction turn ${turn.data.turn.status}: ${turn.data.turn.error?.message ?? "no error message"}` });
       }
       if (msg.method === "error") {
         const err = ErrorNotificationSchema.safeParse(msg.params);
         if (err.success && err.data.threadId != null && err.data.threadId !== input.threadId) return;
-        return finish({ ok: false, reason: `app-server error: ${err.success ? (err.data.error?.message ?? "unknown error") : "unparsable error notification"}` });
+        return resolve({ ok: false, reason: `app-server error: ${err.success ? (err.data.error?.message ?? "unknown error") : "unparsable error notification"}` });
       }
     };
     (async () => {
       for await (const line of readLines(p.stdout)) onLine(line);
       const err = (await stderrText).trim().slice(0, 200);
-      finish({ ok: false, reason: p.exitCode === null ? `app-server killed after ${CODEX_COMPACT_KILL_MS / 1000}s` : `app-server exited ${p.exitCode}: ${err}` });
-    })().catch((e) => finish({ ok: false, reason: errorMessage(e) }));
+      resolve({ ok: false, reason: p.exitCode === null ? `app-server killed after ${CODEX_COMPACT_KILL_MS / 1000}s` : `app-server exited ${p.exitCode}: ${err}` });
+    })().catch((e) => resolve({ ok: false, reason: errorMessage(e) }));
     send({ id: INIT_ID, method: "initialize", params: { clientInfo: { name: "tokenmaxxing", version: pkg.version } } });
   });
 
@@ -122,5 +116,4 @@ export async function compactCodexThread(input: { real: string; threadId: string
   p.kill();
   await p.exited;
   log("compact.codex", { thread: input.threadId.slice(0, 8), ok: outcome.ok, reason: outcome.ok ? undefined : outcome.reason });
-  return outcome;
 }

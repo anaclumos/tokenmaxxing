@@ -5,7 +5,7 @@ import { pidExists } from "./proc.ts";
 
 const POOLS = ["claude", "codex", "pi", "grok", "muse", "cursor", "kimi"] as const;
 
-export type OnboardPool = (typeof POOLS)[number];
+type OnboardPool = (typeof POOLS)[number];
 
 const HOME_NAME = new RegExp(`^(${POOLS.join("|")})-([1-9]\\d*)-`);
 

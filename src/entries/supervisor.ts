@@ -133,8 +133,8 @@ const PROBE_VALUE_FLAGS = new Set(["--output-format", "--input-format", "--setti
 const PROBE_BOOLEAN_FLAGS = new Set(["--verbose", "--strict-mcp-config", "--no-session-persistence"]);
 const ProbeSettingsSchema = z.strictObject({ disableAllHooks: z.literal(true) });
 
-export function isCapabilitiesProbe(argv: string[], envLike: Record<string, string | undefined>): boolean {
-  if (envLike.ENABLE_CLAUDEAI_MCP_SERVERS !== "false" || envLike.CLAUDE_CODE_AUTO_CONNECT_IDE !== "0" || envLike.CLAUDE_CODE_IDE_SKIP_AUTO_INSTALL !== "1") return false;
+function isCapabilitiesProbe(argv: string[]): boolean {
+  if (process.env.ENABLE_CLAUDEAI_MCP_SERVERS !== "false" || process.env.CLAUDE_CODE_AUTO_CONNECT_IDE !== "0" || process.env.CLAUDE_CODE_IDE_SKIP_AUTO_INSTALL !== "1") return false;
   const values = new Map<string, string>();
   const booleans = new Set<string>();
   for (let i = 0; i < argv.length; i++) {
@@ -160,7 +160,7 @@ export function isCapabilitiesProbe(argv: string[], envLike: Record<string, stri
   return settings !== undefined && ProbeSettingsSchema.safeParse(JsonTextSchema.safeParse(settings).data).success;
 }
 
-export function stripSessionFlags(argv: string[]): string[] {
+function stripSessionFlags(argv: string[]): string[] {
   const out: string[] = [];
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]!;
@@ -174,7 +174,7 @@ export function stripSessionFlags(argv: string[]): string[] {
   return out;
 }
 
-export function stripPositionals(argv: string[]): string[] {
+function stripPositionals(argv: string[]): string[] {
   const out: string[] = [];
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]!;
@@ -246,10 +246,6 @@ function latestSessionForCwd(): string | null {
   }
 }
 
-type MarkerGate = {
-  launchedAt: number;
-};
-
 function releaseClaimLocked(sid: string): void {
   try {
     releaseWaitClaim(sid);
@@ -258,27 +254,21 @@ function releaseClaimLocked(sid: string): void {
   }
 }
 
-async function discardMarker(marker: string, event: string, fields: Record<string, unknown>): Promise<null> {
-  await withLock(claudePool.lockFile, () => {
-    rmSync(marker, { force: true });
-    releaseClaimLocked(basename(marker));
-  });
-  log(event, fields);
-  return null;
-}
-
-async function consumableMarker(marker: string, gate: MarkerGate): Promise<z.infer<typeof RespawnMarkerSchema> | null> {
+async function consumableMarker(marker: string, launchedAt: number): Promise<z.infer<typeof RespawnMarkerSchema> | null> {
   let m: z.infer<typeof RespawnMarkerSchema>;
   try {
     m = readJsonFile(marker, RespawnMarkerSchema);
   } catch (e) {
     log("supervisor.marker_invalid", { err: errorMessage(e) });
-    throw new Error(
-      `tokenmaxxing: the session was stopped because the respawn marker is corrupt. Inspect ${marker}, then run \`claude --resume ${basename(marker)}\` (a fresh launch clears it)`,
-    );
+    throw new Error(`the session was stopped because the respawn marker is corrupt. Inspect ${marker}, then run \`claude --resume ${basename(marker)}\` (a fresh launch clears it)`);
   }
-  if (m.launchedAt !== undefined && m.launchedAt !== gate.launchedAt) {
-    return discardMarker(marker, "supervisor.marker_stale", { markerLaunch: m.launchedAt, childLaunch: gate.launchedAt });
+  if (m.launchedAt !== undefined && m.launchedAt !== launchedAt) {
+    await withLock(claudePool.lockFile, () => {
+      rmSync(marker, { force: true });
+      releaseClaimLocked(basename(marker));
+    });
+    log("supervisor.marker_stale", { markerLaunch: m.launchedAt, childLaunch: launchedAt });
+    return null;
   }
   return m;
 }
@@ -297,7 +287,7 @@ function sessionHeld(sid: string, model: ModelInfo | null): string[] | null {
   return held == null ? null : [...new Set([...held, ...loadSessionHeld(sid)])];
 }
 
-async function moveExhaustedSeat(seat: Account, sid: string, gate: MarkerGate, model: ModelInfo | null, refused: string[]): Promise<boolean> {
+async function moveExhaustedSeat(seat: Account, sid: string, launchedAt: number, model: ModelInfo | null, refused: string[]): Promise<boolean> {
   try {
     const now = Date.now();
     const cfg = loadConfig();
@@ -309,7 +299,7 @@ async function moveExhaustedSeat(seat: Account, sid: string, gate: MarkerGate, m
     log("supervisor.seat_exhausted", { seat: seat.id.slice(0, 8), until, reason: decision.reason, account: decision.account?.id.slice(0, 8), key: decision.apiKey?.id, waitUntil: decision.waitUntil });
     const target = moveTarget(decision);
     if (target) {
-      writeRespawnMarker({ session: { sid, launchedAt: gate.launchedAt, live: liveSessionId(sid) }, ...target, waitUntil: target.waitUntil ?? now, compact: true, origin: "seatwatch" });
+      writeRespawnMarker({ session: { sid, launchedAt, live: liveSessionId(sid) }, ...target, waitUntil: target.waitUntil ?? now, compact: true, origin: "seatwatch" });
     }
   } catch (e) {
     log("supervisor.seat_watch_error", { err: errorMessage(e) });
@@ -317,7 +307,7 @@ async function moveExhaustedSeat(seat: Account, sid: string, gate: MarkerGate, m
   return true;
 }
 
-async function moveKeySession(key: ApiKey, sid: string, gate: MarkerGate, model: ModelInfo | null, refused: string[], restored: Map<string, number>): Promise<boolean> {
+async function moveKeySession(key: ApiKey, sid: string, launchedAt: number, model: ModelInfo | null, refused: string[], restored: Map<string, number>): Promise<boolean> {
   await foldCost(sid, key.id, restored);
   try {
     if (usableApiKey(key.id) != null) return false;
@@ -328,7 +318,7 @@ async function moveKeySession(key: ApiKey, sid: string, gate: MarkerGate, model:
     log("supervisor.key_watch", { key: key.id, reason: decision.reason, account: decision.account?.id.slice(0, 8), next: decision.apiKey?.id, waitUntil: decision.waitUntil });
     const target = moveTarget(decision);
     if (target) {
-      writeRespawnMarker({ session: { sid, launchedAt: gate.launchedAt, live: liveSessionId(sid) }, ...target, waitUntil: target.waitUntil ?? now, compact: true, origin: "seatwatch" });
+      writeRespawnMarker({ session: { sid, launchedAt, live: liveSessionId(sid) }, ...target, waitUntil: target.waitUntil ?? now, compact: true, origin: "seatwatch" });
     }
   } catch (e) {
     log("supervisor.key_watch_error", { err: errorMessage(e) });
@@ -347,7 +337,7 @@ function resolveLaunch(wanted: { accountId: string | null; apiKeyId: string | nu
   }
   if (wanted?.apiKeyId == null) return pickLaunch(now, model);
   const target = pickLaunch(now, model, refused);
-  if (!target) throw new Error("tokenmaxxing: the session's API key is spent and no pooled account that has not refused the session is available, so it was stopped. Run `claude --resume` later to continue it");
+  if (!target) throw new Error("the session's API key is spent and no pooled account that has not refused the session is available, so it was stopped. Run `claude --resume` later to continue it");
   return target;
 }
 
@@ -451,17 +441,15 @@ class StdinRelay {
   private pendingTranscript: string | null = null;
   private ended = false;
   private refusal: string | null = null;
-  private sawUser!: () => void;
-  readonly firstUser = new Promise<void>((resolve) => {
-    this.sawUser = resolve;
-  });
+  private readonly user = Promise.withResolvers<void>();
+  readonly firstUser = this.user.promise;
 
   constructor() {
     this.pump()
       .catch((e: unknown) => log("supervisor.relay_read_failed", { err: errorMessage(e) }))
       .finally(() => {
         this.ended = true;
-        this.sawUser();
+        this.user.resolve();
         this.close();
       });
   }
@@ -525,7 +513,7 @@ class StdinRelay {
 
   private forward(line: string): void {
     const value = JsonTextSchema.safeParse(line).data;
-    if (UserLineSchema.safeParse(value).success) this.sawUser();
+    if (UserLineSchema.safeParse(value).success) this.user.resolve();
     const parsed = RelayLineSchema.safeParse(value);
     const request = parsed.success && parsed.data.type === "control_request" ? parsed.data : null;
     if (this.refusal !== null) {
@@ -591,7 +579,7 @@ async function runCapabilitiesProbe(input: { real: string; argv: string[]; env: 
   input.onSpawn(proc);
   log("supervisor.probe_launch", { seat: input.seat.id.slice(0, 8) });
   const stdoutPump = (async () => {
-    for await (const line of readLines(proc.stdout as ReadableStream<Uint8Array>)) process.stdout.write(`${line}\n`);
+    for await (const line of readLines(proc.stdout)) process.stdout.write(`${line}\n`);
   })().catch((e: unknown) => log("supervisor.probe_stdout_failed", { err: errorMessage(e) }));
   void (async () => {
     for await (const line of readLines(Bun.stdin.stream())) {
@@ -626,6 +614,8 @@ async function runCapabilitiesProbe(input: { real: string; argv: string[]; env: 
   await Promise.race([stdoutPump, Bun.sleep(1000)]);
   return exitStatus(proc);
 }
+
+const SUPERVISOR_ENV = ["TOKENMAXXING_SUPERVISED", "TOKENMAXXING_SESSION_ID", "TOKENMAXXING_LAUNCHED_AT", "TOKENMAXXING_MODEL", "TOKENMAXXING_REFUSED", "TOKENMAXXING_API_KEY_ID"];
 
 function bareResumeStream(info: Analysis, argv: string[], sid: string | null): boolean {
   if (!info.manage || process.env[UNMANAGED_ENV] || info.sessionId != null || stripSessionFlags(argv).length !== 0 || sid == null) return false;
@@ -680,8 +670,8 @@ export async function runSupervisor(argv: string[]): Promise<number> {
   });
 
   if (!info.manage || process.env[UNMANAGED_ENV]) {
-    const passthroughEnv = omit(childEnv, ["TOKENMAXXING_SUPERVISED", "TOKENMAXXING_SESSION_ID", "TOKENMAXXING_MODEL", "TOKENMAXXING_REFUSED", "TOKENMAXXING_API_KEY_ID"]);
-    if (!process.env[UNMANAGED_ENV] && !process.env.TOKENMAXXING_PROBE && isCapabilitiesProbe(argv, process.env)) {
+    const passthroughEnv = omit(childEnv, SUPERVISOR_ENV);
+    if (!process.env[UNMANAGED_ENV] && !process.env.TOKENMAXXING_PROBE && isCapabilitiesProbe(argv)) {
       const seat = await withLock(claudePool.lockFile, () => pickSeat(Date.now(), null)?.account ?? null).catch((e: unknown) => {
         log("supervisor.probe_pick_failed", { err: errorMessage(e) });
         return null;
@@ -695,19 +685,8 @@ export async function runSupervisor(argv: string[]): Promise<number> {
   }
 
   let base = stripSessionFlags(argv);
-  let sid: string;
-  let resuming = false;
-  if (info.sessionId) {
-    sid = info.sessionId;
-  } else if (info.resumeId) {
-    sid = info.resumeId;
-    resuming = true;
-  } else if (info.continueLatest) {
-    const latest = latestSessionForCwd();
-    if (latest) { sid = latest; resuming = true; } else sid = crypto.randomUUID();
-  } else {
-    sid = crypto.randomUUID();
-  }
+  const sid = earlySid;
+  const resuming = info.sessionId == null && drivenSid != null;
   claimSid = sid;
 
   const persisted = resuming ? loadSessionFlags(sid) : null;
@@ -748,15 +727,15 @@ export async function runSupervisor(argv: string[]): Promise<number> {
   while (true) {
     rmSync(marker, { force: true });
 
-    const gate: MarkerGate = { launchedAt: Date.now() };
+    const launchedAt = Date.now();
     const launched = await withLock(claudePool.lockFile, async () => {
       if (terminating) return null;
       releaseClaimLocked(sid);
       if (noticeSid !== sid) releaseClaimLocked(noticeSid);
-      const target = resolveLaunch(wanted, gate.launchedAt, model, refused);
-      if (target?.account && target.depletedUntil !== undefined && target.depletedUntil > gate.launchedAt) {
+      const target = resolveLaunch(wanted, launchedAt, model, refused);
+      if (target?.account && target.depletedUntil !== undefined && target.depletedUntil > launchedAt) {
         try {
-          replaceWaitClaim({ sessionId: noticeSid, accountId: target.account.id, at: gate.launchedAt, waitUntil: target.depletedUntil });
+          replaceWaitClaim({ sessionId: noticeSid, accountId: target.account.id, at: launchedAt, waitUntil: target.depletedUntil });
           claimSid = null;
         } catch (e) {
           log("supervisor.claim_write_failed", { err: errorMessage(e) });
@@ -785,7 +764,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
           ...(picked ? { ...scrubbed, CLAUDE_SECURESTORAGE_CONFIG_DIR: storeDirFor(picked.id) } : key ? apiKeyEnv(scrubbed, key) : childEnv),
           TOKENMAXXING_SUPERVISED: "1",
           TOKENMAXXING_SESSION_ID: sid,
-          TOKENMAXXING_LAUNCHED_AT: String(gate.launchedAt),
+          TOKENMAXXING_LAUNCHED_AT: String(launchedAt),
           TOKENMAXXING_MODEL: effective.model ?? "",
           TOKENMAXXING_REFUSED: refused.join(","),
           TOKENMAXXING_API_KEY_ID: key?.id ?? "",
@@ -831,9 +810,9 @@ export async function runSupervisor(argv: string[]): Promise<number> {
     await raceMarkerOrExit({
       child: proc,
       tick: async () => {
-        if (existsSync(marker) && (await consumableMarker(marker, gate)) != null) return true;
+        if (existsSync(marker) && (await consumableMarker(marker, launchedAt)) != null) return true;
         if ((seat || key) && !terminating && Date.now() >= seatCheckAt) {
-          const decided = seat ? await moveExhaustedSeat(seat, sid, gate, model, refused) : key ? await moveKeySession(key, sid, gate, model, refused, restored) : false;
+          const decided = seat ? await moveExhaustedSeat(seat, sid, launchedAt, model, refused) : key ? await moveKeySession(key, sid, launchedAt, model, refused, restored) : false;
           seatCheckAt = Date.now() + (decided ? SEAT_RETRY_MS : SEAT_POLL_MS);
         }
         return false;
@@ -850,7 +829,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
     drainStdout = null;
     await foldCost(sid, key?.id ?? null, restored);
 
-    const m = !terminating && existsSync(marker) ? await consumableMarker(marker, gate) : null;
+    const m = !terminating && existsSync(marker) ? await consumableMarker(marker, launchedAt) : null;
     if (m) {
       rmSync(marker, { force: true });
       respawns++;
@@ -875,7 +854,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
         record({ event: "compaction", result: "skipped" });
       } else if (m.compact && compactOn != null && resumable) {
         say(`\n\x1b[36m↻ tokenmaxxing: compacting the conversation on ${compactOn} before the move...\x1b[0m\n`, `tokenmaxxing: compacting the conversation on ${compactOn} before the move.`);
-        const baseEnv = { ...omit(scrubCredEnv(childEnv), ["TOKENMAXXING_SUPERVISED", "TOKENMAXXING_SESSION_ID", "TOKENMAXXING_LAUNCHED_AT", "TOKENMAXXING_MODEL", "TOKENMAXXING_REFUSED", "TOKENMAXXING_API_KEY_ID"]), TOKENMAXXING_PROBE: "1" };
+        const baseEnv = { ...omit(scrubCredEnv(childEnv), SUPERVISOR_ENV), TOKENMAXXING_PROBE: "1" };
         const compactEnv = seat ? { ...baseEnv, CLAUDE_SECURESTORAGE_CONFIG_DIR: storeDirFor(seat.id) } : compactKey ? apiKeyEnv(baseEnv, compactKey) : baseEnv;
         const compactSecret = seat == null && compactKey ? readApiKey(compactKey) : null;
         const outcome = await compactClaudeSession({
@@ -919,7 +898,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
   } catch (e) {
     await drainStdout?.(() => terminating);
     const msg = errorMessage(e);
-    const text = msg.startsWith("tokenmaxxing:") ? msg : `tokenmaxxing: ${msg}`;
+    const text = `tokenmaxxing: ${msg}`;
     say(`\n\x1b[31m${text}\x1b[0m\n`, text);
     log("supervisor.fatal", { err: msg });
     await releaseClaim();

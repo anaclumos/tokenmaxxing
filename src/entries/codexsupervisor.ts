@@ -74,15 +74,6 @@ export function seatsCodexArgs(argv: string[]): boolean {
   return managedCodexArgs(argv) || borrowingCodexArgs(argv);
 }
 
-export function shouldManageCodex(input: { argv: string[] }): boolean {
-  return !process.env.TOKENMAXXING_PROBE && managedCodexArgs(input.argv);
-}
-
-function borrowsCodexSeat(input: { argv: string[] }): boolean {
-  if (process.env.TOKENMAXXING_PROBE || process.env[UNMANAGED_ENV] || process.env.CODEX_HOME) return false;
-  return borrowingCodexArgs(input.argv);
-}
-
 function validWanted(input: { wanted: string | null; now: number; supervisorId: string }): Account | null {
   if (input.wanted == null) return null;
   const a = loadAccounts(codexPool).accounts.find((x) => x.id === input.wanted);
@@ -104,14 +95,15 @@ export async function runCodexSupervisor(input: { argv: string[] }): Promise<num
   const real = resolveRealBin(CODEX_BIN);
   const childEnv: Record<string, string | undefined> = { ...process.env, [WRAP_DEPTH_ENV]: String(wrapDepth() + 1) };
 
-  if (!shouldManageCodex({ argv }) || process.env[UNMANAGED_ENV]) {
+  if (process.env.TOKENMAXXING_PROBE || process.env[UNMANAGED_ENV] || !managedCodexArgs(argv)) {
     const passthroughEnv = omit(childEnv, [CODEX_SUPERVISOR_ID_ENV]);
     let child: Subprocess | null = null;
     process.on("SIGTERM", () => {
       if (child) child.kill("SIGTERM");
       else process.exit(143);
     });
-    const granted = borrowsCodexSeat({ argv }) ? await borrowCodexSeat(process.pid) : undefined;
+    const borrows = !process.env.TOKENMAXXING_PROBE && !process.env[UNMANAGED_ENV] && !process.env.CODEX_HOME && borrowingCodexArgs(argv);
+    const granted = borrows ? await borrowCodexSeat(process.pid) : undefined;
     const seat = granted && !("denied" in granted) ? granted : null;
     if (!seat && granted !== undefined) log("codexsupervisor.borrow_none", { reason: granted && "denied" in granted ? granted.denied : "no usable account" });
     if (seat && scanCodexArgs(argv).positionals[0] === "app-server") {

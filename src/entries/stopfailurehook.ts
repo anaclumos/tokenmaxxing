@@ -66,7 +66,7 @@ export async function runStopFailureHook(): Promise<number> {
       if (error !== "billing_error") return 0;
       const known = await refuseApiKey(keyId, now);
       log("stopfailure.key_refused", { key: keyId, known, subagent: !mainLoop });
-      const decision = await evaluateAndMaybeSwap(claude, now, canRespawn, null, { waiterId: canRespawn ? session?.sid : undefined, refused: refusedAccounts(), apiKeys: true, apiKeyId: keyId });
+      const decision = await evaluateAndMaybeSwap(claude, now, canRespawn, null, { waiterId: session?.sid, refused: refusedAccounts(), apiKeys: true, apiKeyId: keyId });
       const target = moveTarget(decision);
       if (session && canRespawn && target) {
         writeRespawnMarker({ session, ...target, waitUntil: target.waitUntil ?? now, compact: false, origin: "stopfailure" });
@@ -110,7 +110,7 @@ export async function runStopFailureHook(): Promise<number> {
     }
 
     const refused = enforced?.kind === "credits" ? [...new Set([...refusedAccounts(), enforced.account])] : undefined;
-    const decision = await evaluateAndMaybeSwap(claude, now, canRespawn, enforced, { waiterId: canRespawn ? session?.sid : undefined, apiKeys: canRespawn && keyMovesSupported() });
+    const decision = await evaluateAndMaybeSwap(claude, now, canRespawn, enforced, { waiterId: session?.sid, apiKeys: canRespawn && keyMovesSupported() });
     const target = moveTarget(decision);
     if (session && canRespawn && target) {
       writeRespawnMarker({ session, ...target, waitUntil: target.waitUntil ?? now, compact: false, origin: "stopfailure", refused });
