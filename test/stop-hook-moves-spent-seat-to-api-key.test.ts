@@ -33,7 +33,6 @@ test("the Stop hook of a supervised session whose only account is past its weekl
       TOKENMAXXING_LAUNCHED_AT: String(launchedAt),
       TOKENMAXXING_MODEL: "",
       TOKENMAXXING_REFUSED: "",
-      TOKENMAXXING_API_KEY_ID: "",
     });
 
     const hook = Bun.spawn([process.execPath, MAIN, "__stop-hook"], { env, stdin: new TextEncoder().encode(JSON.stringify({ session_id: sid, hook_event_name: "Stop" })), stdout: "pipe", stderr: "pipe" });
