@@ -270,8 +270,7 @@ function install(): void {
   console.log(c.yellow("`tokenmaxxing doctor` lists seats still needing trust."));
 }
 
-// Relative to Plus. prolite (Pro 100) is 5x per OpenAI's launch; pro (Pro 200) was 20x and is about 10x for new
-// subscribers; promax (Pro 500) is unpublished beyond "the most". Business, Enterprise, and Edu seats match Plus.
+// Each plan's Codex usage relative to Plus.
 const CODEX_PLAN_WEIGHTS: Record<string, number> = {
   free: 0.2,
   go: 0.5,
