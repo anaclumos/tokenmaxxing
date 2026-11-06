@@ -37,7 +37,7 @@ jobs:
         with:
           name: bun-lock
           path: bun.lock
-      - run: bun run typecheck
+      - run: bunx tsc
 
   test:
     if: github.event_name == 'pull_request'
@@ -52,7 +52,7 @@ jobs:
           bun-version: ${{ steps.bun.outputs.version }}
           no-cache: true
       - run: bun install --frozen-lockfile
-      - run: bun run test
+      - run: bun test ./test --isolate
 
   pack:
     if: github.event_name == 'pull_request'
@@ -106,7 +106,6 @@ jobs:
           node-version: 24
           registry-url: "https://registry.npmjs.org"
           package-manager-cache: false
-      - run: bun install --frozen-lockfile
       - name: Take the version from the tag
         id: version
         shell: bash
