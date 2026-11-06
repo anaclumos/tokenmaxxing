@@ -76,7 +76,7 @@ async function samplePool(accounts: Account[], now: number): Promise<Map<string,
   await Promise.all(
     accounts.map(async (a) => {
       const tee = loadUsageSnapshot(a.id);
-      const teeAt = tee == null ? null : (tee.state.sampledAt ?? tee.state.ts);
+      const teeAt = tee?.state.ts ?? null;
       if (teeAt != null && (a.lastUsageAt == null || teeAt >= a.lastUsageAt)) {
         foldTee(a, bars);
         reports.set(a.id, { ok: true, source: "statusline" });

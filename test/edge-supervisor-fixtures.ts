@@ -7,6 +7,7 @@ import { childEnv, freshHomes, type Homes } from "./edge-telemetry-fixtures.ts";
 const MAIN = join(import.meta.dir, "..", "src", "main.ts");
 const UNREACHABLE_HOST = "http://127.0.0.1:9";
 export const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+export const CHILD_LAUNCH = "child-launch";
 
 const RECORDER = `import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -16,7 +17,7 @@ const launches = readFileSync(env.EDGE_LAUNCHES, "utf8").split("\\n").filter((li
 if (env.EDGE_MARKER_TEXT !== undefined && launches === 1) {
   const dir = join(env.TOKENMAXXING_HOME, "respawn");
   mkdirSync(dir, { recursive: true });
-  writeFileSync(join(dir, env.TOKENMAXXING_SESSION_ID), env.EDGE_MARKER_TEXT);
+  writeFileSync(join(dir, env.TOKENMAXXING_SESSION_ID), env.EDGE_MARKER_TEXT.replaceAll('"${CHILD_LAUNCH}"', env.TOKENMAXXING_LAUNCHED_AT));
 }
 process.exit(Number(env.EDGE_EXIT ?? "0"));
 `;

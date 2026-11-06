@@ -52,7 +52,6 @@ export const UsageStateSchema = AggregateWindowsSchema.extend({
   account: z.string(),
   ts: z.number(),
   model: ModelInfoSchema.nullable().default(null),
-  sampledAt: z.number().optional(),
 });
 export type UsageState = z.infer<typeof UsageStateSchema>;
 
@@ -62,7 +61,7 @@ const AccountSchema = z.object({
   email: z.string().nullable(),
   tier: z.string().nullable(),
   addedAt: z.string(),
-  windows: z.array(WindowSchema).default([]),
+  windows: z.array(WindowSchema),
   lastUsageAt: z.number().optional(),
   lastProbeAt: z.number().optional(),
   probeFails: z.number().optional(),
@@ -171,7 +170,7 @@ export const RespawnMarkerSchema = z.object({
   sessionId: z.string(),
   compact: z.boolean(),
   origin: z.enum(["stop", "sessionstart", "stopfailure", "seatwatch"]),
-  launchedAt: z.number().optional(),
+  launchedAt: z.number(),
   refused: z.array(z.string()).optional(),
   apiKeyId: z.string().optional(),
 });

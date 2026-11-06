@@ -16,11 +16,11 @@ afterEach(() => {
   }
 });
 
-test("the supervised-session readers follow the environment of each call: session, launch time, live id, refused accounts, and key moves", async () => {
-  const { keyMovesSupported, refusedAccounts, supervisedSession } = await import("../src/lib/sessions.ts");
+test("the supervised-session readers follow the environment of each call: session, launch time, live id, and refused accounts", async () => {
+  const { refusedAccounts, supervisedSession } = await import("../src/lib/sessions.ts");
   mkdirSync(join(home, "sessions"), { recursive: true });
   writeFileSync(join(home, "sessions", `${IDS.session}.json`), JSON.stringify({ flags: ["--model", "opus"], cwd: "/work/repo", current: LIVE }));
-  const read = () => ({ session: supervisedSession(), refused: refusedAccounts(), keyMoves: keyMovesSupported() });
+  const read = () => ({ session: supervisedSession(), refused: refusedAccounts() });
 
   Object.assign(process.env, { TOKENMAXXING_SUPERVISED: "1", TOKENMAXXING_SESSION_ID: IDS.session, TOKENMAXXING_LAUNCHED_AT: "1762400000000", TOKENMAXXING_REFUSED: `${IDS.spare},,${IDS.backup}`, TOKENMAXXING_API_KEY_ID: "" });
   const supervised = read();
@@ -30,8 +30,8 @@ test("the supervised-session readers follow the environment of each call: sessio
   const plain = read();
 
   expect({ supervised, noSid, plain }).toEqual({
-    supervised: { session: { sid: IDS.session, launchedAt: 1762400000000, live: LIVE }, refused: [IDS.spare, IDS.backup], keyMoves: true },
+    supervised: { session: { sid: IDS.session, launchedAt: 1762400000000, live: LIVE }, refused: [IDS.spare, IDS.backup] },
     noSid: null,
-    plain: { session: null, refused: [], keyMoves: false },
+    plain: { session: null, refused: [] },
   });
 });

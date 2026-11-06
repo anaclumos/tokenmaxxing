@@ -55,7 +55,7 @@ export function teeObservation(account: Account): Observation | null {
   const stored = account.lastUsageAt != null ? { windows: account.windows, at: account.lastUsageAt } : null;
   const snap = loadUsageSnapshot(account.id);
   if (!snap) return stored;
-  const at = snap.state.sampledAt ?? snap.state.ts;
+  const at = snap.state.ts;
   if (stored != null && at <= stored.at) return stored;
   const aggregate = windowsOf({ fiveHour: snap.state.fiveHour, sevenDay: snap.state.sevenDay, perModel: {} }, at);
   const session = snap.state.fiveHour == null ? sessionWindow(account) : undefined;

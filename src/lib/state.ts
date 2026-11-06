@@ -139,23 +139,16 @@ export function clearUsageSnapshot(accountId: string): void {
   rmSync(usageJsonFor(accountId), { force: true });
 }
 
-const USAGE_TS_REFRESH_MS = 10 * 60_000;
-const SAMPLED_AT_REFRESH_MS = 30_000;
+const USAGE_TS_REFRESH_MS = 30_000;
 
-export function writeUsage(input: UsageState): boolean {
-  const file = usageJsonFor(input.account);
+export function writeUsage(next: UsageState): boolean {
+  const file = usageJsonFor(next.account);
   let prev: UsageState | null = null;
   try {
-    prev = loadUsageSnapshot(input.account)?.state ?? null;
+    prev = loadUsageSnapshot(next.account)?.state ?? null;
   } catch {
   }
-  const next: UsageState = { ...input, sampledAt: input.ts };
-  if (
-    prev &&
-    isEqual({ ...prev, ts: 0, sampledAt: 0 }, { ...next, ts: 0, sampledAt: 0 }) &&
-    next.ts - prev.ts < USAGE_TS_REFRESH_MS &&
-    next.ts - (prev.sampledAt ?? prev.ts) < SAMPLED_AT_REFRESH_MS
-  ) {
+  if (prev && isEqual({ ...prev, ts: 0 }, { ...next, ts: 0 }) && next.ts - prev.ts < USAGE_TS_REFRESH_MS) {
     try {
       utimesSync(file, new Date(next.ts), new Date(next.ts));
     } catch (e) {
