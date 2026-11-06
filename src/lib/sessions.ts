@@ -118,24 +118,24 @@ export function pruneStaleSessions(now: number): void {
   }
 }
 
-export type SupervisedSession = { sid: string; launchedAt: number | null; live: string };
+type SupervisedSession = { sid: string; launchedAt: number | null; live: string };
 
 const LaunchedAtSchema = z.coerce.number().optional();
 const RefusedSchema = z.string().optional().transform((ids) => (ids ?? "").split(",").filter((id) => id !== ""));
 
-export function supervisedSession(env: Record<string, string | undefined> = process.env): SupervisedSession | null {
-  if (env.TOKENMAXXING_SUPERVISED !== "1") return null;
-  const sid = env.TOKENMAXXING_SESSION_ID;
+export function supervisedSession(): SupervisedSession | null {
+  if (process.env.TOKENMAXXING_SUPERVISED !== "1") return null;
+  const sid = process.env.TOKENMAXXING_SESSION_ID;
   if (sid == null || sid === "") return null;
-  return { sid, launchedAt: LaunchedAtSchema.parse(env.TOKENMAXXING_LAUNCHED_AT) ?? null, live: liveSessionId(sid) };
+  return { sid, launchedAt: LaunchedAtSchema.parse(process.env.TOKENMAXXING_LAUNCHED_AT) ?? null, live: liveSessionId(sid) };
 }
 
-export function keyMovesSupported(env: Record<string, string | undefined> = process.env): boolean {
-  return env.TOKENMAXXING_API_KEY_ID !== undefined;
+export function keyMovesSupported(): boolean {
+  return process.env.TOKENMAXXING_API_KEY_ID !== undefined;
 }
 
-export function refusedAccounts(env: Record<string, string | undefined> = process.env): string[] {
-  return RefusedSchema.parse(env.TOKENMAXXING_REFUSED);
+export function refusedAccounts(): string[] {
+  return RefusedSchema.parse(process.env.TOKENMAXXING_REFUSED);
 }
 
 export function adoptLiveSession(session: SupervisedSession, stdinSid: string | undefined): SupervisedSession | null {

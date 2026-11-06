@@ -46,7 +46,7 @@ export function realpathOrNull(p: string): string | null {
   }
 }
 
-export function pointsBackAtUs(bin: string): boolean {
+function pointsBackAtUs(bin: string): boolean {
   const resolved = realpathOrNull(bin);
   const binDir = realpathOrNull(paths.binDir);
   return resolved != null && binDir != null && dirname(resolved) === binDir;

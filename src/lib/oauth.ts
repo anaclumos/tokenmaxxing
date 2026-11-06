@@ -5,20 +5,6 @@ import { JsonTextSchema, ProfileResponseSchema, type OAuthCreds, type TokenIdent
 
 const PROFILE_URL = env("TOKENMAXXING_OAUTH_PROFILE_URL", "https://api.anthropic.com/api/oauth/profile");
 
-export class InvalidGrantError extends Error {
-  constructor(public readonly detail: string) {
-    super(`invalid_grant: ${detail}`);
-    this.name = "InvalidGrantError";
-  }
-}
-
-export class IdentityUnavailableError extends Error {
-  constructor(public readonly status: number | null, public readonly detail: string) {
-    super(status == null ? `profile endpoint unreachable: ${detail}` : `identity check failed (HTTP ${status}): ${detail}`);
-    this.name = "IdentityUnavailableError";
-  }
-}
-
 export function isDeadCredential(creds: OAuthCreds): boolean {
   return creds.refreshToken === "" || creds.accessToken === "";
 }
@@ -37,25 +23,24 @@ export function isAccessTokenExpiring(creds: OAuthCreds): boolean {
   return creds.expiresAt - Date.now() <= 120_000;
 }
 
-export async function fetchTokenIdentity(accessToken: string, signal?: AbortSignal): Promise<TokenIdentity> {
+export async function fetchTokenIdentity(accessToken: string): Promise<TokenIdentity> {
   let res: Response;
   try {
     res = await http.get(PROFILE_URL, {
       headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
-      signal,
     });
   } catch (e) {
-    throw new IdentityUnavailableError(null, errorMessage(e));
+    throw new Error(`profile endpoint unreachable: ${errorMessage(e)}`);
   }
   let text: string;
   try {
     text = await res.text();
   } catch (e) {
-    throw new IdentityUnavailableError(res.status, `profile response body unreadable: ${errorMessage(e)}`);
+    throw new Error(`identity check failed (HTTP ${res.status}): profile response body unreadable: ${errorMessage(e)}`);
   }
-  if (!res.ok) throw new IdentityUnavailableError(res.status, safeErrorDetail({ text }));
+  if (!res.ok) throw new Error(`identity check failed (HTTP ${res.status}): ${safeErrorDetail({ text })}`);
   const parsed = ProfileResponseSchema.safeParse(JsonTextSchema.safeParse(text).data);
-  if (!parsed.success) throw new IdentityUnavailableError(res.status, `profile endpoint returned an unrecognized body (${text.length} bytes, withheld)`);
+  if (!parsed.success) throw new Error(`identity check failed (HTTP ${res.status}): profile endpoint returned an unrecognized body (${text.length} bytes, withheld)`);
   return parsed.data;
 }
 

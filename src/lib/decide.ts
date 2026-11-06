@@ -2,7 +2,7 @@ import { countBy } from "es-toolkit";
 import { CLAUDE_COMPACT_KILL_MS } from "./compact.ts";
 import { withLock } from "./lock.ts";
 import { loadAccounts, loadConfig, liveWaitClaims, releaseWaitClaim, replaceWaitClaim, saveAccounts } from "./state.ts";
-import { MAX_WAITERS_PER_ACCOUNT, isExhausted, landWindows, limitWindows, liveFamilyWalls, liveUsed, nextWeeklyReset, onCredits, pickBest, pickWaitTarget, rankOrder, screensUntilReset, sessionWindow, thresholdBars, wallUntil, wantsBankedReset, weeklyWindow, type PickCtx } from "./picker.ts";
+import { isExhausted, landWindows, limitWindows, liveFamilyWalls, liveUsed, nextWeeklyReset, onCredits, pickBest, pickWaitTarget, rankOrder, screensUntilReset, sessionWindow, thresholdBars, wallUntil, wantsBankedReset, weeklyWindow, type PickCtx } from "./picker.ts";
 import { familyTokens } from "./usage.ts";
 import { errorMessage, log } from "./log.ts";
 import type { Observation, Provider, ResetClaim } from "./provider.ts";
@@ -10,7 +10,7 @@ import type { Account, ApiKey, Bars, Config, EnforcedLimit } from "./types.ts";
 
 export type SwapDecision = { swapped: boolean; account: Account | null; apiKey?: ApiKey; reason: string; waitUntil?: number };
 
-export type EvalOpts = {
+type EvalOpts = {
   seatId?: string | null;
   sessionFamilies?: string[];
   sessionHeld?: string[] | null;
@@ -20,7 +20,7 @@ export type EvalOpts = {
   apiKeyId?: string;
 };
 
-export type MoveTarget = { accountId: string; apiKeyId?: string; waitUntil: number | undefined };
+type MoveTarget = { accountId: string; apiKeyId?: string; waitUntil: number | undefined };
 
 export function moveTarget(d: SwapDecision): MoveTarget | null {
   if (d.apiKey) return { accountId: "", apiKeyId: d.apiKey.id, waitUntil: undefined };
@@ -141,8 +141,7 @@ export async function evaluateAndMaybeSwap(p: Provider, now = Date.now(), canRes
   return withLock(p.pool.lockFile, async () => {
     if (waiterId != null) releaseWaitClaim(waiterId);
     const idx = loadAccounts(p.pool);
-    const id2 = activeId;
-    const active = id2 ? idx.accounts.find((a) => a.id === id2) : undefined;
+    const active = activeId ? idx.accounts.find((a) => a.id === activeId) : undefined;
 
     const origin = enforced ? idx.accounts.find((a) => a.id === enforced.account) : undefined;
     const scope = enforced?.family ?? null;
@@ -163,7 +162,7 @@ export async function evaluateAndMaybeSwap(p: Provider, now = Date.now(), canRes
     }
     const enforced2 = stamped && origin === active ? enforced : null;
 
-    if (id2 != null && !active) {
+    if (activeId != null && !active) {
       return { swapped: false, account: null, reason: "live-credential-not-in-pool" };
     }
 
@@ -174,27 +173,26 @@ export async function evaluateAndMaybeSwap(p: Provider, now = Date.now(), canRes
     }
     saveAccounts(p.pool, idx);
 
-    const families = opts.sessionFamilies ?? p.gatedFamilies(cfg);
     const walled = active != null && wallUntil(active, held) > now;
     const blindScreen = (enforced != null && (prior || enforced.blind)) || (walled && !enforced2);
-    const screened = blindScreen && families != null ? cfg.policy.switchModels : families;
+    const screened = blindScreen && gated != null ? cfg.policy.switchModels : gated;
     const switchFamilies = screened == null ? null : scope != null && !screened.includes(scope) ? [...screened, scope] : screened;
     const switchHeld = held == null || scope == null || held.includes(scope) ? held : [...held, scope];
     const present = p.presence();
     const seats = p.seats === "shared" ? present : null;
 
-    const seatExhausted = active != null && isExhausted(active, { now, thresholds: bars, currentId: id2, families: switchFamilies, held: switchHeld, seats });
-    if (keyId == null && !enforced2 && !isOver(active, obs2, { now, thresholds: bars, currentId: id2, families, held, seats }) && !(enforced && seatExhausted)) {
+    const seatExhausted = active != null && isExhausted(active, { now, thresholds: bars, currentId: activeId, families: switchFamilies, held: switchHeld, seats });
+    if (keyId == null && !enforced2 && !isOver(active, obs2, { now, thresholds: bars, currentId: activeId, families: gated, held, seats }) && !(enforced && seatExhausted)) {
       return { swapped: false, account: null, reason: "raced-already-swapped" };
     }
     if (p.seats === "shared" && !canRespawn) {
       return { swapped: false, account: null, reason: "needs-respawn" };
     }
 
-    const seatOf = (cur: { accounts: Account[] }): Account | null => cur.accounts.find((a) => a.id === id2) ?? null;
+    const seatOf = (cur: { accounts: Account[] }): Account | null => cur.accounts.find((a) => a.id === activeId) ?? null;
 
     const rejected = new Set<string>();
-    const usable = (accounts: Account[]): Account[] => accounts.filter((a) => !rejected.has(a.id) && (p.seats === "shared" || a.id === id2 || !present.has(a.id)));
+    const usable = (accounts: Account[]): Account[] => accounts.filter((a) => !rejected.has(a.id) && (p.seats === "shared" || a.id === activeId || !present.has(a.id)));
     const skipOrThrow = (e: unknown, candidate: Account): void => {
       if (p.classifySwapError(e) === "fatal") throw e;
       rejected.add(candidate.id);
@@ -225,7 +223,7 @@ export async function evaluateAndMaybeSwap(p: Provider, now = Date.now(), canRes
       if (keyId != null && keys.holds(keyId)) return { swapped: false, account: null, reason: "api-key-holds" };
       const key = keys.pick(keyId == null ? [] : [keyId]);
       if (key) {
-        log("decide.api_key", { key: key.id, from: keyId ?? id2?.slice(0, 8) });
+        log("decide.api_key", { key: key.id, from: keyId ?? activeId?.slice(0, 8) });
         return { swapped: true, account: null, apiKey: key, reason: "api-key" };
       }
     }
@@ -242,10 +240,10 @@ export async function evaluateAndMaybeSwap(p: Provider, now = Date.now(), canRes
       const others = liveWaitClaims(now).filter((c) => c.sessionId !== waiterId);
       const waiters = new Map(Object.entries(countBy(others, (c) => c.accountId)));
       const waitable = usable(fresh.accounts).filter((a) => keyId == null || !opts.refused?.includes(a.id));
-      const target = pickWaitTarget(waitable, ctx, waiters, MAX_WAITERS_PER_ACCOUNT, now + cfg.policy.maxWaitMs, now + 2 * cfg.policy.maxWaitMs);
+      const target = pickWaitTarget(waitable, ctx, waiters, now + cfg.policy.maxWaitMs, now + 2 * cfg.policy.maxWaitMs);
 
       if (!target) {
-        const soonest = pickWaitTarget(waitable, ctx, new Map(), MAX_WAITERS_PER_ACCOUNT, Number.POSITIVE_INFINITY, Number.POSITIVE_INFINITY);
+        const soonest = pickWaitTarget(waitable, ctx, new Map(), Number.POSITIVE_INFINITY, Number.POSITIVE_INFINITY);
         const waitUntil = soonest?.availableAt;
         log("decide.depleted", { waitUntil: waitUntil ?? 0 });
         return { swapped: false, account: null, reason: "all-depleted", ...(waitUntil != null ? { waitUntil } : {}) };

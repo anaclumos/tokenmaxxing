@@ -12,7 +12,7 @@ export type Observation = { windows: Window[]; at: number };
 
 export type SampleReport = { ok: true; source: "statusline" | "probe" | "cached" } | { ok: false; reason: string };
 
-export type SwapFailure = "dead-grant" | "skip" | "fatal";
+type SwapFailure = "skip" | "fatal";
 
 export type ResetClaim = { reset: boolean; detail: string };
 
