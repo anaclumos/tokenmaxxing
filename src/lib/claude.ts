@@ -5,7 +5,7 @@ import { z } from "zod";
 import { claudeApiKeys, launchApiKey } from "./apikeys.ts";
 import { readItem, writeItem, deleteItem, isolatedTarget, readStore, storeTarget } from "./credstore.ts";
 import { CLAUDE_BIN, resolveRealBin, resolveVerifiedClaude } from "./claudebin.ts";
-import { activationHint, CHECK_JOB, ensurePathInRc, HUB_JOB, installSupervisor, managedShellRcSkipLines, shellRcPath } from "./install.ts";
+import { activationHint, CHECK_JOB, ensurePathInRc, HUB_JOB, installSupervisor, shellRcPath } from "./install.ts";
 import { withLock } from "./lock.ts";
 import { errorMessage, log } from "./log.ts";
 import { claudeTierLabel, describeIdentity, fetchTokenIdentity, isDeadCredential, InvalidGrantError } from "./oauth.ts";
@@ -342,10 +342,9 @@ export function ensurePathAhead(): void {
   }
   const outcome = ensurePathInRc(rc);
   if (outcome === "skipped") {
-    const hint = managedShellRcSkipLines();
-    console.log(c.yellow(`⚠ ${hint.headline}`));
-    console.log(c.yellow(`  ${hint.detail}`));
-    console.log(c.yellow(`  ${hint.exportLine}`));
+    console.log(c.yellow("⚠ shell rc is not writable - PATH was not auto-edited"));
+    console.log(c.yellow(`  put ${paths.binDir} on PATH ahead of the real claude, e.g.`));
+    console.log(c.yellow(`  export PATH="${paths.binDir}:$PATH"`));
     return;
   }
   if (outcome === "added") console.log(`${c.green("✓")} added ${paths.binDir} to PATH in ${rc} - restart your shell (or \`source ${rc}\`)`);

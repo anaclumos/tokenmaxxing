@@ -11,7 +11,7 @@ import { CLAUDE_BIN, realpathOrNull, resolveRealBin } from "./claudebin.ts";
 import { loadConfig, readJsonFile, type BinKey } from "./state.ts";
 import { ErrnoSchema } from "./types.ts";
 
-export type InstallOutcome = { claudeWrapper: string; installedBin: string; pathAhead: boolean; timerLoaded: boolean; hubLoaded: boolean; checkIntervalS: number };
+type InstallOutcome = { pathAhead: boolean; timerLoaded: boolean; hubLoaded: boolean; checkIntervalS: number };
 
 export function isBinDirAhead(bin: { name: string; key: BinKey } = CLAUDE_BIN): boolean {
   const dirs = (process.env.PATH ?? "").split(":");
@@ -22,19 +22,11 @@ export function isBinDirAhead(bin: { name: string; key: BinKey } = CLAUDE_BIN): 
     const realIdx = dirs.indexOf(realDir);
     return realIdx < 0 || ourIdx < realIdx;
   } catch {
-    return ourIdx >= 0;
+    return true;
   }
 }
 
 const envFlag = (name: string): boolean => z.stringbool().optional().parse(optionalEnv(name)) === true;
-
-function skipImperativeTimer(): boolean {
-  return envFlag("TOKENMAXXING_SKIP_TIMER");
-}
-
-function skipImperativeHub(): boolean {
-  return envFlag("TOKENMAXXING_SKIP_HUB");
-}
 
 function cannotWriteRcTarget(target: string): boolean {
   if (envFlag("TOKENMAXXING_SKIP_SHELL_RC")) return true;
@@ -45,14 +37,6 @@ function cannotWriteRcTarget(target: string): boolean {
   } catch {
     return true;
   }
-}
-
-export function managedShellRcSkipLines(): { headline: string; detail: string; exportLine: string } {
-  return {
-    headline: "shell rc is not writable - PATH was not auto-edited",
-    detail: `put ${paths.binDir} on PATH ahead of the real claude, e.g.`,
-    exportLine: `export PATH="${paths.binDir}:$PATH"`,
-  };
 }
 
 export function miseStablePath(path: string): string {
@@ -86,8 +70,6 @@ export function installSupervisor(): InstallOutcome {
   installSettings();
   const checkIntervalS = Math.ceil(loadConfig().policy.checkIntervalMs / 1000);
   return {
-    claudeWrapper: paths.supervisorLink,
-    installedBin: target,
     pathAhead: isBinDirAhead(),
     timerLoaded: installJob(CHECK_JOB, checkIntervalS),
     hubLoaded: installJob(HUB_JOB, checkIntervalS),
@@ -115,7 +97,7 @@ function withoutOurCodexStopHooks(groups: { hooks: { type?: string; command?: st
     .filter((group) => group.hooks.length > 0);
 }
 
-export function installCodexStopHook(): void {
+function installCodexStopHook(): void {
   const current = existsSync(codexPaths.hooksJson)
     ? readJsonFile(codexPaths.hooksJson, CodexHooksFileSchema)
     : CodexHooksFileSchema.parse({});
@@ -132,7 +114,7 @@ export function installCodexStopHook(): void {
   writeFileAtomic(codexPaths.hooksJson, JSON.stringify(next, null, 2) + "\n");
 }
 
-export function uninstallCodexStopHook(): void {
+function uninstallCodexStopHook(): void {
   if (!existsSync(codexPaths.hooksJson)) return;
   const current = readJsonFile(codexPaths.hooksJson, CodexHooksFileSchema);
   const next = {
@@ -145,7 +127,7 @@ export function uninstallCodexStopHook(): void {
   writeFileAtomic(codexPaths.hooksJson, JSON.stringify(next, null, 2) + "\n");
 }
 
-export function codexStopHookGroupIndex(): number | null {
+function codexStopHookGroupIndex(): number | null {
   if (!existsSync(codexPaths.hooksJson)) return null;
   let parsed: z.infer<typeof CodexHooksFileSchema>;
   try {
@@ -183,7 +165,7 @@ export function installCodexSupervisor(): void {
   installCodexStopHook();
 }
 
-export function uninstallCodexSupervisor(): void {
+function uninstallCodexSupervisor(): void {
   uninstallCodexStopHook();
   rmSync(codexSupervisorLink(), { force: true });
 }
@@ -204,7 +186,7 @@ export function installMuseSupervisor(): void {
   writeFileAtomic(museSupervisorLink(), `#!/bin/sh\nexec ${shellQuote(installEntryPoints())} __supervise-muse "$@"\n`, 0o755);
 }
 
-export type UnitJob = {
+type UnitJob = {
   label: string;
   arg: string;
   log: string;
@@ -218,7 +200,7 @@ export const CHECK_JOB: UnitJob = {
   label: "com.tokenmaxxing.check",
   arg: "check",
   log: "check.stderr.log",
-  skip: skipImperativeTimer,
+  skip: () => envFlag("TOKENMAXXING_SKIP_TIMER"),
   unit: "tokenmaxxing-check.timer",
   launchd: (intervalS) => `  <key>StartInterval</key><integer>${intervalS}</integer>\n`,
   systemd: {
@@ -247,7 +229,7 @@ export const HUB_JOB: UnitJob = {
   label: "com.tokenmaxxing.hub",
   arg: "serve",
   log: "hub.stderr.log",
-  skip: skipImperativeHub,
+  skip: () => envFlag("TOKENMAXXING_SKIP_HUB"),
   unit: "tokenmaxxing-hub.service",
   launchd: () => `  <key>KeepAlive</key><dict><key>SuccessfulExit</key><false/></dict>\n  <key>RunAtLoad</key><true/>\n`,
   systemd: {
@@ -445,7 +427,7 @@ export function ensurePathInRc(rc: string): "added" | "present" | "skipped" {
   return "added";
 }
 
-export type ShellShadower = { kind: "shadow" | "bypass"; name: string; line: string };
+type ShellShadower = { kind: "shadow" | "bypass"; name: string; line: string };
 
 export function findClaudeShadowers(rcText: string): ShellShadower[] {
   const out: ShellShadower[] = [];
@@ -469,7 +451,7 @@ export function findClaudeShadowers(rcText: string): ShellShadower[] {
   return out;
 }
 
-export function removePathFromRc(rc: string): boolean {
+function removePathFromRc(rc: string): boolean {
   if (!existsSync(rc)) return false;
   const target = realpathSync(rc);
   const lines = readFileSync(target, "utf8").split("\n");
@@ -485,9 +467,9 @@ export function removePathFromRc(rc: string): boolean {
   return true;
 }
 
-export type UninstallOutcome = { timer: UnitOutcome; hub: UnitOutcome; pathLineRemoved: boolean };
+type UninstallOutcome = { timer: UnitOutcome; hub: UnitOutcome; pathLineRemoved: boolean };
 
-export function loginHome(): string {
+function loginHome(): string {
   const cmd = process.platform === "darwin" ? ["id", "-P"] : ["getent", "passwd", String(userInfo().uid)];
   const proc = Bun.spawnSync(cmd, { stdout: "pipe", stderr: "ignore", timeout: 10_000 });
   const home = proc.stdout.toString().trim().split(":").at(-2);

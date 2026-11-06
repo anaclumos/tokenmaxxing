@@ -4,7 +4,6 @@ const OAuthCredsSchema = z.looseObject({
   accessToken: z.string(),
   refreshToken: z.string(),
   expiresAt: z.number(),
-  refreshTokenExpiresAt: z.number().optional(),
   scopes: z.array(z.string()).default([]),
   subscriptionType: z.string().optional(),
   rateLimitTier: z.string().optional(),
@@ -18,14 +17,9 @@ export const OAuthAccountSchema = z.looseObject({
   emailAddress: z.string(),
   organizationUuid: z.string(),
   organizationName: z.string().nullish(),
-  seatTier: z.string().nullish(),
-  billingType: z.string().nullish(),
-  displayName: z.string().nullish(),
-  organizationRateLimitTier: z.string().nullish(),
 });
-export type OAuthAccount = z.infer<typeof OAuthAccountSchema>;
 
-export const UsageWindowSchema = z.object({
+const UsageWindowSchema = z.object({
   usedPercentage: z.number(),
   resetsAt: z.number().nullable(),
 });
@@ -36,12 +30,12 @@ const AggregateWindowsSchema = z.object({
   sevenDay: UsageWindowSchema,
 });
 
-export const BankedResetSchema = z.object({ grant: z.string().nullable() });
+const BankedResetSchema = z.object({ grant: z.string().nullable() });
 export type BankedReset = z.infer<typeof BankedResetSchema>;
 
 export type UsageWindows = z.infer<typeof AggregateWindowsSchema> & { perModel: Record<string, UsageWindow>; bankedReset?: BankedReset };
 
-export const WindowSchema = z.object({
+const WindowSchema = z.object({
   name: z.string().nullable(),
   usedPercentage: z.number(),
   resetsAt: z.number().nullable(),
@@ -61,7 +55,7 @@ export const UsageStateSchema = AggregateWindowsSchema.extend({
 });
 export type UsageState = z.infer<typeof UsageStateSchema>;
 
-export const AccountSchema = z.object({
+const AccountSchema = z.object({
   id: z.string(),
   label: z.string(),
   email: z.string().nullable(),
@@ -156,7 +150,7 @@ export const ConfigSchema = z
   });
 export type Config = z.infer<typeof ConfigSchema>;
 
-export const WaitClaimSchema = z.object({
+const WaitClaimSchema = z.object({
   sessionId: z.string(),
   accountId: z.string(),
   at: z.number(),
@@ -181,13 +175,12 @@ export const RespawnMarkerSchema = z.object({
   apiKeyId: z.string().optional(),
 });
 
-export const ApiKeySchema = z.object({
+const ApiKeySchema = z.object({
   id: z.string(),
   label: z.string(),
   workspaceId: z.string().optional(),
   creditUsd: z.number().optional(),
   spentUsd: z.number(),
-  creditSetAt: z.number(),
   refusedAt: z.number().optional(),
   addedAt: z.number(),
   openrouter: z.object({ remainingUsd: z.number().nullable(), at: z.number() }).optional(),
@@ -221,7 +214,7 @@ export const InstantSchema = z.iso.datetime({ offset: true }).transform((iso) =>
 
 const StdinWindowSchema = z.looseObject({ used_percentage: z.number(), resets_at: EpochSecondsSchema.nullable().optional() });
 
-export const RateLimitsStdinSchema = z.looseObject({
+const RateLimitsStdinSchema = z.looseObject({
   rate_limits: z
     .looseObject({
       five_hour: StdinWindowSchema.nullish(),

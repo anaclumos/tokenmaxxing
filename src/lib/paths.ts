@@ -6,8 +6,8 @@ const HOME = homedir();
 
 const EnvOverrideSchema = z.string().min(1).optional().catch(undefined);
 
-export function optionalEnv(name: string, source: Record<string, string | undefined> = process.env): string | undefined {
-  return EnvOverrideSchema.parse(source[name]);
+export function optionalEnv(name: string): string | undefined {
+  return EnvOverrideSchema.parse(process.env[name]);
 }
 
 export function env(name: string, fallback: string): string {
@@ -94,10 +94,8 @@ export function codexAuthJsonFor(accountId: string): string {
   return join(codexStoreDirFor(accountId), "auth.json");
 }
 
-export function codexSeatFromEnv(accountIds: string[], env: Record<string, string | undefined> = process.env): string | null {
-  const home = env.CODEX_HOME;
-  if (home == null || home === "") return null;
-  return accountIds.find((id) => codexStoreDirFor(id) === home) ?? null;
+export function codexSeatFromEnv(accountIds: string[]): string | null {
+  return accountIds.find((id) => codexStoreDirFor(id) === process.env.CODEX_HOME) ?? null;
 }
 
 export type PiPool = "claude" | "codex";
@@ -165,10 +163,8 @@ export function museAuthJsonFor(accountId: string): string {
   return join(museStoreDirFor(accountId), "muse", "auth.json");
 }
 
-export function museSeatFromEnv(accountIds: string[], env: Record<string, string | undefined> = process.env): string | null {
-  const home = env.XDG_CONFIG_HOME;
-  if (home == null || home === "") return null;
-  return accountIds.find((id) => museStoreDirFor(id) === home) ?? null;
+export function museSeatFromEnv(accountIds: string[]): string | null {
+  return accountIds.find((id) => museStoreDirFor(id) === process.env.XDG_CONFIG_HOME) ?? null;
 }
 
 export const cursorPaths = {
@@ -197,10 +193,8 @@ export function kimiConfigFor(accountId: string): string {
   return join(kimiStoreDirFor(accountId), "config.toml");
 }
 
-export function grokSeatFromEnv(accountIds: string[], env: Record<string, string | undefined> = process.env): string | null {
-  const home = env.GROK_HOME;
-  if (home == null || home === "") return null;
-  return accountIds.find((id) => grokStoreDirFor(id) === home) ?? null;
+export function grokSeatFromEnv(accountIds: string[]): string | null {
+  return accountIds.find((id) => grokStoreDirFor(id) === process.env.GROK_HOME) ?? null;
 }
 
 const CLAUDE_KEYCHAIN_ACCOUNT_PATTERN = /^[a-zA-Z0-9._-]+$/;
@@ -231,10 +225,8 @@ export function usageJsonFor(accountId: string): string {
   return join(paths.usageDir, `${shortId(accountId)}.json`);
 }
 
-export function seatFromEnv(accountIds: string[], env: Record<string, string | undefined> = process.env): string | null {
-  const store = env.CLAUDE_SECURESTORAGE_CONFIG_DIR;
-  if (store == null || store === "") return null;
-  return accountIds.find((id) => storeDirFor(id) === store) ?? null;
+export function seatFromEnv(accountIds: string[]): string | null {
+  return accountIds.find((id) => storeDirFor(id) === process.env.CLAUDE_SECURESTORAGE_CONFIG_DIR) ?? null;
 }
 
 export function namespacedCredService(configDirRaw: string): string {

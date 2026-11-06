@@ -11,9 +11,9 @@ const STATE_TEXT: Record<Telemetry, string> = {
 };
 
 export async function cmdTelemetry(args: string[]): Promise<number> {
-  const [choice, extra] = args;
+  const [choice] = args;
   const on = choice == null ? undefined : CHOICES.get(choice);
-  if (extra != null || (choice != null && on == null)) {
+  if (choice != null && on == null) {
     emitError({ message: `usage: tokenmaxxing telemetry [on|off], got: ${args.join(" ")}` });
     return 2;
   }

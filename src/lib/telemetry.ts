@@ -78,7 +78,7 @@ const LineSchema = z
   .and(EventSchema);
 type Line = z.output<typeof LineSchema>;
 
-export type TelemetryEvent = Exclude<z.input<typeof EventSchema>, { event: "install_daily" }>;
+type TelemetryEvent = Exclude<z.input<typeof EventSchema>, { event: "install_daily" }>;
 
 const StateSchema = z.object({ installId: z.uuid(), noticeAt: CountSchema.nullable(), attemptedAt: CountSchema.nullable() });
 type State = z.output<typeof StateSchema>;

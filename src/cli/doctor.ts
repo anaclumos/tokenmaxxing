@@ -1,8 +1,8 @@
-import { existsSync, readFileSync, realpathSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { mapAsync } from "es-toolkit";
 import { analyzeArgs } from "../entries/supervisor.ts";
 import { seatsCodexArgs } from "../entries/codexsupervisor.ts";
-import { CLAUDE_BIN, CODEX_BIN, MUSE_BIN, PI_BIN, verifyRealBin } from "../lib/claudebin.ts";
+import { CLAUDE_BIN, CODEX_BIN, MUSE_BIN, PI_BIN, realpathOrNull, verifyRealBin } from "../lib/claudebin.ts";
 import { checkSettings, installedBin } from "../lib/settings.ts";
 import { activationHint, CHECK_JOB, codexStoreHookTrust, codexSupervisorLink, findClaudeShadowers, HUB_JOB, isBinDirAhead, jobHealthy, miseStablePath, museSupervisorLink, piSupervisorLink, shellRcPath } from "../lib/install.ts";
 import { museStoreIdentity, museStoreUsable } from "../lib/muse.ts";
@@ -21,15 +21,6 @@ type RealBin = { name: string; real: string; link: string; seated: (argv: string
 const NON_SESSION_CLAUDE_FLAGS = new Set(["--chrome-native-host"]);
 const ACCOUNT_CHECKS_AT_ONCE = 8;
 
-function realOrNull(path: string | null): string | null {
-  if (path == null) return null;
-  try {
-    return realpathSync(path);
-  } catch {
-    return null;
-  }
-}
-
 async function attempt<T>(work: () => Promise<T>): Promise<{ ok: true; value: T } | { ok: false; error: string }> {
   try {
     return { ok: true, value: await work() };
@@ -46,8 +37,9 @@ function unsupervisedRuns(bins: RealBin[]): { bin: RealBin; pid: number; parent:
   const entry = miseStablePath(Bun.main);
   const binOf = new Map<number, RealBin>();
   for (const pid of table.keys()) {
-    const exe = realOrNull(executablePath(pid));
-    const bin = bins.find((b) => b.real === exe);
+    const exe = executablePath(pid);
+    const real = exe == null ? null : realpathOrNull(exe);
+    const bin = bins.find((b) => b.real === real);
     if (bin) binOf.set(pid, bin);
   }
   const out: { bin: RealBin; pid: number; parent: string }[] = [];
@@ -248,9 +240,9 @@ export async function cmdDoctor(): Promise<number> {
   }
 
   const bins: RealBin[] = [];
-  const realClaude = existsSync(paths.supervisorLink) ? realOrNull(cfg.claudeBin || null) : null;
+  const realClaude = existsSync(paths.supervisorLink) && cfg.claudeBin ? realpathOrNull(cfg.claudeBin) : null;
   if (realClaude) bins.push({ name: "claude", real: realClaude, link: paths.supervisorLink, seated: (argv) => analyzeArgs(argv).manage && !argv.some((a) => NON_SESSION_CLAUDE_FLAGS.has(a)) });
-  const realCodex = codexShim ? realOrNull(cfg.codexBin || null) : null;
+  const realCodex = codexShim && cfg.codexBin ? realpathOrNull(cfg.codexBin) : null;
   if (realCodex) bins.push({ name: "codex", real: realCodex, link: codexSupervisorLink(), seated: seatsCodexArgs });
   try {
     for (const run of unsupervisedRuns(bins)) {

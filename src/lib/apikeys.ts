@@ -12,8 +12,8 @@ import type { ApiKeyPool } from "./provider.ts";
 import { readJsonFile } from "./state.ts";
 import { ApiKeysIndexSchema, JsonTextSchema, SessionCostSchema, type ApiKey, type ApiKeysIndex, type SessionCost } from "./types.ts";
 
-export const API_KEY_ENV = "TOKENMAXXING_API_KEY_ID";
-export const API_KEY_FD = 3;
+const API_KEY_ENV = "TOKENMAXXING_API_KEY_ID";
+const API_KEY_FD = 3;
 
 export function apiKeyEnv(env: Record<string, string | undefined>, key: ApiKey): Record<string, string | undefined> {
   const header = key.workspaceId == null ? null : `anthropic-workspace-id: ${key.workspaceId}`;
@@ -29,7 +29,7 @@ export function apiKeyEnv(env: Record<string, string | undefined>, key: ApiKey):
 export const OPENROUTER_PREFIX = "sk-or-";
 
 export function isOpenRouterKey(key: ApiKey): boolean {
-  return readApiKey(key).startsWith(OPENROUTER_PREFIX);
+  return key.openrouter != null;
 }
 
 const OPENROUTER_URL = env("TOKENMAXXING_OPENROUTER_URL", "https://openrouter.ai/api");
@@ -45,7 +45,6 @@ export async function readOpenRouterCredit(secret: string): Promise<NonNullable<
 }
 
 export async function refreshOpenRouterCredit(): Promise<void> {
-  if (!existsSync(claudePool.apiKeysJson)) return;
   const reads = await Promise.all(
     availableKeys().map(async (k) => {
       try {
@@ -115,7 +114,7 @@ export function creditLeft(k: ApiKey): number | null {
   return k.creditUsd == null ? null : k.creditUsd - k.spentUsd;
 }
 
-export function keyUsable(k: ApiKey): boolean {
+function keyUsable(k: ApiKey): boolean {
   const left = creditLeft(k);
   return k.refusedAt == null && (left == null || left > 0);
 }
@@ -125,7 +124,7 @@ export function keySessions(): Map<string, number> {
   return new Map(Object.entries(countBy(ids, (id) => id)));
 }
 
-export function pickApiKey(keys: ApiKey[], sessions: Map<string, number>, exclude: string[]): ApiKey | null {
+function pickApiKey(keys: ApiKey[], sessions: Map<string, number>, exclude: string[]): ApiKey | null {
   const candidates = keys.filter((k) => keyUsable(k) && !exclude.includes(k.id));
   return sortBy(candidates, [(k) => (creditLeft(k) == null ? 1 : 0), (k) => -(creditLeft(k) ?? 0), (k) => sessions.get(k.id) ?? 0, (k) => k.addedAt])[0] ?? null;
 }
@@ -143,12 +142,12 @@ export function launchApiKey(): ApiKey | null {
   return pickApiKey(availableKeys(), keySessions(), []);
 }
 
-export function liveApiKeyId(env: Record<string, string | undefined> = process.env): string | null {
-  return optionalEnv(API_KEY_ENV, env) ?? null;
+export function liveApiKeyId(): string | null {
+  return optionalEnv(API_KEY_ENV) ?? null;
 }
 
 export const claudeApiKeys: ApiKeyPool = {
-  liveId: () => liveApiKeyId(),
+  liveId: liveApiKeyId,
   holds: (id) => usableApiKey(id) != null,
   pick: (exclude) => pickApiKey(availableKeys(), keySessions(), exclude),
 };

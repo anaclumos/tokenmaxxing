@@ -8,7 +8,7 @@ import { loadAccounts, loadConfig, saveAccounts, upsertAccount } from "../lib/st
 import { bucket, record } from "../lib/telemetry.ts";
 import { c, count } from "./render.ts";
 
-export function printUsage(p: Provider): void {
+function printUsage(p: Provider): void {
   console.log();
   console.log(`  ${c.bold("how to use")} - ${c.cyan("xx")} is shorthand for ${c.cyan("tokenmaxxing")}:`);
   if (p.statusOnly) {

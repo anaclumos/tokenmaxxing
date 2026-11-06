@@ -49,7 +49,7 @@ describe("the check tick", () => {
     const tokens = { id_token: idToken, access_token: jwt({ exp: Math.floor(now / 1000) + 3600 }), refresh_token: "codex-refresh" };
     writeFile(codexAuthJsonFor(codexId), JSON.stringify({ tokens }));
 
-    saveApiKeys({ version: 1, keys: [{ id: "router", label: "router", spentUsd: 0, creditSetAt: now, addedAt: now }], baselines: {} });
+    saveApiKeys({ version: 1, keys: [{ id: "router", label: "router", spentUsd: 0, addedAt: now, openrouter: { remainingUsd: null, at: 0 } }], baselines: {} });
     writeFile(apiKeySecretFor("router"), "sk-or-test-key\n");
 
     try {
