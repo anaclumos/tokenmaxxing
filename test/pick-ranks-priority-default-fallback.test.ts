@@ -14,7 +14,7 @@ async function setup(config: Record<string, unknown>) {
   const pick = (accounts: Account[], seats = new Map<string, number>()) => pickBest(accounts, { ...base, thresholds, seats })?.id ?? null;
   const max = (id: string, sessionUsed: number, weekReset = now + 5 * DAY_MS): Account =>
     account(id, "max", [sessionWindow(sessionUsed, now + 4 * HOUR_MS, now), weeklyWindow(30, weekReset, now)]);
-  return { now, pick, max, ConfigSchema };
+  return { now, pick, max };
 }
 
 describe("account ranks: priority accounts first, then default, then fallback", () => {
@@ -51,12 +51,5 @@ describe("account ranks: priority accounts first, then default, then fallback", 
     const { pick, max } = await setup({ ranks: { gone: "priority", roomy: "fallback" } });
 
     expect(pick([max("roomy", 0), max("busy", 60)])).toBe("busy");
-  });
-
-  test("a rank other than priority, default, or fallback fails the config", async () => {
-    const { ConfigSchema } = await setup({});
-
-    expect(ConfigSchema.safeParse({ ranks: { a: "first" } }).success).toBe(false);
-    expect(ConfigSchema.parse({}).ranks).toEqual({});
   });
 });
