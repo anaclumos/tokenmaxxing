@@ -262,7 +262,7 @@ async function consumableMarker(marker: string, launchedAt: number): Promise<z.i
     log("supervisor.marker_invalid", { err: errorMessage(e) });
     throw new Error(`the session was stopped because the respawn marker is corrupt. Inspect ${marker}, then run \`claude --resume ${basename(marker)}\` (a fresh launch clears it)`);
   }
-  if (m.launchedAt !== undefined && m.launchedAt !== launchedAt) {
+  if (m.launchedAt !== launchedAt) {
     await withLock(claudePool.lockFile, () => {
       rmSync(marker, { force: true });
       releaseClaimLocked(basename(marker));

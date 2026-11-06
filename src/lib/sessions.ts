@@ -118,20 +118,16 @@ export function pruneStaleSessions(now: number): void {
   }
 }
 
-type SupervisedSession = { sid: string; launchedAt: number | null; live: string };
+type SupervisedSession = { sid: string; launchedAt: number; live: string };
 
-const LaunchedAtSchema = z.coerce.number().optional();
+const LaunchedAtSchema = z.coerce.number();
 const RefusedSchema = z.string().optional().transform((ids) => (ids ?? "").split(",").filter((id) => id !== ""));
 
 export function supervisedSession(): SupervisedSession | null {
   if (process.env.TOKENMAXXING_SUPERVISED !== "1") return null;
   const sid = process.env.TOKENMAXXING_SESSION_ID;
   if (sid == null || sid === "") return null;
-  return { sid, launchedAt: LaunchedAtSchema.parse(process.env.TOKENMAXXING_LAUNCHED_AT) ?? null, live: liveSessionId(sid) };
-}
-
-export function keyMovesSupported(): boolean {
-  return process.env.TOKENMAXXING_API_KEY_ID !== undefined;
+  return { sid, launchedAt: LaunchedAtSchema.parse(process.env.TOKENMAXXING_LAUNCHED_AT), live: liveSessionId(sid) };
 }
 
 export function refusedAccounts(): string[] {
@@ -159,7 +155,7 @@ export function writeRespawnMarker(input: { session: SupervisedSession; accountI
     sessionId: input.session.live,
     compact: input.compact,
     origin: input.origin,
-    ...(input.session.launchedAt != null ? { launchedAt: input.session.launchedAt } : {}),
+    launchedAt: input.session.launchedAt,
     ...(input.refused != null ? { refused: input.refused } : {}),
   };
   writeFileAtomic(join(paths.respawnDir, input.session.sid), JSON.stringify(payload));

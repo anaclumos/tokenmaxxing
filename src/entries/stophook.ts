@@ -2,7 +2,7 @@ import { z } from "zod";
 import { claude } from "../lib/claude.ts";
 import { evaluateAndMaybeSwap, moveTarget } from "../lib/decide.ts";
 import { readStdin } from "../lib/proc.ts";
-import { adoptLiveSession, keyMovesSupported, refusedAccounts, supervisedSession, writeRespawnMarker } from "../lib/sessions.ts";
+import { adoptLiveSession, refusedAccounts, supervisedSession, writeRespawnMarker } from "../lib/sessions.ts";
 import { JsonTextSchema } from "../lib/types.ts";
 import { errorMessage, log } from "../lib/log.ts";
 
@@ -24,7 +24,7 @@ export async function runBoundaryHook(event: "stop" | "sessionstart"): Promise<n
       log(`${event}.nested_session`, { stdin: stdin.session_id?.slice(0, 8), supervised: supervised.live.slice(0, 8), source: stdin.source });
       return 0;
     }
-    const decision = await evaluateAndMaybeSwap(claude, Date.now(), session != null, null, { waiterId: session?.sid, refused: refusedAccounts(), apiKeys: session != null && keyMovesSupported() });
+    const decision = await evaluateAndMaybeSwap(claude, Date.now(), session != null, null, { waiterId: session?.sid, refused: refusedAccounts(), apiKeys: session != null });
     const target = moveTarget(decision);
     if (session && target) {
       writeRespawnMarker({ session, ...target, waitUntil: target.waitUntil ?? Date.now(), compact: true, origin: event });

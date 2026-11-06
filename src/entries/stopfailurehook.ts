@@ -5,7 +5,7 @@ import { claude } from "../lib/claude.ts";
 import { liveApiKeyId, refuseApiKey } from "../lib/apikeys.ts";
 import { evaluateAndMaybeSwap, moveTarget } from "../lib/decide.ts";
 import { readStdin } from "../lib/proc.ts";
-import { addSessionHeld, adoptLiveSession, keyMovesSupported, refusedAccounts, supervisedSession, writeRespawnMarker } from "../lib/sessions.ts";
+import { addSessionHeld, adoptLiveSession, refusedAccounts, supervisedSession, writeRespawnMarker } from "../lib/sessions.ts";
 import { loadConfig } from "../lib/state.ts";
 import { classifyEnforcedLimit, ENFORCED_ERRORS, findEnforcedRow, parseErrorBody, readTranscriptTail, type TranscriptRow } from "../lib/usage.ts";
 import { paths } from "../lib/paths.ts";
@@ -110,7 +110,7 @@ export async function runStopFailureHook(): Promise<number> {
     }
 
     const refused = enforced?.kind === "credits" ? [...new Set([...refusedAccounts(), enforced.account])] : undefined;
-    const decision = await evaluateAndMaybeSwap(claude, now, canRespawn, enforced, { waiterId: session?.sid, apiKeys: canRespawn && keyMovesSupported() });
+    const decision = await evaluateAndMaybeSwap(claude, now, canRespawn, enforced, { waiterId: session?.sid, apiKeys: canRespawn });
     const target = moveTarget(decision);
     if (session && canRespawn && target) {
       writeRespawnMarker({ session, ...target, waitUntil: target.waitUntil ?? now, compact: false, origin: "stopfailure", refused });
