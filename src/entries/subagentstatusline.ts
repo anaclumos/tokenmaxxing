@@ -2,14 +2,14 @@ import { makeColors, makeUsagePaint, statuslineColor } from "../cli/render.ts";
 import { readStdin } from "../lib/proc.ts";
 import { JsonTextSchema, SubagentStatusLineStdinSchema } from "../lib/types.ts";
 
-export type RowCtx = { color: boolean; truecolor: boolean };
+type RowCtx = { color: boolean; truecolor: boolean };
 
 function modelFamily(id: string): string {
   const [head, family] = id.split("-");
   return head === "claude" && family ? family : id;
 }
 
-export function renderSubagentRows(stdinObj: unknown, ctx: RowCtx): string[] {
+function renderSubagentRows(stdinObj: unknown, ctx: RowCtx): string[] {
   const parsed = SubagentStatusLineStdinSchema.safeParse(stdinObj);
   if (!parsed.success) return [];
   const col = makeColors(ctx.color);
