@@ -8,9 +8,9 @@ The npm package ships TypeScript source, not a build:
 - The `tokenmaxxing` bin points straight at `src/main.ts` with a Bun shebang.
 - Bun 1.4.0 or newer runs it as-is. That is why Bun is a hard requirement.
 
-There are no compiled binaries by design. Source run by Bun became the distribution model for two reasons:
+There are no compiled binaries by design, for two reasons:
 
-- An early release shipped a single 61 MB macOS binary to every platform and failed on Linux with `exec format error`.
+- A single compiled binary runs on one platform only: a macOS binary fails on Linux with `exec format error`.
 - Per-platform compiled packages would each need their own release pipeline.
 
 A merge to main publishes nothing. A release is a pushed tag, `v<major>.<minor>.<patch>`, on a commit of main, and the tag names the version: `package.json` on main is never bumped by hand or by a bot, so sibling pull requests never collide on it.

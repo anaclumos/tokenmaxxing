@@ -4,8 +4,8 @@ import { basename, dirname, join } from "node:path";
 
 const SRC = join(import.meta.dir, "..", "src");
 
-export type Home = { env: Record<string, string>; tm: string; launcher: string };
-export type FakeClaude = { bin: string; session: string };
+type Home = { env: Record<string, string>; tm: string; launcher: string };
+type FakeClaude = { bin: string; session: string };
 
 export function scratch(): string {
   return realpathSync(mkdtempSync(join(tmpdir(), "tokenmaxxing-edge-mise-")));

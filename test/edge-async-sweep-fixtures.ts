@@ -1,10 +1,10 @@
-import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { Account } from "../src/lib/types.ts";
-import { account, barrier, claudeCredentials, claudeUsageBody, HOUR_MS, installFakeClaude } from "./fixtures.ts";
+import { barrier, claudeCredentials, claudeUsageBody, HOUR_MS, installFakeClaude } from "./fixtures.ts";
 import { childEnv, freshHomes, type Homes } from "./edge-telemetry-fixtures.ts";
 
-type Kind = "claude-usage" | "claude-profile" | "codex-usage" | "codex-reset" | "openrouter-key" | "other";
+type Kind = "claude-usage" | "codex-usage" | "other";
 
 type Stub = { base: string; seen: { kind: Kind }[]; stop: () => void };
 
@@ -12,10 +12,7 @@ const DAY_MS = 24 * HOUR_MS;
 
 function kindOf(req: Request): Kind {
   const path = new URL(req.url).pathname;
-  if (path.startsWith("/openrouter/")) return "openrouter-key";
-  if (path.startsWith("/api/oauth/profile")) return "claude-profile";
   if (path.startsWith("/api/oauth/usage")) return "claude-usage";
-  if (req.method === "POST" && path.startsWith("/backend-api/wham/rate-limit-reset-credits")) return "codex-reset";
   if (path.startsWith("/backend-api/wham/usage")) return "codex-usage";
   return "other";
 }
@@ -57,10 +54,6 @@ function answer(kind: Kind): Response {
   const now = Date.now();
   if (kind === "claude-usage") return Response.json(claudeUsageBody(now));
   if (kind === "codex-usage") return Response.json(codexUsageBody(now));
-  if (kind === "codex-reset") return Response.json({ code: "reset" });
-  if (kind === "openrouter-key") {
-    return Response.json({ data: { label: "sk-or-v1-a1b...9f0", limit: 20, limit_remaining: 7.25, usage: 12.75, is_free_tier: false, rate_limit: { requests: -1, interval: "10s" } } });
-  }
   return Response.json({});
 }
 
@@ -94,14 +87,8 @@ export function stubEnv(homes: Homes, base: string): Record<string, string> {
 }
 
 function writePrivate(path: string, text: string): void {
-  mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
-  chmodSync(dirname(path), 0o700);
+  mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, text, { mode: 0o600 });
-  chmodSync(path, 0o600);
-}
-
-export function pooledClaudeAccount(id: string): Account {
-  return { ...account(id, "max", []), oauthAccount: { accountUuid: id, emailAddress: `${id}@example.com`, organizationUuid: "org-test" } };
 }
 
 export function writeClaudePool(homes: Homes, accounts: Account[]): void {
