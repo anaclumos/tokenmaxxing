@@ -1,4 +1,4 @@
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { account, HOUR_MS, sessionWindow, weeklyWindow } from "./fixtures.ts";
@@ -31,7 +31,7 @@ export function spentSeatWithSpareKey(tm: string, now: number): string {
   const id = crypto.randomUUID();
   const seat = { ...account(id, "max 5x", [sessionWindow(40, now + 2 * HOUR_MS, now), weeklyWindow(99, now + 3 * 24 * HOUR_MS, now)]), lastUsageAt: now, lastProbeAt: now };
   writeFileSync(join(tm, "accounts.json"), JSON.stringify({ version: 2, accounts: [seat] }));
-  writeFileSync(join(tm, "api-keys.json"), JSON.stringify({ version: 1, keys: [{ id: "spare", label: "spare", spentUsd: 0, creditSetAt: now, addedAt: now }], baselines: {} }));
+  writeFileSync(join(tm, "api-keys.json"), JSON.stringify({ version: 1, keys: [{ id: "spare", label: "spare", spentUsd: 0, addedAt: now }], baselines: {} }));
   writeFileSync(join(tm, "api-keys", "spare"), "sk-ant-test\n", { mode: 0o600 });
   return id;
 }
@@ -69,49 +69,4 @@ export function readMarker(tm: string, sid: string): unknown {
 export function readLog(tm: string): string {
   const path = join(tm, "tokenmaxxing.log");
   return existsSync(path) ? readFileSync(path, "utf8") : "";
-}
-
-const FAKE_CLAUDE = `#!/bin/sh
-printf '%s\\n' "$TOKENMAXXING_LAUNCHED_AT $*" >> "$EDGE_LAUNCHES"
-[ -e "$EDGE_MARKED" ] && exit 0
-: > "$EDGE_MARKED"
-case "$EDGE_MARKER_LAUNCH" in
-  same) launch=",\\"launchedAt\\":$TOKENMAXXING_LAUNCHED_AT" ;;
-  earlier) launch=",\\"launchedAt\\":$((TOKENMAXXING_LAUNCHED_AT - 60000))" ;;
-  *) launch="" ;;
-esac
-printf '{"accountId":"","ts":%s,"waitUntil":0,"sessionId":"%s","compact":false,"origin":"stop"%s}' "$TOKENMAXXING_LAUNCHED_AT" "$TOKENMAXXING_SESSION_ID" "$launch" > "$EDGE_STAGED"
-mkdir -p "$TOKENMAXXING_HOME/respawn"
-mv "$EDGE_STAGED" "$TOKENMAXXING_HOME/respawn/$TOKENMAXXING_SESSION_ID"
-`;
-
-export type Supervised = { exitCode: number; stderr: string; launches: string[]; markersLeft: string[]; log: string };
-
-export async function superviseWithMarker(markerLaunch: "same" | "earlier" | "none"): Promise<Supervised> {
-  const box = sandbox("supervise");
-  try {
-    mkdirSync(join(box.root, "bin"));
-    const bin = join(box.root, "bin", "claude");
-    writeFileSync(bin, FAKE_CLAUDE);
-    chmodSync(bin, 0o755);
-    const launchesFile = join(box.root, "launches");
-    const env = cleanEnv(box, {
-      TOKENMAXXING_CLAUDE_BIN: bin,
-      EDGE_LAUNCHES: launchesFile,
-      EDGE_MARKED: join(box.root, "marked"),
-      EDGE_STAGED: join(box.root, "staged-marker"),
-      EDGE_MARKER_LAUNCH: markerLaunch,
-    });
-    const run = await runMain({ args: ["__supervise"], env, cwd: box.root });
-    const respawnDir = join(box.tm, "respawn");
-    return {
-      exitCode: run.exitCode,
-      stderr: run.stderr,
-      launches: existsSync(launchesFile) ? readFileSync(launchesFile, "utf8").trim().split("\n") : [],
-      markersLeft: existsSync(respawnDir) ? readdirSync(respawnDir) : [],
-      log: readLog(box.tm),
-    };
-  } finally {
-    dropSandbox(box);
-  }
 }
