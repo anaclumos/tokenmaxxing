@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { run } from "./edge-telemetry-fixtures.ts";
-import { logTail, parseJson, pooledClaudeAccount, preparedHomes, startStub, stubEnv, writeClaudePool, writeClaudeStore, writeCodexPool, writeCodexStore } from "./edge-async-sweep-fixtures.ts";
+import { pooledClaude } from "./fixtures.ts";
+import { logTail, parseJson, preparedHomes, startStub, stubEnv, writeClaudePool, writeClaudeStore, writeCodexPool, writeCodexStore } from "./edge-async-sweep-fixtures.ts";
 import { activeIds, labeled, storeDir, writePool } from "./edge-cli-surface-fixtures.ts";
 
 const CLAUDE = ["c79ace4d-7c59-45a4-9d38-e9acf5b17e62", "d8abdf5e-8d6a-46b5-8e49-fabd06c28f73"] as const;
@@ -10,7 +11,7 @@ const MUSE = ["2df024ad-d2bf-4b0a-9d9e-4f025b17dec8", "3e0135be-e3c0-4c1b-8eaf-5
 
 test("status --json marks as active exactly the account whose store each pool's seat variable names (CLAUDE_SECURESTORAGE_CONFIG_DIR, CODEX_HOME, GROK_HOME, XDG_CONFIG_HOME)", async () => {
   const homes = preparedHomes();
-  writeClaudePool(homes, CLAUDE.map(pooledClaudeAccount));
+  writeClaudePool(homes, CLAUDE.map((id) => pooledClaude(id)));
   for (const id of CLAUDE) writeClaudeStore(homes, id, `sk-ant-oat01-edge-${id.slice(0, 8)}`);
   writeCodexPool(homes, CODEX.map((id) => labeled(id, `codex-${id.slice(0, 4)}`, "pro")));
   for (const id of CODEX) writeCodexStore(homes, id);

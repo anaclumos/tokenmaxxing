@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { run } from "./edge-telemetry-fixtures.ts";
-import { parseJson, pooledClaudeAccount, preparedHomes, startStub, stubEnv, writeClaudePool } from "./edge-async-sweep-fixtures.ts";
+import { parseJson, preparedHomes, startStub, stubEnv, writeClaudePool } from "./edge-async-sweep-fixtures.ts";
+import { pooledClaude } from "./fixtures.ts";
 import { labeled, poolIds, writeApiKeysFile, writePool } from "./edge-cli-surface-fixtures.ts";
 
 const IDS = {
@@ -14,7 +15,7 @@ const IDS = {
 
 test("inverted: status --json --cached lists now, the six pools in their fixed order, and then the API keys, each pool carrying its own accounts", async () => {
   const homes = preparedHomes();
-  writeClaudePool(homes, [pooledClaudeAccount(IDS.claude)]);
+  writeClaudePool(homes, [pooledClaude(IDS.claude)]);
   writePool(homes, "codex", [labeled(IDS.codex, "codex-one", "pro")]);
   writePool(homes, "grok", [labeled(IDS.grok, "grok-one", "supergrok")]);
   writePool(homes, "muse", [labeled(IDS.muse, "muse-one", "pro")]);

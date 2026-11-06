@@ -1,11 +1,12 @@
 import { expect, test } from "bun:test";
 import { run } from "./edge-telemetry-fixtures.ts";
-import { pooledClaudeAccount, preparedHomes, startStub, stubEnv, writeClaudePool } from "./edge-async-sweep-fixtures.ts";
+import { preparedHomes, startStub, stubEnv, writeClaudePool } from "./edge-async-sweep-fixtures.ts";
+import { pooledClaude } from "./fixtures.ts";
 import { labeled, poolHeaders, writePool } from "./edge-cli-surface-fixtures.ts";
 
 test("status --cached heads each non-Claude pool with its account count in pool order, marking only grok, cursor, and kimi status-only", async () => {
   const homes = preparedHomes();
-  writeClaudePool(homes, [pooledClaudeAccount("6bde0c87-b09d-4f4e-9c7c-8de03f9b5ea6")]);
+  writeClaudePool(homes, [pooledClaude("6bde0c87-b09d-4f4e-9c7c-8de03f9b5ea6")]);
   writePool(homes, "kimi", [labeled("7cef1d98-c1ae-4a5f-8d8d-9ef14a0c6fb7", "kimi-one", "moderato"), labeled("8df02ea9-d2bf-4b6a-9e9e-af025b1d7ac8", "kimi-two", "moderato")]);
   writePool(homes, "cursor", [labeled("9e013fba-e3c0-4c7b-8faf-b0136c2e8bd9", "cursor-one", "pro")]);
   writePool(homes, "muse", [labeled("af1240cb-f4d1-4d8c-9ab0-c1247d3f9cea", "muse-one", "pro")]);

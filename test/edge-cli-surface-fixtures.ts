@@ -3,7 +3,7 @@ import { dirname, join } from "node:path";
 import { z } from "zod";
 import type { Account } from "../src/lib/types.ts";
 import { account } from "./fixtures.ts";
-import type { Homes, RunResult } from "./edge-telemetry-fixtures.ts";
+import type { Homes, run } from "./edge-telemetry-fixtures.ts";
 
 const ROOT = join(import.meta.dir, "..");
 const MAIN = join(ROOT, "src", "main.ts");
@@ -33,7 +33,7 @@ const ApiKeysFileSchema = z.object({ keys: z.array(JsonObjectSchema) });
 const PoolReportSchema = z.object({ accounts: z.array(z.looseObject({ id: z.string(), active: z.boolean() })) });
 const KeyRecordSchema = z.looseObject({ label: z.string(), openrouter: z.object({ remainingUsd: z.number().nullable() }).optional() });
 
-export async function runWithStdin(args: string[], env: Record<string, string>, stdin: string): Promise<RunResult> {
+export async function runWithStdin(args: string[], env: Record<string, string>, stdin: string): ReturnType<typeof run> {
   const proc = Bun.spawn([process.execPath, MAIN, ...args], {
     env,
     cwd: ROOT,
