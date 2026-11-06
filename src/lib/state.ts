@@ -48,10 +48,8 @@ export function setConfigField<K extends BinKey | "telemetry">(key: K, value: Co
   writeFileAtomic(paths.configJson, JSON.stringify({ ...raw, [key]: value }, null, 2) + "\n");
 }
 
-const emptyIndex = (): AccountsIndex => ({ version: 2, accounts: [] });
-
 export function loadAccounts(pool: PoolPaths): AccountsIndex {
-  if (!existsSync(pool.accountsJson)) return emptyIndex();
+  if (!existsSync(pool.accountsJson)) return { version: 2, accounts: [] };
   return readJsonFile(pool.accountsJson, AccountsIndexSchema);
 }
 
@@ -117,7 +115,7 @@ export function upsertAccount(
   return existing ?? fresh;
 }
 
-export type UsageSnapshot = { state: UsageState; at: number };
+type UsageSnapshot = { state: UsageState; at: number };
 
 export function loadUsageSnapshot(accountId: string): UsageSnapshot | null {
   const path = usageJsonFor(accountId);

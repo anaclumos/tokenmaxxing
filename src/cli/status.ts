@@ -8,7 +8,6 @@ import { kimi } from "../lib/kimi.ts";
 import { muse } from "../lib/muse.ts";
 import { loadAccounts, loadConfig, saveAccounts } from "../lib/state.ts";
 import { withLock } from "../lib/lock.ts";
-import { codexPool, cursorPool, grokPool, kimiPool, musePool } from "../lib/paths.ts";
 import { barFor, bufferedUsed, earliestReset, gatedWindows, landGrant, landWindows, isExhausted, isSessionWindow, limitWindows, liveFamilyWalls, liveUsed, nextWeeklyReset, rankOf, sessionWindow, thresholdBars, weeklyWindow } from "../lib/picker.ts";
 import type { Provider, SampleReport } from "../lib/provider.ts";
 import { usd } from "./key.ts";
@@ -59,7 +58,6 @@ type StatusApiKey = {
   sessions: number;
 };
 
-export type StatusReport = { now: number; claude: PoolReport; codex: PoolReport; grok: PoolReport; muse: PoolReport; cursor: PoolReport; kimi: PoolReport; apiKeys?: StatusApiKey[] };
 
 function apiKeyReport(): StatusApiKey[] {
   const sessions = keySessions();
@@ -192,7 +190,7 @@ async function collect(p: Provider, cfg: Config, now: number, cached: boolean): 
       id: a.id,
       tier: a.tier,
       rank: rankOf(a, bars),
-      active: (liveId != null && a.id === liveId) || present.has(a.id),
+      active: a.id === liveId || present.has(a.id),
       sessions: present.get(a.id) ?? 0,
       needsReauth: a.needsReauth === true,
       exhausted: isExhausted(a, ctx),
@@ -305,33 +303,23 @@ function renderPool(p: Provider, pool: PoolReport, header: string, now: number, 
   }
 }
 
-export async function cmdStatus(opts: { json?: boolean; cached?: boolean } = {}): Promise<number> {
-  const { json = false, cached = false } = opts;
+export async function cmdStatus(opts: { json: boolean; cached?: boolean }): Promise<number> {
+  const { json, cached = false } = opts;
   const cfg = loadConfig();
   const now = Date.now();
   const notice = !cached && process.stderr.isTTY;
   if (notice) process.stderr.write(c.dim("sampling usage..."));
-  const pending = [
-    collect(claude, cfg, now, cached),
-    collect(codex, cfg, now, cached),
-    collect(grok, cfg, now, cached),
-    collect(muse, cfg, now, cached),
-    collect(cursor, cfg, now, cached),
-    collect(kimi, cfg, now, cached),
-  ] as const;
-  const failures = (await Promise.allSettled(pending)).flatMap((r) => (r.status === "rejected" ? [r.reason] : []));
+  const claudePending = collect(claude, cfg, now, cached);
+  const othersPending = [codex, grok, muse, cursor, kimi].map(async (p) => ({ p, report: await collect(p, cfg, now, cached) }));
+  const failures = (await Promise.allSettled([claudePending, ...othersPending])).flatMap((r) => (r.status === "rejected" ? [r.reason] : []));
   if (notice) process.stderr.write("\r\x1b[2K");
   if (failures.length > 0) throw failures[0];
-  const [claudeReport, codexReport, grokReport, museReport, cursorReport, kimiReport] = await Promise.all(pending);
+  const claudeReport = await claudePending;
+  const others = await Promise.all(othersPending);
   const apiKeys = apiKeyReport();
   if (!json) {
-    const codexPooled = loadAccounts(codexPool).accounts.length > 0;
-    const grokPooled = loadAccounts(grokPool).accounts.length > 0;
-    const musePooled = loadAccounts(musePool).accounts.length > 0;
-    const cursorPooled = loadAccounts(cursorPool).accounts.length > 0;
-    const kimiPooled = loadAccounts(kimiPool).accounts.length > 0;
     if (claudeReport.accounts.length === 0) {
-      if (!codexPooled && !grokPooled && !musePooled && !cursorPooled && !kimiPooled && apiKeys.length === 0) {
+      if (others.every(({ report }) => report.accounts.length === 0) && apiKeys.length === 0) {
         console.log(c.dim("no accounts yet, run `tokenmaxxing init` (or `tokenmaxxing init --codex`, `--grok`, `--muse`, `--cursor`, `--kimi`)"));
         return 0;
       }
@@ -344,24 +332,11 @@ export async function cmdStatus(opts: { json?: boolean; cached?: boolean } = {})
     if (apiKeys.length > 0) renderApiKeys(apiKeys);
   }
   if (json) {
-    const report: StatusReport = { now, claude: claudeReport, codex: codexReport, grok: grokReport, muse: museReport, cursor: cursorReport, kimi: kimiReport, ...(apiKeys.length > 0 ? { apiKeys } : {}) };
-    emitJson({ ok: true, ...report });
+    emitJson({ ok: true, now, claude: claudeReport, ...Object.fromEntries(others.map(({ p, report }) => [p.name, report])), ...(apiKeys.length > 0 ? { apiKeys } : {}) });
     return 0;
   }
-  if (codexReport.accounts.length > 0) {
-    renderPool(codex, codexReport, `codex  (${count({ n: codexReport.accounts.length, noun: "account" })})`, Date.now(), cfg.policy.usagePollTtlMs);
-  }
-  if (grokReport.accounts.length > 0) {
-    renderPool(grok, grokReport, `grok  (${count({ n: grokReport.accounts.length, noun: "account" })}, status-only)`, Date.now(), cfg.policy.usagePollTtlMs);
-  }
-  if (museReport.accounts.length > 0) {
-    renderPool(muse, museReport, `muse  (${count({ n: museReport.accounts.length, noun: "account" })})`, Date.now(), cfg.policy.usagePollTtlMs);
-  }
-  if (cursorReport.accounts.length > 0) {
-    renderPool(cursor, cursorReport, `cursor  (${count({ n: cursorReport.accounts.length, noun: "account" })}, status-only)`, Date.now(), cfg.policy.usagePollTtlMs);
-  }
-  if (kimiReport.accounts.length > 0) {
-    renderPool(kimi, kimiReport, `kimi  (${count({ n: kimiReport.accounts.length, noun: "account" })}, status-only)`, Date.now(), cfg.policy.usagePollTtlMs);
+  for (const { p, report } of others) {
+    if (report.accounts.length > 0) renderPool(p, report, `${p.name}  (${count({ n: report.accounts.length, noun: "account" })}${p.statusOnly ? ", status-only" : ""})`, Date.now(), cfg.policy.usagePollTtlMs);
   }
   return 0;
 }

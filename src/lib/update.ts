@@ -74,7 +74,7 @@ function isDue(now: number): boolean {
   return now - readJsonFile(updateJson, AttemptSchema).attemptedAt >= UPDATE_INTERVAL_MS;
 }
 
-export type Update = { from: string; to: string };
+type Update = { from: string; to: string };
 
 async function updateToLatest(root: string): Promise<Update | null> {
   const current = installedVersion(root);

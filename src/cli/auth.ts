@@ -26,32 +26,28 @@ const SUPERVISOR_LINKS: Partial<Record<Provider["name"], () => string>> = {
   muse: museSupervisorLink,
 };
 
-export type AuthPlan = { kind: "usage" } | { kind: "error"; message: string } | { kind: "pick" } | { kind: "targets"; ids: string[] };
+type AuthPlan = { kind: "usage" } | { kind: "error"; message: string } | { kind: "pick" } | { kind: "targets"; accounts: Account[] };
 
-export function planAuth(input: { p: Provider; accounts: Account[]; argv: string[]; needsAuth: Set<string> }): AuthPlan {
+function planAuth(input: { p: Provider; accounts: Account[]; argv: string[]; needsAuth: Set<string> }): AuthPlan {
   const all = input.argv.includes("--all");
   const rest = input.argv.filter((a) => a !== "--all");
   if ((all && rest.length > 0) || rest.length > 1) return { kind: "usage" };
   if (input.accounts.length === 0) return { kind: "error", message: `no accounts in the pool - run \`tokenmaxxing init${input.p.flag}\` first` };
   if (all) {
-    return { kind: "targets", ids: input.accounts.filter((a) => input.needsAuth.has(a.id)).map((a) => a.id) };
+    return { kind: "targets", accounts: input.accounts.filter((a) => input.needsAuth.has(a.id)) };
   }
   const selector = rest[0];
   if (selector !== undefined) {
     const found = findAccount(input.accounts, selector);
     if (!found) return { kind: "error", message: `no ${input.p.name} account matches "${selector}"` };
-    return { kind: "targets", ids: [found.id] };
+    return { kind: "targets", accounts: [found] };
   }
   return { kind: "pick" };
 }
 
-export function pickerOrder(accounts: Account[], needsAuth: Set<string>): Account[] {
-  const [flagged, healthy] = partition(accounts, (a) => needsAuth.has(a.id));
-  return [...flagged, ...healthy];
-}
-
 function askWhichAccount(input: { idx: AccountsIndex; needsAuth: Set<string>; question: string; flags: (a: Account) => string[] }): Account | null {
-  const ordered = pickerOrder(input.idx.accounts, input.needsAuth);
+  const [flagged, healthy] = partition(input.idx.accounts, (a) => input.needsAuth.has(a.id));
+  const ordered = [...flagged, ...healthy];
   console.log(input.question);
   for (const [i, a] of ordered.entries()) {
     const flags = input.flags(a);
@@ -233,10 +229,7 @@ export async function cmdAuth(p: Provider, argv: string[], pi: PiPool | null): P
     if (!picked) return 1;
     targets.push(picked);
   } else {
-    for (const id of plan.ids) {
-      const account = idx.accounts.find((a) => a.id === id);
-      if (account) targets.push(account);
-    }
+    targets.push(...plan.accounts);
     if (targets.length === 0) {
       console.log(`${c.green("✓")} ${pi ? "every account has a pi login" : "every account has a usable credential"}`);
       return 0;

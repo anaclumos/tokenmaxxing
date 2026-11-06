@@ -4,7 +4,7 @@ import { loadConfig } from "../lib/state.ts";
 import type { Config } from "../lib/types.ts";
 import { c, emitError, emitJson } from "./render.ts";
 
-export function cmdConfig(args: string[], json = false): number {
+export function cmdConfig(args: string[], json: boolean): number {
   if (args.length > 0) {
     emitError({ json, message: `unknown config option: ${args[0]} (config takes no options; edit ${paths.configJson} in an editor)` });
     return 2;

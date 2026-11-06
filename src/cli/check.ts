@@ -10,7 +10,7 @@ import { maybeAutoUpdate } from "../lib/update.ts";
 import { errorMessage, log } from "../lib/log.ts";
 import { c, emitError, emitJson, fmtReset } from "./render.ts";
 
-export async function cmdCheck(json = false): Promise<number> {
+export async function cmdCheck(json: boolean): Promise<number> {
   const now = Date.now();
   let d;
   try {

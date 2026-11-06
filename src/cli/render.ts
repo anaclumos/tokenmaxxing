@@ -42,10 +42,12 @@ export function count(input: { n: number; noun: string }): string {
   return `${input.n} ${input.noun}${input.n === 1 ? "" : "s"}`;
 }
 
-export function bar(pct: number, width = 16): string {
+const BAR_WIDTH = 16;
+
+export function bar(pct: number): string {
   const clamped = clamp(pct, 0, 100);
-  const filled = Math.round((clamped / 100) * width);
-  const body = "█".repeat(filled) + "░".repeat(width - filled);
+  const filled = Math.round((clamped / 100) * BAR_WIDTH);
+  const body = "█".repeat(filled) + "░".repeat(BAR_WIDTH - filled);
   const label = `${Math.max(0, pct).toFixed(0).padStart(3)}%`;
   const paint = clamped >= 95 ? c.red : clamped >= 75 ? c.yellow : c.green;
   return `${paint(body)} ${label}`;
@@ -66,7 +68,7 @@ export function fmtReset(epochMs: number | null | undefined, now = Date.now()): 
   return `resets in ${m}m`;
 }
 
-export function fmtResetShort(epochMs: number | null | undefined, now = Date.now()): string {
+export function fmtResetShort(epochMs: number | null | undefined, now: number): string {
   if (epochMs == null) return "";
   const { dsec, d, h, m } = splitDuration(epochMs - now);
   if (dsec <= 0) return "";
@@ -75,7 +77,7 @@ export function fmtResetShort(epochMs: number | null | undefined, now = Date.now
   return `${Math.max(m, 1)}m`;
 }
 
-export function fmtAgo(epochMs: number, now = Date.now()): string {
+export function fmtAgo(epochMs: number, now: number): string {
   const { dsec, d, h, m } = splitDuration(now - epochMs);
   if (dsec < 60) return "just now";
   if (d > 0) return `${d}d ago`;
@@ -92,7 +94,6 @@ export function emitJson(value: unknown): void {
 export function emitError(input: {
   json?: boolean;
   message: string;
-  notes?: string[];
   extra?: Record<string, unknown>;
   paint?: (s: string) => string;
 }): void {
@@ -101,5 +102,4 @@ export function emitError(input: {
     return;
   }
   console.error((input.paint ?? c.red)(input.message));
-  for (const note of input.notes ?? []) console.error(c.dim(note));
 }

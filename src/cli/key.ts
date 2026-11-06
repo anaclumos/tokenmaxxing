@@ -89,7 +89,6 @@ async function add(args: string[]): Promise<number> {
       ...(workspaceId != null ? { workspaceId } : {}),
       ...(credit != null ? { creditUsd: credit } : {}),
       spentUsd: 0,
-      creditSetAt: now,
       addedAt: now,
       ...(openrouter != null ? { openrouter } : {}),
     });
@@ -133,7 +132,6 @@ async function credit(args: string[]): Promise<number> {
     }
     key.creditUsd = amount;
     key.spentUsd = 0;
-    key.creditSetAt = Date.now();
     key.refusedAt = undefined;
     settleLiveSessionCosts(idx, key.id);
     saveApiKeys(idx);
