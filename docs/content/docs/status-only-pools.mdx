@@ -16,7 +16,7 @@ tokenmaxxing add --kimi           # pool another one the same way
 
 `init`, `add`, `auth`, `emails`, `rm`, and `rename` take `--grok`, `--cursor`, or `--kimi`; every other command refuses the flags with exit code 2, and the pool flags are mutually exclusive. `init` verifies the vendor CLI and pins its path (`grokBin`, `cursorBin`, or `kimiBin` in `config.json`; `TOKENMAXXING_GROK_BIN`, `TOKENMAXXING_CURSOR_BIN`, and `TOKENMAXXING_KIMI_BIN` override them), then prints that the pool is status-only. `doctor`, `check`, and the periodic timer ignore these pools, and `uninstall` keeps their stores.
 
-Muse Code was a status-only pool until it got a supervisor; see [Muse Code support](/muse).
+Muse Code has a supervisor and is not a status-only pool; see [Muse Code support](/muse).
 
 ## grok
 
