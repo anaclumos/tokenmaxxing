@@ -40,7 +40,7 @@ const FIRST_LAUNCH_FLAGS = new Set(["--image", "-w", "--worktree", "--worktree-b
 
 type MuseArgs = { help: boolean; sub: string | null; provider: string | null; sessionLog: boolean; resumeFlags: string[] };
 
-export function analyzeMuseArgs(argv: string[]): MuseArgs {
+function analyzeMuseArgs(argv: string[]): MuseArgs {
   const out: MuseArgs = { help: false, sub: null, provider: null, sessionLog: true, resumeFlags: [] };
   let positionals = 0;
   for (let i = 0; i < argv.length; i++) {
@@ -329,7 +329,7 @@ export async function runMuseSupervisor(argv: string[]): Promise<number> {
     }
   } catch (e) {
     const msg = errorMessage(e);
-    say(msg.startsWith("tokenmaxxing:") ? msg : `tokenmaxxing: ${msg}`);
+    say(`tokenmaxxing: ${msg}`);
     log("musesupervisor.fatal", { err: msg });
     clearPresence({ dir: musePaths.presenceDir, id });
     return endSession({ tool: "muse", moves: respawns, outcome: "fatal", startedAt, code: 1 });

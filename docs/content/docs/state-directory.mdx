@@ -144,6 +144,8 @@ The tree lists the entries in the order of the sections below. Open a folder to 
 
 ### Account index fields
 
+`accounts.json` and `codex-accounts.json` are schema version 2: `version` is `2`, and `accounts` is the array. An index that fails its schema check makes every command that reads it throw `does not match its schema` until the file is repaired or removed.
+
 Each account in `accounts.json` has these fields.
 
 - Required: `id`, `label`, `email`, `tier`, `addedAt`, and `windows`.
@@ -186,7 +188,7 @@ Placement counts each record under `live/` as one session on its account, and `r
 
 A respawn marker holds:
 
-- the target account, or, for a move onto an API key, `apiKeyId` with an empty account id (a hook writes a key marker only for a supervisor that sets `TOKENMAXXING_API_KEY_ID` on its child, so a supervisor from an older release never receives one)
+- the target account, or, for a move onto an API key, `apiKeyId` with an empty account id
 - the session to resume
 - a `waitUntil`: now for a plain move, the reset for a depleted-pool wait
 - whether to compact first
@@ -286,30 +288,4 @@ The `muse-*` entries are the state of the Muse Code pool. See [Muse Code support
 | pi's `settings.json` and `trust.json`, and a project's `.pi/settings.json` | Reads them to pick a pi session's pool and session directory |
 | `~/.pi/agent` | Creates only what is missing among `settings.json`, `models-store.json`, and `trust.json` (as `{}`) and the `sessions` and `bin` directories, so that every pi store can link them |
 
-Every onboarding login runs in a throwaway home under the state directory, never in the vendor CLI's own. tokenmaxxing no longer writes `~/.claude.json`, Claude Code's default credential store, or codex's live `auth.json`.
-
-## After upgrading
-
-### Rebuild the pool
-
-Version 1.37.0 moves every Claude credential into a per-account store, and the Codex pool moves to per-account stores the same way. Neither pool has a migration: rebuild it. `init` and `add` write the store from a fresh grant, and the index keeps its records, so labels and cached figures survive.
-
-| | Claude pool | Codex pool |
-|---|---|---|
-| A session the pool's supervisor starts runs on | `stores/<uuid8>/` and nothing else | `codex-stores/<uuid8>/` and nothing else |
-| Log in the first account | `tokenmaxxing init`, through an isolated browser sign-in | `tokenmaxxing init --codex`, through an isolated device-auth login |
-| Log in each other account | `tokenmaxxing add` | `tokenmaxxing add --codex` |
-| Index that keeps its records | `accounts.json` | `codex-accounts.json` |
-| Retired state | Not read: the parked backups earlier versions kept (the `creds/` files on Linux, the `tokenmaxxing-cred-<uuid8>` keychain items on macOS), the copy in Claude Code's default store, and the old backups `usage.json`, `lastswap.json`, `depleted.json`, and the `sample/` probe homes the retired `/usage` sampler left behind. Not written: Claude Code's default store | Not read or written: the shared live `auth.json` rewrite, the `codex-creds/` parked copies, the `activeId` label, the `codex-lastswap.json` cooldown clock, and the `codex-reconcile/` signals |
-| Delete yourself | `creds/` (it holds credentials), `usage.json`, `lastswap.json`, `depleted.json`, `sample/`, and the `tokenmaxxing-cred-<uuid8>` keychain items | `codex-creds/` (it holds credentials), `codex-lastswap.json`, and `codex-reconcile/` |
-| Keeps your own login for sessions started outside the supervisor | Claude Code's default store | Codex's default `~/.codex/auth.json` |
-
-### Index schema
-
-`accounts.json` and `codex-accounts.json` are schema version 2:
-
-- `version` is `2`, and `accounts` is the array.
-- There is no active field. A file that still carries `activeId` loads and drops the key on the next save.
-- A version 1 index fails the schema check, and every command throws `does not match its schema` until the file is repaired or removed.
-
-The account fields and the window shape are in [Account index fields](#account-index-fields).
+Every onboarding login runs in a throwaway home under the state directory, never in the vendor CLI's own. tokenmaxxing never writes `~/.claude.json`, Claude Code's default credential store, or codex's live `auth.json`.

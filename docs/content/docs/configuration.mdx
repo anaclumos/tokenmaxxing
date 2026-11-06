@@ -54,7 +54,7 @@ Config is JSON at `~/.config/tokenmaxxing/config.json`. Every field is optional;
 
 ## Bars
 
-`thresholds.session` is both the trigger and the candidate screen, for Claude and Codex alike. See [How switching decides](/switching). The former array form (the session ladder) is rejected: config loading fails with a zod message naming `thresholds.session`.
+`thresholds.session` is both the trigger and the candidate screen, for Claude and Codex alike. See [How switching decides](/switching).
 
 ### Projection margin
 
@@ -96,7 +96,7 @@ See [How switching decides](/switching#the-bars).
 
 - A new pick takes a `priority` account while one is usable, a `default` account when no `priority` account is usable, and a `fallback` account when no `default` account is usable either.
 - The rank comes before every other ranking key, the time-based ones included. An account of a higher rank is skipped only while it is unusable: at or over a bar, walled, or flagged for reauthentication.
-- An account the map does not name is `default`, so an existing pool ranks every account `default` until you name one.
+- An account the map does not name is `default`, so a pool ranks every account `default` until you name one.
 - A value other than the three names fails the next load with the zod message naming the field. A label that names no pooled account has no effect, and `rename` does not carry an entry to the new label.
 - `status` shows `priority` or `fallback` beside the account's name, and `status --json` carries `rank` on every account.
 
@@ -172,4 +172,4 @@ How the samplers use it:
 
 ## Editing and validation
 
-`tokenmaxxing config` prints the path and the effective values. Edit the file in an editor. A wrong-typed or out-of-range value fails the next load (`check`, `status`, the hooks) with the zod message naming the field. Unknown keys are ignored, the removed `hardThresholds`, `policy.greedySessionFloor`, and `policy.greedySwapMargin` included.
+`tokenmaxxing config` prints the path and the effective values. Edit the file in an editor. A wrong-typed or out-of-range value fails the next load (`check`, `status`, the hooks) with the zod message naming the field. Unknown keys are ignored.

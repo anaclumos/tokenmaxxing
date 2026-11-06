@@ -405,7 +405,7 @@ export const codex: Provider = {
     const fresh = await freshCodexAuth(a, Date.now(), false);
     return fresh.ok ? consumeCodexReset(fresh.auth, signal) : { reset: false, detail: fresh.reason };
   },
-  classifySwapError: (e) => (e instanceof CodexInvalidGrantError ? "dead-grant" : e instanceof StoreUnusableError ? "skip" : "fatal"),
+  classifySwapError: (e) => (e instanceof CodexInvalidGrantError || e instanceof StoreUnusableError ? "skip" : "fatal"),
   removeCredentials: async (a) => {
     deleteCodexStoreAuth(a.id);
     deletePiStore("codex", a.id);

@@ -1,9 +1,10 @@
 import { afterAll, beforeEach, describe, expect, test } from "bun:test";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { z } from "zod";
 import { freshHome, HOUR_MS } from "./fixtures.ts";
 
-type Sent = { batch: { event: string; distinct_id: string; properties: Record<string, unknown> }[] };
+const SentSchema = z.object({ batch: z.array(z.looseObject({ event: z.string(), distinct_id: z.string(), properties: z.record(z.string(), z.unknown()) })) });
 
 delete process.env.CI;
 const home = freshHome();
@@ -30,7 +31,7 @@ process.env.TOKENMAXXING_POSTHOG_HOST = server.url.href.replace(/\/$/, "");
 const telemetry = await import("../src/lib/telemetry.ts");
 
 const installId = crypto.randomUUID();
-const sent = (): Sent[] => bodies.map((b) => JSON.parse(b) as Sent);
+const sent = () => bodies.map((b) => SentSchema.parse(JSON.parse(b)));
 const noticed = (agoMs: number | null) =>
   writeFileSync(stateFile, JSON.stringify({ installId, noticeAt: agoMs == null ? null : Date.now() - agoMs, attemptedAt: null }));
 const spoolLines = () => readFileSync(spool, "utf8").split("\n").filter((l) => l !== "");
@@ -51,7 +52,8 @@ afterAll(() => server.stop(true));
 describe("telemetry", () => {
   test("a due send carries the spooled events and the daily summary under the install ID, with only allowlisted fields", async () => {
     telemetry.record({ event: "command", command: "status", pool: "claude", flags: ["--cached"], exit_code: 0, duration_ms: 42 });
-    telemetry.record({ event: "account_renamed", pool: "codex", label: "alice@example.com", path: home } as never);
+    const renamed: Parameters<typeof telemetry.record>[0] & { label: string; path: string } = { event: "account_renamed", pool: "codex", label: "alice@example.com", path: home };
+    telemetry.record(renamed);
 
     await telemetry.flushTelemetry(Date.now());
 

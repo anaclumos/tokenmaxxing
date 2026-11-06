@@ -42,8 +42,7 @@ function writeSettings(s: Settings): void {
   writeFileAtomic(paths.claudeSettings, JSON.stringify(s, null, 2) + "\n", mode);
 }
 
-function isOurCommand(cmd: string | undefined): boolean {
-  if (!cmd) return false;
+function isOurCommand(cmd: string): boolean {
   return (
     cmd.includes(SUBCMD.statusline) ||
     cmd.includes(SUBCMD.subagentStatusline) ||
@@ -63,9 +62,7 @@ function ourHookGroup(sub: string, matcher?: string): HookGroup {
 }
 
 function appendHook(s: Settings, event: string, sub: string, matcher?: string): void {
-  s.hooks ??= {};
-  s.hooks[event] ??= [];
-  const arr = s.hooks[event]!;
+  const arr = ((s.hooks ??= {})[event] ??= []);
   const present = arr.some((g) => g.hooks.some((h) => h.command === ourCommand(sub)));
   if (!present) arr.push(ourHookGroup(sub, matcher));
 }
@@ -79,11 +76,13 @@ export function isOurHookCommand(cmd: string, sub: string): boolean {
 }
 
 function removeHook(s: Settings, event: string, sub: string): void {
-  const arr = s.hooks?.[event];
-  if (!arr) return;
+  const hooks = s.hooks;
+  const arr = hooks?.[event];
+  if (!hooks || !arr) return;
   for (const g of arr) g.hooks = g.hooks.filter((h) => !isOurHookCommand(h.command, sub));
-  s.hooks![event] = arr.filter((g) => g.hooks.length > 0);
-  if (s.hooks![event]!.length === 0) delete s.hooks![event];
+  const kept = arr.filter((g) => g.hooks.length > 0);
+  if (kept.length === 0) delete hooks[event];
+  else hooks[event] = kept;
 }
 
 export function installSettings(): void {
@@ -109,7 +108,7 @@ export function uninstallSettings(): void {
   writeSettings(s);
 }
 
-export type SettingsCheck = Record<"statusLineOk" | "subagentStatusLineOk" | "stopOk" | "stopFailureOk" | "sessionStartOk", boolean>;
+type SettingsCheck = Record<"statusLineOk" | "subagentStatusLineOk" | "stopOk" | "stopFailureOk" | "sessionStartOk", boolean>;
 
 export function checkSettings(): SettingsCheck {
   const s = readSettings();

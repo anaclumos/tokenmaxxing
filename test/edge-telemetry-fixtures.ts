@@ -1,23 +1,22 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { z } from "zod";
 
 const ROOT = join(import.meta.dir, "..");
 const MAIN = join(ROOT, "src", "main.ts");
 export const DAY_MS = 24 * 60 * 60 * 1000;
 
-type CapturedEvent = {
-  event: string;
-  distinct_id: string;
-  properties: Record<string, unknown>;
-  timestamp?: string;
-  uuid?: string;
-};
-
-type CapturedBatch = {
-  api_key?: string;
-  batch: CapturedEvent[];
-};
+const CapturedEventSchema = z.looseObject({
+  event: z.string(),
+  distinct_id: z.string(),
+  properties: z.record(z.string(), z.unknown()),
+  timestamp: z.string().optional(),
+  uuid: z.string().optional(),
+});
+const CapturedBatchSchema = z.object({ api_key: z.string().optional(), batch: z.array(CapturedEventSchema) });
+type CapturedBatch = z.infer<typeof CapturedBatchSchema>;
+const JsonRecordSchema = z.record(z.string(), z.unknown());
 
 export type StubHost = {
   url: string;
@@ -38,8 +37,7 @@ export function startStubHost(): StubHost {
       const raw = new Uint8Array(await request.arrayBuffer());
       const encoding = request.headers.get("content-encoding") ?? "";
       const bytes = encoding.includes("gzip") ? Bun.gunzipSync(raw) : raw;
-      const value = JSON.parse(new TextDecoder().decode(bytes)) as Partial<CapturedBatch>;
-      requests.push({ api_key: value.api_key, batch: Array.isArray(value.batch) ? value.batch : [] });
+      requests.push(CapturedBatchSchema.parse(JSON.parse(new TextDecoder().decode(bytes))));
       return Response.json({ status: 1 }, { status: 200 });
     },
   });
@@ -90,7 +88,7 @@ export function childEnv(
   return env;
 }
 
-export type RunResult = {
+type RunResult = {
   exitCode: number;
   stdout: string;
   stderr: string;
@@ -118,30 +116,22 @@ export function spoolEvents(homes: Homes): Array<Record<string, unknown>> {
     .split("\n")
     .map((line) => line.trim())
     .filter((line) => line.length > 0)
-    .map((line) => JSON.parse(line) as Record<string, unknown>);
+    .map((line) => JsonRecordSchema.parse(JSON.parse(line)));
 }
 
 export function spoolIsEmpty(homes: Homes): boolean {
   return spoolText(homes).trim().length === 0;
 }
 
-type TelemetryState = {
-  installId: string;
-  noticeAt: number | null;
-  attemptedAt: number | null;
-};
-
-function statePath(homes: Homes): string {
-  return join(homes.state, "telemetry.json");
-}
+const TelemetryStateSchema = z.object({ installId: z.string(), noticeAt: z.number().nullable(), attemptedAt: z.number().nullable() });
+type TelemetryState = z.infer<typeof TelemetryStateSchema>;
 
 export function writeState(homes: Homes, patch: Partial<TelemetryState>): TelemetryState {
-  const path = statePath(homes);
+  const path = join(homes.state, "telemetry.json");
   const current = existsSync(path)
-    ? (JSON.parse(readFileSync(path, "utf8")) as TelemetryState)
+    ? TelemetryStateSchema.parse(JSON.parse(readFileSync(path, "utf8")))
     : { installId: crypto.randomUUID(), noticeAt: null, attemptedAt: null };
   const next: TelemetryState = { ...current, ...patch };
-  mkdirSync(homes.state, { recursive: true });
   writeFileSync(path, JSON.stringify(next));
   return next;
 }
@@ -153,5 +143,5 @@ export function configPath(homes: Homes): string {
 export function readConfig(homes: Homes): Record<string, unknown> | null {
   const path = configPath(homes);
   if (!existsSync(path)) return null;
-  return JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown>;
+  return JsonRecordSchema.parse(JSON.parse(readFileSync(path, "utf8")));
 }

@@ -20,7 +20,13 @@ type Script = z.infer<typeof ScriptSchema>;
 const ProxyConfigSchema = z.object({ script: ScriptSchema, windowMs: z.number(), delaysMs: z.tuple([z.number(), z.number()]) });
 type ProxyConfig = z.infer<typeof ProxyConfigSchema>;
 
-const RequestSchema = z.looseObject({ id: z.union([z.string(), z.number()]).optional(), method: z.string().optional(), params: z.record(z.string(), z.unknown()).optional(), result: z.unknown().optional() });
+const ClientMessageSchema = z.looseObject({
+  id: z.union([z.string(), z.number()]).optional(),
+  method: z.string().optional(),
+  params: z.record(z.string(), z.unknown()).optional(),
+  result: z.unknown().optional(),
+  error: z.unknown().optional(),
+});
 const TurnStartSchema = z.looseObject({ input: z.array(z.looseObject({ text: z.string() })), toolOutput: z.unknown().optional() });
 const InterruptSchema = z.looseObject({ turnId: z.string() });
 const SteerSchema = z.looseObject({ expectedTurnId: z.string(), input: z.array(z.looseObject({ text: z.string() })) });
@@ -71,7 +77,7 @@ async function fakeAppServer(script: Script): Promise<void> {
     slowHang: (turnId) => plays.hang(turnId),
   };
   for await (const line of readLines(Bun.stdin.stream())) {
-    const msg = RequestSchema.parse(JSON.parse(line));
+    const msg = ClientMessageSchema.parse(JSON.parse(line));
     if (msg.method === "initialize") send({ id: msg.id, result: { userAgent: "fake-codex" } });
     if (msg.method === "thread/start") send({ id: msg.id, result: { thread: { id: THREAD_ID } } });
     if (msg.method === undefined && msg.id === APPROVAL_ID && running.turnId != null) {
@@ -136,13 +142,6 @@ async function proxy(config: ProxyConfig): Promise<void> {
   process.exit(code);
 }
 
-const ClientMessageSchema = z.looseObject({
-  id: z.union([z.string(), z.number()]).optional(),
-  method: z.string().optional(),
-  params: z.record(z.string(), z.unknown()).optional(),
-  result: z.unknown().optional(),
-  error: z.unknown().optional(),
-});
 export type ClientMessage = z.infer<typeof ClientMessageSchema>;
 type Step ={ send: unknown[] | ((seen: ClientMessage[]) => unknown[]); until: (since: ClientMessage[]) => boolean };
 
