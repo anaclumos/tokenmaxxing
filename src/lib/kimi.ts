@@ -13,7 +13,7 @@ import { statusOnlyProvider, type AuthEntry } from "./statusonly.ts";
 import { ErrnoSchema, JsonTextSchema, type Account, type Window } from "./types.ts";
 import { c } from "../cli/render.ts";
 
-const KIMI_BIN = { name: "kimi", key: "kimiBin" } as const;
+const KIMI_BIN = { name: "kimi", key: "kimiBin", versionOk: (out: string) => Number(/^(\d+)\.\d+\.\d+/.exec(out.trim())?.[1] ?? 0) >= 2 } as const;
 
 const MANAGED_PROVIDER = "managed:kimi-code";
 
@@ -280,8 +280,7 @@ export const kimi = statusOnlyProvider({
   name: "kimi",
   flag: " --kimi",
   pool: kimiPool,
-  binName: KIMI_BIN.name,
-  binKey: KIMI_BIN.key,
+  bin: KIMI_BIN,
   storeDirFor: kimiStoreDirFor,
   authJsonFor: kimiConfigFor,
   homeEnv: "KIMI_CODE_HOME",
@@ -290,7 +289,6 @@ export const kimi = statusOnlyProvider({
   readAuth,
   liveId: () => null,
   presence: () => new Map(),
-  versionOk: (out) => Number(/^(\d+)\.\d+\.\d+/.exec(out.trim())?.[1] ?? 0) >= 2,
   importIntro: "Opening an isolated Kimi Code login for your first pooled account - the login you already have stays as it is.",
   live: null,
   install: () => {

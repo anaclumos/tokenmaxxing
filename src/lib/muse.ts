@@ -146,7 +146,7 @@ function recordedConfigHome(accountId: string): string | null {
 }
 
 // Why this process cannot seat the account's store, or null when it can.
-export function museStoreMismatch(accountId: string): string | null {
+function museStoreMismatch(accountId: string): string | null {
   const recorded = recordedConfigHome(accountId);
   if (recorded == null || recorded === musePaths.configHome) return null;
   return `${museStoreDirFor(accountId)} mirrors the config home ${recorded}, not ${musePaths.configHome} - launch with XDG_CONFIG_HOME=${recorded}, or run \`tokenmaxxing rm --muse\` and add the account again`;
@@ -215,7 +215,7 @@ function storedAccessToken(id: string): { token: string; keychain: boolean } | n
 }
 
 // windows null: the mint carried no subs_usage, which it leaves out while no 5-hour window is open.
-type MuseRead = { ok: true; windows: Window[] | null; at: number } | { ok: false; reason: string; rejected: boolean };
+type MuseRead = { ok: true; windows: Window[] | null } | { ok: false; reason: string; rejected: boolean };
 
 const SESSION_S = 5 * 3600;
 
@@ -257,11 +257,10 @@ async function readMuseUsage(accountId: string, now: number): Promise<MuseRead> 
     const where = stored.keychain ? "the macOS keychain item Muse Code keeps for every config home on this Mac" : "this account's store";
     return { ok: false, rejected: false, reason: `the Muse Code login in ${where} belongs to ${owner}, not this account - Muse Code on macOS holds one login per Mac` };
   }
-  if (parsed.data.subs_usage == null) return { ok: true, windows: null, at: now };
+  if (parsed.data.subs_usage == null) return { ok: true, windows: null };
   const { window, weekly } = parsed.data.subs_usage;
   return {
     ok: true,
-    at: now,
     windows: [
       { name: null, usedPercentage: window.used_percent, resetsAt: window.resets_at, windowSeconds: window.window_duration_mins * 60, sampledAt: now },
       { name: null, usedPercentage: weekly.used_percent, resetsAt: weekly.resets_at, windowSeconds: WEEK_S, sampledAt: now },
@@ -275,8 +274,8 @@ async function samplePool(accounts: Account[], now: number): Promise<Map<string,
     accounts.map(async (account) => {
       const read = await readMuseUsage(account.id, now);
       if (read.ok) {
-        account.windows = landedWindows(read, account.windows, read.at);
-        account.lastUsageAt = read.at;
+        account.windows = landedWindows(read, account.windows, now);
+        account.lastUsageAt = now;
         reports.set(account.id, { ok: true, source: "probe" });
         return;
       }
@@ -289,14 +288,15 @@ async function samplePool(accounts: Account[], now: number): Promise<Map<string,
 
 export async function observeMuse(account: Account, cfg: Config, now: number, opts: { probe: boolean }): Promise<Observation | null> {
   if (opts.probe && (account.lastUsageAt == null || now - account.lastUsageAt > cfg.policy.usagePollTtlMs)) {
-    const read = await readMuseUsage(account.id, Date.now());
+    const at = Date.now();
+    const read = await readMuseUsage(account.id, at);
     if (!read.ok) log("muse.usage_failed", { account: account.id.slice(0, 8), reason: read.reason.slice(0, 200) });
     await withLock(musePool.lockFile, () => {
       const idx = loadAccounts(musePool);
       const a = idx.accounts.find((x) => x.id === account.id);
       if (!a) return;
       if (read.ok) {
-        if (a.lastUsageAt == null || read.at > a.lastUsageAt) landWindows(a, landedWindows(read, a.windows, read.at), read.at, thresholdBars(cfg));
+        if (a.lastUsageAt == null || at > a.lastUsageAt) landWindows(a, landedWindows(read, a.windows, at), at, thresholdBars(cfg));
       } else if (read.rejected) {
         a.needsReauth = true;
       }
@@ -355,8 +355,7 @@ const base = statusOnlyProvider({
   name: "muse",
   flag: " --muse",
   pool: musePool,
-  binName: MUSE_BIN.name,
-  binKey: MUSE_BIN.key,
+  bin: MUSE_BIN,
   storeDirFor: museStoreDirFor,
   authJsonFor: museAuthJsonFor,
   homeEnv: "XDG_CONFIG_HOME",
@@ -365,7 +364,6 @@ const base = statusOnlyProvider({
   readAuth,
   liveId: () => museSeatFromEnv(loadAccounts(musePool).accounts.map((a) => a.id)),
   presence,
-  versionOk: MUSE_BIN.versionOk,
   importIntro: "Opening an isolated Muse Code login for your first pooled account - the login you already have stays as it is.",
   live: {
     authPath: () => musePaths.authJson,
