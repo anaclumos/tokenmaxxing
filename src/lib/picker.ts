@@ -174,7 +174,7 @@ function windowResetAt(w: Window, now: number): number | null {
 
 const planWeight = (a: Account, w: Window, ctx: PickCtx): number => ctx.planWeight?.(a, w) ?? 1;
 
-export function pacePressure(a: Account, ctx: PickCtx): number {
+function pacePressure(a: Account, ctx: PickCtx): number {
   const binding = minBy(gatedWindows(a, ctx.families), (w) => Math.max(0, 100 - liveUsed(w, ctx.now)));
   if (binding != null) {
     const reset = windowResetAt(binding, ctx.now);
@@ -190,7 +190,7 @@ function seatWindow(a: Account): Window | undefined {
   return sessionWindow(a) ?? weeklyWindow(a);
 }
 
-export function seatHeadroom(a: Account, ctx: PickCtx): number {
+function seatHeadroom(a: Account, ctx: PickCtx): number {
   const w = seatWindow(a);
   if (w == null) return Number.NEGATIVE_INFINITY;
   return ((barFor(a, w, ctx.thresholds, ctx.now) - liveUsed(w, ctx.now)) * planWeight(a, w, ctx)) / ((ctx.seats?.get(a.id) ?? 0) + 1);
@@ -288,7 +288,7 @@ export function usableAt(a: Account, ctx: PickCtx): number {
   return session != null && end > at && seatFull(a, { ...ctx, now: at }) ? end : at;
 }
 
-export type EarliestReset = { account: Account; availableAt: number };
+type EarliestReset = { account: Account; availableAt: number };
 
 export function pickEarliestReset(accounts: Account[], ctx: PickCtx): EarliestReset | null {
   const mapped = accounts
@@ -297,17 +297,17 @@ export function pickEarliestReset(accounts: Account[], ctx: PickCtx): EarliestRe
   return minBy(mapped, (x) => x.availableAt) ?? null;
 }
 
-export const MAX_WAITERS_PER_ACCOUNT = 8;
+const MAX_WAITERS_PER_ACCOUNT = 8;
 
-export function pickWaitTarget(accounts: Account[], ctx: PickCtx, waiters: Map<string, number>, cap: number, deadline: number, overflowDeadline: number): EarliestReset | null {
+export function pickWaitTarget(accounts: Account[], ctx: PickCtx, waiters: Map<string, number>, deadline: number, overflowDeadline: number): EarliestReset | null {
   const mapped = accounts
     .filter((a) => !a.needsReauth)
     .map((a) => ({ account: a, availableAt: usableAt(a, ctx) }))
     .filter((x) => x.availableAt <= overflowDeadline)
     .sort((x, y) => x.availableAt - y.availableAt || (x.account.id === ctx.currentId ? -1 : y.account.id === ctx.currentId ? 1 : 0));
   return (
-    mapped.filter((x) => x.availableAt <= deadline).find((x) => (waiters.get(x.account.id) ?? 0) < cap) ??
-    mapped.filter((x) => x.availableAt > deadline).find((x) => (waiters.get(x.account.id) ?? 0) < cap) ??
+    mapped.filter((x) => x.availableAt <= deadline).find((x) => (waiters.get(x.account.id) ?? 0) < MAX_WAITERS_PER_ACCOUNT) ??
+    mapped.filter((x) => x.availableAt > deadline).find((x) => (waiters.get(x.account.id) ?? 0) < MAX_WAITERS_PER_ACCOUNT) ??
     sortBy(mapped, [(x) => waiters.get(x.account.id) ?? 0, (x) => x.availableAt, (x) => (x.account.id === ctx.currentId ? 0 : 1)])[0] ??
     null
   );

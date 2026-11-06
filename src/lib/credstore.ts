@@ -5,7 +5,7 @@ import * as kc from "./keychain.ts";
 import { keychain as kcNames, namespacedCredService, storeDirFor } from "./paths.ts";
 import { CredentialBlobSchema, ErrnoSchema, type OAuthCreds } from "./types.ts";
 
-export type CredTarget = ({ kind: "keychain" } & kc.KeychainTarget) | { kind: "file"; path: string };
+type CredTarget = ({ kind: "keychain" } & kc.KeychainTarget) | { kind: "file"; path: string };
 
 const darwin = process.platform === "darwin";
 
@@ -25,14 +25,12 @@ export async function writeItem(t: CredTarget, secret: string): Promise<void> {
   writeFileAtomic(t.path, secret, 0o600);
 }
 
-export async function deleteItem(t: CredTarget): Promise<boolean> {
+export async function deleteItem(t: CredTarget): Promise<void> {
   if (t.kind === "keychain") return kc.deleteItem(t);
   try {
     unlinkSync(t.path);
-    return true;
   } catch (e) {
-    if (ErrnoSchema.safeParse(e).data?.code === "ENOENT") return false;
-    throw e;
+    if (ErrnoSchema.safeParse(e).data?.code !== "ENOENT") throw e;
   }
 }
 

@@ -69,7 +69,7 @@ export function modelFromFlag(value: string | null): ModelInfo | null {
 }
 
 const TranscriptBlockSchema = z.looseObject({ type: z.string().optional(), text: z.string().optional() });
-export const TranscriptRowSchema = z.looseObject({
+const TranscriptRowSchema = z.looseObject({
   type: z.string().optional(),
   isApiErrorMessage: z.boolean().optional(),
   apiErrorIsTransient: z.boolean().optional(),
@@ -96,7 +96,7 @@ export async function readTranscriptTail(path: string): Promise<TranscriptRow[]>
   return rows;
 }
 
-export function transcriptRowText(row: TranscriptRow): string {
+function transcriptRowText(row: TranscriptRow): string {
   const blocks = z.array(TranscriptBlockSchema).safeParse(row.message?.content);
   if (!blocks.success) return "";
   return blocks.data.filter((b) => b.type === "text").map((b) => b.text ?? "").join("\n").trim();
@@ -235,7 +235,7 @@ function scopedRows(limits: unknown[]): Record<string, UsageWindow> {
 
 const RetryAfterSecondsSchema = z.coerce.number().int().positive();
 
-export type UsageRead = { ok: true; usage: UsageWindows } | { ok: false; retryAt: number | null };
+type UsageRead = { ok: true; usage: UsageWindows } | { ok: false; retryAt: number | null };
 
 export async function fetchUsageDirect(accessToken: string): Promise<UsageRead> {
   let res: Response;

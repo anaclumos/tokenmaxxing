@@ -147,11 +147,6 @@ export async function readyToSample(account: Account, now: number): Promise<Prep
   return prepareSample(account);
 }
 
-export async function sampleAccountUsage(account: Account): Promise<SampleOutcome> {
-  const ready = await readyToSample(account, Date.now());
-  return ready.ok ? runSample(account, ready) : ready;
-}
-
 const SAMPLE_BATCH = 3;
 const STORE_FAILS_REAUTH = 5;
 
