@@ -50,7 +50,6 @@ async function handleCodexStop(rawStdin: string): Promise<void> {
       const payload: z.infer<typeof CodexRespawnMarkerSchema> = { accountId: decision.account.id, sessionId, ts: Date.now() };
       writeFileAtomic(join(codexPaths.respawnDir, supervisorId), JSON.stringify(payload));
       log("codexstop.marker", { supervisorId: supervisorId.slice(0, 8) });
-      return;
     }
   } catch (e) {
     log("codexstop.error", { err: errorMessage(e) });

@@ -50,7 +50,7 @@ type PiArgs = {
   flags: string[];
 };
 
-export function analyzePiArgs(argv: string[]): PiArgs | null {
+function analyzePiArgs(argv: string[]): PiArgs | null {
   if (argv[0] !== undefined && SUBCOMMANDS.has(argv[0])) return null;
   const out: PiArgs = { provider: null, model: null, sessionDir: null, sessionId: null, session: null, fork: false, continueLatest: false, approve: null, rest: [], flags: [] };
   for (let i = 0; i < argv.length; i++) {
@@ -118,7 +118,7 @@ const PiSettingsSchema = z.looseObject({
   defaultProjectTrust: z.string().optional().catch(undefined),
 });
 type PiSettings = z.infer<typeof PiSettingsSchema>;
-type PiSettingsScopes = { global: PiSettings; project: PiSettings; projectTrusted: boolean };
+type PiSettingsScopes = { global: PiSettings; project: PiSettings; projectTrusted: boolean; defaultProvider: string | undefined };
 
 const PiTrustSchema = z.record(z.string(), z.unknown());
 
@@ -150,17 +150,14 @@ function projectTrusted(args: PiArgs, global: PiSettings): boolean {
 
 function piSettings(args: PiArgs): PiSettingsScopes {
   const global = readPiJson(join(piPaths.home, "settings.json"), PiSettingsSchema) ?? {};
-  return {
-    global,
-    project: readPiJson(join(process.cwd(), ".pi", "settings.json"), PiSettingsSchema) ?? {},
-    projectTrusted: projectTrusted(args, global),
-  };
+  const project = readPiJson(join(process.cwd(), ".pi", "settings.json"), PiSettingsSchema) ?? {};
+  const trusted = projectTrusted(args, global);
+  return { global, project, projectTrusted: trusted, defaultProvider: (trusted ? project.defaultProvider : undefined) ?? global.defaultProvider };
 }
 
 function poolOf(args: PiArgs, settings: PiSettingsScopes): PiPool | null {
   const slash = args.model?.indexOf("/") ?? -1;
-  const defaultProvider = (settings.projectTrusted ? settings.project.defaultProvider : undefined) ?? settings.global.defaultProvider;
-  const modelProvider = args.model == null ? defaultProvider : slash > 0 ? args.model.slice(0, slash) : undefined;
+  const modelProvider = args.model == null ? settings.defaultProvider : slash > 0 ? args.model.slice(0, slash) : undefined;
   const provider = (args.provider ?? modelProvider)?.toLowerCase();
   return provider === "anthropic" ? "claude" : provider === "openai-codex" ? "codex" : null;
 }
@@ -255,7 +252,7 @@ function managedLaunch(argv: string[]): Launch | null {
       provider: args.provider,
       model: args.model,
       projectTrusted: settings.projectTrusted,
-      defaultProvider: (settings.projectTrusted ? settings.project.defaultProvider : undefined) ?? settings.global.defaultProvider,
+      defaultProvider: settings.defaultProvider,
     });
     return null;
   }
@@ -360,10 +357,6 @@ export async function runPiSupervisor(argv: string[]): Promise<number> {
   const savedTermios = saveTermios();
   process.on("SIGINT", () => {});
   process.on("SIGHUP", () => {});
-  const say = (terminal: string) => {
-    process.stderr.write(terminal);
-  };
-
   let respawns = 0;
   const startedAt = Date.now();
   let wanted: string | null = null;
@@ -437,11 +430,11 @@ export async function runPiSupervisor(argv: string[]): Promise<number> {
         const waitUntil = pending.move?.waitUntil ?? 0;
         if (waitUntil > Date.now()) {
           log("pisupervisor.depleted_exit", { id, pool, account: target.id.slice(0, 8), waitUntil });
-          say(`\n\x1b[36m⏳ tokenmaxxing: all accounts at their limit, so this session stopped. The next reset is at ${clockFmt.format(waitUntil)} on ${target.label}. Start pi again after that to continue.\x1b[0m\n`);
+          process.stderr.write(`\n\x1b[36m⏳ tokenmaxxing: all accounts at their limit, so this session stopped. The next reset is at ${clockFmt.format(waitUntil)} on ${target.label}. Start pi again after that to continue.\x1b[0m\n`);
           clearPresence({ dir: presenceDir, id });
           return endSession({ tool: "pi", moves: respawns, outcome: "depleted", startedAt, code: 1 });
         }
-        say(`\n\x1b[36m↻ tokenmaxxing: moving pi to ${target.label} - resuming...\x1b[0m\n`);
+        process.stderr.write(`\n\x1b[36m↻ tokenmaxxing: moving pi to ${target.label} - resuming...\x1b[0m\n`);
         wanted = target.id;
         launchArgs = sessionExists(dir, sid) ? ["--session-id", sid, ...args.flags, "--", RESUME_PROMPT] : firstArgs;
         continue;
@@ -453,7 +446,7 @@ export async function runPiSupervisor(argv: string[]): Promise<number> {
     }
   } catch (e) {
     const msg = errorMessage(e);
-    say(`\n\x1b[31m${msg.startsWith("tokenmaxxing:") ? msg : `tokenmaxxing: ${msg}`}\x1b[0m\n`);
+    process.stderr.write(`\n\x1b[31mtokenmaxxing: ${msg}\x1b[0m\n`);
     log("pisupervisor.fatal", { err: msg });
     await releaseClaim();
     return endSession({ tool: "pi", moves: respawns, outcome: "fatal", startedAt, code: 1 });

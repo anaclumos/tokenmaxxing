@@ -44,7 +44,7 @@ export function ancestorPids(): number[] {
   return out;
 }
 
-export type ProcessRow = { pid: number; ppid: number; name: string; args: string };
+type ProcessRow = { pid: number; ppid: number; name: string; args: string };
 
 function psColumn(column: "comm" | "args"): Map<number, { ppid: number; value: string }> {
   const res = Bun.spawnSync(["ps", "-A", "-o", "pid=", "-o", "ppid=", "-o", `${column}=`], { env: { ...process.env, LC_ALL: "C" } });

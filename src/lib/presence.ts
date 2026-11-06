@@ -19,7 +19,8 @@ const PresenceSchema = z.object({
 export function writePresence(input: { dir: string; id: string; accountId: string; pid: number; apiKeyId?: string }): void {
   const startedAt = pidStartTimes([input.pid]).get(input.pid);
   if (startedAt == null) throw new Error(`could not read pid ${input.pid}'s start time (ps lstart) - refusing to write an unverifiable presence file`);
-  writeFileAtomic(join(input.dir, input.id), JSON.stringify(PresenceSchema.parse({ accountId: input.accountId, pid: input.pid, startedAt, ...(input.apiKeyId != null ? { apiKeyId: input.apiKeyId } : {}) })));
+  const record: z.infer<typeof PresenceSchema> = { accountId: input.accountId, pid: input.pid, startedAt, ...(input.apiKeyId != null ? { apiKeyId: input.apiKeyId } : {}) };
+  writeFileAtomic(join(input.dir, input.id), JSON.stringify(record));
 }
 
 export function presencePid(input: { dir: string; id: string }): number | null {
@@ -35,7 +36,7 @@ export function clearPresence(input: { dir: string; id: string }): void {
   rmSync(join(input.dir, input.id), { force: true });
 }
 
-export type LivingPresence = { id: string; accountId: string; apiKeyId?: string };
+type LivingPresence = { id: string; accountId: string; apiKeyId?: string };
 
 export function livingPresences(dir: string): LivingPresence[] {
   if (!existsSync(dir)) return [];

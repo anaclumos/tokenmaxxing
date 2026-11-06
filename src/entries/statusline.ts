@@ -5,7 +5,7 @@ import { claudePool, seatFromEnv } from "../lib/paths.ts";
 import { supervisedSession } from "../lib/sessions.ts";
 import { errorMessage, log } from "../lib/log.ts";
 import { loadAccounts, loadConfig, writeUsage } from "../lib/state.ts";
-import { familyTokens, heldFamilies, matchedFamily, statusLineWindows } from "../lib/usage.ts";
+import { familyTokens, heldFamilies, matchedFamily, statusLineWindows, windowsOf } from "../lib/usage.ts";
 import { bufferedUsed, earliestReset, limitWindows, liveUsed, thresholdBars, wallUntil, weeklyExpiry, weeklyWindow } from "../lib/picker.ts";
 import { readStdin } from "../lib/proc.ts";
 import { worktreeName } from "../lib/worktree.ts";
@@ -19,14 +19,10 @@ import {
   type Bars,
   type StatusLineStdin,
   type UsageState,
-  type UsageWindow,
   type Window,
 } from "../lib/types.ts";
 
-const FIVE_HOUR_S = 5 * 3600;
-const SEVEN_DAY_S = 7 * 24 * 3600;
-
-export type RenderCtx = {
+type RenderCtx = {
   accounts: AccountsIndex;
   bars: Bars;
   perModel: Record<string, Window>;
@@ -38,7 +34,7 @@ export type RenderCtx = {
   truecolor: boolean;
 };
 
-export function renderStatusline(d: StatusLineStdin | null, ctx: RenderCtx): string {
+function renderStatusline(d: StatusLineStdin | null, ctx: RenderCtx): string {
   const col = makeColors(ctx.color);
   const paint = makeUsagePaint({ enabled: ctx.color, truecolor: ctx.truecolor });
   const used = (a: Account, w: Window) => bufferedUsed(a, w, ctx.bars, ctx.now);
@@ -74,12 +70,8 @@ export function renderStatusline(d: StatusLineStdin | null, ctx: RenderCtx): str
   const seatUuid = ctx.liveAccount;
   const seat = ctx.accounts.accounts.find((a) => a.id === seatUuid);
   const seatUsed = (w: Window) => (seat ? used(seat, w) : liveUsed(w, ctx.now));
-  const stdinWindow = (w: UsageWindow, windowSeconds: number): Window => ({ name: null, ...w, windowSeconds, sampledAt: ctx.now });
   for (const [name, w] of Object.entries(ctx.perModel)) windows.push(seg(initial(name), seatUsed(w), null));
-  if (wins) {
-    if (wins.fiveHour) windows.push(seg("", seatUsed(stdinWindow(wins.fiveHour, FIVE_HOUR_S)), wins.fiveHour.resetsAt));
-    windows.push(seg("", seatUsed(stdinWindow(wins.sevenDay, SEVEN_DAY_S)), wins.sevenDay.resetsAt));
-  }
+  if (wins) for (const w of windowsOf(wins, ctx.now)) windows.push(seg("", seatUsed(w), w.resetsAt));
   const held = heldFamilies(model);
   const walled = (a: Account) => wallUntil(a, held) > ctx.now;
   const wallSeg = (a: Account) => seg("", 100, wallUntil(a, held));
