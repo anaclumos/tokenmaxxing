@@ -8,7 +8,7 @@ import type { Homes, run } from "./edge-telemetry-fixtures.ts";
 const ROOT = join(import.meta.dir, "..");
 const MAIN = join(ROOT, "src", "main.ts");
 
-type Pool = "claude" | "codex" | "grok" | "muse" | "cursor" | "kimi";
+type Pool = "claude" | "codex" | "grok" | "muse" | "cursor" | "kimi" | "vibe";
 
 const POOL_FILES: Record<Pool, string> = {
   claude: "accounts.json",
@@ -17,6 +17,7 @@ const POOL_FILES: Record<Pool, string> = {
   muse: "muse-accounts.json",
   cursor: "cursor-accounts.json",
   kimi: "kimi-accounts.json",
+  vibe: "vibe-accounts.json",
 };
 
 const STORE_DIRS: Record<Pool, string> = {
@@ -26,6 +27,7 @@ const STORE_DIRS: Record<Pool, string> = {
   muse: "muse-stores",
   cursor: "cursor-stores",
   kimi: "kimi-stores",
+  vibe: "vibe-stores",
 };
 
 const JsonObjectSchema = z.record(z.string(), z.unknown());
@@ -127,7 +129,7 @@ export function poolIds(doc: Record<string, unknown> | null, pool: Pool): string
 }
 
 export function poolHeaders(stdout: string): string[] {
-  return stdout.split("\n").filter((line) => /^(codex|grok|muse|cursor|kimi) {2}\(/.test(line));
+  return stdout.split("\n").filter((line) => /^(codex|grok|muse|cursor|kimi|vibe) {2}\(/.test(line));
 }
 
 export function serveOpenRouter(remaining: number[]): { base: string; bearers: string[]; stop: () => void } {

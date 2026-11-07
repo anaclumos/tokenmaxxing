@@ -126,7 +126,7 @@ export const grok = statusOnlyProvider({
   presence: () => new Map(),
   importIntro: "Opening an isolated grok login for your first pooled account - the login you already have stays as it is.",
   live: {
-    authPath: () => join(grokPaths.home, "auth.json"),
+    read: () => readAuth(join(grokPaths.home, "auth.json")),
     found: (count) => `found ${count} grok login(s) in ${grokPaths.home} - pooling the first; use \`tokenmaxxing add --grok\` for the rest.`,
   },
   install: () => {
