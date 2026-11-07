@@ -129,7 +129,7 @@ export function poolIds(doc: Record<string, unknown> | null, pool: Pool): string
 }
 
 export function poolHeaders(stdout: string): string[] {
-  return stdout.split("\n").filter((line) => /^(codex|grok|muse|cursor|kimi) {2}\(/.test(line));
+  return stdout.split("\n").filter((line) => /^(codex|grok|muse|cursor|kimi|vibe) {2}\(/.test(line));
 }
 
 export function serveOpenRouter(remaining: number[]): { base: string; bearers: string[]; stop: () => void } {
