@@ -366,7 +366,7 @@ const base = statusOnlyProvider({
   presence,
   importIntro: "Opening an isolated Muse Code login for your first pooled account - the login you already have stays as it is.",
   live: {
-    authPath: () => musePaths.authJson,
+    read: () => readAuth(musePaths.authJson),
     found: (count) => `found ${count} Muse Code login(s) in ${musePaths.authJson} - pooling the first; use \`tokenmaxxing add --muse\` for the rest.`,
   },
   install,

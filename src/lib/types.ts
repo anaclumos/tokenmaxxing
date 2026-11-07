@@ -118,6 +118,7 @@ export const ConfigSchema = z
     museBin: z.string().default(""),
     cursorBin: z.string().default(""),
     kimiBin: z.string().default(""),
+    vibeBin: z.string().default(""),
     piBin: z.string().default(""),
     telemetry: z.boolean().default(true),
     policy: z

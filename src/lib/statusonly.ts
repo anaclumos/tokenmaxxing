@@ -14,17 +14,18 @@ type StatusOnlySpec = {
   name: Provider["name"];
   flag: string;
   pool: PoolPaths;
-  bin: { name: string; key: "grokBin" | "museBin" | "cursorBin" | "kimiBin"; versionOk: (versionOutput: string) => boolean };
+  bin: { name: string; key: "grokBin" | "museBin" | "cursorBin" | "kimiBin" | "vibeBin"; versionOk: (versionOutput: string) => boolean };
   storeDirFor: (accountId: string) => string;
   authJsonFor: (accountId: string) => string;
   homeEnv: string;
   loginArgs: () => string[];
+  loginEnv?: Record<string, string | undefined>;
   onboardAuthRel: string;
   readAuth: (path: string) => AuthEntry[];
   liveId: () => string | null;
   presence: () => Map<string, number>;
   importIntro: string;
-  live: { authPath: () => string; found: (count: number) => string } | null;
+  live: { read: () => AuthEntry[]; found: (count: number) => string } | null;
   install: () => void;
   loginStep: () => string;
   samplePool: Provider["samplePool"];
@@ -47,7 +48,7 @@ export function statusOnlyProvider(spec: StatusOnlySpec): Provider {
       stdin: "inherit",
       stdout: "inherit",
       stderr: "inherit",
-      env: { ...process.env, [spec.homeEnv]: onboardDir, TOKENMAXXING_PROBE: "1" },
+      env: { ...process.env, ...spec.loginEnv, [spec.homeEnv]: onboardDir, TOKENMAXXING_PROBE: "1" },
     });
     await p.exited;
     try {
@@ -64,7 +65,7 @@ export function statusOnlyProvider(spec: StatusOnlySpec): Provider {
     console.log(c.cyan(spec.importIntro));
     console.log();
     if (spec.live == null) return login();
-    const found = spec.readAuth(spec.live.authPath()).filter((e) => e.harvest);
+    const found = spec.live.read().filter((e) => e.harvest);
     const harvest = found[0]?.harvest;
     if (!harvest) return login();
     console.log(c.dim(spec.live.found(found.length)));

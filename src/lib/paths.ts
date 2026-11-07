@@ -73,6 +73,11 @@ export const kimiPool = {
   lockFile: join(TM_HOME, "kimi-lock"),
 } as const;
 
+export const vibePool = {
+  accountsJson: join(TM_HOME, "vibe-accounts.json"),
+  lockFile: join(TM_HOME, "vibe-lock"),
+} as const;
+
 export type PoolPaths = { accountsJson: string; lockFile: string };
 
 const CODEX_HOME = env("TOKENMAXXING_CODEX_HOME", env("CODEX_HOME", join(HOME, ".codex")));
@@ -191,6 +196,19 @@ export function kimiStoreDirFor(accountId: string): string {
 
 export function kimiConfigFor(accountId: string): string {
   return join(kimiStoreDirFor(accountId), "config.toml");
+}
+
+export const vibePaths = {
+  envFile: join(env("VIBE_HOME", join(HOME, ".vibe")), ".env"),
+  storesDir: join(TM_HOME, "vibe-stores"),
+} as const;
+
+export function vibeStoreDirFor(accountId: string): string {
+  return join(vibePaths.storesDir, shortId(accountId));
+}
+
+export function vibeAuthJsonFor(accountId: string): string {
+  return join(vibeStoreDirFor(accountId), "auth.json");
 }
 
 export function grokSeatFromEnv(accountIds: string[]): string | null {

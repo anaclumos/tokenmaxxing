@@ -169,7 +169,7 @@ export const cursor = statusOnlyProvider({
   presence: () => new Map(),
   importIntro: "Opening an isolated Cursor login for your first pooled account - the login you already have stays as it is.",
   live: {
-    authPath: () => cursorPaths.authJson,
+    read: () => readAuth(cursorPaths.authJson),
     found: () => `found the Cursor login in ${cursorPaths.authJson} - pooling it; use \`tokenmaxxing add --cursor\` for more.`,
   },
   install: () => {
