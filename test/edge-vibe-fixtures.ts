@@ -9,9 +9,9 @@ import type { Homes } from "./edge-telemetry-fixtures.ts";
 
 export const DAY_S = 86_400;
 
-export type MistralUser = { id: string; email: string; organization?: { id: string } };
+type MistralUser = { id: string; email: string; organization?: { id: string } };
 
-export type MistralStub = { base: string; apiUrl: string; calls: { path: string; key: string }[]; stop: () => void };
+type MistralStub = { base: string; apiUrl: string; stop: () => void };
 
 export function vibeIdentity(user: string, organization?: string): string {
   return new Bun.CryptoHasher("sha256").update(organization === undefined ? user : `${user}:${organization}`).digest("hex");
@@ -25,12 +25,10 @@ export function budgetBody(usagePercentage: number, resetAt: string): unknown {
 }
 
 export function serveMistral(input: { users: Record<string, MistralUser>; budgets?: Record<string, unknown>; refusals?: Record<string, number> }): MistralStub {
-  const calls: { path: string; key: string }[] = [];
   const defaultReset = new Date(Date.now() + 20 * DAY_S * 1000).toISOString();
   const stub = serve((req) => {
     const path = new URL(req.url).pathname;
     const key = (req.headers.get("authorization") ?? "").replace(/^Bearer /, "");
-    calls.push({ path, key });
     const refusal = input.refusals?.[key];
     if (refusal !== undefined) return Response.json({ detail: `HTTP ${refusal}` }, { status: refusal });
     const user = input.users[key];
@@ -40,10 +38,10 @@ export function serveMistral(input: { users: Record<string, MistralUser>; budget
     if (path === "/mistral/v1/billing/budget") return Response.json(input.budgets?.[key] ?? budgetBody(0, defaultReset));
     return Response.json({ detail: "Not Found" }, { status: 404 });
   });
-  return { ...stub, apiUrl: `${stub.base}/mistral`, calls };
+  return { ...stub, apiUrl: `${stub.base}/mistral` };
 }
 
-export function installFakeVibe(homes: Homes, setupKey: string | null): { bin: string; dir: string; setups: () => string[] } {
+export function installFakeVibe(homes: Homes, setupKey: string): { bin: string; dir: string; setups: () => string[] } {
   const dir = join(homes.home, "fake-vibe");
   const log = join(dir, "setups.log");
   const bin = fakeBin(
@@ -53,7 +51,7 @@ export function installFakeVibe(homes: Homes, setupKey: string | null): { bin: s
       'if [ "$1" = "--version" ]; then echo "vibe 3.1.0"; exit 0; fi',
       '[ "$1" = "--setup" ] || exit 9',
       `printf '%s\\n' "$VIBE_HOME" >> '${log}'`,
-      setupKey === null ? "exit 1" : `printf "MISTRAL_API_KEY='%s'\\n" '${setupKey}' > "$VIBE_HOME/.env"`,
+      `printf "MISTRAL_API_KEY='%s'\\n" '${setupKey}' > "$VIBE_HOME/.env"`,
     ].join("\n"),
   );
   return { bin, dir, setups: () => (existsSync(log) ? readFileSync(log, "utf8").split("\n").filter((line) => line !== "") : []) };
