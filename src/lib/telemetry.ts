@@ -6,7 +6,7 @@ import { loadApiKeys } from "./apikeys.ts";
 import { writeFileAtomic } from "./atomic.ts";
 import { withLock } from "./lock.ts";
 import { errorMessage, log } from "./log.ts";
-import { claudePool, codexPool, cursorPool, env, grokPool, kimiPool, musePool, optionalEnv, paths, type PoolPaths } from "./paths.ts";
+import { claudePool, codexPool, cursorPool, env, grokPool, kimiPool, musePool, optionalEnv, paths, vibePool, type PoolPaths } from "./paths.ts";
 import { loadAccounts, loadConfig, setConfigField } from "./state.ts";
 import { JsonTextSchema } from "./types.ts";
 import { detectGlobalRoot } from "./update.ts";
@@ -24,7 +24,7 @@ const stateJson = join(paths.home, "telemetry.json");
 const spoolFile = join(paths.home, "telemetry.jsonl");
 const lockFile = join(paths.home, "telemetry.lock");
 
-const PoolSchema = z.enum(["claude", "codex", "grok", "muse", "cursor", "kimi"]);
+const PoolSchema = z.enum(["claude", "codex", "grok", "muse", "cursor", "kimi", "vibe"]);
 const BucketSchema = z.enum(["0", "1", "2-5", "6-20", "21+"]);
 const CountSchema = z.number().int().nonnegative();
 const VersionSchema = z.string().regex(/^[0-9A-Za-z.+-]{1,32}$/);
@@ -69,6 +69,7 @@ const EventSchema = z.discriminatedUnion("event", [
     accounts_muse: BucketSchema,
     accounts_cursor: BucketSchema,
     accounts_kimi: BucketSchema,
+    accounts_vibe: BucketSchema,
     api_keys: BucketSchema,
   }),
 ]);
@@ -195,6 +196,7 @@ function dailyLine(): Line {
     accounts_muse: size(musePool),
     accounts_cursor: size(cursorPool),
     accounts_kimi: size(kimiPool),
+    accounts_vibe: size(vibePool),
     api_keys: bucket(loadApiKeys().keys.length),
   });
 }

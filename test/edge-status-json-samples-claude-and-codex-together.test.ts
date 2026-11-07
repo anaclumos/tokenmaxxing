@@ -5,7 +5,7 @@ import { account, pooledClaude } from "./fixtures.ts";
 
 const CLAUDE_ID = "5f8b1d3a-0e2c-4a9b-8d7e-3c1f5a9b2e60";
 const CODEX_ID = "a26c9e54-8b1f-4d3a-9e0c-7f2b4d6a8c15";
-const POOLS = ["claude", "codex", "grok", "muse", "cursor", "kimi"];
+const POOLS = ["claude", "codex", "grok", "muse", "cursor", "kimi", "vibe"];
 
 test("status --json sends the Claude and Codex usage reads before either is answered and still reports the pools in their fixed order", async () => {
   const homes = preparedHomes();

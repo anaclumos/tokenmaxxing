@@ -20,6 +20,7 @@ export function hermeticEnv(homes: Homes, hostUrl: string): Record<string, strin
     CODEX_HOME: undefined,
     GROK_HOME: undefined,
     KIMI_CODE_HOME: undefined,
+    VIBE_HOME: undefined,
   });
 }
 

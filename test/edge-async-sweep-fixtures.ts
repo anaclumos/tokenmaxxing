@@ -73,6 +73,7 @@ export function stubEnv(homes: Homes, base: string): Record<string, string> {
     CODEX_HOME: undefined,
     GROK_HOME: undefined,
     KIMI_CODE_HOME: undefined,
+    VIBE_HOME: undefined,
     PI_CODING_AGENT_DIR: undefined,
     NO_COLOR: "1",
     TOKENMAXXING_OAUTH_USAGE_URL: `${base}/api/oauth/usage`,

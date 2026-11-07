@@ -5,6 +5,7 @@ import { codex } from "../lib/codex.ts";
 import { grok } from "../lib/grok.ts";
 import { cursor } from "../lib/cursor.ts";
 import { kimi } from "../lib/kimi.ts";
+import { vibe } from "../lib/vibe.ts";
 import { muse } from "../lib/muse.ts";
 import { loadAccounts, loadConfig, saveAccounts } from "../lib/state.ts";
 import { withLock } from "../lib/lock.ts";
@@ -310,7 +311,7 @@ export async function cmdStatus(opts: { json: boolean; cached?: boolean }): Prom
   const notice = !cached && process.stderr.isTTY;
   if (notice) process.stderr.write(c.dim("sampling usage..."));
   const claudePending = collect(claude, cfg, now, cached);
-  const othersPending = [codex, grok, muse, cursor, kimi].map(async (p) => ({ p, report: await collect(p, cfg, now, cached) }));
+  const othersPending = [codex, grok, muse, cursor, kimi, vibe].map(async (p) => ({ p, report: await collect(p, cfg, now, cached) }));
   const failures = (await Promise.allSettled([claudePending, ...othersPending])).flatMap((r) => (r.status === "rejected" ? [r.reason] : []));
   if (notice) process.stderr.write("\r\x1b[2K");
   if (failures.length > 0) throw failures[0];
@@ -320,7 +321,7 @@ export async function cmdStatus(opts: { json: boolean; cached?: boolean }): Prom
   if (!json) {
     if (claudeReport.accounts.length === 0) {
       if (others.every(({ report }) => report.accounts.length === 0) && apiKeys.length === 0) {
-        console.log(c.dim("no accounts yet, run `tokenmaxxing init` (or `tokenmaxxing init --codex`, `--grok`, `--muse`, `--cursor`, `--kimi`)"));
+        console.log(c.dim("no accounts yet, run `tokenmaxxing init` (or `tokenmaxxing init --codex`, `--grok`, `--muse`, `--cursor`, `--kimi`, `--vibe`)"));
         return 0;
       }
       console.log(c.dim("no claude accounts (run `tokenmaxxing init` to pool claude too)"));

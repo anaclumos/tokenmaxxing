@@ -16,7 +16,7 @@ import { c, count } from "./render.ts";
 import type { Account, AccountsIndex } from "../lib/types.ts";
 
 const AUTH_USAGE =
-  "usage: tokenmaxxing auth [--codex | --grok | --muse | --cursor | --kimi] [<email|label|id> | --all]\n       tokenmaxxing auth [--codex | --grok | --muse | --cursor | --kimi] --emails <email>...\n       tokenmaxxing auth --pi [--codex] [<email|label|id> | --all]";
+  "usage: tokenmaxxing auth [--codex | --grok | --muse | --cursor | --kimi | --vibe] [<email|label|id> | --all]\n       tokenmaxxing auth [--codex | --grok | --muse | --cursor | --kimi | --vibe] --emails <email>...\n       tokenmaxxing auth --pi [--codex] [<email|label|id> | --all]";
 const EMAILS_FLAG = "--emails";
 const STORE_CHECKS_AT_ONCE = 8;
 
