@@ -19,7 +19,7 @@ import { claimSample, foldTee, landRead, prepareSample, readyToSample, runSample
 import { clearUsageSnapshot, liveWaitClaims, loadAccounts, loadConfig, loadUsageSnapshot, readJsonFile, saveAccounts, setConfigField, type Harvest } from "./state.ts";
 import { saveTermios, restoreTermios } from "./tty.ts";
 import { claimResetGrant, fetchUsageDirect, gatedFamilies, heldFamilies, mergeWindows, modelFromFlag, scrubCredEnv, windowsOf } from "./usage.ts";
-import { CredentialBlobSchema, JsonTextSchema, OAuthAccountSchema, type Account, type ApiKey, type Config, type ModelInfo, type Window } from "./types.ts";
+import { CredentialBlobSchema, JsonTextSchema, OAuthAccountSchema, type Account, type ApiKey, type BankedReset, type Config, type ModelInfo, type Window } from "./types.ts";
 import { c } from "../cli/render.ts";
 
 function liveId(): string | null {
@@ -128,8 +128,8 @@ async function prepareMove(target: Account): Promise<void> {
   log("move.prepared", { account: target.id.slice(0, 8), label: target.label });
 }
 
-async function useBankedReset(a: Account, signal: AbortSignal): Promise<ResetClaim> {
-  const grant = a.bankedReset?.grant;
+async function useBankedReset(a: Account, reset: BankedReset, signal: AbortSignal): Promise<ResetClaim> {
+  const { grant } = reset;
   const organizationUuid = a.oauthAccount?.organizationUuid;
   if (grant == null || organizationUuid == null) return { reset: false, detail: "no grant id or organization on the record" };
   const creds = await readStore(a.id);

@@ -43,7 +43,7 @@ describe("the check tick", () => {
     writeFile(join(storeDirFor(claudeId), ".credentials.json"), claudeCredentials(`claude-${claudeId}`, now + HOUR_MS));
 
     const codexId = crypto.randomUUID();
-    const codexAccount = { ...account(codexId, "plus", [weeklyWindow(99, now + 5 * 24 * HOUR_MS, now)]), lastUsageAt: now, bankedReset: { grant: null } };
+    const codexAccount = { ...account(codexId, "plus", [weeklyWindow(99, now + 5 * 24 * HOUR_MS, now)]), lastUsageAt: now, bankedResets: [{ grant: null, kind: "full" as const, endsAt: null }] };
     saveAccounts(codexPool, { version: 2, accounts: [codexAccount] });
     const idToken = jwt({ email: "codex@example.com", "https://api.openai.com/auth": { chatgpt_user_id: "user-1", chatgpt_account_id: "acct-1" } });
     const tokens = { id_token: idToken, access_token: jwt({ exp: Math.floor(now / 1000) + 3600 }), refresh_token: "codex-refresh" };
@@ -63,8 +63,8 @@ describe("the check tick", () => {
     expect(typeof claude?.lastUsageAt).toBe("number");
     expect(claude?.windows.some((w) => w.usedPercentage === 20)).toBe(true);
     const codex = loadAccounts(codexPool).accounts.find((a) => a.id === codexId);
-    expect(codex?.bankedReset).toBeUndefined();
-    expect(codex?.windows).toEqual([]);
+    expect(codex?.bankedResets).toBeUndefined();
+    expect(codex?.windows.map((w) => w.usedPercentage)).toEqual([0]);
     expect(loadApiKeys().keys.find((k) => k.id === "router")?.openrouter?.remainingUsd).toBe(7);
   });
 });

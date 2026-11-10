@@ -2,11 +2,11 @@ import { countBy } from "es-toolkit";
 import { CLAUDE_COMPACT_KILL_MS } from "./compact.ts";
 import { withLock } from "./lock.ts";
 import { loadAccounts, loadConfig, liveWaitClaims, releaseWaitClaim, replaceWaitClaim, saveAccounts } from "./state.ts";
-import { isExhausted, landWindows, limitWindows, liveFamilyWalls, liveUsed, nextWeeklyReset, onCredits, pickBest, pickWaitTarget, rankOrder, screensUntilReset, sessionWindow, thresholdBars, wallUntil, wantsBankedReset, weeklyWindow, type PickCtx } from "./picker.ts";
+import { isExhausted, landWindows, limitWindows, liveFamilyWalls, liveUsed, nextWeeklyReset, onCredits, pickBankedReset, pickBest, pickWaitTarget, rankOrder, screensUntilReset, sessionWindow, thresholdBars, wallUntil, weeklyWindow, windowsAfterReset, type PickCtx } from "./picker.ts";
 import { familyTokens } from "./usage.ts";
 import { errorMessage, log } from "./log.ts";
 import type { Observation, Provider, ResetClaim } from "./provider.ts";
-import type { Account, ApiKey, Bars, Config, EnforcedLimit } from "./types.ts";
+import type { Account, ApiKey, BankedReset, Bars, Config, EnforcedLimit } from "./types.ts";
 
 export type SwapDecision = { swapped: boolean; account: Account | null; apiKey?: ApiKey; reason: string; waitUntil?: number };
 
@@ -79,35 +79,40 @@ const CLAIM_HOLD_MS = 60_000;
 
 export async function useBankedResets(p: Provider, cfg: Config, now: number): Promise<void> {
   const bars = thresholdBars(cfg);
-  const wanted = async (accounts: Account[]): Promise<Account[]> => {
-    const held = accounts.filter((a) => a.bankedReset != null);
+  const wanted = async (accounts: Account[]): Promise<{ account: Account; reset: BankedReset }[]> => {
+    const held = accounts.filter((a) => (a.bankedResets?.length ?? 0) > 0);
     for (const a of held) await foldLive(p, a, cfg, now, bars);
-    return held.filter((a) => wantsBankedReset(a, bars, now));
+    return held.flatMap((account) => {
+      const reset = pickBankedReset(account, bars, now);
+      return reset == null ? [] : [{ account, reset }];
+    });
   };
   if ((await wanted(loadAccounts(p.pool).accounts)).length === 0) return;
   const due = await withLock(p.pool.lockFile, async () => {
     const idx = loadAccounts(p.pool);
     const picked = await wanted(idx.accounts);
-    const claims = picked.map((a) => ({ ...a }));
+    const claims = picked.map(({ account, reset }) => ({ account: { ...account }, reset }));
     const until = Date.now() + CLAIM_HOLD_MS;
-    for (const a of picked) {
-      a.bankedReset = undefined;
-      a.bankedResetAt = until;
+    for (const { account, reset } of picked) {
+      const left = account.bankedResets?.filter((g) => g.kind !== reset.kind) ?? [];
+      account.bankedResets = left.length > 0 ? left : undefined;
+      account.bankedResetAt = until;
     }
     if (picked.length > 0) saveAccounts(p.pool, idx);
     return claims;
   });
   const signal = AbortSignal.timeout(CLAIM_DEADLINE_MS);
   await Promise.all(
-    due.map(async (a) => {
-      const claim = await p.useBankedReset(a, signal).catch((e: unknown): ResetClaim => ({ reset: false, detail: errorMessage(e) }));
-      log("decide.banked_reset", { account: a.id.slice(0, 8), reset: claim.reset, detail: claim.detail.slice(0, 200) });
+    due.map(async ({ account: a, reset }) => {
+      const claim = await p.useBankedReset(a, reset, signal).catch((e: unknown): ResetClaim => ({ reset: false, detail: errorMessage(e) }));
+      log("decide.banked_reset", { account: a.id.slice(0, 8), kind: reset.kind, reset: claim.reset, detail: claim.detail.slice(0, 200) });
       if (!claim.reset) return;
       await withLock(p.pool.lockFile, () => {
         const idx = loadAccounts(p.pool);
         const stored = idx.accounts.find((x) => x.id === a.id);
         if (!stored) return;
-        landWindows(stored, p.mergeWindows([], stored.windows), Date.now(), bars);
+        const at = Date.now();
+        landWindows(stored, windowsAfterReset(stored, reset.kind, at), at, bars);
         saveAccounts(p.pool, idx);
       });
     }),

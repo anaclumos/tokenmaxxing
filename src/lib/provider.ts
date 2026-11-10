@@ -1,6 +1,6 @@
 import type { PoolPaths } from "./paths.ts";
 import type { Harvest } from "./state.ts";
-import type { Account, ApiKey, Config, Window } from "./types.ts";
+import type { Account, ApiKey, BankedReset, Config, Window } from "./types.ts";
 
 export type ApiKeyPool = {
   liveId(): string | null;
@@ -42,7 +42,7 @@ export type Provider = {
   samplePool(accounts: Account[], now: number): Promise<Map<string, SampleReport>>;
   mergeWindows(next: Window[], prev: Window[]): Window[];
   swap(target: Account): Promise<void>;
-  useBankedReset(account: Account, signal: AbortSignal): Promise<ResetClaim>;
+  useBankedReset(account: Account, reset: BankedReset, signal: AbortSignal): Promise<ResetClaim>;
   classifySwapError(e: unknown): SwapFailure;
   removeCredentials(account: Account): Promise<void>;
   storeUsable(account: Account): Promise<boolean>;

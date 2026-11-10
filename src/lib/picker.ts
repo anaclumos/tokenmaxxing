@@ -147,17 +147,83 @@ export function weeklyExpiry(a: Account, now: number): number {
   return nextWeeklyReset(weeklyWindow(a)?.resetsAt ?? null, now) ?? Number.POSITIVE_INFINITY;
 }
 
-const BANKED_RESET_LEAD_MS = 3 * 24 * 60 * 60 * 1000;
+// Weekly percent a Fable reset gives back per percent of the Fable cap it clears: a Fable cap at 100 gives back 50 of the weekly window.
+const FABLE_WEEKLY_SHARE = 0.5;
+const PACE_FLOOR_MS = 60 * 60 * 1000;
+const RESET_LAST_CALL_MS = 30 * 60 * 1000;
 
-export function wantsBankedReset(a: Account, bars: Bars, now: number): boolean {
-  const weekly = weeklyWindow(a);
-  const left = weeklyExpiry(a, now) - now;
-  return a.bankedReset != null && weekly != null && liveUsed(weekly, now) >= barFor(a, weekly, bars, now) && Number.isFinite(left) && left > BANKED_RESET_LEAD_MS;
+// Percent of the window the account is on pace to use before the window resets on its own, at its average rate since the window opened.
+function paceToReset(w: Window, now: number): number {
+  const reset = windowResetAt(w, now);
+  if (reset == null || reset <= now || w.windowSeconds == null) return 0;
+  const left = reset - now;
+  return (liveUsed(w, now) * left) / Math.max(PACE_FLOOR_MS, w.windowSeconds * 1000 - left);
 }
 
-export function landGrant(a: Account, grant: BankedReset | undefined, sentAt: number): void {
+function fableUsed(a: Account, now: number): number {
+  return Math.max(0, ...gatedWindows(a, [FABLE]).map((w) => liveUsed(w, now)));
+}
+
+// Every figure is in percent of the weekly window. `gain` is the weekly quota a reset lets the account use before its week resets on
+// its own: what the account can still use after the reset minus what it can use without it, both capped at its pace to that reset.
+// `best` is the most the reset gives on this account at its next bar with demand to spare: a full reset gives back the weekly bar, and
+// a Fable reset gives back the Fable share of the weekly bar at the account's own mix of Fable and other models, so a reset that is
+// already at its best costs nothing to spend now. `waste` is what keeping the reset is worth minus the gain.
+type ResetValue = { reset: BankedReset; gain: number; best: number; waste: number };
+
+function bankedResetValues(a: Account, bars: Bars, now: number): ResetValue[] {
+  const weekly = weeklyWindow(a);
+  if (weekly == null) return [];
+  const fable = maxBy(gatedWindows(a, [FABLE]), (w) => liveUsed(w, now));
+  const weeklyBar = barFor(a, weekly, bars, now);
+  const fableBar = fable == null ? 0 : barFor(a, fable, bars, now);
+  const demand = paceToReset(weekly, now);
+  const fableDemand = fable == null ? 0 : Math.min(demand, FABLE_WEEKLY_SHARE * paceToReset(fable, now));
+  const usable = (w: number, f: number) => Math.min(Math.max(0, weeklyBar - w), demand - fableDemand + Math.min(fableDemand, FABLE_WEEKLY_SHARE * Math.max(0, fableBar - f)));
+  const w = liveUsed(weekly, now);
+  const f = fableUsed(a, now);
+  const before = usable(w, f);
+  const after = { full: usable(0, 0), fable: fable == null ? before : usable(w - Math.min(w, FABLE_WEEKLY_SHARE * f), 0) };
+  const best = { full: weeklyBar, fable: FABLE_WEEKLY_SHARE * (w > 0 ? Math.min(fableBar, (f * weeklyBar) / w) : fableBar) };
+  const weekEnds = weeklyExpiry(a, now);
+  return (a.bankedResets ?? []).map((reset) => {
+    const gain = after[reset.kind] - before;
+    // A reset that ends before the week resets cannot wait for a later week, so keeping it is worth nothing.
+    const kept = reset.endsAt == null || reset.endsAt > weekEnds ? best[reset.kind] : 0;
+    return { reset, gain, best: best[reset.kind], waste: kept - gain };
+  });
+}
+
+// Spend a reset only at a bar it clears, where it gives back the most it can, or in its last half hour, when it is about to be lost.
+// Of those, spend the one that wastes the least, and only while it puts at least as much to use as it wastes. On a tie (to the whole
+// percent) the reset worth less at its best goes first, so the full reset stays in hand, then the one that ends sooner.
+export function pickBankedReset(a: Account, bars: Bars, now: number): BankedReset | null {
+  const weekly = weeklyWindow(a);
+  if (weekly == null) return null;
+  const fable = maxBy(gatedWindows(a, [FABLE]), (w) => liveUsed(w, now));
+  const walled = liveUsed(weekly, now) >= barFor(a, weekly, bars, now) || (fable != null && liveUsed(fable, now) >= barFor(a, fable, bars, now));
+  const due = bankedResetValues(a, bars, now).filter(
+    (v) => v.gain > 0 && v.gain >= v.waste && (walled || (v.reset.endsAt != null && v.reset.endsAt - now <= RESET_LAST_CALL_MS)),
+  );
+  return sortBy(due, [(v) => Math.round(v.waste), (v) => v.best, (v) => v.reset.endsAt ?? Number.POSITIVE_INFINITY])[0]?.reset ?? null;
+}
+
+// The windows right after a reset, until the next sample: a full reset empties every window, and a Fable reset empties the Fable cap
+// and gives back the weekly quota Fable used, which keeps the cleared Fable row in place so a Fable wall stamped at its bar ends.
+export function windowsAfterReset(a: Account, kind: BankedReset["kind"], at: number): Window[] {
+  const fable: Window[] = gatedWindows(a, [FABLE]);
+  const weekly = weeklyWindow(a);
+  const given = kind === "fable" && weekly != null ? Math.min(liveUsed(weekly, at), FABLE_WEEKLY_SHARE * fableUsed(a, at)) : 0;
+  return a.windows.map((w) => {
+    if (kind === "full" || fable.includes(w)) return { ...w, usedPercentage: 0, sampledAt: at };
+    if (w === weekly) return { ...w, usedPercentage: liveUsed(w, at) - given, sampledAt: at };
+    return w;
+  });
+}
+
+export function landGrants(a: Account, grants: BankedReset[], sentAt: number): void {
   if (sentAt <= (a.bankedResetAt ?? 0)) return;
-  a.bankedReset = grant;
+  a.bankedResets = grants.length > 0 ? grants : undefined;
   a.bankedResetAt = sentAt;
 }
 

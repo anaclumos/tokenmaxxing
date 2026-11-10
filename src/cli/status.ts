@@ -9,7 +9,7 @@ import { vibe } from "../lib/vibe.ts";
 import { muse } from "../lib/muse.ts";
 import { loadAccounts, loadConfig, saveAccounts } from "../lib/state.ts";
 import { withLock } from "../lib/lock.ts";
-import { barFor, bufferedUsed, earliestReset, gatedWindows, landGrant, landWindows, isExhausted, isSessionWindow, limitWindows, liveFamilyWalls, liveUsed, nextWeeklyReset, rankOf, sessionWindow, thresholdBars, weeklyWindow } from "../lib/picker.ts";
+import { barFor, bufferedUsed, earliestReset, gatedWindows, landGrants, landWindows, isExhausted, isSessionWindow, limitWindows, liveFamilyWalls, liveUsed, nextWeeklyReset, rankOf, sessionWindow, thresholdBars, weeklyWindow } from "../lib/picker.ts";
 import type { Provider, SampleReport } from "../lib/provider.ts";
 import { usd } from "./key.ts";
 import { bar, c, count, emitJson, fmtAgo, fmtReset } from "./render.ts";
@@ -170,7 +170,7 @@ async function collect(p: Provider, cfg: Config, now: number, cached: boolean): 
         }
         const report = reports.get(a.id);
         if (report?.ok === true && report.source === "probe" && a.bankedResetAt != null) {
-          landGrant(stored, a.bankedReset, a.bankedResetAt);
+          landGrants(stored, a.bankedResets ?? [], a.bankedResetAt);
           dirty = true;
         }
       }

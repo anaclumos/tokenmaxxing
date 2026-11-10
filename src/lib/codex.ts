@@ -15,7 +15,7 @@ import { codexSupervisorLink, installCodexSupervisor, isBinDirAhead } from "./in
 import { withLock } from "./lock.ts";
 import { errorMessage, log } from "./log.ts";
 import { codexPaths, codexPool, codexSeatFromEnv, optionalEnv } from "./paths.ts";
-import { expiringPressure, isExhausted, landGrant, onCredits, pickBest, pickEarliestReset, rankOrder, sessionWindow, thresholdBars, type PickCtx } from "./picker.ts";
+import { expiringPressure, isExhausted, landGrants, onCredits, pickBest, pickEarliestReset, rankOrder, sessionWindow, thresholdBars, type PickCtx } from "./picker.ts";
 import { StoreUnusableError, type Observation, type Provider, type SampleReport, type SeatBorrow } from "./provider.ts";
 import { loadAccounts, loadConfig, saveAccounts, setConfigField, type Harvest } from "./state.ts";
 import { restoreTermios, saveTermios } from "./tty.ts";
@@ -37,7 +37,7 @@ function applyUsage(account: Account, usage: CodexUsage, at: number): void {
   account.windows = usage.windows;
   account.lastUsageAt = at;
   account.hasCredits = usage.hasCredits ?? undefined;
-  landGrant(account, usage.bankedReset, at);
+  landGrants(account, usage.bankedResets, at);
   if (usage.email != null) account.email = usage.email;
   if (usage.planType != null) account.tier = usage.planType;
 }
@@ -400,7 +400,7 @@ export const codex: Provider = {
   samplePool,
   mergeWindows: (next) => next,
   swap: prepareMove,
-  useBankedReset: async (a, signal) => {
+  useBankedReset: async (a, _reset, signal) => {
     const fresh = await freshCodexAuth(a, Date.now(), false);
     return fresh.ok ? consumeCodexReset(fresh.auth, signal) : { reset: false, detail: fresh.reason };
   },
