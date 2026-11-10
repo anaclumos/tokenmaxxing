@@ -8,7 +8,7 @@ import { withLock } from "./lock.ts";
 import { errorMessage, log } from "./log.ts";
 import { claudeTierLabel, isDeadCredential } from "./oauth.ts";
 import { claudePool, paths, storeDirFor } from "./paths.ts";
-import { barFor, gatedWindows, landGrant, landWindows, liveUsed, sessionWindow, thresholdBars } from "./picker.ts";
+import { barFor, gatedWindows, landGrants, landWindows, liveUsed, sessionWindow, thresholdBars } from "./picker.ts";
 import { seatCounts } from "./presence.ts";
 import type { Observation } from "./provider.ts";
 import { loadAccounts, loadUsageSnapshot, saveAccounts } from "./state.ts";
@@ -64,7 +64,7 @@ export function teeObservation(account: Account): Observation | null {
 
 export function landRead(account: Account, usage: UsageWindows, at: number, thresholds: Bars): void {
   if (account.lastUsageAt == null || at > account.lastUsageAt) landWindows(account, mergeWindows(windowsOf(usage, at), account.windows), at, thresholds);
-  landGrant(account, usage.bankedReset, at);
+  landGrants(account, usage.bankedResets ?? [], at);
 }
 
 export function foldTee(account: Account, thresholds: Bars): boolean {

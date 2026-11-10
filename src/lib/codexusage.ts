@@ -87,7 +87,7 @@ export async function fetchCodexUsage(input: { auth: CodexAuthJson; at: number }
     email: wire.email ?? null,
     planType: wire.plan_type ?? null,
     hasCredits: wire.credits?.has_credits ?? null,
-    bankedReset: resetCredits(wire.rate_limit_reset_credits),
+    bankedResets: resetCredits(wire.rate_limit_reset_credits),
     windows: [
       ...toWindows(wire.rate_limit, null, at),
       ...(wire.additional_rate_limits ?? []).flatMap((row) => toWindows(row.rate_limit, row.limit_name, at)),
@@ -97,14 +97,14 @@ export async function fetchCodexUsage(input: { auth: CodexAuthJson; at: number }
 
 const ResetCreditsSchema = z.looseObject({ available_count: z.number() });
 
-function resetCredits(raw: unknown): BankedReset | undefined {
-  if (raw == null) return undefined;
+function resetCredits(raw: unknown): BankedReset[] {
+  if (raw == null) return [];
   const block = ResetCreditsSchema.safeParse(raw);
   if (!block.success) {
     log("codexusage.reset_credits_unreadable", { issue: z.prettifyError(block.error).slice(0, 200) });
-    return undefined;
+    return [];
   }
-  return block.data.available_count > 0 ? { grant: null } : undefined;
+  return block.data.available_count > 0 ? [{ grant: null, kind: "full", endsAt: null }] : [];
 }
 
 const RESET_URL = env("TOKENMAXXING_CODEX_RESET_URL", "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits/consume");

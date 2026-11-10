@@ -270,19 +270,43 @@ flowchart LR
 
 ## Banked resets
 
-An account can hold a banked reset: a one-time reset of its usage windows that the provider grants, such as a promotional reset. When an account's weekly window is at or over its weekly bar and its weekly reset is more than three days away, tokenmaxxing spends the account's banked reset on it, so the account does not sit out the rest of the week. When the weekly reset is three days away or less, or its time is unknown, the account waits for it and keeps the banked reset.
+An account can hold banked resets: one-time resets of its usage windows that the provider grants, such as a promotional reset. There are two kinds:
+
+| Kind | What it clears |
+| --- | --- |
+| Full reset | every window: the 5-hour, the weekly, and the Fable cap |
+| Fable reset (Claude only) | the Fable cap, and it gives back the weekly quota Fable used: a Fable cap at 100 percent gives back 50 percent of the weekly window |
+
+Every figure below is in percent of the weekly window.
+
+- **Need**: what the account is on pace to use before its week resets on its own, at its own average rate since the week opened: `used × time left / time elapsed`. The Fable cap's pace is figured the same way and counts at half, its share of the weekly window.
+- **Gain**: how much more of that need the account can use after the reset than without it, given its weekly bar and its Fable bar.
+- **Best**: the most the reset gives on this account at its next bar with need to spare. A full reset's best is the weekly bar. A Fable reset's best is half the Fable cap the account reaches at its weekly bar, at its own mix of Fable and other models, so on an account that runs little Fable it is small.
+- **Waste**: what keeping the reset is worth minus the gain. Keeping it is worth its best, or nothing when the reset ends before the week resets, since it cannot wait for a later week.
+
+A reset is spent only while the account is at its weekly bar or its Fable bar, where a reset gives back the most it can, or in the reset's last half hour, when it is about to be lost. Of those, tokenmaxxing spends the reset that wastes the least, as long as its gain is at least its waste. On a tie, to the whole percent, the reset worth less at its best goes first, so the full reset stays in hand, then the one that ends sooner. When no reset passes, the account waits for its reset and keeps them all.
 
 ```mermaid
 flowchart LR
-  spent["weekly window<br/>at or over<br/>its weekly bar"] --> due{"weekly reset<br/>more than<br/>three days away?"}
-  due -->|"yes"| claim["spend the<br/>banked reset"]
-  due -->|"no, or<br/>its time unknown"| wait["wait for the<br/>weekly reset,<br/>keep the<br/>banked reset"]
+  bar["at the weekly<br/>or Fable bar,<br/>or a reset in its<br/>last half hour"] --> score["score each reset:<br/>gain and waste"]
+  score -->|"gain at least<br/>waste"| claim["spend the reset<br/>that wastes least"]
+  score -->|"none"| wait["keep every reset,<br/>wait for the<br/>window to reset"]
 ```
+
+With the default bars (weekly and Fable bar 98):
+
+| Weekly used | Fable cap used | Week left | Need | Spends | Why |
+| --- | --- | --- | --- | --- | --- |
+| 98 | 100 | 1.5 days | 27 | Fable | gives back 27 of its best 49; a full reset would also give 27 and waste 71 |
+| 98 | 100 | 4 days | 131 | Fable | gives back 50, its best; the full reset waits for the next bar |
+| 98 | 0 | 5 days | 245 | full | a Fable reset gives nothing back |
+| 60 | 98 | 4 days | 80 | Fable | the Fable cap alone binds; a full reset gives the same 49 and wastes 49 |
+| 98 | 100 | 6 hours | 4 | nothing | either reset would waste far more than the 4 it puts to use |
 
 ### The claim per provider
 
-- Claude: the direct usage read carries the account's reset grants in its `cedar_ember` block, the block Claude Code's own limit-reset offer reads. A grant counts when it is the account's next grant, the server marks it usable now, it is not paused, it has a reset left, and it clears the weekly window. The claim is the call Claude Code makes, `POST /api/organizations/<organization>/reset_rate_limits` with that grant, under the account's stored access token. The usage read sends Claude Code's `User-Agent`, `claude-cli/<version> (external, cli)` with the version that the real binary's `--version` prints, because the server reports no grant to any other client.
-- Codex: the usage read carries `rate_limit_reset_credits.available_count`, and the claim is the call `codex` makes, `POST https://chatgpt.com/backend-api/wham/rate-limit-reset-credits/consume`, under the account's stored access token. A token that is about to expire is never refreshed for a claim.
+- Claude: the direct usage read carries the account's reset grants in its `cedar_ember` block, the block Claude Code's own limit-reset offer reads. A grant counts when the server marks it usable now, it is not paused, it has a reset left, and it has not ended. A grant that gives the weekly window back (`gives_back_weekly`) is a Fable reset; any other grant that clears the weekly window is a full reset; a grant that clears only the 5-hour window is not banked. The account holds the first such grant of each kind in the server's order, the grant Claude Code offers for that kind. The claim is the call Claude Code makes, `POST /api/organizations/<organization>/reset_rate_limits` with that grant, under the account's stored access token. The usage read sends Claude Code's `User-Agent`, `claude-cli/<version> (external, cli)` with the version that the real binary's `--version` prints, because the server reports no grant to any other client.
+- Codex: the usage read carries `rate_limit_reset_credits.available_count`, a full reset with no end, and the claim is the call `codex` makes, `POST https://chatgpt.com/backend-api/wham/rate-limit-reset-credits/consume`, under the account's stored access token. A token that is about to expire is never refreshed for a claim.
 
 ### When the claim runs
 
@@ -290,18 +314,18 @@ The claim runs at the start of every decision that carries no server refusal (th
 
 ### One claim per grant
 
-Under the pool lock, the account record drops the grant and records a one-minute claim hold before the claim is sent. The claim gives up within 25 seconds. A usage read sent before the hold ends cannot bring the grant back, so concurrent decisions and reads in flight send one claim per grant. Only a usage read sent after the hold that still reports a usable grant brings it back.
+Under the pool lock, the account record drops the grant it spends, keeps the grant of the other kind, and records a one-minute claim hold before the claim is sent. The claim gives up within 25 seconds. A usage read sent before the hold ends cannot bring the grant back, so concurrent decisions and reads in flight send one claim per grant. Only a usage read sent after the hold that still reports a usable grant brings it back.
 
 ```mermaid
 flowchart LR
   lock["under the<br/>pool lock:<br/>drop the grant,<br/>record a<br/>one-minute<br/>claim hold"] --> post["send the claim,<br/>give up within<br/>25 seconds"]
-  post -->|"reset"| reset["drop the cached<br/>session and<br/>weekly windows"]
+  post -->|"reset"| reset["land the<br/>figures after<br/>the reset"]
   reset --> wall["end a wall<br/>stamped while<br/>the weekly<br/>window was<br/>at its bar"]
 ```
 
 ### After a reset
 
-When the server answers `reset`, the account record drops its cached session and weekly windows, so the account is unmeasured until its next sample, and an enforced-limit wall stamped while the weekly window was at its bar ends. A session whose own seat takes the reset at a turn boundary stays on that seat.
+When the server answers `reset`, the account record lands the figures the reset leaves until its next sample corrects them: a full reset empties every cached window, and a Fable reset empties the Fable cap and takes half the Fable cap it cleared off the weekly window. An enforced-limit wall stamped while the weekly window was at its bar ends once the weekly window is under its bar, and a Fable wall stamped while the Fable cap was at its bar ends with the emptied cap. A session whose own seat takes the reset at a turn boundary stays on that seat.
 
 The seat watch reads the seat's statusline tee. A terminal statusline that renders between the claim and the next model response writes the figures from before the claim with a fresh time, and the seat watch then moves the session once. The account keeps its reset.
 

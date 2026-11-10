@@ -1,4 +1,4 @@
-import { omit } from "es-toolkit";
+import { omit, uniqBy } from "es-toolkit";
 import { z } from "zod";
 import { claudeUserAgent } from "./claudebin.ts";
 import { http, safeErrorDetail } from "./http.ts";
@@ -197,8 +197,16 @@ const UsageScopedLimitSchema = z.looseObject({
   resets_at: ResetsAtSchema,
   scope: z.looseObject({ model: z.looseObject({ display_name: z.string() }) }),
 });
-const ResetGrantSchema = z.looseObject({ id: z.string(), resets_left: z.number(), clears: z.array(z.string()), paused: z.boolean(), usable_now: z.boolean() });
-const CedarEmberSchema = z.looseObject({ next_grant_id: z.string().nullish(), grants: z.array(z.looseObject({ id: z.string() })) });
+const ResetGrantSchema = z.looseObject({
+  id: z.string(),
+  resets_left: z.number(),
+  clears: z.array(z.string()),
+  paused: z.boolean(),
+  usable_now: z.boolean(),
+  gives_back_weekly: z.boolean().optional(),
+  ends_at: InstantSchema.nullish(),
+});
+const CedarEmberSchema = z.looseObject({ grants: z.array(z.unknown()) });
 const UsageResponseSchema = z.looseObject({
   five_hour: UsageLimitSchema.nullish(),
   seven_day: UsageLimitSchema.nullish(),
@@ -206,21 +214,29 @@ const UsageResponseSchema = z.looseObject({
   cedar_ember: z.unknown().optional(),
 });
 
-function unreadableGrant(error: z.ZodError): undefined {
+function unreadableGrant(error: z.ZodError): null {
   log("usage.cedar_ember_unreadable", { issue: z.prettifyError(error).slice(0, 200) });
-  return undefined;
+  return null;
 }
 
-function weeklyGrant(raw: unknown): BankedReset | undefined {
-  if (raw == null) return undefined;
+// Claude Code's own split: a grant that gives the weekly window back is a Fable reset, and any other grant that clears the weekly window is a full one. A grant that clears only the 5-hour window is not banked.
+function resetGrant(raw: unknown, now: number): BankedReset | null {
+  const grant = ResetGrantSchema.safeParse(raw);
+  if (!grant.success) return unreadableGrant(grant.error);
+  const g = grant.data;
+  const endsAt = g.ends_at ?? null;
+  if (!g.usable_now || g.paused || g.resets_left <= 0 || (endsAt != null && endsAt <= now)) return null;
+  if (g.gives_back_weekly === true) return { grant: g.id, kind: "fable", endsAt };
+  return g.clears.includes("seven_day") ? { grant: g.id, kind: "full", endsAt } : null;
+}
+
+// The first usable grant of each kind, in the server's order, which is the grant Claude Code offers for that kind.
+function resetGrants(raw: unknown, now: number): BankedReset[] {
+  if (raw == null) return [];
   const block = CedarEmberSchema.safeParse(raw);
-  if (!block.success) return unreadableGrant(block.error);
-  const named = block.data.grants.find((g) => g.id === block.data.next_grant_id);
-  if (named == null) return undefined;
-  const next = ResetGrantSchema.safeParse(named);
-  if (!next.success) return unreadableGrant(next.error);
-  const g = next.data;
-  return g.usable_now && !g.paused && g.resets_left > 0 && g.clears.includes("seven_day") ? { grant: g.id } : undefined;
+  if (!block.success) return unreadableGrant(block.error) ?? [];
+  const usable = block.data.grants.map((g) => resetGrant(g, now)).filter((g) => g != null);
+  return uniqBy(usable, (g) => g.kind);
 }
 
 function scopedRows(limits: unknown[]): Record<string, UsageWindow> {
@@ -263,7 +279,7 @@ export async function fetchUsageDirect(accessToken: string): Promise<UsageRead> 
   }
   return {
     ok: true,
-    usage: { fiveHour: win(parsed.data.five_hour), sevenDay, perModel: scopedRows(parsed.data.limits ?? []), bankedReset: weeklyGrant(parsed.data.cedar_ember) },
+    usage: { fiveHour: win(parsed.data.five_hour), sevenDay, perModel: scopedRows(parsed.data.limits ?? []), bankedResets: resetGrants(parsed.data.cedar_ember, Date.now()) },
   };
 }
 

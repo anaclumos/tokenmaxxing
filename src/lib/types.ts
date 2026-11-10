@@ -31,10 +31,11 @@ const AggregateWindowsSchema = z.object({
   sevenDay: UsageWindowSchema,
 });
 
-const BankedResetSchema = z.object({ grant: z.string().nullable() });
+// `fable` empties the Fable cap and returns what Fable used to the weekly window; `full` empties every window.
+const BankedResetSchema = z.object({ grant: z.string().nullable(), kind: z.enum(["fable", "full"]), endsAt: z.number().nullable() });
 export type BankedReset = z.infer<typeof BankedResetSchema>;
 
-export type UsageWindows = z.infer<typeof AggregateWindowsSchema> & { perModel: Record<string, UsageWindow>; bankedReset?: BankedReset };
+export type UsageWindows = z.infer<typeof AggregateWindowsSchema> & { perModel: Record<string, UsageWindow>; bankedResets?: BankedReset[] };
 
 const WindowSchema = z.object({
   name: z.string().nullable(),
@@ -71,7 +72,7 @@ const AccountSchema = z.object({
   familyUntil: z.record(z.string(), z.number()).optional(),
   needsReauth: z.boolean().optional(),
   hasCredits: z.boolean().optional(),
-  bankedReset: BankedResetSchema.optional(),
+  bankedResets: z.array(BankedResetSchema).optional(),
   bankedResetAt: z.number().optional(),
   oauthAccount: OAuthAccountSchema.optional(),
 });
@@ -303,7 +304,7 @@ export type CodexUsage = {
   email: string | null;
   planType: string | null;
   hasCredits: boolean | null;
-  bankedReset: BankedReset | undefined;
+  bankedResets: BankedReset[];
   windows: Window[];
 };
 
