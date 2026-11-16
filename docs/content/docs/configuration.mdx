@@ -50,6 +50,7 @@ Config is JSON at `~/.config/tokenmaxxing/config.json`. Every field is optional;
 | `policy.usagePollTtlMs` | `90000` | The shortest sample interval of a Claude account, the one an account near a bar gets. See [Sample interval](#sample-interval). |
 | `policy.maxWaitMs` | `3600000` (1 hour) | The depleted-pool stop bound. See [Depleted-pool stop](#depleted-pool-stop). |
 | `policy.checkIntervalMs` | `60000`, minimum `10000` | The periodic check tick. See [Check timer](#check-timer). |
+| `policy.resumeLoadCap` | `100` | The 1-minute load average at or above which moved Claude sessions wait to compact and resume. See [Paced resumes](/switching#paced-resumes). |
 | `policy.accountReleaseMs` | `session` `1800000` (30 minutes), `weekly` `18000000` (5 hours) | How close to its reset a window is when a `thresholds.accounts` entry stops holding the account under the global bar. |
 | `hub.port` | `8317`, the CLIProxyAPI default | The loopback port the usage hub listens on (`tokenmaxxing serve` and its background service). See [Usage hub](/hub). |
 
