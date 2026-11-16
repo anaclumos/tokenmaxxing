@@ -132,6 +132,7 @@ export const ConfigSchema = z
         usagePollTtlMs: z.number().int().positive().default(90_000),
         maxWaitMs: z.number().int().positive().default(3_600_000),
         checkIntervalMs: z.number().int().min(10_000).default(60_000),
+        resumeLoadCap: z.number().positive().default(100),
         accountReleaseMs: z
           .object({
             session: z.number().int().min(0).default(1_800_000),

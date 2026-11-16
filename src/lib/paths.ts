@@ -46,6 +46,8 @@ export const claudePool = {
   lockFile: join(TM_HOME, "lock"),
   waitQueueJson: join(TM_HOME, "wait-queue.json"),
   apiKeysJson: join(TM_HOME, "api-keys.json"),
+  resumeGateJson: join(TM_HOME, "resume-gate.json"),
+  resumeLockFile: join(TM_HOME, "resume-lock"),
 } as const;
 
 export const codexPool = {

@@ -52,6 +52,8 @@ The tree lists the entries in the order of the sections below. Open a folder to 
       <File name="<session-id>" />
     </Folder>
     <File name="wait-queue.json" />
+    <File name="resume-gate.json" />
+    <File name="resume-lock" />
     <Folder name="bin">
       <File name="claude" />
       <File name="codex" />
@@ -190,6 +192,8 @@ flowchart TD
 | `cost/<session-id>/<live-session-id>.json` | Written only while `api-keys.json` exists: the latest cumulative cost estimate (`{sessionId, usd}`) of one live session id of the launch, from the statusline in a terminal session and from the `result` lines in a stream-json session. The supervisor reads the folder and deletes it when the session ends. A folder that a killed supervisor left behind is pruned after 30 days idle, never while the session's record under `live/` exists |
 | `respawn/<session-id>` | Respawn markers the supervisor watches (fields below) |
 | `wait-queue.json` | One `{sessionId, accountId, at, waitUntil}` claim per supervised session that is moving or waiting, naming the account it relaunches on (lifecycle below) |
+| `resume-gate.json` | `{batchAt, waiting}`: when the last resume batch opened, and each moved session waiting to compact and resume, keyed by session id with its supervisor's `pid`, `requestedAt`, and `admitted` (see [Paced resumes](/switching#paced-resumes)) |
+| `resume-lock` | The `flock` file that serializes `resume-gate.json` |
 
 Placement counts each record under `live/` as one session on its account, and `rm` refuses an account with a living record.
 

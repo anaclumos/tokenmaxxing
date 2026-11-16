@@ -13,6 +13,7 @@ import { withLock } from "../lib/lock.ts";
 import { limitWindows, liveUsed, sessionWindow, thresholdBars, usableAt, wallUntil, weeklyWindow } from "../lib/picker.ts";
 import { clearPresence } from "../lib/presence.ts";
 import { readLines } from "../lib/proc.ts";
+import { awaitResumeTurn } from "../lib/resumegate.ts";
 import { teeObservation } from "../lib/sample.ts";
 import { childStdout, clockFmt, exitStatus, loopGuardTripped, raceMarkerOrExit, recordPresenceOrStop, relayStdout, runPassthrough, SEAT_POLL_MS, SEAT_RETRY_MS, type Say } from "../lib/supervise.ts";
 import { saveTermios } from "../lib/tty.ts";
@@ -845,6 +846,7 @@ export async function runSupervisor(argv: string[]): Promise<number> {
       if (relay !== null) {
         for (const id of relay.replay(resumable)) process.stdout.write(controlErrorLine(id, MOVED_REQUEST_ERROR));
       }
+      await awaitResumeTurn(sid, m.ts, loadConfig().policy.resumeLoadCap);
       let compacted = false;
       const compactKey = key != null && usableApiKey(key.id) != null ? key : null;
       const compactOn = seat?.label ?? (compactKey ? `API key ${compactKey.label}` : null);

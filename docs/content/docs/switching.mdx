@@ -221,6 +221,15 @@ For Claude:
 
 A move the enforced-limit path triggers never compacts, and neither does any move while the old account carries an enforced-limit wall (a seat-watch move after a subagent's refusal, for one): the account already refused a request, so the compaction call would fail the same way.
 
+### Paced resumes
+
+When one account crosses a bar, every session on it moves at once, and each compaction and relaunch starts a Claude Code process. A Claude supervisor that has stopped its session for a move therefore waits for its turn in `resume-gate.json` before it compacts and relaunches:
+
+- A batch opens at most once every 15 seconds and admits up to 8 waiting sessions, the oldest move first.
+- No batch opens while the host's 1-minute load average is at or above `policy.resumeLoadCap` (default 100).
+- Each batch is logged as `supervisor.resume_batch` with the load, the cap, the sessions it admits, and how many still wait.
+- A session whose supervisor is gone leaves the queue, so it never holds a place. A lone move on a quiet host resumes at once.
+
 ## When nothing is usable
 
 When every account is at or over a bar and no stored API key has credit left (see [API keys](#api-keys)), the decision assigns the session to a recovery account. If that reset lands within twice `policy.maxWaitMs` (`maxWaitMs` defaults to 1 hour), the supervisor stops the session and names that reset, and the session resumes when it is started again after the reset (see [Architecture](/architecture)). The supervisor starts no process and holds none open until the reset, so a harness that runs the session closes the run. Assignment is first come first served with at most eight sessions assigned to one reset, so sessions that resume after one reset spread across resets instead of landing on one account together.
