@@ -19,6 +19,7 @@ const GateSchema = z.object({
 
 export function admitResume(input: { sid: string; requestedAt: number; loadCap: number; now: number; load: number }): boolean {
   const gate = existsSync(claudePool.resumeGateJson) ? readJsonFile(claudePool.resumeGateJson, GateSchema) : { batchAt: 0, waiting: {} };
+  const before = JSON.stringify(gate);
   const waiting = Object.fromEntries(Object.entries(gate.waiting).filter(([, w]) => pidExists(w.pid)));
   const own = (waiting[input.sid] ??= { pid: process.pid, requestedAt: input.requestedAt, admitted: false });
   let batchAt = gate.batchAt;
@@ -30,7 +31,8 @@ export function admitResume(input: { sid: string; requestedAt: number; loadCap: 
     log("supervisor.resume_batch", { load: input.load.toFixed(2), cap: input.loadCap, sessions: batch.map(([sid]) => sid.slice(0, 8)), waiting: queued.length - batch.length });
   }
   if (own.admitted) delete waiting[input.sid];
-  writeFileAtomic(claudePool.resumeGateJson, JSON.stringify({ batchAt, waiting }));
+  const after = JSON.stringify({ batchAt, waiting });
+  if (after !== before) writeFileAtomic(claudePool.resumeGateJson, after);
   return own.admitted;
 }
 
