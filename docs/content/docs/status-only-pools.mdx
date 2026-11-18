@@ -1,13 +1,11 @@
 ---
 title: Status-only pools
-description: grok, Cursor, Kimi Code, and Mistral Vibe accounts, pooled for inventory with no supervisor and no switching
+description: Cursor, Kimi Code, and Mistral Vibe accounts, pooled for inventory with no supervisor and no switching
 ---
 
-The grok, Cursor, Kimi Code, and Mistral Vibe pools share the account commands, the state layout, and the `status` view with the other pools, and nothing else: no supervisor shim, no hooks, no statusline tee, no session presence, and no switching. Each keeps an inventory of accounts and the credential each one holds; `status` reads each grok account's subscription credit window, each Cursor account's monthly included usage, each Kimi Code account's 5-hour, weekly, and monthly limits, and each Mistral Vibe account's monthly Vibe allowance.
+The Cursor, Kimi Code, and Mistral Vibe pools share the account commands, the state layout, and the `status` view with the other pools, and nothing else: no supervisor shim, no hooks, no statusline tee, no session presence, and no switching. Each keeps an inventory of accounts and the credential each one holds; `status` reads each Cursor account's monthly included usage, each Kimi Code account's 5-hour, weekly, and monthly limits, and each Mistral Vibe account's monthly Vibe allowance.
 
 ```sh
-tokenmaxxing init --grok          # pool the first grok login (status-only)
-tokenmaxxing add --grok           # pool another one through an isolated login
 tokenmaxxing init --cursor        # pool the Cursor CLI login (status-only)
 tokenmaxxing add --cursor         # pool another one through an isolated login
 tokenmaxxing init --kimi          # pool a Kimi Code account through an isolated login (status-only)
@@ -16,15 +14,9 @@ tokenmaxxing init --vibe          # pool the API key that vibe signs in with (st
 tokenmaxxing add --vibe           # pool another one through an isolated vibe --setup
 ```
 
-`init`, `add`, `auth`, `emails`, `rm`, and `rename` take `--grok`, `--cursor`, `--kimi`, or `--vibe`; every other command refuses the flags with exit code 2, and the pool flags are mutually exclusive. `init` verifies the vendor CLI and pins its path (`grokBin`, `cursorBin`, `kimiBin`, or `vibeBin` in `config.json`; `TOKENMAXXING_GROK_BIN`, `TOKENMAXXING_CURSOR_BIN`, `TOKENMAXXING_KIMI_BIN`, and `TOKENMAXXING_VIBE_BIN` override them), then prints that the pool is status-only. `doctor`, `check`, and the periodic timer ignore these pools, and `uninstall` keeps their stores.
+`init`, `add`, `auth`, `emails`, `rm`, and `rename` take `--cursor`, `--kimi`, or `--vibe`; every other command refuses the flags with exit code 2, and the pool flags are mutually exclusive. `init` verifies the vendor CLI and pins its path (`cursorBin`, `kimiBin`, or `vibeBin` in `config.json`; `TOKENMAXXING_CURSOR_BIN`, `TOKENMAXXING_KIMI_BIN`, and `TOKENMAXXING_VIBE_BIN` override them), then prints that the pool is status-only. `doctor`, `check`, and the periodic timer ignore these pools, and `uninstall` keeps their stores.
 
-Muse Code has a supervisor and is not a status-only pool; see [Muse Code support](/muse).
-
-## grok
-
-An account is a grok CLI login. `init --grok` imports the first entry of `~/.grok/auth.json` (`GROK_HOME` is honored) and points at `add --grok` for the rest; with no live login it runs `grok login` in a throwaway `GROK_HOME` under the state directory. `add --grok` and `auth --grok` always use the isolated login. Identity is the entry's user id, the label defaults to the email in the entry, and the harvested entry is written verbatim to `grok-stores/<uuid8>/auth.json` at mode 0600.
-
-Usage is the weekly subscription credit window from `GET https://cli-chat-proxy.grok.com/v1/billing?format=credits` (`creditUsagePercent`, classified by the period's duration). The endpoint leaves `creditUsagePercent` out while the period's use is 0, so a credits body without it reads as 0%. `TOKENMAXXING_GROK_USAGE_URL` overrides that URL for hermetic runs. The dollar billing body (`GET /v1/billing` without `format=credits`) is not quota: subscription accounts report `monthlyLimit` 0 there while credits remain, and a parser that treats that body as usage reports the account depleted. tokenmaxxing does not refresh grok tokens; a stored access token that has expired is retried against the live `GROK_HOME` login when that login is the same account. A failed read does not write the dollar body: an account with no stored window stays unmeasured, and one with a stored credits window keeps that figure as stale as it was.
+grok and Muse Code have supervisors and are not status-only pools; see [grok support](/grok) and [Muse Code support](/muse).
 
 ## Cursor
 
@@ -50,9 +42,7 @@ Usage is `GET https://api.mistral.ai/v1/billing/budget` with the key as the bear
 
 ## What status shows
 
-`status` renders the pool after Claude and Codex, headed `grok  (N accounts, status-only)` and skipped when empty. A grok account renders the weekly credit bar from the credits billing read. The live sample is the credits GET (and a live-login retry when the stored access token is expired). `status` shows `sampling grok usage...` on a terminal while the check runs, erases it, then reports `live sample failed` when the read fails (run `auth --grok` when the store has no usable credential); `status --cached` skips the check and notes `never sampled` when nothing is stored. `status --json` always carries the pool under `grok`, with the same pool shape as the others. `usage` is the weekly credit window when a sample has landed. `sessions` is 0. `exhausted` follows the same bars as the other pools when the account has a stored window, and is `false` when the account is unmeasured.
-
-The Cursor pool renders last, headed `cursor  (N accounts, status-only)` and skipped when empty, and `status --json` always carries it under `cursor`. Each account renders the billing-cycle bar, labeled `month`, and the `api` bar; `usage.week` carries the billing-cycle window (its `windowSeconds` is the cycle's length) and `usage.limits` the `API` window.
+The Cursor pool renders after Muse Code, headed `cursor  (N accounts, status-only)` and skipped when empty, and `status --json` always carries it under `cursor`. Each account renders the billing-cycle bar, labeled `month`, and the `api` bar; `usage.week` carries the billing-cycle window (its `windowSeconds` is the cycle's length) and `usage.limits` the `API` window.
 
 The Kimi Code pool renders after Cursor, headed `kimi  (N accounts, status-only)` and skipped when empty, and `status --json` always carries it under `kimi`. An account renders the `5h` bar and the monthly bar, labeled `month`, with a `week` bar between them on a legacy plan; `usage.fiveHour` carries the 5-hour window, `usage.week` the weekly window or else the monthly one, and `usage.limits` the `month` window when a weekly window takes `usage.week`.
 
@@ -62,10 +52,7 @@ The Mistral Vibe pool renders after Kimi Code, headed `vibe  (N accounts, status
 
 | Path | What it holds |
 |---|---|
-| `grok-accounts.json` | The pool index, the same schema as `accounts.json`; it names no active account |
-| `grok-lock` | The `flock` file that serializes the pool's commands |
-| `grok-stores/<uuid8>/auth.json` | One 0600 store per account |
-| `cursor-accounts.json` | The Cursor pool index, the same schema |
+| `cursor-accounts.json` | The Cursor pool index, the same schema as `accounts.json`; it names no active account |
 | `cursor-lock` | The `flock` file of the Cursor pool |
 | `cursor-stores/<uuid8>/auth.json` | One 0600 store per account |
 | `kimi-accounts.json` | The Kimi Code pool index, the same schema |
@@ -74,4 +61,4 @@ The Mistral Vibe pool renders after Kimi Code, headed `vibe  (N accounts, status
 | `vibe-accounts.json` | The Mistral Vibe pool index, the same schema |
 | `vibe-lock` | The `flock` file of the Mistral Vibe pool |
 | `vibe-stores/<uuid8>/auth.json` | One 0600 store per account: the account id and the API key |
-| `onboard/grok-<pid>-<random>/`, `onboard/cursor-<pid>-<random>/`, `onboard/kimi-<pid>-<random>/`, `onboard/vibe-<pid>-<random>/` | The throwaway home of one isolated login (for Cursor, its `XDG_CONFIG_HOME`; for Kimi Code, its `KIMI_CODE_HOME`; for Mistral Vibe, its `VIBE_HOME`), deleted after it |
+| `onboard/cursor-<pid>-<random>/`, `onboard/kimi-<pid>-<random>/`, `onboard/vibe-<pid>-<random>/` | The throwaway home of one isolated login (for Cursor, its `XDG_CONFIG_HOME`; for Kimi Code, its `KIMI_CODE_HOME`; for Mistral Vibe, its `VIBE_HOME`), deleted after it |

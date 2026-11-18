@@ -8,7 +8,7 @@ import { readLines } from "./proc.ts";
 import { writePresence } from "./presence.ts";
 import { restoreTermios } from "./tty.ts";
 
-type WrappedProduct = "claude" | "codex" | "pi" | "muse";
+type WrappedProduct = "claude" | "codex" | "pi" | "muse" | "grok";
 
 export const SEAT_POLL_MS = 10_000;
 export const SEAT_RETRY_MS = 60_000;
@@ -30,6 +30,7 @@ const WRAPPED: Record<WrappedProduct, { setting: string; binary: string; events:
   codex: { setting: "codexBin", binary: "codex", events: "codexsupervisor" },
   pi: { setting: "piBin", binary: "pi", events: "pisupervisor" },
   muse: { setting: "museBin", binary: "muse", events: "musesupervisor" },
+  grok: { setting: "grokBin", binary: "grok", events: "groksupervisor" },
 };
 
 export function exitStatus(child: { exitCode: number | null; signalCode: string | null }): number {

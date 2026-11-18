@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { countBy, mapAsync, partition, uniq } from "es-toolkit";
 import { z } from "zod";
-import { codexSupervisorLink, museSupervisorLink } from "../lib/install.ts";
+import { codexSupervisorLink, grokSupervisorLink, museSupervisorLink } from "../lib/install.ts";
 import { withLock } from "../lib/lock.ts";
 import { log } from "../lib/log.ts";
 import { paths, type PiPool } from "../lib/paths.ts";
@@ -23,6 +23,7 @@ const STORE_CHECKS_AT_ONCE = 8;
 const SUPERVISOR_LINKS: Partial<Record<Provider["name"], () => string>> = {
   claude: () => paths.supervisorLink,
   codex: codexSupervisorLink,
+  grok: grokSupervisorLink,
   muse: museSupervisorLink,
 };
 
