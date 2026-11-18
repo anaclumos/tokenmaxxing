@@ -1,13 +1,20 @@
+import { mkdirSync, readdirSync, symlinkSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
 import { writeFileAtomic } from "./atomic.ts";
+import { ensurePathAhead } from "./claude.ts";
+import { GROK_BIN } from "./claudebin.ts";
 import { fetchGrokUsage, GrokUsageReadError } from "./grokusage.ts";
-import { errorMessage } from "./log.ts";
+import { isBinDirAhead, installGrokSupervisor, grokSupervisorLink } from "./install.ts";
+import { withLock } from "./lock.ts";
+import { errorMessage, log } from "./log.ts";
 import { grokAuthJsonFor, grokPaths, grokPool, grokSeatFromEnv, grokStoreDirFor } from "./paths.ts";
-import type { SampleReport } from "./provider.ts";
-import { loadAccounts, readJsonFile, type Harvest } from "./state.ts";
+import { isExhausted, landWindows, pickBest, pickEarliestReset, thresholdBars, type PickCtx } from "./picker.ts";
+import { seatCounts } from "./presence.ts";
+import { StoreUnusableError, type Observation, type Provider, type SampleReport } from "./provider.ts";
+import { loadAccounts, loadConfig, readJsonFile, saveAccounts, type Harvest } from "./state.ts";
 import { statusOnlyProvider, type AuthEntry } from "./statusonly.ts";
-import { ErrnoSchema, InstantSchema, type Account, type Window } from "./types.ts";
+import { ErrnoSchema, InstantSchema, type Account, type Config, type Window } from "./types.ts";
 import { c } from "../cli/render.ts";
 
 const GrokAuthEntrySchema = z.looseObject({
@@ -85,37 +92,141 @@ function bearerFor(accountId: string, now: number): { token: string; from: "stor
   return null;
 }
 
-async function readGrokUsage(account: Account, now: number): Promise<SampleReport> {
-  const first = bearerFor(account.id, now);
-  if (first == null) return { ok: false, reason: "no usable credential in this account's store - run `tokenmaxxing auth --grok`" };
-  let windows: Window[];
+type GrokRead = { ok: true; windows: Window[] } | { ok: false; reason: string; rejected: boolean };
+
+async function readGrokUsage(account: Account, now: number): Promise<GrokRead> {
+  let first: { token: string; from: "store" | "live" } | null;
   try {
-    windows = await fetchGrokUsage({ token: first.token, at: now });
+    first = bearerFor(account.id, now);
+  } catch (e) {
+    return { ok: false, rejected: false, reason: `this account's store is unreadable (${errorMessage(e)}) - run \`tokenmaxxing auth --grok\`` };
+  }
+  if (first == null) return { ok: false, rejected: false, reason: "no usable credential in this account's store - run `tokenmaxxing auth --grok`" };
+  try {
+    return { ok: true, windows: await fetchGrokUsage({ token: first.token, at: now }) };
   } catch (e) {
     const live = e instanceof GrokUsageReadError && e.status === 401 && first.from === "store" ? liveCred(account.id) : null;
-    if (live == null || live.token === first.token) return { ok: false, reason: errorMessage(e) };
-    try {
-      windows = await fetchGrokUsage({ token: live.token, at: now });
-    } catch (retry) {
-      return { ok: false, reason: errorMessage(retry) };
+    if (live != null && live.token !== first.token) {
+      try {
+        return { ok: true, windows: await fetchGrokUsage({ token: live.token, at: now }) };
+      } catch (retry) {
+        const rejected = retry instanceof GrokUsageReadError && retry.status === 401;
+        return { ok: false, rejected, reason: errorMessage(retry) };
+      }
     }
+    const rejected = e instanceof GrokUsageReadError && e.status === 401;
+    return { ok: false, rejected, reason: errorMessage(e) };
   }
-  account.windows = windows;
-  account.lastUsageAt = now;
-  return { ok: true, source: "probe" };
 }
 
 async function samplePool(accounts: Account[], now: number): Promise<Map<string, SampleReport>> {
   const reports = new Map<string, SampleReport>();
-  await Promise.all(accounts.map(async (account) => reports.set(account.id, await readGrokUsage(account, now))));
+  await Promise.all(
+    accounts.map(async (account) => {
+      const read = await readGrokUsage(account, now);
+      if (read.ok) {
+        account.windows = read.windows;
+        account.lastUsageAt = now;
+        reports.set(account.id, { ok: true, source: "probe" });
+        return;
+      }
+      if (read.rejected) account.needsReauth = true;
+      reports.set(account.id, { ok: false, reason: read.reason });
+    }),
+  );
   return reports;
 }
 
-export const grok = statusOnlyProvider({
+export async function observeGrok(account: Account, cfg: Config, now: number, opts: { probe: boolean }): Promise<Observation | null> {
+  if (opts.probe && (account.lastUsageAt == null || now - account.lastUsageAt > cfg.policy.usagePollTtlMs)) {
+    const at = Date.now();
+    const read = await readGrokUsage(account, at);
+    if (!read.ok) log("grok.usage_failed", { account: account.id.slice(0, 8), reason: read.reason.slice(0, 200) });
+    await withLock(grokPool.lockFile, () => {
+      const idx = loadAccounts(grokPool);
+      const a = idx.accounts.find((x) => x.id === account.id);
+      if (!a) return;
+      if (read.ok) {
+        if (a.lastUsageAt == null || at > a.lastUsageAt) landWindows(a, read.windows, at, thresholdBars(cfg));
+      } else if (read.rejected) {
+        a.needsReauth = true;
+      }
+      saveAccounts(grokPool, idx);
+    });
+  }
+  const current = loadAccounts(grokPool).accounts.find((a) => a.id === account.id) ?? account;
+  return current.lastUsageAt != null ? { windows: current.windows, at: current.lastUsageAt } : null;
+}
+
+export function grokStoreUsable(accountId: string): boolean {
+  try {
+    return readAuth(grokAuthJsonFor(accountId)).some((e) => e.id === accountId && e.usable);
+  } catch {
+    return false;
+  }
+}
+
+export function grokStoreIdentity(accountId: string): string[] {
+  return readAuth(grokAuthJsonFor(accountId)).map((e) => e.id);
+}
+
+export function ensureGrokStoreHome(accountId: string): string {
+  const store = grokStoreDirFor(accountId);
+  mkdirSync(store, { recursive: true });
+  mkdirSync(grokPaths.home, { recursive: true });
+  mkdirSync(join(grokPaths.home, "sessions"), { recursive: true });
+  for (const name of readdirSync(grokPaths.home)) {
+    if (name.startsWith("auth.json")) continue;
+    try {
+      symlinkSync(join(grokPaths.home, name), join(store, name));
+    } catch (e) {
+      if (ErrnoSchema.safeParse(e).data?.code !== "EEXIST") throw e;
+    }
+  }
+  return store;
+}
+
+function presence(): Map<string, number> {
+  return seatCounts(grokPaths.presenceDir);
+}
+
+function seatable(a: Account): boolean {
+  return a.needsReauth !== true && grokStoreUsable(a.id);
+}
+
+export async function probeGrokSeats(now: number): Promise<void> {
+  const cfg = loadConfig();
+  await Promise.all(loadAccounts(grokPool).accounts.filter(seatable).map((a) => observeGrok(a, cfg, now, { probe: true })));
+}
+
+export function grokSeatOpen(a: Account, now: number): boolean {
+  return seatable(a) && !isExhausted(a, { now, thresholds: thresholdBars(loadConfig()), currentId: null, families: null, seats: null });
+}
+
+export function rankGrokSeat(now: number): Account | null {
+  const ctx: PickCtx = { now, thresholds: thresholdBars(loadConfig()), currentId: null, families: null, seats: presence() };
+  const open = loadAccounts(grokPool).accounts.filter(seatable);
+  return pickBest(open, ctx) ?? pickEarliestReset(open, ctx)?.account ?? null;
+}
+
+async function prepareMove(target: Account): Promise<void> {
+  if (!grokStoreUsable(target.id)) {
+    throw new StoreUnusableError(`${target.label} has no usable login in its store - run \`tokenmaxxing auth --grok ${target.label}\``);
+  }
+  log("move.prepared", { account: target.id.slice(0, 8), label: target.label, grok: true });
+}
+
+function install(): void {
+  installGrokSupervisor();
+  console.log(`${c.green("✓")} grok supervisor installed at ${grokSupervisorLink()}`);
+  if (!isBinDirAhead(GROK_BIN)) ensurePathAhead();
+}
+
+const base = statusOnlyProvider({
   name: "grok",
   flag: " --grok",
   pool: grokPool,
-  bin: { name: "grok", key: "grokBin", versionOk: (out) => out.toLowerCase().includes("grok") },
+  bin: GROK_BIN,
   storeDirFor: grokStoreDirFor,
   authJsonFor: grokAuthJsonFor,
   homeEnv: "GROK_HOME",
@@ -123,15 +234,22 @@ export const grok = statusOnlyProvider({
   onboardAuthRel: "auth.json",
   readAuth,
   liveId: () => grokSeatFromEnv(loadAccounts(grokPool).accounts.map((a) => a.id)),
-  presence: () => new Map(),
+  presence,
   importIntro: "Opening an isolated grok login for your first pooled account - the login you already have stays as it is.",
   live: {
     read: () => readAuth(join(grokPaths.home, "auth.json")),
     found: (count) => `found ${count} grok login(s) in ${grokPaths.home} - pooling the first; use \`tokenmaxxing add --grok\` for the rest.`,
   },
-  install: () => {
-    console.log(c.dim("grok pool is status-only: no supervisor or hooks installed. Use `tokenmaxxing status` to view pooled grok accounts."));
-  },
+  install,
   loginStep: () => `Sign in in the browser session that opens (or run ${c.bold("grok login --device-auth")} on headless hosts first).`,
   samplePool,
 });
+
+export const grok: Provider = {
+  ...base,
+  seats: "shared",
+  statusOnly: false,
+  observeLive: (account, cfg, now, opts) => observeGrok(account, cfg, now, { probe: opts.probe }),
+  swap: prepareMove,
+  classifySwapError: (e) => (e instanceof StoreUnusableError ? "skip" : "fatal"),
+};

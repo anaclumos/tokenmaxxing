@@ -266,14 +266,24 @@ flowchart TD
 
 A pi session's presence record goes to `live/` or `codex-live/`. See [pi support](/pi).
 
-### Status-only pools
+### grok
 
-The `grok-*`, `cursor-*`, `kimi-*`, and `vibe-*` entries are the state of the status-only grok, Cursor, Kimi Code, and Mistral Vibe pools. See [Status-only pools](/status-only-pools).
+The `grok-*` entries are the state of the grok pool. See [grok support](/grok).
 
 | Path | What it holds |
 |---|---|
-| `grok-accounts.json`, `cursor-accounts.json`, `kimi-accounts.json`, `vibe-accounts.json` | The same index shape |
-| `grok-stores/<uuid8>/auth.json`, `cursor-stores/<uuid8>/auth.json` | One 0600 store per account |
+| `grok-accounts.json` | The same index shape |
+| `grok-stores/<uuid8>/` | The account's seat, the `GROK_HOME` of the sessions on it: its 0600 `auth.json`, everything else symlinked to the shared `~/.grok` |
+| `grok-live/<id>` | One presence file per seated grok session |
+
+### Status-only pools
+
+The `cursor-*`, `kimi-*`, and `vibe-*` entries are the state of the status-only Cursor, Kimi Code, and Mistral Vibe pools. See [Status-only pools](/status-only-pools).
+
+| Path | What it holds |
+|---|---|
+| `cursor-accounts.json`, `kimi-accounts.json`, `vibe-accounts.json` | The same index shape |
+| `cursor-stores/<uuid8>/auth.json` | One 0600 store per account |
 | `vibe-stores/<uuid8>/auth.json` | One 0600 store per account: the account id and the API key |
 | `kimi-stores/<uuid8>/` | One Kimi Code home per account: `config.toml` and the 0600 `credentials/<name>.json` it names |
 

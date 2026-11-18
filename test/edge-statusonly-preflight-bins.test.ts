@@ -9,6 +9,7 @@ const restoreEnv = useEnv({
   TOKENMAXXING_HOME: scratchDir("state"),
   XDG_CONFIG_HOME: scratchDir("config"),
   GROK_HOME: scratchDir("grok-home"),
+  TOKENMAXXING_GROK_HOME: undefined,
   KIMI_CODE_HOME: scratchDir("kimi-home"),
   VIBE_HOME: scratchDir("vibe-home"),
   TOKENMAXXING_GROK_BIN: undefined,

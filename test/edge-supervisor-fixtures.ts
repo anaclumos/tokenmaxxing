@@ -43,7 +43,12 @@ export function supervisorSandbox(): Sandbox {
   mkdirSync(tools, { recursive: true });
   const recorder = join(tools, "recorder.mjs");
   writeFileSync(recorder, RECORDER);
-  const config = { claudeBin: fakeTool(tools, "claude", recorder), codexBin: fakeTool(tools, "codex", recorder), telemetry: false };
+  const config = {
+    claudeBin: fakeTool(tools, "claude", recorder),
+    codexBin: fakeTool(tools, "codex", recorder),
+    grokBin: fakeTool(tools, "grok", recorder),
+    telemetry: false,
+  };
   writeFileSync(join(homes.state, "config.json"), JSON.stringify(config));
   return { ...homes, project };
 }
@@ -54,6 +59,9 @@ function supervisorEnv(s: Sandbox, launches: string, extra: Record<string, strin
     TOKENMAXXING_CLAUDE_SETTINGS: join(s.home, ".claude", "settings.json"),
     CLAUDE_SECURESTORAGE_CONFIG_DIR: undefined,
     CODEX_HOME: undefined,
+    GROK_HOME: undefined,
+    TOKENMAXXING_GROK_HOME: undefined,
+    XAI_API_KEY: undefined,
     ANTHROPIC_API_KEY: undefined,
     CLAUDE_CODE_OAUTH_TOKEN: undefined,
     NO_COLOR: "1",
@@ -71,7 +79,7 @@ function launchesIn(file: string): Launch[] {
     .map((line) => LaunchSchema.parse(JSON.parse(line)));
 }
 
-export async function supervise(s: Sandbox, entry: "__supervise" | "__supervise-codex", args: string[], extra: Record<string, string | undefined> = {}): Promise<Run> {
+export async function supervise(s: Sandbox, entry: "__supervise" | "__supervise-codex" | "__supervise-grok", args: string[], extra: Record<string, string | undefined> = {}): Promise<Run> {
   const launches = join(s.home, `launches-${crypto.randomUUID()}.jsonl`);
   const proc = Bun.spawn([process.execPath, MAIN, entry, ...args], {
     env: supervisorEnv(s, launches, extra),

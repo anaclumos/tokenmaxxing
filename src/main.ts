@@ -11,6 +11,7 @@ import { runCodexSupervisor } from "./entries/codexsupervisor.ts";
 import { runCodexStopHook } from "./entries/codexstophook.ts";
 import { runPiSupervisor } from "./entries/pisupervisor.ts";
 import { runMuseSupervisor } from "./entries/musesupervisor.ts";
+import { runGrokSupervisor } from "./entries/groksupervisor.ts";
 import { claude } from "./lib/claude.ts";
 import { codex } from "./lib/codex.ts";
 import { grok } from "./lib/grok.ts";
@@ -64,7 +65,7 @@ function printHelp(): void {
   ${c.cyan("tokenmaxxing init")}       log in the first account (isolated) + install supervisor & hooks
   ${c.cyan("tokenmaxxing init --codex")}  same for codex: log in the first account, isolated, install codex supervisor + Stop hook
   ${c.cyan("tokenmaxxing init --pi")}     install the pi supervisor: pi sessions run on pooled Claude or ChatGPT accounts that are logged into pi
-  ${c.cyan("tokenmaxxing init --grok")}   pool grok Build logins (status-only: no supervisor yet)
+  ${c.cyan("tokenmaxxing init --grok")}   same for grok: log in the first account, isolated, install the grok supervisor
   ${c.cyan("tokenmaxxing init --muse")}   same for Muse Code: log in the first account, isolated, install the muse supervisor
   ${c.cyan("tokenmaxxing init --cursor")} pool Cursor CLI logins (status-only: no supervisor yet)
   ${c.cyan("tokenmaxxing init --kimi")}   pool Kimi Code logins (status-only: no supervisor yet)
@@ -117,6 +118,9 @@ async function main(): Promise<number> {
   }
   if (argv0 === "muse" || argv[0] === "__supervise-muse") {
     return runMuseSupervisor(argv[0] === "__supervise-muse" ? argv.slice(1) : argv);
+  }
+  if (argv0 === "grok" || argv[0] === "__supervise-grok") {
+    return runGrokSupervisor(argv[0] === "__supervise-grok" ? argv.slice(1) : argv);
   }
 
   jsonMode = argv.includes(JSON_FLAG);

@@ -5,6 +5,7 @@ import { scratchDir, serve, useEnv, writePrivate } from "./edge-providers-fixtur
 
 const GROK_ID = "4e1f0a7c-9b2d-4c3e-8f6a-0d5b7c1e2a94";
 const liveHome = scratchDir("grok-live");
+const seatedHome = scratchDir("grok-seated");
 const now = Date.now();
 const periodStart = now - 24 * HOUR_MS;
 const periodEnd = now + 6 * 24 * HOUR_MS;
@@ -21,6 +22,7 @@ const restoreEnv = useEnv({
   HOME: scratchDir("home"),
   TOKENMAXXING_HOME: scratchDir("state"),
   GROK_HOME: liveHome,
+  TOKENMAXXING_GROK_HOME: seatedHome,
   TOKENMAXXING_GROK_USAGE_URL: `${stub.base}/v1/billing?format=credits`,
 });
 afterAll(() => {
@@ -34,6 +36,7 @@ const { grok } = await import("../src/lib/grok.ts");
 test("a Grok sample whose stored token is refused retries with the live login and lands the credit window at the sample time", async () => {
   writePrivate(grokAuthJsonFor(GROK_ID), JSON.stringify({ [GROK_ID]: { user_id: GROK_ID, key: "store-token", refresh_token: "store-refresh", expires_at: new Date(now + 30 * 24 * HOUR_MS).toISOString() } }));
   writePrivate(join(liveHome, "auth.json"), JSON.stringify({ [GROK_ID]: { user_id: GROK_ID, key: "live-token", refresh_token: "live-refresh" } }));
+  writePrivate(join(seatedHome, "auth.json"), JSON.stringify({ [GROK_ID]: { user_id: GROK_ID, key: "seated-token", refresh_token: "seated-refresh" } }));
   const sampled = account(GROK_ID, "supergrok", []);
 
   const reports = await grok.samplePool([sampled], now);

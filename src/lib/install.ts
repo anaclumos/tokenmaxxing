@@ -186,6 +186,14 @@ export function installMuseSupervisor(): void {
   writeFileAtomic(museSupervisorLink(), `#!/bin/sh\nexec ${shellQuote(installEntryPoints())} __supervise-muse "$@"\n`, 0o755);
 }
 
+export function grokSupervisorLink(): string {
+  return join(paths.binDir, "grok");
+}
+
+export function installGrokSupervisor(): void {
+  writeFileAtomic(grokSupervisorLink(), `#!/bin/sh\nexec ${shellQuote(installEntryPoints())} __supervise-grok "$@"\n`, 0o755);
+}
+
 type UnitJob = {
   label: string;
   arg: string;
@@ -491,6 +499,7 @@ export function uninstallTargets(live: boolean): string[] {
     codexSupervisorLink(),
     piSupervisorLink(),
     museSupervisorLink(),
+    grokSupervisorLink(),
     join(paths.binDir, "xx"),
     installedBin(),
     ...(rc == null ? [] : [`${rc}: the ${PATH_LINE_MARK} line`]),
@@ -502,7 +511,7 @@ export function uninstallSupervisor(input: { live: boolean }): UninstallOutcome 
   const timer = uninstallJob(CHECK_JOB, input.live);
   const hub = uninstallJob(HUB_JOB, input.live);
   uninstallCodexSupervisor();
-  for (const f of [paths.supervisorLink, piSupervisorLink(), museSupervisorLink(), join(paths.binDir, "xx"), installedBin()]) {
+  for (const f of [paths.supervisorLink, piSupervisorLink(), museSupervisorLink(), grokSupervisorLink(), join(paths.binDir, "xx"), installedBin()]) {
     rmSync(f, { force: true });
   }
   const rc = shellRcPath();

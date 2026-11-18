@@ -10,6 +10,8 @@ flowchart LR
   main["src/main.ts"] -->|"invoked as claude"| cs["claude supervisor"]
   main -->|"invoked as codex"| xs["codex supervisor"]
   main -->|"invoked as pi"| ps["pi supervisor"]
+  main -->|"invoked as grok"| gs["grok supervisor"]
+  main -->|"invoked as muse"| ms["muse supervisor"]
   main -->|"internal subcommands"| sh["hook and statusline shims"]
   main -->|"otherwise"| cli["the CLI"]
 ```
@@ -33,7 +35,7 @@ flowchart TD
 
 ## Providers
 
-One switching engine serves both switching pools. The account model, the picker, the decision, and the account commands take a provider (`src/lib/provider.ts`). The provider's `seats` capability names the difference between the two pools.
+One switching engine serves the switching pools. The account model, the picker, the decision, and the account commands take a provider (`src/lib/provider.ts`). The provider's `seats` capability names the difference between the pools.
 
 | Provider | Module | `seats` | What the provider wires |
 | --- | --- | --- | --- |
@@ -41,10 +43,10 @@ One switching engine serves both switching pools. The account model, the picker,
 | Codex (see [Codex support](/codex)) | `src/lib/codex.ts` | `live`: at most one session runs on an account, because codex has no cross-process refresh lock, and an account running in another session is never a target | its per-account stores (`codex-stores/<uuid8>/` with `auth.json`, everything else symlinked to the shared `~/.codex`), its identity, the usage GET and the refresh it needs, presence, and the store check before a move |
 
 - **pi** is a client of both switching pools rather than a pool of its own. The pi supervisor (`src/entries/pisupervisor.ts`) runs a pi session on a Claude or Codex account through that account's pi store. It drives the same decision through the pool's provider with one change: the store check before a move reads the target's pi store (`src/lib/pi.ts`; see [pi support](/pi)).
-- **grok** (`src/lib/grok.ts`) is a `statusOnly` provider: it gets the same stores and account commands and no supervisor, hooks, or switching. grok `status` reads the weekly subscription credit window (see [Status-only pools](/status-only-pools)).
-- **cursor** (`src/lib/cursor.ts`) is a `statusOnly` provider for Cursor CLI logins with the same shape as grok. Its usage read is the dashboard's current-period usage, the included usage of the monthly billing cycle.
-- **kimi** (`src/lib/kimi.ts`) is a `statusOnly` provider for Kimi Code logins with the same shape as grok. Its store is a whole Kimi Code home, and its usage read runs Kimi Code's own local server on that home, which refreshes the store's token and reads the 5-hour, weekly, and monthly limits (see [Status-only pools](/status-only-pools#kimi-code)).
-- **vibe** (`src/lib/vibe.ts`) is a `statusOnly` provider for Mistral Vibe API keys with the same shape as grok. Its store holds the key, and its usage read asks Mistral's billing API for the monthly Vibe allowance (see [Status-only pools](/status-only-pools#mistral-vibe)).
+- **grok** (`src/lib/grok.ts`) is a `shared` provider for grok logins: several sessions can run on one account, and a session moves only by respawn. A seat is a `GROK_HOME` (the account's store, with everything but `auth.json` symlinked to the shared `~/.grok`), the usage read is the weekly subscription credit window, and the grok supervisor (`src/entries/groksupervisor.ts`) resumes a session on another account with `grok -r <session id>` (see [grok support](/grok)).
+- **cursor** (`src/lib/cursor.ts`) is a `statusOnly` provider for Cursor CLI logins. Its usage read is the dashboard's current-period usage, the included usage of the monthly billing cycle.
+- **kimi** (`src/lib/kimi.ts`) is a `statusOnly` provider for Kimi Code logins. Its store is a whole Kimi Code home, and its usage read runs Kimi Code's own local server on that home, which refreshes the store's token and reads the 5-hour, weekly, and monthly limits (see [Status-only pools](/status-only-pools#kimi-code)).
+- **vibe** (`src/lib/vibe.ts`) is a `statusOnly` provider for Mistral Vibe API keys. Its store holds the key, and its usage read asks Mistral's billing API for the monthly Vibe allowance (see [Status-only pools](/status-only-pools#mistral-vibe)).
 - **muse** (`src/lib/muse.ts`) is a `shared` provider for Muse Code logins: several sessions can run on one account, and a session moves only by respawn. A seat is an `XDG_CONFIG_HOME` (the account's store, mirroring the real config home), the usage read is the `subs_usage` object of the no-spend key mint, and the muse supervisor (`src/entries/musesupervisor.ts`) resumes a session on another account with `muse resume <session id>` (see [Muse Code support](/muse)).
 
 Everything below describes the Claude provider unless it says otherwise.

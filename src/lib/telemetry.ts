@@ -43,7 +43,7 @@ const EventSchema = z.discriminatedUnion("event", [
   }),
   z.object({
     event: z.literal("session_end"),
-    tool: z.enum(["claude", "codex", "pi", "muse"]),
+    tool: z.enum(["claude", "codex", "pi", "muse", "grok"]),
     interactive: z.boolean(),
     moves: CountSchema,
     outcome: z.enum(["exit", "depleted", "fatal"]),
