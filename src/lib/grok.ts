@@ -1,4 +1,4 @@
-import { mkdirSync, readdirSync, symlinkSync } from "node:fs";
+import { mkdirSync, readdirSync, rmSync, symlinkSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
 import { writeFileAtomic } from "./atomic.ts";
@@ -30,6 +30,41 @@ type GrokAuthEntry = z.infer<typeof GrokAuthEntrySchema>;
 
 type GrokCred = { id: string; token: string; expiresAt: number | null };
 
+function accountIdOf(entry: GrokAuthEntry, key: string): string {
+  return entry.user_id ?? entry.principal_id ?? key;
+}
+
+function liveGrokAuthPath(): string {
+  return join(grokPaths.home, "auth.json");
+}
+
+function adoptGrokAuthFromLive(accountId: string): boolean {
+  for (const [key, entry] of readMap(liveGrokAuthPath())) {
+    if (accountIdOf(entry, key) !== accountId) continue;
+    writeFileAtomic(grokAuthJsonFor(accountId), JSON.stringify({ [key]: entry }, null, 2), 0o600);
+    return true;
+  }
+  return false;
+}
+
+function detachGrokLoginFromLiveHome(accountId: string): void {
+  const livePath = liveGrokAuthPath();
+  const kept: Record<string, GrokAuthEntry> = {};
+  for (const [key, entry] of readMap(livePath)) {
+    if (accountIdOf(entry, key) === accountId) continue;
+    kept[key] = entry;
+  }
+  if (Object.keys(kept).length === 0) {
+    rmSync(livePath, { force: true });
+    return;
+  }
+  writeFileAtomic(livePath, JSON.stringify(kept, null, 2), 0o600);
+}
+
+export async function parkGrokEntry(id: string, key: string, entry: GrokAuthEntry): Promise<void> {
+  await harvestOf(id, key, entry).park();
+}
+
 function harvestOf(id: string, key: string, entry: GrokAuthEntry): Harvest {
   return {
     id,
@@ -38,6 +73,7 @@ function harvestOf(id: string, key: string, entry: GrokAuthEntry): Harvest {
     sample: null,
     park: async () => {
       writeFileAtomic(grokAuthJsonFor(id), JSON.stringify({ [key]: entry }, null, 2), 0o600);
+      detachGrokLoginFromLiveHome(id);
     },
   };
 }
@@ -108,7 +144,9 @@ async function readGrokUsage(account: Account, now: number): Promise<GrokRead> {
     const live = e instanceof GrokUsageReadError && e.status === 401 && first.from === "store" ? liveCred(account.id) : null;
     if (live != null && live.token !== first.token) {
       try {
-        return { ok: true, windows: await fetchGrokUsage({ token: live.token, at: now }) };
+        const windows = await fetchGrokUsage({ token: live.token, at: now });
+        adoptGrokAuthFromLive(account.id);
+        return { ok: true, windows };
       } catch (retry) {
         const rejected = retry instanceof GrokUsageReadError && retry.status === 401;
         return { ok: false, rejected, reason: errorMessage(retry) };
@@ -127,6 +165,7 @@ async function samplePool(accounts: Account[], now: number): Promise<Map<string,
       if (read.ok) {
         account.windows = read.windows;
         account.lastUsageAt = now;
+        delete account.needsReauth;
         reports.set(account.id, { ok: true, source: "probe" });
         return;
       }
@@ -148,6 +187,7 @@ export async function observeGrok(account: Account, cfg: Config, now: number, op
       if (!a) return;
       if (read.ok) {
         if (a.lastUsageAt == null || at > a.lastUsageAt) landWindows(a, read.windows, at, thresholdBars(cfg));
+        delete a.needsReauth;
       } else if (read.rejected) {
         a.needsReauth = true;
       }
@@ -235,7 +275,8 @@ const base = statusOnlyProvider({
   readAuth,
   liveId: () => grokSeatFromEnv(loadAccounts(grokPool).accounts.map((a) => a.id)),
   presence,
-  importIntro: "Opening an isolated grok login for your first pooled account - the login you already have stays as it is.",
+  importIntro:
+    "Pooling your grok login from the ambient grok home - any other logins there are left as they are; the pooled account is removed from that home so grok refresh rotation cannot revoke the store copy.",
   live: {
     read: () => readAuth(join(grokPaths.home, "auth.json")),
     found: (count) => `found ${count} grok login(s) in ${grokPaths.home} - pooling the first; use \`tokenmaxxing add --grok\` for the rest.`,
