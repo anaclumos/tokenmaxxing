@@ -28,6 +28,7 @@ const { muse } = await import("../src/lib/muse.ts");
 const { kimi } = await import("../src/lib/kimi.ts");
 const { cursor } = await import("../src/lib/cursor.ts");
 const { vibe } = await import("../src/lib/vibe.ts");
+const { agy } = await import("../src/lib/agy.ts");
 
 const BINS = [
   { provider: grok, key: "grokBin", bin: "grok", good: "grok 0.1.5", bad: "Muse Code 1.4.0" },
@@ -35,6 +36,7 @@ const BINS = [
   { provider: kimi, key: "kimiBin", bin: "kimi", good: "2.3.1", bad: "1.9.0" },
   { provider: cursor, key: "cursorBin", bin: "cursor-agent", good: "2026.01.15-a1b2c3d", bad: "2.3.1" },
   { provider: vibe, key: "vibeBin", bin: "vibe", good: "vibe 3.1.0", bad: "2.3.1" },
+  { provider: agy, key: "agyBin", bin: "agy", good: "1.5.12", bad: "vibe 2.3.1" },
 ] as const;
 
 function refusal(run: () => void): string {
@@ -50,20 +52,21 @@ test("each status-only provider's preflight records the binary on PATH that name
   for (const b of BINS) fakeBin(onPath, b.bin, `echo "${b.good}"`);
   for (const b of BINS) b.provider.preflight();
   const cfg = loadConfig();
-  const recorded = { grokBin: cfg.grokBin, museBin: cfg.museBin, kimiBin: cfg.kimiBin, cursorBin: cfg.cursorBin, vibeBin: cfg.vibeBin };
+  const recorded = { grokBin: cfg.grokBin, museBin: cfg.museBin, kimiBin: cfg.kimiBin, cursorBin: cfg.cursorBin, vibeBin: cfg.vibeBin, agyBin: cfg.agyBin };
 
   const wrong = scratchDir("bin-wrong");
   writeFileSync(paths.configJson, JSON.stringify(Object.fromEntries(BINS.map((b) => [b.key, fakeBin(wrong, b.bin, `echo "${b.bad}"`)]))));
   const refusals = Object.fromEntries(BINS.map((b) => [b.provider.name, refusal(() => b.provider.preflight())]));
 
   expect({ recorded, refusals }).toEqual({
-    recorded: { grokBin: join(onPath, "grok"), museBin: join(onPath, "muse"), kimiBin: join(onPath, "kimi"), cursorBin: join(onPath, "cursor-agent"), vibeBin: join(onPath, "vibe") },
+    recorded: { grokBin: join(onPath, "grok"), museBin: join(onPath, "muse"), kimiBin: join(onPath, "kimi"), cursorBin: join(onPath, "cursor-agent"), vibeBin: join(onPath, "vibe"), agyBin: join(onPath, "agy") },
     refusals: {
       grok: "grok binary failed verification",
       muse: "muse binary failed verification",
       kimi: "kimi binary failed verification",
       cursor: "cursor-agent binary failed verification",
       vibe: "vibe binary failed verification",
+      agy: "agy binary failed verification",
     },
   });
 }, 30_000);

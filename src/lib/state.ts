@@ -38,11 +38,12 @@ export function loadConfig(): Config {
   cfg.cursorBin = optionalEnv("TOKENMAXXING_CURSOR_BIN") ?? cfg.cursorBin;
   cfg.kimiBin = optionalEnv("TOKENMAXXING_KIMI_BIN") ?? cfg.kimiBin;
   cfg.vibeBin = optionalEnv("TOKENMAXXING_VIBE_BIN") ?? cfg.vibeBin;
+  cfg.agyBin = optionalEnv("TOKENMAXXING_AGY_BIN") ?? cfg.agyBin;
   cfg.piBin = optionalEnv("TOKENMAXXING_PI_BIN") ?? cfg.piBin;
   return cfg;
 }
 
-export type BinKey = "claudeBin" | "codexBin" | "grokBin" | "museBin" | "cursorBin" | "kimiBin" | "vibeBin" | "piBin";
+export type BinKey = "claudeBin" | "codexBin" | "grokBin" | "museBin" | "cursorBin" | "kimiBin" | "vibeBin" | "agyBin" | "piBin";
 
 export function setConfigField<K extends BinKey | "telemetry">(key: K, value: Config[K]): void {
   const raw = existsSync(paths.configJson) ? readJsonFile(paths.configJson, z.record(z.string(), z.unknown())) : {};

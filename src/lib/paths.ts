@@ -80,6 +80,11 @@ export const vibePool = {
   lockFile: join(TM_HOME, "vibe-lock"),
 } as const;
 
+export const agyPool = {
+  accountsJson: join(TM_HOME, "agy-accounts.json"),
+  lockFile: join(TM_HOME, "agy-lock"),
+} as const;
+
 export type PoolPaths = { accountsJson: string; lockFile: string };
 
 const CODEX_HOME = env("TOKENMAXXING_CODEX_HOME", env("CODEX_HOME", join(HOME, ".codex")));
@@ -224,6 +229,22 @@ export function vibeStoreDirFor(accountId: string): string {
 
 export function vibeAuthJsonFor(accountId: string): string {
   return join(vibeStoreDirFor(accountId), "auth.json");
+}
+
+const AGY_HOME = env("AGY_HOME", join(HOME, ".gemini", "antigravity-cli"));
+
+export const agyPaths = {
+  home: AGY_HOME,
+  tokenFile: join(AGY_HOME, "antigravity-oauth-token"),
+  storesDir: join(TM_HOME, "agy-stores"),
+} as const;
+
+export function agyStoreDirFor(accountId: string): string {
+  return join(agyPaths.storesDir, shortId(accountId));
+}
+
+export function agyAuthJsonFor(accountId: string): string {
+  return join(agyStoreDirFor(accountId), "antigravity-oauth-token");
 }
 
 export function grokSeatFromEnv(accountIds: string[]): string | null {
