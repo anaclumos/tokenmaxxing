@@ -120,6 +120,7 @@ export const ConfigSchema = z
     cursorBin: z.string().default(""),
     kimiBin: z.string().default(""),
     vibeBin: z.string().default(""),
+    agyBin: z.string().default(""),
     piBin: z.string().default(""),
     telemetry: z.boolean().default(true),
     policy: z

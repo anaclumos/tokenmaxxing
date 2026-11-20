@@ -14,7 +14,7 @@ type StatusOnlySpec = {
   name: Provider["name"];
   flag: string;
   pool: PoolPaths;
-  bin: { name: string; key: "grokBin" | "museBin" | "cursorBin" | "kimiBin" | "vibeBin"; versionOk: (versionOutput: string) => boolean };
+  bin: { name: string; key: "grokBin" | "museBin" | "cursorBin" | "kimiBin" | "vibeBin" | "agyBin"; versionOk: (versionOutput: string) => boolean };
   storeDirFor: (accountId: string) => string;
   authJsonFor: (accountId: string) => string;
   homeEnv: string;

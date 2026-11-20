@@ -12,9 +12,10 @@ const IDS = {
   cursor: "4fbc8a65-9e7b-4d2c-9a5a-6bce1d7f3c84",
   kimi: "5acd9b76-af8c-4e3d-8b6b-7cdf2e8a4d95",
   vibe: "6bde0c87-b09d-4f4e-9c7d-8de03b9f5ea6",
+  agy: "7cef1d98-c1ae-4a5f-8d8d-9ef14a0c6fb7",
 };
 
-test("status --json --cached lists now, the seven pools in their fixed order, and then the API keys, each pool carrying its own accounts", async () => {
+test("status --json --cached lists now, the eight pools in their fixed order, and then the API keys, each pool carrying its own accounts", async () => {
   const homes = preparedHomes();
   writeClaudePool(homes, [pooledClaude(IDS.claude)]);
   writePool(homes, "codex", [labeled(IDS.codex, "codex-one", "pro")]);
@@ -23,6 +24,7 @@ test("status --json --cached lists now, the seven pools in their fixed order, an
   writePool(homes, "cursor", [labeled(IDS.cursor, "cursor-one", "pro")]);
   writePool(homes, "kimi", [labeled(IDS.kimi, "kimi-one", "moderato")]);
   writePool(homes, "vibe", [labeled(IDS.vibe, "vibe-one", "pro")]);
+  writePool(homes, "agy", [labeled(IDS.agy, "agy-one", "pro")]);
   writeApiKeysFile(homes, { version: 1, keys: [{ id: "9f3a1c7e", label: "spare", creditUsd: 10, spentUsd: 2.5, addedAt: 1_760_000_000_000 }], baselines: {} });
   const stub = startStub({ gated: [] });
   try {
@@ -31,13 +33,13 @@ test("status --json --cached lists now, the seven pools in their fixed order, an
     const observed = {
       exitCode: result.exitCode,
       keys: Object.keys(doc ?? {}),
-      pools: { claude: poolIds(doc, "claude"), codex: poolIds(doc, "codex"), grok: poolIds(doc, "grok"), muse: poolIds(doc, "muse"), cursor: poolIds(doc, "cursor"), kimi: poolIds(doc, "kimi"), vibe: poolIds(doc, "vibe") },
+      pools: { claude: poolIds(doc, "claude"), codex: poolIds(doc, "codex"), grok: poolIds(doc, "grok"), muse: poolIds(doc, "muse"), cursor: poolIds(doc, "cursor"), kimi: poolIds(doc, "kimi"), vibe: poolIds(doc, "vibe"), agy: poolIds(doc, "agy") },
       apiKeys: doc?.apiKeys,
     };
     expect(observed).toMatchObject({
       exitCode: 0,
-      keys: ["ok", "now", "claude", "codex", "grok", "muse", "cursor", "kimi", "vibe", "apiKeys"],
-      pools: { claude: [IDS.claude], codex: [IDS.codex], grok: [IDS.grok], muse: [IDS.muse], cursor: [IDS.cursor], kimi: [IDS.kimi], vibe: [IDS.vibe] },
+      keys: ["ok", "now", "claude", "codex", "grok", "muse", "cursor", "kimi", "vibe", "agy", "apiKeys"],
+      pools: { claude: [IDS.claude], codex: [IDS.codex], grok: [IDS.grok], muse: [IDS.muse], cursor: [IDS.cursor], kimi: [IDS.kimi], vibe: [IDS.vibe], agy: [IDS.agy] },
       apiKeys: [{ label: "spare", creditUsd: 10, spentUsd: 2.5, creditLeftUsd: 7.5 }],
     });
     expect(stub.seen).toEqual([]);

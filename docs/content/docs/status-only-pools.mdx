@@ -1,9 +1,9 @@
 ---
 title: Status-only pools
-description: Cursor, Kimi Code, and Mistral Vibe accounts, pooled for inventory with no supervisor and no switching
+description: Cursor, Kimi Code, Mistral Vibe, and Google Antigravity accounts, pooled for inventory with no supervisor and no switching
 ---
 
-The Cursor, Kimi Code, and Mistral Vibe pools share the account commands, the state layout, and the `status` view with the other pools, and nothing else: no supervisor shim, no hooks, no statusline tee, no session presence, and no switching. Each keeps an inventory of accounts and the credential each one holds; `status` reads each Cursor account's monthly included usage, each Kimi Code account's 5-hour, weekly, and monthly limits, and each Mistral Vibe account's monthly Vibe allowance.
+The Cursor, Kimi Code, Mistral Vibe, and Google Antigravity pools share the account commands, the state layout, and the `status` view with the other pools, and nothing else: no supervisor shim, no hooks, no statusline tee, no session presence, and no switching. Each keeps an inventory of accounts and the credential each one holds; `status` reads each Cursor account's monthly included usage, each Kimi Code account's 5-hour, weekly, and monthly limits, each Mistral Vibe account's monthly Vibe allowance, and each Antigravity account's 5-hour and weekly model quotas.
 
 ```sh
 tokenmaxxing init --cursor        # pool the Cursor CLI login (status-only)
@@ -12,9 +12,11 @@ tokenmaxxing init --kimi          # pool a Kimi Code account through an isolated
 tokenmaxxing add --kimi           # pool another one the same way
 tokenmaxxing init --vibe          # pool the API key that vibe signs in with (status-only)
 tokenmaxxing add --vibe           # pool another one through an isolated vibe --setup
+tokenmaxxing init --agy           # pool the Google Antigravity login that agy uses (status-only)
+tokenmaxxing add --agy            # pool another one through an isolated agy sign-in
 ```
 
-`init`, `add`, `auth`, `emails`, `rm`, and `rename` take `--cursor`, `--kimi`, or `--vibe`; every other command refuses the flags with exit code 2, and the pool flags are mutually exclusive. `init` verifies the vendor CLI and pins its path (`cursorBin`, `kimiBin`, or `vibeBin` in `config.json`; `TOKENMAXXING_CURSOR_BIN`, `TOKENMAXXING_KIMI_BIN`, and `TOKENMAXXING_VIBE_BIN` override them), then prints that the pool is status-only. `doctor`, `check`, and the periodic timer ignore these pools, and `uninstall` keeps their stores.
+`init`, `add`, `auth`, `emails`, `rm`, and `rename` take `--cursor`, `--kimi`, `--vibe`, or `--agy`; every other command refuses the flags with exit code 2, and the pool flags are mutually exclusive. `init` verifies the vendor CLI and pins its path (`cursorBin`, `kimiBin`, `vibeBin`, or `agyBin` in `config.json`; `TOKENMAXXING_CURSOR_BIN`, `TOKENMAXXING_KIMI_BIN`, `TOKENMAXXING_VIBE_BIN`, and `TOKENMAXXING_AGY_BIN` override them), then prints that the pool is status-only. `doctor`, `check`, and the periodic timer ignore these pools, and `uninstall` keeps their stores.
 
 grok and Muse Code have supervisors and are not status-only pools; see [grok support](/grok) and [Muse Code support](/muse).
 
@@ -40,6 +42,12 @@ Identity is the sha256 of the Mistral user id and organization id from `GET http
 
 Usage is `GET https://api.mistral.ai/v1/billing/budget` with the key as the bearer, the read behind `vibe`'s own usage footer, and it spends no quota. `TOKENMAXXING_VIBE_API_URL` overrides the origin for hermetic runs. The one window is `vibe_budget.usage_percentage` (0 to 100) of the plan's monthly Vibe allowance, resetting at `vibe_budget.reset_at`; an account whose `vibe_budget` is missing or has no `initial_budget` reports no allowance. The plan, lowercased, comes from `GET /v1/billing/subscription` (`plan_name`). A 401 flags the account for `auth --vibe`. A 403 means the key's member cannot read the organization's usage, so it fails the read without flagging. Any failed read keeps the stored window as stale as it was.
 
+## Google Antigravity
+
+An account is a Google Antigravity CLI (`agy`) OAuth login. `agy` keeps its credential in `antigravity-oauth-token` under `$AGY_HOME` (`~/.gemini/antigravity-cli` when unset) or, when the OS keyring is available, in the keychain item `gemini` / `antigravity`; tokenmaxxing imports the file and, on macOS when the file is absent, the keychain document. A copy in a pooled store does not sign the live login out. `init --agy`, `add --agy`, and `auth --agy` run `agy` with `HOME` set to a throwaway directory, `DBUS_SESSION_BUS_ADDRESS` and `XDG_RUNTIME_DIR` cleared so OAuth lands in a file there, and `AGY_CLI_DISABLE_AUTO_UPDATE=1`. Identity is the sha256 of the Google `sub` from the login's `id_token`, scoped by `:gcp:<project_id>` for GCP project accounts; the email comes from `id_token_email` or the token's email claim. The store is `agy-stores/<uuid8>/antigravity-oauth-token` at mode 0600. `init` requires `agy --version` to report a semver.
+
+Usage is the same read `agy /usage` uses: `POST https://daily-cloudcode-pa.googleapis.com/v1internal:loadCodeAssist` and `POST .../v1internal:retrieveUserQuotaSummary` with the store's access token, the Antigravity CLI `User-Agent`, and a project id from the store, `TOKENMAXXING_AGY_PROJECT_ID`, `ANTIGRAVITY_PROJECT_ID`, `GEMINI_DEFAULT_PROJECT`, or `~/.gemini/antigravity-cli/cache/default_project_id.txt`, else `default-cli-project`. tokenmaxxing refreshes an expired access token with the stored refresh token, discovering the embedded OAuth client from the pinned `agy` binary or from `TOKENMAXXING_AGY_CLIENT_ID` / `TOKENMAXXING_AGY_CLIENT_SECRET` (and the `..._GCP_...` pair for GCP accounts). `TOKENMAXXING_AGY_API_URL` overrides the Code Assist origin for hermetic runs. The windows are the lowest remaining fraction across quota groups for the 5-hour and weekly buckets, shown as used percentages; the plan, lowercased, comes from `loadCodeAssist`. A 401 or 403, or a refresh failure, flags the account for `auth --agy`. Any other failed read keeps the stored windows as stale as they were.
+
 ## What status shows
 
 The Cursor pool renders after Muse Code, headed `cursor  (N accounts, status-only)` and skipped when empty, and `status --json` always carries it under `cursor`. Each account renders the billing-cycle bar, labeled `month`, and the `api` bar; `usage.week` carries the billing-cycle window (its `windowSeconds` is the cycle's length) and `usage.limits` the `API` window.
@@ -47,6 +55,8 @@ The Cursor pool renders after Muse Code, headed `cursor  (N accounts, status-onl
 The Kimi Code pool renders after Cursor, headed `kimi  (N accounts, status-only)` and skipped when empty, and `status --json` always carries it under `kimi`. An account renders the `5h` bar and the monthly bar, labeled `month`, with a `week` bar between them on a legacy plan; `usage.fiveHour` carries the 5-hour window, `usage.week` the weekly window or else the monthly one, and `usage.limits` the `month` window when a weekly window takes `usage.week`.
 
 The Mistral Vibe pool renders after Kimi Code, headed `vibe  (N accounts, status-only)` and skipped when empty, and `status --json` always carries it under `vibe`. An account renders the monthly allowance bar, labeled `month`; `usage.week` carries that window.
+
+The Antigravity pool renders after Vibe, headed `agy  (N accounts, status-only)` and skipped when empty, and `status --json` always carries it under `agy`. An account renders the 5h bar and, when both windows are present, a `week` bar; `usage.fiveHour` and `usage.week` carry those windows.
 
 ## State
 
@@ -61,4 +71,7 @@ The Mistral Vibe pool renders after Kimi Code, headed `vibe  (N accounts, status
 | `vibe-accounts.json` | The Mistral Vibe pool index, the same schema |
 | `vibe-lock` | The `flock` file of the Mistral Vibe pool |
 | `vibe-stores/<uuid8>/auth.json` | One 0600 store per account: the account id and the API key |
-| `onboard/cursor-<pid>-<random>/`, `onboard/kimi-<pid>-<random>/`, `onboard/vibe-<pid>-<random>/` | The throwaway home of one isolated login (for Cursor, its `XDG_CONFIG_HOME`; for Kimi Code, its `KIMI_CODE_HOME`; for Mistral Vibe, its `VIBE_HOME`), deleted after it |
+| `agy-accounts.json` | The Antigravity pool index, the same schema |
+| `agy-lock` | The `flock` file of the Antigravity pool |
+| `agy-stores/<uuid8>/antigravity-oauth-token` | One 0600 store per account: the OAuth document agy uses |
+| `onboard/cursor-<pid>-<random>/`, `onboard/kimi-<pid>-<random>/`, `onboard/vibe-<pid>-<random>/`, `onboard/agy-<pid>-<random>/` | The throwaway home of one isolated login (for Cursor, its `XDG_CONFIG_HOME`; for Kimi Code, its `KIMI_CODE_HOME`; for Mistral Vibe, its `VIBE_HOME`; for Antigravity, its `HOME`), deleted after it |

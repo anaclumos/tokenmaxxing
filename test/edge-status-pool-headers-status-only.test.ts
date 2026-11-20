@@ -4,7 +4,7 @@ import { preparedHomes, startStub, stubEnv, writeClaudePool } from "./edge-async
 import { pooledClaude } from "./fixtures.ts";
 import { labeled, poolHeaders, writePool } from "./edge-cli-surface-fixtures.ts";
 
-test("status --cached heads each non-Claude pool with its account count in pool order, marking only cursor, kimi, and vibe status-only", async () => {
+test("status --cached heads each non-Claude pool with its account count in pool order, marking only cursor, kimi, vibe, and agy status-only", async () => {
   const homes = preparedHomes();
   writeClaudePool(homes, [pooledClaude("6bde0c87-b09d-4f4e-9c7c-8de03f9b5ea6")]);
   writePool(homes, "vibe", [labeled("e3a1b2c4-27f5-4a0b-9d3e-f4580a6c2f1d", "vibe-one", "pro")]);
@@ -12,13 +12,14 @@ test("status --cached heads each non-Claude pool with its account count in pool 
   writePool(homes, "cursor", [labeled("9e013fba-e3c0-4c7b-8faf-b0136c2e8bd9", "cursor-one", "pro")]);
   writePool(homes, "muse", [labeled("af1240cb-f4d1-4d8c-9ab0-c1247d3f9cea", "muse-one", "pro")]);
   writePool(homes, "grok", [labeled("b02351dc-05e2-4e9d-8bc1-d2358e4a0dfb", "grok-one", "supergrok")]);
+  writePool(homes, "agy", [labeled("c24573fe-27f4-4baf-9de3-f457a06c2f1e", "agy-one", "pro")]);
   writePool(homes, "codex", [labeled("c13462ed-16f3-4fae-9cd2-e3469f5b1e0c", "codex-one", "pro")]);
   const stub = startStub({ gated: [] });
   try {
     const result = await run(["status", "--cached"], stubEnv(homes, stub.base));
     expect({ exitCode: result.exitCode, headers: poolHeaders(result.stdout), stderr: result.stderr }).toMatchObject({
       exitCode: 0,
-      headers: ["codex  (1 account)", "grok  (1 account)", "muse  (1 account)", "cursor  (1 account, status-only)", "kimi  (2 accounts, status-only)", "vibe  (1 account, status-only)"],
+      headers: ["codex  (1 account)", "grok  (1 account)", "muse  (1 account)", "cursor  (1 account, status-only)", "kimi  (2 accounts, status-only)", "vibe  (1 account, status-only)", "agy  (1 account, status-only)"],
     });
   } finally {
     stub.stop();
