@@ -152,6 +152,9 @@ async function collect(p: Provider, cfg: Config, now: number, cached: boolean): 
         if (a.needsReauth === true && stored.needsReauth !== true) {
           stored.needsReauth = true;
           dirty = true;
+        } else if (a.needsReauth !== true && stored.needsReauth === true) {
+          delete stored.needsReauth;
+          dirty = true;
         }
         if ((a.usageRetryAt ?? null) !== retries.get(a.id)) {
           stored.usageRetryAt = a.usageRetryAt;
