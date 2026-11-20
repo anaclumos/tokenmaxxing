@@ -287,7 +287,7 @@ async function readAgyUsage(account: Account, now: number): Promise<SampleReport
     return { ok: false, reason: "no Antigravity login in this account's store - run `tokenmaxxing auth --agy`" };
   }
   const cfg = loadConfig();
-  const agyBin = resolveRealBin({ name: "agy", key: "agyBin", versionOk: () => true });
+  const agyBin = resolveRealBin({ name: "agy", key: "agyBin" });
   let accessToken: string;
   try {
     accessToken = await accessTokenFor(file, agyBin, now);
