@@ -68,10 +68,11 @@ function idTokenClaims(file: TokenFile): { sub: string | null; email: string | n
 }
 
 function accountOwner(file: TokenFile): string | null {
-  const { sub } = idTokenClaims(file);
-  if (sub == null) return null;
+  const { sub, email } = idTokenClaims(file);
+  const owner = sub ?? email;
+  if (owner == null) return null;
   const project = file.project_id?.trim() ?? "";
-  const scoped = file.auth_method?.toLowerCase() === AUTH_METHOD_GCP && project !== "" ? `${sub}:gcp:${project}` : sub;
+  const scoped = file.auth_method?.toLowerCase() === AUTH_METHOD_GCP && project !== "" ? `${owner}:gcp:${project}` : owner;
   return new Bun.CryptoHasher("sha256").update(scoped).digest("hex");
 }
 

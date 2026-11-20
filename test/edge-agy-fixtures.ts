@@ -1,7 +1,7 @@
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
-import type { Account } from "../src/lib/types.ts";
+import { AccountsIndexSchema, type Account } from "../src/lib/types.ts";
 import { stubEnv } from "./edge-async-sweep-fixtures.ts";
 import { storeDir } from "./edge-cli-surface-fixtures.ts";
 import { fakeBin, serve, writePrivate } from "./edge-providers-fixtures.ts";
@@ -22,9 +22,18 @@ export function agyIdentity(sub: string, project?: string): string {
   return new Bun.CryptoHasher("sha256").update(owner).digest("hex");
 }
 
-export function agyToken(input: { sub: string; email?: string; access?: string; refresh?: string; expiry?: string; project?: string; authMethod?: string }): unknown {
-  const idToken = fakeJwt({ sub: input.sub, email: input.email ?? `${input.sub}@example.com` });
-  return {
+export function agyToken(input: {
+  sub?: string;
+  email?: string;
+  access?: string;
+  refresh?: string;
+  expiry?: string;
+  project?: string;
+  authMethod?: string;
+  idToken?: boolean;
+}): unknown {
+  const email = input.email ?? `${input.sub ?? "user"}@example.com`;
+  const file: Record<string, unknown> = {
     token: {
       access_token: input.access ?? "agy-access",
       refresh_token: input.refresh ?? "agy-refresh",
@@ -32,10 +41,11 @@ export function agyToken(input: { sub: string; email?: string; access?: string; 
       expiry: input.expiry ?? new Date(Date.now() + 3600_000).toISOString(),
     },
     auth_method: input.authMethod ?? "consumer",
-    id_token: idToken,
-    id_token_email: input.email ?? `${input.sub}@example.com`,
+    id_token_email: email,
     ...(input.project ? { project_id: input.project } : {}),
   };
+  if (input.idToken !== false) file.id_token = fakeJwt({ sub: input.sub ?? "google-sub", email });
+  return file;
 }
 
 export function quotaSummaryBody(remaining5h: number, remainingWeekly: number, reset5h: string, resetWeekly: string): unknown {
@@ -68,6 +78,11 @@ export function serveAgyQuota(input: { loadBody?: unknown; summaryBodies?: Recor
   return { base: stub.base, apiUrl: `${stub.base}/agy`, stop: stub.stop };
 }
 
+export function installAgyVersionBin(homes: Homes): { bin: string; dir: string } {
+  const dir = join(homes.home, "fake-agy");
+  return { bin: fakeBin(dir, "agy", 'if [ "$1" = "--version" ]; then echo "1.5.12"; exit 0; fi\nexit 9'), dir };
+}
+
 export function installFakeAgy(homes: Homes, tokenJson: string): { bin: string; dir: string; logins: () => string[] } {
   const dir = join(homes.home, "fake-agy");
   const log = join(dir, "logins.log");
@@ -84,6 +99,10 @@ export function installFakeAgy(homes: Homes, tokenJson: string): { bin: string; 
     ].join("\n"),
   );
   return { bin, dir, logins: () => (existsSync(log) ? readFileSync(log, "utf8").split("\n").filter((line) => line !== "") : []) };
+}
+
+export function writeAgyLive(homes: Homes, token: unknown): void {
+  writePrivate(join(homes.home, ".gemini", "antigravity-cli", "antigravity-oauth-token"), JSON.stringify(token, null, 2));
 }
 
 export function pinAgyBin(homes: Homes, bin: string): void {
@@ -104,6 +123,11 @@ export function writeAgyStore(homes: Homes, id: string, token: unknown): void {
 
 export function agyAccounts(homes: Homes): Account[] {
   const path = join(homes.state, "agy-accounts.json");
-  const AccountsIndexSchema = z.object({ accounts: z.array(z.looseObject({ id: z.string() })) });
-  return existsSync(path) ? (AccountsIndexSchema.parse(JSON.parse(readFileSync(path, "utf8"))).accounts as Account[]) : [];
+  return existsSync(path) ? AccountsIndexSchema.parse(JSON.parse(readFileSync(path, "utf8"))).accounts : [];
+}
+
+export function agyStore(homes: Homes, id: string): { doc: unknown; mode: number } | null {
+  const path = join(storeDir(homes, "agy", id), "antigravity-oauth-token");
+  if (!existsSync(path)) return null;
+  return { doc: JSON.parse(readFileSync(path, "utf8")) as unknown, mode: statSync(path).mode & 0o777 };
 }
