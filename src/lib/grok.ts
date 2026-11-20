@@ -170,13 +170,17 @@ export function grokStoreIdentity(accountId: string): string[] {
   return readAuth(grokAuthJsonFor(accountId)).map((e) => e.id);
 }
 
+function sharedGrokHomeEntry(name: string): boolean {
+  return !name.startsWith("auth.json") && name !== "logs";
+}
+
 export function ensureGrokStoreHome(accountId: string): string {
   const store = grokStoreDirFor(accountId);
   mkdirSync(store, { recursive: true });
   mkdirSync(grokPaths.home, { recursive: true });
   mkdirSync(join(grokPaths.home, "sessions"), { recursive: true });
   for (const name of readdirSync(grokPaths.home)) {
-    if (name.startsWith("auth.json")) continue;
+    if (!sharedGrokHomeEntry(name)) continue;
     try {
       symlinkSync(join(grokPaths.home, name), join(store, name));
     } catch (e) {

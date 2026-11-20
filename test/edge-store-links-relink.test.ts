@@ -65,6 +65,7 @@ test("relinking a Codex, grok, or pi store home links each new shared entry, kee
   writePrivate(join(grokHome, "auth.json"), "{}");
   writeFileSync(join(grokHome, "auth.json.lock"), "");
   mkdirSync(join(grokHome, "plugins"));
+  mkdirSync(join(grokHome, "logs"));
   const grokStore = grokStoreDirFor(GROK_ID);
   mkdirSync(grokStore, { recursive: true });
   writeFileSync(join(grokStore, "config.json"), '{"theme":"light"}\n');
@@ -73,6 +74,7 @@ test("relinking a Codex, grok, or pi store home links each new shared entry, kee
   ensureGrokStoreHome(GROK_ID);
 
   const linked = (home: string, name: string) => `link ${join(home, name)}`;
+  expect(entries(grokStore)).not.toHaveProperty("logs");
   expect({ codex: entries(codexStore), grok: entries(grokStore), pi: entries(piStore) }).toEqual({
     codex: {
       "config.toml": 'file model = "gpt-5-codex"\n',
