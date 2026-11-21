@@ -11,7 +11,6 @@ import { runCodexSupervisor } from "./entries/codexsupervisor.ts";
 import { runCodexStopHook } from "./entries/codexstophook.ts";
 import { runPiSupervisor } from "./entries/pisupervisor.ts";
 import { runMuseSupervisor } from "./entries/musesupervisor.ts";
-import { runGrokSupervisor } from "./entries/groksupervisor.ts";
 import { claude } from "./lib/claude.ts";
 import { codex } from "./lib/codex.ts";
 import { grok } from "./lib/grok.ts";
@@ -34,7 +33,8 @@ import { cmdConfig } from "./cli/config.ts";
 import { cmdSeat } from "./cli/seat.ts";
 import { cmdServe } from "./cli/serve.ts";
 import { cmdTelemetry } from "./cli/telemetry.ts";
-import { CHECK_JOB, deactivationHint, HUB_JOB, onLoginHome, uninstallSupervisor, uninstallTargets } from "./lib/install.ts";
+import { CHECK_JOB, deactivationHint, HUB_JOB, onLoginHome, retireGrokWrapper, uninstallSupervisor, uninstallTargets } from "./lib/install.ts";
+import { GROK_BIN, resolveRealBin } from "./lib/claudebin.ts";
 import { errorMessage } from "./lib/log.ts";
 import { HOME } from "./lib/paths.ts";
 import { flushTelemetryNow, record, showTelemetryNotice, TRACKED_COMMANDS, TRACKED_FLAGS } from "./lib/telemetry.ts";
@@ -66,7 +66,7 @@ function printHelp(): void {
   ${c.cyan("tokenmaxxing init")}       log in the first account (isolated) + install supervisor & hooks
   ${c.cyan("tokenmaxxing init --codex")}  same for codex: log in the first account, isolated, install codex supervisor + Stop hook
   ${c.cyan("tokenmaxxing init --pi")}     install the pi supervisor: pi sessions run on pooled Claude or ChatGPT accounts that are logged into pi
-  ${c.cyan("tokenmaxxing init --grok")}   same for grok: log in the first account, isolated, install the grok supervisor
+  ${c.cyan("tokenmaxxing init --grok")}   pool grok logins and report their usage (status-only: no supervisor, no switching)
   ${c.cyan("tokenmaxxing init --muse")}   same for Muse Code: log in the first account, isolated, install the muse supervisor
   ${c.cyan("tokenmaxxing init --cursor")} pool Cursor CLI logins (status-only: no supervisor yet)
   ${c.cyan("tokenmaxxing init --kimi")}   pool Kimi Code logins (status-only: no supervisor yet)
@@ -101,6 +101,16 @@ function printHelp(): void {
 
 let jsonMode = false;
 
+async function runRetiredGrokWrapper(argv: string[]): Promise<number> {
+  try {
+    const real = resolveRealBin(GROK_BIN);
+    const child = Bun.spawn([real, ...argv], { stdin: "inherit", stdout: "inherit", stderr: "inherit" });
+    return await child.exited;
+  } finally {
+    retireGrokWrapper();
+  }
+}
+
 async function main(): Promise<number> {
   if (process.platform !== "darwin" && process.platform !== "linux") {
     console.error(`tokenmaxxing supports macOS and Linux only (this is ${process.platform})`);
@@ -121,9 +131,10 @@ async function main(): Promise<number> {
   if (argv0 === "muse" || argv[0] === "__supervise-muse") {
     return runMuseSupervisor(argv[0] === "__supervise-muse" ? argv.slice(1) : argv);
   }
-  if (argv0 === "grok" || argv[0] === "__supervise-grok") {
-    return runGrokSupervisor(argv[0] === "__supervise-grok" ? argv.slice(1) : argv);
+  if (argv[0] === "__supervise-grok") {
+    return runRetiredGrokWrapper(argv.slice(1));
   }
+  retireGrokWrapper();
 
   jsonMode = argv.includes(JSON_FLAG);
   const json = jsonMode;

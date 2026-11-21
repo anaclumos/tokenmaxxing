@@ -1,11 +1,13 @@
 ---
 title: Status-only pools
-description: Cursor, Kimi Code, Mistral Vibe, and Google Antigravity accounts, pooled for inventory with no supervisor and no switching
+description: grok, Cursor, Kimi Code, Mistral Vibe, and Google Antigravity accounts, pooled for usage reporting with no supervisor and no switching
 ---
 
-The Cursor, Kimi Code, Mistral Vibe, and Google Antigravity pools share the account commands, the state layout, and the `status` view with the other pools, and nothing else: no supervisor shim, no hooks, no statusline tee, no session presence, and no switching. Each keeps an inventory of accounts and the credential each one holds; `status` reads each Cursor account's monthly included usage, each Kimi Code account's 5-hour, weekly, and monthly limits, each Mistral Vibe account's monthly Vibe allowance, and each Antigravity account's 5-hour and weekly model quotas.
+The grok, Cursor, Kimi Code, Mistral Vibe, and Google Antigravity pools share the account commands, the state layout, and the `status` view with the other pools, and nothing else: no supervisor shim, no hooks, no statusline tee, no session presence, and no switching. Each keeps an inventory of accounts and the credential each one holds; `status` reads each grok account's weekly subscription credit window, each Cursor account's monthly included usage, each Kimi Code account's 5-hour, weekly, and monthly limits, each Mistral Vibe account's monthly Vibe allowance, and each Antigravity account's 5-hour and weekly model quotas.
 
 ```sh
+tokenmaxxing init --grok          # pool the first grok login and report its usage (status-only)
+tokenmaxxing add --grok           # pool another one through an isolated login
 tokenmaxxing init --cursor        # pool the Cursor CLI login (status-only)
 tokenmaxxing add --cursor         # pool another one through an isolated login
 tokenmaxxing init --kimi          # pool a Kimi Code account through an isolated login (status-only)
@@ -16,9 +18,17 @@ tokenmaxxing init --agy           # pool the Google Antigravity login that agy u
 tokenmaxxing add --agy            # pool another one through an isolated agy sign-in
 ```
 
-`init`, `add`, `auth`, `emails`, `rm`, and `rename` take `--cursor`, `--kimi`, `--vibe`, or `--agy`; every other command refuses the flags with exit code 2, and the pool flags are mutually exclusive. `init` verifies the vendor CLI and pins its path (`cursorBin`, `kimiBin`, `vibeBin`, or `agyBin` in `config.json`; `TOKENMAXXING_CURSOR_BIN`, `TOKENMAXXING_KIMI_BIN`, `TOKENMAXXING_VIBE_BIN`, and `TOKENMAXXING_AGY_BIN` override them), then prints that the pool is status-only. `doctor`, `check`, and the periodic timer ignore these pools, and `uninstall` keeps their stores.
+`init`, `add`, `auth`, `emails`, `rm`, and `rename` take `--grok`, `--cursor`, `--kimi`, `--vibe`, or `--agy`; every other command refuses the flags with exit code 2, and the pool flags are mutually exclusive. `init` verifies the vendor CLI and pins its path (`grokBin`, `cursorBin`, `kimiBin`, `vibeBin`, or `agyBin` in `config.json`; `TOKENMAXXING_GROK_BIN`, `TOKENMAXXING_CURSOR_BIN`, `TOKENMAXXING_KIMI_BIN`, `TOKENMAXXING_VIBE_BIN`, and `TOKENMAXXING_AGY_BIN` override them), then prints that the pool is status-only. `doctor`, `check`, and the periodic timer ignore these pools, and `uninstall` keeps their stores.
 
-grok and Muse Code have supervisors and are not status-only pools; see [grok support](/grok) and [Muse Code support](/muse).
+Muse Code has a supervisor and is not a status-only pool; see [Muse Code support](/muse).
+
+## grok
+
+An account is a grok CLI login. `init --grok` imports the first entry of `~/.grok/auth.json` (`GROK_HOME` is honored) and points at `add --grok` for the rest; with no live login it runs `grok login` in a throwaway `GROK_HOME` under the state directory. `add --grok` and `auth --grok` always use the isolated login. Identity is the entry's user id (or `principal_id`, else the map key), the label defaults to the email in the entry, and the harvested entry is written verbatim to `grok-stores/<uuid8>/auth.json` at mode 0600. A store is usable when that entry holds a `refresh_token`.
+
+Pooling a live login copies it; it does not remove it. `grok` keeps running on the ambient login in `~/.grok` exactly as before, and tokenmaxxing never writes that home. The store is read only for usage, never used to start or move a grok session.
+
+Usage is the weekly subscription credit window from `GET https://cli-chat-proxy.grok.com/v1/billing?format=credits` (`creditUsagePercent`, classified by the period's duration). The endpoint leaves `creditUsagePercent` out while the period's use is 0, so a credits body without it reads as 0%. `TOKENMAXXING_GROK_USAGE_URL` overrides that URL for hermetic runs. The dollar billing body (`GET /v1/billing` without `format=credits`) is not quota: subscription accounts report `monthlyLimit` 0 there while credits remain, and a parser that treats that body as usage reports the account depleted. tokenmaxxing does not refresh grok tokens itself; a stored access token that has expired is retried against the live `GROK_HOME` login when that login is the same account, and when the live token works the live entry is copied into the store so the next read starts fresh. A 401 on both store and live flags the account for `auth --grok`. A failed read does not write the dollar body: an account with no stored window stays unmeasured, and one with a stored credits window keeps that figure as stale as it was.
 
 ## Cursor
 
@@ -50,6 +60,8 @@ Usage is the same read `agy /usage` uses: `POST https://daily-cloudcode-pa.googl
 
 ## What status shows
 
+The grok pool renders after Codex, headed `grok  (N accounts, status-only)` and skipped when empty, and `status --json` always carries it under `grok`. Each account renders the weekly credit bar once a sample has landed; `usage.week` carries that window, `sessions` is 0, and `exhausted` follows the same bars as the other pools while a sample is stored (an unmeasured account has `usage` null and `exhausted` false). `status` shows `sampling usage...` on a terminal while the check runs, erases it, then reports `live sample failed` with the reason when the read fails (run `auth --grok` when the store has no usable credential); `status --cached` skips the check and notes `never sampled` when nothing is stored.
+
 The Cursor pool renders after Muse Code, headed `cursor  (N accounts, status-only)` and skipped when empty, and `status --json` always carries it under `cursor`. Each account renders the billing-cycle bar, labeled `month`, and the `api` bar; `usage.week` carries the billing-cycle window (its `windowSeconds` is the cycle's length) and `usage.limits` the `API` window.
 
 The Kimi Code pool renders after Cursor, headed `kimi  (N accounts, status-only)` and skipped when empty, and `status --json` always carries it under `kimi`. An account renders the `5h` bar and the monthly bar, labeled `month`, with a `week` bar between them on a legacy plan; `usage.fiveHour` carries the 5-hour window, `usage.week` the weekly window or else the monthly one, and `usage.limits` the `month` window when a weekly window takes `usage.week`.
@@ -62,7 +74,10 @@ The Antigravity pool renders after Vibe, headed `agy  (N accounts, status-only)`
 
 | Path | What it holds |
 |---|---|
-| `cursor-accounts.json` | The Cursor pool index, the same schema as `accounts.json`; it names no active account |
+| `grok-accounts.json` | The grok pool index, the same schema as `accounts.json`; it names no active account |
+| `grok-lock` | The `flock` file that serializes the pool's commands and samples |
+| `grok-stores/<uuid8>/auth.json` | One 0600 store per account, read only for usage |
+| `cursor-accounts.json` | The Cursor pool index, the same schema |
 | `cursor-lock` | The `flock` file of the Cursor pool |
 | `cursor-stores/<uuid8>/auth.json` | One 0600 store per account |
 | `kimi-accounts.json` | The Kimi Code pool index, the same schema |
@@ -74,4 +89,4 @@ The Antigravity pool renders after Vibe, headed `agy  (N accounts, status-only)`
 | `agy-accounts.json` | The Antigravity pool index, the same schema |
 | `agy-lock` | The `flock` file of the Antigravity pool |
 | `agy-stores/<uuid8>/antigravity-oauth-token` | One 0600 store per account: the OAuth document agy uses |
-| `onboard/cursor-<pid>-<random>/`, `onboard/kimi-<pid>-<random>/`, `onboard/vibe-<pid>-<random>/`, `onboard/agy-<pid>-<random>/` | The throwaway home of one isolated login (for Cursor, its `XDG_CONFIG_HOME`; for Kimi Code, its `KIMI_CODE_HOME`; for Mistral Vibe, its `VIBE_HOME`; for Antigravity, its `HOME`), deleted after it |
+| `onboard/grok-<pid>-<random>/`, `onboard/cursor-<pid>-<random>/`, `onboard/kimi-<pid>-<random>/`, `onboard/vibe-<pid>-<random>/`, `onboard/agy-<pid>-<random>/` | The throwaway home of one isolated login (for grok, its `GROK_HOME`; for Cursor, its `XDG_CONFIG_HOME`; for Kimi Code, its `KIMI_CODE_HOME`; for Mistral Vibe, its `VIBE_HOME`; for Antigravity, its `HOME`), deleted after it |

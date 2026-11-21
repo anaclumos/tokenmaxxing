@@ -12,7 +12,7 @@ function printUsage(p: Provider): void {
   console.log();
   console.log(`  ${c.bold("how to use")} - ${c.cyan("xx")} is shorthand for ${c.cyan("tokenmaxxing")}:`);
   if (p.statusOnly) {
-    console.log(`    ${c.cyan(`xx status`)}         view pooled ${p.name} accounts (status-only pool: no automatic switching yet)`);
+    console.log(`    ${c.cyan(`xx status`)}         view pooled ${p.name} accounts (status-only pool: usage reporting only, no automatic switching)`);
   } else {
     console.log(`    ${c.cyan(p.name)}             use ${p.name} as always; it switches accounts near quota automatically`);
   }

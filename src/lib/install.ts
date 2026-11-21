@@ -186,12 +186,17 @@ export function installMuseSupervisor(): void {
   writeFileAtomic(museSupervisorLink(), `#!/bin/sh\nexec ${shellQuote(installEntryPoints())} __supervise-muse "$@"\n`, 0o755);
 }
 
-export function grokSupervisorLink(): string {
+// grok is a status-only pool now; this removes the wrapper an older version installed.
+export function retiredGrokWrapper(): string {
   return join(paths.binDir, "grok");
 }
 
-export function installGrokSupervisor(): void {
-  writeFileAtomic(grokSupervisorLink(), `#!/bin/sh\nexec ${shellQuote(installEntryPoints())} __supervise-grok "$@"\n`, 0o755);
+export function retireGrokWrapper(): void {
+  try {
+    rmSync(retiredGrokWrapper(), { force: true });
+  } catch {
+    // An unremovable stale wrapper must not break the command that found it.
+  }
 }
 
 type UnitJob = {
@@ -499,7 +504,7 @@ export function uninstallTargets(live: boolean): string[] {
     codexSupervisorLink(),
     piSupervisorLink(),
     museSupervisorLink(),
-    grokSupervisorLink(),
+    retiredGrokWrapper(),
     join(paths.binDir, "xx"),
     installedBin(),
     ...(rc == null ? [] : [`${rc}: the ${PATH_LINE_MARK} line`]),
@@ -511,7 +516,7 @@ export function uninstallSupervisor(input: { live: boolean }): UninstallOutcome 
   const timer = uninstallJob(CHECK_JOB, input.live);
   const hub = uninstallJob(HUB_JOB, input.live);
   uninstallCodexSupervisor();
-  for (const f of [paths.supervisorLink, piSupervisorLink(), museSupervisorLink(), grokSupervisorLink(), join(paths.binDir, "xx"), installedBin()]) {
+  for (const f of [paths.supervisorLink, piSupervisorLink(), museSupervisorLink(), retiredGrokWrapper(), join(paths.binDir, "xx"), installedBin()]) {
     rmSync(f, { force: true });
   }
   const rc = shellRcPath();

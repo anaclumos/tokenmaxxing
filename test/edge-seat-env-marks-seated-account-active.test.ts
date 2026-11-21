@@ -9,7 +9,7 @@ const CODEX = ["e9bce06f-9e7b-47c6-9f5a-0bce17d39a84", "facdf17a-af8c-48d7-8a6b-
 const GROK = ["0bde028b-b09d-49e8-9b7c-2de039f5bca6", "1cef139c-c1ae-4af9-8c8d-3ef14a06cdb7"] as const;
 const MUSE = ["2df024ad-d2bf-4b0a-9d9e-4f025b17dec8", "3e0135be-e3c0-4c1b-8eaf-50136c28efd9"] as const;
 
-test("status --json marks as active exactly the account whose store each pool's seat variable names (CLAUDE_SECURESTORAGE_CONFIG_DIR, CODEX_HOME, GROK_HOME, XDG_CONFIG_HOME)", async () => {
+test("status --json marks as active exactly the account whose store each switching pool's seat variable names (CLAUDE_SECURESTORAGE_CONFIG_DIR, CODEX_HOME, XDG_CONFIG_HOME), never a grok store named by GROK_HOME", async () => {
   const homes = preparedHomes();
   writeClaudePool(homes, CLAUDE.map((id) => pooledClaude(id)));
   for (const id of CLAUDE) writeClaudeStore(homes, id, `sk-ant-oat01-edge-${id.slice(0, 8)}`);
@@ -36,7 +36,7 @@ test("status --json marks as active exactly the account whose store each pool's 
       log: logTail(homes),
     }).toMatchObject({
       exitCode: 0,
-      active: { claude: [CLAUDE[1]], codex: [CODEX[1]], grok: [GROK[1]], muse: [MUSE[1]] },
+      active: { claude: [CLAUDE[1]], codex: [CODEX[1]], grok: [], muse: [MUSE[1]] },
     });
   } finally {
     stub.stop();

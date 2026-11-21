@@ -2,15 +2,13 @@ import { existsSync, readFileSync } from "node:fs";
 import { mapAsync } from "es-toolkit";
 import { analyzeArgs } from "../entries/supervisor.ts";
 import { seatsCodexArgs } from "../entries/codexsupervisor.ts";
-import { seatsGrokArgs } from "../entries/groksupervisor.ts";
-import { CLAUDE_BIN, CODEX_BIN, GROK_BIN, MUSE_BIN, PI_BIN, realpathOrNull, verifyRealBin } from "../lib/claudebin.ts";
+import { CLAUDE_BIN, CODEX_BIN, MUSE_BIN, PI_BIN, realpathOrNull, verifyRealBin } from "../lib/claudebin.ts";
 import { checkSettings, installedBin } from "../lib/settings.ts";
-import { activationHint, CHECK_JOB, codexStoreHookTrust, codexSupervisorLink, findClaudeShadowers, grokSupervisorLink, HUB_JOB, isBinDirAhead, jobHealthy, miseStablePath, museSupervisorLink, piSupervisorLink, shellRcPath } from "../lib/install.ts";
-import { grokStoreIdentity, grokStoreUsable } from "../lib/grok.ts";
+import { activationHint, CHECK_JOB, codexStoreHookTrust, codexSupervisorLink, findClaudeShadowers, HUB_JOB, isBinDirAhead, jobHealthy, miseStablePath, museSupervisorLink, piSupervisorLink, shellRcPath } from "../lib/install.ts";
 import { museStoreIdentity, museStoreUsable } from "../lib/muse.ts";
 import { readPiStore } from "../lib/piauth.ts";
 import { errorMessage } from "../lib/log.ts";
-import { claudePool, codexPool, grokPool, musePool, paths } from "../lib/paths.ts";
+import { claudePool, codexPool, musePool, paths } from "../lib/paths.ts";
 import { executablePath, processTable } from "../lib/proc.ts";
 import { loadAccounts, loadConfig } from "../lib/state.ts";
 import { readStore } from "../lib/credstore.ts";
@@ -208,32 +206,6 @@ export async function cmdDoctor(): Promise<number> {
     }
   }
 
-  const gidx = loadAccounts(grokPool);
-  const grokShim = existsSync(grokSupervisorLink());
-  if (grokShim) {
-    check(!!cfg.grokBin && existsSync(cfg.grokBin), "real grok binary resolved", "run `tokenmaxxing init --grok`");
-    if (cfg.grokBin && existsSync(cfg.grokBin)) {
-      const fail = verifyRealBin({ ...GROK_BIN, bin: cfg.grokBin });
-      check(fail === null, "grokBin launches the real grok", fail ?? undefined);
-      check(isBinDirAhead(GROK_BIN), `${paths.binDir} is ahead of the real grok on PATH`, `export PATH="${paths.binDir}:$PATH"`);
-    }
-  } else if (gidx.accounts.length > 0) {
-    warn("grok accounts are pooled but the grok supervisor is not installed - run `tokenmaxxing init --grok`");
-  }
-  for (const a of gidx.accounts) {
-    let ids: string[] = [];
-    let readErr: string | null = null;
-    try {
-      ids = grokStoreIdentity(a.id);
-    } catch (e) {
-      readErr = errorMessage(e).slice(0, 100);
-    }
-    check(ids.length > 0, `grok store login present for ${a.label}`, readErr ?? `run \`tokenmaxxing auth --grok ${a.label}\``);
-    if (ids.length > 0) check(ids.includes(a.id), `grok store login identity matches ${a.label}`, `the store holds another account's login - run \`tokenmaxxing auth --grok ${a.label}\``);
-    if (ids.includes(a.id)) check(grokStoreUsable(a.id), `grok store login holds a token for ${a.label}`, `no refresh_token in the store - run \`tokenmaxxing auth --grok ${a.label}\``);
-    if (a.needsReauth) check(false, `${a.label} (grok) needs re-auth`, `run \`tokenmaxxing auth --grok ${a.label}\` to re-login`);
-  }
-
   const midx = loadAccounts(musePool);
   if (existsSync(museSupervisorLink())) {
     check(!!cfg.museBin && existsSync(cfg.museBin), "real muse binary resolved", "run `tokenmaxxing init --muse`");
@@ -272,8 +244,6 @@ export async function cmdDoctor(): Promise<number> {
   if (realClaude) bins.push({ name: "claude", real: realClaude, link: paths.supervisorLink, seated: (argv) => analyzeArgs(argv).manage && !argv.some((a) => NON_SESSION_CLAUDE_FLAGS.has(a)) });
   const realCodex = codexShim && cfg.codexBin ? realpathOrNull(cfg.codexBin) : null;
   if (realCodex) bins.push({ name: "codex", real: realCodex, link: codexSupervisorLink(), seated: seatsCodexArgs });
-  const realGrok = grokShim && cfg.grokBin ? realpathOrNull(cfg.grokBin) : null;
-  if (realGrok) bins.push({ name: "grok", real: realGrok, link: grokSupervisorLink(), seated: seatsGrokArgs });
   try {
     for (const run of unsupervisedRuns(bins)) {
       warn(`${run.parent} runs ${run.bin.name} outside the supervisor (pid ${run.pid}) - quit and reopen it if it was open before init added the PATH line, or set its ${run.bin.name} path to ${run.bin.link}`);

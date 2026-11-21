@@ -5,24 +5,19 @@ import { scratchDir, useEnv, writePrivate } from "./edge-providers-fixtures.ts";
 
 const CODEX_ID = "9c1e4b7a-2d5f-4e8c-a1b3-6f0d2c9e7a54";
 const PI_ID = "7a2b5c8d-1e4f-4a7b-9c2d-5e8f1a4b7c03";
-const GROK_ID = "5b3c6d9e-2f5a-4b8c-8d1e-4f7a0b3c6d92";
 const codexHome = scratchDir("codex-home");
 const piHome = scratchDir("pi-home");
-const grokHome = scratchDir("grok-home");
 const restoreEnv = useEnv({
   HOME: scratchDir("home"),
   TOKENMAXXING_HOME: scratchDir("state"),
   TOKENMAXXING_CODEX_HOME: codexHome,
   CODEX_HOME: undefined,
   PI_CODING_AGENT_DIR: piHome,
-  GROK_HOME: grokHome,
-  TOKENMAXXING_GROK_HOME: undefined,
 });
 afterAll(restoreEnv);
 
-const { codexStoreDirFor, grokStoreDirFor, piStoreDirFor } = await import("../src/lib/paths.ts");
+const { codexStoreDirFor, piStoreDirFor } = await import("../src/lib/paths.ts");
 const { ensureCodexStoreHome } = await import("../src/lib/codexauth.ts");
-const { ensureGrokStoreHome } = await import("../src/lib/grok.ts");
 const { ensurePiStoreHome } = await import("../src/lib/piauth.ts");
 
 function entries(dir: string): Record<string, string> {
@@ -35,7 +30,7 @@ function entries(dir: string): Record<string, string> {
   );
 }
 
-test("relinking a Codex, grok, or pi store home links each new shared entry, keeps every entry the store already holds, and never links the login", () => {
+test("relinking a Codex or pi store home links each new shared entry, keeps every entry the store already holds, and never links the login", () => {
   const stale = join(scratchDir("gone"), "history.jsonl");
 
   writeFileSync(join(codexHome, "config.toml"), 'model = "gpt-5"\n');
@@ -61,31 +56,14 @@ test("relinking a Codex, grok, or pi store home links each new shared entry, kee
   mkdirSync(join(piHome, "prompts"));
   ensurePiStoreHome("codex", PI_ID);
 
-  writeFileSync(join(grokHome, "config.json"), '{"theme":"dark"}\n');
-  writePrivate(join(grokHome, "auth.json"), "{}");
-  writeFileSync(join(grokHome, "auth.json.lock"), "");
-  mkdirSync(join(grokHome, "plugins"));
-  const grokStore = grokStoreDirFor(GROK_ID);
-  mkdirSync(grokStore, { recursive: true });
-  writeFileSync(join(grokStore, "config.json"), '{"theme":"light"}\n');
-  ensureGrokStoreHome(GROK_ID);
-  mkdirSync(join(grokHome, "skills"));
-  ensureGrokStoreHome(GROK_ID);
-
   const linked = (home: string, name: string) => `link ${join(home, name)}`;
-  expect({ codex: entries(codexStore), grok: entries(grokStore), pi: entries(piStore) }).toEqual({
+  expect({ codex: entries(codexStore), pi: entries(piStore) }).toEqual({
     codex: {
       "config.toml": 'file model = "gpt-5-codex"\n',
       "history.jsonl": `link ${stale}`,
       rules: linked(codexHome, "rules"),
       sessions: linked(codexHome, "sessions"),
       skills: linked(codexHome, "skills"),
-    },
-    grok: {
-      "config.json": 'file {"theme":"light"}\n',
-      plugins: linked(grokHome, "plugins"),
-      sessions: linked(grokHome, "sessions"),
-      skills: linked(grokHome, "skills"),
     },
     pi: {
       bin: linked(piHome, "bin"),

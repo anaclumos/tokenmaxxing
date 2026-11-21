@@ -129,24 +129,11 @@ export function piAuthJsonFor(pool: PiPool, accountId: string): string {
   return join(piStoreDirFor(pool, accountId), "auth.json");
 }
 
-const GROK_STORES_DIR = join(TM_HOME, "grok-stores");
 const GROK_HOME_DEFAULT = join(HOME, ".grok");
-export const GROK_HOME_ENV = "TOKENMAXXING_GROK_HOME";
-
-export function inGrokStores(path: string): boolean {
-  return path === GROK_STORES_DIR || path.startsWith(GROK_STORES_DIR + sep);
-}
-
-// Inside a seat GROK_HOME names a store, and the seat carries the real grok home it mirrors in
-// GROK_HOME_ENV; a store named with no such record falls back to ~/.grok.
-const GROK_HOME_RAW = optionalEnv("GROK_HOME");
-const GROK_HOME =
-  GROK_HOME_RAW == null ? GROK_HOME_DEFAULT : !inGrokStores(GROK_HOME_RAW) ? GROK_HOME_RAW : (optionalEnv(GROK_HOME_ENV) ?? GROK_HOME_DEFAULT);
 
 export const grokPaths = {
-  home: GROK_HOME,
-  storesDir: GROK_STORES_DIR,
-  presenceDir: join(TM_HOME, "grok-live"),
+  home: env("GROK_HOME", GROK_HOME_DEFAULT),
+  storesDir: join(TM_HOME, "grok-stores"),
 } as const;
 
 export function grokStoreDirFor(accountId: string): string {
@@ -245,10 +232,6 @@ export function agyStoreDirFor(accountId: string): string {
 
 export function agyAuthJsonFor(accountId: string): string {
   return join(agyStoreDirFor(accountId), "antigravity-oauth-token");
-}
-
-export function grokSeatFromEnv(accountIds: string[]): string | null {
-  return accountIds.find((id) => grokStoreDirFor(id) === process.env.GROK_HOME) ?? null;
 }
 
 const CLAUDE_KEYCHAIN_ACCOUNT_PATTERN = /^[a-zA-Z0-9._-]+$/;
