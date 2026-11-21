@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { join } from "node:path";
 import { preparedHomes } from "./edge-async-sweep-fixtures.ts";
-import { storeDir, writePool } from "./edge-cli-surface-fixtures.ts";
+import { writePool } from "./edge-cli-surface-fixtures.ts";
 import { scratchDir } from "./edge-providers-fixtures.ts";
 import { fileTree, grokAuthText, grokEntry, grokEnv, installGrok, installLeftoverGrokWrapper, listed, pinGrokBin, pooledGrok, runBin, serveGrokCredits, storeGrokLogin, withPath, writeGrokAuth } from "./edge-grok-statusonly-fixtures.ts";
 
@@ -31,7 +31,7 @@ test("the grok wrapper an older version left on PATH runs the real grok once on 
       stderr: result.stderr,
     }).toEqual({
       exitCode: 7,
-      runs: [{ grokHome: storeDir(homes, "grok", POOLED), args: "-p fix the failing test" }],
+      runs: [{ grokHome: ambient, args: "-p fix the failing test" }],
       shimsLeft: ["claude", "tokenmaxxing"],
       presence: [],
       ambient: { "auth.json": grokAuthText({ [POOLED]: pooled }) },

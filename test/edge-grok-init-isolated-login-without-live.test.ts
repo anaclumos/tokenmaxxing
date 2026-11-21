@@ -25,7 +25,7 @@ test("init --grok with no live login runs grok login in a throwaway GROK_HOME un
       stderr: result.stderr,
     }).toEqual({
       exitCode: 0,
-      logins: [{ grokHome: join(homes.home, ".grok"), args: "login" }],
+      logins: [{ grokHome: ISOLATED_HOME, args: "login" }],
       accounts: [{ id: FRESH, label: "fresh@example.com", email: "fresh@example.com" }],
       store: { doc: { [FRESH]: fresh }, mode: 0o600 },
       onboardLeft: [],

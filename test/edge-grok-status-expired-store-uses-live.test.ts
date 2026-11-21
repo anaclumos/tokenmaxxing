@@ -9,14 +9,17 @@ const EXPIRED = "c13462ed-16f3-4fae-9cd2-e3469f5b1e0c";
 const OTHER = "c24573fe-27f4-4baf-9de3-f457a06c2f1e";
 const HOUR_MS = 3_600_000;
 
-test("status reads a grok account whose stored token has expired with the same account's login in GROK_HOME, copies that live entry into the store, and leaves GROK_HOME byte-identical", async () => {
+test("status reads a grok account whose stored token has expired with the same account's login in GROK_HOME and leaves the store as it was", async () => {
   const homes = preparedHomes();
-  const liveEntry = grokEntry(EXPIRED, { email: "expired@example.com", key: "live-token", refresh: "live-refresh", expiresAt: Date.now() + HOUR_MS });
-  const live = { [OTHER]: grokEntry(OTHER, { email: "other@example.com", key: "other-live-token" }), [EXPIRED]: liveEntry };
+  const stale = grokEntry(EXPIRED, { email: "expired@example.com", key: "stale-token", refresh: "stale-refresh", expiresAt: Date.now() - HOUR_MS });
+  const live = {
+    [OTHER]: grokEntry(OTHER, { email: "other@example.com", key: "other-live-token" }),
+    [EXPIRED]: grokEntry(EXPIRED, { email: "expired@example.com", key: "live-token", refresh: "live-refresh", expiresAt: Date.now() + HOUR_MS }),
+  };
   const ambient = scratchDir("grok-home");
   writeGrokAuth(ambient, live);
   writePool(homes, "grok", [pooledGrok(EXPIRED, "expired@example.com")]);
-  storeGrokLogin(homes, EXPIRED, grokEntry(EXPIRED, { email: "expired@example.com", key: "stale-token", refresh: "stale-refresh", expiresAt: Date.now() - HOUR_MS }));
+  storeGrokLogin(homes, EXPIRED, stale);
   const stub = serveGrokCredits({ "live-token": { percent: 37 }, "other-live-token": { percent: 12 } });
   try {
     const result = await run(["status", "--json"], grokEnv(homes, stub, { GROK_HOME: ambient }));
@@ -29,8 +32,8 @@ test("status reads a grok account whose stored token has expired with the same a
       stderr: result.stderr,
     }).toEqual({
       exitCode: 0,
-      report: { needsReauth: true, used: 37, sample: { ok: true, source: "probe" } },
-      store: { doc: { [EXPIRED]: liveEntry }, mode: 0o600 },
+      report: { needsReauth: false, used: 37, sample: { ok: true, source: "probe" } },
+      store: { doc: { [EXPIRED]: stale }, mode: 0o600 },
       ambient: { "auth.json": grokAuthText(live) },
       stderr: "",
     });

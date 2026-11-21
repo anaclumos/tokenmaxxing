@@ -36,7 +36,7 @@ test("status heads the grok pool status-only and draws one weekly credit bar per
     }).toEqual({
       exitCodes: [0, 0],
       header: "grok  (3 accounts, status-only)",
-      liveBars: { used: ["week 37%"], idle: [], empty: [] },
+      liveBars: { used: ["week 37%"], idle: ["week 0%"], empty: [] },
       emptyLive: { failed: true, pointsAtAuth: true },
       cachedBars: { used: ["week 37%"], idle: ["week 0%"], empty: [] },
       emptyCached: { neverSampled: true },

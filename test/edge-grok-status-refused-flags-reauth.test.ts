@@ -40,7 +40,7 @@ test("status flags a grok account for re-auth when both its stored token and its
       store: grokStore(homes, REFUSED),
       ambient: fileTree(ambient),
     }).toEqual({
-      flagged: { exitCode: 0, needsReauth: false, exhausted: false, usage: null, sampleOk: false },
+      flagged: { exitCode: 0, needsReauth: true, exhausted: false, usage: null, sampleOk: false },
       liveLoginTried: true,
       otherLoginTried: false,
       storeWhenFlagged: { doc: { [REFUSED]: stored }, mode: 0o600 },

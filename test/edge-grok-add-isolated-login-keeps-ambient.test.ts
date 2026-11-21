@@ -39,7 +39,7 @@ test("add --grok for an account that GROK_HOME is also signed in to pools the gr
         { id: POOLED, label: "pooled@example.com", email: "pooled@example.com" },
         { id: ADDED, label: "added@example.com", email: "added@example.com" },
       ],
-      addedStore: { doc: { [ADDED]: live[ADDED] }, mode: 0o600 },
+      addedStore: { doc: { [ADDED]: isolated }, mode: 0o600 },
       pooledStore: { doc: { [POOLED]: pooled }, mode: 0o600 },
       ambient: { "auth.json": grokAuthText(live) },
       onboardLeft: [],

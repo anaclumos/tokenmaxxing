@@ -34,7 +34,7 @@ test("init --grok copies the first login of ~/.grok/auth.json into a 0600 store 
       accounts: [{ id: FIRST, label: "first@example.com", email: "first@example.com" }],
       store: { doc: { [FIRST]: first }, mode: 0o600 },
       secondStore: null,
-      ambient: { "auth.json": grokAuthText({ [SECOND]: second }) },
+      ambient: { "auth.json": grokAuthText({ [FIRST]: first, [SECOND]: second }) },
       logins: [],
       grokBin: grok.bin,
       wrapperInstalled: false,

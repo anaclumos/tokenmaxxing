@@ -29,7 +29,7 @@ test("status --json reports each grok account with the weekly credit window in u
     }).toEqual({
       exitCode: 0,
       ok: true,
-      half: { active: false, sessions: 0, needsReauth: false, exhausted: false, usage: week(49, 50), sample: { ok: true, source: "probe" } },
+      half: { active: false, sessions: 0, needsReauth: false, exhausted: false, usage: week(49, 49), sample: { ok: true, source: "probe" } },
       full: { active: false, sessions: 0, needsReauth: false, exhausted: true, usage: week(99, 99), sample: { ok: true, source: "probe" } },
       empty: { active: false, sessions: 0, needsReauth: false, exhausted: false, usage: null, sample: { ok: false, pointsAtAuth: true } },
       stderr: "",

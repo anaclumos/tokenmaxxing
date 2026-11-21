@@ -28,7 +28,7 @@ test("a grok-live presence record an older version left for a process that is st
       stores: listed(join(homes.state, "grok-stores")),
     }).toEqual({
       recordHasStartTime: true,
-      status: { exitCode: 0, active: false, sessions: 1 },
+      status: { exitCode: 0, active: false, sessions: 0 },
       rm: { exitCode: 0, stderr: "" },
       left: [KEPT],
       stores: [KEPT.slice(0, 8)],

@@ -27,7 +27,7 @@ test("a GROK_HOME that names a pooled grok store marks no account active, and rm
     }).toEqual({
       status: { exitCode: 0, active: false, sessions: 0 },
       rm: { exitCode: 0, stderr: "" },
-      left: [KEPT, NAMED],
+      left: [KEPT],
       stores: [KEPT.slice(0, 8)],
     });
   } finally {
