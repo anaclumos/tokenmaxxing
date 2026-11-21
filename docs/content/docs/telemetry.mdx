@@ -28,7 +28,7 @@ Every event carries the tokenmaxxing version, the OS (`darwin` or `linux`), the 
 | Event | When | Fields |
 |---|---|---|
 | `command` | A command finishes | The command name (`status`, `add`, `auth`, and the rest; anything else is `unknown`), the pool, which of `--json`, `--cached`, `--yes`, `--pi`, `--all`, `--emails`, and `--store` were given, the exit code, and how long it took. Never the arguments themselves |
-| `session_end` | A `claude`, `codex`, `pi`, `muse`, or `grok` session ends | The tool, whether stdin was a terminal, how many times the session moved to another account, how it ended (`exit`, `depleted` when every account was at its limit, or `fatal`), the exit code, and how long it ran |
+| `session_end` | A `claude`, `codex`, `pi`, or `muse` session ends | The tool, whether stdin was a terminal, how many times the session moved to another account, how it ended (`exit`, `depleted` when every account was at its limit, or `fatal`), the exit code, and how long it ran |
 | `compaction` | A session's compaction before a move | Whether it landed (`ok`), failed, or was skipped |
 | `account_added`, `account_imported`, `account_removed` | `add`, `init`, `rm` | The pool, and its size afterwards as a bucket: `0`, `1`, `2-5`, `6-20`, or `21+` |
 | `account_reauthenticated`, `account_renamed` | `auth`, `rename` | The pool |

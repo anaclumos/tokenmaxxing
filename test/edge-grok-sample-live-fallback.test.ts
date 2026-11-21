@@ -5,8 +5,7 @@ import { account, HOUR_MS } from "./fixtures.ts";
 import { scratchDir, serve, useEnv, writePrivate } from "./edge-providers-fixtures.ts";
 
 const GROK_ID = "4e1f0a7c-9b2d-4c3e-8f6a-0d5b7c1e2a94";
-const liveHome = scratchDir("grok-live");
-const seatedHome = scratchDir("grok-seated");
+const liveHome = scratchDir("grok-home");
 const now = Date.now();
 const periodStart = now - 24 * HOUR_MS;
 const periodEnd = now + 6 * 24 * HOUR_MS;
@@ -23,7 +22,6 @@ const restoreEnv = useEnv({
   HOME: scratchDir("home"),
   TOKENMAXXING_HOME: scratchDir("state"),
   GROK_HOME: liveHome,
-  TOKENMAXXING_GROK_HOME: seatedHome,
   TOKENMAXXING_GROK_USAGE_URL: `${stub.base}/v1/billing?format=credits`,
 });
 afterAll(() => {
@@ -32,14 +30,13 @@ afterAll(() => {
 });
 
 const { grokAuthJsonFor } = await import("../src/lib/paths.ts");
-const { grok, parkGrokEntry } = await import("../src/lib/grok.ts");
+const { grok } = await import("../src/lib/grok.ts");
 
 const OTHER_GROK_ID = "9b2d4c3e-8f6a-0d5b-7c1e2a944e1f";
 
 test("a Grok sample whose stored token is refused retries with the live login and lands the credit window at the sample time", async () => {
   writePrivate(grokAuthJsonFor(GROK_ID), JSON.stringify({ [GROK_ID]: { user_id: GROK_ID, key: "store-token", refresh_token: "store-refresh", expires_at: new Date(now + 30 * 24 * HOUR_MS).toISOString() } }));
   writePrivate(join(liveHome, "auth.json"), JSON.stringify({ [GROK_ID]: { user_id: GROK_ID, key: "live-token", refresh_token: "live-refresh" } }));
-  writePrivate(join(seatedHome, "auth.json"), JSON.stringify({ [GROK_ID]: { user_id: GROK_ID, key: "seated-token", refresh_token: "seated-refresh" } }));
   const sampled = account(GROK_ID, "supergrok", []);
 
   const reports = await grok.samplePool([sampled], now);
@@ -55,29 +52,32 @@ test("a Grok sample whose stored token is refused retries with the live login an
   });
 }, 20_000);
 
-test("parking a grok login writes the store and removes only that account from the ambient grok home", async () => {
+test("parking a pooled grok login writes its store and leaves every login in the ambient grok home alone", async () => {
   const livePath = join(liveHome, "auth.json");
-  writePrivate(
-    livePath,
-    JSON.stringify({
-      [GROK_ID]: { user_id: GROK_ID, key: "pooled-key", refresh_token: "pooled-refresh" },
-      [OTHER_GROK_ID]: { user_id: OTHER_GROK_ID, key: "other-key", refresh_token: "other-refresh" },
-    }),
-  );
+  const live = {
+    [GROK_ID]: { user_id: GROK_ID, key: "pooled-key", refresh_token: "pooled-refresh" },
+    [OTHER_GROK_ID]: { user_id: OTHER_GROK_ID, key: "other-key", refresh_token: "other-refresh" },
+  };
+  writePrivate(livePath, JSON.stringify(live));
 
-  await parkGrokEntry(GROK_ID, GROK_ID, { user_id: GROK_ID, key: "pooled-key", refresh_token: "pooled-refresh" });
+  const harvested = await grok.importLive();
+  await harvested?.park();
 
+  expect(harvested?.id).toBe(GROK_ID);
   expect(JSON.parse(readFileSync(grokAuthJsonFor(GROK_ID), "utf8"))).toEqual({
     [GROK_ID]: { user_id: GROK_ID, key: "pooled-key", refresh_token: "pooled-refresh" },
   });
-  expect(JSON.parse(readFileSync(livePath, "utf8"))).toEqual({
-    [OTHER_GROK_ID]: { user_id: OTHER_GROK_ID, key: "other-key", refresh_token: "other-refresh" },
-  });
+  expect(JSON.parse(readFileSync(livePath, "utf8"))).toEqual(live);
 });
 
-test("parking the last grok login in the ambient home deletes auth.json there", async () => {
+test("pooling the last login in the ambient grok home keeps auth.json there", async () => {
   const livePath = join(liveHome, "auth.json");
-  writePrivate(livePath, JSON.stringify({ [GROK_ID]: { user_id: GROK_ID, key: "solo-key", refresh_token: "solo-refresh" } }));
-  await parkGrokEntry(GROK_ID, GROK_ID, { user_id: GROK_ID, key: "solo-key", refresh_token: "solo-refresh" });
-  expect(existsSync(livePath)).toBe(false);
+  const live = { [GROK_ID]: { user_id: GROK_ID, key: "solo-key", refresh_token: "solo-refresh" } };
+  writePrivate(livePath, JSON.stringify(live));
+
+  const harvested = await grok.importLive();
+  await harvested?.park();
+
+  expect(JSON.parse(readFileSync(livePath, "utf8"))).toEqual(live);
+  expect(existsSync(grokAuthJsonFor(GROK_ID))).toBe(true);
 });

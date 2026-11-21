@@ -2,7 +2,7 @@
 
 **Automatic Claude Code account switching.** Run `claude` exactly as you always do; each session starts on the pooled account with the most room for it among those whose weekly quota expires soonest, and when that account nears its usage limit, tokenmaxxing resumes the session on a fresher account at a safe turn boundary - same conversation, compacted on the account it leaves and restarted under another account's credential store with a first prompt that asks Claude to continue. Works across many concurrent sessions, which spread over the pool instead of draining one account together. When the whole pool is at its limit, a session queues first come first served for a reset (at most eight sessions wait on one account; overflow waits for the next reset with room) and pauses with a countdown until its assigned reset, when that reset falls within twice `policy.maxWaitMs` (default 1h - a longer wait stays put rather than parking your terminal for hours).
 
-> **Scope:** Claude Code on macOS and Linux, plus OpenAI's Codex CLI, grok, and Muse Code as further switching pools; Cursor, Kimi Code, and Mistral Vibe as status-only pools. It pools **subscription** accounts (Pro/Max), not API keys; Mistral Vibe signs in with an API key, which carries the plan's monthly Vibe allowance.
+> **Scope:** Claude Code on macOS and Linux, plus OpenAI's Codex CLI and Muse Code as further switching pools; grok, Cursor, Kimi Code, Mistral Vibe, and Google Antigravity as status-only pools. It pools **subscription** accounts (Pro/Max), not API keys; Mistral Vibe signs in with an API key, which carries the plan's monthly Vibe allowance.
 
 ```
 $ claude
@@ -39,7 +39,7 @@ claude                  # use claude as always; each session gets its own accoun
 | `tokenmaxxing init` | verify and pin the real `claude`, log the first account in (isolated) + install supervisor, hooks, PATH line, check timer, and hub service |
 | `tokenmaxxing init --codex` | same for codex: log in the first account (isolated), install codex supervisor + Stop hook |
 | `tokenmaxxing init --pi` | verify and pin the real `pi` and install the `pi` supervisor, which runs pi sessions on pooled Claude and ChatGPT accounts that have a pi login |
-| `tokenmaxxing init --grok` | same for grok: log in the first account (isolated), install the grok supervisor, which starts each session on the freshest account and resumes it on another near quota |
+| `tokenmaxxing init --grok` | pool grok logins and report their usage, status-only: no supervisor, no switching |
 | `tokenmaxxing init --cursor` | pool the Cursor CLI login, status-only: no supervisor, no switching |
 | `tokenmaxxing init --kimi` | pool a Kimi Code account through an isolated login, status-only: no supervisor, no switching |
 | `tokenmaxxing init --vibe` | pool the Mistral Vibe API key that `vibe` signs in with (or an isolated `vibe --setup` when there is none), status-only: no supervisor, no switching |
@@ -51,7 +51,7 @@ claude                  # use claude as always; each session gets its own accoun
 | `tokenmaxxing status [--cached]` | every pool: accounts with 5h / weekly / per-model usage bars, live session counts, exhausted-until-reset; `--cached` renders the stored figures without sampling |
 | `tokenmaxxing config` | the config path and the effective values; edit the file in an editor, a bad value fails the next load with the field name |
 | `tokenmaxxing check` | fold fresh tees, sample up to three stale accounts, and self-update a Bun global install once a day; the periodic timer runs this every tick |
-| `tokenmaxxing doctor` | verify the install: PATH order, `claudeBin`, the five settings entries, the timer, the hub service, the credential identity of every Codex store and of every Claude store whose access token is still fresh (an expiring Claude token is reported as unverifiable, not as a failure), the codex supervisor and `codexBin` once codex accounts are pooled, codex hook trust, the grok supervisor and each grok store once grok accounts are pooled, shell aliases that shadow `claude`, and running `claude`, `codex`, or `grok` sessions an app started outside the supervisor |
+| `tokenmaxxing doctor` | verify the install: PATH order, `claudeBin`, the five settings entries, the timer, the hub service, the credential identity of every Codex store and of every Claude store whose access token is still fresh (an expiring Claude token is reported as unverifiable, not as a failure), the codex supervisor and `codexBin` once codex accounts are pooled, codex hook trust, shell aliases that shadow `claude`, and running `claude` or `codex` sessions an app started outside the supervisor |
 | `tokenmaxxing rename [--codex \| --grok \| --muse \| --cursor \| --kimi \| --vibe \| --agy] <sel> <label>` / `rm [...] <sel>` | manage a pool (one email can hold both a claude and a codex account); `rm` is refused for an account with a running supervised session |
 | `tokenmaxxing serve` | serve the CLIProxyAPI-compatible usage API on `http://localhost:8317` (`hub.port`) so a dashboard such as T3 Code's "Add a CLIProxyAPI hub" shows the quota of every pooled Claude and Codex account; the management key is the contents of `hub-key` in the state directory, minted on the first run, and `init` runs it as a background service beside the check timer. Details in [Usage hub](docs/content/docs/hub.mdx) |
 | `tokenmaxxing telemetry [on \| off]` | show, turn on, or turn off the anonymous usage statistics sent once a day; see [Telemetry](#telemetry) |
@@ -122,18 +122,6 @@ pi                                    # use pi as always
 
 pi keeps its own credential and refreshes it itself, so each pooled account gets a pi login of its own (a separate grant, never a copy) in `pi-stores/`, with everything else linked to the shared `~/.pi/agent`. The `pi` supervisor picks the pool from `--provider`, the `--model` prefix, or pi's `defaultProvider`, starts the session on a pooled account through `PI_CODING_AGENT_DIR`, watches that account every ten seconds, and at a bar relaunches `pi --session-id <id>` on a fresher account. Details and limits in [pi support](docs/content/docs/pi.mdx).
 
-## grok support
-
-The same pooling works for the grok CLI (your own grok subscription accounts):
-
-```sh
-tokenmaxxing init --grok   # log in the first account, isolated + install the grok supervisor
-tokenmaxxing add --grok    # log in another account, isolated - your primary login is untouched
-grok                       # use grok as always
-```
-
-Each grok session runs on its own account's store (`grok-stores/<uuid8>/`, only `auth.json` per account, everything else shared with `~/.grok` so resume works across stores). The supervisor watches the seat every ten seconds (usage read free from grok's credits billing endpoint, the weekly subscription window); when it moves, it relaunches `grok -r <session-id>` under the target's store. `grok -p`, `grok agent`, and `grok dashboard` keep the account they started on. Details in [grok support](docs/content/docs/grok.mdx).
-
 ## Honest limitations
 
 - **A move restarts the process.** The session resumes the same transcript under the new account and continues on its own from a first prompt the supervisor submits, but the process restarts, which ends every background Bash task, Monitor, and Workflow run the session started (the first prompt asks Claude to relaunch what the task still needs); a bar-triggered move compacts the conversation on the old account first, so the first turn on the new account uploads the summary (the full context when the compaction does not land), while a move after a refusal re-uploads the full context once (prompt cache is org-scoped).
@@ -142,7 +130,7 @@ Each grok session runs on its own account's store (`grok-stores/<uuid8>/`, only 
 - **One shared identity file.** `~/.claude.json` holds one `oauthAccount` that Claude Code rewrites after whichever session refreshed last, so `/status` can show another session's email; the statusline's `◆` marks the account a session actually uses.
 - **Keychain (macOS).** The first keychain access for a new store happens inside the interactive `init`, `add`, or `auth` run, where a prompt can be answered, not inside a headless hook.
 - **Plaintext credentials (Linux).** Claude Code itself stores Linux credentials as a 0600 plaintext file; a store follows the same model.
-- **A grok move stops the running turn.** `grok -r` takes the session on another account, so a turn that was running when the move landed has to be sent again; `-p`, `grok agent`, and `grok dashboard` keep the account they started on.
+- **The status-only grok pool does not switch.** grok `status` shows the weekly subscription credit window, and no grok session moves.
 - **The status-only Cursor pool does not switch, and reads only a file login.** Cursor `status` shows the included usage of the monthly billing cycle. The Cursor CLI keeps its login in the keychain on macOS, which tokenmaxxing does not read, so the pool works where the login is `auth.json` (Linux).
 - **Muse Code on macOS holds one login per Mac.** Muse Code keeps its token in one keychain item for every config home, which tokenmaxxing reads, so only the Muse account the Mac signed in last works there.
 - **The status-only Kimi Code pool does not switch.** Kimi Code `status` shows the 5-hour and monthly limits (and the weekly one on a legacy plan), read through Kimi Code's own local server on each account's store, so Kimi Code refreshes its own token; see [Status-only pools](docs/content/docs/status-only-pools.mdx).
